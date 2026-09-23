@@ -41,7 +41,7 @@ function currentCamper(opts: {
   householdId?: number
 }): Camper {
   return {
-    person_cm_id: 12887873,
+    person_cm_id: 8000101,
     attendee_status: 'enrolled',
     session_cm_id: opts.sessionCmId,
     // CR #4 fixture fidelity: production Camper rows always carry a
@@ -83,17 +83,17 @@ describe('useCamperHistory', () => {
 
   it('reads the shared journey feed for the person and year', async () => {
     const camper = currentCamper({ sessionCmId: 500, sessionType: 'main' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, camper, [camper]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(mockUseCamperJourney).toHaveBeenCalledWith(12887873, YEAR)
+    expect(mockUseCamperJourney).toHaveBeenCalledWith(8000101, YEAR)
   })
 
   it("returns the shared feed's counts for the header count line", async () => {
     journeyCounts = { summers: 3, familyWeekends: 1, adultWeekends: 2 }
     const camper = currentCamper({ sessionCmId: 500, sessionType: 'main' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, camper, [camper]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -139,7 +139,7 @@ describe('useCamperHistory', () => {
       }),
     ]
     const { result } = renderHook(
-      () => useCamperHistory(12887873, YEAR, campers[0] as Camper, campers),
+      () => useCamperHistory(8000101, YEAR, campers[0] as Camper, campers),
       { wrapper: createWrapper() }
     )
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -158,7 +158,7 @@ describe('useCamperHistory', () => {
       { year: 2022, sessionName: 'Session 3', sessionType: 'main' }, // CM gap: no bunk
     ]
     const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', bunkName: 'Cabin 5' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, camper, [camper]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -170,7 +170,7 @@ describe('useCamperHistory', () => {
 
   it('does not stamp "Unassigned" on a current-year teen record', async () => {
     const teen = currentCamper({ sessionCmId: 700, sessionType: 'scit' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, teen, [teen]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, teen, [teen]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -184,7 +184,7 @@ describe('useCamperHistory', () => {
   // program group, or Quest's trip name) until now.
   it('hides a current-year SCIT bunk the registry does not resolve (a program group)', async () => {
     const scit = currentCamper({ sessionCmId: 700, sessionType: 'scit', bunkName: 'SCIT A' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, scit, [scit]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, scit, [scit]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -198,7 +198,7 @@ describe('useCamperHistory', () => {
       [`${String(YEAR)}:700`, { cabinName: 'Village Cabin 2', cabinNameRaw: 'Teen 2' }],
     ])
     const teen = currentCamper({ sessionCmId: 700, sessionType: 'tli', bunkName: 'Teen 2' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, teen, [teen]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, teen, [teen]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -209,7 +209,7 @@ describe('useCamperHistory', () => {
 
   it('never shows a cabin for a current-year Quest record, even with an assigned bunk', async () => {
     const quest = currentCamper({ sessionCmId: 900, sessionType: 'quest', bunkName: 'Trip Name' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, quest, [quest]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, quest, [quest]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -220,7 +220,7 @@ describe('useCamperHistory', () => {
 
   it('still stamps "Unassigned" on a current-year bunkable (main) record with no bunk', async () => {
     const unplaced = currentCamper({ sessionCmId: 500, sessionType: 'main' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, unplaced, [unplaced]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, unplaced, [unplaced]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -231,7 +231,7 @@ describe('useCamperHistory', () => {
   it('collapses a current-year Main + AG enrollment into one Main row', async () => {
     const main = currentCamper({ sessionCmId: 100, sessionType: 'main' })
     const ag = currentCamper({ sessionCmId: 101, sessionType: 'ag', parentId: 100 })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, main, [main, ag]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, main, [main, ag]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -251,7 +251,7 @@ describe('useCamperHistory', () => {
     const secondaryBefore = currentCamper({ sessionCmId: 600, sessionType: 'main' })
     const { result, rerender } = renderHook(
       ({ attendees }: { attendees: Camper[] }) =>
-        useCamperHistory(12887873, YEAR, primary, attendees),
+        useCamperHistory(8000101, YEAR, primary, attendees),
       { wrapper: createWrapper(), initialProps: { attendees: [primary, secondaryBefore] } }
     )
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -290,7 +290,7 @@ describe('useCamperHistory', () => {
         ],
       ])
     )
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, ag, [ag]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, ag, [ag]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))

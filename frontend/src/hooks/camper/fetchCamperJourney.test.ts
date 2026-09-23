@@ -20,7 +20,7 @@ vi.mock('../../lib/pocketbase', () => ({
   },
 }))
 
-const PERSON = 12887873
+const PERSON = 8000101
 const CURRENT_YEAR = 2026
 
 function attendee(
