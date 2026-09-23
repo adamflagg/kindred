@@ -559,7 +559,7 @@ describe('CamperDetailsPanel', () => {
   // camper enrolled in a summer session AND a Quest trip now read "Quest …
   // (unassigned)" on the summer board, even though the trip is assigned.
   // Fix: gate "(unassigned)" on isAtCampSessionType(enrollment.sessionType),
-  // the same rule the journey row already applies at :627.
+  // the same rule the journey row (`currentYearRows`) already applies.
   //
   // RULED CHANGE (owner, 2026-09-23, Quest option A): b1a9f1f7 blanked the
   // trip everywhere, including this bar. The owner reversed that HERE only

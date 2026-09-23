@@ -994,7 +994,7 @@ export default function CamperDetailsPanel({
                     ) : isAtCampSessionType(enrollment.sessionType) ? (
                       // I1 (review, kindred#2753): "(unassigned)" is a
                       // bunkable (main/embedded/ag) fallback only, the same
-                      // rule the journey row applies at :627 — a Quest
+                      // rule `currentYearRows` applies above — a Quest
                       // enrollment's bunkName is blanked by design (Q9), not
                       // unplaced, so it shows nothing here instead of a false
                       // amber "(unassigned)".
@@ -1250,7 +1250,7 @@ export default function CamperDetailsPanel({
                           in the second visual pass): every SUMMER OR TEEN
                           program the sibling is in, each session's cabin
                           right after it — mirrors the camper record's
-                          SiblingsPanel line 2 (SiblingsPanel.tsx:89-114) at
+                          SiblingsPanel line 2 (`camper/SiblingsPanel.tsx`) at
                           the board's smaller sizes. Family and adult
                           programs are filtered out here (they are "not
                           germane for bunking") and stay visible only on the
