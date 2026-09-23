@@ -44,6 +44,11 @@ interface RawCurrentYearRecord extends HistoricalRecord {
   sessionCmId: number
 }
 
+// M4 (review, kindred#2753): a module-level empty array, not a fresh
+// `[]` default on every render while the query has no data — that busted
+// both useMemos below it, so camperHistory was a new array every render.
+const NO_CURRENT: RawCurrentYearRecord[] = []
+
 /**
  * Build raw HistoricalRecord entries from current-year campers. AG is never
  * shown as its own session — a surviving AG camper is relabeled to its
@@ -151,7 +156,7 @@ export function useCamperHistory(
   // session/status/bunk changes underneath it.
   const currentYearCampers = resolveCurrentYearCampers(allAttendees ?? [], camper)
   const {
-    data: currentRows = [],
+    data: currentRows = NO_CURRENT,
     isLoading,
     error,
   } = useQuery({
