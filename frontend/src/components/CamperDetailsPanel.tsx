@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { Fragment, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -1060,15 +1060,40 @@ export default function CamperDetailsPanel({
                             <span>{formatGradeOrdinal(sibling.grade)}</span>
                           </>
                         )}
-                        {sibling.bunkName && (
+                      </div>
+                      {/* Owner ruling 2026-09-22 (mockup option "D"): every
+                          program the sibling is in, each session's cabin
+                          right after it — mirrors the camper record's
+                          SiblingsPanel line 2 (SiblingsPanel.tsx:89-114) at
+                          the board's smaller sizes. The cabin used to live on
+                          the age/grade line above; it moved here so a
+                          multi-program sibling doesn't read as if one cabin
+                          covered every program. */}
+                      <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap">
+                        {sibling.session && (
                           <>
-                            <span>•</span>
-                            <span className="flex items-center gap-0.5">
-                              <Home className="h-2.5 w-2.5" />
-                              {sibling.bunkName}
+                            <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
+                            <span>
+                              {getSessionDisplayNameFromString(
+                                sibling.session.name,
+                                sibling.session.session_type
+                              )}
                             </span>
                           </>
                         )}
+                        {sibling.bunkName && (
+                          <>
+                            {sibling.session && <span className="mx-0.5">•</span>}
+                            <Home className="h-2.5 w-2.5 flex-shrink-0" />
+                            <span>{sibling.bunkName}</span>
+                          </>
+                        )}
+                        {sibling.additionalSessions?.map((s, idx) => (
+                          <Fragment key={`${s.name}-${String(idx)}`}>
+                            <span className="mx-0.5">•</span>
+                            <span>{getSessionDisplayNameFromString(s.name, s.session_type)}</span>
+                          </Fragment>
+                        ))}
                       </div>
                     </div>
                     <ChevronRight className="text-muted-foreground group-hover:text-forest-600 h-4 w-4 flex-shrink-0 transition-colors" />

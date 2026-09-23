@@ -6,11 +6,12 @@
  * parent-sourced bunk request form text.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '../test/testUtils'
+import { render, screen, fireEvent, waitFor, within } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 import { mockPerson } from '../test/mockData'
 import { SourceField } from '../types/sourceField'
+import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 import type { HistoricalRecord, JourneyCounts } from '../hooks/camper/types'
 
@@ -553,6 +554,156 @@ describe('CamperDetailsPanel', () => {
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
       await screen.findByText('Sam Johnson')
       expect(screen.queryByText('0th')).not.toBeInTheDocument()
+    })
+  })
+
+  // Owner ruling 2026-09-22 (mockup option "D"): a sibling row's line 2 lists
+  // every program the sibling is in, with that session's own cabin RIGHT
+  // AFTER it — the cabin moves off line 1 entirely. Mirrors the camper
+  // record's SiblingsPanel line 2 (~SiblingsPanel.tsx:95-120) at the board's
+  // smaller sizes.
+  describe('Sibling row line 2 — one cabin per program (owner ruling 2026-09-22, option D)', () => {
+    const HOUSEHOLD = 777
+    const EMMA_H2 = mockPerson({ ...EMMA, household_id: HOUSEHOLD })
+    const NOAH = mockPerson({
+      id: 'pb-noah-j',
+      cm_id: 3000010,
+      first_name: 'Noah',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 7,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const AVA = mockPerson({
+      id: 'pb-ava',
+      cm_id: 3000011,
+      first_name: 'Ava',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 8,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const MIA = mockPerson({
+      id: 'pb-mia',
+      cm_id: 3000012,
+      first_name: 'Mia',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 0,
+      age: 4.05,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+
+    const attendee = (
+      personCmId: number,
+      session: { id: string; name: string; session_type: string; start_date?: string }
+    ) => ({
+      id: `att-${String(personCmId)}-${session.id}`,
+      person_id: personCmId,
+      status: 'enrolled',
+      status_id: 2,
+      year: 2025,
+      expand: { session: { cm_id: 1, start_date: '2025-06-01', ...session } },
+    })
+
+    beforeEach(() => {
+      mockGetListPersons.mockResolvedValue({ items: [EMMA_H2], totalItems: 1 })
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          return Promise.resolve([NOAH, AVA, MIA])
+        }
+        return Promise.resolve([EMMA_H2])
+      })
+      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`person_id = ${String(NOAH.cm_id)}`)) {
+          // Summer-only: one program, one cabin.
+          return Promise.resolve([
+            attendee(NOAH.cm_id, { id: 's-4', name: 'Session 4', session_type: 'main' }),
+          ])
+        }
+        if (filter.includes(`person_id = ${String(AVA.cm_id)}`)) {
+          // Summer + family camp: two programs, only the summer one has a cabin.
+          return Promise.resolve([
+            attendee(AVA.cm_id, { id: 's-3a', name: 'Session 3a', session_type: 'main' }),
+            attendee(AVA.cm_id, {
+              id: 's-fc1',
+              name: 'Family Camp 1',
+              session_type: 'family',
+              start_date: '2025-08-01',
+            }),
+          ])
+        }
+        if (filter.includes(`person_id = ${String(MIA.cm_id)}`)) {
+          // Family-camp-only: no cabin ever (kindred#2466).
+          return Promise.resolve([
+            attendee(MIA.cm_id, { id: 's-fc2', name: 'Family Camp 2', session_type: 'family' }),
+          ])
+        }
+        return Promise.resolve([EMMA_ATTENDEE])
+      })
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('pb-noah-j')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 12' } } }])
+        }
+        if (filter.includes('pb-ava')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 9' } } }])
+        }
+        return Promise.resolve([])
+      })
+    })
+
+    it("shows a summer sibling's session then its cabin on line 2, never the cabin on line 1", async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Noah Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const sessionLabel = getSessionDisplayNameFromString('Session 4', 'main')
+      expect(within(row).getByText(sessionLabel)).toBeInTheDocument()
+      expect(within(row).getByText('Bunk 12')).toBeInTheDocument()
+
+      // Line 1 (age • grade) and line 2 (programs) are the two `.mt-0.5`
+      // rows under the name; the cabin must be on line 2 only.
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      expect(lines).toHaveLength(2)
+      expect(lines[0]?.textContent ?? '').not.toContain('Bunk 12')
+      expect(lines[1]?.textContent ?? '').toContain('Bunk 12')
+    })
+
+    it('shows a summer + family-camp sibling as session, then cabin, then Family Camp 1', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Ava Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const sessionLabel = getSessionDisplayNameFromString('Session 3a', 'main')
+      const familyLabel = getSessionDisplayNameFromString('Family Camp 1', 'family')
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      const line2Text = lines[lines.length - 1]?.textContent ?? ''
+
+      const sessionIdx = line2Text.indexOf(sessionLabel)
+      const cabinIdx = line2Text.indexOf('Bunk 9')
+      const familyIdx = line2Text.indexOf(familyLabel)
+      expect(sessionIdx).toBeGreaterThanOrEqual(0)
+      expect(cabinIdx).toBeGreaterThan(sessionIdx)
+      expect(familyIdx).toBeGreaterThan(cabinIdx)
+    })
+
+    it('shows a family-camp-only sibling with its program and no cabin', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Mia Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const familyLabel = getSessionDisplayNameFromString('Family Camp 2', 'family')
+      expect(within(row).getByText(familyLabel)).toBeInTheDocument()
+      expect(row.querySelector('.lucide-home')).not.toBeInTheDocument()
     })
   })
 
