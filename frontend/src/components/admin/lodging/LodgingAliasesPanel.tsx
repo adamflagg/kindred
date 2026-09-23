@@ -138,12 +138,18 @@ export function LodgingAliasesPanel() {
           {/* The member checkboxes ARE this form's payload, so opening it
               against an unloaded units list is not a degraded editor but a
               destructive one: saving would strip the alias of its members.
-              Hence a state check rather than the usual `?? []`. */}
+              Hence a state check rather than the usual `?? []`. The alias
+              list gets the same treatment: the duplicate check reads it, and
+              an unloaded list would report no clash and leave Save enabled. */}
           {unitsQuery.isError ? (
             <p className="text-sm text-red-600 dark:text-red-400">
               The units could not be loaded, so an alias cannot be edited right now.
             </p>
-          ) : unitsQuery.isLoading || !yearReady ? (
+          ) : aliasesQuery.isError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              The cabin-name aliases could not be loaded, so an alias cannot be edited right now.
+            </p>
+          ) : unitsQuery.isLoading || aliasesQuery.isLoading || !yearReady ? (
             <p className="text-muted-foreground text-sm">Loading units…</p>
           ) : (
             /* Keyed on the record so React remounts rather than reusing the

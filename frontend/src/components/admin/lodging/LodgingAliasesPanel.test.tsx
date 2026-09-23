@@ -14,47 +14,49 @@ import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/
 const deleteLodgingAlias = vi.fn()
 const listLodgingUnits = vi.fn()
 
+const ALIAS_ROWS = [
+  {
+    id: 'a1',
+    alias_string: 'North Lodge - Whole',
+    member_units: ['u1', 'u2'],
+    valid_from_year: 2025,
+    valid_to_year: 0,
+    source_field: 'Family Camp Cabin',
+    notes: '',
+    expand: {
+      member_units: [
+        { id: 'u1', name: 'North Lodge Front', code: 'north-lodge-front' },
+        { id: 'u2', name: 'North Lodge Back', code: 'north-lodge-back' },
+      ],
+    },
+  },
+  {
+    id: 'a2',
+    // Deliberately unlike its member unit's name: an alias exists precisely
+    // because the source string and the unit name differ.
+    alias_string: 'CabinA (legacy label)',
+    member_units: ['u3'],
+    valid_from_year: 0,
+    valid_to_year: 0,
+    source_field: '',
+    notes: '',
+    expand: { member_units: [{ id: 'u3', name: 'Cabin A', code: 'cabin-a' }] },
+  },
+  {
+    id: 'a3',
+    alias_string: 'Old Hall',
+    member_units: ['u4'],
+    valid_from_year: 0,
+    valid_to_year: 2024,
+    source_field: '',
+    notes: '',
+    expand: { member_units: [{ id: 'u4', name: 'Old Hall', code: 'old-hall' }] },
+  },
+]
+const listLodgingAliases = vi.fn()
+
 vi.mock('../../../services/lodgingCrud', () => ({
-  listLodgingAliases: () =>
-    Promise.resolve([
-      {
-        id: 'a1',
-        alias_string: 'North Lodge - Whole',
-        member_units: ['u1', 'u2'],
-        valid_from_year: 2025,
-        valid_to_year: 0,
-        source_field: 'Family Camp Cabin',
-        notes: '',
-        expand: {
-          member_units: [
-            { id: 'u1', name: 'North Lodge Front', code: 'north-lodge-front' },
-            { id: 'u2', name: 'North Lodge Back', code: 'north-lodge-back' },
-          ],
-        },
-      },
-      {
-        id: 'a2',
-        // Deliberately unlike its member unit's name: an alias exists precisely
-        // because the source string and the unit name differ.
-        alias_string: 'CabinA (legacy label)',
-        member_units: ['u3'],
-        valid_from_year: 0,
-        valid_to_year: 0,
-        source_field: '',
-        notes: '',
-        expand: { member_units: [{ id: 'u3', name: 'Cabin A', code: 'cabin-a' }] },
-      },
-      {
-        id: 'a3',
-        alias_string: 'Old Hall',
-        member_units: ['u4'],
-        valid_from_year: 0,
-        valid_to_year: 2024,
-        source_field: '',
-        notes: '',
-        expand: { member_units: [{ id: 'u4', name: 'Old Hall', code: 'old-hall' }] },
-      },
-    ]),
+  listLodgingAliases: (...args: unknown[]) => listLodgingAliases(...args),
   listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
   createLodgingAlias: vi.fn(),
   updateLodgingAlias: vi.fn(),
@@ -81,6 +83,7 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   deleteLodgingAlias.mockReset().mockResolvedValue(undefined)
   listLodgingUnits.mockReset().mockResolvedValue([])
+  listLodgingAliases.mockReset().mockResolvedValue(ALIAS_ROWS)
   // jsdom has no confirm(); default to "the staffer clicked OK".
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
@@ -419,5 +422,34 @@ describe('LodgingAliasesPanel — finding an alias', () => {
     await user.click(screen.getByRole('button', { name: 'Edit that alias' }))
     expect(screen.getByLabelText('Cabin string')).toHaveValue('Old Hall')
     expect(screen.getByRole('button', { name: 'Save alias' })).toBeInTheDocument()
+  })
+})
+
+describe('LodgingAliasesPanel — the editor needs the alias list', () => {
+  // The duplicate check reads the alias list. Opened against an unloaded or
+  // failed list it would see no clash and leave Save enabled, and the only
+  // warning would be the server's 400 after the click.
+  it('waits for the alias list before opening the editor', async () => {
+    listLodgingAliases.mockReturnValue(new Promise(() => undefined))
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    expect(screen.queryByLabelText('Cabin string')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/Loading/i).length).toBeGreaterThan(0)
+  })
+
+  it('says the alias list failed rather than opening an editor that cannot check duplicates', async () => {
+    listLodgingAliases.mockRejectedValue(new Error('network'))
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    await waitFor(() => {
+      expect(
+        screen.getByText(/cabin-name aliases could not be loaded, so an alias cannot be edited/i)
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByLabelText('Cabin string')).not.toBeInTheDocument()
   })
 })

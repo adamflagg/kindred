@@ -144,7 +144,9 @@ export function UnresolvedAliasQueue() {
                 {unitsQuery.isError || aliasesQuery.isError ? (
                   <>
                     <p className="text-sm text-red-600 dark:text-red-400">
-                      The units could not be loaded, so this name cannot be mapped right now.
+                      {unitsQuery.isError
+                        ? 'The units could not be loaded, so this name cannot be mapped right now.'
+                        : 'The cabin-name aliases could not be loaded, so this name cannot be mapped right now.'}
                     </p>
                     <div>{notACabin(row)}</div>
                   </>

@@ -256,6 +256,17 @@ describe('UnresolvedAliasQueue — which units may be mapped to', () => {
 })
 
 describe('UnresolvedAliasQueue — units query state', () => {
+  it('names the alias list, not the units, when only the alias list failed', async () => {
+    listLodgingAliases.mockRejectedValue(new Error('network'))
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/cabin-name aliases could not be loaded/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/units could not be loaded/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Not a cabin' })).toBeEnabled()
+  })
+
   // The checkboxes are this screen's only action. Coerced to [], a failed
   // units fetch renders a queue of rows with nothing to map them to, and
   // "Map to selected units" stays disabled with no stated reason — which
