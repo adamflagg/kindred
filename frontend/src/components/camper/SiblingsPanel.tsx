@@ -8,6 +8,7 @@ import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
+import { visibleGradeName } from '../../utils/gradeUtils'
 import { StatusBadge } from '../StatusBadge'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { SiblingWithEnrollment } from '../../hooks/camper/types'
@@ -75,10 +76,10 @@ export function SiblingsPanel({
                       const age = getDisplayAgeForYear(sibling, viewingYear)
                       // The grade as CampMinder names it ("K", "Pre-K", "5th"),
                       // bare like the age; none when there is no grade name
-                      // (adults) -- kindred#2779.
+                      // (adults), nor for anyone 21+ -- kindred#2779.
                       const parts = [
                         age !== null ? formatAge(age) : null,
-                        sibling.grade_name || null,
+                        visibleGradeName(sibling.grade_name, age),
                       ].filter((part): part is string => part !== null)
                       return parts.join(' • ')
                     })()}

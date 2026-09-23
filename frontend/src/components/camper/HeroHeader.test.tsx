@@ -84,6 +84,11 @@ describe('HeroHeader grade name', () => {
     expect(screen.queryByText(/-1th/)).toBeNull()
   })
 
+  it('hides a stale grade on someone 21 or older', () => {
+    renderHero({ camper: { ...camper, grade: 6, grade_name: '6th', age: 23.06 } })
+    expect(screen.queryByText(/6th/)).toBeNull()
+  })
+
   it('shows no grade when there is no grade name', () => {
     renderHero({ camper: { ...camper, grade: 0, grade_name: '', age: 43.01 } })
     expect(screen.queryByText(/Grade|0th/)).toBeNull()

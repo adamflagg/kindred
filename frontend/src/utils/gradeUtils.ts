@@ -1,3 +1,5 @@
+import { ADULT_AGE } from './age'
+
 /**
  * Convert a grade number to its ordinal format
  * @param grade The grade number (1-12)
@@ -15,6 +17,13 @@ export function formatGradeOrdinal(grade: number | string | undefined | null): s
   // Handle invalid numbers
   if (isNaN(gradeNum)) {
     return String(grade) // Return original value if not a number
+  }
+
+  // Pre-K .. Infant store -1 .. -4 (kindred#2779). The number has no ordinal;
+  // print nothing rather than "-1th". Surfaces that show those grades read
+  // `grade_name` through `formatGradeName` instead.
+  if (gradeNum < 0) {
+    return ''
   }
 
   // Special handling for 11, 12, 13
@@ -44,15 +53,37 @@ export function formatGradeOrdinal(grade: number | string | undefined | null): s
 }
 
 /**
+ * The grade as CampMinder names it, or null when none should show.
+ *
+ * Null when `persons.grade_name` is empty (CampMinder has no grade), and null
+ * for anyone `ADULT_AGE` (21) or older — owner ruling 2026-09-23 (#2782).
+ * CampMinder keeps advancing a former camper's grade until it reaches "12th+",
+ * so an adult can carry a stale one; measured, two people over all years.
+ * `age` is the age for the year being shown; unknown shows the grade.
+ */
+export function visibleGradeName(
+  gradeName: string | null | undefined,
+  age?: number | null
+): string | null {
+  if (!gradeName) return null
+  if (age !== null && age !== undefined && age >= ADULT_AGE) return null
+  return gradeName
+}
+
+/**
  * The grade staff read, from `persons.grade_name` (kindred#2779).
  *
  * CampMinder names grades "Infant", "Toddler", "Nursery", "Pre-K", "K", then
  * "1st" .. "12th" and "12th+". An ordinal reads "5th Grade"; the rest read as
- * named. An empty name means CampMinder has no grade, and returns null so the
- * caller shows nothing — never the numeric `grade`, which reads 0 for both K
- * and "no grade" and goes negative below K.
+ * named. Null — show nothing — under the same rules as `visibleGradeName`,
+ * never the numeric `grade`, which reads 0 for both K and "no grade" and goes
+ * negative below K.
  */
-export function formatGradeName(gradeName: string | null | undefined): string | null {
-  if (!gradeName) return null
-  return /^\d/.test(gradeName) ? `${gradeName} Grade` : gradeName
+export function formatGradeName(
+  gradeName: string | null | undefined,
+  age?: number | null
+): string | null {
+  const name = visibleGradeName(gradeName, age)
+  if (!name) return null
+  return /^\d/.test(name) ? `${name} Grade` : name
 }

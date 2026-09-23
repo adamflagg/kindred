@@ -50,6 +50,11 @@ describe('SiblingsPanel', () => {
     expect(screen.getByText(/• Pre-K$/)).toBeInTheDocument()
   })
 
+  it('hides a stale grade on a household member 21 or older', () => {
+    renderPanel({ siblings: [{ ...partner, grade: 13, grade_name: '12th+', age: 33.06 }] })
+    expect(screen.queryByText(/12th\+/)).toBeNull()
+  })
+
   it('shows an ordinal grade bare, without "Grade"', () => {
     renderPanel({ siblings: [{ ...partner, grade: 5, grade_name: '5th', age: 10.04 }] })
     expect(screen.getByText(/• 5th$/)).toBeInTheDocument()

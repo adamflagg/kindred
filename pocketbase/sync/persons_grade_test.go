@@ -193,3 +193,30 @@ func TestProcessPerson_GradeCorrectionToPreKOverwrites(t *testing.T) {
 		t.Errorf("grade_name = %q, want \"Pre-K\"", n)
 	}
 }
+
+// The Persons sheet carries grade_name beside the number: after kindred#2779
+// the number reads -1..-4 below K and 0 for both K and "no grade", which only
+// the name tells apart.
+func TestReadablePersonsExport_HasGradeNameBesideGrade(t *testing.T) {
+	t.Parallel()
+	for _, cfg := range GetReadableYearExports() {
+		if cfg.SheetName != "Persons" {
+			continue
+		}
+		for i, col := range cfg.Columns {
+			if col.Field != "grade" {
+				continue
+			}
+			if i+1 >= len(cfg.Columns) {
+				t.Fatalf("no column after grade")
+			}
+			next := cfg.Columns[i+1]
+			if next.Field != "grade_name" || next.Header != "Grade Name" || next.Type != FieldTypeText {
+				t.Errorf("column after grade = %+v, want grade_name / \"Grade Name\" / text", next)
+			}
+			return
+		}
+		t.Fatalf("Persons export has no grade column")
+	}
+	t.Fatalf("no Persons export config")
+}

@@ -182,6 +182,11 @@ describe('IdentityPanel grade name', () => {
     expect(screen.getByText('Pre-K')).toBeInTheDocument()
   })
 
+  it('hides a stale grade on someone 21 or older', () => {
+    renderWith({ grade: 13, grade_name: '12th+', age: 33.06 })
+    expect(screen.queryByText(/12th\+/)).toBeNull()
+  })
+
   it('shows no grade line when there is no grade name', () => {
     renderWith({ grade: 0, grade_name: '' })
     expect(screen.queryByText(/Grade|0th/)).toBeNull()

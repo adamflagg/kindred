@@ -976,6 +976,18 @@ describe('CamperDetailsPanel', () => {
       )
 
       it.each([false, true])(
+        'hides a stale grade on someone 21 or older (embedded=%s)',
+        async (embedded) => {
+          const adult = mockPerson({ ...withGrade('12th+'), grade: 13, age: 33.06 })
+          mockGetListPersons.mockResolvedValue({ items: [adult], totalItems: 1 })
+          mockGetFullListPersons.mockResolvedValue([adult])
+          render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={embedded} />)
+          expect(await screen.findByText('Riverside Elementary')).toBeInTheDocument()
+          expect(screen.queryByText(/12th\+/)).not.toBeInTheDocument()
+        }
+      )
+
+      it.each([false, true])(
         'shows the school alone without a grade (embedded=%s)',
         async (embedded) => {
           mockGetListPersons.mockResolvedValue({ items: [withGrade('')], totalItems: 1 })

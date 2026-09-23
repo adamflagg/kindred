@@ -151,6 +151,26 @@ describe('the party for one year', () => {
   })
 })
 
+describe('the 21+ grade gate (owner ruling 2026-09-23)', () => {
+  it('hides a stale grade on a child row 21 or older', () => {
+    open(
+      _row({
+        children: [
+          {
+            display_name: 'Emma Johnson',
+            last_name: 'Johnson',
+            person_cm_id: 1000001,
+            age: 21.02,
+            grade: 13,
+            grade_name: '12th+',
+          },
+        ],
+      })
+    )
+    expect(screen.getByTestId('year-members-children').textContent).not.toContain('12th+')
+  })
+})
+
 describe('a year with adults and no children', () => {
   // kindred#2516 deleted the "no enrolled child on file" note along with the
   // state that drove it: a year with no enrollment behind it is no longer

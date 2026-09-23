@@ -280,7 +280,8 @@ Person records with demographics, contacts, and relationships.
 | `preferred_name` | text | Preferred/nickname |
 | `birthdate` | text | Date of birth |
 | `gender` | text | M/F/etc. |
-| `grade` | number | Current grade |
+| `grade` | number | CampMinder `CampGradeID - 1`: K = 0, 1st = 1 .. 12th+ = 13, Pre-K / Nursery / Toddler / Infant = -1 .. -4. Also 0 when there is no grade — for ordering and `grade > 0` checks, never display |
+| `grade_name` | text | CampMinder `CampGradeName` ("Pre-K", "K", "1st" .. "12th+"); empty when there is no grade. What the UI displays (`formatGradeName`), hidden at 21+ |
 | `age` | number | Age (computed) |
 | `school` | text | School name |
 | `years_at_camp` | number | Years attended |

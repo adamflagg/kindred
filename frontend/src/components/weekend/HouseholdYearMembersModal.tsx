@@ -89,11 +89,12 @@ const TITLE_ID = 'household-year-members-title'
 /**
  * An age or grade we do not have is omitted, never printed as zero. The grade
  * is `grade_name` (kindred#2779): the number reads 0 for both K and "no grade".
+ * No grade shows for anyone 21 or older -- see `visibleGradeName`.
  */
 function childDetail(age: number | null | undefined, gradeName: string | null | undefined): string {
   return [
     age === null || age === undefined ? '' : `Age ${displayCampMinderAge(age)}`,
-    formatGradeName(gradeName) ?? '',
+    formatGradeName(gradeName, age) ?? '',
   ]
     .filter((part) => part.length > 0)
     .join(' · ')

@@ -497,6 +497,29 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(line.textContent).toBe(expected === null ? 'Age 5.00' : `Age 5.00 · ${expected}`)
   })
 
+  it('hides a stale grade on a child row 21 or older', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          children: [
+            {
+              person_cm_id: 9001,
+              display_name: 'Noah Johnson',
+              last_name: 'Johnson',
+              age: 21.02,
+              grade: 13,
+              grade_name: '12th+',
+            },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText(/^Age 21/).textContent).toBe('Age 21')
+  })
+
   it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
     // kindred#2088: the panel printed `String(child.age)` verbatim. Both
     // fractional and whole ages must go through the shared helper summer
