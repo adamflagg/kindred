@@ -62,7 +62,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
-import { getLocationDisplay } from '../utils/addressUtils'
+import { personLocation } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
 import { BunkRequestRow } from './BunkRequestRow'
 import { CamperCohortsSection } from './CamperCohortsSection'
@@ -491,10 +491,7 @@ export default function CamperDetailsPanel({
   useOverlayEscape(!embedded && !isClosing, handleClose)
 
   // Helper: get location from person's discrete address columns
-  const location = getLocationDisplay(
-    person?.normalized_city ?? person?.address_city,
-    person?.address_state
-  )
+  const location = person ? personLocation(person) : null
 
   const getSessionShortName = () => {
     return getSessionShortNameUtil(camper?.expand?.session ?? undefined)

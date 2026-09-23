@@ -12,7 +12,7 @@ import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
-import { getLocationDisplay } from '../utils/addressUtils'
+import { personLocation } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
 import { isSummerCampSession, isAdultSessionType } from '../utils/sessionTypePredicates'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
@@ -141,10 +141,7 @@ function CamperDetailBody({
   )
 
   // Computed values - use discrete columns instead of JSON parsing
-  const location = getLocationDisplay(
-    person?.normalized_city ?? person?.address_city,
-    person?.address_state
-  )
+  const location = person ? personLocation(person) : null
   const congregation = person?.normalized_congregation ?? null
   const pronouns = formatPronouns(camper)
   const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined) ?? 'Unknown'
