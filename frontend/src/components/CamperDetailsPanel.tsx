@@ -674,6 +674,11 @@ export default function CamperDetailsPanel({
       currentYearRows.length > 0 ? currentYear : undefined
     ),
   ]
+  // M1 (review, kindred#2753): computed once and switched on directly below,
+  // rather than re-derived inline — the section-visibility check and the
+  // body's rows/loading/error branch must never be able to disagree about
+  // which of the four states this is.
+  const journeyState = journeyDisplayState(journeyRows.length, journeyLoading, journeyError)
 
   // Lock group context — used to compute friend-group alert and layout
   const { getCamperLockState, getCamperLockGroup, getGroupMembers, isActionBarVisible } =
@@ -1087,8 +1092,11 @@ export default function CamperDetailsPanel({
             — the board's own current-year rows are ready before the prior-year
             feed, and used to sit behind a spinner until it settled. The
             section itself must stay visible through loading/error too, or the
-            spinner/error line below would never have anywhere to render. */}
-        {journeyDisplayState(journeyRows.length, journeyLoading, journeyError) !== 'empty' && (
+            spinner/error line below would never have anywhere to render.
+            M1 (review): switches on the SAME `journeyState` value the section
+            visibility check above already used — the ordering can no longer
+            drift between the two, the gap a mutation check caught. */}
+        {journeyState !== 'empty' && (
           <section>
             <SectionHeader
               title="Camp Journey"
@@ -1099,7 +1107,7 @@ export default function CamperDetailsPanel({
               accentColor="forest"
             />
             {expandedSections.history &&
-              (journeyRows.length > 0 ? (
+              (journeyState === 'rows' ? (
                 // The same rows as the camper record (`camper/JourneyRows`,
                 // owner ruling 2026-09-22 G2): this year's board enrollments and
                 // the prior years in ONE grid — `compact`, like every sidebar:
@@ -1114,7 +1122,7 @@ export default function CamperDetailsPanel({
                     </p>
                   )}
                 </div>
-              ) : journeyLoading ? (
+              ) : journeyState === 'loading' ? (
                 // Same loading markup as CampJourneyTimeline (camper/CampJourneyTimeline.tsx).
                 // Only reached with NO rows yet — Q8 shows any rows already here instead.
                 <div className="mt-2 flex items-center justify-center py-4">
