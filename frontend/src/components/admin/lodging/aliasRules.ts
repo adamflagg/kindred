@@ -36,9 +36,17 @@ export interface AliasConflicts {
   separateYears: LodgingAliasRecord[]
 }
 
+/**
+ * Go's `unicode.IsSpace` set, which `strings.TrimSpace` strips. JS `trim()`
+ * differs: it also strips U+FEFF and leaves U+0085, so it is not used here.
+ */
+const GO_SPACE =
+  '[\\t\\n\\v\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]'
+const OUTER_SPACE = new RegExp(`^${GO_SPACE}+|${GO_SPACE}+$`, 'g')
+
 /** Mirrors `sync.AliasLookupKey`: outer whitespace and case only. Inner spacing stays significant. */
 export function aliasLookupKey(raw: string): string {
-  return raw.trim().toLowerCase()
+  return raw.replace(OUTER_SPACE, '').toLowerCase()
 }
 
 const lower = (year: number) => (year > 0 ? year : -Infinity)

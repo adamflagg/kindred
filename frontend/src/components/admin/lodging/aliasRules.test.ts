@@ -39,6 +39,16 @@ describe('aliasLookupKey', () => {
   it('keeps inner spacing, which the registry holds verbatim', () => {
     expect(aliasLookupKey('Cabin  A')).not.toBe(aliasLookupKey('Cabin A'))
   })
+
+  // Go's strings.TrimSpace, which the server and resolver use, is the rule.
+  // JS String.prototype.trim differs on exactly these two.
+  it('keeps a leading byte-order mark, as strings.TrimSpace does', () => {
+    expect(aliasLookupKey('﻿Cabin A')).not.toBe(aliasLookupKey('Cabin A'))
+  })
+
+  it('trims a next-line character, as strings.TrimSpace does', () => {
+    expect(aliasLookupKey('\u0085Cabin A\u0085')).toBe('cabin a')
+  })
 })
 
 describe('windowsOverlap', () => {
