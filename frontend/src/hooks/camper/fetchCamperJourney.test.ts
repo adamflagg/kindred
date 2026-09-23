@@ -429,6 +429,29 @@ describe('adult programs', () => {
     expect(rows[0]).toMatchObject({ year: 2024, sessionType: 'adult', bunkName: 'River F' })
   })
 
+  it("carries the as-typed string as bunkNameRecorded when the server's cabin_name differs from cabin_name_raw", async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2022, 1001, 'adult', "Women's Weekend")])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      adultHousingWeekends: [
+        {
+          year: 2022,
+          session_cm_id: 1001,
+          cabin_name: 'Meadow House 1',
+          cabin_name_raw: 'Old Meadow 1',
+        },
+      ],
+    })
+    expect(rows[0]).toMatchObject({ bunkName: 'Meadow House 1', bunkNameRecorded: 'Old Meadow 1' })
+  })
+
+  it('omits bunkNameRecorded on an adult row when the server already agrees with itself', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2024, 1001, 'adult', "Women's Weekend")])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      adultHousingWeekends: [housing(2024, 1001, 'River F')],
+    })
+    expect(rows[0]?.bunkNameRecorded).toBeUndefined()
+  })
+
   it('never labels an adult row with a bunk, even a lone same-year one', async () => {
     mockAttendeesGetFullList.mockResolvedValue([attendee(2024, 1001, 'adult', "Women's Weekend")])
     mockAssignmentsGetFullList.mockResolvedValue([assignment(2024, 555, 'G-8B', 'main')])
@@ -459,7 +482,7 @@ describe('adult programs', () => {
   })
 })
 
-describe('family camp, as recorded and as a parent', () => {
+describe('family camp, todays name with recorded provenance, and as a parent', () => {
   // Each test starts from no enrollments — without this, a test that sets no
   // attendees inherits the previous test's mock (vi.fn keeps its last value).
   beforeEach(() => {
@@ -484,14 +507,19 @@ describe('family camp, as recorded and as a parent', () => {
     }
   }
 
-  it("labels a child's family row with the cabin AS RECORDED, not today's unit name", async () => {
+  // RULED CHANGE (owner, 2026-09-22 evening): this morning's ruling had the
+  // label be the AS-RECORDED string. The owner reversed it on the visual
+  // pass — too long, and one ran off the card — back to the kindred#2332
+  // pattern the household journey card already uses: today's registry name
+  // as the label, the as-typed string only in a hover tooltip.
+  it("labels a child's family row with today's registry name, not the as-typed string", async () => {
     mockAttendeesGetFullList.mockResolvedValue([
       attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
     ])
     const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
       familyHousingYears: [householdYear()],
     })
-    expect(rows[0]?.bunkName).toBe('Old Meadow 1')
+    expect(rows[0]?.bunkName).toBe('Meadow House 1')
   })
 
   it('adds the weekends a child in the household attended, for an adult viewer', async () => {
@@ -504,7 +532,8 @@ describe('family camp, as recorded and as a parent', () => {
         year: 2024,
         sessionType: 'family',
         sessionName: 'Family Camp 2: Keshet Weekend',
-        bunkName: 'Old Meadow 1',
+        // RULED CHANGE (owner, 2026-09-22 evening) — see the test above.
+        bunkName: 'Meadow House 1',
       }),
     ])
     expect(out.familyWeekends).toBe(1)
@@ -554,5 +583,39 @@ describe('family camp, as recorded and as a parent', () => {
     })
     expect(out.rows).toEqual([])
     expect(out.familyWeekends).toBe(1)
+  })
+
+  it('carries the as-typed string as bunkNameRecorded when it differs from the label', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [householdYear()],
+    })
+    expect(rows[0]).toMatchObject({ bunkName: 'Meadow House 1', bunkNameRecorded: 'Old Meadow 1' })
+  })
+
+  it('omits bunkNameRecorded when the as-typed string already IS the label', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2024, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    const { rows } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [
+        householdYear({ cabin_name: 'Cedar Lodge', cabin_name_raw: 'Cedar Lodge' }),
+      ],
+    })
+    expect(rows[0]?.bunkName).toBe('Cedar Lodge')
+    expect(rows[0]?.bunkNameRecorded).toBeUndefined()
+  })
+
+  it('carries bunkNameRecorded on a parent row too, for an adult viewer', async () => {
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [householdYear()],
+      viewerIsAdult: true,
+    })
+    expect(out.rows[0]).toMatchObject({
+      bunkName: 'Meadow House 1',
+      bunkNameRecorded: 'Old Meadow 1',
+    })
   })
 })

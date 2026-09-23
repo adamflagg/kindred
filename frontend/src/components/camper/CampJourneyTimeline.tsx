@@ -8,6 +8,7 @@ import { weekendSubtitle } from '../weekend/weekendNames'
 import { getStatusIndicator } from '../../utils/enrollmentFilter'
 import { isFamilySessionType } from '../../utils/sessionTypePredicates'
 import { journeyCountLabel } from '../../utils/journeyCountLabel'
+import { Tooltip } from '../ui/Tooltip'
 import type { HistoricalRecord, JourneyCounts } from '../../hooks/camper/types'
 
 interface CampJourneyTimelineProps {
@@ -80,9 +81,11 @@ export function CampJourneyTimeline({
                       }`}
                     />
 
-                    {/* Year - hidden for subsequent same-year records */}
+                    {/* Year - hidden for subsequent same-year records. Fixed
+                        width AND flex-shrink-0: it must not shrink when the
+                        session/cabin spans below it are fighting for room. */}
                     <span
-                      className={`font-display w-12 font-bold ${
+                      className={`font-display w-12 flex-shrink-0 font-bold ${
                         isCurrentYear
                           ? 'text-forest-700 dark:text-forest-300 text-base'
                           : 'text-foreground/80'
@@ -91,8 +94,13 @@ export function CampJourneyTimeline({
                       {showYear ? record.year : ''}
                     </span>
 
-                    {/* Session */}
-                    <span className="text-muted-foreground truncate text-sm">
+                    {/* Session. `min-w-0` is what lets a flex child shrink
+                        below its `truncate`d content's intrinsic width —
+                        without it `truncate`'s own white-space: nowrap sets
+                        the item's minimum to the full un-wrapped text, and a
+                        long session name pushes the cabin segment off the
+                        card instead of ellipsizing. */}
+                    <span className="text-muted-foreground min-w-0 truncate text-sm">
                       {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
                     </span>
 
@@ -129,25 +137,46 @@ export function CampJourneyTimeline({
 
                     {/* Housing — only for enrolled records that actually have a label.
                         A bunk name for summer/teen; the household's resolved
-                        family-camp cabin for family (kindred#2466) — never the
-                        CampMinder day group, which `fetchCamperJourney` drops
-                        before this component ever sees it. No-label prior years
-                        (teen / 2022 gap / unresolved family housing) show no
-                        segment. */}
+                        family-camp cabin for family (kindred#2466), or the
+                        server-attributed adult-weekend cabin for adult
+                        (both TODAY's registry name, kindred#2332 pattern) —
+                        never the CampMinder day group, which
+                        `fetchCamperJourney` drops before this component ever
+                        sees it. No-label prior years (teen / 2022 gap /
+                        unresolved housing) show no segment. */}
                     {!statusIndicator && record.bunkName !== undefined && (
                       <>
-                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground flex-shrink-0">·</span>
 
-                        {/* Bunk */}
+                        {/* Bunk/cabin. `min-w-0` lets this shrink below its
+                            `truncate`d content's intrinsic width — see the
+                            session span above for why. The Home icon stays
+                            fixed (flex-shrink-0); only the name truncates. */}
                         <span
-                          className={`flex items-center gap-1 truncate text-sm ${
+                          className={`flex min-w-0 items-center gap-1 truncate text-sm ${
                             record.bunkName === 'Unassigned'
                               ? 'text-amber-600 italic dark:text-amber-400'
                               : 'text-foreground font-medium'
                           }`}
                         >
                           <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
-                          {record.bunkName}
+                          {/* The as-typed string, offered in a hover tooltip,
+                              ONLY where it disagrees with the label —
+                              `HouseholdJourneyCard`'s `showsProvenance`
+                              affordance (kindred#2177 real Tooltip, not
+                              `title`), owner ruling 2026-09-22 evening. */}
+                          {record.bunkNameRecorded !== undefined ? (
+                            <Tooltip
+                              content={`Recorded as "${record.bunkNameRecorded}" that season`}
+                              data-testid="camp-journey-cabin-provenance"
+                              pinOnClick={false}
+                              className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
+                            >
+                              {record.bunkName}
+                            </Tooltip>
+                          ) : (
+                            record.bunkName
+                          )}
                         </span>
                       </>
                     )}

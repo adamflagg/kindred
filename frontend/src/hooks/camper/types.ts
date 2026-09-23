@@ -20,6 +20,14 @@ export interface HistoricalRecord {
    * uses for housing. It is dropped entirely rather than relabeled.
    */
   bunkName?: string
+  /**
+   * The string staff actually typed that season, when it disagrees with
+   * `bunkName` (which is today's registry name, kindred#2332 pattern) --
+   * owner ruling 2026-09-22 (evening). Absent when there is nothing to show:
+   * no raw string, or the raw string already IS the label. Rendered as a
+   * hover tooltip, never inline (`CampJourneyTimeline`).
+   */
+  bunkNameRecorded?: string
   startDate?: string
   endDate?: string
   /** Non-enrolled status (e.g. 'waitlisted', 'cancelled'). Absent for enrolled records. */

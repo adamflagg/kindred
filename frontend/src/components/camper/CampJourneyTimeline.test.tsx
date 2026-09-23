@@ -3,7 +3,7 @@
  * TDD: written before the bunk-segment guard.
  */
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { CampJourneyTimeline } from './CampJourneyTimeline'
 import type { HistoricalRecord } from '../../hooks/camper/types'
 
@@ -255,5 +255,93 @@ describe('CampJourneyTimeline while the journey loads', () => {
     )
     expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
     expect(screen.queryByText('Loading...')).toBeNull()
+  })
+})
+
+// kindred#2332 pattern, owner ruling 2026-09-22 (evening): the cabin label is
+// TODAY's registry name; the string staff actually typed that season shows
+// only in a hover tooltip, and only where the two disagree — the same
+// affordance `HouseholdJourneyCard` offers on the weekend board.
+describe('CampJourneyTimeline cabin provenance (kindred#2332 pattern)', () => {
+  it('offers the as-typed string in a tooltip when it disagrees with the label', () => {
+    const history: HistoricalRecord[] = [
+      {
+        year: 2022,
+        sessionName: "Women's Weekend",
+        sessionType: 'adult',
+        bunkName: 'Meadow House 1',
+        bunkNameRecorded: 'Old Meadow 1',
+      },
+    ]
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 1 }}
+        currentYear={2026}
+      />
+    )
+
+    const trigger = screen.getByTestId('camp-journey-cabin-provenance')
+    expect(trigger.textContent).toBe('Meadow House 1')
+
+    fireEvent.pointerEnter(trigger)
+
+    expect(screen.getByRole('tooltip').textContent).toContain('Old Meadow 1')
+  })
+
+  it('renders no tooltip trigger when nothing was recorded differently', () => {
+    const history: HistoricalRecord[] = [
+      { year: 2024, sessionName: "Women's Weekend", sessionType: 'adult', bunkName: 'River F' },
+    ]
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 1 }}
+        currentYear={2026}
+      />
+    )
+
+    expect(screen.queryByTestId('camp-journey-cabin-provenance')).toBeNull()
+    expect(screen.getByText('River F')).toBeInTheDocument()
+  })
+
+  it('offers the same tooltip on a family row whose cabin was renamed', () => {
+    const history: HistoricalRecord[] = [
+      {
+        year: 2022,
+        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionType: 'family',
+        bunkName: 'Meadow House 1',
+        bunkNameRecorded: 'Old Meadow 1',
+      },
+    ]
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 0, familyWeekends: 1, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+
+    const trigger = screen.getByTestId('camp-journey-cabin-provenance')
+    fireEvent.pointerEnter(trigger)
+
+    expect(screen.getByRole('tooltip').textContent).toContain('Old Meadow 1')
+  })
+
+  it('lets the cabin segment shrink so a long label ellipsizes instead of overflowing', () => {
+    const history: HistoricalRecord[] = [
+      { year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+    ]
+    render(
+      <CampJourneyTimeline
+        history={history}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+
+    const cabinSpan = screen.getByText('G-8B')
+    expect(cabinSpan.className).toContain('min-w-0')
   })
 })

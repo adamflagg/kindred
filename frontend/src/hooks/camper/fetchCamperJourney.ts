@@ -13,8 +13,14 @@
  *
  * Adult programs (joined 2026-09): adult rows are
  * labeled only by the attributed cabin from `/persons/{id}/housing`; an adult
- * viewer also gets the family weekends their household's children attended;
- * every cabin label is the string as recorded that year.
+ * viewer also gets the family weekends their household's children attended.
+ *
+ * Every cabin label — family and adult — is TODAY's registry name, the same
+ * kindred#2332 pattern the weekend board's `HouseholdJourneyCard` already
+ * uses (owner ruling 2026-09-22, evening; reverses a same-day morning ruling
+ * that showed the as-typed string as the label). The as-typed string still
+ * travels, on `bunkNameRecorded`, but ONLY where it disagrees with the
+ * label — `CampJourneyTimeline` renders it in a hover tooltip, never inline.
  */
 import { pb } from '../../lib/pocketbase'
 import { byYearThenChronological } from './journeyOrder'
@@ -58,6 +64,21 @@ export async function fetchParentMainSessions(
   return out
 }
 
+/** One cabin label, plus the as-typed string when it is worth showing. */
+interface CabinLabel {
+  cabinName: string
+  cabinNameRaw: string
+}
+
+/**
+ * The as-typed string, but ONLY where it disagrees with the label already
+ * shown — the same `showsProvenance` logic `HouseholdJourneyCard` uses.
+ * Absent raw or a raw that already IS the label means nothing to offer.
+ */
+function recordedIfDifferent(label: string, raw: string): string | undefined {
+  return raw.length > 0 && raw !== label ? raw : undefined
+}
+
 /**
  * Reduce a household's family-camp journey to the one fact this file needs:
  * which cabin, if any, is safely attributable to which specific weekend, per
@@ -67,16 +88,17 @@ export async function fetchParentMainSessions(
  * with no housing, an unresolved cabin name, or more than one weekend that
  * season produces no entry, and the caller shows nothing rather than guess.
  *
- * The cabin is named AS RECORDED (owner ruling 2026-09-22): the string staff
- * typed that year, `cabin_name_raw`, trimmed — not today's unit name, which
- * the weekend board's household card still shows.
+ * The cabin is named by TODAY's unit name (`cabin_name`, owner ruling
+ * 2026-09-22 evening) — the same field the weekend board's household card
+ * shows. `cabin_name_raw` travels alongside for the tooltip.
  */
 function familyHousingByYear(
   years: HouseholdJourneyRow[]
-): Map<number, { sessionCmId: number; cabinName: string }> {
-  const map = new Map<number, { sessionCmId: number; cabinName: string }>()
+): Map<number, { sessionCmId: number } & CabinLabel> {
+  const map = new Map<number, { sessionCmId: number } & CabinLabel>()
   for (const y of years) {
-    const cabinName = (y.cabin_name_raw ?? '').trim()
+    const cabinName = (y.cabin_name ?? '').trim()
+    const cabinNameRaw = (y.cabin_name_raw ?? '').trim()
     if (
       y.year !== undefined &&
       y.housing === 'placed' &&
@@ -84,19 +106,20 @@ function familyHousingByYear(
       y.housing_session_cm_id !== undefined &&
       cabinName.length > 0
     ) {
-      map.set(y.year, { sessionCmId: y.housing_session_cm_id, cabinName })
+      map.set(y.year, { sessionCmId: y.housing_session_cm_id, cabinName, cabinNameRaw })
     }
   }
   return map
 }
 
 /** The server's attributed adult cabins, keyed `${year}:${sessionCmId}`. */
-function adultHousingByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, string> {
-  const map = new Map<string, string>()
+function adultHousingByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, CabinLabel> {
+  const map = new Map<string, CabinLabel>()
   for (const w of weekends) {
-    const name = (w.cabin_name ?? '').trim()
-    if (w.year !== undefined && w.session_cm_id !== undefined && name.length > 0) {
-      map.set(`${String(w.year)}:${String(w.session_cm_id)}`, name)
+    const cabinName = (w.cabin_name ?? '').trim()
+    const cabinNameRaw = (w.cabin_name_raw ?? '').trim()
+    if (w.year !== undefined && w.session_cm_id !== undefined && cabinName.length > 0) {
+      map.set(`${String(w.year)}:${String(w.session_cm_id)}`, { cabinName, cabinNameRaw })
     }
   }
   return map
@@ -123,7 +146,8 @@ function parentFamilyWeekends(
   const out: ParentFamilyWeekend[] = []
   for (const y of years) {
     if (y.year === undefined || y.year > currentYear) continue
-    const cabin = (y.cabin_name_raw ?? '').trim()
+    const cabin = (y.cabin_name ?? '').trim()
+    const cabinRecorded = recordedIfDifferent(cabin, (y.cabin_name_raw ?? '').trim())
     for (const s of y.sessions ?? []) {
       const cmId = s.session_cm_id ?? 0
       if (cmId <= 0) continue
@@ -139,6 +163,7 @@ function parentFamilyWeekends(
           sessionName: s.name ?? 'Unknown',
           sessionType: 'family',
           ...(labelled ? { bunkName: cabin } : {}),
+          ...(labelled && cabinRecorded !== undefined ? { bunkNameRecorded: cabinRecorded } : {}),
           ...(s.start_date ? { startDate: s.start_date } : {}),
         },
       })
@@ -297,6 +322,7 @@ export async function fetchCamperJourney(
     }
     // 3. else (>=2 assignments, no match, or zero) → no label
     let bunkName = match?.expand.bunk?.name
+    let bunkNameRecorded: string | undefined
 
     // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
     // instead — the day group computed above (if any) is discarded
@@ -304,14 +330,16 @@ export async function fetchCamperJourney(
     // `familyHousing`, which only carries a year whose cabin is unambiguously
     // THIS weekend; any other case (no housing, unresolved cabin, or a
     // different/ambiguous weekend that year) leaves the row with no label,
-    // same as any other unlabeled row. The cabin is the name AS RECORDED that
-    // year (`familyHousingByYear` reads `cabin_name_raw`).
+    // same as any other unlabeled row. The label is TODAY's unit name
+    // (`familyHousingByYear` reads `cabin_name`); the as-typed string rides
+    // along on `bunkNameRecorded` only where it disagrees.
     if (session?.session_type === 'family') {
       const housing = familyHousing.get(year)
-      bunkName =
-        housing !== undefined && housing.sessionCmId === session.cm_id
-          ? housing.cabinName
-          : undefined
+      const isThisWeekend = housing !== undefined && housing.sessionCmId === session.cm_id
+      bunkName = isThisWeekend ? housing.cabinName : undefined
+      bunkNameRecorded = isThisWeekend
+        ? recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
+        : undefined
     }
 
     // Adult programs: the label is the cabin the server attributed
@@ -319,7 +347,9 @@ export async function fetchCamperJourney(
     // family override, so the year-fallback above cannot pin a lone summer
     // bunk onto an adult row.
     if (session?.session_type === 'adult') {
-      bunkName = adultHousing.get(`${String(year)}:${String(session.cm_id)}`)
+      const housing = adultHousing.get(`${String(year)}:${String(session.cm_id)}`)
+      bunkName = housing?.cabinName
+      bunkNameRecorded = housing && recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
     }
 
     // AG is never shown as its own session (spec §3). For a surviving AG-only row,
@@ -337,6 +367,7 @@ export async function fetchCamperJourney(
       sessionName: displaySession?.name ?? 'Unknown',
       sessionType,
       ...(bunkName !== undefined ? { bunkName } : {}),
+      ...(bunkNameRecorded !== undefined ? { bunkNameRecorded } : {}),
       ...(displaySession?.start_date !== undefined ? { startDate: displaySession.start_date } : {}),
       ...(displaySession?.end_date !== undefined ? { endDate: displaySession.end_date } : {}),
     }
