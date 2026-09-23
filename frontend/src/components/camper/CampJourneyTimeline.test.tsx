@@ -240,17 +240,26 @@ describe('CampJourneyTimeline while the journey loads', () => {
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 
-  it('renders no rows while loading', () => {
+  // RULED CHANGE (owner, 2026-09-22 late, Q8): this test used to pin "no
+  // rows while loading" — the spinner hid the camper record's current-year
+  // rows, already loaded, until the prior years arrived. Rows that are
+  // present now show right away; the spinner shows only when there are NO
+  // rows yet (the "not here yet" case above).
+  it('shows the rows already present while the rest loads, with no spinner', () => {
     render(
       <CampJourneyTimeline
-        history={[{ year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' }]}
+        history={[
+          { year: 2026, sessionName: 'Session 2', sessionType: 'main', bunkName: 'Unassigned' },
+        ]}
         counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
         currentYear={2026}
         isLoading
       />
     )
-    expect(screen.queryByText('G-8B')).toBeNull()
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.getByText('Unassigned')).toBeInTheDocument()
+    expect(screen.getByText('Now')).toBeInTheDocument()
+    expect(screen.queryByText('Loading...')).toBeNull()
+    expect(screen.queryByText(/first year at camp/i)).toBeNull()
   })
 
   it('shows the empty state once loading is done', () => {
@@ -296,6 +305,23 @@ describe('CampJourneyTimeline error state (CR #1)', () => {
     )
     expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(screen.queryByText("Couldn't load past years")).toBeNull()
+  })
+
+  // Q8 (owner, 2026-09-22 late) keeps rows that are present on screen; a
+  // failed prior-year read still says so, under them, rather than letting
+  // this year's rows alone pass for the whole journey.
+  it('keeps the rows already present and adds the error line under them', () => {
+    render(
+      <CampJourneyTimeline
+        history={[{ year: 2026, sessionName: 'Session 2', sessionType: 'main', bunkName: 'B-4' }]}
+        counts={{ summers: 1, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+        error={new Error('boom')}
+      />
+    )
+    const cabin = screen.getByText('B-4')
+    const errorLine = screen.getByText("Couldn't load past years")
+    expect(cabin.compareDocumentPosition(errorLine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('renders no error line when there is no error', () => {

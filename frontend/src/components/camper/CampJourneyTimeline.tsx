@@ -56,7 +56,24 @@ export function CampJourneyTimeline({
       </div>
 
       <div className="p-5">
-        {isLoading ? (
+        {history.length > 0 ? (
+          <>
+            {/* Q8 (owner, 2026-09-22 late): rows that are here show NOW —
+                the camper record's current-year rows arrive before the prior
+                years, and a spinner used to hide them until the rest came.
+                The rows are shared with the board modal (`JourneyRows`,
+                owner ruling 2026-09-22 G2: one grid, so every cabin lines
+                up). */}
+            <JourneyRows rows={journeyRowsFromHistory(history, currentYear)} variant={variant} />
+            {/* A failed prior-year read still says so (CR #1), under the
+                rows it could not complete. */}
+            {error && !isLoading && (
+              <p className="mt-3 text-center text-sm text-red-500">Couldn't load past years</p>
+            )}
+          </>
+        ) : isLoading ? (
+          // Only with NO rows yet: an empty history mid-load means "not here
+          // yet", not "first year".
           <div className="flex items-center justify-center py-4">
             <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
             <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
@@ -65,10 +82,6 @@ export function CampJourneyTimeline({
           <div className="py-4 text-center">
             <p className="text-sm text-red-500">Couldn't load past years</p>
           </div>
-        ) : history.length > 0 ? (
-          // The rows are shared with the board modal (`JourneyRows`, owner
-          // ruling 2026-09-22 G2: one grid, so every cabin lines up).
-          <JourneyRows rows={journeyRowsFromHistory(history, currentYear)} variant={variant} />
         ) : (
           <div className="py-4 text-center">
             <TreePine className="text-muted-foreground/50 mx-auto mb-2 h-8 w-8" />
