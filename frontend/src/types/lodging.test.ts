@@ -129,7 +129,9 @@ void _exhaustiveHouseholdJourney
 const _exhaustivePersonHousingWeekendRow: Required<PersonHousingWeekendRow> = {
   year: 2024,
   session_cm_id: 1001,
-  // As recorded that year, outer whitespace trimmed — never today's unit name.
+  // TODAY's registry name via the alias layer (kindred#2332), owner ruling
+  // 2026-09-22 evening — never the as-typed string. `cabin_name_raw` is the
+  // untouched value staff typed that year.
   cabin_name: 'River F',
   cabin_name_raw: 'River F',
 }
