@@ -18,13 +18,13 @@
  *    placing families is;
  *  * on a real weekend — `sessionCmId > 0`, since a board under test defaults
  *    it to 0 and the endpoint requires a positive id;
- *  * on a FAMILY CAMP weekend — owner ruling §5.1. The adult sessions are not
- *    in the bounded refresh cohort at all (`GetFamilyCampSessionCMIDs` filters
- *    `session_type = 'family'` exactly and only), so their mirror rows are
- *    rewritten daily from custom values up to seven days old. Comparing
- *    against them would grade a plan against data nobody refreshed. The
- *    endpoint refuses the same case with a 400; this hides the affordance so
- *    staff never reach it.
+ *  * on a FAMILY CAMP weekend — owner ruling §5.1. Its original reason was
+ *    that adult custom values refreshed only weekly, so a compare would grade
+ *    a plan against stale data. That stopped being true in kindred#2760 (adult
+ *    guests join the bounded daily person pass). The gate stays until the
+ *    owner rules on scenario compare for adult boards. The endpoint refuses
+ *    the same case with a 400; this hides the affordance so staff never
+ *    reach it.
  */
 import { GitCompare } from 'lucide-react'
 import { useState } from 'react'

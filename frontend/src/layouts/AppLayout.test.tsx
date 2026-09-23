@@ -567,6 +567,30 @@ describe('AppLayout weekend freshness stack', () => {
   })
 
   /**
+   * The hover and the visible "N ago" must describe ONE run (kindred#2760).
+   * The tooltip used to be built from `lodging_assignments` — a different,
+   * year-wide job — so its absolute time and counts could disagree with the
+   * relative time printed inches away.
+   */
+  it('builds the hover from the same timestamp as the visible time, not lodging_assignments', () => {
+    mockWeekendSyncStatus({
+      lodging_assignments: {
+        status: 'success',
+        end_time: '2026-04-25T09:30:00.000Z',
+        start_time: '2026-04-25T09:30:00.000Z',
+        summary: { created: 7, updated: 8, skipped: 0, errors: 0 },
+      },
+    })
+    renderAppLayout('/weekend/fc4')
+    const title =
+      screen
+        .getByText(/Housing synced/)
+        .closest('[title]')
+        ?.getAttribute('title') ?? ''
+    expect(title).toBe(`Last housing sync • ${housingIso}`)
+  })
+
+  /**
    * 🚨 The nav line and the Refresh Housing modal are inches apart and must
    * never disagree — one claiming two minutes while the other goes quiet is
    * worse than either alone. Both read `weekendHousingSyncedAt`, and since
@@ -680,18 +704,24 @@ describe('AppLayout weekend freshness stack', () => {
 })
 
 /**
- * kindred#2478 §5.1: on an ADULT weekend the housing half is hidden, because
- * `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly — the
- * adult sessions are not in the bounded cohort, and `lodging_assignments` is a
- * transform that rewrites their rows from custom values up to seven days old.
- * The CSV lane is program-agnostic and is NOT affected.
+ * An ADULT weekend shows `Housing synced` too (kindred#2760, owner ruling
+ * 2026-09-23, reversing kindred#2478 §5.1). The bounded daily PERSON pass now
+ * covers adult-program attendees, and the server dates an adult weekend from
+ * that pass's history — so the line reads the weekend's own
+ * `housing_synced_at`, exactly as a family weekend's does. Refresh Housing
+ * stays hidden: its guard still refuses an adult weekend. The CSV lane is
+ * program-agnostic and is NOT affected.
  */
 describe('AppLayout adult weekend', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPerms = { hasPermission: (p: string) => p === 'bunking.manage', isAdmin: false }
     mockWeekendShell = {
-      session: { session_type: 'adult', session_cm_id: 901 },
+      session: {
+        session_type: 'adult',
+        session_cm_id: 901,
+        housing_synced_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      },
       isAdultWeekend: true,
     }
     syncStatusSpy.mockImplementation(() => ({
@@ -705,7 +735,16 @@ describe('AppLayout adult weekend', () => {
     }))
   })
 
-  it('hides the Housing synced line', () => {
+  it('renders "Housing synced ..." off THIS adult weekend\'s pull', () => {
+    renderAppLayout('/weekend/ww')
+    expect(screen.getByText(/Housing synced/).textContent).toMatch(/ago/)
+  })
+
+  it('withholds "Housing synced" for an adult weekend with no attributable run', () => {
+    mockWeekendShell = {
+      session: { session_type: 'adult', session_cm_id: 901, housing_synced_at: '' },
+      isAdultWeekend: true,
+    }
     renderAppLayout('/weekend/ww')
     expect(screen.queryByText(/Housing synced/)).not.toBeInTheDocument()
   })

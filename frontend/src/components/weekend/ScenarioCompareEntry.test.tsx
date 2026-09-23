@@ -62,10 +62,9 @@ describe('ScenarioCompareEntry', () => {
   })
 
   it('renders nothing on an adult weekend', () => {
-    // Owner ruling §5.1: family camp weekends only. The adult sessions are
-    // not in the bounded refresh cohort at all, so their mirror rows are
-    // rewritten daily from custom values up to seven days old — a comparison
-    // against them would grade a plan against data nobody refreshed.
+    // Owner ruling §5.1: family camp weekends only. (Its original freshness
+    // reason lapsed in kindred#2760; the gate stays pending an owner ruling on
+    // adult boards.)
     renderEntry({ sessionType: 'adult' })
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })

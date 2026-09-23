@@ -56,7 +56,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
     WriteInCover,
 )
-from api.services.lodging_repository import FAMILY_SESSION_TYPE
+from api.services.lodging_repository import ADULT_SESSION_TYPE, FAMILY_SESSION_TYPE
 from api.services.lodging_rules import (
     REQUEST_TEXT_SOURCES,
     HousingNameResolver,
@@ -109,7 +109,17 @@ SUMMARY_ENTRY_CONCURRENCY = 8
 # fetched, so dating one weekend from it reported a season-wide event as that
 # weekend's -- exactly what broke when a press stopped covering the whole
 # season.
-HOUSING_SYNC_SERVICE = "household_custom_values_family_camp"
+#
+# ONE JOB PER SESSION TYPE, because the two bounded passes cover different
+# weekends (kindred#2760, owner ruling 2026-09-23). A family weekend's answers
+# are household custom values; an adult weekend's cabin is a PERSON custom
+# value, and only the person pass covers adult-program attendees -- the
+# household pass never reads an adult weekend at all. A type absent from this
+# map is never dated.
+HOUSING_SYNC_SERVICE_BY_SESSION_TYPE: Mapping[str, str] = {
+    FAMILY_SESSION_TYPE: "household_custom_values_family_camp",
+    ADULT_SESSION_TYPE: "person_custom_values_family_camp",
+}
 
 
 class SessionNotFoundError(LookupError):
@@ -2077,8 +2087,11 @@ class LodgingRosterService:
             )
             return {}
 
-    async def _fetch_sync_ends_or_silent(self, year: int) -> list[tuple[str, str]]:
-        """The year's housing-sync history, or nothing (kindred#2617).
+    async def _fetch_sync_ends_or_silent(self, year: int) -> dict[str, list[tuple[str, str]]]:
+        """The year's housing-sync history per session type, or nothing (kindred#2617).
+
+        One read per COVERING JOB (`HOUSING_SYNC_SERVICE_BY_SESSION_TYPE`),
+        never per weekend, keyed by the session type that job dates.
 
         Same degrade as `_fetch_session_statuses_or_active` beside it, and for
         the same structural reason: it sits in a TaskGroup with the reads the
@@ -2096,20 +2109,32 @@ class LodgingRosterService:
         missing attribute as the unscoped "", and every weekend then dates
         from the newest run -- the pre-kindred#2601 answer, and the right
         shape for a deployment where scoping does not exist yet.
+
+        EACH JOB DEGRADES ON ITS OWN. The reads are independent, so a failed
+        person-pass read withholds only the adult weekends it dates and leaves
+        the household pass's answer for the family weekends standing.
         """
-        try:
-            return await self.repository.fetch_session_scoped_sync_ends(HOUSING_SYNC_SERVICE, year)
-        except Exception as exc:
-            logger.warning(f"sync_runs read failed for year {year}, no weekend can date its housing: {exc}")
-            return []
+
+        async def read(service: str) -> list[tuple[str, str]]:
+            try:
+                return await self.repository.fetch_session_scoped_sync_ends(service, year)
+            except Exception as exc:
+                logger.warning(
+                    f"sync_runs read failed for {service} in year {year}, the weekends it dates stay silent: {exc}"
+                )
+                return []
+
+        session_types = list(HOUSING_SYNC_SERVICE_BY_SESSION_TYPE)
+        histories = await asyncio.gather(*(read(HOUSING_SYNC_SERVICE_BY_SESSION_TYPE[t]) for t in session_types))
+        return dict(zip(session_types, histories, strict=True))
 
     async def list_sessions(self, year: int) -> WeekendSessionListResponse:
         async with asyncio.TaskGroup() as tg:
             rows_task = tg.create_task(self.repository.fetch_weekend_sessions(year))
             statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
-            # Year-scoped like the status map above, and read ONCE for every
-            # weekend in the year rather than per weekend: it is one filtered
-            # slice of `sync_runs` that answers all of them.
+            # Year-scoped like the status map above, and read once per COVERING
+            # JOB rather than per weekend: each is one filtered slice of
+            # `sync_runs` that answers every weekend that job dates.
             sync_ends_task = tg.create_task(self._fetch_sync_ends_or_silent(year))
 
         statuses = statuses_task.result()
@@ -2120,7 +2145,9 @@ class LodgingRosterService:
         )
 
     @staticmethod
-    def _housing_synced_at(session_type: str, session_cm_id: int, sync_ends: Sequence[tuple[str, str]]) -> str:
+    def _housing_synced_at(
+        session_type: str, session_cm_id: int, sync_ends: Mapping[str, Sequence[tuple[str, str]]]
+    ) -> str:
         """When a run that COVERED this weekend last succeeded, or "".
 
         The issue's table, read off history that arrives newest first:
@@ -2141,16 +2168,17 @@ class LodgingRosterService:
         comparing the timestamps here as strings would be a fourth ordering
         that disagrees with all three whenever a run has no sub-second part.
 
-        ADULT WEEKENDS ARE NEVER DATED. `GetFamilyCampSessionCMIDs` filters
-        `session_type = 'family'` exactly, so an adult weekend is not in the
-        bounded cohort and this job never read its answers. An unscoped run
-        covers every FAMILY weekend; stamping an adult one from it would be
-        true about the job and false about the data (kindred#2478 section 5.1).
+        EACH WEEKEND IS DATED BY THE JOB THAT COVERS IT. A family weekend reads
+        the household pass's history; an adult weekend reads the PERSON pass's,
+        which covers adult-program attendees since kindred#2760 (reversing
+        kindred#2478 section 5.1, owner ruling 2026-09-23). The household pass
+        never reads an adult weekend's answers, so stamping an adult weekend
+        from it would be true about the job and false about the data. A person
+        run scoped to a family weekend (a Refresh Housing press -- its guard
+        refuses adult weekends) falls through like any other weekend's scope.
         """
-        if session_type != FAMILY_SESSION_TYPE:
-            return ""
         mine = str(session_cm_id)
-        for session, ended in sync_ends:
+        for session, ended in sync_ends.get(session_type, ()):
             if session in ("", mine):
                 return ended
         return ""
@@ -2173,7 +2201,7 @@ class LodgingRosterService:
         cls,
         row: Any,
         statuses: Mapping[int, str],
-        sync_ends: Sequence[tuple[str, str]] = (),
+        sync_ends: Mapping[str, Sequence[tuple[str, str]]] | None = None,
     ) -> WeekendSessionSummary:
         """One weekend's identity. Shared so the lander and the session list
         can never describe the same weekend differently.
@@ -2183,8 +2211,8 @@ class LodgingRosterService:
         seeds nothing, so absence of a row is the normal state and not a gap
         to warn about.
 
-        `sync_ends` is the year's housing-sync history, newest first
-        (kindred#2617). It defaults to EMPTY rather than being required for the
+        `sync_ends` is the year's housing-sync history per session type, newest
+        first (kindred#2617, kindred#2760). It defaults to EMPTY rather than being required for the
         same reason `statuses` degrades to {}: no history is the honest shape
         when the read failed or nothing has run, and it renders as silence.
         """
@@ -2199,7 +2227,7 @@ class LodgingRosterService:
             end_date=_s(row, "end_date"),
             sort_order=_i(row, "sort_order"),
             status=cls._weekend_status(statuses.get(session_cm_id, "")),
-            housing_synced_at=cls._housing_synced_at(session_type, session_cm_id, sync_ends),
+            housing_synced_at=cls._housing_synced_at(session_type, session_cm_id, sync_ends or {}),
         )
 
     async def build_roster(

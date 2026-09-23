@@ -74,17 +74,15 @@ function buildSyncTooltip(kind: string, status: SyncStatus): string {
  * amber threshold, no dot, no banner: these are conditions, not events.
  *
  * Extracted rather than inlined only because the two independent visibility
- * conditions (adult weekend, and no-CSV-ever) do not compose into one readable
- * JSX guard — `false ?? x` does not fall through, which an inline version got
+ * conditions (no attributable housing run, and no-CSV-ever) do not compose into
+ * one readable JSX guard — `false ?? x` does not fall through, which an inline version got
  * wrong first.
  */
 function WeekendFreshness({
   syncStatus,
-  isAdultWeekend,
   session,
 }: {
   syncStatus: SyncStatusResponse
-  isAdultWeekend: boolean
   /**
    * The weekend on screen. Freshness is per-weekend (kindred#2601) and rides on
    * the weekend's own payload, resolved server-side from `sync_runs` history
@@ -93,13 +91,12 @@ function WeekendFreshness({
    */
   session: { housing_synced_at?: string } | undefined
 }) {
-  // HIDDEN ON ADULT WEEKENDS (kindred#2478 §5.1).
-  // `GetFamilyCampSessionCMIDs` filters `session_type = 'family'` exactly, so
-  // adult sessions are not in the bounded cohort at all; and
-  // `lodging_assignments` is a transform that runs daily for EVERYONE,
-  // rewriting adult rows from custom values up to SEVEN DAYS old. A line
-  // reading "Housing synced 11h ago" on an adult weekend is true about the JOB
-  // and false about the DATA.
+  // SHOWN ON ADULT WEEKENDS TOO (kindred#2760, owner ruling 2026-09-23,
+  // reversing kindred#2478 §5.1). The bounded daily PERSON pass now covers
+  // adult-program attendees, and the server dates an adult weekend from that
+  // pass's history rather than the household pass's, so its
+  // `housing_synced_at` is a claim about the adult weekend's own data. A
+  // weekend no covering run has reached still arrives as "" and stays quiet.
   // ⚠️ NOT `lodging_assignments`, and not this weekend's business to re-derive:
   // `weekendHousingSyncedAt` is the SAME read the Refresh Housing modal makes,
   // off the SAME weekend object. The two sit inches apart, so a divergence
@@ -108,10 +105,9 @@ function WeekendFreshness({
   // run has ever covered, which is a withheld answer rather than a missing one
   // (kindred#2617).
   //
-  // The adult-weekend guard stays even though the API withholds there too: the
-  // hide is this surface's own rule (kindred#2478 §5.1), stated where the other
-  // half of it — hiding the Refresh Housing button — is stated.
-  const housingSyncedAt = isAdultWeekend ? undefined : weekendHousingSyncedAt(session)
+  // An unresolved `session` (the loading window) has no timestamp to read, so
+  // it renders nothing here without a guard of its own.
+  const housingSyncedAt = weekendHousingSyncedAt(session)
   const upload = syncStatus._bunk_requests_upload
 
   // No empty row: with neither half to show there is nothing to lay out.
@@ -122,7 +118,10 @@ function WeekendFreshness({
       {housingSyncedAt !== undefined && (
         <span
           className="flex items-center gap-1.5 whitespace-nowrap"
-          title={buildSyncTooltip('housing', syncStatus.lodging_assignments)}
+          // The hover names the SAME run as the relative time beside it
+          // (kindred#2760). `lodging_assignments` is a different, year-wide
+          // job, so its time and counts could contradict the "N ago".
+          title={`Last housing sync • ${new Date(housingSyncedAt).toISOString()}`}
         >
           <Home className="h-3 w-3" />
           Housing synced {formatDistanceToNow(new Date(housingSyncedAt), { addSuffix: true })}
@@ -597,11 +596,7 @@ export const AppLayout = () => {
                 the small divergence worth having.
               */}
               {activeProgram === 'weekend' && canSeeSync && syncStatus && (
-                <WeekendFreshness
-                  syncStatus={syncStatus}
-                  isAdultWeekend={isAdultWeekend || !weekendSession}
-                  session={weekendSession}
-                />
+                <WeekendFreshness syncStatus={syncStatus} session={weekendSession} />
               )}
               {/*
                 SUMMER'S PAIR. `Assignments synced` reads `bunk_assignments`
@@ -742,11 +737,12 @@ export const AppLayout = () => {
                     second, mirroring summer's row above; each freshness line
                     above is reset by the action beneath it.
 
-                    HIDDEN ON ADULT WEEKENDS, on the same condition as the
-                    `Housing synced` line (§5.1): `GetFamilyCampSessionCMIDs`
-                    filters `session_type = 'family'` exactly, so the chain
-                    skips both expensive jobs and would spend its whole
-                    runtime refreshing nothing.
+                    HIDDEN ON ADULT WEEKENDS (§5.1): the scoped refresh's
+                    guard, `GetFamilyCampSessionCMIDs`, filters
+                    `session_type = 'family'` exactly, so the chain would spend
+                    its whole runtime refreshing nothing. The `Housing synced`
+                    line no longer shares this condition — it shows on adult
+                    weekends since kindred#2760.
                   */}
                   {/*
                     `useWeekendShellSession` returns `isAdultWeekend: false`

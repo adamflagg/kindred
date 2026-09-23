@@ -549,6 +549,9 @@ func sortSessionsByPriority(sessions []*sessionOverlapInfo) {
 	}
 }
 
+// mensWeekendPattern matches "men's weekend" / "mens weekend" but not "women's weekend".
+var mensWeekendPattern = regexp.MustCompile(`\bmen'?s weekend\b`)
+
 // getSessionTypeFromName returns the session type based directly on the session name
 func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	nameLower := strings.ToLower(sessionName)
@@ -602,7 +605,17 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 	if strings.Contains(nameLower, "divorce") && strings.Contains(nameLower, "discovery") {
 		return sessionTypeAdult
 	}
-	if strings.Contains(nameLower, "women's weekend") || strings.Contains(nameLower, "womens weekend") {
+	// Apostrophes normalised so a curly one (U+2019) matches as well as a straight one.
+	adultName := strings.ReplaceAll(nameLower, "\u2019", "'")
+	if strings.Contains(adultName, "women's weekend") || strings.Contains(adultName, "womens weekend") {
+		return sessionTypeAdult
+	}
+	// Word-bounded: "women's weekend" contains "men's weekend" as a substring, so a
+	// plain Contains would lean on the check above running first.
+	if mensWeekendPattern.MatchString(adultName) {
+		return sessionTypeAdult
+	}
+	if strings.Contains(adultName, "spring service weekend") {
 		return sessionTypeAdult
 	}
 

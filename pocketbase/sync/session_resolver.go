@@ -109,8 +109,9 @@ func (r *SessionResolver) GetPersonIDsForSession(session string, year int) ([]in
 
 // GetPersonIDsForSessionAnyStatus is GetPersonIDsForSession's status-agnostic sibling
 // (kindred#2482). It returns persons attached to the session regardless of attendee status --
-// enrolled, cancelled, waitlisted, and so on. It exists for the bounded daily family-camp
-// custom-values pass, which must observe a household moving IN or OUT of enrolled: a
+// enrolled, cancelled, waitlisted, and so on. It exists for the bounded daily weekend
+// custom-values pass (family-camp and, since 2026-09-23, adult-program sessions -- see
+// GetWeekendPersonIDsAnyStatus), which must observe a person moving IN or OUT of enrolled: a
 // cancellation or a waitlist entry is exactly the transition the pass exists to catch, so
 // filtering it out would defeat the point.
 //
@@ -263,15 +264,22 @@ func (r *SessionResolver) householdIDsForSession(session string, year int, enrol
 // GetFamilyCampSessionCMIDs returns the CampMinder ids of every family-camp weekend session
 // in the given year (session_type = "family").
 //
-// This is the entry point for the bounded daily custom-values pass (kindred#2482). The pass's
-// cohort must come from a table that already knows about sessions -- not from custom values --
-// because the weekend cabin value IS a custom value: reading custom values to decide who to
-// sync custom values for is circular.
+// This is the family-camp half of GetWeekendPersonIDsAnyStatus's session-id source for the
+// bounded daily custom-values pass (kindred#2482); the adult-program half comes from
+// sessionCMIDsOfType directly. The pass's cohort must come from a table that already knows
+// about sessions -- not from custom values -- because the weekend cabin value IS a custom
+// value: reading custom values to decide who to sync custom values for is circular.
 func (r *SessionResolver) GetFamilyCampSessionCMIDs(year int) ([]int, error) {
-	filter := fmt.Sprintf("year = %d && session_type = '%s'", year, sessionTypeFamily)
+	return r.sessionCMIDsOfType(year, sessionTypeFamily)
+}
+
+// sessionCMIDsOfType returns the CampMinder ids of every session of one session_type in the
+// given year.
+func (r *SessionResolver) sessionCMIDsOfType(year int, sessionType string) ([]int, error) {
+	filter := fmt.Sprintf("year = %d && session_type = '%s'", year, sessionType)
 	sessions, err := r.app.FindRecordsByFilter("camp_sessions", filter, "", 0, 0)
 	if err != nil {
-		return nil, fmt.Errorf("querying family-camp sessions: %w", err)
+		return nil, fmt.Errorf("querying %s sessions: %w", sessionType, err)
 	}
 
 	cmIDs := make([]int, 0, len(sessions))
@@ -284,16 +292,27 @@ func (r *SessionResolver) GetFamilyCampSessionCMIDs(year int) ([]int, error) {
 	return cmIDs, nil
 }
 
-// GetFamilyCampPersonIDsAnyStatus returns the union, across every family-camp weekend in the
-// year, of GetPersonIDsForSessionAnyStatus -- the bounded daily pass's person cohort
-// (kindred#2482). Any status, deliberately: the pass exists to observe a household moving in
-// or out of enrolled, so a cancelled or waitlisted attendee belongs in the cohort exactly as
-// much as an enrolled one.
-func (r *SessionResolver) GetFamilyCampPersonIDsAnyStatus(year int) ([]int, error) {
+// GetWeekendPersonIDsAnyStatus returns the union, across every family-camp weekend AND every
+// adult-program session in the year, of GetPersonIDsForSessionAnyStatus -- the bounded daily
+// pass's person cohort (kindred#2482). Any status, deliberately: the pass exists to observe a
+// person moving in or out of enrolled, so a cancelled or waitlisted attendee belongs in the
+// cohort exactly as much as an enrolled one.
+//
+// Adult programs joined 2026-09-23 (owner ruling). An adult weekend's cabin is a PERSON custom
+// field (212997/223823), and staff may type it into CampMinder while placing guests, so the
+// weekly sweep alone would leave the board up to a week behind. The household twin below stays
+// family-camp only: adult weekends carry no household-grain lodging data, and an adult
+// guest's household answers are written by other household members about other weekends.
+func (r *SessionResolver) GetWeekendPersonIDsAnyStatus(year int) ([]int, error) {
 	sessionCMIDs, err := r.GetFamilyCampSessionCMIDs(year)
 	if err != nil {
 		return nil, err
 	}
+	adultCMIDs, err := r.sessionCMIDsOfType(year, sessionTypeAdult)
+	if err != nil {
+		return nil, err
+	}
+	sessionCMIDs = append(sessionCMIDs, adultCMIDs...)
 
 	idSet := make(map[int]bool)
 	for _, cmID := range sessionCMIDs {
@@ -314,8 +333,9 @@ func (r *SessionResolver) GetFamilyCampPersonIDsAnyStatus(year int) ([]int, erro
 	return result, nil
 }
 
-// GetFamilyCampHouseholdIDsAnyStatus is GetFamilyCampPersonIDsAnyStatus's household twin
-// (kindred#2482).
+// GetFamilyCampHouseholdIDsAnyStatus is GetWeekendPersonIDsAnyStatus's household twin
+// (kindred#2482), over family-camp weekends only -- see GetWeekendPersonIDsAnyStatus for why
+// adult programs are not in it.
 func (r *SessionResolver) GetFamilyCampHouseholdIDsAnyStatus(year int) ([]int, error) {
 	sessionCMIDs, err := r.GetFamilyCampSessionCMIDs(year)
 	if err != nil {

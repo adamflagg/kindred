@@ -26,8 +26,9 @@
  *
  * WITHHOLD RATHER THAN BORROW. A weekend whose only runs belong to other
  * weekends has no attributable time, and a neighbour's is not an approximation
- * of it. Adult weekends are always "": they are not in the family-camp cohort,
- * so the job never read their answers at all.
+ * of it. Each weekend is dated by the job that covers it — family weekends by
+ * the household pass, adult weekends by the PERSON pass, which covers
+ * adult-program attendees since kindred#2760.
  *
  * The coercion is load-bearing rather than tidiness — `new Date('')` is an
  * Invalid Date, which `formatDistanceToNow` renders as "Invalid Date ago". It is

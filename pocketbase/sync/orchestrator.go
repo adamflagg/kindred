@@ -203,8 +203,13 @@ var syncJobMeta = []JobMeta{
 	// excludes them from an admin-triggered PhaseExpensive run, and they must never join a
 	// full run (#2489) -- so all three trigger bits stay unset, matching the frontend's
 	// manualTrigger: false.
+	//
+	// The PERSON pass also covers adult-program attendees (owner ruling 2026-09-23): an adult
+	// weekend's cabin is a person custom field, and staff may type it into CampMinder while
+	// placing guests. The job keeps its "_family_camp" ID so sync_runs history and the admin
+	// UI stay continuous; SessionResolver.GetWeekendPersonIDsAnyStatus defines the cohort.
 	{ID: "person_custom_values_family_camp", Phase: PhaseExpensive,
-		Description: "Person custom field values -- bounded daily pass, family-camp attendees, any status",
+		Description: "Person custom field values -- bounded daily pass, family-camp and adult-program attendees, any status",
 		Base:        "person_custom_values", Scope: ScopeFamilyCamp,
 		Cadences: CadenceDaily, CurrentYearOnly: true},
 	{ID: "household_custom_values_family_camp", Phase: PhaseExpensive,
