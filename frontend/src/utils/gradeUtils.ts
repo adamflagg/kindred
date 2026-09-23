@@ -5,8 +5,10 @@ export const GRADUATED_LONG = 'Graduated'
 
 /**
  * Convert a grade number to its ordinal format
- * @param grade The grade number (1-12)
- * @returns The ordinal string (1st, 2nd, 3rd, etc.)
+ * @param grade The grade number: 0 (K, or no grade) .. 12, 13 past 12th grade,
+ *   -1 .. -4 below K
+ * @returns The ordinal string (1st, 2nd, 3rd, etc.); "Grad" for 13; '' for a
+ *   negative grade, which has no ordinal
  */
 export function formatGradeOrdinal(grade: number | string | undefined | null): string {
   // Handle edge cases
@@ -23,8 +25,8 @@ export function formatGradeOrdinal(grade: number | string | undefined | null): s
   }
 
   // Pre-K .. Infant store -1 .. -4 (kindred#2779). The number has no ordinal;
-  // print nothing rather than "-1th". Surfaces that show those grades read
-  // `grade_name` through `formatGradeName` instead.
+  // print nothing rather than "-1th". A surface that must show those grades
+  // reads `grade_name` through `formatGradeName` instead.
   if (gradeNum < 0) {
     return ''
   }
