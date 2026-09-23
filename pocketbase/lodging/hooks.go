@@ -517,7 +517,7 @@ func guardAliasOverlap(e *core.RecordEvent) error {
 		if aliasWindowsOverlap(from, to, other.GetInt("valid_from_year"), other.GetInt("valid_to_year")) {
 			return apis.NewBadRequestError(
 				fmt.Sprintf(
-					"The cabin name %q already has an alias for %s, which overlaps %s. "+
+					"The cabin name %q already has an alias for %s, and this one (%s) overlaps it. "+
 						"Two aliases for one name in overlapping years resolve to neither: "+
 						"give them separate years, or edit that alias instead.",
 					other.GetString("alias_string"),
