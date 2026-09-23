@@ -148,7 +148,7 @@ describe('AliasUnitPicker — picking', () => {
     expect(onChange).toHaveBeenLastCalledWith([])
   })
 
-  // A merge is usually of same-named rooms ("Tioga 1".."Tioga 4"): one search
+  // A merge is usually of same-named rooms ("Cabin 1".."Cabin 4"): one search
   // should serve every tick, not be retyped before each one.
   it('keeps the search and its results after a tick, so a merge takes one search', async () => {
     const onChange = vi.fn()
