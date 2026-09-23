@@ -9,7 +9,7 @@
  * Present only where a comparison could ever mean anything, and ABSENT
  * everywhere else — `opacity-40` is the board's vocabulary for a REFUSAL
  * (CLAUDE.md §4), and an affordance with nothing behind it is not a refusal.
- * Four conditions:
+ * Three conditions:
  *
  *  * inside a scenario — the mirror cannot be compared against itself;
  *  * held by a `bunking.manage` user — the endpoint is gated exactly as
@@ -17,14 +17,14 @@
  *    reviewing a plan against CampMinder is part of the same staff workflow
  *    placing families is;
  *  * on a real weekend — `sessionCmId > 0`, since a board under test defaults
- *    it to 0 and the endpoint requires a positive id;
- *  * on a FAMILY CAMP weekend — owner ruling §5.1. Its original reason was
- *    that adult custom values refreshed only weekly, so a compare would grade
- *    a plan against stale data. That stopped being true in kindred#2760 (adult
- *    guests join the bounded daily person pass). The gate stays until the
- *    owner rules on scenario compare for adult boards. The endpoint refuses
- *    the same case with a 400; this hides the affordance so staff never
- *    reach it.
+ *    it to 0 and the endpoint requires a positive id.
+ *
+ * There used to be a fourth, FAMILY CAMP ONLY (owner ruling §5.1), because
+ * adult custom values refreshed only weekly and a compare would have graded a
+ * plan against stale data. kindred#2760 put adult guests in the bounded daily
+ * person pass, and the owner lifted the gate on 2026-09-23. The compare is
+ * grain-aware (a guest is keyed on the person), so adult weekends need no
+ * branch here.
  */
 import { GitCompare } from 'lucide-react'
 import { useState } from 'react'
@@ -38,8 +38,6 @@ interface ScenarioCompareEntryProps {
   /** `''` is the CampMinder mirror — nothing to compare, so nothing renders. */
   scenario: string
   canManage: boolean
-  /** `camp_sessions.session_type`. Only `'family'` renders (§5.1). */
-  sessionType: string
 }
 
 export function ScenarioCompareEntry({
@@ -47,11 +45,10 @@ export function ScenarioCompareEntry({
   sessionCmId,
   scenario,
   canManage,
-  sessionType,
 }: ScenarioCompareEntryProps) {
   const [open, setOpen] = useState(false)
 
-  if (scenario === '' || !canManage || sessionCmId <= 0 || sessionType !== 'family') return null
+  if (scenario === '' || !canManage || sessionCmId <= 0) return null
 
   return (
     <>

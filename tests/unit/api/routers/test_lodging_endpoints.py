@@ -35,7 +35,6 @@ from api.schemas.lodging import (
     WeekendRosterResponse,
     WriteInDeleteRequest,
 )
-from api.services.lodging_compare_service import NotAFamilyWeekendError
 from api.services.lodging_roster_service import SessionNotFoundError
 from api.services.lodging_rules import push_digest
 from api.services.lodging_write_service import (
@@ -2317,21 +2316,6 @@ class TestScenarioCompareEndpoint:
 
         assert response.status_code == 404
         assert "9999999" in response.json()["detail"]
-
-    def test_an_adult_weekend_is_400_not_an_empty_report(self, mock_pb: MagicMock) -> None:
-        """Owner ruling §5.1 -- family camp only. An empty report would read as
-        "your scenario matches CampMinder", which on an adult weekend is a
-        claim about data the bounded refresh chain never fetched."""
-        app = _build_app(_manage_user(), mock_pb)
-        with patch("api.routers.lodging.LodgingCompareService") as service_cls:
-            service_cls.return_value.compare_scenario = AsyncMock(
-                side_effect=NotAFamilyWeekendError("Weekend 1000009 in 2026 is not a family camp session")
-            )
-            with patch("api.routers.lodging.pb", mock_pb):
-                response = TestClient(app).get(self.URL, params={**self.PARAMS, "session_cm_id": 1000009})
-
-        assert response.status_code == 400
-        assert "family camp" in response.json()["detail"]
 
     def test_the_mirror_cannot_be_compared_against_itself(self, mock_pb: MagicMock) -> None:
         """`scenario` is required and non-empty at the boundary, the same way

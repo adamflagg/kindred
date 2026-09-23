@@ -379,7 +379,6 @@ export default function WeekendRosterPage() {
                 sessionCmId={selectedCmId ?? 0}
                 scenario={scenario}
                 canManage={canManageLodging}
-                sessionType={selectedSession?.session_type ?? ''}
               />
               {/* No `units` prop: kindred#2589 moved the badge's count onto
                   `usePushPreview`, so the entry no longer needs the registry

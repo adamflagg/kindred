@@ -22,10 +22,7 @@ from api.schemas.lodging import (
     RosterParty,
     WeekendRosterResponse,
 )
-from api.services.lodging_compare_service import (
-    LodgingCompareService,
-    NotAFamilyWeekendError,
-)
+from api.services.lodging_compare_service import LodgingCompareService
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import SessionNotFoundError
 
@@ -44,6 +41,17 @@ def _party(
         unit_codes=list(codes),
         unit_name=label or " + ".join(codes),
         children=children or [],
+    )
+
+
+def _guest(cm_id: int, name: str, codes: tuple[str, ...] = ()) -> RosterParty:
+    """A PERSON-grain party -- one adult-weekend guest, keyed on the person."""
+    return RosterParty(
+        grain="person",
+        person_cm_id=cm_id,
+        display_name=name,
+        unit_codes=list(codes),
+        unit_name=" + ".join(codes),
     )
 
 
@@ -212,15 +220,27 @@ class TestCompareScenario:
         stubs.preview_push.assert_awaited_once_with(2026, 1000001, "scn_1")
 
     @pytest.mark.asyncio
-    async def test_an_adult_weekend_is_refused_not_compared(self) -> None:
-        """Owner ruling §5.1: family camp weekends only. The original freshness
-        reason (adult custom values refreshed weekly) lapsed in kindred#2760;
-        the gate stays until the owner rules on compare for adult boards."""
-        stubs = _service(mirror=_roster([], session_type="adult"), scenario=_roster([], session_type="adult"))
-        with pytest.raises(NotAFamilyWeekendError):
-            await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+    async def test_an_adult_weekend_is_compared_per_guest(self) -> None:
+        """Owner ruling 2026-09-23: scenario compare opens for adult weekends.
 
-        stubs.preview_push.assert_not_awaited()
+        Its family-only gate (§5.1) existed because adult custom values
+        refreshed weekly, so a compare would grade a plan against stale data --
+        and kindred#2760 put adult guests in the bounded DAILY person pass. The
+        compare is already grain-aware: a person party is keyed on the guest,
+        so two guests are two rows, never one household."""
+        mirror = _roster([_guest(21, "Olivia Chen", ("alpha-1",)), _guest(22, "Emma Johnson", ("alpha-1",))], "adult")
+        scenario = _roster([_guest(21, "Olivia Chen", ("alpha-1",)), _guest(22, "Emma Johnson", ("beta-2",))], "adult")
+        stubs = _service(mirror=mirror, scenario=scenario)
+
+        report = await stubs.service.compare_scenario(2026, 1000001, "scn_1")
+
+        assert sorted((p.display_name, p.cls) for p in report.parties) == [
+            ("Emma Johnson", "conflict"),
+            ("Olivia Chen", "match"),
+        ]
+        assert report.counts.match == 1
+        assert report.counts.conflict == 1
+        stubs.preview_push.assert_awaited_once_with(2026, 1000001, "scn_1")
 
     @pytest.mark.asyncio
     async def test_the_mirror_cannot_be_compared_against_itself(self) -> None:
