@@ -17,6 +17,10 @@ let mockSessionType = 'main'
 let lastEnrollmentYearArg: number | null = null
 // Which viewer CamperDetail asked useSiblings for ('child' | 'adult').
 let lastSiblingsViewerArg: unknown = undefined
+// CR #1 (kindred#2753): lets a test make useCamperHistory report an error,
+// to prove CamperDetail wires it through to CampJourneyTimeline the same
+// way it already wires isLoading.
+let mockJourneyError: Error | null = null
 
 // Mock the camper data hooks to return a minimal fixture.
 vi.mock('../hooks/camper', () => ({
@@ -47,7 +51,12 @@ vi.mock('../hooks/camper', () => ({
       error: null,
     }
   },
-  useCamperHistory: () => ({ camperHistory: [], counts: EMPTY_JOURNEY_COUNTS }),
+  useCamperHistory: () => ({
+    camperHistory: [],
+    counts: EMPTY_JOURNEY_COUNTS,
+    isLoading: false,
+    error: mockJourneyError,
+  }),
   useSiblings: (...args: unknown[]) => {
     lastSiblingsViewerArg = args[3]
     return { siblings: [], isLoading: false, error: null }
@@ -179,6 +188,7 @@ beforeEach(() => {
   mockAttendeeYear = 2026
   mockSessionType = 'main'
   lastEnrollmentYearArg = null
+  mockJourneyError = null
   // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
   // a later test doesn't inherit a prior suite's stub state.
   mockFetchWithAuth = _defaultMockFetchWithAuth
@@ -340,6 +350,19 @@ describe('CamperDetail teen programs', () => {
     renderDetail()
     await screen.findByText(/Parsed Bunk Requests/i)
     expect(lastSiblingsViewerArg).toBe('child')
+  })
+})
+
+// CR #1 (kindred#2753): a failed journey feed used to fall through to
+// CampJourneyTimeline's empty state and read "First year at camp!" —
+// indistinguishable from an actual first-timer. `error` now threads through
+// useCamperHistory the same way `isLoading` already does.
+describe('CamperDetail journey error state (CR #1)', () => {
+  it('shows the muted error line instead of "First year at camp!" when the journey feed errors', async () => {
+    mockJourneyError = new Error('boom')
+    renderDetail()
+    expect(await screen.findByText("Couldn't load past years")).toBeInTheDocument()
+    expect(screen.queryByText(/first year at camp/i)).toBeNull()
   })
 })
 

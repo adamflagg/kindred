@@ -440,10 +440,12 @@ export default function CamperDetailsPanel({
   })
 
   // The one shared journey feed — the same rows and counts as the camper record.
-  const { rows: historicalData, counts: journeyCounts } = useCamperJourney(
-    camperId ? parseInt(camperId, 10) : null,
-    currentYear
-  )
+  const {
+    rows: historicalData,
+    counts: journeyCounts,
+    isLoading: journeyLoading,
+    error: journeyError,
+  } = useCamperJourney(camperId ? parseInt(camperId, 10) : null, currentYear)
 
   // Fetch bunk requests
   const { data: bunkRequests = [] } = useQuery<PanelBunkRequest[]>({
@@ -992,7 +994,15 @@ export default function CamperDetailsPanel({
         )}
 
         {/* Camp Journey Timeline - Compact */}
-        {(historicalData.length > 0 || camper.expand?.session) && (
+        {/* CR #3 (kindred#2753): while the shared feed loads, `historicalData`
+            reads empty — showing only this year's board rows read as "first
+            year here" even though prior years just hadn't arrived yet. The
+            section itself must stay visible through loading/error too, or the
+            spinner/error line below would never have anywhere to render. */}
+        {(journeyLoading ||
+          journeyError !== null ||
+          historicalData.length > 0 ||
+          camper.expand?.session) && (
           <section>
             <SectionHeader
               title="Camp Journey"
@@ -1002,14 +1012,26 @@ export default function CamperDetailsPanel({
               badge={camper.years_at_camp ?? historicalData.length + 1}
               accentColor="forest"
             />
-            {expandedSections.history && (
-              // The same rows as the camper record (`camper/JourneyRows`,
-              // owner ruling 2026-09-22 G2): this year's board enrollments and
-              // the prior years in ONE grid, one type size down.
-              <div className="mt-2">
-                <JourneyRows rows={journeyRows} size="compact" />
-              </div>
-            )}
+            {expandedSections.history &&
+              (journeyLoading ? (
+                // Same loading markup as CampJourneyTimeline (camper/CampJourneyTimeline.tsx).
+                <div className="mt-2 flex items-center justify-center py-4">
+                  <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
+                  <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
+                </div>
+              ) : journeyError !== null ? (
+                // Same error line and tone as CampJourneyTimeline (CR #1).
+                <div className="mt-2 py-4 text-center">
+                  <p className="text-sm text-red-500">Couldn't load past years</p>
+                </div>
+              ) : (
+                // The same rows as the camper record (`camper/JourneyRows`,
+                // owner ruling 2026-09-22 G2): this year's board enrollments and
+                // the prior years in ONE grid, one type size down.
+                <div className="mt-2">
+                  <JourneyRows rows={journeyRows} size="compact" />
+                </div>
+              ))}
           </section>
         )}
 

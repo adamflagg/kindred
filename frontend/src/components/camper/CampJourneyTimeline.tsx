@@ -18,6 +18,12 @@ interface CampJourneyTimelineProps {
    * returning guest read as a first-timer.
    */
   isLoading?: boolean
+  /**
+   * The feed failed. Same reasoning as `isLoading`: an empty history here
+   * means "couldn't tell", not "first year" (CR #1, kindred#2753) — a failed
+   * fetch used to read as indistinguishable from an actual first-timer.
+   */
+  error?: Error | null
 }
 
 export function CampJourneyTimeline({
@@ -25,6 +31,7 @@ export function CampJourneyTimeline({
   counts,
   currentYear,
   isLoading = false,
+  error = null,
 }: CampJourneyTimelineProps) {
   const countLabel = journeyCountLabel(counts)
   return (
@@ -47,6 +54,10 @@ export function CampJourneyTimeline({
           <div className="flex items-center justify-center py-4">
             <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
             <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
+          </div>
+        ) : error ? (
+          <div className="py-4 text-center">
+            <p className="text-sm text-red-500">Couldn't load past years</p>
           </div>
         ) : history.length > 0 ? (
           // The rows are shared with the board modal (`JourneyRows`, owner

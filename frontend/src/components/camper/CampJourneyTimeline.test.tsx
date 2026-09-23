@@ -267,6 +267,49 @@ describe('CampJourneyTimeline while the journey loads', () => {
   })
 })
 
+// CR #1 (kindred#2753): a failed fetch used to fall through to the empty
+// state and read "First year at camp!" — indistinguishable from an actual
+// first-timer. Tone matches SiblingsPanel's "Error loading siblings".
+describe('CampJourneyTimeline error state (CR #1)', () => {
+  it('shows a muted error line instead of "First year at camp!" when the feed errors', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+        error={new Error('boom')}
+      />
+    )
+    expect(screen.queryByText(/first year at camp/i)).toBeNull()
+    expect(screen.getByText("Couldn't load past years")).toBeInTheDocument()
+  })
+
+  it('prefers the loading state over the error state', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+        isLoading
+        error={new Error('boom')}
+      />
+    )
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load past years")).toBeNull()
+  })
+
+  it('renders no error line when there is no error', () => {
+    render(
+      <CampJourneyTimeline
+        history={[]}
+        counts={{ summers: 0, familyWeekends: 0, adultWeekends: 0 }}
+        currentYear={2026}
+      />
+    )
+    expect(screen.queryByText("Couldn't load past years")).toBeNull()
+  })
+})
+
 // kindred#2332 pattern, owner ruling 2026-09-22 (evening): the cabin label is
 // TODAY's registry name; the string staff actually typed that season shows
 // only in a hover tooltip, and only where the two disagree — the same

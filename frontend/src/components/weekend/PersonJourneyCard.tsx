@@ -7,7 +7,7 @@ import { useCamperJourney } from '../../hooks/camper/useCamperJourney'
 import { CampJourneyTimeline } from '../camper/CampJourneyTimeline'
 
 export function PersonJourneyCard({ personCmId, year }: { personCmId: number; year: number }) {
-  const { rows, counts, isLoading } = useCamperJourney(personCmId, year)
+  const { rows, counts, isLoading, error } = useCamperJourney(personCmId, year)
   return (
     <div data-testid="person-journey">
       <CampJourneyTimeline
@@ -15,6 +15,7 @@ export function PersonJourneyCard({ personCmId, year }: { personCmId: number; ye
         counts={counts}
         currentYear={year}
         isLoading={isLoading}
+        error={error}
       />
     </div>
   )

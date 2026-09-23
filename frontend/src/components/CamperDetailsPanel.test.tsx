@@ -445,6 +445,46 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  // CR #3 (kindred#2753): while the shared journey feed is still loading,
+  // the modal used to render whatever it already had — an empty
+  // `historicalData` plus the board's own current-year rows — which read as
+  // "first year here" even though prior years just hadn't arrived yet. The
+  // modal now shows the SAME loading/error states as CampJourneyTimeline.
+  describe('Camp Journey — loading and error states (CR #3)', () => {
+    it('shows a loading spinner instead of the current-year-only rows while the feed loads', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        isLoading: true,
+        error: null,
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.queryByTestId('journey-rows')).not.toBeInTheDocument()
+      expect(screen.queryByText('Unassigned')).not.toBeInTheDocument()
+      expect(screen.queryByText('Now')).not.toBeInTheDocument()
+    })
+
+    it('shows the same muted error line as the camper record when the feed errors', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        isLoading: false,
+        error: new Error('boom'),
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      expect(await screen.findByText("Couldn't load past years")).toBeInTheDocument()
+      expect(screen.queryByTestId('journey-rows')).not.toBeInTheDocument()
+    })
+  })
+
   // The quick-stats bar shows the shared journey count line instead of
   // CampMinder's bare "N years".
   describe('Quick stats — journey count line', () => {

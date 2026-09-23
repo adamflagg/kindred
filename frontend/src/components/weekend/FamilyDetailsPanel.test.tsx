@@ -926,6 +926,29 @@ describe('adult weekend guest journey', () => {
     }
   })
 
+  // CR #1 (kindred#2753): `error` now threads through PersonJourneyCard the
+  // same way `isLoading` already does, so the weekend sidebar gets the same
+  // fix as the camper record — a failed feed reads as "couldn't load", not
+  // "first year here".
+  it('passes the journey error through — a muted error line, not "First year at camp!"', () => {
+    const loaded = personJourney.value
+    personJourney.value = {
+      ...loaded,
+      rows: [],
+      counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+      isLoading: false,
+      error: new Error('boom'),
+    }
+    try {
+      render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+      const card = screen.getByTestId('person-journey')
+      expect(within(card).getByText("Couldn't load past years")).toBeInTheDocument()
+      expect(within(card).queryByText(/first year at camp/i)).toBeNull()
+    } finally {
+      personJourney.value = loaded
+    }
+  })
+
   it('never renders a person journey for a household', () => {
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
     expect(screen.queryByTestId('person-journey')).not.toBeInTheDocument()
