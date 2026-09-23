@@ -1,7 +1,7 @@
 import type { Session } from '../types/app-types'
 import type { SessionDateLookup } from './sessionUtils'
 import { isAgSession, isQuestSession, isQuestSessionType } from './sessionTypePredicates'
-import { weekendTitle } from '../components/weekend/weekendNames'
+import { weekendTitle, adultWeekendTitle } from '../components/weekend/weekendNames'
 
 /**
  * Canonical short display name for a session — used by the camper page (full +
@@ -184,6 +184,13 @@ export function getSessionDisplayNameFromString(sessionName: string, sessionType
   // length its rows can afford. `weekendSubtitle` carries the rest (Keshet,
   // JFAM, JFoC) for the surfaces with room to print it.
   if (sessionType === 'family') return weekendTitle(sessionName)
+
+  // ADULT WEEKENDS GET THE MID-LENGTH TITLE TOO (owner ruling 2026-09-22):
+  // the raw CampMinder name carries a qualifier — a night count ("Women's
+  // Weekend (3 nights)"), a fee ("Spring Service Weekend ($54 fee)") — that
+  // is noise in a journey row. Scoped to 'adult' only: an AG session's
+  // parenthetical (a grade range) is meaningful and must not be stripped.
+  if (sessionType === 'adult') return adultWeekendTitle(sessionName)
 
   // Check if it's an AG session by type or name pattern
   if (
