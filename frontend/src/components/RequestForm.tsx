@@ -4,6 +4,7 @@ import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headless
 import type { Constraint, Camper, ConstraintType } from '../types/app-types'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import { useYear } from '../hooks/useCurrentYear'
 
 interface RequestFormProps {
@@ -144,7 +145,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
                   stay within that budget. */}
               <span className="font-medium">{camper.name}</span>
               <span className="text-muted-foreground ml-2 text-sm">
-                Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} •{' '}
+                Age {displayCampMinderAge(getDisplayAgeForYear(camper, viewingYear) ?? 0)} •{' '}
                 {formatGradeOrdinal(camper.grade)}
               </span>
             </label>

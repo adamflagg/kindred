@@ -34,8 +34,21 @@ describe('invalidateSyncData', () => {
       'campers',
       'all-campers',
       'camper',
-      'camper-history',
       'enrolled-campers',
+      // Adult camper journey (controller ruling, 2026-09-22): the shared journey
+      // feed and every read it waits on. 'household-journey' is here too, because
+      // the feed's key carries the housing reads' dataUpdatedAt, so re-running it
+      // against a stale household journey would defeat the refresh. The dead
+      // 'camper-history' key it replaced is gone.
+      'camper-journey',
+      'person-records',
+      'person-housing',
+      'household-journey',
+      // CR #4 (kindred#2753): the camper record's current-year rows read live
+      // attendees/bunks, so a completed sync must invalidate this prefix too —
+      // it was never on this list, so a sync never refreshed what it had just
+      // written here.
+      'camper-current-year-rows',
       'bunks',
       'bunk-assignments',
       'bunk-requests',

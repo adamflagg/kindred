@@ -79,7 +79,6 @@ export const queryKeys = {
   // Historical data (Tier 1 - sync data)
   historicalBunking: (personCmId: number, year: number) =>
     ['historical-bunking', personCmId, year] as const,
-  camperHistory: (personId: string, year: number) => ['camper-history', personId, year] as const,
 
   // Statistics (Tier 1 - sync data)
   sessionStats: (sessionId: string) => ['session-stats', sessionId] as const,
@@ -413,7 +412,6 @@ export const queryKeys = {
   allBunkRequestsPrefix: () => ['all-bunk-requests'] as const,
   personBunkRequestsPrefix: () => ['person-bunk-requests'] as const,
   personAllBunkRequestsPrefix: () => ['person-all-bunk-requests'] as const,
-  bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
   // Prefix factories for social-graph invalidation (Issue #1040).
@@ -443,8 +441,6 @@ export const queryKeys = {
     ['person-bunk-requests', cmId, year] as const,
   personAllBunkRequests: (cmId: number | undefined, year: number) =>
     ['person-all-bunk-requests', cmId, year] as const,
-  bunkRequestsTooltip: (cmId: number | undefined, year: number) =>
-    ['bunk_requests_tooltip', cmId, year] as const,
   /**
    * Cache key for client-derived satisfaction snapshots.
    *
@@ -478,8 +474,6 @@ export const queryKeys = {
   camperDetails: (camperId: string, year: number) => ['camper-details', camperId, year] as const,
   personForSiblings: (camperId: string, year: number) =>
     ['person-for-siblings', camperId, year] as const,
-  camperSiblingsPanel: (householdId: number | undefined, camperId: string, year: number) =>
-    ['camper-siblings-panel', householdId, camperId, year] as const,
   // Filter: `requester.cm_id = {cmId}`. Returns denormalized
   // OriginalBunkData[] (used by useOriginalBunkData). Caller must gate
   // with `enabled: !!cmId`.
@@ -579,6 +573,45 @@ export const queryKeys = {
   /** The medical narrative. Only ever fetched behind a `bunking.manage` check. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
+  /**
+   * One person's adult-weekend cabins (adult camper journey). No year — the
+   * read spans every season, like the household journey.
+   */
+  personHousing: (personCmId: number) => ['person-housing', personCmId] as const,
+  // Invalidation prefix: an alias edit can change which values name one place.
+  personHousingPrefix: () => ['person-housing'] as const,
+  /** A person's year-scoped `persons` rows (household id, years_at_camp, age). */
+  personRecords: (personCmId: number) => ['person-records', personCmId] as const,
+  /** The shared journey feed's result (useCamperJourney). */
+  camperJourney: (personCmId: number, year: number) =>
+    ['camper-journey', personCmId, year] as const,
+  /**
+   * The camper record's CURRENT-year rows (useCamperHistory). Keyed on the
+   * ids, statuses and bunk ids of the resolved current-year attendees —
+   * never on object identity or `.length` (CR #4, kindred#2753): a
+   * secondary attendee's session/status/bunk can change while the array
+   * stays the same length and the primary camper's own object is untouched,
+   * and neither of those would move the old key at all.
+   */
+  currentYearCamperRows: (
+    personCmId: number | null,
+    year: number,
+    attendees: ReadonlyArray<{
+      person_cm_id: number
+      session_cm_id: number
+      attendee_status?: string
+      assigned_bunk?: string
+    }>
+  ) =>
+    [
+      'camper-current-year-rows',
+      personCmId,
+      year,
+      attendees.map(
+        (a) =>
+          `${a.person_cm_id}:${a.session_cm_id}:${a.attendee_status ?? ''}:${a.assigned_bunk ?? ''}`
+      ),
+    ] as const,
 
   // Lodging registry (Family Camp admin settings). Year-scoped since
   // migration 1500000141: a unit outlives any one season, but its ROW does
@@ -679,7 +712,6 @@ export function invalidateRequestQueries(
   void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.personBunkRequestsPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.personAllBunkRequestsPrefix() })
-  void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestsTooltipPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.requestSatisfactionPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.cohortRequestRelationsPrefix() })
   // Issue #1040 — social-graph node borders reflect request satisfaction; invalidate
@@ -753,6 +785,9 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // the board behind it shows the new one — the disagreement the issue exists
   // to remove, re-created by the fix for it.
   void queryClient.invalidateQueries({ queryKey: queryKeys.householdJourneyPrefix() })
+  // Adult camper journey: an alias edit changes which cabin strings the
+  // server treats as one place, so the attributed cabins can move.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.personHousingPrefix() })
   // The board's "Push write-ins" badge reads the push preview (owner ruling
   // 2026-08-28: it counts what a push would actually write, which only the
   // server can know — inside a scenario the client never sees the live

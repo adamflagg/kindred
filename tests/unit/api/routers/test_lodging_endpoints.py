@@ -2461,7 +2461,9 @@ class TestPersonHousingEndpoint:
             response = client.get("/api/lodging/persons/3000001/housing")
 
         assert response.status_code == 200
-        assert response.json() == {"person_cm_id": 3000001, "weekends": []}
+        # RULED CHANGE (owner, 2026-09-22 late, Q9): the response gained
+        # `teen_cabins`, the TLI/SCIT cabins the registry resolves.
+        assert response.json() == {"person_cm_id": 3000001, "weekends": [], "teen_cabins": []}
 
     def test_it_reads_only_cabin_values_and_adult_enrollments_when_there_is_nothing_to_attribute(
         self, mock_pb: MagicMock
@@ -2486,7 +2488,11 @@ class TestPersonHousingEndpoint:
         with patch("api.routers.lodging.pb", mock_pb):
             TestClient(_build_app(_plain_user(), mock_pb)).get("/api/lodging/persons/3000001/housing")
 
-        assert set(collections) == {"person_custom_values", "attendees"}
+        # RULED CHANGE (owner, 2026-09-22 late, Q9): the read set gained
+        # `bunk_assignments` -- the person's TLI/SCIT bunks, resolved to real
+        # cabins through the same registry. Still no registry read when there
+        # is nothing to resolve.
+        assert set(collections) == {"person_custom_values", "attendees", "bunk_assignments"}
         assert "family_camp_medical" not in collections
 
     def test_it_also_reads_the_registry_once_there_is_something_to_attribute(self, mock_pb: MagicMock) -> None:
@@ -2520,4 +2526,11 @@ class TestPersonHousingEndpoint:
             response = TestClient(_build_app(_plain_user(), mock_pb)).get("/api/lodging/persons/3000001/housing")
 
         assert response.status_code == 200
-        assert set(collections) == {"person_custom_values", "attendees", "lodging_units", "lodging_unit_aliases"}
+        # RULED CHANGE (owner, 2026-09-22 late, Q9): + `bunk_assignments`.
+        assert set(collections) == {
+            "person_custom_values",
+            "attendees",
+            "bunk_assignments",
+            "lodging_units",
+            "lodging_unit_aliases",
+        }

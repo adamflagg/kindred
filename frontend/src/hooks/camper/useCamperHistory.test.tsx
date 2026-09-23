@@ -1,39 +1,32 @@
 /**
  * Tests for useCamperHistory — merges live current-year records with the shared
- * prior-year fetcher, applying AG collapse/relabel to the current year too.
+ * journey feed's prior years, applying AG collapse/relabel to the current year too.
  * TDD: written before implementation.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { createWrapper, expectDefined } from '../../test/testUtils'
 import { useCamperHistory } from './useCamperHistory'
+import type { CabinLabel } from './teenCabinLabel'
 import type { Camper } from '../../types/app-types'
+import type { HistoricalRecord, JourneyCounts } from './types'
 
-const mockFetchCamperJourney = vi.fn()
 const mockFetchParentMainSessions = vi.fn()
 vi.mock('./fetchCamperJourney', () => ({
-  fetchCamperJourney: (...args: unknown[]) => mockFetchCamperJourney(...args),
   fetchParentMainSessions: (...args: unknown[]) => mockFetchParentMainSessions(...args),
 }))
 
-// kindred#2466: useCamperHistory threads the household journey's `years`
-// into fetchCamperJourney so a family-camp row can show the household's
-// actual housing instead of the CampMinder day group. Mocked here (rather
-// than exercising the real useHouseholdJourney -> useApiWithAuth -> useAuth
-// chain) because `createWrapper()` provides no AuthProvider.
-const mockUseHouseholdJourney = vi.fn()
-vi.mock('../useWeekendRoster', () => ({
-  useHouseholdJourney: (...args: unknown[]) => mockUseHouseholdJourney(...args),
-}))
-
-// The hook gates the household read on `useAuth().isLoading` (frontend/CLAUDE.md:
-// "useAuth().isLoading first"), and `createWrapper()` provides no AuthProvider,
-// so the real `useAuth` would throw here. `isLoading: false` is the settled-auth
-// case every assertion below is written against; the loading case is covered by
-// its own test.
-const mockUseAuth = vi.fn(() => ({ isLoading: false }))
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => mockUseAuth(),
+// Prior years + header counts come from the one shared journey feed
+// (useCamperJourney). Its own household/auth/housing plumbing is
+// tested in useCamperJourney.test.tsx; here it is a plain source of rows.
+let priorRows: HistoricalRecord[] = []
+let journeyCounts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
+// Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): the registry-
+// resolved TLI/SCIT map travels alongside the feed's rows/counts.
+let teenCabinsByWeekend: Map<string, CabinLabel> = new Map()
+const mockUseCamperJourney = vi.fn()
+vi.mock('./useCamperJourney', () => ({
+  useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
 }))
 
 const YEAR = 2026
@@ -48,9 +41,15 @@ function currentCamper(opts: {
   householdId?: number
 }): Camper {
   return {
-    person_cm_id: 12887873,
+    person_cm_id: 8000101,
     attendee_status: 'enrolled',
     session_cm_id: opts.sessionCmId,
+    // CR #4 fixture fidelity: production Camper rows always carry a
+    // top-level `assigned_bunk` PB relation id (useCamperEnrollment.ts:156,
+    // `assignedBunk?.id ?? ''`) alongside the display name under `expand`.
+    // The stale-key test needs this field to actually MOVE alongside the
+    // bunk change it's pinning.
+    assigned_bunk: opts.bunkName ? `bunk-${opts.bunkName}` : '',
     ...(opts.householdId !== undefined ? { household_id: opts.householdId } : {}),
     expand: {
       session: {
@@ -69,70 +68,36 @@ function currentCamper(opts: {
 describe('useCamperHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFetchCamperJourney.mockResolvedValue([])
+    priorRows = []
+    journeyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
+    teenCabinsByWeekend = new Map()
+    mockUseCamperJourney.mockImplementation(() => ({
+      rows: priorRows,
+      counts: journeyCounts,
+      isLoading: false,
+      error: null,
+      teenCabinsByWeekend,
+    }))
     mockFetchParentMainSessions.mockResolvedValue(new Map())
-    mockUseHouseholdJourney.mockReturnValue({ data: undefined })
-    // `vi.clearAllMocks()` clears CALLS, not implementations -- without this the
-    // auth-loading test below would leak `isLoading: true` into every later test.
-    mockUseAuth.mockReturnValue({ isLoading: false })
   })
 
-  // kindred#2466
-  describe('household journey plumbing', () => {
-    it('passes null to useHouseholdJourney when the camper has no household_id', async () => {
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main' })
-      const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
-        wrapper: createWrapper(),
-      })
-      await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(null)
+  it('reads the shared journey feed for the person and year', async () => {
+    const camper = currentCamper({ sessionCmId: 500, sessionType: 'main' })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, camper, [camper]), {
+      wrapper: createWrapper(),
     })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockUseCamperJourney).toHaveBeenCalledWith(8000101, YEAR)
+  })
 
-    it("threads the household's CampMinder id into useHouseholdJourney", async () => {
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
-      const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
-        wrapper: createWrapper(),
-      })
-      await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(1000001)
+  it("returns the shared feed's counts for the header count line", async () => {
+    journeyCounts = { summers: 3, familyWeekends: 1, adultWeekends: 2 }
+    const camper = currentCamper({ sessionCmId: 500, sessionType: 'main' })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, camper, [camper]), {
+      wrapper: createWrapper(),
     })
-
-    it('threads the resolved household journey years into fetchCamperJourney', async () => {
-      const years = [
-        { year: 2024, housing: 'placed', cabin_name: 'Cedar Lodge', housing_session_cm_id: 900 },
-      ]
-      mockUseHouseholdJourney.mockReturnValue({ data: { household_cm_id: 1000001, years } })
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
-      const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
-        wrapper: createWrapper(),
-      })
-      await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, years)
-    })
-
-    it('threads an empty array into fetchCamperJourney when no household journey has resolved yet', async () => {
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
-      const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
-        wrapper: createWrapper(),
-      })
-      await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockFetchCamperJourney).toHaveBeenCalledWith(12887873, YEAR, [])
-    })
-
-    // `useHouseholdJourney` reads a PROTECTED endpoint through `fetchWithAuth`,
-    // and its own `enabled` checks the household id alone -- so without this
-    // gate the request can fire before auth is ready. frontend/CLAUDE.md:
-    // "useAuth().isLoading first."
-    it('withholds the household id from useHouseholdJourney while auth is still loading', async () => {
-      mockUseAuth.mockReturnValue({ isLoading: true })
-      const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', householdId: 1000001 })
-      const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
-        wrapper: createWrapper(),
-      })
-      await waitFor(() => expect(result.current.isLoading).toBe(false))
-      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(null)
-      expect(mockUseHouseholdJourney).not.toHaveBeenCalledWith(1000001)
-    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.counts).toEqual({ summers: 3, familyWeekends: 1, adultWeekends: 2 })
   })
 
   it('orders the CURRENT year chronologically across programs', async () => {
@@ -146,7 +111,7 @@ describe('useCamperHistory', () => {
      * actually went to Family Camp 1 in May, two summer sessions in June and
      * July, and Family Camp 6 in September.
      */
-    mockFetchCamperJourney.mockResolvedValue([])
+    priorRows = []
     const campers = [
       currentCamper({
         sessionCmId: 201,
@@ -174,7 +139,7 @@ describe('useCamperHistory', () => {
       }),
     ]
     const { result } = renderHook(
-      () => useCamperHistory(12887873, YEAR, campers[0] as Camper, campers),
+      () => useCamperHistory(8000101, YEAR, campers[0] as Camper, campers),
       { wrapper: createWrapper() }
     )
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -188,12 +153,12 @@ describe('useCamperHistory', () => {
   })
 
   it('merges current-year + prior fetcher rows and surfaces a 2022 gap year, sorted -year', async () => {
-    mockFetchCamperJourney.mockResolvedValue([
+    priorRows = [
       { year: 2023, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
       { year: 2022, sessionName: 'Session 3', sessionType: 'main' }, // CM gap: no bunk
-    ])
+    ]
     const camper = currentCamper({ sessionCmId: 500, sessionType: 'main', bunkName: 'Cabin 5' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, camper, [camper]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, camper, [camper]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -205,7 +170,7 @@ describe('useCamperHistory', () => {
 
   it('does not stamp "Unassigned" on a current-year teen record', async () => {
     const teen = currentCamper({ sessionCmId: 700, sessionType: 'scit' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, teen, [teen]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, teen, [teen]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -213,9 +178,49 @@ describe('useCamperHistory', () => {
     expect(current.bunkName).toBeUndefined()
   })
 
+  // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): commit 6f205252
+  // applied the registry-only rule to PRIOR years via the server's
+  // teen_cabins. The current year still showed the raw CampMinder bunk (a
+  // program group, or Quest's trip name) until now.
+  it('hides a current-year SCIT bunk the registry does not resolve (a program group)', async () => {
+    const scit = currentCamper({ sessionCmId: 700, sessionType: 'scit', bunkName: 'SCIT A' })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, scit, [scit]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.bunkName).toBeUndefined()
+    expect(current.bunkNameRecorded).toBeUndefined()
+  })
+
+  it('shows the registry cabin for a resolved current-year teen row, with the as-typed name on hover', async () => {
+    teenCabinsByWeekend = new Map([
+      [`${String(YEAR)}:700`, { cabinName: 'Village Cabin 2', cabinNameRaw: 'Teen 2' }],
+    ])
+    const teen = currentCamper({ sessionCmId: 700, sessionType: 'tli', bunkName: 'Teen 2' })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, teen, [teen]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.bunkName).toBe('Village Cabin 2')
+    expect(current.bunkNameRecorded).toBe('Teen 2')
+  })
+
+  it('never shows a cabin for a current-year Quest record, even with an assigned bunk', async () => {
+    const quest = currentCamper({ sessionCmId: 900, sessionType: 'quest', bunkName: 'Trip Name' })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, quest, [quest]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.bunkName).toBeUndefined()
+    expect(current.bunkNameRecorded).toBeUndefined()
+  })
+
   it('still stamps "Unassigned" on a current-year bunkable (main) record with no bunk', async () => {
     const unplaced = currentCamper({ sessionCmId: 500, sessionType: 'main' })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, unplaced, [unplaced]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, unplaced, [unplaced]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -226,13 +231,46 @@ describe('useCamperHistory', () => {
   it('collapses a current-year Main + AG enrollment into one Main row', async () => {
     const main = currentCamper({ sessionCmId: 100, sessionType: 'main' })
     const ag = currentCamper({ sessionCmId: 101, sessionType: 'ag', parentId: 100 })
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, main, [main, ag]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, main, [main, ag]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     const current = result.current.camperHistory.filter((r) => r.year === YEAR)
     expect(current).toHaveLength(1)
     expect(current[0]).toMatchObject({ sessionType: 'main', sessionName: 'Session 100' })
+  })
+
+  // CR #4 (kindred#2753): the old key was `['camper-current-year-rows',
+  // personCmId, currentYear, camper?.expand?.session, camper?.expand?.assigned_bunk,
+  // allAttendees?.length]` — a SECONDARY attendee's status/session/bunk
+  // change never moved the key at all (only its own object refs and
+  // `.length` could), so a real-world change like this one would leave the
+  // cached rows stale until something unrelated forced a refetch.
+  it("re-runs when a secondary attendee's status/bunk changes even though the count and primary camper stay the same", async () => {
+    const primary = currentCamper({ sessionCmId: 500, sessionType: 'main', bunkName: 'Cabin 5' })
+    const secondaryBefore = currentCamper({ sessionCmId: 600, sessionType: 'main' })
+    const { result, rerender } = renderHook(
+      ({ attendees }: { attendees: Camper[] }) =>
+        useCamperHistory(8000101, YEAR, primary, attendees),
+      { wrapper: createWrapper(), initialProps: { attendees: [primary, secondaryBefore] } }
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const row600Before = result.current.camperHistory.find((r) => r.sessionName === 'Session 600')
+    expect(row600Before?.bunkName).toBe('Unassigned')
+
+    // Same length, same primary camper — only the secondary attendee's own
+    // bunk changed.
+    const secondaryAfter = currentCamper({
+      sessionCmId: 600,
+      sessionType: 'main',
+      bunkName: 'Cabin 9',
+    })
+    rerender({ attendees: [primary, secondaryAfter] })
+
+    await waitFor(() => {
+      const row600 = result.current.camperHistory.find((r) => r.sessionName === 'Session 600')
+      expect(row600?.bunkName).toBe('Cabin 9')
+    })
   })
 
   it('relabels a current-year AG-only camper to its parent main (never session_type ag)', async () => {
@@ -252,7 +290,7 @@ describe('useCamperHistory', () => {
         ],
       ])
     )
-    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, ag, [ag]), {
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, ag, [ag]), {
       wrapper: createWrapper(),
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))

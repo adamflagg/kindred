@@ -6,12 +6,14 @@
  * parent-sourced bunk request form text.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '../test/testUtils'
+import { render, screen, fireEvent, waitFor, within } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 import { mockPerson } from '../test/mockData'
 import { SourceField } from '../types/sourceField'
+import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
+import type { HistoricalRecord, JourneyCounts } from '../hooks/camper/types'
 
 // Configurable per-collection mock factories
 const mockGetFullListPersons = vi.fn()
@@ -59,15 +61,23 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2025,
 }))
 
-// kindred#2466: the historical journey shows the household's resolved
-// family-camp cabin instead of the CampMinder day group. Mocked here (rather
-// than exercised through real fetchWithAuth/fetch) so most existing tests —
-// which never set a household — stay untouched; the new describe block below
-// overrides this per test to prove the wiring.
-const mockUseHouseholdJourney = vi.fn()
-vi.mock('../hooks/useWeekendRoster', () => ({
-  useHouseholdJourney: (...args: unknown[]) => mockUseHouseholdJourney(...args),
+// The Camp Journey rows and the quick-stats count line come from the one
+// shared journey feed (useCamperJourney). Its own
+// household/auth/housing plumbing is tested in useCamperJourney.test.tsx;
+// here it is a plain source of rows and counts.
+const mockUseCamperJourney = vi.fn()
+vi.mock('../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
 }))
+
+function journeyWith(
+  rows: HistoricalRecord[],
+  counts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
+) {
+  // Q9 (owner, 2026-09-22 late): the real hook always returns a Map here
+  // (never undefined) — tests that need a populated one override the field.
+  return { rows, counts, isLoading: false, error: null, teenCabinsByWeekend: new Map() }
+}
 
 // Mock AuthContext — AllCamperRequestsModal calls useAuth() at module load,
 // even when isOpen=false, so tests need an AuthContext-shaped stub.
@@ -264,7 +274,7 @@ describe('CamperDetailsPanel', () => {
     mockGetFullListBunkRequests.mockResolvedValue([])
     mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
     mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
-    mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+    mockUseCamperJourney.mockReturnValue(journeyWith([]))
   })
 
   describe('Loading and Error States', () => {
@@ -315,7 +325,7 @@ describe('CamperDetailsPanel', () => {
 
   // kindred#2466: the "Camp Journey" history section shows the household's
   // resolved family-camp cabin in the housing slot, never the CampMinder
-  // day group `bunk_assignments` resolves to on a family session.
+  // day group. The feed resolves the label; the panel renders what it gets.
   describe('Camp Journey — family-camp housing (kindred#2466)', () => {
     const FAMILY_PERSON = mockPerson({
       id: 'pb-noah',
@@ -326,56 +336,20 @@ describe('CamperDetailsPanel', () => {
       household_id: 1000001,
     })
 
-    // A prior-year (2024 < currentYear 2025) family-camp enrollment.
-    const FAMILY_ATTENDEE: Record<string, unknown> = {
-      id: 'att-family-2024',
-      person: 'pb-noah',
-      person_id: 300,
-      session: 'sess-family-2024',
-      status: 'enrolled',
-      status_id: 2,
-      year: 2024,
-      collectionId: 'attendees',
-      collectionName: 'attendees',
-      created: '2024-01-01T00:00:00Z',
-      updated: '2024-01-01T00:00:00Z',
-      expand: {
-        session: {
-          id: 'sess-family-2024',
-          cm_id: 9100001,
-          name: 'Family Camp 2: Keshet Weekend',
-          session_type: 'family',
-        },
-      },
-    }
-
-    // The CampMinder day group `bunk_assignments` resolves for that same
-    // family session — must never surface as the housing label.
-    const FAMILY_DAY_GROUP_ASSIGNMENT: Record<string, unknown> = {
-      id: 'asn-family-2024',
-      year: 2024,
-      expand: {
-        session: { cm_id: 9100001, session_type: 'family' },
-        bunk: { name: 'Acorns (with parents)' },
-      },
-    }
-
     beforeEach(() => {
       mockGetFullListPersons.mockResolvedValue([FAMILY_PERSON])
       mockGetListPersons.mockResolvedValue({ items: [FAMILY_PERSON], totalItems: 1 })
-      // Only the PRIOR-year fetch (fetchCamperJourney, "year < ...") returns
-      // the family attendee — the panel's own current-year fetch must stay
-      // empty so the "current enrollment" block (an unrelated code path)
-      // never enters the picture.
-      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
-        const filter = opts.filter ?? ''
-        return Promise.resolve(filter.includes('year < ') ? [FAMILY_ATTENDEE] : [])
-      })
-      mockGetFullListBunkAssignments.mockResolvedValue([FAMILY_DAY_GROUP_ASSIGNMENT])
     })
 
     it('never shows the CampMinder day group in the housing slot', async () => {
-      mockUseHouseholdJourney.mockReturnValue({ data: undefined })
+      // A prior-year (2024 < currentYear 2025) family-camp row with no
+      // resolved household housing: the feed drops the day group, so the
+      // row carries no housing label at all.
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          { year: 2024, sessionName: 'Family Camp 2: Keshet Weekend', sessionType: 'family' },
+        ])
+      )
 
       render(<CamperDetailsPanel camperId={String(FAMILY_PERSON.cm_id)} onClose={mockOnClose} />)
 
@@ -384,25 +358,863 @@ describe('CamperDetailsPanel', () => {
     })
 
     it("shows the household's resolved cabin name in the housing slot instead", async () => {
-      mockUseHouseholdJourney.mockReturnValue({
-        data: {
-          household_cm_id: FAMILY_PERSON.household_id,
-          years: [
-            {
-              year: 2024,
-              housing: 'placed',
-              cabin_name: 'Cedar Lodge',
-              housing_session_cm_id: 9100001,
-            },
-          ],
-        },
-      })
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          {
+            year: 2024,
+            sessionName: 'Family Camp 2: Keshet Weekend',
+            sessionType: 'family',
+            bunkName: 'Cedar Lodge',
+          },
+        ])
+      )
 
       render(<CamperDetailsPanel camperId={String(FAMILY_PERSON.cm_id)} onClose={mockOnClose} />)
 
       expect(await screen.findByText('Cedar Lodge')).toBeInTheDocument()
       expect(screen.queryByText('Acorns (with parents)')).not.toBeInTheDocument()
-      expect(mockUseHouseholdJourney).toHaveBeenCalledWith(FAMILY_PERSON.household_id)
+      expect(mockUseCamperJourney).toHaveBeenCalledWith(FAMILY_PERSON.cm_id, 2025)
+    })
+  })
+
+  // Owner ruling 2026-09-22, option G2: the board modal's Camp Journey renders
+  // the SAME rows component as the camper record (`camper/JourneyRows`) — one
+  // grid for the current-year enrollments AND the prior years, so every cabin
+  // lines up. The modal keeps what only it shows: this year's rows come from
+  // the board's own enrollments (status letter, "Unassigned", "Now").
+  describe('Camp Journey — shared one-grid rows (owner ruling 2026-09-22, G2)', () => {
+    it('renders this year and prior years through the shared rows, in ONE grid', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          { year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+        ])
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(grid.className.split(' ')).toContain('grid')
+      const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+      expect(cabins).toHaveLength(2)
+      for (const cabin of cabins) expect(cabin.parentElement).toBe(grid)
+      // This year's row (the board's enrollment, not yet placed) then the prior year.
+      expect(cabins[0]?.textContent).toBe('Unassigned')
+      expect(cabins[1]?.textContent).toBe('G-8B')
+      expect(within(grid).getByText('2025')).toBeInTheDocument()
+      expect(within(grid).getByText('Now').closest('[data-col]')?.getAttribute('data-col')).toBe(
+        'badge'
+      )
+    })
+
+    it('shows a status letter, not a cabin or "Now", for a waitlisted enrollment this year', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([
+        { ...EMMA_ATTENDEE, status: 'waitlisted', status_id: 3 },
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(within(grid).getByText('W').closest('[data-col]')?.getAttribute('data-col')).toBe(
+        'badge'
+      )
+      expect(within(grid).queryByText('Now')).toBeNull()
+      expect(within(grid).queryByText('Unassigned')).toBeNull()
+    })
+
+    it('shows a family weekend by its bare title — no subtitle, no "Family" tag', async () => {
+      // The modal's own copy carried the #2113 "Family" chip the camper record
+      // dropped (owner, 2026-08-18: "we also dont need the 'family' tag in the
+      // journey, staff knows"). One rows component means one rule.
+      //
+      // RULED CHANGE (owner, 2026-09-22 late): this test used to pin the
+      // subtitle ("JFAM") stacked under the name here. Every sidebar now shows
+      // the journey the same COMPACT way — no subtitle ("it's kinda
+      // obvious") — and only the full camper page keeps it.
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([
+          {
+            year: 2024,
+            sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+            sessionType: 'family',
+          },
+        ])
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(
+        within(grid).getByText('Family Camp 8').closest('[data-col]')?.getAttribute('data-col')
+      ).toBe('session')
+      expect(within(grid).queryByText('JFAM')).toBeNull()
+      expect(within(grid).queryByText('Family')).toBeNull()
+    })
+  })
+
+  // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): commit 6f205252
+  // applied the registry-only cabin rule to PRIOR years via the server's
+  // teen_cabins. The modal's OWN current-year row (this camper's live
+  // enrollment, not the shared feed) still showed the raw CampMinder bunk —
+  // a program group for TLI/SCIT, a trip name for Quest — until now.
+  describe('Camp Journey — current-year TLI/SCIT/Quest cabins (Q9 follow-up)', () => {
+    const SCIT_ATTENDEE: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-scit',
+      session: 'sess-scit',
+      expand: {
+        session: { id: 'sess-scit', cm_id: 700, name: 'Session 700', session_type: 'scit' },
+      },
+    }
+    const QUEST_ATTENDEE: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-quest',
+      session: 'sess-quest',
+      expand: {
+        session: { id: 'sess-quest', cm_id: 900, name: 'Session 900', session_type: 'quest' },
+      },
+    }
+
+    it('shows no cabin, anywhere in the panel, for a current-year SCIT enrollment the registry does not resolve', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([SCIT_ATTENDEE])
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('sess-scit')
+            ? [{ expand: { bunk: { name: 'SCIT A' } } }]
+            : []
+        )
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+      expect(cabins).toHaveLength(1)
+      expect(cabins[0]?.textContent).toBe('')
+      // Never the raw program-group bunk, in the journey row OR the
+      // quick-stats bar's single-enrollment cabin display.
+      expect(screen.queryByText('SCIT A')).not.toBeInTheDocument()
+    })
+
+    it('shows the registry cabin for a resolvable current-year teen row, with the as-typed name on hover', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([SCIT_ATTENDEE])
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('sess-scit')
+            ? [{ expand: { bunk: { name: 'Teen 2' } } }]
+            : []
+        )
+      )
+      mockUseCamperJourney.mockReturnValue({
+        ...journeyWith([]),
+        teenCabinsByWeekend: new Map([
+          ['2025:700', { cabinName: 'Village Cabin 2', cabinNameRaw: 'Teen 2' }],
+        ]),
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const trigger = within(grid).getByTestId('camp-journey-cabin-provenance')
+      expect(trigger.textContent).toBe('Village Cabin 2')
+      fireEvent.pointerEnter(trigger)
+      expect(screen.getByRole('tooltip').textContent).toContain('Teen 2')
+    })
+
+    it('never shows a cabin for a current-year Quest enrollment, even with an assigned bunk', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([QUEST_ATTENDEE])
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('sess-quest')
+            ? [{ expand: { bunk: { name: 'Trip Name' } } }]
+            : []
+        )
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+      expect(cabins).toHaveLength(1)
+      expect(cabins[0]?.textContent).toBe('')
+      // RULED CHANGE (owner, 2026-09-23, Quest option A): the journey row
+      // itself still never shows the trip as a cabin (scoped to `grid`) —
+      // but the quick-stats bar now DOES show it (asserted in the "Quest
+      // trip in the quick-stats bar" describe block below), so this check
+      // is scoped rather than global as it was pre-ruling.
+      expect(within(grid).queryByText('Trip Name')).not.toBeInTheDocument()
+    })
+  })
+
+  // I1 (review, kindred#2753): b1a9f1f7 blanked a Quest enrollment's
+  // bunkName via currentYearCabin (Quest never carries a cabin), but the
+  // multi-enrollment Quick Stats branch (:914-941) was not updated — a null
+  // bunkName there fell straight into the "(unassigned)" bucket, the same
+  // amber label a genuinely-unplaced main/embedded/ag enrollment gets. A
+  // camper enrolled in a summer session AND a Quest trip now read "Quest …
+  // (unassigned)" on the summer board, even though the trip is assigned.
+  // Fix: gate "(unassigned)" on isAtCampSessionType(enrollment.sessionType),
+  // the same rule the journey row (`currentYearRows`) already applies.
+  //
+  // RULED CHANGE (owner, 2026-09-23, Quest option A): b1a9f1f7 blanked the
+  // trip everywhere, including this bar. The owner reversed that HERE only
+  // (journey rows still never show it, per the test above): the quick-stats
+  // bar now shows the trip beside the session chip, without a cabin (Home)
+  // icon, e.g. "Session 901 · Trip Name" — I1's "(unassigned)" fix still
+  // holds, so only the "shows nothing" half of the old assertion changes.
+  describe('Quick Stats bar — a Quest enrollment among multiple current enrollments (I1 + Quest-A)', () => {
+    const QUEST_ATTENDEE_2: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-quest-2',
+      session: 'sess-quest-2',
+      expand: {
+        session: { id: 'sess-quest-2', cm_id: 901, name: 'Session 901', session_type: 'quest' },
+      },
+    }
+
+    it('shows the Quest trip beside its chip, without ever mislabeling it "(unassigned)"', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, QUEST_ATTENDEE_2])
+      // The main session (sess-1) has its own real cabin, so the ONLY
+      // candidate left for a spurious "(unassigned)" is the Quest entry.
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('sess-quest-2')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Trip Name' } } }])
+        }
+        if (filter.includes('sess-1')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Cabin 3' } } }])
+        }
+        return Promise.resolve([])
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).queryByText('(unassigned)')).not.toBeInTheDocument()
+      expect(within(quickStatsBar).getByText(/Trip Name/)).toBeInTheDocument()
+      // The real cabin (sess-1) still gets its Home icon in the bar; Quest's
+      // trip is a sibling text node with no icon of its own — one Home icon
+      // in the quick-stats bar (the journey rows below have their own).
+      expect(quickStatsBar.querySelectorAll('.lucide-home')).toHaveLength(1)
+      // "Cabin 3" shares a text node with "Session 1" (no wrapping element
+      // between the session name and the Home-icon cabin text) — a regex
+      // substring match, not an exact one.
+      expect(within(quickStatsBar).getByText(/Cabin 3/)).toBeInTheDocument()
+    })
+  })
+
+  // Owner ruling 2026-09-23: a camper enrolled in more than one summer
+  // session this year showed EVERY enrollment's chip in the quick-stats bar,
+  // which wrapped onto two lines. The board modal now shows only the
+  // enrollment for the session the modal was opened from (`openedFromSessionCmId`,
+  // threaded from the caller's own board-session context) — the full camper
+  // page is unaffected (it never receives this prop).
+  describe('Quick Stats bar — multi-session campers show only the opened session (owner ruling 2026-09-23)', () => {
+    const SESSION_2_ATTENDEE: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-session-2',
+      session: 'sess-2',
+      expand: {
+        session: { id: 'sess-2', cm_id: 2002, name: 'Session 2a', session_type: 'main' },
+      },
+    }
+
+    it("shows only the opened session's chip when the camper has two current enrollments", async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, SESSION_2_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+
+      render(
+        <CamperDetailsPanel camperId="100" onClose={mockOnClose} openedFromSessionCmId={2002} />
+      )
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
+      expect(within(quickStatsBar).queryByText('Session 1')).not.toBeInTheDocument()
+    })
+
+    it('keeps the full chip list when the panel does not know which session opened it', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, SESSION_2_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).getByText('Session 1')).toBeInTheDocument()
+      expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
+    })
+
+    it("keeps the full chip list when the opened session is not among the camper's current enrollments", async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE, SESSION_2_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+
+      render(
+        <CamperDetailsPanel camperId="100" onClose={mockOnClose} openedFromSessionCmId={9999} />
+      )
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      const quickStatsBar = await screen.findByTestId('quick-stats-bar')
+      expect(within(quickStatsBar).getByText('Session 1')).toBeInTheDocument()
+      expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
+    })
+  })
+
+  // Q8 (owner, 2026-09-22 late): every sidebar handles the journey the SAME
+  // way (`journeyDisplayState`, camper/journeyRowModel.ts) — rows that are
+  // already here (the board's own current-year enrollments) render
+  // immediately; the spinner is only for the true "nothing yet" case.
+  //
+  // RULED CHANGE from CR #3 (kindred#2753): CR #3 made the modal show a
+  // spinner for the WHOLE section whenever the shared feed was loading or
+  // errored, even though the board's own current-year rows (Emma's
+  // "Session 1", unassigned) were already in hand — the exact regression Q8
+  // reverses on the camper record (commit 16e0edcd). The modal had not
+  // followed that reversal until now.
+  describe('Camp Journey — loading and error states (Q8)', () => {
+    it('shows the current-year row immediately while the feed loads, no spinner', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
+        isLoading: true,
+        error: null,
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(within(grid).getByText('Unassigned')).toBeInTheDocument()
+      expect(within(grid).getByText('Now')).toBeInTheDocument()
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+    })
+
+    it('shows the spinner only when there are no current-year rows either', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([])
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
+        isLoading: true,
+        error: null,
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.queryByTestId('journey-rows')).not.toBeInTheDocument()
+    })
+
+    it('shows the current-year rows with the muted error line below them when the feed errors', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
+        isLoading: false,
+        error: new Error('boom'),
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(within(grid).getByText('Unassigned')).toBeInTheDocument()
+      expect(within(grid).getByText('Now')).toBeInTheDocument()
+      expect(await screen.findByText("Couldn't load past years")).toBeInTheDocument()
+    })
+
+    it('shows only the muted error line when there are no rows at all', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([])
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
+        isLoading: false,
+        error: new Error('boom'),
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      expect(await screen.findByText("Couldn't load past years")).toBeInTheDocument()
+      expect(screen.queryByTestId('journey-rows')).not.toBeInTheDocument()
+    })
+  })
+
+  // The quick-stats bar shows the shared journey count line instead of
+  // CampMinder's bare "N years".
+  describe('Quick stats — journey count line', () => {
+    // RULED CHANGE (owner, 2026-09-22 late, Q11): this test used to expect
+    // the whole line ("3 summers · 1 family weekend"), which wrapped in the
+    // board's narrow quick-stats bar. The board modal now shows the SUMMERS
+    // part only — family weekends are not germane to bunking; the full camper
+    // record keeps the whole line.
+    it('shows only the summers part of the shared count line', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([], { summers: 5, familyWeekends: 3, adultWeekends: 1 })
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      expect(await screen.findByText('5 summers')).toBeInTheDocument()
+      expect(screen.queryByText(/family weekend/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/adult weekend/)).not.toBeInTheDocument()
+      // Emma's years_at_camp is 2 — the old bare "2 years" stat is gone.
+      expect(screen.queryByText('2 years')).not.toBeInTheDocument()
+    })
+
+    it('shows no count line when summers is zero, whatever the weekends', async () => {
+      setupDeclinedRequestMocks()
+      mockUseCamperJourney.mockReturnValue(
+        journeyWith([], { summers: 0, familyWeekends: 2, adultWeekends: 1 })
+      )
+
+      const { container } = render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.queryByText(/weekend/)).not.toBeInTheDocument()
+      // Only the Camp Journey section header's TreePine is left.
+      expect(container.querySelectorAll('.lucide-tree-pine')).toHaveLength(1)
+    })
+
+    it('shows no count line when every count is zero', async () => {
+      setupDeclinedRequestMocks()
+
+      const { container } = render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(screen.queryByText('2 years')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(/^\d+ (summers?|family weekends?|adult weekends?)/)
+      ).not.toBeInTheDocument()
+      // The whole stat is gone, icon included: the only TreePine left is the
+      // Camp Journey section header's.
+      expect(container.querySelectorAll('.lucide-tree-pine')).toHaveLength(1)
+    })
+  })
+
+  // Owner ruling 2026-09-22: the board's Siblings section lists siblings by
+  // the camper record's rule (useSiblings, child viewer) — enrolled only, kid
+  // programs including family camp and TLI/SCIT, no grade filter, and never
+  // a family-camp day group as a cabin. The pocketbase mocks below apply the
+  // parts of each filter that matter, as PocketBase would server-side.
+  describe("Siblings — the camper record's rule", () => {
+    const HOUSEHOLD = 555
+    const EMMA_H = mockPerson({ ...EMMA, household_id: HOUSEHOLD })
+    const SAM = mockPerson({
+      id: 'pb-sam',
+      cm_id: 3000002,
+      first_name: 'Sam',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 0,
+      age: 4.03,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const OLIVIA = mockPerson({
+      id: 'pb-olivia',
+      cm_id: 3000003,
+      first_name: 'Olivia',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 4,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const DAVID = mockPerson({
+      id: 'pb-david',
+      cm_id: 3000004,
+      first_name: 'David',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 0,
+      age: 44.02,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+
+    const attendee = (
+      personCmId: number,
+      status: string,
+      session: { id: string; name: string; session_type: string }
+    ) => ({
+      id: `att-${String(personCmId)}`,
+      person_id: personCmId,
+      status,
+      status_id: status === 'enrolled' ? 2 : 4,
+      year: 2025,
+      expand: { session: { cm_id: 1, start_date: '2025-06-01', ...session } },
+    })
+
+    beforeEach(() => {
+      mockGetListPersons.mockResolvedValue({ items: [EMMA_H], totalItems: 1 })
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          const members = [SAM, OLIVIA, DAVID]
+          return Promise.resolve(
+            filter.includes('grade > 0') ? members.filter((m) => m.grade > 0) : members
+          )
+        }
+        return Promise.resolve([EMMA_H])
+      })
+      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        const allows = (type: string) => filter.includes(`session.session_type = "${type}"`)
+        const enrolledOnly = filter.includes('status_id = 2')
+        if (filter.includes(`person_id = ${String(SAM.cm_id)}`)) {
+          // A family-camp-only preschooler.
+          return Promise.resolve(
+            allows('family')
+              ? [
+                  attendee(SAM.cm_id, 'enrolled', {
+                    id: 's-fc1',
+                    name: 'Family Camp 1',
+                    session_type: 'family',
+                  }),
+                ]
+              : []
+          )
+        }
+        if (filter.includes(`person_id = ${String(OLIVIA.cm_id)}`)) {
+          // Waitlisted for summer — never implies attendance.
+          return Promise.resolve(
+            enrolledOnly
+              ? []
+              : [
+                  attendee(OLIVIA.cm_id, 'waitlisted', {
+                    id: 's-2',
+                    name: 'Session 2',
+                    session_type: 'main',
+                  }),
+                ]
+          )
+        }
+        if (filter.includes(`person_id = ${String(DAVID.cm_id)}`)) {
+          // A parent, enrolled only in an adult program.
+          return Promise.resolve(
+            allows('adult')
+              ? [
+                  attendee(DAVID.cm_id, 'enrolled', {
+                    id: 's-ww',
+                    name: "Men's Weekend",
+                    session_type: 'adult',
+                  }),
+                ]
+              : []
+          )
+        }
+        return Promise.resolve([EMMA_ATTENDEE])
+      })
+      // CampMinder's bunk for a family-camp session is the day group.
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('pb-sam')
+            ? [{ expand: { bunk: { name: 'Acorns (with parents)' } } }]
+            : []
+        )
+      )
+    })
+
+    it('lists a family-camp-only sibling, a grade-0 preschooler included', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      expect(await screen.findByText('Sam Johnson')).toBeInTheDocument()
+      expect(screen.getByText('Siblings')).toBeInTheDocument()
+    })
+
+    it('leaves out a waitlisted sibling and a parent', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(screen.queryByText('Olivia Johnson')).not.toBeInTheDocument()
+      expect(screen.queryByText('David Johnson')).not.toBeInTheDocument()
+    })
+
+    it('never shows the family-camp day group as a cabin', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(screen.queryByText('Acorns (with parents)')).not.toBeInTheDocument()
+    })
+
+    it('shows no grade for a grade-0 sibling, like the camper record', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByText('Sam Johnson')
+      expect(screen.queryByText('0th')).not.toBeInTheDocument()
+    })
+
+    // Owner ruling 2026-09-22 (second visual pass): the board's line 2 shows
+    // summer/teen programs only (main, embedded, ag, quest, tli, scit).
+    // Family weekends are "not germane for bunking" here and stay visible
+    // only on the full camper record. Sam has no summer/teen program at all,
+    // so line 2 is omitted entirely -- not merely his cabin.
+    it('renders with no line 2 for a family-camp-only sibling', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Sam Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      expect(lines).toHaveLength(1)
+    })
+  })
+
+  // Owner ruling 2026-09-22 (mockup option "D"): a sibling row's line 2 lists
+  // every program the sibling is in, with that session's own cabin RIGHT
+  // AFTER it — the cabin moves off line 1 entirely. Mirrors the camper
+  // record's SiblingsPanel line 2 at the board's smaller sizes.
+  describe('Sibling row line 2 — one cabin per program (owner ruling 2026-09-22, option D)', () => {
+    const HOUSEHOLD = 777
+    const EMMA_H2 = mockPerson({ ...EMMA, household_id: HOUSEHOLD })
+    const NOAH = mockPerson({
+      id: 'pb-noah-j',
+      cm_id: 3000010,
+      first_name: 'Noah',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 7,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const AVA = mockPerson({
+      id: 'pb-ava',
+      cm_id: 3000011,
+      first_name: 'Ava',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 8,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const MIA = mockPerson({
+      id: 'pb-mia',
+      cm_id: 3000012,
+      first_name: 'Mia',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 0,
+      age: 4.05,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+    const LIAM = mockPerson({
+      id: 'pb-liam',
+      cm_id: 3000013,
+      first_name: 'Liam',
+      preferred_name: '',
+      last_name: 'Johnson',
+      grade: 10,
+      year: 2025,
+      household_id: HOUSEHOLD,
+    })
+
+    const attendee = (
+      personCmId: number,
+      session: { id: string; name: string; session_type: string; start_date?: string }
+    ) => ({
+      id: `att-${String(personCmId)}-${session.id}`,
+      person_id: personCmId,
+      status: 'enrolled',
+      status_id: 2,
+      year: 2025,
+      expand: { session: { cm_id: 1, start_date: '2025-06-01', ...session } },
+    })
+
+    beforeEach(() => {
+      mockGetListPersons.mockResolvedValue({ items: [EMMA_H2], totalItems: 1 })
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`household_id = ${String(HOUSEHOLD)}`)) {
+          return Promise.resolve([NOAH, AVA, MIA, LIAM])
+        }
+        return Promise.resolve([EMMA_H2])
+      })
+      mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes(`person_id = ${String(NOAH.cm_id)}`)) {
+          // Summer-only: one program, one cabin.
+          return Promise.resolve([
+            attendee(NOAH.cm_id, { id: 's-4', name: 'Session 4', session_type: 'main' }),
+          ])
+        }
+        if (filter.includes(`person_id = ${String(AVA.cm_id)}`)) {
+          // Summer + family camp: two programs, only the summer one has a cabin.
+          return Promise.resolve([
+            attendee(AVA.cm_id, { id: 's-3a', name: 'Session 3a', session_type: 'main' }),
+            attendee(AVA.cm_id, {
+              id: 's-fc1',
+              name: 'Family Camp 1',
+              session_type: 'family',
+              start_date: '2025-08-01',
+            }),
+          ])
+        }
+        if (filter.includes(`person_id = ${String(MIA.cm_id)}`)) {
+          // Family-camp-only: no cabin ever (kindred#2466).
+          return Promise.resolve([
+            attendee(MIA.cm_id, { id: 's-fc2', name: 'Family Camp 2', session_type: 'family' }),
+          ])
+        }
+        if (filter.includes(`person_id = ${String(LIAM.cm_id)}`)) {
+          // TWO germane programs (summer main + teen TLI) — both should
+          // show on line 2, separated by the bar (owner ruling 2026-09-22,
+          // "P3"), never a dot.
+          return Promise.resolve([
+            attendee(LIAM.cm_id, { id: 's-5', name: 'Session 5', session_type: 'main' }),
+            attendee(LIAM.cm_id, { id: 's-tli', name: 'TLI', session_type: 'tli' }),
+          ])
+        }
+        return Promise.resolve([EMMA_ATTENDEE])
+      })
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('pb-noah-j')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 12' } } }])
+        }
+        if (filter.includes('pb-ava')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 9' } } }])
+        }
+        return Promise.resolve([])
+      })
+    })
+
+    it("shows a summer sibling's session then its cabin on line 2, never the cabin on line 1", async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Noah Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const sessionLabel = getSessionDisplayNameFromString('Session 4', 'main')
+      const sessionEl = within(row).getByText(sessionLabel)
+      const cabinEl = within(row).getByText('Bunk 12')
+      expect(sessionEl).toBeInTheDocument()
+      expect(cabinEl).toBeInTheDocument()
+
+      // M4 (review): an overlong line 2 must end in an ellipsis, not clip
+      // mid-glyph — `text-overflow` does nothing on the flex row itself, so
+      // each text segment needs its own `min-w-0 truncate`.
+      expect(sessionEl.className).toContain('truncate')
+      expect(sessionEl.className).toContain('min-w-0')
+      expect(cabinEl.className).toContain('truncate')
+      expect(cabinEl.className).toContain('min-w-0')
+
+      // Line 1 (age • grade) and line 2 (programs) are the two `.mt-0.5`
+      // rows under the name; the cabin must be on line 2 only.
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      expect(lines).toHaveLength(2)
+      expect(lines[0]?.textContent ?? '').not.toContain('Bunk 12')
+      expect(lines[1]?.textContent ?? '').toContain('Bunk 12')
+      // Owner ruling 2026-09-22 ("P3"): no dot between a session and its OWN
+      // cabin -- a dot here read as ambiguous once a row could carry more
+      // than one program.
+      expect(lines[1]?.textContent ?? '').not.toContain('•')
+    })
+
+    // Ruled change 2026-09-22 (second visual pass): the board's line 2 now
+    // shows summer/teen programs only, so Ava's Family Camp 1 no longer
+    // appears here at all -- it previously did, as this test's original name
+    // said. Her summer session and its cabin are unaffected.
+    it('shows a summer + family-camp sibling as session then cabin only -- family camp does not appear on the board', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Ava Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const sessionLabel = getSessionDisplayNameFromString('Session 3a', 'main')
+      const familyLabel = getSessionDisplayNameFromString('Family Camp 1', 'family')
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      const line2Text = lines[lines.length - 1]?.textContent ?? ''
+
+      expect(line2Text).toContain(sessionLabel)
+      expect(line2Text).toContain('Bunk 9')
+      expect(line2Text).not.toContain(familyLabel)
+      expect(within(row).queryByText(familyLabel)).not.toBeInTheDocument()
+      // Owner ruling 2026-09-22 ("P3"): with only her summer session left
+      // after the family-camp filter, there is no program transition left to
+      // separate — no dot between her session and its cabin either.
+      expect(line2Text).not.toContain('•')
+
+      // M5 (review): her cabin must appear exactly once in her row — never
+      // duplicated between line 1 and line 2, and never rendered twice on
+      // line 2 itself.
+      expect(within(row).getAllByText('Bunk 9')).toHaveLength(1)
+    })
+
+    // New sibling fixture (Liam), owner ruling 2026-09-22 ("P3"): a
+    // transition between two DIFFERENT germane programs gets a vertical bar,
+    // never a dot -- the dot is reserved for line 1's age • grade join.
+    it('separates two germane programs with a vertical bar, never a dot', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Liam Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const sessionLabel = getSessionDisplayNameFromString('Session 5', 'main')
+      const tliLabel = getSessionDisplayNameFromString('TLI', 'tli')
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      const line2Text = lines[lines.length - 1]?.textContent ?? ''
+
+      expect(line2Text).toContain(sessionLabel)
+      expect(line2Text).toContain(tliLabel)
+      expect(line2Text).not.toContain('•')
+      expect(within(row).getByText('|')).toBeInTheDocument()
+    })
+
+    // Ruled change 2026-09-22 (second visual pass): a family-camp-only
+    // sibling now renders NO line 2 at all -- previously (as this test's
+    // original name said) her family-camp program still showed with no
+    // cabin. Family weekends are "not germane for bunking" on the board.
+    it('renders no line 2 at all for a family-camp-only sibling', async () => {
+      // M5 (review): a bunk_assignments row exists for Mia even though she is
+      // family-camp-only — `useSiblings` must never look it up for her at
+      // all, because her PRIMARY session is family camp (kindred#2466). If it
+      // did, the mock below would hand back a cabin and the row would show
+      // one.
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('pb-noah-j')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 12' } } }])
+        }
+        if (filter.includes('pb-ava')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 9' } } }])
+        }
+        if (filter.includes('pb-mia')) {
+          return Promise.resolve([{ expand: { bunk: { name: 'Bunk 99' } } }])
+        }
+        return Promise.resolve([])
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      const nameEl = await screen.findByText('Mia Johnson')
+      const row = nameEl.closest('a')
+      if (!row) throw new Error('sibling row anchor not found')
+
+      const familyLabel = getSessionDisplayNameFromString('Family Camp 2', 'family')
+      expect(within(row).queryByText(familyLabel)).not.toBeInTheDocument()
+      expect(row.querySelector('.lucide-calendar')).not.toBeInTheDocument()
+      expect(row.querySelector('.lucide-home')).not.toBeInTheDocument()
+      expect(screen.queryByText('Bunk 99')).not.toBeInTheDocument()
+      const lines = row.querySelectorAll('[class*="mt-0.5"]')
+      expect(lines).toHaveLength(1)
+
+      // Not merely hidden — the lookup itself must never run for her.
+      const calledForMia = mockGetFullListBunkAssignments.mock.calls.some((call: unknown[]) => {
+        const opts = call[0] as { filter?: string } | undefined
+        return (opts?.filter ?? '').includes('pb-mia')
+      })
+      expect(calledForMia).toBe(false)
     })
   })
 

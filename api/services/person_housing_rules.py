@@ -61,7 +61,11 @@ class AdultWeekend:
 
 @dataclass(frozen=True, slots=True)
 class AttributedCabin:
-    """A weekend and its cabin, named as recorded that year."""
+    """A weekend and its cabin, per THIS rule alone: `cabin_name` is the raw
+    string, outer whitespace trimmed -- `person_housing_service` overrides it
+    with today's registry name (`display_name`, kindred#2332) before it
+    reaches the wire, so this field is never the published label on its own.
+    `cabin_name_raw` is the untouched value."""
 
     year: int
     session_cm_id: int
@@ -109,8 +113,10 @@ def attribute_adult_cabins(
     Collapsing happens PER WEEKEND, AFTER assignment, not once over the whole
     year before assignment: collapsing first would keep only the later of two
     same-place writes and hand that single survivor to whichever weekend it
-    landed in, starving the earlier weekend of a value it genuinely had. The
-    label is the raw string, outer whitespace trimmed -- never today's name.
+    landed in, starving the earlier weekend of a value it genuinely had. This
+    rule's own `cabin_name` is the raw string, outer whitespace trimmed --
+    `person_housing_service` is what resolves today's registry name for the
+    wire, not this function.
     """
     weekends_by_year: dict[int, dict[int, AdultWeekend]] = defaultdict(dict)
     for weekend in weekends:
@@ -133,6 +139,8 @@ def attribute_adult_cabins(
                     AttributedCabin(
                         year=year,
                         session_cm_id=weekend.session_cm_id,
+                        # This rule's own label -- the service overrides it
+                        # with today's registry name before publishing.
                         cabin_name=winner.raw.strip(),
                         cabin_name_raw=winner.raw,
                     )

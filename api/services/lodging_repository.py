@@ -65,6 +65,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from api.constants.collections import (
     ATTENDEES,
+    BUNK_ASSIGNMENTS,
     CAMP_SESSIONS,
     FAMILY_CAMP_ADULTS,
     FAMILY_CAMP_MEDICAL,
@@ -94,6 +95,7 @@ from api.services.lodging_rules import (
 )
 from api.services.person_housing_rules import ADULT_WEEKEND_CABIN_FIELD_CM_IDS
 from api.utils.pb_filters import pb_escape
+from api.utils.session_metrics import SUMMER_TEEN_TYPES
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -742,6 +744,33 @@ class LodgingRepository:
             query_params={
                 "filter": f'person_id = {person_cm_id} && session.session_type = "adult" && {ACTIVE_ENROLLED_FILTER}',
                 "expand": "session",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_teen_assignments(self, person_cm_id: int) -> list[Any]:
+        """One person's TLI/SCIT bunk assignments, every season (camper journey).
+
+        Owner ruling 2026-09-22 (late, Q9). CampMinder's "bunk" for a teen
+        program is usually a program GROUP rather than a cabin, and only the
+        registry can tell the two apart -- so the strings are read here and
+        resolved beside the adult cabins, through the one resolver
+        (kindred#2332), never by a client copy.
+
+        TLI and SCIT only. Quest is never read: its "bunk" is a trip name, and
+        a Quest row never shows a cabin. Keyed on the person's CampMinder id
+        through the relation (`person.cm_id`), the same cross-season thread
+        the journey's own bunk read uses; no year predicate, like the other
+        person reads beside it.
+        """
+        if person_cm_id <= 0:
+            return []
+        type_filter = " || ".join(f'session.session_type = "{t}"' for t in SUMMER_TEEN_TYPES)
+        return await self._page(
+            BUNK_ASSIGNMENTS,
+            query_params={
+                "filter": f"person.cm_id = {person_cm_id} && ({type_filter})",
+                "expand": "session,bunk",
                 "sort": STABLE_SORT,
             },
         )

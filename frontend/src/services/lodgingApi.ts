@@ -12,6 +12,7 @@ import type {
   HouseholdJourney,
   HouseholdMedical,
   LodgingWriteResult,
+  PersonHousing,
   ScenarioCompare,
   SessionAttributionConflicts,
   WeekendRoster,
@@ -450,6 +451,16 @@ export async function fetchHouseholdJourney(
   const response = await fetchWithAuth(`${API_BASE}/households/${String(householdCmId)}/journey`)
   if (!response.ok) throw await toError(response, 'Failed to load household history')
   return response.json() as Promise<HouseholdJourney>
+}
+
+/** One person's adult-weekend cabins, attributed per weekend (adult camper journey). */
+export async function fetchPersonHousing(
+  fetchWithAuth: FetchWithAuth,
+  personCmId: number
+): Promise<PersonHousing> {
+  const response = await fetchWithAuth(`${API_BASE}/persons/${String(personCmId)}/housing`)
+  if (!response.ok) throw await toError(response, 'Failed to load adult weekend housing')
+  return response.json() as Promise<PersonHousing>
 }
 
 /**

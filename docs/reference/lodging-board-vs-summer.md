@@ -518,7 +518,7 @@ pipeline cannot take that filename.
 | Unplaced badge | `FloatingUnassignedBadge.tsx` | `FloatingUnplacedBadge.tsx` | ✅ SHIPPED |
 | Utilisation / session stats | `BunkUtilizationBar.tsx`, `SessionStats.tsx` | `WeekendStatsBar.tsx` | ✅ SHIPPED |
 | Detail panel + alerts | `CamperDetailsPanel.tsx`, `CamperAlertSection.tsx` | `FamilyDetailsPanel.tsx`, `AccessibilityFlagList.tsx` | ✅ SHIPPED |
-| Tooltip | `CamperTooltip.tsx` | `ui/Tooltip.tsx` (shared) | ✅ SHIPPED |
+| Tooltip | `ui/Tooltip.tsx` — `CamperTooltip.tsx` deleted 2026-09-22, it was never rendered anywhere | `ui/Tooltip.tsx`, the same file | ✅ SHIPPED, shared component |
 | Year-over-year journey | `CamperDetail.tsx` camp journey | `HouseholdJourneyCard.tsx` | ✅ SHIPPED |
 | **Findability during drag** | `BunkCard` applies `pointer-events-none opacity-40` (DIM = refusal) to every invalid bunk | `needsFit.ts` grades fit with a HATCH (`background-image`), never a dim — kindred#1912, shipped by kindred#2211, refined into a three-state model by kindred#2528 (2026-08-21) | ✅ SHIPPED, **deliberately not the same mark** — see below |
 | **Request pipeline** (CSV → parse → review → merge/split → resolve) | `BunkRequestsUpload`, `RequestReviewPanel`, `MergeRequestsModal`, `SplitRequestModal`, `bunking/sync/bunk_request_processor/` | raw text and per-source blocks only (`fetch_request_text_values`, `_request_blocks` in `api/services/lodging_roster_service.py`); no parser, no resolved edge | ❌ **ABSENT — THE GATE.** Deferred yes, not scheduled (owner, 2026-08-17). See above |

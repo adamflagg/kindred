@@ -856,6 +856,7 @@ export default function BunkSocialGraphModal({
           <CamperDetailsPanel
             camperId={selectedCamperId}
             onClose={() => setSelectedCamperId(null)}
+            openedFromSessionCmId={sessionCmId}
             {...(bunkCampers != null && { bunkCampers })}
           />
         )}

@@ -108,3 +108,41 @@ describe('IdentityPanel cohort drill-down exit fade (kindred#2529)', () => {
     })
   })
 })
+
+describe('IdentityPanel adult branch', () => {
+  beforeEach(() => {
+    mockUseCamperCohorts.mockReturnValue({ cohorts: null, isLoading: false })
+  })
+
+  it('hides the School row when asked', () => {
+    render(
+      <IdentityPanel
+        camper={camper}
+        location={null}
+        congregation={null}
+        pronouns=""
+        defaultExpanded
+        hideSchool
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText('School')).toBeNull()
+    expect(screen.getByText('Location')).toBeInTheDocument()
+  })
+
+  it('shows the School row by default', () => {
+    render(
+      <IdentityPanel
+        camper={camper}
+        location={null}
+        congregation={null}
+        pronouns=""
+        defaultExpanded
+      />,
+      {
+        wrapper,
+      }
+    )
+    expect(screen.getByText('School')).toBeInTheDocument()
+  })
+})

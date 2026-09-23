@@ -511,6 +511,7 @@ export default function SolverDebugImpossibilityModal({
               <LazyCamperDetailsPanel
                 camperId={selectedCamperId}
                 onClose={() => setSelectedCamperId(null)}
+                openedFromSessionCmId={sessionCmId}
               />
             </Suspense>
           </ErrorBoundary>

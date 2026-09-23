@@ -199,6 +199,7 @@ export default function SolverDiagnosticsModal({
               <LazyCamperDetailsPanel
                 camperId={selectedCamperId}
                 onClose={() => setSelectedCamperId(null)}
+                openedFromSessionCmId={sessionCmId}
               />
             </Suspense>
           </ErrorBoundary>

@@ -8,6 +8,7 @@ import CamperCard from './CamperCard'
 import { useBunkRequestsFromContext } from '../hooks'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import { useYear } from '../hooks/useCurrentYear'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { BunkUtilizationBar } from './BunkUtilizationBar'
@@ -383,8 +384,8 @@ function BunkCard({
                       ageGapWarning ? 'font-medium text-red-600' : 'text-muted-foreground'
                     )}
                   >
-                    Ages: {(getDisplayAgeForYear(youngest, viewingYear) ?? 0).toFixed(2)} -{' '}
-                    {(getDisplayAgeForYear(oldest, viewingYear) ?? 0).toFixed(2)}
+                    Ages: {displayCampMinderAge(getDisplayAgeForYear(youngest, viewingYear) ?? 0)} -{' '}
+                    {displayCampMinderAge(getDisplayAgeForYear(oldest, viewingYear) ?? 0)}
                     {ageGapWarning && ' ⚠️'}
                   </div>
                 )

@@ -297,18 +297,21 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 
-// kindred#2466: CamperDetailsPanel now calls useHouseholdJourney (to show a
-// family-camp row's resolved cabin instead of the CampMinder day group),
-// which needs an AuthProvider via useApiWithAuth — absent here, since these
-// tests render CamperDetailsPanel with no AuthContext mock at all. Stubbed
-// out; none of these integration tests concern family-camp housing.
-vi.mock('../hooks/useWeekendRoster', () => ({
-  useHouseholdJourney: () => ({ data: undefined }),
+// CamperDetailsPanel reads its Camp Journey rows and count line from the one
+// shared journey feed (useCamperJourney), whose household and
+// housing reads need an AuthProvider — absent here. Stubbed to an empty feed;
+// none of these integration tests concern the journey.
+vi.mock('../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: () => ({
+    rows: [],
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+    isLoading: false,
+    error: null,
+  }),
 }))
 
-// Same reason, one layer up: CamperDetailsPanel gates that household read on
-// `useAuth().isLoading` (frontend/CLAUDE.md: "useAuth().isLoading first"), and
-// these tests render it with no AuthProvider, so the real `useAuth` throws.
+// AllCamperRequestsModal (rendered by the panel) calls `useAuth()`, and these
+// tests render with no AuthProvider, so the real `useAuth` throws.
 // `isLoading: false` is the settled-auth case; none of these tests concern auth.
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false }),

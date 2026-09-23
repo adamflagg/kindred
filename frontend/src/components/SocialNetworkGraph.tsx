@@ -885,6 +885,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             <CamperDetailsPanel
               camperId={selectedNodeId.toString()}
               onClose={() => setSelectedNodeId(null)}
+              openedFromSessionCmId={dataSessionCmId}
               {...(bunkCampers != null && { bunkCampers })}
             />
           )}

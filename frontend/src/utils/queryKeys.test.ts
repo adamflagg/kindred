@@ -6,8 +6,10 @@
  *   `person_id =` filter that doesn't exist on `original_bunk_requests`; PR
  *   #1338 removed the only caller and the audit (#1339) removed the dead
  *   factory itself.
- * - Pins the `year` argument on `camperHistory` so filtering by year does
- *   not reuse a cache slot keyed only by personId.
+ * - `camperHistory` and its tests were removed once the shared camper journey
+ *   feed (`camperJourney`, keyed by person and year) replaced its last callers.
+ * - `camperSiblingsPanel` and its tests were removed once the board's camper
+ *   panel moved to `useSiblings`, the camper record's sibling hook.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -25,33 +27,6 @@ describe('queryKeys.originalBunkRequestsByRequesterCmId', () => {
     const populated = queryKeys.originalBunkRequestsByRequesterCmId(12345, 2025)
     const empty = queryKeys.originalBunkRequestsByRequesterCmId(undefined, 2025)
     expect(populated).not.toEqual(empty)
-  })
-})
-
-describe('queryKeys.camperHistory', () => {
-  it('includes year in the key so per-year filters do not collide', () => {
-    const a = queryKeys.camperHistory('p-1', 2024)
-    const b = queryKeys.camperHistory('p-1', 2025)
-    expect(a).not.toEqual(b)
-  })
-
-  it('key contains both personId and year', () => {
-    const key = queryKeys.camperHistory('p-1', 2025)
-    expect(key).toContain('p-1')
-    expect(key).toContain(2025)
-  })
-})
-
-describe('queryKeys.camperSiblingsPanel', () => {
-  it('accepts a number householdId and produces a key with it', () => {
-    const key = queryKeys.camperSiblingsPanel(42, 'p-1', 2025)
-    expect(key).toContain(42)
-    expect(key).toContain('p-1')
-    expect(key).toContain(2025)
-  })
-
-  it('accepts undefined householdId without throwing', () => {
-    expect(() => queryKeys.camperSiblingsPanel(undefined, 'p-1', 2025)).not.toThrow()
   })
 })
 
@@ -196,6 +171,22 @@ describe('invalidateLodgingRegistryQueries', () => {
     // By PREFIX: the real key is ['household-journey', householdCmId] and the
     // admin panel knows no household at all.
     expect(queryKeys.householdJourney(2000001).slice(0, 1)).toEqual(journey)
+  })
+
+  it('invalidates the person housing feed, since an alias edit can change which cabin strings resolve to one place', () => {
+    // Adult camper journey (Task 9): `usePersonHousing` attributes cabins
+    // server-side off the lodging alias table. Renaming an alias can move
+    // which weekend a cabin string resolves to without any placement write
+    // happening at all, so this needs the same registry-edit invalidation
+    // `householdJourneyPrefix` gets above.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const personHousing = client.keys.find((k) => k[0] === 'person-housing')
+    expect(personHousing).toHaveLength(1)
+    // By PREFIX: the real key is ['person-housing', personCmId] and the
+    // admin panel knows no person at all.
+    expect(queryKeys.personHousing(3000001).slice(0, 1)).toEqual(personHousing)
   })
 
   it('invalidates the weekend keys by PREFIX, not by exact key', () => {

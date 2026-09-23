@@ -8,6 +8,7 @@ import { StatusBadge } from './StatusBadge'
 import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
+import { displayCampMinderAge } from '../utils/age'
 import { getSessionDisplayName, getParentSessionId } from '../utils/sessionDisplay'
 import {
   getGenderIdentityDisplay,
@@ -719,7 +720,8 @@ export default function AllCampersView() {
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <span className="text-sm text-stone-500 dark:text-stone-400">
                             Grade {camper.grade} ·{' '}
-                            {(getDisplayAgeForYear(camper, currentYear) ?? 0).toFixed(2)} yrs
+                            {displayCampMinderAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}{' '}
+                            yrs
                           </span>
                           {genderIdentity && genderIdentity !== 'Unknown' && (
                             <span

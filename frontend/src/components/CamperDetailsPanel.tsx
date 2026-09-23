@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { Fragment, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -17,7 +17,6 @@ import {
 import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import FirstPickBadge from './camper/FirstPickBadge'
 import { pb } from '../lib/pocketbase'
-import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge } from './StatusBadge'
 import {
   getGenderIdentityDisplay,
@@ -31,12 +30,18 @@ import {
   getSessionDisplayNameFromString,
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
-import { buildSummerSessionTypeFilter, isFamilySessionType } from '../utils/sessionTypePredicates'
+import {
+  buildSummerSessionTypeFilter,
+  isFamilySessionType,
+  isAdultSessionType,
+  isAtCampSessionType,
+  isQuestSessionType,
+} from '../utils/sessionTypePredicates'
+import { currentYearCabin } from '../hooks/camper/teenCabinLabel'
 import type {
   PersonsResponse,
   AttendeesResponse,
   BunkRequestsResponse,
-  BunkAssignmentsResponse,
   BunksResponse,
   CampSessionsResponse,
 } from '../types/pocketbase-types'
@@ -53,16 +58,25 @@ import {
 import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
-import { fetchCamperJourney, fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
-import { useHouseholdJourney } from '../hooks/useWeekendRoster'
+import { fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
+import { useCamperJourney } from '../hooks/camper/useCamperJourney'
+import { useSiblings } from '../hooks/camper/useSiblings'
+import { EMPTY_JOURNEY_COUNTS, journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
-import type { HistoricalRecord } from '../hooks/camper/types'
+import type { SiblingWithEnrollment } from '../hooks/camper/types'
+import { JourneyRows } from './camper/JourneyRows'
+import {
+  journeyDisplayState,
+  journeyRowStatus,
+  journeyRowsFromHistory,
+  type JourneyRow,
+} from './camper/journeyRowModel'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
-import { getLocationDisplay } from '../utils/addressUtils'
+import { personLocation } from '../utils/addressUtils'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
 import { BunkRequestRow } from './BunkRequestRow'
 import { CamperCohortsSection } from './CamperCohortsSection'
@@ -146,6 +160,17 @@ interface CamperDetailsPanelProps {
    * PB query.
    */
   getBunkForPerson?: (cmId: number) => number | null
+  /**
+   * The CampMinder session id of the board the modal was opened from (owner
+   * ruling 2026-09-23). A camper enrolled in more than one current summer
+   * session shows every enrollment's chip in the quick-stats bar by
+   * default, which wraps onto two lines — when the caller knows which board
+   * session it opened from, the bar narrows to just that one. Omit from
+   * callers with no single board session in view (the full-page camper
+   * record, and any panel instance the owner didn't ask to change) to keep
+   * today's full list.
+   */
+  openedFromSessionCmId?: number
 }
 
 // Interface for current-year enrollment (one per attendee record)
@@ -155,7 +180,22 @@ interface CurrentEnrollment {
   sessionCmId: number
   parentId: number
   bunkName: string | null
+  /**
+   * The as-typed string, when it disagrees with `bunkName` (Q9, owner ruling
+   * 2026-09-22 late) — set only for a resolved TLI/SCIT row. Rendered as a
+   * hover tooltip, never inline.
+   */
+  bunkNameRecorded?: string
   attendeeStatus?: string
+  /**
+   * The Quest trip name (owner ruling 2026-09-23, Quest option A) — set only
+   * for a Quest enrollment, from the raw bunk value `currentYearCabin`
+   * itself always blanks (Quest never has a housing cabin). Read only by the
+   * quick-stats bar, which shows it beside the chip with no Home icon;
+   * journey rows keep reading `bunkName`/`bunkNameRecorded`, so they are
+   * untouched by this field.
+   */
+  questTripName?: string
 }
 
 // Hoisted out of CamperDetailsPanel render to avoid React unmounting/remounting
@@ -204,6 +244,54 @@ function SectionHeader({
   )
 }
 
+/**
+ * True for a session type germane to BUNKING on the board's Siblings line 2
+ * (owner ruling 2026-09-22, second visual pass): main, embedded, ag, quest,
+ * tli, scit — everything except family and adult. Family weekends are "not
+ * germane for bunking" and stay visible only on the full camper record
+ * (`components/camper/SiblingsPanel.tsx`, which does NOT filter this way —
+ * its line 2 lists every program).
+ */
+function isBoardGermaneSessionType(sessionType: string | null | undefined): boolean {
+  return !isFamilySessionType(sessionType) && !isAdultSessionType(sessionType)
+}
+
+/** One program entry on a sibling row's line 2, after the board's germane filter. */
+interface SiblingLine2Entry {
+  key: string
+  name: string
+  sessionType: string
+  bunkName?: string | null | undefined
+}
+
+/**
+ * The programs a sibling row's line 2 may show, filtered to
+ * `isBoardGermaneSessionType`. Returns `[]` for a sibling whose only
+ * program(s) are family/adult (a family-camp-only preschooler, or a parent)
+ * — the caller omits line 2 entirely rather than rendering an empty one.
+ * The primary session's cabin (`sibling.bunkName`) travels with it only when
+ * the primary itself is germane; `useSiblings` never looks up a cabin for a
+ * family/adult primary session at all (kindred#2466), nor for a TLI/SCIT or
+ * Quest one, whose "bunk" is a program group or a trip name (Q9).
+ */
+function siblingLine2Entries(sibling: SiblingWithEnrollment): SiblingLine2Entry[] {
+  const entries: SiblingLine2Entry[] = []
+  if (sibling.session && isBoardGermaneSessionType(sibling.session.session_type)) {
+    entries.push({
+      key: 'primary',
+      name: sibling.session.name,
+      sessionType: sibling.session.session_type,
+      bunkName: sibling.bunkName,
+    })
+  }
+  sibling.additionalSessions?.forEach((s, idx) => {
+    if (isBoardGermaneSessionType(s.session_type)) {
+      entries.push({ key: `additional-${String(idx)}`, name: s.name, sessionType: s.session_type })
+    }
+  })
+  return entries
+}
+
 export default function CamperDetailsPanel({
   camperId,
   onClose,
@@ -212,6 +300,7 @@ export default function CamperDetailsPanel({
   bunkCampers,
   assignedBunkCmId,
   getBunkForPerson,
+  openedFromSessionCmId,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -367,11 +456,71 @@ export default function CamperDetailsPanel({
   })
 
   const camper = camperData?.camper
-  const allEnrollments = camperData?.enrollments ?? []
+
+  // The one shared journey feed — the same rows and counts as the camper
+  // record. Read here (ahead of its old position) so its registry-resolved
+  // teen-cabin map is available to the current-year correction below.
+  const {
+    rows: historicalData,
+    counts: journeyCounts,
+    isLoading: journeyLoading,
+    error: journeyError,
+    teenCabinsByWeekend,
+  } = useCamperJourney(camperId ? parseInt(camperId, 10) : null, currentYear)
+
+  // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): a TLI/SCIT
+  // enrollment's cabin comes ONLY from the registry-resolved teen-cabin map —
+  // never the raw CampMinder bunk (usually a program group, "SCIT A"/"TLI").
+  // Quest never shows a cabin at all; its "bunk" is a trip name. Applied here,
+  // over the raw fetch's `enrollments`, rather than baked into the queryFn
+  // above — that query's key does not include `teenCabinsByWeekend`, so a
+  // teen-cabin read that settles AFTER this query has already cached would
+  // otherwise never get picked up.
+  const allEnrollments: CurrentEnrollment[] = useMemo(() => {
+    const raw = camperData?.enrollments ?? []
+    return raw.map((e) => {
+      const cabin = currentYearCabin(
+        e.sessionType,
+        currentYear,
+        e.sessionCmId,
+        e.bunkName,
+        teenCabinsByWeekend
+      )
+      return {
+        ...e,
+        bunkName: cabin.bunkName ?? null,
+        ...(cabin.bunkNameRecorded !== undefined
+          ? { bunkNameRecorded: cabin.bunkNameRecorded }
+          : {}),
+        // Quest option A (owner ruling 2026-09-23): `e.bunkName` here is
+        // still the RAW pre-correction value (the trip name, from the same
+        // attendee/assignment fetch as `cabin` above) — `currentYearCabin`
+        // always blanks it for Quest, so this is the only place the trip
+        // name survives for the quick-stats bar to read.
+        ...(isQuestSessionType(e.sessionType) && e.bunkName ? { questTripName: e.bunkName } : {}),
+      }
+    })
+  }, [camperData?.enrollments, currentYear, teenCabinsByWeekend])
   // Show enrolled sessions only; if none enrolled, show best non-enrolled as fallback
   const currentEnrollments = toDisplayList(
     filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus)
   )
+
+  // Board modal ONLY (owner ruling 2026-09-23): a multi-summer-session
+  // camper's quick-stats bar shows only the enrollment for the session the
+  // modal was opened from — otherwise the chip row wraps onto two lines.
+  // Falls back to the full list when the panel doesn't know which session
+  // opened it, or when that session isn't among the camper's current
+  // enrollments (both defensive — real data always matches). Used ONLY by
+  // the quick-stats bar below; the journey rows and cohort/section context
+  // still read the full `currentEnrollments`.
+  const openedEnrollments = currentEnrollments.filter(
+    (e) => e.sessionCmId === openedFromSessionCmId
+  )
+  const quickStatsEnrollments =
+    openedFromSessionCmId !== undefined && openedEnrollments.length > 0
+      ? openedEnrollments
+      : currentEnrollments
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
@@ -384,28 +533,6 @@ export default function CamperDetailsPanel({
       return persons.items[0] ?? null
     },
     enabled: !!camperId,
-  })
-
-  // kindred#2466: a family-camp row shows the household's ACTUAL HOUSING
-  // (the resolved cabin, mirroring the weekend board's own
-  // HouseholdJourneyCard) rather than the CampMinder day group. `null` when
-  // the person has no household on file, which disables the query.
-  // ⚠️ Gated on `isAuthLoading`, not only on the id. `useHouseholdJourney`
-  // reads a PROTECTED endpoint through `fetchWithAuth`, and its own `enabled`
-  // checks the household id alone -- so an ungated call can fire before auth
-  // is ready and lose the housing for the render (frontend/CLAUDE.md:
-  // "useAuth().isLoading first").
-  const { isLoading: isAuthLoading } = useAuth()
-  const { data: householdJourney } = useHouseholdJourney(
-    isAuthLoading ? null : (person?.household_id ?? null)
-  )
-
-  // Fetch historical journey via the shared enrollment-sourced fetcher.
-  const { data: historicalData = [] } = useQuery<HistoricalRecord[]>({
-    queryKey: [...queryKeys.camperHistory(camperId, currentYear), householdJourney?.years],
-    queryFn: () =>
-      fetchCamperJourney(parseInt(camperId), currentYear, householdJourney?.years ?? []),
-    enabled: !!camper,
   })
 
   // Fetch bunk requests
@@ -459,85 +586,15 @@ export default function CamperDetailsPanel({
     enabled: !!camper?.person_cm_id,
   })
 
-  // Fetch siblings
-  const { data: siblings = [] } = useQuery({
-    queryKey: queryKeys.camperSiblingsPanel(person?.household_id, camperId, currentYear),
-    queryFn: async () => {
-      const personCmId = parseInt(camperId)
-      if (!person?.household_id || person.household_id === 0) return []
-
-      const siblingFilter = `household_id = ${person.household_id} && cm_id != ${personCmId} && grade > 0 && year = ${currentYear}`
-      let siblingPersons: PersonsResponse[]
-      try {
-        siblingPersons = await pb.collection<PersonsResponse>('persons').getFullList({
-          filter: siblingFilter,
-          sort: '-birthdate',
-        })
-      } catch {
-        return []
-      }
-
-      if (siblingPersons.length === 0) return []
-
-      const siblingsWithEnrollment = await Promise.all(
-        siblingPersons.map(async (siblingPerson) => {
-          const sessionTypeFilter = buildSummerSessionTypeFilter()
-          const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
-
-          try {
-            const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
-              filter: enrollmentFilter,
-              expand: 'session',
-              $autoCancel: false,
-            })
-
-            if (attendees.length === 0) return null
-
-            const sortedAttendees = attendees.sort((a, b) => {
-              const aExpand = a.expand as { session?: ExpandedSession } | undefined
-              const bExpand = b.expand as { session?: ExpandedSession } | undefined
-              const aType = aExpand?.session?.session_type ?? 'unknown'
-              const bType = bExpand?.session?.session_type ?? 'unknown'
-              return sortEnrolledFirst(a.status, aType, b.status, bType)
-            })
-
-            const primaryAttendee = sortedAttendees[0]
-            if (!primaryAttendee) return null
-            const primaryExpand = primaryAttendee.expand as
-              { session?: ExpandedSession } | undefined
-            const session = primaryExpand?.session
-
-            let bunkName = null
-            if (session) {
-              try {
-                const assignments = await pb
-                  .collection<BunkAssignmentsResponse>('bunk_assignments')
-                  .getFullList({
-                    filter: `person = "${siblingPerson.id || ''}" && session = "${session.id ?? ''}" && year = ${currentYear}`,
-                    expand: 'bunk',
-                    $autoCancel: false,
-                  })
-                if (assignments.length > 0 && assignments[0]) {
-                  const assignmentExpand = assignments[0].expand as
-                    { bunk?: ExpandedBunk } | undefined
-                  bunkName = assignmentExpand?.bunk?.name ?? null
-                }
-              } catch {
-                /* continue without bunk */
-              }
-            }
-
-            return { ...siblingPerson, session, bunkName, attendeeStatus: primaryAttendee.status }
-          } catch {
-            return null
-          }
-        })
-      )
-
-      return siblingsWithEnrollment.filter((s) => s !== null)
-    },
-    enabled: !!(person?.household_id && person.household_id > 0),
-  })
+  // Siblings by the camper record's rule (owner ruling 2026-09-22): enrolled
+  // only, every kid program including family camp and TLI/SCIT, no grade
+  // filter, and no family-camp day group shown as a cabin.
+  const { siblings } = useSiblings(
+    person?.household_id,
+    camperId ? parseInt(camperId, 10) : null,
+    currentYear,
+    'child'
+  )
 
   // Original parent-sourced bunk-request form text (CSV import, normalized
   // per-field). Re-uses the same hook the full-page camper detail does so the
@@ -577,10 +634,7 @@ export default function CamperDetailsPanel({
   useOverlayEscape(!embedded && !isClosing, handleClose)
 
   // Helper: get location from person's discrete address columns
-  const location = getLocationDisplay(
-    person?.normalized_city ?? person?.address_city,
-    person?.address_state
-  )
+  const location = person ? personLocation(person) : null
 
   const getSessionShortName = () => {
     return getSessionShortNameUtil(camper?.expand?.session ?? undefined)
@@ -595,6 +649,80 @@ export default function CamperDetailsPanel({
       }) ?? 'Unknown'
     )
   }
+
+  /**
+   * The Camp Journey section's rows. What only the board modal shows stays
+   * here: THIS year comes from the board's own enrollments (the journey feed
+   * stops at last year) — the year on the first row only, a non-enrolled
+   * enrollment's status letter in place of its cabin, an unplaced one as
+   * "Unassigned", and "Now" on the first row when it is enrolled. With no
+   * enrollment list but a session, one row for that session. Prior years are
+   * the shared feed, mapped exactly as the camper record maps them.
+   */
+  const currentYearRows: JourneyRow[] =
+    currentEnrollments.length > 0
+      ? currentEnrollments.map((enrollment, idx) => {
+          const status = journeyRowStatus(enrollment.attendeeStatus)
+          // Q9: "Unassigned" is a bunkable (main/embedded/ag) fallback only —
+          // enrollment.bunkName is already registry-resolved-or-nothing for a
+          // TLI/SCIT row, and Quest never carries a bunkName at all.
+          const cabin =
+            enrollment.bunkName ??
+            (isAtCampSessionType(enrollment.sessionType) ? 'Unassigned' : undefined)
+          return {
+            key: `current-${enrollment.sessionCmId}`,
+            year: currentYear,
+            showYear: idx === 0,
+            isCurrentYear: true,
+            session: getEnrollmentShortName(enrollment),
+            subtitle: undefined,
+            cabin: status ? undefined : cabin,
+            cabinRecorded: status ? undefined : enrollment.bunkNameRecorded,
+            status,
+            showNow: idx === 0 && !status,
+          }
+        })
+      : camper?.expand?.session
+        ? [
+            (() => {
+              const sessionType = camper.expand.session.session_type
+              const resolved = currentYearCabin(
+                sessionType,
+                currentYear,
+                camper.session_cm_id,
+                camper.expand.assigned_bunk?.name,
+                teenCabinsByWeekend
+              )
+              const cabin =
+                resolved.bunkName ?? (isAtCampSessionType(sessionType) ? 'Unassigned' : undefined)
+              return {
+                key: 'current-session',
+                year: currentYear,
+                showYear: true,
+                isCurrentYear: true,
+                session: getSessionShortName() ?? '',
+                subtitle: undefined,
+                cabin,
+                cabinRecorded: resolved.bunkNameRecorded,
+                status: undefined,
+                showNow: true,
+              }
+            })(),
+          ]
+        : []
+  const journeyRows: JourneyRow[] = [
+    ...currentYearRows,
+    ...journeyRowsFromHistory(
+      historicalData,
+      currentYear,
+      currentYearRows.length > 0 ? currentYear : undefined
+    ),
+  ]
+  // M1 (review, kindred#2753): computed once and switched on directly below,
+  // rather than re-derived inline — the section-visibility check and the
+  // body's rows/loading/error branch must never be able to disagree about
+  // which of the four states this is.
+  const journeyState = journeyDisplayState(journeyRows.length, journeyLoading, journeyError)
 
   // Lock group context — used to compute friend-group alert and layout
   const { getCamperLockState, getCamperLockGroup, getGroupMembers, isActionBarVisible } =
@@ -794,11 +922,34 @@ export default function CamperDetailsPanel({
       ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
       : null
 
+  // Q9 (owner, 2026-09-22 late): the single-enrollment quick-stat reads the
+  // SAME corrected bunkName every other surface does — never `camper`'s raw
+  // `expand.assigned_bunk` directly, which bypasses the teen/quest rule
+  // (`camper` is built from the same attendee/assignment fetch as
+  // `allEnrollments`, but is not itself run through the correction).
+  const quickStatsBunkName =
+    currentEnrollments.length === 1
+      ? currentEnrollments[0]?.bunkName
+      : camper.expand?.assigned_bunk?.name
+
+  // Q11 (owner, 2026-09-22 late): the board's quick-stats line shows the
+  // SUMMERS part only ("5 summers"), and nothing when summers is 0 — the
+  // whole line wrapped in this narrow bar, and family/adult weekends are not
+  // germane to bunking. The full camper record keeps every part. Same
+  // builder, weekends zeroed, so the pluralisation lives in one place.
+  const summersLabel = journeyCountLabel({
+    ...EMPTY_JOURNEY_COUNTS,
+    summers: journeyCounts.summers,
+  })
+
   // Render the panel content
   const renderContent = () => (
     <div className={embedded ? 'space-y-3' : 'flex-1 space-y-4 overflow-auto'}>
       {/* Quick Stats Bar */}
-      <div className="bg-forest-900/50 border-forest-600/20 border-b px-4 py-3">
+      <div
+        data-testid="quick-stats-bar"
+        className="bg-forest-900/50 border-forest-600/20 border-b px-4 py-3"
+      >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
           {location && (
             <div className="text-forest-100 flex items-center gap-1.5">
@@ -806,14 +957,14 @@ export default function CamperDetailsPanel({
               <span>{location}</span>
             </div>
           )}
-          <div className="text-forest-100 flex items-center gap-1.5">
-            <TreePine className="text-forest-300 h-3 w-3" />
-            <span>
-              {camper.years_at_camp ?? 0} {(camper.years_at_camp ?? 0) === 1 ? 'year' : 'years'}
-            </span>
-          </div>
+          {summersLabel.length > 0 && (
+            <div className="text-forest-100 flex items-center gap-1.5">
+              <TreePine className="text-forest-300 h-3 w-3" />
+              <span>{summersLabel}</span>
+            </div>
+          )}
           {currentEnrollments.length > 1 ? (
-            currentEnrollments.map((enrollment) => {
+            quickStatsEnrollments.map((enrollment) => {
               const indicator = getStatusIndicator(enrollment.attendeeStatus)
               return (
                 <div
@@ -834,9 +985,21 @@ export default function CamperDetailsPanel({
                         {' '}
                         <Home className="text-forest-300 inline h-3 w-3" /> {enrollment.bunkName}
                       </>
-                    ) : (
+                    ) : isQuestSessionType(enrollment.sessionType) && enrollment.questTripName ? (
+                      // Quest option A (owner ruling 2026-09-23): the trip
+                      // name reads as the Quest's group, not a cabin — no
+                      // Home icon, own <span> so it never merges with the
+                      // session-name text node above.
+                      <span> · {enrollment.questTripName}</span>
+                    ) : isAtCampSessionType(enrollment.sessionType) ? (
+                      // I1 (review, kindred#2753): "(unassigned)" is a
+                      // bunkable (main/embedded/ag) fallback only, the same
+                      // rule `currentYearRows` applies above — a Quest
+                      // enrollment's bunkName is blanked by design (Q9), not
+                      // unplaced, so it shows nothing here instead of a false
+                      // amber "(unassigned)".
                       <span className="text-amber-300"> (unassigned)</span>
-                    )}
+                    ) : null}
                   </span>
                 </div>
               )
@@ -855,16 +1018,26 @@ export default function CamperDetailsPanel({
             </div>
           ) : (
             <>
-              {camper.expand?.assigned_bunk && (
+              {quickStatsBunkName && (
                 <div className="text-forest-100 flex items-center gap-1.5">
                   <Home className="text-forest-300 h-3 w-3" />
-                  <span>{camper.expand.assigned_bunk.name}</span>
+                  <span>{quickStatsBunkName}</span>
                 </div>
               )}
               {getSessionShortName() && (
                 <div className="text-forest-100 flex items-center gap-1.5">
                   <Calendar className="text-forest-300 h-3 w-3" />
                   <span>{getSessionShortName()}</span>
+                  {/* Quest option A (owner ruling 2026-09-23): a camper with
+                      a SINGLE current enrollment that is a Quest trip reads
+                      its trip name here, beside the session chip, no Home
+                      icon — the single-enrollment mirror of the
+                      multi-enrollment branch above. */}
+                  {currentEnrollments.length === 1 &&
+                    isQuestSessionType(currentEnrollments[0]?.sessionType) &&
+                    currentEnrollments[0]?.questTripName && (
+                      <span> · {currentEnrollments[0].questTripName}</span>
+                    )}
                 </div>
               )}
             </>
@@ -977,7 +1150,16 @@ export default function CamperDetailsPanel({
         )}
 
         {/* Camp Journey Timeline - Compact */}
-        {(historicalData.length > 0 || camper.expand?.session) && (
+        {/* Q8 (owner, 2026-09-22 late): the SAME rows-first decision as
+            CampJourneyTimeline (`journeyDisplayState`, camper/journeyRowModel.ts)
+            — the board's own current-year rows are ready before the prior-year
+            feed, and used to sit behind a spinner until it settled. The
+            section itself must stay visible through loading/error too, or the
+            spinner/error line below would never have anywhere to render.
+            M1 (review): switches on the SAME `journeyState` value the section
+            visibility check above already used — the ordering can no longer
+            drift between the two, the gap a mutation check caught. */}
+        {journeyState !== 'empty' && (
           <section>
             <SectionHeader
               title="Camp Journey"
@@ -987,118 +1169,35 @@ export default function CamperDetailsPanel({
               badge={camper.years_at_camp ?? historicalData.length + 1}
               accentColor="forest"
             />
-            {expandedSections.history && (
-              <div className="relative mt-2">
-                {/* Timeline line */}
-                <div className="bg-forest-200 dark:bg-forest-800 absolute top-1 bottom-1 left-[5px] w-0.5" />
-
-                <div className="space-y-1.5">
-                  {/* Current year - show all enrollments */}
-                  {currentEnrollments.length > 0
-                    ? currentEnrollments.map((enrollment, idx) => {
-                        const indicator = getStatusIndicator(enrollment.attendeeStatus)
-                        return (
-                          <div
-                            key={`current-${enrollment.sessionCmId}`}
-                            className="relative flex items-center gap-2.5"
-                          >
-                            <div
-                              className={`relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2 ${
-                                indicator
-                                  ? 'bg-amber-400 ring-amber-100 dark:bg-amber-600 dark:ring-amber-900'
-                                  : 'bg-forest-600 ring-forest-100 dark:ring-forest-900'
-                              }`}
-                            />
-                            <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
-                              {idx === 0 ? currentYear : ''}
-                            </span>
-                            <span className="text-muted-foreground truncate text-xs">
-                              {getEnrollmentShortName(enrollment)}
-                            </span>
-                            {indicator ? (
-                              <span
-                                className={`flex-shrink-0 rounded px-1 py-0.5 text-[9px] leading-none font-bold ${indicator.colorClass}`}
-                                title={enrollment.attendeeStatus}
-                              >
-                                {indicator.letter}
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-muted-foreground text-xs">·</span>
-                                <span
-                                  className={`truncate text-xs ${enrollment.bunkName ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
-                                >
-                                  {enrollment.bunkName ?? 'Unassigned'}
-                                </span>
-                              </>
-                            )}
-                            {idx === 0 && !indicator && (
-                              <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
-                                Now
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })
-                    : camper.expand?.session && (
-                        <div className="relative flex items-center gap-2.5">
-                          <div className="bg-forest-600 ring-forest-100 dark:ring-forest-900 relative z-10 h-3 w-3 flex-shrink-0 rounded-full ring-2" />
-                          <span className="text-forest-700 dark:text-forest-300 w-11 text-sm font-bold">
-                            {currentYear}
-                          </span>
-                          <span className="text-muted-foreground truncate text-xs">
-                            {getSessionShortName()}
-                          </span>
-                          <span className="text-muted-foreground text-xs">·</span>
-                          <span
-                            className={`truncate text-xs ${camper.expand.assigned_bunk ? 'text-foreground font-medium' : 'text-amber-600 italic'}`}
-                          >
-                            {camper.expand.assigned_bunk?.name ?? 'Unassigned'}
-                          </span>
-                          <span className="bg-forest-600 ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold text-white">
-                            Now
-                          </span>
-                        </div>
-                      )}
-
-                  {/* Historical years */}
-                  {historicalData.map((record: HistoricalRecord, idx: number) => (
-                    <div
-                      key={`${record.year}-${idx}`}
-                      className="relative flex items-center gap-2.5 opacity-75"
-                    >
-                      <div className="bg-forest-300 dark:bg-forest-700 relative z-10 h-3 w-3 flex-shrink-0 rounded-full" />
-                      <span className="text-foreground w-11 text-sm font-semibold">
-                        {record.year}
-                      </span>
-                      <span className="text-muted-foreground truncate text-xs">
-                        {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
-                      </span>
-                      {/* Family-camp de-emphasis tag (#2113 code review): this panel
-                          renders the same widened fetchCamperJourney rows as
-                          CampJourneyTimeline, which gained this tag to keep family
-                          rows from reading as noise for multi-session staff kids —
-                          mirrored here so the board popout gets the same treatment. */}
-                      {isFamilySessionType(record.sessionType) && (
-                        <span className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-medium">
-                          Family
-                        </span>
-                      )}
-                      {record.bunkName !== undefined && (
-                        <>
-                          <span className="text-muted-foreground text-xs">·</span>
-                          <span
-                            className={`truncate text-xs ${record.bunkName === 'Unassigned' ? 'text-amber-600 italic' : 'text-foreground'}`}
-                          >
-                            {record.bunkName}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  ))}
+            {expandedSections.history &&
+              (journeyState === 'rows' ? (
+                // The same rows as the camper record (`camper/JourneyRows`,
+                // owner ruling 2026-09-22 G2): this year's board enrollments and
+                // the prior years in ONE grid — `compact`, like every sidebar:
+                // one type size down, a family weekend's bare title only.
+                <div className="mt-2">
+                  <JourneyRows rows={journeyRows} variant="compact" />
+                  {/* A failed prior-year read still says so (CR #1), under the
+                      rows it could not complete — same as CampJourneyTimeline. */}
+                  {journeyError !== null && !journeyLoading && (
+                    <p className="mt-2 text-center text-sm text-red-500">
+                      Couldn't load past years
+                    </p>
+                  )}
                 </div>
-              </div>
-            )}
+              ) : journeyState === 'loading' ? (
+                // Same loading markup as CampJourneyTimeline (camper/CampJourneyTimeline.tsx).
+                // Only reached with NO rows yet — Q8 shows any rows already here instead.
+                <div className="mt-2 flex items-center justify-center py-4">
+                  <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
+                  <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
+                </div>
+              ) : (
+                // Same error line and tone as CampJourneyTimeline (CR #1).
+                <div className="mt-2 py-4 text-center">
+                  <p className="text-sm text-red-500">Couldn't load past years</p>
+                </div>
+              ))}
           </section>
         )}
 
@@ -1138,18 +1237,65 @@ export default function CamperDetailsPanel({
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
                         <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
-                        <span>•</span>
-                        <span>{formatGradeOrdinal(sibling.grade)}</span>
-                        {sibling.bunkName && (
+                        {/* No grade for a grade-0 member (a family-camp
+                            preschooler), as on the camper record. */}
+                        {sibling.grade > 0 && (
                           <>
                             <span>•</span>
-                            <span className="flex items-center gap-0.5">
-                              <Home className="h-2.5 w-2.5" />
-                              {sibling.bunkName}
-                            </span>
+                            <span>{formatGradeOrdinal(sibling.grade)}</span>
                           </>
                         )}
                       </div>
+                      {/* Owner ruling 2026-09-22 (mockup option "D", refined
+                          in the second visual pass): every SUMMER OR TEEN
+                          program the sibling is in, each session's cabin
+                          right after it — mirrors the camper record's
+                          SiblingsPanel line 2 (`camper/SiblingsPanel.tsx`) at
+                          the board's smaller sizes. Family and adult
+                          programs are filtered out here (they are "not
+                          germane for bunking") and stay visible only on the
+                          full camper record, which does not filter. A
+                          sibling with no summer/teen program at all omits
+                          line 2 entirely rather than rendering an empty one. */}
+                      {/* `min-w-0 truncate` on every text segment (M4,
+                          review): `text-overflow` does nothing on this row
+                          itself since it's `display:flex` — an overlong line
+                          needs the actual text-bearing elements to be able to
+                          shrink and ellipsize. Icons and the `|` separators
+                          stay `flex-shrink-0` — only names should ever give
+                          up their space. */}
+                      {(() => {
+                        const entries = siblingLine2Entries(sibling)
+                        if (entries.length === 0) return null
+                        return (
+                          <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap">
+                            {entries.map((entry, idx) => (
+                              <Fragment key={entry.key}>
+                                {/* Owner ruling 2026-09-22 ("P3"): a
+                                    transition between two DIFFERENT programs
+                                    gets a vertical bar, never a dot -- a dot
+                                    left a cabin's owning program ambiguous
+                                    once a row could carry more than one. */}
+                                {idx > 0 && (
+                                  <span className="text-border mx-1 flex-shrink-0">|</span>
+                                )}
+                                <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
+                                <span className="min-w-0 truncate">
+                                  {getSessionDisplayNameFromString(entry.name, entry.sessionType)}
+                                </span>
+                                {entry.bunkName && (
+                                  <>
+                                    {/* No separator here: the cabin belongs
+                                        to THIS session, not a new program. */}
+                                    <Home className="h-2.5 w-2.5 flex-shrink-0" />
+                                    <span className="min-w-0 truncate">{entry.bunkName}</span>
+                                  </>
+                                )}
+                              </Fragment>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </div>
                     <ChevronRight className="text-muted-foreground group-hover:text-forest-600 h-4 w-4 flex-shrink-0 transition-colors" />
                   </Link>

@@ -1538,6 +1538,7 @@ export default function RequestReviewPanel({
           <CamperDetailsPanel
             camperId={selectedCamperId}
             onClose={() => setSelectedCamperId(null)}
+            openedFromSessionCmId={sessionId}
           />
         )}
 

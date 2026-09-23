@@ -27,6 +27,20 @@ vi.mock('../../hooks/usePermissions', () => ({
   }),
 }))
 
+// A person-grain party's FamilyDetailsPanel now also mounts PersonJourneyCard
+// (the adult guest's camper journey), which reaches `useCamperJourney` ->
+// `useAuth` and throws without a provider. Grain-blind, like
+// `FamilyDetailsPanel.test.tsx`'s own mock: this file's tests are not about
+// the journey, only about not crashing when the panel opens one.
+vi.mock('../../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: () => ({
+    rows: [],
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+    isLoading: false,
+    error: null,
+  }),
+}))
+
 // `medicalFetchMode.real` toggles this file's ONE `useHouseholdMedical` mock
 // between the fast canned value every other suite in this file wants and the
 // REAL hook, wired through the mocked `fetchHouseholdMedical` service call

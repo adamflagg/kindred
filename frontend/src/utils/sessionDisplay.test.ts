@@ -145,6 +145,64 @@ describe('sessionDisplay utilities', () => {
       expect(getSessionDisplayNameFromString('', 'ag')).toBe('Unknown Session')
     })
 
+    // Owner ruling 2026-09-22: the raw adult-weekend name is too long for the
+    // camper journey. Same spirit as family's `weekendTitle` — identity before
+    // a colon, then drop ONE trailing parenthetical qualifier (a night count,
+    // a fee, "full price"). A trailing parenthetical is stripped ONLY for
+    // adult weekends: a summer AG name's parenthetical (grades) is meaningful
+    // and must survive untouched (see the non-adult cases below).
+    describe('adult weekends', () => {
+      it('drops a trailing night-count qualifier', () => {
+        expect(getSessionDisplayNameFromString("Women's Weekend", 'adult')).toBe("Women's Weekend")
+        expect(getSessionDisplayNameFromString("Women's Weekend (2 nights)", 'adult')).toBe(
+          "Women's Weekend"
+        )
+        expect(getSessionDisplayNameFromString("Women's Weekend (3 nights)", 'adult')).toBe(
+          "Women's Weekend"
+        )
+      })
+
+      it('leaves a name with no qualifier unchanged', () => {
+        expect(getSessionDisplayNameFromString("Men's Weekend", 'adult')).toBe("Men's Weekend")
+        expect(getSessionDisplayNameFromString('Adults Unplugged', 'adult')).toBe(
+          'Adults Unplugged'
+        )
+      })
+
+      it('takes the identity before the colon, then drops a trailing qualifier', () => {
+        expect(
+          getSessionDisplayNameFromString('Divorce & Discovery: A Jewish Healing Retreat', 'adult')
+        ).toBe('Divorce & Discovery')
+        expect(
+          getSessionDisplayNameFromString(
+            'Divorce & Discovery: A Jewish Healing Retreat (full price)',
+            'adult'
+          )
+        ).toBe('Divorce & Discovery')
+      })
+
+      it('drops a trailing fee qualifier', () => {
+        expect(getSessionDisplayNameFromString('Spring Service Weekend ($54 fee)', 'adult')).toBe(
+          'Spring Service Weekend'
+        )
+        expect(getSessionDisplayNameFromString('Spring Service Weekend ($72 fee)', 'adult')).toBe(
+          'Spring Service Weekend'
+        )
+        expect(getSessionDisplayNameFromString('Spring Service Weekend ($118 fee)', 'adult')).toBe(
+          'Spring Service Weekend'
+        )
+        expect(getSessionDisplayNameFromString('Spring Service Weekend ($216 fee)', 'adult')).toBe(
+          'Spring Service Weekend'
+        )
+      })
+
+      it('does not touch a non-adult session with a meaningful parenthetical (AG grades)', () => {
+        expect(getSessionDisplayNameFromString('Session 2 (Grades 4-6)')).toBe(
+          'Session 2 (Grades 4-6)'
+        )
+      })
+    })
+
     it('should transform AG sessions by type', () => {
       expect(getSessionDisplayNameFromString('Some AG Session', 'ag')).toBe('Some AG Session')
       expect(getSessionDisplayNameFromString('AG Session 2', 'ag')).toBe('Session 2')
@@ -489,6 +547,27 @@ describe('sessionDisplay utilities', () => {
       )
       expect(getSessionShortName(s({ session_type: 'embedded', name: 'Taste of Camp 2' }))).toBe(
         'Taste of Camp 2'
+      )
+    })
+
+    it('should shorten adult-weekend names via adultWeekendTitle (owner ruling 2026-09-22)', () => {
+      // The record's hero chip previously fell through to the raw name for
+      // adult sessions, so a past-year camper's hero still showed the
+      // CampMinder qualifier the journey/siblings already strip.
+      expect(
+        getSessionShortName(s({ session_type: 'adult', name: "Women's Weekend (3 nights)" }))
+      ).toBe("Women's Weekend")
+    })
+
+    it('should leave summer/AG/family names unaffected by the adult-weekend rule', () => {
+      expect(getSessionShortName(s({ session_type: 'main', name: 'Session 2' }))).toBe('Session 2')
+      expect(
+        getSessionShortName(
+          s({ session_type: 'ag', name: 'All-Gender Cabin-Session 2 (7th & 8th grades)' })
+        )
+      ).toBe('AG 2 (7-8)')
+      expect(getSessionShortName(s({ session_type: 'family', name: 'Family Camp 1' }))).toBe(
+        'Family Camp 1'
       )
     })
   })

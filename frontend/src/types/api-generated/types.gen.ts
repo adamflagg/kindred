@@ -3491,12 +3491,20 @@ export type PerRequestStatus = {
 /**
  * PersonHousingResponse
  *
- * One person's adult-weekend cabins, attributed PER WEEKEND.
+ * One person's journey cabins that only the server can name.
  *
- * Per weekend rather than per year (unlike `HouseholdJourneyYear`): a
- * two-weekend season can label both weekends when each value was written
- * before its own weekend, one weekend's pool at a time -- see
- * `attribute_adult_cabins` in `api/services/person_housing_rules.py`.
+ * `weekends` -- adult-weekend cabins, attributed PER WEEKEND rather than per
+ * year (unlike `HouseholdJourneyYear`): a two-weekend season can label both
+ * weekends when each value was written before its own weekend, one
+ * weekend's pool at a time -- see `attribute_adult_cabins` in
+ * `api/services/person_housing_rules.py`.
+ *
+ * `teen_cabins` -- TLI/SCIT sessions whose CampMinder bunk the lodging
+ * registry resolves to a REAL unit (owner ruling 2026-09-22, late, Q9). A
+ * teen program's bunk is usually a program group, not a cabin; a string the
+ * registry cannot resolve is absent, so the client shows no cabin. Same
+ * shape as `weekends`: `cabin_name` is today's registry name,
+ * `cabin_name_raw` the string CampMinder holds. Quest never appears here.
  */
 export type PersonHousingResponse = {
   /**
@@ -3507,16 +3515,30 @@ export type PersonHousingResponse = {
    * Weekends
    */
   weekends?: Array<PersonHousingWeekend>
+  /**
+   * Teen Cabins
+   */
+  teen_cabins?: Array<PersonHousingWeekend>
 }
 
 /**
  * PersonHousingWeekend
  *
- * One adult weekend and the cabin attributed to it (adult camper journey).
+ * One row of a person's cabin housing (adult camper journey).
  *
- * `cabin_name` is the string staff typed THAT year, outer whitespace trimmed
- * -- never today's unit name (owner ruling 2026-09-22). `cabin_name_raw` is
- * the untouched value. A weekend with no attributed cabin is absent, not blank.
+ * Shared by two lists in `PersonHousingResponse`: an adult weekend and the
+ * cabin attributed to it, AND a current-or-prior-year TLI/SCIT enrollment
+ * and its registry-resolved cabin (Q9, owner ruling 2026-09-22 late) --
+ * same row shape, one resolver (`HousingNameResolver`).
+ *
+ * `cabin_name` is TODAY's registry name for the unit, resolved through the
+ * same alias layer as `HouseholdJourneyYear.cabin_name` (kindred#2332) --
+ * owner ruling 2026-09-22 (evening), reversing an earlier same-day ruling
+ * that had this field publish the as-typed string unchanged. When the
+ * string resolves to nothing, `cabin_name` falls back to it, outer
+ * whitespace trimmed. `cabin_name_raw` is the untouched value staff typed
+ * that year. A weekend or teen session with no attributed/resolved cabin
+ * is absent, not blank.
  */
 export type PersonHousingWeekend = {
   /**

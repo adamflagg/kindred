@@ -1,6 +1,8 @@
 /**
- * Integration test for issue #2149: camper detail page unreachable for a
- * person whose only current-year attendee row is a family-camp session.
+ * Integration test for the adult camper journey: camper detail page for a
+ * person whose only current-year attendee row is an adult-program session
+ * (Women's/Men's Weekend etc.) — the adult-camper-journey counterpart of
+ * CamperDetail.familyOnly.test.tsx (#2149).
  *
  * Unlike CamperDetail.test.tsx (which stubs useCamperEnrollment entirely),
  * this file exercises the REAL useCamperEnrollment hook — and therefore the
@@ -8,7 +10,7 @@
  * (an empty attendee-type filter early-returning allCampers: []) actually
  * reproduces here. Every other data hook is stubbed to keep the test focused.
  *
- * TDD: written BEFORE the CAMPER_DETAIL_TYPES fix, confirmed RED first.
+ * TDD: written BEFORE the adult-branch implementation, confirmed RED first.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -17,8 +19,13 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { EMPTY_JOURNEY_COUNTS } from '../utils/journeyCountLabel'
 import CamperDetail from './CamperDetail'
 
-const PERSON_CM_ID = 8000002
+const PERSON_CM_ID = 8000003
 const YEAR = 2026
+
+/** Whether the stubbed useCamperHistory reports the journey as still loading. */
+const historyLoading = { value: false }
+/** Every argument list useSiblings was called with. */
+const siblingsCalls: unknown[][] = []
 
 const mockAttendeesGetFullList = vi.fn()
 const mockAssignmentsGetFullList = vi.fn()
@@ -44,8 +51,15 @@ vi.mock('../hooks/camper', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/camper')>()
   return {
     ...actual,
-    useCamperHistory: () => ({ camperHistory: [], counts: EMPTY_JOURNEY_COUNTS }),
-    useSiblings: () => ({ siblings: [], isLoading: false, error: null }),
+    useCamperHistory: () => ({
+      camperHistory: [],
+      counts: EMPTY_JOURNEY_COUNTS,
+      isLoading: historyLoading.value,
+    }),
+    useSiblings: (...args: unknown[]) => {
+      siblingsCalls.push(args)
+      return { siblings: [], isLoading: false, error: null }
+    },
     useOriginalBunkData: () => ({ originalBunkData: null, isLoading: false, error: null }),
     useAllBunkRequests: () => ({ allBunkRequests: [], isLoading: false, error: null }),
   }
@@ -100,28 +114,30 @@ function renderDetail() {
   )
 }
 
-describe('CamperDetail — family-camp-only camper (#2149)', () => {
+describe('CamperDetail — adult-program-only person (adult camper journey)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    historyLoading.value = false
+    siblingsCalls.length = 0
     mockAssignmentsGetFullList.mockResolvedValue([])
     mockPersonsGetList.mockResolvedValue({
       items: [
         {
-          id: 'person_pb_2',
+          id: 'person_pb_3',
           cm_id: PERSON_CM_ID,
-          first_name: 'Noah',
-          last_name: 'Smith',
+          first_name: 'Olivia',
+          last_name: 'Garcia',
           year: YEAR,
           household_id: 555,
         },
       ],
     })
 
-    const familyAttendee = {
-      id: 'att_family',
+    const adultAttendee = {
+      id: 'att_adult',
       person_id: PERSON_CM_ID,
-      person: 'person_pb_2',
-      session: 'sess_family',
+      person: 'person_pb_3',
+      session: 'sess_ww',
       status: 'enrolled',
       status_id: 2,
       year: YEAR,
@@ -129,17 +145,17 @@ describe('CamperDetail — family-camp-only camper (#2149)', () => {
       updated: '2026-01-01T00:00:00Z',
       expand: {
         person: {
-          id: 'person_pb_2',
+          id: 'person_pb_3',
           cm_id: PERSON_CM_ID,
-          first_name: 'Noah',
-          last_name: 'Smith',
+          first_name: 'Olivia',
+          last_name: 'Garcia',
           year: YEAR,
         },
         session: {
-          id: 'sess_family',
-          cm_id: 9100001,
-          name: 'Family Camp Weekend',
-          session_type: 'family',
+          id: 'sess_ww',
+          cm_id: 9200001,
+          name: "Women's Weekend",
+          session_type: 'adult',
           year: YEAR,
         },
       },
@@ -148,41 +164,54 @@ describe('CamperDetail — family-camp-only camper (#2149)', () => {
     // Real PocketBase applies the `filter` string server-side. Replicate that
     // here instead of unconditionally returning the fixture row — otherwise
     // this test can't reproduce the bug, where CAMPER_DETAIL_TYPES omits
-    // "family" and the server-side filter excludes this attendee entirely.
+    // "adult" and the server-side filter excludes this attendee entirely.
     mockAttendeesGetFullList.mockImplementation((opts: { filter?: string } = {}) => {
       const filter = opts.filter ?? ''
       const matches = filter.includes(
-        `session.session_type = "${familyAttendee.expand.session.session_type}"`
+        `session.session_type = "${adultAttendee.expand.session.session_type}"`
       )
-      return Promise.resolve(matches ? [familyAttendee] : [])
+      return Promise.resolve(matches ? [adultAttendee] : [])
     })
   })
 
-  it('renders the family enrollment instead of falling back to "no active enrollments"', async () => {
-    // Tree note (partAGaps): with a `persons` row present, the actual current
-    // failure mode is CamperDetail.tsx's "Show person info even if no
-    // current enrollments" branch (person truthy, camper null) rendering
-    // "This person has no active enrollments" — not the bare "Unable to load
-    // camper details" state the issue body describes. Either way, the family
-    // enrollment itself never renders; that's the bug this test pins.
+  it('loads instead of falling back to "no active enrollments"', async () => {
     renderDetail()
-
-    expect(await screen.findByText(/Noah/i)).toBeTruthy()
-    expect(screen.queryByText(/Unable to load camper details/i)).toBeNull()
+    expect(await screen.findByText(/Olivia/i)).toBeTruthy()
     expect(screen.queryByText(/no active enrollments/i)).toBeNull()
-    expect((await screen.findAllByText(/Family Camp Weekend/i)).length).toBeGreaterThan(0)
   })
 
-  it('does not render the summer-camp Bunking Status panel for a family-only attendee', async () => {
-    // Family camp never goes through the summer cabin-assignment workflow —
-    // assigned_bunk_cm_id is intentionally left undefined for family
-    // attendees (see useCamperEnrollment.ts). The Bunking Status panel is
-    // summer-only UI; showing it here would fabricate an "Awaiting
-    // Assignment" state for a person who was never going to be cabin-assigned.
+  it('skips the camper-only parts: no School row, no grade, no Bunking Status', async () => {
     renderDetail()
-
-    await screen.findByText(/Noah/i)
+    await screen.findByText(/Olivia/i)
+    expect(screen.queryByText('School')).toBeNull()
+    expect(screen.queryByText(/Grade/)).toBeNull()
     expect(screen.queryByText(/Bunking Status/i)).toBeNull()
-    expect(screen.queryByText(/Awaiting Assignment/i)).toBeNull()
+  })
+
+  it('titles the siblings panel "Household"', async () => {
+    renderDetail()
+    await screen.findByText(/Olivia/i)
+    expect(screen.getByText('Household')).toBeInTheDocument()
+  })
+
+  it("asks useSiblings for the adult viewer's set (Household includes adults)", async () => {
+    renderDetail()
+    await screen.findByText('Household')
+    expect(siblingsCalls.length).toBeGreaterThan(0)
+    expect(siblingsCalls.at(-1)?.[3]).toBe('adult')
+  })
+
+  it('passes the journey loading state to the timeline — no "First year at camp!" while it loads', async () => {
+    historyLoading.value = true
+    renderDetail()
+    await screen.findByText('Household')
+    expect(screen.queryByText(/first year at camp/i)).toBeNull()
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('shows the empty journey once it has loaded', async () => {
+    renderDetail()
+    await screen.findByText('Household')
+    expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
   })
 })

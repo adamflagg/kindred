@@ -331,6 +331,32 @@ export function weekendTitle(name: string): string {
   return head.length > 0 ? head : trimmed
 }
 
+/**
+ * An ADULT weekend's short title for the camper journey (owner ruling
+ * 2026-09-22): the raw CampMinder name is too long for a journey row — e.g.
+ * "Women's Weekend (3 nights)" or "Divorce & Discovery: A Jewish Healing
+ * Retreat (full price)". Same spirit as `weekendTitle`'s family rule:
+ *
+ *   1. The identity is the part before a colon (if any) — "Divorce &
+ *      Discovery: A Jewish Healing Retreat" reads as "Divorce & Discovery".
+ *   2. Then drop ONE trailing parenthetical qualifier — a night count, a
+ *      fee, "full price" — because the owner ruled it is noise in a journey
+ *      row. "Women's Weekend (3 nights)" reads as "Women's Weekend".
+ *
+ * A SEPARATE function from `weekendTitle`, not a shared branch of it, because
+ * the two rules diverge for adult weekends: `weekendTitle`'s
+ * `LEGACY_MID`/`UNNUMBERED_TITLES` maps and its "carry the subtitle" half are
+ * pure family-camp concerns (2017-2019 renumbering, Keshet/JFAM/JFoC) that an
+ * adult weekend never has. Scoped to `session_type === 'adult'` in
+ * `getSessionDisplayNameFromString` — never applied to a summer AG name,
+ * whose parenthetical (a grade range) is meaningful and must survive intact.
+ */
+export function adultWeekendTitle(name: string): string {
+  const trimmed = name.trim()
+  const identity = trimmed.split(':')[0]?.trim() ?? trimmed
+  return identity.replace(/\s*\([^()]*\)\s*$/, '').trim()
+}
+
 /** The parenthetical under the title, or `''` where the weekend has none. */
 export function weekendSubtitle(name: string): string {
   const trimmed = name.trim()

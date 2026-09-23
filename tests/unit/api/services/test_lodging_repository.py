@@ -2474,6 +2474,32 @@ class TestFetchPersonCabinValues:
         pb.collection.assert_not_called()
 
 
+class TestFetchPersonTeenAssignments:
+    """Owner ruling 2026-09-22 (late, Q9): the journey's TLI/SCIT cabins are
+    resolved server-side, so this read feeds them. Quest never: its "bunk" is
+    a trip name, and a Quest row never shows a cabin."""
+
+    @pytest.mark.asyncio
+    async def test_reads_one_persons_tli_and_scit_bunks_with_session_and_bunk(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_person_teen_assignments(3000001)
+
+        pb.collection.assert_called_with("bunk_assignments")
+        params = _last_query(pb)
+        assert "person.cm_id = 3000001" in params["filter"]
+        assert sorted(re.findall(r'session\.session_type = "(\w+)"', params["filter"])) == ["scit", "tli"]
+        assert "quest" not in params["filter"]
+        # Every season, like the other person reads beside it.
+        assert "year" not in params["filter"]
+        assert params["expand"] == "session,bunk"
+
+    @pytest.mark.asyncio
+    async def test_never_queries_for_an_unresolvable_person(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        assert await repo.fetch_person_teen_assignments(0) == []
+        pb.collection.assert_not_called()
+
+
 class TestFetchPersonAdultAttendees:
     @pytest.mark.asyncio
     async def test_reads_one_persons_enrolled_adult_rows_with_the_session(

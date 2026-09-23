@@ -12,6 +12,9 @@ import { formatGenderFull } from '../../utils/genderUtils'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
+import { journeyCountLabel } from '../../utils/journeyCountLabel'
+import { isQuestSessionType } from '../../utils/sessionTypePredicates'
+import type { JourneyCounts } from '../../hooks/camper/types'
 import type { Camper } from '../../types/app-types'
 
 interface HeroHeaderProps {
@@ -23,6 +26,10 @@ interface HeroHeaderProps {
   pronouns: string
   /** Additional session short names for multi-session persons */
   allSessionNames?: string[] | undefined
+  /** The shared journey counts behind the count line — the same on every journey surface */
+  journeyCounts: JourneyCounts
+  /** True when every current-year enrollment is an adult program — adults have no grade */
+  isAdultProgram?: boolean
 }
 
 export function HeroHeader({
@@ -33,7 +40,14 @@ export function HeroHeader({
   sessionShortName,
   pronouns,
   allSessionNames,
+  journeyCounts,
+  isAdultProgram,
 }: HeroHeaderProps) {
+  const countLabel = journeyCountLabel(journeyCounts)
+  // Quest option A (owner ruling 2026-09-23): only used by the
+  // single-enrollment cabin/trip chip below (the multi-enrollment branch
+  // computes this per enrolled camper).
+  const isSingleQuest = isQuestSessionType(camper.expand?.session?.session_type)
   return (
     <div className="from-forest-700 via-forest-800 to-forest-900 shadow-lodge-lg overflow-hidden rounded-2xl bg-gradient-to-br">
       {/* Back link */}
@@ -75,8 +89,9 @@ export function HeroHeader({
               )}
             <p className="text-forest-100 mt-2 text-base sm:text-lg">
               {formatGenderFull(camper.gender)} • {pronouns} •{' '}
-              {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)} •{' '}
-              {formatGradeOrdinal(camper.grade)} Grade
+              {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}
+              {/* Adults have no grade. */}
+              {isAdultProgram ? null : ` • ${formatGradeOrdinal(camper.grade)} Grade`}
             </p>
           </div>
 
@@ -106,32 +121,46 @@ export function HeroHeader({
               <span className="text-sm">{location}</span>
             </div>
           )}
-          <div className="text-forest-100 flex items-center gap-2">
-            <TreePine className="text-forest-300 h-4 w-4" />
-            <span className="text-sm">{camper.years_at_camp ?? 0} years at camp</span>
-          </div>
+          {countLabel.length > 0 && (
+            <div className="text-forest-100 flex items-center gap-2">
+              <TreePine className="text-forest-300 h-4 w-4" />
+              <span className="text-sm">{countLabel}</span>
+            </div>
+          )}
           {enrolledCampers && enrolledCampers.length > 1
             ? enrolledCampers
                 .filter((ec) => ec.expand?.assigned_bunk)
-                .map((ec) => (
-                  <div key={ec.id} className="text-forest-100 flex items-center gap-2">
-                    <Home className="text-forest-300 h-4 w-4" />
-                    <Link
-                      to={`/summer/session/${sessionNameToUrl(ec.expand?.session?.name ?? '')}/board`}
-                      className="text-sm transition-colors hover:text-white"
-                    >
-                      {ec.expand?.assigned_bunk?.name}
-                    </Link>
-                  </div>
-                ))
+                .map((ec) => {
+                  const isQuest = isQuestSessionType(ec.expand?.session?.session_type)
+                  return (
+                    <div key={ec.id} className="text-forest-100 flex items-center gap-2">
+                      {/* Quest option A (owner ruling 2026-09-23): CampMinder's
+                          "bunk" for a Quest enrollment is the trip name, not a
+                          cabin — no Home icon, and the text reads as the
+                          trip/group rather than housing. The board link is
+                          kept either way. */}
+                      {isQuest ? null : <Home className="text-forest-300 h-4 w-4" />}
+                      <Link
+                        to={`/summer/session/${sessionNameToUrl(ec.expand?.session?.name ?? '')}/board`}
+                        className="text-sm transition-colors hover:text-white"
+                      >
+                        {isQuest
+                          ? `Quest · ${ec.expand?.assigned_bunk?.name}`
+                          : ec.expand?.assigned_bunk?.name}
+                      </Link>
+                    </div>
+                  )
+                })
             : camper.expand?.assigned_bunk && (
                 <div className="text-forest-100 flex items-center gap-2">
-                  <Home className="text-forest-300 h-4 w-4" />
+                  {isSingleQuest ? null : <Home className="text-forest-300 h-4 w-4" />}
                   <Link
                     to={`/summer/session/${sessionNameToUrl(camper.expand.session?.name ?? '')}/board`}
                     className="text-sm transition-colors hover:text-white"
                   >
-                    {camper.expand.assigned_bunk.name}
+                    {isSingleQuest
+                      ? `Quest · ${camper.expand.assigned_bunk.name}`
+                      : camper.expand.assigned_bunk.name}
                   </Link>
                 </div>
               )}

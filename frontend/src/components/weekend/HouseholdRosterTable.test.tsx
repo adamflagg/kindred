@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RosterPartyRow } from '../../types/lodging'
@@ -21,6 +22,20 @@ vi.mock('../../hooks/usePermissions', () => ({
     permissions: [],
     hasPermission: () => true,
     hasAnyPermission: () => true,
+  }),
+}))
+
+// A person-grain party's FamilyDetailsPanel now also mounts PersonJourneyCard
+// (the adult guest's camper journey), which reaches `useCamperJourney` ->
+// `useAuth` and throws without a provider. Grain-blind, like
+// `FamilyDetailsPanel.test.tsx`'s own mock: this file's tests are not about
+// the journey, only about not crashing when the panel opens one.
+vi.mock('../../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: () => ({
+    rows: [],
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+    isLoading: false,
+    error: null,
   }),
 }))
 
@@ -66,8 +81,15 @@ vi.mock('../../hooks/useApiWithAuth', () => ({
 
 let client: QueryClient
 
+// MemoryRouter added for kindred#2329 / the adult guest's camper journey:
+// a person-grain row's FamilyDetailsPanel header is now a `<Link>` to the
+// guest's camper record, which throws outside a Router context.
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  )
 }
 
 beforeEach(() => {

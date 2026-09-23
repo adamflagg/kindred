@@ -12,9 +12,9 @@ import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
-import { getLocationDisplay } from '../utils/addressUtils'
+import { personLocation } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
-import { isSummerCampSession } from '../utils/sessionTypePredicates'
+import { isSummerCampSession, isAdultSessionType } from '../utils/sessionTypePredicates'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -44,6 +44,7 @@ import {
 import type { Camper } from '../types/app-types'
 import type {
   HistoricalRecord,
+  JourneyCounts,
   OriginalBunkData,
   SiblingWithEnrollment,
 } from '../hooks/camper/types'
@@ -85,8 +86,13 @@ interface CamperDetailBodyProps {
   siblingsLoading: boolean
   siblingsError: Error | null
   camperHistory: HistoricalRecord[]
+  journeyCounts: JourneyCounts
+  journeyLoading: boolean
+  journeyError: Error | null
   canManageBunking: boolean
   isAdmin: boolean
+  /** True when every current-year enrollment is an adult program — the camper-only parts do not apply */
+  isAdultProgram: boolean
 }
 
 /**
@@ -105,8 +111,12 @@ function CamperDetailBody({
   siblingsLoading,
   siblingsError,
   camperHistory,
+  journeyCounts,
+  journeyLoading,
+  journeyError,
   canManageBunking,
   isAdmin,
+  isAdultProgram,
 }: CamperDetailBodyProps) {
   // Safe: this component is always rendered inside BunkRequestProvider (see CamperDetail).
   const bunkRequestCtx = useContext(BunkRequestContext)!
@@ -133,10 +143,7 @@ function CamperDetailBody({
   )
 
   // Computed values - use discrete columns instead of JSON parsing
-  const location = getLocationDisplay(
-    person?.normalized_city ?? person?.address_city,
-    person?.address_state
-  )
+  const location = person ? personLocation(person) : null
   const congregation = person?.normalized_congregation ?? null
   const pronouns = formatPronouns(camper)
   const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined) ?? 'Unknown'
@@ -178,6 +185,8 @@ function CamperDetailBody({
         sessionShortName={sessionShortName}
         pronouns={pronouns}
         allSessionNames={allSessionNames}
+        journeyCounts={journeyCounts}
+        isAdultProgram={isAdultProgram}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -190,6 +199,7 @@ function CamperDetailBody({
             congregation={congregation}
             pronouns={pronouns}
             defaultExpanded={true}
+            hideSchool={isAdultProgram}
             cohortContext={
               camper.attendee_status === 'enrolled' &&
               showBunkingUI &&
@@ -239,12 +249,20 @@ function CamperDetailBody({
           {/* Camp Journey Timeline */}
           <CampJourneyTimeline
             history={camperHistory}
-            yearsAtCamp={camper.years_at_camp ?? 0}
+            counts={journeyCounts}
             currentYear={currentYear}
+            isLoading={journeyLoading}
+            error={journeyError}
+            variant="full"
           />
 
           {/* Siblings */}
-          <SiblingsPanel siblings={siblings} isLoading={siblingsLoading} error={siblingsError} />
+          <SiblingsPanel
+            siblings={siblings}
+            isLoading={siblingsLoading}
+            error={siblingsError}
+            title={isAdultProgram ? 'Household' : 'Siblings'}
+          />
         </div>
       </div>
     </div>
@@ -308,8 +326,22 @@ export default function CamperDetail() {
   // Select primary camper: prefer enrolled, fall back to first attendee
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
 
+  // Adult branch: every current-year
+  // enrollment is an adult program, so the camper-only parts do not apply.
+  // Derived here — before useSiblings and the loading guards below — because
+  // Task 13's Household/Siblings branch needs it at the same point.
+  const currentEnrollments = enrolledCampers.length > 0 ? enrolledCampers : allAttendees
+  const isAdultProgram =
+    currentEnrollments.length > 0 &&
+    currentEnrollments.every((c) => isAdultSessionType(c.expand?.session?.session_type))
+
   // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
-  const { camperHistory } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
+  const {
+    camperHistory,
+    counts: journeyCounts,
+    isLoading: journeyLoading,
+    error: journeyError,
+  } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
 
   // Fetch original CSV data using extracted hook
   const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
@@ -322,7 +354,7 @@ export default function CamperDetail() {
     siblings,
     isLoading: siblingsLoading,
     error: siblingsError,
-  } = useSiblings(person?.household_id, personCmId, currentYear)
+  } = useSiblings(person?.household_id, personCmId, currentYear, isAdultProgram ? 'adult' : 'child')
 
   // Loading state
   if (camperLoading) {
@@ -416,8 +448,12 @@ export default function CamperDetail() {
         siblingsLoading={siblingsLoading}
         siblingsError={siblingsError}
         camperHistory={camperHistory}
+        journeyCounts={journeyCounts}
+        journeyLoading={journeyLoading}
+        journeyError={journeyError}
         canManageBunking={canManageBunking}
         isAdmin={isAdmin}
+        isAdultProgram={isAdultProgram}
       />
     </BunkRequestProvider>
   )

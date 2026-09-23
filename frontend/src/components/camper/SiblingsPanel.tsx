@@ -1,6 +1,7 @@
 /**
  * Sidebar panel showing enrolled siblings with links
  */
+import { Fragment } from 'react'
 import { Link } from 'react-router'
 import { Users, Home, Calendar, ChevronRight } from 'lucide-react'
 import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
@@ -16,9 +17,15 @@ interface SiblingsPanelProps {
   siblings: SiblingWithEnrollment[]
   isLoading: boolean
   error: Error | null
+  title?: 'Siblings' | 'Household'
 }
 
-export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps) {
+export function SiblingsPanel({
+  siblings,
+  isLoading,
+  error,
+  title = 'Siblings',
+}: SiblingsPanelProps) {
   const viewingYear = useYear()
 
   return (
@@ -26,7 +33,7 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
       <div className="bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-4">
         <h2 className="font-display flex items-center gap-2 text-lg font-bold text-white">
           <Users className="h-5 w-5" />
-          Siblings
+          {title}
         </h2>
       </div>
       <div className="p-5">
@@ -67,10 +74,25 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
                   <div className="text-muted-foreground mt-0.5 text-xs">
                     {(() => {
                       const age = getDisplayAgeForYear(sibling, viewingYear)
-                      return age !== null ? formatAge(age) : '?'
-                    })()}{' '}
-                    • {formatGradeOrdinal(sibling.grade || 0)}
+                      // Grade-0 members (family-camp preschoolers, adults)
+                      // show no grade rather than "0th". PersonsResponse types
+                      // `grade` as a number, never undefined, so a plain `> 0`
+                      // needs no `?? 0` (which eslint would flag as an
+                      // unnecessary condition).
+                      const parts = [
+                        age !== null ? formatAge(age) : null,
+                        sibling.grade > 0 ? formatGradeOrdinal(sibling.grade) : null,
+                      ].filter((part): part is string => part !== null)
+                      return parts.join(' • ')
+                    })()}
                   </div>
+                  {/* Owner ruling 2026-09-22 ("P3"): a session and its OWN
+                      cabin get no separator between them — only a
+                      transition to a DIFFERENT program does, and that
+                      separator is a vertical bar, never a dot. A dot for
+                      both left the cabin's owning program ambiguous once
+                      more than one program was on the line
+                      ("Session 3 • 🏠 B-7 • Family Camp 1"). */}
                   <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1 text-xs">
                     {sibling.session && (
                       <>
@@ -85,11 +107,16 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
                     )}
                     {sibling.bunkName && (
                       <>
-                        {sibling.session && <span className="mx-0.5">•</span>}
                         <Home className="h-3 w-3" />
                         <span>{sibling.bunkName}</span>
                       </>
                     )}
+                    {sibling.additionalSessions?.map((s, idx) => (
+                      <Fragment key={`${s.name}-${String(idx)}`}>
+                        <span className="text-border mx-1">|</span>
+                        <span>{getSessionDisplayNameFromString(s.name, s.session_type)}</span>
+                      </Fragment>
+                    ))}
                   </div>
                 </div>
 
@@ -101,7 +128,11 @@ export function SiblingsPanel({ siblings, isLoading, error }: SiblingsPanelProps
         ) : (
           <div className="py-4 text-center">
             <Users className="text-muted-foreground/50 mx-auto mb-2 h-8 w-8" />
-            <p className="text-muted-foreground text-sm">No siblings found</p>
+            <p className="text-muted-foreground text-sm">
+              {title === 'Household'
+                ? 'No one else in this household is enrolled'
+                : 'No siblings found'}
+            </p>
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -56,6 +56,24 @@ vi.mock('../../hooks/useWeekendRoster', () => ({
 
 /** Every `householdCmId` the journey hook was handed, in call order. */
 const journeyCalls: Array<number | null> = []
+
+const personJourneyCalls: Array<[number | null, number]> = []
+const personJourney = {
+  value: {
+    rows: [
+      { year: 2025, sessionName: "Women's Weekend", sessionType: 'adult', bunkName: 'River F' },
+    ],
+    counts: { summers: 0, familyWeekends: 0, adultWeekends: 5 },
+    isLoading: false,
+    error: null as Error | null,
+  },
+}
+vi.mock('../../hooks/camper/useCamperJourney', () => ({
+  useCamperJourney: (personCmId: number | null, year: number) => {
+    personJourneyCalls.push([personCmId, year])
+    return personJourney.value
+  },
+}))
 
 // One client per TEST, built outside the render path. Constructing it inside
 // the wrapper body rebuilds it on every render, discarding the cache and
@@ -172,6 +190,7 @@ beforeEach(() => {
   medicalResult.value = { data: undefined, isLoading: false, error: null }
   journeyResult.value = { data: undefined, isLoading: false, error: null }
   journeyCalls.length = 0
+  personJourneyCalls.length = 0
 })
 
 describe('FamilyDetailsPanel — the content the card omits', () => {
@@ -874,6 +893,106 @@ describe('the household journey', () => {
 
     expect(screen.queryByTestId('household-journey')).not.toBeInTheDocument()
     expect(journeyCalls).toEqual([null])
+  })
+})
+
+describe('adult weekend guest journey', () => {
+  const guest = () =>
+    party({ grain: 'person', household_cm_id: 0, person_cm_id: 5001, display_name: 'Emma Johnson' })
+
+  it("shows the guest's camper journey and count line", () => {
+    render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.getByTestId('person-journey')).toBeInTheDocument()
+    expect(screen.getByText('River F')).toBeInTheDocument()
+    expect(screen.getByText('5 adult weekends')).toBeInTheDocument()
+    expect(personJourneyCalls).toContainEqual([5001, 2026])
+  })
+
+  // Owner ruling 2026-09-22 (late): every sidebar shows the journey the same
+  // compact way as the summer board's modal — a family weekend by its bare
+  // title, no subtitle. Only the full camper page keeps the subtitle.
+  it('shows a family weekend by its bare title — the compact journey, no subtitle', () => {
+    const loaded = personJourney.value
+    personJourney.value = {
+      ...loaded,
+      rows: [
+        {
+          year: 2024,
+          sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
+          sessionType: 'family',
+          bunkName: 'Cedar Lodge',
+        },
+      ],
+    }
+    try {
+      render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+      const card = screen.getByTestId('person-journey')
+      expect(within(card).getByText('Family Camp 8')).toBeInTheDocument()
+      expect(within(card).queryByText('JFAM')).toBeNull()
+      expect(within(card).queryByText('Family')).toBeNull()
+    } finally {
+      personJourney.value = loaded
+    }
+  })
+
+  it('passes the journey loading state through — no "First year at camp!" while it loads', () => {
+    const loaded = personJourney.value
+    personJourney.value = {
+      ...loaded,
+      rows: [],
+      counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+      isLoading: true,
+    }
+    try {
+      render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+      const card = screen.getByTestId('person-journey')
+      expect(within(card).getByText('Loading...')).toBeInTheDocument()
+      expect(within(card).queryByText(/first year at camp/i)).toBeNull()
+    } finally {
+      personJourney.value = loaded
+    }
+  })
+
+  // CR #1 (kindred#2753): `error` now threads through PersonJourneyCard the
+  // same way `isLoading` already does, so the weekend sidebar gets the same
+  // fix as the camper record — a failed feed reads as "couldn't load", not
+  // "first year here".
+  it('passes the journey error through — a muted error line, not "First year at camp!"', () => {
+    const loaded = personJourney.value
+    personJourney.value = {
+      ...loaded,
+      rows: [],
+      counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+      isLoading: false,
+      error: new Error('boom'),
+    }
+    try {
+      render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+      const card = screen.getByTestId('person-journey')
+      expect(within(card).getByText("Couldn't load past years")).toBeInTheDocument()
+      expect(within(card).queryByText(/first year at camp/i)).toBeNull()
+    } finally {
+      personJourney.value = loaded
+    }
+  })
+
+  it('never renders a person journey for a household', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.queryByTestId('person-journey')).not.toBeInTheDocument()
+    expect(personJourneyCalls).toEqual([])
+  })
+
+  it("links the guest's name to their camper record for the board's year, in a new tab (kindred#2329)", () => {
+    render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+    const link = screen.getByRole('link', { name: 'Emma Johnson' })
+    expect(link).toHaveAttribute('href', '/camper/5001?year=2026')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it("does not link a household's name", () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.queryByRole('link', { name: /Johnson/ })).toBeNull()
   })
 })
 

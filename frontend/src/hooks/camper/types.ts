@@ -20,6 +20,14 @@ export interface HistoricalRecord {
    * uses for housing. It is dropped entirely rather than relabeled.
    */
   bunkName?: string
+  /**
+   * The string staff actually typed that season, when it disagrees with
+   * `bunkName` (which is today's registry name, kindred#2332 pattern) --
+   * owner ruling 2026-09-22 (evening). Absent when there is nothing to show:
+   * no raw string, or the raw string already IS the label. Rendered as a
+   * hover tooltip, never inline (`CampJourneyTimeline`).
+   */
+  bunkNameRecorded?: string
   startDate?: string
   endDate?: string
   /** Non-enrolled status (e.g. 'waitlisted', 'cancelled'). Absent for enrolled records. */
@@ -48,6 +56,21 @@ export interface OriginalBunkData {
   person_cm_id?: number
 }
 
+/**
+ * The journey header's counts, the same on every journey surface.
+ * `summers` is CampMinder's `years_at_camp` — the most recent non-zero value
+ * across the person's year rows, because CampMinder zeroes it for adults —
+ * capped at the view year: a later season never leaks back, so an earlier
+ * year reads as it would have in that year (owner-confirmed 2026-09-22).
+ * The weekend counts are distinct (year, session) enrollments, current year
+ * included.
+ */
+export interface JourneyCounts {
+  summers: number
+  familyWeekends: number
+  adultWeekends: number
+}
+
 // Sibling with enrollment info
 export interface SiblingWithEnrollment extends PersonsResponse {
   session?: {
@@ -60,4 +83,6 @@ export interface SiblingWithEnrollment extends PersonsResponse {
   }
   bunkName?: string | null
   attendeeStatus?: string
+  /** Every other program this member is enrolled in this year. */
+  additionalSessions?: Array<{ name: string; session_type: string }>
 }
