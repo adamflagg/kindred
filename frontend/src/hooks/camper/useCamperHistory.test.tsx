@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { createWrapper, expectDefined } from '../../test/testUtils'
 import { useCamperHistory } from './useCamperHistory'
+import type { CabinLabel } from './teenCabinLabel'
 import type { Camper } from '../../types/app-types'
 import type { HistoricalRecord, JourneyCounts } from './types'
 
@@ -20,6 +21,9 @@ vi.mock('./fetchCamperJourney', () => ({
 // tested in useCamperJourney.test.tsx; here it is a plain source of rows.
 let priorRows: HistoricalRecord[] = []
 let journeyCounts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
+// Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): the registry-
+// resolved TLI/SCIT map travels alongside the feed's rows/counts.
+let teenCabinsByWeekend: Map<string, CabinLabel> = new Map()
 const mockUseCamperJourney = vi.fn()
 vi.mock('./useCamperJourney', () => ({
   useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
@@ -66,11 +70,13 @@ describe('useCamperHistory', () => {
     vi.clearAllMocks()
     priorRows = []
     journeyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
+    teenCabinsByWeekend = new Map()
     mockUseCamperJourney.mockImplementation(() => ({
       rows: priorRows,
       counts: journeyCounts,
       isLoading: false,
       error: null,
+      teenCabinsByWeekend,
     }))
     mockFetchParentMainSessions.mockResolvedValue(new Map())
   })
@@ -170,6 +176,46 @@ describe('useCamperHistory', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
     expect(current.bunkName).toBeUndefined()
+  })
+
+  // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): commit 6f205252
+  // applied the registry-only rule to PRIOR years via the server's
+  // teen_cabins. The current year still showed the raw CampMinder bunk (a
+  // program group, or Quest's trip name) until now.
+  it('hides a current-year SCIT bunk the registry does not resolve (a program group)', async () => {
+    const scit = currentCamper({ sessionCmId: 700, sessionType: 'scit', bunkName: 'SCIT A' })
+    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, scit, [scit]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.bunkName).toBeUndefined()
+    expect(current.bunkNameRecorded).toBeUndefined()
+  })
+
+  it('shows the registry cabin for a resolved current-year teen row, with the as-typed name on hover', async () => {
+    teenCabinsByWeekend = new Map([
+      [`${String(YEAR)}:700`, { cabinName: 'Village Cabin 2', cabinNameRaw: 'Teen 2' }],
+    ])
+    const teen = currentCamper({ sessionCmId: 700, sessionType: 'tli', bunkName: 'Teen 2' })
+    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, teen, [teen]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.bunkName).toBe('Village Cabin 2')
+    expect(current.bunkNameRecorded).toBe('Teen 2')
+  })
+
+  it('never shows a cabin for a current-year Quest record, even with an assigned bunk', async () => {
+    const quest = currentCamper({ sessionCmId: 900, sessionType: 'quest', bunkName: 'Trip Name' })
+    const { result } = renderHook(() => useCamperHistory(12887873, YEAR, quest, [quest]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.bunkName).toBeUndefined()
+    expect(current.bunkNameRecorded).toBeUndefined()
   })
 
   it('still stamps "Unassigned" on a current-year bunkable (main) record with no bunk', async () => {

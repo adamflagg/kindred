@@ -10,6 +10,7 @@ import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollment
 import { queryKeys } from '../../utils/queryKeys'
 import { fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
+import { currentYearCabin, type CabinLabel } from './teenCabinLabel'
 import { useCamperJourney } from './useCamperJourney'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
@@ -34,17 +35,29 @@ function collapseAgIntoMain(campers: Camper[]): Camper[] {
 }
 
 /**
- * Build HistoricalRecord entries from current-year campers. AG is never shown as
- * its own session — a surviving AG camper is relabeled to its parent main (name
- * from `parentByKey`, type forced to 'main'). "Unassigned" appears only for a
- * current-year *bunkable* (main/embedded/ag) session with no bunk yet.
+ * A current-year record before the Q9 cabin rule is applied — carries the
+ * session's `cm_id` (not part of the public `HistoricalRecord` shape) so the
+ * REACTIVE resolution step below can key into the registry's teen-cabin map,
+ * and `bunkName` here is the raw CampMinder value, unfiltered.
+ */
+interface RawCurrentYearRecord extends HistoricalRecord {
+  sessionCmId: number
+}
+
+/**
+ * Build raw HistoricalRecord entries from current-year campers. AG is never
+ * shown as its own session — a surviving AG camper is relabeled to its
+ * parent main (name from `parentByKey`, type forced to 'main'). The cabin
+ * rule (Q9, "Unassigned" included) is applied afterward, in `useCamperHistory`
+ * — this function is pure sync data-shaping and carries no dependency on the
+ * async teen-cabin registry read.
  */
 function buildCurrentYearRecords(
   campers: Camper[],
   currentYear: number,
   parentByKey: Map<string, CampSessionsResponse>
-): HistoricalRecord[] {
-  const records: HistoricalRecord[] = []
+): RawCurrentYearRecord[] {
+  const records: RawCurrentYearRecord[] = []
   for (const c of campers) {
     const session = c.expand?.session
     if (!session) continue
@@ -54,19 +67,53 @@ function buildCurrentYearRecords(
     const parent = isAg ? parentByKey.get(`${currentYear}:${session.parent_id}`) : undefined
     const sessionName = parent?.name || session.name || 'Unknown'
     const sessionType = isAg ? 'main' : session.session_type
-    const bunkName =
-      assignedBunk?.name ?? (isAtCampSessionType(sessionType) ? 'Unassigned' : undefined)
     records.push({
       year: currentYear,
       sessionName,
       sessionType,
-      ...(bunkName !== undefined ? { bunkName } : {}),
+      sessionCmId: session.cm_id,
+      ...(assignedBunk?.name !== undefined ? { bunkName: assignedBunk.name } : {}),
       startDate: session.start_date,
       endDate: session.end_date,
       ...(isEnrolled ? {} : { attendeeStatus: c.attendee_status }),
     })
   }
   return records
+}
+
+/**
+ * Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): a TLI/SCIT row's
+ * cabin comes ONLY from `teenCabins` (the registry-resolved map
+ * `useCamperJourney` already reads for prior years, keyed by year+session) —
+ * never the raw CampMinder bunk, which is usually a program group ("SCIT A",
+ * "TLI"). Quest never shows a cabin at all; its "bunk" is a trip name.
+ * "Unassigned" appears only for a current-year *bunkable* (main/embedded/ag)
+ * session still lacking any label. Applied as a separate, reactive step (not
+ * inside the attendee-keyed query above) so a teen-cabin registry read that
+ * settles AFTER the current-year rows are cached still relabels them, rather
+ * than baking a stale (or empty) map into that query's result forever.
+ */
+function applyCurrentYearCabinRule(
+  records: RawCurrentYearRecord[],
+  currentYear: number,
+  teenCabins: Map<string, CabinLabel>
+): HistoricalRecord[] {
+  return records.map(({ sessionCmId, bunkName: rawBunkName, ...rest }) => {
+    const cabin = currentYearCabin(
+      rest.sessionType,
+      currentYear,
+      sessionCmId,
+      rawBunkName,
+      teenCabins
+    )
+    const bunkName =
+      cabin.bunkName ?? (isAtCampSessionType(rest.sessionType) ? 'Unassigned' : undefined)
+    return {
+      ...rest,
+      ...(bunkName !== undefined ? { bunkName } : {}),
+      ...(cabin.bunkNameRecorded !== undefined ? { bunkNameRecorded: cabin.bunkNameRecorded } : {}),
+    }
+  })
 }
 
 /** Resolve the best campers to display for the current year */
@@ -127,14 +174,21 @@ export function useCamperHistory(
     enabled: !!personCmId && !!camper,
   })
 
+  // Q9 (owner, 2026-09-22 late): reactive to the registry's teen-cabin map,
+  // independent of the attendee-keyed query above.
+  const resolvedCurrentRows = useMemo(
+    () => applyCurrentYearCabinRule(currentRows, currentYear, journey.teenCabinsByWeekend),
+    [currentRows, currentYear, journey.teenCabinsByWeekend]
+  )
+
   // The SHARED comparator, not a second year-only one. This merge is where
   // the reported defect actually lived: prior-year records arrive
   // chronological by luck of the fetch order, the current year's do not, and
   // a year-only sort preserves both — so 2025 read correctly while 2026 read
   // "2a, 3a, FC1, FC6".
   const camperHistory = useMemo(
-    () => [...currentRows, ...journey.rows].sort(byYearThenChronological),
-    [currentRows, journey.rows]
+    () => [...resolvedCurrentRows, ...journey.rows].sort(byYearThenChronological),
+    [resolvedCurrentRows, journey.rows]
   )
 
   return {

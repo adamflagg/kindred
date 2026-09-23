@@ -74,7 +74,9 @@ function journeyWith(
   rows: HistoricalRecord[],
   counts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
 ) {
-  return { rows, counts, isLoading: false, error: null }
+  // Q9 (owner, 2026-09-22 late): the real hook always returns a Map here
+  // (never undefined) — tests that need a populated one override the field.
+  return { rows, counts, isLoading: false, error: null, teenCabinsByWeekend: new Map() }
 }
 
 // Mock AuthContext — AllCamperRequestsModal calls useAuth() at module load,
@@ -452,17 +454,135 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
-  // CR #3 (kindred#2753): while the shared journey feed is still loading,
-  // the modal used to render whatever it already had — an empty
-  // `historicalData` plus the board's own current-year rows — which read as
-  // "first year here" even though prior years just hadn't arrived yet. The
-  // modal now shows the SAME loading/error states as CampJourneyTimeline.
-  describe('Camp Journey — loading and error states (CR #3)', () => {
-    it('shows a loading spinner instead of the current-year-only rows while the feed loads', async () => {
+  // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): commit 6f205252
+  // applied the registry-only cabin rule to PRIOR years via the server's
+  // teen_cabins. The modal's OWN current-year row (this camper's live
+  // enrollment, not the shared feed) still showed the raw CampMinder bunk —
+  // a program group for TLI/SCIT, a trip name for Quest — until now.
+  describe('Camp Journey — current-year TLI/SCIT/Quest cabins (Q9 follow-up)', () => {
+    const SCIT_ATTENDEE: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-scit',
+      session: 'sess-scit',
+      expand: {
+        session: { id: 'sess-scit', cm_id: 700, name: 'Session 700', session_type: 'scit' },
+      },
+    }
+    const QUEST_ATTENDEE: Record<string, unknown> = {
+      ...EMMA_ATTENDEE,
+      id: 'att-emma-quest',
+      session: 'sess-quest',
+      expand: {
+        session: { id: 'sess-quest', cm_id: 900, name: 'Session 900', session_type: 'quest' },
+      },
+    }
+
+    it('shows no cabin, anywhere in the panel, for a current-year SCIT enrollment the registry does not resolve', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([SCIT_ATTENDEE])
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('sess-scit')
+            ? [{ expand: { bunk: { name: 'SCIT A' } } }]
+            : []
+        )
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+      expect(cabins).toHaveLength(1)
+      expect(cabins[0]?.textContent).toBe('')
+      // Never the raw program-group bunk, in the journey row OR the
+      // quick-stats bar's single-enrollment cabin display.
+      expect(screen.queryByText('SCIT A')).not.toBeInTheDocument()
+    })
+
+    it('shows the registry cabin for a resolvable current-year teen row, with the as-typed name on hover', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([SCIT_ATTENDEE])
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('sess-scit')
+            ? [{ expand: { bunk: { name: 'Teen 2' } } }]
+            : []
+        )
+      )
+      mockUseCamperJourney.mockReturnValue({
+        ...journeyWith([]),
+        teenCabinsByWeekend: new Map([
+          ['2025:700', { cabinName: 'Village Cabin 2', cabinNameRaw: 'Teen 2' }],
+        ]),
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const trigger = within(grid).getByTestId('camp-journey-cabin-provenance')
+      expect(trigger.textContent).toBe('Village Cabin 2')
+      fireEvent.pointerEnter(trigger)
+      expect(screen.getByRole('tooltip').textContent).toContain('Teen 2')
+    })
+
+    it('never shows a cabin for a current-year Quest enrollment, even with an assigned bunk', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([QUEST_ATTENDEE])
+      mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes('sess-quest')
+            ? [{ expand: { bunk: { name: 'Trip Name' } } }]
+            : []
+        )
+      )
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+      expect(cabins).toHaveLength(1)
+      expect(cabins[0]?.textContent).toBe('')
+      expect(screen.queryByText('Trip Name')).not.toBeInTheDocument()
+    })
+  })
+
+  // Q8 (owner, 2026-09-22 late): every sidebar handles the journey the SAME
+  // way (`journeyDisplayState`, camper/journeyRowModel.ts) — rows that are
+  // already here (the board's own current-year enrollments) render
+  // immediately; the spinner is only for the true "nothing yet" case.
+  //
+  // RULED CHANGE from CR #3 (kindred#2753): CR #3 made the modal show a
+  // spinner for the WHOLE section whenever the shared feed was loading or
+  // errored, even though the board's own current-year rows (Emma's
+  // "Session 1", unassigned) were already in hand — the exact regression Q8
+  // reverses on the camper record (commit 16e0edcd). The modal had not
+  // followed that reversal until now.
+  describe('Camp Journey — loading and error states (Q8)', () => {
+    it('shows the current-year row immediately while the feed loads, no spinner', async () => {
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue({
         rows: [],
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
+        isLoading: true,
+        error: null,
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(within(grid).getByText('Unassigned')).toBeInTheDocument()
+      expect(within(grid).getByText('Now')).toBeInTheDocument()
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+    })
+
+    it('shows the spinner only when there are no current-year rows either', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([])
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
         isLoading: true,
         error: null,
       })
@@ -472,15 +592,33 @@ describe('CamperDetailsPanel', () => {
       await screen.findByRole('heading', { name: /Emma/i })
       expect(screen.getByText('Loading...')).toBeInTheDocument()
       expect(screen.queryByTestId('journey-rows')).not.toBeInTheDocument()
-      expect(screen.queryByText('Unassigned')).not.toBeInTheDocument()
-      expect(screen.queryByText('Now')).not.toBeInTheDocument()
     })
 
-    it('shows the same muted error line as the camper record when the feed errors', async () => {
+    it('shows the current-year rows with the muted error line below them when the feed errors', async () => {
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue({
         rows: [],
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
+        isLoading: false,
+        error: new Error('boom'),
+      })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      const grid = await screen.findByTestId('journey-rows')
+      expect(within(grid).getByText('Unassigned')).toBeInTheDocument()
+      expect(within(grid).getByText('Now')).toBeInTheDocument()
+      expect(await screen.findByText("Couldn't load past years")).toBeInTheDocument()
+    })
+
+    it('shows only the muted error line when there are no rows at all', async () => {
+      setupDeclinedRequestMocks()
+      mockGetFullListAttendees.mockResolvedValue([])
+      mockUseCamperJourney.mockReturnValue({
+        rows: [],
+        counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
+        teenCabinsByWeekend: new Map(),
         isLoading: false,
         error: new Error('boom'),
       })

@@ -29,6 +29,7 @@ import {
   isQuestSessionType,
   isTeenProgramType,
 } from '../../utils/sessionTypePredicates'
+import { cabinsByWeekend, recordedIfDifferent, type CabinLabel } from './teenCabinLabel'
 import type {
   AttendeesResponse,
   BunkAssignmentsResponse,
@@ -66,21 +67,6 @@ export async function fetchParentMainSessions(
     .getFullList({ filter: orClause })
   for (const s of sessions) out.set(`${s.year}:${s.cm_id}`, s)
   return out
-}
-
-/** One cabin label, plus the as-typed string when it is worth showing. */
-interface CabinLabel {
-  cabinName: string
-  cabinNameRaw: string
-}
-
-/**
- * The as-typed string, but ONLY where it disagrees with the label already
- * shown — the same `showsProvenance` logic `HouseholdJourneyCard` uses.
- * Absent raw or a raw that already IS the label means nothing to offer.
- */
-function recordedIfDifferent(label: string, raw: string): string | undefined {
-  return raw.length > 0 && raw !== label ? raw : undefined
 }
 
 interface FamilySeasonHousing extends CabinLabel {
@@ -130,22 +116,6 @@ function familySeasonHousing(y: HouseholdJourneyRow): FamilySeasonHousing | unde
 /** Does the season's cabin label this weekend? Pinned: only its own. Unpinned: all. */
 function labelsWeekend(housing: FamilySeasonHousing, sessionCmId: number): boolean {
   return housing.sessionCmId === null || housing.sessionCmId === sessionCmId
-}
-
-/**
- * Server-named cabins keyed `${year}:${sessionCmId}` — the attributed adult
- * cabins, and the TLI/SCIT cabins the registry resolves (same row shape).
- */
-function cabinsByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, CabinLabel> {
-  const map = new Map<string, CabinLabel>()
-  for (const w of weekends) {
-    const cabinName = (w.cabin_name ?? '').trim()
-    const cabinNameRaw = (w.cabin_name_raw ?? '').trim()
-    if (w.year !== undefined && w.session_cm_id !== undefined && cabinName.length > 0) {
-      map.set(`${String(w.year)}:${String(w.session_cm_id)}`, { cabinName, cabinNameRaw })
-    }
-  }
-  return map
 }
 
 interface ParentFamilyWeekend {

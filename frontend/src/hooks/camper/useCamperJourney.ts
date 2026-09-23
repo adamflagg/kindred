@@ -12,6 +12,7 @@
  * Fast-follow B replaces this hook's feed `queryFn` with one server call and
  * changes no consumer.
  */
+import { useMemo } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../../contexts/AuthContext'
@@ -22,9 +23,11 @@ import { EMPTY_JOURNEY_COUNTS } from '../../utils/journeyCountLabel'
 import { queryKeys } from '../../utils/queryKeys'
 import { useHouseholdJourney, usePersonHousing } from '../useWeekendRoster'
 import { fetchCamperJourney } from './fetchCamperJourney'
+import { cabinsByWeekend, type CabinLabel } from './teenCabinLabel'
 import type { HistoricalRecord, JourneyCounts } from './types'
 
 const NO_ROWS: HistoricalRecord[] = []
+const NO_TEEN_CABINS: Map<string, CabinLabel> = new Map()
 
 type PersonFactsRow = Pick<PersonsResponse, 'year' | 'household_id' | 'years_at_camp' | 'age'>
 
@@ -63,6 +66,14 @@ export interface UseCamperJourneyResult {
   counts: JourneyCounts
   isLoading: boolean
   error: Error | null
+  /**
+   * The registry-resolved TLI/SCIT cabins, keyed `${year}:${sessionCmId}`
+   * (Q9, owner ruling 2026-09-22 late). Exposed so a CURRENT-year row —
+   * built outside this hook's own feed, from live attendees — can apply the
+   * same "registry-resolved cabin, or nothing" rule this hook already
+   * applies to prior years in `fetchCamperJourney`.
+   */
+  teenCabinsByWeekend: Map<string, CabinLabel>
 }
 
 export function useCamperJourney(
@@ -136,6 +147,14 @@ export function useCamperJourney(
         }
       : EMPTY_JOURNEY_COUNTS
 
+  // Q9 (owner, 2026-09-22 late): the same registry-resolved rows the feed
+  // reads for prior years, keyed for a CURRENT-year row to look itself up by.
+  const teenCabinsByWeekend = useMemo(
+    () =>
+      housingQ.data?.teen_cabins ? cabinsByWeekend(housingQ.data.teen_cabins) : NO_TEEN_CABINS,
+    [housingQ.data?.teen_cabins]
+  )
+
   const error = personQ.error ?? feedQ.error ?? null
   return {
     rows: feedQ.data?.rows ?? NO_ROWS,
@@ -144,5 +163,6 @@ export function useCamperJourney(
     // not fetching — while it waits for housing, and that wait is loading too.
     isLoading: validPerson && error === null && (personQ.isPending || feedQ.isPending),
     error,
+    teenCabinsByWeekend,
   }
 }

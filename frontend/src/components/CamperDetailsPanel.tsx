@@ -34,7 +34,9 @@ import {
   buildSummerSessionTypeFilter,
   isFamilySessionType,
   isAdultSessionType,
+  isAtCampSessionType,
 } from '../utils/sessionTypePredicates'
+import { currentYearCabin } from '../hooks/camper/teenCabinLabel'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -62,7 +64,12 @@ import { EMPTY_JOURNEY_COUNTS, journeyCountLabel } from '../utils/journeyCountLa
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { SiblingWithEnrollment } from '../hooks/camper/types'
 import { JourneyRows } from './camper/JourneyRows'
-import { journeyRowStatus, journeyRowsFromHistory, type JourneyRow } from './camper/journeyRowModel'
+import {
+  journeyDisplayState,
+  journeyRowStatus,
+  journeyRowsFromHistory,
+  type JourneyRow,
+} from './camper/journeyRowModel'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -161,6 +168,12 @@ interface CurrentEnrollment {
   sessionCmId: number
   parentId: number
   bunkName: string | null
+  /**
+   * The as-typed string, when it disagrees with `bunkName` (Q9, owner ruling
+   * 2026-09-22 late) — set only for a resolved TLI/SCIT row. Rendered as a
+   * hover tooltip, never inline.
+   */
+  bunkNameRecorded?: string
   attendeeStatus?: string
 }
 
@@ -421,7 +434,45 @@ export default function CamperDetailsPanel({
   })
 
   const camper = camperData?.camper
-  const allEnrollments = camperData?.enrollments ?? []
+
+  // The one shared journey feed — the same rows and counts as the camper
+  // record. Read here (ahead of its old position) so its registry-resolved
+  // teen-cabin map is available to the current-year correction below.
+  const {
+    rows: historicalData,
+    counts: journeyCounts,
+    isLoading: journeyLoading,
+    error: journeyError,
+    teenCabinsByWeekend,
+  } = useCamperJourney(camperId ? parseInt(camperId, 10) : null, currentYear)
+
+  // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): a TLI/SCIT
+  // enrollment's cabin comes ONLY from the registry-resolved teen-cabin map —
+  // never the raw CampMinder bunk (usually a program group, "SCIT A"/"TLI").
+  // Quest never shows a cabin at all; its "bunk" is a trip name. Applied here,
+  // over the raw fetch's `enrollments`, rather than baked into the queryFn
+  // above — that query's key does not include `teenCabinsByWeekend`, so a
+  // teen-cabin read that settles AFTER this query has already cached would
+  // otherwise never get picked up.
+  const allEnrollments: CurrentEnrollment[] = useMemo(() => {
+    const raw = camperData?.enrollments ?? []
+    return raw.map((e) => {
+      const cabin = currentYearCabin(
+        e.sessionType,
+        currentYear,
+        e.sessionCmId,
+        e.bunkName,
+        teenCabinsByWeekend
+      )
+      return {
+        ...e,
+        bunkName: cabin.bunkName ?? null,
+        ...(cabin.bunkNameRecorded !== undefined
+          ? { bunkNameRecorded: cabin.bunkNameRecorded }
+          : {}),
+      }
+    })
+  }, [camperData?.enrollments, currentYear, teenCabinsByWeekend])
   // Show enrolled sessions only; if none enrolled, show best non-enrolled as fallback
   const currentEnrollments = toDisplayList(
     filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus)
@@ -439,14 +490,6 @@ export default function CamperDetailsPanel({
     },
     enabled: !!camperId,
   })
-
-  // The one shared journey feed — the same rows and counts as the camper record.
-  const {
-    rows: historicalData,
-    counts: journeyCounts,
-    isLoading: journeyLoading,
-    error: journeyError,
-  } = useCamperJourney(camperId ? parseInt(camperId, 10) : null, currentYear)
 
   // Fetch bunk requests
   const { data: bunkRequests = [] } = useQuery<PanelBunkRequest[]>({
@@ -576,6 +619,12 @@ export default function CamperDetailsPanel({
     currentEnrollments.length > 0
       ? currentEnrollments.map((enrollment, idx) => {
           const status = journeyRowStatus(enrollment.attendeeStatus)
+          // Q9: "Unassigned" is a bunkable (main/embedded/ag) fallback only —
+          // enrollment.bunkName is already registry-resolved-or-nothing for a
+          // TLI/SCIT row, and Quest never carries a bunkName at all.
+          const cabin =
+            enrollment.bunkName ??
+            (isAtCampSessionType(enrollment.sessionType) ? 'Unassigned' : undefined)
           return {
             key: `current-${enrollment.sessionCmId}`,
             year: currentYear,
@@ -583,26 +632,38 @@ export default function CamperDetailsPanel({
             isCurrentYear: true,
             session: getEnrollmentShortName(enrollment),
             subtitle: undefined,
-            cabin: status ? undefined : (enrollment.bunkName ?? 'Unassigned'),
-            cabinRecorded: undefined,
+            cabin: status ? undefined : cabin,
+            cabinRecorded: status ? undefined : enrollment.bunkNameRecorded,
             status,
             showNow: idx === 0 && !status,
           }
         })
       : camper?.expand?.session
         ? [
-            {
-              key: 'current-session',
-              year: currentYear,
-              showYear: true,
-              isCurrentYear: true,
-              session: getSessionShortName() ?? '',
-              subtitle: undefined,
-              cabin: camper.expand.assigned_bunk?.name ?? 'Unassigned',
-              cabinRecorded: undefined,
-              status: undefined,
-              showNow: true,
-            },
+            (() => {
+              const sessionType = camper.expand.session.session_type
+              const resolved = currentYearCabin(
+                sessionType,
+                currentYear,
+                camper.session_cm_id,
+                camper.expand.assigned_bunk?.name,
+                teenCabinsByWeekend
+              )
+              const cabin =
+                resolved.bunkName ?? (isAtCampSessionType(sessionType) ? 'Unassigned' : undefined)
+              return {
+                key: 'current-session',
+                year: currentYear,
+                showYear: true,
+                isCurrentYear: true,
+                session: getSessionShortName() ?? '',
+                subtitle: undefined,
+                cabin,
+                cabinRecorded: resolved.bunkNameRecorded,
+                status: undefined,
+                showNow: true,
+              }
+            })(),
           ]
         : []
   const journeyRows: JourneyRow[] = [
@@ -812,6 +873,16 @@ export default function CamperDetailsPanel({
       ? getStatusIndicator(currentEnrollments[0]?.attendeeStatus)
       : null
 
+  // Q9 (owner, 2026-09-22 late): the single-enrollment quick-stat reads the
+  // SAME corrected bunkName every other surface does — never `camper`'s raw
+  // `expand.assigned_bunk` directly, which bypasses the teen/quest rule
+  // (`camper` is built from the same attendee/assignment fetch as
+  // `allEnrollments`, but is not itself run through the correction).
+  const quickStatsBunkName =
+    currentEnrollments.length === 1
+      ? currentEnrollments[0]?.bunkName
+      : camper.expand?.assigned_bunk?.name
+
   // Q11 (owner, 2026-09-22 late): the board's quick-stats line shows the
   // SUMMERS part only ("5 summers"), and nothing when summers is 0 — the
   // whole line wrapped in this narrow bar, and family/adult weekends are not
@@ -883,10 +954,10 @@ export default function CamperDetailsPanel({
             </div>
           ) : (
             <>
-              {camper.expand?.assigned_bunk && (
+              {quickStatsBunkName && (
                 <div className="text-forest-100 flex items-center gap-1.5">
                   <Home className="text-forest-300 h-3 w-3" />
-                  <span>{camper.expand.assigned_bunk.name}</span>
+                  <span>{quickStatsBunkName}</span>
                 </div>
               )}
               {getSessionShortName() && (
@@ -1005,15 +1076,13 @@ export default function CamperDetailsPanel({
         )}
 
         {/* Camp Journey Timeline - Compact */}
-        {/* CR #3 (kindred#2753): while the shared feed loads, `historicalData`
-            reads empty — showing only this year's board rows read as "first
-            year here" even though prior years just hadn't arrived yet. The
+        {/* Q8 (owner, 2026-09-22 late): the SAME rows-first decision as
+            CampJourneyTimeline (`journeyDisplayState`, camper/journeyRowModel.ts)
+            — the board's own current-year rows are ready before the prior-year
+            feed, and used to sit behind a spinner until it settled. The
             section itself must stay visible through loading/error too, or the
             spinner/error line below would never have anywhere to render. */}
-        {(journeyLoading ||
-          journeyError !== null ||
-          historicalData.length > 0 ||
-          camper.expand?.session) && (
+        {journeyDisplayState(journeyRows.length, journeyLoading, journeyError) !== 'empty' && (
           <section>
             <SectionHeader
               title="Camp Journey"
@@ -1024,24 +1093,32 @@ export default function CamperDetailsPanel({
               accentColor="forest"
             />
             {expandedSections.history &&
-              (journeyLoading ? (
-                // Same loading markup as CampJourneyTimeline (camper/CampJourneyTimeline.tsx).
-                <div className="mt-2 flex items-center justify-center py-4">
-                  <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
-                  <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
-                </div>
-              ) : journeyError !== null ? (
-                // Same error line and tone as CampJourneyTimeline (CR #1).
-                <div className="mt-2 py-4 text-center">
-                  <p className="text-sm text-red-500">Couldn't load past years</p>
-                </div>
-              ) : (
+              (journeyRows.length > 0 ? (
                 // The same rows as the camper record (`camper/JourneyRows`,
                 // owner ruling 2026-09-22 G2): this year's board enrollments and
                 // the prior years in ONE grid — `compact`, like every sidebar:
                 // one type size down, a family weekend's bare title only.
                 <div className="mt-2">
                   <JourneyRows rows={journeyRows} variant="compact" />
+                  {/* A failed prior-year read still says so (CR #1), under the
+                      rows it could not complete — same as CampJourneyTimeline. */}
+                  {journeyError !== null && !journeyLoading && (
+                    <p className="mt-2 text-center text-sm text-red-500">
+                      Couldn't load past years
+                    </p>
+                  )}
+                </div>
+              ) : journeyLoading ? (
+                // Same loading markup as CampJourneyTimeline (camper/CampJourneyTimeline.tsx).
+                // Only reached with NO rows yet — Q8 shows any rows already here instead.
+                <div className="mt-2 flex items-center justify-center py-4">
+                  <div className="border-muted border-t-primary h-5 w-5 animate-spin rounded-full border-2" />
+                  <span className="text-muted-foreground ml-2 text-sm">Loading...</span>
+                </div>
+              ) : (
+                // Same error line and tone as CampJourneyTimeline (CR #1).
+                <div className="mt-2 py-4 text-center">
+                  <p className="text-sm text-red-500">Couldn't load past years</p>
                 </div>
               ))}
           </section>
