@@ -202,19 +202,12 @@
  * gate is the whole reason `authorship` still travels on the wire now that it
  * paints nothing.
  */
-import {
-  BedDouble,
-  ChevronRight,
-  Handshake,
-  Lock,
-  MessageSquare,
-  Tent,
-  type LucideIcon,
-} from 'lucide-react'
+import { BedDouble, Handshake, Lock, MessageSquare, Tent, type LucideIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
 import type { RequestTextBlockRow, RosterPartyRow, ShareRequest } from '../../types/lodging'
-import { CAP_CLASSES, clusterCap, resolveShareAnchor, resolveShareCluster } from './shareMarks'
+import { ChipCapsule, ChoiceRow, NoteRow, NOTE_CHIP_CLASS, RowChip, RowText } from './panelRows'
+import { CAP_CLASSES, resolveShareAnchor, resolveShareCluster } from './shareMarks'
 
 /** An unanswered request, used when the payload omits the block entirely. */
 const NO_SHARE_REQUEST: ShareRequest = {
@@ -224,27 +217,6 @@ const NO_SHARE_REQUEST: ShareRequest = {
   request_text: '',
   request_blocks: [],
 }
-
-/** 22px icon-chip frame (mockup `.mkic`). No rounding baked in here, mirroring `shareMarks.ts`'s own `CAP_CLASSES` split — the anchor/cluster rows supply their corner via `CAP_CLASSES`, the note rows below hardcode `rounded-full` since they are always solo. */
-const ROW_ICON_FRAME = 'inline-flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center'
-/** 13px icon glyph inside every row's chip (mockup `.mkic svg`). */
-const MARK_ICON = 'h-[13px] w-[13px]'
-/** The muted, always-solo chip for the three CSV-lane note rows (mockup `.mkic.nt`). */
-const NOTE_ICON_FRAME = `${ROW_ICON_FRAME} rounded-full bg-muted text-muted-foreground`
-
-/**
- * Every text in this section (mockup `.mksay`): plain, 30px-indented,
- * italic, `opacity-85`, no rail. `break-words` is the one addition beyond the
- * mockup's literal CSS — the longest single 2026 answer is 680 characters in
- * a 416px panel, and an unbroken token (an email address, a URL) would
- * otherwise push the panel into a horizontal scroll; `whitespace-pre-wrap`
- * keeps a family's own line breaks.
- */
-const MK_SAY =
-  'text-foreground pl-[30px] text-[13px] italic whitespace-pre-wrap break-words opacity-[.85]'
-
-/** The small uppercase authorship tag on a note row (mockup `.who`). */
-const WHO_TAG = 'text-muted-foreground text-[9.5px] tracking-[.07em] uppercase opacity-75'
 
 /**
  * DISPLAY names. The key stays the CampMinder source-field identity — it is
@@ -325,15 +297,6 @@ function withText(blocks: RequestTextBlockRow[]): RequestTextBlockRow[] {
     .filter((block) => block.entries.length > 0)
 }
 
-/** One row's paragraph of free text (mockup `.mksay`). No label here — a row's label lives in its own header, never as a caption above the text. */
-function RowText({ text }: { text: string }) {
-  return (
-    <p data-testid="request-entry" className={MK_SAY}>
-      {text}
-    </p>
-  )
-}
-
 function RequestBlock({
   block,
   expanded,
@@ -355,78 +318,54 @@ function RequestBlock({
   const label = DISPLAY_LABELS[sourceField] ?? sourceField
   const RowIcon = ROW_ICON[sourceField] ?? DEFAULT_ROW_ICON
 
+  // The WHOLE ROW is the click target (mockup `.mk.note .mkbtn`:
+  // `all:unset; display:flex; width:100%`), not just the label — a
+  // collapsed row used to leave the chevron and the Staff tag OUTSIDE
+  // the button with no handler, so clicking the glyph staff actually
+  // looked at did nothing. `aria-hidden` on the Staff tag keeps it out
+  // of the button's accessible name (dom-accessibility-api excludes
+  // aria-hidden descendants from "name from content"), so a query by
+  // exact label text still finds a staff-authored row's button. The
+  // chevron icon needs no such treatment — lucide already marks an
+  // icon with no a11y prop `aria-hidden` on its own.
+  // `aria-expanded` is NOT the accessibility scaffolding
+  // `frontend/CLAUDE.md` rules out, and it is worth saying why so nobody
+  // strips it in a later sweep. It is in the approved mockup's own
+  // `.mkbtn` markup; it is already how this repo spells a disclosure
+  // control (`LockGroupPanel`, `OptimizeBunksButton`,
+  // `RequestRowDesktop`, `SeasonRollForwardPanel`, and both admin/geo
+  // panels); and it is the fold state a test can assert without reaching
+  // for a class name — the test-handle case that section explicitly
+  // allows. Raised by CodeRabbit.
   return (
-    <li
-      data-testid="request-block"
-      data-source-field={sourceField}
-      data-authorship={isStaff ? 'staff' : 'family'}
-      className="flex flex-col gap-[3px]"
+    <NoteRow
+      rowProps={{
+        'data-testid': 'request-block',
+        'data-source-field': sourceField,
+        'data-authorship': isStaff ? 'staff' : 'family',
+      }}
+      chip={<RowChip Icon={RowIcon} className={NOTE_CHIP_CLASS} />}
+      label={label}
+      tag={isStaff ? 'Staff' : undefined}
+      expanded={expanded}
+      onToggle={() => {
+        onToggle(sourceField)
+      }}
     >
-      {/* The WHOLE ROW is the click target (mockup `.mk.note .mkbtn`:
-          `all:unset; display:flex; width:100%`), not just the label — a
-          collapsed row used to leave the chevron and the Staff tag OUTSIDE
-          the button with no handler, so clicking the glyph staff actually
-          looked at did nothing. `aria-hidden` on the Staff tag keeps it out
-          of the button's accessible name (dom-accessibility-api excludes
-          aria-hidden descendants from "name from content"), so a query by
-          exact label text still finds a staff-authored row's button. The
-          chevron icon needs no such treatment — lucide already marks an
-          icon with no a11y prop `aria-hidden` on its own. */}
-      {/* `aria-expanded` is NOT the accessibility scaffolding
-          `frontend/CLAUDE.md` rules out, and it is worth saying why so nobody
-          strips it in a later sweep. It is in the approved mockup's own
-          `.mkbtn` markup; it is already how this repo spells a disclosure
-          control (`LockGroupPanel`, `OptimizeBunksButton`,
-          `RequestRowDesktop`, `SeasonRollForwardPanel`, and both admin/geo
-          panels); and it is the fold state a test can assert without reaching
-          for a class name — the test-handle case that section explicitly
-          allows. Raised by CodeRabbit. */}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => {
-          onToggle(sourceField)
-        }}
-        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 text-left text-[13.5px] transition-colors"
-      >
-        <span className={`${NOTE_ICON_FRAME}`}>
-          <RowIcon className={MARK_ICON} />
-        </span>
-        {/* Deliberately NOT the section heading's uppercase/tracked style,
-            which `FamilyDetailsPanel`'s `Section` already spends above this.
-            Repeating it would make a row read as a peer of "Share request"
-            rather than a child of it. */}
-        <span className="ml-0.5 font-semibold">{label}</span>
-        {/* `Staff` only — the mockup's `NOTE_SPEC.shareWith` also tags
-            `Share Bunk With` `who: 'CSV'`, but this app has no real CSV
-            vs. form provenance signal on the wire, only `authorship`
-            ('staff' | 'family'); inventing a label the data can't back is
-            worse than omitting it, so `Share Bunk With` renders no tag. */}
-        {isStaff && (
-          <span className={WHO_TAG} aria-hidden="true">
-            Staff
-          </span>
-        )}
-        <ChevronRight
-          className={`ml-auto h-3 w-3 flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
-        />
-      </button>
-
-      {expanded &&
-        block.entries?.map((entry, index) => (
-          <div key={`${String(index)}-${String(entry.text)}`} className="flex flex-col gap-0.5">
-            {(entry.contributors ?? []).length > 0 && (
-              <span
-                data-testid="request-entry-contributors"
-                className="text-muted-foreground pl-[30px] text-[11px]"
-              >
-                {(entry.contributors ?? []).join(', ')}
-              </span>
-            )}
-            <RowText text={entry.text ?? ''} />
-          </div>
-        ))}
-    </li>
+      {block.entries?.map((entry, index) => (
+        <div key={`${String(index)}-${String(entry.text)}`} className="flex flex-col gap-0.5">
+          {(entry.contributors ?? []).length > 0 && (
+            <span
+              data-testid="request-entry-contributors"
+              className="text-muted-foreground pl-[30px] text-[11px]"
+            >
+              {(entry.contributors ?? []).join(', ')}
+            </span>
+          )}
+          <RowText text={entry.text ?? ''} />
+        </div>
+      ))}
+    </NoteRow>
   )
 }
 
@@ -488,42 +427,32 @@ export function ShareRequestPanel({ party }: ShareRequestPanelProps) {
     <div className="flex flex-col gap-1.5">
       <ul className="flex flex-col gap-2">
         {anchor && (
-          <li className="flex flex-col gap-[3px]">
-            <div className="flex items-center gap-1.5 text-[13.5px]">
-              <span
-                data-testid="share-anchor"
-                className={`${ROW_ICON_FRAME} ${anchor.className} ${CAP_CLASSES.solo}`}
-              >
-                <Handshake className={MARK_ICON} />
-              </span>
-              <span className="ml-0.5 font-semibold">{anchor.label}</span>
-            </div>
-          </li>
+          <ChoiceRow
+            chip={
+              <RowChip
+                Icon={Handshake}
+                testId="share-anchor"
+                className={`${anchor.className} ${CAP_CLASSES.solo}`}
+              />
+            }
+            label={anchor.label}
+          />
         )}
 
         {cluster.length > 0 && (
-          <li className="flex flex-col gap-[3px]">
-            <div className="flex items-center gap-1.5 text-[13.5px]">
-              <div className="flex items-center">
-                {cluster.map((mark, index) => {
-                  const cap = CAP_CLASSES[clusterCap(index, cluster.length)]
-                  const Icon = mark.Icon
-                  return (
-                    <span
-                      key={mark.key}
-                      data-testid={`share-mark-${mark.key}`}
-                      className={`${ROW_ICON_FRAME} ${mark.className} ${cap}`}
-                    >
-                      <Icon className={MARK_ICON} />
-                    </span>
-                  )
-                })}
-              </div>
-              <span className="ml-0.5 font-semibold">
-                {cluster.map((mark) => mark.ariaLabel).join(' · ')}
-              </span>
-            </div>
-          </li>
+          <ChoiceRow
+            chip={
+              <ChipCapsule
+                chips={cluster.map((mark) => ({
+                  key: mark.key,
+                  Icon: mark.Icon,
+                  className: mark.className,
+                  testId: `share-mark-${mark.key}`,
+                }))}
+              />
+            }
+            label={cluster.map((mark) => mark.ariaLabel).join(' · ')}
+          />
         )}
 
         {blocks.map((block) => (
