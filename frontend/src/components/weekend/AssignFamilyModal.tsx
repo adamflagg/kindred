@@ -1169,13 +1169,16 @@ export function AssignFamilyModal({
                 </button>
               </div>
             </div>
-          ) : !canPlace ? /* kindred#2804. The CampMinder mirror: no scenario, so nothing can
-               be placed from this box and `parties` is `[]` for that reason —
-               not because anybody counted the queue down to zero. Rendering
-               NOTHING here, rather than falling into the branch below, is the
-               fix: that branch's "Everyone has a cabin" is a claim about a
-               scenario's queue, and there is no scenario to make it about. */
-          null : parties.length === 0 ? (
+          ) : !canPlace ? (
+            // kindred#2804. The CampMinder mirror: no scenario, so nothing
+            // can be placed from this box, and `parties` is `[]` for that
+            // reason — not because anybody counted the queue down to zero.
+            // Rendering nothing here, rather than falling into the branch
+            // below, is the fix: that branch's "Everyone has a cabin" is a
+            // claim about a scenario's queue, and there is no scenario to
+            // make it about.
+            <></>
+          ) : parties.length === 0 ? (
             /* Nothing left to place, and this time the claim is one a real
                scenario queue backs up. `FloatingUnplacedBadge` already says
                this over the same parties — one state, one sentence. BELOW the
