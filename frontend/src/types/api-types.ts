@@ -31,6 +31,9 @@
 
 import type {
   BunkGraphResponse,
+  CamperJourneyCounts,
+  CamperJourneyResponse,
+  CamperJourneyRow,
   CrossScopeEdge,
   SocialGraphEdge,
   SocialGraphNode,
@@ -53,3 +56,14 @@ export type ApiSocialGraphResponse = SocialGraphResponse
 
 /** Bunk-level subgraph response. Mirrors Python `BunkGraphResponse`. */
 export type ApiBunkGraphResponse = BunkGraphResponse
+
+// ── Camper journey (kindred#2776) ─────────────────────────────────────────────
+
+/** A person's journey as of one viewed year. Mirrors Python `CamperJourneyResponse`. */
+export type ApiCamperJourneyResponse = CamperJourneyResponse
+
+/** One prior-year row, snake_case on the wire. Mirrors Python `CamperJourneyRow`. */
+export type ApiCamperJourneyRow = CamperJourneyRow
+
+/** The journey header's counts. Mirrors Python `CamperJourneyCounts`. */
+export type ApiCamperJourneyCounts = CamperJourneyCounts

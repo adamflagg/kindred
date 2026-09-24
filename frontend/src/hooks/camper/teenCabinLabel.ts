@@ -1,13 +1,13 @@
 /**
- * Q9 cabin-label rule (owner ruling 2026-09-22, late), shared by the prior-year
- * feed (`fetchCamperJourney`) and CURRENT-year rows on both journey surfaces
- * (`useCamperHistory`, the board modal's `CamperDetailsPanel`). A cabin label
- * is keyed `${year}:${sessionCmId}` off a person-housing weekend list — the
- * attributed adult-weekend cabin and the TLI/SCIT registry resolution share
- * the same row shape (`/persons/{id}/housing`), so one map-builder serves
- * both. Kept in its own module (not `fetchCamperJourney.ts`) so a consumer
- * that only needs the current-year rule doesn't have to import the prior-year
- * fetcher's much-mocked module.
+ * Q9 cabin-label rule (owner ruling 2026-09-22, late) for CURRENT-year rows
+ * on both journey surfaces (`useCamperHistory`, the board modal's
+ * `CamperDetailsPanel`). The prior-year half of the same rule runs on the
+ * server since kindred#2776 (`api/services/camper_journey_service.py`), off
+ * the same `teen_cabins` list the journey endpoint passes through. A cabin
+ * label is keyed `${year}:${sessionCmId}` off a person-housing weekend row.
+ * Kept in its own module (not `fetchCamperJourney.ts`) so a consumer that
+ * only needs the current-year rule doesn't have to import that much-mocked
+ * module.
  */
 import { isQuestSessionType, isTeenProgramType } from '../../utils/sessionTypePredicates'
 import type { PersonHousingWeekendRow } from '../../types/lodging'

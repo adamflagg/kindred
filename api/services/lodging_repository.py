@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -84,6 +85,7 @@ from api.constants.collections import (
     LODGING_WRITE_INS_DRAFT,
     ORIGINAL_BUNK_REQUESTS,
     PERSON_CUSTOM_VALUES,
+    PERSONS,
     SYNC_RUNS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -96,7 +98,7 @@ from api.services.lodging_rules import (
 )
 from api.services.person_housing_rules import ADULT_WEEKEND_CABIN_FIELD_CM_IDS, LIVE_HOUSING_FROM_YEAR
 from api.utils.pb_filters import pb_escape
-from api.utils.session_metrics import SUMMER_TEEN_TYPES
+from api.utils.session_metrics import CAMPER_JOURNEY_SESSION_TYPES, SUMMER_TEEN_TYPES
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -184,6 +186,12 @@ def _attendee_weekend_session_filter() -> str:
     directly and would produce the wrong field name if reused here.
     """
     return " || ".join(f'session.session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+
+
+def _journey_type_filter() -> str:
+    """The camper journey's session types, through an attendee's or bunk
+    assignment's `session` relation."""
+    return " || ".join(f'session.session_type = "{t}"' for t in CAMPER_JOURNEY_SESSION_TYPES)
 
 
 def _household_cm_ids(attendee_rows: list[Any]) -> set[int]:
@@ -790,6 +798,73 @@ class LodgingRepository:
                 "sort": STABLE_SORT,
             },
         )
+
+    async def fetch_person_records(self, person_cm_id: int) -> list[Any]:
+        """One person's year-scoped `persons` rows, newest year first
+        (camper journey, kindred#2776).
+
+        Read for three facts at the viewed year: the household, CampMinder's
+        age, and the most recent non-zero `years_at_camp`. Keyed on the
+        CampMinder id, the cross-season identity thread.
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(PERSONS, query_params={"filter": f"cm_id = {person_cm_id}", "sort": "-year,id"})
+
+    async def fetch_person_journey_attendees(self, person_cm_id: int, view_year: int) -> list[Any]:
+        """One person's ENROLLED journey attendee rows THROUGH `view_year`
+        (camper journey, kindred#2776).
+
+        The journey's source of truth. Through the viewed year, not before it,
+        so the header's weekend counts include that year the way CampMinder's
+        `years_at_camp` does; the service keeps the rows themselves prior-year.
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f"person_id = {person_cm_id} && year <= {view_year} && {ACTIVE_ENROLLED_FILTER}"
+                    f" && ({_journey_type_filter()})"
+                ),
+                "expand": "session",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_journey_assignments(self, person_cm_id: int, view_year: int) -> list[Any]:
+        """One person's prior-year bunk assignments on journey session types
+        (camper journey, kindred#2776).
+
+        Used ONLY to label a row, never to gate one. Restricted to the journey
+        types so the year-fallback cannot attach a non-journey type's lone
+        bunk (a bmitzvah one, say) to an unbunked row -- the leak fb1a88d2
+        closed for current-year views.
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(
+            BUNK_ASSIGNMENTS,
+            query_params={
+                "filter": f"person.cm_id = {person_cm_id} && year < {view_year} && ({_journey_type_filter()})",
+                "expand": "session,bunk",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_sessions_by_year_cm_id(self, pairs: Sequence[tuple[int, int]]) -> list[Any]:
+        """`camp_sessions` for a set of (year, cm_id) pairs, in one read.
+
+        The camper journey relabels an AG-only year to its parent main by
+        this lookup: AG session names are not reliably derivable from the
+        parent's. No pairs, no query.
+        """
+        unique = sorted(set(pairs))
+        if not unique:
+            return []
+        clause = " || ".join(f"(year = {year} && cm_id = {cm_id})" for year, cm_id in unique)
+        return await self._page(CAMP_SESSIONS, query_params={"filter": clause, "sort": STABLE_SORT})
 
     async def fetch_household_adults_by_year(self, household_cm_id: int) -> dict[int, list[Any]]:
         """One household's accompanying adults, grouped by year (kindred#2073).

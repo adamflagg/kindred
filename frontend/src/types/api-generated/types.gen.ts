@@ -412,6 +412,95 @@ export type CamperGroupedRequests = {
 }
 
 /**
+ * CamperJourneyCounts
+ *
+ * The journey header's counts, the same on every journey surface.
+ *
+ * `summers` is CampMinder's `years_at_camp` -- the most recent NON-ZERO value
+ * at or before the viewed year, because CampMinder zeroes it for adults.
+ * The weekend counts are distinct (year, session) enrollments through the
+ * viewed year: CampMinder reuses session ids across years.
+ */
+export type CamperJourneyCounts = {
+  /**
+   * Summers
+   */
+  summers?: number
+  /**
+   * Family Weekends
+   */
+  family_weekends?: number
+  /**
+   * Adult Weekends
+   */
+  adult_weekends?: number
+}
+
+/**
+ * CamperJourneyResponse
+ *
+ * A person's journey as of one viewed year.
+ *
+ * `rows` are the years BEFORE it, newest year first and chronological
+ * within a year. `teen_cabins` is the person-housing read's list, passed
+ * through unchanged: the client's current-year rows are built from live
+ * attendees rather than from this feed, and they label a TLI/SCIT row from
+ * it (owner ruling 2026-09-22 late, Q9).
+ */
+export type CamperJourneyResponse = {
+  /**
+   * Rows
+   */
+  rows?: Array<CamperJourneyRow>
+  counts?: CamperJourneyCounts
+  /**
+   * Teen Cabins
+   */
+  teen_cabins?: Array<PersonHousingWeekend>
+}
+
+/**
+ * CamperJourneyRow
+ *
+ * One prior-year enrollment, labelled with its housing when known.
+ *
+ * The client's `HistoricalRecord`, field for field. Every optional field is
+ * `None` when the client used to leave it off the record, and never "" in
+ * its place -- an empty string is a real value that the client keeps, the
+ * same way it kept one before (an unnamed bunk, a session with no dates).
+ */
+export type CamperJourneyRow = {
+  /**
+   * Year
+   */
+  year?: number
+  /**
+   * Session Name
+   */
+  session_name?: string
+  /**
+   * Session Type
+   */
+  session_type?: string
+  /**
+   * Bunk Name
+   */
+  bunk_name?: string | null
+  /**
+   * Bunk Name Recorded
+   */
+  bunk_name_recorded?: string | null
+  /**
+   * Start Date
+   */
+  start_date?: string | null
+  /**
+   * End Date
+   */
+  end_date?: string | null
+}
+
+/**
  * CamperPositionUpdate
  *
  * Request body for updating a camper's position
@@ -11830,6 +11919,45 @@ export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses = {
 
 export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponse =
   UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses[keyof UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses]
+
+export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
+  body?: never
+  path: {
+    /**
+     * Person Cm Id
+     */
+    person_cm_id: number
+  }
+  query: {
+    /**
+     * Year
+     *
+     * The viewed year. Rows are the years before it.
+     */
+    year: number
+  }
+  url: '/api/campers/{person_cm_id}/journey'
+}
+
+export type GetCamperJourneyApiCampersPersonCmIdJourneyGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetCamperJourneyApiCampersPersonCmIdJourneyGetError =
+  GetCamperJourneyApiCampersPersonCmIdJourneyGetErrors[keyof GetCamperJourneyApiCampersPersonCmIdJourneyGetErrors]
+
+export type GetCamperJourneyApiCampersPersonCmIdJourneyGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: CamperJourneyResponse
+}
+
+export type GetCamperJourneyApiCampersPersonCmIdJourneyGetResponse =
+  GetCamperJourneyApiCampersPersonCmIdJourneyGetResponses[keyof GetCamperJourneyApiCampersPersonCmIdJourneyGetResponses]
 
 export type GetGapsApiGeoGapsGetData = {
   body?: never

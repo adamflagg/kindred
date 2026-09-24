@@ -8,9 +8,11 @@
  * stays below 21. Still CampMinder's own value — never derived from birthdate
  * (#2088). Applied here so every surface inherits it.
  *
- * Exported so `useCamperJourney`'s `viewerIsAdult` reads the SAME constant —
- * two independent `const ADULT_AGE = 18` copies is exactly how the two would
- * drift the next time this cutoff moves.
+ * The camper journey's adulthood gate (whether a viewer sees their household's
+ * family weekends) reads the same cutoff on the server since kindred#2776 —
+ * `ADULT_AGE` in `api/services/camper_journey_service.py`. Two copies of one
+ * number are how the two would drift the next time this cutoff moves, so a
+ * pytest reads this line and holds the server's equal to it.
  */
 export const ADULT_AGE = 21
 

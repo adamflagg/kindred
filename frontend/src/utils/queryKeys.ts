@@ -574,17 +574,14 @@ export const queryKeys = {
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
   /**
-   * One person's adult-weekend cabins (adult camper journey). No year — the
-   * read spans every season, like the household journey.
+   * A person's camper journey as of one viewed year (useCamperJourney), one
+   * server read since kindred#2776.
    */
-  personHousing: (personCmId: number) => ['person-housing', personCmId] as const,
-  // Invalidation prefix: an alias edit can change which values name one place.
-  personHousingPrefix: () => ['person-housing'] as const,
-  /** A person's year-scoped `persons` rows (household id, years_at_camp, age). */
-  personRecords: (personCmId: number) => ['person-records', personCmId] as const,
-  /** The shared journey feed's result (useCamperJourney). */
   camperJourney: (personCmId: number, year: number) =>
     ['camper-journey', personCmId, year] as const,
+  // The invalidation prefix. `invalidateLodgingRegistryQueries` knows neither
+  // the person nor the year, and the real key carries both.
+  camperJourneyPrefix: () => ['camper-journey'] as const,
   /**
    * The camper record's CURRENT-year rows (useCamperHistory). Keyed on the
    * ids, statuses and bunk ids of the resolved current-year attendees —
@@ -785,9 +782,12 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // the board behind it shows the new one — the disagreement the issue exists
   // to remove, re-created by the fix for it.
   void queryClient.invalidateQueries({ queryKey: queryKeys.householdJourneyPrefix() })
-  // Adult camper journey: an alias edit changes which cabin strings the
-  // server treats as one place, so the attributed cabins can move.
-  void queryClient.invalidateQueries({ queryKey: queryKeys.personHousingPrefix() })
+  // The camper journey (kindred#2776) names every family, adult and TLI/SCIT
+  // cabin by today's registry name, and resolves alias strings server-side —
+  // a unit rename or an alias edit moves it. It used to re-run only because
+  // the person-housing and household-journey reads' `dataUpdatedAt` were in
+  // its key; it is one server call now, so it is invalidated here directly.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.camperJourneyPrefix() })
   // The board's "Push write-ins" badge reads the push preview (owner ruling
   // 2026-08-28: it counts what a push would actually write, which only the
   // server can know — inside a scenario the client never sees the live
