@@ -176,6 +176,41 @@ describe('adultLodgingTally — the stats bar on an adult weekend', () => {
     expect(tally).toEqual({ placed: 2, sharedGuests: 2, sharedPlaces: 16, otherGuests: 0 })
   })
 
+  it('counts a write-in on a split house once, as other lodging', () => {
+    // The house is NOT combined, so only its rooms are drawn and each carries
+    // the house's row as an `ancestor` cover. `sized` leaves an ancestor out of
+    // every room's own figure, so the tally must count the guest once itself.
+    const splitHouse = unit({
+      unit_id: 'h2',
+      code: 'elm-house',
+      name: 'Elm House',
+      is_container: true,
+      is_combined: false,
+      shareability: 'single_party',
+      sleeps: null,
+    })
+    const houseWriteIn = writeIn({
+      unit_id: 'h2',
+      unit_code: 'elm-house',
+      unit_name: 'Elm House',
+      relation: 'ancestor',
+      unit_sleeps: 6,
+    })
+    const rooms = ['elm-house-1', 'elm-house-2'].map((code, i) =>
+      unit({
+        unit_id: `h2r${String(i)}`,
+        code,
+        name: code,
+        parent_code: 'elm-house',
+        shareability: 'single_party',
+        sleeps: 3,
+        write_ins: [houseWriteIn],
+      })
+    )
+    const tally = adultLodgingTally([guest(1, 'ridge-d')], [...shared, splitHouse, ...rooms])
+    expect(tally).toEqual({ placed: 2, sharedGuests: 1, sharedPlaces: 16, otherGuests: 1 })
+  })
+
   it('leaves a shared cabin closed this weekend out of the denominator', () => {
     const closed = unit({
       unit_id: 'u2',

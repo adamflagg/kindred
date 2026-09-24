@@ -26,7 +26,7 @@
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, partySize } from './boardLayout'
 import { partyKey } from './partyKey'
-import { coveringWriteIns, writeInDemand } from './writeIn'
+import { writeInEntries } from './writeIn'
 
 /**
  * The guests a shared cabin holds on an adult weekend. THE one definition —
@@ -107,8 +107,10 @@ export interface AdultLodgingTally {
  *   the bar. Only guests in those same cabins count against it; everyone else
  *   is "other lodging", including a combined shareable house.
  * - A write-in is a guest: its `party_size`, or ONE when unsized (owner
- *   ruling 2026-09-23). Read through `writeInDemand`'s `sized`, so it is the
- *   same number the card prints.
+ *   ruling 2026-09-23) — the rule `writeInDemand`'s adult branch applies —
+ *   counted once per ROW, so a split house's row (an `ancestor` cover on each
+ *   room, which no room's own figure prints) is counted once rather than
+ *   never, and in the shared cabins if any card it covers is one.
  * - A guest drawn on two cards (a placement straddling rooms) counts once,
  *   and in the shared cabins if either card is one.
  */
@@ -119,17 +121,22 @@ export function adultLodgingTally(
   const board = buildBoard(parties, units)
   const sharedParty = new Map<string, number>()
   const otherParty = new Map<string, number>()
-  let sharedWriteIns = 0
-  let otherWriteIns = 0
+  const sharedWriteIn = new Map<string, number>()
+  const otherWriteIn = new Map<string, number>()
   let openSharedCabins = 0
 
   for (const area of board.areas) {
     for (const slot of area.slots) {
       const shared = isAdultSharedCabin(slot.unit) && slot.unit.is_family_available === true
       if (shared) openSharedCabins += 1
-      const writeIns = writeInDemand(null, coveringWriteIns(slot.unit), true).sized
-      if (shared) sharedWriteIns += writeIns
-      else otherWriteIns += writeIns
+      // One ROW, one count, keyed on `writeInEntries`' key — identical on every
+      // room that inherits the same row. Not `writeInDemand`'s per-card
+      // `sized`, which leaves an `ancestor` cover out of every room, so a split
+      // house's row would reach no card at all (kindred#2540 fixed the same
+      // gap in `MapUnitPopover`'s cluster summary).
+      for (const { key, occupant } of writeInEntries(slot.unit)) {
+        ;(shared ? sharedWriteIn : otherWriteIn).set(key, occupant.partySize ?? 1)
+      }
       for (const party of slot.parties) {
         ;(shared ? sharedParty : otherParty).set(partyKey(party), partySize(party))
       }
@@ -137,10 +144,11 @@ export function adultLodgingTally(
   }
   for (const party of board.offBoard) otherParty.set(partyKey(party), partySize(party))
   for (const key of sharedParty.keys()) otherParty.delete(key)
+  for (const key of sharedWriteIn.keys()) otherWriteIn.delete(key)
 
   const sum = (counts: Map<string, number>) => [...counts.values()].reduce((a, b) => a + b, 0)
-  const sharedGuests = sum(sharedParty) + sharedWriteIns
-  const otherGuests = sum(otherParty) + otherWriteIns
+  const sharedGuests = sum(sharedParty) + sum(sharedWriteIn)
+  const otherGuests = sum(otherParty) + sum(otherWriteIn)
   return {
     placed: sharedGuests + otherGuests,
     sharedGuests,
