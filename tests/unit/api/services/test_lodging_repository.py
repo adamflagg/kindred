@@ -118,6 +118,10 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_weekend_sessions(2026), id="fetch_weekend_sessions"),
             pytest.param(lambda r: r.fetch_units(2026), id="fetch_units"),
             pytest.param(lambda r: r.fetch_family_camp_adults(2026), id="fetch_adults"),
+            pytest.param(lambda r: r.fetch_family_enrolled_household_cm_ids(2025), id="fetch_family_enrolled"),
+            pytest.param(lambda r: r.fetch_prior_adult_person_cm_ids(2026), id="fetch_prior_adult_ids"),
+            pytest.param(lambda r: r.fetch_adult_weekend_attendees(2025), id="fetch_adult_attendees_year"),
+            pytest.param(lambda r: r.fetch_adult_cabin_values(2025), id="fetch_adult_cabin_values_year"),
         ],
     )
     async def test_paginated_read_pins_a_sort_key(self, repo: LodgingRepository, pb: MagicMock, call: Any) -> None:
@@ -1062,20 +1066,26 @@ class TestFetchPriorHouseholdCmIds:
         assert result == set()
 
     @pytest.mark.asyncio
-    async def test_filters_to_weekend_session_types_through_the_relation(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
-        """Same weekend types as `_weekend_type_filter`, but through the
-        `session.` relation prefix -- summer's main/embedded/ag/quest
-        sessions must not count as a prior weekend visit.
+    async def test_counts_family_sessions_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """kindred#2767, owner ruling 2026-09-23: ONE returning rule, by
+        program family. A family household is Returning on a prior FAMILY
+        weekend, never on an adult one -- 10 of 2026's 394 family households
+        were badged only by an adult weekend.
+
+        RECORDED SPEC CHANGE: this test used to assert both weekend types. The
+        narrowing lives in this read only; the shared
+        `_attendee_weekend_session_filter` keeps adult sessions for the
+        medical scoping pinned above.
         """
         pb.collection.return_value.get_full_list.return_value = []
 
         await repo.fetch_prior_household_cm_ids(2026)
 
         filter_str = _last_query(pb)["filter"]
-        for session_type in WEEKEND_SESSION_TYPES:
-            assert f'session.session_type = "{session_type}"' in filter_str
+        assert 'session.session_type = "family"' in filter_str
+        assert '"adult"' not in filter_str
+        # Summer types never counted, and still do not.
+        assert '"main"' not in filter_str
 
     @pytest.mark.asyncio
     async def test_a_person_with_no_household_id_contributes_nothing(
@@ -1090,6 +1100,110 @@ class TestFetchPriorHouseholdCmIds:
         result = await repo.fetch_prior_household_cm_ids(2026)
 
         assert result == set()
+
+
+class TestFetchFamilyEnrolledHouseholdCmIds:
+    """kindred#2767 (folding in the FC5 staff report): the family card's
+    last-year cabin needs enrolled attendance that year behind it, as the
+    journey has since kindred#2618. `cabin_assignment` survives a cancellation
+    -- staff typed it before, nothing clears it -- so 18 of the 240 2026
+    households whose card showed a 2025 cabin did not attend in 2025.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reads_one_years_enrolled_family_attendees(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(expand={"person": _record(household_id=2000001)}),
+            _record(expand={"person": _record(household_id=2000001)}),
+            _record(expand={"person": _record(household_id=2000002)}),
+        ]
+
+        result = await repo.fetch_family_enrolled_household_cm_ids(2025)
+
+        pb.collection.assert_called_with("attendees")
+        params = _last_query(pb)
+        assert "year = 2025" in params["filter"]
+        assert "year <" not in params["filter"]
+        assert 'session.session_type = "family"' in params["filter"]
+        assert '"adult"' not in params["filter"]
+        # A cancelled or waitlisted row is not attendance.
+        assert "status_id = 2" in params["filter"]
+        assert params["expand"] == "person"
+        assert result == {2000001, 2000002}
+
+    @pytest.mark.asyncio
+    async def test_a_person_with_no_household_id_contributes_nothing(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(expand={"person": _record(household_id=0)}),
+            _record(expand={}),
+        ]
+
+        assert await repo.fetch_family_enrolled_household_cm_ids(2025) == set()
+
+
+class TestFetchPriorAdultPersonCmIds:
+    """kindred#2767: an adult-weekend guest is Returning on any prior ENROLLED
+    adult session, keyed on the guest's own CampMinder id -- never the
+    household, and never a summer or family session."""
+
+    @pytest.mark.asyncio
+    async def test_reads_prior_enrolled_adult_attendees_by_person_id(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(person_id=3000001),
+            _record(person_id=3000002),
+            _record(person_id=0),
+        ]
+
+        result = await repo.fetch_prior_adult_person_cm_ids(2026)
+
+        pb.collection.assert_called_with("attendees")
+        params = _last_query(pb)
+        assert "year < 2026" in params["filter"]
+        assert 'session.session_type = "adult"' in params["filter"]
+        assert '"family"' not in params["filter"]
+        assert "status_id = 2" in params["filter"]
+        assert result == {3000001, 3000002}
+
+
+class TestFetchAdultWeekendAttendees:
+    """kindred#2767's cohort read: one year's enrolled adult-weekend rows, for
+    every guest at once -- `build_person_housing` is per person and the roster
+    must not loop it."""
+
+    @pytest.mark.asyncio
+    async def test_reads_one_years_enrolled_adult_rows_with_the_session(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_adult_weekend_attendees(2025)
+
+        pb.collection.assert_called_with("attendees")
+        params = _last_query(pb)
+        assert "year = 2025" in params["filter"]
+        assert 'session.session_type = "adult"' in params["filter"]
+        assert "status_id = 2" in params["filter"]
+        assert params["expand"] == "session"
+
+
+class TestFetchAdultCabinValues:
+    """kindred#2767's cohort read of the adult cabin fields, one season."""
+
+    @pytest.mark.asyncio
+    async def test_reads_only_the_two_allowlisted_cabin_fields_for_one_year(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_adult_cabin_values(2025)
+
+        pb.collection.assert_called_with("person_custom_values")
+        params = _last_query(pb)
+        assert "year = 2025" in params["filter"]
+        # ⛔ Exactly the allowlist, nothing else: this table holds Race,
+        # financial aid and salary-bearing staff history.
+        assert re.findall(r"field_definition\.cm_id = (\d+)", params["filter"]) == ["212997", "223823"]
+        assert params["expand"] == "person,field_definition"
 
 
 class TestFetchFamilyCampAdults:
@@ -1701,6 +1815,11 @@ CACHED_YEAR_SCOPED_READS = [
     "fetch_prior_household_cm_ids",
     "fetch_family_camp_adults",
     "fetch_family_camp_registrations",
+    # kindred#2767: attendees and person_custom_values, both sync-written only.
+    "fetch_family_enrolled_household_cm_ids",
+    "fetch_prior_adult_person_cm_ids",
+    "fetch_adult_weekend_attendees",
+    "fetch_adult_cabin_values",
 ]
 
 

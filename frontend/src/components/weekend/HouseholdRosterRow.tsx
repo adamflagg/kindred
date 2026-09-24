@@ -167,14 +167,12 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
                   Returning
                 </span>
               )}
-              {/* `is_returning` is only ever computed for household-grain
-                  parties (`_build_household_parties` sets it from
-                  `prior_cm_ids`). An adult weekend guest is `grain: 'person'`
-                  (`showAdults` false), for which the field is never set and
-                  arrives as the Pydantic default `false` -- untracked, not
-                  "no". Gating on grain keeps this badge from calling every
-                  adult weekend regular a first-timer. */}
-              {showAdults && party.is_returning !== true && (
+              {/* Both grains since kindred#2767 (owner ruling 2026-09-23, one
+                  returning rule): the server computes `is_returning` for an
+                  adult weekend guest too, from any prior enrolled adult
+                  session by the guest's own id, so `false` is a real "no" at
+                  either grain and First-time is a claim the API made. */}
+              {party.is_returning !== true && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                   <Star className="h-3 w-3 flex-shrink-0" />
                   First-time

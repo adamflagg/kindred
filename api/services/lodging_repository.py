@@ -185,6 +185,20 @@ def _attendee_weekend_session_filter() -> str:
     return " || ".join(f'session.session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
 
 
+def _household_cm_ids(attendee_rows: list[Any]) -> set[int]:
+    """The CampMinder household ids behind attendee rows expanded with
+    `person` -- `person.household_id`, the cross-season identity thread. A
+    row with no resolvable household contributes nothing."""
+    ids: set[int] = set()
+    for row in attendee_rows:
+        expand = getattr(row, "expand", None) or {}
+        person = expand.get("person") if isinstance(expand, dict) else None
+        household_id = int(getattr(person, "household_id", 0) or 0) if person is not None else 0
+        if household_id:
+            ids.add(household_id)
+    return ids
+
+
 class RequestValueRow(NamedTuple):
     """One free-text bunk-request answer exactly as it was written.
 
@@ -941,9 +955,18 @@ class LodgingRepository:
 
         `attendees` is where enrollment actually lives, so this reads THAT
         table instead: `status_id = 2` (`ACTIVE_ENROLLED_FILTER`) is the
-        single source of truth for enrollment everywhere else in this file,
-        and `_attendee_weekend_session_filter` keeps summer sessions
-        (main/embedded/ag/quest/...) from counting as a prior weekend visit.
+        single source of truth for enrollment everywhere else in this file.
+
+        FAMILY SESSIONS ONLY (kindred#2767, owner ruling 2026-09-23: one
+        returning rule, by program family). A household that has only ever
+        come to an ADULT weekend is not a returning FAMILY -- 10 of 2026's 394
+        family households were badged by an adult weekend alone. Adult guests
+        get their own person-grain read, `fetch_prior_adult_person_cm_ids`.
+
+        ⚠️ Narrowed HERE, not in `_attendee_weekend_session_filter`: that
+        shared filter also scopes the family-camp medical reads
+        (`_fetch_weekend_touched_household_ids`,
+        `_household_touched_weekend_session`), which must keep adult sessions.
 
         Bridged through `person.household_id` (the CampMinder id) rather than
         `person.household` (the PocketBase relation): this is a cross-YEAR
@@ -967,19 +990,106 @@ class LodgingRepository:
         rows = await self._page(
             ATTENDEES,
             query_params={
-                "filter": (f"year < {year} && ({_attendee_weekend_session_filter()}) && {ACTIVE_ENROLLED_FILTER}"),
+                "filter": (
+                    f'year < {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                ),
                 "expand": "person",
+                "sort": STABLE_SORT,
+            },
+        )
+        return _household_cm_ids(rows)
+
+    @cached_by_year(lodging_cache)
+    async def fetch_family_enrolled_household_cm_ids(self, year: int) -> set[int]:
+        """CampMinder ids of every household with an ENROLLED family-session
+        attendee in exactly `year` (kindred#2767).
+
+        What stands behind the family card's last-year cabin. The
+        `cabin_assignment` string outlives a cancellation -- staff typed it
+        before, and nothing clears it -- so the card showed a "last year" for
+        18 of 240 households that did not attend it, a year the journey
+        (kindred#2618) correctly leaves out. Same bridge as
+        `fetch_prior_household_cm_ids`: `person.household_id`, the cross-year
+        CampMinder id.
+        """
+        rows = await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f'year = {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                ),
+                "expand": "person",
+                "sort": STABLE_SORT,
+            },
+        )
+        return _household_cm_ids(rows)
+
+    @cached_by_year(lodging_cache)
+    async def fetch_prior_adult_person_cm_ids(self, year: int) -> set[int]:
+        """CampMinder person ids with an ENROLLED adult-program attendee row in
+        an EARLIER year -- the adult guest's returning signal (kindred#2767).
+
+        Any adult program counts, not only the same one (owner ruling
+        2026-09-23). Keyed on `attendees.person_id`, the guest's own
+        cross-season id, never a household: a guest who came to family camp
+        as a parent, or to summer as a camper, is not a returning GUEST.
+        """
+        rows = await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f'year < {year} && session.session_type = "{ADULT_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                ),
                 "sort": STABLE_SORT,
             },
         )
         ids: set[int] = set()
         for row in rows:
-            expand = getattr(row, "expand", None) or {}
-            person = expand.get("person") if isinstance(expand, dict) else None
-            household_id = int(getattr(person, "household_id", 0) or 0) if person is not None else 0
-            if household_id:
-                ids.add(household_id)
+            person_id = int(getattr(row, "person_id", 0) or 0)
+            if person_id > 0:
+                ids.add(person_id)
         return ids
+
+    @cached_by_year(lodging_cache)
+    async def fetch_adult_weekend_attendees(self, year: int) -> list[Any]:
+        """Every ENROLLED adult-program attendee row in `year`, with `session`
+        expanded -- the cohort twin of `fetch_person_adult_attendees`
+        (kindred#2767).
+
+        The roster reads a whole season at once, for every guest, rather than
+        looping the per-person journey read: `PersonHousingService` costs three
+        reads and a registry build per person. Enrolled only, for the same
+        reason as the per-person read: a cancelled weekend's stale cabin must
+        never attribute.
+        """
+        return await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": f'year = {year} && session.session_type = "{ADULT_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}',
+                "expand": "session",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    @cached_by_year(lodging_cache)
+    async def fetch_adult_cabin_values(self, year: int) -> list[Any]:
+        """Every adult-weekend cabin value in `year` -- the cohort twin of
+        `fetch_person_cabin_values` (kindred#2767).
+
+        ⛔ THE SAME ALLOWLIST, and for the same reason: `person_custom_values`
+        holds this cohort's Race, financial aid and salary-bearing staff
+        history. `person` is expanded for its cm_id, which is how the caller
+        groups the values by guest.
+        """
+        field_filter = " || ".join(f"field_definition.cm_id = {cm_id}" for cm_id in ADULT_WEEKEND_CABIN_FIELD_CM_IDS)
+        return await self._page(
+            PERSON_CUSTOM_VALUES,
+            query_params={
+                "filter": f"year = {year} && ({field_filter})",
+                "expand": "person,field_definition",
+                "sort": STABLE_SORT,
+            },
+        )
 
     @cached_by_year(lodging_cache)
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:

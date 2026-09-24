@@ -15,6 +15,7 @@ from api.services.person_housing_rules import (
     CabinValue,
     attribute_adult_cabins,
     parse_instant,
+    pick_year_cabin,
     weekend_last_day_ends,
 )
 
@@ -302,3 +303,47 @@ class TestScope:
             _no_codes,
         )
         assert [c.year for c in out] == [2023, 2025]
+
+
+class TestPickYearCabin:
+    """kindred#2767: the roster card shows ONE last-year cabin per guest.
+
+    Attribution can give a guest two cabins in one season (one guest had two
+    enrolled adult weekends in 2025). The ruling: prefer the weekend that
+    shares this board's session_cm_id -- CampMinder reuses a program's id
+    every season -- else the latest-ending weekend.
+    """
+
+    def _cabin(self, year: int, session_cm_id: int, name: str) -> AttributedCabin:
+        return AttributedCabin(year=year, session_cm_id=session_cm_id, cabin_name=name, cabin_name_raw=name)
+
+    def test_the_only_cabin_that_year_is_the_answer(self) -> None:
+        weekends = [_weekend(2025, WW, "2025-10-19")]
+        picked = pick_year_cabin([self._cabin(2025, WW, "Ridge A")], weekends, year=2025, prefer_session_cm_id=DD)
+        assert picked is not None
+        assert picked.cabin_name == "Ridge A"
+
+    def test_another_years_cabin_is_never_the_answer(self) -> None:
+        weekends = [_weekend(2024, WW, "2024-10-20")]
+        assert pick_year_cabin([self._cabin(2024, WW, "Ridge A")], weekends, year=2025, prefer_session_cm_id=WW) is None
+
+    def test_nothing_attributed_is_no_answer(self) -> None:
+        assert pick_year_cabin([], [], year=2025, prefer_session_cm_id=WW) is None
+
+    def test_two_cabins_prefer_this_boards_own_program(self) -> None:
+        # WW ends AFTER DD here, so the preference is doing the work, not the
+        # latest-ending fallback.
+        weekends = [_weekend(2025, DD, "2025-10-12"), _weekend(2025, WW, "2025-10-19")]
+        cabins = [self._cabin(2025, DD, "Lake B"), self._cabin(2025, WW, "Ridge A")]
+        picked = pick_year_cabin(cabins, weekends, year=2025, prefer_session_cm_id=DD)
+        assert picked is not None
+        assert picked.cabin_name == "Lake B"
+
+    def test_two_cabins_neither_this_program_takes_the_latest_ending_weekend(self) -> None:
+        other = 1003
+        weekends = [_weekend(2025, WW, "2025-10-19"), _weekend(2025, DD, "2025-10-26")]
+        # Listed latest-first on purpose, so input order cannot be the tiebreak.
+        cabins = [self._cabin(2025, DD, "Lake B"), self._cabin(2025, WW, "Ridge A")]
+        picked = pick_year_cabin(list(reversed(cabins)), weekends, year=2025, prefer_session_cm_id=other)
+        assert picked is not None
+        assert picked.cabin_name == "Lake B"

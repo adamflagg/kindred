@@ -35,6 +35,12 @@ with them). `max_size` is 64 against a handful of reads times a handful of
 years, so that eviction does not happen in practice; if the read set ever
 grows, raise `max_size` rather than reasoning about which entry went first.
 
+kindred#2767 added four more, each a plain year-scoped read of a sync-written
+table (`attendees`, `person_custom_values`) and so under the same safety
+argument: `fetch_family_enrolled_household_cm_ids`,
+`fetch_prior_adult_person_cm_ids`, `fetch_adult_weekend_attendees` and
+`fetch_adult_cabin_values`. A roster pays at most three of them, at two years.
+
 Shaped like api/services/metrics_cache.py (TTL + LRU + RLock) per that
 module's own docstring pattern, but closer in spirit to
 api/services/geo_service.py's module-level `_PERSON_ID_CACHE`: a

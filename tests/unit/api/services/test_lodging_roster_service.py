@@ -238,6 +238,21 @@ def _repo(**overrides: Any) -> MagicMock:
         # household CampMinder id. Empty by default -- most families have no
         # prior-year cabin, and that must be the shape the card sees.
         "fetch_cabin_assignments_by_household_cm_id": {},
+        # kindred#2767 (folding in the FC5 staff report): households with an
+        # ENROLLED family attendee in one year. The family card's last-year
+        # cabin needs this behind it. EMPTY is the honest default: a cabin
+        # string with no attendance is exactly the stale value it screens out.
+        "fetch_family_enrolled_household_cm_ids": set(),
+        # kindred#2767's adult cohort reads. Empty by default: most guests
+        # have no prior adult weekend, and no cabin value is keyed yet.
+        "fetch_prior_adult_person_cm_ids": set(),
+        "fetch_adult_weekend_attendees": [],
+        "fetch_adult_cabin_values": [],
+        # The per-person journey reads. The roster must NEVER call these --
+        # see TestAdultGuestCardLine2 -- and a bare MagicMock would make that
+        # assertion vacuous.
+        "fetch_person_cabin_values": [],
+        "fetch_person_adult_attendees": [],
         # kindred#2073's three cross-year reads, for ONE household. Empty by
         # default -- a first-time family is the shape the journey must handle,
         # and a bare MagicMock would return an un-awaitable attribute instead
@@ -947,6 +962,8 @@ class TestFamilyCampParties:
             fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
             fetch_prior_household_cm_ids={2000001},
             fetch_cabin_assignments_by_household_cm_id={2000001: "Cedar Lodge - Room 2"},
+            # kindred#2767: enrolled in 2025, so the cabin has attendance behind it.
+            fetch_family_enrolled_household_cm_ids={2000001},
         )
 
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -1233,6 +1250,269 @@ class TestAdultWeekendParties:
         # The person-grain fallback path: no assignment row at all, so
         # placement_by_person is empty and the lookup default fires.
         assert party.unit_codes == []
+
+
+# A 2025 adult weekend sharing the board's program id: CampMinder reuses a
+# program's session cm_id every season, so Women's Weekend 2025 and 2026 carry
+# the same one. Fictional id and dates, real SHAPE (end_date is midnight
+# Pacific of the last day).
+ADULT_SESSION_LAST_YEAR = _rec(cm_id=1000002, end_date="2025-10-19 07:00:00.000Z")
+OTHER_ADULT_SESSION_LAST_YEAR = _rec(cm_id=1000009, end_date="2025-10-26 07:00:00.000Z")
+
+
+def _guest(cm_id: int = 1000004, first: str = "Olivia", last: str = "Chen", age: float | None = 41.03) -> Any:
+    """An enrolled adult-weekend attendee, expanded the way
+    `fetch_attendees_for_session` hands one back."""
+    return _rec(
+        person_id=cm_id,
+        expand={
+            "person": _rec(
+                cm_id=cm_id,
+                first_name=first,
+                last_name=last,
+                preferred_name="",
+                age=age,
+                grade=None,
+                household="hh_9",
+            )
+        },
+    )
+
+
+def _adult_attendance(person_cm_id: int, session: Any = ADULT_SESSION_LAST_YEAR, year: int = 2025) -> Any:
+    """One ENROLLED adult-weekend attendee row from the year-1 cohort read."""
+    return _rec(person_id=person_cm_id, year=year, expand={"session": session})
+
+
+def _adult_cabin_value(person_cm_id: int, raw: str, written: str = "2025-10-01T12:00:00Z", year: int = 2025) -> Any:
+    """One allowlisted adult cabin value from the year-1 cohort read."""
+    return _rec(
+        year=year,
+        value=raw,
+        last_updated=written,
+        expand={"person": _rec(cm_id=person_cm_id), "field_definition": _rec(cm_id=223823)},
+    )
+
+
+class TestAdultGuestCardLine2:
+    """kindred#2767: an adult-weekend guest's card models summer's line 2 --
+    CampMinder age on the left, last year's cabin on the right -- and carries
+    the one returning rule, at person grain."""
+
+    @pytest.mark.asyncio
+    async def test_the_guest_carries_campminder_age(self) -> None:
+        repo = _repo(fetch_session=ADULT_SESSION, fetch_attendees_for_session=[_guest(age=37.11)])
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].adults[0].age == 37.11
+
+    @pytest.mark.asyncio
+    async def test_a_missing_age_is_none_never_zero(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004, age=None), _guest(cm_id=1000005, last="Garcia", age=0)],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert [p.adults[0].age for p in roster.parties] == [None, None]
+
+    @pytest.mark.asyncio
+    async def test_a_household_adult_carries_no_age(self) -> None:
+        """A household-grain card is otherwise unchanged: its adults come from
+        the family_camp_adults form, which has no age."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult()]},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].adults[0].age is None
+
+    @pytest.mark.asyncio
+    async def test_last_years_cabin_is_the_year_minus_one_adult_cabin_by_registry_name(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_weekend_attendees=[_adult_attendance(1000004)],
+            fetch_adult_cabin_values=[_adult_cabin_value(1000004, "Old Meadow 1")],
+            fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
+            fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+        repo.fetch_adult_cabin_values.assert_awaited_once_with(2025)
+        repo.fetch_adult_weekend_attendees.assert_awaited_once_with(2025)
+
+    @pytest.mark.asyncio
+    async def test_an_unresolved_string_shows_as_typed(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_weekend_attendees=[_adult_attendance(1000004)],
+            fetch_adult_cabin_values=[_adult_cabin_value(1000004, "  Ridge Hut  ")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].last_year_cabin == "Ridge Hut"
+
+    @pytest.mark.asyncio
+    async def test_no_enrolled_adult_weekend_last_year_means_no_cabin(self) -> None:
+        """The value survives a cancellation (staff typed it before; nothing
+        clears it). The cohort read is enrolled-only, so a cancelled year
+        arrives as no attendance row at all."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_weekend_attendees=[],
+            fetch_adult_cabin_values=[_adult_cabin_value(1000004, "Ridge Hut")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].last_year_cabin == ""
+
+    @pytest.mark.asyncio
+    async def test_a_guest_with_no_cabin_value_gets_none(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004), _guest(cm_id=1000005, last="Garcia")],
+            fetch_adult_weekend_attendees=[_adult_attendance(1000004), _adult_attendance(1000005)],
+            fetch_adult_cabin_values=[_adult_cabin_value(1000004, "Ridge Hut")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        by_person = {p.person_cm_id: p.last_year_cabin for p in roster.parties}
+        assert by_person == {1000004: "Ridge Hut", 1000005: ""}
+
+    @pytest.mark.asyncio
+    async def test_two_weekends_last_year_prefer_this_boards_program(self) -> None:
+        """The other weekend ends LATER, so the preference, not the
+        latest-ending fallback, is what picks the board's own program."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_weekend_attendees=[
+                _adult_attendance(1000004, ADULT_SESSION_LAST_YEAR),
+                _adult_attendance(1000004, OTHER_ADULT_SESSION_LAST_YEAR),
+            ],
+            fetch_adult_cabin_values=[
+                # Written before the board's own weekend ended -> attributed to it.
+                _adult_cabin_value(1000004, "Ridge Hut", written="2025-10-10T12:00:00Z"),
+                # Written between the two -> attributed to the later one.
+                _adult_cabin_value(1000004, "Lake Cabin", written="2025-10-22T12:00:00Z"),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].last_year_cabin == "Ridge Hut"
+
+    @pytest.mark.asyncio
+    async def test_the_cohort_is_read_once_never_per_guest(self) -> None:
+        """`build_person_housing` is per person (three reads and a resolver
+        build); looping it would cost a whole-registry read per guest."""
+        guests = [_guest(cm_id=1000004), _guest(cm_id=1000005, last="Garcia"), _guest(cm_id=1000006, last="Sam")]
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=guests,
+            fetch_adult_weekend_attendees=[_adult_attendance(g.person_id) for g in guests],
+            fetch_adult_cabin_values=[_adult_cabin_value(g.person_id, "Ridge Hut") for g in guests],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert repo.fetch_adult_cabin_values.await_count == 1
+        assert repo.fetch_adult_weekend_attendees.await_count == 1
+        # ONE resolver: the one `build_roster` already builds.
+        assert repo.fetch_all_units.await_count == 1
+        repo.fetch_person_cabin_values.assert_not_called()
+        repo.fetch_person_adult_attendees.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_guest_with_a_prior_adult_weekend_is_returning(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004), _guest(cm_id=1000005, last="Garcia")],
+            fetch_prior_adult_person_cm_ids={1000004},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        by_person = {p.person_cm_id: p.is_returning for p in roster.parties}
+        assert by_person == {1000004: True, 1000005: False}
+        repo.fetch_prior_adult_person_cm_ids.assert_awaited_once_with(2026)
+
+    @pytest.mark.asyncio
+    async def test_returning_is_keyed_on_the_person_not_the_household(self) -> None:
+        """A guest's household id appearing in the FAMILY prior set says
+        nothing about the guest: returning is by program family."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004)],
+            fetch_prior_household_cm_ids={1000004, 2000001},
+            fetch_prior_adult_person_cm_ids=set(),
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].is_returning is False
+
+    @pytest.mark.asyncio
+    async def test_the_lander_pays_for_none_of_the_adult_cohort_reads(self) -> None:
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        repo.fetch_adult_cabin_values.assert_not_called()
+        repo.fetch_adult_weekend_attendees.assert_not_called()
+        repo.fetch_family_enrolled_household_cm_ids.assert_not_called()
+
+
+class TestFamilyLastYearCabinNeedsAttendance:
+    """kindred#2767, folding in the FC5 staff report (owner ruling
+    2026-09-23): the family card's last-year cabin needs ENROLLED attendance
+    that year, as the journey has since kindred#2618. `cabin_assignment`
+    survives a cancellation; 18 of 240 households showed a 2025 cabin for a
+    year they did not attend."""
+
+    @pytest.mark.asyncio
+    async def test_a_household_that_did_not_attend_last_year_shows_no_cabin(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_cabin_assignments_by_household_cm_id={2000001: "Pine Cabin"},
+            # Cancelled rows or none at all: either way, no enrolled row.
+            fetch_family_enrolled_household_cm_ids={2000555},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == ""
+        repo.fetch_family_enrolled_household_cm_ids.assert_awaited_once_with(2025)
+
+    @pytest.mark.asyncio
+    async def test_a_household_that_attended_last_year_keeps_its_cabin(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_cabin_assignments_by_household_cm_id={2000001: "Pine Cabin"},
+            fetch_family_enrolled_household_cm_ids={2000001},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Pine Cabin"
 
 
 class TestUnitsAndCounts:
@@ -8951,6 +9231,8 @@ class TestHousingRendersInTodaysLanguage:
             fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
             fetch_prior_household_cm_ids={2000001},
             fetch_cabin_assignments_by_household_cm_id={2000001: "Old Meadow 1"},
+            # kindred#2767: enrolled in 2025, so the cabin has attendance behind it.
+            fetch_family_enrolled_household_cm_ids={2000001},
             fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
             fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1")],
         )
@@ -8971,6 +9253,8 @@ class TestHousingRendersInTodaysLanguage:
             fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
             fetch_prior_household_cm_ids={2000001},
             fetch_cabin_assignments_by_household_cm_id={2000001: "Old Meadow 1"},
+            # kindred#2767: enrolled in 2025, so the cabin has attendance behind it.
+            fetch_family_enrolled_household_cm_ids={2000001},
             fetch_all_units=[_unit("u1", "meadow-1", "Meadow House 1")],
             fetch_unit_aliases=[_alias_row("Old Meadow 1", "u1", valid_to=2025)],
         )
@@ -8992,6 +9276,8 @@ class TestHousingRendersInTodaysLanguage:
             fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
             fetch_prior_household_cm_ids={2000001},
             fetch_cabin_assignments_by_household_cm_id={2000001: "Cedar 1and2"},
+            # kindred#2767: enrolled in 2025, so the cabin has attendance behind it.
+            fetch_family_enrolled_household_cm_ids={2000001},
             fetch_all_units=[
                 _unit("p1", "cedar", "Cedar Lodge", is_container=True),
                 _unit("u1", "cedar-1", "Cedar Lodge Room 1", parent_unit="p1"),

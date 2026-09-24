@@ -15,12 +15,9 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from api.schemas.lodging import PersonHousingResponse, PersonHousingWeekend
 from api.services.lodging_roster_service import build_housing_name_resolver
 from api.services.person_housing_rules import (
-    ADULT_WEEKEND_CABIN_FIELD_CM_IDS,
-    AdultWeekend,
-    CabinValue,
+    adult_weekends_from_rows,
     attribute_adult_cabins,
-    parse_instant,
-    weekend_last_day_ends,
+    cabin_values_from_rows,
 )
 from api.utils.session_metrics import SUMMER_TEEN_TYPES
 
@@ -32,24 +29,6 @@ if TYPE_CHECKING:
 def _expanded(row: Any, name: str) -> Any:
     expand = getattr(row, "expand", None) or {}
     return expand.get(name) if isinstance(expand, dict) else None
-
-
-def _cabin_values(rows: list[Any]) -> list[CabinValue]:
-    out: list[CabinValue] = []
-    for row in rows:
-        field_cm_id = int(getattr(_expanded(row, "field_definition"), "cm_id", 0) or 0)
-        # Defense in depth: the repository already filters to the allowlist.
-        if field_cm_id not in ADULT_WEEKEND_CABIN_FIELD_CM_IDS:
-            continue
-        out.append(
-            CabinValue(
-                year=int(getattr(row, "year", 0) or 0),
-                field_cm_id=field_cm_id,
-                raw=str(getattr(row, "value", "") or ""),
-                written_at=parse_instant(str(getattr(row, "last_updated", "") or "")),
-            )
-        )
-    return out
 
 
 class _TeenBunk(NamedTuple):
@@ -108,22 +87,6 @@ def _resolved_teen_cabins(bunks: list[_TeenBunk], resolver: HousingNameResolver)
     return out
 
 
-def _weekends(rows: list[Any]) -> list[AdultWeekend]:
-    out: list[AdultWeekend] = []
-    for row in rows:
-        session = _expanded(row, "session")
-        if session is None:
-            continue
-        ends = weekend_last_day_ends(str(getattr(session, "end_date", "") or ""))
-        session_cm_id = int(getattr(session, "cm_id", 0) or 0)
-        if ends is None or session_cm_id <= 0:
-            continue
-        out.append(
-            AdultWeekend(year=int(getattr(row, "year", 0) or 0), session_cm_id=session_cm_id, last_day_ends=ends)
-        )
-    return out
-
-
 class PersonHousingService:
     def __init__(self, repository: LodgingRepository) -> None:
         self.repository = repository
@@ -136,8 +99,8 @@ class PersonHousingService:
             self.repository.fetch_person_adult_attendees(person_cm_id),
             self.repository.fetch_person_teen_assignments(person_cm_id),
         )
-        values = _cabin_values(value_rows)
-        weekends = _weekends(attendee_rows)
+        values = cabin_values_from_rows(value_rows)
+        weekends = adult_weekends_from_rows(attendee_rows)
         teen_bunks = _teen_bunks(teen_rows)
         # The resolver is two whole-table reads (`build_housing_name_resolver`),
         # and most callers have nothing to resolve: no adult cabin values or

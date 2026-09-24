@@ -35,6 +35,7 @@ import type {
   HouseholdJourney,
   HouseholdJourneyRow,
   LodgingUnitRow,
+  PartyAdultRow,
   PartyChildRow,
   PersonHousing,
   PersonHousingWeekendRow,
@@ -71,6 +72,22 @@ const _exhaustivePartyChild: Required<PartyChildRow> = {
   session_cm_ids: [1309514, 1309517],
 }
 void _exhaustivePartyChild
+
+/**
+ * kindred#2767 added `age` to `PartyAdult`: an adult-weekend guest's own
+ * CampMinder age, which the card prints on line 2. `RosterParty`'s fixture
+ * below writes `adults: []`, so it proves nothing about the adult shape --
+ * this is the guard that a regen dropping or renaming `age` fails the build.
+ */
+const _exhaustivePartyAdult: Required<PartyAdultRow> = {
+  adult_number: 1,
+  display_name: 'Olivia Chen',
+  relationship: '',
+  // CampMinder's yy.mm, never birthdate-derived. `null` on a household adult
+  // (the family_camp_adults form carries no age).
+  age: 37.11,
+}
+void _exhaustivePartyAdult
 
 /**
  * kindred#2073's journey year. Every field is a distinct fact the card reads

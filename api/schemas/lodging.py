@@ -810,11 +810,18 @@ class LodgingUnitSummary(BaseModel):
 
 
 class PartyAdult(BaseModel):
-    """An accompanying adult, from family_camp_adults."""
+    """An accompanying adult, from family_camp_adults -- or, on an adult
+    weekend, the guest themselves."""
 
     adult_number: int = 0
     display_name: str = ""
     relationship: str = ""
+    # kindred#2767. CampMinder's own `persons.age` (yy.mm), mirroring
+    # `PartyChild.age` -- never derived from a birthdate. Set ONLY on an
+    # adult-weekend guest, whose party is one enrolled person. A household
+    # adult comes from the family_camp_adults form, which has no age, so it
+    # stays None there. None (and CampMinder's 0) render nothing, never "Age 0".
+    age: float | None = None
 
 
 class PartyChild(BaseModel):
@@ -1148,7 +1155,13 @@ class RosterParty(BaseModel):
     # -- see LodgingRosterService._resolve_party_bathroom.
     effective_bathroom: EffectiveBathroom = "unknown"
     arrival_eta: str = ""
-    # The household's cm_id was seen in an earlier year.
+    # Any prior ENROLLED attendance in the same program family, in any
+    # earlier year (kindred#2767, owner ruling 2026-09-23 -- one returning
+    # rule). A household party counts prior FAMILY sessions only, by its
+    # household cm_id; an adult-weekend guest counts prior ADULT sessions only
+    # (any adult program), by the guest's own person cm_id. The board's mark
+    # only: `years_at_camp`-based new-vs-returning in metrics is a separate,
+    # unruled number.
     is_returning: bool = False
     # Where this household slept in the DIRECTLY PRIOR year, verbatim as staff
     # wrote it -- kindred#2075, ruled Option A ("only the directly prior year
@@ -1192,9 +1205,19 @@ class RosterParty(BaseModel):
     # multi-weekend; treating the fan-out as per-weekend placement manufactured
     # 12 of 17 false multi-household occupancies in one analysis.
     #
-    # Only ever populated on the ROSTER, and only for household-grain parties:
-    # `build_summary` keeps nothing but counts, and an adult-weekend guest is
-    # person-grain with no household to key on.
+    # ENROLLED ATTENDANCE BEHIND IT (kindred#2767, folding in the FC5 staff
+    # report). A household that did not attend `year - 1` -- only cancelled
+    # rows, or none -- shows no cabin, as the journey has since kindred#2618:
+    # staff typed the cabin before the cancellation and nothing clears it.
+    #
+    # ADULT-WEEKEND GUESTS TOO, since kindred#2767. A person-grain party's
+    # value is the guest's cabin at an ENROLLED adult-program session in
+    # `year - 1`, from the adult journey's source (`ADULT_WEEKEND_CABIN_FIELD_
+    # CM_IDS`, attributed to a weekend by `attribute_adult_cabins`) and named
+    # the same way. Same year - 1 window as summer and the family card.
+    #
+    # Only ever populated on the ROSTER: `build_summary` keeps nothing but
+    # counts.
     last_year_cabin: str = ""
     share: ShareRequestSummary = Field(default_factory=ShareRequestSummary)
     flags: AccessibilityFlagSummary = Field(default_factory=AccessibilityFlagSummary)

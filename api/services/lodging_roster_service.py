@@ -73,6 +73,12 @@ from api.services.lodging_rules import (
     unit_capacity,
     unit_shareability,
 )
+from api.services.person_housing_rules import (
+    adult_weekends_from_rows,
+    attribute_adult_cabins,
+    cabin_values_from_rows,
+    pick_year_cabin,
+)
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -559,6 +565,56 @@ def _party_adult(adult: Any) -> PartyAdult:
         display_name=_adult_display_name(adult),
         relationship=_s(adult, "relationship_to_camper"),
     )
+
+
+def _last_year_adult_cabins(
+    value_rows: list[Any],
+    attendee_rows: list[Any],
+    housing_names: HousingNameResolver,
+    *,
+    year: int,
+    board_session_cm_id: int,
+) -> dict[int, str]:
+    """Each adult-weekend guest's cabin in `year`, keyed by person cm_id
+    (kindred#2767).
+
+    The adult journey's rule, run once over a whole cohort: the allowlisted
+    cabin values and the ENROLLED adult attendee rows of one season, grouped
+    by guest, attributed to a weekend by `attribute_adult_cabins`, and named
+    with today's registry name through the ONE resolver `build_roster`
+    already holds (kindred#2332) -- falling back to the as-typed string,
+    trimmed, when nothing resolves. A guest with no enrolled adult weekend
+    that season gets nothing: a cancelled year's cabin never attributes.
+    Two weekends that season -> `pick_year_cabin`'s preference.
+
+    Takes rows rather than reading them, so a later reader of the live
+    CampMinder-layer rows (kindred#2775) can pass those in beside them.
+    """
+    values_by_person: dict[int, list[Any]] = {}
+    for row in value_rows:
+        person = (getattr(row, "expand", None) or {}).get("person")
+        person_cm_id = _i(person, "cm_id") if person is not None else 0
+        if person_cm_id > 0:
+            values_by_person.setdefault(person_cm_id, []).append(row)
+    attendance_by_person: dict[int, list[Any]] = {}
+    for row in attendee_rows:
+        person_cm_id = _i(row, "person_id")
+        if person_cm_id > 0:
+            attendance_by_person.setdefault(person_cm_id, []).append(row)
+
+    out: dict[int, str] = {}
+    for person_cm_id, rows in values_by_person.items():
+        weekends = adult_weekends_from_rows(attendance_by_person.get(person_cm_id, []))
+        if not weekends:
+            continue
+        attributed = attribute_adult_cabins(cabin_values_from_rows(rows), weekends, housing_names.resolve_codes)
+        picked = pick_year_cabin(attributed, weekends, year=year, prefer_session_cm_id=board_session_cm_id)
+        if picked is None:
+            continue
+        name = housing_names.display_name(picked.cabin_name_raw, year).strip()
+        if name:
+            out[person_cm_id] = name
+    return out
 
 
 def _age_at(birthdate: date, as_of: date) -> float | None:
@@ -2269,6 +2325,13 @@ class LodgingRosterService:
         # through the PocketBase relation.
         session_pb_id = _s(session, "id")
         session_type = _s(session, "session_type")
+        # kindred#2767. Each grain reads only its own last-year and returning
+        # inputs; neither pays for the other's.
+        is_adult = session_type == ADULT_SESSION_TYPE
+        enrolled_last_year_task: asyncio.Task[set[int]] | None = None
+        prior_adult_task: asyncio.Task[set[int]] | None = None
+        adult_values_task: asyncio.Task[list[Any]] | None = None
+        adult_weekends_task: asyncio.Task[list[Any]] | None = None
 
         # TaskGroup rather than asyncio.gather: typeshed only types gather
         # precisely up to six awaitables, and beyond that every result widens to
@@ -2336,6 +2399,22 @@ class LodgingRosterService:
             # carries a party, so both would be paid on every weekend of the
             # year to name a field nothing renders.
             housing_names_task = tg.create_task(self._housing_names())
+            if is_adult:
+                # kindred#2767, ADULT GRAIN. Returning is any prior enrolled
+                # adult session, by the guest's own cm_id; last year's cabin is
+                # the adult journey's source, read ONCE for the whole cohort
+                # at `year - 1` (both the cabin values and the enrolled
+                # attendee rows they attribute to) -- never
+                # `PersonHousingService` per guest.
+                prior_adult_task = tg.create_task(self.repository.fetch_prior_adult_person_cm_ids(year))
+                adult_values_task = tg.create_task(self.repository.fetch_adult_cabin_values(year - 1))
+                adult_weekends_task = tg.create_task(self.repository.fetch_adult_weekend_attendees(year - 1))
+            else:
+                # kindred#2767, FAMILY GRAIN (the FC5 staff report): last year's
+                # cabin needs an enrolled family attendee that year behind it.
+                enrolled_last_year_task = tg.create_task(
+                    self.repository.fetch_family_enrolled_household_cm_ids(year - 1)
+                )
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             # kindred#2330. The RAW per-field, per-child request answers --
@@ -2444,6 +2523,7 @@ class LodgingRosterService:
         # closes it. See the resolver's own blank-code paragraph.
         free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_index)
         housing_names = housing_names_task.result()
+        enrolled_last_year = enrolled_last_year_task.result() if enrolled_last_year_task is not None else set()
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
@@ -2457,10 +2537,26 @@ class LodgingRosterService:
             # carries `valid_to_year = 2024` on its raw spelling. The NAME is
             # still the present one -- the window finds the unit, it does not
             # name it.
+            #
+            # Only where the household ATTENDED that year (kindred#2767): the
+            # string survives a cancellation, the attendance does not.
             last_year_cabins={
                 household_cm_id: housing_names.display_name(raw, year - 1)
                 for household_cm_id, raw in last_year_cabins_task.result().items()
+                if household_cm_id in enrolled_last_year
             },
+            prior_person_cm_ids=prior_adult_task.result() if prior_adult_task is not None else set(),
+            last_year_cabins_by_person=(
+                _last_year_adult_cabins(
+                    adult_values_task.result(),
+                    adult_weekends_task.result(),
+                    housing_names,
+                    year=year - 1,
+                    board_session_cm_id=session_cm_id,
+                )
+                if adult_values_task is not None and adult_weekends_task is not None
+                else {}
+            ),
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             request_values=request_values_task.result(),
@@ -3284,11 +3380,23 @@ class LodgingRosterService:
         request_values: Mapping[str, list[RequestValueRow]] | None = None,
         # Same default and the same reason as `build_roster`'s: withhold.
         include_staff_notes: bool = False,
+        # kindred#2767's person-grain twins of `prior_cm_ids` and
+        # `last_year_cabins`, keyed by the guest's own CampMinder id.
+        # DEFAULTED for `last_year_cabins`' reason: the lander keeps only
+        # counts, and neither is a count.
+        prior_person_cm_ids: set[int] | None = None,
+        last_year_cabins_by_person: dict[int, str] | None = None,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
 
-        if session_type == "adult":
-            return self._build_person_parties(attendees, placement_by_person, unit_index)
+        if session_type == ADULT_SESSION_TYPE:
+            return self._build_person_parties(
+                attendees,
+                placement_by_person,
+                unit_index,
+                prior_person_cm_ids=prior_person_cm_ids or set(),
+                last_year_cabins=last_year_cabins_by_person or {},
+            )
 
         return self._build_household_parties(
             attendees=attendees,
@@ -3364,6 +3472,9 @@ class LodgingRosterService:
         attendees: list[Any],
         placement_by_person: dict[int, _Placement],
         bathroom_index: _BathroomIndex,
+        *,
+        prior_person_cm_ids: set[int],
+        last_year_cabins: dict[int, str],
     ) -> list[RosterParty]:
         parties: list[RosterParty] = []
         for attendee in attendees:
@@ -3378,7 +3489,15 @@ class LodgingRosterService:
                     person_cm_id=person_cm_id,
                     display_name=_person_display_name(person),
                     sort_name=_s(person, "last_name") or _last_token(_person_display_name(person)),
-                    adults=[PartyAdult(adult_number=1, display_name=_person_display_name(person))],
+                    adults=[
+                        PartyAdult(
+                            adult_number=1,
+                            display_name=_person_display_name(person),
+                            # CampMinder's own yy.mm, never birthdate-derived
+                            # (kindred#2767). `or None`: a stored 0 is unknown.
+                            age=_f(person, "age") or None,
+                        )
+                    ],
                     party_size=1,
                     unit_code=placement.unit_code,
                     unit_name=placement.unit_name,
@@ -3387,6 +3506,10 @@ class LodgingRosterService:
                     effective_bathroom=cast(
                         EffectiveBathroom, _resolve_party_bathroom(list(placement.unit_codes), bathroom_index)
                     ),
+                    # kindred#2767: the one returning rule, at person grain --
+                    # any prior enrolled ADULT session, by the guest's own id.
+                    is_returning=person_cm_id in prior_person_cm_ids,
+                    last_year_cabin=last_year_cabins.get(person_cm_id, ""),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))

@@ -323,6 +323,12 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
   // because a redundant `isHousehold` guard would look like the load-bearing
   // one and outlive the branch it duplicates.
   const lastYearCabin = (party.last_year_cabin ?? '').trim()
+  // kindred#2767: an adult-weekend guest's own CampMinder age, carried on the
+  // one adult row the server builds for a person-grain party. `> 0` rather
+  // than `!= null`: the server sends None for CampMinder's stored 0, and a
+  // 0 that slipped through must still draw nothing rather than "Age 0".
+  const guestAge = isHousehold ? null : (party.adults?.[0]?.age ?? null)
+  const hasGuestAge = guestAge !== null && guestAge > 0
   /*
    * S2 + Sa (kindred#2072): the single-parent mark LEFT the chip row.
    *
@@ -357,15 +363,23 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
             party.display_name
           )}
         </span>
-        <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
-          <Users className="h-3 w-3 flex-shrink-0" />
-          {/* `party.party_size` is a BED count since kindred#1925/#2046 (it
-              drops blank/placeholder adult slots and discounts an infant),
-              which can legitimately disagree with the names printed below --
-              `partyHeadcount` is that printed count, so the badge can never
-              disagree with its own card (kindred#2152). */}
-          {partyHeadcount(party)}
-        </span>
+        {/* HOUSEHOLD GRAIN ONLY (kindred#2767). A person-grain party is one
+            guest, so the badge always read "1" and said nothing -- a summer
+            CamperCard carries none either. */}
+        {isHousehold && (
+          <span
+            data-testid="family-card-headcount"
+            className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums"
+          >
+            <Users className="h-3 w-3 flex-shrink-0" />
+            {/* `party.party_size` is a BED count since kindred#1925/#2046 (it
+                drops blank/placeholder adult slots and discounts an infant),
+                which can legitimately disagree with the names printed below --
+                `partyHeadcount` is that printed count, so the badge can never
+                disagree with its own card (kindred#2152). */}
+            {partyHeadcount(party)}
+          </span>
+        )}
       </span>
 
       {/* LINE 2, and it holds TWO things now (kindred#2075): the attending
@@ -390,11 +404,9 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
           `overflow-hidden` — clipping would eat the room number off the END
           of the string, and there is nothing to clip.
 
-          HOUSEHOLD GRAIN ONLY, and this `isHousehold` branch is the whole
-          gate — the same one the "Returning" badge below uses, for the same
-          reason. The server keys the cabin off a household cm_id, so a
-          person-grain adult weekend guest has none to have, and the other
-          branch has no grey line to hang it on. */}
+          This is the HOUSEHOLD branch. A person-grain adult weekend guest
+          gets summer's own line 2 in the other branch below (kindred#2767):
+          age on the left, the same last-year cabin span on the right. */}
       {isHousehold
         ? (attendingAdults.length > 0 || lastYearCabin.length > 0) && (
             <span className="flex items-baseline gap-2">
@@ -513,12 +525,43 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
           )
         : // Person-grain (adult weekend) parties are a single guest identified
           // by the bold line above, not a household -- so there is no separate
-          // adult list. The old children-with-CampMinder-age line stays for the
-          // rare person-grain party that carries children of its own.
-          children.length > 0 && (
-            <span className="text-muted-foreground text-xs leading-snug">
-              <ChildList children={children} formatAge={displayCampMinderAge} />
-            </span>
+          // adult list. LINE 2 IS SUMMER'S (kindred#2767, owner ruling
+          // 2026-09-23): `CamperCard.tsx` puts "Age …" on the left and last
+          // year's placement right-anchored opposite it, so this does too,
+          // through the SAME age helper (`displayCampMinderAge`, which drops
+          // the months at 21+). The cabin is the guest's year - 1 adult cabin,
+          // registry-named server-side exactly like the household one above.
+          //
+          // The children-with-CampMinder-age line stays below it for the rare
+          // person-grain party that carries children of its own.
+          (hasGuestAge || lastYearCabin.length > 0 || children.length > 0) && (
+            <>
+              {(hasGuestAge || lastYearCabin.length > 0) && (
+                <span className="flex items-baseline gap-2">
+                  {hasGuestAge && (
+                    <span
+                      data-testid="family-card-age"
+                      className="text-muted-foreground text-xs leading-snug whitespace-nowrap"
+                    >
+                      Age {displayCampMinderAge(guestAge)}
+                    </span>
+                  )}
+                  {lastYearCabin.length > 0 && (
+                    <span
+                      data-testid="family-card-last-year-cabin"
+                      className="text-muted-foreground ml-auto flex-shrink-0 text-xs leading-snug whitespace-nowrap"
+                    >
+                      {lastYearCabin}
+                    </span>
+                  )}
+                </span>
+              )}
+              {children.length > 0 && (
+                <span className="text-muted-foreground text-xs leading-snug">
+                  <ChildList children={children} formatAge={displayCampMinderAge} />
+                </span>
+              )}
+            </>
           )}
     </>
   )
@@ -550,6 +593,9 @@ function FamilyCardChips({
   // The four ruled needs, graded once, in `needGlyphs.ts`. A need the
   // household did not ask for is ABSENT from this array — never dimmed (§6).
   const glyphs = resolveNeedGlyphs(party, unit)
+  // The Returning/First-time mark's only words (R3), with the grain's noun:
+  // a person-grain party is an adult weekend GUEST (kindred#2767).
+  const historyLabel = `${party.is_returning === true ? 'Returning' : 'First-time'} ${isHousehold ? 'family' : 'guest'}`
 
   return (
     /* `flex-nowrap` on the ROW and the wrapping confined to the group inside
@@ -642,45 +688,44 @@ function FamilyCardChips({
           pair is never absent and never discriminating in the way a chip's
           position implies.
 
-          BOTH gated on household grain, and that is not new: `is_returning` is
-          only ever computed for household parties (`_build_household_parties`
-          sets it from `prior_cm_ids`), so a person-grain adult weekend guest
-          arrives with the Pydantic default `false` — untracked, not "no".
-          Drawing First-time there would call every adult weekend regular a
-          first-timer.
+          BOTH GRAINS since kindred#2767 (owner ruling 2026-09-23: one
+          returning rule, by program family). It used to be household-only,
+          because `is_returning` was untracked at person grain; the server now
+          computes it for an adult weekend guest from any prior enrolled adult
+          session, by the guest's own id. The noun follows the grain: a
+          person-grain party is a GUEST, never a family.
 
           A tooltip because the icon carries no words, on the same primitive
           the glyphs use. */}
-      {isHousehold && (
-        <Tooltip
-          content={party.is_returning === true ? 'Returning family' : 'First-time family'}
-          // Named for the same reason the need glyphs are: R3 took the words
-          // away, so the icon is the only carrier left.
-          aria-label={party.is_returning === true ? 'Returning family' : 'First-time family'}
-          data-testid="family-card-history"
-          // `pl-1.5` is the review artifact's own 6px, and it earns its place:
-          // without it the mark sits 4px from the last chip — the row gap
-          // alone — and reads as the end of the chip run rather than as a
-          // separate mark pinned to the corner.
-          //
-          // ⚠️ `green`, NOT `forest`, AND THAT WAS MEASURED (owner ruling
-          // 2026-08-20). R3 takes the words away, so colour is the ONLY thing
-          // separating these two marks — and `forest-700` resolves to
-          // `#003917` against a `--foreground` of `#0c3125`: a contrast of
-          // **1.08 : 1** between the mark and the card's own text. Returning
-          // fires on 279 households of 402, so the common mark was the one
-          // nobody could see, while First-time's amber sat at 2.82 : 1.
-          // `green-700` is 2.87 : 1, is the review artifact's own `--ret`, and
-          // is the ramp `AssignFamilyModal`'s `fits` verdict already uses — so
-          // the board carries ONE semantic green. `forest` keeps what it has
-          // always been: the lodge's chrome, not a status.
-          className={`ml-auto flex-shrink-0 pl-1.5 ${
-            party.is_returning === true
-              ? 'text-green-700 dark:text-green-300'
-              : 'text-amber-700 dark:text-amber-300'
-          }`}
-        >
-          {/* ⚠️ 20px, AND R3 FIRST RULED 16 (owner, 2026-08-20, having seen the
+      <Tooltip
+        content={historyLabel}
+        // Named for the same reason the need glyphs are: R3 took the words
+        // away, so the icon is the only carrier left.
+        aria-label={historyLabel}
+        data-testid="family-card-history"
+        // `pl-1.5` is the review artifact's own 6px, and it earns its place:
+        // without it the mark sits 4px from the last chip — the row gap
+        // alone — and reads as the end of the chip run rather than as a
+        // separate mark pinned to the corner.
+        //
+        // ⚠️ `green`, NOT `forest`, AND THAT WAS MEASURED (owner ruling
+        // 2026-08-20). R3 takes the words away, so colour is the ONLY thing
+        // separating these two marks — and `forest-700` resolves to
+        // `#003917` against a `--foreground` of `#0c3125`: a contrast of
+        // **1.08 : 1** between the mark and the card's own text. Returning
+        // fires on 279 households of 402, so the common mark was the one
+        // nobody could see, while First-time's amber sat at 2.82 : 1.
+        // `green-700` is 2.87 : 1, is the review artifact's own `--ret`, and
+        // is the ramp `AssignFamilyModal`'s `fits` verdict already uses — so
+        // the board carries ONE semantic green. `forest` keeps what it has
+        // always been: the lodge's chrome, not a status.
+        className={`ml-auto flex-shrink-0 pl-1.5 ${
+          party.is_returning === true
+            ? 'text-green-700 dark:text-green-300'
+            : 'text-amber-700 dark:text-amber-300'
+        }`}
+      >
+        {/* ⚠️ 20px, AND R3 FIRST RULED 16 (owner, 2026-08-20, having seen the
               two at 4×). This mark shares its row with the need glyphs, which
               are 20px chips, and `items-end` bottom-aligns it against them: at
               16px its 13.33px of ink sat 5.33px below the chips' top edge and
@@ -695,13 +740,12 @@ function FamilyCardChips({
 
               The vocabulary doc's §2 carries the size and this reason; if one
               of them moves, move both. */}
-          {party.is_returning === true ? (
-            <Repeat className="h-5 w-5" />
-          ) : (
-            <Star className="h-5 w-5" />
-          )}
-        </Tooltip>
-      )}
+        {party.is_returning === true ? (
+          <Repeat className="h-5 w-5" />
+        ) : (
+          <Star className="h-5 w-5" />
+        )}
+      </Tooltip>
     </span>
   )
 }
