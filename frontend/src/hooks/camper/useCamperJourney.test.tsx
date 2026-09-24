@@ -126,6 +126,78 @@ describe('useCamperJourney', () => {
     expect(result.current.error).toBeNull()
   })
 
+  // kindred#2812: what the current-year build needs from the feed — a
+  // parent's current-year family rows, and the attributed adult cabins.
+  it("returns a parent's current-year family rows apart from the prior years", async () => {
+    fetchSpy.mockImplementation(() =>
+      respond({
+        ...PAYLOAD,
+        current_year_parent_rows: [
+          {
+            year: 2026,
+            session_name: 'Family Camp 6',
+            session_type: 'family',
+            bunk_name: 'Meadow House 1',
+            bunk_name_recorded: null,
+            start_date: null,
+            end_date: null,
+          },
+        ],
+      })
+    )
+    const { result } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(result.current.currentYearParentRows).toHaveLength(1))
+    expect(result.current.currentYearParentRows[0]).toEqual({
+      year: 2026,
+      sessionName: 'Family Camp 6',
+      sessionType: 'family',
+      bunkName: 'Meadow House 1',
+    })
+    expect(result.current.rows).toEqual([JOURNEY_ROW])
+  })
+
+  it('keys the attributed adult cabins by year and session for the current-year rows', async () => {
+    fetchSpy.mockImplementation(() =>
+      respond({
+        ...PAYLOAD,
+        adult_cabins: [
+          { year: 2026, session_cm_id: 1001, cabin_name: 'River F', cabin_name_raw: 'River F' },
+        ],
+      })
+    )
+    const { result } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(result.current.adultCabinsByWeekend.size).toBe(1))
+    expect(result.current.adultCabinsByWeekend.get('2026:1001')).toEqual({
+      cabinName: 'River F',
+      cabinNameRaw: 'River F',
+    })
+  })
+
+  it("keys the household's family cabins by year and weekend for the current-year rows", async () => {
+    fetchSpy.mockImplementation(() =>
+      respond({
+        ...PAYLOAD,
+        family_cabins: [
+          { year: 2026, session_cm_id: 106, cabin_name: 'Meadow House 1', cabin_name_raw: 'Old' },
+        ],
+      })
+    )
+    const { result } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    await waitFor(() => expect(result.current.familyCabinsByWeekend.size).toBe(1))
+    expect(result.current.familyCabinsByWeekend.get('2026:106')).toEqual({
+      cabinName: 'Meadow House 1',
+      cabinNameRaw: 'Old',
+    })
+  })
+
+  it('reports no current-year parent rows until the journey lands', () => {
+    fetchSpy.mockImplementation(() => new Promise(() => {}))
+    const { result } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })
+    expect(result.current.currentYearParentRows).toEqual([])
+    expect(result.current.adultCabinsByWeekend.size).toBe(0)
+    expect(result.current.familyCabinsByWeekend.size).toBe(0)
+  })
+
   it('reports empty counts until the journey lands', () => {
     fetchSpy.mockImplementation(() => new Promise(() => {}))
     const { result } = renderHook(() => useCamperJourney(PERSON, YEAR), { wrapper })

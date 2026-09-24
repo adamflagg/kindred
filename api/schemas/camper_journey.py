@@ -2,7 +2,9 @@
 
 `GET /api/campers/{person_cm_id}/journey?year=` answers what `useCamperJourney`
 used to assemble on the client from four reads: the prior-year rows, the
-header counts, and the TLI/SCIT cabins a current-year row looks itself up by.
+header counts, a 21+ person's current-year family weekends as a parent, and
+the TLI/SCIT and adult cabins a current-year row looks itself up by
+(kindred#2812).
 Presentation -- row order across the current year, the compact grid, the
 subtitles -- stays on the client.
 """
@@ -59,12 +61,32 @@ class CamperJourneyResponse(BaseModel):
     """A person's journey as of one viewed year.
 
     `rows` are the years BEFORE it, newest year first and chronological
-    within a year. `teen_cabins` is the person-housing read's list, passed
-    through unchanged: the client's current-year rows are built from live
-    attendees rather than from this feed, and they label a TLI/SCIT row from
-    it (owner ruling 2026-09-22 late, Q9).
+    within a year. The viewed year itself is built on the client, from live
+    attendees and live bunks, by every journey surface alike (owner rulings
+    2026-09-24, kindred#2812); `current_year_parent_rows` and the three cabin
+    lists are what that build needs from here.
     """
 
     rows: list[CamperJourneyRow] = Field(default_factory=list)
     counts: CamperJourneyCounts = Field(default_factory=CamperJourneyCounts)
+    # The viewed year's family weekends the person attended AS A PARENT, for
+    # a 21+ person: every weekend a child in the household was enrolled on
+    # that they were not enrolled on themself. Labelled like a prior year's
+    # parent row, chronological. Counted in `family_weekends`, and the one
+    # current-year row the client cannot build -- a parent has no family-camp
+    # attendee row of their own (kindred#2812).
+    current_year_parent_rows: list[CamperJourneyRow] = Field(default_factory=list)
+    # The person-housing read's two lists, passed through unchanged, current
+    # year included: the client labels a live current-year TLI/SCIT row from
+    # `teen_cabins` (owner ruling 2026-09-22 late, Q9) and a live adult-program
+    # row from `adult_cabins` (kindred#2812) -- never from the raw CampMinder
+    # bunk, exactly as the prior-year rows above.
     teen_cabins: list[PersonHousingWeekend] = Field(default_factory=list)
+    adult_cabins: list[PersonHousingWeekend] = Field(default_factory=list)
+    # The household's cabin per family weekend, every year it was enrolled,
+    # by the rule a family row above is labelled with: the weekend's own live
+    # cabin where every weekend that season has one (kindred#2775), the year's
+    # one cabin otherwise. The client labels a live current-year family row
+    # from it -- a child's row shows the cabin their parent's row shows (owner
+    # ruling 2026-09-24, on #2814). A weekend with no cabin has no entry.
+    family_cabins: list[PersonHousingWeekend] = Field(default_factory=list)

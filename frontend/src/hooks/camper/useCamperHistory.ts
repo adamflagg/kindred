@@ -1,6 +1,12 @@
 /**
  * Hook for fetching camper's historical session and bunk data
  * Aggregates current year and past years' camp history
+ *
+ * THE ONE CURRENT-YEAR BUILD (owner rulings 2026-09-24, kindred#2812): every
+ * journey surface shows the current year's enrollments — the camper record,
+ * the summer board's sidebar and the Women's/Men's Weekend sidebar (the last
+ * two through `useCamperJourneyWithCurrentYear`) — and they all show THESE
+ * rows, so one surface can never show a row another drops or doubles.
  */
 
 import { useMemo } from 'react'
@@ -10,7 +16,7 @@ import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollment
 import { queryKeys } from '../../utils/queryKeys'
 import { fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
-import { currentYearCabin, type CabinLabel } from './teenCabinLabel'
+import { currentYearCabin, type ServerCabins } from './teenCabinLabel'
 import { useCamperJourney } from './useCamperJourney'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
@@ -91,7 +97,10 @@ function buildCurrentYearRecords(
  * cabin comes ONLY from `teenCabins` (the registry-resolved map
  * `useCamperJourney` already reads for prior years, keyed by year+session) —
  * never the raw CampMinder bunk, which is usually a program group ("SCIT A",
- * "TLI"). Quest never shows a cabin at all; its "bunk" is a trip name.
+ * "TLI"). An adult-program row's cabin comes the same way from the attributed
+ * adult map (kindred#2812), and a family weekend's from the household's cabin
+ * for it (owner ruling 2026-09-24, on #2814) — never the day group. Quest
+ * never shows a cabin at all; its "bunk" is a trip name.
  * "Unassigned" appears only for a current-year *bunkable* (main/embedded/ag)
  * session still lacking any label. Applied as a separate, reactive step (not
  * inside the attendee-keyed query above) so a teen-cabin registry read that
@@ -101,16 +110,10 @@ function buildCurrentYearRecords(
 function applyCurrentYearCabinRule(
   records: RawCurrentYearRecord[],
   currentYear: number,
-  teenCabins: Map<string, CabinLabel>
+  cabins: ServerCabins
 ): HistoricalRecord[] {
   return records.map(({ sessionCmId, bunkName: rawBunkName, ...rest }) => {
-    const cabin = currentYearCabin(
-      rest.sessionType,
-      currentYear,
-      sessionCmId,
-      rawBunkName,
-      teenCabins
-    )
+    const cabin = currentYearCabin(rest.sessionType, currentYear, sessionCmId, rawBunkName, cabins)
     const bunkName =
       cabin.bunkName ?? (isAtCampSessionType(rest.sessionType) ? 'Unassigned' : undefined)
     return {
@@ -180,10 +183,23 @@ export function useCamperHistory(
   })
 
   // Q9 (owner, 2026-09-22 late): reactive to the registry's teen-cabin map,
-  // independent of the attendee-keyed query above.
+  // independent of the attendee-keyed query above — and, the same way, to the
+  // attributed adult-cabin map (kindred#2812) and the household family-cabin
+  // map (#2814).
   const resolvedCurrentRows = useMemo(
-    () => applyCurrentYearCabinRule(currentRows, currentYear, journey.teenCabinsByWeekend),
-    [currentRows, currentYear, journey.teenCabinsByWeekend]
+    () =>
+      applyCurrentYearCabinRule(currentRows, currentYear, {
+        teen: journey.teenCabinsByWeekend,
+        adult: journey.adultCabinsByWeekend,
+        family: journey.familyCabinsByWeekend,
+      }),
+    [
+      currentRows,
+      currentYear,
+      journey.teenCabinsByWeekend,
+      journey.adultCabinsByWeekend,
+      journey.familyCabinsByWeekend,
+    ]
   )
 
   // The SHARED comparator, not a second year-only one. This merge is where
@@ -191,9 +207,17 @@ export function useCamperHistory(
   // chronological by luck of the fetch order, the current year's do not, and
   // a year-only sort preserves both — so 2025 read correctly while 2026 read
   // "2a, 3a, FC1, FC6".
+  //
+  // A parent's current-year family weekends (kindred#2812) join here: the
+  // feed counted them all along, and no live attendee row of the parent's can
+  // build them. The server leaves out any weekend the person is enrolled on
+  // themself, so none of them repeats a row built above.
   const camperHistory = useMemo(
-    () => [...resolvedCurrentRows, ...journey.rows].sort(byYearThenChronological),
-    [resolvedCurrentRows, journey.rows]
+    () =>
+      [...resolvedCurrentRows, ...journey.currentYearParentRows, ...journey.rows].sort(
+        byYearThenChronological
+      ),
+    [resolvedCurrentRows, journey.currentYearParentRows, journey.rows]
   )
 
   return {

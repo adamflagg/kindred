@@ -58,17 +58,13 @@ import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
 import { useCamperJourney } from '../hooks/camper/useCamperJourney'
+import { useCamperJourneyWithCurrentYear } from '../hooks/camper/useCamperJourneyWithCurrentYear'
 import { useSiblings } from '../hooks/camper/useSiblings'
 import { EMPTY_JOURNEY_COUNTS, journeyCountLabel } from '../utils/journeyCountLabel'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { SiblingWithEnrollment } from '../hooks/camper/types'
 import { JourneyRows } from './camper/JourneyRows'
-import {
-  journeyDisplayState,
-  journeyRowStatus,
-  journeyRowsFromHistory,
-  type JourneyRow,
-} from './camper/journeyRowModel'
+import { journeyDisplayState, journeyRowsFromHistory } from './camper/journeyRowModel'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -180,8 +176,8 @@ interface CurrentEnrollment {
   bunkName: string | null
   /**
    * The as-typed string, when it disagrees with `bunkName` (Q9, owner ruling
-   * 2026-09-22 late) — set only for a resolved TLI/SCIT row. Rendered as a
-   * hover tooltip, never inline.
+   * 2026-09-22 late) — set only for a resolved TLI/SCIT, adult-program or
+   * family-weekend row. Rendered as a hover tooltip, never inline.
    */
   bunkNameRecorded?: string
   attendeeStatus?: string
@@ -458,32 +454,40 @@ export default function CamperDetailsPanel({
   // The one shared journey feed — the same rows and counts as the camper
   // record. Read here (ahead of its old position) so its registry-resolved
   // teen-cabin map is available to the current-year correction below.
+  const journeyPersonCmId = camperId ? parseInt(camperId, 10) : null
   const {
     rows: historicalData,
     counts: journeyCounts,
+    teenCabinsByWeekend,
+    adultCabinsByWeekend,
+    familyCabinsByWeekend,
+  } = useCamperJourney(journeyPersonCmId, currentYear)
+  // The Camp Journey section's rows — the camper record's own build, current
+  // year included (kindred#2812). See `journeyRows` below.
+  const {
+    history: journeyHistory,
     isLoading: journeyLoading,
     error: journeyError,
-    teenCabinsByWeekend,
-  } = useCamperJourney(camperId ? parseInt(camperId, 10) : null, currentYear)
+  } = useCamperJourneyWithCurrentYear(journeyPersonCmId, currentYear)
 
   // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): a TLI/SCIT
   // enrollment's cabin comes ONLY from the registry-resolved teen-cabin map —
   // never the raw CampMinder bunk (usually a program group, "SCIT A"/"TLI").
-  // Quest never shows a cabin at all; its "bunk" is a trip name. Applied here,
-  // over the raw fetch's `enrollments`, rather than baked into the queryFn
+  // An adult-program row's cabin comes the same way from the attributed adult
+  // map (kindred#2812), and a family weekend's from the household's cabin for
+  // it (#2814). Quest never shows a cabin at all; its "bunk" is a trip name.
+  // Applied here, over the raw fetch's `enrollments`, rather than baked into the queryFn
   // above — that query's key does not include `teenCabinsByWeekend`, so a
   // teen-cabin read that settles AFTER this query has already cached would
   // otherwise never get picked up.
   const allEnrollments: CurrentEnrollment[] = useMemo(() => {
     const raw = camperData?.enrollments ?? []
     return raw.map((e) => {
-      const cabin = currentYearCabin(
-        e.sessionType,
-        currentYear,
-        e.sessionCmId,
-        e.bunkName,
-        teenCabinsByWeekend
-      )
+      const cabin = currentYearCabin(e.sessionType, currentYear, e.sessionCmId, e.bunkName, {
+        teen: teenCabinsByWeekend,
+        adult: adultCabinsByWeekend,
+        family: familyCabinsByWeekend,
+      })
       return {
         ...e,
         bunkName: cabin.bunkName ?? null,
@@ -498,7 +502,13 @@ export default function CamperDetailsPanel({
         ...(isQuestSessionType(e.sessionType) && e.bunkName ? { questTripName: e.bunkName } : {}),
       }
     })
-  }, [camperData?.enrollments, currentYear, teenCabinsByWeekend])
+  }, [
+    camperData?.enrollments,
+    currentYear,
+    teenCabinsByWeekend,
+    adultCabinsByWeekend,
+    familyCabinsByWeekend,
+  ])
   // Show enrolled sessions only; if none enrolled, show best non-enrolled as fallback
   const currentEnrollments = toDisplayList(
     filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus)
@@ -510,8 +520,9 @@ export default function CamperDetailsPanel({
   // Falls back to the full list when the panel doesn't know which session
   // opened it, or when that session isn't among the camper's current
   // enrollments (both defensive — real data always matches). Used ONLY by
-  // the quick-stats bar below; the journey rows and cohort/section context
-  // still read the full `currentEnrollments`.
+  // the quick-stats bar below; the cohort/section context still reads the
+  // full `currentEnrollments`, and the journey rows read neither
+  // (`useCamperJourneyWithCurrentYear`, kindred#2812).
   const openedEnrollments = currentEnrollments.filter(
     (e) => e.sessionCmId === openedFromSessionCmId
   )
@@ -649,73 +660,17 @@ export default function CamperDetailsPanel({
   }
 
   /**
-   * The Camp Journey section's rows. What only the board modal shows stays
-   * here: THIS year comes from the board's own enrollments (the journey feed
-   * stops at last year) — the year on the first row only, a non-enrolled
-   * enrollment's status letter in place of its cabin, an unplaced one as
-   * "Unassigned", and "Now" on the first row when it is enrolled. With no
-   * enrollment list but a session, one row for that session. Prior years are
-   * the shared feed, mapped exactly as the camper record maps them.
+   * The Camp Journey section's rows: the camper record's OWN rows, current
+   * year and prior years alike (owner rulings 2026-09-24, kindred#2812 —
+   * "always show current year enrollment data across family/adult/camper
+   * sidebars and full page"). This modal used to build this year from the
+   * board's enrollment read above, which is summer-only by design (it feeds
+   * the quick-stats bar), so a family weekend or a TLI/SCIT program this year
+   * never reached the grid. `useCamperJourneyWithCurrentYear` runs the camper
+   * record's build instead — every program, the same cabin rules, the same
+   * status letters, "Unassigned" and "Now" — so the two can no longer differ.
    */
-  const currentYearRows: JourneyRow[] =
-    currentEnrollments.length > 0
-      ? currentEnrollments.map((enrollment, idx) => {
-          const status = journeyRowStatus(enrollment.attendeeStatus)
-          // Q9: "Unassigned" is a bunkable (main/embedded/ag) fallback only —
-          // enrollment.bunkName is already registry-resolved-or-nothing for a
-          // TLI/SCIT row, and Quest never carries a bunkName at all.
-          const cabin =
-            enrollment.bunkName ??
-            (isAtCampSessionType(enrollment.sessionType) ? 'Unassigned' : undefined)
-          return {
-            key: `current-${enrollment.sessionCmId}`,
-            year: currentYear,
-            showYear: idx === 0,
-            isCurrentYear: true,
-            session: getEnrollmentShortName(enrollment),
-            subtitle: undefined,
-            cabin: status ? undefined : cabin,
-            cabinRecorded: status ? undefined : enrollment.bunkNameRecorded,
-            status,
-            showNow: idx === 0 && !status,
-          }
-        })
-      : camper?.expand?.session
-        ? [
-            (() => {
-              const sessionType = camper.expand.session.session_type
-              const resolved = currentYearCabin(
-                sessionType,
-                currentYear,
-                camper.session_cm_id,
-                camper.expand.assigned_bunk?.name,
-                teenCabinsByWeekend
-              )
-              const cabin =
-                resolved.bunkName ?? (isAtCampSessionType(sessionType) ? 'Unassigned' : undefined)
-              return {
-                key: 'current-session',
-                year: currentYear,
-                showYear: true,
-                isCurrentYear: true,
-                session: getSessionShortName() ?? '',
-                subtitle: undefined,
-                cabin,
-                cabinRecorded: resolved.bunkNameRecorded,
-                status: undefined,
-                showNow: true,
-              }
-            })(),
-          ]
-        : []
-  const journeyRows: JourneyRow[] = [
-    ...currentYearRows,
-    ...journeyRowsFromHistory(
-      historicalData,
-      currentYear,
-      currentYearRows.length > 0 ? currentYear : undefined
-    ),
-  ]
+  const journeyRows = journeyRowsFromHistory(journeyHistory, currentYear)
   // M1 (review, kindred#2753): computed once and switched on directly below,
   // rather than re-derived inline — the section-visibility check and the
   // body's rows/loading/error branch must never be able to disagree about
@@ -1150,8 +1105,8 @@ export default function CamperDetailsPanel({
         {/* Camp Journey Timeline - Compact */}
         {/* Q8 (owner, 2026-09-22 late): the SAME rows-first decision as
             CampJourneyTimeline (`journeyDisplayState`, camper/journeyRowModel.ts)
-            — the board's own current-year rows are ready before the prior-year
-            feed, and used to sit behind a spinner until it settled. The
+            — the current-year rows can be ready before the prior-year feed,
+            and used to sit behind a spinner until it settled. The
             section itself must stay visible through loading/error too, or the
             spinner/error line below would never have anywhere to render.
             M1 (review): switches on the SAME `journeyState` value the section
@@ -1170,9 +1125,10 @@ export default function CamperDetailsPanel({
             {expandedSections.history &&
               (journeyState === 'rows' ? (
                 // The same rows as the camper record (`camper/JourneyRows`,
-                // owner ruling 2026-09-22 G2): this year's board enrollments and
-                // the prior years in ONE grid — `compact`, like every sidebar:
-                // one type size down, a family weekend's bare title only.
+                // owner ruling 2026-09-22 G2; the same current-year build since
+                // kindred#2812): this year and the prior years in ONE grid —
+                // `compact`, like every sidebar: one type size down, a family
+                // weekend's bare title only.
                 <div className="mt-2">
                   <JourneyRows rows={journeyRows} variant="compact" />
                   {/* A failed prior-year read still says so (CR #1), under the

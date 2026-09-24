@@ -717,3 +717,35 @@ describe('per-weekend cabins from the CampMinder layer (kindred#2775)', () => {
     expect(screen.getByRole('tooltip').textContent).toContain('Old Meadow 1')
   })
 })
+
+// kindred#2812 (owner rulings 2026-09-24): every journey surface shows the
+// current year's enrolled sessions, with or without a cabin yet. The family
+// board's card already did — the household journey discovers a year from its
+// ENROLLED attendees, current season included — and this pins it.
+describe('the current year (kindred#2812)', () => {
+  const FC1_2026 = {
+    session_cm_id: 900101,
+    name: 'Family Camp 1: Memorial Day Weekend',
+    start_date: '2026-05-22',
+  }
+  const FC6_2026 = { session_cm_id: 900106, name: 'Family Camp 6', start_date: '2026-09-18' }
+
+  it('shows the season being worked with its enrolled weekends before anyone is placed', () => {
+    show([
+      _row({ year: 2026, housing: 'not_placed', cabin_name: '', sessions: [FC1_2026, FC6_2026] }),
+      _row({ year: 2025 }),
+    ])
+
+    const row = rowFor(2026)
+    expect(within(row).getByTestId('household-journey-weekends').textContent).toBe('FC1 · FC6')
+    expect(row.textContent).toContain('Not yet placed')
+  })
+
+  it('shows the season being worked with its cabin once one is placed', () => {
+    show([_row({ year: 2026, sessions: [FC1_2026, FC6_2026] })])
+
+    expect(within(rowFor(2026)).getByTestId('household-journey-housing').textContent).toBe(
+      'Cedar Lodge - Room 2'
+    )
+  })
+})

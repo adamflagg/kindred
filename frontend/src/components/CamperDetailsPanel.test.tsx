@@ -76,7 +76,16 @@ function journeyWith(
 ) {
   // Q9 (owner, 2026-09-22 late): the real hook always returns a Map here
   // (never undefined) — tests that need a populated one override the field.
-  return { rows, counts, isLoading: false, error: null, teenCabinsByWeekend: new Map() }
+  return {
+    rows,
+    currentYearParentRows: [] as HistoricalRecord[],
+    counts,
+    isLoading: false,
+    error: null,
+    teenCabinsByWeekend: new Map(),
+    adultCabinsByWeekend: new Map(),
+    familyCabinsByWeekend: new Map(),
+  }
 }
 
 // Mock AuthContext — AllCamperRequestsModal calls useAuth() at module load,
@@ -202,7 +211,11 @@ const DECLINED_REQUEST: Record<string, unknown> = {
   metadata: {},
 }
 
-/** A minimal attendee record for Emma */
+/**
+ * A minimal attendee record for Emma. `expand.person` is what the camper
+ * record's enrollment read (`useCamperEnrollment`, `expand: 'person,session'`)
+ * gets back, and the Camp Journey section runs that read since kindred#2812.
+ */
 const EMMA_ATTENDEE: Record<string, unknown> = {
   id: 'att-emma',
   person: 'pb-emma',
@@ -216,6 +229,7 @@ const EMMA_ATTENDEE: Record<string, unknown> = {
   created: '2025-01-01T00:00:00Z',
   updated: '2025-01-01T00:00:00Z',
   expand: {
+    person: EMMA,
     session: {
       id: 'sess-1',
       cm_id: 1001,
@@ -380,8 +394,8 @@ describe('CamperDetailsPanel', () => {
   // Owner ruling 2026-09-22, option G2: the board modal's Camp Journey renders
   // the SAME rows component as the camper record (`camper/JourneyRows`) — one
   // grid for the current-year enrollments AND the prior years, so every cabin
-  // lines up. The modal keeps what only it shows: this year's rows come from
-  // the board's own enrollments (status letter, "Unassigned", "Now").
+  // lines up. Since kindred#2812 this year's rows are the camper record's own
+  // build too (status letter, "Unassigned", "Now"), not the board's enrollments.
   describe('Camp Journey — shared one-grid rows (owner ruling 2026-09-22, G2)', () => {
     it('renders this year and prior years through the shared rows, in ONE grid', async () => {
       setupDeclinedRequestMocks()
@@ -395,16 +409,162 @@ describe('CamperDetailsPanel', () => {
 
       const grid = await screen.findByTestId('journey-rows')
       expect(grid.className.split(' ')).toContain('grid')
+      // This year's row is the camper record's own build since kindred#2812,
+      // a read of its own — it can land a beat after the prior years.
+      await waitFor(() => expect(within(grid).getAllByTestId('journey-cabin-cell')).toHaveLength(2))
       const cabins = within(grid).getAllByTestId('journey-cabin-cell')
-      expect(cabins).toHaveLength(2)
       for (const cabin of cabins) expect(cabin.parentElement).toBe(grid)
-      // This year's row (the board's enrollment, not yet placed) then the prior year.
+      // This year's row (the live enrollment, not yet placed) then the prior year.
       expect(cabins[0]?.textContent).toBe('Unassigned')
       expect(cabins[1]?.textContent).toBe('G-8B')
       expect(within(grid).getByText('2025')).toBeInTheDocument()
       expect(within(grid).getByText('Now').closest('[data-col]')?.getAttribute('data-col')).toBe(
         'badge'
       )
+    })
+
+    // kindred#2812 (owner rulings 2026-09-24): every journey surface shows
+    // the current year's enrolled sessions — every program, with or without a
+    // cabin yet — and this sidebar shows the SAME current-year rows the camper
+    // record does. The board's own enrollment read is summer-only (it feeds
+    // the quick-stats bar), so a family weekend never reached this grid.
+    describe('the current year, as the camper record shows it (kindred#2812)', () => {
+      const SUMMER_2A = {
+        ...EMMA_ATTENDEE,
+        id: 'att-emma-2a',
+        session: 'sess-2a',
+        expand: {
+          person: EMMA,
+          session: {
+            id: 'sess-2a',
+            cm_id: 1356,
+            name: 'Session 2a',
+            session_type: 'embedded',
+            start_date: '2025-06-15',
+          },
+        },
+      }
+      const SUMMER_3A = {
+        ...EMMA_ATTENDEE,
+        id: 'att-emma-3a',
+        session: 'sess-3a',
+        expand: {
+          person: EMMA,
+          session: {
+            id: 'sess-3a',
+            cm_id: 1344,
+            name: 'Session 3a',
+            session_type: 'embedded',
+            start_date: '2025-07-06',
+          },
+        },
+      }
+      const FAMILY_FC6 = {
+        ...EMMA_ATTENDEE,
+        id: 'att-emma-fc6',
+        session: 'sess-fc6',
+        expand: {
+          person: EMMA,
+          session: {
+            id: 'sess-fc6',
+            cm_id: 1309,
+            name: 'Family Camp 6',
+            session_type: 'family',
+            start_date: '2025-09-18',
+          },
+        },
+      }
+
+      /** Attendees and bunks the way PocketBase answers each read's filter. */
+      function serveEnrollments(
+        attendees: Array<Record<string, unknown>>,
+        bunks: Record<number, string>
+      ) {
+        mockGetFullListAttendees.mockImplementation((opts: { filter?: string } = {}) =>
+          Promise.resolve(
+            (opts.filter ?? '').includes('session.session_type = "family"')
+              ? attendees
+              : attendees.filter(
+                  (a) =>
+                    (a['expand'] as { session: { session_type: string } }).session.session_type !==
+                    'family'
+                )
+          )
+        )
+        mockGetFullListBunkAssignments.mockImplementation((opts: { filter?: string } = {}) => {
+          const filter = opts.filter ?? ''
+          const all = attendees
+            .map((a) => (a['expand'] as { session: { id: string; cm_id: number } }).session)
+            .filter((session) => bunks[session.cm_id] !== undefined)
+            .map((session) => ({
+              session: session.id,
+              expand: { session, bunk: { name: bunks[session.cm_id] } },
+            }))
+          // The camper record's read: every summer assignment this year.
+          if (filter.includes('person.cm_id')) return Promise.resolve(all)
+          // The board's own read: one session at a time.
+          return Promise.resolve(all.filter((a) => filter.includes(`session = "${a.session}"`)))
+        })
+      }
+
+      it('shows every enrolled session this year — a family weekend too — with a cabin where assigned and none where not', async () => {
+        setupDeclinedRequestMocks()
+        serveEnrollments([SUMMER_2A, FAMILY_FC6], { 1356: 'B-1' })
+        mockUseCamperJourney.mockReturnValue(
+          journeyWith([
+            { year: 2024, sessionName: 'Session 3', sessionType: 'main', bunkName: 'G-8B' },
+          ])
+        )
+
+        render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+        const grid = await screen.findByTestId('journey-rows')
+        await waitFor(() => expect(within(grid).getByText('Family Camp 6')).toBeInTheDocument())
+        const cabins = within(grid).getAllByTestId('journey-cabin-cell')
+        expect(cabins.map((c) => c.textContent)).toEqual(['B-1', '', 'G-8B'])
+        expect(within(grid).getByText('2025')).toBeInTheDocument()
+      })
+
+      // Owner ruling 2026-09-24 (on #2814) — seen missing on exactly this
+      // sidebar: a family weekend shows the household's cabin.
+      it("shows the household's cabin on this year's family weekend", async () => {
+        setupDeclinedRequestMocks()
+        serveEnrollments([SUMMER_2A, FAMILY_FC6], { 1356: 'B-1' })
+        mockUseCamperJourney.mockReturnValue({
+          ...journeyWith([]),
+          familyCabinsByWeekend: new Map([
+            ['2025:1309', { cabinName: 'Meadow House 1', cabinNameRaw: 'Meadow House 1' }],
+          ]),
+        })
+
+        render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+        const grid = await screen.findByTestId('journey-rows')
+        await waitFor(() =>
+          expect(
+            within(grid)
+              .getAllByTestId('journey-cabin-cell')
+              .map((c) => c.textContent)
+          ).toEqual(['B-1', 'Meadow House 1'])
+        )
+      })
+
+      it('shows two summer sessions in one year as two rows, even in the same cabin', async () => {
+        setupDeclinedRequestMocks()
+        serveEnrollments([SUMMER_2A, SUMMER_3A], { 1356: 'B-1', 1344: 'B-1' })
+
+        render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+        const grid = await screen.findByTestId('journey-rows')
+        await waitFor(() =>
+          expect(
+            within(grid)
+              .getAllByTestId('journey-cabin-cell')
+              .map((c) => c.textContent)
+          ).toEqual(['B-1', 'B-1'])
+        )
+        expect(within(grid).getAllByText(/^Session [23]a$/)).toHaveLength(2)
+      })
     })
 
     it('shows a status letter, not a cabin or "Now", for a waitlisted enrollment this year', async () => {
@@ -465,6 +625,7 @@ describe('CamperDetailsPanel', () => {
       id: 'att-emma-scit',
       session: 'sess-scit',
       expand: {
+        person: EMMA,
         session: { id: 'sess-scit', cm_id: 700, name: 'Session 700', session_type: 'scit' },
       },
     }
@@ -473,6 +634,7 @@ describe('CamperDetailsPanel', () => {
       id: 'att-emma-quest',
       session: 'sess-quest',
       expand: {
+        person: EMMA,
         session: { id: 'sess-quest', cm_id: 900, name: 'Session 900', session_type: 'quest' },
       },
     }
@@ -686,8 +848,11 @@ describe('CamperDetailsPanel', () => {
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue({
         rows: [],
+        currentYearParentRows: [],
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
+        adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: true,
         error: null,
       })
@@ -705,8 +870,11 @@ describe('CamperDetailsPanel', () => {
       mockGetFullListAttendees.mockResolvedValue([])
       mockUseCamperJourney.mockReturnValue({
         rows: [],
+        currentYearParentRows: [],
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
+        adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: true,
         error: null,
       })
@@ -722,8 +890,11 @@ describe('CamperDetailsPanel', () => {
       setupDeclinedRequestMocks()
       mockUseCamperJourney.mockReturnValue({
         rows: [],
+        currentYearParentRows: [],
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
+        adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: false,
         error: new Error('boom'),
       })
@@ -741,8 +912,11 @@ describe('CamperDetailsPanel', () => {
       mockGetFullListAttendees.mockResolvedValue([])
       mockUseCamperJourney.mockReturnValue({
         rows: [],
+        currentYearParentRows: [],
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
+        adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: false,
         error: new Error('boom'),
       })

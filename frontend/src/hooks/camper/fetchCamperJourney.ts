@@ -52,9 +52,19 @@ export class CamperJourneyApiError extends ApiError {}
 export interface CamperJourney {
   /** Prior years only, newest first, chronological within a year. */
   rows: HistoricalRecord[]
+  /**
+   * The viewed year's family weekends as a PARENT (21+), chronological — the
+   * one current-year row the client's live attendee build cannot make, since
+   * a parent has no family-camp attendee row (kindred#2812).
+   */
+  currentYearParentRows: HistoricalRecord[]
   counts: JourneyCounts
   /** The registry-resolved TLI/SCIT cabins, current year included (Q9). */
   teenCabins: PersonHousingWeekendRow[]
+  /** The attributed adult-program cabins, current year included (kindred#2812). */
+  adultCabins: PersonHousingWeekendRow[]
+  /** The household's cabin per family weekend (owner ruling 2026-09-24, on #2814). */
+  familyCabins: PersonHousingWeekendRow[]
 }
 
 /**
@@ -97,7 +107,10 @@ export async function fetchCamperJourney(
   const body = (await response.json()) as ApiCamperJourneyResponse
   return {
     rows: (body.rows ?? []).map(toHistoricalRecord),
+    currentYearParentRows: (body.current_year_parent_rows ?? []).map(toHistoricalRecord),
     counts: toJourneyCounts(body.counts),
     teenCabins: body.teen_cabins ?? [],
+    adultCabins: body.adult_cabins ?? [],
+    familyCabins: body.family_cabins ?? [],
   }
 }

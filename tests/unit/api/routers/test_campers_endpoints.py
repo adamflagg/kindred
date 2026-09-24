@@ -67,8 +67,11 @@ class TestGetCamperJourney:
         assert response.status_code == 200
         assert response.json() == {
             "rows": [],
+            "current_year_parent_rows": [],
             "counts": {"summers": 0, "family_weekends": 0, "adult_weekends": 0},
             "teen_cabins": [],
+            "adult_cabins": [],
+            "family_cabins": [],
         }
 
     def test_the_year_is_required(self) -> None:

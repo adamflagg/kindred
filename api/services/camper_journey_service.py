@@ -26,6 +26,15 @@ travels on `bunk_name_recorded`, but ONLY where it disagrees with the label.
 From 2026, a family weekend with its own entry in `weekend_cabins` reads THAT
 cabin instead of the year's one label (kindred#2801, mirroring the household
 journey card's kindred#2775/#2789 rule). See `_family_season_housing`.
+
+THE VIEWED YEAR (owner rulings 2026-09-24, kindred#2812). Every journey surface
+shows the viewed year's enrollments, and they all build them the same way: on
+the client, from the person's live attendees and live bunks (`useCamperHistory`).
+The server adds only what that build cannot do itself -- a parent's family
+weekends, which have no attendee row of the parent's to build from
+(`current_year_parent_rows`), and the attributed adult cabins that label a live
+adult-program row (`adult_cabins`, as `teen_cabins` labels a TLI/SCIT one)
+or a live family-weekend row (`family_cabins`, owner ruling 2026-09-24 on #2814).
 """
 
 from __future__ import annotations
@@ -80,6 +89,10 @@ class JourneyFeed(NamedTuple):
     # Distinct (year, session) weekends, the viewed year included.
     family_weekends: int
     adult_weekends: int
+    # The viewed year's family weekends AS A PARENT (kindred#2812), for an
+    # adult viewer: counted above, and the one current-year row the client's
+    # live attendee build cannot make. Chronological.
+    current_year_parent_rows: list[CamperJourneyRow]
 
 
 class _CabinLabel(NamedTuple):
@@ -197,6 +210,31 @@ def _family_season_housing(y: HouseholdJourneyYear, session_cm_id: int) -> _Cabi
     return _CabinLabel(cabin_name, y.cabin_name_raw.strip())
 
 
+def family_cabins(years: Sequence[HouseholdJourneyYear]) -> list[PersonHousingWeekend]:
+    """The household's cabin for each family weekend it was enrolled on, keyed
+    (year, weekend) -- the SAME `_family_season_housing` rule a family row is
+    labelled with here, so a child's live current-year row and their parent's
+    row for the same weekend name one cabin (owner ruling 2026-09-24, on
+    #2814: "there's no reason not to"). A weekend with no cabin to show gets
+    no entry, never a blank one."""
+    out: list[PersonHousingWeekend] = []
+    for y in years:
+        for s in y.sessions:
+            if s.session_cm_id <= 0:
+                continue
+            housing = _family_season_housing(y, s.session_cm_id)
+            if housing is not None:
+                out.append(
+                    PersonHousingWeekend(
+                        year=y.year,
+                        session_cm_id=s.session_cm_id,
+                        cabin_name=housing.cabin_name,
+                        cabin_name_raw=housing.cabin_name_raw,
+                    )
+                )
+    return out
+
+
 def _labelled(housing: _CabinLabel | None) -> tuple[str | None, str | None]:
     if housing is None:
         return None, None
@@ -273,7 +311,7 @@ async def build_journey_feed(
     never the day group or a raw program group in its place.
     """
     if person_cm_id <= 0:
-        return JourneyFeed(rows=[], family_weekends=0, adult_weekends=0)
+        return JourneyFeed(rows=[], family_weekends=0, adult_weekends=0, current_year_parent_rows=[])
 
     family_housing = {y.year: y for y in family_years}
     adult_housing = _cabins_by_weekend(adult_weekends)
@@ -298,6 +336,14 @@ async def build_journey_feed(
     parent_family = _parent_family_weekends(family_years, own_family, view_year) if viewer_is_adult else []
     family_count = len(own_family | {p.key for p in parent_family})
     parent_rows = [p.row for p in parent_family if p.year < view_year]
+    # kindred#2812: counted in `family_count` all along, and never shown -- a
+    # parent has no family-camp attendee row, so the client's current-year
+    # build (live attendees) has nothing to make them from. A weekend the
+    # person is enrolled on themself is already out (`own_family`): the client
+    # builds that one.
+    current_year_parent_rows = sorted(
+        (p.row for p in parent_family if p.year == view_year), key=_by_year_then_chronological
+    )
 
     attendees = [a for a in all_attendees if _int(a, "year") < view_year]
     if not attendees:
@@ -305,6 +351,7 @@ async def build_journey_feed(
             rows=sorted(parent_rows, key=_by_year_then_chronological),
             family_weekends=family_count,
             adult_weekends=adult_count,
+            current_year_parent_rows=current_year_parent_rows,
         )
 
     # Collapse AG sub-tracks into their parent main: when both are enrolled
@@ -367,6 +414,7 @@ async def build_journey_feed(
         rows=sorted([*records, *parent_rows], key=_by_year_then_chronological),
         family_weekends=family_count,
         adult_weekends=adult_count,
+        current_year_parent_rows=current_year_parent_rows,
     )
 
 
@@ -505,12 +553,15 @@ class CamperJourneyService:
         )
         return CamperJourneyResponse(
             rows=feed.rows,
+            current_year_parent_rows=feed.current_year_parent_rows,
             counts=CamperJourneyCounts(
                 summers=facts.summers,
                 family_weekends=feed.family_weekends,
                 adult_weekends=feed.adult_weekends,
             ),
             teen_cabins=housing.teen_cabins,
+            adult_cabins=housing.weekends,
+            family_cabins=family_cabins(household.years),
         )
 
     @staticmethod

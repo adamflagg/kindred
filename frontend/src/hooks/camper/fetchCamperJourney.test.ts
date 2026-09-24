@@ -125,11 +125,69 @@ describe('fetchCamperJourney', () => {
     expect(teenCabins).toEqual([teen])
   })
 
+  // kindred#2812: a parent's current-year family weekends — the one kind of
+  // current-year row the client cannot build from live attendees — travel
+  // beside the prior years, mapped the same way.
+  it("maps a parent's current-year family rows apart from the prior years", async () => {
+    const current = { ...FULL_ROW, year: 2026, bunk_name_recorded: null }
+    const { rows, currentYearParentRows } = await fetchCamperJourney(
+      fetchReturning({ rows: [FULL_ROW], current_year_parent_rows: [current] }),
+      3000001,
+      2026
+    )
+    expect(rows.map((r) => r.year)).toEqual([2024])
+    expect(currentYearParentRows).toEqual([
+      {
+        year: 2026,
+        sessionName: 'Family Camp 2: Keshet Weekend',
+        sessionType: 'family',
+        bunkName: 'Meadow House 1',
+        startDate: '2024-05-24 00:00:00.000Z',
+        endDate: '2024-05-26 00:00:00.000Z',
+      },
+    ])
+  })
+
+  it('passes the attributed adult cabins through for the current-year rows', async () => {
+    const adult = {
+      year: 2026,
+      session_cm_id: 1001,
+      cabin_name: 'Meadow House 1',
+      cabin_name_raw: 'Old Meadow 1',
+    }
+    const { adultCabins } = await fetchCamperJourney(
+      fetchReturning({ adult_cabins: [adult] }),
+      3000001,
+      2026
+    )
+    expect(adultCabins).toEqual([adult])
+  })
+
+  // Owner ruling 2026-09-24 (on #2814): the household's cabin per family
+  // weekend, so a child's live current-year family row can show it.
+  it("passes the household's family cabins through for the current-year rows", async () => {
+    const family = {
+      year: 2026,
+      session_cm_id: 106,
+      cabin_name: 'Meadow House 1',
+      cabin_name_raw: 'Old Meadow 1',
+    }
+    const { familyCabins } = await fetchCamperJourney(
+      fetchReturning({ family_cabins: [family] }),
+      3000001,
+      2026
+    )
+    expect(familyCabins).toEqual([family])
+  })
+
   it('reads an empty payload as an empty journey', async () => {
     expect(await fetchCamperJourney(fetchReturning({}), 3000001, 2026)).toEqual({
       rows: [],
+      currentYearParentRows: [],
       counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
       teenCabins: [],
+      adultCabins: [],
+      familyCabins: [],
     })
   })
 

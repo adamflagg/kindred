@@ -442,10 +442,10 @@ export type CamperJourneyCounts = {
  * A person's journey as of one viewed year.
  *
  * `rows` are the years BEFORE it, newest year first and chronological
- * within a year. `teen_cabins` is the person-housing read's list, passed
- * through unchanged: the client's current-year rows are built from live
- * attendees rather than from this feed, and they label a TLI/SCIT row from
- * it (owner ruling 2026-09-22 late, Q9).
+ * within a year. The viewed year itself is built on the client, from live
+ * attendees and live bunks, by every journey surface alike (owner rulings
+ * 2026-09-24, kindred#2812); `current_year_parent_rows` and the three cabin
+ * lists are what that build needs from here.
  */
 export type CamperJourneyResponse = {
   /**
@@ -454,9 +454,21 @@ export type CamperJourneyResponse = {
   rows?: Array<CamperJourneyRow>
   counts?: CamperJourneyCounts
   /**
+   * Current Year Parent Rows
+   */
+  current_year_parent_rows?: Array<CamperJourneyRow>
+  /**
    * Teen Cabins
    */
   teen_cabins?: Array<PersonHousingWeekend>
+  /**
+   * Adult Cabins
+   */
+  adult_cabins?: Array<PersonHousingWeekend>
+  /**
+   * Family Cabins
+   */
+  family_cabins?: Array<PersonHousingWeekend>
 }
 
 /**
