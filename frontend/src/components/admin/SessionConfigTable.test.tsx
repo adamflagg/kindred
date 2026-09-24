@@ -840,6 +840,77 @@ describe('SessionConfigTable', () => {
     })
   })
 
+  // Forecast responses are also held in the API's 2 h server-side metrics_cache,
+  // so a client-side invalidation alone refetches the stale cached body. The
+  // server cache must be cleared, and cleared BEFORE the forecast refetch fires.
+  async function saveOneGradeEdit(queryClient: QueryClient) {
+    const user = userEvent.setup()
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(mockBudgetConfigRecords)
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SessionConfigTable />
+      </QueryClientProvider>
+    )
+    await waitFor(() => expect(screen.getByText('Taste of Camp')).toBeInTheDocument())
+
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3')
+    await user.click(screen.getByText(/save/i))
+  }
+
+  const forecastInvalidated = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.some(
+      (c) => JSON.stringify((c[0] as { queryKey?: unknown }).queryKey) === '["metrics","forecast"]'
+    )
+
+  it('clears the server metrics cache before refetching forecast on save', async () => {
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    let releaseServerInvalidate: () => void = () => {}
+    vi.mocked(globalThis.fetch).mockImplementation((input) => {
+      if (String(input) === '/api/metrics/cache/invalidate') {
+        return new Promise<Response>((resolve) => {
+          releaseServerInvalidate = () => resolve(new Response('{"cleared":1}'))
+        })
+      }
+      return Promise.resolve(new Response('{}'))
+    })
+
+    await saveOneGradeEdit(queryClient)
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/metrics/cache/invalidate', {
+        method: 'POST',
+      })
+    )
+    // Server cache still clearing — a forecast refetch now would read stale data.
+    expect(forecastInvalidated(invalidateSpy)).toBe(false)
+
+    releaseServerInvalidate()
+    await waitFor(() => expect(forecastInvalidated(invalidateSpy)).toBe(true))
+  })
+
+  it('still invalidates client queries when the server cache clear fails', async () => {
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    vi.mocked(globalThis.fetch).mockImplementation((input) =>
+      String(input) === '/api/metrics/cache/invalidate'
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(new Response('{}'))
+    )
+
+    await saveOneGradeEdit(queryClient)
+
+    await waitFor(() => expect(forecastInvalidated(invalidateSpy)).toBe(true))
+  })
+
   describe('accessibility: aria-labels on form controls', () => {
     beforeEach(() => {
       mockGetFullList
