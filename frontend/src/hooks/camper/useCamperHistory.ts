@@ -97,7 +97,10 @@ function buildCurrentYearRecords(
  * cabin comes ONLY from `teenCabins` (the registry-resolved map
  * `useCamperJourney` already reads for prior years, keyed by year+session) —
  * never the raw CampMinder bunk, which is usually a program group ("SCIT A",
- * "TLI"). Quest never shows a cabin at all; its "bunk" is a trip name.
+ * "TLI"). An adult-program row's cabin comes the same way from the attributed
+ * adult map (kindred#2812), and a family weekend's from the household's cabin
+ * for it (owner ruling 2026-09-24, on #2814) — never the day group. Quest
+ * never shows a cabin at all; its "bunk" is a trip name.
  * "Unassigned" appears only for a current-year *bunkable* (main/embedded/ag)
  * session still lacking any label. Applied as a separate, reactive step (not
  * inside the attendee-keyed query above) so a teen-cabin registry read that
@@ -180,8 +183,9 @@ export function useCamperHistory(
   })
 
   // Q9 (owner, 2026-09-22 late): reactive to the registry's teen-cabin map,
-  // independent of the attendee-keyed query above — and, since kindred#2812,
-  // to the attributed adult-cabin and household family-cabin maps the same way.
+  // independent of the attendee-keyed query above — and, the same way, to the
+  // attributed adult-cabin map (kindred#2812) and the household family-cabin
+  // map (#2814).
   const resolvedCurrentRows = useMemo(
     () =>
       applyCurrentYearCabinRule(currentRows, currentYear, {

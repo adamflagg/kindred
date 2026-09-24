@@ -1,7 +1,8 @@
 /**
  * Q9 cabin-label rule (owner ruling 2026-09-22, late) for CURRENT-year rows,
- * extended to adult programs by kindred#2812: `useCamperHistory`'s rows, which
- * every journey surface shows, and the board modal's quick-stats bar. The
+ * extended to adult programs by kindred#2812 and to family weekends by #2814:
+ * `useCamperHistory`'s rows, which every journey surface shows, and the board
+ * modal's quick-stats bar. The
  * prior-year half of the same rule runs on the server since kindred#2776
  * (`api/services/camper_journey_service.py`), off the same `teen_cabins`,
  * `adult_cabins` and `family_cabins` lists the journey endpoint passes through. A cabin
@@ -35,7 +36,8 @@ export function recordedIfDifferent(label: string, raw: string): string | undefi
 
 /**
  * Server-named cabins keyed `${year}:${sessionCmId}` — the attributed adult
- * cabins, and the TLI/SCIT cabins the registry resolves (same row shape).
+ * cabins, the TLI/SCIT cabins the registry resolves, and the household's
+ * family-weekend cabins (same row shape).
  */
 export function cabinsByWeekend(weekends: PersonHousingWeekendRow[]): Map<string, CabinLabel> {
   const map = new Map<string, CabinLabel>()

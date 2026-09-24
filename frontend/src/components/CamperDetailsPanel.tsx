@@ -176,8 +176,8 @@ interface CurrentEnrollment {
   bunkName: string | null
   /**
    * The as-typed string, when it disagrees with `bunkName` (Q9, owner ruling
-   * 2026-09-22 late) — set only for a resolved TLI/SCIT row. Rendered as a
-   * hover tooltip, never inline.
+   * 2026-09-22 late) — set only for a resolved TLI/SCIT, adult-program or
+   * family-weekend row. Rendered as a hover tooltip, never inline.
    */
   bunkNameRecorded?: string
   attendeeStatus?: string
@@ -473,8 +473,10 @@ export default function CamperDetailsPanel({
   // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): a TLI/SCIT
   // enrollment's cabin comes ONLY from the registry-resolved teen-cabin map —
   // never the raw CampMinder bunk (usually a program group, "SCIT A"/"TLI").
-  // Quest never shows a cabin at all; its "bunk" is a trip name. Applied here,
-  // over the raw fetch's `enrollments`, rather than baked into the queryFn
+  // An adult-program row's cabin comes the same way from the attributed adult
+  // map (kindred#2812), and a family weekend's from the household's cabin for
+  // it (#2814). Quest never shows a cabin at all; its "bunk" is a trip name.
+  // Applied here, over the raw fetch's `enrollments`, rather than baked into the queryFn
   // above — that query's key does not include `teenCabinsByWeekend`, so a
   // teen-cabin read that settles AFTER this query has already cached would
   // otherwise never get picked up.

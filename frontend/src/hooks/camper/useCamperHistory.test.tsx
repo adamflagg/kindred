@@ -25,7 +25,8 @@ let journeyCounts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekend
 // resolved TLI/SCIT map travels alongside the feed's rows/counts.
 let teenCabinsByWeekend: Map<string, CabinLabel> = new Map()
 // kindred#2812: a parent's current-year family rows (the one current-year row
-// no live attendee builds) and the attributed adult cabins.
+// no live attendee builds) and the attributed adult cabins; #2814: the
+// household's family cabins.
 let currentYearParentRows: HistoricalRecord[] = []
 let adultCabinsByWeekend: Map<string, CabinLabel> = new Map()
 let familyCabinsByWeekend: Map<string, CabinLabel> = new Map()
