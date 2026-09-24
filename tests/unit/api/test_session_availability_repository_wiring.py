@@ -2,9 +2,10 @@
 shared ``_create_repository()`` factory instead of constructing
 ``MetricsRepository(pb)`` directly.
 
-Cache-gap audit row 2 (`docs/plans/2026-09-23-ww-triage/cache-gap-audit.md`):
-this was the one metrics endpoint still on the PocketBase HTTP path
-(measured 1614ms), while its siblings in metrics.py already used
+Cache-gap audit row 2 (`docs/plans/2026-09-23-ww-triage/cache-gap-audit.md`,
+LOCAL ONLY -- gitignored, so absent from a fresh clone): this was the one
+metrics endpoint still on the PocketBase HTTP path (measured 1614ms), while
+its siblings in metrics.py already used
 ``_create_repository()`` for the direct-SQL route (measured 82ms).
 """
 

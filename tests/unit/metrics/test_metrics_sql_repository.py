@@ -458,6 +458,20 @@ class TestFetchAttendeesWithPersons:
         assert by_person[1002].preferred_name == ""
 
     @pytest.mark.asyncio
+    async def test_age_present_in_expand(self, sql_db: sqlite3.Connection) -> None:
+        """Person expand carries age, matching the PocketBase HTTP path.
+
+        The waitlist drilldown (/api/metrics/drilldown) builds
+        DrilldownAttendee.age from this expand; without the column it read
+        None on every row over SQL while HTTP returned the stored value.
+        """
+        sql_db.execute("UPDATE persons SET age = 11.5 WHERE id = 'per_emma'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_persons(2025, status_filter=["enrolled", "waitlisted"])
+        by_person = {a.person_id: a.expand["person"] for a in result}
+        assert by_person[1001].age == 11.5
+
+    @pytest.mark.asyncio
     async def test_effective_date_present(self, sql_db: sqlite3.Connection) -> None:
         """effective_date must round-trip — found live on the dev DB while proving
         session-availability's SQL/HTTP outputs identical: this method silently
@@ -507,7 +521,12 @@ class TestFetchAvailabilityConfig:
 
     @pytest.mark.asyncio
     async def test_threshold_value_parsed_as_int(self, sql_db: sqlite3.Connection) -> None:
-        """limited_threshold parses from JSON into a plain int, not a string."""
+        """limited_threshold comes back as a plain int, not a string.
+
+        The fixture's config.value is JSON-typed like PocketBase's, so the bare
+        number is stored as a native SQLite integer — this exercises the
+        non-string passthrough branch production actually takes.
+        """
         repo = _make_repo(sql_db)
         result = await repo.fetch_availability_config(2025)
         threshold_cfg = next(r for r in result if r.config_key == "limited_threshold")

@@ -83,6 +83,7 @@ class MetricsSQLRepository:
             f"{prefix}normalized_city": "normalized_city",
             f"{prefix}normalized_congregation": "normalized_congregation",
             f"{prefix}years_at_camp": "years_at_camp",
+            f"{prefix}age": "age",
         }
         for col, attr in field_map.items():
             if col in keys:
@@ -442,7 +443,8 @@ class MetricsSQLRepository:
                         p.address_city AS _person_city,
                         p.address_state AS _person_state,
                         p.household_id AS _person_household_id,
-                        p.years_at_camp AS _person_years_at_camp
+                        p.years_at_camp AS _person_years_at_camp,
+                        p.age AS _person_age
                  FROM attendees a
                  JOIN camp_sessions cs ON a.session = cs.id
                  JOIN persons p ON a.person = p.id

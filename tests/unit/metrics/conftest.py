@@ -29,7 +29,8 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             normalized_congregation TEXT,
             years_at_camp INTEGER,
             household_id INTEGER,
-            year INTEGER NOT NULL
+            year INTEGER NOT NULL,
+            age REAL
         );
 
         CREATE TABLE camp_sessions (
@@ -81,7 +82,10 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             category TEXT,
             subcategory TEXT,
             config_key TEXT,
-            value TEXT
+            -- JSON, not TEXT: PocketBase declares this column JSON, which gives it
+            -- NUMERIC affinity, so a bare number like limited_threshold's 80 is
+            -- stored as a native integer and read back as int, not "80".
+            value JSON
         );
 
         CREATE TABLE attendee_status_history (
@@ -131,6 +135,13 @@ def _create_schema(conn: sqlite3.Connection) -> None:
     """)
 
 
+_PERSONS_INSERT = (
+    "INSERT INTO persons (id, cm_id, first_name, last_name, preferred_name, gender, grade, school,"
+    " normalized_school, address_city, address_state, normalized_city, normalized_congregation,"
+    " years_at_camp, household_id, year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+
+
 def _seed_data(conn: sqlite3.Connection) -> None:
     """Seed test data using fictional names per CLAUDE.md."""
     # -- Persons (year 2025) --
@@ -138,7 +149,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
     # so tests can pin both the present and the absent case (kindred cache-gap
     # audit row 2: the SQL repo silently dropped this column entirely).
     conn.executemany(
-        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        _PERSONS_INSERT,
         [
             (
                 "per_emma",
@@ -199,7 +210,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
 
     # -- Persons (year 2024) for enrollment history --
     conn.executemany(
-        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        _PERSONS_INSERT,
         [
             (
                 "per_emma_24",
