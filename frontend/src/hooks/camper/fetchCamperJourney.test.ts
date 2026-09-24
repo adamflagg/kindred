@@ -7,10 +7,23 @@
  * left here is the wire: which URL, and how the server's snake_case row
  * becomes the `HistoricalRecord` every journey surface already renders.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiCamperJourneyResponse, ApiCamperJourneyRow } from '../../types/api-types'
-import { fetchCamperJourney } from './fetchCamperJourney'
+import { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
+
+// `fetchParentMainSessions` still reads PocketBase directly, for the
+// CURRENT-year rows the client builds (`useCamperHistory`,
+// `CamperDetailsPanel`). Both of those mock it, so these are its only tests.
+const mockSessionsGetFullList = vi.hoisted(() => vi.fn())
+vi.mock('../../lib/pocketbase', () => ({
+  pb: {
+    collection: vi.fn((name: string) => {
+      if (name === 'camp_sessions') return { getFullList: mockSessionsGetFullList }
+      throw new Error(`Unexpected collection: ${name}`)
+    }),
+  },
+}))
 
 // Every field of the generated row, so a field the server adds or drops is a
 // compile error here rather than a value this mapping silently loses.
@@ -129,5 +142,42 @@ describe('fetchCamperJourney', () => {
       } as unknown as Response)
     )
     await expect(fetchCamperJourney(fetchWithAuth, 3000001, 2026)).rejects.toThrow()
+  })
+})
+
+describe('fetchParentMainSessions', () => {
+  beforeEach(() => {
+    mockSessionsGetFullList.mockReset()
+  })
+
+  it('reads nothing for no pairs', async () => {
+    const out = await fetchParentMainSessions([])
+    expect(out.size).toBe(0)
+    expect(mockSessionsGetFullList).not.toHaveBeenCalled()
+  })
+
+  it('reads every (year, cm_id) pair once, in one query — session ids are reused across years', async () => {
+    mockSessionsGetFullList.mockResolvedValue([])
+    await fetchParentMainSessions([
+      { year: 2024, cmId: 100 },
+      { year: 2024, cmId: 100 },
+      { year: 2025, cmId: 100 },
+    ])
+    expect(mockSessionsGetFullList).toHaveBeenCalledTimes(1)
+    const filter = (mockSessionsGetFullList.mock.calls[0]?.[0] as { filter: string }).filter
+    expect(filter).toBe('(year = 2024 && cm_id = 100) || (year = 2025 && cm_id = 100)')
+  })
+
+  it('keys each session by year and cm_id, so one year never labels another', async () => {
+    const s2024 = { year: 2024, cm_id: 100, name: 'Session 2' }
+    const s2025 = { year: 2025, cm_id: 100, name: 'Session 3' }
+    mockSessionsGetFullList.mockResolvedValue([s2024, s2025])
+    const out = await fetchParentMainSessions([
+      { year: 2024, cmId: 100 },
+      { year: 2025, cmId: 100 },
+    ])
+    expect(out.get('2024:100')).toBe(s2024)
+    expect(out.get('2025:100')).toBe(s2025)
+    expect(out.size).toBe(2)
   })
 })
