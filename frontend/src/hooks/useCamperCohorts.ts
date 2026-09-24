@@ -132,6 +132,14 @@ export function useCamperCohorts(
 
       type CohortPerson = NonNullable<NonNullable<AttendeeWithExpands['expand']>['person']>
 
+      // personLocation returns the bare state when a person has no city at
+      // all. That is a fine display value but not a city, so it must never
+      // form or join a city cohort (two state-only "CA"s are not neighbours).
+      function cityCohortKey(person: CohortPerson): string | null {
+        const hasCity = !!person.normalized_city?.trim() || !!person.address_city?.trim()
+        return hasCity ? personLocation(person) : null
+      }
+
       function buildEntry(
         selfValue: string | null | undefined,
         valueOf: (person: CohortPerson) => string | null | undefined
@@ -179,12 +187,12 @@ export function useCamperCohorts(
           selfPerson.normalized_congregation,
           (p) => p.normalized_congregation
         ),
-        // personLocation (utils/addressUtils.ts), not a raw normalized_city
-        // compare: normalized_city, when set, IS the whole label, but a
+        // personLocation (utils/addressUtils.ts, via cityCohortKey above), not
+        // a raw normalized_city compare: normalized_city, when set, IS the whole label, but a
         // person the geo-normalization sync hasn't reached yet only has
         // address_city/address_state. Comparing raw normalized_city missed
         // that pair entirely (kindred#2755).
-        city: buildEntry(personLocation(selfPerson), (p) => personLocation(p)),
+        city: buildEntry(cityCohortKey(selfPerson), cityCohortKey),
         sessionType,
         allGenders: skipGenderFilter,
       }

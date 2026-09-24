@@ -795,8 +795,8 @@ class DrilldownService:
                 is_returning = years_at_camp is not None and years_at_camp > 1
 
             # City/state for display -- normalized_city, when present, IS the
-            # whole label, so state comes back None rather than doubling it
-            # (kindred#2755, kindred#2753).
+            # whole label, so it is split into city + state rather than having
+            # address_state appended a second time (kindred#2755, kindred#2753).
             city, state = person_city_state_for_display(person)
 
             # Build sessions list from all attendee records for this person
@@ -1260,8 +1260,8 @@ class DrilldownService:
 
             years_at_camp = getattr(person, "years_at_camp", None)
             # City/state for display -- normalized_city, when present, IS the
-            # whole label, so state comes back None rather than doubling it
-            # (kindred#2755, kindred#2753).
+            # whole label, so it is split into city + state rather than having
+            # address_state appended a second time (kindred#2755, kindred#2753).
             city, state = person_city_state_for_display(person)
 
             results.append(

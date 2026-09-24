@@ -30,6 +30,8 @@ from typing import Any
 # pocketbase/sync/normalize_geographic.go). Two uppercase letters only:
 # "Washington, District" is a city, not a state suffix.
 _STATE_SUFFIX_RE = re.compile(r",\s*[A-Z]{2}$")
+# The same suffix, capturing both halves, for a caller that needs them apart.
+_STATE_SPLIT_RE = re.compile(r"^(?P<city>.*?),\s*(?P<state>[A-Z]{2})$")
 
 
 def _str_attr(person: Any, attr: str) -> str:
@@ -70,13 +72,20 @@ def person_city_state_for_display(person: Any) -> tuple[str | None, str | None]:
     """(city, state) for a caller with SEPARATE city/state fields, e.g.
     `api.schemas.metrics.DrilldownAttendee`.
 
-    When `normalized_city` is used, `state` comes back None -- it already
-    carries the state, so a caller that renders f"{city}, {state}"
-    (frontend/src/components/metrics/DrillDownModal.tsx) does not double it.
-    Only the raw-column fallback carries a `state` of its own.
+    When `normalized_city` is used it is SPLIT at its ", ST" suffix: the city
+    part goes in `city` and the suffix in `state`, so a caller that renders
+    f"{city}, {state}" (frontend/src/components/metrics/DrillDownModal.tsx)
+    reproduces the label without doubling it, while that modal's CSV/XLSX
+    export still gets a populated State column. The state comes from the
+    label, not `address_state` -- the label is the whole location (rule 1).
+    A `normalized_city` with no ", ST" suffix is all city, with state None.
+    Only the raw-column fallback reads `address_state`.
     """
     normalized = _str_attr(person, "normalized_city")
     if normalized:
+        match = _STATE_SPLIT_RE.match(normalized)
+        if match:
+            return match.group("city").strip() or None, match.group("state")
         return normalized, None
     return _str_attr(person, "address_city") or None, _str_attr(person, "address_state") or None
 

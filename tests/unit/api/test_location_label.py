@@ -93,11 +93,28 @@ class TestPersonCityStateForDisplay:
     """person_city_state_for_display(person) -> (city, state) tuple for a
     schema with SEPARATE city/state fields (DrilldownAttendee)."""
 
-    def test_normalized_city_becomes_city_with_state_none(self) -> None:
-        """state must come back None whenever city already carries it, or a
-        caller rendering f"{city}, {state}" (DrillDownModal.tsx) doubles it."""
+    def test_normalized_city_is_split_into_its_own_city_and_state(self) -> None:
+        """city must never carry the state a second time, or a caller
+        rendering f"{city}, {state}" (DrillDownModal.tsx) doubles it -- but
+        the state must still land in the SEPARATE state field, because
+        DrillDownModal's CSV/XLSX export writes City and State as two
+        columns and a None there blanks the State column."""
         person = _person(normalized_city="San Carlos, CA", address_city="San Carlos", address_state="CA")
-        assert person_city_state_for_display(person) == ("San Carlos, CA", None)
+        city, state = person_city_state_for_display(person)
+        assert (city, state) == ("San Carlos", "CA")
+        assert f"{city}, {state}" == "San Carlos, CA"
+
+    def test_state_comes_from_the_normalized_label_not_address_state(self) -> None:
+        """normalized_city IS the whole label (rule 1), so the rendered pair
+        must reproduce it even when address_state disagrees with its suffix."""
+        person = _person(normalized_city="Springfield, MO", address_city="Springfield", address_state="CA")
+        assert person_city_state_for_display(person) == ("Springfield", "MO")
+
+    def test_normalized_city_without_a_state_suffix_is_the_whole_city(self) -> None:
+        """No ", ST" suffix (e.g. a foreign city) -> the label is all city,
+        and address_state is not appended to it."""
+        person = _person(normalized_city="Washington, District", address_city="", address_state="DC")
+        assert person_city_state_for_display(person) == ("Washington, District", None)
 
     def test_falls_back_to_raw_columns_with_their_own_state(self) -> None:
         person = _person(normalized_city=None, address_city="Springfield", address_state="IL")

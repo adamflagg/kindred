@@ -648,6 +648,45 @@ describe('useCamperCohorts', () => {
 
       expect(result.current.cohorts?.city).toBeNull()
     })
+
+    it('does not treat a state-only address as a city (two "CA"s are not the same city)', async () => {
+      // personLocation returns the bare state when there is no city at all.
+      // That is fine for display but is not a city, so neither side may
+      // form or join a city cohort on it.
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({ id: 'a1', person_id: 1000001, status_id: 2, addressState: 'CA' }),
+        makeAttendee({ id: 'a2', person_id: 1000002, status_id: 2, addressState: 'CA' }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      expect(result.current.cohorts?.city).toBeNull()
+    })
+
+    it('does not count a state-only peer toward a real city cohort', async () => {
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({
+          id: 'a1',
+          person_id: 1000001,
+          status_id: 2,
+          addressCity: 'Oakland',
+          addressState: 'CA',
+        }),
+        makeAttendee({ id: 'a2', person_id: 1000002, status_id: 2, addressState: 'CA' }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      expect(result.current.cohorts?.city).toMatchObject({ label: 'Oakland, CA', count: 0 })
+    })
   })
 
   describe('attendee sort order', () => {
