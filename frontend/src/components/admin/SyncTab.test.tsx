@@ -571,6 +571,14 @@ describe('SyncTab phase header counts membership, button counts what it starts (
     syncPhasesData = undefined
   })
 
+  // Scoped to the Custom Values header: another phase can hold four jobs too (Process does,
+  // since kindred#2759 added the Jotform pull), and an unscoped "(4 jobs)" then matches both.
+  function customValuesJobCount() {
+    const headerRow = screen.getByText('Custom Values').closest('div')
+    if (!headerRow) throw new Error('could not find Custom Values phase header row')
+    return within(headerRow as HTMLElement).getByText('(4 jobs)')
+  }
+
   it('counts membership in the header and what it starts on the button', () => {
     syncPhasesData = {
       phases: [
@@ -592,7 +600,7 @@ describe('SyncTab phase header counts membership, button counts what it starts (
     renderSyncTab()
 
     expect(screen.getByText('Custom Values')).toBeInTheDocument()
-    expect(screen.getByText('(4 jobs)')).toBeInTheDocument()
+    expect(customValuesJobCount()).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Run Phase \(2\)/ })).toBeInTheDocument()
   })
 
@@ -601,7 +609,7 @@ describe('SyncTab phase header counts membership, button counts what it starts (
 
     renderSyncTab()
 
-    expect(screen.getByText('(4 jobs)')).toBeInTheDocument()
+    expect(customValuesJobCount()).toBeInTheDocument()
     // The header row's Run Phase button (not the top quick-action one, which never had a
     // count and is a separate control) has no "(N)" suffix while the count is unknown.
     const headerRow = screen.getByText('Custom Values').closest('div')
@@ -625,7 +633,7 @@ describe('SyncTab phase header counts membership, button counts what it starts (
     renderSyncTab()
 
     // The tab still renders, and the button degrades to its plain label rather than vanishing.
-    expect(screen.getByText('(4 jobs)')).toBeInTheDocument()
+    expect(customValuesJobCount()).toBeInTheDocument()
     const headerRow = screen.getByText('Custom Values').closest('div')
     if (!headerRow) throw new Error('could not find Custom Values phase header row')
     expect(

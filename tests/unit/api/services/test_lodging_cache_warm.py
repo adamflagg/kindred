@@ -406,3 +406,10 @@ class TestBackgroundWarmsCoalesce:
             await asyncio.sleep(0)
 
         assert runs == 2
+
+
+def test_the_jotform_pull_writes_exactly_its_three_tables() -> None:
+    from api.constants.collections import JOTFORM_ANSWERS, JOTFORM_FORMS, JOTFORM_SUBMISSIONS
+    from api.constants.sync_job_writes import SYNC_JOB_WRITES
+
+    assert SYNC_JOB_WRITES["jotform_submissions"] == frozenset({JOTFORM_FORMS, JOTFORM_SUBMISSIONS, JOTFORM_ANSWERS})

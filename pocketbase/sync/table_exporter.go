@@ -79,6 +79,10 @@ var SyncJobToCollections = map[string][]string{
 	"staff_vehicle_info":         {"staff_vehicle_info"},
 	"normalize_geographic":       {"normalized_mappings"},
 	"enrollment_snapshots":       {"enrollment_snapshots"},
+	// kindred#2759. In this map ONLY so the export skip optimisation knows what
+	// it writes; deliberately absent from every export config -- these tables
+	// hold every Jotform answer, medical included.
+	"jotform_submissions": {"jotform_forms", "jotform_submissions", "jotform_answers"},
 	// Global syncs
 	"person_tag_defs":   {"person_tag_defs"},
 	"custom_field_defs": {"custom_field_defs"},

@@ -39,6 +39,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   enrollment_snapshots: 'Enrollment Snapshots', // Captures daily enrollment counts per session
   stranded_assignment_cleanup: 'Stranded Assignment Cleanup', // Auto-unassigns scenario-draft assignments stranded by bunk_plan changes
   bunk_requests: 'Intake Requests',
+  jotform_submissions: 'Jotform Submissions', // Adult-weekend Jotform pull (kindred#2759)
   process_requests: 'Process Requests',
   // Export phase (kindred#2593: had a working POST route the whole time, but no card and so
   // no way to reach this validation until syncTypes.ts gained one)

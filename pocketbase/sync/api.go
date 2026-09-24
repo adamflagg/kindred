@@ -531,6 +531,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleIndividualSync(e, scheduler, "enrollment_snapshots")
 		}))
 
+	// Adult-weekend Jotform pull (kindred#2759): every enabled form, stored
+	// generically, auto-matched. The Jotform admin tab's "Pull now".
+	e.Router.POST("/api/custom/sync/jotform-submissions",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "jotform_submissions")
+		}))
+
 	// Stranded assignment cleanup sync
 	// Auto-unassigns scenario-draft campers stranded by bunk-plan changes.
 	// PocketBase-only — no CampMinder API call.

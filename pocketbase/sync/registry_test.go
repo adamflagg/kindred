@@ -648,9 +648,9 @@ var nonJobPostRouteSegments = []string{
 // gets a 400 from an endpoint that is genuinely registered. Before the whitelist the second
 // direction was harmless, which is why this test and the whitelist arrived together.
 //
-// The arithmetic closes exactly, which is what makes it worth having: api.go registers 40 POST
-// segments, 8 of them the aggregates above; the registry declares 35 jobs, 32 carrying the bit
-// (all but the two _family_camp variants and reconcile_request_lifecycle). 32 + 8 = 40, with
+// The arithmetic closes exactly, which is what makes it worth having: api.go registers 41 POST
+// segments, 8 of them the aggregates above; the registry declares 36 jobs, 33 carrying the bit
+// (all but the two _family_camp variants and reconcile_request_lifecycle). 33 + 8 = 41, with
 // nothing left over on either side.
 func TestTriggerIndividualRouteMatchesTheRouteTable(t *testing.T) {
 	t.Parallel()
