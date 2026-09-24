@@ -1,12 +1,10 @@
 package rbac
 
 import (
-	"fmt"
+	"context"
 	"log/slog"
-	"net/http"
-	"os"
-	"time"
 
+	"github.com/camp/kindred/pocketbase/fastapi"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -20,38 +18,32 @@ func isRegistrationConfig(category string) bool {
 }
 
 // notifyMetricsCacheInvalidation sends a fire-and-forget POST to the FastAPI
-// metrics cache invalidation endpoint. Errors are logged but do not propagate;
-// the cache will expire via TTL regardless.
+// cache invalidation endpoint. Errors are logged but do not propagate; the
+// cache will expire via TTL regardless.
 func notifyMetricsCacheInvalidation(apiBaseURL string) {
 	go func() {
-		url := fmt.Sprintf("%s/api/metrics/cache/invalidate", apiBaseURL)
-		client := &http.Client{Timeout: 5 * time.Second}
-
-		resp, err := client.Post(url, "application/json", nil) //nolint:noctx,gosec // fire-and-forget internal call;
-		// G704 (SSRF): url is built from a hardcoded 127.0.0.1 loopback host plus API_PORT,
-		// an operator-set env var with an "8000" default. Nothing request-derived reaches it.
-		if err != nil {
-			slog.Warn("Failed to notify FastAPI metrics cache invalidation", "url", url, "error", err)
+		// No sync named: FastAPI clears every cache, as this hook always had it do.
+		if err := fastapi.InvalidateCaches(context.Background(), apiBaseURL, ""); err != nil {
+			slog.Warn("Failed to notify FastAPI metrics cache invalidation", "url", apiBaseURL, "error", err)
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-
-		if resp.StatusCode == http.StatusOK {
-			slog.Info("Metrics cache invalidated after registration config change")
-		} else {
-			slog.Warn("Metrics cache invalidation returned non-200", "status", resp.StatusCode)
-		}
+		slog.Info("Metrics cache invalidated after registration config change")
 	}()
+}
+
+// configHooksAPIBaseURL is where the hook finds FastAPI -- API_URL, shared
+// with the sync layer. It used to build 127.0.0.1:$API_PORT, which in
+// production is PocketBase's OWN container (FastAPI is the `api` service), so
+// the call never arrived and a registration-config edit left metrics stale
+// until the cache's 2-hour TTL.
+func configHooksAPIBaseURL() string {
+	return fastapi.BaseURL()
 }
 
 // registerConfigHooks registers hooks that invalidate the FastAPI metrics cache
 // when registration config records are created or updated.
 func registerConfigHooks(app *pocketbase.PocketBase) {
-	apiPort := os.Getenv("API_PORT")
-	if apiPort == "" {
-		apiPort = "8000"
-	}
-	apiBaseURL := fmt.Sprintf("http://127.0.0.1:%s", apiPort)
+	apiBaseURL := configHooksAPIBaseURL()
 
 	onConfigChange := func(e *core.RecordEvent) error {
 		category := e.Record.GetString("category")

@@ -105,6 +105,11 @@ async def authenticate_task_pb(task_pb: PocketBase) -> None:
 # Graph Cache
 # ========================================
 
+# Cleared by scenario, solver and position writes, and -- since kindred#2803 --
+# by the cache-invalidate endpoint when a finished sync writes a table the
+# graph is built from (`SocialGraphBuilder.READ_TABLES`). Request edits and
+# drag-drop written straight to PocketBase from the browser still reach it only
+# through the TTL, so do not lengthen it until those writers are covered.
 graph_cache = GraphCacheManager(ttl_seconds=900, max_cache_size=50)
 
 
@@ -113,7 +118,8 @@ graph_cache = GraphCacheManager(ttl_seconds=900, max_cache_size=50)
 # ========================================
 
 # Caches computed metrics endpoint responses in-memory.
-# TTL 2 hours (fallback); primary invalidation via frontend sync-completion callback.
+# TTL 2 hours (fallback); primary invalidation is the cache-invalidate endpoint,
+# which PocketBase's sync orchestrator calls after every job (kindred#2803).
 metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 
 

@@ -84,3 +84,15 @@ func TestNotifyMetricsCacheInvalidation(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	})
 }
+
+// In production PocketBase and FastAPI are separate containers, so the hook
+// must reach FastAPI at API_URL (http://api:8000 in docker-compose). It used
+// to build 127.0.0.1:$API_PORT -- PocketBase's OWN container, where nothing
+// listens -- so a registration-config change never reached the metrics cache.
+func TestConfigHooksReachFastAPIThroughAPIURL(t *testing.T) {
+	t.Setenv("API_URL", "http://api:8000")
+	t.Setenv("API_PORT", "8000")
+	if got := configHooksAPIBaseURL(); got != "http://api:8000" {
+		t.Errorf("configHooksAPIBaseURL() = %q, want the API_URL value http://api:8000", got)
+	}
+}

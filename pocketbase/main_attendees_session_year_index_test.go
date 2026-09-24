@@ -145,12 +145,12 @@ func attendeesQueryPlan(t *testing.T, indexes []string) string {
 
 	sessions := core.NewBaseCollection("camp_sessions")
 	sessions.Fields.Add(&core.NumberField{Name: "cm_id"})
-	if err := app.Save(sessions); err != nil {
+	if err = app.Save(sessions); err != nil {
 		t.Fatalf("save camp_sessions: %v", err)
 	}
 	persons := core.NewBaseCollection("persons")
 	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
-	if err := app.Save(persons); err != nil {
+	if err = app.Save(persons); err != nil {
 		t.Fatalf("save persons: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func attendeesQueryPlan(t *testing.T, indexes []string) string {
 		&core.NumberField{Name: "year"},
 	)
 	attendees.Indexes = indexes
-	if err := app.Save(attendees); err != nil {
+	if err = app.Save(attendees); err != nil {
 		t.Fatalf("save attendees: %v", err)
 	}
 

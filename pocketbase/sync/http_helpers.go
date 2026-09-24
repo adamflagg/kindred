@@ -2,17 +2,16 @@ package sync
 
 import (
 	"net/http"
-	"os"
 	"time"
+
+	"github.com/camp/kindred/pocketbase/fastapi"
 )
 
 // getAPIURL returns the FastAPI container URL from environment.
 // In Docker: API_URL=http://api:8000. In dev: falls back to localhost.
+// One resolver for every Go caller -- see package fastapi.
 func getAPIURL() string {
-	if url := os.Getenv("API_URL"); url != "" {
-		return url
-	}
-	return "http://127.0.0.1:8000"
+	return fastapi.BaseURL()
 }
 
 // geoNormalizeClient is a shared HTTP client for geo-normalize API calls.

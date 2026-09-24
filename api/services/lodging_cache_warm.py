@@ -21,9 +21,10 @@ Three changes, each here:
    would, in the background, so the next click finds it cached.
 3. `refresh_lodging_cache_forever` -- on startup, and then every TTL: clear and
    warm. TTL expiry is a clear like any other, so it is followed by a warm too.
-   The staleness bound is unchanged (a sync nobody's browser saw finish is
-   still picked up within one TTL); what changes is that the re-read no longer
-   happens on somebody's click.
+   A sync no longer depends on a watching browser to be picked up -- the Go
+   orchestrator calls the invalidate endpoint after every job -- so the TTL is
+   now only the fallback for a call that failed; what the refresher changes
+   is that the re-read no longer happens on somebody's click.
 
 A warm racing a sync cannot re-cache pre-sync data: `LodgingYearCache.set`
 drops a value whose fetch began before the latest clear.

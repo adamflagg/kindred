@@ -65,12 +65,11 @@ this must live as a singleton instead -- see api/dependencies.py.
 TTL is the fallback, not the plan (kindred#2142): `api/routers/metrics.py`'s
 existing `POST /api/metrics/cache/invalidate` now calls `invalidate_all()`
 here too, alongside `metrics_cache.invalidate_all()` and geo_service's
-`clear_person_id_cache()`. That endpoint already fires on every CampMinder
-sync completion (the frontend's `invalidateSyncData`, via
-`useSyncCompletionToasts`). So a hit here is stale only for the gap between a
-sync finishing and a staff member's browser polling it (typically seconds), or
-for the rare sync that runs with nobody watching, in which case the TTL is
-what closes the gap.
+`clear_person_id_cache()`. That endpoint fires on every CampMinder sync
+completion: PocketBase's sync orchestrator calls it after each job it
+finishes (kindred#2803), and the frontend's `invalidateSyncData` still does
+too. So a hit here is stale only for the moment between a job finishing and
+that call landing; the TTL is the fallback for a call that fails.
 
 SCOPED AND WARMED since kindred#2803 (api/services/lodging_cache_warm.py).
 The completion names its sync, and this cache is cleared only when that sync
