@@ -536,13 +536,22 @@ export default function CamperDetailsPanel({
       : currentEnrollments
 
   // Owner ruling 2026-09-24: a past year's age is read at the board session
-  // the modal was opened from; with none, at the earliest ENROLLED session
-  // start that year (utils/displayAge.ts). Ignored for the current year.
+  // the modal was opened from; with none, at the earliest enrolled SUMMER
+  // session start that year (utils/displayAge.ts). Ignored for the current
+  // year. An AG enrollment keeps the AG session's cm_id while the board it is
+  // opened from is its parent main, so the age also matches on `parentId`
+  // (owner decision on the PR #2818 review; the quick-stats filter above is
+  // deliberately left as it is).
   const ageSessionStart =
-    openedEnrollments[0]?.startDate ??
+    currentEnrollments.find(
+      (e) =>
+        openedFromSessionCmId !== undefined &&
+        (e.sessionCmId === openedFromSessionCmId || e.parentId === openedFromSessionCmId)
+    )?.startDate ??
     earliestSessionStart(
       filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus).enrolled.map((e) => ({
         start_date: e.startDate,
+        session_type: e.sessionType,
       }))
     )
 

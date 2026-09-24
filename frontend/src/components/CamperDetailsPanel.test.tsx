@@ -888,6 +888,59 @@ describe('CamperDetailsPanel', () => {
       await screen.findByRole('heading', { name: /Emma/i })
       expect(await screen.findAllByText('12 years, 2 months')).not.toHaveLength(0)
     })
+
+    // Owner decision on the PR #2818 review: an earlier spring family weekend
+    // does not move a past year's age off the summer session start.
+    it('ignores an earlier family weekend with no board session', async () => {
+      const FAMILY = withStart(
+        {
+          ...EMMA_ATTENDEE,
+          id: 'att-emma-family',
+          session: 'sess-fam',
+          expand: {
+            session: { id: 'sess-fam', cm_id: 4001, name: 'Family Camp 1', session_type: 'family' },
+          },
+        },
+        '2025-03-07 08:00:00.000Z'
+      )
+      mockGetFullListAttendees.mockResolvedValue([FAMILY, SESSION_1, SESSION_2])
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByRole('heading', { name: /Emma/i })
+      // 2013-03-15 -> 2025-06-08 (Session 1) is 12 years 2 months; the family
+      // weekend (2025-03-07) would read 11 years 11 months.
+      expect(await screen.findAllByText('12 years, 2 months')).not.toHaveLength(0)
+      expect(screen.queryByText('11 years, 11 months')).toBeNull()
+    })
+
+    // An AG camper's enrollment keeps the AG session's cm_id; the board it is
+    // opened from is the parent main. The age must still read that session.
+    it('reads an AG enrollment opened from its parent main board', async () => {
+      const AG = withStart(
+        {
+          ...EMMA_ATTENDEE,
+          id: 'att-emma-ag',
+          session: 'sess-ag',
+          expand: {
+            session: {
+              id: 'sess-ag',
+              cm_id: 3001,
+              name: 'All-Gender 2',
+              session_type: 'ag',
+              parent_id: 2002,
+            },
+          },
+        },
+        '2025-07-06 07:00:00.000Z'
+      )
+      mockGetFullListAttendees.mockResolvedValue([SESSION_1, AG])
+      render(
+        <CamperDetailsPanel camperId="100" onClose={mockOnClose} openedFromSessionCmId={2002} />
+      )
+      await screen.findByRole('heading', { name: /Emma/i })
+      // 2013-03-15 -> 2025-07-06; the earliest start (2025-06-08) reads 12y2m.
+      expect(await screen.findAllByText('12 years, 3 months')).not.toHaveLength(0)
+      expect(screen.queryByText('12 years, 2 months')).toBeNull()
+    })
   })
 
   // Q8 (owner, 2026-09-22 late): every sidebar handles the journey the SAME

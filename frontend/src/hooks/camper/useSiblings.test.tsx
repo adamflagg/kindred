@@ -107,9 +107,10 @@ describe('useSiblings', () => {
   })
 
   // Owner ruling 2026-09-24: a past year's sibling age is read at the
-  // member's EARLIEST enrolled session start that year — which is not the
-  // primary program's start when a summer session outranks an earlier one.
-  it("carries the member's earliest enrolled session start", async () => {
+  // member's earliest SUMMER-camp session start that year (owner decision on
+  // the PR #2818 review) — an earlier spring family weekend does not count
+  // while there is a summer session; with none, any enrolled start does.
+  it("carries the member's earliest summer-camp session start", async () => {
     mockPersons.mockResolvedValue([member(3000002, { grade: 4 })])
     mockAttendees.mockResolvedValue([
       enrolment('Session 2', 'main', '2025-07-06 07:00:00.000Z'),
@@ -118,6 +119,17 @@ describe('useSiblings', () => {
     const { result } = renderHook(() => useSiblings(555, 3000001, 2025, 'child'), { wrapper })
     await waitFor(() => expect(result.current.siblings).toHaveLength(1))
     expect(result.current.siblings[0]?.session?.name).toBe('Session 2')
+    expect(result.current.siblings[0]?.earliestSessionStart).toBe('2025-07-06 07:00:00.000Z')
+  })
+
+  it('falls back to the earliest enrolled start with no summer session', async () => {
+    mockPersons.mockResolvedValue([member(3000002, { grade: 0 })])
+    mockAttendees.mockResolvedValue([
+      enrolment('Family Camp 2', 'family', '2025-08-15 07:00:00.000Z'),
+      enrolment('Family Camp 1', 'family', '2025-05-23 07:00:00.000Z'),
+    ])
+    const { result } = renderHook(() => useSiblings(555, 3000001, 2025, 'child'), { wrapper })
+    await waitFor(() => expect(result.current.siblings).toHaveLength(1))
     expect(result.current.siblings[0]?.earliestSessionStart).toBe('2025-05-23 07:00:00.000Z')
   })
 

@@ -162,4 +162,46 @@ describe('earliestSessionStart', () => {
     expect(earliestSessionStart([])).toBeUndefined()
     expect(earliestSessionStart([null, { start_date: '' }, {}])).toBeUndefined()
   })
+
+  // Owner decision 2026-09-24 (PR #2818 review): the camper page reads a past
+  // year's age at the earliest SUMMER-camp start, so it agrees with the board.
+  // A spring family weekend or a teen program counts only when there is no
+  // summer session that year.
+  it('prefers the earliest summer-camp start over an earlier family weekend', () => {
+    expect(
+      earliestSessionStart([
+        { start_date: '2025-07-06', session_type: 'main' },
+        { start_date: '2025-05-23', session_type: 'family' },
+        { start_date: '2025-07-13', session_type: 'ag' },
+      ])
+    ).toBe('2025-07-06')
+  })
+
+  it.each(['main', 'embedded', 'ag', 'quest'])('counts %s as summer camp', (sessionType) => {
+    expect(
+      earliestSessionStart([
+        { start_date: '2025-08-03', session_type: 'main' },
+        { start_date: '2025-06-20', session_type: sessionType },
+        { start_date: '2025-05-01', session_type: 'family' },
+      ])
+    ).toBe('2025-06-20')
+  })
+
+  it('falls back to any enrolled start when there is no summer session', () => {
+    expect(
+      earliestSessionStart([
+        { start_date: '2025-06-15', session_type: 'tli' },
+        { start_date: '2025-05-23', session_type: 'family' },
+      ])
+    ).toBe('2025-05-23')
+  })
+
+  it('falls back when the only summer session has no start date', () => {
+    expect(
+      earliestSessionStart([
+        { start_date: '', session_type: 'main' },
+        { start_date: '2025-05-23', session_type: 'family' },
+      ])
+    ).toBe('2025-05-23')
+  })
 })

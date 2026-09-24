@@ -190,8 +190,11 @@ describe('HeroHeader age on a past-year record', () => {
     age: 12.11,
     birthdate: '2013-03-15',
   } as unknown as Camper
-  const enrolledIn = (start_date: string) =>
-    ({ ...olivia, expand: { session: { name: 'S', start_date } } }) as unknown as Camper
+  const enrolledIn = (start_date: string, session_type = 'main') =>
+    ({
+      ...olivia,
+      expand: { session: { name: 'S', start_date, session_type } },
+    }) as unknown as Camper
 
   it('uses the earliest enrolled session start that year', () => {
     renderHero({
@@ -206,6 +209,19 @@ describe('HeroHeader age on a past-year record', () => {
     // 12.11 - 1 = "11 years, 11 months".
     expect(screen.getByText(/• 12 years, 2 months •/)).toBeInTheDocument()
     expect(screen.queryByText(/11 years, 11 months/)).toBeNull()
+  })
+
+  it('reads the summer session start, not an earlier spring family weekend', () => {
+    renderHero({
+      camper: olivia,
+      currentYear: 2025,
+      enrolledCampers: [
+        enrolledIn('2025-05-23 07:00:00.000Z', 'family'),
+        enrolledIn('2025-07-06 07:00:00.000Z'),
+      ],
+    })
+    // 2013-03-15 -> 2025-07-06 is 12 years 3 months (2 months at 2025-05-23).
+    expect(screen.getByText(/• 12 years, 3 months •/)).toBeInTheDocument()
   })
 
   it('shows the age as of today on the current-year record', () => {

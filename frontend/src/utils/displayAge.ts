@@ -29,6 +29,7 @@ import {
   todayCalendarDay,
   type CalendarDay,
 } from './ageCalculator'
+import { isSummerCampSessionType } from './sessionTypePredicates'
 
 export interface PersonWithAge {
   age?: number | undefined
@@ -88,20 +89,30 @@ export function getDisplayAgeForYear(
   return getDisplayAge(person, viewingYear, sessionStart)
 }
 
+interface SessionStart {
+  readonly start_date?: string | null | undefined
+  readonly session_type?: string | null | undefined
+}
+
 /**
- * The earliest `start_date` among `sessions`, compared by calendar day —
- * for a surface with no single session in context (the camper page for a
- * past year), which reads the age at the person's earliest enrolled session
- * start that year. Missing sessions and blank dates are skipped.
+ * The earliest SUMMER-camp `start_date` among `sessions` (main, embedded, ag,
+ * quest), compared by calendar day; with no dated summer session, the earliest
+ * of any of them. For a surface with no single session in context (the camper
+ * page for a past year): it reads the age where the board would, so a spring
+ * family weekend or a teen program does not move it (owner decision on the
+ * PR #2818 review). Missing sessions and blank dates are skipped.
  */
 export function earliestSessionStart(
-  sessions: ReadonlyArray<{ readonly start_date?: string | null | undefined } | null | undefined>
+  sessions: ReadonlyArray<SessionStart | null | undefined>
 ): string | undefined {
+  const dated = sessions.filter(
+    (s): s is SessionStart & { start_date: string } =>
+      !!s?.start_date && parseCalendarDay(s.start_date) !== null
+  )
+  const summer = dated.filter((s) => isSummerCampSessionType(s.session_type))
   let earliest: string | undefined
   let earliestKey = ''
-  for (const session of sessions) {
-    const start = session?.start_date
-    if (!start || !parseCalendarDay(start)) continue
+  for (const { start_date: start } of summer.length > 0 ? summer : dated) {
     // A validated `YYYY-MM-DD` prefix sorts as a string.
     const key = start.trim().slice(0, 10)
     if (earliest === undefined || key < earliestKey) {
