@@ -27,6 +27,13 @@ const personsCollection = "persons"
 // string.
 const householdsCollection = "households"
 
+// adultAgeCutoff mirrors frontend/src/utils/age.ts's ADULT_AGE (owner ruling
+// 2026-09-22, raised from 18 to 21). CampMinder's yy.mm age format drops the
+// months fraction at 21+, so a plain float comparison against the raw
+// CampMinder value is safe on either side of the cutoff. Keep the two
+// constants in sync if the cutoff ever moves — see kindred#2777.
+const adultAgeCutoff = 21.0
+
 // PersonsSync handles syncing person records from CampMinder
 type PersonsSync struct {
 	BaseSyncService
@@ -724,29 +731,49 @@ func (s *PersonsSync) transformPersonToPB(
 		}
 	}
 
-	// Extract address fields from Households object
-	// Note: Household CampMinder IDs are extracted separately in extractHouseholdIDsFromPerson
-	// and used to populate relation fields after households are saved
-	// address JSON field removed - only discrete fields are populated
+	// Extract address fields, trying household sources in age-based priority
+	// order, then falling back to the top-level PrimaryMailingAddress
+	// (kindred#2777). Note: Household CampMinder IDs are extracted separately
+	// in extractHouseholdIDsFromPerson and used to populate relation fields
+	// after households are saved. address JSON field removed - only discrete
+	// fields are populated.
 	pbData["address_city"] = ""
 	pbData["address_state"] = ""
 	if households, ok := cmPerson["Households"].(map[string]any); ok {
-		// Extract address from primary childhood household
-		if primary, ok := households["PrimaryChildhoodHousehold"].(map[string]any); ok {
-			if billing, ok := primary["BillingAddress"].(map[string]any); ok {
-				// Extract discrete address fields for querying
-				if city := s.getString(billing, "City", ""); city != "" {
-					pbData["address_city"] = city
-				}
+		for _, hType := range addressHouseholdOrder(cmPerson) {
+			household, ok := households[hType].(map[string]any)
+			if !ok {
+				continue
+			}
+			billing, ok := household["BillingAddress"].(map[string]any)
+			if !ok {
+				continue
+			}
+			city := s.getString(billing, "City", "")
+			if city == "" {
+				continue
+			}
+			pbData["address_city"] = city
 
-				// Try StateProvince first, fall back to State
-				state := s.getString(billing, "StateProvince", "")
+			// Try StateProvince first, fall back to State
+			state := s.getString(billing, "StateProvince", "")
+			if state == "" {
+				state = s.getString(billing, "State", "")
+			}
+			pbData["address_state"] = state
+			break
+		}
+	}
+	if pbData["address_city"] == "" {
+		if mailing, ok := cmPerson["PrimaryMailingAddress"].(map[string]any); ok {
+			if city := s.getString(mailing, "City", ""); city != "" {
+				pbData["address_city"] = city
+
+				state := s.getString(mailing, "StateProvince", "")
 				if state == "" {
-					state = s.getString(billing, "State", "")
+					state = s.getString(mailing, "State", "")
 				}
-				if state != "" {
-					pbData["address_state"] = state
-				}
+				pbData["address_state"] = state
 			}
 		}
 	}
@@ -833,6 +860,25 @@ func (s *PersonsSync) extractGrade(camperDetails map[string]any) (grade int, gra
 	}
 	s.missingDataStats["missing_grade"]++
 	return 0, ""
+}
+
+// addressHouseholdOrder returns the "Households" keys to try, in priority
+// order, when extracting a person's hometown (kindred#2777).
+//
+// Owner ruling 2026-09-23: an adult (21+, CampMinder's age) most likely lives
+// away from their childhood home — 2 of 4 adult weekend guests measured with
+// a childhood household on file are former campers in their late twenties
+// whose childhood household is still their parents' home in another city, so
+// their own household (PrincipalHousehold) is tried first. Anyone under 21,
+// or anyone with no age on file at all, keeps the existing childhood-first
+// order: for a parent with kids the kids' childhood household IS the
+// parent's own household, so the two agree, and childhood-first is the safe
+// default when age can't settle it either way.
+func addressHouseholdOrder(cmPerson map[string]any) []string {
+	if age, ok := cmPerson["Age"].(float64); ok && age >= adultAgeCutoff {
+		return []string{"PrincipalHousehold", "PrimaryChildhoodHousehold"}
+	}
+	return []string{"PrimaryChildhoodHousehold", "PrincipalHousehold"}
 }
 
 func (s *PersonsSync) getString(data map[string]any, key, defaultValue string) string {
