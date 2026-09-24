@@ -1324,6 +1324,7 @@ export function LodgingMap({
                     // design (kindred#1982) — which is most of what lands in
                     // this section.
                     unit={resolvePartyUnit(entry.party, unitsByCode)}
+                    sessionType={sessionType}
                     onOpen={openParty}
                   />
                 ))}
@@ -1343,6 +1344,7 @@ export function LodgingMap({
         parties={model.unplaced}
         onOpenParty={openParty}
         isPanelOpen={panelParty !== null}
+        sessionType={sessionType}
       />
 
       {panelParty !== null && (

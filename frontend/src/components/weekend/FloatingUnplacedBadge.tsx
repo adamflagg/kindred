@@ -30,6 +30,8 @@ export interface FloatingUnplacedBadgeProps {
   isPanelOpen?: boolean
   /** Placement is live: dropping a family here UNPLACES it (a DELETE, not a tombstone). */
   canPlace?: boolean
+  /** The weekend's `session_type`, forwarded to each card (kindred#2759). */
+  sessionType?: string | undefined
 }
 
 // Module-level so their identity is stable across renders: the shell memoises
@@ -55,6 +57,7 @@ export function FloatingUnplacedBadge({
   onOpenParty,
   isPanelOpen = false,
   canPlace = false,
+  sessionType,
 }: FloatingUnplacedBadgeProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Single-select by ruling (kindred#2480): `null` or exactly one group, so a
@@ -111,6 +114,7 @@ export function FloatingUnplacedBadge({
               party={party}
               inQueue={true}
               isDraggable={canPlace}
+              sessionType={sessionType}
               onOpen={onOpenParty}
             />
           ))}

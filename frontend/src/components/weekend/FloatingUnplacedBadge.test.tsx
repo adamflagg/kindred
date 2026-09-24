@@ -357,3 +357,27 @@ describe('the filter chips (kindred#2480)', () => {
     expect(screen.getByText(/everyone has a cabin/i)).toBeInTheDocument()
   })
 })
+
+describe('FloatingUnplacedBadge — the weekend type reaches its cards (kindred#2759)', () => {
+  const guest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 1000004,
+    display_name: 'Olivia Chen',
+    sort_name: 'Chen',
+    adults: [{ adult_number: 1, display_name: 'Olivia Chen' }],
+    children: [],
+    party_size: 1,
+    bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+  })
+
+  it('draws an adult guest’s Jotform anchor on an adult weekend', async () => {
+    render(<FloatingUnplacedBadge parties={[guest]} onOpenParty={vi.fn()} sessionType="adult" />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
+    expect(
+      screen.getByRole('button', { name: 'Jotform: Has a bunking request' })
+    ).toBeInTheDocument()
+  })
+})

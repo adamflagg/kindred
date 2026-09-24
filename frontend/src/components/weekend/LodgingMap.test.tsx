@@ -2004,3 +2004,41 @@ describe('LodgingMap — the weekend type reaches the popover (kindred#2765)', (
     expect(screen.getByText('9 of 15')).not.toHaveClass('text-amber-700')
   })
 })
+
+describe('LodgingMap — the weekend type reaches every card’s Jotform marks (kindred#2759)', () => {
+  const guest = (overrides: Partial<RosterPartyRow>) =>
+    party({
+      grain: 'person',
+      household_cm_id: 0,
+      adults: [],
+      children: [],
+      party_size: 1,
+      bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+      ...overrides,
+    })
+  const guests = [
+    // Off the map: a merged slot.
+    guest({
+      person_cm_id: 1000004,
+      display_name: 'Olivia Chen',
+      unit_code: '',
+      unit_name: 'Cedar 1 + Cedar 2',
+      is_merged_slot: true,
+    }),
+    // Unplaced: in the corner queue (P14).
+    guest({ person_cm_id: 1000006, display_name: 'Emma Johnson', unit_code: '', unit_name: '' }),
+  ]
+
+  it('draws the anchor off the map and in the unplaced queue on an adult weekend', async () => {
+    render(<LodgingMap parties={guests} units={UNITS} year={2026} sessionType="adult" />)
+    expect(
+      within(screen.getByTestId('map-offmap-section')).getByRole('button', {
+        name: 'Jotform: Has a bunking request',
+      })
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
+    expect(screen.getAllByRole('button', { name: 'Jotform: Has a bunking request' })).toHaveLength(
+      2
+    )
+  })
+})
