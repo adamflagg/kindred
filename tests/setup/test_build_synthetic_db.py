@@ -5,11 +5,13 @@ pure, importable helpers only — chiefly that the camp scrub/gate tokens are de
 from the gitignored branding config and that a missing/empty config fails LOUDLY
 rather than silently scrubbing nothing (issue #1623, leak-gate hardening).
 
-The lodging-table tests (issue #2792) drive the real ``build()`` pipeline end to end
-against a small, self-contained fixture DB written to ``tmp_path`` — never the real
-dev DB and never the committed artifact — because the defect they guard against is
-in the pipeline's orchestration (does the emptying step actually run, in the right
-place, for every ``lodging_*`` table), not in a single pure helper.
+The lodging-table tests (issue #2792) cover discovery-by-prefix and the
+DROP_LIST_TABLES exclusion as pure-helper tests; ``test_build_empties_all_lodging_tables_by_prefix``
+additionally drives the real ``build()`` pipeline end to end against a small,
+self-contained fixture DB written to ``tmp_path`` — never the real dev DB and never
+the committed artifact — because the defect it guards against is in the pipeline's
+orchestration (does the emptying step actually run, in the right place, for every
+``lodging_*`` table), not in a single pure helper.
 
 A fictional camp name ("Camp Wildwood" / "Wildwood") stands in for the real brand.
 """

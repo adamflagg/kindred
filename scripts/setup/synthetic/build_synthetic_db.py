@@ -8,7 +8,7 @@ Pipeline (never mutates the real DB — copies it via SQLite's backup API):
      every lodging_* table (discovered by prefix, see LODGING_TABLE_PREFIX)
   4. clear auth/system tables that carry real emails (users, _superusers, ...)
   5. anonymize PII (anonymizer); relabel + token-scrub brand language (debrand)
-  6. scrub _params (camp name / SMTP sender)
+  6. scrub _params (camp name / SMTP sender) and strip brand-token schema columns
   7. VACUUM  <-- critical: physically purges deleted real rows from the file
   8. build-time leak scan (real-value denylist + camp tokens + system-table emptiness);
      ABORT and write nothing if any violation is found
