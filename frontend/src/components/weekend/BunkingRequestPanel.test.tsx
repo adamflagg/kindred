@@ -64,6 +64,15 @@ describe('BunkingRequestPanel', () => {
     const versions = screen.getByTestId('bunking-request-versions')
     expect(versions).toHaveTextContent('Aug 3')
     expect(versions).toHaveTextContent('Aug 31 · current')
+    // An earlier version is DIMMED below the current one: `opacity-60` as its
+    // own token, in place of MK_SAY's `.85` (both on one element leaves the
+    // .85 winning, and a glued "opacity-[.85]opacity-60" renders neither, so
+    // the earlier version came out brighter than the current one).
+    const [earlier, current] = Array.from(versions.querySelectorAll('p'))
+    expect(earlier?.classList.contains('opacity-60')).toBe(true)
+    expect(earlier?.classList.contains('opacity-[.85]')).toBe(false)
+    expect(current?.classList.contains('opacity-[.85]')).toBe(true)
+    expect(current?.classList.contains('opacity-60')).toBe(false)
   })
 
   it('captions identical re-filings', () => {

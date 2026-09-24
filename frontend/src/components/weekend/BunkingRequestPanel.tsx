@@ -45,6 +45,12 @@ import { CAP_CLASSES } from './shareMarks'
 const ADD = 'font-semibold text-green-700 not-italic dark:text-green-300'
 const DEL = 'text-red-600 line-through not-italic dark:text-red-400'
 const RESPELL = 'text-muted-foreground not-italic'
+/**
+ * An earlier prose version, dimmed BELOW the current one. MK_SAY's own
+ * `opacity-[.85]` is swapped out rather than joined: with both on one element
+ * the .85 wins, so the earlier version would not dim at all. The test pins it.
+ */
+const MK_SAY_EARLIER = MK_SAY.replace('opacity-[.85]', 'opacity-60')
 
 function opClass(op: BunkingRequestItem['op']): string {
   if (op === 'add') return ADD
@@ -84,7 +90,7 @@ function Versions({ versions }: { versions: readonly BunkingRequestVersionRow[] 
             <span className={ROW_CAPTION}>
               {`${shortDate(version.submitted_at)}${isCurrent ? ' · current' : ''}`}
             </span>
-            <p className={`${MK_SAY}${isCurrent ? '' : 'opacity-60'}`}>
+            <p className={isCurrent ? MK_SAY : MK_SAY_EARLIER}>
               {text.length === 0 ? (
                 // A blank filing withdrew the request (P8).
                 <span className={RESPELL}>No request</span>
