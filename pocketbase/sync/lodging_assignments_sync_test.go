@@ -828,7 +828,8 @@ func TestLodgingAssignmentsSyncAdultWeekendRehearsal(t *testing.T) {
 	}
 
 	placedHistory := func() int {
-		hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "old_unit = '' && new_unit != 'tent by the creek'", "", 0, 0)
+		hist, _ := app.FindRecordsByFilter("lodging_assignment_history",
+			"old_unit = '' && new_unit != 'tent by the creek'", "", 0, 0)
 		return len(hist)
 	}
 	historyBefore := placedHistory()
