@@ -37,6 +37,30 @@ class TestNormalisation:
     def test_no_request_words_mean_no_request(self, text: str) -> None:
         assert normalize_request(text) == ""
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "no preference!",
+            "NO PREFERENCE",
+            "No request!!",
+            "none.",
+            "Anyone",
+            "anyone!",
+            "No one in particular",
+            "no one in particular.",
+            "Doesn't matter",
+            "doesn’t matter!",
+            "Does not matter.",
+        ],
+    )
+    def test_ruled_no_request_phrases_tolerate_case_and_trailing_punctuation(self, text: str) -> None:
+        # Controller ruling D6 (2026-09-24).
+        assert normalize_request(text) == ""
+
+    @pytest.mark.parametrize("text", ["Anyone but Liam Garcia", "Emma Johnson!", "Nobody Garcia"])
+    def test_a_named_request_is_never_read_as_no_request(self, text: str) -> None:
+        assert normalize_request(text) == text
+
     def test_a_name_is_kept_verbatim_but_trimmed(self) -> None:
         assert normalize_request("  Emma Johnson ") == "Emma Johnson"
 
@@ -159,6 +183,36 @@ class TestResolveChange:
         assert change.kind == "prose"
         assert [v.text for v in change.versions] == ["I'd love to be with Emma Johnson if possible", ""]
 
+    def test_a_reordered_filing_is_identical(self) -> None:
+        # Controller ruling D4 (2026-09-24): "changed" means who was asked for;
+        # order carries no ruled meaning.
+        change = resolve_change([_v("08-03", "Emma Johnson, Liam Garcia"), _v("08-31", "Liam Garcia; emma johnson")])
+        assert change is not None
+        assert (change.kind, change.count) == ("identical", 2)
+
+    def test_a_named_filing_after_a_blank_one_shows_every_name_added(self) -> None:
+        # Controller ruling D5 (2026-09-24), the mirror of the blank re-file:
+        # every change explains the dot.
+        change = resolve_change([_v("08-03", "no request"), _v("08-31", "Emma Johnson, Liam Garcia")])
+        assert change is not None
+        assert change.kind == "list"
+        assert [(i.text, i.op) for i in change.items] == [("Emma Johnson", "add"), ("Liam Garcia", "add")]
+        assert (change.from_date[:10], change.to_date[:10]) == ("2026-08-03", "2026-08-31")
+
+    def test_the_added_names_run_from_the_blank_filing_just_before_them(self) -> None:
+        change = resolve_change([_v("08-03", ""), _v("08-20", "none"), _v("08-31", "Emma Johnson")])
+        assert change is not None
+        assert change.kind == "list"
+        assert (change.from_date[:10], change.to_date[:10]) == ("2026-08-20", "2026-08-31")
+
+    def test_prose_after_a_blank_filing_falls_back_to_versions(self) -> None:
+        prose = "I'd love to be with Emma Johnson if possible"
+        change = resolve_change([_v("08-03", "no request"), _v("08-31", prose)])
+        assert change is not None
+        assert change.kind == "prose"
+        assert [v.text for v in change.versions] == ["", prose]
+        assert (change.from_date[:10], change.to_date[:10]) == ("2026-08-03", "2026-08-31")
+
 
 class TestComingWith:
     def test_checkbox_json_is_read_in_the_ruled_order(self) -> None:
@@ -207,6 +261,17 @@ class TestChanged:
         change = resolve_change(versions)
         assert change is not None
         assert (change.kind, change.count) == ("identical", 2)
+
+    def test_a_reordered_filing_is_not_changed(self) -> None:
+        # Controller ruling D4.
+        assert (
+            request_changed([_v("08-03", "Emma Johnson, Liam Garcia"), _v("08-31", "Liam Garcia, Emma Johnson")])
+            is False
+        )
+
+    def test_a_named_filing_after_a_blank_one_is_changed(self) -> None:
+        # Controller ruling D5.
+        assert request_changed([_v("08-03", "no request"), _v("08-31", "Emma Johnson")]) is True
 
     def test_two_blank_filings_are_not_changed(self) -> None:
         assert request_changed([_v("08-03", "none"), _v("08-31", "")]) is False

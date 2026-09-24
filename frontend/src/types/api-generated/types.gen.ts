@@ -392,10 +392,11 @@ export type BunkGraphResponse = {
  *
  * `list`: the first filing diffed against the current one, in the current
  * order with each drop re-inserted where it sat -- or, when the latest filing
- * is blank, every name of the last named filing as removed. `prose`: some
- * filing is not name-shaped, so every version is shown (after a blank
- * re-file, the last named filing and the blank one). `identical`: re-filed,
- * same names.
+ * is blank, every name of the last named filing as removed, and when a first
+ * request follows a blank filing, every name as added. `prose`: some filing
+ * is not name-shaped, so every version is shown (across a blank filing, just
+ * the blank and its named neighbour). `identical`: re-filed, same names in
+ * any order.
  * `from_date`/`to_date` rather than from/to: `from` is a Python keyword.
  */
 export type BunkingRequestChange = {

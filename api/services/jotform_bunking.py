@@ -45,8 +45,12 @@ from api.services.adult_need_answers import (
 RESPELL_THRESHOLD = 0.88
 MAX_NAME_WORDS = 4
 
+# Controller ruling D6: any case, trailing "." / "!" tolerated, plus the
+# indifferent phrases. Whole-answer matches only, so a request that NAMES
+# someone ("Anyone but Liam Garcia") is never read as no request.
 _NO_REQUEST = re.compile(
-    r"^(no|none|nope|n/?a|-+|no requests?|no preferences?|no special requests?|not applicable)\.?$",
+    r"^(no|none|nope|n/?a|-+|no requests?|no preferences?|no special requests?|not applicable"
+    r"|anyone|no one in particular|doesn['\u2019]t matter|does not matter)[.!]*$",
     re.IGNORECASE,
 )
 _SPLIT = re.compile(r"[,;/&\n]|\band\b", re.IGNORECASE)
@@ -170,7 +174,9 @@ def diff_items(before: Sequence[str], after: Sequence[str]) -> list[BunkingReque
 
 
 def _key(text: str) -> str:
-    return "|".join(fold(item) for item in request_items(text))
+    """Who was asked for, order-insensitive (controller ruling D4: a reorder is
+    not a change -- order carries no ruled meaning)."""
+    return "|".join(sorted(fold(item) for item in request_items(text)))
 
 
 def request_changed(versions: Sequence[BunkingRequestVersion]) -> bool:
@@ -190,7 +196,8 @@ def request_changed(versions: Sequence[BunkingRequestVersion]) -> bool:
 def resolve_change(versions: Sequence[BunkingRequestVersion]) -> BunkingRequestChange | None:
     """How the request moved. A blank LATEST filing withdraws the request
     (owner ruling 2026-09-24): every name of the last named filing reads as
-    removed. Blank filings between named ones are skipped."""
+    removed. Its mirror (D5): a first request filed after blank ones reads as
+    every name added. Blank filings between named ones are skipped."""
     named = [v for v in versions if v.text]
     latest = versions[-1] if versions else None
     if latest is not None and not latest.text and named:
@@ -206,6 +213,23 @@ def resolve_change(versions: Sequence[BunkingRequestVersion]) -> BunkingRequestC
             kind="list",
             items=diff_items(request_items(last_named.text), []),
             from_date=last_named.submitted_at,
+            to_date=latest.submitted_at,
+        )
+    if latest is not None and latest.text and len(named) == 1 and len(versions) > 1:
+        # Controller ruling D5, the mirror of the blank re-file: a request
+        # filed after a blank one shows every name added, from that blank.
+        blank = versions[-2]
+        if not is_name_shaped(latest.text):
+            return BunkingRequestChange(
+                kind="prose",
+                versions=[blank, latest],
+                from_date=blank.submitted_at,
+                to_date=latest.submitted_at,
+            )
+        return BunkingRequestChange(
+            kind="list",
+            items=diff_items([], request_items(latest.text)),
+            from_date=blank.submitted_at,
             to_date=latest.submitted_at,
         )
     if len(named) < 2:
