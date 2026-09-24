@@ -393,8 +393,8 @@ describe('CamperDetailsPanel', () => {
   // Owner ruling 2026-09-22, option G2: the board modal's Camp Journey renders
   // the SAME rows component as the camper record (`camper/JourneyRows`) — one
   // grid for the current-year enrollments AND the prior years, so every cabin
-  // lines up. The modal keeps what only it shows: this year's rows come from
-  // the board's own enrollments (status letter, "Unassigned", "Now").
+  // lines up. Since kindred#2812 this year's rows are the camper record's own
+  // build too (status letter, "Unassigned", "Now"), not the board's enrollments.
   describe('Camp Journey — shared one-grid rows (owner ruling 2026-09-22, G2)', () => {
     it('renders this year and prior years through the shared rows, in ONE grid', async () => {
       setupDeclinedRequestMocks()
@@ -413,7 +413,7 @@ describe('CamperDetailsPanel', () => {
       await waitFor(() => expect(within(grid).getAllByTestId('journey-cabin-cell')).toHaveLength(2))
       const cabins = within(grid).getAllByTestId('journey-cabin-cell')
       for (const cabin of cabins) expect(cabin.parentElement).toBe(grid)
-      // This year's row (the board's enrollment, not yet placed) then the prior year.
+      // This year's row (the live enrollment, not yet placed) then the prior year.
       expect(cabins[0]?.textContent).toBe('Unassigned')
       expect(cabins[1]?.textContent).toBe('G-8B')
       expect(within(grid).getByText('2025')).toBeInTheDocument()

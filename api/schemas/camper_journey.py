@@ -2,7 +2,9 @@
 
 `GET /api/campers/{person_cm_id}/journey?year=` answers what `useCamperJourney`
 used to assemble on the client from four reads: the prior-year rows, the
-header counts, and the TLI/SCIT cabins a current-year row looks itself up by.
+header counts, a 21+ person's current-year family weekends as a parent, and
+the TLI/SCIT and adult cabins a current-year row looks itself up by
+(kindred#2812).
 Presentation -- row order across the current year, the compact grid, the
 subtitles -- stays on the client.
 """

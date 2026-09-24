@@ -514,8 +514,9 @@ export default function CamperDetailsPanel({
   // Falls back to the full list when the panel doesn't know which session
   // opened it, or when that session isn't among the camper's current
   // enrollments (both defensive — real data always matches). Used ONLY by
-  // the quick-stats bar below; the journey rows and cohort/section context
-  // still read the full `currentEnrollments`.
+  // the quick-stats bar below; the cohort/section context still reads the
+  // full `currentEnrollments`, and the journey rows read neither
+  // (`useCamperJourneyWithCurrentYear`, kindred#2812).
   const openedEnrollments = currentEnrollments.filter(
     (e) => e.sessionCmId === openedFromSessionCmId
   )
