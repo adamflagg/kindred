@@ -224,7 +224,8 @@ var syncJobMeta = []JobMeta{
 	{ID: "family_camp_derived", Phase: PhaseTransform,
 		Description: "Compute family camp tables from custom values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// Also records lodging_value_history alongside the current-state table.
+	// Also records lodging_assignment_history and lodging_ingest_issues alongside the
+	// current-state table. lodging_value_history is written by the four custom-value jobs.
 	{ID: "lodging_assignments", Phase: PhaseTransform,
 		Description: "Derive lodging assignments from CampMinder cabin fields",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
