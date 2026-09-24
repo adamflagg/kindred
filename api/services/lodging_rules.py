@@ -214,7 +214,7 @@ class WriteInDemand(NamedTuple):
     usable: bool
 
 
-def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> WriteInDemand:
+def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad], *, is_adult: bool) -> WriteInDemand:
     """How many spots the write-ins covering one card take.
 
     ONE DEFINITION, MIRRORED ONCE, in `writeInDemand`
@@ -257,7 +257,21 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     already returned `known=False` by then, and the expression could never be
     anything but True where it stood. The docstring implied a mechanism the
     code did not have; the guard is the mechanism.
+
+    ⚠️ ON AN ADULT WEEKEND NONE OF THE WHOLESALE RULES ABOVE APPLY (kindred#2765,
+    owner ruling 2026-09-23). Registration is individual, so an unsized
+    write-in is ONE guest and a sized one is its `party_size` -- on every
+    relation, and whatever the named unit sleeps. An ancestor cover still pays
+    into `consumed` (the guest is somewhere in the house, so what the room
+    publishes stays a floor) and still stays out of `sized` (printing it on
+    every room would show one guest once per room). REQUIRED, never
+    defaulted, for the reason `is_family_available`'s `free` is: a caller that
+    has not thought about which rule applies must not get one by omission.
+    Staff type notes into unsized write-ins today, and each overcounts by one;
+    the owner accepted that.
     """
+    if is_adult:
+        return _adult_write_in_demand(capacity, loads)
     if not loads:
         # `usable` is NOT vacuously true the way `known` is. With no covers
         # there is no unsized party to spoil `known`, but this branch runs
@@ -303,7 +317,23 @@ def write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> Write
     return WriteInDemand(consumed=min(consumed, capacity), sized=sized, known=known, usable=True)
 
 
-def free_family_spots(capacity: int | None, loads: Sequence[WriteInLoad]) -> int | None:
+def _guests(load: WriteInLoad) -> int:
+    """One write-in's guests on an adult weekend: its recorded size, or one."""
+    return load.party_size if load.party_size is not None else 1
+
+
+def _adult_write_in_demand(capacity: int | None, loads: Sequence[WriteInLoad]) -> WriteInDemand:
+    """`write_in_demand`'s adult-weekend branch -- see its last paragraph."""
+    sized = sum(_guests(load) for load in loads if load.relation != "ancestor")
+    known = all(load.party_size is not None for load in loads)
+    if capacity is None:
+        # Nothing to subtract from, exactly as on a family weekend.
+        return WriteInDemand(consumed=0, sized=sized, known=known and not loads, usable=False)
+    consumed = min(sum(_guests(load) for load in loads), capacity)
+    return WriteInDemand(consumed=consumed, sized=sized, known=known, usable=True)
+
+
+def free_family_spots(capacity: int | None, loads: Sequence[WriteInLoad], *, is_adult: bool) -> int | None:
     """Spots left on this card once its write-ins are paid for.
 
     THREE RETURNS, and the middle one is load-bearing:
@@ -346,12 +376,16 @@ def free_family_spots(capacity: int | None, loads: Sequence[WriteInLoad]) -> int
     numerator; subtracting its spots too would count it on both sides. A
     write-in is on nobody's roster and appears in neither, which is exactly why
     its spots have to leave the denominator.
+
+    `is_adult` picks the adult-weekend write-in rule (kindred#2765): an unsized
+    write-in is one guest, so a shared cabin holding a note-style write-in stays
+    open rather than closing -- see `write_in_demand`.
     """
     if not loads:
         return None
     if capacity is None:
         return 0
-    return max(0, capacity - write_in_demand(capacity, loads).consumed)
+    return max(0, capacity - write_in_demand(capacity, loads, is_adult=is_adult).consumed)
 
 
 def effective_bathroom(

@@ -8061,6 +8061,41 @@ class TestTwoWriteInRowsOnOneUnit:
         assert roster.units[0].is_family_available is True
 
     @pytest.mark.asyncio
+    async def test_on_an_adult_weekend_an_unsized_row_is_one_guest(self) -> None:
+        """kindred#2765, owner ruling 2026-09-23. The same unsized row that
+        closes a family cabin is ONE guest on an adult weekend, so the cabin
+        stays a space and the stats bar keeps it in its shared-cabin
+        denominator -- where the card above it reads "1 of 8"."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Ava Martinez", note="bunk by window", party_size=0)],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.units[0].is_family_available is True
+        assert roster.counts.spots_family_available == 14
+
+    @pytest.mark.asyncio
+    async def test_the_summary_applies_the_adult_rule_per_weekend(self) -> None:
+        """`build_summary` runs the same resolver per weekend, so the lander
+        and the board must agree: the family weekend closes the cabin, the
+        adult weekend in the same year does not."""
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
+            fetch_units=[_unit("u1", "ridge-d", "Ridge D", sleeps=15)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Ava Martinez", note="", party_size=0)],
+        )
+
+        summary = await LodgingRosterService(repo).build_summary(2026)
+
+        by_type = {entry.session.session_type: entry.counts for entry in summary.weekends}
+        assert by_type["family"].units_family_available == 0
+        assert by_type["adult"].units_family_available == 1
+        assert by_type["adult"].spots_family_available == 14
+
+    @pytest.mark.asyncio
     async def test_an_unsized_second_row_still_closes_the_cabin(self) -> None:
         """`party_size is None` means WHOLESALE, and one of two rows saying it is enough.
 
@@ -8327,7 +8362,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         caps = _caps(units)
         written = _written(units, "back", "laundry", "loft", "side")
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
 
         assert house.is_family_available is False
         # The map the counts read, not a second derivation of the same sum.
@@ -8351,7 +8386,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         caps = _caps(units)
         written = _written(units, "house", "back", "laundry", "loft", "side")
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
 
         assert house.is_family_available is False
         assert free_by_unit[house.unit_id] == 0
@@ -8372,7 +8407,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         assert caps["house"] == 6  # r1 + r2 only -- r3 is excluded, same as production
         written = _written(units, "r3")
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
 
         assert house.is_family_available is True
         assert free_by_unit[house.unit_id] == 6
@@ -8391,7 +8426,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         caps = _caps(units)
         written = _written(units, "back")
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
 
         assert house.is_family_available is True
         # Five beds, three of them taken wholesale by an unsized room row.
@@ -8409,7 +8444,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         caps = _caps(units)
         written = _written(units, "house")
         _resolve_write_in_covers(units, written, caps)
-        _resolve_family_availability(units, caps, written)
+        _resolve_family_availability(units, caps, written, is_adult=False)
 
         assert [r.is_family_available for r in rooms] == [False, False]
 
@@ -8423,7 +8458,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         caps = _caps(units)
         written = _written(units, "ridge-a")
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
 
         assert free_by_unit[unit.unit_id] == 3
         assert unit.is_family_available is False
@@ -8456,7 +8491,7 @@ class TestFamilyAvailabilityIsResolvedOverTheTree:
         written = _written(units, "")
         caps = _caps(units)
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
 
         # The guard the walk cannot lift: no cover reached the card, and the
         # row is still there.
@@ -8550,7 +8585,7 @@ class TestSpotsFamilyAvailableCountsFreeSpots:
         caps = _caps(units)
         written = _written(units, *written_in)
         _resolve_write_in_covers(units, written, caps)
-        free_by_unit = _resolve_family_availability(units, caps, written)
+        free_by_unit = _resolve_family_availability(units, caps, written, is_adult=False)
         return LodgingRosterService(_repo())._build_counts(units, [], 0, index, free_by_unit)
 
     def test_spots_family_available_counts_free_spots_not_whole_cabins(self) -> None:
