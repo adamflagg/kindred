@@ -1907,7 +1907,14 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
               className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
             >
               <Plus className="h-3 w-3" />
-              Assign
+              {/* kindred#2804. This word used to be hardcoded "Assign" even
+                  though the `aria-label` two lines up already forked on
+                  `canOfferPlacement` — so the CampMinder mirror announced
+                  itself correctly to a screen reader while showing every
+                  sighted user "Assign" for a control that cannot place
+                  anyone. Same condition as the label, because they answer the
+                  same question. */}
+              {canOfferPlacement ? 'Assign' : 'Write in'}
             </button>
           )}
           {/* Merging is promotion to the parent: dragging this handle onto a
@@ -1971,6 +1978,12 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
           // is a write-in box rather than both. Passing the queue anyway would
           // offer rows that `resolvePickerPlacement` refuses.
           parties={canOfferPlacement ? unplacedParties : []}
+          // kindred#2804. `parties={[]}` above cannot say WHY on its own — a
+          // scenario that has placed everyone and the CampMinder mirror, which
+          // has no scenario at all, both hand the modal an empty array. This
+          // is the second flag: FALSE on the mirror, so the modal never claims
+          // "Everyone has a cabin" about a queue there is no scenario to hold.
+          canPlace={canOfferPlacement}
           units={units}
           // The card's own numerator, passed rather than re-derived: the modal
           // states beds FREE against it, and two computations of one figure is

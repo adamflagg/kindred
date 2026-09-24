@@ -117,10 +117,24 @@ export interface AssignFamilyModalProps {
   /**
    * Every UNPLACED party, exactly as the queue holds them. NEVER pre-filtered
    * by fit — that is the ruling `placementCandidates` carries, not a caller
-   * convenience. Empty where placement is not live, which is how this knows it
-   * is a write-in box only.
+   * convenience. Empty wherever placement is not live, but `[]` alone cannot
+   * say WHY — see `canPlace` below, which carries that.
    */
   parties: RosterPartyRow[]
+  /**
+   * Whether placement is live at all — `LodgingUnitCard`'s own
+   * `canOfferPlacement` (kindred#2804). Defaults to `true`, matching every
+   * caller before this flag existed, all of which passed a real queue or
+   * genuinely had nothing left to place.
+   *
+   * ⚠️ NOT DERIVABLE FROM `parties.length`. The caller passes `[]` both when
+   * a scenario has placed everyone (true — say "Everyone has a cabin") and
+   * when there is no scenario at all, the CampMinder mirror, where nothing
+   * can be placed from this box (false — say nothing of the kind). An empty
+   * array means the same thing in both cases to a reader of `parties` alone;
+   * this is the second flag that tells them apart.
+   */
+  canPlace?: boolean
   /**
    * The whole registry. Needed only to total a combined house's capacity;
    * `[]` is correct for every leaf card.
@@ -520,6 +534,7 @@ export function AssignFamilyModal({
   onClose,
   unit,
   parties,
+  canPlace = true,
   units = [],
   occupants,
   spanWidth = 0,
@@ -710,14 +725,22 @@ export function AssignFamilyModal({
   }
 
   /**
-   * Whether this card can place a family at all.
+   * Whether this card can place a family at all — now read straight off the
+   * `canPlace` prop (kindred#2804).
    *
    * FALSE on the CampMinder mirror, where there is no scenario: recording who
    * is sleeping in a cabin is a fact about the WEEKEND, not about a plan, so
-   * the write-in half stays live where the placement half cannot be. The
-   * caller passes an empty queue in that case rather than a second flag.
+   * the write-in half stays live where the placement half cannot be.
+   *
+   * ⚠️ USED TO BE DERIVED FROM `parties.length` AND `onWriteIn` ALONE, and
+   * that heuristic is exactly what kindred#2804 found broken: it agreed with
+   * `canPlace` only in the corner where `onWriteIn` is absent, and everywhere
+   * else — the ordinary case, where a caller offers write-in and placement
+   * together — it could not tell "no scenario" from "scenario, nobody left to
+   * place" apart, because both hand this component `parties: []`. The prop is
+   * the second flag that heuristic was missing, not a second derivation of it.
    */
-  const placementLive = parties.length > 0 || onWriteIn === undefined
+  const placementLive = canPlace
 
   /*
    * ONE BASELINE ROW — title and sub together, the artifact's `.mhead`
@@ -1146,14 +1169,18 @@ export function AssignFamilyModal({
                 </button>
               </div>
             </div>
-          ) : parties.length === 0 ? (
-            /* Nothing left to place. `FloatingUnplacedBadge` already says this
-               over the same parties — one state, one sentence. BELOW the
-               write-in offer, deliberately: on the CampMinder mirror there is
-               no scenario and therefore no placement queue at all, so this
-               branch is the one an unfiltered box lands on. Above the offer it
-               would say "everyone has a cabin" while swallowing the name just
-               typed. */
+          ) : !canPlace ? /* kindred#2804. The CampMinder mirror: no scenario, so nothing can
+               be placed from this box and `parties` is `[]` for that reason —
+               not because anybody counted the queue down to zero. Rendering
+               NOTHING here, rather than falling into the branch below, is the
+               fix: that branch's "Everyone has a cabin" is a claim about a
+               scenario's queue, and there is no scenario to make it about. */
+          null : parties.length === 0 ? (
+            /* Nothing left to place, and this time the claim is one a real
+               scenario queue backs up. `FloatingUnplacedBadge` already says
+               this over the same parties — one state, one sentence. BELOW the
+               write-in offer, deliberately: it would say "everyone has a
+               cabin" while swallowing the name just typed otherwise. */
             <p className="text-muted-foreground px-2 py-6 text-center text-sm italic">
               Everyone has a cabin.
             </p>
