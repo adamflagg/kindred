@@ -216,6 +216,14 @@ class TestRegistrationEndpointCaching:
 class TestCacheInvalidationEndpoint:
     """Test the POST /api/metrics/cache/invalidate endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def no_background_warm(self):
+        """A call naming no sync schedules a real lodging warm (kindred#2803),
+        which reads whatever PocketBase is reachable and re-fills lodging_cache
+        behind these assertions. Stubbed here as in the sync-scoped classes below."""
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            yield
+
     def test_invalidation_endpoint_clears_cache(self, test_client, fresh_cache):
         """POST to invalidation endpoint should clear the cache."""
         fresh_cache.set("retention", {"data": True}, year=2026)
