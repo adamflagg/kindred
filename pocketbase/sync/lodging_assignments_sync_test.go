@@ -827,12 +827,25 @@ func TestLodgingAssignmentsSyncAdultWeekendRehearsal(t *testing.T) {
 		t.Errorf("first run Created = %d, want %d", first.GetStats().Created, len(want))
 	}
 
+	// placedHistory excludes "tent by the creek" on purpose: that value takes
+	// the single-weekend path, which (unlike the history-attributed path's
+	// unresolvedHistoryRecorded dedup) re-records its observation on every
+	// run. That is finding 1 in this PR's body -- pre-existing, out of this
+	// PR's scope, and left for the owner. unresolvedHistory below asserts
+	// that known growth explicitly, so it stays visible instead of being
+	// silently swallowed by this filter (CodeRabbit, PR #2798).
 	placedHistory := func() int {
 		hist, _ := app.FindRecordsByFilter("lodging_assignment_history",
 			"old_unit = '' && new_unit != 'tent by the creek'", "", 0, 0)
 		return len(hist)
 	}
 	historyBefore := placedHistory()
+	unresolvedHistory := func() int {
+		hist, _ := app.FindRecordsByFilter("lodging_assignment_history",
+			"old_unit = '' && new_unit = 'tent by the creek'", "", 0, 0)
+		return len(hist)
+	}
+	unresolvedBefore := unresolvedHistory()
 	issueCount := func() int {
 		all, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
 		return len(all)
@@ -851,6 +864,12 @@ func TestLodgingAssignmentsSyncAdultWeekendRehearsal(t *testing.T) {
 	}
 	if got := placedHistory(); got != historyBefore {
 		t.Errorf("placement history rows went %d -> %d on an unchanged re-run", historyBefore, got)
+	}
+	if got := unresolvedHistory(); got != unresolvedBefore+1 {
+		t.Errorf("unresolved-value history rows went %d -> %d on a second run, want +1 "+
+			"(known, unfixed single-weekend behavior -- see finding 1 in this PR's body; "+
+			"if this now holds steady, the writer was fixed and this assertion should too)",
+			unresolvedBefore, got)
 	}
 	if got := issueCount(); got != issuesBefore {
 		t.Errorf("queue rows went %d -> %d on an unchanged re-run; Flush must upsert, not append",
