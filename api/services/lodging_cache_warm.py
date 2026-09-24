@@ -50,9 +50,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Strong references to in-flight background warms: the event loop holds only
-# a weak one, and a task that is garbage-collected mid-read simply vanishes.
-_background: set[asyncio.Task[None]] = set()
+# The in-flight background warm, if any, held here as a strong reference: the
+# event loop holds only a weak one, and a task that is garbage-collected
+# mid-read simply vanishes. `_rerun_requested` is set when a warm is asked for
+# while this one runs -- see `schedule_lodging_warm`.
+_warm_task: asyncio.Task[None] | None = None
+_rerun_requested = False
 
 
 def cached_read_tables() -> dict[str, tuple[str, ...]]:
@@ -158,11 +161,35 @@ async def _warm_current_season() -> None:
     await warm_lodging_year(await current_season_year(default_pb))
 
 
+async def _warm_until_settled() -> None:
+    """Warm, then warm once more if another request landed meanwhile."""
+    global _rerun_requested
+    while True:
+        _rerun_requested = False
+        await _warm_current_season()
+        if not _rerun_requested:
+            return
+
+
 def schedule_lodging_warm() -> None:
-    """Start a background warm of the current season, and return at once."""
-    task = asyncio.get_running_loop().create_task(_warm_current_season())
-    _background.add(task)
-    task.add_done_callback(_background.discard)
+    """Start a background warm of the current season, and return at once.
+
+    Coalesced: one warm at a time. The endpoint that calls this skips auth and
+    fires once per open tab per sync completion, and `invalidate_all()` drops
+    the per-key locks, so uncoalesced warms of different generations never
+    share a fetch -- a burst ran them side by side, each but the last thrown
+    away by the generation guard. A request that lands mid-warm instead
+    becomes a single rerun after it, which re-reads everything the clear made
+    stale.
+    """
+    global _rerun_requested, _warm_task
+    loop = asyncio.get_running_loop()
+    # A task from another event loop (a finished pytest loop) can never
+    # complete here, so it must not block this loop's warms.
+    if _warm_task is not None and not _warm_task.done() and _warm_task.get_loop() is loop:
+        _rerun_requested = True
+        return
+    _warm_task = loop.create_task(_warm_until_settled())
 
 
 async def refresh_lodging_cache_forever(
@@ -179,14 +206,14 @@ async def refresh_lodging_cache_forever(
     waits on the warm's in-flight read (the cache is single-flight per key)
     rather than issuing its own.
     """
-    if year is None:
 
-        async def year() -> int:
-            return await current_season_year(default_pb)
+    async def _default_year() -> int:
+        return await current_season_year(default_pb)
 
+    year_of = _default_year if year is None else year
     while True:
         try:
-            await warm(await year())
+            await warm(await year_of())
         except Exception as exc:  # the loop must outlive one bad pass
             logger.warning(f"Lodging cache refresh failed: {exc}")
         await asyncio.sleep(interval)

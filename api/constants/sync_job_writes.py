@@ -62,8 +62,9 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     "sessions": frozenset({CAMP_SESSIONS}),
     "attendees": frozenset({ATTENDEES, ATTENDEE_STATUS_HISTORY}),
     # One CampMinder call populates both (persons.go writes `persons` and
-    # `households`).
-    "persons": frozenset({PERSONS, HOUSEHOLDS}),
+    # `households`), and the job then back-fills `attendees.person` for rows
+    # the attendees sync could not link yet (`updateAttendeeRelations`).
+    "persons": frozenset({PERSONS, HOUSEHOLDS, ATTENDEES}),
     "bunks": frozenset({BUNKS}),
     "bunk_plans": frozenset({BUNK_PLANS}),
     # The HOURLY job (`0 * * * *`). Writes its own table and nothing else.
@@ -71,18 +72,19 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     "staff": frozenset({"staff"}),
     "financial_transactions": frozenset({"financial_transactions"}),
     # Expensive phase -- custom values, and their bounded daily variants,
-    # which write the same collections under a different registered name.
-    "person_custom_values": frozenset({PERSON_CUSTOM_VALUES}),
-    "household_custom_values": frozenset({HOUSEHOLD_CUSTOM_VALUES}),
-    "person_custom_values_family_camp": frozenset({PERSON_CUSTOM_VALUES}),
-    "household_custom_values_family_camp": frozenset({HOUSEHOLD_CUSTOM_VALUES}),
+    # which write the same collections under a different registered name. All
+    # four also append `lodging_value_history` (`logLodgingValueChange`, called
+    # from person_custom_field_values.go and household_custom_field_values.go).
+    "person_custom_values": frozenset({PERSON_CUSTOM_VALUES, "lodging_value_history"}),
+    "household_custom_values": frozenset({HOUSEHOLD_CUSTOM_VALUES, "lodging_value_history"}),
+    "person_custom_values_family_camp": frozenset({PERSON_CUSTOM_VALUES, "lodging_value_history"}),
+    "household_custom_values_family_camp": frozenset({HOUSEHOLD_CUSTOM_VALUES, "lodging_value_history"}),
     # Transform phase.
     "family_camp_derived": frozenset({FAMILY_CAMP_ADULTS, FAMILY_CAMP_REGISTRATIONS, FAMILY_CAMP_MEDICAL}),
     "lodging_assignments": frozenset(
         {
             LODGING_ASSIGNMENTS,
             LODGING_ASSIGNMENT_HISTORY,
-            "lodging_value_history",
             "lodging_ingest_issues",
             "lodging_field_mappings",
         }

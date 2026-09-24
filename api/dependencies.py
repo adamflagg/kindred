@@ -121,11 +121,11 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # Lodging Year-Scoped Read Cache
 # ========================================
 
-# Caches four of build_roster/build_summary's six year-scoped reads --
-# households, the prior-household set, family-camp adults, and registrations
-# (see api/services/lodging_cache.py for why the other two, fetch_units and
-# count_open_unresolved_aliases, are deliberately excluded: both are
-# admin-panel-writable straight from the browser).
+# Caches build_roster/build_summary's year-scoped reads -- every
+# `@cached_by_year` method on LodgingRepository, each declaring the tables it
+# reads (see api/services/lodging_cache.py for the list, and for why
+# fetch_units and count_open_unresolved_aliases are deliberately excluded:
+# both are admin-panel-writable straight from the browser).
 #
 # MUST be a module-level singleton, not per-instance state: api/routers/
 # lodging.py's `_service`/`_writes` build a fresh LodgingRepository on every

@@ -340,3 +340,67 @@ class TestTheRefresher:
         assert warmed[:3] == [2026, 2026, 2026]
         # Each re-warm starts from a cleared cache, never from its own last answer.
         assert all(cleared_before_rewarm[:3])
+
+
+class TestBackgroundWarmsCoalesce:
+    """`POST /api/metrics/cache/invalidate` skips auth, and every open tab
+    fires it on every sync completion. Each call that clears the cache asks
+    for a warm, and `invalidate_all()` drops the per-key lock map, so warms of
+    different generations never share a fetch. A burst therefore ran N full
+    warms side by side -- every one but the last thrown away by the generation
+    guard, all of them holding `asyncio.to_thread` workers a staff member's
+    own request needs. One warm runs at a time; a request that lands mid-warm
+    becomes ONE rerun after it, which is all a burst ever needs."""
+
+    @pytest.mark.asyncio
+    async def test_a_burst_runs_one_warm_at_a_time_and_one_rerun(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from api.services import lodging_cache_warm as warm_module
+
+        running = 0
+        peak = 0
+        runs = 0
+        release = asyncio.Event()
+
+        async def fake_warm_current_season() -> None:
+            nonlocal running, peak, runs
+            running += 1
+            runs += 1
+            peak = max(peak, running)
+            await release.wait()
+            running -= 1
+
+        monkeypatch.setattr(warm_module, "_warm_current_season", fake_warm_current_season)
+
+        warm_module.schedule_lodging_warm()
+        await asyncio.sleep(0)  # the first warm is now reading
+        for _ in range(9):
+            warm_module.schedule_lodging_warm()
+        await asyncio.sleep(0)
+        release.set()
+        for _ in range(50):
+            await asyncio.sleep(0)
+
+        assert peak == 1
+        # The first warm, plus ONE rerun for the nine that arrived while it ran.
+        assert runs == 2
+
+    @pytest.mark.asyncio
+    async def test_a_request_after_the_warm_finished_starts_a_new_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from api.services import lodging_cache_warm as warm_module
+
+        runs = 0
+
+        async def fake_warm_current_season() -> None:
+            nonlocal runs
+            runs += 1
+
+        monkeypatch.setattr(warm_module, "_warm_current_season", fake_warm_current_season)
+
+        warm_module.schedule_lodging_warm()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        warm_module.schedule_lodging_warm()
+        for _ in range(10):
+            await asyncio.sleep(0)
+
+        assert runs == 2
