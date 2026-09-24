@@ -122,7 +122,7 @@ def _make_lodging_fixture_db(path: Path) -> None:
         "CREATE TABLE attendees (id TEXT PRIMARY KEY, session TEXT, person TEXT, person_id INTEGER, status_id INTEGER)"
     )
 
-    cur.execute("INSERT INTO camp_sessions VALUES ('s1', 1, 2025, 'main', 'Session Alpha')")
+    cur.execute("INSERT INTO camp_sessions VALUES ('1000001', 1, 2025, 'main', 'Session Alpha')")
     for i in range(1000):
         pid, hid = f"p{i}", f"h{i}"
         cur.execute(
@@ -130,7 +130,7 @@ def _make_lodging_fixture_db(path: Path) -> None:
             (pid, i, i),
         )
         cur.execute("INSERT INTO households VALUES (?, ?, 'The Johnson Family')", (hid, i))
-        cur.execute("INSERT INTO attendees VALUES (?, 's1', ?, ?, 2)", (f"a{i}", pid, i))
+        cur.execute("INSERT INTO attendees VALUES (?, '1000001', ?, ?, 2)", (f"a{i}", pid, i))
 
     # lodging_* tables with rows: two the codebase already knows about, plus one
     # invented only for this test.
