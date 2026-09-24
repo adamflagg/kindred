@@ -2412,8 +2412,8 @@ func TestLoadAttendeeGeoData_CountryFollowsCitySource(t *testing.T) {
 	ownHousehold.Set("billing_city", "Denver")
 	ownHousehold.Set("billing_state", "CO")
 	ownHousehold.Set("billing_country", "US")
-	if err := app.Save(ownHousehold); err != nil {
-		t.Fatalf("save own household: %v", err)
+	if saveErr := app.Save(ownHousehold); saveErr != nil {
+		t.Fatalf("save own household: %v", saveErr)
 	}
 
 	childhoodHousehold := core.NewRecord(householdsCol)
@@ -2421,8 +2421,8 @@ func TestLoadAttendeeGeoData_CountryFollowsCitySource(t *testing.T) {
 	childhoodHousehold.Set("billing_city", "San Francisco")
 	childhoodHousehold.Set("billing_state", "CA")
 	childhoodHousehold.Set("billing_country", "MX")
-	if err := app.Save(childhoodHousehold); err != nil {
-		t.Fatalf("save childhood household: %v", err)
+	if saveErr := app.Save(childhoodHousehold); saveErr != nil {
+		t.Fatalf("save childhood household: %v", saveErr)
 	}
 
 	sessionsCol, err := app.FindCollectionByNameOrId("camp_sessions")
@@ -2432,8 +2432,8 @@ func TestLoadAttendeeGeoData_CountryFollowsCitySource(t *testing.T) {
 	sess := core.NewRecord(sessionsCol)
 	sess.Set("cm_id", 300)
 	sess.Set("name", "Adult Weekend")
-	if err := app.Save(sess); err != nil {
-		t.Fatalf("save session: %v", err)
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save session: %v", saveErr)
 	}
 
 	personsCol, err := app.FindCollectionByNameOrId("persons")
@@ -2504,7 +2504,8 @@ func TestLoadAttendeeGeoData_CountryFollowsCitySource(t *testing.T) {
 		t.Errorf("own.AddressState = %q, want %q", own.AddressState, "CO")
 	}
 	if own.AddressCountry != "US" {
-		t.Errorf("own.AddressCountry = %q, want %q (own household, which supplied the city) -- got the childhood household's country instead", own.AddressCountry, "US")
+		t.Errorf("own.AddressCountry = %q, want %q (own household supplied the city)",
+			own.AddressCountry, "US")
 	}
 
 	childhood, ok := byCMID[402]
@@ -2518,7 +2519,8 @@ func TestLoadAttendeeGeoData_CountryFollowsCitySource(t *testing.T) {
 		t.Errorf("childhood.AddressState = %q, want %q", childhood.AddressState, "CA")
 	}
 	if childhood.AddressCountry != "MX" {
-		t.Errorf("childhood.AddressCountry = %q, want %q (childhood household, which supplied the city) -- got the own household's country instead", childhood.AddressCountry, "MX")
+		t.Errorf("childhood.AddressCountry = %q, want %q (childhood household supplied the city)",
+			childhood.AddressCountry, "MX")
 	}
 }
 

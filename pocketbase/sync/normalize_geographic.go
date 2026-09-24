@@ -304,7 +304,8 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			}
 		}
 		if len(personRecords) > 0 {
-			if errs := n.App.ExpandRecords(personRecords, []string{"household", "primary_childhood_household"}, nil); len(errs) > 0 {
+			householdExpands := []string{"household", "primary_childhood_household"}
+			if errs := n.App.ExpandRecords(personRecords, householdExpands, nil); len(errs) > 0 {
 				slog.Warn("Some household expansions failed", "page", page, "errors", errs)
 			}
 		}
