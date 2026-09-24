@@ -186,7 +186,8 @@ const ANCHOR_ARIA_LABEL: Record<ShareAnchorState, string> = {
  * unmet-need signal. `unanswered` carries no fill at all, so it never looks
  * like a positive answer while still never being hidden.
  */
-const ANCHOR_CLASS: Record<ShareAnchorState, string> = {
+// Exported (kindred#2759) so the adult Jotform anchor reuses the locked tones rather than restating them.
+export const ANCHOR_CLASS: Record<ShareAnchorState, string> = {
   yes: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
   maybe: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
   no: 'bg-muted text-muted-foreground',
