@@ -21,6 +21,11 @@
  * that showed the as-typed string as the label). The as-typed string still
  * travels, on `bunkNameRecorded`, but ONLY where it disagrees with the
  * label — `CampJourneyTimeline` renders it in a hover tooltip, never inline.
+ *
+ * From 2026, a family weekend with its own entry in `weekend_cabins` reads
+ * THAT cabin instead of the year's one label (kindred#2801) — the same rule
+ * `HouseholdJourneyCard` applies (kindred#2775/#2789), off the same fields.
+ * See `familySeasonHousing`.
  */
 import { pb } from '../../lib/pocketbase'
 import { byYearThenChronological } from './journeyOrder'
@@ -69,53 +74,58 @@ export async function fetchParentMainSessions(
   return out
 }
 
-interface FamilySeasonHousing extends CabinLabel {
-  /** The pinned weekend, or `null` when the season's cabin is not pinned. */
-  sessionCmId: number | null
+/**
+ * Index a household's family-camp journey rows by year, so the per-weekend
+ * lookup below (`familySeasonHousing`) has the row — sessions, year-level
+ * cabin, and `weekend_cabins` alike — at hand for any session that year.
+ */
+function familyHousingByYear(years: HouseholdJourneyRow[]): Map<number, HouseholdJourneyRow> {
+  const map = new Map<number, HouseholdJourneyRow>()
+  for (const y of years) {
+    if (y.year !== undefined) map.set(y.year, y)
+  }
+  return map
 }
 
 /**
- * Reduce a household's family-camp journey to the one fact this file needs:
- * which cabin labels which weekend, per year. Every PLACED year with a
- * cabin earns an entry. `sessionCmId` is the weekend the year is pinned to
- * (`HouseholdJourneyRow.housing_session_cm_id`, kindred#2461), or `null`
- * when the server declined to pin it — a household that attended 2+
- * weekends that season, since CampMinder's one per-year value cannot say
- * which weekend it describes.
+ * One (year, weekend)'s cabin, or `undefined` when this weekend has none to
+ * show.
  *
- * `labelsWeekend` reads the entry: a pinned year labels ONLY its weekend; an
- * unpinned year labels EVERY family weekend that season (owner ruling
+ * From 2026 (kindred#2801, mirroring the household journey card's own rule —
+ * kindred#2775, shipped in #2789 — off the same fields): a weekend with its
+ * own entry in `weekend_cabins` — the CampMinder layer, published only when
+ * EVERY enrolled weekend that season has a live row — is labeled from THAT
+ * entry, the real per-weekend cabin, ahead of everything below.
+ *
+ * Otherwise (every year before 2026, and any 2026+ year the layer doesn't
+ * fully cover) this falls back to today's one-cabin-for-the-year rule: a
+ * PLACED year's own `cabin_name`, shown on its pinned weekend
+ * (`HouseholdJourneyRow.housing_session_cm_id`, kindred#2461), or on EVERY
+ * family weekend that season when the year is not pinned at all — a
+ * household that attended 2+ weekends that season, since CampMinder's one
+ * per-year value cannot say which weekend it describes (owner ruling
  * 2026-09-22, late: "just show the same cabin for all… it's not helpful to
  * show nothing; no one will care if historical data is wrong"). A year with
- * no housing or a blank cabin produces no entry, and its rows show nothing.
+ * no housing or a blank cabin shows nothing.
  *
  * The cabin is named by TODAY's unit name (`cabin_name`, owner ruling
  * 2026-09-22 evening) — the same field the weekend board's household card
  * shows. `cabin_name_raw` travels alongside for the tooltip.
  */
-function familyHousingByYear(years: HouseholdJourneyRow[]): Map<number, FamilySeasonHousing> {
-  const map = new Map<number, FamilySeasonHousing>()
-  for (const y of years) {
-    const season = familySeasonHousing(y)
-    if (y.year !== undefined && season !== undefined) map.set(y.year, season)
+function familySeasonHousing(y: HouseholdJourneyRow, sessionCmId: number): CabinLabel | undefined {
+  const weekendCabin = (y.weekend_cabins ?? []).find((entry) => entry.session_cm_id === sessionCmId)
+  const weekendCabinName = (weekendCabin?.cabin_name ?? '').trim()
+  if (weekendCabinName.length > 0) {
+    return {
+      cabinName: weekendCabinName,
+      cabinNameRaw: (weekendCabin?.cabin_name_raw ?? '').trim(),
+    }
   }
-  return map
-}
-
-/** One household-year's cabin, or `undefined` when it has none to show. */
-function familySeasonHousing(y: HouseholdJourneyRow): FamilySeasonHousing | undefined {
   const cabinName = (y.cabin_name ?? '').trim()
   if (y.housing !== 'placed' || cabinName.length === 0) return undefined
-  return {
-    sessionCmId: y.housing_session_cm_id ?? null,
-    cabinName,
-    cabinNameRaw: (y.cabin_name_raw ?? '').trim(),
-  }
-}
-
-/** Does the season's cabin label this weekend? Pinned: only its own. Unpinned: all. */
-function labelsWeekend(housing: FamilySeasonHousing, sessionCmId: number): boolean {
-  return housing.sessionCmId === null || housing.sessionCmId === sessionCmId
+  const pin = y.housing_session_cm_id ?? null
+  if (pin !== null && pin !== sessionCmId) return undefined
+  return { cabinName, cabinNameRaw: (y.cabin_name_raw ?? '').trim() }
 }
 
 interface ParentFamilyWeekend {
@@ -139,15 +149,14 @@ function parentFamilyWeekends(
   const out: ParentFamilyWeekend[] = []
   for (const y of years) {
     if (y.year === undefined || y.year > currentYear) continue
-    // The same season rule as the viewer's own rows (`labelsWeekend`).
-    const housing = familySeasonHousing(y)
-    const cabinRecorded = housing && recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
     for (const s of y.sessions ?? []) {
       const cmId = s.session_cm_id ?? 0
       if (cmId <= 0) continue
       const key = `${String(y.year)}:${String(cmId)}`
       if (ownFamily.has(key)) continue
-      const labelled = housing !== undefined && labelsWeekend(housing, cmId)
+      // The same per-weekend rule as the viewer's own rows (`familySeasonHousing`).
+      const housing = familySeasonHousing(y, cmId)
+      const cabinRecorded = housing && recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
       out.push({
         key,
         year: y.year,
@@ -155,8 +164,8 @@ function parentFamilyWeekends(
           year: y.year,
           sessionName: s.name ?? 'Unknown',
           sessionType: 'family',
-          ...(labelled ? { bunkName: housing.cabinName } : {}),
-          ...(labelled && cabinRecorded !== undefined ? { bunkNameRecorded: cabinRecorded } : {}),
+          ...(housing ? { bunkName: housing.cabinName } : {}),
+          ...(housing && cabinRecorded !== undefined ? { bunkNameRecorded: cabinRecorded } : {}),
           ...(s.start_date ? { startDate: s.start_date } : {}),
         },
       })
@@ -343,14 +352,14 @@ export async function fetchCamperJourney(
     // it, owner ruling 2026-09-22 late). A year pinned to a DIFFERENT weekend,
     // or with no housing, leaves the row with no label. The label is TODAY's
     // unit name (`cabin_name`); the as-typed string rides along on
-    // `bunkNameRecorded` only where it disagrees.
+    // `bunkNameRecorded` only where it disagrees. From 2026, THIS weekend's
+    // own `weekend_cabins` entry (kindred#2801) takes precedence over all of
+    // that, via `familySeasonHousing`.
     if (session?.session_type === 'family') {
-      const housing = familyHousing.get(year)
-      const isThisWeekend = housing !== undefined && labelsWeekend(housing, session.cm_id)
-      bunkName = isThisWeekend ? housing.cabinName : undefined
-      bunkNameRecorded = isThisWeekend
-        ? recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
-        : undefined
+      const row = familyHousing.get(year)
+      const housing = row !== undefined ? familySeasonHousing(row, session.cm_id) : undefined
+      bunkName = housing?.cabinName
+      bunkNameRecorded = housing && recordedIfDifferent(housing.cabinName, housing.cabinNameRaw)
     }
 
     // Adult programs: the label is the cabin the server attributed
