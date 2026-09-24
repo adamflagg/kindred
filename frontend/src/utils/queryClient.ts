@@ -79,10 +79,9 @@ const SYNC_DEPENDENT_PREFIXES = [
   'all-campers',
   'camper',
   'enrolled-campers',
-  // The shared journey feed and its person/housing reads (adult camper journey)
+  // The camper journey — one server read of enrollments, bunks and cabins
+  // since kindred#2776, so a completed sync must refresh it.
   'camper-journey',
-  'person-records',
-  'person-housing',
   // The camper record's current-year rows (CR #4, kindred#2753) — reads live
   // attendees/bunks, so a completed sync must invalidate it too.
   'camper-current-year-rows',
@@ -106,8 +105,8 @@ const SYNC_DEPENDENT_PREFIXES = [
   'weekend-sessions',
   'weekend-summary',
   'weekend-roster',
-  // Household journey: the camper journey feed re-runs when a housing read
-  // refreshes, so a stale household journey here would defeat that refresh.
+  // Household journey: the weekend board's household card reads it, and the
+  // lodging ingest writes the cabins it names.
   'household-journey',
 ] as const
 

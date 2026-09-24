@@ -173,20 +173,22 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(queryKeys.householdJourney(2000001).slice(0, 1)).toEqual(journey)
   })
 
-  it('invalidates the person housing feed, since an alias edit can change which cabin strings resolve to one place', () => {
-    // Adult camper journey (Task 9): `usePersonHousing` attributes cabins
-    // server-side off the lodging alias table. Renaming an alias can move
-    // which weekend a cabin string resolves to without any placement write
-    // happening at all, so this needs the same registry-edit invalidation
-    // `householdJourneyPrefix` gets above.
+  it('invalidates the camper journey, whose cabins the registry names', () => {
+    // kindred#2776. The journey used to re-run on a registry edit only
+    // because the person-housing and household-journey `dataUpdatedAt` were
+    // in its key. It is one server call now, naming every family, adult and
+    // TLI/SCIT cabin by today's registry name (kindred#2332) and resolving
+    // alias strings server-side — so a unit rename or an alias edit moves
+    // it, and without this line the journey would keep the old name for the
+    // 30 minute app default while the board behind it shows the new one.
     const client = recordingClient()
     invalidateLodgingRegistryQueries(client)
 
-    const personHousing = client.keys.find((k) => k[0] === 'person-housing')
-    expect(personHousing).toHaveLength(1)
-    // By PREFIX: the real key is ['person-housing', personCmId] and the
-    // admin panel knows no person at all.
-    expect(queryKeys.personHousing(3000001).slice(0, 1)).toEqual(personHousing)
+    const journey = client.keys.find((k) => k[0] === 'camper-journey')
+    expect(journey).toHaveLength(1)
+    // By PREFIX: the real key is ['camper-journey', personCmId, year] and the
+    // admin panel knows neither.
+    expect(queryKeys.camperJourney(3000001, 2026).slice(0, 1)).toEqual(journey)
   })
 
   it('invalidates the weekend keys by PREFIX, not by exact key', () => {

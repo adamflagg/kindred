@@ -3,7 +3,8 @@
  *
  * AG is a sub-track of a main session, never shown as its own attendance:
  *  - collapseAgEnrollments drops an AG row when its parent main is also enrolled
- *    that year (mirrors fetchCamperJourney's enrolledByYear collapse).
+ *    that year (mirrors the server journey's prior-year collapse,
+ *    `api/services/camper_journey_service.py`).
  *  - buildAgParentPairs lists the (year, parent cm_id) lookups needed to relabel
  *    surviving AG-only rows to their parent main.
  *

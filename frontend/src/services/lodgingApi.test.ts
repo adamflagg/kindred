@@ -12,7 +12,6 @@ import {
   deleteWriteIn,
   executeWriteInPush,
   fetchHouseholdMedical,
-  fetchPersonHousing,
   fetchPushPreview,
   fetchWeekendRoster,
   fetchWeekendSessions,
@@ -543,24 +542,6 @@ describe('fetchHouseholdMedical', () => {
     })
 
     await expect(fetchHouseholdMedical(mockFetch, 2026, 2000001)).rejects.toThrow(/bunking\.manage/)
-  })
-})
-
-describe('fetchPersonHousing', () => {
-  it('reads the person housing endpoint through fetchWithAuth', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(okResponse({ person_cm_id: 3000001, weekends: [] }))
-
-    const result = await fetchPersonHousing(mockFetch, 3000001)
-
-    expect(mockFetch).toHaveBeenCalledTimes(1)
-    const [url] = mockFetch.mock.calls[0] as [string]
-    expect(url).toBe('/api/lodging/persons/3000001/housing')
-    expect(result).toEqual({ person_cm_id: 3000001, weekends: [] })
-  })
-
-  it('throws on a non-OK response', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
-    await expect(fetchPersonHousing(mockFetch, 3000001)).rejects.toThrow()
   })
 })
 

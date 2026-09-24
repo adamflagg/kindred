@@ -2964,8 +2964,8 @@ class LodgingRosterService:
         THE WINDOW IS DISCOVERED, NOT CHOSEN, AND ENROLLMENT IS WHAT
         DISCOVERS IT (kindred#2516). A year appears when camp actually had
         this household -- an enrolled attendee on one of its weekends -- which
-        is how summer answers the same question (`fetchCamperJourney` filters
-        `status = "enrolled"`). Discovery still floats: attendance reaches
+        is how summer answers the same question (the camper journey reads
+        enrolled attendees only, `camper_journey_service`). Discovery still floats: attendance reaches
         back to 2017 while housing only reaches 2022, so the view stays honest
         about a shorter housing window sitting inside a longer attendance one,
         and a hard-coded floor would still either invent empty rows or
@@ -3106,8 +3106,8 @@ class LodgingRosterService:
         # (kindred#2516).
         #
         # A journey year says "camp had this household", so it is discovered
-        # the way summer discovers one -- from enrollment, matching
-        # `fetchCamperJourney`'s `status = "enrolled"` filter. Until #2516
+        # the way summer discovers one -- from enrollment, matching the
+        # camper journey's enrolled-only read (`camper_journey_service`). Until #2516
         # this was the UNION of three traces, and two of them fire on a form
         # being filled in rather than on anybody turning up:
         # `family_camp_registrations` and `family_camp_adults` are derived

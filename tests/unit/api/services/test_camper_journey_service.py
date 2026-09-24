@@ -47,6 +47,7 @@ from api.services.camper_journey_service import (
     person_journey_facts,
 )
 from api.services.lodging_repository import LodgingRepository
+from api.utils.session_metrics import CAMPER_JOURNEY_SESSION_TYPES
 
 PERSON = 8000101
 CURRENT_YEAR = 2026
@@ -1081,3 +1082,16 @@ class TestAdultAgeMatchesTheClient:
         match = re.search(r"export const ADULT_AGE = (\d+)", age_ts.read_text())
         assert match is not None
         assert int(match.group(1)) == ADULT_AGE
+
+
+class TestJourneyTypesMatchTheClient:
+    def test_the_journey_session_types_are_the_clients_camper_journey_types(self) -> None:
+        """`CAMPER_JOURNEY_TYPES` is CAMPER_DETAIL_TYPES plus 'family', deduped,
+        and the Siblings panel still reads it. The server's copy must name the
+        same programs, or one surface would show a year the other hides."""
+        predicates = Path(__file__).resolve().parents[4] / "frontend" / "src" / "utils" / "sessionTypePredicates.ts"
+        match = re.search(r"export const CAMPER_DETAIL_TYPES = \[(.*?)\] as const", predicates.read_text(), re.S)
+        assert match is not None
+        detail = set(re.findall(r"'([a-z]+)'", match.group(1)))
+        assert set(CAMPER_JOURNEY_SESSION_TYPES) == detail | {"family"}
+        assert len(set(CAMPER_JOURNEY_SESSION_TYPES)) == len(CAMPER_JOURNEY_SESSION_TYPES)
