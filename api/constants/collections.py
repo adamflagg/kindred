@@ -130,3 +130,10 @@ DEBUG_PIPELINE_TRACES = "debug_pipeline_traces"
 
 # Auth
 SUPERUSERS = "_superusers"
+
+# Adult-weekend Jotform pull (kindred#2759, migration 1500000180). Generic:
+# every answered question, one row per submission per question. All three are
+# `bunking.manage`-only in PocketBase, and every API read re-checks it.
+JOTFORM_FORMS = "jotform_forms"
+JOTFORM_SUBMISSIONS = "jotform_submissions"
+JOTFORM_ANSWERS = "jotform_answers"
