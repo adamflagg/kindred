@@ -20,6 +20,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { personLocation } from '../utils/addressUtils'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import { isAgSession } from '../utils/sessionTypePredicates'
 
@@ -72,6 +73,8 @@ interface AttendeeWithExpands {
       normalized_school?: string | null
       normalized_congregation?: string | null
       normalized_city?: string | null
+      address_city?: string | null
+      address_state?: string | null
     }
     session?: {
       session_type?: string
@@ -127,12 +130,17 @@ export function useCamperCohorts(
         return true
       })
 
+      type CohortPerson = NonNullable<NonNullable<AttendeeWithExpands['expand']>['person']>
+
       function buildEntry(
         selfValue: string | null | undefined,
-        field: 'normalized_school' | 'normalized_congregation' | 'normalized_city'
+        valueOf: (person: CohortPerson) => string | null | undefined
       ): CohortEntry | null {
         if (!selfValue) return null
-        const matches = others.filter((a) => a.expand?.person?.[field] === selfValue)
+        const matches = others.filter((a) => {
+          const p = a.expand?.person
+          return p ? valueOf(p) === selfValue : false
+        })
         const attendees: CohortMatchedAttendee[] = matches.map((a) => {
           const p = a.expand!.person!
           return {
@@ -166,9 +174,17 @@ export function useCamperCohorts(
       }
 
       return {
-        school: buildEntry(selfPerson.normalized_school, 'normalized_school'),
-        congregation: buildEntry(selfPerson.normalized_congregation, 'normalized_congregation'),
-        city: buildEntry(selfPerson.normalized_city, 'normalized_city'),
+        school: buildEntry(selfPerson.normalized_school, (p) => p.normalized_school),
+        congregation: buildEntry(
+          selfPerson.normalized_congregation,
+          (p) => p.normalized_congregation
+        ),
+        // personLocation (utils/addressUtils.ts), not a raw normalized_city
+        // compare: normalized_city, when set, IS the whole label, but a
+        // person the geo-normalization sync hasn't reached yet only has
+        // address_city/address_state. Comparing raw normalized_city missed
+        // that pair entirely (kindred#2755).
+        city: buildEntry(personLocation(selfPerson), (p) => personLocation(p)),
         sessionType,
         allGenders: skipGenderFilter,
       }

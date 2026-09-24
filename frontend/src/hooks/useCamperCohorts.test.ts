@@ -31,6 +31,8 @@ function makeAttendee(overrides: {
   normalizedSchool?: string | null
   normalizedCongregation?: string | null
   normalizedCity?: string | null
+  addressCity?: string | null
+  addressState?: string | null
   gender?: string | null
   firstName?: string
   lastName?: string
@@ -55,6 +57,8 @@ function makeAttendee(overrides: {
         normalized_school: overrides.normalizedSchool ?? null,
         normalized_congregation: overrides.normalizedCongregation ?? null,
         normalized_city: overrides.normalizedCity ?? null,
+        address_city: overrides.addressCity ?? null,
+        address_state: overrides.addressState ?? null,
       },
       session: {
         session_type: overrides.sessionType ?? 'main',
@@ -553,6 +557,97 @@ describe('useCamperCohorts', () => {
     expect(result.current.cohorts?.congregation).toMatchObject({ label: 'Beth Shalom', count: 2 })
     // city: only a2 matches Springfield → count 1
     expect(result.current.cohorts?.city).toMatchObject({ label: 'Springfield', count: 1 })
+  })
+
+  describe('city cohort uses personLocation (kindred#2755)', () => {
+    it('falls back to composed address_city/address_state when normalized_city is blank', async () => {
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({
+          id: 'a1',
+          person_id: 1000001,
+          status_id: 2,
+          addressCity: 'Oakland',
+          addressState: 'CA',
+        }),
+        // same raw city/state, also no normalized_city yet — must still match
+        makeAttendee({
+          id: 'a2',
+          person_id: 1000002,
+          status_id: 2,
+          addressCity: 'Oakland',
+          addressState: 'CA',
+        }),
+        // different state — must not match
+        makeAttendee({
+          id: 'a3',
+          person_id: 1000003,
+          status_id: 2,
+          addressCity: 'Oakland',
+          addressState: 'OR',
+        }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      expect(result.current.cohorts?.city).toMatchObject({ label: 'Oakland, CA', count: 1 })
+    })
+
+    it('matches a normalized self against a not-yet-normalized peer at the same place', async () => {
+      // Self already ran through the geo-normalization sync; the peer's
+      // record hasn't been touched yet but carries the same raw address
+      // (same casing — personLocation composes raw columns verbatim, it
+      // does not itself fix casing; that's normalized_city's job). Before
+      // kindred#2755 the city cohort compared normalized_city directly, so
+      // this pair would silently never match.
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({
+          id: 'a1',
+          person_id: 1000001,
+          status_id: 2,
+          normalizedCity: 'Berkeley, CA',
+        }),
+        makeAttendee({
+          id: 'a2',
+          person_id: 1000002,
+          status_id: 2,
+          addressCity: 'Berkeley',
+          addressState: 'CA',
+        }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      expect(result.current.cohorts?.city).toMatchObject({ label: 'Berkeley, CA', count: 1 })
+    })
+
+    it('returns null for city cohort when self has neither normalized_city nor an address', async () => {
+      mockGetFullList.mockResolvedValue([
+        makeAttendee({ id: 'a1', person_id: 1000001, status_id: 2 }),
+        makeAttendee({
+          id: 'a2',
+          person_id: 1000002,
+          status_id: 2,
+          addressCity: 'Oakland',
+          addressState: 'CA',
+        }),
+      ])
+
+      const { result } = renderHook(() => useCamperCohorts(1000001, 201, 2025), {
+        wrapper: createWrapper(),
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      expect(result.current.cohorts?.city).toBeNull()
+    })
   })
 
   describe('attendee sort order', () => {

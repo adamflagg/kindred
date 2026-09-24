@@ -47,6 +47,11 @@ export const PersonsRecordSchema = z.object({
   secondary_email: z.string().optional(),
   address_city: z.string().optional(),
   address_state: z.string().optional(),
+  // The complete "City, ST" display label, when the geo-normalization sync
+  // has reached this person (kindred#2755) -- personLocation
+  // (utils/addressUtils.ts) reads this before falling back to
+  // address_city/address_state.
+  normalized_city: z.string().optional(),
   raw_data: nullableJson(z.record(z.string(), z.unknown())),
   school: z.string().optional(),
   year: z.number(),
