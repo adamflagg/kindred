@@ -1,21 +1,25 @@
 import type { Session } from '../types/app-types'
 import type { SessionDateLookup } from './sessionUtils'
-import { isAgSession, isQuestSession, isQuestSessionType } from './sessionTypePredicates'
-import { weekendTitle, adultWeekendTitle } from '../components/weekend/weekendNames'
+import { isAgSession, isQuestSession } from './sessionTypePredicates'
+import { sessionName } from './sessionName'
 
 /**
- * Canonical short display name for a session — used by the camper page (full +
- * pop-in modal headers), the journey timeline current row, and any other
- * surface that needs a single source of truth for the chip-style label.
+ * Session RECORD adapters. The name itself is rendered by `sessionName`
+ * (kindred#2763), at the form named in each adapter; what these add is only
+ * what needs the record — a missing name's fallback, and the AG ->
+ * parent-session lookup.
+ */
+
+/**
+ * The camper header chip — `sessionName(…, 'short')` of a session record.
  *
- * Behavior:
- *   - AG sessions are abbreviated via `shortenSessionName` because the raw AG
- *     name ("All-Gender Cabin-Session 2 (7th & 8th grades)") is too long for a
- *     header chip. Result is e.g. "AG 2 (7-8)".
- *   - Every other session type returns its raw `name` unchanged. Real-world
- *     names are already concise ("Session 2", "Session 2a", "Taste of Camp 2",
- *     "Teen Adventure Quests"), and the trailing digit on Taste of Camp is
- *     meaningful — Taste of Camp 1 and Taste of Camp 2 are different sessions.
+ * AG reads "AG 2 (7-8)", an adult weekend drops its qualifier ("Women's
+ * Weekend"), and everything else prints whole: real summer names are already
+ * concise, and Taste of Camp's trailing digit is meaningful.
+ *
+ * A record is taken at its word: with no `session_type` it passes `''`, so
+ * the short form does NOT infer AG from the name the way it does for the
+ * untyped metrics rows.
  *
  * @returns Short name, or null if no session/name to display.
  */
@@ -28,84 +32,28 @@ export function getSessionShortName(
     | undefined
 ): string | null {
   if (!session) return null
-
-  if (isAgSession(session)) {
-    return session.name ? shortenSessionName(session.name) : 'AG'
-  }
-
-  if (isQuestSession(session)) return session.name ?? 'Quest'
-
-  // ADULT WEEKENDS GET THE SAME SHORTENING AS THE JOURNEY/SIBLINGS (owner
-  // ruling 2026-09-22, see `getSessionDisplayNameFromString` below). Without
-  // this branch, the record's hero chip fell through to the raw name and
-  // still showed the CampMinder qualifier — "Women's Weekend (3 nights)" —
-  // for a past-year adult camper even though the journey already reads
-  // "Women's Weekend". Reuses `adultWeekendTitle` rather than duplicating
-  // its rule; scoped to 'adult' only so AG's meaningful grade-range
-  // parenthetical is untouched.
-  if (session.session_type === 'adult') {
-    return session.name ? adultWeekendTitle(session.name) : null
-  }
-
-  return session.name ?? null
+  const { name } = session
+  if (name) return sessionName(name, session.session_type ?? '', 'short')
+  // Missing-name fallbacks, per program, exactly as they have always read.
+  if (isAgSession(session)) return 'AG'
+  if (isQuestSession(session)) return name ?? 'Quest'
+  if (session.session_type === 'adult') return null
+  return name ?? null
 }
 
-/**
- * Shorten AG session names for compact display.
- *
- * Examples:
- *   "All-Gender Cabin-Session 2 (7th - 9th grades)"       → "AG 2 (7-9)"
- *   "Session 4 (All-Gender Cabin)-6th & 7th grades"       → "AG 4 (6-7)"
- *   "Session B (All-Gender Cabins)"                       → "AG B"
- *   "Session 2" (non-AG)                                  → "Session 2" (unchanged)
- */
+/** @deprecated kindred#2763 — `sessionName(name, undefined, 'short')`. */
 export function shortenSessionName(name: string): string {
-  const lower = name.toLowerCase()
-  if (!lower.includes('gender') && !/\bag[\s-]/i.test(name)) return name
-
-  // Extract session identifier (number or letter)
-  const sessionMatch = name.match(/session\s*(\w+)/i)
-  const sessionId = sessionMatch?.[1] ?? ''
-
-  // Extract grade range — "(4th - 6th grades)", "(9th & 10th grades)", etc.
-  const grades = name.match(/(\d+)\w*\s*[-–&]\s*(\d+)\w*\s*grades?\b/i)
-  const gradeRange = grades ? ` (${grades[1]}-${grades[2]})` : ''
-
-  return sessionId ? `AG ${sessionId}${gradeRange}` : `AG${gradeRange}`
+  return sessionName(name, undefined, 'short')
 }
 
-/**
- * Verbose AG label for the availability matrix — keeps "Session N" and the
- * ordinal grade range, dropping only the "All-Gender Cabin-" wrapper and the
- * trailing "grades" word. Intentionally longer than `shortenSessionName`
- * ("AG 2 (7-8)"): the availability table has the horizontal room and staff
- * prefer the explicit form there.
- *
- * Examples:
- *   "All-Gender Cabin-Session 2 (7th & 8th grades)" → "AG Session 2 (7th & 8th)"
- *   "All-Gender Cabin-Session 4 (4th - 6th grades)" → "AG Session 4 (4th - 6th)"
- *   "Session 4 (All-Gender Cabin)-6th & 7th grades" → "AG Session 4 (6th & 7th)"
- *   "Session B (All-Gender Cabins)"                 → "AG Session B"
- *   "Session 2" (non-AG)                            → "Session 2" (unchanged)
- */
+/** @deprecated kindred#2763 — `sessionName(name, undefined, 'matrix')`. */
 export function formatAgSessionLabel(name: string): string {
-  const lower = name.toLowerCase()
-  if (!lower.includes('gender') && !/\bag[\s-]/i.test(name)) return name
-
-  const sessionMatch = name.match(/session\s*(\w+)/i)
-  const sessionPart = sessionMatch?.[1] ? `Session ${sessionMatch[1]}` : ''
-
-  // Capture an ordinal grade range — "7th & 8th", "4th - 6th" — dropping "grades".
-  const gradeText = name.match(
-    /(\d+(?:st|nd|rd|th)?\s*[-–&]\s*\d+(?:st|nd|rd|th)?)\s*grades?/i
-  )?.[1]
-  const gradeRange = gradeText ? ` (${gradeText.replace(/\s+/g, ' ').trim()})` : ''
-
-  return `AG${sessionPart ? ` ${sessionPart}` : ''}${gradeRange}`
+  return sessionName(name, undefined, 'matrix')
 }
 
 /**
- * Get the properly formatted session name for display
+ * A session's full name, with an AG session named by its parent main session
+ * — `sessionName(…, 'full')` of the parent.
  * @param session The session to format
  * @param allSessions Optional array of all sessions for parent lookup
  * @returns The formatted session name
@@ -120,16 +68,17 @@ export function getFormattedSessionName(
   if (isAgSession(session) && session.parent_id && allSessions) {
     const parentSession = allSessions.find((s) => s.cm_id === session.parent_id)
     if (parentSession?.name) {
-      return parentSession.name
+      return sessionName(parentSession.name, parentSession.session_type, 'full')
     }
   }
 
-  // For all other sessions, return the name as-is
-  return session.name
+  return sessionName(session.name, session.session_type, 'full')
 }
 
 /**
- * Transform session names for display, converting AG sessions to their parent session names
+ * Like `getFormattedSessionName`, differing only in its empty-name fallbacks
+ * (an unnamed Quest reads "Quest"; an AG whose parent is unnamed reads
+ * "Unknown Session"). Both are pinned; reconciling them is #2790's.
  * @param session The session to get display name for
  * @param allSessions Optional array of all sessions for parent lookup
  * @returns The transformed display name
@@ -151,11 +100,10 @@ export function getSessionDisplayName(
 
   // For quest sessions, return the name as-is (they don't follow "Session N" pattern)
   if (isQuestSession(session)) {
-    return session.name || 'Quest'
+    return session.name ? sessionName(session.name, session.session_type, 'full') : 'Quest'
   }
 
-  // Fallback to original name
-  return session.name || 'Unknown Session'
+  return session.name ? sessionName(session.name, session.session_type, 'full') : 'Unknown Session'
 }
 
 /**
@@ -176,197 +124,24 @@ export function getParentSessionId(session: Session, allSessions: Session[]): st
   return session.cm_id
 }
 
-/**
- * Transform a session name string (used for historical data)
- * @param sessionName The session name string to transform
- * @param sessionType Optional session type for better accuracy
- * @returns The transformed display name
- */
-export function getSessionDisplayNameFromString(sessionName: string, sessionType?: string): string {
-  if (!sessionName) return 'Unknown Session'
-
-  // FAMILY CAMP USES THE BOARD'S OWN SHORT LABEL (kindred#2393, owner
-  // 2026-08-18). CampMinder's family-camp names run to
-  // "Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)" — 54
-  // characters — and the camper journey printed them verbatim, one per row,
-  // which is what made that timeline unreadable for a family-camp household.
-  // `weekendTitle` is the MID form — "Family Camp 3", not the board's terser
-  // "FC3". Both come off the same name in `weekendNames`, so the two surfaces
-  // cannot drift into two vocabularies for one weekend, but each gets the
-  // length its rows can afford. `weekendSubtitle` carries the rest (Keshet,
-  // JFAM, JFoC) for the surfaces with room to print it.
-  if (sessionType === 'family') return weekendTitle(sessionName)
-
-  // ADULT WEEKENDS GET THE MID-LENGTH TITLE TOO (owner ruling 2026-09-22):
-  // the raw CampMinder name carries a qualifier — a night count ("Women's
-  // Weekend (3 nights)"), a fee ("Spring Service Weekend ($54 fee)") — that
-  // is noise in a journey row. Scoped to 'adult' only: an AG session's
-  // parenthetical (a grade range) is meaningful and must not be stripped.
-  if (sessionType === 'adult') return adultWeekendTitle(sessionName)
-
-  // Check if it's an AG session by type or name pattern
-  if (
-    sessionType === 'ag' ||
-    sessionName.toLowerCase().includes('all-gender') ||
-    sessionName.toLowerCase().includes('ag session')
-  ) {
-    // Extract number from various patterns
-    const patterns = [
-      /ag\s*session\s*(\d+)/i,
-      /all-gender.*session\s*(\d+)/i,
-      /session\s*(\d+).*all-gender/i,
-    ]
-
-    for (const pattern of patterns) {
-      const match = sessionName.match(pattern)
-      if (match) return `Session ${match[1]}`
-    }
-  }
-
-  // Return original name if no transformation needed
-  return sessionName
+/** @deprecated kindred#2763 — `sessionName(name, type, 'title')`. */
+export function getSessionDisplayNameFromString(
+  sessionName_: string,
+  sessionType?: string
+): string {
+  return sessionName(sessionName_, sessionType, 'title')
 }
 
-/**
- * Get a concise session label for charts and metrics displays
- * @param sessionName The full session name from the API
- * @param sessionType Optional session type for better accuracy
- * @param _sessionDateLookup Deprecated - kept for backward compatibility but no longer used
- * @returns Abbreviated session name suitable for charts, preserving grade ranges
- *          (e.g. "All-Gender 2 (6-8)", "Session 2", "Session 2a", "Taste of Camp 2")
- */
+/** @deprecated kindred#2763 — `sessionName(name, type, 'chart')`. */
 export function getSessionChartLabel(
-  sessionName: string,
+  name: string,
   sessionType?: string,
   _sessionDateLookup?: SessionDateLookup
 ): string {
-  if (!sessionName) return 'Unknown'
-
-  // Extract grade range if present (e.g., "(Grades 6-8)" or "(6-8)")
-  const gradeMatch = sessionName.match(/\((?:Grades?\s*)?(\d+)[-–](\d+)\)/i)
-  const gradeRange = gradeMatch ? ` (${gradeMatch[1]}-${gradeMatch[2]})` : ''
-
-  // Handle Quest sessions - return session name as-is (e.g., "Teen Adventure Quests")
-  if (isQuestSessionType(sessionType) || sessionName.toLowerCase().includes('quest')) {
-    if (sessionName.length > 25) {
-      return sessionName.slice(0, 22) + '...'
-    }
-    return sessionName
-  }
-
-  // Handle Taste of Camp - return session name as-is (e.g., "Taste of Camp 2")
-  if (sessionName.toLowerCase().includes('taste')) {
-    return sessionName
-  }
-
-  // Handle AG sessions - abbreviate "All-Gender Cabin-Session 2 (Grades 6-8)" to "All-Gender 2 (6-8)"
-  if (
-    sessionType === 'ag' ||
-    sessionName.toLowerCase().includes('all-gender') ||
-    sessionName.toLowerCase().includes('ag session')
-  ) {
-    const patterns = [
-      /ag\s*session\s*(\d+)/i,
-      /all-gender.*session\s*(\d+)/i,
-      /session\s*(\d+).*all-gender/i,
-      /all-gender.*?(\d+)/i,
-    ]
-
-    for (const pattern of patterns) {
-      const match = sessionName.match(pattern)
-      if (match?.[1]) {
-        return `All-Gender ${match[1]}${gradeRange}`
-      }
-    }
-    // If no number found, just return "All-Gender" with grade range if present
-    return `All-Gender${gradeRange}`
-  }
-
-  // Handle embedded sessions - show "Session 2a", "Session 3a", etc.
-  if (sessionType === 'embedded') {
-    const embeddedMatch = sessionName.match(/session\s*(\d+[a-z])/i)
-    if (embeddedMatch?.[1]) {
-      return `Session ${embeddedMatch[1]}${gradeRange}`
-    }
-  }
-
-  // Handle main sessions - show "Session 2", "Session 3", etc.
-  const sessionMatch = sessionName.match(/session\s*(\d+[a-z]?)/i)
-  if (sessionMatch?.[1]) {
-    return `Session ${sessionMatch[1]}${gradeRange}`
-  }
-
-  // Fallback - return original name (truncated if too long)
-  if (sessionName.length > 25) {
-    return sessionName.slice(0, 22) + '...'
-  }
-  return sessionName
+  return sessionName(name, sessionType, 'chart')
 }
 
-/**
- * Get a short abbreviated version of session name for compact display
- * @param sessionName The full session name
- * @param sessionType Optional session type for better accuracy
- * @returns Abbreviated session name (e.g. "Taste", "2", "2a", "3")
- */
-export function getSessionShorthand(sessionName: string, sessionType?: string): string {
-  if (!sessionName) return ''
-
-  // Handle Quest sessions
-  if (isQuestSessionType(sessionType) || sessionName.toLowerCase().includes('quest')) {
-    return 'Quest'
-  }
-
-  // Handle Taste of Camp
-  if (sessionName.toLowerCase().includes('taste')) {
-    // When the camp runs split cohorts ("Taste of Camp 1" / "Taste of Camp 2"),
-    // preserve the trailing index so labels are distinguishable.
-    // 1-2 digit match (with whitespace prefix) avoids interpreting 4-digit year suffixes as cohorts.
-    const cohortMatch = sessionName.match(/\s(\d{1,2})\s*$/)
-    if (cohortMatch) {
-      return `Taste ${cohortMatch[1]}`
-    }
-    return 'Taste'
-  }
-
-  // Handle numbered sessions (Session 2, Session 2a, etc.)
-  const sessionMatch = sessionName.match(/Session\s*(\d+[a-z]?)/i)
-  if (sessionMatch) {
-    const matchedGroup = sessionMatch[1]
-    if (matchedGroup) {
-      return matchedGroup // Returns "2", "2a", "3", etc.
-    }
-  }
-
-  // Handle AG sessions - show as the parent session number
-  if (sessionType === 'ag' || sessionName.toLowerCase().includes('all-gender')) {
-    const patterns = [
-      /ag\s*session\s*(\d+)/i,
-      /all-gender.*session\s*(\d+)/i,
-      /session\s*(\d+).*all-gender/i,
-    ]
-
-    for (const pattern of patterns) {
-      const match = sessionName.match(pattern)
-      if (match) {
-        const matchedGroup = match[1]
-        if (matchedGroup) {
-          return matchedGroup
-        }
-      }
-    }
-  }
-
-  // Fallback - try to extract any number
-  const numberMatch = sessionName.match(/(\d+[a-z]?)/)
-  if (numberMatch) {
-    const matchedGroup = numberMatch[1]
-    if (matchedGroup) {
-      return matchedGroup
-    }
-  }
-
-  // Last resort - return first word
-  const firstWord = sessionName.split(' ')[0]
-  return firstWord ?? sessionName
+/** @deprecated kindred#2763 — `sessionName(name, type, 'tiny')`. */
+export function getSessionShorthand(name: string, sessionType?: string): string {
+  return sessionName(name, sessionType, 'tiny')
 }

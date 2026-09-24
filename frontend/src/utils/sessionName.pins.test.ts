@@ -34,6 +34,8 @@ import {
   shortenSessionName,
 } from './sessionDisplay'
 import { shortWeekendName, weekendLabel, weekendSlug } from '../components/weekend/weekendNames'
+import { sessionName } from './sessionName'
+import type { SessionNameForm } from './sessionName'
 import type { Session } from '../types/app-types'
 
 type Pin = readonly [name: string, sessionType: string | undefined, expected: string]
@@ -41,7 +43,7 @@ type Pin = readonly [name: string, sessionType: string | undefined, expected: st
 interface CallSiteGroup {
   group: string
   /** The form of `sessionName` these call sites map onto. */
-  form: 'full' | 'identity' | 'title' | 'short' | 'matrix' | 'chart' | 'tiny'
+  form: SessionNameForm
   /** What the call sites called before the move. */
   was: string
   sites: string[]
@@ -395,6 +397,16 @@ describe('#2763 call-site pins — the output before the move', () => {
     describe(`${group.group}: ${group.was}`, () => {
       it.each(group.pins)('%s (%s) → %s', (name, sessionType, expected) => {
         expect(group.legacy(name, sessionType)).toBe(expected)
+      })
+    })
+  }
+})
+
+describe('#2763 call-site pins — the same output through sessionName', () => {
+  for (const group of CALL_SITE_GROUPS) {
+    describe(`${group.group}: sessionName(name, type, '${group.form}')`, () => {
+      it.each(group.pins)('%s (%s) → %s', (name, sessionType, expected) => {
+        expect(sessionName(name, sessionType, group.form)).toBe(expected)
       })
     })
   }
