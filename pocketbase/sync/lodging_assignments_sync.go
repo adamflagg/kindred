@@ -676,6 +676,21 @@ func (s *LodgingAssignmentsSync) writeAttributed(in *ingestContext, res AliasRes
 	if !res.Resolved {
 		// Nothing to point a placement at, but the observation is preserved in
 		// history and the string is already in the work queue.
+		//
+		// A weekend the history rule attributed is re-derived on every daily run,
+		// so its unresolved observation is written once, not once a day. The
+		// single-weekend path keeps its own (pre-existing, #2061) behavior.
+		if in.fromHistory {
+			seen, err := s.unresolvedHistoryRecorded(in, attr.SessionCMID(), label)
+			if err != nil {
+				slog.Error("Checking unresolved-placement history", "raw", in.Raw, "error", err)
+				s.Stats.Errors++
+				return false
+			}
+			if seen {
+				return false
+			}
+		}
 		if err := s.recordHistory(in, attr.SessionID, attr.SessionCMID(), label); err != nil {
 			slog.Error("Recording unresolved-placement history", "raw", in.Raw, "error", err)
 			s.Stats.Errors++
@@ -1044,6 +1059,28 @@ func (s *LodgingAssignmentsSync) recordHistory(
 		OldUnit: "", NewUnit: label,
 		SourceField: in.SourceField, Now: in.Now,
 	})
+}
+
+// unresolvedHistoryRecorded reports whether lodging_assignment_history already
+// holds this unresolved observation: the same party, weekend and season, the
+// same observed label, written as an unresolved placement (old_unit empty)
+// through the same source field.
+func (s *LodgingAssignmentsSync) unresolvedHistoryRecorded(
+	in *ingestContext, sessionCMID int, label string,
+) (bool, error) {
+	params := dbx.Params{
+		"hh": in.HouseholdCMID, "person": in.PersonCMID,
+		"session": sessionCMID, "year": in.Year,
+	}
+	filter := "household_cm_id = {:hh} && person_cm_id = {:person} && " +
+		"session_cm_id = {:session} && year = {:year} && old_unit = '' && " +
+		eqOrEmpty("new_unit", "label", label, params) + " && " +
+		eqOrEmpty("source_field", "field", in.SourceField, params)
+	rows, err := s.App.FindRecordsByFilter("lodging_assignment_history", filter, "", 1, 0, params)
+	if err != nil {
+		return false, fmt.Errorf("looking up unresolved-placement history: %w", err)
+	}
+	return len(rows) > 0, nil
 }
 
 // buildPartySizeIndexes loads everything partySize needs in three scans.

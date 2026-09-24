@@ -882,3 +882,40 @@ func TestHistoryAttributionReplayFanOutAgreesWithTheSync(t *testing.T) {
 		t.Error("the sync after the replay left the answered row open")
 	}
 }
+
+// An earlier weekend's cabin string that maps to no unit is preserved in
+// lodging_assignment_history, as any unresolved placement is -- once. The ingest
+// re-derives every weekend on every daily run, so an unconditional write would
+// append the same row every day for as long as the string stays unmapped.
+func TestHistoryAttributionUnresolvedWeekendWritesHistoryOnce(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedHistoryHousehold(t, app)
+	const unmapped = "Cabin Unmapped"
+	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
+		"", unmapped, "2026-05-10T16:00:00.0000000+00:00", "2026-05-11 10:00:00.000Z", true)
+	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
+		unmapped, histCabinB, "2026-06-01T16:00:00.0000000+00:00", "2026-06-02 10:00:00.000Z", false)
+	addHouseholdValue(t, app, f.household, f.cabinDef, histCabinB, "2026-06-01T16:00:00.0000000+00:00", 2026)
+
+	unresolvedRows := func() int {
+		t.Helper()
+		rows, err := app.FindRecordsByFilter("lodging_assignment_history",
+			"new_unit = {:raw}", "", 0, 0, map[string]any{"raw": unmapped})
+		if err != nil {
+			t.Fatalf("find history: %v", err)
+		}
+		return len(rows)
+	}
+
+	runLodgingSync(t, app, 2026, false)
+	if n := unresolvedRows(); n != 1 {
+		t.Fatalf("after the first run: %d history rows for the unmapped weekend, want 1", n)
+	}
+	runLodgingSync(t, app, 2026, false)
+	runLodgingSync(t, app, 2026, false)
+	if n := unresolvedRows(); n != 1 {
+		t.Errorf("after three runs: %d history rows for the unmapped weekend, want still 1", n)
+	}
+	assertPlaced(t, placementsBySession(t, app), f.w2, f.unitB, "W2")
+}
