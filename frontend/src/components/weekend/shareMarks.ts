@@ -18,7 +18,8 @@
  * This module is the ONE grading for both, in the register `needGlyphs.ts`
  * established: a pure `.ts` truth table, testable without rendering a card,
  * naming icon COMPONENTS rather than drawing them so the renderer
- * (`ShareMarks.tsx`, Task 4) owns the markup and this owns the vocabulary.
+ * (`MarkRun.tsx`, via `ShareMarks.tsx`) owns the markup and this owns the
+ * vocabulary.
  *
  * ## Two families of marks, and the shape split is deliberate
  *
@@ -186,7 +187,8 @@ const ANCHOR_ARIA_LABEL: Record<ShareAnchorState, string> = {
  * unmet-need signal. `unanswered` carries no fill at all, so it never looks
  * like a positive answer while still never being hidden.
  */
-const ANCHOR_CLASS: Record<ShareAnchorState, string> = {
+// Exported (kindred#2759) so the adult Jotform anchor reuses the locked tones rather than restating them.
+export const ANCHOR_CLASS: Record<ShareAnchorState, string> = {
   yes: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
   maybe: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
   no: 'bg-muted text-muted-foreground',
@@ -199,7 +201,7 @@ const SHARED_REQUEST_SOURCE = 'Shared-request'
 /** The free-text source field every cluster mark's tooltip reads (206286, the names box). */
 const NAMES_SOURCE = 'COVID-19 Bunking Requests'
 
-/** The locked icon, per cluster key (spec §3). The anchor's own `Handshake` is fixed in Task 4's JSX — `ShareAnchorSpec` carries no `Icon` field because every state draws the same one. */
+/** The locked icon, per cluster key (spec §3). The anchor's own `Handshake` is fixed by its drawers (`shareMarkRuns.ts` for the card, `ShareRequestPanel.tsx`'s anchor row for the panel) — `ShareAnchorSpec` carries no `Icon` field because every state draws the same one. */
 const CLUSTER_ICON: Record<ShareClusterMark['key'], LucideIcon> = {
   with: HeartHandshake,
   similar_ages: UsersRound,

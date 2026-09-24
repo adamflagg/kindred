@@ -1217,3 +1217,42 @@ describe('backdrop-click ownership when opened ON TOP of an existing overlay (ki
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
   })
 })
+
+describe('request + needs sections — render-identical golden (kindred#2759 extract)', () => {
+  it('household', async () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          share: { preference: 'yes_share', proximity: ['with'], wants_with_named: true },
+          flags: { needs_power: true, needs_accommodation: true },
+        })}
+        year={2026}
+        onClose={() => {}}
+      />,
+      { wrapper }
+    )
+    await expect(screen.getByTestId('family-details-panel').innerHTML).toMatchFileSnapshot(
+      './__golden__/family-details-panel.household.golden.txt'
+    )
+  })
+
+  it('adult guest (person grain)', async () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          grain: 'person',
+          household_cm_id: 0,
+          person_cm_id: 1000004,
+          display_name: 'Olivia Chen',
+          flags: { needs_private_bathroom: true },
+        })}
+        year={2026}
+        onClose={() => {}}
+      />,
+      { wrapper }
+    )
+    await expect(screen.getByTestId('family-details-panel').innerHTML).toMatchFileSnapshot(
+      './__golden__/family-details-panel.person.golden.txt'
+    )
+  })
+})

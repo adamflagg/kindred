@@ -1521,7 +1521,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                   rule: a WRAPPER, never the glyph itself — scaling the icon
                   directly would skew it relative to its siblings the moment
                   `ui/Tooltip`'s own button grows the transparent 24px hit
-                  target around it. `rounded-full` matches `ShareMarks.tsx`'s
+                  target around it. `rounded-full` matches `MarkRun.tsx`'s
                   `VEHICLE` for the same reason: the halo is a box-shadow,
                   which follows border-radius. */}
               <span
