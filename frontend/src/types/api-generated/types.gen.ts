@@ -2176,6 +2176,9 @@ export type HouseholdJourneyResponse = {
  * household was at and says nothing about where it slept in each. Repeating
  * the year's cabin against every entry is the fan-out that manufactured 12
  * of 17 false multi-family occupancies in the phase-C shareability analysis.
+ * Where a real per-weekend cabin exists -- the CampMinder layer, 2026 on --
+ * it travels separately, on `HouseholdJourneyYear.weekend_cabins`
+ * (kindred#2775).
  *
  * `start_date` is the raw PocketBase string, exactly as
  * `WeekendSessionSummary` publishes it -- the client already reads that
