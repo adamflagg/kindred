@@ -9,6 +9,8 @@ import type { SatisfactionResponse } from '../types/satisfaction'
 let mockSessionYear = 2026
 let mockAttendeeYear = 2026
 let mockSessionType = 'main'
+let mockAttendeeStatus = 'enrolled'
+let mockScenario: { id: string } | null = null
 // kindred#2329: which year `CamperDetail` actually asked the enrollment
 // hook for. A journey-year link (`?year=2019`) must win over the app's
 // global year (mocked at 2026 below) — this is how the tests below tell
@@ -32,7 +34,7 @@ vi.mock('../hooks/camper', () => ({
           id: 'att1',
           person_cm_id: 1000001,
           session_cm_id: 2,
-          attendee_status: 'enrolled',
+          attendee_status: mockAttendeeStatus,
           year: mockAttendeeYear,
           first_name: 'Emma',
           last_name: 'Johnson',
@@ -149,7 +151,7 @@ vi.mock('../lib/pocketbase', () => ({
 }))
 
 vi.mock('../hooks/useScenario', () => ({
-  useScenario: () => ({ currentScenario: null }),
+  useScenario: () => ({ currentScenario: mockScenario }),
 }))
 
 // Default response — campers map empty so getSatisfiedRequestInfo returns
@@ -202,6 +204,8 @@ beforeEach(() => {
   mockSessionYear = 2026
   mockAttendeeYear = 2026
   mockSessionType = 'main'
+  mockAttendeeStatus = 'enrolled'
+  mockScenario = null
   lastEnrollmentYearArg = null
   mockJourneyError = null
   // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
@@ -301,8 +305,8 @@ describe('CamperDetail satisfaction summary', () => {
     }
   })
 
-  it('renders X/Y met summary on standalone /camper/:id route when provider supplies satisfaction data', async () => {
-    // BunkRequestProvider fetches /api/satisfaction — mock it to return 1 material_parent
+  it('renders X/Y met summary on standalone /camper/:id route when /api/satisfaction returns data', async () => {
+    // The page reads /api/satisfaction via useSessionSatisfaction — mock it to return 1 material_parent
     // request with satisfied=1, total=2 for person 1000001 (session_cm_id=2 from fixture).
     const satisfactionPayload: SatisfactionResponse = {
       campers: {
@@ -333,7 +337,7 @@ describe('CamperDetail satisfaction summary', () => {
       )
 
     renderDetail()
-    // "1/2 met" should appear once the provider resolves and BunkingStatusPanel renders
+    // "1/2 met" should appear once the satisfaction query resolves and BunkingStatusPanel renders
     expect(await screen.findByText(/1\/2 met/i)).toBeTruthy()
   })
 })
@@ -366,6 +370,46 @@ describe('CamperDetail satisfaction read path', () => {
     expect(params.get('session')).toBe('2')
     expect(params.get('year')).toBe('2026')
     expect(params.has('scenario')).toBe(false)
+  })
+
+  it('does not ask /api/satisfaction for a summer camper who is not enrolled (panels hidden)', async () => {
+    mockAttendeeStatus = 'waitlisted'
+    renderDetail()
+    await screen.findByText(/Camp Journey/i)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(satisfactionUrls()).toHaveLength(0)
+  })
+
+  // A journey-year link (?year=) shows that year's enrollment, requests and
+  // session. Satisfaction must be that year's too: CampMinder reuses session
+  // ids across years, so the global year would return the current year's
+  // result for the same session id.
+  it('asks /api/satisfaction for the ?year= year, not the app-global year', async () => {
+    mockSessionYear = 2019
+    mockAttendeeYear = 2019
+    renderDetail('/camper/1000001?year=2019')
+    await waitFor(() => expect(satisfactionUrls()).toHaveLength(1))
+    const params = new URLSearchParams(satisfactionUrls()[0]!.split('?')[1])
+    expect(params.get('year')).toBe('2019')
+  })
+
+  it('drops the active scenario when reading another year (a scenario drafts the current year)', async () => {
+    mockScenario = { id: 'scenario-1' }
+    mockSessionYear = 2019
+    mockAttendeeYear = 2019
+    renderDetail('/camper/1000001?year=2019')
+    await waitFor(() => expect(satisfactionUrls()).toHaveLength(1))
+    const params = new URLSearchParams(satisfactionUrls()[0]!.split('?')[1])
+    expect(params.has('scenario')).toBe(false)
+  })
+
+  it('keeps the active scenario for the current year', async () => {
+    mockScenario = { id: 'scenario-1' }
+    renderDetail()
+    await waitFor(() => expect(satisfactionUrls()).toHaveLength(1))
+    const params = new URLSearchParams(satisfactionUrls()[0]!.split('?')[1])
+    expect(params.get('scenario')).toBe('scenario-1')
+    expect(params.get('year')).toBe('2026')
   })
 
   it('does not ask /api/satisfaction when the bunking panels are hidden (teen program)', async () => {

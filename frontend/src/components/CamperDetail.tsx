@@ -130,11 +130,12 @@ function CamperDetailBody({
   // BunkRequestProvider uses. The page does not mount that provider: it would
   // also fetch the session's entire bunk_requests list, which nothing here
   // reads (useAllBunkRequests fetches this camper's own rows). Only fetched
-  // when the bunking panels that show it render. Camp is
-  // single-session-per-camper; session_cm_id ?? 0 disables the query for an
-  // unassigned camper.
+  // when the bunking panels that show it render, and for the page's year
+  // (a ?year= link included). Camp is single-session-per-camper;
+  // session_cm_id ?? 0 disables the query for an unassigned camper.
   const { data: satisfaction } = useSessionSatisfaction(camper.session_cm_id ?? 0, {
-    enabled: showBunkingUI,
+    enabled: camper.attendee_status === 'enrolled' && showBunkingUI,
+    year: currentYear,
   })
   const camperSatisfaction = useMemo(
     () =>

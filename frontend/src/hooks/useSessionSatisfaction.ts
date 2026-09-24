@@ -14,13 +14,23 @@ import { queryKeys } from '../utils/queryKeys'
  * hook, so they share one cache entry and one set of invalidations
  * (`queryKeys.satisfactionPrefix()`). Pass `enabled: false` where the result
  * would not be shown.
+ *
+ * `year` defaults to the app's global year. The full camper page passes its
+ * `?year=` year: CampMinder reuses session ids across years, so asking for
+ * another year's session under the global year returns the current year's
+ * result for that id. The active scenario is a draft of the global year, so
+ * it applies only there; any other year reads production.
  */
-export function useSessionSatisfaction(sessionCmId: number, { enabled = true } = {}) {
-  const currentYear = useYear()
+export function useSessionSatisfaction(
+  sessionCmId: number,
+  { enabled = true, year }: { enabled?: boolean; year?: number } = {}
+) {
+  const appYear = useYear()
+  const currentYear = year ?? appYear
   const { user, isLoading: isAuthLoading } = useAuth()
   const { currentScenario } = useScenario()
   const { fetchWithAuth } = useApiWithAuth()
-  const scenarioId = currentScenario?.id ?? null
+  const scenarioId = currentYear === appYear ? (currentScenario?.id ?? null) : null
 
   return useQuery<SatisfactionResponse>({
     queryKey: queryKeys.satisfaction(sessionCmId, currentYear, scenarioId),

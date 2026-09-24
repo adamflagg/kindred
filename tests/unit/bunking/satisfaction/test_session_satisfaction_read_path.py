@@ -28,7 +28,7 @@ from bunking.satisfaction.aggregate import session_satisfaction
 from tests.fixtures.pb_projection import project
 
 YEAR = 2026
-SESSION = 999
+SESSION = 1000001
 
 ASSIGNMENT_FIELDS = {
     "id",
