@@ -1660,11 +1660,18 @@ class TestFetchHouseholdRegistrationCabins:
     reach CampMinder at all, so the cabin is their only trace.
     """
 
+    @staticmethod
+    def _registration(year: int, cabin: str, household_year: int | None = None) -> MagicMock:
+        """A registration row as the read projects it: its own year and cabin,
+        and the year of the `households` record it hangs off."""
+        household = _record(year=year if household_year is None else household_year)
+        return _record(year=year, cabin_assignment=cabin, expand={"household": household})
+
     @pytest.mark.asyncio
     async def test_returns_the_cabin_keyed_by_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
         pb.collection.return_value.get_full_list.return_value = [
-            _record(year=2024, cabin_assignment="Cedar Lodge"),
-            _record(year=2021, cabin_assignment=""),
+            self._registration(2024, "Cedar Lodge"),
+            self._registration(2021, ""),
         ]
 
         result = await repo.fetch_household_registration_cabins(2000001)
@@ -1687,12 +1694,22 @@ class TestFetchHouseholdRegistrationCabins:
         this read would pick that row up and hand the year somebody's cabin
         the join never saw.
 
-        A field-to-field comparison, so PocketBase checks it per row rather
-        than against one literal year.
+        Checked here rather than in the filter: the journey's reads carry no
+        year predicate at all (`test_it_takes_no_year_because_the_window_is_discovered`),
+        and the household's year is one projected column away.
         """
-        await repo.fetch_household_registration_cabins(2000001)
+        pb.collection.return_value.get_full_list.return_value = [
+            self._registration(2024, "Cedar Lodge"),
+            self._registration(2023, "Pine Cabin", household_year=2022),
+        ]
 
-        assert _last_query(pb)["filter"] == "household.cm_id = 2000001 && household.year = year"
+        result = await repo.fetch_household_registration_cabins(2000001)
+
+        params = _last_query(pb)
+        assert params["filter"] == "household.cm_id = 2000001"
+        assert params["expand"] == "household"
+        assert "expand.household.year" in params["fields"]
+        assert result == {2024: "Cedar Lodge"}
 
     @pytest.mark.asyncio
     async def test_a_blank_cabin_is_kept_not_dropped(self, repo: LodgingRepository, pb: MagicMock) -> None:
@@ -1701,13 +1718,13 @@ class TestFetchHouseholdRegistrationCabins:
         no cabin" indistinguishable from "never registered", and 1,433 rows
         from 2017-2021 are blank.
         """
-        pb.collection.return_value.get_full_list.return_value = [_record(year=2021, cabin_assignment="")]
+        pb.collection.return_value.get_full_list.return_value = [self._registration(2021, "")]
 
         assert await repo.fetch_household_registration_cabins(2000001) == {2021: ""}
 
     @pytest.mark.asyncio
     async def test_year_zero_is_not_a_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        pb.collection.return_value.get_full_list.return_value = [_record(year=0, cabin_assignment="Cedar Lodge")]
+        pb.collection.return_value.get_full_list.return_value = [self._registration(0, "Cedar Lodge")]
 
         assert await repo.fetch_household_registration_cabins(2000001) == {}
 

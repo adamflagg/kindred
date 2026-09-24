@@ -6713,8 +6713,8 @@ class _RegistrationWorld:
         return out
 
     async def own_cabins(self, household_cm_id: int) -> dict[int, str]:
-        """`fetch_household_registration_cabins`: `household.cm_id = X &&
-        household.year = year`, raw."""
+        """`fetch_household_registration_cabins`: `household.cm_id = X`, only
+        rows hung off their own year's household, raw."""
         out: dict[int, str] = {}
         for reg_year, household, cabin in self.registrations:
             cm_id, household_year = self.households[household]

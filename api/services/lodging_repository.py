@@ -992,18 +992,13 @@ class LodgingRepository:
         rows = await self._page(
             FAMILY_CAMP_REGISTRATIONS,
             query_params={
-                # `household.year = year` is a field-to-field comparison, so
-                # PocketBase checks each row against its OWN household record.
-                # A registration hung off another year's `households` row is
-                # skipped, exactly as the year-wide join
-                # (`fetch_cabin_assignments_by_household_cm_id`) skips it --
-                # the household journey takes its cabin from here instead of
-                # from that join, and the two must name the same rows.
-                "filter": f"household.cm_id = {household_cm_id} && household.year = year",
+                "filter": f"household.cm_id = {household_cm_id}",
+                # The household's own year rides along (see the loop below).
+                "expand": "household",
                 # `cabin_assignment` alongside `year`: requesting `year` alone
                 # is what made this a bare year set, and the whole point of the
                 # read now is the string beside it.
-                "fields": "year,cabin_assignment",
+                "fields": "year,cabin_assignment,expand.household.year",
                 "sort": STABLE_SORT,
             },
         )
@@ -1011,6 +1006,16 @@ class LodgingRepository:
         for row in rows:
             year = int(getattr(row, "year", 0) or 0)
             if not year:
+                continue
+            # ONLY A REGISTRATION HUNG OFF ITS OWN YEAR'S HOUSEHOLD. `households`
+            # is year-scoped, and the year-wide join the household journey used
+            # to take its cabin from (`fetch_cabin_assignments_by_household_cm_id`)
+            # matched a registration only to the SAME year's record. Keyed on
+            # the CampMinder id alone, this read would also pick up one hung off
+            # another year's record, which the join skipped. Checked here, not
+            # in the filter: the journey's reads carry no year predicate at all.
+            household = (getattr(row, "expand", None) or {}).get("household")
+            if int(getattr(household, "year", 0) or 0) != year:
                 continue
             # RAW, exactly as `fetch_cabin_assignments_by_household_cm_id`
             # returns it: resolution happens at display (kindred#2332), and a
