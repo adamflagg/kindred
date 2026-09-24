@@ -6,7 +6,7 @@ matching monolith's build_temporal_name_cache() behavior."""
 import logging
 from datetime import datetime
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 
 class TestTemporalNameCache:
@@ -794,3 +794,71 @@ class TestHistoricalBunkingSessionType:
         )
 
         assert cache.verify_bunk_together(1008, [1009], 2025) == (False, "")
+
+
+class TestTemporalNameCacheMapToPerson:
+    """TemporalNameCache._map_to_person reads the same normalized city/state
+    columns as PersonRepository._map_to_person (kindred#2755) -- the two
+    implementations were hand-duplicated and must agree, since both feed
+    school_disambiguation's independent city/state equality check."""
+
+    def _make_db_record(self, **overrides: object) -> MagicMock:
+        defaults: dict[str, object] = {
+            "cm_id": 1001,
+            "first_name": "Emma",
+            "last_name": "Johnson",
+            "preferred_name": None,
+            "birthdate": None,
+            "grade": 5,
+            "school": "Hillcrest Elementary",
+            "normalized_school": "Hillcrest ES",
+            "normalized_city": None,
+            "address_city": None,
+            "address_state": None,
+            "parent_names": None,
+            "household_id": None,
+            "gender": "F",
+            "normalized_congregation": None,
+        }
+        defaults.update(overrides)
+        record = MagicMock()
+        for key, val in defaults.items():
+            setattr(record, key, val)
+        return record
+
+    def _cache(self) -> Any:
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        return TemporalNameCache.__new__(TemporalNameCache)
+
+    def test_city_reads_normalized_city(self) -> None:
+        record = self._make_db_record(normalized_city="Oakland", address_city="Oakland (raw)")
+        person = self._cache()._map_to_person(record)
+        assert person is not None
+        assert person.city == "Oakland"
+
+    def test_city_falls_back_to_address_city(self) -> None:
+        record = self._make_db_record(normalized_city=None, address_city="San Francisco")
+        person = self._cache()._map_to_person(record)
+        assert person is not None
+        assert person.city == "San Francisco"
+
+    def test_state_reads_address_state(self) -> None:
+        record = self._make_db_record(address_state="CA")
+        person = self._cache()._map_to_person(record)
+        assert person is not None
+        assert person.state == "CA"
+
+    def test_city_strips_the_state_suffix_normalized_city_carries(self) -> None:
+        """Same bug shape as PersonRepository's equivalent test: normalized_city
+        is a complete "City, ST" label, so person.city must not keep the
+        suffix while person.state also carries the raw address_state --
+        otherwise two persons who differ only in whether normalize_geographic
+        has reached them yet compare unequal in school_disambiguation."""
+        record = self._make_db_record(normalized_city="Oakland, CA", address_city="oakland", address_state="CA")
+        person = self._cache()._map_to_person(record)
+        assert person is not None
+        assert person.city == "Oakland"
+        assert person.state == "CA"

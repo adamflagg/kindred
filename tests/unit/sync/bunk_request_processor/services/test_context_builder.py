@@ -24,6 +24,8 @@ def _create_person(
     preferred_name: str | None = None,
     birth_date: datetime | None = None,
     parent_names: str | None = None,
+    city: str | None = None,
+    state: str | None = None,
 ) -> Person:
     """Helper to create Person objects"""
     # Default birth date if not provided
@@ -38,6 +40,8 @@ def _create_person(
         preferred_name=preferred_name,
         birth_date=birth_date,
         parent_names=parent_names,
+        city=city,
+        state=state,
     )
 
 
@@ -478,6 +482,22 @@ class TestContextBuilderHelperMethods:
         formatted = builder._format_candidates([candidate])
 
         assert formatted[0]["school"] == "Lincoln Elementary"
+
+    def test_format_candidates_includes_state(self):
+        """Candidate formatting includes state alongside the (state-stripped) city.
+
+        Regression guard for kindred#2793: person_city_only strips the state
+        suffix out of Person.city, so the candidate dict must carry state
+        separately or the AI disambiguation prompt loses it entirely for
+        same-named cities in different states.
+        """
+        builder = ContextBuilder()
+        candidate = _create_person(city="Oakland", state="CA")
+
+        formatted = builder._format_candidates([candidate])
+
+        assert formatted[0]["city"] == "Oakland"
+        assert formatted[0]["state"] == "CA"
 
     def test_format_candidates_includes_parent_names(self):
         """Candidate formatting includes parent names when available"""

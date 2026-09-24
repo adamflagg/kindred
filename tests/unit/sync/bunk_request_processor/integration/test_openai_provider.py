@@ -280,3 +280,51 @@ class TestBuildPromptRequesterLastName:
 
         # Single-word name has no last name — parse_name treats it as first name only
         assert "Requester last name: \n" in prompt or "Requester last name:\n" in prompt
+
+
+class TestFormatCandidatesCityState:
+    """Regression guard for kindred#2793.
+
+    person_city_only (added to fix the school-disambiguation city/state
+    equality check) strips the state suffix out of Person.city. Before that
+    change, a normalized city like "Oakland, CA" could flow straight into
+    the "City: {city}" template and render the state along with it. The
+    disambiguation prompt must keep rendering state info now that city and
+    state are separate fields, not silently drop it.
+    """
+
+    def test_format_candidates_renders_city_and_state(self):
+        """A candidate with both city and state renders 'City: Oakland, CA'."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        candidates = [
+            {
+                "name": "Emma Johnson",
+                "person_id": 12345,
+                "city": "Oakland",
+                "state": "CA",
+            }
+        ]
+
+        formatted = provider._format_candidates(candidates)
+
+        assert "City: Oakland, CA" in formatted
+
+    def test_format_candidates_renders_city_only_when_state_blank(self):
+        """A candidate with a city but no state renders 'City: Oakland' — never a trailing comma."""
+        provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        candidates = [
+            {
+                "name": "Liam Garcia",
+                "person_id": 12346,
+                "city": "Oakland",
+                "state": None,
+            }
+        ]
+
+        formatted = provider._format_candidates(candidates)
+
+        assert "City: Oakland\n" in formatted or formatted.rstrip().endswith("City: Oakland")
+        assert "City: Oakland," not in formatted
+        assert "City: Oakland, CA" not in formatted
