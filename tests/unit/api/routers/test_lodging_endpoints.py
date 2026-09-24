@@ -2476,7 +2476,9 @@ class TestPersonHousingEndpoint:
         # `bunk_assignments` -- the person's TLI/SCIT bunks, resolved to real
         # cabins through the same registry. Still no registry read when there
         # is nothing to resolve.
-        assert set(collections) == {"person_custom_values", "attendees", "bunk_assignments"}
+        # RULED CHANGE (kindred#2775, owner ruling 2026-09-23): + the person's
+        # live `lodging_assignments` rows, the CampMinder layer for 2026 on.
+        assert set(collections) == {"person_custom_values", "attendees", "bunk_assignments", "lodging_assignments"}
         assert "family_camp_medical" not in collections
 
     def test_it_also_reads_the_registry_once_there_is_something_to_attribute(self, mock_pb: MagicMock) -> None:
@@ -2511,10 +2513,12 @@ class TestPersonHousingEndpoint:
 
         assert response.status_code == 200
         # RULED CHANGE (owner, 2026-09-22 late, Q9): + `bunk_assignments`.
+        # RULED CHANGE (kindred#2775): + the live `lodging_assignments` rows.
         assert set(collections) == {
             "person_custom_values",
             "attendees",
             "bunk_assignments",
+            "lodging_assignments",
             "lodging_units",
             "lodging_unit_aliases",
         }

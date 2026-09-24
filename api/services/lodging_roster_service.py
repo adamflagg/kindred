@@ -16,7 +16,7 @@ retargeted the gate from the now-removed Permission.LODGING_PHI).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
@@ -30,6 +30,7 @@ from api.schemas.lodging import (
     EffectiveBathroom,
     HouseholdJourneyResponse,
     HouseholdJourneySession,
+    HouseholdJourneyWeekendCabin,
     HouseholdJourneyYear,
     HouseholdMedicalResponse,
     HousingState,
@@ -74,9 +75,13 @@ from api.services.lodging_rules import (
     unit_shareability,
 )
 from api.services.person_housing_rules import (
+    LIVE_HOUSING_FROM_YEAR,
+    AttributedCabin,
     adult_weekends_from_rows,
-    attribute_adult_cabins,
     cabin_values_from_rows,
+    live_cabins_for_year,
+    live_names,
+    named_adult_cabins,
     pick_year_cabin,
 )
 from bunking.logging_config import get_logger
@@ -567,6 +572,21 @@ def _party_adult(adult: Any) -> PartyAdult:
     )
 
 
+def _by_party(rows: Iterable[Any], key: Callable[[Any], int]) -> dict[int, list[Any]]:
+    """Rows grouped by a positive party cm_id; a row with none is dropped."""
+    out: dict[int, list[Any]] = {}
+    for row in rows:
+        cm_id = key(row)
+        if cm_id > 0:
+            out.setdefault(cm_id, []).append(row)
+    return out
+
+
+def _expanded_cm_id(row: Any, relation: str, field: str) -> int:
+    related = (getattr(row, "expand", None) or {}).get(relation)
+    return _i(related, field) if related is not None else 0
+
+
 def _last_year_adult_cabins(
     value_rows: list[Any],
     attendee_rows: list[Any],
@@ -574,46 +594,87 @@ def _last_year_adult_cabins(
     *,
     year: int,
     board_session_cm_id: int,
+    live_rows: Sequence[Any] = (),
 ) -> dict[int, str]:
     """Each adult-weekend guest's cabin in `year`, keyed by person cm_id
     (kindred#2767).
 
-    The adult journey's rule, run once over a whole cohort: the allowlisted
-    cabin values and the ENROLLED adult attendee rows of one season, grouped
-    by guest, attributed to a weekend by `attribute_adult_cabins`, and named
-    with today's registry name through the ONE resolver `build_roster`
-    already holds (kindred#2332) -- falling back to the as-typed string,
-    trimmed, when nothing resolves. A guest with no enrolled adult weekend
-    that season gets nothing: a cancelled year's cabin never attributes.
-    Two weekends that season -> `pick_year_cabin`'s preference.
+    The adult journey's answer (`named_adult_cabins`, the same composition
+    `PersonHousingService` runs for one person), computed once over a whole
+    cohort: the allowlisted cabin values and the ENROLLED adult attendee rows
+    of one season, grouped by guest, named through the ONE resolver
+    `build_roster` already holds (kindred#2332). A guest with no enrolled
+    adult weekend that season gets nothing: a cancelled year's cabin never
+    attributes. Two weekends that season -> `pick_year_cabin`'s preference.
 
-    Takes rows rather than reading them, so a later reader of the live
-    CampMinder-layer rows (kindred#2775) can pass those in beside them.
+    `live_rows` are the season's CampMinder-layer rows (kindred#2775), read
+    only once `year` is a live-housing season; where every one of a guest's
+    enrolled weekends has one, they replace the rule, exactly as on the
+    journey.
     """
-    values_by_person: dict[int, list[Any]] = {}
-    for row in value_rows:
-        person = (getattr(row, "expand", None) or {}).get("person")
-        person_cm_id = _i(person, "cm_id") if person is not None else 0
-        if person_cm_id > 0:
-            values_by_person.setdefault(person_cm_id, []).append(row)
-    attendance_by_person: dict[int, list[Any]] = {}
-    for row in attendee_rows:
-        person_cm_id = _i(row, "person_id")
-        if person_cm_id > 0:
-            attendance_by_person.setdefault(person_cm_id, []).append(row)
+    values_by_person = _by_party(value_rows, lambda row: _expanded_cm_id(row, "person", "cm_id"))
+    attendance_by_person = _by_party(attendee_rows, lambda row: _i(row, "person_id"))
+    live_by_person = _by_party(live_rows, lambda row: _i(row, "person_cm_id"))
 
     out: dict[int, str] = {}
-    for person_cm_id, rows in values_by_person.items():
+    for person_cm_id in set(values_by_person) | set(live_by_person):
         weekends = adult_weekends_from_rows(attendance_by_person.get(person_cm_id, []))
         if not weekends:
             continue
-        attributed = attribute_adult_cabins(cabin_values_from_rows(rows), weekends, housing_names.resolve_codes)
-        picked = pick_year_cabin(attributed, weekends, year=year, prefer_session_cm_id=board_session_cm_id)
-        if picked is None:
+        cabins = named_adult_cabins(
+            cabin_values_from_rows(values_by_person.get(person_cm_id, [])),
+            weekends,
+            live_names(live_by_person.get(person_cm_id, []), housing_names.display_name_for_unit_ids),
+            housing_names.resolve_codes,
+            housing_names.display_name,
+        )
+        picked = pick_year_cabin(cabins, weekends, year=year, prefer_session_cm_id=board_session_cm_id)
+        if picked is not None and picked.cabin_name:
+            out[person_cm_id] = picked.cabin_name
+    return out
+
+
+def _last_year_family_live_cabins(
+    enrolled_rows: list[Any],
+    live_rows: Sequence[Any],
+    housing_names: HousingNameResolver,
+    *,
+    year: int,
+    board_session_cm_id: int,
+) -> dict[int, str]:
+    """Each household's cabin in `year` from the CampMinder layer, keyed by
+    household cm_id -- only for a household every one of whose ENROLLED
+    family weekends that season has a live row (kindred#2775). Every other
+    household is absent, and the caller keeps today's one-cabin-for-the-year
+    string. Two weekends -> the board's own weekend (CampMinder reuses its
+    id every season), else the latest-ending one, as on the adult card."""
+    enrolled_by_household = _by_party(enrolled_rows, lambda row: _expanded_cm_id(row, "person", "household_id"))
+    live_by_household = _by_party(live_rows, lambda row: _i(row, "household_cm_id"))
+
+    out: dict[int, str] = {}
+    for household_cm_id, rows in live_by_household.items():
+        weekends = [
+            w for w in adult_weekends_from_rows(enrolled_by_household.get(household_cm_id, [])) if w.year == year
+        ]
+        names = live_names(rows, housing_names.display_name_for_unit_ids)
+        live = live_cabins_for_year(
+            year,
+            {w.session_cm_id for w in weekends},
+            {session: name for (live_year, session), name in names.items() if live_year == year},
+        )
+        if live is None:
             continue
-        name = housing_names.display_name(picked.cabin_name_raw, year).strip()
-        if name:
-            out[person_cm_id] = name
+        picked = pick_year_cabin(
+            [
+                AttributedCabin(year=year, session_cm_id=session, cabin_name=name, cabin_name_raw="")
+                for session, name in live.items()
+            ],
+            weekends,
+            year=year,
+            prefer_session_cm_id=board_session_cm_id,
+        )
+        if picked is not None:
+            out[household_cm_id] = picked.cabin_name
     return out
 
 
@@ -2332,6 +2393,12 @@ class LodgingRosterService:
         # year, so past the first load of a year that is a cache hit.
         is_adult = session_type == ADULT_SESSION_TYPE
         enrolled_last_year_task: asyncio.Task[set[int]] | None = None
+        # kindred#2775: once last year is a live-housing season, both cards'
+        # last-year cabin reads that season's CampMinder-layer rows. A no-op
+        # until the 2027 board.
+        reads_live_last_year = year - 1 >= LIVE_HOUSING_FROM_YEAR
+        live_last_year_task: asyncio.Task[list[Any]] | None = None
+        enrolled_rows_last_year_task: asyncio.Task[list[Any]] | None = None
         prior_adult_task: asyncio.Task[set[int]] | None = None
         adult_values_task: asyncio.Task[list[Any]] | None = None
         adult_weekends_task: asyncio.Task[list[Any]] | None = None
@@ -2412,12 +2479,19 @@ class LodgingRosterService:
                 prior_adult_task = tg.create_task(self.repository.fetch_prior_adult_person_cm_ids(year))
                 adult_values_task = tg.create_task(self.repository.fetch_adult_cabin_values(year - 1))
                 adult_weekends_task = tg.create_task(self.repository.fetch_adult_weekend_attendees(year - 1))
+            elif reads_live_last_year:
+                # kindred#2775: the WEEKENDS each household was enrolled on,
+                # which the every-weekend rule needs and which also say
+                # whether it came at all.
+                enrolled_rows_last_year_task = tg.create_task(self.repository.fetch_family_enrolled_attendees(year - 1))
             else:
                 # kindred#2767, FAMILY GRAIN (the FC5 staff report): last year's
                 # cabin needs an enrolled family attendee that year behind it.
                 enrolled_last_year_task = tg.create_task(
                     self.repository.fetch_family_enrolled_household_cm_ids(year - 1)
                 )
+            if reads_live_last_year:
+                live_last_year_task = tg.create_task(self.repository.fetch_live_assignments(year - 1))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             # kindred#2330. The RAW per-field, per-child request answers --
@@ -2526,7 +2600,19 @@ class LodgingRosterService:
         # closes it. See the resolver's own blank-code paragraph.
         free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_index)
         housing_names = housing_names_task.result()
-        enrolled_last_year = enrolled_last_year_task.result() if enrolled_last_year_task is not None else set()
+        live_last_year = live_last_year_task.result() if live_last_year_task is not None else []
+        enrolled_last_year: set[int] = set()
+        live_family_cabins: dict[int, str] = {}
+        if enrolled_last_year_task is not None:
+            enrolled_last_year = enrolled_last_year_task.result()
+        elif enrolled_rows_last_year_task is not None:
+            enrolled_rows = enrolled_rows_last_year_task.result()
+            enrolled_last_year = {
+                cm_id for row in enrolled_rows if (cm_id := _expanded_cm_id(row, "person", "household_id")) > 0
+            }
+            live_family_cabins = _last_year_family_live_cabins(
+                enrolled_rows, live_last_year, housing_names, year=year - 1, board_session_cm_id=session_cm_id
+            )
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
@@ -2543,10 +2629,17 @@ class LodgingRosterService:
             #
             # Only where the household ATTENDED that year (kindred#2767): the
             # string survives a cancellation, the attendance does not.
+            #
+            # From the 2027 board, a household whose every enrolled weekend
+            # last season has a CampMinder-layer row reads that row instead
+            # (kindred#2775); the ingest places only enrolled parties.
             last_year_cabins={
-                household_cm_id: housing_names.display_name(raw, year - 1)
-                for household_cm_id, raw in last_year_cabins_task.result().items()
-                if household_cm_id in enrolled_last_year
+                **{
+                    household_cm_id: housing_names.display_name(raw, year - 1)
+                    for household_cm_id, raw in last_year_cabins_task.result().items()
+                    if household_cm_id in enrolled_last_year
+                },
+                **live_family_cabins,
             },
             prior_person_cm_ids=prior_adult_task.result() if prior_adult_task is not None else set(),
             last_year_cabins_by_person=(
@@ -2556,6 +2649,7 @@ class LodgingRosterService:
                     housing_names,
                     year=year - 1,
                     board_session_cm_id=session_cm_id,
+                    live_rows=live_last_year,
                 )
                 if adult_values_task is not None and adult_weekends_task is not None
                 else {}
@@ -2877,10 +2971,12 @@ class LodgingRosterService:
         if household_cm_id <= 0:
             return HouseholdJourneyResponse(household_cm_id=household_cm_id)
 
-        attendees, adults_by_year, registration_cabins = await asyncio.gather(
+        attendees, adults_by_year, registration_cabins, live_rows = await asyncio.gather(
             self.repository.fetch_household_family_attendees(household_cm_id),
             self.repository.fetch_household_adults_by_year(household_cm_id),
             self.repository.fetch_household_registration_cabins(household_cm_id),
+            # kindred#2775: the CampMinder layer, one row per weekend, 2026 on.
+            self.repository.fetch_household_live_assignments(household_cm_id),
         )
 
         children_by_year: dict[int, list[Any]] = {}
@@ -3034,6 +3130,8 @@ class LodgingRosterService:
             self._housing_names(),
         )
 
+        live = live_names(live_rows, housing_names.display_name_for_unit_ids)
+
         rows: list[HouseholdJourneyYear] = []
         for year, assignments in zip(years, cabin_maps, strict=True):
             cabin = assignments.get(household_cm_id, "")
@@ -3041,20 +3139,49 @@ class LodgingRosterService:
             year_starts = session_start_by_year.get(year, {})
             year_sessions_ordered = sorted(sessions_by_year.get(year, {}).values(), key=_session_order)
             child_sessions = child_sessions_by_year.get(year, {})
+            # kindred#2332. THIS ROW'S OWN YEAR is the alias window -- the
+            # window says which raw string was in use then, which is what finds
+            # the unit. The name is always the present one.
+            cabin_name = housing_names.display_name(cabin, year)
+            cabin_name_raw = cabin
+            # PRESENCE, not resolvability: a string nobody can map is still a
+            # household that was placed. Deriving the state from `cabin_name`
+            # instead would report the three unmappable strings (kindred#2392)
+            # as unplaced families.
+            housing = _housing_state(cabin, assignments)
+            # kindred#2775's reading rule: from 2026, a year whose EVERY
+            # enrolled weekend has a live row reads the CampMinder layer, one
+            # cabin per weekend; any other year keeps the lines above.
+            year_live = live_cabins_for_year(
+                year,
+                {entry.session_cm_id for entry in year_sessions_ordered},
+                {session: name for (live_year, session), name in live.items() if live_year == year},
+            )
+            weekend_cabins: list[HouseholdJourneyWeekendCabin] = []
+            if year_live is not None:
+                housing = "placed"
+                weekend_cabins = [
+                    HouseholdJourneyWeekendCabin(
+                        session_cm_id=entry.session_cm_id,
+                        cabin_name=year_live[entry.session_cm_id],
+                        cabin_name_raw=cabin if cabin and cabin_name == year_live[entry.session_cm_id] else "",
+                    )
+                    for entry in year_sessions_ordered
+                ]
+                distinct = {weekend.cabin_name for weekend in weekend_cabins}
+                if len(distinct) == 1 and cabin_name not in distinct:
+                    # One cabin every weekend, and the year's string does not
+                    # name it (changed, cleared, or never keyed): the live row
+                    # is the year's cabin.
+                    cabin_name = next(iter(distinct))
+                    cabin_name_raw = ""
             rows.append(
                 HouseholdJourneyYear(
                     year=year,
-                    # PRESENCE, not resolvability: a string nobody can map is
-                    # still a household that was placed. Deriving the state
-                    # from `cabin_name` instead would report the three
-                    # unmappable strings (kindred#2392) as unplaced families.
-                    housing=_housing_state(cabin, assignments),
-                    # kindred#2332. THIS ROW'S OWN YEAR is the alias window --
-                    # the window says which raw string was in use then, which
-                    # is what finds the unit. The name is always the present
-                    # one.
-                    cabin_name=housing_names.display_name(cabin, year),
-                    cabin_name_raw=cabin,
+                    housing=housing,
+                    cabin_name=cabin_name,
+                    cabin_name_raw=cabin_name_raw,
+                    weekend_cabins=weekend_cabins,
                     sessions=year_sessions_ordered,
                     # THE GO INGEST'S REFUSAL, MIRRORED (kindred#2393).
                     # `AttributeSession` pins the year's one cabin string to a
@@ -3069,7 +3196,9 @@ class LodgingRosterService:
                     # anyway would read as "housed in FC1" for a household
                     # nobody placed.
                     housing_session_cm_id=(
-                        year_sessions_ordered[0].session_cm_id if cabin and len(year_sessions_ordered) == 1 else None
+                        year_sessions_ordered[0].session_cm_id
+                        if (cabin or year_live is not None) and len(year_sessions_ordered) == 1
+                        else None
                     ),
                     adults=[_party_adult(adult) for adult in adults_by_year.get(year, [])],
                     children=[

@@ -14,6 +14,12 @@ assignment. That is safe here and nowhere else: the journey shows only PRIOR
 years, which no board ever covered, so there is no board answer to disagree with
 (#2393), and every case the rule decides was measured on the prod snapshot.
 
+FROM 2026 THE RULE IS THE FALLBACK (kindred#2775). The Go ingest now writes one
+live `lodging_assignments` row per weekend from the captured value history
+(#2784) -- the CampMinder layer -- and a person-year whose every enrolled
+weekend has one reads those rows instead (`overlay_live_cabins`). A year the
+layer does not fully cover keeps this rule, as typed.
+
 Pure -- no database, no I/O. `person_housing_service` (one person, the
 journey) and `lodging_roster_service` (a whole weekend's guests at once, the
 card's last-year cabin, kindred#2767) do the reads; both convert the rows with
@@ -23,8 +29,8 @@ the two `*_from_rows` helpers below, so one row shape means one thing.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -36,6 +42,15 @@ from api.services.lodging_rules import housing_lookup_key
 # `20XX History` staff records -- which embed SALARY. A read that is not pinned
 # to exactly these two ids is how any of them would reach the wire.
 ADULT_WEEKEND_CABIN_FIELD_CM_IDS: tuple[int, ...] = (212997, 223823)
+
+# kindred#2775, owner ruling 2026-09-23: from this season on, the captured
+# value history is the gold standard for housing, applied ONCE in the Go ingest
+# (#2784), which writes one live `lodging_assignments` row per weekend -- the
+# CampMinder layer. Displays read those rows. Earlier seasons have no history
+# and keep their rules unchanged. A constant, never discovered from which rows
+# exist: the ingest writes only the active season, and its orphan sweep skips
+# every other year, so 2026's rows survive the season flip.
+LIVE_HOUSING_FROM_YEAR = 2026
 
 # A value with no readable timestamp sorts as the earliest possible write: it
 # can still be the only answer, but it never beats a dated one.
@@ -165,6 +180,102 @@ def pick_year_cabin(
             return cabin
     ends = {w.session_cm_id: w.last_day_ends for w in weekends if w.year == year}
     return max(in_year, key=lambda cabin: ends.get(cabin.session_cm_id, _UNDATED))
+
+
+def live_names(rows: Iterable[Any], name_units: Callable[[Sequence[str]], str]) -> dict[tuple[int, int], str]:
+    """One party's live `lodging_assignments` rows as (year, session_cm_id) ->
+    today's name for the units (`HousingNameResolver.display_name_for_unit_ids`
+    in production). A row naming nothing maps to "" and counts as missing."""
+    out: dict[tuple[int, int], str] = {}
+    for row in rows:
+        year = int(getattr(row, "year", 0) or 0)
+        session_cm_id = int(getattr(row, "session_cm_id", 0) or 0)
+        if year <= 0 or session_cm_id <= 0:
+            continue
+        units = getattr(row, "units", None) or []
+        out[(year, session_cm_id)] = name_units([str(u) for u in units]).strip()
+    return out
+
+
+def live_cabins_for_year(
+    year: int, enrolled_session_cm_ids: Collection[int], live: Mapping[int, str]
+) -> dict[int, str] | None:
+    """kindred#2775's reading rule for one party-year.
+
+    `{session_cm_id: name}` for every enrolled weekend when the year reads the
+    CampMinder layer: a season from `LIVE_HOUSING_FROM_YEAR` on, where EVERY
+    enrolled weekend has a live row that names a unit. Otherwise None, and the
+    caller keeps today's one-cabin-for-the-year rule (#2393's ruling) -- never
+    a blank, and never a mix of the two within one year.
+    """
+    if year < LIVE_HOUSING_FROM_YEAR or not enrolled_session_cm_ids:
+        return None
+    if any(not live.get(session_cm_id) for session_cm_id in enrolled_session_cm_ids):
+        return None
+    return {session_cm_id: live[session_cm_id] for session_cm_id in enrolled_session_cm_ids}
+
+
+def overlay_live_cabins(
+    named: Iterable[AttributedCabin],
+    weekends: Iterable[AdultWeekend],
+    live: Mapping[tuple[int, int], str],
+) -> list[AttributedCabin]:
+    """The adult side of kindred#2775: each person-year that reads the
+    CampMinder layer (`live_cabins_for_year`) REPLACES the attribution rule's
+    answer for that year; every other year keeps the rule's, unchanged.
+
+    `named` is the rule's output with `cabin_name` already today's name. A
+    live cabin keeps the rule's as-typed string for the same weekend as its
+    provenance (the value the ingest built the row from), or "" when the rule
+    attributed none there. Ordered by year, then weekend end, as the rule's is.
+    """
+    by_year: dict[int, list[AttributedCabin]] = defaultdict(list)
+    for cabin in named:
+        by_year[cabin.year].append(cabin)
+    weekends_by_year: dict[int, list[AdultWeekend]] = defaultdict(list)
+    for weekend in weekends:
+        weekends_by_year[weekend.year].append(weekend)
+
+    out: list[AttributedCabin] = []
+    for year in sorted(set(by_year) | set(weekends_by_year)):
+        year_weekends = sorted(weekends_by_year.get(year, []), key=lambda w: w.last_day_ends)
+        year_live = live_cabins_for_year(
+            year,
+            {w.session_cm_id for w in year_weekends},
+            {session: name for (live_year, session), name in live.items() if live_year == year},
+        )
+        if year_live is None:
+            out.extend(by_year.get(year, []))
+            continue
+        raw_by_session = {cabin.session_cm_id: cabin.cabin_name_raw for cabin in by_year.get(year, [])}
+        out.extend(
+            AttributedCabin(
+                year=year,
+                session_cm_id=weekend.session_cm_id,
+                cabin_name=year_live[weekend.session_cm_id],
+                cabin_name_raw=raw_by_session.get(weekend.session_cm_id, ""),
+            )
+            for weekend in year_weekends
+        )
+    return out
+
+
+def named_adult_cabins(
+    values: Iterable[CabinValue],
+    weekends: Sequence[AdultWeekend],
+    live: Mapping[tuple[int, int], str],
+    resolve_codes: ResolveCodes,
+    display_name: Callable[[str, int], str],
+) -> list[AttributedCabin]:
+    """The adult journey's whole answer, as the per-person journey and the
+    roster card's cohort read BOTH compute it -- one composition, so the two
+    cannot disagree: attribute each value to a weekend, name it with today's
+    registry name (kindred#2332; the trimmed as-typed string when nothing
+    resolves), then let a live-housing year's CampMinder-layer rows replace
+    the rule's answer (kindred#2775)."""
+    attributed = attribute_adult_cabins(values, weekends, resolve_codes)
+    named = [replace(cabin, cabin_name=display_name(cabin.cabin_name_raw, cabin.year).strip()) for cabin in attributed]
+    return overlay_live_cabins(named, weekends, live)
 
 
 def attribute_adult_cabins(

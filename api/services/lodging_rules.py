@@ -900,7 +900,28 @@ class HousingNameResolver:
         codes = self.resolve_codes(raw, year)
         if not codes:
             return raw
+        return self._name_codes(codes)
 
+    def display_name_for_unit_ids(self, unit_ids: Sequence[str]) -> str:
+        """The CURRENT name of a live placement's units, or "" when any id no
+        longer names a registry-year unit (kindred#2775).
+
+        A live `lodging_assignments` row stores unit IDS, not the string it was
+        ingested from, so there is nothing to resolve -- only to name. Named by
+        the same collapse rule as `display_name`, so a live row and the string
+        behind it read the same. ALL OR NOTHING, as `resolve_codes` is: a
+        vanished member is not silently dropped from a family's rooms.
+        """
+        codes: list[str] = []
+        for unit_id in unit_ids:
+            code = self._code_by_unit_id.get(unit_id, "")
+            if not code or code not in self._current_by_code:
+                return ""
+            codes.append(code)
+        return self._name_codes(tuple(codes)) if codes else ""
+
+    def _name_codes(self, codes: tuple[str, ...]) -> str:
+        """Name registry-year codes by THE COLLAPSE RULE (see `display_name`)."""
         members = [self._current_by_code[code] for code in codes]
         if len(members) == 1:
             return members[0].name

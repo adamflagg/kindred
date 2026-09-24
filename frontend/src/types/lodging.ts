@@ -24,6 +24,7 @@ import type {
   ComparePartyReport,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
+  HouseholdJourneyWeekendCabin,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
   LodgingUnitSummary,
@@ -134,6 +135,12 @@ export type PersonHousingWeekendRow = PersonHousingWeekend
  * shareability analysis.
  */
 export type HouseholdJourneySessionRow = HouseholdJourneySession
+/**
+ * One enrolled weekend's cabin from the CampMinder layer (kindred#2775) —
+ * published for a 2026+ year only when EVERY enrolled weekend has a live row,
+ * otherwise the year's list is empty and its one cabin for the year stands.
+ */
+export type HouseholdJourneyWeekendCabinRow = HouseholdJourneyWeekendCabin
 /** A registered adult on a household party. */
 export type PartyAdultRow = PartyAdult
 /** An enrolled child on a household party. */

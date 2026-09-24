@@ -21,6 +21,9 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_person_cabin_values": [],
         "fetch_person_adult_attendees": [],
         "fetch_person_teen_assignments": [],
+        # kindred#2775: the guest's live CampMinder-layer rows, 2026 onward.
+        # Empty by default: 0 person-grain rows exist on the snapshot yet.
+        "fetch_person_live_assignments": [],
         "fetch_all_units": [],
         "fetch_unit_aliases": [],
     }
@@ -329,3 +332,83 @@ class TestTeenProgramCabins:
         result = await PersonHousingService(repo).build_person_housing(PERSON)
 
         assert [(t.year, t.session_cm_id, t.cabin_name_raw) for t in result.teen_cabins] == [(2025, SCIT, "Teen 2")]
+
+
+def _live_row(year: int, session_cm_id: int, *unit_ids: str) -> SimpleNamespace:
+    """One live person-grain `lodging_assignments` row (the Go ingest's)."""
+    return SimpleNamespace(
+        year=year, session_cm_id=session_cm_id, person_cm_id=PERSON, household_cm_id=0, units=list(unit_ids)
+    )
+
+
+_MEADOW = SimpleNamespace(id="u1", code="meadow-1", name="Meadow House 1", year=2026, parent_unit="")
+_LAKE = SimpleNamespace(id="u2", code="lake-1", name="Lake Cabin 1", year=2026, parent_unit="")
+
+
+class TestLiveRowsFrom2026:
+    """kindred#2775: for 2026 onward the adult journey reads the per-weekend
+    CampMinder-layer rows; before 2026, and wherever a weekend has no live
+    row, it keeps #2751's date rule, as typed."""
+
+    @pytest.mark.asyncio
+    async def test_a_2025_year_renders_exactly_as_today(self) -> None:
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2025, "River F", "2025-10-10T18:00:00+00:00")],
+            fetch_person_adult_attendees=[_attendee_row(2025, WW, "2025-10-19 07:00:00.000Z")],
+            # Cannot exist (the ingest writes only the active season), and must
+            # not be read if it did.
+            fetch_person_live_assignments=[_live_row(2025, WW, "u2")],
+            fetch_all_units=[_MEADOW, _LAKE],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result.weekends == [
+            PersonHousingWeekend(year=2025, session_cm_id=WW, cabin_name="River F", cabin_name_raw="River F")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_2026_adult_with_a_live_row_gets_that_cabin(self) -> None:
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2026, "Lake 1", "2026-10-10T18:00:00+00:00")],
+            fetch_person_adult_attendees=[_attendee_row(2026, WW, "2026-10-18 07:00:00.000Z")],
+            fetch_person_live_assignments=[_live_row(2026, WW, "u2")],
+            fetch_all_units=[_MEADOW, _LAKE],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        # Today's registry name for the live row; the as-typed string on hover.
+        assert result.weekends == [
+            PersonHousingWeekend(year=2026, session_cm_id=WW, cabin_name="Lake Cabin 1", cabin_name_raw="Lake 1")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_2026_adult_without_a_live_row_keeps_todays_rule_as_typed(self) -> None:
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2026, "Ridge Hut", "2026-10-10T18:00:00+00:00")],
+            fetch_person_adult_attendees=[_attendee_row(2026, WW, "2026-10-18 07:00:00.000Z")],
+            fetch_all_units=[_MEADOW, _LAKE],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result.weekends == [
+            PersonHousingWeekend(year=2026, session_cm_id=WW, cabin_name="Ridge Hut", cabin_name_raw="Ridge Hut")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_live_row_alone_is_enough_to_show_the_cabin(self) -> None:
+        """No value keyed yet (or already cleared), but the ingest placed the
+        guest: the live row is the answer, never blank."""
+        repo = _repo(
+            fetch_person_adult_attendees=[_attendee_row(2026, WW, "2026-10-18 07:00:00.000Z")],
+            fetch_person_live_assignments=[_live_row(2026, WW, "u1")],
+            fetch_all_units=[_MEADOW],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result.weekends == [
+            PersonHousingWeekend(year=2026, session_cm_id=WW, cabin_name="Meadow House 1", cabin_name_raw="")
+        ]

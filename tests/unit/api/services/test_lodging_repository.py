@@ -1206,6 +1206,63 @@ class TestFetchAdultCabinValues:
         assert params["expand"] == "person,field_definition"
 
 
+class TestLiveHousingReads:
+    """kindred#2775: the per-weekend CampMinder-layer rows (live
+    `lodging_assignments`, written by the Go ingest alone) are the housing
+    source from 2026 on. No expand: the resolver names a row from its unit
+    ids."""
+
+    @pytest.mark.asyncio
+    async def test_one_years_live_rows_for_the_cohort(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_live_assignments(2026)
+
+        pb.collection.assert_called_with("lodging_assignments")
+        params = _last_query(pb)
+        assert params["filter"] == "year = 2026"
+        assert params["sort"]
+
+    @pytest.mark.asyncio
+    async def test_one_households_live_rows_from_2026(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_household_live_assignments(2000001)
+
+        pb.collection.assert_called_with("lodging_assignments")
+        params = _last_query(pb)
+        assert "household_cm_id = 2000001" in params["filter"]
+        assert "year >= 2026" in params["filter"]
+
+    @pytest.mark.asyncio
+    async def test_one_persons_live_rows_from_2026(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_person_live_assignments(3000001)
+
+        pb.collection.assert_called_with("lodging_assignments")
+        params = _last_query(pb)
+        assert "person_cm_id = 3000001" in params["filter"]
+        assert "year >= 2026" in params["filter"]
+
+    @pytest.mark.asyncio
+    async def test_never_queries_for_an_unresolvable_party(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        # `household_cm_id = 0` is a real predicate matching every
+        # person-grain row; it must never be issued.
+        assert await repo.fetch_household_live_assignments(0) == []
+        assert await repo.fetch_person_live_assignments(0) == []
+        pb.collection.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_one_years_enrolled_family_rows_carry_their_session(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The family card needs each household's enrolled WEEKENDS, not only
+        whether it came, to know whether every one has a live row."""
+        await repo.fetch_family_enrolled_attendees(2026)
+
+        pb.collection.assert_called_with("attendees")
+        params = _last_query(pb)
+        assert "year = 2026" in params["filter"]
+        assert 'session.session_type = "family"' in params["filter"]
+        assert "status_id = 2" in params["filter"]
+        assert params["expand"] == "person,session"
+
+
 class TestFetchFamilyCampAdults:
     @pytest.mark.asyncio
     async def test_groups_by_household_pb_id_in_adult_number_order(
@@ -1820,6 +1877,10 @@ CACHED_YEAR_SCOPED_READS = [
     "fetch_prior_adult_person_cm_ids",
     "fetch_adult_weekend_attendees",
     "fetch_adult_cabin_values",
+    # kindred#2775: both sync-written only (the Go ingest is the sole writer
+    # of live `lodging_assignments`; no API or browser path reaches it).
+    "fetch_live_assignments",
+    "fetch_family_enrolled_attendees",
 ]
 
 

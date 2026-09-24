@@ -93,7 +93,7 @@ from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
     FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
 )
-from api.services.person_housing_rules import ADULT_WEEKEND_CABIN_FIELD_CM_IDS
+from api.services.person_housing_rules import ADULT_WEEKEND_CABIN_FIELD_CM_IDS, LIVE_HOUSING_FROM_YEAR
 from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import SUMMER_TEEN_TYPES
 from bunking.logging_config import get_logger
@@ -1023,6 +1023,74 @@ class LodgingRepository:
             },
         )
         return _household_cm_ids(rows)
+
+    @cached_by_year(lodging_cache)
+    async def fetch_family_enrolled_attendees(self, year: int) -> list[Any]:
+        """Every ENROLLED family-session attendee row in `year`, with `person`
+        and `session` expanded (kindred#2775).
+
+        The per-weekend twin of `fetch_family_enrolled_household_cm_ids`: the
+        family card's last-year cabin reads the CampMinder layer only when
+        EVERY weekend the household was enrolled on has a live row, so it
+        needs the weekends, not only the fact of attendance. Read only once
+        `year` is a live-housing season, so a 2026 board never pays for it.
+        """
+        return await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f'year = {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
+                ),
+                "expand": "person,session",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    @cached_by_year(lodging_cache)
+    async def fetch_live_assignments(self, year: int) -> list[Any]:
+        """Every live `lodging_assignments` row in `year`, both grains --
+        the CampMinder layer, for a whole cohort at once (kindred#2775).
+
+        Cached, unlike the board's own session-scoped `fetch_assignments`,
+        because this read is only ever issued for a PRIOR season, and the Go
+        ingest is the table's sole writer (no API or browser path reaches it --
+        `lodging_write_service` writes drafts and write-ins only).
+        No expand: a row is named from its unit ids.
+        """
+        return await self._page(
+            LODGING_ASSIGNMENTS,
+            query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
+        )
+
+    async def fetch_household_live_assignments(self, household_cm_id: int) -> list[Any]:
+        """One household's live `lodging_assignments` rows, every season from
+        `LIVE_HOUSING_FROM_YEAR` on (the household journey, kindred#2775).
+
+        Never issued for `household_cm_id = 0`: that is a real predicate here,
+        matching every PERSON-grain row.
+        """
+        if household_cm_id <= 0:
+            return []
+        return await self._page(
+            LODGING_ASSIGNMENTS,
+            query_params={
+                "filter": f"household_cm_id = {household_cm_id} && year >= {LIVE_HOUSING_FROM_YEAR}",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_live_assignments(self, person_cm_id: int) -> list[Any]:
+        """One person's live `lodging_assignments` rows, every season from
+        `LIVE_HOUSING_FROM_YEAR` on (the adult camper journey, kindred#2775)."""
+        if person_cm_id <= 0:
+            return []
+        return await self._page(
+            LODGING_ASSIGNMENTS,
+            query_params={
+                "filter": f"person_cm_id = {person_cm_id} && year >= {LIVE_HOUSING_FROM_YEAR}",
+                "sort": STABLE_SORT,
+            },
+        )
 
     @cached_by_year(lodging_cache)
     async def fetch_prior_adult_person_cm_ids(self, year: int) -> set[int]:

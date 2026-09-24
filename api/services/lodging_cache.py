@@ -46,6 +46,11 @@ Their writers join the two named below and fire the same invalidation: the
 `person_custom_values_family_camp`, which covers adult programs since
 kindred#2760, and the on-demand `person_custom_values`).
 
+kindred#2775 added two more, both only ever read for a PRIOR season:
+`fetch_live_assignments` (live `lodging_assignments`, whose sole writer is the
+Go ingest) and `fetch_family_enrolled_attendees` (`attendees`). Neither is
+issued before the 2027 board.
+
 Shaped like api/services/metrics_cache.py (TTL + LRU + RLock) per that
 module's own docstring pattern, but closer in spirit to
 api/services/geo_service.py's module-level `_PERSON_ID_CACHE`: a

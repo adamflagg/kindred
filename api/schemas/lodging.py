@@ -1216,6 +1216,12 @@ class RosterParty(BaseModel):
     # CM_IDS`, attributed to a weekend by `attribute_adult_cabins`) and named
     # the same way. Same year - 1 window as summer and the family card.
     #
+    # FROM THE 2027 BOARD (kindred#2775), when `year - 1` is a live-housing
+    # season, both grains read that season's CampMinder-layer rows instead --
+    # one per weekend -- wherever EVERY weekend the party was enrolled on has
+    # one; two weekends pick the board's own, else the latest-ending. Any
+    # other party keeps the rule above, never blank.
+    #
     # Only ever populated on the ROSTER: `build_summary` keeps nothing but
     # counts.
     last_year_cabin: str = ""
@@ -1352,6 +1358,25 @@ class HouseholdJourneySession(BaseModel):
     start_date: str = ""
 
 
+class HouseholdJourneyWeekendCabin(BaseModel):
+    """One enrolled weekend's cabin, from the CampMinder layer (kindred#2775).
+
+    Published only for a live-housing season (2026 onward) in which EVERY
+    weekend the household was enrolled on has a live `lodging_assignments`
+    row -- the Go ingest's per-weekend answer (#2784). Otherwise the year keeps
+    its one cabin for the year and this list is empty, never partial.
+    """
+
+    session_cm_id: int = 0
+    # Today's registry name for the live row's units (kindred#2332).
+    cabin_name: str = ""
+    # The year's as-typed string, for the hover -- but only on a weekend whose
+    # live row names the same cabin it does. Another weekend's cabin was never
+    # typed into this year's one field, so it carries "" rather than a string
+    # that describes a different room.
+    cabin_name_raw: str = ""
+
+
 class HouseholdJourneyYear(BaseModel):
     """One year of a household's family-camp record.
 
@@ -1414,6 +1439,14 @@ class HouseholdJourneyYear(BaseModel):
     # client applies one predicate (`isAttendingAdultName`) on both surfaces.
     adults: list[PartyAdult] = Field(default_factory=list)
     children: list[PartyChild] = Field(default_factory=list)
+    # kindred#2775. Per-weekend cabins from the CampMinder layer, one per
+    # enrolled weekend in `sessions` order -- only when EVERY such weekend has
+    # a live row, else empty and the year-level fields above are today's
+    # one-cabin-for-the-year answer. The year-level fields stay populated
+    # either way: when the weekends share one cabin they ARE that cabin, and
+    # when they differ they keep the year's string for every reader that only
+    # knows one cabin per year.
+    weekend_cabins: list[HouseholdJourneyWeekendCabin] = Field(default_factory=list)
 
 
 class HouseholdJourneyResponse(BaseModel):

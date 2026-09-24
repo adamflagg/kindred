@@ -2198,6 +2198,31 @@ export type HouseholdJourneySession = {
 }
 
 /**
+ * HouseholdJourneyWeekendCabin
+ *
+ * One enrolled weekend's cabin, from the CampMinder layer (kindred#2775).
+ *
+ * Published only for a live-housing season (2026 onward) in which EVERY
+ * weekend the household was enrolled on has a live `lodging_assignments`
+ * row -- the Go ingest's per-weekend answer (#2784). Otherwise the year keeps
+ * its one cabin for the year and this list is empty, never partial.
+ */
+export type HouseholdJourneyWeekendCabin = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number
+  /**
+   * Cabin Name
+   */
+  cabin_name?: string
+  /**
+   * Cabin Name Raw
+   */
+  cabin_name_raw?: string
+}
+
+/**
  * HouseholdJourneyYear
  *
  * One year of a household's family-camp record.
@@ -2239,6 +2264,10 @@ export type HouseholdJourneyYear = {
    * Children
    */
   children?: Array<PartyChild>
+  /**
+   * Weekend Cabins
+   */
+  weekend_cabins?: Array<HouseholdJourneyWeekendCabin>
 }
 
 /**
