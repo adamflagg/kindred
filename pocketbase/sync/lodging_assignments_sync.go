@@ -296,8 +296,9 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	s.SyncSuccessful = true
 	// Unconditional, unlike the sibling derived syncs that gate on
 	// Stats.Created/Updated/Deleted. Those counters only track assignment rows,
-	// and this job has three other writers that never touch them: writeHistory
-	// for unresolved placements, the work-queue Flush above, and
+	// and this job has four other writers that never touch them: writeHistory
+	// for unresolved placements, the work-queue Flush above, CloseAnswered
+	// closing the queue rows history answered (kindred#2784), and
 	// UpsertFieldMappingStatus, which writes a row per source field on every run
 	// whatever it found. Reaching this line therefore means the database changed.
 	if err := s.forceWALCheckpoint(); err != nil {
