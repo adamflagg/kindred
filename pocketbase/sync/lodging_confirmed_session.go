@@ -92,12 +92,14 @@ func loadConfirmedSessions(app core.App, year int) (confirmedSessions, error) {
 
 // confirmedAttribution pins a cabin value to the weekend a human confirmed.
 //
-// It is AttributeSession's counterpart for the one case the heuristic must
-// never settle: a party attending two or more weekends against CampMinder's
-// single per-year value. AttributeSession returns an advisory BestGuess and
-// places nothing there, deliberately -- "a wrong cabin on the board is worse
-// than a blank one" -- and that ruling stands. This function does not soften
-// it; it applies an answer a human already gave.
+// It is AttributeSession's counterpart for a party attending two or more
+// weekends against CampMinder's single per-year value. AttributeSession alone
+// returns an advisory BestGuess there and places nothing -- "a wrong cabin on
+// the board is worse than a blank one". The owner ruling of 2026-09-23
+// (kindred#2784) supersedes the older "the heuristic must never settle" ruling
+// for that case: captured value history now attributes each weekend the value
+// in effect when it started. A staff confirmation still wins over history,
+// and this function is how it wins -- it applies an answer a human gave.
 //
 // THE STORED NUMBER IS RESOLVED AGAINST candidates, NEVER TRUSTED DIRECTLY, and
 // a miss returns false rather than a placement. Three reasons, any one of which

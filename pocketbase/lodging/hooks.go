@@ -787,6 +787,12 @@ func guardUnitParentCycle(e *core.RecordEvent) error {
 // call chain. Original() holds the record's state as loaded, before this
 // write -- so this only proceeds on a genuine false -> true transition.
 func replayOnResolve(e *core.RecordEvent) error {
+	// The sync's own close (IssueRecorder.CloseAnswered, kindred#2784) is not a
+	// tick: the sync has just placed the weekends itself, and replaying a stale
+	// row's old raw_value would re-record it and reopen the row it closed.
+	if sync.ClosedBySync(e.Context) {
+		return e.Next()
+	}
 	wasResolved := e.Record.Original().GetBool("is_resolved")
 	isResolved := e.Record.GetBool("is_resolved")
 	if wasResolved || !isResolved {

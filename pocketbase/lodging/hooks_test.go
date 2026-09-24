@@ -12,6 +12,8 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+
+	"github.com/camp/kindred/pocketbase/sync"
 )
 
 // setupCollections creates minimal lodging_units and lodging_assignments
@@ -170,6 +172,11 @@ func setupCollections(t *testing.T, app core.App) {
 	issues.Fields.Add(&core.RelationField{
 		Name: "resolved_alias", CollectionId: aliasesCol.Id, MaxSelect: 1,
 	})
+	// source_field and confirmed_session_cm_id are what
+	// sync.IssueRecorder.AnsweredRows filters on to find the rows the sync's
+	// history attribution closes.
+	issues.Fields.Add(&core.TextField{Name: "source_field"})
+	issues.Fields.Add(&core.NumberField{Name: "confirmed_session_cm_id"})
 	if err := app.Save(issues); err != nil {
 		t.Fatalf("save lodging_ingest_issues: %v", err)
 	}
@@ -1284,6 +1291,71 @@ func TestMappingAPartylessRowStillAttemptsAReplay(t *testing.T) {
 
 	if got := strings.Count(output, marker); got != 1 {
 		t.Fatalf("mapping a party-less row attempted %d replay(s), want 1 (log: %q)", got, output)
+	}
+}
+
+// kindred#2784: the sync's own close is not a staff tick. CloseAnswered saves
+// is_resolved = true on the ambiguous_session rows captured value history
+// answered, and replayOnResolve is a model-level hook, so a plain Save fires
+// it from the sync's Go side too. A replay of a row whose raw_value is an
+// OLDER cabin string finds no current value carrying it, re-records
+// ambiguous_session on the same dedup key, and reopenRecorded flips the row
+// straight back open under a note saying the sync closed it -- every daily
+// run, for every party whose string changed.
+//
+// Through the real wireHooks, not a mirror of the hook: a mirror copies the
+// guard it is meant to test. This schema has none of ReplayIssue's
+// supporting collections, so -- as in the three tests above -- counting the
+// replay-attempt log line stands in for counting invocations.
+// TestReplayOnResolveFiresOnceNotOnItsOwnResave is the positive control: a
+// staff tick on the same row shape still replays.
+func TestTheSyncsHistoryCloseDoesNotReplay(t *testing.T) {
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true, // so app.Logger() prints synchronously; see captureStdout.
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	const household = 2000002
+	issue := newIssue(t, app, "ambiguous_session", "Old Cabin String", 2026, household, 0)
+	issue.Set("source_field", "Family Camp Cabin")
+	if err := app.Save(issue); err != nil {
+		t.Fatalf("setting source_field: %v", err)
+	}
+
+	wireHooks(app)
+
+	const marker = "Replaying a resolved lodging issue"
+
+	recorder := sync.NewIssueRecorder(app, 2026)
+	recorder.Answer(sync.SessionAnswer{
+		Year: 2026, SourceField: "Family Camp Cabin", HouseholdCMID: household,
+	})
+	var closed int
+	output := captureStdout(t, func() {
+		var closeErr error
+		closed, closeErr = recorder.CloseAnswered()
+		if closeErr != nil {
+			t.Fatalf("CloseAnswered: %v", closeErr)
+		}
+	})
+
+	if closed != 1 {
+		t.Fatalf("CloseAnswered closed %d row(s), want 1", closed)
+	}
+	if got := strings.Count(output, marker); got != 0 {
+		t.Fatalf("the sync's history close attempted %d replay(s), want 0 (log: %q)", got, output)
+	}
+	reloaded, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
+	if err != nil {
+		t.Fatalf("reloading the issue: %v", err)
+	}
+	if !reloaded.GetBool("is_resolved") {
+		t.Fatal("the row the sync closed is open again")
 	}
 }
 

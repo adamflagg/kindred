@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -420,10 +421,31 @@ func (r *IssueRecorder) CloseAnswered() (int, error) {
 		}
 		row.Set("is_resolved", true)
 		row.Set("resolution_note", c.Note)
-		if saveErr := r.app.Save(row); saveErr != nil {
+		// Marked, so replayOnResolve (lodging/hooks.go) can tell this close
+		// from a staff tick. A plain Save fires that model-level hook, and a
+		// replay of a row whose raw_value is an older cabin string re-records
+		// it and reopens the row just closed. UnsafeWithoutHooks would skip the
+		// field interceptors too, so `updated` would stop moving.
+		if saveErr := r.app.SaveWithContext(closedBySyncContext(), row); saveErr != nil {
 			return closed, fmt.Errorf("closing issue %s: %w", c.ID, saveErr)
 		}
 		closed++
 	}
 	return closed, nil
+}
+
+type closedBySyncKey struct{}
+
+func closedBySyncContext() context.Context {
+	return context.WithValue(context.Background(), closedBySyncKey{}, true)
+}
+
+// ClosedBySync reports whether a lodging_ingest_issues save came from
+// CloseAnswered rather than from a person ticking the row.
+func ClosedBySync(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(closedBySyncKey{}).(bool)
+	return v
 }
