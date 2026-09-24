@@ -47,9 +47,11 @@ describe('getLocationDisplay', () => {
 })
 
 // `normalized_city` is a DISPLAY-READY "City, ST" label set by the
-// geo-normalization sync (pocketbase/sync/family_camp_roster.go —
-// rosterStateSuffix/rosterCleanCity; 2,232 of 2,246 2026 values end in
-// ", ST"). Both `CamperDetail.tsx` and `CamperDetailsPanel.tsx` used to do
+// geo-normalization sync (pocketbase/sync/location_label.go —
+// locationStateSuffix, used by PersonLocationCityOnly; rosterCleanCity in
+// family_camp_roster.go is a thin wrapper over it; 2,232 of 2,246 2026
+// values end in ", ST"). Both `CamperDetail.tsx` and
+// `CamperDetailsPanel.tsx` used to do
 // `getLocationDisplay(person.normalized_city ?? person.address_city,
 // person.address_state)`, which appended the state a SECOND time onto an
 // already-complete label ("San Carlos, CA, CA") — a pre-existing bug, fixed

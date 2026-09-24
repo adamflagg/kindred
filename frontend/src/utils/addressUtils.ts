@@ -33,8 +33,9 @@ export interface LocationSource {
  * A person's display-ready location.
  *
  * `normalized_city` is set by the geo-normalization sync as a COMPLETE "City,
- * ST" label (pocketbase/sync/family_camp_roster.go:
- * rosterStateSuffix/rosterCleanCity — 2,232 of 2,246 2026 values end in
+ * ST" label (pocketbase/sync/location_label.go: locationStateSuffix, used by
+ * PersonLocationCityOnly; family_camp_roster.go's rosterCleanCity is a thin
+ * wrapper over it — 2,232 of 2,246 2026 values end in
  * ", ST"). When it is present it already IS the whole location, and
  * `address_state` must NOT be appended to it again — doing so is what
  * produced "San Carlos, CA, CA". `address_city` + `address_state` are
