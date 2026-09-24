@@ -1103,3 +1103,27 @@ describe('LodgingBoard — the weekend type reaches every card’s Jotform marks
     expect(screen.queryByRole('button', { name: /^Jotform:/ })).toBeNull()
   })
 })
+
+describe('LodgingBoard — the weekend type reaches the panel (kindred#2759)', () => {
+  const guest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 1000004,
+    display_name: 'Olivia Chen',
+    sort_name: 'Olivia Chen',
+    adults: [],
+    children: [],
+    party_size: 1,
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+  })
+
+  it('opens an adult guest on the Jotform section', async () => {
+    render(<LodgingBoard parties={[guest]} units={[unit()]} year={2026} sessionType="adult" />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    expect(screen.getByRole('heading', { name: 'Bunking request (Jotform)' })).toBeInTheDocument()
+  })
+})

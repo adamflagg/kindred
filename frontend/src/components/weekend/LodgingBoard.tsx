@@ -884,6 +884,7 @@ export function LodgingBoard({
             year={year}
             requestClose={requestClose}
             onClose={closePanel}
+            sessionType={sessionType}
           />
         )}
 

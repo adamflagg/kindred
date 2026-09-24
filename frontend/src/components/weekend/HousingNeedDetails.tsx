@@ -39,8 +39,10 @@ import { HandHeart, HandHelping, ShieldAlert, type LucideIcon } from 'lucide-rea
 import { Permission } from '../../constants/permissions'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useHouseholdMedical } from '../../hooks/useWeekendRoster'
-import type { RosterPartyRow } from '../../types/lodging'
+import type { JotformNeedAnswerRow, RosterPartyRow } from '../../types/lodging'
+import { shortDate } from './bunkingRequest'
 import { askedNeedGlyphs, needExplainTexts } from './needGlyphs'
+import { ProvenanceTag } from './panelRows'
 
 export interface HousingNeedDetailsProps {
   party: RosterPartyRow
@@ -48,6 +50,10 @@ export interface HousingNeedDetailsProps {
    *  directly, so there is no household to look a narrative up by. */
   householdCmId: number | null
   year: number
+  /** kindred#2759: where the guest's Jotform disagrees with registration. Adult guests only. */
+  jotformSays?: readonly JotformNeedAnswerRow[] | undefined
+  /** kindred#2759: tags every row with its source ("Registration") when a second source sits beside it. */
+  sourceTag?: string | undefined
 }
 
 interface PanelRow {
@@ -59,7 +65,24 @@ interface PanelRow {
   isBlocker?: boolean
 }
 
-export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDetailsProps) {
+/** The muted "Jotform says" line under a registration need (kindred#2759). Context only: registration still drives the glyphs. */
+function JotformSays({ says }: { says: JotformNeedAnswerRow }) {
+  const detail = (says.detail ?? '').trim()
+  return (
+    <p data-testid={`jotform-says-${says.need}`} className="text-muted-foreground pl-6 text-xs">
+      <ProvenanceTag>{`Jotform · ${shortDate(says.submitted_at ?? '')}`}</ProvenanceTag>{' '}
+      {`Jotform says: ${says.jotform}${detail.length > 0 ? ` — ${detail}` : ''} (registration: ${says.registration})`}
+    </p>
+  )
+}
+
+export function HousingNeedDetails({
+  party,
+  householdCmId,
+  year,
+  jotformSays,
+  sourceTag,
+}: HousingNeedDetailsProps) {
   const { hasPermission } = usePermissions()
   const canRead = hasPermission(Permission.BUNKING_MANAGE) && householdCmId !== null
   const { data, error, isLoading } = useHouseholdMedical(year, householdCmId, canRead)
@@ -192,7 +215,30 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
   // library detail to inherit. A refactor that moved the `enabled` guard
   // would otherwise show them a spinner for a request nobody made; a test
   // pins that.
-  if (rows.length === 0 && error === null && canRead && isLoading) {
+  // kindred#2759. A Jotform answer that differs from registration hangs under
+  // the row it concerns; one with no registration row (Jotform says Yes,
+  // registration said No or nothing) gets its own row, never dropped.
+  const saysByNeed = new Map((jotformSays ?? []).map((says) => [says.need, says]))
+  const saysFor = (rowKey: string): JotformNeedAnswerRow | undefined =>
+    rowKey === 'accommodation' || rowKey === 'blocker'
+      ? saysByNeed.get('accommodation')
+      : rowKey === 'power'
+        ? saysByNeed.get('cpap')
+        : undefined
+  const rowKeys = new Set(rows.map((row) => row.key))
+  const orphans = [
+    {
+      need: 'accommodation' as const,
+      label: 'Accommodation',
+      covered: rowKeys.has('accommodation') || rowKeys.has('blocker'),
+    },
+    { need: 'cpap' as const, label: 'Power (CPAP)', covered: rowKeys.has('power') },
+  ].flatMap((entry) => {
+    const says = saysByNeed.get(entry.need)
+    return says !== undefined && !entry.covered ? [{ ...entry, says }] : []
+  })
+
+  if (rows.length === 0 && orphans.length === 0 && error === null && canRead && isLoading) {
     return (
       <p data-testid="housing-need-loading" className="text-muted-foreground text-sm">
         Loading housing needs…
@@ -203,7 +249,7 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
   // Nothing to say, and the fetch (if any) came back clean: the old
   // component's honest empty case, now discovered from the payload plus the
   // roster booleans rather than predicted by a flag.
-  if (rows.length === 0 && error === null) return null
+  if (rows.length === 0 && orphans.length === 0 && error === null) return null
 
   return (
     <ul className="flex flex-col gap-2.5">
@@ -243,6 +289,7 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
             >
               {row.label}
             </span>
+            {sourceTag !== undefined && <ProvenanceTag>{sourceTag}</ProvenanceTag>}
             {row.isBlocker && (
               <span className="ml-auto rounded bg-red-200 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-red-900 uppercase dark:bg-red-500/30 dark:text-red-100">
                 Blocker
@@ -261,6 +308,25 @@ export function HousingNeedDetails({ party, householdCmId, year }: HousingNeedDe
               {text}
             </p>
           ))}
+          {(() => {
+            const says = saysFor(row.key)
+            return says !== undefined ? <JotformSays says={says} /> : null
+          })()}
+        </li>
+      ))}
+      {orphans.map((orphan) => (
+        <li
+          key={`jotform-${orphan.need}`}
+          data-testid={`need-row-jotform-${orphan.need}`}
+          className="flex flex-col gap-1"
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground font-semibold">{orphan.label}</span>
+            {sourceTag !== undefined && (
+              <ProvenanceTag>{`${sourceTag}: ${orphan.says.registration}`}</ProvenanceTag>
+            )}
+          </div>
+          <JotformSays says={orphan.says} />
         </li>
       ))}
     </ul>

@@ -73,6 +73,12 @@ export interface FamilyDetailsPanelProps {
    * outside click ITSELF instead of leaking it to whatever sits beneath.
    */
   backdropInteractive?: boolean
+  /**
+   * The weekend's `session_type` (kindred#2759), read ONLY through
+   * `isAdultSessionType` — never inferred from the party's grain. Draws the
+   * adult guest's Jotform section on an adult weekend.
+   */
+  sessionType?: string | undefined
 }
 
 export function FamilyDetailsPanel({
@@ -82,6 +88,7 @@ export function FamilyDetailsPanel({
   requestClose = false,
   onClose,
   backdropInteractive = false,
+  sessionType,
 }: FamilyDetailsPanelProps) {
   const [isClosing, setIsClosing] = useState(false)
 
@@ -375,7 +382,12 @@ export function FamilyDetailsPanel({
         )}
       </Section>
 
-      <PartyRequestSections party={party} year={year} householdCmId={householdCmId} />
+      <PartyRequestSections
+        party={party}
+        year={year}
+        householdCmId={householdCmId}
+        sessionType={sessionType}
+      />
 
       {/* kindred#2073. NOT wrapped in a `Section`: it is a sidebar CARD with
           its own forest band, the same shape `camper/CampJourneyTimeline`

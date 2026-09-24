@@ -1354,6 +1354,7 @@ export function LodgingMap({
           year={year}
           requestClose={requestClose}
           onClose={closePanel}
+          sessionType={sessionType}
         />
       )}
     </div>

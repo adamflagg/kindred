@@ -1256,3 +1256,33 @@ describe('request + needs sections — render-identical golden (kindred#2759 ext
     )
   })
 })
+
+describe('FamilyDetailsPanel — an adult guest’s sections (kindred#2759)', () => {
+  const guest = () =>
+    party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 1000004,
+      display_name: 'Olivia Chen',
+      children: [],
+      bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+    })
+
+  it('draws the Jotform section before registration needs on an adult weekend', () => {
+    render(
+      <FamilyDetailsPanel party={guest()} year={2026} sessionType="adult" onClose={vi.fn()} />,
+      { wrapper }
+    )
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(headings.indexOf('Bunking request (Jotform)')).toBeGreaterThanOrEqual(0)
+    expect(headings.indexOf('Bunking request (Jotform)')).toBeLessThan(
+      headings.indexOf('Housing needs (Registration)')
+    )
+    expect(headings).not.toContain('Share request')
+  })
+
+  it('keeps the family sections without the weekend type', () => {
+    render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.queryByRole('heading', { name: 'Bunking request (Jotform)' })).toBeNull()
+  })
+})

@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { RosterPartyRow } from '../../types/lodging'
 import { HousingNeedDetails } from './HousingNeedDetails'
 
 const DEFAULT_MEDICAL = {
@@ -281,5 +282,91 @@ describe('HousingNeedDetails', () => {
     )
     expect(screen.queryByTestId('housing-need-loading')).not.toBeInTheDocument()
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('Jotform says (kindred#2759)', () => {
+  const adult = (flags: NonNullable<RosterPartyRow['flags']>): RosterPartyRow => ({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 1000004,
+    display_name: 'Olivia Chen',
+    flags,
+  })
+  const says = (
+    need: 'accommodation' | 'cpap',
+    registration: string,
+    jotform: string,
+    detail = ''
+  ) => ({
+    need,
+    registration,
+    jotform,
+    detail,
+    submitted_at: '2026-08-31 09:00:00',
+  })
+
+  it('adds a muted line under the matching registration row, tagged by source', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_accommodation: true })}
+        householdCmId={null}
+        year={2026}
+        jotformSays={[says('accommodation', 'Yes', 'No')]}
+        sourceTag="Registration"
+      />
+    )
+    const row = screen.getByTestId('need-row-accommodation')
+    expect(within(row).getByText('Registration')).toBeInTheDocument()
+    expect(within(row).getByTestId('jotform-says-accommodation')).toHaveTextContent(
+      'Jotform says: No (registration: Yes)'
+    )
+  })
+
+  it('hangs the CPAP disagreement under the power row', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_power: true })}
+        householdCmId={null}
+        year={2026}
+        jotformSays={[says('cpap', 'Yes', 'No')]}
+        sourceTag="Registration"
+      />
+    )
+    expect(
+      within(screen.getByTestId('need-row-power')).getByTestId('jotform-says-cpap')
+    ).toHaveTextContent('Jotform says: No (registration: Yes)')
+  })
+
+  it('gives a Jotform-only need its own row instead of dropping it', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({})}
+        householdCmId={null}
+        year={2026}
+        jotformSays={[
+          says('accommodation', 'No', 'Yes', 'Near a bathroom'),
+          says('cpap', 'blank', 'Yes'),
+        ]}
+        sourceTag="Registration"
+      />
+    )
+    expect(screen.getByTestId('need-row-jotform-accommodation')).toHaveTextContent(
+      'Jotform says: Yes — Near a bathroom (registration: No)'
+    )
+    expect(screen.getByTestId('need-row-jotform-cpap')).toHaveTextContent('Power (CPAP)')
+  })
+
+  it('tags no row when no second source sits beside registration', () => {
+    render(
+      <HousingNeedDetails
+        party={adult({ needs_accommodation: true })}
+        householdCmId={null}
+        year={2026}
+      />
+    )
+    expect(
+      within(screen.getByTestId('need-row-accommodation')).queryByText('Registration')
+    ).toBeNull()
   })
 })
