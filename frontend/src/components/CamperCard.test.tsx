@@ -22,6 +22,7 @@ import CamperCard from './CamperCard'
 import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 import { mockCamper } from '../test/mockData'
 import { emptyCamperSatisfaction } from '../types/satisfaction'
+import type { CampSessionsResponse } from '../types/pocketbase-types'
 
 vi.mock('../hooks/useCurrentYear', () => ({ useYear: () => 2025 }))
 
@@ -141,8 +142,9 @@ describe('CamperCard — context-menu overlay token (kindred#2237)', () => {
 // under 21 the full yy.mm stays.
 describe('CamperCard — age line', () => {
   beforeEach(() => {
-    // getDisplayAgeForYear adjusts by (calendar year - viewing year); pin the
-    // calendar to the mocked viewing year so the stored age shows as-is.
+    // Pin the calendar to the mocked viewing year (2025), so the card reads
+    // the CURRENT-year rule: the age as of today, from birthdate (owner
+    // ruling 2026-09-24). Each birthdate below gives the age in the test name.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2025-07-01T12:00:00Z'))
   })
@@ -152,13 +154,56 @@ describe('CamperCard — age line', () => {
 
   it('drops the months at 21 and over', () => {
     // Ruled change: was age 18.02 / "Age 18" under the old 18 cutoff.
-    render(<CamperCard camper={mockCamper({ person_cm_id: 9003, age: 21.02, grade: 12 })} />)
+    render(
+      <CamperCard
+        camper={mockCamper({ person_cm_id: 9003, age: 21.02, birthdate: '2004-05-01', grade: 12 })}
+      />
+    )
     expect(screen.getByText(/^Age 21 •/)).toBeInTheDocument()
     expect(screen.queryByText(/21\.02/)).toBeNull()
   })
 
   it('keeps yy.mm under 21', () => {
-    render(<CamperCard camper={mockCamper({ person_cm_id: 9004, age: 11.06, grade: 6 })} />)
+    render(
+      <CamperCard
+        camper={mockCamper({ person_cm_id: 9004, age: 11.06, birthdate: '2014-01-01', grade: 6 })}
+      />
+    )
     expect(screen.getByText(/^Age 11\.06 •/)).toBeInTheDocument()
+  })
+})
+
+// Owner ruling 2026-09-24: on a board for a PRIOR year the card shows the age
+// at the board's session start, computed from birthdate — not the stored
+// snapshot minus the year gap, which drifts by whenever that row last synced.
+describe('CamperCard — age on a prior-year board', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // Today is 2026; the mocked board year is 2025.
+    vi.setSystemTime(new Date(2026, 8, 24, 12, 0, 0))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("reads the age at the camper's session start", () => {
+    // Olivia Chen, born 2013-03-15; her 2025 row's snapshot (12.11) was taken
+    // early in 2026. Session started 2025-07-06 -> 12 years 3 months.
+    // The old rule showed 12.11 - 1 = 11.11.
+    const camper = mockCamper({
+      person_cm_id: 9005,
+      first_name: 'Olivia',
+      last_name: 'Chen',
+      name: 'Olivia Chen',
+      age: 12.11,
+      birthdate: '2013-03-15',
+      grade: 7,
+      expand: {
+        session: { start_date: '2025-07-06 07:00:00.000Z' } as CampSessionsResponse,
+      },
+    })
+    render(<CamperCard camper={camper} />)
+    expect(screen.getByText(/^Age 12\.03 •/)).toBeInTheDocument()
+    expect(screen.queryByText(/11\.11/)).toBeNull()
   })
 })

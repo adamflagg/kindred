@@ -384,8 +384,22 @@ function BunkCard({
                       ageGapWarning ? 'font-medium text-red-600' : 'text-muted-foreground'
                     )}
                   >
-                    Ages: {displayCampMinderAge(getDisplayAgeForYear(youngest, viewingYear) ?? 0)} -{' '}
-                    {displayCampMinderAge(getDisplayAgeForYear(oldest, viewingYear) ?? 0)}
+                    Ages:{' '}
+                    {displayCampMinderAge(
+                      getDisplayAgeForYear(
+                        youngest,
+                        viewingYear,
+                        youngest.expand?.session?.start_date
+                      ) ?? 0
+                    )}{' '}
+                    -{' '}
+                    {displayCampMinderAge(
+                      getDisplayAgeForYear(
+                        oldest,
+                        viewingYear,
+                        oldest.expand?.session?.start_date
+                      ) ?? 0
+                    )}
                     {ageGapWarning && ' ⚠️'}
                   </div>
                 )

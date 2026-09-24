@@ -5,7 +5,7 @@
  * including bunking preferences, camp journey history, siblings, and the
  * parent-sourced bunk request form text.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
@@ -829,6 +829,64 @@ describe('CamperDetailsPanel', () => {
       const quickStatsBar = await screen.findByTestId('quick-stats-bar')
       expect(within(quickStatsBar).getByText('Session 1')).toBeInTheDocument()
       expect(within(quickStatsBar).getByText('Session 2a')).toBeInTheDocument()
+    })
+  })
+
+  // Owner ruling 2026-09-24: the board modal for a PAST year (board year
+  // mocked 2025, today 2026) reads the age at the session the modal was
+  // opened from; with no board session, at the earliest enrolled session
+  // start that year. Never the stored snapshot minus the year gap.
+  describe('age on a past-year board (owner ruling 2026-09-24)', () => {
+    const EMMA_AGED = { ...EMMA, age: 12.11, birthdate: '2013-03-15' }
+    const withStart = (attendee: Record<string, unknown>, start_date: string) => {
+      const expand = attendee['expand'] as { session: Record<string, unknown> }
+      return {
+        ...attendee,
+        expand: { ...expand, person: EMMA_AGED, session: { ...expand.session, start_date } },
+      }
+    }
+    const SESSION_1 = withStart(EMMA_ATTENDEE, '2025-06-08 07:00:00.000Z')
+    const SESSION_2 = withStart(
+      {
+        ...EMMA_ATTENDEE,
+        id: 'att-emma-session-2',
+        session: 'sess-2',
+        expand: {
+          session: { id: 'sess-2', cm_id: 2002, name: 'Session 2a', session_type: 'main' },
+        },
+      },
+      '2025-07-06 07:00:00.000Z'
+    )
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(2026, 8, 24, 12, 0, 0))
+      setupDeclinedRequestMocks()
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string }) =>
+        Promise.resolve(
+          (opts.filter ?? '').includes(`cm_id = ${LIAM.cm_id}`) ? [LIAM] : [EMMA_AGED]
+        )
+      )
+      mockGetFullListAttendees.mockResolvedValue([SESSION_1, SESSION_2])
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('reads the age at the start of the session the modal was opened from', async () => {
+      render(
+        <CamperDetailsPanel camperId="100" onClose={mockOnClose} openedFromSessionCmId={2002} />
+      )
+      await screen.findByRole('heading', { name: /Emma/i })
+      // 2013-03-15 -> 2025-07-06; the old rule read 12.11 - 1 = 11 years 11 months.
+      expect(await screen.findAllByText('12 years, 3 months')).not.toHaveLength(0)
+      expect(screen.queryByText('11 years, 11 months')).toBeNull()
+    })
+
+    it('reads the earliest enrolled session start with no board session', async () => {
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+      await screen.findByRole('heading', { name: /Emma/i })
+      expect(await screen.findAllByText('12 years, 2 months')).not.toHaveLength(0)
     })
   })
 

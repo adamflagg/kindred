@@ -18,6 +18,11 @@ interface SiblingsPanelProps {
   isLoading: boolean
   error: Error | null
   title?: 'Siblings' | 'Household'
+  /**
+   * The year the record is showing — can be a journey link's `?year=`, not
+   * the app's global year. Defaults to the global year.
+   */
+  viewingYear?: number | undefined
 }
 
 export function SiblingsPanel({
@@ -25,8 +30,10 @@ export function SiblingsPanel({
   isLoading,
   error,
   title = 'Siblings',
+  viewingYear: viewingYearProp,
 }: SiblingsPanelProps) {
-  const viewingYear = useYear()
+  const globalYear = useYear()
+  const viewingYear = viewingYearProp ?? globalYear
 
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
@@ -73,7 +80,11 @@ export function SiblingsPanel({
                   </div>
                   <div className="text-muted-foreground mt-0.5 text-xs">
                     {(() => {
-                      const age = getDisplayAgeForYear(sibling, viewingYear)
+                      const age = getDisplayAgeForYear(
+                        sibling,
+                        viewingYear,
+                        sibling.earliestSessionStart
+                      )
                       // The grade in the short style ("K", "Pre-K", "5th"), bare
                       // like the age; none without a grade name -- kindred#2779.
                       const parts = [

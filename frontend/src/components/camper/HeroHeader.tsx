@@ -10,7 +10,7 @@ import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
 import { formatGenderFull } from '../../utils/genderUtils'
 import { formatGradeName } from '../../utils/gradeUtils'
-import { getDisplayAgeForYear } from '../../utils/displayAge'
+import { earliestSessionStart, getDisplayAgeForYear } from '../../utils/displayAge'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { journeyCountLabel } from '../../utils/journeyCountLabel'
 import { isQuestSessionType } from '../../utils/sessionTypePredicates'
@@ -90,7 +90,15 @@ export function HeroHeader({
               )}
             <p className="text-forest-100 mt-2 text-base sm:text-lg">
               {formatGenderFull(camper.gender)} • {pronouns} •{' '}
-              {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}
+              {formatAge(
+                getDisplayAgeForYear(
+                  camper,
+                  currentYear,
+                  // No board session in context: a past year reads the age at
+                  // the earliest enrolled session start (ruling 2026-09-24).
+                  earliestSessionStart((enrolledCampers ?? []).map((c) => c.expand?.session))
+                ) ?? 0
+              )}
               {/* Adults have no grade. */}
               {isAdultProgram || !gradeLabel ? null : ` • ${gradeLabel}`}
             </p>

@@ -301,8 +301,11 @@ function CamperCard({
           {/* Line 2: Age/Grade (left) and History (right) */}
           <span className="flex items-center justify-between gap-2">
             <span className="block text-xs text-gray-600 dark:text-gray-400">
-              Age {displayCampMinderAge(getDisplayAgeForYear(camper, viewingYear) ?? 0)} •{' '}
-              {formatGradeOrdinal(camper.grade)}
+              Age{' '}
+              {displayCampMinderAge(
+                getDisplayAgeForYear(camper, viewingYear, camper.expand?.session?.start_date) ?? 0
+              )}{' '}
+              • {formatGradeOrdinal(camper.grade)}
             </span>
             {historyDisplay && (
               <span className="text-muted-foreground block text-xs whitespace-nowrap">

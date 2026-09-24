@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SiblingWithEnrollment } from '../../hooks/camper/types'
 import { SiblingsPanel } from './SiblingsPanel'
@@ -113,5 +113,33 @@ describe('SiblingsPanel', () => {
       expect(within(row).getByText('|')).toBeInTheDocument()
       expect(within(row).queryByText('•')).not.toBeInTheDocument()
     })
+  })
+})
+
+// Owner ruling 2026-09-24: on a past year's record a sibling's age is read at
+// that sibling's earliest enrolled session start, for the year the page shows
+// (a journey link's `?year=`), not the app's global year (mocked 2026 here).
+describe('SiblingsPanel age on a past-year record', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 24, 12, 0, 0))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("reads the sibling's age at their earliest session start that year", () => {
+    const sibling = {
+      ...partner,
+      first_name: 'Olivia',
+      last_name: 'Chen',
+      grade_name: '7th',
+      age: 12.11, // early-2026 snapshot on the 2025 row
+      birthdate: '2013-03-15',
+      session: { id: 's', cm_id: 1, name: 'Session 3', session_type: 'main' },
+      earliestSessionStart: '2025-07-06 07:00:00.000Z',
+    } as unknown as SiblingWithEnrollment
+    renderPanel({ siblings: [sibling], viewingYear: 2025 })
+    expect(screen.getByText('12 years, 3 months • 7th')).toBeInTheDocument()
   })
 })

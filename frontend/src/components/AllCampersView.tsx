@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { Search, Home, X, ChevronDown, Settings, Download } from 'lucide-react'
@@ -7,7 +7,7 @@ import { CampMinderIcon } from './icons'
 import { StatusBadge } from './StatusBadge'
 import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
-import { getDisplayAgeForYear } from '../utils/displayAge'
+import { earliestSessionStart, getDisplayAgeForYear } from '../utils/displayAge'
 import { displayCampMinderAge } from '../utils/age'
 import { getSessionDisplayName, getParentSessionId } from '../utils/sessionDisplay'
 import {
@@ -247,6 +247,20 @@ export default function AllCampersView() {
     for (const s of allSessions) map.set(s.cm_id, s.id)
     return map
   }, [allSessions])
+
+  // A merged row has no single session in context, so a past year's age is
+  // read at the camper's earliest session start that year (owner ruling
+  // 2026-09-24) — see utils/displayAge.ts.
+  const ageSessionStart = useCallback(
+    (camper: MergedCamper): string | undefined => {
+      const cmIds = [
+        camper.session_cm_id,
+        ...(camper.additionalSessions ?? []).map((s) => s.session_cm_id),
+      ]
+      return earliestSessionStart(cmIds.map((cmId) => allSessions.find((s) => s.cm_id === cmId)))
+    },
+    [allSessions]
+  )
 
   // Drop per-attendee camper records tied to off-season (non-window-gated)
   // sessions — e.g. year-round teen interns — before merge, so they never leak
@@ -720,7 +734,10 @@ export default function AllCampersView() {
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <span className="text-sm text-stone-500 dark:text-stone-400">
                             Grade {camper.grade} ·{' '}
-                            {displayCampMinderAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}{' '}
+                            {displayCampMinderAge(
+                              getDisplayAgeForYear(camper, currentYear, ageSessionStart(camper)) ??
+                                0
+                            )}{' '}
                             yrs
                           </span>
                           {genderIdentity && genderIdentity !== 'Unknown' && (

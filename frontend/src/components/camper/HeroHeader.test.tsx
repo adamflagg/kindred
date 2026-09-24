@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Camper } from '../../types/app-types'
 import { HeroHeader } from './HeroHeader'
@@ -162,5 +162,58 @@ describe('HeroHeader cabin/trip chip (Quest option A)', () => {
     expect(container.querySelectorAll('.lucide-home')).toHaveLength(1)
     expect(screen.getByText('Cabin 3')).toBeInTheDocument()
     expect(screen.getByText(/Sierra Slam/)).toBeInTheDocument()
+  })
+})
+
+// Owner ruling 2026-09-24: the camper page for a PAST year has no board
+// session in context, so the age is taken at the person's EARLIEST enrolled
+// session start that year, computed from birthdate.
+describe('HeroHeader age on a past-year record', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 24, 12, 0, 0))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Olivia Chen, born 2013-03-15; the 2025 row's snapshot (12.11) is from
+  // early 2026. Enrolled in Taste of Camp (2025-06-08) and Session 3
+  // (2025-07-06) that year.
+  const olivia = {
+    ...camper,
+    first_name: 'Olivia',
+    last_name: 'Chen',
+    name: 'Olivia Chen',
+    grade: 7,
+    grade_name: '7th',
+    age: 12.11,
+    birthdate: '2013-03-15',
+  } as unknown as Camper
+  const enrolledIn = (start_date: string) =>
+    ({ ...olivia, expand: { session: { name: 'S', start_date } } }) as unknown as Camper
+
+  it('uses the earliest enrolled session start that year', () => {
+    renderHero({
+      camper: olivia,
+      currentYear: 2025,
+      enrolledCampers: [
+        enrolledIn('2025-07-06 07:00:00.000Z'),
+        enrolledIn('2025-06-08 07:00:00.000Z'),
+      ],
+    })
+    // 2013-03-15 -> 2025-06-08 is 12 years 2 months; the old rule read
+    // 12.11 - 1 = "11 years, 11 months".
+    expect(screen.getByText(/• 12 years, 2 months •/)).toBeInTheDocument()
+    expect(screen.queryByText(/11 years, 11 months/)).toBeNull()
+  })
+
+  it('shows the age as of today on the current-year record', () => {
+    renderHero({
+      camper: { ...olivia, age: 13.06 },
+      currentYear: 2026,
+      enrolledCampers: [enrolledIn('2026-07-05 07:00:00.000Z')],
+    })
+    expect(screen.getByText(/• 13 years, 6 months •/)).toBeInTheDocument()
   })
 })

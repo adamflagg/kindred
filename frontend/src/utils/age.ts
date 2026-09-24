@@ -5,8 +5,11 @@
  * CampMinder itself keeps them — most 21+ ages carry a fraction — so this is
  * a display choice, not a property of the data. Comparing the raw yy.mm with
  * `age >= ADULT_AGE` is safe because the months never exceed `.11`: 20.11
- * stays below 21. Still CampMinder's own value — never derived from birthdate
- * (#2088). Applied here so every surface inherits it.
+ * stays below 21. The formatters here derive nothing — they render whatever
+ * yy.mm they are handed: CampMinder's own value on the weekend surfaces
+ * (#2088), a birthdate-derived one on the summer surfaces
+ * (`utils/displayAge.ts`, owner ruling 2026-09-24). Applied here so every
+ * surface inherits it.
  *
  * The camper journey's adulthood gate (whether a viewer sees their household's
  * family weekends) reads the same cutoff on the server since kindred#2776 —

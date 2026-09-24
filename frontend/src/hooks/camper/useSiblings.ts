@@ -26,6 +26,7 @@ import type {
   CampSessionsResponse,
 } from '../../types/pocketbase-types'
 import { sortEnrolledFirst } from '../../utils/enrollmentSort'
+import { earliestSessionStart } from '../../utils/displayAge'
 import type { SiblingWithEnrollment } from './types'
 
 export interface UseSiblingsResult {
@@ -130,6 +131,7 @@ export function useSiblings(
               return null
             }
             const session = primaryAttendee.expand.session
+            const earliestStart = earliestSessionStart(sortedAttendees.map((a) => a.expand.session))
             const additionalSessions = sortedAttendees
               .slice(1)
               .map((a) => a.expand.session)
@@ -182,6 +184,7 @@ export function useSiblings(
               bunkName,
               attendeeStatus: primaryAttendee.status,
               additionalSessions,
+              ...(earliestStart && { earliestSessionStart: earliestStart }),
             } satisfies SiblingWithEnrollment
           } catch (err) {
             console.error(`Error checking enrollment for sibling ${siblingPerson.cm_id}:`, err)

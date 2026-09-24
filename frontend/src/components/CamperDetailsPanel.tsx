@@ -67,7 +67,7 @@ import { JourneyRows } from './camper/JourneyRows'
 import { journeyDisplayState, journeyRowsFromHistory } from './camper/journeyRowModel'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
-import { getDisplayAgeForYear } from '../utils/displayAge'
+import { earliestSessionStart, getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
 import { getAvatarColor, getInitial } from '../utils/avatarUtils'
 import { personLocation } from '../utils/addressUtils'
@@ -111,6 +111,7 @@ interface ExpandedSession {
   cm_id?: number
   name?: string
   parent_id?: number
+  start_date?: string
 }
 
 interface ExpandedBunk {
@@ -174,6 +175,8 @@ interface CurrentEnrollment {
   sessionCmId: number
   parentId: number
   bunkName: string | null
+  /** The session's `start_date` — a past year's age is read at it (ruling 2026-09-24). */
+  startDate?: string
   /**
    * The as-typed string, when it disagrees with `bunkName` (Q9, owner ruling
    * 2026-09-22 late) — set only for a resolved TLI/SCIT, adult-program or
@@ -409,6 +412,7 @@ export default function CamperDetailsPanel({
           sessionCmId: sess?.cm_id ?? 0,
           parentId: sess?.parent_id ?? 0,
           bunkName,
+          ...(sess?.start_date && { startDate: sess.start_date }),
           attendeeStatus: att.status,
         })
 
@@ -530,6 +534,17 @@ export default function CamperDetailsPanel({
     openedFromSessionCmId !== undefined && openedEnrollments.length > 0
       ? openedEnrollments
       : currentEnrollments
+
+  // Owner ruling 2026-09-24: a past year's age is read at the board session
+  // the modal was opened from; with none, at the earliest ENROLLED session
+  // start that year (utils/displayAge.ts). Ignored for the current year.
+  const ageSessionStart =
+    openedEnrollments[0]?.startDate ??
+    earliestSessionStart(
+      filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus).enrolled.map((e) => ({
+        start_date: e.startDate,
+      }))
+    )
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
@@ -1190,7 +1205,15 @@ export default function CamperDetailsPanel({
                         <StatusBadge status={sibling.attendeeStatus} />
                       </div>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-[10px]">
-                        <span>{formatAge(getDisplayAgeForYear(sibling, currentYear) ?? 0)}</span>
+                        <span>
+                          {formatAge(
+                            getDisplayAgeForYear(
+                              sibling,
+                              currentYear,
+                              sibling.earliestSessionStart
+                            ) ?? 0
+                          )}
+                        </span>
                         {/* The grade in the short style, as in the camper
                             record's sibling rows; none without a grade name
                             (kindred#2779). */}
@@ -1448,7 +1471,9 @@ export default function CamperDetailsPanel({
                 <span>•</span>
                 <span>{camper.pronouns ?? 'No Preference'}</span>
                 <span>•</span>
-                <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
+                <span>
+                  {formatAge(getDisplayAgeForYear(camper, currentYear, ageSessionStart) ?? 0)}
+                </span>
                 <span
                   className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                     camper.gender === 'M'
@@ -1544,7 +1569,9 @@ export default function CamperDetailsPanel({
                     <span>•</span>
                     <span>{camper.pronouns ?? 'No Preference'}</span>
                     <span>•</span>
-                    <span>{formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}</span>
+                    <span>
+                      {formatAge(getDisplayAgeForYear(camper, currentYear, ageSessionStart) ?? 0)}
+                    </span>
                   </div>
                   <div className="text-forest-100 mt-0.5 flex items-center gap-2 text-sm">
                     <span>{gradeAndSchool}</span>
