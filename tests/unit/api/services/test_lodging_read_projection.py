@@ -11,7 +11,7 @@ So each narrowed read gets TWO tests:
 
 * a PIN on the exact field set the repository sends, and
 * an EQUIVALENCE check: the same fixture rows, served once in full and once
-  projected the way PocketBase projects them (`_project` below), must produce
+  projected the way PocketBase projects them (`tests/fixtures/pb_projection.py`), must produce
   identical results all the way through the real consumer. That is the test
   that catches a missing field -- it compares against the unprojected read
   rather than against a hand-written expectation that could share the mistake.
@@ -23,7 +23,6 @@ behaves exactly as it does against a live PocketBase.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -40,6 +39,7 @@ from api.services.adult_need_answers import (
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import _person_display_name, _request_blocks
 from api.services.person_housing_rules import cabin_values_from_rows
+from tests.fixtures.pb_projection import project as _project
 
 # ---------------------------------------------------------------- the pins
 #
@@ -81,38 +81,6 @@ def _reset_lodging_cache() -> Any:
     lodging_cache.invalidate_all()
     yield
     lodging_cache.invalidate_all()
-
-
-def _project(data: dict[str, Any], fields: str | None) -> dict[str, Any]:
-    """What PocketBase sends back for `fields=...`: only the named paths.
-
-    `expand.rel.col` keeps one column of an expanded relation; a bare name
-    keeps one top-level column; `*` keeps every top-level column. With no
-    `fields` at all, the whole row (the pre-#2803 shape).
-    """
-    if not fields:
-        return deepcopy(data)
-    out: dict[str, Any] = {}
-    for path in fields.split(","):
-        _copy_path(data, out, path.strip().split("."))
-    return out
-
-
-def _copy_path(src: dict[str, Any], dst: dict[str, Any], parts: list[str]) -> None:
-    head, rest = parts[0], parts[1:]
-    if head == "*":
-        for key, value in src.items():
-            if key != "expand":
-                dst.setdefault(key, deepcopy(value))
-        return
-    if head not in src:
-        return
-    if not rest:
-        dst[head] = deepcopy(src[head])
-        return
-    value = src[head]
-    if isinstance(value, dict):
-        _copy_path(value, dst.setdefault(head, {}), rest)
 
 
 class _ProjectingPB:

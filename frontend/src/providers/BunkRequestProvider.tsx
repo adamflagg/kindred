@@ -3,15 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
-import { useScenario } from '../hooks/useScenario'
-import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { useSessionSatisfaction } from '../hooks/useSessionSatisfaction'
 import type { BunkRequest } from '../types/app-types'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
-import {
-  type CamperSatisfaction,
-  emptyCamperSatisfaction,
-  type SatisfactionResponse,
-} from '../types/satisfaction'
+import { type CamperSatisfaction, emptyCamperSatisfaction } from '../types/satisfaction'
 import { queryKeys } from '../utils/queryKeys'
 
 interface BunkRequestProviderProps {
@@ -22,9 +17,6 @@ interface BunkRequestProviderProps {
 export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProviderProps) {
   const currentYear = useYear()
   const { user, isLoading: isAuthLoading } = useAuth()
-  const { currentScenario } = useScenario()
-  const { fetchWithAuth } = useApiWithAuth()
-  const scenarioId = currentScenario?.id ?? null
 
   // Fetch ALL bunk requests for the session (for the modal/per-request rows that
   // still need raw rows: bunk-request grid, expanded row details, etc.).
@@ -52,30 +44,13 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     enabled: !!user && !isAuthLoading && sessionCmId > 0,
   })
 
-  // Fetch satisfaction state from /api/satisfaction — single source of truth
-  // for "is request X satisfied?". Replaces the deleted local predicates.
+  // Satisfaction state from /api/satisfaction — single source of truth for
+  // "is request X satisfied?". Shared with the full camper page.
   const {
     data: satisfaction,
     isLoading: satisfactionLoading,
     error: satisfactionError,
-  } = useQuery<SatisfactionResponse>({
-    queryKey: queryKeys.satisfaction(sessionCmId, currentYear, scenarioId),
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        session: String(sessionCmId),
-        year: String(currentYear),
-      })
-      if (scenarioId) params.set('scenario', scenarioId)
-      const response = await fetchWithAuth(`/api/satisfaction?${params}`)
-      if (!response.ok) {
-        throw new Error(`/api/satisfaction failed: ${response.status}`)
-      }
-      return (await response.json()) as SatisfactionResponse
-    },
-    staleTime: 30 * 1000, // matches social-graph staleness
-    gcTime: 10 * 60 * 1000,
-    enabled: !!user && !isAuthLoading && sessionCmId > 0,
-  })
+  } = useSessionSatisfaction(sessionCmId)
 
   // Pre-compute request lookups for hasRequests / getRequestsForCamper
   const requestsByPerson = useMemo(() => {

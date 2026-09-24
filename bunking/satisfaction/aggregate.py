@@ -22,6 +22,7 @@ from api.constants.collections import (
     BUNK_REQUESTS,
     PERSONS,
 )
+from api.constants.paging import PB_PAGE_SIZE
 from api.utils.session_metrics import get_bunk_from_expand, get_person_from_expand
 from bunking.logging_config import get_logger
 from bunking.satisfaction.api_shape import (
@@ -44,6 +45,31 @@ logger = get_logger(__name__)
 
 _PB_RECORD_ID_PATTERN = r"^[a-zA-Z0-9]{15}$"
 _PB_RECORD_ID_RE = re.compile(_PB_RECORD_ID_PATTERN)
+
+# `fields=` projections for session_satisfaction's two reads: exactly the
+# columns this module reads, nothing else. A column missing from a list does
+# not fail -- it comes back ABSENT and reads as None, so a lost grade turns an
+# age preference silently unsatisfied. Add one only alongside the code that
+# reads it; tests/unit/bunking/satisfaction/test_session_satisfaction_read_path.py
+# compares the projected response against the unprojected one.
+#
+# `expand.person.grade` + `.year` replace a separate `persons` read: the
+# assignment's person relation already carries the grade, and the year says
+# whether it is the same-year row the old year-scoped read would have found.
+_ASSIGNMENT_FIELDS = ",".join(
+    (
+        "id",
+        "person",
+        "bunk",
+        "expand.person.cm_id",
+        "expand.person.grade",
+        "expand.person.year",
+        "expand.bunk.cm_id",
+    )
+)
+_REQUEST_FIELDS = ",".join(
+    ("id", "requester_id", "requestee_id", "request_type", "source_field", "age_preference_target")
+)
 
 
 def _coerce_str(v: Any) -> str:
@@ -192,6 +218,23 @@ def camper_satisfaction(
     )
 
 
+def _expanded_same_year_grade(person_data: Any, year: int) -> int | None:
+    """The grade on an assignment's expanded person, if it is `year`'s row."""
+
+    def _get(key: str) -> Any:
+        return person_data.get(key) if isinstance(person_data, dict) else getattr(person_data, key, None)
+
+    grade, person_year = _get("grade"), _get("year")
+    if grade is None or person_year is None:
+        return None
+    try:
+        if int(person_year) != year:
+            return None
+        return int(grade)
+    except TypeError, ValueError:
+        return None
+
+
 def session_satisfaction(
     session_cm_ids: list[int],
     year: int,
@@ -264,7 +307,6 @@ def session_satisfaction(
     )
 
     # Task 36: fetch assignments + requests in parallel — they are independent queries.
-    # persons must come AFTER assignments because we scope it to person_to_bunk.keys().
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         # bunk_assignments has person/bunk as relation fields (PB record ids), not
         # flat person_cm_id/bunk_cm_id attributes. expand=person,bunk populates the
@@ -272,11 +314,13 @@ def session_satisfaction(
         # expand.bunk.cm_id — matches social_graph_builder.py's pattern.
         assignments_future = executor.submit(
             pb_client.collection(assignments_collection).get_full_list,
-            query_params={"filter": assignments_filter, "expand": "person,bunk"},
+            batch=PB_PAGE_SIZE,
+            query_params={"filter": assignments_filter, "expand": "person,bunk", "fields": _ASSIGNMENT_FIELDS},
         )
         requests_future = executor.submit(
             pb_client.collection(BUNK_REQUESTS).get_full_list,
-            query_params={"filter": requests_filter},
+            batch=PB_PAGE_SIZE,
+            query_params={"filter": requests_filter, "fields": _REQUEST_FIELDS},
         )
         try:
             assignments = assignments_future.result(timeout=30.0)
@@ -289,9 +333,11 @@ def session_satisfaction(
             logger.exception("failed to fetch %s", BUNK_REQUESTS)
             raise
 
-    # Build person_to_bunk from assignments so we can scope the persons fetch.
+    # Build person_to_bunk from assignments, and take each person's grade from
+    # the same expanded record.
     person_to_bunk: dict[int, int] = {}
     bunk_to_persons: dict[int, list[int]] = defaultdict(list)
+    person_grades: dict[int, int] = {}
     for a in assignments:
         person_data = get_person_from_expand(a)
         bunk_data = get_bunk_from_expand(a)
@@ -343,23 +389,26 @@ def session_satisfaction(
             continue
         person_to_bunk[pid] = bid
         bunk_to_persons[bid].append(pid)
+        grade = _expanded_same_year_grade(person_data, year)
+        if grade is not None:
+            person_grades[pid] = grade
 
-    # Task 34: fetch only the persons whose cm_id appears in assignments, in chunks of 100
-    # to keep PocketBase filter strings under the practical URL length limit.
-    needed_cm_ids = sorted(person_to_bunk.keys())
-    person_grades: dict[int, int] = {}
-    if needed_cm_ids:
-        chunk_size = 100
-        for chunk in batched(needed_cm_ids, chunk_size, strict=False):
-            cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
-            persons = pb_client.collection(PERSONS).get_full_list(
-                query_params={"filter": f"year = {year} && ({cm_id_filter})"}
-            )
-            for p in persons:
-                cm_id = getattr(p, "cm_id", None)
-                grade = getattr(p, "grade", None)
-                if cm_id is not None and grade is not None:
-                    person_grades[int(cm_id)] = int(grade)
+    # Fallback: a person whose expanded record is not this year's row (or has
+    # no grade) is looked up year-scoped, as every person used to be. The sync
+    # resolves the relation year-scoped, so on real data this reads nothing.
+    # Chunks of 100 keep the filter string under the practical URL limit.
+    missing_cm_ids = sorted(pid for pid in person_to_bunk if pid not in person_grades)
+    for chunk in batched(missing_cm_ids, 100, strict=False):
+        cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
+        persons = pb_client.collection(PERSONS).get_full_list(
+            batch=PB_PAGE_SIZE,
+            query_params={"filter": f"year = {year} && ({cm_id_filter})", "fields": "cm_id,grade"},
+        )
+        for p in persons:
+            cm_id = getattr(p, "cm_id", None)
+            grade = getattr(p, "grade", None)
+            if cm_id is not None and grade is not None:
+                person_grades[int(cm_id)] = int(grade)
 
     bunkmate_grades: dict[int, list[int]] = {}
     for pid, bid in person_to_bunk.items():

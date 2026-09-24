@@ -4,7 +4,7 @@
  * This component orchestrates data fetching through hooks and
  * delegates rendering to extracted UI components.
  */
-import { useContext, useEffect, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
@@ -15,8 +15,7 @@ import { Permission } from '../constants/permissions'
 import { personLocation } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
 import { isSummerCampSession, isAdultSessionType } from '../utils/sessionTypePredicates'
-import { BunkRequestContext } from '../contexts/BunkRequestContext'
-import { BunkRequestProvider } from '../providers/BunkRequestProvider'
+import { useSessionSatisfaction } from '../hooks/useSessionSatisfaction'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 // Import extracted hooks
@@ -28,7 +27,7 @@ import {
   useAllBunkRequests,
 } from '../hooks/camper'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
-import type { SatisfactionEntry } from '../types/satisfaction'
+import { emptyCamperSatisfaction, type SatisfactionEntry } from '../types/satisfaction'
 import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
 
 // Import extracted UI components
@@ -96,8 +95,7 @@ interface CamperDetailBodyProps {
 }
 
 /**
- * Renders the full camper detail UI. Must be mounted inside a BunkRequestProvider
- * so that useContext(BunkRequestContext) resolves to the session-scoped context.
+ * Renders the full camper detail UI.
  */
 function CamperDetailBody({
   camper,
@@ -118,10 +116,6 @@ function CamperDetailBody({
   isAdmin,
   isAdultProgram,
 }: CamperDetailBodyProps) {
-  // Safe: this component is always rendered inside BunkRequestProvider (see CamperDetail).
-  const bunkRequestCtx = useContext(BunkRequestContext)!
-  const camperSatisfaction = bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
-
   // Teens aren't bunked and never enter request processing, and family camp
   // never enters the summer cabin-assignment workflow either (#2149) —
   // assigned_bunk_cm_id is intentionally left undefined for family attendees
@@ -131,12 +125,28 @@ function CamperDetailBody({
   // isSummerCampSession so both teen and family sessions are excluded.
   const showBunkingUI = camper.expand?.session ? isSummerCampSession(camper.expand.session) : false
 
-  // Single source of truth for per-row satisfaction pills: read directly from
-  // BunkRequestProvider's /api/satisfaction response. Replaces the previous
-  // useSatisfactionData hook which independently fetched bunk_assignments.
-  // Surfaces backend rows even when the camper is unassigned (the API returns
-  // `(satisfied=false, detail="Requester not assigned")` for those rows —
-  // honest rendering, matches the rest of the consolidated flow).
+  // "X/Y met" and the per-request pills: this camper's entry in the session's
+  // /api/satisfaction response — the same query (and cache entry) the board's
+  // BunkRequestProvider uses. The page does not mount that provider: it would
+  // also fetch the session's entire bunk_requests list, which nothing here
+  // reads (useAllBunkRequests fetches this camper's own rows). Only fetched
+  // when the bunking panels that show it render. Camp is
+  // single-session-per-camper; session_cm_id ?? 0 disables the query for an
+  // unassigned camper.
+  const { data: satisfaction } = useSessionSatisfaction(camper.session_cm_id ?? 0, {
+    enabled: showBunkingUI,
+  })
+  const camperSatisfaction = useMemo(
+    () =>
+      satisfaction?.campers[String(camper.person_cm_id)] ??
+      emptyCamperSatisfaction(camper.person_cm_id),
+    [satisfaction, camper.person_cm_id]
+  )
+
+  // Per-row satisfaction pills. Surfaces backend rows even when the camper is
+  // unassigned (the API returns `(satisfied=false, detail="Requester not
+  // assigned")` for those rows — honest rendering, matches the rest of the
+  // consolidated flow).
   const getRequestSatisfaction = useMemo<(id: string) => SatisfactionEntry>(
     () => buildSatisfactionLookup(camperSatisfaction.per_request),
     [camperSatisfaction.per_request]
@@ -430,31 +440,25 @@ export default function CamperDetail() {
   }
 
   // camper is guaranteed non-null past this point.
-  // Wrap in BunkRequestProvider so CamperDetailBody's useContext(BunkRequestContext)
-  // resolves to the session-scoped context — without this, the context is undefined
-  // and BunkingStatusPanel hides the "X/Y met" summary (EMPTY fallback gives total=0).
-  // Camp is single-session-per-camper; session_cm_id ?? 0 is safe for unassigned campers.
   return (
-    <BunkRequestProvider sessionCmId={camper.session_cm_id ?? 0}>
-      <CamperDetailBody
-        camper={camper}
-        enrolledCampers={enrolledCampers}
-        currentYear={currentYear}
-        appCurrentYear={appCurrentYear}
-        person={person}
-        allBunkRequests={allBunkRequests}
-        originalBunkData={originalBunkData}
-        siblings={siblings}
-        siblingsLoading={siblingsLoading}
-        siblingsError={siblingsError}
-        camperHistory={camperHistory}
-        journeyCounts={journeyCounts}
-        journeyLoading={journeyLoading}
-        journeyError={journeyError}
-        canManageBunking={canManageBunking}
-        isAdmin={isAdmin}
-        isAdultProgram={isAdultProgram}
-      />
-    </BunkRequestProvider>
+    <CamperDetailBody
+      camper={camper}
+      enrolledCampers={enrolledCampers}
+      currentYear={currentYear}
+      appCurrentYear={appCurrentYear}
+      person={person}
+      allBunkRequests={allBunkRequests}
+      originalBunkData={originalBunkData}
+      siblings={siblings}
+      siblingsLoading={siblingsLoading}
+      siblingsError={siblingsError}
+      camperHistory={camperHistory}
+      journeyCounts={journeyCounts}
+      journeyLoading={journeyLoading}
+      journeyError={journeyError}
+      canManageBunking={canManageBunking}
+      isAdmin={isAdmin}
+      isAdultProgram={isAdultProgram}
+    />
   )
 }

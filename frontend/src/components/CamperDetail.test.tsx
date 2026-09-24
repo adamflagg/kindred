@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { EMPTY_JOURNEY_COUNTS } from '../utils/journeyCountLabel'
@@ -118,9 +118,13 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2026,
 }))
 
+// Every collection a getFullList was issued against — the full page must not
+// pull the session-wide bunk_requests list it never reads (cache audit C2).
+const fullListCollections: string[] = []
+
 vi.mock('../lib/pocketbase', () => ({
   pb: {
-    collection: () => ({
+    collection: (name: string) => ({
       getList: () =>
         Promise.resolve({
           items: [
@@ -136,7 +140,10 @@ vi.mock('../lib/pocketbase', () => ({
             },
           ],
         }),
-      getFullList: () => Promise.resolve([]),
+      getFullList: () => {
+        fullListCollections.push(name)
+        return Promise.resolve([])
+      },
     }),
   },
 }))
@@ -153,9 +160,17 @@ const _defaultMockFetchWithAuth = () =>
   )
 
 let mockFetchWithAuth: (url: string) => Promise<Response> = _defaultMockFetchWithAuth
+// URLs requested through fetchWithAuth, so a test can tell whether the page
+// asked /api/satisfaction at all.
+const fetchedUrls: string[] = []
 
 vi.mock('../hooks/useApiWithAuth', () => ({
-  useApiWithAuth: () => ({ fetchWithAuth: (url: string) => mockFetchWithAuth(url) }),
+  useApiWithAuth: () => ({
+    fetchWithAuth: (url: string) => {
+      fetchedUrls.push(url)
+      return mockFetchWithAuth(url)
+    },
+  }),
 }))
 
 let mockAuthValue: { user: unknown; isLoading: boolean; isBypassMode?: boolean } = {
@@ -192,6 +207,8 @@ beforeEach(() => {
   // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
   // a later test doesn't inherit a prior suite's stub state.
   mockFetchWithAuth = _defaultMockFetchWithAuth
+  fullListCollections.length = 0
+  fetchedUrls.length = 0
 })
 
 describe('CamperDetail permission gates', () => {
@@ -318,6 +335,46 @@ describe('CamperDetail satisfaction summary', () => {
     renderDetail()
     // "1/2 met" should appear once the provider resolves and BunkingStatusPanel renders
     expect(await screen.findByText(/1\/2 met/i)).toBeTruthy()
+  })
+})
+
+// Cache audit C2: the full page reads satisfaction for one camper. It used to
+// mount BunkRequestProvider, which also fetched the session's entire
+// bunk_requests list (never read on this page) and fetched satisfaction even
+// for campers whose bunking panels are hidden.
+describe('CamperDetail satisfaction read path', () => {
+  beforeEach(() => {
+    mockAuthValue = {
+      user: { is_admin: false, cached_permissions: ['bunking.manage'] },
+      isLoading: false,
+    }
+  })
+
+  const satisfactionUrls = () => fetchedUrls.filter((u) => u.startsWith('/api/satisfaction'))
+
+  it('does not fetch the session-wide bunk_requests list', async () => {
+    renderDetail()
+    await screen.findByText(/Camp Journey/i)
+    await waitFor(() => expect(satisfactionUrls()).toHaveLength(1))
+    expect(fullListCollections).not.toContain('bunk_requests')
+  })
+
+  it('asks /api/satisfaction for the camper session and year for a summer camper', async () => {
+    renderDetail()
+    await waitFor(() => expect(satisfactionUrls()).toHaveLength(1))
+    const params = new URLSearchParams(satisfactionUrls()[0]!.split('?')[1])
+    expect(params.get('session')).toBe('2')
+    expect(params.get('year')).toBe('2026')
+    expect(params.has('scenario')).toBe(false)
+  })
+
+  it('does not ask /api/satisfaction when the bunking panels are hidden (teen program)', async () => {
+    mockSessionType = 'scit'
+    renderDetail()
+    await screen.findByText(/Camp Journey/i)
+    // Give any enabled query a chance to fire before asserting it did not.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(satisfactionUrls()).toHaveLength(0)
   })
 })
 

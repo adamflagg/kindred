@@ -6,7 +6,7 @@ from bunk_assignments_draft (scenario data) instead of bunk_assignments
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import DEFAULT, MagicMock
 
 import pytest
 
@@ -17,7 +17,8 @@ class _CollectionCapture:
     """Simple capture of .collection(name) -> mock chain.
 
     Tracks which collection was accessed and what filter string was passed to
-    get_first_list_item so tests can assert on data source and scenario filter.
+    get_first_list_item / get_full_list so tests can assert on data source and
+    scenario filter.
     """
 
     def __init__(self) -> None:
@@ -29,8 +30,18 @@ class _CollectionCapture:
     def make_collection(self, name: str) -> MagicMock:
         mock = MagicMock()
 
-        # Default: get_full_list returns empty list, get_first_list_item raises
+        # Default: get_full_list returns empty list, get_first_list_item raises.
+        # Both record the filter they were sent: the session graph reads its
+        # assignments with one get_full_list, older paths used get_first_list_item.
         mock.get_full_list.return_value = []
+
+        def _full_list(*_a: object, **kw: object) -> object:
+            params = kw.get("query_params")
+            if isinstance(params, dict) and "filter" in params:
+                self.filters.setdefault(name, []).append(str(params["filter"]))
+            return DEFAULT  # fall through to whatever return_value the test set
+
+        mock.get_full_list.side_effect = _full_list
 
         def _first_list_item(filter_str: str, *_a: object, **_kw: object) -> object:
             self.filters.setdefault(name, []).append(filter_str)

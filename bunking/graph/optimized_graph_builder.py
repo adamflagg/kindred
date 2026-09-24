@@ -19,6 +19,7 @@ from api.constants.collections import (
     BUNKS,
     PERSONS,
 )
+from api.constants.paging import PB_PAGE_SIZE
 from bunking.logging_config import get_logger
 
 from .social_graph_builder import (
@@ -104,6 +105,8 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
         logger.info(f"Processing {len(requests)} bunk requests")
 
+        bunk_by_person = self._session_bunk_by_person(year, session_cm_id, scenario_id)
+
         # Prepare batch node data
         node_data = []
         for attendee in attendees:
@@ -113,25 +116,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                 logger.warning(f"Person {person_id} not found, skipping")
                 continue
 
-            # Get bunk assignment. When scenario_id is provided, source from the
-            # bunk_assignments_draft collection (scenario data); otherwise use the
-            # production bunk_assignments collection (CampMinder sync data).
-            bunk_cm_id = None
-            assignment_collection, scenario_clause = self._assignment_source(scenario_id)
-            assignment_filter = (
-                f"person.cm_id = {person.cm_id} && session.cm_id = {session_cm_id} && year = {year}{scenario_clause}"
-            )
-            try:
-                assignment = self.pb.collection(assignment_collection).get_first_list_item(
-                    assignment_filter,
-                    query_params={"expand": "bunk"},
-                )
-                # Get bunk cm_id from expanded relation
-                expand = getattr(assignment, "expand", {}) or {}
-                bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
-                bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
-            except Exception:  # noqa: S110 — intentional silent handling
-                pass
+            bunk_cm_id = bunk_by_person.get(person.cm_id)
 
             node_attrs = {
                 "name": f"{person.first_name} {person.last_name}",
@@ -210,6 +195,44 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         )
 
         return self.graph
+
+    def _session_bunk_by_person(self, year: int, session_cm_id: int, scenario_id: str | None) -> dict[int, int | None]:
+        """person cm_id -> bunk cm_id for the session, from ONE assignments read.
+
+        When scenario_id is provided, source from the bunk_assignments_draft
+        collection (scenario data); otherwise use the production
+        bunk_assignments collection (CampMinder sync data).
+
+        Replaces a `get_first_list_item` per attendee. That returned the first
+        matching row, so the first row per person wins here too. A row whose
+        bunk relation is empty (a camper parked in Unassigned) maps to None,
+        and a person with no row is absent (the caller reads None). A failed
+        read leaves every node unbunked, as each failed lookup did before.
+        """
+        assignment_collection, scenario_clause = self._assignment_source(scenario_id)
+        try:
+            assignments = self.pb.collection(assignment_collection).get_full_list(
+                batch=PB_PAGE_SIZE,
+                query_params={
+                    "filter": f"session.cm_id = {session_cm_id} && year = {year}{scenario_clause}",
+                    "expand": "person,bunk",
+                    "fields": "expand.person.cm_id,expand.bunk.cm_id",
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error fetching bunk assignments for session {session_cm_id}: {e}")
+            return {}
+
+        bunk_by_person: dict[int, int | None] = {}
+        for assignment in assignments:
+            expand = getattr(assignment, "expand", {}) or {}
+            person_data = expand.get("person") if isinstance(expand, dict) else getattr(expand, "person", None)
+            bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
+            person_cm_id = getattr(person_data, "cm_id", None) if person_data else None
+            if person_cm_id is None or person_cm_id in bunk_by_person:
+                continue
+            bunk_by_person[person_cm_id] = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
+        return bunk_by_person
 
     def _batch_fetch_persons(self, person_cm_ids: list[int]) -> dict[int, Any]:
         """Fetch all persons in batches for efficiency."""
