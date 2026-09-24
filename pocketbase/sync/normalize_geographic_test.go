@@ -2300,6 +2300,7 @@ func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
 
 	households := core.NewBaseCollection("households")
 	households.Fields.Add(&core.NumberField{Name: "cm_id"})
+	households.Fields.Add(&core.TextField{Name: "billing_city"})
 	households.Fields.Add(&core.TextField{Name: "billing_state"})
 	households.Fields.Add(&core.TextField{Name: "billing_country"})
 	created(households)
@@ -2317,12 +2318,17 @@ func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
 
 	persons := core.NewBaseCollection("persons")
 	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	persons.Fields.Add(&core.NumberField{Name: "age"})
 	persons.Fields.Add(&core.TextField{Name: "school"})
 	persons.Fields.Add(&core.TextField{Name: "address_city"})
+	persons.Fields.Add(&core.TextField{Name: "address_state"})
 	persons.Fields.Add(&core.TextField{Name: "normalized_city"})
 	persons.Fields.Add(&core.TextField{Name: "normalized_school"})
 	persons.Fields.Add(&core.TextField{Name: "normalized_congregation"})
 	persons.Fields.Add(&core.NumberField{Name: "year"})
+	persons.Fields.Add(&core.RelationField{
+		Name: "household", CollectionId: households.Id, MaxSelect: 1,
+	})
 	persons.Fields.Add(&core.RelationField{
 		Name: "primary_childhood_household", CollectionId: households.Id, MaxSelect: 1,
 	})
@@ -2376,6 +2382,248 @@ func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
 	}
 
 	return app
+}
+
+// TestLoadAttendeeGeoData_CountryFollowsCitySource is the failing test for
+// kindred#2777: the geo normalizer always pulled state/country from
+// primary_childhood_household, even when address_city came from the
+// principal (own) household -- an adult with no childhood household on file
+// got a city but no state/country context, so normalized_city matched
+// without its state. Owner ruling: state and country must come from
+// whichever source actually supplied the city.
+//
+// Two persons, each with BOTH households populated but disagreeing on
+// country, so a fix that ignores the matching source is caught either way:
+//   - personOwn's address_city matches the OWN household's billing_city
+//     (persons.go picked PrincipalHousehold, e.g. an adult) -> country must
+//     come from the own household ("US"), not childhood ("MX").
+//   - personChildhood's address_city matches the CHILDHOOD household's
+//     billing_city (persons.go picked PrimaryChildhoodHousehold, e.g. a
+//     minor) -> country must come from childhood ("MX"), not own ("US").
+func TestLoadAttendeeGeoData_CountryFollowsCitySource(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+
+	householdsCol, err := app.FindCollectionByNameOrId("households")
+	if err != nil {
+		t.Fatalf("find households: %v", err)
+	}
+	ownHousehold := core.NewRecord(householdsCol)
+	ownHousehold.Set("cm_id", 200)
+	ownHousehold.Set("billing_city", "Denver")
+	ownHousehold.Set("billing_state", "CO")
+	ownHousehold.Set("billing_country", "US")
+	if saveErr := app.Save(ownHousehold); saveErr != nil {
+		t.Fatalf("save own household: %v", saveErr)
+	}
+
+	childhoodHousehold := core.NewRecord(householdsCol)
+	childhoodHousehold.Set("cm_id", 100)
+	childhoodHousehold.Set("billing_city", "San Francisco")
+	childhoodHousehold.Set("billing_state", "CA")
+	childhoodHousehold.Set("billing_country", "MX")
+	if saveErr := app.Save(childhoodHousehold); saveErr != nil {
+		t.Fatalf("save childhood household: %v", saveErr)
+	}
+
+	sessionsCol, err := app.FindCollectionByNameOrId("camp_sessions")
+	if err != nil {
+		t.Fatalf("find camp_sessions: %v", err)
+	}
+	sess := core.NewRecord(sessionsCol)
+	sess.Set("cm_id", 300)
+	sess.Set("name", "Adult Weekend")
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save session: %v", saveErr)
+	}
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	attendeesCol, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatalf("find attendees: %v", err)
+	}
+
+	personOwn := core.NewRecord(personsCol)
+	personOwn.Set("cm_id", 401)
+	personOwn.Set("year", 2026)
+	personOwn.Set("address_city", "Denver")
+	personOwn.Set("address_state", "CO")
+	personOwn.Set("household", ownHousehold.Id)
+	personOwn.Set("primary_childhood_household", childhoodHousehold.Id)
+	if err := app.Save(personOwn); err != nil {
+		t.Fatalf("save personOwn: %v", err)
+	}
+	attendeeOwn := core.NewRecord(attendeesCol)
+	attendeeOwn.Set("person", personOwn.Id)
+	attendeeOwn.Set("session", sess.Id)
+	attendeeOwn.Set("year", 2026)
+	if err := app.Save(attendeeOwn); err != nil {
+		t.Fatalf("save attendeeOwn: %v", err)
+	}
+
+	personChildhood := core.NewRecord(personsCol)
+	personChildhood.Set("cm_id", 402)
+	personChildhood.Set("year", 2026)
+	personChildhood.Set("address_city", "San Francisco")
+	personChildhood.Set("address_state", "CA")
+	personChildhood.Set("household", ownHousehold.Id)
+	personChildhood.Set("primary_childhood_household", childhoodHousehold.Id)
+	if err := app.Save(personChildhood); err != nil {
+		t.Fatalf("save personChildhood: %v", err)
+	}
+	attendeeChildhood := core.NewRecord(attendeesCol)
+	attendeeChildhood.Set("person", personChildhood.Id)
+	attendeeChildhood.Set("session", sess.Id)
+	attendeeChildhood.Set("year", 2026)
+	if err := app.Save(attendeeChildhood); err != nil {
+		t.Fatalf("save attendeeChildhood: %v", err)
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.Year = 2026
+	data, loadErr := n.loadAttendeeGeoData(context.Background(), 2026)
+	if loadErr != nil {
+		t.Fatalf("loadAttendeeGeoData: %v", loadErr)
+	}
+
+	byCMID := make(map[int]attendeeGeoData)
+	for _, d := range data {
+		byCMID[d.PersonCMID] = d
+	}
+
+	own, ok := byCMID[401]
+	if !ok {
+		t.Fatal("no attendeeGeoData for personOwn (cm_id 401)")
+	}
+	if own.City != "Denver" {
+		t.Errorf("own.City = %q, want %q", own.City, "Denver")
+	}
+	if own.AddressState != "CO" {
+		t.Errorf("own.AddressState = %q, want %q", own.AddressState, "CO")
+	}
+	if own.AddressCountry != "US" {
+		t.Errorf("own.AddressCountry = %q, want %q (own household supplied the city)",
+			own.AddressCountry, "US")
+	}
+
+	childhood, ok := byCMID[402]
+	if !ok {
+		t.Fatal("no attendeeGeoData for personChildhood (cm_id 402)")
+	}
+	if childhood.City != "San Francisco" {
+		t.Errorf("childhood.City = %q, want %q", childhood.City, "San Francisco")
+	}
+	if childhood.AddressState != "CA" {
+		t.Errorf("childhood.AddressState = %q, want %q", childhood.AddressState, "CA")
+	}
+	if childhood.AddressCountry != "MX" {
+		t.Errorf("childhood.AddressCountry = %q, want %q (childhood household supplied the city)",
+			childhood.AddressCountry, "MX")
+	}
+}
+
+// TestLoadAttendeeGeoData_CountryMatchRespectsAgeOrderOnCityCollision is the
+// regression test for CodeRabbit's finding on kindred#2791: the country
+// lookup checked "household" (own) before "primary_childhood_household"
+// UNCONDITIONALLY, regardless of which one actually supplied address_city.
+// persons.go picks the source by age (kindred#2777) -- childhood-first for
+// anyone under 21 -- so when both households happen to share the exact same
+// billing_city text but disagree on country, the old unconditional order
+// would grab the OWN household's country even for a minor whose city plainly
+// came from the CHILDHOOD household.
+//
+// This person is 15 (under adultAgeCutoff), so persons.go would have used
+// the childhood household to supply "Portland" -- the loader must therefore
+// resolve AddressCountry from childhood ("CA"), not from the coincidentally
+// same-named own household ("US").
+func TestLoadAttendeeGeoData_CountryMatchRespectsAgeOrderOnCityCollision(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+
+	householdsCol, err := app.FindCollectionByNameOrId("households")
+	if err != nil {
+		t.Fatalf("find households: %v", err)
+	}
+	ownHousehold := core.NewRecord(householdsCol)
+	ownHousehold.Set("cm_id", 210)
+	ownHousehold.Set("billing_city", "Portland")
+	ownHousehold.Set("billing_state", "OR")
+	ownHousehold.Set("billing_country", "US")
+	if saveErr := app.Save(ownHousehold); saveErr != nil {
+		t.Fatalf("save own household: %v", saveErr)
+	}
+
+	childhoodHousehold := core.NewRecord(householdsCol)
+	childhoodHousehold.Set("cm_id", 110)
+	childhoodHousehold.Set("billing_city", "Portland")
+	childhoodHousehold.Set("billing_state", "OR")
+	childhoodHousehold.Set("billing_country", "CA")
+	if saveErr := app.Save(childhoodHousehold); saveErr != nil {
+		t.Fatalf("save childhood household: %v", saveErr)
+	}
+
+	sessionsCol, err := app.FindCollectionByNameOrId("camp_sessions")
+	if err != nil {
+		t.Fatalf("find camp_sessions: %v", err)
+	}
+	sess := core.NewRecord(sessionsCol)
+	sess.Set("cm_id", 310)
+	sess.Set("name", "Main Session")
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save session: %v", saveErr)
+	}
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	attendeesCol, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatalf("find attendees: %v", err)
+	}
+
+	minor := core.NewRecord(personsCol)
+	minor.Set("cm_id", 403)
+	minor.Set("year", 2026)
+	minor.Set("age", 15)
+	minor.Set("address_city", "Portland")
+	minor.Set("address_state", "OR")
+	minor.Set("household", ownHousehold.Id)
+	minor.Set("primary_childhood_household", childhoodHousehold.Id)
+	if err := app.Save(minor); err != nil {
+		t.Fatalf("save minor: %v", err)
+	}
+	attendeeMinor := core.NewRecord(attendeesCol)
+	attendeeMinor.Set("person", minor.Id)
+	attendeeMinor.Set("session", sess.Id)
+	attendeeMinor.Set("year", 2026)
+	if err := app.Save(attendeeMinor); err != nil {
+		t.Fatalf("save attendeeMinor: %v", err)
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.Year = 2026
+	data, loadErr := n.loadAttendeeGeoData(context.Background(), 2026)
+	if loadErr != nil {
+		t.Fatalf("loadAttendeeGeoData: %v", loadErr)
+	}
+
+	byCMID := make(map[int]attendeeGeoData)
+	for _, d := range data {
+		byCMID[d.PersonCMID] = d
+	}
+
+	got, ok := byCMID[403]
+	if !ok {
+		t.Fatal("no attendeeGeoData for minor (cm_id 403)")
+	}
+	if got.AddressCountry != "CA" {
+		t.Errorf("AddressCountry = %q, want %q (under 21 -- childhood household supplied the city, "+
+			"even though the own household shares the same city text)", got.AddressCountry, "CA")
+	}
 }
 
 // TestNormalizeGeographicSyncPropagatesSweepRefusal is the caller-propagation

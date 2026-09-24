@@ -1350,6 +1350,252 @@ func TestExtractAddressCity_NoHouseholds(t *testing.T) {
 }
 
 // =============================================================================
+// Tests for age-based household ordering and PrimaryMailingAddress fallback
+// (kindred#2777) -- adults' hometown was always blank because the address
+// extraction only ever read PrimaryChildhoodHousehold, which most adults
+// don't have. Owner ruling 2026-09-23: an adult (21+, CampMinder's age) uses
+// their own household (PrincipalHousehold) first, then the childhood
+// household, then PrimaryMailingAddress. Under 21, or with no age on file,
+// keeps the childhood-first order.
+// =============================================================================
+
+// TestTransformPersonToPB_AdultUsesOwnHouseholdWhenNoChildhood verifies an
+// adult with only a PrincipalHousehold (the common case -- most adult guests
+// have no childhood household in CampMinder) gets a city from it.
+func TestTransformPersonToPB_AdultUsesOwnHouseholdWhenNoChildhood(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]any{
+		"ID":  float64(12345),
+		"Age": float64(37),
+		"Name": map[string]any{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]any{
+			"CampGradeID": float64(8),
+		},
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
+				"ID": float64(200),
+				"BillingAddress": map[string]any{
+					"City":          "Springfield",
+					"StateProvince": "IL",
+				},
+			},
+		},
+	}
+
+	pbData, err := s.transformPersonToPB(personData, 2025, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	if got := pbData["address_city"]; got != "Springfield" {
+		t.Errorf("address_city = %v, want 'Springfield'", got)
+	}
+	if got := pbData["address_state"]; got != "IL" {
+		t.Errorf("address_state = %v, want 'IL'", got)
+	}
+}
+
+// TestTransformPersonToPB_AdultOwnHouseholdWinsOverChildhood verifies that
+// when an adult has BOTH households, PrincipalHousehold wins -- the owner's
+// example was former campers in their late twenties whose childhood
+// household is still their parents' home in another city.
+func TestTransformPersonToPB_AdultOwnHouseholdWinsOverChildhood(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]any{
+		"ID":  float64(12345),
+		"Age": float64(28),
+		"Name": map[string]any{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]any{
+			"CampGradeID": float64(8),
+		},
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
+				"ID": float64(200),
+				"BillingAddress": map[string]any{
+					"City":          "Denver",
+					"StateProvince": "CO",
+				},
+			},
+			"PrimaryChildhoodHousehold": map[string]any{
+				"ID": float64(100),
+				"BillingAddress": map[string]any{
+					"City":          "San Francisco",
+					"StateProvince": "CA",
+				},
+			},
+		},
+	}
+
+	pbData, err := s.transformPersonToPB(personData, 2025, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	if got := pbData["address_city"]; got != "Denver" {
+		t.Errorf("address_city = %v, want 'Denver' (own household should win for an adult)", got)
+	}
+	if got := pbData["address_state"]; got != "CO" {
+		t.Errorf("address_state = %v, want 'CO'", got)
+	}
+}
+
+// TestTransformPersonToPB_ChildKeepsChildhoodFirstEvenWithPrincipal verifies
+// that a camper under 21 keeps the childhood-first order even when a
+// PrincipalHousehold is also present.
+func TestTransformPersonToPB_ChildKeepsChildhoodFirstEvenWithPrincipal(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]any{
+		"ID":  float64(12345),
+		"Age": float64(11.06),
+		"Name": map[string]any{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]any{
+			"CampGradeID": float64(8),
+		},
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
+				"ID": float64(200),
+				"BillingAddress": map[string]any{
+					"City":          "Denver",
+					"StateProvince": "CO",
+				},
+			},
+			"PrimaryChildhoodHousehold": map[string]any{
+				"ID": float64(100),
+				"BillingAddress": map[string]any{
+					"City":          "San Francisco",
+					"StateProvince": "CA",
+				},
+			},
+		},
+	}
+
+	pbData, err := s.transformPersonToPB(personData, 2025, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	if got := pbData["address_city"]; got != "San Francisco" {
+		t.Errorf("address_city = %v, want 'San Francisco' (childhood household wins under 21)", got)
+	}
+	if got := pbData["address_state"]; got != "CA" {
+		t.Errorf("address_state = %v, want 'CA'", got)
+	}
+}
+
+// TestTransformPersonToPB_MissingAgeKeepsChildhoodFirst verifies that when
+// CampMinder has no Age on file, the extraction keeps today's childhood-first
+// order rather than guessing an adult ordering.
+func TestTransformPersonToPB_MissingAgeKeepsChildhoodFirst(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]any{
+		"ID": float64(12345),
+		// No Age field at all.
+		"Name": map[string]any{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]any{
+			"CampGradeID": float64(8),
+		},
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
+				"ID": float64(200),
+				"BillingAddress": map[string]any{
+					"City":          "Denver",
+					"StateProvince": "CO",
+				},
+			},
+			"PrimaryChildhoodHousehold": map[string]any{
+				"ID": float64(100),
+				"BillingAddress": map[string]any{
+					"City":          "San Francisco",
+					"StateProvince": "CA",
+				},
+			},
+		},
+	}
+
+	pbData, err := s.transformPersonToPB(personData, 2025, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	if got := pbData["address_city"]; got != "San Francisco" {
+		t.Errorf("address_city = %v, want 'San Francisco' (missing age keeps childhood-first)", got)
+	}
+}
+
+// TestTransformPersonToPB_FallsBackToPrimaryMailingAddress verifies that when
+// neither household has a billing city, the top-level PrimaryMailingAddress
+// is used -- the last tier of the fallback chain, covering the 1 of 194 2026
+// adult guests measured with no household address at all.
+func TestTransformPersonToPB_FallsBackToPrimaryMailingAddress(t *testing.T) {
+	t.Parallel()
+	s := &PersonsSync{
+		missingDataStats: make(map[string]int),
+	}
+
+	personData := map[string]any{
+		"ID":  float64(12345),
+		"Age": float64(45),
+		"Name": map[string]any{
+			"First": testFirstName,
+			"Last":  "Johnson",
+		},
+		"CamperDetails": map[string]any{
+			"CampGradeID": float64(8),
+		},
+		// PrincipalHousehold exists but carries no address at all.
+		"Households": map[string]any{
+			"PrincipalHousehold": map[string]any{
+				"ID": float64(200),
+			},
+		},
+		"PrimaryMailingAddress": map[string]any{
+			"City":          "Austin",
+			"StateProvince": "TX",
+		},
+	}
+
+	pbData, err := s.transformPersonToPB(personData, 2025, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	if got := pbData["address_city"]; got != "Austin" {
+		t.Errorf("address_city = %v, want 'Austin' (PrimaryMailingAddress fallback)", got)
+	}
+	if got := pbData["address_state"]; got != "TX" {
+		t.Errorf("address_state = %v, want 'TX'", got)
+	}
+}
+
+// =============================================================================
 // Tests for extracting primary_email and secondary_email
 // =============================================================================
 

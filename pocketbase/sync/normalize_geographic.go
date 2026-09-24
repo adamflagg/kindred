@@ -59,7 +59,7 @@ type attendeeGeoData struct {
 	School         string // from persons.school
 	City           string // from persons.address.city
 	Congregation   string // from person_custom_values (HH-Name of Congregation)
-	AddressState   string // from household billing_state
+	AddressState   string // from persons.address_state (kindred#2777)
 	AddressCountry string // from household billing_country
 }
 
@@ -72,7 +72,7 @@ type personSessionMapping struct {
 	normalizedValue string
 	confidence      float64
 	year            int
-	addressState    string // from household billing_state
+	addressState    string // from persons.address_state (kindred#2777)
 	addressCountry  string // from household billing_country
 	addressCity     string // from persons.address_city
 }
@@ -291,7 +291,15 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			slog.Warn("Some relation expansions failed", "page", page, "errors", errs)
 		}
 
-		// Expand primary_childhood_household on person records for address state/country
+		// Expand both possible household sources on person records. persons.go
+		// (kindred#2777) writes address_city/address_state from whichever of
+		// "household" (the person's own) or "primary_childhood_household" has a
+		// billing city, in an age-based priority order -- falling back to
+		// PrimaryMailingAddress when neither household has one -- so
+		// address_state can be read straight off the person record, but
+		// address_country isn't stored there and has to be picked from the
+		// matching household below (blank when the mailing-address fallback
+		// fired, since neither household supplied the city in that case).
 		var personRecords []*core.Record
 		for _, record := range records {
 			if pr := record.ExpandedOne("person"); pr != nil {
@@ -299,7 +307,8 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			}
 		}
 		if len(personRecords) > 0 {
-			if errs := n.App.ExpandRecords(personRecords, []string{"primary_childhood_household"}, nil); len(errs) > 0 {
+			householdExpands := []string{"household", "primary_childhood_household"}
+			if errs := n.App.ExpandRecords(personRecords, householdExpands, nil); len(errs) > 0 {
 				slog.Warn("Some household expansions failed", "page", page, "errors", errs)
 			}
 		}
@@ -318,18 +327,35 @@ func (n *NormalizeGeographicSync) loadAttendeeGeoData(ctx context.Context, year 
 			}
 
 			data := attendeeGeoData{
-				PersonPBID:  personRecord.Id,
-				PersonCMID:  int(personRecord.GetFloat("cm_id")),
-				SessionPBID: sessionRecord.Id,
-				SessionCMID: int(sessionRecord.GetFloat("cm_id")),
-				School:      personRecord.GetString("school"),
-				City:        personRecord.GetString("address_city"),
+				PersonPBID:   personRecord.Id,
+				PersonCMID:   int(personRecord.GetFloat("cm_id")),
+				SessionPBID:  sessionRecord.Id,
+				SessionCMID:  int(sessionRecord.GetFloat("cm_id")),
+				School:       personRecord.GetString("school"),
+				City:         personRecord.GetString("address_city"),
+				AddressState: personRecord.GetString("address_state"),
 			}
 
-			// Get address state/country from household
-			if household := personRecord.ExpandedOne("primary_childhood_household"); household != nil {
-				data.AddressState = household.GetString("billing_state")
-				data.AddressCountry = household.GetString("billing_country")
+			// address_country isn't a persons column, so find it from whichever
+			// household actually supplied address_city (kindred#2777) -- checking
+			// households in the SAME age-based priority order persons.go used to
+			// pick the city (adultAgeCutoff, same package), then confirming by
+			// billing_city. Checking a fixed "own household first" order here
+			// (independent of age) let a coincidental city match on the WRONG
+			// household win whenever both households share the same billing_city
+			// text but disagree on country -- flagged by CodeRabbit on this PR.
+			if data.City != "" {
+				sourceOrder := []string{"primary_childhood_household", "household"}
+				if personRecord.GetFloat("age") >= adultAgeCutoff {
+					sourceOrder = []string{"household", "primary_childhood_household"}
+				}
+				for _, source := range sourceOrder {
+					household := personRecord.ExpandedOne(source)
+					if household != nil && household.GetString("billing_city") == data.City {
+						data.AddressCountry = household.GetString("billing_country")
+						break
+					}
+				}
 			}
 
 			// Get congregation from person_custom_values
