@@ -8,7 +8,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { RosterCountSummary } from '../../types/lodging'
+import type { LodgingUnitRow, RosterCountSummary, RosterPartyRow } from '../../types/lodging'
 import { WeekendStatsBar } from './WeekendStatsBar'
 
 function counts(overrides: Partial<RosterCountSummary> = {}): RosterCountSummary {
@@ -241,5 +241,140 @@ describe('WeekendStatsBar', () => {
     const chip = screen.getByRole('button', { name: '4 cabins need a weekend' })
     expect(container.querySelector('.ml-auto')).toBeNull()
     expect(chip.closest('.border-b')).not.toBeNull()
+  })
+})
+
+describe('WeekendStatsBar on an adult weekend (kindred#2765)', () => {
+  /*
+   * At person grain the family figures lie: "spaces (N short)" compares
+   * guests against family SPACES and reports a shortage on a weekend where
+   * guests share, and "beds" is the family-pool bed total. The adult bar shows
+   * guests placed and the shared-cabin places (8 × the open shared cabins) as
+   * the only fixed denominator.
+   */
+  function cabin(code: string, over: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
+    return {
+      unit_id: code,
+      code,
+      name: code,
+      area_code: 'RG',
+      area_name: 'Ridge',
+      sleeps: 15,
+      bathroom: 'shared',
+      bathroom_group: '',
+      near_bathhouse: false,
+      has_power: false,
+      has_ac: false,
+      has_fridge: false,
+      is_accessible: false,
+      is_confirmed: true,
+      is_active: true,
+      is_container: false,
+      inventory_class: 'family_pool',
+      shareability: 'shareable',
+      family_available_override: null,
+      reason: '',
+      is_family_available: true,
+      map_x: 0.5,
+      map_y: 0.5,
+      ...over,
+    }
+  }
+  function guest(personCmId: number, unitCode: string): RosterPartyRow {
+    return {
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: personCmId,
+      display_name: `Guest ${String(personCmId)}`,
+      party_size: 1,
+      unit_code: unitCode,
+      unit_name: unitCode,
+      unit_codes: unitCode === '' ? [] : [unitCode],
+      is_merged_slot: false,
+      arrival_eta: '',
+      is_returning: false,
+    }
+  }
+  const units = [
+    cabin('ridge-d'),
+    cabin('ridge-e', {
+      write_ins: [
+        {
+          unit_id: 'ridge-e',
+          unit_code: 'ridge-e',
+          unit_name: 'ridge-e',
+          occupant_name: 'Ava Martinez',
+          note: '',
+          party_size: null,
+          relation: 'own',
+          unit_sleeps: 15,
+        },
+      ],
+    }),
+    cabin('pine-1', { shareability: 'single_party', sleeps: 2 }),
+  ]
+  const parties = [
+    guest(1, 'ridge-d'),
+    guest(2, 'ridge-d'),
+    guest(3, 'ridge-e'),
+    guest(4, 'pine-1'),
+    guest(5, ''),
+  ]
+  const adultCounts = counts({
+    parties_total: 5,
+    parties_assigned: 4,
+    parties_unassigned: 1,
+    units_family_available: 3,
+    spots_family_available: 31,
+  })
+
+  function renderAdult() {
+    return render(
+      <WeekendStatsBar
+        counts={adultCounts}
+        spotsNeeded={5}
+        spacesUnmeasured={0}
+        sessionType="adult"
+        parties={parties}
+        units={units}
+      />
+    )
+  }
+
+  it('shows guests placed, the shared-cabin places, and everyone else as other lodging', () => {
+    const { container } = renderAdult()
+    // 4 guests + 1 unsized write-in = 5 placed; 4 of them in the two shared
+    // cabins (16 places), 1 in the single-party unit.
+    expect(container).toHaveTextContent('5 placed')
+    expect(container).toHaveTextContent('4 of 16 shared-cabin places')
+    expect(container).toHaveTextContent('1 in other lodging')
+  })
+
+  it('drops the family figures that report a false shortage at person grain', () => {
+    const { container } = renderAdult()
+    expect(container).not.toHaveTextContent(/spaces/)
+    expect(container).not.toHaveTextContent(/spare|short/)
+    expect(container).not.toHaveTextContent(/beds/)
+  })
+
+  it('still warns about guests with no cabin', () => {
+    renderAdult()
+    expect(screen.getByText('need a cabin')).toBeInTheDocument()
+  })
+
+  it('keeps the family bar unchanged on a family weekend', () => {
+    const { container } = render(
+      <WeekendStatsBar
+        counts={counts()}
+        spotsNeeded={223}
+        spacesUnmeasured={2}
+        sessionType="family"
+        parties={parties}
+        units={units}
+      />
+    )
+    expect(container).toHaveTextContent('(17 spare)')
+    expect(container).toHaveTextContent('beds')
+    expect(container).not.toHaveTextContent(/shared-cabin/)
   })
 })

@@ -1167,3 +1167,45 @@ describe('tab component state survives switching (#2004)', () => {
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
   })
 })
+
+describe('the weekend type is threaded to every surface (kindred#2765)', () => {
+  // `sessionType` is computed ONCE from the selected session and handed down;
+  // an adult weekend's stats bar and board both follow the adult rule.
+  const nineGuests = Array.from({ length: 9 }, (_, i) => ({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 400 + i,
+    display_name: `Guest ${String(i)}`,
+    party_size: 1,
+    unit_code: 'ridge-a',
+    unit_name: 'Ridge A',
+    unit_codes: ['ridge-a'],
+  }))
+  const sharedCabin = { ...ONE_UNIT.units[0], shareability: 'shareable', sleeps: 15 }
+
+  it('draws the adult stats bar and judges a shared cabin against 8 on an adult weekend', async () => {
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000002,
+      parties: nineGuests,
+      units: [sharedCabin],
+      counts: { parties_total: 9, parties_assigned: 9, parties_unassigned: 0 },
+    }
+    renderPage('1000002')
+    expect(screen.getByText(/shared-cabin places/)).toBeInTheDocument()
+    expect(await screen.findByText('9/8')).toHaveClass('text-destructive')
+  })
+
+  it('keeps the family bar and bed figures on a family weekend', async () => {
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000001,
+      parties: nineGuests,
+      units: [sharedCabin],
+      counts: { parties_total: 9, parties_assigned: 9, parties_unassigned: 0 },
+    }
+    renderPage('1000001')
+    expect(screen.queryByText(/shared-cabin places/)).not.toBeInTheDocument()
+    expect(await screen.findByText('9/15')).toBeInTheDocument()
+  })
+})
