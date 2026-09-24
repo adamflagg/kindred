@@ -143,6 +143,7 @@ func subRecord(t *testing.T, app core.App, submissionID string) *core.Record {
 }
 
 func TestJotformPullStoresEveryAnswerAndMatches(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
@@ -182,6 +183,7 @@ func TestJotformPullStoresEveryAnswerAndMatches(t *testing.T) {
 }
 
 func TestJotformPullIsIdempotent(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
@@ -204,6 +206,7 @@ func TestJotformPullIsIdempotent(t *testing.T) {
 }
 
 func TestJotformPullUpdatesAnEditedAnswerAndDropsAClearedOne(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	first := submission("6600000000000000001", "2026-08-03 09:00:00", "Olivia", "Chen", "Emma Johnson")
@@ -225,6 +228,7 @@ func TestJotformPullUpdatesAnEditedAnswerAndDropsAClearedOne(t *testing.T) {
 }
 
 func TestJotformDeletedSubmissionIsMarkedNotDeleted(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	both := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
@@ -249,6 +253,7 @@ func TestJotformDeletedSubmissionIsMarkedNotDeleted(t *testing.T) {
 
 // Review Focus 2.
 func TestJotformPullErrorMarksNothingDeleted(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	if _, err := runJotform(t, app, &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
@@ -271,6 +276,7 @@ func TestJotformPullErrorMarksNothingDeleted(t *testing.T) {
 
 // Review Focus 3.
 func TestJotformStaffLinkSurvivesRepull(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
@@ -308,6 +314,7 @@ func TestJotformStaffLinkSurvivesRepull(t *testing.T) {
 
 // Review Focus 5.
 func TestJotformAutoMatchIsReevaluatedEachPull(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
@@ -335,6 +342,7 @@ func TestJotformAutoMatchIsReevaluatedEachPull(t *testing.T) {
 }
 
 func TestJotformUnmappedFormStoresButSkipsMatching(t *testing.T) {
+	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	form, _ := app.FindFirstRecordByFilter("jotform_forms", "form_id = '261700000000001'")
@@ -357,6 +365,7 @@ func TestJotformUnmappedFormStoresButSkipsMatching(t *testing.T) {
 }
 
 func TestJotformSyncWithoutAKeyFailsLoudly(t *testing.T) {
+	// Not t.Parallel(): t.Setenv panics if the test may run in parallel.
 	app := newJotformTestApp(t)
 	t.Setenv("JOTFORM_API_KEY", "")
 	s := NewJotformSubmissionsSync(app)

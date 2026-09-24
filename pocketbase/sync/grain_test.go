@@ -718,7 +718,7 @@ func TestGrainForServiceResolvesSameGrainAs(t *testing.T) {
 
 	// The scoped family-camp passes are the SAME Go type under a narrower cohort,
 	// so they must resolve to the base's keys verbatim. This is what lets the
-	// table hold exactly six full-grain literals while all 35 services declare.
+	// table hold exactly six full-grain literals while all 36 services declare.
 	t.Run("a scoped variant resolves to its base's keys", func(t *testing.T) {
 		t.Parallel()
 

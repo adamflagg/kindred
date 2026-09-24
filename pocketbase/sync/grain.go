@@ -28,7 +28,7 @@ package sync
 //
 // Only the six BaseSyncService.DeleteOrphansGuarded callers carry that shape,
 // because they are the only services where both halves are readable from a
-// single call site (ruled 2026-08-31). Deriving a key for the other 29
+// single call site (ruled 2026-08-31). Deriving a key for the other 30
 // collection-writers was considered and rejected: nine of them carry their own
 // deleteOrphans without embedding BaseSyncService at all (see OrphanSweepGuard's
 // doc comment), so a key declared for those would be asserted here and read
@@ -38,7 +38,7 @@ package sync
 // Every OTHER service still declares its collections, plus a per-collection
 // NoGrain reason or a service-level WritesNothing reason. That is what makes
 // grain_test.go's fail-an-undeclared-service rule mean anything: an entry only
-// the guarded six carried would leave 29 names silently exempt. The reason
+// the guarded six carried would leave 30 names silently exempt. The reason
 // travels with the service rather than sitting in a central exemption list,
 // because a central list is where the reason rots.
 
@@ -124,7 +124,7 @@ type ServiceGrain struct {
 	Writes []CollectionGrain
 
 	// WritesNothing is a one-line reason this service writes no PocketBase
-	// collection at all. Only two of the thirty-five qualify.
+	// collection at all. Only two of the thirty-six qualify.
 	WritesNothing string
 
 	// SameGrainAs names another declared service whose Writes this one shares
@@ -497,6 +497,26 @@ var serviceGrainDeclarations = []ServiceGrain{
 			NoGrain: "delete-only from this service -- the rows are created by the " +
 				"Python processor; bunk_requests.go removes orphaned and zombie ones " +
 				"by requester, not by a swept key",
+		},
+	}},
+
+	// kindred#2759. Not CampMinder and not a guarded sweep: submissions Jotform
+	// stops returning are MARKED, never deleted, so no write/orphan key pair exists.
+	{Service: "jotform_submissions", Writes: []CollectionGrain{
+		{
+			Collection: "jotform_forms",
+			NoGrain: "admin-owned config rows; this job only stamps last_pulled_at and " +
+				"last_pull_status on existing rows, creating and deleting nothing",
+		},
+		{
+			Collection: "jotform_submissions",
+			NoGrain: "upserted by submission_id within its form; a submission Jotform no " +
+				"longer returns is marked jotform_status DELETED, never swept",
+		},
+		{
+			Collection: "jotform_answers",
+			NoGrain: "child rows reconciled by question_id inside their submission's " +
+				"transaction (jotform_submissions.go syncAnswers), not by a DeleteOrphans sweep",
 		},
 	}},
 

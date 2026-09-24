@@ -88,6 +88,15 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		// kindred#2759: the job's default fetcher reads JOTFORM_API_KEY itself;
+		// this test pins that a blank key fails the run with ErrNoAPIKey.
+		pkg:    "sync",
+		reason: "t.Setenv: exercises the JOTFORM_API_KEY read itself",
+		tests: []string{
+			"TestJotformSyncWithoutAKeyFailsLoudly",
+		},
+	},
+	{
 		pkg:    "sync",
 		reason: "t.Setenv: asserts the CAMPMINDER_SEASON_ID fallback specifically",
 		tests: []string{

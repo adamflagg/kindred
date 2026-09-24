@@ -6,6 +6,7 @@ import (
 )
 
 func TestJotformJobIsManualOnlyUntilTheEnterpriseMove(t *testing.T) {
+	t.Parallel()
 	var meta *JobMeta
 	for i := range syncJobMeta {
 		if syncJobMeta[i].ID == serviceNameJotformSubmissions {
@@ -27,6 +28,7 @@ func TestJotformJobIsManualOnlyUntilTheEnterpriseMove(t *testing.T) {
 }
 
 func TestJotformTablesAreNeverExported(t *testing.T) {
+	t.Parallel()
 	written, ok := SyncJobToCollections[serviceNameJotformSubmissions]
 	if !ok {
 		t.Fatal("jotform_submissions missing from SyncJobToCollections")

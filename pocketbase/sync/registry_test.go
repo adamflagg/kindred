@@ -244,10 +244,36 @@ func TestDerivedQueuesMatchTodaysLists(t *testing.T) {
 	assertSeq(t, "expensive phase run", phaseExecutionJobs(PhaseExpensive), []string{
 		"person_custom_values", "household_custom_values",
 	})
-	// Every other phase runs its whole membership -- only Expensive filters (#2489).
+	// Every other phase runs its whole membership, less its declared manual-only members --
+	// Expensive filters its bounded variants (#2489), Process its Jotform pull (#2759).
+	assertSeq(t, "process phase run", phaseExecutionJobs(PhaseProcess), []string{
+		"reconcile_request_lifecycle", "bunk_requests", "process_requests",
+	})
 	for _, p := range []Phase{PhaseSource, PhaseTransform, PhaseProcess, PhaseExport} {
-		assertSeq(t, string(p)+" phase run", phaseExecutionJobs(p), GetJobsForPhase(p))
+		assertSeq(t, string(p)+" phase run", phaseExecutionJobs(p), withoutManualOnly(p, GetJobsForPhase(p)))
 	}
+}
+
+// manualOnlyPhaseMembers are the phase members, outside PhaseExpensive's bounded family-camp
+// variants, that carry no TriggerPhaseRun: a phase's header counts them, its Run Phase button
+// never starts them (the #2600 membership/execution split). Written as a literal on purpose --
+// derived from the trigger bits it would agree with whatever the registry says.
+//
+// kindred#2759: the Jotform pull is individual-route only until the forms move to the
+// enterprise account, so a Process phase run must not re-pull a live external form.
+var manualOnlyPhaseMembers = map[Phase][]string{
+	PhaseProcess: {"jotform_submissions"},
+}
+
+// withoutManualOnly returns jobs less phase's declared manual-only members, order kept.
+func withoutManualOnly(phase Phase, jobs []string) []string {
+	out := make([]string, 0, len(jobs))
+	for _, j := range jobs {
+		if !slices.Contains(manualOnlyPhaseMembers[phase], j) {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 // assertSeqIgnoring delegates to assertSeq after dropping `ignore` from got. Built for
