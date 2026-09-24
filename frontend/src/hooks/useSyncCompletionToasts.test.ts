@@ -319,12 +319,12 @@ describe('useSyncCompletionToasts names the completed sync when it invalidates',
   })
 
   it.each(['bunk_assignments', 'attendees'])('passes %s to invalidateSyncData', (syncType) => {
-    mockSyncStatus = { [syncType]: { status: 'running' } } as unknown as SyncStatusResponse
+    mockSyncStatus = { [syncType]: { status: 'running' } }
     const { rerender } = renderHook(() => useSyncCompletionToasts())
 
     mockSyncStatus = {
       [syncType]: { status: 'success', summary: { created: 0, updated: 1, skipped: 0, errors: 0 } },
-    } as unknown as SyncStatusResponse
+    }
     rerender()
 
     expect(invalidateSyncData).toHaveBeenCalledTimes(1)
