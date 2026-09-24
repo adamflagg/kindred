@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
-from api.services.jotform_queue import FormReferenceError, Question, parse_form_id, suggest_field_map
+from api.services.jotform_queue import (
+    FormReferenceError,
+    Question,
+    QueueGuest,
+    QueueSubmission,
+    duplicate_groups,
+    identity_from_answers,
+    parse_form_id,
+    same_person,
+    suggest_field_map,
+    suggestions_for,
+)
 
 
 class TestParseFormId:
@@ -89,3 +102,140 @@ class TestSuggestFieldMap:
 
     def test_nothing_recognisable_suggests_nothing(self) -> None:
         assert suggest_field_map([Question("7", "Favourite colour", "control_textbox", 7)]) == {}
+
+
+S = 1000002
+PHONE = "555-555-0100"
+
+
+def _g(cm: int, first: str, last: str, preferred: str = "") -> QueueGuest:
+    return QueueGuest(person_cm_id=cm, session_cm_id=S, first=first, preferred=preferred, last=last)
+
+
+def _s(rid: str, first: str, last: str, **kw: object) -> QueueSubmission:
+    return QueueSubmission(
+        record_id=rid,
+        submission_id=f"66{rid}",
+        session_cm_id=S,
+        submitted_at=str(kw.pop("submitted_at", "2026-08-31 09:00:00")),
+        first=first,
+        last=last,
+        **kw,  # type: ignore[arg-type]
+    )
+
+
+OLIVIA = _g(1000004, "Olivia", "Chen")
+EMMA = _g(1000005, "Emma", "Johnson")
+LIAM = _g(1000006, "Liam", "Garcia")
+OLIVIA_FILED = _s("oc", "Olivia", "Chen", emergency_phone=PHONE, match_status="auto", person_cm_id=1000004)
+LIAM_FILED = _s("lg", "Liam", "Garcia", emergency_email="test@example.com", match_status="auto", person_cm_id=1000006)
+
+
+class TestLabels:
+    def test_a_near_name_with_no_submission_is_did_you_mean(self) -> None:  # a dropped letter
+        sub = _s("u1", "Emma", "Ohnson")
+        [suggestion] = suggestions_for(sub, [OLIVIA, EMMA, LIAM], [OLIVIA_FILED, LIAM_FILED, sub])
+        assert (suggestion.kind, suggestion.label, suggestion.person_cm_id) == (
+            "did_you_mean",
+            "Did you mean Emma Johnson?",
+            1000005,
+        )
+
+    def test_a_typo_sharing_the_emergency_contact_is_a_likely_duplicate(self) -> None:  # a typo plus a shared contact
+        sub = _s("u2", "Olivia", "Chenn", emergency_phone="(555) 555-0100")
+        [suggestion] = suggestions_for(sub, [OLIVIA, EMMA], [OLIVIA_FILED, sub])
+        assert suggestion.kind == "likely_duplicate"
+        assert suggestion.label == "Likely a duplicate of Olivia Chen's submission (typo)"
+
+    def test_a_similar_name_whose_guest_already_filed_is_probably_different(
+        self,
+    ) -> None:  # a similar name, different person
+        sub = _s("u3", "Olivia", "Chan", emergency_phone="555-555-0199")
+        [suggestion] = suggestions_for(sub, [OLIVIA, EMMA], [OLIVIA_FILED, sub])
+        assert suggestion.kind == "probably_different"
+        assert suggestion.label == (
+            "Similar name, but Olivia Chen already has a submission; probably a different person"
+        )
+
+    def test_a_strong_signal_is_flagged_even_when_the_names_differ(self) -> None:  # a middle name typed as the surname
+        sub = _s("u4", "Liam", "Riley", emergency_email="TEST@example.com")
+        [suggestion] = suggestions_for(sub, [OLIVIA, EMMA, LIAM], [OLIVIA_FILED, LIAM_FILED, sub])
+        assert suggestion.kind == "likely_duplicate"
+        assert suggestion.person_cm_id == 1000006
+        assert suggestion.other_submission_id == "66lg"
+        assert suggestion.label == "Likely a duplicate of Liam Garcia's submission"
+
+    def test_an_emergency_contact_alone_is_not_a_signal(self) -> None:
+        # Relatives list each other: a shared contact with a DIFFERENT first name is nobody.
+        sub = _s("u5", "Riley", "Sam", emergency_phone=PHONE)
+        assert suggestions_for(sub, [OLIVIA], [OLIVIA_FILED, sub]) == []
+
+
+class TestRanking:
+    JOHNSTON = _g(1000008, "Emma", "Johnston")
+    JOHNSTON_FILED = _s(
+        "ej", "Emma", "Johnston", emergency_phone="555-555-0177", match_status="auto", person_cm_id=1000008
+    )
+
+    def test_did_you_mean_ranks_above_probably_different(self) -> None:
+        sub = _s("u6", "Emma", "Johnsen")
+        kinds = [s.kind for s in suggestions_for(sub, [EMMA, self.JOHNSTON], [self.JOHNSTON_FILED, sub])]
+        assert kinds == ["did_you_mean", "probably_different"]
+
+    def test_a_guest_named_in_the_submissions_own_request_is_demoted(self) -> None:
+        sub = _s("u7", "Emma", "Johnsen", bunking_request="Emma Johnson, Riley Sam")
+        suggestions = suggestions_for(sub, [EMMA, self.JOHNSTON], [self.JOHNSTON_FILED, sub])
+        assert [(s.person_cm_id, s.demoted) for s in suggestions] == [(1000008, False), (1000005, True)]
+
+
+class TestSamePerson:
+    def test_identical_names_are_one_person(self) -> None:
+        assert same_person(_s("a", "Emma", "Johnson"), _s("b", "emma", "JOHNSON")) == "identical name"
+
+    def test_a_shared_contact_plus_a_nickname_first_name(self) -> None:
+        a = _s("a", "Samuel", "Johnson", emergency_email="test@example.com")
+        b = _s("b", "Sam", "Jonson", emergency_email="test@example.com")
+        assert same_person(a, b) is not None
+
+
+class TestIdentityFromAnswers:
+    def test_fullname_parts_and_plain_answers(self) -> None:
+        answers = {
+            "4": SimpleNamespace(
+                question_type="control_fullname",
+                answer_text="Olivia Chen",
+                answer_json={"first": "Olivia", "last": "Chen"},
+            ),
+            "12": SimpleNamespace(question_type="control_phone", answer_text=PHONE, answer_json=None),
+        }
+        identity = identity_from_answers(answers, {"first_name": "4", "last_name": "4", "emergency_phone": "12"})
+        assert (identity["first"], identity["last"], identity["emergency_phone"]) == ("Olivia", "Chen", PHONE)
+        assert identity["nametag"] == ""
+
+
+class TestDuplicateGroups:
+    def test_guests_with_two_or_more_live_filings_show_their_change(self) -> None:
+        subs = [
+            _s(
+                "d1",
+                "Olivia",
+                "Chen",
+                submitted_at="2026-08-03 09:00:00",
+                bunking_request="Emma Johnson",
+                match_status="auto",
+                person_cm_id=1000004,
+            ),
+            _s(
+                "d2",
+                "Olivia",
+                "Chen",
+                submitted_at="2026-08-31 09:00:00",
+                bunking_request="Emma Johnson, Liam Garcia",
+                match_status="staff",
+                person_cm_id=1000004,
+            ),
+            _s("d3", "Emma", "Johnson", match_status="auto", person_cm_id=1000005),
+        ]
+        [group] = duplicate_groups(subs, [OLIVIA, EMMA])
+        assert (group.person_cm_id, group.guest_name, group.change_kind) == (1000004, "Olivia Chen", "list")
+        assert [s.submission_id for s in group.submissions] == ["66d1", "66d2"]
