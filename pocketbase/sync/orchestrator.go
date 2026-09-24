@@ -224,7 +224,8 @@ var syncJobMeta = []JobMeta{
 	{ID: "family_camp_derived", Phase: PhaseTransform,
 		Description: "Compute family camp tables from custom values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
-	// Also records lodging_value_history alongside the current-state table.
+	// Also records lodging_assignment_history and lodging_ingest_issues alongside the
+	// current-state table. lodging_value_history is written by the four custom-value jobs.
 	{ID: "lodging_assignments", Phase: PhaseTransform,
 		Description: "Derive lodging assignments from CampMinder cabin fields",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -728,6 +729,12 @@ type Orchestrator struct {
 	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
 	activeSyncCancel        context.CancelFunc // Cancel function for the currently running sync
 	currentRunIndex         int                // 0-based index of currently running job in active queue
+	// runCompletedNotifier is told the job id of every run that finishes, success or failure,
+	// so FastAPI can clear the server caches that job's writes made stale (kindred#2803). Nil
+	// on an orchestrator built by NewOrchestrator -- every test's -- and wired to
+	// notifyAPIRunCompleted only on the process-wide scheduler (GetScheduler), so a test run
+	// never POSTs to whatever happens to listen on the dev API port.
+	runCompletedNotifier func(syncType string)
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -828,8 +835,8 @@ func (r runOrigin) forSession(session string) runOrigin {
 // because it is already inside the critical section that found the run and cannot call this
 // without releasing and re-taking o.mu; that gap is exactly the bug publishCompletedLocked
 // exists to prevent. So the invariant to hold is one step down, not here: every completion
-// path publishes through publishCompletedLocked and then calls recordSyncRun. Adding a sixth
-// path means wiring both, in that order.
+// path publishes through publishCompletedLocked and then calls afterRunPublished (which
+// records the run and notifies FastAPI). Adding a sixth path means wiring both, in that order.
 //
 // Note the membership differs from applyCompletionStatus's on purpose: that function WEIGHS a
 // run and the panic blocks skip it, having nothing to weigh. A panicked run is still a run
@@ -843,7 +850,22 @@ func (o *Orchestrator) storeCompletedRun(completed *Status) {
 	snapshot := o.publishCompletedLocked(completed)
 	o.mu.Unlock()
 
-	o.recordSyncRun(&snapshot)
+	o.afterRunPublished(&snapshot)
+}
+
+// afterRunPublished is everything a finished run does once it is published and o.mu is
+// released: persist it to sync_runs, then tell FastAPI which job finished so its server
+// caches clear (kindred#2803). Both completion paths -- storeCompletedRun and
+// FinalizeSyncStatus -- end here, so neither step can be wired into one and forgotten in the
+// other. Neither can fail the run: each logs and swallows its own error.
+//
+// The notification covers a FAILED run too, as the browser's sync-completion toast always
+// has: a run that failed part-way may still have written.
+func (o *Orchestrator) afterRunPublished(snapshot *Status) {
+	o.recordSyncRun(snapshot)
+	if o.runCompletedNotifier != nil {
+		o.runCompletedNotifier(snapshot.Type)
+	}
 }
 
 // publishCompletedLocked moves a finished run from runningJobs to lastCompletedStatus and
@@ -1703,7 +1725,7 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	// stats are both local copies by this point, so reading them here is safe.
 	o.recordBatchChange(completed.BatchID, syncType, stats)
 
-	o.recordSyncRun(&snapshot)
+	o.afterRunPublished(&snapshot)
 
 	// Read the outcome off snapshot, not completed: reading completed directly would still
 	// be safe (it is a local copy, per the comment above recordBatchChange), but snapshot is

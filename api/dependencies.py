@@ -105,6 +105,11 @@ async def authenticate_task_pb(task_pb: PocketBase) -> None:
 # Graph Cache
 # ========================================
 
+# Cleared by scenario, solver and position writes, and -- since kindred#2803 --
+# by the cache-invalidate endpoint when a finished sync writes a table the
+# graph is built from (`SocialGraphBuilder.READ_TABLES`). Request edits and
+# drag-drop written straight to PocketBase from the browser still reach it only
+# through the TTL, so do not lengthen it until those writers are covered.
 graph_cache = GraphCacheManager(ttl_seconds=900, max_cache_size=50)
 
 
@@ -113,7 +118,8 @@ graph_cache = GraphCacheManager(ttl_seconds=900, max_cache_size=50)
 # ========================================
 
 # Caches computed metrics endpoint responses in-memory.
-# TTL 2 hours (fallback); primary invalidation via frontend sync-completion callback.
+# TTL 2 hours (fallback); primary invalidation is the cache-invalidate endpoint,
+# which PocketBase's sync orchestrator calls after every job (kindred#2803).
 metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 
 
@@ -121,11 +127,11 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # Lodging Year-Scoped Read Cache
 # ========================================
 
-# Caches four of build_roster/build_summary's six year-scoped reads --
-# households, the prior-household set, family-camp adults, and registrations
-# (see api/services/lodging_cache.py for why the other two, fetch_units and
-# count_open_unresolved_aliases, are deliberately excluded: both are
-# admin-panel-writable straight from the browser).
+# Caches build_roster/build_summary's year-scoped reads -- every
+# `@cached_by_year` method on LodgingRepository, each declaring the tables it
+# reads (see api/services/lodging_cache.py for the list, and for why
+# fetch_units and count_open_unresolved_aliases are deliberately excluded:
+# both are admin-panel-writable straight from the browser).
 #
 # MUST be a module-level singleton, not per-instance state: api/routers/
 # lodging.py's `_service`/`_writes` build a fresh LodgingRepository on every
@@ -135,7 +141,10 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # sibling here, since it is the other cache built for a fresh-per-request
 # service rather than metrics_cache's router-owned 2-hour fallback. Wired to
 # POST /api/metrics/cache/invalidate (kindred#2142) -- see lodging_cache.py's
-# module docstring for why the TTL is the fallback rather than the plan.
+# module docstring for why the TTL is the fallback rather than the plan. Since
+# kindred#2803 that clear is scoped to the syncs that write a cached table, and
+# every clear and every TTL is followed by a background warm
+# (api/services/lodging_cache_warm.py, started from api/main.py's lifespan).
 lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
 
 

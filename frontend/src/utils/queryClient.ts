@@ -113,9 +113,18 @@ const SYNC_DEPENDENT_PREFIXES = [
 /**
  * Invalidate all sync-related data caches.
  * Call this after sync operations complete to ensure fresh data.
+ *
+ * `syncType` names the job that completed (kindred#2803). The server uses it to
+ * clear its weekend year cache only when that job writes a table the cache
+ * reads -- the hourly `bunk_assignments` sync writes none of them, and used to
+ * wipe it for every open tab. Omitted, the server clears everything, as before.
+ * The browser-side invalidation below is unchanged either way.
  */
-export const invalidateSyncData = () => {
-  fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+export const invalidateSyncData = (syncType?: string) => {
+  const url = syncType
+    ? `/api/metrics/cache/invalidate?sync_type=${encodeURIComponent(syncType)}`
+    : '/api/metrics/cache/invalidate'
+  fetch(url, { method: 'POST' }).catch(() => {})
   for (const prefix of SYNC_DEPENDENT_PREFIXES) {
     void queryClient.invalidateQueries({ queryKey: [prefix] })
   }

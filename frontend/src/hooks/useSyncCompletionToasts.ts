@@ -113,8 +113,9 @@ export function useSyncCompletionToasts(): SyncStatusResponse | null | undefined
 
       // Detect completion: was running, now success or failed
       if (prevStatus === 'running' && (currentStatus === 'success' || currentStatus === 'failed')) {
-        // Invalidate all sync-related caches to ensure fresh data
-        invalidateSyncData()
+        // Invalidate all sync-related caches to ensure fresh data. Naming the job lets the
+        // server keep caches this job never writes (kindred#2803).
+        invalidateSyncData(syncType)
 
         const displayName = SYNC_DISPLAY_NAMES[syncType]
         const summary = status.summary

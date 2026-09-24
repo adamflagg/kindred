@@ -11127,9 +11127,26 @@ export type GetDay1ApiMetricsRegistrationDay1GetResponse =
 export type InvalidateMetricsCacheApiMetricsCacheInvalidatePostData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    /**
+     * Sync Type
+     *
+     * The sync job whose completion triggered this call. Scopes the lodging year cache and the social graph cache: each is cleared when this job writes a table it reads, or when no job is named.
+     */
+    sync_type?: string | null
+  }
   url: '/api/metrics/cache/invalidate'
 }
+
+export type InvalidateMetricsCacheApiMetricsCacheInvalidatePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type InvalidateMetricsCacheApiMetricsCacheInvalidatePostError =
+  InvalidateMetricsCacheApiMetricsCacheInvalidatePostErrors[keyof InvalidateMetricsCacheApiMetricsCacheInvalidatePostErrors]
 
 export type InvalidateMetricsCacheApiMetricsCacheInvalidatePostResponses = {
   /**

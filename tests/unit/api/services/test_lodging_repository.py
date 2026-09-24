@@ -2104,7 +2104,7 @@ class TestCachedByYearSingleFlight:
         both_entered = asyncio.Event()
 
         class Fake:
-            @cached_by_year(cache)
+            @cached_by_year(cache, tables=("households",))
             async def fetch_households(self, year: int) -> str:
                 nonlocal call_count
                 call_count += 1

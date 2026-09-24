@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.constants.sync_job_writes import sync_writes_any
 from api.services.cancellation_service import CancellationService
 from api.services.comparison_service import ComparisonService
 from api.services.day1_service import Day1Service
@@ -17,6 +18,7 @@ from api.services.drilldown_service import DrilldownService
 from api.services.forecast_service import ForecastService
 from api.services.geo_service import clear_person_id_cache
 from api.services.historical_service import HistoricalService
+from api.services.lodging_cache_warm import schedule_lodging_warm, sync_invalidates_lodging_cache
 from api.services.metrics_repository import MetricsRepository
 from api.services.metrics_sql_repository import MetricsSQLRepository
 from api.services.registration_service import RegistrationService
@@ -26,8 +28,9 @@ from api.services.velocity_service import VelocityService
 from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.graph.social_graph_builder import SocialGraphBuilder
 
-from ..dependencies import lodging_cache, metrics_cache, pb
+from ..dependencies import graph_cache, lodging_cache, metrics_cache, pb
 from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
@@ -633,27 +636,50 @@ async def get_day1(
 
 
 @router.post("/cache/invalidate")
-async def invalidate_metrics_cache() -> dict[str, int]:
-    """Invalidate all cached metrics responses + geo person-id cache + lodging year cache.
+async def invalidate_metrics_cache(
+    sync_type: str | None = Query(
+        None,
+        description=(
+            "The sync job whose completion triggered this call. Scopes the lodging year cache and the "
+            "social graph cache: each is cleared when this job writes a table it reads, or when no job is named."
+        ),
+    ),
+) -> dict[str, int]:
+    """Invalidate cached metrics responses + geo person-id cache + lodging year cache + social graph cache.
 
     Auth is handled by the middleware (skipped for this path since cache
     clearing is safe and idempotent). Called by:
+    - PocketBase's sync orchestrator after EVERY job it finishes, naming the
+      job (kindred#2803) -- so an unattended scheduled sync clears these too,
+      not only one a browser tab happened to watch finish
     - PocketBase hook on registration config changes (internal, no user context)
-    - Frontend on sync completion (via invalidateSyncData)
+    - Frontend on sync completion (via invalidateSyncData) -- now redundant
+      with the orchestrator's call, and kept because a second clear is harmless
     - Frontend after saving registration dates
 
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
     changes attendee status_id, which feeds _fetch_active_person_pb_ids.
 
-    lodging_cache (kindred#1963) piggybacks here too (kindred#2142): its four
-    cached reads are written only by the "persons" sync (households) and the
-    "family_camp_derived" sync (family_camp_adults, family_camp_registrations),
-    both of which are polled sync types that fire invalidateSyncData on
-    completion — same signal, same reasoning as geo's cache above.
+    lodging_cache (kindred#1963) piggybacks here too (kindred#2142), but SCOPED
+    (kindred#2803): the frontend names the completed sync, and the lodging
+    cache is cleared only when that sync writes a table one of its cached reads
+    depends on -- see `api/services/lodging_cache_warm.py`. The hourly
+    `bunk_assignments` sync writes none of them and used to clear it every
+    hour. A call naming no sync (the config hook, the registration-dates
+    panel) clears it as before. Every clear is followed by a background warm,
+    so the next weekend load does not pay for the re-read.
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
-    lodging_cache.invalidate_all()
+    if sync_invalidates_lodging_cache(sync_type):
+        lodging_cache.invalidate_all()
+        schedule_lodging_warm()
+    # graph_cache (kindred#2803): until now only scenario, solver and position
+    # writes cleared it, so a sync rewriting attendees or bunk assignments left
+    # the production graph stale for its whole 15-minute TTL. Scoped the same
+    # way as the lodging cache, against the tables the builder declares.
+    if sync_writes_any(sync_type, SocialGraphBuilder.READ_TABLES):
+        graph_cache.clear()
     return {"cleared": cleared}
 
 

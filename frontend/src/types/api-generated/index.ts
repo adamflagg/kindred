@@ -386,6 +386,8 @@ export type {
   HttpValidationError,
   IncrementalUpdateResponse,
   InvalidateMetricsCacheApiMetricsCacheInvalidatePostData,
+  InvalidateMetricsCacheApiMetricsCacheInvalidatePostError,
+  InvalidateMetricsCacheApiMetricsCacheInvalidatePostErrors,
   InvalidateMetricsCacheApiMetricsCacheInvalidatePostResponse,
   InvalidateMetricsCacheApiMetricsCacheInvalidatePostResponses,
   ListFriendGroupsApiLodgingFriendGroupsGetData,

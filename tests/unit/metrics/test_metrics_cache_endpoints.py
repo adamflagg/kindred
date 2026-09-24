@@ -216,6 +216,14 @@ class TestRegistrationEndpointCaching:
 class TestCacheInvalidationEndpoint:
     """Test the POST /api/metrics/cache/invalidate endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def no_background_warm(self):
+        """A call naming no sync schedules a real lodging warm (kindred#2803),
+        which reads whatever PocketBase is reachable and re-fills lodging_cache
+        behind these assertions. Stubbed here as in the sync-scoped classes below."""
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            yield
+
     def test_invalidation_endpoint_clears_cache(self, test_client, fresh_cache):
         """POST to invalidation endpoint should clear the cache."""
         fresh_cache.set("retention", {"data": True}, year=2026)
@@ -276,6 +284,103 @@ class TestCacheInvalidationEndpoint:
 
         assert resp.status_code == 200
         assert lodging_cache.get("fetch_households", 2026) is None
+
+
+class TestLodgingInvalidationIsScopedBySyncType:
+    """kindred#2803: the frontend names the sync that completed, and the lodging
+    year cache is cleared only when that sync writes a table the cache holds.
+
+    The hourly `bunk_assignments` sync writes none of them, and used to clear
+    the whole weekend cache at least once an hour for any open browser tab.
+    Every clear is now followed by a background warm, so the next click is not
+    the one that pays for the re-read.
+
+    metrics_cache and geo's person-id cache are NOT scoped here: they are not
+    what #2803 measured, and they keep clearing on every completion.
+    """
+
+    @pytest.fixture
+    def primed_lodging_cache(self):
+        from api.dependencies import lodging_cache
+
+        lodging_cache.invalidate_all()
+        lodging_cache.set("fetch_households", 2026, {"hh_1": object()})
+        yield lodging_cache
+        lodging_cache.invalidate_all()
+
+    def test_the_hourly_bunk_assignments_sync_leaves_the_lodging_cache_alone(
+        self, test_client, fresh_cache, primed_lodging_cache
+    ):
+        fresh_cache.set("retention", {"data": 1}, year=2026)
+
+        with patch("api.routers.metrics.schedule_lodging_warm") as warm:
+            resp = test_client.post("/api/metrics/cache/invalidate", params={"sync_type": "bunk_assignments"})
+
+        assert resp.status_code == 200
+        assert primed_lodging_cache.get("fetch_households", 2026) is not None
+        warm.assert_not_called()
+        # The metrics cache still clears, exactly as before.
+        assert fresh_cache.get_stats()["cache_size"] == 0
+
+    def test_a_sync_that_writes_a_cached_table_clears_it_and_schedules_a_warm(
+        self, test_client, fresh_cache, primed_lodging_cache
+    ):
+        with patch("api.routers.metrics.schedule_lodging_warm") as warm:
+            resp = test_client.post("/api/metrics/cache/invalidate", params={"sync_type": "attendees"})
+
+        assert resp.status_code == 200
+        assert primed_lodging_cache.get("fetch_households", 2026) is None
+        warm.assert_called_once()
+
+    def test_no_sync_type_still_clears_it_and_schedules_a_warm(self, test_client, fresh_cache, primed_lodging_cache):
+        """The PocketBase config hook and the registration-dates panel name no
+        sync; they keep today's clear-everything behaviour."""
+        with patch("api.routers.metrics.schedule_lodging_warm") as warm:
+            resp = test_client.post("/api/metrics/cache/invalidate")
+
+        assert resp.status_code == 200
+        assert primed_lodging_cache.get("fetch_households", 2026) is None
+        warm.assert_called_once()
+
+
+class TestGraphCacheClearsWhenASyncWritesAGraphTable:
+    """kindred#2803 item B: `graph_cache` was cleared only by scenario, solver
+    and position writes, so a sync that rewrote attendees or bunk assignments
+    left the production social graph stale for up to its 15-minute TTL. The
+    invalidate endpoint now clears it when the completed sync writes a table
+    the graph is built from (`SocialGraphBuilder.READ_TABLES`)."""
+
+    @pytest.fixture
+    def primed_graph_cache(self):
+        import networkx as nx
+
+        from api.dependencies import graph_cache
+
+        graph_cache.clear()
+        graph_cache.cache_session_graph(1000001, 2026, nx.DiGraph())
+        yield graph_cache
+        graph_cache.clear()
+
+    def test_the_hourly_bunk_assignments_sync_clears_it(self, test_client, fresh_cache, primed_graph_cache):
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            resp = test_client.post("/api/metrics/cache/invalidate", params={"sync_type": "bunk_assignments"})
+
+        assert resp.status_code == 200
+        assert primed_graph_cache.get_session_graph(1000001, 2026) is None
+
+    def test_a_sync_writing_no_graph_table_leaves_it(self, test_client, fresh_cache, primed_graph_cache):
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            resp = test_client.post("/api/metrics/cache/invalidate", params={"sync_type": "staff_skills"})
+
+        assert resp.status_code == 200
+        assert primed_graph_cache.get_session_graph(1000001, 2026) is not None
+
+    def test_no_sync_type_clears_it(self, test_client, fresh_cache, primed_graph_cache):
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            resp = test_client.post("/api/metrics/cache/invalidate")
+
+        assert resp.status_code == 200
+        assert primed_graph_cache.get_session_graph(1000001, 2026) is None
 
 
 class TestCacheStatsEndpoint:

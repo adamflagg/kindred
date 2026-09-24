@@ -373,7 +373,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return response
 
         # Skip auth for metrics cache invalidation (safe, idempotent operation).
-        # Called by PocketBase hook on registration config changes (no user context).
+        # Called with no user context by PocketBase: the registration-config hook, and the
+        # sync orchestrator after every finished job (`afterRunPublished`, with `?sync_type=`).
         if request.url.path == "/api/metrics/cache/invalidate" and request.method == "POST":
             response = await call_next(request)
             return response

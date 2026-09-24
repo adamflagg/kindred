@@ -99,6 +99,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/logging/
 !pocketbase/campminder/
 !pocketbase/ratelimit/
+!pocketbase/fastapi/
 !pocketbase/google/
 !pocketbase/rbac/
 !pocketbase/feedback/

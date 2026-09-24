@@ -303,6 +303,9 @@ var schedulerOnce sync.Once
 func GetScheduler(app core.App) *Scheduler {
 	schedulerOnce.Do(func() {
 		globalScheduler = NewScheduler(app)
+		// The one production orchestrator tells FastAPI about every finished run. Wired here
+		// rather than in NewOrchestrator so no test orchestrator makes the HTTP call.
+		globalScheduler.orchestrator.runCompletedNotifier = notifyAPIRunCompleted
 	})
 	return globalScheduler
 }
