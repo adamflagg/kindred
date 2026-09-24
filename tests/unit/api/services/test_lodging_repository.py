@@ -123,6 +123,11 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_adult_weekend_attendees(2025), id="fetch_adult_attendees_year"),
             pytest.param(lambda r: r.fetch_adult_cabin_values(2025), id="fetch_adult_cabin_values_year"),
             pytest.param(lambda r: r.fetch_adult_need_values(2026), id="fetch_adult_need_values_year"),
+            # kindred#2776: the camper journey's reads.
+            pytest.param(lambda r: r.fetch_person_records(1000001), id="fetch_person_records"),
+            pytest.param(lambda r: r.fetch_person_journey_attendees(1000001, 2026), id="fetch_journey_attendees"),
+            pytest.param(lambda r: r.fetch_person_journey_assignments(1000001, 2026), id="fetch_journey_assignments"),
+            pytest.param(lambda r: r.fetch_sessions_by_year_cm_id([(2025, 1000001)]), id="fetch_sessions_by_key"),
         ],
     )
     async def test_paginated_read_pins_a_sort_key(self, repo: LodgingRepository, pb: MagicMock, call: Any) -> None:

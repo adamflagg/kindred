@@ -80,6 +80,14 @@ SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 # exclude off-season noise (fall Family-Camp CIT, Aug->May Teen Interns, Feb L.A. Trip).
 SUMMER_TEEN_TYPES = ("scit", "tli")
 
+# The camper journey's curated session types: summer + teen + family + adult
+# (kindred#2776 moved the journey merge server-side). The client's
+# `CAMPER_JOURNEY_TYPES` (`frontend/src/utils/sessionTypePredicates.ts`) is the
+# same set, kept for the current-year rows the client still builds. Family
+# joined in #2113 -- hiding it hid ~45% of enrolled attendance -- and adult
+# programs in 2026-09. bmitzvah/hebrew/school/teen/other stay out.
+CAMPER_JOURNEY_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli", "family", "adult")
+
 # Display labels for the merged teen rows (one row per teen session_type),
 # shared by the forecast and availability services.
 TEEN_DISPLAY_NAMES: dict[str, str] = {"scit": "SCIT", "tli": "TLI"}
