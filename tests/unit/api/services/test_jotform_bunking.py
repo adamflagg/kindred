@@ -5,13 +5,22 @@ Fictional names only (tests/CLAUDE.md).
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
 from api.schemas.lodging import BunkingRequestVersion
+from api.services.adult_need_answers import ADULT_CPAP_FIELD_CM_ID, HOUSING_ACCOMODATION_FIELD_CM_ID
 from api.services.jotform_bunking import (
+    JotformBunkingRows,
+    JotformFiling,
+    build_bunking_request,
     coming_with_tokens,
     diff_items,
+    filings_by_person,
     is_name_shaped,
+    jotform_need_disagreements,
     normalize_request,
     request_changed,
     request_items,
@@ -188,3 +197,162 @@ class TestChanged:
 
     def test_two_blank_filings_are_not_changed(self) -> None:
         assert request_changed([_v("08-03", "none"), _v("08-31", "")]) is False
+
+
+SESSION = 1000002
+FIELD_MAP = {
+    "bunking_request": "21",
+    "coming_with": "16",
+    "housing_accommodation": "22",
+    "accommodation_details": "23",
+    "cpap": "29",
+}
+
+
+def _sub(record_id: str, submission_id: str, person: int, date: str, **kw: Any) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=record_id,
+        submission_id=submission_id,
+        form="form_ww",
+        session_cm_id=kw.get("session_cm_id", SESSION),
+        person_cm_id=person,
+        submitted_at=f"2026-{date} 09:00:00",
+        match_status=kw.get("match_status", "auto"),
+        jotform_status=kw.get("jotform_status", "ACTIVE"),
+    )
+
+
+def _ans(record_id: str, qid: str, text: str, answer_json: Any = None) -> SimpleNamespace:
+    return SimpleNamespace(submission=record_id, question_id=qid, answer_text=text, answer_json=answer_json)
+
+
+def _rows(subs: list[SimpleNamespace], answers: list[SimpleNamespace]) -> JotformBunkingRows:
+    return JotformBunkingRows(
+        forms=[SimpleNamespace(id="form_ww", session_cm_id=SESSION, field_map=FIELD_MAP)],
+        submissions=subs,
+        answers=answers,
+    )
+
+
+class TestFilingsByPerson:
+    def test_groups_live_matched_filings_by_guest_oldest_first(self) -> None:
+        rows = _rows(
+            [
+                _sub("r2", "6600000000000000002", 1000004, "08-31", match_status="staff"),
+                _sub("r1", "6600000000000000001", 1000004, "08-03"),
+                _sub("r3", "6600000000000000003", 1000005, "08-05", jotform_status="DELETED"),
+                _sub("r4", "6600000000000000004", 1000006, "08-06", session_cm_id=1000099),
+                _sub("r5", "6600000000000000005", 0, "08-07", match_status="unmatched"),
+            ],
+            [
+                _ans("r1", "21", "Emma Johnson"),
+                _ans("r2", "21", "Emma Johnson, Liam Garcia"),
+                _ans("r2", "16", "With Family; With Friends", ["With Family", "With Friends"]),
+                _ans("r2", "22", "Yes"),
+                _ans("r2", "99", "an unmapped answer"),
+            ],
+        )
+        filings = filings_by_person(rows, session_cm_id=SESSION)
+        assert list(filings) == [1000004]
+        olivia = filings[1000004]
+        assert [f.submission_id for f in olivia] == ["6600000000000000001", "6600000000000000002"]
+        assert olivia[1].coming_with == ("family", "friends")
+        assert olivia[1].housing_accommodation == "Yes"
+        assert olivia[1].staff_linked is True
+
+
+class TestBuildBunkingRequest:
+    def _f(self, date: str, text: str, **kw: Any) -> JotformFiling:
+        return JotformFiling(
+            submission_id=f"66{date}", submitted_at=f"2026-{date} 09:00:00", bunking_request=text, **kw
+        )
+
+    def test_no_filings_is_no_form(self) -> None:
+        assert build_bunking_request([]).state == "no_form"
+
+    def test_a_typed_no_request_is_none(self) -> None:
+        summary = build_bunking_request([self._f("08-03", "no request")])
+        assert (summary.state, summary.current_text) == ("none", "")
+
+    def test_request_with_history_and_coming_with(self) -> None:
+        summary = build_bunking_request(
+            [
+                self._f("08-03", "Emma Johnson"),
+                self._f("08-31", "Emma Johnson, Liam Garcia", coming_with=("solo", "friends")),
+            ]
+        )
+        assert summary.state == "request"
+        assert summary.current_text == "Emma Johnson, Liam Garcia"
+        assert summary.change is not None
+        assert summary.change.kind == "list"
+        assert summary.coming_with == ["solo", "friends"]
+        assert [s[:10] for s in summary.submitted] == ["2026-08-03", "2026-08-31"]
+
+    def test_blank_latest_filing_is_current_and_muted(self) -> None:
+        # Owner ruling 2026-09-24: a newer blank filing is current; the earlier
+        # requestees show as removed.
+        summary = build_bunking_request([self._f("08-03", "Emma Johnson"), self._f("08-31", "")])
+        assert (summary.state, summary.current_text) == ("none", "")
+        assert summary.change is not None
+        assert summary.change.kind == "list"
+        assert [(i.text, i.op) for i in summary.change.items] == [("Emma Johnson", "remove")]
+
+    def test_a_request_that_moved_and_moved_back_is_changed(self) -> None:
+        # P15: the amber dot reads `changed`; the net markup is all keep.
+        summary = build_bunking_request(
+            [
+                self._f("08-03", "Emma Johnson"),
+                self._f("08-20", "Emma Johnson, Liam Garcia"),
+                self._f("09-16", "Emma Johnson"),
+            ]
+        )
+        assert summary.changed is True
+        assert summary.change is not None
+        assert summary.change.kind == "list"
+        assert [(i.text, i.op) for i in summary.change.items] == [("Emma Johnson", "keep")]
+
+    def test_identical_refiles_are_not_changed(self) -> None:
+        summary = build_bunking_request(
+            [self._f("08-03", "Emma Johnson, Liam Garcia"), self._f("08-31", "emma johnson; Liam Garcia")]
+        )
+        assert summary.changed is False
+        assert summary.change is not None
+        assert summary.change.kind == "identical"
+
+    def test_a_single_filing_is_not_changed(self) -> None:
+        assert build_bunking_request([self._f("08-03", "Emma Johnson")]).changed is False
+
+    def test_a_blank_refile_is_changed(self) -> None:
+        assert build_bunking_request([self._f("08-03", "Emma Johnson"), self._f("08-31", "")]).changed is True
+
+
+class TestNeedDisagreements:
+    def _latest(self, **kw: Any) -> JotformFiling:
+        return JotformFiling(submission_id="66", submitted_at="2026-08-31 09:00:00", **kw)
+
+    def test_accommodation_yes_on_jotform_no_at_registration(self) -> None:
+        says = jotform_need_disagreements(
+            self._latest(housing_accommodation="Yes", accommodation_details="Near a bathroom, please"),
+            {HOUSING_ACCOMODATION_FIELD_CM_ID: "No"},
+        )
+        assert [(s.need, s.registration, s.jotform, s.detail) for s in says] == [
+            ("accommodation", "No", "Yes", "Near a bathroom, please")
+        ]
+
+    def test_a_blank_registration_is_named_blank(self) -> None:
+        says = jotform_need_disagreements(self._latest(housing_accommodation="Yes"), {})
+        assert [(s.registration, s.jotform) for s in says] == [("blank", "Yes")]
+
+    def test_cpap_power_need_the_registration_missed(self) -> None:
+        says = jotform_need_disagreements(self._latest(cpap="Yes"), {ADULT_CPAP_FIELD_CM_ID: "No"})
+        assert [(s.need, s.registration, s.jotform) for s in says] == [("cpap", "No", "Yes")]
+
+    def test_agreement_and_unanswered_questions_say_nothing(self) -> None:
+        assert jotform_need_disagreements(self._latest(housing_accommodation="No"), {}) == []
+        assert (
+            jotform_need_disagreements(
+                self._latest(housing_accommodation="Yes"), {HOUSING_ACCOMODATION_FIELD_CM_ID: "Yes"}
+            )
+            == []
+        )
+        assert jotform_need_disagreements(self._latest(), {HOUSING_ACCOMODATION_FIELD_CM_ID: "Yes"}) == []

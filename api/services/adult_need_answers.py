@@ -180,3 +180,21 @@ def adult_need_flags_by_person(rows: Iterable[Any]) -> dict[int, AccessibilityFl
             continue
         answers.setdefault(person_cm_id, []).append((field_cm_id, str(getattr(row, "value", "") or "")))
     return {person_cm_id: adult_need_flags(pairs) for person_cm_id, pairs in answers.items()}
+
+
+def adult_need_raw_by_person(rows: Iterable[Any]) -> dict[int, dict[int, str]]:
+    """The same rows, RAW, keyed guest -> field cm_id -> answer (kindred#2759).
+
+    For the "Jotform says" comparison only, which needs "blank" and "No" told
+    apart; the booleans above cannot. Never reaches the wire as-is -- the
+    roster maps it to Yes / No / blank before anything is published.
+    """
+    raw: dict[int, dict[int, str]] = {}
+    for row in rows:
+        person_cm_id = _expanded_cm_id(row, "person")
+        if person_cm_id <= 0:
+            continue
+        raw.setdefault(person_cm_id, {})[_expanded_cm_id(row, "field_definition")] = str(
+            getattr(row, "value", "") or ""
+        )
+    return raw
