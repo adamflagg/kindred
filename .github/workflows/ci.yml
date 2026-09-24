@@ -685,7 +685,7 @@ jobs:
         # abort with `package requires newer Go version go1.27 (application
         # built with go1.26)` -- a panic, not a lint finding.
         # renovate: datasource=github-releases depName=golangci/golangci-lint
-        version: v2.13.2
+        version: v2.14.0
         working-directory: pocketbase
         args: --config ../.golangci.yml
 
