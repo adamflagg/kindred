@@ -14,6 +14,7 @@ from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.cancellation_service import CANCELLED_STATUSES
 from api.services.extractors import filter_aged_out_attendees
 from api.services.waitlist_service import DECLINED_STATUSES
+from api.utils.location_label import person_city_state_for_display
 from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES as SUMMER_SESSION_TYPES,
 )
@@ -793,9 +794,10 @@ class DrilldownService:
             else:
                 is_returning = years_at_camp is not None and years_at_camp > 1
 
-            # Read city and state from discrete columns (address_city, address_state)
-            city = getattr(person, "address_city", None) or None
-            state = getattr(person, "address_state", None) or None
+            # City/state for display -- normalized_city, when present, IS the
+            # whole label, so state comes back None rather than doubling it
+            # (kindred#2755, kindred#2753).
+            city, state = person_city_state_for_display(person)
 
             # Build sessions list from all attendee records for this person
             sessions_list: list[DrilldownSession] = []
@@ -835,7 +837,7 @@ class DrilldownService:
                     gender=getattr(person, "gender", None),
                     age=getattr(person, "age", None),
                     school=getattr(person, "normalized_school", None) or getattr(person, "school", None),
-                    city=getattr(person, "normalized_city", None) or city,
+                    city=city,
                     state=state,
                     years_at_camp=years_at_camp,
                     enrollment_date=_get_str_attr(a, "enrollment_date"),
@@ -961,8 +963,7 @@ class DrilldownService:
 
             years_at_camp = getattr(person, "years_at_camp", None)
             is_returning = years_at_camp is not None and years_at_camp > 1
-            city = getattr(person, "address_city", None) or None
-            state = getattr(person, "address_state", None) or None
+            city, state = person_city_state_for_display(person)
 
             # Build enrolled_sessions for this person
             enrolled_sessions_list: list[DrilldownSession] = []
@@ -986,7 +987,7 @@ class DrilldownService:
                     gender=getattr(person, "gender", None),
                     age=getattr(person, "age", None),
                     school=getattr(person, "normalized_school", None) or getattr(person, "school", None),
-                    city=getattr(person, "normalized_city", None) or city,
+                    city=city,
                     state=state,
                     years_at_camp=years_at_camp,
                     enrollment_date=enrollment_date_lookup.get(pid),
@@ -1258,6 +1259,10 @@ class DrilldownService:
             seen_persons.add(pid)
 
             years_at_camp = getattr(person, "years_at_camp", None)
+            # City/state for display -- normalized_city, when present, IS the
+            # whole label, so state comes back None rather than doubling it
+            # (kindred#2755, kindred#2753).
+            city, state = person_city_state_for_display(person)
 
             results.append(
                 DrilldownAttendee(
@@ -1269,8 +1274,8 @@ class DrilldownService:
                     gender=gender,
                     age=getattr(person, "age", None),
                     school=_get_str_attr(person, "normalized_school") or _get_str_attr(person, "school"),
-                    city=_get_str_attr(person, "normalized_city") or _get_str_attr(person, "address_city"),
-                    state=_get_str_attr(person, "address_state"),
+                    city=city,
+                    state=state,
                     years_at_camp=years_at_camp,
                     session_cm_id=session_cm_id,
                     session_name=str(getattr(session, "name", "Unknown")),
