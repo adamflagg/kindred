@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -84,6 +85,7 @@ from api.constants.collections import (
     LODGING_WRITE_INS_DRAFT,
     ORIGINAL_BUNK_REQUESTS,
     PERSON_CUSTOM_VALUES,
+    PERSONS,
     SYNC_RUNS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -96,7 +98,7 @@ from api.services.lodging_rules import (
 )
 from api.services.person_housing_rules import ADULT_WEEKEND_CABIN_FIELD_CM_IDS, LIVE_HOUSING_FROM_YEAR
 from api.utils.pb_filters import pb_escape
-from api.utils.session_metrics import SUMMER_TEEN_TYPES
+from api.utils.session_metrics import CAMPER_JOURNEY_SESSION_TYPES, SUMMER_TEEN_TYPES
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -171,6 +173,44 @@ STABLE_SORT = "id"
 # though it did something.
 PAGE_SIZE = 1000
 
+# `fields=` projections for the YEAR-WIDE reads (kindred#2803). Each names
+# exactly the columns its consumer reads and nothing else.
+#
+# Measured on the 2026-09-23 production snapshot: `fetch_prior_household_cm_ids`
+# expanded all 42 `persons` columns to read one, `household_id` -- 9.0 MB over
+# 7 requests, and 99% of a cold roster's wall time, most of it JSON decode and
+# SDK `Record` construction under the GIL. Projected, it is 0.28 MB.
+#
+# ⚠️ A column missing from one of these lists does not fail -- it comes back
+# ABSENT, and every consumer reads with `getattr(..., default)`, so it reads as
+# "" or 0: a returning family silently badged first-time, a contributor's name
+# silently blank. `tests/unit/api/services/test_lodging_read_projection.py`
+# serves each read's rows projected exactly as PocketBase projects them and
+# asserts the consumer's output matches the unprojected read; add a column here
+# only alongside the consumer that reads it.
+#
+# Deliberately NOT paired with `skipTotal`: the SDK's `get_full_list` (which
+# `_page` wraps) decides whether to fetch the next page from `totalItems`, and
+# with `skipTotal` that is -1 -- it would stop after the FIRST 1,000 rows and
+# return them as the whole year.
+_HOUSEHOLD_ID_VIA_PERSON_FIELDS = "expand.person.household_id"
+_PERSON_ID_FIELDS = "person_id"
+# The name columns are what `_person_display_name` reads, `household` is what
+# `_request_value` groups on.
+_FAMILY_CAMP_REQUEST_FIELDS = (
+    "value,expand.field_definition.cm_id,"
+    "expand.person.household,expand.person.first_name,expand.person.last_name,expand.person.preferred_name"
+)
+_BUNKING_CSV_REQUEST_FIELDS = (
+    "field,content,"
+    "expand.requester.household,expand.requester.first_name,expand.requester.last_name,"
+    "expand.requester.preferred_name"
+)
+# `adult_need_flags_by_person` reads person/field cm_id and `value`;
+# `cabin_values_from_rows` adds `year` and `last_updated` (the attribution
+# rule's write time).
+_COHORT_VALUE_FIELDS = "year,value,last_updated,expand.person.cm_id,expand.field_definition.cm_id"
+
 
 def _weekend_type_filter() -> str:
     return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
@@ -184,6 +224,12 @@ def _attendee_weekend_session_filter() -> str:
     directly and would produce the wrong field name if reused here.
     """
     return " || ".join(f'session.session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+
+
+def _journey_type_filter() -> str:
+    """The camper journey's session types, through an attendee's or bunk
+    assignment's `session` relation."""
+    return " || ".join(f'session.session_type = "{t}"' for t in CAMPER_JOURNEY_SESSION_TYPES)
 
 
 def _household_cm_ids(attendee_rows: list[Any]) -> set[int]:
@@ -791,6 +837,73 @@ class LodgingRepository:
             },
         )
 
+    async def fetch_person_records(self, person_cm_id: int) -> list[Any]:
+        """One person's year-scoped `persons` rows, newest year first
+        (camper journey, kindred#2776).
+
+        Read for three facts at the viewed year: the household, CampMinder's
+        age, and the most recent non-zero `years_at_camp`. Keyed on the
+        CampMinder id, the cross-season identity thread.
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(PERSONS, query_params={"filter": f"cm_id = {person_cm_id}", "sort": "-year,id"})
+
+    async def fetch_person_journey_attendees(self, person_cm_id: int, view_year: int) -> list[Any]:
+        """One person's ENROLLED journey attendee rows THROUGH `view_year`
+        (camper journey, kindred#2776).
+
+        The journey's source of truth. Through the viewed year, not before it,
+        so the header's weekend counts include that year the way CampMinder's
+        `years_at_camp` does; the service keeps the rows themselves prior-year.
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f"person_id = {person_cm_id} && year <= {view_year} && {ACTIVE_ENROLLED_FILTER}"
+                    f" && ({_journey_type_filter()})"
+                ),
+                "expand": "session",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_person_journey_assignments(self, person_cm_id: int, view_year: int) -> list[Any]:
+        """One person's prior-year bunk assignments on journey session types
+        (camper journey, kindred#2776).
+
+        Used ONLY to label a row, never to gate one. Restricted to the journey
+        types so the year-fallback cannot attach a non-journey type's lone
+        bunk (a bmitzvah one, say) to an unbunked row -- the leak fb1a88d2
+        closed for current-year views.
+        """
+        if person_cm_id <= 0:
+            return []
+        return await self._page(
+            BUNK_ASSIGNMENTS,
+            query_params={
+                "filter": f"person.cm_id = {person_cm_id} && year < {view_year} && ({_journey_type_filter()})",
+                "expand": "session,bunk",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_sessions_by_year_cm_id(self, pairs: Sequence[tuple[int, int]]) -> list[Any]:
+        """`camp_sessions` for a set of (year, cm_id) pairs, in one read.
+
+        The camper journey relabels an AG-only year to its parent main by
+        this lookup: AG session names are not reliably derivable from the
+        parent's. No pairs, no query.
+        """
+        unique = sorted(set(pairs))
+        if not unique:
+            return []
+        clause = " || ".join(f"(year = {year} && cm_id = {cm_id})" for year, cm_id in unique)
+        return await self._page(CAMP_SESSIONS, query_params={"filter": clause, "sort": STABLE_SORT})
+
     async def fetch_household_adults_by_year(self, household_cm_id: int) -> dict[int, list[Any]]:
         """One household's accompanying adults, grouped by year (kindred#2073).
 
@@ -995,6 +1108,7 @@ class LodgingRepository:
                     f'year < {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person",
+                "fields": _HOUSEHOLD_ID_VIA_PERSON_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1020,6 +1134,7 @@ class LodgingRepository:
                     f'year = {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person",
+                "fields": _HOUSEHOLD_ID_VIA_PERSON_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1109,6 +1224,7 @@ class LodgingRepository:
                 "filter": (
                     f'year < {year} && session.session_type = "{ADULT_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
+                "fields": _PERSON_ID_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1165,6 +1281,7 @@ class LodgingRepository:
             query_params={
                 "filter": f"year = {year} && ({field_filter})",
                 "expand": "person,field_definition",
+                "fields": _COHORT_VALUE_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1299,6 +1416,7 @@ class LodgingRepository:
             query_params={
                 "filter": f"year = {year} && ({cm_id_filter})",
                 "expand": "person,field_definition",
+                "fields": _FAMILY_CAMP_REQUEST_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1327,6 +1445,7 @@ class LodgingRepository:
             query_params={
                 "filter": f"year = {year} && ({field_filter})",
                 "expand": "requester",
+                "fields": _BUNKING_CSV_REQUEST_FIELDS,
                 "sort": STABLE_SORT,
             },
         )

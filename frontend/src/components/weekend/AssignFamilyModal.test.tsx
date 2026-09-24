@@ -1745,6 +1745,79 @@ describe('AssignFamilyModal — what it refuses to offer', () => {
   })
 })
 
+/**
+ * kindred#2804. `parties={[]}` is how the caller spells "placement is not
+ * live", and the caller does that BOTH when a scenario has placed everyone
+ * (true) and when there is no scenario at all — the CampMinder mirror, where
+ * nothing can be placed from this box at all (false). An empty array cannot
+ * carry that distinction; `canPlace` is the second flag that does.
+ */
+describe('AssignFamilyModal — CampMinder mode never claims everyone is placed (kindred#2804)', () => {
+  it('renders no party list and no "Everyone has a cabin" when placement is not live', () => {
+    renderModal({ parties: [], canPlace: false })
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('Everyone has a cabin')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  })
+
+  it('labels the search box as write-in-only when placement is not live', () => {
+    renderModal({ parties: [], canPlace: false })
+    expect(searchBox()).toHaveAccessibleName('Write in an occupant for Ridge 1')
+    expect(searchBox()).toHaveAttribute('placeholder', 'Write in a name…')
+  })
+
+  it('still offers the write-in path when placement is not live', () => {
+    const { props } = renderModal({ parties: [], canPlace: false })
+    fireEvent.change(searchBox(), { target: { value: 'Burst pipe' } })
+    fireEvent.click(screen.getByRole('button', { name: /^write in$/i }))
+    expect(props.onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Burst pipe',
+      note: '',
+      partySize: null,
+    })
+  })
+
+  it('still says "Everyone has a cabin" when placement IS live and the queue is genuinely empty', () => {
+    renderModal({ parties: [], canPlace: true })
+    expect(screen.getByRole('dialog')).toHaveTextContent('Everyone has a cabin')
+  })
+
+  it('defaults to placement being live, so existing callers are unaffected', () => {
+    renderModal({ parties: [] })
+    expect(screen.getByRole('dialog')).toHaveTextContent('Everyone has a cabin')
+  })
+
+  it('holds on an adult weekend too — the gate is `canPlace`, never the parties’ grain', () => {
+    renderModal({ parties: [], canPlace: false, sessionType: 'adult' })
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('Everyone has a cabin')
+    expect(searchBox()).toHaveAccessibleName('Write in an occupant for Ridge 1')
+  })
+
+  it('never titles the dialog "Assign" when placement is not live', () => {
+    // The pill reads "Write in" here; the dialog it opens must not then say
+    // "Assign to …" over a box that cannot place anyone.
+    renderModal({ parties: [], canPlace: false })
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).not.toHaveTextContent('Assign')
+    expect(dialog).toHaveTextContent('Write in for Ridge 1')
+    expect(dialog).toHaveAccessibleName('Write in for Ridge 1')
+  })
+
+  it('keeps "Assign to …" as the title in scenario mode, queue empty or not', () => {
+    renderModal({ parties: [], canPlace: true })
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Assign to Ridge 1')
+  })
+
+  it('leaves the scenario-mode search box exactly as before when the queue is empty', () => {
+    // Scenario mode is unchanged by kindred#2804. With nobody left to place,
+    // the box is a write-in box and has always said so — `canPlace` must not
+    // turn it back into an invitation to place a family that does not exist.
+    renderModal({ parties: [], canPlace: true })
+    expect(searchBox()).toHaveAccessibleName('Write in an occupant for Ridge 1')
+    expect(searchBox()).toHaveAttribute('placeholder', 'Write in a name…')
+  })
+})
+
 describe('AssignFamilyModal — it is the shared dialog, not a second pattern', () => {
   it('is a real dialog with the repo’s own overlay behaviour', () => {
     // `ui/Modal` carries the portal, the focus trap, the background `inert`

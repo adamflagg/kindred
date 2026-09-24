@@ -117,10 +117,24 @@ export interface AssignFamilyModalProps {
   /**
    * Every UNPLACED party, exactly as the queue holds them. NEVER pre-filtered
    * by fit — that is the ruling `placementCandidates` carries, not a caller
-   * convenience. Empty where placement is not live, which is how this knows it
-   * is a write-in box only.
+   * convenience. Empty wherever placement is not live, but `[]` alone cannot
+   * say WHY — see `canPlace` below, which carries that.
    */
   parties: RosterPartyRow[]
+  /**
+   * Whether placement is live at all — `LodgingUnitCard`'s own
+   * `canOfferPlacement` (kindred#2804). Defaults to `true`, matching every
+   * caller before this flag existed, all of which passed a real queue or
+   * genuinely had nothing left to place.
+   *
+   * ⚠️ NOT DERIVABLE FROM `parties.length`. The caller passes `[]` both when
+   * a scenario has placed everyone (true — say "Everyone has a cabin") and
+   * when there is no scenario at all, the CampMinder mirror, where nothing
+   * can be placed from this box (false — say nothing of the kind). An empty
+   * array means the same thing in both cases to a reader of `parties` alone;
+   * this is the second flag that tells them apart.
+   */
+  canPlace?: boolean
   /**
    * The whole registry. Needed only to total a combined house's capacity;
    * `[]` is correct for every leaf card.
@@ -520,6 +534,7 @@ export function AssignFamilyModal({
   onClose,
   unit,
   parties,
+  canPlace = true,
   units = [],
   occupants,
   spanWidth = 0,
@@ -710,14 +725,27 @@ export function AssignFamilyModal({
   }
 
   /**
-   * Whether this card can place a family at all.
+   * Whether the search box can place a family RIGHT NOW — which is what its
+   * label and placeholder describe. Two conditions, and both are needed.
    *
-   * FALSE on the CampMinder mirror, where there is no scenario: recording who
-   * is sleeping in a cabin is a fact about the WEEKEND, not about a plan, so
-   * the write-in half stays live where the placement half cannot be. The
-   * caller passes an empty queue in that case rather than a second flag.
+   * `canPlace` (kindred#2804): FALSE on the CampMinder mirror, where there is
+   * no scenario. Recording who is sleeping in a cabin is a fact about the
+   * WEEKEND, not about a plan, so the write-in half stays live where the
+   * placement half cannot be.
+   *
+   * `parties.length > 0 || onWriteIn === undefined`: the original rule, kept
+   * whole so scenario mode is unchanged. In a scenario whose queue is empty the
+   * box has always been labelled a write-in box — there is no family left to
+   * invite the staff member to place.
+   *
+   * ⚠️ `canPlace` ALONE IS NOT ENOUGH. It says whether placement is possible
+   * on this weekend, not whether anyone is waiting; read by itself it turned
+   * the empty-queue scenario box back into "Place a family, or write in…".
+   * Where `canPlace` IS the whole answer is the "Everyone has a cabin" branch
+   * and the dialog's title below, which are claims about the scenario rather
+   * than about the queue.
    */
-  const placementLive = parties.length > 0 || onWriteIn === undefined
+  const placementLive = canPlace && (parties.length > 0 || onWriteIn === undefined)
 
   /*
    * ONE BASELINE ROW — title and sub together, the artifact's `.mhead`
@@ -745,9 +773,15 @@ export function AssignFamilyModal({
    * whitespace between `.mhead` and `.pinput`), and the ruled 9px is now
    * undivided and carried entirely here, in `pb-[9px]`.
    */
+  // kindred#2804. On the CampMinder mirror the pill that opens this reads
+  // "Write in", and the dialog must not then call itself "Assign" over a box
+  // that cannot place anyone. `canPlace`, not `placementLive`: a scenario whose
+  // queue is empty is still the assign dialog, and its title is unchanged.
+  const title = canPlace ? `Assign to ${unit.name}` : `Write in for ${unit.name}`
+
   const header = (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3.5 pr-14 pb-[9px]">
-      <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
+      <h2 className="min-w-0 truncate text-lg font-bold">{title}</h2>
       <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
         {[capacitySentence(unit, units, occupants, spanWidth, isAdult), ...amenityWords(unit)].join(
           ' · '
@@ -797,7 +831,7 @@ export function AssignFamilyModal({
       // from. Threaded for that reason rather than as an accessibility
       // measure — it names the dialog after the cabin it writes to, which is
       // also the only thing distinguishing one of these from another.
-      ariaLabel={`Assign to ${unit.name}`}
+      ariaLabel={title}
       // ⚠️ TOP-ANCHORED, and it is load-bearing. Centred, the dialog is laid
       // out around a content-height card, so every change in the swap region
       // re-centres the whole thing — measured at 133px of search-box travel
@@ -1146,14 +1180,21 @@ export function AssignFamilyModal({
                 </button>
               </div>
             </div>
+          ) : !canPlace ? (
+            // kindred#2804. The CampMinder mirror: no scenario, so nothing
+            // can be placed from this box, and `parties` is `[]` for that
+            // reason — not because anybody counted the queue down to zero.
+            // Rendering nothing here, rather than falling into the branch
+            // below, is the fix: that branch's "Everyone has a cabin" is a
+            // claim about a scenario's queue, and there is no scenario to
+            // make it about.
+            <></>
           ) : parties.length === 0 ? (
-            /* Nothing left to place. `FloatingUnplacedBadge` already says this
-               over the same parties — one state, one sentence. BELOW the
-               write-in offer, deliberately: on the CampMinder mirror there is
-               no scenario and therefore no placement queue at all, so this
-               branch is the one an unfiltered box lands on. Above the offer it
-               would say "everyone has a cabin" while swallowing the name just
-               typed. */
+            /* Nothing left to place, and this time the claim is one a real
+               scenario queue backs up. `FloatingUnplacedBadge` already says
+               this over the same parties — one state, one sentence. BELOW the
+               write-in offer, deliberately: it would say "everyone has a
+               cabin" while swallowing the name just typed otherwise. */
             <p className="text-muted-foreground px-2 py-6 text-center text-sm italic">
               Everyone has a cabin.
             </p>
