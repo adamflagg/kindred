@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -19,9 +20,15 @@ const jfSession = 1000002 // a fictional adult weekend
 type fakeJotform struct {
 	subs map[string][]jotform.Submission
 	err  error
+	// onFetch, when set, runs inside the pull after the job loaded its forms:
+	// the seam for an admin edit made while a pull is in flight.
+	onFetch func()
 }
 
 func (f *fakeJotform) FormSubmissions(_ context.Context, formID string) ([]jotform.Submission, error) {
+	if f.onFetch != nil {
+		f.onFetch()
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -372,5 +379,112 @@ func TestJotformSyncWithoutAKeyFailsLoudly(t *testing.T) {
 	s.Year = jfYear
 	if err := s.Sync(context.Background()); !errors.Is(err, jotform.ErrNoAPIKey) {
 		t.Errorf("err = %v, want ErrNoAPIKey", err)
+	}
+}
+
+// A staff link made WHILE a pull runs must survive it too, not only one made
+// between pulls: the job saves whole records, so a save built from a copy
+// loaded before the link would write the stale match back (#2824 review).
+func TestJotformStaffLinkMadeDuringThePullSurvives(t *testing.T) {
+	t.Parallel()
+	for _, phase := range []string{"upsert", "match"} {
+		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
+			app := newJotformTestApp(t)
+			seedWeekend(t, app)
+			ids := []string{"6600000000000000001", "6600000000000000002"}
+			typo := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
+				submission(ids[0], "2026-08-03 09:00:00", "Olivia", "Chenn", ""),
+				submission(ids[1], "2026-08-04 09:00:00", "Emma", "Johnsonn", ""),
+			}}}
+			if _, err := runJotform(t, app, typo); err != nil {
+				t.Fatal(err)
+			}
+
+			// Second pull: both guests fixed their names (so matching would now
+			// auto-match both) and Jotform stamped an edit (so both rows re-save).
+			fixed := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
+				submission(ids[0], "2026-08-03 09:00:00", "Olivia", "Chen", ""),
+				submission(ids[1], "2026-08-04 09:00:00", "Emma", "Johnson", ""),
+			}}}
+			for i := range fixed.subs["261700000000001"] {
+				fixed.subs["261700000000001"][i].UpdatedAt = "2026-08-06 09:00:00"
+			}
+
+			// The first time the job saves one of the two rows in this phase,
+			// a staff member links the OTHER one, which the job has not saved yet.
+			var linkedID string
+			app.OnRecordUpdate("jotform_submissions").BindFunc(func(e *core.RecordEvent) error {
+				inPhase := e.Record.GetString("match_status") == matchStatusAuto
+				if phase == "upsert" {
+					inPhase = e.Record.GetString("updated_at") != ""
+				}
+				if linkedID != "" || !inPhase {
+					return e.Next()
+				}
+				linkedID = ids[0]
+				if e.Record.GetString("submission_id") == ids[0] {
+					linkedID = ids[1]
+				}
+				other, err := e.App.FindFirstRecordByFilter("jotform_submissions",
+					"submission_id = {:id}", map[string]any{"id": linkedID})
+				if err != nil {
+					return fmt.Errorf("finding the row to link: %w", err)
+				}
+				other.Set("match_status", matchStatusStaff)
+				other.Set("person_cm_id", 1000006)
+				if err := e.App.Save(other); err != nil {
+					return fmt.Errorf("linking: %w", err)
+				}
+				return e.Next()
+			})
+
+			if _, err := runJotform(t, app, fixed); err != nil {
+				t.Fatal(err)
+			}
+			if linkedID == "" {
+				t.Fatal("the hook never fired, so this test exercised nothing")
+			}
+			if got := subRecord(t, app, linkedID); got.GetString("match_status") != matchStatusStaff ||
+				got.GetInt("person_cm_id") != 1000006 {
+				t.Errorf("a staff link made during the %s phase was overwritten: %v", phase, got.PublicExport())
+			}
+		})
+	}
+}
+
+// An admin edit to a form made while a pull runs must survive the job's
+// last-pull stamp, which is the only thing the job writes on jotform_forms.
+func TestJotformPullStatusDoesNotRevertAConcurrentFormEdit(t *testing.T) {
+	t.Parallel()
+	app := newJotformTestApp(t)
+	formID := seedWeekend(t, app)
+	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
+		submission("6600000000000000001", "2026-08-03 09:00:00", "Olivia", "Chen", ""),
+	}}}
+	fake.onFetch = func() {
+		form, err := app.FindRecordById("jotform_forms", formID)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		form.Set("field_map", types.JSONRaw(
+			`{"first_name":"4","last_name":"4","nametag_name":"5","respondent_email":"40","cpap":"77"}`))
+		if err := app.Save(form); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := runJotform(t, app, fake); err != nil {
+		t.Fatal(err)
+	}
+	form, err := app.FindRecordById("jotform_forms", formID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(jsonFieldBytes(form.Get("field_map"))), `"cpap"`) {
+		t.Errorf("the pull reverted a field_map edit made while it ran: %s", jsonFieldBytes(form.Get("field_map")))
+	}
+	if !strings.HasPrefix(form.GetString("last_pull_status"), "ok · ") {
+		t.Errorf("last_pull_status = %q, want the ok stamp", form.GetString("last_pull_status"))
 	}
 }

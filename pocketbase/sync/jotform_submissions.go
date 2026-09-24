@@ -176,6 +176,10 @@ func (s *JotformSubmissionsSync) pullForm(
 // The "changed?" check compares through PocketBase's typed getters: a number
 // field reads back as float64, so a printed comparison (1.000002e+06 against
 // 1000002) would rewrite every row on every pull.
+//
+// An existing row is re-read inside the transaction: Save writes every column,
+// so saving the copy loaded before the loop would write back a stale
+// match_status over a staff link made while this pull ran.
 func (s *JotformSubmissionsSync) upsertSubmission(
 	form *core.Record, year int, sub *jotform.Submission, rec *core.Record,
 ) error {
@@ -185,6 +189,13 @@ func (s *JotformSubmissionsSync) upsertSubmission(
 	}
 	err := s.App.RunInTransaction(func(tx core.App) error {
 		created := rec == nil
+		if !created {
+			fresh, err := tx.FindRecordById("jotform_submissions", rec.Id)
+			if err != nil {
+				return fmt.Errorf("re-reading submission %s: %w", sub.ID, err)
+			}
+			rec = fresh
+		}
 		if created {
 			col, err := tx.FindCollectionByNameOrId("jotform_submissions")
 			if err != nil {
@@ -385,14 +396,37 @@ func (s *JotformSubmissionsSync) matchForm(
 			rec.GetInt("match_tier") == result.Tier {
 			continue
 		}
-		rec.Set("match_status", status)
-		rec.Set("person_cm_id", result.PersonCMID)
-		rec.Set("match_tier", result.Tier)
-		if err := s.App.Save(rec); err != nil {
+		if err := s.saveMatch(rec.Id, status, result); err != nil {
 			return 0, 0, fmt.Errorf("saving match of %s: %w", rec.GetString("submission_id"), err)
 		}
 	}
 	return matched, unmatched, nil
+}
+
+// saveMatch writes one match decision onto a FRESH copy of the row, inside a
+// transaction, and writes nothing if staff linked or ignored it after matchForm
+// loaded it: a staff decision is never overwritten, even mid-pull.
+func (s *JotformSubmissionsSync) saveMatch(recordID, status string, result jotform.Result) error {
+	err := s.App.RunInTransaction(func(tx core.App) error {
+		fresh, err := tx.FindRecordById("jotform_submissions", recordID)
+		if err != nil {
+			return fmt.Errorf("re-reading: %w", err)
+		}
+		if st := fresh.GetString("match_status"); st == matchStatusStaff || st == matchStatusIgnored {
+			return nil
+		}
+		fresh.Set("match_status", status)
+		fresh.Set("person_cm_id", result.PersonCMID)
+		fresh.Set("match_tier", result.Tier)
+		if err := tx.Save(fresh); err != nil {
+			return fmt.Errorf("saving: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("in transaction: %w", err)
+	}
+	return nil
 }
 
 func (s *JotformSubmissionsSync) enrolledGuests(year, sessionCMID int) ([]jotform.Guest, error) {
@@ -432,13 +466,27 @@ func (s *JotformSubmissionsSync) enrolledGuests(year, sessionCMID int) ([]jotfor
 
 // recordStatus stamps the form's last-pull time and status line. The status is
 // capped by RUNES, not bytes, so the cut never splits the UTF-8 "·".
+//
+// It stamps a FRESH copy of the form, inside a transaction: the copy Sync
+// loaded is older than the pull, and Save writes every column, so stamping it
+// would revert an admin's field_map or enabled edit made while the pull ran.
 func (s *JotformSubmissionsSync) recordStatus(form *core.Record, status string) {
 	if r := []rune(status); len(r) > jotformPullStatusMax {
 		status = string(r[:jotformPullStatusMax])
 	}
-	form.Set("last_pulled_at", types.NowDateTime())
-	form.Set("last_pull_status", status)
-	if err := s.App.Save(form); err != nil {
+	err := s.App.RunInTransaction(func(tx core.App) error {
+		fresh, err := tx.FindRecordById("jotform_forms", form.Id)
+		if err != nil {
+			return fmt.Errorf("re-reading the form: %w", err)
+		}
+		fresh.Set("last_pulled_at", types.NowDateTime())
+		fresh.Set("last_pull_status", status)
+		if err := tx.Save(fresh); err != nil {
+			return fmt.Errorf("saving the form: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		slog.Warn("Could not record the Jotform pull status", "form", form.GetString("form_id"), "error", err)
 	}
 }
