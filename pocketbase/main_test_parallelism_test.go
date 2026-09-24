@@ -342,6 +342,7 @@ var serialGroups = []struct {
 			"TestReplayRefusalDoesNotBlockTheTick",
 			"TestSeedRegistryAbsentFileIsANoOp",
 			"TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows",
+			"TestTheSyncsHistoryCloseDoesNotReplay",
 		},
 	},
 }

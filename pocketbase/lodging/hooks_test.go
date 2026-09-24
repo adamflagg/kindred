@@ -1323,8 +1323,8 @@ func TestTheSyncsHistoryCloseDoesNotReplay(t *testing.T) {
 	const household = 2000002
 	issue := newIssue(t, app, "ambiguous_session", "Old Cabin String", 2026, household, 0)
 	issue.Set("source_field", "Family Camp Cabin")
-	if err := app.Save(issue); err != nil {
-		t.Fatalf("setting source_field: %v", err)
+	if saveErr := app.Save(issue); saveErr != nil {
+		t.Fatalf("setting source_field: %v", saveErr)
 	}
 
 	wireHooks(app)
