@@ -16,8 +16,8 @@ import (
 // is how a half-finished repair came to look like a success.
 type ReplayResult struct {
 	// Placed is true when the value came out the far end with an assignment row
-	// behind it. A row a human has already moved (staff_touched) counts: the
-	// placement exists and the human owns it.
+	// behind it. A staff_touched row counts: the placement exists and the
+	// ingest leaves it alone (see upsertAssignment).
 	Placed bool
 	// Blockers are the work-queue kinds this pass recorded, in the order
 	// ingestValue recorded them. Empty exactly when Placed.
