@@ -128,6 +128,9 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_person_journey_attendees(1000001, 2026), id="fetch_journey_attendees"),
             pytest.param(lambda r: r.fetch_person_journey_assignments(1000001, 2026), id="fetch_journey_assignments"),
             pytest.param(lambda r: r.fetch_sessions_by_year_cm_id([(2025, 1000001)]), id="fetch_sessions_by_key"),
+            # The household journey's person rows (its attendee read is
+            # pinned in `TestFetchHouseholdFamilyAttendees`).
+            pytest.param(lambda r: r.fetch_household_family_attendees(2000001), id="fetch_household_persons"),
         ],
     )
     async def test_paginated_read_pins_a_sort_key(self, repo: LodgingRepository, pb: MagicMock, call: Any) -> None:
@@ -1549,11 +1552,23 @@ class TestFetchHouseholdFamilyAttendees:
     async def test_filters_on_the_campminder_household_id_across_every_year(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
+        queries = _route_by_collection(pb, {"persons": [_record(id="p_2025"), _record(id="p_2024")], "attendees": []})
+
         await repo.fetch_household_family_attendees(2000001)
 
-        pb.collection.assert_called_with("attendees")
-        params = _last_query(pb)
-        assert "person.household_id = 2000001" in params["filter"]
+        # The household's person rows first, by CampMinder household id and
+        # across every year -- `persons` is year-scoped, so one child is one
+        # row per season, and every one of those rows is a person this read
+        # has to match.
+        (people,) = queries["persons"]
+        assert people["filter"] == "household_id = 2000001"
+        assert people["fields"] == "id"
+        (params,) = queries["attendees"]
+        # Then attendees BY THOSE ROWS, which `idx_attendees_person` answers.
+        # `person.household_id = X` asked the same thing through an unindexed
+        # join over the whole table -- run twice, once more for the SDK's
+        # count -- and was the warm journey's whole critical path.
+        assert params["filter"].startswith('(person = "p_2024" || person = "p_2025") && ')
         # FAMILY only. An adult weekend is a different program (kindred#2516),
         # and reading it here put a parent's own retreat into the family-camp
         # journey.
@@ -1572,10 +1587,72 @@ class TestFetchHouseholdFamilyAttendees:
         assert params["expand"] == "person,session"
 
     @pytest.mark.asyncio
+    async def test_a_household_with_no_person_rows_reads_no_attendees(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """No person rows, no attendees -- and no attendee query, since an
+        empty OR would be no filter at all rather than a filter that matches
+        nothing."""
+        queries = _route_by_collection(pb, {"persons": []})
+
+        assert await repo.fetch_household_family_attendees(2000001) == []
+        assert "attendees" not in queries
+
+    @pytest.mark.asyncio
+    async def test_returns_the_attendee_rows_as_read(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        row = _record(id="a1", year=2025)
+        _route_by_collection(pb, {"persons": [_record(id="p_2025")], "attendees": [row]})
+
+        assert await repo.fetch_household_family_attendees(2000001) == [row]
+
+    @pytest.mark.asyncio
+    async def test_a_household_with_many_person_rows_stays_under_the_filter_limits(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The OR clause grows with the household's person rows across EVERY
+        year -- one per member per season -- and PocketBase refuses a filter
+        over `MaxFilterLength` (3,500 characters) or `DefaultFilterExprLimit`
+        (200 expressions) with a 400. The largest household on the snapshot has
+        38 rows, about a third of the length limit; a household three times
+        that size must still open its journey, so the ids are read in chunks
+        and the rows come back in the one order a single read would give."""
+        person_ids = [f"p{n:014d}" for n in range(250)]
+        attendee_filters: list[str] = []
+
+        def _collection(name: str) -> MagicMock:
+            def _get_full_list(**kwargs: Any) -> list[Any]:
+                params = kwargs["query_params"]
+                if name == "persons":
+                    return [_record(id=pid) for pid in person_ids]
+                attendee_filters.append(params["filter"])
+                # One attendee row per person in this chunk, ids descending by
+                # person so a plain concatenation would come back out of order.
+                chunk = re.findall(r'person = "([^"]+)"', params["filter"])
+                return [_record(id=f"a{999 - person_ids.index(pid):03d}") for pid in chunk]
+
+            col = MagicMock()
+            col.get_full_list.side_effect = _get_full_list
+            return col
+
+        pb.collection.side_effect = _collection
+
+        rows = await repo.fetch_household_family_attendees(2000001)
+
+        assert len(attendee_filters) > 1
+        for f in attendee_filters:
+            assert len(f) <= 3500
+            assert f.count(" = ") < 200
+            assert f.endswith('&& session.session_type = "family"')
+        seen = [pid for f in attendee_filters for pid in re.findall(r'person = "([^"]+)"', f)]
+        assert sorted(seen) == person_ids
+        assert [r.id for r in rows] == sorted(r.id for r in rows)
+        assert len(rows) == 250
+
+    @pytest.mark.asyncio
     async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """`_build_household_parties` gives an unresolvable household
-        `household_cm_id = 0`. `person.household_id = 0` is a real predicate
-        that matches whatever rows carry a zero, so this must never be issued.
+        `household_cm_id = 0`. `household_id = 0` is a real predicate that
+        matches whatever rows carry a zero, so this must never be issued.
         """
         result = await repo.fetch_household_family_attendees(0)
 
@@ -1629,11 +1706,18 @@ class TestFetchHouseholdRegistrationCabins:
     reach CampMinder at all, so the cabin is their only trace.
     """
 
+    @staticmethod
+    def _registration(year: int, cabin: str, household_year: int | None = None) -> MagicMock:
+        """A registration row as the read projects it: its own year and cabin,
+        and the year of the `households` record it hangs off."""
+        household = _record(year=year if household_year is None else household_year)
+        return _record(year=year, cabin_assignment=cabin, expand={"household": household})
+
     @pytest.mark.asyncio
     async def test_returns_the_cabin_keyed_by_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
         pb.collection.return_value.get_full_list.return_value = [
-            _record(year=2024, cabin_assignment="Cedar Lodge"),
-            _record(year=2021, cabin_assignment=""),
+            self._registration(2024, "Cedar Lodge"),
+            self._registration(2021, ""),
         ]
 
         result = await repo.fetch_household_registration_cabins(2000001)
@@ -1646,19 +1730,47 @@ class TestFetchHouseholdRegistrationCabins:
         assert result == {2024: "Cedar Lodge", 2021: ""}
 
     @pytest.mark.asyncio
+    async def test_only_a_registration_hung_off_its_own_years_household_counts(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Risk 1 of the cache-gap audit. `households` is year-scoped, and the
+        year-wide join this read replaced on the household journey matched a
+        registration only to the SAME year's households record -- one hung off
+        another year's record was skipped. Keyed on `household.cm_id` alone,
+        this read would pick that row up and hand the year somebody's cabin
+        the join never saw.
+
+        Checked here rather than in the filter: the journey's reads carry no
+        year predicate at all (`test_it_takes_no_year_because_the_window_is_discovered`),
+        and the household's year is one projected column away.
+        """
+        pb.collection.return_value.get_full_list.return_value = [
+            self._registration(2024, "Cedar Lodge"),
+            self._registration(2023, "Pine Cabin", household_year=2022),
+        ]
+
+        result = await repo.fetch_household_registration_cabins(2000001)
+
+        params = _last_query(pb)
+        assert params["filter"] == "household.cm_id = 2000001"
+        assert params["expand"] == "household"
+        assert "expand.household.year" in params["fields"]
+        assert result == {2024: "Cedar Lodge"}
+
+    @pytest.mark.asyncio
     async def test_a_blank_cabin_is_kept_not_dropped(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """The blank must survive the read. It is the caller that decides a
         blank rescues nothing -- dropping it here would make "registered with
         no cabin" indistinguishable from "never registered", and 1,433 rows
         from 2017-2021 are blank.
         """
-        pb.collection.return_value.get_full_list.return_value = [_record(year=2021, cabin_assignment="")]
+        pb.collection.return_value.get_full_list.return_value = [self._registration(2021, "")]
 
         assert await repo.fetch_household_registration_cabins(2000001) == {2021: ""}
 
     @pytest.mark.asyncio
     async def test_year_zero_is_not_a_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        pb.collection.return_value.get_full_list.return_value = [_record(year=0, cabin_assignment="Cedar Lodge")]
+        pb.collection.return_value.get_full_list.return_value = [self._registration(0, "Cedar Lodge")]
 
         assert await repo.fetch_household_registration_cabins(2000001) == {}
 
@@ -1668,6 +1780,89 @@ class TestFetchHouseholdRegistrationCabins:
 
         assert result == {}
         pb.collection.assert_not_called()
+
+
+class TestYearHasAnyCabin:
+    """Whether a year records a cabin for anybody -- the one fact the
+    household journey took from a whole-year join's emptiness.
+
+    `_housing_state` turns on it: a blank cabin in a year that housed nobody
+    (2017-2021) is "unknown", and in a year that housed others it is "not
+    placed". The predicates are the join's own, so the two cannot disagree
+    about which rows count.
+    """
+
+    @staticmethod
+    def _list_result(*items: Any) -> SimpleNamespace:
+        return SimpleNamespace(items=list(items), total_items=-1)
+
+    @pytest.mark.asyncio
+    async def test_asks_for_one_row_carrying_a_cabin_that_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_list.return_value = self._list_result(_record(cabin_assignment="Cedar Lodge"))
+
+        assert await repo.year_has_any_cabin(2023) is True
+
+        pb.collection.assert_called_with("family_camp_registrations")
+        args, kwargs = pb.collection.return_value.get_list.call_args
+        # ONE row, and no total: existence needs neither the rows nor a COUNT.
+        assert args == (1, 1)
+        params = kwargs["query_params"]
+        assert params["filter"] == (
+            'year = 2023 && cabin_assignment != "" && household.year = year && household.cm_id > 0'
+        )
+        # The cabin itself, so the hit can be held to the join's strip.
+        assert params["fields"] == "cabin_assignment"
+        assert params["skipTotal"] == 1
+        pb.collection.return_value.get_full_list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_year_nobody_was_housed_in_is_false(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_list.return_value = self._list_result()
+
+        assert await repo.year_has_any_cabin(2019) is False
+
+    @pytest.mark.asyncio
+    async def test_a_whitespace_only_cabin_is_not_a_cabin(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The join strips before it keeps a cabin, and a filter cannot: PocketBase
+        has no trim and no regex, so `!= ""` lets a string of spaces through. A
+        year whose only "cabins" are whitespace housed nobody -- "unknown", not
+        "not placed" -- so a whitespace hit is checked against every candidate
+        row before the year counts as housed. None exists today; nothing trims
+        `Family Camp Cabin` on the way in, so nothing stops one arriving."""
+        pb.collection.return_value.get_list.return_value = self._list_result(_record(cabin_assignment="  "))
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(cabin_assignment="  "),
+            _record(cabin_assignment=" \t"),
+        ]
+
+        assert await repo.year_has_any_cabin(2023) is False
+
+        params = _last_query(pb)
+        assert params["filter"] == (
+            'year = 2023 && cabin_assignment != "" && household.year = year && household.cm_id > 0'
+        )
+        assert params.get("sort"), "paginated read must pin a stable sort key"
+
+    @pytest.mark.asyncio
+    async def test_a_whitespace_hit_does_not_hide_a_real_cabin(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_list.return_value = self._list_result(_record(cabin_assignment="  "))
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(cabin_assignment="  "),
+            _record(cabin_assignment="Pine Cabin"),
+        ]
+
+        assert await repo.year_has_any_cabin(2023) is True
+
+    @pytest.mark.asyncio
+    async def test_is_not_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """A 3 ms read needs no cache, and without one there is nothing for a
+        sync to leave stale."""
+        pb.collection.return_value.get_list.return_value = self._list_result()
+
+        await repo.year_has_any_cabin(2023)
+        await repo.year_has_any_cabin(2023)
+
+        assert pb.collection.return_value.get_list.call_count == 2
 
 
 class TestFetchHouseholdsByIds:

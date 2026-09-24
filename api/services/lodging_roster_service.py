@@ -815,16 +815,16 @@ def _session_order(entry: HouseholdJourneySession) -> tuple[int, date, int]:
     return (0, start, entry.session_cm_id)
 
 
-def _housing_state(cabin: str, year_assignments: Mapping[int, str]) -> HousingState:
+def _housing_state(cabin: str, year_has_any_cabin: bool) -> HousingState:
     """What is known about one household's housing in one year (kindred#2073).
 
     ⚠️ AN EMPTY CABIN IS NOT MISSING DATA, and the second argument is the
     whole reason this is a function rather than a ternary: the SAME blank
     means two different things depending on whether the year recorded housing
-    for anybody at all.
+    for anybody at all (`LodgingRepository.year_has_any_cabin`).
 
     * 2017-2021 record 1,433 family registrations and ZERO cabin assignments,
-      so the map is empty and nothing can be said -- "unknown".
+      so nothing can be said -- "unknown".
     * 2022-2025 and 2026 record cabins for other households, so a blank is a
       real absence -- "not_placed". The client words it: "not yet placed" for
       the season being worked, "no cabin on file" for a past one.
@@ -836,7 +836,7 @@ def _housing_state(cabin: str, year_assignments: Mapping[int, str]) -> HousingSt
     """
     if cabin:
         return "placed"
-    return "not_placed" if year_assignments else "unknown"
+    return "not_placed" if year_has_any_cabin else "unknown"
 
 
 def _household_display_name(household: Any, fallback_cm_id: int) -> str:
@@ -2978,26 +2978,26 @@ class LodgingRosterService:
         PAPER registrations, which leave a cabin and nothing else. The rule
         and both of its edges are stated at `years` below.
 
-        The cabin comes from kindred#2075's helper, once per traced year. That
-        helper takes a plain year precisely so this can sweep, and composing
-        over it is what keeps ONE definition of "where did they sleep": it
-        already knows that `cabin_assignment` is free text, that the bridge is
-        `households.cm_id` and not the PB id, and that a year before 2022
-        answers nothing. A second query here would be a second answer.
+        The cabin comes from the household's own registration rows, read once
+        across every year. It used to come from kindred#2075's year-wide join,
+        swept once per traced year; the per-household read now applies that
+        join's rules itself -- bridged on `households.cm_id` rather than the
+        PB id, only a registration hung off its own year's household, the
+        string stripped -- so there is still ONE definition of "where did they
+        sleep", and it costs one read instead of two whole years per row.
 
         HOUSEHOLD GRAIN, NOT CAMPER GRAIN. Each year's members are built from
         that year's rows and no other's -- children age out, adults change,
         and a party carried forward would show a family who no longer exists.
 
-        Concurrency mirrors the roster's: the three cross-year reads go
-        together, then the per-year cabin reads go together. The cabin reads
-        are `@cached_by_year`, so a year the roster already loaded is free and
-        a four-year sweep pays each year once per process.
+        Concurrency mirrors the roster's: the cross-year reads go together,
+        then the per-year "did anybody have a cabin" checks go together with
+        the registry read. Those checks are one-row reads, uncached.
         """
         # An unresolvable household (`household_cm_id = 0`) reads nothing --
         # each repository method refuses it too, but returning here keeps the
-        # sweep from running against an empty trace set as though it were a
-        # real first-time family.
+        # per-year checks from running against an empty trace set as though
+        # it were a real first-time family.
         if household_cm_id <= 0:
             return HouseholdJourneyResponse(household_cm_id=household_cm_id)
 
@@ -3146,25 +3146,37 @@ class LodgingRosterService:
         # Nothing before 2022 is rescued: `cabin_assignment` is blank on all
         # 1,433 rows from 2017-2021, so 2020 (cancelled after enrollment) and
         # 2021 (cancelled before it) drop in full, as they should.
+        # Stripped: a string of spaces names no cabin, so it proves nothing.
         paper_registration_years = {
-            year for year, cabin in registration_cabins.items() if cabin and year not in family_row_years
+            year for year, cabin in registration_cabins.items() if cabin.strip() and year not in family_row_years
         }
         # Year 0 is not a year. A row whose `year` column never populated
         # would otherwise open the journey with a blank heading.
         years = [year for year in sorted(set(children_by_year) | paper_registration_years, reverse=True) if year > 0]
-        # The cabin sweep and the registry read go together: the sweep is
-        # `@cached_by_year` and usually free, the registry read never is, and
+        # THE HOUSEHOLD'S OWN CABIN IS ALREADY IN HAND. It comes from the
+        # per-household read above, stripped the way the year-wide join
+        # (`fetch_cabin_assignments_by_household_cm_id`) strips it. That join
+        # used to run here once per journey year, back to 2017 -- two
+        # whole-year reads apiece to learn one string, about 2.9 s of a 3.3 s
+        # first open. It stays on the roster's `year - 1` card, where the
+        # whole board shares it.
+        cabins = {year: registration_cabins.get(year, "").strip() for year in years}
+        # What the join's EMPTINESS told `_housing_state` is asked directly,
+        # and only for a blank year: a household with a cabin is placed
+        # whatever anybody else holds. Alongside the registry read, since
         # neither depends on the other.
-        cabin_maps, housing_names = await asyncio.gather(
-            asyncio.gather(*(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)),
+        blank_years = [year for year in years if not cabins[year]]
+        any_cabin, housing_names = await asyncio.gather(
+            asyncio.gather(*(self.repository.year_has_any_cabin(year) for year in blank_years)),
             self._housing_names(),
         )
+        others_housed = {year for year, housed in zip(blank_years, any_cabin, strict=True) if housed}
 
         live = live_names(live_rows, housing_names.display_name_for_unit_ids)
 
         rows: list[HouseholdJourneyYear] = []
-        for year, assignments in zip(years, cabin_maps, strict=True):
-            cabin = assignments.get(household_cm_id, "")
+        for year in years:
+            cabin = cabins[year]
             children = _children_oldest_first(children_by_year.get(year, []))
             year_starts = session_start_by_year.get(year, {})
             year_sessions_ordered = sorted(sessions_by_year.get(year, {}).values(), key=_session_order)
@@ -3178,7 +3190,7 @@ class LodgingRosterService:
             # household that was placed. Deriving the state from `cabin_name`
             # instead would report the three unmappable strings (kindred#2392)
             # as unplaced families.
-            housing = _housing_state(cabin, assignments)
+            housing = _housing_state(cabin, year in others_housed)
             # kindred#2775's reading rule: from 2026, a year whose EVERY
             # enrolled weekend has a live row reads the CampMinder layer, one
             # cabin per weekend; any other year keeps the lines above.

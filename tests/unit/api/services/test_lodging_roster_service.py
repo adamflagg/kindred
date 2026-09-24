@@ -6653,22 +6653,182 @@ class TestStepFreeRollsDownToo:
 
 
 def _journey_repo(**overrides: Any) -> MagicMock:
-    """A repository mock for the household journey's three cross-year reads.
+    """A repository mock for the household journey, served from ONE world.
 
-    `fetch_cabin_assignments_by_household_cm_id` is the ONE read the journey
-    still issues per year (kindred#2075's helper, whose year is the
-    parameter), so it is mocked as a per-year MAP that a `side_effect` serves
-    -- the plain `_repo` default returns the same dict for every year, which
-    would make the whole housing-state derivation untestable.
+    `cabins_by_year` is that world: every household's staff-written cabin,
+    per year, keyed by household CampMinder id. Each read the journey can ask
+    is derived from it, so no test can describe a household whose own cabin
+    disagrees with the year-wide picture:
+
+    * `fetch_household_registration_cabins` -- this household's row of it,
+      unless a test sets that read explicitly (the paper-registration tests
+      need a cabin the world does not otherwise hold).
+    * `year_has_any_cabin` -- whether the year holds a cabin for anybody.
+    * `fetch_cabin_assignments_by_household_cm_id` -- the year-wide join, kept
+      mocked per year so the tests that pin the journey NOT sweeping it have
+      a real attribute to assert against.
     """
     cabins_by_year: dict[int, dict[int, str]] = overrides.pop("cabins_by_year", {})
+    own_cabins_set = "fetch_household_registration_cabins" in overrides
     repo = _repo(**overrides)
 
     async def _cabins(year: int) -> dict[int, str]:
         return cabins_by_year.get(year, {})
 
+    async def _own(household_cm_id: int) -> dict[int, str]:
+        return {year: cabins[household_cm_id] for year, cabins in cabins_by_year.items() if household_cm_id in cabins}
+
+    async def _any(year: int) -> bool:
+        return any(cabin.strip() for cabin in cabins_by_year.get(year, {}).values())
+
     repo.fetch_cabin_assignments_by_household_cm_id = AsyncMock(side_effect=_cabins)
+    repo.year_has_any_cabin = AsyncMock(side_effect=_any)
+    if not own_cabins_set:
+        repo.fetch_household_registration_cabins = AsyncMock(side_effect=_own)
     return repo
+
+
+class _RegistrationWorld:
+    """`households` and `family_camp_registrations` as PocketBase holds them,
+    answering each repository read by that read's own filter.
+
+    The fixture for pinning housing across a change of READ: the year-wide
+    join and the per-household reads have to agree on every year, and the only
+    honest way to show that is to serve both from the same two tables.
+    """
+
+    def __init__(self, households: list[tuple[str, int, int]], registrations: list[tuple[int, str, str]]) -> None:
+        # (pb_id, cm_id, year) and (year, household pb_id, cabin_assignment).
+        self.households = {pb_id: (cm_id, year) for pb_id, cm_id, year in households}
+        self.registrations = registrations
+
+    async def sweep(self, year: int) -> dict[int, str]:
+        """`fetch_cabin_assignments_by_household_cm_id`: the year's
+        registrations joined to the SAME year's households."""
+        out: dict[int, str] = {}
+        for reg_year, household, cabin in self.registrations:
+            cm_id, household_year = self.households[household]
+            if reg_year == year and household_year == year and cabin.strip() and cm_id:
+                out[cm_id] = cabin.strip()
+        return out
+
+    async def own_cabins(self, household_cm_id: int) -> dict[int, str]:
+        """`fetch_household_registration_cabins`: `household.cm_id = X`, only
+        rows hung off their own year's household, raw."""
+        out: dict[int, str] = {}
+        for reg_year, household, cabin in self.registrations:
+            cm_id, household_year = self.households[household]
+            if cm_id == household_cm_id and household_year == reg_year:
+                out[reg_year] = cabin
+        return out
+
+    async def any_cabin(self, year: int) -> bool:
+        """`year_has_any_cabin`: `year = Y && cabin_assignment != "" &&
+        household.year = year && household.cm_id > 0`, with the hit's cabin
+        held to the join's strip."""
+        for reg_year, household, cabin in self.registrations:
+            cm_id, household_year = self.households[household]
+            if reg_year == year and household_year == year and cabin.strip() and cm_id > 0:
+                return True
+        return False
+
+    def repo(self, **overrides: Any) -> MagicMock:
+        repo = _repo(**overrides)
+        repo.fetch_cabin_assignments_by_household_cm_id = AsyncMock(side_effect=self.sweep)
+        repo.fetch_household_registration_cabins = AsyncMock(side_effect=self.own_cabins)
+        repo.year_has_any_cabin = AsyncMock(side_effect=self.any_cabin)
+        return repo
+
+
+class TestHouseholdJourneyHousingAcrossYears:
+    """Risk 1 of the cache-gap audit, pinned BEFORE the year-wide sweep left
+    the household journey.
+
+    The sweep did two jobs: it named this household's cabin each year, and its
+    bare non-emptiness told "unknown" (the year recorded no cabins for anyone,
+    2017-2021) from "not placed" (a blank in a year others were housed in).
+    One multi-year household crosses every state, so a replacement that gets
+    either job wrong for any year fails here.
+    """
+
+    FC_2022 = _rec(cm_id=1000301, name="Family Camp 1", start_date="2022-06-03")
+    FC_2023 = _rec(cm_id=1000302, name="Family Camp 2", start_date="2023-06-09")
+
+    WORLD = _RegistrationWorld(
+        households=[
+            ("hh19", 2000001, 2019),
+            ("hh22", 2000001, 2022),
+            ("hh23", 2000001, 2023),
+            ("hh24", 2000001, 2024),
+            ("hh25", 2000001, 2025),
+            ("ot19", 2000002, 2019),
+            ("ot22", 2000002, 2022),
+            ("ot23", 2000002, 2023),
+        ],
+        registrations=[
+            # 2019: nobody anywhere has a cabin -- unknown.
+            (2019, "hh19", ""),
+            (2019, "ot19", ""),
+            # 2022: placed, on the one weekend it attended.
+            (2022, "hh22", "Cedar Lodge"),
+            (2022, "ot22", "Pine Cabin"),
+            # 2023: blank while another household was housed -- not placed.
+            (2023, "hh23", ""),
+            (2023, "ot23", "Birch Cabin"),
+            # 2024: placed, typed with stray whitespace the join strips.
+            (2024, "hh24", "  Meadow House 1 "),
+            # 2025: a paper registration -- a cabin and no attendee row.
+            (2025, "hh25", "Oak Cabin"),
+        ],
+    )
+
+    @pytest.mark.asyncio
+    async def test_every_years_cabin_and_housing_state_is_todays(self) -> None:
+        repo = self.WORLD.repo(
+            fetch_household_family_attendees=[
+                _rec(year=2019, status_id=2, **vars(_child())),
+                _rec(year=2022, status_id=2, **vars(_child(session=self.FC_2022))),
+                _rec(year=2023, status_id=2, **vars(_child(session=self.FC_2023))),
+                _rec(year=2024, status_id=2, **vars(_child())),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [
+            (y.year, y.housing, y.cabin_name, y.cabin_name_raw, y.housing_session_cm_id) for y in journey.years
+        ] == [
+            (2025, "placed", "Oak Cabin", "Oak Cabin", None),
+            (2024, "placed", "Meadow House 1", "Meadow House 1", None),
+            (2023, "not_placed", "", "", None),
+            (2022, "placed", "Cedar Lodge", "Cedar Lodge", 1000301),
+            (2019, "unknown", "", "", None),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_the_journey_never_sweeps_a_whole_year(self) -> None:
+        """The household's own cabin is already in hand from its per-household
+        read, so a year-wide join of `households` and `family_camp_registrations`
+        -- once per journey year, back to 2017 -- bought one string it already
+        had. It was about 2.9 s of a 3.3 s first open.
+
+        What the sweep's emptiness decided is asked directly instead, and only
+        where it can matter: a year this household holds a cabin in is placed
+        whatever anyone else holds.
+        """
+        repo = self.WORLD.repo(
+            fetch_household_family_attendees=[
+                _rec(year=2019, status_id=2, **vars(_child())),
+                _rec(year=2022, status_id=2, **vars(_child())),
+                _rec(year=2023, status_id=2, **vars(_child())),
+            ],
+        )
+
+        await LodgingRosterService(repo).build_household_journey(2000001)
+
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+        asked = sorted(call.args[0] for call in repo.year_has_any_cabin.await_args_list)
+        assert asked == [2019, 2023]
 
 
 class TestHouseholdJourney:
@@ -6821,6 +6981,22 @@ class TestHouseholdJourney:
         assert journey.years[0].housing == "placed"
 
     @pytest.mark.asyncio
+    async def test_a_whitespace_only_cabin_is_no_paper_registration(self) -> None:
+        """A cabin proves somebody slept here only if it names something. The
+        year-wide join strips before it keeps a cabin, and nothing trims
+        `Family Camp Cabin` on the way in, so a string of spaces with no
+        attendee row is a blank form, not a paper registration."""
+        repo = _journey_repo(
+            fetch_household_family_attendees=[],
+            fetch_household_registration_cabins={2022: "   "},
+            cabins_by_year={2022: {2000002: "Pine Cabin"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years == []
+
+    @pytest.mark.asyncio
     async def test_a_cabin_beside_a_cancelled_child_does_not_render_the_stale_string(self) -> None:
         """⛔ THE HALF THAT IS EASY TO GET WRONG, and the reason the read
         returns cancelled rows at all.
@@ -6970,11 +7146,9 @@ class TestHouseholdJourney:
         assert [y.year for y in journey.years] == [2024, 2018]
 
     @pytest.mark.asyncio
-    async def test_the_cabin_read_is_issued_once_per_traced_year(self) -> None:
-        """Composes kindred#2075's helper rather than writing a second
-        housing query, and never at a hard-coded year: the helper takes a
-        plain year precisely so this can sweep. It is asked only about years
-        the household actually appears in.
+    async def test_the_any_cabin_check_is_asked_only_about_traced_years(self) -> None:
+        """Never at a hard-coded year: the check is asked only about years the
+        household actually appears in, and the year-wide sweep not at all.
         """
         repo = _journey_repo(
             fetch_household_family_attendees=[
@@ -6985,8 +7159,9 @@ class TestHouseholdJourney:
 
         await LodgingRosterService(repo).build_household_journey(2000001)
 
-        asked = sorted(call.args[0] for call in repo.fetch_cabin_assignments_by_household_cm_id.await_args_list)
+        asked = sorted(call.args[0] for call in repo.year_has_any_cabin.await_args_list)
         assert asked == [2024, 2025]
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_household_with_no_trace_at_all_returns_no_years(self) -> None:
@@ -7049,6 +7224,7 @@ class TestHouseholdJourney:
 
         assert journey.years == []
         repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+        repo.year_has_any_cabin.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_historical_years_age_is_the_childs_age_that_year_not_today_kindred_2420(self) -> None:
