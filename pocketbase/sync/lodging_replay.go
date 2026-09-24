@@ -346,8 +346,8 @@ func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
 	// current value's own clock alone, whose knowledge floor can sit after a
 	// weekend the history covers (a bare last_updated bump does exactly that):
 	// the click would place fewer weekends than the next sync.
-	if err = s.loadHistory(year); err != nil {
-		return nil, err
+	if histErr := s.loadHistory(year); histErr != nil {
+		return nil, histErr
 	}
 	s.issues = NewIssueRecorder(app, year)
 	return s, nil

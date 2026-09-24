@@ -199,8 +199,8 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	if s.confirmed, err = loadConfirmedSessions(s.App, year); err != nil {
 		return err
 	}
-	if err = s.loadHistory(year); err != nil {
-		return err
+	if histErr := s.loadHistory(year); histErr != nil {
+		return histErr
 	}
 
 	if hhErr := s.syncHouseholdGrain(ctx, year, fieldTargets, counts, now); hhErr != nil {
@@ -593,8 +593,8 @@ func (s *LodgingAssignmentsSync) historyWeekends(in *ingestContext) ([]weekendVa
 	key := valueHistoryKey{FieldCMID: fieldCMID, HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID}
 	weekends := attributeFromHistory(in.Candidates, s.valueHistory[key],
 		valueWrite{At: in.LastUpdated, Value: in.Raw}, in.Now, s.location())
-	for _, w := range weekends {
-		if w.placed() {
+	for i := range weekends {
+		if weekends[i].placed() {
 			return weekends, true
 		}
 	}

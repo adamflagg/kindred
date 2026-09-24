@@ -384,7 +384,7 @@ type weekendValue struct {
 }
 
 // placed reports whether this weekend has a cabin to write.
-func (w weekendValue) placed() bool { return w.Known && w.Value != "" }
+func (w *weekendValue) placed() bool { return w.Known && w.Value != "" }
 
 // sessionCutoff is the moment a weekend's cabin is read: the start of its first
 // day, camp-local.
@@ -393,8 +393,8 @@ func (w weekendValue) placed() bool { return w.Known && w.Value != "" }
 // summer, 08:00Z in winter), so for every current row this is the identity.
 // Truncating anyway keeps the rule true if a start ever carries a check-in time:
 // an edit made on the morning of arrival is after the cutoff, not before it.
-func sessionCutoff(w SessionWindow, loc *time.Location) time.Time {
-	local := w.Start.In(loc)
+func sessionCutoff(start time.Time, loc *time.Location) time.Time {
+	local := start.In(loc)
 	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 }
 
@@ -436,7 +436,7 @@ func attributeFromHistory(
 	last := len(candidates) - 1
 	out := make([]weekendValue, 0, len(candidates))
 	for i, w := range candidates {
-		cutoff := sessionCutoff(w, loc)
+		cutoff := sessionCutoff(w.Start, loc)
 		wv := weekendValue{Window: w}
 		switch {
 		case cutoff.After(now):

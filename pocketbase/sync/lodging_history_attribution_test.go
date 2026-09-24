@@ -18,7 +18,7 @@ import (
 //   - The clock is CampMinder's change time, not the time our sync saw it.
 //   - An unchanged value carries forward to every later weekend.
 //   - A value written after the party's last weekend started lands on that last
-//     weekend (the existing "lone late edit" behaviour).
+//     weekend (the existing "lone late edit" behavior).
 //   - The timeline is known only from its earliest known write. A weekend whose
 //     cutoff falls before that floor is undetermined, and stays unplaced.
 //   - A staff confirmation on the queue still wins.
@@ -173,7 +173,7 @@ func TestHistoryAttributionArrivalDayEditGoesToTheNextWeekend(t *testing.T) {
 }
 
 // ...and when W2 is the party's last weekend, the arrival-day edit lands on W2:
-// the lone-late-edit behaviour.
+// the lone-late-edit behavior.
 func TestHistoryAttributionArrivalDayEditOnTheLastWeekendLandsOnIt(t *testing.T) {
 	t.Parallel()
 	w1 := weekend(t, 1, "2026-05-22T07:00:00Z")
@@ -345,7 +345,7 @@ func addValueHistoryRow(
 
 // seedHistoryAtoB records the common timeline: A written before W1, B written
 // after W1 started and before W2 started. The current CampMinder value is B.
-func seedHistoryAtoB(t *testing.T, app core.App, f histFixture) {
+func seedHistoryAtoB(t *testing.T, app core.App, f *histFixture) {
 	t.Helper()
 	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
 		"", histCabinA, "2026-05-10T16:00:00.0000000+00:00", "2026-05-11 10:00:00.000Z", true)
@@ -406,7 +406,7 @@ func TestHistoryAttributionSyncPlacesEachWeekendItsOwnCabin(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	f := seedHistoryHousehold(t, app)
-	seedHistoryAtoB(t, app, f)
+	seedHistoryAtoB(t, app, &f)
 
 	runLodgingSync(t, app, 2026, false)
 
@@ -474,7 +474,7 @@ func TestHistoryAttributionStaffConfirmationWins(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	f := seedHistoryHousehold(t, app)
-	seedHistoryAtoB(t, app, f)
+	seedHistoryAtoB(t, app, &f)
 	confirmedID := seedIssue(t, app, map[string]any{
 		"kind": issueAmbiguousSession, "raw_value": histCabinB,
 		"source_field": fieldNameFamilyCampCabin, "year": 2026,
@@ -510,7 +510,7 @@ func TestHistoryAttributionClosesTheQueueRowsItAnswers(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	f := seedHistoryHousehold(t, app)
-	seedHistoryAtoB(t, app, f)
+	seedHistoryAtoB(t, app, &f)
 	openID := seedIssue(t, app, map[string]any{
 		"kind": issueAmbiguousSession, "raw_value": histCabinB,
 		"source_field": fieldNameFamilyCampCabin, "year": 2026,
@@ -629,7 +629,7 @@ func TestHistoryAttributionUnparseableSourceTimeFallsBackToObservedAt(t *testing
 	}
 }
 
-// A single-weekend party keeps its current behaviour: the current value is its
+// A single-weekend party keeps its current behavior: the current value is its
 // cabin, whatever the history says about the value in effect at the start.
 func TestHistoryAttributionSingleWeekendPartyIsUnchanged(t *testing.T) {
 	t.Parallel()
@@ -708,7 +708,7 @@ func TestHistoryAttributionDryRunWritesAndClosesNothing(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	f := seedHistoryHousehold(t, app)
-	seedHistoryAtoB(t, app, f)
+	seedHistoryAtoB(t, app, &f)
 	openID := seedIssue(t, app, map[string]any{
 		"kind": issueAmbiguousSession, "raw_value": histCabinB,
 		"source_field": fieldNameFamilyCampCabin, "year": 2026,
@@ -760,8 +760,8 @@ func TestHistoryAttributionReplayFanOutAgreesWithTheSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find alias: %v", err)
 	}
-	if err := app.Delete(aliasB); err != nil {
-		t.Fatalf("delete alias: %v", err)
+	if delErr := app.Delete(aliasB); delErr != nil {
+		t.Fatalf("delete alias: %v", delErr)
 	}
 	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
 		"", histCabinB, "2026-05-10T16:00:00.0000000+00:00", "2026-05-11 10:00:00.000Z", true)
@@ -785,11 +785,11 @@ func TestHistoryAttributionReplayFanOutAgreesWithTheSync(t *testing.T) {
 	newAlias := addAlias(t, app, histCabinB, []string{f.unitB}, 0, 0)
 	unresolved[0].Set("is_resolved", true)
 	unresolved[0].Set("resolved_alias", newAlias)
-	if err := app.Save(unresolved[0]); err != nil {
-		t.Fatalf("tick alias row: %v", err)
+	if saveErr := app.Save(unresolved[0]); saveErr != nil {
+		t.Fatalf("tick alias row: %v", saveErr)
 	}
-	if _, err := ReplayPartylessIssue(app, unresolved[0].Id); err != nil {
-		t.Fatalf("ReplayPartylessIssue: %v", err)
+	if _, replayErr := ReplayPartylessIssue(app, unresolved[0].Id); replayErr != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", replayErr)
 	}
 
 	got := placementsBySession(t, app)
