@@ -24,6 +24,7 @@ import type {
   ComparePartyReport,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
+  HouseholdJourneyWeekendCabin,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
   LodgingUnitSummary,
@@ -131,9 +132,16 @@ export type PersonHousingWeekendRow = PersonHousingWeekend
  * says which weekends the household was at and nothing about where it slept in
  * each — repeating the cabin against every entry is the fan-out that
  * manufactured 12 of 17 false multi-family occupancies in the phase-C
- * shareability analysis.
+ * shareability analysis. A REAL per-weekend cabin (the CampMinder layer, 2026
+ * on) travels separately, on `weekend_cabins` (kindred#2775).
  */
 export type HouseholdJourneySessionRow = HouseholdJourneySession
+/**
+ * One enrolled weekend's cabin from the CampMinder layer (kindred#2775) —
+ * published for a 2026+ year only when EVERY enrolled weekend has a live row,
+ * otherwise the year's list is empty and its one cabin for the year stands.
+ */
+export type HouseholdJourneyWeekendCabinRow = HouseholdJourneyWeekendCabin
 /** A registered adult on a household party. */
 export type PartyAdultRow = PartyAdult
 /** An enrolled child on a household party. */

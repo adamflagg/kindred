@@ -25,7 +25,7 @@ import asyncio
 import logging
 from datetime import date
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -253,6 +253,11 @@ def _repo(**overrides: Any) -> MagicMock:
         # assertion vacuous.
         "fetch_person_cabin_values": [],
         "fetch_person_adult_attendees": [],
+        # kindred#2775's live CampMinder-layer reads. Empty by default: a
+        # board year with no live row keeps today's rendering, never blank.
+        "fetch_live_assignments": [],
+        "fetch_household_live_assignments": [],
+        "fetch_family_enrolled_attendees": [],
         # kindred#2073's three cross-year reads, for ONE household. Empty by
         # default -- a first-time family is the shape the journey must handle,
         # and a bare MagicMock would return an un-awaitable attribute instead
@@ -1513,6 +1518,139 @@ class TestFamilyLastYearCabinNeedsAttendance:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.parties[0].last_year_cabin == "Pine Cabin"
+
+
+class TestLastYearCabinReadsLiveRowsFrom2027:
+    """kindred#2775, surfaces (b) and (c): once year - 1 >= 2026, both cards'
+    last-year cabin reads the per-weekend CampMinder-layer rows. Enrollment is
+    implied -- the ingest places only enrolled parties -- and a party without
+    a live row on EVERY enrolled weekend keeps today's rule, never blank."""
+
+    UNITS: ClassVar[list[SimpleNamespace]] = [
+        _unit("u1", "meadow-1", "Meadow House 1"),
+        _unit("u2", "lake-1", "Lake Cabin 1"),
+    ]
+    FC1_2026 = _rec(cm_id=1000001, end_date="2026-05-25 07:00:00.000Z")
+    FC4_2026 = _rec(cm_id=1000004, end_date="2026-09-21 07:00:00.000Z")
+    WW_2026 = _rec(cm_id=1000002, end_date="2026-10-18 07:00:00.000Z")
+
+    def _enrolled_family(self, *sessions: Any) -> list[SimpleNamespace]:
+        return [
+            _rec(person_id=1000001, year=2026, expand={"person": _rec(household_id=2000001), "session": session})
+            for session in sessions
+        ]
+
+    def _family_repo(self, **overrides: Any) -> MagicMock:
+        defaults: dict[str, Any] = {
+            "fetch_session": FAMILY_SESSION,
+            "fetch_households": {"hh_1": _household()},
+            "fetch_attendees_for_session": [_child()],
+            "fetch_cabin_assignments_by_household_cm_id": {2000001: "Meadow House 1"},
+            "fetch_all_units": self.UNITS,
+        }
+        defaults.update(overrides)
+        return _repo(**defaults)
+
+    @pytest.mark.asyncio
+    async def test_a_2026_board_never_reads_live_rows_for_last_year(self) -> None:
+        repo = self._family_repo(fetch_family_enrolled_household_cm_ids={2000001})
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+        repo.fetch_live_assignments.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_family_card_reads_last_years_live_row(self) -> None:
+        repo = self._family_repo(
+            fetch_family_enrolled_attendees=self._enrolled_family(self.FC4_2026),
+            fetch_live_assignments=[_live_hh_row(2026, 1000004, "u2")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Lake Cabin 1"
+        repo.fetch_live_assignments.assert_awaited_once_with(2026)
+        repo.fetch_family_enrolled_attendees.assert_awaited_once_with(2026)
+
+    @pytest.mark.asyncio
+    async def test_two_live_weekends_prefer_this_boards_own_weekend(self) -> None:
+        """The board is FC1's id (1000001, reused every season), and FC4 ends
+        later -- so the preference, not the latest-ending fallback, decides."""
+        repo = self._family_repo(
+            fetch_family_enrolled_attendees=self._enrolled_family(self.FC1_2026, self.FC4_2026),
+            fetch_live_assignments=[_live_hh_row(2026, 1000001, "u1"), _live_hh_row(2026, 1000004, "u2")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+
+    @pytest.mark.asyncio
+    async def test_the_family_card_without_every_weekend_live_keeps_todays_cabin(self) -> None:
+        repo = self._family_repo(
+            fetch_family_enrolled_attendees=self._enrolled_family(self.FC1_2026, self.FC4_2026),
+            fetch_live_assignments=[_live_hh_row(2026, 1000004, "u2")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        # Today's one cabin for the year -- still behind enrolled attendance.
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+
+    @pytest.mark.asyncio
+    async def test_an_undated_enrolled_weekend_still_counts_toward_every_weekend(self) -> None:
+        """Coverage is keyed on the weekend's id, never on whether its end date
+        parses: an undated FC1 enrollment with no live row must keep the year
+        on today's rule, not let FC4's live row stand for the whole year
+        (CodeRabbit, #2789)."""
+        undated_fc1 = _rec(cm_id=1000001, end_date="")
+        repo = self._family_repo(
+            fetch_family_enrolled_attendees=self._enrolled_family(undated_fc1, self.FC4_2026),
+            fetch_live_assignments=[_live_hh_row(2026, 1000004, "u2")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+
+    @pytest.mark.asyncio
+    async def test_the_family_card_fallback_still_needs_attendance(self) -> None:
+        repo = self._family_repo(fetch_family_enrolled_attendees=[])
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        assert roster.parties[0].last_year_cabin == ""
+
+    @pytest.mark.asyncio
+    async def test_the_adult_card_reads_last_years_live_row(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_weekend_attendees=[_adult_attendance(1000004, self.WW_2026, year=2026)],
+            fetch_adult_cabin_values=[_adult_cabin_value(1000004, "Ridge Hut", "2026-10-01T12:00:00Z", year=2026)],
+            fetch_live_assignments=[_live_person_row(2026, 1000002, 1000004, "u2")],
+            fetch_all_units=self.UNITS,
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000002)
+
+        assert roster.parties[0].last_year_cabin == "Lake Cabin 1"
+        repo.fetch_live_assignments.assert_awaited_once_with(2026)
+
+    @pytest.mark.asyncio
+    async def test_the_adult_card_without_a_live_row_keeps_todays_rule(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_weekend_attendees=[_adult_attendance(1000004, self.WW_2026, year=2026)],
+            fetch_adult_cabin_values=[_adult_cabin_value(1000004, "Ridge Hut", "2026-10-01T12:00:00Z", year=2026)],
+            fetch_all_units=self.UNITS,
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000002)
+
+        assert roster.parties[0].last_year_cabin == "Ridge Hut"
 
 
 class TestUnitsAndCounts:
@@ -6814,6 +6952,153 @@ class TestHouseholdJourney:
         journey = await LodgingRosterService(repo).build_household_journey(2000001)
 
         assert journey.years[0].children[0].age == 9.01
+
+
+def _live_hh_row(year: int, session_cm_id: int, *unit_ids: str, household_cm_id: int = 2000001) -> SimpleNamespace:
+    """One live household-grain `lodging_assignments` row (the Go ingest's)."""
+    return _rec(
+        year=year, session_cm_id=session_cm_id, household_cm_id=household_cm_id, person_cm_id=0, units=list(unit_ids)
+    )
+
+
+def _live_person_row(year: int, session_cm_id: int, person_cm_id: int, *unit_ids: str) -> SimpleNamespace:
+    """One live person-grain `lodging_assignments` row (the Go ingest's)."""
+    return _rec(
+        year=year, session_cm_id=session_cm_id, household_cm_id=0, person_cm_id=person_cm_id, units=list(unit_ids)
+    )
+
+
+class TestHouseholdJourneyReadsLiveRowsFrom2026:
+    """kindred#2775, surface (d): the family household journey reads the
+    per-weekend CampMinder-layer rows for 2026 onward -- per-weekend cabins
+    only when EVERY enrolled weekend that year has a live row, otherwise
+    today's one-cabin-for-the-year row (#2393), never blank."""
+
+    FC1 = 3000001
+    FC4 = 3000004
+
+    @staticmethod
+    def _session(cm_id: int, name: str, start_date: str) -> SimpleNamespace:
+        return _rec(
+            id=f"sess_{cm_id}",
+            cm_id=cm_id,
+            name=name,
+            session_type="family",
+            year=int(start_date[:4]),
+            start_date=start_date,
+            end_date="",
+            sort_order=0,
+        )
+
+    def _attended(self, year: int, *cm_ids: int) -> list[SimpleNamespace]:
+        names = {self.FC1: ("Family Camp 1", f"{year}-05-22"), self.FC4: ("Family Camp 4", f"{year}-09-18")}
+        return [
+            _rec(
+                year=year,
+                status_id=2,
+                **vars(_child(cm_id=1000001, first="Emma", session=self._session(cm_id, *names[cm_id]))),
+            )
+            for cm_id in cm_ids
+        ]
+
+    UNITS: ClassVar[list[SimpleNamespace]] = [
+        _unit("u1", "meadow-1", "Meadow House 1"),
+        _unit("u2", "lake-1", "Lake Cabin 1"),
+    ]
+
+    @pytest.mark.asyncio
+    async def test_a_2025_year_renders_exactly_as_today(self) -> None:
+        repo = _journey_repo(
+            fetch_household_family_attendees=self._attended(2025, self.FC1, self.FC4),
+            cabins_by_year={2025: {2000001: "Meadow House 1"}},
+            # Cannot exist (the ingest writes only the active season), and must
+            # not be read if it did.
+            fetch_household_live_assignments=[_live_hh_row(2025, self.FC1, "u2"), _live_hh_row(2025, self.FC4, "u2")],
+            fetch_all_units=self.UNITS,
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        row = journey.years[0]
+        assert row.cabin_name == "Meadow House 1"
+        assert row.weekend_cabins == []
+
+    @pytest.mark.asyncio
+    async def test_a_2026_household_with_every_weekend_live_gets_per_weekend_cabins(self) -> None:
+        repo = _journey_repo(
+            fetch_household_family_attendees=self._attended(2026, self.FC1, self.FC4),
+            cabins_by_year={2026: {2000001: "Meadow House 1"}},
+            fetch_household_live_assignments=[_live_hh_row(2026, self.FC1, "u1"), _live_hh_row(2026, self.FC4, "u2")],
+            fetch_all_units=self.UNITS,
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        row = journey.years[0]
+        assert row.housing == "placed"
+        assert [(c.session_cm_id, c.cabin_name) for c in row.weekend_cabins] == [
+            (self.FC1, "Meadow House 1"),
+            (self.FC4, "Lake Cabin 1"),
+        ]
+        # The year's as-typed string is provenance only for the weekend whose
+        # live row it names; the other weekend's string was never typed here.
+        assert [c.cabin_name_raw for c in row.weekend_cabins] == ["Meadow House 1", ""]
+
+    @pytest.mark.asyncio
+    async def test_the_same_cabin_every_weekend_is_todays_single_row(self) -> None:
+        today = _journey_repo(
+            fetch_household_family_attendees=self._attended(2026, self.FC1, self.FC4),
+            cabins_by_year={2026: {2000001: "Meadow House 1"}},
+            fetch_all_units=self.UNITS,
+        )
+        live = _journey_repo(
+            fetch_household_family_attendees=self._attended(2026, self.FC1, self.FC4),
+            cabins_by_year={2026: {2000001: "Meadow House 1"}},
+            fetch_household_live_assignments=[_live_hh_row(2026, self.FC1, "u1"), _live_hh_row(2026, self.FC4, "u1")],
+            fetch_all_units=self.UNITS,
+        )
+
+        before = (await LodgingRosterService(today).build_household_journey(2000001)).years[0]
+        after = (await LodgingRosterService(live).build_household_journey(2000001)).years[0]
+
+        # Every year-level field is today's; the per-weekend list is one name.
+        assert after.model_dump(exclude={"weekend_cabins"}) == before.model_dump(exclude={"weekend_cabins"})
+        assert {c.cabin_name for c in after.weekend_cabins} == {"Meadow House 1"}
+
+    @pytest.mark.asyncio
+    async def test_one_of_two_weekends_live_keeps_todays_one_cabin_row(self) -> None:
+        repo = _journey_repo(
+            fetch_household_family_attendees=self._attended(2026, self.FC1, self.FC4),
+            cabins_by_year={2026: {2000001: "Meadow House 1"}},
+            fetch_household_live_assignments=[_live_hh_row(2026, self.FC1, "u2")],
+            fetch_all_units=self.UNITS,
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        row = journey.years[0]
+        assert row.weekend_cabins == []
+        assert row.cabin_name == "Meadow House 1"
+        assert [s.session_cm_id for s in row.sessions] == [self.FC1, self.FC4]
+
+    @pytest.mark.asyncio
+    async def test_a_single_weekend_live_row_names_the_year(self) -> None:
+        """The ingest placed the household on its one weekend; that row is the
+        cabin even when the year's string has since changed or cleared."""
+        repo = _journey_repo(
+            fetch_household_family_attendees=self._attended(2026, self.FC4),
+            cabins_by_year={2026: {}},
+            fetch_household_live_assignments=[_live_hh_row(2026, self.FC4, "u2")],
+            fetch_all_units=self.UNITS,
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        row = journey.years[0]
+        assert row.housing == "placed"
+        assert row.cabin_name == "Lake Cabin 1"
+        assert row.housing_session_cm_id == self.FC4
+        repo.fetch_household_live_assignments.assert_awaited_once_with(2000001)
 
 
 class TestHouseholdJourneySessionGrain:

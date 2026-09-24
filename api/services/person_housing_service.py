@@ -16,8 +16,10 @@ from api.schemas.lodging import PersonHousingResponse, PersonHousingWeekend
 from api.services.lodging_roster_service import build_housing_name_resolver
 from api.services.person_housing_rules import (
     adult_weekends_from_rows,
-    attribute_adult_cabins,
     cabin_values_from_rows,
+    enrolled_sessions_by_year,
+    live_names,
+    named_adult_cabins,
 )
 from api.utils.session_metrics import SUMMER_TEEN_TYPES
 
@@ -94,24 +96,43 @@ class PersonHousingService:
     async def build_person_housing(self, person_cm_id: int) -> PersonHousingResponse:
         if person_cm_id <= 0:
             return PersonHousingResponse(person_cm_id=person_cm_id)
-        value_rows, attendee_rows, teen_rows = await asyncio.gather(
+        value_rows, attendee_rows, teen_rows, live_rows = await asyncio.gather(
             self.repository.fetch_person_cabin_values(person_cm_id),
             self.repository.fetch_person_adult_attendees(person_cm_id),
             self.repository.fetch_person_teen_assignments(person_cm_id),
+            # kindred#2775: the CampMinder layer, 2026 onward.
+            self.repository.fetch_person_live_assignments(person_cm_id),
         )
         values = cabin_values_from_rows(value_rows)
         weekends = adult_weekends_from_rows(attendee_rows)
         teen_bunks = _teen_bunks(teen_rows)
         # The resolver is two whole-table reads (`build_housing_name_resolver`),
-        # and most callers have nothing to resolve: no adult cabin values or
-        # no enrolled adult weekends to attribute them to, AND no TLI/SCIT
-        # bunk. Read the cheap rows first and skip the registry entirely when
-        # neither list has anything for it.
-        has_adult = bool(values) and bool(weekends)
+        # and most callers have nothing to resolve: no adult cabin value or
+        # live row, or no enrolled adult weekend to hang one on, AND no
+        # TLI/SCIT bunk. Read the cheap rows first and skip the registry
+        # entirely when neither list has anything for it.
+        has_adult = bool(weekends) and (bool(values) or bool(live_rows))
         if not has_adult and not teen_bunks:
             return PersonHousingResponse(person_cm_id=person_cm_id)
         resolver = await build_housing_name_resolver(self.repository)
-        attributed = attribute_adult_cabins(values, weekends, resolver.resolve_codes) if has_adult else []
+        # kindred#2332 pattern (owner ruling 2026-09-22, evening): today's
+        # registry name, falling back to the as-typed string (trimmed) when
+        # nothing resolves -- through the same resolver the rule used to
+        # collapse same-place values. For a live-housing year every enrolled
+        # weekend of which has a CampMinder-layer row (kindred#2775), that row
+        # is the answer instead, and the as-typed string rides along.
+        cabins = (
+            named_adult_cabins(
+                values,
+                weekends,
+                live_names(live_rows, resolver.display_name_for_unit_ids),
+                resolver.resolve_codes,
+                resolver.display_name,
+                enrolled_sessions_by_year(attendee_rows),
+            )
+            if has_adult
+            else []
+        )
         return PersonHousingResponse(
             person_cm_id=person_cm_id,
             teen_cabins=_resolved_teen_cabins(teen_bunks, resolver),
@@ -119,15 +140,9 @@ class PersonHousingService:
                 PersonHousingWeekend(
                     year=cabin.year,
                     session_cm_id=cabin.session_cm_id,
-                    # kindred#2332 pattern (owner ruling 2026-09-22, evening):
-                    # today's registry name, falling back to the as-typed
-                    # string (trimmed) when nothing resolves. Same resolver
-                    # `attribute_adult_cabins` used above to collapse
-                    # same-place values -- one answer to "which cabin is
-                    # this string", not a second one.
-                    cabin_name=resolver.display_name(cabin.cabin_name_raw, cabin.year).strip(),
+                    cabin_name=cabin.cabin_name,
                     cabin_name_raw=cabin.cabin_name_raw,
                 )
-                for cabin in attributed
+                for cabin in cabins
             ],
         )

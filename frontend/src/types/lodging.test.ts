@@ -34,6 +34,7 @@ import type {
   AccessibilityFlags,
   HouseholdJourney,
   HouseholdJourneyRow,
+  HouseholdJourneyWeekendCabinRow,
   LodgingUnitRow,
   PartyAdultRow,
   PartyChildRow,
@@ -131,8 +132,23 @@ const _exhaustiveHouseholdJourneyRow: Required<HouseholdJourneyRow> = {
   housing_session_cm_id: null,
   adults: [],
   children: [],
+  // kindred#2775. Empty here on purpose: a 2025 year never reads the
+  // CampMinder layer. The entry's own shape is pinned just below.
+  weekend_cabins: [],
 }
 void _exhaustiveHouseholdJourneyRow
+
+/**
+ * kindred#2775's per-weekend cabin. `cabin_name_raw` is "" on a weekend whose
+ * live row names a different cabin from the year's one typed string, so a
+ * regen that dropped it would silently lose the hover.
+ */
+const _exhaustiveHouseholdJourneyWeekendCabin: Required<HouseholdJourneyWeekendCabinRow> = {
+  session_cm_id: 1000004,
+  cabin_name: 'Meadow House 1',
+  cabin_name_raw: 'Old Meadow 1',
+}
+void _exhaustiveHouseholdJourneyWeekendCabin
 
 const _exhaustiveHouseholdJourney: Required<HouseholdJourney> = {
   household_cm_id: 2000001,

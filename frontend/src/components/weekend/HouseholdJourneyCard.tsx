@@ -86,6 +86,148 @@ function housingLabel(row: HouseholdJourneyRow, currentYear: number): string {
   return 'Housing unknown'
 }
 
+/**
+ * One housing line: the cabin, its provenance hover, and the weekends it was
+ * used for. A year row draws ONE of these — or, for a 2026+ year whose
+ * weekends the CampMinder layer housed in different cabins (kindred#2775),
+ * one per distinct cabin, in the same grammar, so a per-weekend year reads as
+ * the ordinary line repeated rather than as a new shape.
+ */
+function HousingLine({
+  isPlaced,
+  housing,
+  rawHousing,
+  weekends,
+}: {
+  isPlaced: boolean
+  housing: string
+  rawHousing: string
+  weekends: string[]
+}) {
+  const showsProvenance = isPlaced && rawHousing.length > 0 && rawHousing !== housing
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5">
+      <span
+        data-testid="household-journey-housing"
+        className={`flex min-w-0 items-center gap-1 text-sm ${
+          isPlaced ? 'text-foreground font-medium' : 'text-muted-foreground italic'
+        }`}
+      >
+        {isPlaced && <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />}
+        {/* A real Tooltip and not a `title` (kindred#2177), and the
+          same trigger shape `LodgingUnitCard` gives its occupancy
+          figure. `min-w-0 text-left` is what keeps the kindred#2253
+          wrap: a button centres its text and will not shrink below
+          its content width without it. */}
+        {showsProvenance ? (
+          <Tooltip
+            content={`Recorded as "${rawHousing}" that season`}
+            data-testid="household-journey-housing-provenance"
+            // Hover and focus only. The sentence restates what staff
+            // typed that season and there is nothing to act on, so
+            // the tap-pins default left a bubble stuck open over the
+            // rows below it after a click that meant nothing.
+            pinOnClick={false}
+            className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
+          >
+            {housing}
+          </Tooltip>
+        ) : (
+          housing
+        )}
+      </span>
+
+      {/* PLAIN TEXT, not chips (owner ruling 2026-08-18). The row
+        already carries a housing name and a "See members" action; a
+        third decorated element makes none of them readable. The
+        ruling counted a "No enrollment" chip too, which kindred#2516
+        has since deleted -- the ruling holds with one fewer.
+
+        ⚠️ ONE CABIN, RENDERED ONCE. There is deliberately no cabin
+        against each weekend: `family_camp_registrations` holds a
+        single string per household-year, and repeating it per
+        weekend is the fan-out that manufactured 12 of 17 false
+        multi-family occupancies in the phase-C shareability
+        analysis. There is no explanatory note for the ambiguous
+        case either — the owner struck it, because staff know
+        CampMinder overwrites the source value and it would have sat
+        beside the then-present "No enrollment" chip saying nearly the
+        same thing.
+
+        The one exception is kindred#2775's, and it is not a fan-out:
+        from 2026 the CampMinder layer holds a REAL per-weekend cabin
+        (one live row per weekend, #2784), so a year whose weekends
+        were housed apart draws this line once per distinct cabin,
+        each with only its own weekends. A year the layer does not
+        fully cover keeps the single line.
+
+        Nothing at all when no weekend is knowable: an empty list is
+        the pre-kindred#2420 payload shape, or a year discovered from
+        an ADULT weekend, which never enters `sessions` (kindred#2516).
+        It is not a household that attended none. */}
+      {weekends.length > 0 && (
+        <>
+          {/* Its own element, not a prefix inside the label span, so
+              the span's text stays exactly the weekend list — what
+              every assertion about this line reads. */}
+          <span className="text-muted-foreground/50 text-xs">—</span>
+          <span data-testid="household-journey-weekends" className="text-muted-foreground text-xs">
+            {weekends.join(' · ')}
+          </span>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The lines a year row draws (kindred#2775). One — today's — unless the
+ * server published per-weekend cabins that NAME TWO OR MORE different cabins;
+ * then one per distinct cabin, in first-weekend order, each carrying only its
+ * own weekends. Per-weekend cabins that all share one name draw today's single
+ * line exactly: the year-level fields already are that cabin.
+ */
+interface HousingLineModel {
+  key: string
+  housing: string
+  rawHousing: string
+  weekends: string[]
+}
+
+function housingLines(row: HouseholdJourneyRow, housing: string): HousingLineModel[] {
+  // kindred#2393. `FC1 · FC4`, in the order the server sent — which is the
+  // season's own, earliest first. `weekendLabel` is the one sanctioned display
+  // use of the slug and falls back to the weekend's short name rather than to
+  // its CampMinder id, which names nothing a staff member reads.
+  const sessions = row.sessions ?? []
+  const perWeekend = row.weekend_cabins ?? []
+  const distinct = [...new Set(perWeekend.map((entry) => entry.cabin_name ?? ''))]
+  if (distinct.length < 2) {
+    return [
+      {
+        key: 'year',
+        housing,
+        rawHousing: (row.cabin_name_raw ?? '').trim(),
+        weekends: sessions.map((session) => weekendLabel(session.name ?? '')),
+      },
+    ]
+  }
+  const labelOf = (cmId: number): string =>
+    weekendLabel(sessions.find((session) => session.session_cm_id === cmId)?.name ?? '')
+  return distinct.map((name) => {
+    const entries = perWeekend.filter((entry) => (entry.cabin_name ?? '') === name)
+    return {
+      key: name,
+      housing: name,
+      rawHousing: (
+        entries.find((entry) => (entry.cabin_name_raw ?? '').trim().length > 0)?.cabin_name_raw ??
+        ''
+      ).trim(),
+      weekends: entries.map((entry) => labelOf(entry.session_cm_id ?? 0)),
+    }
+  })
+}
+
 function JourneyRows({
   years,
   currentYear,
@@ -130,15 +272,8 @@ function JourneyRows({
           // snapshot. On the other 1,145 the trigger would decorate a name
           // with a tooltip repeating it back, which is how an affordance stops
           // being read. Absent or blank means an older payload, and the name
-          // still renders.
-          const rawHousing = (row.cabin_name_raw ?? '').trim()
-          const showsProvenance = isPlaced && rawHousing.length > 0 && rawHousing !== housing
-          // kindred#2393. `FC1 · FC4`, in the order the server sent — which is
-          // the season's own, earliest first. `weekendLabel` is the one
-          // sanctioned display use of the slug and falls back to the
-          // weekend's short name rather than to its CampMinder id, which
-          // names nothing a staff member reads.
-          const weekends = (row.sessions ?? []).map((session) => weekendLabel(session.name ?? ''))
+          // still renders. (The test lives in `HousingLine`, per line.)
+          const lines = housingLines(row, housing)
 
           return (
             <div
@@ -218,73 +353,26 @@ function JourneyRows({
                   `min-w-0` stays — it is what lets the flex child shrink below
                   its content width, which is what makes the kindred#2253 wrap
                   happen instead of the row overflowing. */}
-              <div className="flex min-w-0 flex-wrap items-center gap-x-1.5">
-                <span
-                  data-testid="household-journey-housing"
-                  className={`flex min-w-0 items-center gap-1 text-sm ${
-                    isPlaced ? 'text-foreground font-medium' : 'text-muted-foreground italic'
-                  }`}
-                >
-                  {isPlaced && <Home className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />}
-                  {/* A real Tooltip and not a `title` (kindred#2177), and the
-                    same trigger shape `LodgingUnitCard` gives its occupancy
-                    figure. `min-w-0 text-left` is what keeps the kindred#2253
-                    wrap: a button centres its text and will not shrink below
-                    its content width without it. */}
-                  {showsProvenance ? (
-                    <Tooltip
-                      content={`Recorded as "${rawHousing}" that season`}
-                      data-testid="household-journey-housing-provenance"
-                      // Hover and focus only. The sentence restates what staff
-                      // typed that season and there is nothing to act on, so
-                      // the tap-pins default left a bubble stuck open over the
-                      // rows below it after a click that meant nothing.
-                      pinOnClick={false}
-                      className="decoration-muted-foreground/60 min-w-0 text-left underline decoration-dotted underline-offset-2"
-                    >
-                      {housing}
-                    </Tooltip>
-                  ) : (
-                    housing
-                  )}
-                </span>
-
-                {/* PLAIN TEXT, not chips (owner ruling 2026-08-18). The row
-                  already carries a housing name and a "See members" action; a
-                  third decorated element makes none of them readable. The
-                  ruling counted a "No enrollment" chip too, which kindred#2516
-                  has since deleted -- the ruling holds with one fewer.
-
-                  ⚠️ ONE CABIN, RENDERED ONCE. There is deliberately no cabin
-                  against each weekend: `family_camp_registrations` holds a
-                  single string per household-year, and repeating it per
-                  weekend is the fan-out that manufactured 12 of 17 false
-                  multi-family occupancies in the phase-C shareability
-                  analysis. There is no explanatory note for the ambiguous
-                  case either — the owner struck it, because staff know
-                  CampMinder overwrites the source value and it would have sat
-                  beside the then-present "No enrollment" chip saying nearly the
-                  same thing.
-
-                  Nothing at all when no weekend is knowable: an empty list is
-                  the pre-kindred#2420 payload shape, or a year discovered from
-                  an ADULT weekend, which never enters `sessions` (kindred#2516).
-                  It is not a household that attended none. */}
-                {weekends.length > 0 && (
-                  <>
-                    {/* Its own element, not a prefix inside the label span, so
-                        the span's text stays exactly the weekend list — what
-                        every assertion about this line reads. */}
-                    <span className="text-muted-foreground/50 text-xs">—</span>
-                    <span
-                      data-testid="household-journey-weekends"
-                      className="text-muted-foreground text-xs"
-                    >
-                      {weekends.join(' · ')}
-                    </span>
-                  </>
-                )}
-              </div>
+              {lines.length === 1 ? (
+                <HousingLine
+                  isPlaced={isPlaced}
+                  housing={lines[0]?.housing ?? ''}
+                  rawHousing={lines[0]?.rawHousing ?? ''}
+                  weekends={lines[0]?.weekends ?? []}
+                />
+              ) : (
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  {lines.map((line) => (
+                    <HousingLine
+                      key={line.key}
+                      isPlaced={isPlaced}
+                      housing={line.housing}
+                      rawHousing={line.rawHousing}
+                      weekends={line.weekends}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* NOT "a childless family" and NOT an error — 2020's season was
                   cancelled outright and 2021 has no family attendee rows at all

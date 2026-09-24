@@ -372,6 +372,7 @@ export type {
   HistoricalTrendsResponse,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
+  HouseholdJourneyWeekendCabin,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
   HttpValidationError,

@@ -2176,6 +2176,9 @@ export type HouseholdJourneyResponse = {
  * household was at and says nothing about where it slept in each. Repeating
  * the year's cabin against every entry is the fan-out that manufactured 12
  * of 17 false multi-family occupancies in the phase-C shareability analysis.
+ * Where a real per-weekend cabin exists -- the CampMinder layer, 2026 on --
+ * it travels separately, on `HouseholdJourneyYear.weekend_cabins`
+ * (kindred#2775).
  *
  * `start_date` is the raw PocketBase string, exactly as
  * `WeekendSessionSummary` publishes it -- the client already reads that
@@ -2195,6 +2198,31 @@ export type HouseholdJourneySession = {
    * Start Date
    */
   start_date?: string
+}
+
+/**
+ * HouseholdJourneyWeekendCabin
+ *
+ * One enrolled weekend's cabin, from the CampMinder layer (kindred#2775).
+ *
+ * Published only for a live-housing season (2026 onward) in which EVERY
+ * weekend the household was enrolled on has a live `lodging_assignments`
+ * row -- the Go ingest's per-weekend answer (#2784). Otherwise the year keeps
+ * its one cabin for the year and this list is empty, never partial.
+ */
+export type HouseholdJourneyWeekendCabin = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number
+  /**
+   * Cabin Name
+   */
+  cabin_name?: string
+  /**
+   * Cabin Name Raw
+   */
+  cabin_name_raw?: string
 }
 
 /**
@@ -2239,6 +2267,10 @@ export type HouseholdJourneyYear = {
    * Children
    */
   children?: Array<PartyChild>
+  /**
+   * Weekend Cabins
+   */
+  weekend_cabins?: Array<HouseholdJourneyWeekendCabin>
 }
 
 /**
@@ -3546,8 +3578,9 @@ export type PersonHousingResponse = {
  * that had this field publish the as-typed string unchanged. When the
  * string resolves to nothing, `cabin_name` falls back to it, outer
  * whitespace trimmed. `cabin_name_raw` is the untouched value staff typed
- * that year. A weekend or teen session with no attributed/resolved cabin
- * is absent, not blank.
+ * that year -- or "" for a 2026+ weekend named by its CampMinder-layer row
+ * alone, with no typed value attributed to it (kindred#2775). A weekend or
+ * teen session with no attributed/resolved cabin is absent, not blank.
  */
 export type PersonHousingWeekend = {
   /**

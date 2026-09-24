@@ -10,10 +10,13 @@ from datetime import UTC, datetime
 
 from api.services.person_housing_rules import (
     ADULT_WEEKEND_CABIN_FIELD_CM_IDS,
+    LIVE_HOUSING_FROM_YEAR,
     AdultWeekend,
     AttributedCabin,
     CabinValue,
     attribute_adult_cabins,
+    live_cabins_for_year,
+    overlay_live_cabins,
     parse_instant,
     pick_year_cabin,
     weekend_last_day_ends,
@@ -347,3 +350,80 @@ class TestPickYearCabin:
         picked = pick_year_cabin(list(reversed(cabins)), weekends, year=2025, prefer_session_cm_id=other)
         assert picked is not None
         assert picked.cabin_name == "Lake B"
+
+
+class TestLiveCabinsForYear:
+    """kindred#2775's reading rule, per party-year. For 2026 onward the
+    per-weekend CampMinder-layer rows (live `lodging_assignments`) are the
+    source -- but only when EVERY enrolled weekend that year has one.
+    Otherwise the caller keeps today's one-cabin-for-the-year rule, never
+    blank. Years before 2026 have no history and never read live rows."""
+
+    def test_the_floor_is_2026(self) -> None:
+        assert LIVE_HOUSING_FROM_YEAR == 2026
+
+    def test_every_enrolled_weekend_live_reads_live(self) -> None:
+        assert live_cabins_for_year(2026, {WW, DD}, {WW: "Ridge A", DD: "Lake B"}) == {WW: "Ridge A", DD: "Lake B"}
+
+    def test_one_weekend_without_a_live_row_keeps_todays_rule(self) -> None:
+        assert live_cabins_for_year(2026, {WW, DD}, {WW: "Ridge A"}) is None
+
+    def test_a_live_row_that_names_nothing_counts_as_missing(self) -> None:
+        # A live row whose units no longer exist names nothing; never blank.
+        assert live_cabins_for_year(2026, {WW}, {WW: ""}) is None
+
+    def test_a_year_before_2026_never_reads_live(self) -> None:
+        assert live_cabins_for_year(2025, {WW}, {WW: "Ridge A"}) is None
+
+    def test_no_enrolled_weekend_reads_nothing(self) -> None:
+        assert live_cabins_for_year(2026, set(), {WW: "Ridge A"}) is None
+
+    def test_a_live_row_for_a_weekend_not_enrolled_is_ignored(self) -> None:
+        assert live_cabins_for_year(2026, {WW}, {WW: "Ridge A", DD: "Lake B"}) == {WW: "Ridge A"}
+
+
+class TestOverlayLiveCabins:
+    """The adult journey's side of kindred#2775: a person-year that reads live
+    rows REPLACES the attribution rule's answer for that year; every other
+    year is the rule's, untouched."""
+
+    def _named(self, year: int, session_cm_id: int, name: str, raw: str) -> AttributedCabin:
+        return AttributedCabin(year=year, session_cm_id=session_cm_id, cabin_name=name, cabin_name_raw=raw)
+
+    def test_a_2025_year_is_the_rules_even_with_a_live_row(self) -> None:
+        rule = [self._named(2025, WW, "Ridge A", "Ridge A")]
+        weekends = [_weekend(2025, WW, "2025-10-19")]
+        assert overlay_live_cabins(rule, weekends, {(2025, WW): "Lake B"}) == rule
+
+    def test_a_2026_adult_with_a_live_row_gets_that_cabin(self) -> None:
+        rule = [self._named(2026, WW, "Ridge A", "ridge a ")]
+        weekends = [_weekend(2026, WW, "2026-10-18")]
+        out = overlay_live_cabins(rule, weekends, {(2026, WW): "Lake B"})
+        # The live row's registry name; the as-typed string rides along as
+        # provenance for the hover.
+        assert out == [self._named(2026, WW, "Lake B", "ridge a ")]
+
+    def test_a_2026_adult_without_a_live_row_keeps_todays_rule_as_typed(self) -> None:
+        rule = [self._named(2026, WW, "Ridge Hut", "Ridge Hut")]
+        weekends = [_weekend(2026, WW, "2026-10-18")]
+        assert overlay_live_cabins(rule, weekends, {}) == rule
+
+    def test_a_live_weekend_the_rule_could_not_attribute_still_shows(self) -> None:
+        weekends = [_weekend(2026, WW, "2026-10-18")]
+        out = overlay_live_cabins([], weekends, {(2026, WW): "Lake B"})
+        assert out == [self._named(2026, WW, "Lake B", "")]
+
+    def test_two_weekends_one_live_keeps_the_rule_for_the_whole_year(self) -> None:
+        rule = [self._named(2026, WW, "Ridge A", "Ridge A")]
+        weekends = [_weekend(2026, WW, "2026-10-18"), _weekend(2026, DD, "2026-10-25")]
+        assert overlay_live_cabins(rule, weekends, {(2026, WW): "Lake B"}) == rule
+
+    def test_output_stays_ordered_by_year_then_weekend(self) -> None:
+        rule = [self._named(2025, WW, "Ridge A", "Ridge A")]
+        weekends = [
+            _weekend(2025, WW, "2025-10-19"),
+            _weekend(2026, DD, "2026-10-25"),
+            _weekend(2026, WW, "2026-10-18"),
+        ]
+        out = overlay_live_cabins(rule, weekends, {(2026, WW): "Lake B", (2026, DD): "Pine C"})
+        assert [(c.year, c.session_cm_id) for c in out] == [(2025, WW), (2026, WW), (2026, DD)]

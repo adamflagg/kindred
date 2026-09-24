@@ -627,3 +627,93 @@ describe('the weekend line', () => {
     expect(text).not.toContain('unresolved')
   })
 })
+
+describe('per-weekend cabins from the CampMinder layer (kindred#2775)', () => {
+  // For 2026 onward the server publishes `weekend_cabins` -- one per enrolled
+  // weekend -- when EVERY weekend that year has a live CampMinder-layer row.
+  // The row reuses its own grammar: the housing name with its FCx weekend
+  // list, one such line per DISTINCT cabin. When every weekend shares one
+  // cabin it is exactly today's single line.
+  const FC1 = { session_cm_id: 1000001, name: 'Family Camp 1', start_date: '2026-05-22' }
+  const FC4 = { session_cm_id: 1000004, name: 'Family Camp 4', start_date: '2026-09-04' }
+  const FC6 = { session_cm_id: 1000006, name: 'Family Camp 6', start_date: '2026-10-02' }
+
+  function textsOf(year: number, testId: string): string[] {
+    return within(rowFor(year))
+      .queryAllByTestId(testId)
+      .map((el) => el.textContent)
+  }
+
+  it('draws one line per distinct cabin, each with its own weekends', () => {
+    show([
+      _row({
+        year: 2026,
+        cabin_name: 'Meadow House 1',
+        cabin_name_raw: 'Meadow House 1',
+        sessions: [FC1, FC4, FC6],
+        weekend_cabins: [
+          { session_cm_id: FC1.session_cm_id, cabin_name: 'Meadow House 1', cabin_name_raw: '' },
+          { session_cm_id: FC4.session_cm_id, cabin_name: 'Lake Cabin 1', cabin_name_raw: '' },
+          { session_cm_id: FC6.session_cm_id, cabin_name: 'Meadow House 1', cabin_name_raw: '' },
+        ],
+      }),
+    ])
+
+    expect(textsOf(2026, 'household-journey-housing')).toEqual(['Meadow House 1', 'Lake Cabin 1'])
+    expect(textsOf(2026, 'household-journey-weekends')).toEqual(['FC1 · FC6', 'FC4'])
+  })
+
+  it('renders identically to today’s single line when every weekend shares one cabin', () => {
+    const today = _row({
+      year: 2026,
+      cabin_name: 'Meadow House 1',
+      cabin_name_raw: 'Old Meadow 1',
+      sessions: [FC1, FC4],
+    })
+    const { unmount } = show([today])
+    const before = rowFor(2026).innerHTML
+    unmount()
+
+    show([
+      {
+        ...today,
+        weekend_cabins: [
+          {
+            session_cm_id: FC1.session_cm_id,
+            cabin_name: 'Meadow House 1',
+            cabin_name_raw: 'Old Meadow 1',
+          },
+          {
+            session_cm_id: FC4.session_cm_id,
+            cabin_name: 'Meadow House 1',
+            cabin_name_raw: 'Old Meadow 1',
+          },
+        ],
+      },
+    ])
+
+    expect(rowFor(2026).innerHTML).toBe(before)
+  })
+
+  it('offers a weekend’s as-typed string on hover only where it differs', () => {
+    show([
+      _row({
+        year: 2026,
+        sessions: [FC1, FC4],
+        weekend_cabins: [
+          {
+            session_cm_id: FC1.session_cm_id,
+            cabin_name: 'Meadow House 1',
+            cabin_name_raw: 'Old Meadow 1',
+          },
+          { session_cm_id: FC4.session_cm_id, cabin_name: 'Lake Cabin 1', cabin_name_raw: '' },
+        ],
+      }),
+    ])
+
+    const triggers = within(rowFor(2026)).getAllByTestId('household-journey-housing-provenance')
+    expect(triggers).toHaveLength(1)
+    fireEvent.pointerEnter(triggers[0] as HTMLElement)
+    expect(screen.getByRole('tooltip').textContent).toContain('Old Meadow 1')
+  })
+})
