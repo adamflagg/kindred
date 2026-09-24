@@ -21,12 +21,17 @@ import type {
   AccessibilityFlagSummary,
   AttributionCandidate,
   AttributionOccupant,
+  BunkingRequestChange,
+  BunkingRequestChangeItem,
+  BunkingRequestSummary,
+  BunkingRequestVersion,
   ComparePartyReport,
   HouseholdJourneyResponse,
   HouseholdJourneySession,
   HouseholdJourneyWeekendCabin,
   HouseholdJourneyYear,
   HouseholdMedicalResponse,
+  JotformNeedAnswer,
   LodgingUnitSummary,
   LodgingWriteResponse,
   PartyAdult,
@@ -63,6 +68,17 @@ export type WeekendSession = WeekendSessionSummary
 export type RosterPartyRow = RosterParty
 /** The honest-counts block. */
 export type RosterCountSummary = RosterCounts
+/**
+ * An adult-weekend guest's Jotform bunking request (kindred#2759). Only on a
+ * person-grain party, and only for a `bunking.manage` caller — `null`/absent
+ * means "not visible to you", never "nothing filed" (that is `no_form`).
+ */
+export type BunkingRequest = BunkingRequestSummary
+export type BunkingRequestChangeRow = BunkingRequestChange
+export type BunkingRequestItem = BunkingRequestChangeItem
+export type BunkingRequestVersionRow = BunkingRequestVersion
+export type JotformNeedAnswerRow = JotformNeedAnswer
+export type ComingWith = NonNullable<BunkingRequestSummary['coming_with']>[number]
 /**
  * A scenario against the CampMinder mirror, for one family-camp weekend
  * (kindred#2478 §5). REPORT-ONLY — there is no digest to echo and no decision

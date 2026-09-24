@@ -386,6 +386,123 @@ export type BunkGraphResponse = {
 }
 
 /**
+ * BunkingRequestChange
+ *
+ * How the request moved across a guest's filings.
+ *
+ * `list`: the first filing diffed against the current one, in the current
+ * order with each drop re-inserted where it sat -- or, when the latest filing
+ * is blank, every name of the last named filing as removed, and when a first
+ * request follows a blank filing, every name as added. `prose`: some filing
+ * is not name-shaped, so every version is shown (across a blank filing, just
+ * the blank and its named neighbour). `identical`: re-filed, same names in
+ * any order.
+ * `from_date`/`to_date` rather than from/to: `from` is a Python keyword.
+ */
+export type BunkingRequestChange = {
+  /**
+   * Kind
+   */
+  kind: 'list' | 'prose' | 'identical'
+  /**
+   * Items
+   */
+  items?: Array<BunkingRequestChangeItem>
+  /**
+   * Versions
+   */
+  versions?: Array<BunkingRequestVersion>
+  /**
+   * Count
+   */
+  count?: number
+  /**
+   * From Date
+   */
+  from_date?: string
+  /**
+   * To Date
+   */
+  to_date?: string
+}
+
+/**
+ * BunkingRequestChangeItem
+ */
+export type BunkingRequestChangeItem = {
+  /**
+   * Text
+   */
+  text: string
+  /**
+   * Op
+   */
+  op: 'add' | 'remove' | 'keep' | 'respell'
+  /**
+   * Was
+   */
+  was?: string
+}
+
+/**
+ * BunkingRequestSummary
+ *
+ * `state`: `request` (a non-empty current filing), `none` (filed, no
+ * request), `no_form` (enrolled, nothing filed or matched yet).
+ */
+export type BunkingRequestSummary = {
+  /**
+   * State
+   */
+  state: 'request' | 'none' | 'no_form'
+  /**
+   * Current Text
+   */
+  current_text?: string
+  /**
+   * Versions
+   */
+  versions?: Array<BunkingRequestVersion>
+  change?: BunkingRequestChange | null
+  /**
+   * Changed
+   */
+  changed?: boolean
+  /**
+   * Coming With
+   */
+  coming_with?: Array<'solo' | 'family' | 'friends' | 'partner'>
+  /**
+   * Submitted
+   */
+  submitted?: Array<string>
+  /**
+   * Staff Linked
+   */
+  staff_linked?: boolean
+  /**
+   * Jotform Says
+   */
+  jotform_says?: Array<JotformNeedAnswer>
+}
+
+/**
+ * BunkingRequestVersion
+ *
+ * One filing's bunking answer, "no request"-style words already blanked.
+ */
+export type BunkingRequestVersion = {
+  /**
+   * Submitted At
+   */
+  submitted_at: string
+  /**
+   * Text
+   */
+  text?: string
+}
+
+/**
  * CamperGroupedRequests
  *
  * Requests grouped by camper with their field parse results.
@@ -2465,6 +2582,35 @@ export type IncrementalUpdateResponse = {
    * Cache Invalidated
    */
   cache_invalidated?: boolean
+}
+
+/**
+ * JotformNeedAnswer
+ *
+ * A need the Jotform answers differently from CampMinder registration
+ * (#2766). Registration still drives the need glyphs; this is context.
+ */
+export type JotformNeedAnswer = {
+  /**
+   * Need
+   */
+  need: 'accommodation' | 'cpap'
+  /**
+   * Registration
+   */
+  registration: string
+  /**
+   * Jotform
+   */
+  jotform: string
+  /**
+   * Detail
+   */
+  detail?: string
+  /**
+   * Submitted At
+   */
+  submitted_at?: string
 }
 
 /**
@@ -5957,6 +6103,7 @@ export type RosterParty = {
   last_year_cabin?: string
   share?: ShareRequestSummary
   flags?: AccessibilityFlagSummary
+  bunking_request?: BunkingRequestSummary | null
 }
 
 /**

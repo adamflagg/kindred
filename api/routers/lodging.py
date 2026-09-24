@@ -170,11 +170,17 @@ async def get_weekend_roster(
     payload: the two staff-authored free-text blocks need `bunking.manage`.
     See `_may_read_staff_notes`. The family-authored blocks and `request_text`
     stay ungated, exactly as before -- a household's own housing ask is a
-    placement input (kindred#2398).
+    placement input (kindred#2398), and the adult guest's Jotform
+    `bunking_request` (kindred#2759) travels only to the same bunking.manage
+    holder.
     """
     try:
         return await _service().build_roster(
-            year, session_cm_id, scenario, include_staff_notes=_may_read_staff_notes(user)
+            year,
+            session_cm_id,
+            scenario,
+            include_staff_notes=_may_read_staff_notes(user),
+            include_bunking_request=_may_read_staff_notes(user),
         )
     except SessionNotFoundError as exc:
         raise _weekend_404(year, session_cm_id) from exc

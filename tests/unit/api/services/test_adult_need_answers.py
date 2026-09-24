@@ -243,3 +243,28 @@ class TestAdultNeedFlagsByPerson:
             ]
         )
         assert by_person.get(1000004, AccessibilityFlagSummary()) == AccessibilityFlagSummary()
+
+
+def test_raw_answers_are_grouped_by_guest_and_field() -> None:
+    from types import SimpleNamespace
+
+    from api.services.adult_need_answers import (
+        ADULT_CPAP_FIELD_CM_ID,
+        HOUSING_ACCOMODATION_FIELD_CM_ID,
+        adult_need_raw_by_person,
+    )
+
+    def row(person: int, field: int, value: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            value=value,
+            expand={"person": SimpleNamespace(cm_id=person), "field_definition": SimpleNamespace(cm_id=field)},
+        )
+
+    raw = adult_need_raw_by_person(
+        [
+            row(1000004, HOUSING_ACCOMODATION_FIELD_CM_ID, "No"),
+            row(1000004, ADULT_CPAP_FIELD_CM_ID, "Yes"),
+            row(0, 1, "x"),
+        ]
+    )
+    assert raw == {1000004: {HOUSING_ACCOMODATION_FIELD_CM_ID: "No", ADULT_CPAP_FIELD_CM_ID: "Yes"}}

@@ -123,6 +123,7 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_adult_weekend_attendees(2025), id="fetch_adult_attendees_year"),
             pytest.param(lambda r: r.fetch_adult_cabin_values(2025), id="fetch_adult_cabin_values_year"),
             pytest.param(lambda r: r.fetch_adult_need_values(2026), id="fetch_adult_need_values_year"),
+            pytest.param(lambda r: r.fetch_jotform_bunking_rows(2026), id="fetch_jotform_bunking_rows"),
             # kindred#2776: the camper journey's reads.
             pytest.param(lambda r: r.fetch_person_records(1000001), id="fetch_person_records"),
             pytest.param(lambda r: r.fetch_person_journey_attendees(1000001, 2026), id="fetch_journey_attendees"),
@@ -1263,6 +1264,123 @@ class TestFetchAdultNeedValues:
         """An empty OR group would not narrow the read at all."""
         with pytest.raises(ValueError, match="allowlist"):
             await repo._fetch_cohort_person_values(2026, ())
+
+
+class TestFetchJotformBunkingRows:
+    """kindred#2759: the year's Jotform rows for the adult board, narrowed to
+    the roles the roster shows. Identity and emergency answers never reach it."""
+
+    @staticmethod
+    def _collections(pb: MagicMock, forms: list[Any], submissions: list[Any], answers: list[Any]) -> dict[str, Any]:
+        tables = {
+            "jotform_forms": MagicMock(),
+            "jotform_submissions": MagicMock(),
+            "jotform_answers": MagicMock(),
+        }
+        tables["jotform_forms"].get_full_list.return_value = forms
+        tables["jotform_submissions"].get_full_list.return_value = submissions
+        tables["jotform_answers"].get_full_list.return_value = answers
+        pb.collection.side_effect = lambda name: tables[name]
+        return tables
+
+    @staticmethod
+    def _query(table: MagicMock) -> dict[str, Any]:
+        params: dict[str, Any] = table.get_full_list.call_args[1]["query_params"]
+        return params
+
+    @pytest.mark.asyncio
+    async def test_reads_only_the_roster_roles_answers_for_live_matched_submissions(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        field_map = {
+            "first_name": "3",
+            "emergency_phone": "40",
+            "bunking_request": "21",
+            "coming_with": "16",
+            "housing_accommodation": "22",
+            "accommodation_details": "23",
+            "cpap": "29",
+        }
+        tables = self._collections(
+            pb,
+            forms=[_record(id="form_ww", session_cm_id=1000002, field_map=field_map)],
+            submissions=[_record(id="sub_1")],
+            answers=[_record(submission="sub_1", question_id="21")],
+        )
+
+        rows = await repo.fetch_jotform_bunking_rows(2026)
+
+        assert len(rows.answers) == 1
+        assert "year = 2026" in self._query(tables["jotform_forms"])["filter"]
+        sub_filter = self._query(tables["jotform_submissions"])["filter"]
+        assert "year = 2026" in sub_filter
+        assert "jotform_status != 'DELETED'" in sub_filter
+        assert "match_status = 'auto' || match_status = 'staff'" in sub_filter
+        answer_filter = self._query(tables["jotform_answers"])["filter"]
+        assert "submission.year = 2026" in answer_filter
+        # Exactly the five roster roles; identity and emergency ids never.
+        assert sorted(re.findall(r"question_id = '([^']+)'", answer_filter)) == ["16", "21", "22", "23", "29"]
+        for table in tables.values():
+            assert self._query(table).get("sort"), "paginated read must pin a stable sort key"
+
+    @pytest.mark.asyncio
+    async def test_each_question_id_is_scoped_to_its_own_form(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        # Jotform question ids are per-form small integers, so one form's
+        # bunking question can share an id with another form's identity
+        # question. The read must pair each id with its form, or that other
+        # form's name answers enter the cached rows.
+        tables = self._collections(
+            pb,
+            forms=[
+                _record(id="form_ww", session_cm_id=1000002, field_map={"first_name": "3", "bunking_request": "21"}),
+                _record(id="form_mw", session_cm_id=1000003, field_map={"bunking_request": "3"}),
+            ],
+            submissions=[_record(id="sub_1")],
+            answers=[],
+        )
+
+        await repo.fetch_jotform_bunking_rows(2026)
+
+        answer_filter = self._query(tables["jotform_answers"])["filter"]
+        assert "(submission.form = 'form_mw' && (question_id = '3'))" in answer_filter
+        assert "(submission.form = 'form_ww' && (question_id = '21'))" in answer_filter
+        assert answer_filter.count("question_id = '3'") == 1
+
+    @pytest.mark.asyncio
+    async def test_no_live_submission_reads_no_answers(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        tables = self._collections(
+            pb,
+            forms=[_record(id="form_ww", session_cm_id=1000002, field_map={"bunking_request": "21"})],
+            submissions=[],
+            answers=[],
+        )
+
+        rows = await repo.fetch_jotform_bunking_rows(2026)
+
+        assert rows.answers == []
+        tables["jotform_answers"].get_full_list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_question_id_is_escaped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        tables = self._collections(
+            pb,
+            forms=[_record(id="form_ww", session_cm_id=1000002, field_map={"bunking_request": "2'1"})],
+            submissions=[_record(id="sub_1")],
+            answers=[],
+        )
+
+        await repo.fetch_jotform_bunking_rows(2026)
+
+        assert "question_id = '2\\'1'" in self._query(tables["jotform_answers"])["filter"]
+
+    @pytest.mark.asyncio
+    async def test_a_second_call_for_the_year_is_a_cache_hit(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        tables = self._collections(pb, forms=[], submissions=[], answers=[])
+
+        await repo.fetch_jotform_bunking_rows(2026)
+        await repo.fetch_jotform_bunking_rows(2026)
+
+        assert tables["jotform_forms"].get_full_list.call_count == 1
 
 
 class TestLiveHousingReads:

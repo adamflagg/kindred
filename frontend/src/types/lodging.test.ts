@@ -32,6 +32,8 @@ import type {
 } from './api-generated'
 import type {
   AccessibilityFlags,
+  BunkingRequest,
+  BunkingRequestChangeRow,
   HouseholdJourney,
   HouseholdJourneyRow,
   HouseholdJourneyWeekendCabinRow,
@@ -255,8 +257,48 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
     accommodation_is_mandatory: false,
     has_infant: false,
   },
+  // kindred#2759: null = not visible to this caller (no bunking.manage, or a
+  // household party). A visible guest with nothing filed is `no_form`.
+  bunking_request: null,
 }
 void _exhaustiveRosterParty
+
+/**
+ * kindred#2759: an adult guest's Jotform bunking request. `changed` is the
+ * card's amber dot (any two consecutive filings differ) and is NOT derivable
+ * from `change`, which is only the net first-vs-latest markup — a regen that
+ * dropped it would leave the dot with nothing to read.
+ */
+const _exhaustiveBunkingRequest: Required<BunkingRequest> = {
+  state: 'request',
+  current_text: 'Emma Johnson',
+  versions: [{ submitted_at: '2026-08-03 09:00:00', text: 'Emma Johnson' }],
+  change: null,
+  changed: false,
+  coming_with: ['solo'],
+  submitted: ['2026-08-03 09:00:00'],
+  staff_linked: false,
+  jotform_says: [
+    {
+      need: 'accommodation',
+      registration: 'blank',
+      jotform: 'Yes',
+      detail: '',
+      submitted_at: '2026-08-03 09:00:00',
+    },
+  ],
+}
+void _exhaustiveBunkingRequest
+
+const _exhaustiveBunkingRequestChange: Required<BunkingRequestChangeRow> = {
+  kind: 'list',
+  items: [{ text: 'Liam Garcia', op: 'remove', was: '' }],
+  versions: [],
+  count: 0,
+  from_date: '2026-08-03 09:00:00',
+  to_date: '2026-08-31 09:00:00',
+}
+void _exhaustiveBunkingRequestChange
 
 /**
  * One free-text source field's worth of a household's request (kindred#2330).
