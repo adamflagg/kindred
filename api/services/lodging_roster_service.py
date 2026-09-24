@@ -3146,8 +3146,9 @@ class LodgingRosterService:
         # Nothing before 2022 is rescued: `cabin_assignment` is blank on all
         # 1,433 rows from 2017-2021, so 2020 (cancelled after enrollment) and
         # 2021 (cancelled before it) drop in full, as they should.
+        # Stripped: a string of spaces names no cabin, so it proves nothing.
         paper_registration_years = {
-            year for year, cabin in registration_cabins.items() if cabin and year not in family_row_years
+            year for year, cabin in registration_cabins.items() if cabin.strip() and year not in family_row_years
         }
         # Year 0 is not a year. A row whose `year` column never populated
         # would otherwise open the journey with a blank heading.

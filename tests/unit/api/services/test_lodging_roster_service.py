@@ -6724,10 +6724,11 @@ class _RegistrationWorld:
 
     async def any_cabin(self, year: int) -> bool:
         """`year_has_any_cabin`: `year = Y && cabin_assignment != "" &&
-        household.year = year && household.cm_id > 0`."""
+        household.year = year && household.cm_id > 0`, with the hit's cabin
+        held to the join's strip."""
         for reg_year, household, cabin in self.registrations:
             cm_id, household_year = self.households[household]
-            if reg_year == year and household_year == year and cabin != "" and cm_id > 0:
+            if reg_year == year and household_year == year and cabin.strip() and cm_id > 0:
                 return True
         return False
 
@@ -6978,6 +6979,22 @@ class TestHouseholdJourney:
 
         assert [y.year for y in journey.years] == [2022]
         assert journey.years[0].housing == "placed"
+
+    @pytest.mark.asyncio
+    async def test_a_whitespace_only_cabin_is_no_paper_registration(self) -> None:
+        """A cabin proves somebody slept here only if it names something. The
+        year-wide join strips before it keeps a cabin, and nothing trims
+        `Family Camp Cabin` on the way in, so a string of spaces with no
+        attendee row is a blank form, not a paper registration."""
+        repo = _journey_repo(
+            fetch_household_family_attendees=[],
+            fetch_household_registration_cabins={2022: "   "},
+            cabins_by_year={2022: {2000002: "Pine Cabin"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years == []
 
     @pytest.mark.asyncio
     async def test_a_cabin_beside_a_cancelled_child_does_not_render_the_stale_string(self) -> None:

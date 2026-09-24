@@ -174,6 +174,13 @@ STABLE_SORT = "id"
 # though it did something.
 PAGE_SIZE = 1000
 
+# Person ids per `fetch_household_family_attendees` attendee read. Each OR term
+# is `person = "<15-char id>" || `, 31 characters, so 100 of them plus the
+# session predicate is about 3,100 characters and 101 expressions -- inside
+# PocketBase's `MaxFilterLength` (3,500) and `DefaultFilterExprLimit` (200),
+# which it enforces with a 400 rather than by truncating.
+HOUSEHOLD_PERSON_CHUNK = 100
+
 # `fields=` projections for the YEAR-WIDE reads (kindred#2803). Each names
 # exactly the columns its consumer reads and nothing else.
 #
@@ -248,6 +255,12 @@ def _household_cm_ids(attendee_rows: list[Any]) -> set[int]:
         if household_id:
             ids.add(household_id)
     return ids
+
+
+def _stripped_cabin(registration: Any) -> str:
+    """A registration's cabin as `fetch_cabin_assignments_by_household_cm_id`
+    keeps it: stripped, so whitespace alone is no cabin."""
+    return str(getattr(registration, "cabin_assignment", "") or "").strip()
 
 
 class RequestValueRow(NamedTuple):
@@ -759,10 +772,31 @@ class LodgingRepository:
         # year-scoped -- and `idx_attendees_person` answers the rest. Same
         # rows: an attendee matched `person.household_id = X` exactly when its
         # `person` is one of these.
-        people = await self._page(PERSONS, query_params={"filter": f"household_id = {household_cm_id}", "fields": "id"})
+        people = await self._page(
+            PERSONS,
+            query_params={"filter": f"household_id = {household_cm_id}", "fields": "id", "sort": STABLE_SORT},
+        )
         person_ids = sorted({str(person.id) for person in people})
         if not person_ids:
             return []
+        # CHUNKED, because the OR clause grows with every member's every
+        # season and PocketBase answers a filter over `MaxFilterLength` (3,500
+        # characters) or `DefaultFilterExprLimit` (200 expressions) with a 400.
+        # The largest household on the snapshot has 38 person rows -- one
+        # read; `HOUSEHOLD_PERSON_CHUNK` ids is about 3,100 characters.
+        chunks = [
+            person_ids[start : start + HOUSEHOLD_PERSON_CHUNK]
+            for start in range(0, len(person_ids), HOUSEHOLD_PERSON_CHUNK)
+        ]
+        pages = await asyncio.gather(*(self._fetch_family_attendees_for_people(chunk) for chunk in chunks))
+        rows = [row for page in pages for row in page]
+        if len(pages) > 1:
+            # One read's order (`STABLE_SORT`), not the chunks' concatenation.
+            rows.sort(key=lambda row: str(row.id))
+        return rows
+
+    async def _fetch_family_attendees_for_people(self, person_ids: list[str]) -> list[Any]:
+        """Family-session attendee rows, any status, for these person PB ids."""
         person_clause = " || ".join(f'person = "{pb_escape(person_id)}"' for person_id in person_ids)
         return await self._page(
             ATTENDEES,
@@ -1017,9 +1051,11 @@ class LodgingRepository:
             household = (getattr(row, "expand", None) or {}).get("household")
             if int(getattr(household, "year", 0) or 0) != year:
                 continue
-            # RAW, exactly as `fetch_cabin_assignments_by_household_cm_id`
+            # RAW -- unresolved, as `fetch_cabin_assignments_by_household_cm_id`
             # returns it: resolution happens at display (kindred#2332), and a
-            # string nobody can map is still a household that was placed.
+            # string nobody can map is still a household that was placed. NOT
+            # stripped, unlike that join: the caller strips before it treats a
+            # string as a cabin, whitespace being no cabin at all.
             cabin = str(getattr(row, "cabin_assignment", "") or "")
             # One row per household-year (unique index), so no merge rule is
             # needed -- but prefer a non-blank if the index ever loosens,
@@ -1038,25 +1074,36 @@ class LodgingRepository:
         others it is "not placed". The predicates are that join's own -- a
         non-blank string, on a registration hung off the SAME year's
         household, with a CampMinder id -- so the two cannot disagree about
-        which rows count. (The join also strips; a year whose only cabins
-        were whitespace would differ, and none has one.)
+        which rows count.
+
+        The join also STRIPS, and a filter cannot: PocketBase has no trim and
+        no regex, so `!= ""` admits a string of spaces. The hit's cabin is
+        therefore read back, and a whitespace-only one -- none exists today,
+        but nothing trims `Family Camp Cabin` on the way in -- sends the check
+        to every candidate row for the year before it counts as housed.
 
         ONE ROW and no total, via `get_list` rather than `_page`: existence
         needs neither the rows nor a COUNT. About 3 ms, so it is NOT cached --
         the year-wide join it replaces cost two whole-year reads, and not
         caching this leaves nothing for a sync to make stale.
         """
+        candidates = f'year = {year} && cabin_assignment != "" && household.year = year && household.cm_id > 0'
         result = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_REGISTRATIONS).get_list,
             1,
             1,
-            query_params={
-                "filter": f'year = {year} && cabin_assignment != "" && household.year = year && household.cm_id > 0',
-                "fields": "id",
-                "skipTotal": 1,
-            },
+            query_params={"filter": candidates, "fields": "cabin_assignment", "skipTotal": 1},
         )
-        return bool(list(result.items))
+        hits = list(result.items)
+        if not hits:
+            return False
+        if _stripped_cabin(hits[0]):
+            return True
+        rows = await self._page(
+            FAMILY_CAMP_REGISTRATIONS,
+            query_params={"filter": candidates, "fields": "cabin_assignment", "sort": STABLE_SORT},
+        )
+        return any(_stripped_cabin(row) for row in rows)
 
     @cached_by_year(lodging_cache, tables=(HOUSEHOLDS,))
     async def fetch_households(self, year: int) -> dict[str, Any]:

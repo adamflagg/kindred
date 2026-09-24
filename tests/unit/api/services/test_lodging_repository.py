@@ -128,6 +128,9 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_person_journey_attendees(1000001, 2026), id="fetch_journey_attendees"),
             pytest.param(lambda r: r.fetch_person_journey_assignments(1000001, 2026), id="fetch_journey_assignments"),
             pytest.param(lambda r: r.fetch_sessions_by_year_cm_id([(2025, 1000001)]), id="fetch_sessions_by_key"),
+            # The household journey's person rows (its attendee read is
+            # pinned in `TestFetchHouseholdFamilyAttendees`).
+            pytest.param(lambda r: r.fetch_household_family_attendees(2000001), id="fetch_household_persons"),
         ],
     )
     async def test_paginated_read_pins_a_sort_key(self, repo: LodgingRepository, pb: MagicMock, call: Any) -> None:
@@ -1603,6 +1606,49 @@ class TestFetchHouseholdFamilyAttendees:
         assert await repo.fetch_household_family_attendees(2000001) == [row]
 
     @pytest.mark.asyncio
+    async def test_a_household_with_many_person_rows_stays_under_the_filter_limits(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The OR clause grows with the household's person rows across EVERY
+        year -- one per member per season -- and PocketBase refuses a filter
+        over `MaxFilterLength` (3,500 characters) or `DefaultFilterExprLimit`
+        (200 expressions) with a 400. The largest household on the snapshot has
+        38 rows, about a third of the length limit; a household three times
+        that size must still open its journey, so the ids are read in chunks
+        and the rows come back in the one order a single read would give."""
+        person_ids = [f"p{n:014d}" for n in range(250)]
+        attendee_filters: list[str] = []
+
+        def _collection(name: str) -> MagicMock:
+            def _get_full_list(**kwargs: Any) -> list[Any]:
+                params = kwargs["query_params"]
+                if name == "persons":
+                    return [_record(id=pid) for pid in person_ids]
+                attendee_filters.append(params["filter"])
+                # One attendee row per person in this chunk, ids descending by
+                # person so a plain concatenation would come back out of order.
+                chunk = re.findall(r'person = "([^"]+)"', params["filter"])
+                return [_record(id=f"a{999 - person_ids.index(pid):03d}") for pid in chunk]
+
+            col = MagicMock()
+            col.get_full_list.side_effect = _get_full_list
+            return col
+
+        pb.collection.side_effect = _collection
+
+        rows = await repo.fetch_household_family_attendees(2000001)
+
+        assert len(attendee_filters) > 1
+        for f in attendee_filters:
+            assert len(f) <= 3500
+            assert f.count(" = ") < 200
+            assert f.endswith('&& session.session_type = "family"')
+        seen = [pid for f in attendee_filters for pid in re.findall(r'person = "([^"]+)"', f)]
+        assert sorted(seen) == person_ids
+        assert [r.id for r in rows] == sorted(r.id for r in rows)
+        assert len(rows) == 250
+
+    @pytest.mark.asyncio
     async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """`_build_household_parties` gives an unresolvable household
         `household_cm_id = 0`. `household_id = 0` is a real predicate that
@@ -1752,7 +1798,7 @@ class TestYearHasAnyCabin:
 
     @pytest.mark.asyncio
     async def test_asks_for_one_row_carrying_a_cabin_that_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        pb.collection.return_value.get_list.return_value = self._list_result(_record(id="r1"))
+        pb.collection.return_value.get_list.return_value = self._list_result(_record(cabin_assignment="Cedar Lodge"))
 
         assert await repo.year_has_any_cabin(2023) is True
 
@@ -1764,7 +1810,8 @@ class TestYearHasAnyCabin:
         assert params["filter"] == (
             'year = 2023 && cabin_assignment != "" && household.year = year && household.cm_id > 0'
         )
-        assert params["fields"] == "id"
+        # The cabin itself, so the hit can be held to the join's strip.
+        assert params["fields"] == "cabin_assignment"
         assert params["skipTotal"] == 1
         pb.collection.return_value.get_full_list.assert_not_called()
 
@@ -1773,6 +1820,38 @@ class TestYearHasAnyCabin:
         pb.collection.return_value.get_list.return_value = self._list_result()
 
         assert await repo.year_has_any_cabin(2019) is False
+
+    @pytest.mark.asyncio
+    async def test_a_whitespace_only_cabin_is_not_a_cabin(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The join strips before it keeps a cabin, and a filter cannot: PocketBase
+        has no trim and no regex, so `!= ""` lets a string of spaces through. A
+        year whose only "cabins" are whitespace housed nobody -- "unknown", not
+        "not placed" -- so a whitespace hit is checked against every candidate
+        row before the year counts as housed. None exists today; nothing trims
+        `Family Camp Cabin` on the way in, so nothing stops one arriving."""
+        pb.collection.return_value.get_list.return_value = self._list_result(_record(cabin_assignment="  "))
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(cabin_assignment="  "),
+            _record(cabin_assignment=" \t"),
+        ]
+
+        assert await repo.year_has_any_cabin(2023) is False
+
+        params = _last_query(pb)
+        assert params["filter"] == (
+            'year = 2023 && cabin_assignment != "" && household.year = year && household.cm_id > 0'
+        )
+        assert params.get("sort"), "paginated read must pin a stable sort key"
+
+    @pytest.mark.asyncio
+    async def test_a_whitespace_hit_does_not_hide_a_real_cabin(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_list.return_value = self._list_result(_record(cabin_assignment="  "))
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(cabin_assignment="  "),
+            _record(cabin_assignment="Pine Cabin"),
+        ]
+
+        assert await repo.year_has_any_cabin(2023) is True
 
     @pytest.mark.asyncio
     async def test_is_not_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
