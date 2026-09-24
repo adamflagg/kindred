@@ -229,6 +229,13 @@ export function PopulateFromPreviousYear() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.gradeEligibilityThreshold(currentYear),
         }),
+        // Grade ranges/thresholds populated above live under the same
+        // `session_availability` config category the Session Availability
+        // metrics endpoint reads. Without this, the board can show stale
+        // data for up to that query's staleTime after a populate.
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessionAvailabilityRoot(),
+        }),
         // Invalidate our own queries so preview refreshes
         queryClient.invalidateQueries({
           queryKey: ['populate-config'],

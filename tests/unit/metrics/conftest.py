@@ -18,6 +18,7 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             cm_id INTEGER NOT NULL,
             first_name TEXT,
             last_name TEXT,
+            preferred_name TEXT,
             gender TEXT,
             grade INTEGER,
             school TEXT,
@@ -133,14 +134,18 @@ def _create_schema(conn: sqlite3.Connection) -> None:
 def _seed_data(conn: sqlite3.Connection) -> None:
     """Seed test data using fictional names per CLAUDE.md."""
     # -- Persons (year 2025) --
+    # preferred_name is deliberately mixed: set for Emma/Olivia, blank for Liam,
+    # so tests can pin both the present and the absent case (kindred cache-gap
+    # audit row 2: the SQL repo silently dropped this column entirely).
     conn.executemany(
-        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             (
                 "per_emma",
                 1001,
                 "Emma",
                 "Johnson",
+                "Emmy",
                 "F",
                 5,
                 "Riverside Elementary",
@@ -158,6 +163,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 1002,
                 "Liam",
                 "Garcia",
+                "",
                 "M",
                 6,
                 "Oak Valley Middle",
@@ -175,6 +181,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 1003,
                 "Olivia",
                 "Chen",
+                "Liv",
                 "F",
                 7,
                 "Hillcrest High",
@@ -192,13 +199,14 @@ def _seed_data(conn: sqlite3.Connection) -> None:
 
     # -- Persons (year 2024) for enrollment history --
     conn.executemany(
-        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             (
                 "per_emma_24",
                 1001,
                 "Emma",
                 "Johnson",
+                "Emmy",
                 "F",
                 4,
                 "Riverside Elementary",
@@ -216,6 +224,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 1002,
                 "Liam",
                 "Garcia",
+                "",
                 "M",
                 5,
                 "Oak Valley Middle",
@@ -328,6 +337,14 @@ def _seed_data(conn: sqlite3.Connection) -> None:
             ("cfg_reg1", "registration", "2025", "priority_reg_date", json.dumps("2025-01-01")),
             ("cfg_reg2", "registration", "2025", "early_reg_date", json.dumps("2025-01-15")),
             ("cfg_reg3", "registration", "2025", "open_reg_date", json.dumps("2025-02-01")),
+            (
+                "cfg_avail1",
+                "session_availability",
+                "2025",
+                "1000001",
+                json.dumps({"min_grade": 3, "max_grade": 6, "capacity_override": None}),
+            ),
+            ("cfg_avail_thr", "session_availability", "2025", "limited_threshold", json.dumps(90)),
         ],
     )
 

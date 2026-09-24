@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
+import { queryKeys } from '../../utils/queryKeys'
 
 // Track which collection is being queried
 const mockGetFullList = vi.fn()
@@ -424,6 +425,58 @@ describe('PopulateFromPreviousYear', () => {
     // Should call create for each new config record
     await waitFor(() => {
       expect(mockCreate).toHaveBeenCalled()
+    })
+  })
+
+  it('invalidates session availability after Apply (kindred cache-gap audit risk 3)', async () => {
+    // PopulateFromPreviousYear writes to the same `session_availability` config
+    // category the Session Availability metrics endpoint reads. Without this
+    // invalidation, the board shows stale grade/threshold config for up to the
+    // query's staleTime after a populate.
+    setupMocks()
+    mockCreate.mockResolvedValue({ id: 'new_rec' })
+    const user = userEvent.setup()
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const mockYearContext: CurrentYearContextType = {
+      currentYear: 2026,
+      setCurrentYear: vi.fn(),
+      availableYears: [2026, 2025, 2024],
+      isTransitioning: false,
+      isYearReady: true,
+    }
+
+    const Wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <CurrentYearContext value={mockYearContext}>{children}</CurrentYearContext>
+      </QueryClientProvider>
+    )
+
+    const Component = await getComponent()
+    render(<Component />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/populate from 2025/i)).toBeInTheDocument()
+    })
+
+    const previewButton = screen.getByRole('button', { name: /preview/i })
+    await user.click(previewButton)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /registration dates/i })).toBeInTheDocument()
+    })
+
+    const applyButton = screen.getByRole('button', { name: /apply/i })
+    await user.click(applyButton)
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: queryKeys.sessionAvailabilityRoot() })
+      )
     })
   })
 
