@@ -96,6 +96,7 @@ EXPECTED_INVALIDATING_SYNCS = {
     "reconcile_request_lifecycle",  # original_bunk_requests
     "bunk_requests",  # original_bunk_requests
     "process_requests",  # original_bunk_requests (`processed`, via the Python processor)
+    "jotform_submissions",  # jotform_forms, jotform_submissions, jotform_answers
 }
 
 
