@@ -91,7 +91,8 @@ def is_name_shaped(text: str) -> bool:
         words = item.split()
         if len(words) > MAX_NAME_WORDS:
             return False
-        if any(re.sub(r"[^a-z']", "", word.lower()) in _PROSE_WORDS for word in words):
+        # The head of a contraction is the ruled word: "I'm" is "I", "we're" is "we".
+        if any(re.sub(r"[^a-z']", "", word.lower()).split("'")[0] in _PROSE_WORDS for word in words):
             return False
     return True
 

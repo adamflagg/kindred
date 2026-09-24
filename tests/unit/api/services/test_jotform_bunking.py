@@ -69,6 +69,10 @@ class TestItems:
             ("Not sure yet", False),
             ("Emma Johnson Garcia Kim Patel", False),  # more than 4 words
             ("Please put me near Liam", False),
+            # A contraction of a ruled word is still that word: "I'm" is "I".
+            ("I'm with Emma", False),
+            ("We're flexible", False),
+            ("Olivia O'Brien", True),
         ],
     )
     def test_name_shape(self, text: str, shaped: bool) -> None:
@@ -194,6 +198,15 @@ class TestChanged:
 
     def test_a_blank_refile_is_changed(self) -> None:
         assert request_changed([_v("08-03", "Emma Johnson"), _v("08-31", "no request")]) is True
+
+    def test_a_request_withdrawn_then_refiled_is_changed(self) -> None:
+        # Controller ruling D2: a blank filing is a real withdrawal, so
+        # re-requesting after it is a change, though the net markup is none.
+        versions = [_v("08-03", "Emma Johnson"), _v("08-20", ""), _v("09-16", "Emma Johnson")]
+        assert request_changed(versions) is True
+        change = resolve_change(versions)
+        assert change is not None
+        assert (change.kind, change.count) == ("identical", 2)
 
     def test_two_blank_filings_are_not_changed(self) -> None:
         assert request_changed([_v("08-03", "none"), _v("08-31", "")]) is False

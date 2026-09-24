@@ -391,8 +391,11 @@ export type BunkGraphResponse = {
  * How the request moved across a guest's filings.
  *
  * `list`: the first filing diffed against the current one, in the current
- * order with each drop re-inserted where it sat. `prose`: some filing is not
- * name-shaped, so every version is shown. `identical`: re-filed, same names.
+ * order with each drop re-inserted where it sat -- or, when the latest filing
+ * is blank, every name of the last named filing as removed. `prose`: some
+ * filing is not name-shaped, so every version is shown (after a blank
+ * re-file, the last named filing and the blank one). `identical`: re-filed,
+ * same names.
  * `from_date`/`to_date` rather than from/to: `from` is a Python keyword.
  */
 export type BunkingRequestChange = {

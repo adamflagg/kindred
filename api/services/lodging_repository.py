@@ -1427,10 +1427,13 @@ class LodgingRepository:
         answers to the roles the board shows (kindred#2759).
 
         Called only for a `bunking.manage` caller on an adult weekend. Cached per
-        year like every other roster read; the pull invalidates it through
-        `SYNC_JOB_WRITES`, and the admin link/ignore/unlink writes clear it
-        directly. Answers are narrowed to the mapped question ids of
-        `ROSTER_ROLES` -- identity and emergency answers never reach this read.
+        year like every other roster read. The Jotform pull invalidates it once
+        its `jotform_submissions` job has a `SYNC_JOB_WRITES` entry naming these
+        tables (until then an unclassified sync clears everything, which fails
+        safe), and the staff link/ignore/unlink writes must clear it directly
+        when they land. Answers are narrowed to each form's own mapped question
+        ids for `ROSTER_ROLES` -- identity and emergency answers never reach
+        this read.
         """
         forms = await self._page(
             JOTFORM_FORMS,
@@ -1446,21 +1449,27 @@ class LodgingRepository:
                 "sort": STABLE_SORT,
             },
         )
-        question_ids = sorted(
-            {
-                str(qid)
-                for form in forms
-                for role, qid in (getattr(form, "field_map", None) or {}).items()
-                if role in ROSTER_ROLES and qid
-            }
-        )
-        if not question_ids or not submissions:
+        # Each question id is paired with ITS form: Jotform ids are small
+        # per-form integers, so another form's identity question can share an
+        # id with this form's bunking question.
+        form_clauses: list[str] = []
+        for form in forms:
+            question_ids = sorted(
+                {
+                    str(qid)
+                    for role, qid in (getattr(form, "field_map", None) or {}).items()
+                    if role in ROSTER_ROLES and qid
+                }
+            )
+            if question_ids:
+                ids = " || ".join(f"question_id = '{pb_escape(qid)}'" for qid in question_ids)
+                form_clauses.append(f"(submission.form = '{pb_escape(str(form.id))}' && ({ids}))")
+        if not form_clauses or not submissions:
             return JotformBunkingRows(forms=forms, submissions=submissions, answers=[])
-        question_filter = " || ".join(f"question_id = '{pb_escape(qid)}'" for qid in question_ids)
         answers = await self._page(
             JOTFORM_ANSWERS,
             query_params={
-                "filter": f"submission.year = {year} && ({question_filter})",
+                "filter": f"submission.year = {year} && ({' || '.join(form_clauses)})",
                 "fields": "submission,question_id,answer_text,answer_json",
                 "sort": STABLE_SORT,
             },

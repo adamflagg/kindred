@@ -1324,6 +1324,29 @@ class TestFetchJotformBunkingRows:
             assert self._query(table).get("sort"), "paginated read must pin a stable sort key"
 
     @pytest.mark.asyncio
+    async def test_each_question_id_is_scoped_to_its_own_form(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        # Jotform question ids are per-form small integers, so one form's
+        # bunking question can share an id with another form's identity
+        # question. The read must pair each id with its form, or that other
+        # form's name answers enter the cached rows.
+        tables = self._collections(
+            pb,
+            forms=[
+                _record(id="form_ww", session_cm_id=1000002, field_map={"first_name": "3", "bunking_request": "21"}),
+                _record(id="form_mw", session_cm_id=1000003, field_map={"bunking_request": "3"}),
+            ],
+            submissions=[_record(id="sub_1")],
+            answers=[],
+        )
+
+        await repo.fetch_jotform_bunking_rows(2026)
+
+        answer_filter = self._query(tables["jotform_answers"])["filter"]
+        assert "(submission.form = 'form_mw' && (question_id = '3'))" in answer_filter
+        assert "(submission.form = 'form_ww' && (question_id = '21'))" in answer_filter
+        assert answer_filter.count("question_id = '3'") == 1
+
+    @pytest.mark.asyncio
     async def test_no_live_submission_reads_no_answers(self, repo: LodgingRepository, pb: MagicMock) -> None:
         tables = self._collections(
             pb,
