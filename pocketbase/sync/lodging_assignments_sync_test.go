@@ -513,6 +513,420 @@ func TestLodgingAssignmentsSyncPersonGrainNoEnrollment(t *testing.T) {
 	}
 }
 
+// --- #2769: the adult-weekend ingest, rehearsed at person grain ---
+//
+// The household-grain suite above pins idempotency, staff_touched, unresolved
+// strings and multi-room aliases. Adult weekends place PEOPLE, through a
+// different field and a different session index, and none of those four had
+// been pinned at that grain before the first real October values arrived.
+
+// cmIDSecondAdultProgram is a second adult program in the same season, for the
+// person who attends two. A generic id, not a real CampMinder session.
+const cmIDSecondAdultProgram = 9002001
+
+// adultWeekendFixture is one adult weekend with its registry and field def.
+type adultWeekendFixture struct {
+	womens string // camp_sessions PB id
+	def    string // custom_field_defs PB id of Reportable Family Camp Cabin
+	hh     string // persons carry a household relation, so the guests need one
+}
+
+func seedAdultWeekend(t *testing.T, app core.App) adultWeekendFixture {
+	t.Helper()
+	return adultWeekendFixture{
+		womens: addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+			testAdultSessionStart, testAdultSessionEnd, 2025),
+		def: addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin),
+		hh:  addHousehold(t, app, 9101, 2025),
+	}
+}
+
+// addGuest enrolls one person in the weekend and records their cabin
+// value. An empty session skips the enrollment.
+func (f adultWeekendFixture) addGuest(t *testing.T, app core.App, cmID int, session, value string) string {
+	t.Helper()
+	p := addPerson(t, app, cmID, 9101, 2025, f.hh)
+	if session != "" {
+		addAttendee(t, app, p, session, cmID, statusIDActiveEnrolled, 2025)
+	}
+	addPersonValue(t, app, p, f.def, value, testLastUpdated, 2025)
+	return p
+}
+
+// addDraftAssignmentsCollection adds the scenario table staff plan in. The
+// shared fixture leaves it out because the ingest never reads it; these tests
+// add it to prove the ingest never WRITES it either.
+func addDraftAssignmentsCollection(t *testing.T, app core.App) {
+	t.Helper()
+	units, err := app.FindCollectionByNameOrId("lodging_units")
+	if err != nil {
+		t.Fatalf("find lodging_units: %v", err)
+	}
+	drafts := core.NewBaseCollection("lodging_assignments_draft")
+	drafts.Fields.Add(&core.TextField{Name: "scenario"})
+	drafts.Fields.Add(&core.NumberField{Name: "session_cm_id", OnlyInt: true})
+	drafts.Fields.Add(&core.NumberField{Name: "year"})
+	drafts.Fields.Add(&core.RelationField{Name: "units", CollectionId: units.Id, MaxSelect: 20})
+	drafts.Fields.Add(&core.NumberField{Name: "household_cm_id"})
+	drafts.Fields.Add(&core.NumberField{Name: "person_cm_id"})
+	drafts.Fields.Add(&core.TextField{Name: "source"})
+	drafts.Fields.Add(&core.BoolField{Name: "staff_touched"})
+	drafts.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
+	saveCollection(t, app, drafts)
+}
+
+func syncAdultYear(t *testing.T, app core.App) *LodgingAssignmentsSync {
+	t.Helper()
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	return s
+}
+
+// TestLodgingAssignmentsSyncPersonGrainIsIdempotent: the daily custom-values
+// pass (#2760) re-reads every adult cabin value each day, so the ingest sees
+// the same value again and again. A second run must neither duplicate the row
+// nor re-save it nor append a history row.
+func TestLodgingAssignmentsSyncPersonGrainIsIdempotent(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedAdultWeekend(t, app)
+	unit := addUnit(t, app, "test-lodge-1", 2025)
+	addAlias(t, app, "Lodge 1", []string{unit}, 0, 0)
+	f.addGuest(t, app, 5101, f.womens, "Lodge 1")
+
+	syncAdultYear(t, app)
+	second := syncAdultYear(t, app)
+
+	if st := second.GetStats(); st.Created != 0 || st.Updated != 0 {
+		t.Errorf("second run created %d and updated %d rows; an unchanged value must write nothing",
+			st.Created, st.Updated)
+	}
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Errorf("assignments after two runs = %d, want 1", len(rows))
+	}
+	hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+	if len(hist) != 1 {
+		t.Errorf("history rows after two runs = %d, want 1 (nothing moved)", len(hist))
+	}
+}
+
+// TestLodgingAssignmentsSyncPersonGrainRespectsStaffTouched: a live person row
+// marked staff_touched is left alone even when CampMinder's value disagrees,
+// and the ingest never writes the scenario table staff actually plan in.
+func TestLodgingAssignmentsSyncPersonGrainRespectsStaffTouched(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	addDraftAssignmentsCollection(t, app)
+	f := seedAdultWeekend(t, app)
+	lodge1 := addUnit(t, app, "test-lodge-1", 2025)
+	lodge2 := addUnit(t, app, "test-lodge-2", 2025)
+	addAlias(t, app, "Lodge 1", []string{lodge1}, 0, 0)
+	f.addGuest(t, app, 5101, f.womens, "Lodge 1")
+	draftID := saveRecord(t, app, "lodging_assignments_draft", map[string]any{
+		"scenario": "rehearsal", "session_cm_id": cmIDWomensWeekend, "year": 2025,
+		"units": []string{lodge2}, "person_cm_id": 5101, "source": "staff_manual", "staff_touched": true,
+	})
+	draftBefore, err := app.FindRecordById("lodging_assignments_draft", draftID)
+	if err != nil {
+		t.Fatalf("find draft: %v", err)
+	}
+	draftStamp := draftBefore.GetString("updated")
+
+	syncAdultYear(t, app)
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(rows))
+	}
+	rows[0].Set("staff_touched", true)
+	rows[0].Set("units", []string{lodge2})
+	if err := app.Save(rows[0]); err != nil {
+		t.Fatalf("mark the live row staff_touched: %v", err)
+	}
+
+	second := syncAdultYear(t, app)
+
+	after, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(after) != 1 {
+		t.Fatalf("assignments after the second run = %d, want 1", len(after))
+	}
+	if units := after[0].GetStringSlice("units"); len(units) != 1 || units[0] != lodge2 {
+		t.Errorf("units = %v, want [%q]; the ingest overwrote a staff_touched person row", units, lodge2)
+	}
+	if second.GetStats().Skipped < 1 {
+		t.Errorf("Skipped = %d, want at least 1 for the staff_touched row", second.GetStats().Skipped)
+	}
+
+	drafts, _ := app.FindRecordsByFilter("lodging_assignments_draft", "", "", 0, 0)
+	if len(drafts) != 1 {
+		t.Fatalf("draft rows = %d, want the 1 seeded; the ingest wrote the scenario table", len(drafts))
+	}
+	if drafts[0].GetString("updated") != draftStamp {
+		t.Error("the ingest re-saved a scenario row; it must never touch lodging_assignments_draft")
+	}
+	if units := drafts[0].GetStringSlice("units"); len(units) != 1 || units[0] != lodge2 {
+		t.Errorf("draft units = %v, want [%q]", units, lodge2)
+	}
+}
+
+// TestLodgingAssignmentsSyncPersonGrainQueuesUnresolvedAlias: a hand-typed
+// string no alias covers queues an unresolved_alias row, places nothing, and
+// keeps the observation in history under the verbatim string.
+func TestLodgingAssignmentsSyncPersonGrainQueuesUnresolvedAlias(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedAdultWeekend(t, app)
+	addUnit(t, app, "test-lodge-1", 2025) // gives 2025 a registry; see #2061's guard
+	f.addGuest(t, app, 5101, f.womens, "tent by the creek")
+
+	syncAdultYear(t, app)
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 0 {
+		t.Errorf("an unresolvable string produced %d assignments; want 0", len(rows))
+	}
+	issues := issuesOfKind(t, app, issueUnresolvedAlias)
+	if len(issues) != 1 {
+		t.Fatalf("unresolved_alias rows = %d, want 1", len(issues))
+	}
+	if got := issues[0].GetString("raw_value"); got != "tent by the creek" {
+		t.Errorf("raw_value = %q; the verbatim string must survive", got)
+	}
+	if got := issues[0].GetString("source_field"); got != fieldNameReportableFamilyCampCabin {
+		t.Errorf("source_field = %q, want %q", got, fieldNameReportableFamilyCampCabin)
+	}
+	hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+	if len(hist) != 1 || hist[0].GetString("new_unit") != "tent by the creek" ||
+		hist[0].GetInt("person_cm_id") != 5101 || hist[0].GetInt("session_cm_id") != cmIDWomensWeekend {
+		t.Error("the unresolvable placement left no person-grain history trace")
+	}
+}
+
+// TestLodgingAssignmentsSyncSingleWeekendUnresolvedWritesHistoryOnce: the daily
+// custom-values pass (#2760) re-reads every adult cabin value each day, so a
+// single-weekend string no alias covers reaches the ingest again and again. Its
+// observation is written to history once, not once a day -- the same dedup the
+// history-attributed path uses. A CHANGED unresolved string is a new
+// observation and still records.
+func TestLodgingAssignmentsSyncSingleWeekendUnresolvedWritesHistoryOnce(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedAdultWeekend(t, app)
+	addUnit(t, app, "test-lodge-1", 2025) // gives 2025 a registry; see #2061's guard
+	f.addGuest(t, app, 5101, f.womens, "tent by the creek")
+
+	unresolvedRows := func() []*core.Record {
+		t.Helper()
+		rows, err := app.FindRecordsByFilter("lodging_assignment_history",
+			"old_unit = '' && person_cm_id = 5101", "created", 0, 0)
+		if err != nil {
+			t.Fatalf("find history: %v", err)
+		}
+		return rows
+	}
+
+	syncAdultYear(t, app)
+	syncAdultYear(t, app)
+	if got := unresolvedRows(); len(got) != 1 {
+		t.Fatalf("history rows after two runs of an unchanged unresolved value = %d, want 1", len(got))
+	}
+
+	vals, _ := app.FindRecordsByFilter("person_custom_values", "", "", 0, 0)
+	if len(vals) != 1 {
+		t.Fatalf("person_custom_values = %d, want 1", len(vals))
+	}
+	vals[0].Set("value", "hammock by the lake")
+	vals[0].Set("last_updated", "2025-05-18T11:02:44.0000000+00:00")
+	if err := app.Save(vals[0]); err != nil {
+		t.Fatalf("change the value: %v", err)
+	}
+
+	syncAdultYear(t, app)
+	got := unresolvedRows()
+	if len(got) != 2 {
+		t.Fatalf("history rows after the value changed = %d, want 2 (a changed value is a new observation)", len(got))
+	}
+	labels := []string{got[0].GetString("new_unit"), got[1].GetString("new_unit")}
+	if !slices.Contains(labels, "tent by the creek") || !slices.Contains(labels, "hammock by the lake") {
+		t.Errorf("history labels = %v, want both observed strings", labels)
+	}
+}
+
+// TestLodgingAssignmentsSyncPersonGrainMultiMemberAlias: one person's string can
+// name two rooms (a suite typed as one value). It lands as ONE person row naming
+// both, never as two rows or a household row.
+func TestLodgingAssignmentsSyncPersonGrainMultiMemberAlias(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedAdultWeekend(t, app)
+	bldg := addContainerUnit(t, app, "test-suite", 2025)
+	room1 := addUnitWithParent(t, app, "test-suite-1", bldg, 2025)
+	room2 := addUnitWithParent(t, app, "test-suite-2", bldg, 2025)
+	addAlias(t, app, "Suite 1 and 2", []string{room1, room2}, 0, 0)
+	f.addGuest(t, app, 5101, f.womens, "Suite 1 and 2")
+
+	syncAdultYear(t, app)
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(rows))
+	}
+	got := rows[0]
+	if units := got.GetStringSlice("units"); len(units) != 2 ||
+		!slices.Contains(units, room1) || !slices.Contains(units, room2) {
+		t.Errorf("units = %v, want both %q and %q", units, room1, room2)
+	}
+	if got.GetInt("person_cm_id") != 5101 || got.GetInt("household_cm_id") != 0 {
+		t.Errorf("grain = (household %d, person %d), want (0, 5101)",
+			got.GetInt("household_cm_id"), got.GetInt("person_cm_id"))
+	}
+	if got.GetInt("party_size") != 1 {
+		t.Errorf("party_size = %d, want 1; two rooms do not make two guests", got.GetInt("party_size"))
+	}
+}
+
+// TestLodgingAssignmentsSyncAdultWeekendRehearsal is #2769's rehearsal in one
+// run: a Women's Weekend where staff have typed a mix of values -- two guests
+// sharing a room, a differently-cased alias, a two-room string, a string no
+// alias covers, a guest with no enrollment, and a guest at two adult programs
+// in a season before history attribution (the three 2025 people in that shape).
+// Every value is accounted for as a person row or a queue row, no household row
+// appears, and a second run changes nothing.
+func TestLodgingAssignmentsSyncAdultWeekendRehearsal(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	addDraftAssignmentsCollection(t, app)
+	f := seedAdultWeekend(t, app)
+	second := addSession(t, app, cmIDSecondAdultProgram, "Second Adult Program", "adult",
+		"2025-10-23 07:00:00.000Z", "2025-10-26 07:00:00.000Z", 2025)
+	lodge1 := addUnit(t, app, "test-lodge-1", 2025)
+	lodge2 := addUnit(t, app, "test-lodge-2", 2025)
+	bldg := addContainerUnit(t, app, "test-suite", 2025)
+	room1 := addUnitWithParent(t, app, "test-suite-1", bldg, 2025)
+	room2 := addUnitWithParent(t, app, "test-suite-2", bldg, 2025)
+	addAlias(t, app, "Lodge 1", []string{lodge1}, 0, 0)
+	addAlias(t, app, "Lodge 2", []string{lodge2}, 0, 0)
+	addAlias(t, app, "Suite 1 and 2", []string{room1, room2}, 0, 0)
+
+	f.addGuest(t, app, 5101, f.womens, "Lodge 1")
+	f.addGuest(t, app, 5102, f.womens, "Lodge 1")
+	f.addGuest(t, app, 5103, f.womens, "  lodge 2 ")
+	f.addGuest(t, app, 5104, f.womens, "Suite 1 and 2")
+	f.addGuest(t, app, 5105, f.womens, "tent by the creek")
+	f.addGuest(t, app, 5106, "", "Lodge 2")
+	both := f.addGuest(t, app, 5107, f.womens, "Lodge 2")
+	addAttendee(t, app, both, second, 5107, statusIDActiveEnrolled, 2025)
+
+	first := syncAdultYear(t, app)
+
+	want := map[int][]string{
+		5101: {lodge1}, 5102: {lodge1}, 5103: {lodge2}, 5104: {room1, room2},
+	}
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != len(want) {
+		t.Errorf("assignments = %d, want %d (one per enrolled, resolvable, single-program guest)",
+			len(rows), len(want))
+	}
+	for _, r := range rows {
+		if r.GetInt("household_cm_id") != 0 {
+			t.Errorf("row %s is household grain (household_cm_id %d); adult weekends place people",
+				r.Id, r.GetInt("household_cm_id"))
+		}
+		if r.GetInt("session_cm_id") != cmIDWomensWeekend {
+			t.Errorf("person %d placed in session %d, want %d",
+				r.GetInt("person_cm_id"), r.GetInt("session_cm_id"), cmIDWomensWeekend)
+		}
+		units, ok := want[r.GetInt("person_cm_id")]
+		if !ok {
+			t.Errorf("person %d was placed; want no row for them", r.GetInt("person_cm_id"))
+			continue
+		}
+		got := r.GetStringSlice("units")
+		if len(got) != len(units) {
+			t.Errorf("person %d units = %v, want %v", r.GetInt("person_cm_id"), got, units)
+			continue
+		}
+		for _, u := range units {
+			if !slices.Contains(got, u) {
+				t.Errorf("person %d units = %v, want %v", r.GetInt("person_cm_id"), got, units)
+			}
+		}
+	}
+
+	if got := issuesOfKind(t, app, issueUnresolvedAlias); len(got) != 1 {
+		t.Errorf("unresolved_alias rows = %d, want 1", len(got))
+	}
+	if got := issuesOfKind(t, app, issueNoSession); len(got) != 1 || got[0].GetInt("person_cm_id") != 5106 {
+		t.Errorf("no_session rows = %d, want 1 naming person 5106", len(got))
+	}
+	amb := issuesOfKind(t, app, issueAmbiguousSession)
+	if len(amb) != 1 || amb[0].GetInt("person_cm_id") != 5107 {
+		t.Fatalf("ambiguous_session rows = %d, want 1 naming the two-program person 5107", len(amb))
+	}
+	var candidates []int
+	if err := amb[0].UnmarshalJSONField("candidate_session_cm_ids", &candidates); err != nil {
+		t.Fatalf("read candidates: %v", err)
+	}
+	if !slices.Contains(candidates, cmIDWomensWeekend) || !slices.Contains(candidates, cmIDSecondAdultProgram) {
+		t.Errorf("candidates = %v, want both adult programs", candidates)
+	}
+	if first.GetStats().Created != len(want) {
+		t.Errorf("first run Created = %d, want %d", first.GetStats().Created, len(want))
+	}
+
+	// placedHistory and unresolvedHistory are counted apart so a failure names
+	// which path grew. The unresolved "tent by the creek" takes the
+	// single-weekend path, which de-dupes its observation the same way the
+	// history-attributed path does (unresolvedHistoryRecorded): an unchanged
+	// re-run adds no row for it either.
+	placedHistory := func() int {
+		hist, _ := app.FindRecordsByFilter("lodging_assignment_history",
+			"old_unit = '' && new_unit != 'tent by the creek'", "", 0, 0)
+		return len(hist)
+	}
+	historyBefore := placedHistory()
+	unresolvedHistory := func() int {
+		hist, _ := app.FindRecordsByFilter("lodging_assignment_history",
+			"old_unit = '' && new_unit = 'tent by the creek'", "", 0, 0)
+		return len(hist)
+	}
+	unresolvedBefore := unresolvedHistory()
+	issueCount := func() int {
+		all, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+		return len(all)
+	}
+	issuesBefore := issueCount()
+
+	again := syncAdultYear(t, app)
+
+	if st := again.GetStats(); st.Created != 0 || st.Updated != 0 || st.Deleted != 0 {
+		t.Errorf("second run wrote rows (created %d, updated %d, deleted %d); want none",
+			st.Created, st.Updated, st.Deleted)
+	}
+	after, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(after) != len(want) {
+		t.Errorf("assignments after the second run = %d, want %d", len(after), len(want))
+	}
+	if got := placedHistory(); got != historyBefore {
+		t.Errorf("placement history rows went %d -> %d on an unchanged re-run", historyBefore, got)
+	}
+	if got := unresolvedHistory(); got != unresolvedBefore {
+		t.Errorf("unresolved-value history rows went %d -> %d on an unchanged re-run; "+
+			"the observation must be written once, not once a day", unresolvedBefore, got)
+	}
+	if got := issueCount(); got != issuesBefore {
+		t.Errorf("queue rows went %d -> %d on an unchanged re-run; Flush must upsert, not append",
+			issuesBefore, got)
+	}
+	drafts, _ := app.FindRecordsByFilter("lodging_assignments_draft", "", "", 0, 0)
+	if len(drafts) != 0 {
+		t.Errorf("the ingest wrote %d scenario rows; it must never touch lodging_assignments_draft", len(drafts))
+	}
+}
+
 // TestLodgingAssignmentsRegisteredEverywhere: a job registered in some places
 // but not others is the single most common defect when adding a sync
 // (docs/architecture/sync-layer.md's own "Common Mistakes" table). Each miss is

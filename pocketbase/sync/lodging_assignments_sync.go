@@ -645,8 +645,8 @@ func (s *LodgingAssignmentsSync) ingestFromHistory(in *ingestContext, weekends [
 
 // writeAttributed writes one value already attributed to exactly one weekend,
 // and reports whether the weekend now has (or on a dry run, would have) a
-// placement behind it. A row staff moved counts: the placement exists and a
-// human owns it.
+// placement behind it. A staff_touched row counts: the placement exists and the
+// ingest leaves it alone (see upsertAssignment).
 func (s *LodgingAssignmentsSync) writeAttributed(in *ingestContext, res AliasResolution, attr Attribution) bool {
 	// History records the OBSERVED label whether or not it resolved --
 	// old_unit / new_unit are TEXT for exactly this reason.
@@ -678,19 +678,18 @@ func (s *LodgingAssignmentsSync) writeAttributed(in *ingestContext, res AliasRes
 		// Nothing to point a placement at, but the observation is preserved in
 		// history and the string is already in the work queue.
 		//
-		// A weekend the history rule attributed is re-derived on every daily run,
-		// so its unresolved observation is written once, not once a day. The
-		// single-weekend path keeps its own (pre-existing, #2061) behavior.
-		if in.fromHistory {
-			seen, err := s.unresolvedHistoryRecorded(in, attr.SessionCMID(), label)
-			if err != nil {
-				slog.Error("Checking unresolved-placement history", "raw", in.Raw, "error", err)
-				s.Stats.Errors++
-				return false
-			}
-			if seen {
-				return false
-			}
+		// Every value -- single-weekend or history-attributed -- is re-read on
+		// every daily run (#2760 brings adult values daily), so an unresolved
+		// observation is written once, not once a day. A changed string is a
+		// new label and still records.
+		seen, err := s.unresolvedHistoryRecorded(in, attr.SessionCMID(), label)
+		if err != nil {
+			slog.Error("Checking unresolved-placement history", "raw", in.Raw, "error", err)
+			s.Stats.Errors++
+			return false
+		}
+		if seen {
+			return false
 		}
 		if err := s.recordHistory(in, attr.SessionID, attr.SessionCMID(), label); err != nil {
 			slog.Error("Recording unresolved-placement history", "raw", in.Raw, "error", err)
@@ -809,8 +808,13 @@ func (s *LodgingAssignmentsSync) placementFor(res AliasResolution) []string {
 // upsertAssignment writes the placement and appends a history row when the
 // observed label differs from what is stored.
 //
-// A staff_touched row is left untouched: a human moved that party on the board
-// and CampMinder must not undo it. staff_touched is one-way and GUI-written.
+// A staff_touched row is left untouched. The guard is defensive: NO code path
+// sets staff_touched on a live row today. lodging_write_service sets it on
+// scenario rows (lodging_assignments_draft) only, where staff actually plan, and
+// this ingest writes false on create. It keeps a future live-board write from
+// being reverted by the next CampMinder value, so a live row skipped here is
+// not evidence that a human moved that party. Where staff's scenario disagrees
+// with an ingested value, the scenario/CampMinder compare is what shows it.
 func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.Time) error {
 	if err := ValidateAssignmentGrain(AssignmentGrain{
 		HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID,
@@ -1213,8 +1217,8 @@ func (s *LodgingAssignmentsSync) activeSeasonYear() int {
 // hiccup can't read as "everyone cancelled" and empty the whole session.
 //
 // staff_touched is NOT a guard here, unlike upsertAssignment's write-path
-// skip: that skip protects a staff move from being overwritten by a
-// CONFLICTING campminder_sync value, but a cancelled household is not
+// skip: that skip would protect a live-row staff move (none is written today)
+// from a CONFLICTING campminder_sync value, but a cancelled household is not
 // attending regardless of who last touched its placement -- the same ruling
 // #2028 makes for the draft-null pass in stranded_assignment_cleanup.go.
 //
