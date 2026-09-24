@@ -458,7 +458,9 @@ class TestFamilyCampHousing:
 # --------------------------------------------------------------------------
 
 
-def weekend_cabin(session_cm_id: int = 900, cabin_name: str = "Cedar Lodge", cabin_name_raw: str = "Cedar Lodge"):
+def weekend_cabin(
+    session_cm_id: int = 900, cabin_name: str = "Cedar Lodge", cabin_name_raw: str = "Cedar Lodge"
+) -> HouseholdJourneyWeekendCabin:
     return HouseholdJourneyWeekendCabin(
         session_cm_id=session_cm_id, cabin_name=cabin_name, cabin_name_raw=cabin_name_raw
     )
@@ -1090,7 +1092,7 @@ class TestJourneyTypesMatchTheClient:
         and the Siblings panel still reads it. The server's copy must name the
         same programs, or one surface would show a year the other hides."""
         predicates = Path(__file__).resolve().parents[4] / "frontend" / "src" / "utils" / "sessionTypePredicates.ts"
-        match = re.search(r"export const CAMPER_DETAIL_TYPES = \[(.*?)\] as const", predicates.read_text(), re.S)
+        match = re.search(r"export const CAMPER_DETAIL_TYPES = \[(.*?)\] as const", predicates.read_text(), re.DOTALL)
         assert match is not None
         detail = set(re.findall(r"'([a-z]+)'", match.group(1)))
         assert set(CAMPER_JOURNEY_SESSION_TYPES) == detail | {"family"}
