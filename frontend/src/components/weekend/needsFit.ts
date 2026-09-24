@@ -33,8 +33,10 @@
  * testable without rendering ~82 cards.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { partySize } from './boardLayout'
+import { occupancyClaim } from './adultCapacity'
+import { partySize, type SlotOccupancy } from './boardLayout'
 import { askedNeedGlyphs, needVerdict } from './needGlyphs'
+import { coveringWriteIns, writeInDemand } from './writeIn'
 
 /** Worst first. The order of this array IS the precedence. */
 const FIT_ORDER = ['unmet', 'partial', 'fits'] as const
@@ -123,6 +125,37 @@ export type DragFit =
 export interface DragCapacity {
   readonly known: boolean
   readonly free: number
+}
+
+/**
+ * A card's drag-time `DragCapacity` — built here, once, so both marks that read
+ * it (`resolveDragFit`'s match, `hasNoRoom`'s red) follow one rule.
+ *
+ * ON A FAMILY WEEKEND it is what `LodgingUnitCard` used to build inline: beds,
+ * less the placed parties, less what the write-ins covering the card take
+ * (kindred#2503), plus the beds the family in flight already holds HERE
+ * (`heldHere`) so a family is never told it will not fit the cabin it is in.
+ * `known` is withheld on an unmeasured card (`writeInDemand`'s `usable`) and on
+ * a straddling placement (`spanWidth > 0`, see `slotOccupancy`).
+ *
+ * ON AN ADULT WEEKEND (kindred#2765) the limit is `occupancyClaim`'s: 8 guests
+ * on a shared cabin, and NO claim anywhere else — `known: false`, so neither
+ * mark can fire on a house or a room however many guests are in it. An unsized
+ * write-in counts one guest (`writeInDemand`'s adult branch).
+ */
+export function unitDragCapacity(
+  unit: LodgingUnitRow,
+  beds: number | null,
+  occupancy: SlotOccupancy,
+  heldHere: number,
+  isAdult: boolean
+): DragCapacity {
+  const { limit } = occupancyClaim(unit, beds, isAdult)
+  const { consumed, usable } = writeInDemand(limit, coveringWriteIns(unit), isAdult)
+  return {
+    known: usable && occupancy.spanWidth === 0,
+    free: limit === null ? 0 : limit - occupancy.occupants - consumed + heldHere,
+  }
 }
 
 /**

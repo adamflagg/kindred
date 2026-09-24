@@ -784,3 +784,55 @@ describe('partitionByGroup — pins without hiding', () => {
     expect(pinned.map((c) => c.fit)).toEqual(['fits', 'unmet'])
   })
 })
+
+describe('placementCandidates on an adult weekend (kindred#2765)', () => {
+  /*
+   * The picker's own `capacityVerdict` follows the adult rule: a shared cabin
+   * grades guests against 8, every other unit makes no capacity claim. Nothing
+   * is dropped, as ever — the verdict is a mark.
+   */
+  const guest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 71,
+    display_name: 'Mia Chen',
+    sort_name: 'Chen',
+    adults: [],
+    children: [],
+    party_size: 1,
+  })
+
+  it('marks a 9th guest on a shared cabin as over, even with beds left', () => {
+    const [row] = placementCandidates([guest], unit({ sleeps: 15 }), [], 8, true)
+    expect(row?.fit).toBe('unmet')
+    expect(row?.notes).toEqual(['Over capacity · needs 1, 0 free'])
+  })
+
+  it('lets the 8th guest in', () => {
+    const [row] = placementCandidates([guest], unit({ sleeps: 15 }), [], 7, true)
+    expect(row?.fit).toBe('fits')
+  })
+
+  it('makes no capacity claim on a single-party unit holding more guests than beds', () => {
+    const [row] = placementCandidates(
+      [guest],
+      unit({ shareability: 'single_party', sleeps: 4 }),
+      [],
+      5,
+      true
+    )
+    expect(row?.fit).toBe('fits')
+    expect(row?.notes).toEqual([])
+  })
+
+  it('grades the same unit by beds on a family weekend, unchanged', () => {
+    const [row] = placementCandidates(
+      [guest],
+      unit({ shareability: 'single_party', sleeps: 4 }),
+      [],
+      5,
+      false
+    )
+    expect(row?.fit).toBe('unmet')
+  })
+})
