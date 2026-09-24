@@ -84,6 +84,7 @@ function journeyWith(
     error: null,
     teenCabinsByWeekend: new Map(),
     adultCabinsByWeekend: new Map(),
+    familyCabinsByWeekend: new Map(),
   }
 }
 
@@ -524,6 +525,30 @@ describe('CamperDetailsPanel', () => {
         expect(within(grid).getByText('2025')).toBeInTheDocument()
       })
 
+      // Owner ruling 2026-09-24 (on #2814) — seen missing on exactly this
+      // sidebar: a family weekend shows the household's cabin.
+      it("shows the household's cabin on this year's family weekend", async () => {
+        setupDeclinedRequestMocks()
+        serveEnrollments([SUMMER_2A, FAMILY_FC6], { 1356: 'B-1' })
+        mockUseCamperJourney.mockReturnValue({
+          ...journeyWith([]),
+          familyCabinsByWeekend: new Map([
+            ['2025:1309', { cabinName: 'Meadow House 1', cabinNameRaw: 'Meadow House 1' }],
+          ]),
+        })
+
+        render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+        const grid = await screen.findByTestId('journey-rows')
+        await waitFor(() =>
+          expect(
+            within(grid)
+              .getAllByTestId('journey-cabin-cell')
+              .map((c) => c.textContent)
+          ).toEqual(['B-1', 'Meadow House 1'])
+        )
+      })
+
       it('shows two summer sessions in one year as two rows, even in the same cabin', async () => {
         setupDeclinedRequestMocks()
         serveEnrollments([SUMMER_2A, SUMMER_3A], { 1356: 'B-1', 1344: 'B-1' })
@@ -827,6 +852,7 @@ describe('CamperDetailsPanel', () => {
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
         adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: true,
         error: null,
       })
@@ -848,6 +874,7 @@ describe('CamperDetailsPanel', () => {
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
         adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: true,
         error: null,
       })
@@ -867,6 +894,7 @@ describe('CamperDetailsPanel', () => {
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
         adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: false,
         error: new Error('boom'),
       })
@@ -888,6 +916,7 @@ describe('CamperDetailsPanel', () => {
         counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
         teenCabinsByWeekend: new Map(),
         adultCabinsByWeekend: new Map(),
+        familyCabinsByWeekend: new Map(),
         isLoading: false,
         error: new Error('boom'),
       })

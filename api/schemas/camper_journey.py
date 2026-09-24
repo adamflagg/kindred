@@ -63,8 +63,8 @@ class CamperJourneyResponse(BaseModel):
     `rows` are the years BEFORE it, newest year first and chronological
     within a year. The viewed year itself is built on the client, from live
     attendees and live bunks, by every journey surface alike (owner rulings
-    2026-09-24, kindred#2812); the three fields after `counts` are what that
-    build needs from here.
+    2026-09-24, kindred#2812); `current_year_parent_rows` and the three cabin
+    lists are what that build needs from here.
     """
 
     rows: list[CamperJourneyRow] = Field(default_factory=list)
@@ -83,3 +83,10 @@ class CamperJourneyResponse(BaseModel):
     # bunk, exactly as the prior-year rows above.
     teen_cabins: list[PersonHousingWeekend] = Field(default_factory=list)
     adult_cabins: list[PersonHousingWeekend] = Field(default_factory=list)
+    # The household's cabin per family weekend, every year it was enrolled,
+    # by the rule a family row above is labelled with: the weekend's own live
+    # cabin where every weekend that season has one (kindred#2775), the year's
+    # one cabin otherwise. The client labels a live current-year family row
+    # from it -- a child's row shows the cabin their parent's row shows (owner
+    # ruling 2026-09-24, on #2814). A weekend with no cabin has no entry.
+    family_cabins: list[PersonHousingWeekend] = Field(default_factory=list)

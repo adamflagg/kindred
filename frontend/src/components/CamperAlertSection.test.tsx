@@ -310,6 +310,7 @@ vi.mock('../hooks/camper/useCamperJourney', () => ({
     error: null,
     teenCabinsByWeekend: new Map(),
     adultCabinsByWeekend: new Map(),
+    familyCabinsByWeekend: new Map(),
   }),
 }))
 

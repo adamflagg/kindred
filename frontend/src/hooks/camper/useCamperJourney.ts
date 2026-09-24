@@ -52,6 +52,12 @@ export interface UseCamperJourneyResult {
    * CampMinder bunk — the rule the server applies to prior years.
    */
   adultCabinsByWeekend: Map<string, CabinLabel>
+  /**
+   * The household's cabin per family weekend, keyed the same way (owner
+   * ruling 2026-09-24, on #2814): a live current-year family row — a child's
+   * own — reads the cabin its parent's row shows, never the day group.
+   */
+  familyCabinsByWeekend: Map<string, CabinLabel>
 }
 
 export function useCamperJourney(
@@ -83,6 +89,11 @@ export function useCamperJourney(
     () => (adultCabins ? cabinsByWeekend(adultCabins) : NO_CABINS),
     [adultCabins]
   )
+  const familyCabins = journeyQ.data?.familyCabins
+  const familyCabinsByWeekend = useMemo(
+    () => (familyCabins ? cabinsByWeekend(familyCabins) : NO_CABINS),
+    [familyCabins]
+  )
 
   const error = journeyQ.error ?? null
   return {
@@ -95,5 +106,6 @@ export function useCamperJourney(
     error,
     teenCabinsByWeekend,
     adultCabinsByWeekend,
+    familyCabinsByWeekend,
   }
 }

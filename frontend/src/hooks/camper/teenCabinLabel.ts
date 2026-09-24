@@ -3,8 +3,8 @@
  * extended to adult programs by kindred#2812: `useCamperHistory`'s rows, which
  * every journey surface shows, and the board modal's quick-stats bar. The
  * prior-year half of the same rule runs on the server since kindred#2776
- * (`api/services/camper_journey_service.py`), off the same `teen_cabins` and
- * `adult_cabins` lists the journey endpoint passes through. A cabin
+ * (`api/services/camper_journey_service.py`), off the same `teen_cabins`,
+ * `adult_cabins` and `family_cabins` lists the journey endpoint passes through. A cabin
  * label is keyed `${year}:${sessionCmId}` off a person-housing weekend row.
  * Kept in its own module (not `fetchCamperJourney.ts`) so a consumer that
  * only needs the current-year rule doesn't have to import that much-mocked
@@ -12,6 +12,7 @@
  */
 import {
   isAdultSessionType,
+  isFamilySessionType,
   isQuestSessionType,
   isTeenProgramType,
 } from '../../utils/sessionTypePredicates'
@@ -48,6 +49,20 @@ export function cabinsByWeekend(weekends: PersonHousingWeekendRow[]): Map<string
   return map
 }
 
+/**
+ * The server-named cabins a current-year row can read, each keyed
+ * `${year}:${sessionCmId}` (`cabinsByWeekend`). One object rather than three
+ * positional maps of the same type, which would swap silently.
+ */
+export interface ServerCabins {
+  /** Registry-resolved TLI/SCIT cabins (Q9). */
+  teen: Map<string, CabinLabel>
+  /** Attributed adult-program cabins (kindred#2812). */
+  adult: Map<string, CabinLabel>
+  /** The household's cabin per family weekend (owner ruling 2026-09-24, on #2814). */
+  family: Map<string, CabinLabel>
+}
+
 export interface CurrentYearCabin {
   bunkName?: string
   bunkNameRecorded?: string
@@ -58,9 +73,12 @@ export interface CurrentYearCabin {
  * registry-resolved name from `teenCabins`, plus the as-typed string when it
  * disagrees — or nothing at all when the registry doesn't resolve it (a
  * program group like "SCIT A"/"TLI"). An adult-program session shows ONLY the
- * cabin the server attributed to that weekend, from `adultCabins`, the same
- * way (kindred#2812) — or nothing while nobody has typed one. Never the raw
- * CampMinder bunk, for either. Quest never shows a cabin at all — its "bunk"
+ * cabin the server attributed to that weekend, from `cabins.adult`, the same
+ * way (kindred#2812) — or nothing while nobody has typed one. A family weekend
+ * shows ONLY the household's cabin for it, from `cabins.family` — the cabin
+ * a parent's row for the same weekend shows (owner ruling 2026-09-24, on
+ * #2814) — or nothing. Never the raw CampMinder bunk, for any of the three:
+ * for a family weekend that is the day group (kindred#2466). Quest never shows a cabin at all — its "bunk"
  * is a trip name, not housing. Every other session type keeps its raw bunk
  * name unchanged (main/embedded/ag's live cabin assignment is untouched by
  * this rule).
@@ -70,15 +88,16 @@ export function currentYearCabin(
   year: number,
   sessionCmId: number,
   rawBunkName: string | null | undefined,
-  teenCabins: Map<string, CabinLabel>,
-  adultCabins: Map<string, CabinLabel>
+  cabins: ServerCabins
 ): CurrentYearCabin {
   if (isQuestSessionType(sessionType)) return {}
   const serverNamed = isTeenProgramType(sessionType)
-    ? teenCabins
+    ? cabins.teen
     : isAdultSessionType(sessionType)
-      ? adultCabins
-      : undefined
+      ? cabins.adult
+      : isFamilySessionType(sessionType)
+        ? cabins.family
+        : undefined
   if (serverNamed) {
     const housing = serverNamed.get(`${String(year)}:${String(sessionCmId)}`)
     if (!housing) return {}

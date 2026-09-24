@@ -444,8 +444,8 @@ export type CamperJourneyCounts = {
  * `rows` are the years BEFORE it, newest year first and chronological
  * within a year. The viewed year itself is built on the client, from live
  * attendees and live bunks, by every journey surface alike (owner rulings
- * 2026-09-24, kindred#2812); the three fields after `counts` are what that
- * build needs from here.
+ * 2026-09-24, kindred#2812); `current_year_parent_rows` and the three cabin
+ * lists are what that build needs from here.
  */
 export type CamperJourneyResponse = {
   /**
@@ -465,6 +465,10 @@ export type CamperJourneyResponse = {
    * Adult Cabins
    */
   adult_cabins?: Array<PersonHousingWeekend>
+  /**
+   * Family Cabins
+   */
+  family_cabins?: Array<PersonHousingWeekend>
 }
 
 /**

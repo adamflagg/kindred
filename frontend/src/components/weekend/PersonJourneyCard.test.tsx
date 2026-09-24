@@ -43,6 +43,7 @@ const feed = {
     error: null as Error | null,
     teenCabinsByWeekend: new Map<string, CabinLabel>(),
     adultCabinsByWeekend: new Map<string, CabinLabel>(),
+    familyCabinsByWeekend: new Map<string, CabinLabel>(),
   },
 }
 vi.mock('../../hooks/camper/useCamperJourney', () => ({
@@ -109,10 +110,36 @@ beforeEach(() => {
     error: null,
     teenCabinsByWeekend: new Map(),
     adultCabinsByWeekend: new Map(),
+    familyCabinsByWeekend: new Map(),
   }
 })
 
 describe('PersonJourneyCard', () => {
+  // Owner ruling 2026-09-24 (on #2814): a family weekend the guest is
+  // enrolled on themself shows the household's cabin, as a parent row does.
+  it("shows the household's cabin on a family weekend the guest is enrolled on this year", async () => {
+    enrollment.value = [
+      WW_2026,
+      attendee({
+        sessionCmId: 106,
+        sessionType: 'family',
+        name: 'Family Camp 6',
+        startDate: '2026-09-18',
+      }),
+    ]
+    feed.value = {
+      ...feed.value,
+      counts: { summers: 0, familyWeekends: 1, adultWeekends: 1 },
+      familyCabinsByWeekend: new Map([
+        ['2026:106', { cabinName: 'Meadow House 1', cabinNameRaw: 'Meadow House 1' }],
+      ]),
+    }
+
+    render(<PersonJourneyCard personCmId={PERSON} year={YEAR} />, { wrapper: createWrapper() })
+
+    await waitFor(() => expect(cabinCells()).toEqual(['', 'Meadow House 1']))
+  })
+
   it("shows a 2026 WW guest's WW 2026 row with its attributed cabin, above the prior years", async () => {
     enrollment.value = [WW_2026]
     feed.value = {

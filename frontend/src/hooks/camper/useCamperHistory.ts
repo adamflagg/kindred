@@ -16,7 +16,7 @@ import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollment
 import { queryKeys } from '../../utils/queryKeys'
 import { fetchParentMainSessions } from './fetchCamperJourney'
 import { byYearThenChronological } from './journeyOrder'
-import { currentYearCabin, type CabinLabel } from './teenCabinLabel'
+import { currentYearCabin, type ServerCabins } from './teenCabinLabel'
 import { useCamperJourney } from './useCamperJourney'
 import type { Camper } from '../../types/app-types'
 import type { CampSessionsResponse } from '../../types/pocketbase-types'
@@ -107,18 +107,10 @@ function buildCurrentYearRecords(
 function applyCurrentYearCabinRule(
   records: RawCurrentYearRecord[],
   currentYear: number,
-  teenCabins: Map<string, CabinLabel>,
-  adultCabins: Map<string, CabinLabel>
+  cabins: ServerCabins
 ): HistoricalRecord[] {
   return records.map(({ sessionCmId, bunkName: rawBunkName, ...rest }) => {
-    const cabin = currentYearCabin(
-      rest.sessionType,
-      currentYear,
-      sessionCmId,
-      rawBunkName,
-      teenCabins,
-      adultCabins
-    )
+    const cabin = currentYearCabin(rest.sessionType, currentYear, sessionCmId, rawBunkName, cabins)
     const bunkName =
       cabin.bunkName ?? (isAtCampSessionType(rest.sessionType) ? 'Unassigned' : undefined)
     return {
@@ -189,16 +181,21 @@ export function useCamperHistory(
 
   // Q9 (owner, 2026-09-22 late): reactive to the registry's teen-cabin map,
   // independent of the attendee-keyed query above — and, since kindred#2812,
-  // to the attributed adult-cabin map the same way.
+  // to the attributed adult-cabin and household family-cabin maps the same way.
   const resolvedCurrentRows = useMemo(
     () =>
-      applyCurrentYearCabinRule(
-        currentRows,
-        currentYear,
-        journey.teenCabinsByWeekend,
-        journey.adultCabinsByWeekend
-      ),
-    [currentRows, currentYear, journey.teenCabinsByWeekend, journey.adultCabinsByWeekend]
+      applyCurrentYearCabinRule(currentRows, currentYear, {
+        teen: journey.teenCabinsByWeekend,
+        adult: journey.adultCabinsByWeekend,
+        family: journey.familyCabinsByWeekend,
+      }),
+    [
+      currentRows,
+      currentYear,
+      journey.teenCabinsByWeekend,
+      journey.adultCabinsByWeekend,
+      journey.familyCabinsByWeekend,
+    ]
   )
 
   // The SHARED comparator, not a second year-only one. This merge is where

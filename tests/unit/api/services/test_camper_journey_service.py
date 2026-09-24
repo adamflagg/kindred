@@ -1231,3 +1231,68 @@ class TestCamperJourneyServiceCurrentYear:
         result = await service.build_camper_journey(PERSON, YEAR)
 
         assert result.adult_cabins == [prior, current]
+
+
+class TestFamilyCabins:
+    """Owner ruling 2026-09-24 (on #2814): a child's current-year family-camp
+    row shows the household cabin -- "there's no reason not to". The client
+    builds that row from live attendees and labels it from `family_cabins`,
+    the same (year, weekend) -> cabin rule a parent's row is built with."""
+
+    @pytest.mark.asyncio
+    async def test_a_childs_current_year_weekends_carry_the_cabin_their_parents_rows_show(
+        self, people_pb: FakePB
+    ) -> None:
+        household = HouseholdJourneyResponse(household_cm_id=555, years=[fc1_fc6_household_year()])
+
+        people_pb.lists["persons"].return_value = [person_row(YEAR, age=43.01)]
+        parent, _, _ = _service(people_pb, household=household)
+        parent_rows = (await parent.build_camper_journey(PERSON, YEAR)).current_year_parent_rows
+
+        people_pb.lists["persons"].return_value = [person_row(YEAR, age=9.02)]
+        child, _, _ = _service(people_pb, household=household)
+        cabins = (await child.build_camper_journey(PERSON, YEAR)).family_cabins
+
+        assert [(c.year, c.session_cm_id, c.cabin_name, c.cabin_name_raw) for c in cabins] == [
+            (YEAR, 101, "Cedar Lodge", "Cedar Lodge"),
+            (YEAR, 106, "Meadow House 1", "Old Meadow 1"),
+        ]
+        assert [row.bunk_name for row in parent_rows] == [c.cabin_name for c in cabins]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_the_years_one_cabin_on_every_weekend_when_not_every_weekend_is_live(
+        self, people_pb: FakePB
+    ) -> None:
+        people_pb.lists["persons"].return_value = [person_row(YEAR, age=9.02)]
+        household = HouseholdJourneyResponse(
+            household_cm_id=555, years=[fc1_fc6_household_year(weekend_cabins=[], cabin_name_raw="Old Cedar")]
+        )
+        service, _, _ = _service(people_pb, household=household)
+
+        cabins = (await service.build_camper_journey(PERSON, YEAR)).family_cabins
+
+        assert [(c.session_cm_id, c.cabin_name, c.cabin_name_raw) for c in cabins] == [
+            (101, "Cedar Lodge", "Old Cedar"),
+            (106, "Cedar Lodge", "Old Cedar"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_with_no_household_cabin_gets_no_entry(self, people_pb: FakePB) -> None:
+        people_pb.lists["persons"].return_value = [person_row(YEAR, age=9.02)]
+        household = HouseholdJourneyResponse(
+            household_cm_id=555,
+            years=[
+                fc1_fc6_household_year(weekend_cabins=[], housing="not_placed", cabin_name=""),
+                household_year(housing_session_cm_id=901),
+            ],
+        )
+        service, _, _ = _service(people_pb, household=household)
+
+        assert (await service.build_camper_journey(PERSON, YEAR)).family_cabins == []
+
+    @pytest.mark.asyncio
+    async def test_has_no_family_cabins_without_a_household(self, people_pb: FakePB) -> None:
+        people_pb.lists["persons"].return_value = [person_row(YEAR, household_id=0)]
+        service, _, _ = _service(people_pb)
+
+        assert (await service.build_camper_journey(PERSON, YEAR)).family_cabins == []

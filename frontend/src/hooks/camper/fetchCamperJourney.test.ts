@@ -163,6 +163,23 @@ describe('fetchCamperJourney', () => {
     expect(adultCabins).toEqual([adult])
   })
 
+  // Owner ruling 2026-09-24 (on #2814): the household's cabin per family
+  // weekend, so a child's live current-year family row can show it.
+  it("passes the household's family cabins through for the current-year rows", async () => {
+    const family = {
+      year: 2026,
+      session_cm_id: 106,
+      cabin_name: 'Meadow House 1',
+      cabin_name_raw: 'Old Meadow 1',
+    }
+    const { familyCabins } = await fetchCamperJourney(
+      fetchReturning({ family_cabins: [family] }),
+      3000001,
+      2026
+    )
+    expect(familyCabins).toEqual([family])
+  })
+
   it('reads an empty payload as an empty journey', async () => {
     expect(await fetchCamperJourney(fetchReturning({}), 3000001, 2026)).toEqual({
       rows: [],
@@ -170,6 +187,7 @@ describe('fetchCamperJourney', () => {
       counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
       teenCabins: [],
       adultCabins: [],
+      familyCabins: [],
     })
   })
 

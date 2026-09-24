@@ -71,6 +71,7 @@ class TestGetCamperJourney:
             "counts": {"summers": 0, "family_weekends": 0, "adult_weekends": 0},
             "teen_cabins": [],
             "adult_cabins": [],
+            "family_cabins": [],
         }
 
     def test_the_year_is_required(self) -> None:

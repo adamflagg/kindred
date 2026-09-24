@@ -33,7 +33,8 @@ the client, from the person's live attendees and live bunks (`useCamperHistory`)
 The server adds only what that build cannot do itself -- a parent's family
 weekends, which have no attendee row of the parent's to build from
 (`current_year_parent_rows`), and the attributed adult cabins that label a live
-adult-program row (`adult_cabins`, as `teen_cabins` labels a TLI/SCIT one).
+adult-program row (`adult_cabins`, as `teen_cabins` labels a TLI/SCIT one)
+or a live family-weekend row (`family_cabins`, owner ruling 2026-09-24 on #2814).
 """
 
 from __future__ import annotations
@@ -207,6 +208,31 @@ def _family_season_housing(y: HouseholdJourneyYear, session_cm_id: int) -> _Cabi
     if pin is not None and pin != session_cm_id:
         return None
     return _CabinLabel(cabin_name, y.cabin_name_raw.strip())
+
+
+def family_cabins(years: Sequence[HouseholdJourneyYear]) -> list[PersonHousingWeekend]:
+    """The household's cabin for each family weekend it was enrolled on, keyed
+    (year, weekend) -- the SAME `_family_season_housing` rule a family row is
+    labelled with here, so a child's live current-year row and their parent's
+    row for the same weekend name one cabin (owner ruling 2026-09-24, on
+    #2814: "there's no reason not to"). A weekend with no cabin to show gets
+    no entry, never a blank one."""
+    out: list[PersonHousingWeekend] = []
+    for y in years:
+        for s in y.sessions:
+            if s.session_cm_id <= 0:
+                continue
+            housing = _family_season_housing(y, s.session_cm_id)
+            if housing is not None:
+                out.append(
+                    PersonHousingWeekend(
+                        year=y.year,
+                        session_cm_id=s.session_cm_id,
+                        cabin_name=housing.cabin_name,
+                        cabin_name_raw=housing.cabin_name_raw,
+                    )
+                )
+    return out
 
 
 def _labelled(housing: _CabinLabel | None) -> tuple[str | None, str | None]:
@@ -535,6 +561,7 @@ class CamperJourneyService:
             ),
             teen_cabins=housing.teen_cabins,
             adult_cabins=housing.weekends,
+            family_cabins=family_cabins(household.years),
         )
 
     @staticmethod

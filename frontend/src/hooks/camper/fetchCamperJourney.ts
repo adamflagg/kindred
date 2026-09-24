@@ -63,6 +63,8 @@ export interface CamperJourney {
   teenCabins: PersonHousingWeekendRow[]
   /** The attributed adult-program cabins, current year included (kindred#2812). */
   adultCabins: PersonHousingWeekendRow[]
+  /** The household's cabin per family weekend (owner ruling 2026-09-24, on #2814). */
+  familyCabins: PersonHousingWeekendRow[]
 }
 
 /**
@@ -109,5 +111,6 @@ export async function fetchCamperJourney(
     counts: toJourneyCounts(body.counts),
     teenCabins: body.teen_cabins ?? [],
     adultCabins: body.adult_cabins ?? [],
+    familyCabins: body.family_cabins ?? [],
   }
 }

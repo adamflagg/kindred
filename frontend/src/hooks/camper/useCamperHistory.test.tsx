@@ -28,6 +28,7 @@ let teenCabinsByWeekend: Map<string, CabinLabel> = new Map()
 // no live attendee builds) and the attributed adult cabins.
 let currentYearParentRows: HistoricalRecord[] = []
 let adultCabinsByWeekend: Map<string, CabinLabel> = new Map()
+let familyCabinsByWeekend: Map<string, CabinLabel> = new Map()
 const mockUseCamperJourney = vi.fn()
 vi.mock('./useCamperJourney', () => ({
   useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
@@ -77,6 +78,7 @@ describe('useCamperHistory', () => {
     teenCabinsByWeekend = new Map()
     currentYearParentRows = []
     adultCabinsByWeekend = new Map()
+    familyCabinsByWeekend = new Map()
     mockUseCamperJourney.mockImplementation(() => ({
       rows: priorRows,
       currentYearParentRows,
@@ -85,6 +87,7 @@ describe('useCamperHistory', () => {
       error: null,
       teenCabinsByWeekend,
       adultCabinsByWeekend,
+      familyCabinsByWeekend,
     }))
     mockFetchParentMainSessions.mockResolvedValue(new Map())
   })
@@ -400,6 +403,56 @@ describe('useCamperHistory', () => {
 
     const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
     expect(current.sessionName).toBe("Women's Weekend")
+    expect(current.bunkName).toBeUndefined()
+  })
+
+  // Owner ruling 2026-09-24 (on #2814): "there's no reason not to".
+  it("shows a child's current-year FC1 and FC6 with the household cabin their parent's rows show", async () => {
+    familyCabinsByWeekend = new Map([
+      [`${String(YEAR)}:101`, { cabinName: 'Cedar Lodge', cabinNameRaw: 'Cedar Lodge' }],
+      [`${String(YEAR)}:106`, { cabinName: 'Meadow House 1', cabinNameRaw: 'Old Meadow 1' }],
+    ])
+    const campers = [
+      currentCamper({
+        sessionCmId: 101,
+        sessionType: 'family',
+        name: 'Family Camp 1: Memorial Day Weekend',
+        startDate: '2026-05-22',
+      }),
+      currentCamper({
+        sessionCmId: 106,
+        sessionType: 'family',
+        name: 'Family Camp 6',
+        startDate: '2026-09-18',
+      }),
+    ]
+    const { result } = renderHook(
+      () => useCamperHistory(8000101, YEAR, campers[0] as Camper, campers),
+      { wrapper: createWrapper() }
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(
+      result.current.camperHistory.map((r) => [r.sessionName, r.bunkName, r.bunkNameRecorded])
+    ).toEqual([
+      ['Family Camp 1: Memorial Day Weekend', 'Cedar Lodge', undefined],
+      ['Family Camp 6', 'Meadow House 1', 'Old Meadow 1'],
+    ])
+  })
+
+  it('shows no cabin on a current-year family weekend the household has none for', async () => {
+    const fc6 = currentCamper({
+      sessionCmId: 106,
+      sessionType: 'family',
+      name: 'Family Camp 6',
+      bunkName: 'Acorns',
+    })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, fc6, [fc6]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
     expect(current.bunkName).toBeUndefined()
   })
 

@@ -460,6 +460,7 @@ export default function CamperDetailsPanel({
     counts: journeyCounts,
     teenCabinsByWeekend,
     adultCabinsByWeekend,
+    familyCabinsByWeekend,
   } = useCamperJourney(journeyPersonCmId, currentYear)
   // The Camp Journey section's rows — the camper record's own build, current
   // year included (kindred#2812). See `journeyRows` below.
@@ -480,14 +481,11 @@ export default function CamperDetailsPanel({
   const allEnrollments: CurrentEnrollment[] = useMemo(() => {
     const raw = camperData?.enrollments ?? []
     return raw.map((e) => {
-      const cabin = currentYearCabin(
-        e.sessionType,
-        currentYear,
-        e.sessionCmId,
-        e.bunkName,
-        teenCabinsByWeekend,
-        adultCabinsByWeekend
-      )
+      const cabin = currentYearCabin(e.sessionType, currentYear, e.sessionCmId, e.bunkName, {
+        teen: teenCabinsByWeekend,
+        adult: adultCabinsByWeekend,
+        family: familyCabinsByWeekend,
+      })
       return {
         ...e,
         bunkName: cabin.bunkName ?? null,
@@ -502,7 +500,13 @@ export default function CamperDetailsPanel({
         ...(isQuestSessionType(e.sessionType) && e.bunkName ? { questTripName: e.bunkName } : {}),
       }
     })
-  }, [camperData?.enrollments, currentYear, teenCabinsByWeekend, adultCabinsByWeekend])
+  }, [
+    camperData?.enrollments,
+    currentYear,
+    teenCabinsByWeekend,
+    adultCabinsByWeekend,
+    familyCabinsByWeekend,
+  ])
   // Show enrolled sessions only; if none enrolled, show best non-enrolled as fallback
   const currentEnrollments = toDisplayList(
     filterEnrollmentsByStatus(allEnrollments, (e) => e.attendeeStatus)
