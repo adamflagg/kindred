@@ -34,11 +34,11 @@ import {
 import { Tooltip } from '../ui/Tooltip'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
-import { HousingNeedDetails } from './HousingNeedDetails'
+import { Section } from './PanelSection'
 import { partyKey } from './partyKey'
+import { PartyRequestSections } from './PartyRequestSections'
 import { PersonJourneyCard } from './PersonJourneyCard'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
-import { ShareRequestPanel } from './ShareRequestPanel'
 
 export interface FamilyDetailsPanelProps {
   party: RosterPartyRow
@@ -73,17 +73,6 @@ export interface FamilyDetailsPanelProps {
    * outside click ITSELF instead of leaking it to whatever sits beneath.
    */
   backdropInteractive?: boolean
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-1.5">
-      <h3 className="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
-        {title}
-      </h3>
-      {children}
-    </section>
-  )
 }
 
 export function FamilyDetailsPanel({
@@ -386,22 +375,7 @@ export function FamilyDetailsPanel({
         )}
       </Section>
 
-      <Section title="Share request">
-        <ShareRequestPanel party={party} />
-      </Section>
-
-      <Section title="Housing needs">
-        {/* ONE component now, not two. `AccessibilityFlagList` still serves
-            `HouseholdRosterRow`, where 62 rows must not fetch medical; this
-            panel shows one household, so its rows carry their own words.
-            kindred#2255's section 2 is superseded -- the duplication it
-            proposed collapsing behind a click is removed instead. */}
-        <HousingNeedDetails
-          party={party}
-          householdCmId={householdCmId > 0 ? householdCmId : null}
-          year={year}
-        />
-      </Section>
+      <PartyRequestSections party={party} year={year} householdCmId={householdCmId} />
 
       {/* kindred#2073. NOT wrapped in a `Section`: it is a sidebar CARD with
           its own forest band, the same shape `camper/CampJourneyTimeline`
