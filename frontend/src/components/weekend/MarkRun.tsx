@@ -7,7 +7,15 @@
  * wrapper and follows its radius, so without it a capsule would wear a
  * rectangular glow. Caps come from each mark's POSITION IN THE LIST, never CSS
  * tree position — `ui/Tooltip` nests each glyph in its own trigger, which
- * defeats `:only-child` (the half-pill trap in `shareMarks.ts`).
+ * defeats `:only-child` (the half-pill trap in `shareMarks.ts`). No gap
+ * classes on the wrapper — the cap classes' own `-ml-px` IS the flush join,
+ * and an added gap would reopen the seam.
+ *
+ * `data-share-emphasis-motion` below is spelled out rather than spread from
+ * `SHARE_MOTION_ATTR` — JSX cannot take a computed attribute name without a
+ * spread object, which reads worse than the literal. The coupling is pinned
+ * instead: `ShareMarks.test.tsx` and `MarkRun.test.tsx` query with
+ * `SHARE_MOTION_SELECTOR`, so renaming the constant alone turns them red.
  */
 import { Tooltip } from '../ui/Tooltip'
 import type { MarkRunSpec } from './markSpec'

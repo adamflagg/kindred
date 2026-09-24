@@ -8,6 +8,11 @@
  *
  * `NoteRow`'s fold state is the CALLER's, never keyed here: the family panel
  * keys it on CampMinder `source_field`s, the adult panel on its own rows.
+ *
+ * The row label is deliberately NOT the section heading's uppercase/tracked
+ * style, which `PanelSection`'s `Section` already spends above these rows.
+ * Repeating it would make a row read as a peer of its section rather than a
+ * child of it.
  */
 import { ChevronRight, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -22,7 +27,14 @@ export const MARK_ICON = 'h-[13px] w-[13px]'
 /** The muted, always-solo note chip's tone. */
 export const NOTE_CHIP_CLASS = 'rounded-full bg-muted text-muted-foreground'
 export const NOTE_ICON_FRAME = `${ROW_ICON_FRAME} ${NOTE_CHIP_CLASS}`
-/** Every text under a row (mockup `.mksay`). See ShareRequestPanel's history for `break-words`. */
+/**
+ * Every text under a row (mockup `.mksay`): plain, 30px-indented, italic,
+ * `opacity-85`, no rail. `break-words` is the one addition beyond the
+ * mockup's literal CSS — the longest single 2026 answer is 680 characters in
+ * a 416px panel, and an unbroken token (an email address, a URL) would
+ * otherwise push the panel into a horizontal scroll; `whitespace-pre-wrap`
+ * keeps a family's own line breaks.
+ */
 export const MK_SAY =
   'text-foreground pl-[30px] text-[13px] italic whitespace-pre-wrap break-words opacity-[.85]'
 /** The small uppercase provenance tag (mockup `.who`). */

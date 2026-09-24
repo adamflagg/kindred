@@ -337,6 +337,11 @@ function RequestBlock({
   // panels); and it is the fold state a test can assert without reaching
   // for a class name — the test-handle case that section explicitly
   // allows. Raised by CodeRabbit.
+  // The tag is `Staff` only — the mockup's `NOTE_SPEC.shareWith` also tags
+  // `Share Bunk With` `who: 'CSV'`, but this app has no real CSV vs. form
+  // provenance signal on the wire, only `authorship` ('staff' | 'family');
+  // inventing a label the data can't back is worse than omitting it, so
+  // `Share Bunk With` renders no tag.
   return (
     <NoteRow
       rowProps={{

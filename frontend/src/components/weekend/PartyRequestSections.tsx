@@ -27,8 +27,11 @@ export function PartyRequestSections({ party, year, householdCmId }: PartyReques
       </Section>
 
       <Section title="Housing needs">
-        {/* ONE component, not two — see FamilyDetailsPanel's history
-            (kindred#2255's section 2 is superseded). */}
+        {/* ONE component now, not two. `AccessibilityFlagList` still serves
+            `HouseholdRosterRow`, where 62 rows must not fetch medical; this
+            panel shows one household, so its rows carry their own words.
+            kindred#2255's section 2 is superseded -- the duplication it
+            proposed collapsing behind a click is removed instead. */}
         <HousingNeedDetails
           party={party}
           householdCmId={householdCmId > 0 ? householdCmId : null}
