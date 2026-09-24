@@ -124,6 +124,10 @@ def _year_reads(repo: LodgingRepository, year: int) -> list[Awaitable[Any]]:
         repo.fetch_adult_need_values(year),
         repo.fetch_adult_cabin_values(last_year),
         repo.fetch_adult_weekend_attendees(last_year),
+        # kindred#2759: a bunking.manage caller's adult board. The Jotform
+        # admin's staff writes clear the cache, and this is the read they
+        # change -- skipping it left the one read those writes touched cold.
+        repo.fetch_jotform_bunking_rows(year),
     ]
     if last_year >= LIVE_HOUSING_FROM_YEAR:
         reads += [repo.fetch_family_enrolled_attendees(last_year), repo.fetch_live_assignments(last_year)]
