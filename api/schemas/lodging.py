@@ -1408,6 +1408,11 @@ class HouseholdJourneyYear(BaseModel):
     # `cabin_name` is. The client shows it only where the two DISAGREE, which
     # is 716 of 1,861 rows on the production snapshot: rendering it beside an
     # identical name would be noise on the other 1,145.
+    #
+    # One exception from 2026 (kindred#2775): when every enrolled weekend's
+    # CampMinder-layer row names ONE cabin that this string does not name --
+    # changed, cleared, or never keyed -- `cabin_name` is that live cabin and
+    # this is "", because the string describes a different room, or none.
     cabin_name_raw: str = ""
     # WHICH FAMILY WEEKENDS the household attended that year, earliest first
     # (kindred#2393). Derived from the attendee rows this row's members
@@ -1435,7 +1440,9 @@ class HouseholdJourneyYear(BaseModel):
     # `None` therefore covers three different situations and the client words
     # none of them: several weekends (41 of the 1,861 cabin-bearing
     # household-years on the production snapshot), no weekend on file (158),
-    # and no cabin to attribute in the first place.
+    # and no cabin to attribute in the first place. From 2026 a lone weekend
+    # with a CampMinder-layer row pins even with no cabin string: that row IS
+    # a placement (kindred#2775).
     housing_session_cm_id: int | None = None
     # Every `family_camp_adults` row for the year, blanks and placeholders
     # included -- the same contract `RosterParty.adults` publishes, so the
@@ -1491,8 +1498,9 @@ class PersonHousingWeekend(BaseModel):
     that had this field publish the as-typed string unchanged. When the
     string resolves to nothing, `cabin_name` falls back to it, outer
     whitespace trimmed. `cabin_name_raw` is the untouched value staff typed
-    that year. A weekend or teen session with no attributed/resolved cabin
-    is absent, not blank.
+    that year -- or "" for a 2026+ weekend named by its CampMinder-layer row
+    alone, with no typed value attributed to it (kindred#2775). A weekend or
+    teen session with no attributed/resolved cabin is absent, not blank.
     """
 
     year: int = 0

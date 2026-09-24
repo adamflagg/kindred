@@ -3578,8 +3578,9 @@ export type PersonHousingResponse = {
  * that had this field publish the as-typed string unchanged. When the
  * string resolves to nothing, `cabin_name` falls back to it, outer
  * whitespace trimmed. `cabin_name_raw` is the untouched value staff typed
- * that year. A weekend or teen session with no attributed/resolved cabin
- * is absent, not blank.
+ * that year -- or "" for a 2026+ weekend named by its CampMinder-layer row
+ * alone, with no typed value attributed to it (kindred#2775). A weekend or
+ * teen session with no attributed/resolved cabin is absent, not blank.
  */
 export type PersonHousingWeekend = {
   /**
