@@ -597,7 +597,10 @@ class OpenAIProvider(AIProvider):
             if candidate.get("age") is not None:
                 details.append(f"Age: {candidate['age']}")
             if candidate.get("city"):
-                details.append(f"City: {candidate['city']}")
+                if candidate.get("state"):
+                    details.append(f"City: {candidate['city']}, {candidate['state']}")
+                else:
+                    details.append(f"City: {candidate['city']}")
             if candidate.get("congregation"):
                 details.append(f"Congregation: {candidate['congregation']}")
             if candidate.get("parents"):

@@ -202,6 +202,7 @@ class ContextBuilder:
                 grade=d.get("grade"),
                 school=d.get("school"),
                 city=d.get("city"),
+                state=d.get("state"),
                 congregation=d.get("congregation"),
                 birth_date=d.get("birth_date"),
             )
@@ -311,6 +312,7 @@ class ContextBuilder:
                     "grade": person.grade,
                     "school": person.school,
                     "city": person.city,
+                    "state": person.state,
                     "congregation": person.congregation,
                     "birth_date": person.birth_date,
                     "age": self._calculate_age(person.birth_date) if person.birth_date else None,
@@ -378,6 +380,7 @@ class ContextBuilder:
                 "grade": person.grade,
                 "school": person.school,
                 "city": person.city,
+                "state": person.state,
                 "congregation": person.congregation,
                 "birth_date": person.birth_date,
                 "age": self._calculate_age(person.birth_date) if person.birth_date else None,
@@ -431,6 +434,7 @@ class ContextBuilder:
                 "grade": candidate.grade,
                 "age": self._calculate_age(candidate.birth_date) if candidate.birth_date else None,
                 "city": candidate.city,
+                "state": candidate.state,
                 "congregation": candidate.congregation,
             }
 
