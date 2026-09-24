@@ -335,6 +335,46 @@ class TestLodgingInvalidationIsScopedBySyncType:
         warm.assert_called_once()
 
 
+class TestGraphCacheClearsWhenASyncWritesAGraphTable:
+    """kindred#2803 item B: `graph_cache` was cleared only by scenario, solver
+    and position writes, so a sync that rewrote attendees or bunk assignments
+    left the production social graph stale for up to its 15-minute TTL. The
+    invalidate endpoint now clears it when the completed sync writes a table
+    the graph is built from (`SocialGraphBuilder.READ_TABLES`)."""
+
+    @pytest.fixture
+    def primed_graph_cache(self):
+        import networkx as nx
+
+        from api.dependencies import graph_cache
+
+        graph_cache.clear()
+        graph_cache.cache_session_graph(1000001, 2026, nx.DiGraph())
+        yield graph_cache
+        graph_cache.clear()
+
+    def test_the_hourly_bunk_assignments_sync_clears_it(self, test_client, fresh_cache, primed_graph_cache):
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            resp = test_client.post("/api/metrics/cache/invalidate", params={"sync_type": "bunk_assignments"})
+
+        assert resp.status_code == 200
+        assert primed_graph_cache.get_session_graph(1000001, 2026) is None
+
+    def test_a_sync_writing_no_graph_table_leaves_it(self, test_client, fresh_cache, primed_graph_cache):
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            resp = test_client.post("/api/metrics/cache/invalidate", params={"sync_type": "staff_skills"})
+
+        assert resp.status_code == 200
+        assert primed_graph_cache.get_session_graph(1000001, 2026) is not None
+
+    def test_no_sync_type_clears_it(self, test_client, fresh_cache, primed_graph_cache):
+        with patch("api.routers.metrics.schedule_lodging_warm"):
+            resp = test_client.post("/api/metrics/cache/invalidate")
+
+        assert resp.status_code == 200
+        assert primed_graph_cache.get_session_graph(1000001, 2026) is None
+
+
 class TestCacheStatsEndpoint:
     """Test the GET /api/metrics/cache/stats endpoint."""
 

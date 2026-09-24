@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.constants.sync_job_writes import sync_writes_any
 from api.services.cancellation_service import CancellationService
 from api.services.comparison_service import ComparisonService
 from api.services.day1_service import Day1Service
@@ -27,8 +28,9 @@ from api.services.velocity_service import VelocityService
 from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.graph.social_graph_builder import SocialGraphBuilder
 
-from ..dependencies import lodging_cache, metrics_cache, pb
+from ..dependencies import graph_cache, lodging_cache, metrics_cache, pb
 from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
@@ -638,17 +640,21 @@ async def invalidate_metrics_cache(
     sync_type: str | None = Query(
         None,
         description=(
-            "The sync job whose completion triggered this call. Scopes only the lodging year cache: "
-            "it is cleared when this job writes a table the cache reads, or when no job is named."
+            "The sync job whose completion triggered this call. Scopes the lodging year cache and the "
+            "social graph cache: each is cleared when this job writes a table it reads, or when no job is named."
         ),
     ),
 ) -> dict[str, int]:
-    """Invalidate all cached metrics responses + geo person-id cache + lodging year cache.
+    """Invalidate cached metrics responses + geo person-id cache + lodging year cache + social graph cache.
 
     Auth is handled by the middleware (skipped for this path since cache
     clearing is safe and idempotent). Called by:
+    - PocketBase's sync orchestrator after EVERY job it finishes, naming the
+      job (kindred#2803) -- so an unattended scheduled sync clears these too,
+      not only one a browser tab happened to watch finish
     - PocketBase hook on registration config changes (internal, no user context)
-    - Frontend on sync completion (via invalidateSyncData)
+    - Frontend on sync completion (via invalidateSyncData) -- now redundant
+      with the orchestrator's call, and kept because a second clear is harmless
     - Frontend after saving registration dates
 
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
@@ -668,6 +674,12 @@ async def invalidate_metrics_cache(
     if sync_invalidates_lodging_cache(sync_type):
         lodging_cache.invalidate_all()
         schedule_lodging_warm()
+    # graph_cache (kindred#2803): until now only scenario, solver and position
+    # writes cleared it, so a sync rewriting attendees or bunk assignments left
+    # the production graph stale for its whole 15-minute TTL. Scoped the same
+    # way as the lodging cache, against the tables the builder declares.
+    if sync_writes_any(sync_type, SocialGraphBuilder.READ_TABLES):
+        graph_cache.clear()
     return {"cleared": cleared}
 
 

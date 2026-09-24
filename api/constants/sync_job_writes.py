@@ -25,6 +25,8 @@ reads" has to survive the next column somebody adds to a read.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from api.constants.collections import (
     ATTENDEE_STATUS_HISTORY,
     ATTENDEES,
@@ -109,3 +111,24 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     # Export phase -- Google Sheets, plus its own workbook bookkeeping.
     "multi_workbook_export": frozenset({"sheets_workbooks"}),
 }
+
+
+def sync_writes_any(sync_type: str | None, tables: Iterable[str]) -> bool:
+    """Whether a completed `sync_type` writes any of `tables`.
+
+    The one question every server cache asks of a finished sync: the lodging
+    year cache with the tables its `@cached_by_year` reads declare, the social
+    graph cache with `SocialGraphBuilder.READ_TABLES`.
+
+    Fails safe. True when no sync is named (the endpoint's non-sync callers --
+    the registration-config hook, the registration-dates panel -- clear
+    everything, as they always did) and when the sync is not in
+    `SYNC_JOB_WRITES` at all, since a job nobody has classified may write
+    anything.
+    """
+    if sync_type is None:
+        return True
+    writes = SYNC_JOB_WRITES.get(sync_type)
+    if writes is None:
+        return True
+    return not writes.isdisjoint(tables)

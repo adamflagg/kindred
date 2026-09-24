@@ -11119,7 +11119,7 @@ export type InvalidateMetricsCacheApiMetricsCacheInvalidatePostData = {
     /**
      * Sync Type
      *
-     * The sync job whose completion triggered this call. Scopes only the lodging year cache: it is cleared when this job writes a table the cache reads, or when no job is named.
+     * The sync job whose completion triggered this call. Scopes the lodging year cache and the social graph cache: each is cleared when this job writes a table it reads, or when no job is named.
      */
     sync_type?: string | null
   }

@@ -15,6 +15,7 @@ from api.constants.collections import (
     BUNK_ASSIGNMENTS_DRAFT,
     BUNK_REQUESTS,
     BUNKS,
+    CAMP_SESSIONS,
     PERSONS,
 )
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
@@ -155,6 +156,27 @@ def build_request_edge_attrs(
 
 class SocialGraphBuilder:
     """Builds and analyzes the camp social graph using NetworkX"""
+
+    # Every PocketBase table a built graph's content comes from -- including
+    # the ones reached through a relation: `session.cm_id = N` and
+    # `expand=session` read `camp_sessions`, `expand=person` reads `persons`,
+    # `expand=bunk` reads `bunks`. `graph_cache` holds finished graphs, and the
+    # cache-invalidate endpoint clears it when a completed sync writes any of
+    # these (`api/constants/sync_job_writes.py`), exactly as each cached
+    # lodging read declares its tables (kindred#2803). A read added to this
+    # class or its subclass must add its table here;
+    # `tests/unit/bunking/graph/test_graph_read_tables.py` fails otherwise.
+    READ_TABLES: frozenset[str] = frozenset(
+        {
+            ATTENDEES,
+            CAMP_SESSIONS,
+            PERSONS,
+            BUNKS,
+            BUNK_ASSIGNMENTS,
+            BUNK_ASSIGNMENTS_DRAFT,
+            BUNK_REQUESTS,
+        }
+    )
 
     def __init__(self, pb: PocketBase, random_seed: int | None = None):
         self.pb = pb

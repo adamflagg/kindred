@@ -37,7 +37,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from api.constants.sync_job_writes import SYNC_JOB_WRITES
+from api.constants.sync_job_writes import sync_writes_any
 from api.dependencies import lodging_cache
 from api.dependencies import pb as default_pb
 from api.services.lodging_cache import CACHED_TABLES_ATTR
@@ -80,12 +80,7 @@ def sync_invalidates_lodging_cache(sync_type: str | None) -> bool:
     behaviour) and when the sync is not in `SYNC_JOB_WRITES` at all -- a job
     nobody has classified may write anything.
     """
-    if sync_type is None:
-        return True
-    writes = SYNC_JOB_WRITES.get(sync_type)
-    if writes is None:
-        return True
-    return not writes.isdisjoint(_cached_tables())
+    return sync_writes_any(sync_type, _cached_tables())
 
 
 async def current_season_year(pb: PocketBase) -> int:
