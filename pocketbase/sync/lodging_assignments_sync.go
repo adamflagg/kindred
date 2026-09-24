@@ -678,19 +678,18 @@ func (s *LodgingAssignmentsSync) writeAttributed(in *ingestContext, res AliasRes
 		// Nothing to point a placement at, but the observation is preserved in
 		// history and the string is already in the work queue.
 		//
-		// A weekend the history rule attributed is re-derived on every daily run,
-		// so its unresolved observation is written once, not once a day. The
-		// single-weekend path keeps its own (pre-existing, #2061) behavior.
-		if in.fromHistory {
-			seen, err := s.unresolvedHistoryRecorded(in, attr.SessionCMID(), label)
-			if err != nil {
-				slog.Error("Checking unresolved-placement history", "raw", in.Raw, "error", err)
-				s.Stats.Errors++
-				return false
-			}
-			if seen {
-				return false
-			}
+		// Every value -- single-weekend or history-attributed -- is re-read on
+		// every daily run (#2760 brings adult values daily), so an unresolved
+		// observation is written once, not once a day. A changed string is a
+		// new label and still records.
+		seen, err := s.unresolvedHistoryRecorded(in, attr.SessionCMID(), label)
+		if err != nil {
+			slog.Error("Checking unresolved-placement history", "raw", in.Raw, "error", err)
+			s.Stats.Errors++
+			return false
+		}
+		if seen {
+			return false
 		}
 		if err := s.recordHistory(in, attr.SessionID, attr.SessionCMID(), label); err != nil {
 			slog.Error("Recording unresolved-placement history", "raw", in.Raw, "error", err)

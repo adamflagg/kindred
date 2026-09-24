@@ -705,6 +705,56 @@ func TestLodgingAssignmentsSyncPersonGrainQueuesUnresolvedAlias(t *testing.T) {
 	}
 }
 
+// TestLodgingAssignmentsSyncSingleWeekendUnresolvedWritesHistoryOnce: the daily
+// custom-values pass (#2760) re-reads every adult cabin value each day, so a
+// single-weekend string no alias covers reaches the ingest again and again. Its
+// observation is written to history once, not once a day -- the same dedup the
+// history-attributed path uses. A CHANGED unresolved string is a new
+// observation and still records.
+func TestLodgingAssignmentsSyncSingleWeekendUnresolvedWritesHistoryOnce(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedAdultWeekend(t, app)
+	addUnit(t, app, "test-lodge-1", 2025) // gives 2025 a registry; see #2061's guard
+	f.addGuest(t, app, 5101, f.womens, "tent by the creek")
+
+	unresolvedRows := func() []*core.Record {
+		t.Helper()
+		rows, err := app.FindRecordsByFilter("lodging_assignment_history",
+			"old_unit = '' && person_cm_id = 5101", "created", 0, 0)
+		if err != nil {
+			t.Fatalf("find history: %v", err)
+		}
+		return rows
+	}
+
+	syncAdultYear(t, app)
+	syncAdultYear(t, app)
+	if got := unresolvedRows(); len(got) != 1 {
+		t.Fatalf("history rows after two runs of an unchanged unresolved value = %d, want 1", len(got))
+	}
+
+	vals, _ := app.FindRecordsByFilter("person_custom_values", "", "", 0, 0)
+	if len(vals) != 1 {
+		t.Fatalf("person_custom_values = %d, want 1", len(vals))
+	}
+	vals[0].Set("value", "hammock by the lake")
+	vals[0].Set("last_updated", "2025-05-18T11:02:44.0000000+00:00")
+	if err := app.Save(vals[0]); err != nil {
+		t.Fatalf("change the value: %v", err)
+	}
+
+	syncAdultYear(t, app)
+	got := unresolvedRows()
+	if len(got) != 2 {
+		t.Fatalf("history rows after the value changed = %d, want 2 (a changed value is a new observation)", len(got))
+	}
+	labels := []string{got[0].GetString("new_unit"), got[1].GetString("new_unit")}
+	if !slices.Contains(labels, "tent by the creek") || !slices.Contains(labels, "hammock by the lake") {
+		t.Errorf("history labels = %v, want both observed strings", labels)
+	}
+}
+
 // TestLodgingAssignmentsSyncPersonGrainMultiMemberAlias: one person's string can
 // name two rooms (a suite typed as one value). It lands as ONE person row naming
 // both, never as two rows or a household row.
@@ -827,13 +877,11 @@ func TestLodgingAssignmentsSyncAdultWeekendRehearsal(t *testing.T) {
 		t.Errorf("first run Created = %d, want %d", first.GetStats().Created, len(want))
 	}
 
-	// placedHistory excludes "tent by the creek" on purpose: that value takes
-	// the single-weekend path, which (unlike the history-attributed path's
-	// unresolvedHistoryRecorded dedup) re-records its observation on every
-	// run. That is finding 1 in this PR's body -- pre-existing, out of this
-	// PR's scope, and left for the owner. unresolvedHistory below asserts
-	// that known growth explicitly, so it stays visible instead of being
-	// silently swallowed by this filter (CodeRabbit, PR #2798).
+	// placedHistory and unresolvedHistory are counted apart so a failure names
+	// which path grew. The unresolved "tent by the creek" takes the
+	// single-weekend path, which de-dupes its observation the same way the
+	// history-attributed path does (unresolvedHistoryRecorded): an unchanged
+	// re-run adds no row for it either.
 	placedHistory := func() int {
 		hist, _ := app.FindRecordsByFilter("lodging_assignment_history",
 			"old_unit = '' && new_unit != 'tent by the creek'", "", 0, 0)
@@ -865,11 +913,9 @@ func TestLodgingAssignmentsSyncAdultWeekendRehearsal(t *testing.T) {
 	if got := placedHistory(); got != historyBefore {
 		t.Errorf("placement history rows went %d -> %d on an unchanged re-run", historyBefore, got)
 	}
-	if got := unresolvedHistory(); got != unresolvedBefore+1 {
-		t.Errorf("unresolved-value history rows went %d -> %d on a second run, want +1 "+
-			"(known, unfixed single-weekend behavior -- see finding 1 in this PR's body; "+
-			"if this now holds steady, the writer was fixed and this assertion should too)",
-			unresolvedBefore, got)
+	if got := unresolvedHistory(); got != unresolvedBefore {
+		t.Errorf("unresolved-value history rows went %d -> %d on an unchanged re-run; "+
+			"the observation must be written once, not once a day", unresolvedBefore, got)
 	}
 	if got := issueCount(); got != issuesBefore {
 		t.Errorf("queue rows went %d -> %d on an unchanged re-run; Flush must upsert, not append",
