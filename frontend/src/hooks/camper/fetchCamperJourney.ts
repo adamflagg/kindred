@@ -74,11 +74,6 @@ export async function fetchParentMainSessions(
   return out
 }
 
-interface FamilySeasonHousing extends CabinLabel {
-  /** The pinned weekend, or `null` when the season's cabin is not pinned. */
-  sessionCmId: number | null
-}
-
 /**
  * Index a household's family-camp journey rows by year, so the per-weekend
  * lookup below (`familySeasonHousing`) has the row — sessions, year-level
@@ -117,15 +112,11 @@ function familyHousingByYear(years: HouseholdJourneyRow[]): Map<number, Househol
  * 2026-09-22 evening) — the same field the weekend board's household card
  * shows. `cabin_name_raw` travels alongside for the tooltip.
  */
-function familySeasonHousing(
-  y: HouseholdJourneyRow,
-  sessionCmId: number
-): FamilySeasonHousing | undefined {
+function familySeasonHousing(y: HouseholdJourneyRow, sessionCmId: number): CabinLabel | undefined {
   const weekendCabin = (y.weekend_cabins ?? []).find((entry) => entry.session_cm_id === sessionCmId)
   const weekendCabinName = (weekendCabin?.cabin_name ?? '').trim()
   if (weekendCabinName.length > 0) {
     return {
-      sessionCmId,
       cabinName: weekendCabinName,
       cabinNameRaw: (weekendCabin?.cabin_name_raw ?? '').trim(),
     }
@@ -134,7 +125,7 @@ function familySeasonHousing(
   if (y.housing !== 'placed' || cabinName.length === 0) return undefined
   const pin = y.housing_session_cm_id ?? null
   if (pin !== null && pin !== sessionCmId) return undefined
-  return { sessionCmId: pin, cabinName, cabinNameRaw: (y.cabin_name_raw ?? '').trim() }
+  return { cabinName, cabinNameRaw: (y.cabin_name_raw ?? '').trim() }
 }
 
 interface ParentFamilyWeekend {
