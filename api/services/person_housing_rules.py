@@ -81,9 +81,10 @@ class AdultWeekend:
 @dataclass(frozen=True, slots=True)
 class AttributedCabin:
     """A weekend and its cabin, per THIS rule alone: `cabin_name` is the raw
-    string, outer whitespace trimmed -- `person_housing_service` overrides it
-    with today's registry name (`display_name`, kindred#2332) before it
-    reaches the wire, so this field is never the published label on its own.
+    string, outer whitespace trimmed -- `named_adult_cabins` replaces it with
+    today's registry name (`display_name`, kindred#2332), or a live row's name,
+    before either caller publishes it, so the rule's own value is never the
+    published label.
     `cabin_name_raw` is the untouched value."""
 
     year: int
@@ -197,6 +198,20 @@ def live_names(rows: Iterable[Any], name_units: Callable[[Sequence[str]], str]) 
     return out
 
 
+def enrolled_sessions_by_year(rows: Iterable[Any]) -> dict[int, set[int]]:
+    """Enrolled attendee rows (with `session` expanded) as year -> session
+    cm_ids. Keyed on the weekend's ID alone, never on whether its end date
+    parses: the every-weekend coverage test must count an undated enrollment
+    (#2789 review), even though the attribution rule cannot place one."""
+    out: dict[int, set[int]] = defaultdict(set)
+    for row in rows:
+        session_cm_id = int(getattr(_expanded(row, "session"), "cm_id", 0) or 0)
+        year = int(getattr(row, "year", 0) or 0)
+        if session_cm_id > 0 and year > 0:
+            out[year].add(session_cm_id)
+    return dict(out)
+
+
 def live_cabins_for_year(
     year: int, enrolled_session_cm_ids: Collection[int], live: Mapping[int, str]
 ) -> dict[int, str] | None:
@@ -219,6 +234,7 @@ def overlay_live_cabins(
     named: Iterable[AttributedCabin],
     weekends: Iterable[AdultWeekend],
     live: Mapping[tuple[int, int], str],
+    enrolled: Mapping[int, Collection[int]] | None = None,
 ) -> list[AttributedCabin]:
     """The adult side of kindred#2775: each person-year that reads the
     CampMinder layer (`live_cabins_for_year`) REPLACES the attribution rule's
@@ -228,6 +244,10 @@ def overlay_live_cabins(
     live cabin keeps the rule's as-typed string for the same weekend as its
     provenance (the value the ingest built the row from), or "" when the rule
     attributed none there. Ordered by year, then weekend end, as the rule's is.
+
+    `enrolled` (year -> session cm_ids, from `enrolled_sessions_by_year`) is
+    the coverage set; without it the dated `weekends` stand in, which misses an
+    enrollment whose end date does not parse.
     """
     by_year: dict[int, list[AttributedCabin]] = defaultdict(list)
     for cabin in named:
@@ -241,7 +261,7 @@ def overlay_live_cabins(
         year_weekends = sorted(weekends_by_year.get(year, []), key=lambda w: w.last_day_ends)
         year_live = live_cabins_for_year(
             year,
-            {w.session_cm_id for w in year_weekends},
+            enrolled.get(year, set()) if enrolled is not None else {w.session_cm_id for w in year_weekends},
             {session: name for (live_year, session), name in live.items() if live_year == year},
         )
         if year_live is None:
@@ -256,6 +276,7 @@ def overlay_live_cabins(
                 cabin_name_raw=raw_by_session.get(weekend.session_cm_id, ""),
             )
             for weekend in year_weekends
+            if weekend.session_cm_id in year_live
         )
     return out
 
@@ -266,6 +287,7 @@ def named_adult_cabins(
     live: Mapping[tuple[int, int], str],
     resolve_codes: ResolveCodes,
     display_name: Callable[[str, int], str],
+    enrolled: Mapping[int, Collection[int]] | None = None,
 ) -> list[AttributedCabin]:
     """The adult journey's whole answer, as the per-person journey and the
     roster card's cohort read BOTH compute it -- one composition, so the two
@@ -275,7 +297,7 @@ def named_adult_cabins(
     the rule's answer (kindred#2775)."""
     attributed = attribute_adult_cabins(values, weekends, resolve_codes)
     named = [replace(cabin, cabin_name=display_name(cabin.cabin_name_raw, cabin.year).strip()) for cabin in attributed]
-    return overlay_live_cabins(named, weekends, live)
+    return overlay_live_cabins(named, weekends, live, enrolled)
 
 
 def attribute_adult_cabins(
@@ -299,9 +321,8 @@ def attribute_adult_cabins(
     same-place writes and hand that single survivor to whichever weekend it
     landed in, starving the earlier weekend of a value it genuinely had. This
     rule's own `cabin_name` is the raw string, outer whitespace trimmed --
-    its callers resolve today's registry name for the wire, not this function:
-    `person_housing_service` for the journey, and `lodging_roster_service`'s
-    `_last_year_adult_cabins` for the card (kindred#2767).
+    `named_adult_cabins` resolves today's registry name, not this function,
+    for both the journey and the card (kindred#2767, kindred#2775).
     """
     weekends_by_year: dict[int, dict[int, AdultWeekend]] = defaultdict(dict)
     for weekend in weekends:
@@ -324,8 +345,8 @@ def attribute_adult_cabins(
                     AttributedCabin(
                         year=year,
                         session_cm_id=weekend.session_cm_id,
-                        # This rule's own label -- the service overrides it
-                        # with today's registry name before publishing.
+                        # This rule's own label -- `named_adult_cabins`
+                        # replaces it with today's registry name.
                         cabin_name=winner.raw.strip(),
                         cabin_name_raw=winner.raw,
                     )

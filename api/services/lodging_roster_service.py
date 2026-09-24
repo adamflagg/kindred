@@ -79,6 +79,7 @@ from api.services.person_housing_rules import (
     AttributedCabin,
     adult_weekends_from_rows,
     cabin_values_from_rows,
+    enrolled_sessions_by_year,
     live_cabins_for_year,
     live_names,
     named_adult_cabins,
@@ -618,7 +619,8 @@ def _last_year_adult_cabins(
 
     out: dict[int, str] = {}
     for person_cm_id in set(values_by_person) | set(live_by_person):
-        weekends = adult_weekends_from_rows(attendance_by_person.get(person_cm_id, []))
+        attendance = attendance_by_person.get(person_cm_id, [])
+        weekends = adult_weekends_from_rows(attendance)
         if not weekends:
             continue
         cabins = named_adult_cabins(
@@ -627,6 +629,7 @@ def _last_year_adult_cabins(
             live_names(live_by_person.get(person_cm_id, []), housing_names.display_name_for_unit_ids),
             housing_names.resolve_codes,
             housing_names.display_name,
+            enrolled_sessions_by_year(attendance),
         )
         picked = pick_year_cabin(cabins, weekends, year=year, prefer_session_cm_id=board_session_cm_id)
         if picked is not None and picked.cabin_name:
@@ -3197,7 +3200,9 @@ class LodgingRosterService:
                     # string is still a cabin to attribute. With no cabin
                     # there is nothing to pin, and publishing the weekend id
                     # anyway would read as "housed in FC1" for a household
-                    # nobody placed.
+                    # nobody placed. A live CampMinder-layer row on that one
+                    # weekend (kindred#2775) IS a placement, cabin string or
+                    # not, so it pins too.
                     housing_session_cm_id=(
                         year_sessions_ordered[0].session_cm_id
                         if (cabin or year_live is not None) and len(year_sessions_ordered) == 1

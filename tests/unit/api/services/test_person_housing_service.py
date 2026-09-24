@@ -412,3 +412,30 @@ class TestLiveRowsFrom2026:
         assert result.weekends == [
             PersonHousingWeekend(year=2026, session_cm_id=WW, cabin_name="Meadow House 1", cabin_name_raw="")
         ]
+
+
+class TestLiveCoverageIsKeyedOnWeekendIds:
+    """#2789 review: every-weekend coverage counts an enrolled weekend by its
+    id, never by whether its end date parses. An undated enrollment with no
+    live row holds the whole year on today's rule, exactly as the family card
+    does."""
+
+    DD = 1002
+
+    @pytest.mark.asyncio
+    async def test_an_undated_weekend_without_a_live_row_keeps_the_year_on_the_rule(self) -> None:
+        repo = _repo(
+            fetch_person_cabin_values=[_cabin_row(2026, "Ridge Hut", "2026-10-10T18:00:00+00:00")],
+            fetch_person_adult_attendees=[
+                _attendee_row(2026, WW, "2026-10-18 07:00:00.000Z"),
+                _attendee_row(2026, self.DD, ""),
+            ],
+            fetch_person_live_assignments=[_live_row(2026, WW, "u2")],
+            fetch_all_units=[_MEADOW, _LAKE],
+        )
+
+        result = await PersonHousingService(repo).build_person_housing(PERSON)
+
+        assert result.weekends == [
+            PersonHousingWeekend(year=2026, session_cm_id=WW, cabin_name="Ridge Hut", cabin_name_raw="Ridge Hut")
+        ]

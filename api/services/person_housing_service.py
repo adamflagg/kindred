@@ -17,6 +17,7 @@ from api.services.lodging_roster_service import build_housing_name_resolver
 from api.services.person_housing_rules import (
     adult_weekends_from_rows,
     cabin_values_from_rows,
+    enrolled_sessions_by_year,
     live_names,
     named_adult_cabins,
 )
@@ -127,6 +128,7 @@ class PersonHousingService:
                 live_names(live_rows, resolver.display_name_for_unit_ids),
                 resolver.resolve_codes,
                 resolver.display_name,
+                enrolled_sessions_by_year(attendee_rows),
             )
             if has_adult
             else []

@@ -132,7 +132,8 @@ export type PersonHousingWeekendRow = PersonHousingWeekend
  * says which weekends the household was at and nothing about where it slept in
  * each — repeating the cabin against every entry is the fan-out that
  * manufactured 12 of 17 false multi-family occupancies in the phase-C
- * shareability analysis.
+ * shareability analysis. A REAL per-weekend cabin (the CampMinder layer, 2026
+ * on) travels separately, on `weekend_cabins` (kindred#2775).
  */
 export type HouseholdJourneySessionRow = HouseholdJourneySession
 /**
