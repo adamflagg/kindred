@@ -188,8 +188,9 @@ def attribute_adult_cabins(
     same-place writes and hand that single survivor to whichever weekend it
     landed in, starving the earlier weekend of a value it genuinely had. This
     rule's own `cabin_name` is the raw string, outer whitespace trimmed --
-    `person_housing_service` is what resolves today's registry name for the
-    wire, not this function.
+    its callers resolve today's registry name for the wire, not this function:
+    `person_housing_service` for the journey, and `lodging_roster_service`'s
+    `_last_year_adult_cabins` for the card (kindred#2767).
     """
     weekends_by_year: dict[int, dict[int, AdultWeekend]] = defaultdict(dict)
     for weekend in weekends:

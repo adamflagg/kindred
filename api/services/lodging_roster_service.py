@@ -2325,8 +2325,11 @@ class LodgingRosterService:
         # through the PocketBase relation.
         session_pb_id = _s(session, "id")
         session_type = _s(session, "session_type")
-        # kindred#2767. Each grain reads only its own last-year and returning
-        # inputs; neither pays for the other's.
+        # kindred#2767. The reads this issue ADDED are split by grain, so
+        # neither grain pays for the other's new ones. The household reads that
+        # predate it (`prior_task`, `last_year_cabins_task`) still run on an
+        # adult board too, where nothing consumes them -- both are cached per
+        # year, so past the first load of a year that is a cache hit.
         is_adult = session_type == ADULT_SESSION_TYPE
         enrolled_last_year_task: asyncio.Task[set[int]] | None = None
         prior_adult_task: asyncio.Task[set[int]] | None = None

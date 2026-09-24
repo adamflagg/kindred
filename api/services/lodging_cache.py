@@ -40,6 +40,10 @@ table (`attendees`, `person_custom_values`) and so under the same safety
 argument: `fetch_family_enrolled_household_cm_ids`,
 `fetch_prior_adult_person_cm_ids`, `fetch_adult_weekend_attendees` and
 `fetch_adult_cabin_values`. A roster pays at most three of them, at two years.
+Their writers join the two named below and fire the same invalidation: the
+`attendees` sync, and the person custom-values passes (the daily
+`person_custom_values_family_camp`, which covers adult programs since
+kindred#2760, and the on-demand `person_custom_values`).
 
 Shaped like api/services/metrics_cache.py (TTL + LRU + RLock) per that
 module's own docstring pattern, but closer in spirit to
@@ -85,7 +89,7 @@ T = TypeVar("T")
 class LodgingYearCache:
     """Thread-safe in-memory cache for the roster's year-scoped reads.
 
-    Keyed by (read name, year) -- there is no third axis. None of the five
+    Keyed by (read name, year) -- there is no third axis. None of the cached
     reads varies by session or scenario, which is exactly why hoisting them
     into a cache is safe: the same answer is correct for every weekend and
     every scenario in a year.
@@ -144,7 +148,7 @@ class LodgingYearCache:
 
         Called by `api/routers/metrics.py`'s `POST /api/metrics/cache/invalidate`
         (kindred#2142), which the frontend fires on CampMinder sync completion --
-        see the module docstring for which syncs write the five cached reads and
+        see the module docstring for which syncs write the cached reads and
         for the residual gap the TTL still covers.
 
         Also drops the in-flight lock map (kindred#2144). `asyncio.Lock` binds
