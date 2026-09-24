@@ -85,4 +85,9 @@ export interface SiblingWithEnrollment extends PersonsResponse {
   attendeeStatus?: string
   /** Every other program this member is enrolled in this year. */
   additionalSessions?: Array<{ name: string; session_type: string }>
+  /**
+   * The earliest `start_date` among this year's enrollments — a past year's
+   * age is read at it (owner ruling 2026-09-24, utils/displayAge.ts).
+   */
+  earliestSessionStart?: string
 }

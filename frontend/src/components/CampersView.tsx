@@ -32,7 +32,7 @@ function getBunkAreaColor(bunkName: string | undefined): string {
 
 interface CampersViewProps {
   sessionId: string // Currently unused but kept for API compatibility
-  session?: Session // Currently unused but kept for API compatibility
+  session?: Session // CSV export name + fallback session start for a prior year's age
   campers: Camper[]
   bunks: Bunk[]
 }
@@ -410,7 +410,13 @@ export default function CampersView({
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <span className="dark:text-muted-foreground text-sm text-stone-500">
                             Grade {camper.grade} ·{' '}
-                            {displayCampMinderAge(getDisplayAgeForYear(camper, currentYear) ?? 0)}{' '}
+                            {displayCampMinderAge(
+                              getDisplayAgeForYear(
+                                camper,
+                                currentYear,
+                                camper.expand?.session?.start_date ?? _session?.start_date
+                              ) ?? 0
+                            )}{' '}
                             yrs ·{' '}
                             {camper.gender === 'M'
                               ? 'Boy'

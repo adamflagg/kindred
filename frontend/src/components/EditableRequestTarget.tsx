@@ -35,6 +35,8 @@ interface Camper {
   grade: number
   gender: string
   session_cm_id: number
+  /** The session's start — a prior year's age is read at it (utils/displayAge.ts). */
+  session_start_date?: string
 }
 
 // Helper function to format camper name
@@ -140,6 +142,7 @@ export default function EditableRequestTarget({
         grade: person.grade ?? 0,
         gender: person.gender || '',
         session_cm_id: sessionId,
+        ...(person.session_start_date && { session_start_date: person.session_start_date }),
       })),
     [camperPersons, sessionId]
   )
@@ -372,7 +375,10 @@ export default function EditableRequestTarget({
                   >
                     <div className="font-medium">{formatCamperName(camper)}</div>
                     <div className="text-muted-foreground text-xs">
-                      Age {displayCampMinderAge(getDisplayAgeForYear(camper, year) ?? 0)}
+                      Age{' '}
+                      {displayCampMinderAge(
+                        getDisplayAgeForYear(camper, year, camper.session_start_date) ?? 0
+                      )}
                       {camper.grade > 0 && ` • Grade ${camper.grade}`}
                     </div>
                   </button>

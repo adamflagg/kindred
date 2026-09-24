@@ -45,6 +45,16 @@ interface IdentityPanelProps {
   cohortContext?: CohortContext | undefined
   /** Hides the School row for an adult-program person — adults have no school */
   hideSchool?: boolean
+  /**
+   * The year the record is showing — can be a journey link's `?year=`, not
+   * the app's global year. Defaults to the global year.
+   */
+  viewingYear?: number | undefined
+  /**
+   * The person's earliest enrolled session start that year: a past year's
+   * age is read at it (owner ruling 2026-09-24, utils/displayAge.ts).
+   */
+  ageSessionStart?: string | undefined
 }
 
 const KINDS: CohortKind[] = ['school', 'congregation', 'city']
@@ -57,9 +67,12 @@ export function IdentityPanel({
   defaultExpanded = false,
   cohortContext,
   hideSchool,
+  viewingYear: viewingYearProp,
+  ageSessionStart,
 }: IdentityPanelProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
-  const viewingYear = useYear()
+  const globalYear = useYear()
+  const viewingYear = viewingYearProp ?? globalYear
   // The retained-snapshot pattern, one hook (kindred#2541) — same shape and
   // same reasoning as CamperCohortsSection: `close()` clears only the open
   // flag, so the drill-down stays mounted (and its content stays renderable)
@@ -122,11 +135,14 @@ export function IdentityPanel({
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
+                      // The stored day parses as UTC midnight; read it back
+                      // in UTC or it prints the day before west of UTC.
+                      timeZone: 'UTC',
                     })
                   : 'Not provided'}
               </div>
               <div className="text-muted-foreground text-xs">
-                {formatAge(getDisplayAgeForYear(camper, viewingYear) ?? 0)}
+                {formatAge(getDisplayAgeForYear(camper, viewingYear, ageSessionStart) ?? 0)}
               </div>
             </div>
 

@@ -14,6 +14,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { personLocation } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
+import { earliestSessionStart } from '../utils/displayAge'
 import { isSummerCampSession, isAdultSessionType } from '../utils/sessionTypePredicates'
 import { useSessionSatisfaction } from '../hooks/useSessionSatisfaction'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -211,6 +212,8 @@ function CamperDetailBody({
             pronouns={pronouns}
             defaultExpanded={true}
             hideSchool={isAdultProgram}
+            viewingYear={currentYear}
+            ageSessionStart={earliestSessionStart(enrolledCampers.map((c) => c.expand?.session))}
             cohortContext={
               camper.attendee_status === 'enrolled' &&
               showBunkingUI &&
@@ -273,6 +276,7 @@ function CamperDetailBody({
             isLoading={siblingsLoading}
             error={siblingsError}
             title={isAdultProgram ? 'Household' : 'Siblings'}
+            viewingYear={currentYear}
           />
         </div>
       </div>

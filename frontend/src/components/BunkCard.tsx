@@ -175,9 +175,17 @@ function BunkCard({
   // Calculate grade distribution, age range, and capacity warnings
   // React Compiler will automatically optimize these calculations
   const calculateBunkStats = () => {
+    // The display age (owner ruling 2026-09-24, utils/displayAge.ts) — the
+    // order, the range and the gap warning all read it, so none of them can
+    // disagree with the ages printed. Never the stored snapshot, which drifts
+    // with each row's sync date.
+    const ageOf = (c: Camper) =>
+      getDisplayAgeForYear(c, viewingYear, c.expand?.session?.start_date) ?? 0
+    const byAge = (a: Camper, b: Camper) => ageOf(a) - ageOf(b)
+
     // Quick path when dragging - just sort campers
     if (isDragging) {
-      const sorted = bunk.campers.toSorted((a, b) => a.age - b.age)
+      const sorted = bunk.campers.toSorted(byAge)
       return {
         gradeDistribution: null,
         ageRange: null,
@@ -192,7 +200,7 @@ function BunkCard({
     const isOverCapacity = bunk.occupancy > defaultCapacity
 
     // Sort campers by age (youngest to oldest)
-    const sorted = bunk.campers.toSorted((a, b) => a.age - b.age)
+    const sorted = bunk.campers.toSorted(byAge)
 
     // Calculate grade distribution
     const gradeCounts = new Map<number, number>()
@@ -267,8 +275,8 @@ function BunkCard({
         ageRange = null
         ageGapWarning = false
       } else {
-        const youngest = youngestCamper.age
-        const oldest = oldestCamper.age
+        const youngest = ageOf(youngestCamper)
+        const oldest = ageOf(oldestCamper)
         ageRange = { youngest, oldest }
         ageGapWarning = oldest - youngest > 2.0 // 24 months
       }
@@ -372,24 +380,18 @@ function BunkCard({
                 </div>
               )}
             </div>
-            {ageRange &&
-              (() => {
-                const youngest = sortedCampers[0]
-                const oldest = sortedCampers.at(-1)
-                if (!youngest || !oldest) return null
-                return (
-                  <div
-                    className={clsx(
-                      'text-xs',
-                      ageGapWarning ? 'font-medium text-red-600' : 'text-muted-foreground'
-                    )}
-                  >
-                    Ages: {displayCampMinderAge(getDisplayAgeForYear(youngest, viewingYear) ?? 0)} -{' '}
-                    {displayCampMinderAge(getDisplayAgeForYear(oldest, viewingYear) ?? 0)}
-                    {ageGapWarning && ' ⚠️'}
-                  </div>
-                )
-              })()}
+            {ageRange && (
+              <div
+                className={clsx(
+                  'text-xs',
+                  ageGapWarning ? 'font-medium text-red-600' : 'text-muted-foreground'
+                )}
+              >
+                Ages: {displayCampMinderAge(ageRange.youngest)} -{' '}
+                {displayCampMinderAge(ageRange.oldest)}
+                {ageGapWarning && ' ⚠️'}
+              </div>
+            )}
           </div>
         </div>
 

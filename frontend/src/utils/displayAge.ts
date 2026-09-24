@@ -1,23 +1,45 @@
 /**
- * Display age utility
+ * Display age utility — owner ruling 2026-09-24.
  *
- * Uses stored person.age with year adjustment based on current calendar year.
- * Falls back to birthdate calculation if stored age is missing.
+ * `persons.age` is CampMinder's yy.mm SNAPSHOT, taken whenever that year's
+ * row last synced, and rows for different years sync at different times. The
+ * old rule ("stored age minus (calendar year - viewing year)") therefore
+ * drifted: a camper's two pages could read ages well over a year apart for
+ * what is one year. So an age is computed from `birthdate` instead:
  *
- * Data model: persons table stores same age (at sync time) for all year records.
- * Frontend adjusts for historical viewing: currentCalendarYear - viewingYear
+ * - Current year: the age as of TODAY.
+ * - Prior year: the age at that year's SESSION START. The caller passes it:
+ *   the session in context on a board, or the person's earliest enrolled
+ *   session start that year on the camper page (`earliestSessionStart`).
+ *   With no session, the age on today's date that many years ago.
+ * - No readable birthdate: the stored `persons.age` with the old year
+ *   adjustment. That is APPROXIMATE — off by however far the snapshot's sync
+ *   date sits from the day being shown.
  *
- * Example (in January 2026, stored age is 15.04):
- * - Viewing 2026: 15.04 - 0 = 15.04
- * - Viewing 2025: 15.04 - 1 = 14.04
- * - Viewing 2024: 15.04 - 2 = 13.04
+ * Output stays CampMinder's yy.mm, so `formatAge`/`displayCampMinderAge`
+ * render it unchanged. Weekend surfaces do not read this: their ages come
+ * from the server (`lodging_roster_service.py`, kindred#2088/#2420).
  */
 
-import { calculateAge } from './ageCalculator'
+import {
+  completedMonths,
+  isLeapYear,
+  monthsToCampMinderAge,
+  parseCalendarDay,
+  todayCalendarDay,
+  type CalendarDay,
+} from './ageCalculator'
+import { isSummerCampSessionType } from './sessionTypePredicates'
 
 export interface PersonWithAge {
   age?: number | undefined
   birthdate?: string | undefined
+}
+
+/** Today's month and day in `year` — Feb 29 becomes Feb 28 in a common year. */
+function todayInYear(today: CalendarDay, year: number): CalendarDay {
+  const day = today.month === 2 && today.day === 29 && !isLeapYear(year) ? 28 : today.day
+  return { year, month: today.month, day }
 }
 
 /**
@@ -25,26 +47,31 @@ export interface PersonWithAge {
  *
  * @param person - Person record with optional age and birthdate
  * @param viewingYear - The year being viewed in the UI
- * @returns Age in CampMinder format (years.months) or null if unavailable
- *
- * Strategy:
- * - Prefer stored age with year adjustment
- * - Fall back to birthdate calculation if stored age is missing
+ * @param sessionStart - `start_date` of the session the age is read at (see
+ *   the module comment); used only for a year other than the current one
+ * @returns Age in CampMinder format (years.months), or null if unavailable
  */
-export function getDisplayAge(person: PersonWithAge, viewingYear: number): number | null {
-  const currentYear = new Date().getFullYear()
-  const yearDiff = currentYear - viewingYear
+export function getDisplayAge(
+  person: PersonWithAge,
+  viewingYear: number,
+  sessionStart?: string | null
+): number | null {
+  const today = todayCalendarDay()
+  const birth = parseCalendarDay(person.birthdate)
 
-  // Prefer stored age with year adjustment
-  if (person.age !== undefined) {
-    const adjustedAge = person.age - yearDiff
-    return Math.round(adjustedAge * 100) / 100
+  if (birth) {
+    const asOf =
+      viewingYear === today.year
+        ? today
+        : (parseCalendarDay(sessionStart) ?? todayInYear(today, viewingYear))
+    const months = completedMonths(birth, asOf)
+    // Measured before the birth: bad data, not an age (the server's `_age_at`).
+    return months < 0 ? null : monthsToCampMinderAge(months)
   }
 
-  // Fallback: calculate from birthdate if available
-  if (person.birthdate) {
-    const currentAge = calculateAge(person.birthdate)
-    const adjustedAge = currentAge - yearDiff
+  // Approximate fallback: the snapshot, shifted by the year gap.
+  if (person.age !== undefined) {
+    const adjustedAge = person.age - (today.year - viewingYear)
     return Math.round(adjustedAge * 100) / 100
   }
 
@@ -52,12 +79,46 @@ export function getDisplayAge(person: PersonWithAge, viewingYear: number): numbe
 }
 
 /**
- * Hook-friendly version (convenience wrapper)
- *
- * @param person - Person record with optional age and birthdate
- * @param viewingYear - The year being viewed in the UI
- * @returns Age in CampMinder format (years.months) or null if unavailable
+ * Hook-friendly alias of `getDisplayAge`.
  */
-export function getDisplayAgeForYear(person: PersonWithAge, viewingYear: number): number | null {
-  return getDisplayAge(person, viewingYear)
+export function getDisplayAgeForYear(
+  person: PersonWithAge,
+  viewingYear: number,
+  sessionStart?: string | null
+): number | null {
+  return getDisplayAge(person, viewingYear, sessionStart)
+}
+
+interface SessionStart {
+  readonly start_date?: string | null | undefined
+  readonly session_type?: string | null | undefined
+}
+
+/**
+ * The earliest SUMMER-camp `start_date` among `sessions` (main, embedded, ag,
+ * quest), compared by calendar day; with no dated summer session, the earliest
+ * of any of them. For a surface with no single session in context (the camper
+ * page for a past year): it reads the age where the board would, so a spring
+ * family weekend or a teen program does not move it (owner decision on the
+ * PR #2818 review). Missing sessions and blank dates are skipped.
+ */
+export function earliestSessionStart(
+  sessions: ReadonlyArray<SessionStart | null | undefined>
+): string | undefined {
+  const dated = sessions.filter(
+    (s): s is SessionStart & { start_date: string } =>
+      !!s?.start_date && parseCalendarDay(s.start_date) !== null
+  )
+  const summer = dated.filter((s) => isSummerCampSessionType(s.session_type))
+  let earliest: string | undefined
+  let earliestKey = ''
+  for (const { start_date: start } of summer.length > 0 ? summer : dated) {
+    // A validated `YYYY-MM-DD` prefix sorts as a string.
+    const key = start.trim().slice(0, 10)
+    if (earliest === undefined || key < earliestKey) {
+      earliest = start
+      earliestKey = key
+    }
+  }
+  return earliest
 }

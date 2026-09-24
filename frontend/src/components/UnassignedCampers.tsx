@@ -29,10 +29,9 @@ export default function UnassignedCampers({
 
   // Sort campers by age (youngest to oldest)
   const sortedCampers = useMemo(() => {
-    return campers.toSorted(
-      (a, b) =>
-        (getDisplayAgeForYear(a, viewingYear) ?? 0) - (getDisplayAgeForYear(b, viewingYear) ?? 0)
-    )
+    const ageOf = (c: Camper) =>
+      getDisplayAgeForYear(c, viewingYear, c.expand?.session?.start_date) ?? 0
+    return campers.toSorted((a, b) => ageOf(a) - ageOf(b))
   }, [campers, viewingYear])
 
   // Get bunk request status for all unassigned campers

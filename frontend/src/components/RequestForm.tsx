@@ -145,8 +145,11 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
                   stay within that budget. */}
               <span className="font-medium">{camper.name}</span>
               <span className="text-muted-foreground ml-2 text-sm">
-                Age {displayCampMinderAge(getDisplayAgeForYear(camper, viewingYear) ?? 0)} •{' '}
-                {formatGradeOrdinal(camper.grade)}
+                Age{' '}
+                {displayCampMinderAge(
+                  getDisplayAgeForYear(camper, viewingYear, camper.expand?.session?.start_date) ?? 0
+                )}{' '}
+                • {formatGradeOrdinal(camper.grade)}
               </span>
             </label>
           ))}

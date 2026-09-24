@@ -50,6 +50,7 @@ type ExpandedMember = LockedGroupMembersResponse & {
           cm_id: number
           name: string
           session_type: string
+          start_date?: string
         }
       }
     }
@@ -351,11 +352,12 @@ function LockGroupPanel({
   // Helper to get age from member (year-aware for historical viewing)
   const getMemberAge = useCallback(
     (member: ExpandedMember): number | null => {
-      const person = member.expand?.attendee?.expand?.person
+      const attendee = member.expand?.attendee
+      const person = attendee?.expand?.person
       if (!person) return null
       // Cast to include age/birthdate for getDisplayAgeForYear
       const personWithAge = person as { age?: number; birthdate?: string }
-      return getDisplayAgeForYear(personWithAge, currentYear)
+      return getDisplayAgeForYear(personWithAge, currentYear, attendee.expand?.session?.start_date)
     },
     [currentYear]
   )

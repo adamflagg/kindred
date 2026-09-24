@@ -7,7 +7,7 @@
  * after close, which means `openKind` is a retained snapshot and a separate
  * flag drives `open`.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createWrapper } from '../../test/testUtils'
@@ -190,5 +190,60 @@ describe('IdentityPanel grade name', () => {
   it('shows no grade line when there is no grade name', () => {
     renderWith({ grade: 0, grade_name: '' })
     expect(screen.queryByText(/Grade|0th/)).toBeNull()
+  })
+})
+
+// Owner ruling 2026-09-24: the record's age for a past year is the age at the
+// earliest enrolled session start that year — the page computes that start
+// and the year it is showing, and the panel must use both rather than the
+// app's global year.
+describe('IdentityPanel birthday and age', () => {
+  beforeEach(() => {
+    mockUseCamperCohorts.mockReturnValue({ cohorts: cohortsFixture({}), isLoading: false })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 24, 12, 0, 0))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const olivia = {
+    ...camper,
+    first_name: 'Olivia',
+    last_name: 'Chen',
+    age: 12.11, // the 2025 row's early-2026 snapshot
+    birthdate: '2013-03-15',
+  } as unknown as Camper
+
+  it('reads a past year at the session start the page passes', () => {
+    render(
+      <IdentityPanel
+        camper={olivia}
+        location={null}
+        congregation={null}
+        pronouns="she/her"
+        defaultExpanded
+        viewingYear={2025}
+        ageSessionStart="2025-07-06 07:00:00.000Z"
+      />,
+      { wrapper }
+    )
+    // The global year context says 2026; the page is showing 2025.
+    expect(screen.getByText('12 years, 3 months')).toBeInTheDocument()
+  })
+
+  it('shows the stored birthdate as that calendar day in any time zone', () => {
+    // `new Date('2013-03-15')` is UTC midnight — west of UTC it printed Mar 14.
+    render(
+      <IdentityPanel
+        camper={olivia}
+        location={null}
+        congregation={null}
+        pronouns="she/her"
+        defaultExpanded
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('Mar 15, 2013')).toBeInTheDocument()
   })
 })
