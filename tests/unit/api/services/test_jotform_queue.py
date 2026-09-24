@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -239,3 +240,29 @@ class TestDuplicateGroups:
         [group] = duplicate_groups(subs, [OLIVIA, EMMA])
         assert (group.person_cm_id, group.guest_name, group.change_kind) == (1000004, "Olivia Chen", "list")
         assert [s.submission_id for s in group.submissions] == ["66d1", "66d2"]
+
+    def test_one_filing_at_each_of_two_weekends_is_not_a_duplicate(self) -> None:
+        # A guest enrolled in two adult weekends files once for each: two
+        # weekends' requests, not one guest re-filing. Diffing them against
+        # each other would invent a change.
+        ww = _s("w1", "Olivia", "Chen", bunking_request="Emma Johnson", match_status="auto", person_cm_id=1000004)
+        mw = replace(
+            _s("m1", "Olivia", "Chen", bunking_request="Liam Garcia", match_status="auto", person_cm_id=1000004),
+            session_cm_id=1000003,
+        )
+        assert duplicate_groups([ww, mw], [OLIVIA]) == []
+
+    def test_a_group_holds_only_one_weekends_filings(self) -> None:
+        first = _s(
+            "w1", "Olivia", "Chen", submitted_at="2026-08-03 09:00:00", match_status="auto", person_cm_id=1000004
+        )
+        second = _s(
+            "w2", "Olivia", "Chen", submitted_at="2026-08-31 09:00:00", match_status="auto", person_cm_id=1000004
+        )
+        other_weekend = replace(
+            _s("m1", "Olivia", "Chen", submitted_at="2026-09-10 09:00:00", match_status="auto", person_cm_id=1000004),
+            session_cm_id=1000003,
+        )
+        [group] = duplicate_groups([first, second, other_weekend], [OLIVIA])
+        assert group.session_cm_id == S
+        assert [s.submission_id for s in group.submissions] == ["66w1", "66w2"]

@@ -213,7 +213,12 @@ class JotformAdminService:
             )
 
         names = {g.person_cm_id: g.display_name for g in guests}
-        filed = {s.person_cm_id for s in subs if s.person_cm_id > 0 and s.match_status in ("auto", "staff")}
+        # Per (guest, weekend): filing for one adult weekend is not a submission for another.
+        filed = {
+            (s.person_cm_id, s.session_cm_id)
+            for s in subs
+            if s.person_cm_id > 0 and s.match_status in ("auto", "staff")
+        }
         unmatched: list[JotformQueueItem] = []
         resolved: list[JotformQueueItem] = []
         for sub in subs:
@@ -229,7 +234,7 @@ class JotformAdminService:
                 person_cm_id=g.person_cm_id,
                 display_name=g.display_name,
                 session_cm_id=g.session_cm_id,
-                has_submission=g.person_cm_id in filed,
+                has_submission=(g.person_cm_id, g.session_cm_id) in filed,
             )
             for g in guests
         ]

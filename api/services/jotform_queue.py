@@ -344,14 +344,16 @@ def queue_item(sub: QueueSubmission, *, session_name: str = "", guest_name: str 
 
 
 def duplicate_groups(subs: Sequence[QueueSubmission], guests: Sequence[QueueGuest]) -> list[JotformDuplicateGroup]:
-    """Guests with 2+ live matched filings, each with how the request moved."""
-    by_guest: dict[int, list[QueueSubmission]] = defaultdict(list)
+    """Guests with 2+ live matched filings for ONE weekend, each with how the
+    request moved. Grouped per (guest, weekend): a guest enrolled at two adult
+    weekends who files once for each has two requests, not a changed one."""
+    by_guest: dict[tuple[int, int], list[QueueSubmission]] = defaultdict(list)
     for sub in subs:
         if sub.person_cm_id > 0 and sub.match_status in _LIVE_MATCHES:
-            by_guest[sub.person_cm_id].append(sub)
+            by_guest[(sub.person_cm_id, sub.session_cm_id)].append(sub)
     names = {g.person_cm_id: g.display_name for g in guests}
     groups: list[JotformDuplicateGroup] = []
-    for person_cm_id, filings in by_guest.items():
+    for (person_cm_id, session_cm_id), filings in by_guest.items():
         if len(filings) < 2:
             continue
         filings.sort(key=lambda s: s.submitted_at)
@@ -366,9 +368,9 @@ def duplicate_groups(subs: Sequence[QueueSubmission], guests: Sequence[QueueGues
             JotformDuplicateGroup(
                 person_cm_id=person_cm_id,
                 guest_name=name,
-                session_cm_id=filings[-1].session_cm_id,
+                session_cm_id=session_cm_id,
                 change_kind=change.kind if change is not None else "none",
                 submissions=[queue_item(s, guest_name=name) for s in filings],
             )
         )
-    return sorted(groups, key=lambda g: g.guest_name.casefold())
+    return sorted(groups, key=lambda g: (g.guest_name.casefold(), g.session_cm_id))

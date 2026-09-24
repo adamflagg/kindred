@@ -180,6 +180,32 @@ class TestQueueAndLinks:
         assert [(g.person_cm_id, g.has_submission) for g in queue.guests] == [(1000005, False)]
 
     @pytest.mark.asyncio
+    async def test_has_submission_is_per_weekend(self) -> None:
+        # Enrolled at both weekends, filed only for Women's Weekend: the Men's
+        # Weekend row must not claim a submission.
+        filed = SimpleNamespace(
+            id="s2",
+            submission_id="6600000000000000002",
+            form="form_ww",
+            session_cm_id=1000002,
+            submitted_at="2026-08-31 09:00:00",
+            match_status="auto",
+            person_cm_id=1000005,
+            jotform_status="ACTIVE",
+            year=YEAR,
+        )
+        repo = _repo(
+            fetch_forms=[FORM],
+            fetch_submissions=[filed],
+            fetch_enrolled_guests=[
+                _guest(1000005, "Emma", "Johnson"),
+                _guest(1000005, "Emma", "Johnson", session=1000003),
+            ],
+        )
+        queue = await JotformAdminService(repo).build_queue(YEAR)
+        assert [(g.session_cm_id, g.has_submission) for g in queue.guests] == [(1000002, True), (1000003, False)]
+
+    @pytest.mark.asyncio
     async def test_the_queue_never_picks_a_candidate_even_when_there_is_only_one(self) -> None:
         # Owner ruling: suggestions are labels for staff, never an auto-link.
         repo = _repo(
@@ -208,6 +234,7 @@ class TestQueueAndLinks:
             1000005,
             "staff@example.com",
         )
+        assert body["linked_at"], "a staff link stamps when it was made"
         cache.invalidate_all.assert_called_once()
 
     @pytest.mark.asyncio
