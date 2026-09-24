@@ -51,12 +51,27 @@ type codeYear struct {
 	year int
 }
 
+// directKey keys the direct-name-fallback index by lookup key and year: a
+// name is only a stable identifier within one season (kindred#2762).
+type directKey struct {
+	key  string
+	year int
+}
+
 // AliasResolver resolves raw cabin strings through lodging_unit_aliases,
 // honoring each row's year window. Built once per sync run and read many times.
 type AliasResolver struct {
 	byString     map[string][]aliasRow
 	unitCode     map[string]string
 	idByCodeYear map[codeYear]string
+	// directByKey backs the direct-name fallback (kindred#2762 Part 1): a
+	// raw string that already names a LEAF unit's own `name` or `code`, in
+	// the requested year, with no alias covering it. The empty string is a
+	// sentinel for "two units share this key in this year" -- ambiguous,
+	// never picked arbitrarily, mirroring Python's `None` deferral
+	// (api/services/lodging_rules.py HousingNameResolver). Real PocketBase
+	// ids are never empty, so "" cannot collide with a real match.
+	directByKey map[directKey]string
 }
 
 // NewAliasResolver loads the unit and alias tables into memory. Build one per
@@ -73,10 +88,50 @@ func NewAliasResolver(app core.App) (*AliasResolver, error) {
 		return nil, fmt.Errorf("loading lodging_units: %w", err)
 	}
 	r.idByCodeYear = make(map[codeYear]string)
+	r.directByKey = make(map[directKey]string)
 	for _, u := range units {
 		code := u.GetString("code")
+		year := u.GetInt("year")
 		r.unitCode[u.Id] = code
-		r.idByCodeYear[codeYear{code: code, year: u.GetInt("year")}] = u.Id
+		r.idByCodeYear[codeYear{code: code, year: year}] = u.Id
+
+		// Direct-name fallback candidates: LEAF units only (kindred#2762).
+		// A string naming a container with no alias stays unresolved and
+		// goes to the work queue, as it does today -- placing a party on a
+		// whole building should always take a deliberate alias. A container
+		// must never WIN the fallback, but it still has to occupy the
+		// ambiguity index: `continue`-ing past it entirely (as this used to)
+		// made it invisible to the collision check, so an unrelated leaf
+		// sharing the container's exact name/code won uncontested instead of
+		// the string staying unresolved -- diverging from Python's
+		// HousingNameResolver, which direct-matches containers as ordinary
+		// candidates and so correctly marks a shared name ambiguous.
+		isContainer := u.GetBool("is_container")
+		for _, candidate := range [2]string{u.GetString("name"), code} {
+			key := AliasLookupKey(candidate)
+			if key == "" {
+				continue
+			}
+			dk := directKey{key: key, year: year}
+			if isContainer {
+				// Sticky-ambiguous unconditionally: a container's mere
+				// presence on this key must poison it, regardless of
+				// whether a leaf has claimed it already or claims it later.
+				r.directByKey[dk] = ""
+				continue
+			}
+			if existing, ok := r.directByKey[dk]; ok {
+				if existing != u.Id {
+					// Two units answer to this key in this year -- sticky
+					// ambiguity, same as Python's `None`: once two units
+					// have claimed a key, a third candidate must never
+					// un-ambiguous it back to a single winner.
+					r.directByKey[dk] = ""
+				}
+			} else {
+				r.directByKey[dk] = u.Id
+			}
+		}
 	}
 
 	aliases, err := app.FindRecordsByFilter("lodging_unit_aliases", "", "", 0, 0)
@@ -145,6 +200,18 @@ func (r *AliasResolver) Resolve(raw string, year int) AliasResolution {
 
 	switch len(matches) {
 	case 0:
+		// No alias covers this string -- aliases win when they exist
+		// (kindred#2762 Part 1), so only here does the direct-name fallback
+		// get a say. A single leaf unit's own name/code resolves without an
+		// alias row; a name two units share, or one that names no unit,
+		// falls through unresolved -- never picked arbitrarily.
+		id, ok := r.directByKey[directKey{key: AliasLookupKey(raw), year: year}]
+		if !ok || id == "" {
+			return out
+		}
+		out.UnitIDs = []string{id}
+		out.UnitCodes = []string{r.unitCode[id]}
+		out.Resolved = true
 		return out
 	case 1:
 		// An alias stores whichever season's record ids existed when it was

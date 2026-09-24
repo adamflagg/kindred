@@ -336,3 +336,193 @@ func TestResolveIsUnresolvedWhenAMemberIsDangling(t *testing.T) {
 		t.Errorf("UnitIDs = %v, want empty -- a dangling member silently shrinks a family's rooms", got.UnitIDs)
 	}
 }
+
+// TestAliasResolverDirectNameFallbackResolvesExactUnitName is kindred#2762
+// Part 1: a raw string that names a unit's OWN name/code, with no alias row
+// at all, must resolve. This is the gap 75 of 194 production aliases paper
+// over today by mapping a string to the identically-named unit -- coverage
+// that depends on someone remembering to add one for every unit added later.
+func TestAliasResolverDirectNameFallbackResolvesExactUnitName(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	id := addUnit(t, app, "test-cabin-1", 2025)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("test-cabin-1", 2025)
+	if !got.Resolved {
+		t.Fatalf("exact unit name/code with no alias did not resolve: %+v", got)
+	}
+	if len(got.UnitIDs) != 1 || got.UnitIDs[0] != id {
+		t.Errorf("UnitIDs = %v, want [%s]", got.UnitIDs, id)
+	}
+	if len(got.UnitCodes) != 1 || got.UnitCodes[0] != "test-cabin-1" {
+		t.Errorf("UnitCodes = %v, want [test-cabin-1]", got.UnitCodes)
+	}
+}
+
+// TestAliasResolverAliasBeatsDirectMatch pins the order the issue body calls
+// out explicitly: aliases are checked BEFORE the direct-name fallback, never
+// after. A string that is both a covering alias and another unit's own name
+// must resolve to the ALIAS target, not the direct match.
+func TestAliasResolverAliasBeatsDirectMatch(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	unitA := addUnit(t, app, "test-cabin-1", 2025) // the direct-match candidate; must lose
+	unitB := addUnit(t, app, "test-cabin-2", 2025) // the alias target; must win
+	addAlias(t, app, "test-cabin-1", []string{unitB}, 0, 0)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("test-cabin-1", 2025)
+	if !got.Resolved {
+		t.Fatalf("did not resolve: %+v", got)
+	}
+	if len(got.UnitIDs) != 1 || got.UnitIDs[0] != unitB {
+		t.Errorf("UnitIDs = %v, want the alias target [%s] -- the direct match %s must lose", got.UnitIDs, unitB, unitA)
+	}
+}
+
+// TestAliasResolverContainerNameAliasStillResolvesToLeaves guards against a
+// regression the issue body calls out: the direct-name fallback must consider
+// leaf units only, so a container's own alias -- which two production rows
+// rely on -- keeps expanding to its member rooms rather than being shadowed
+// by a (nonexistent, since containers are excluded) direct match on itself.
+func TestAliasResolverContainerNameAliasStillResolvesToLeaves(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	container := addContainerUnit(t, app, "test-container-1", 2025)
+	leaf1 := addUnitWithParent(t, app, "test-leaf-1", container, 2025)
+	leaf2 := addUnitWithParent(t, app, "test-leaf-2", container, 2025)
+	addAlias(t, app, "test-container-1", []string{leaf1, leaf2}, 0, 0)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("test-container-1", 2025)
+	if !got.Resolved || !got.IsMerge() {
+		t.Fatalf("container-name alias did not resolve to its leaves: %+v", got)
+	}
+	ids := slices.Sorted(slices.Values(got.UnitIDs))
+	want := slices.Sorted(slices.Values([]string{leaf1, leaf2}))
+	if ids[0] != want[0] || ids[1] != want[1] {
+		t.Errorf("UnitIDs = %v, want %v -- the container's own id must never appear", ids, want)
+	}
+}
+
+// TestAliasResolverDirectNameFallbackExcludesContainers pins the leaf-only
+// restriction directly: unlike TestAliasResolverContainerNameAliasStillResolvesToLeaves
+// (which an alias short-circuits before the fallback is ever consulted),
+// this container carries NO alias, so the only way it could resolve is
+// through the direct-name fallback -- and the issue body rules that out.
+// A string naming a container with no alias must stay unresolved and go to
+// the work queue, exactly as it does today.
+func TestAliasResolverDirectNameFallbackExcludesContainers(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	addContainerUnit(t, app, "test-container-no-alias", 2025)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("test-container-no-alias", 2025)
+	if got.Resolved {
+		t.Errorf("a container's own name resolved with no alias: %+v -- containers must not be a direct-match candidate", got)
+	}
+}
+
+// TestAliasResolverDirectMatchSharedNameIsUnresolved: the direct-name index
+// only protects `code` uniqueness (the registry's real unique index); two
+// leaf units can display the same staff-facing `name`. The issue body rules
+// this falls through unresolved -- exactly like Python's `None` deferral --
+// never picked arbitrarily.
+func TestAliasResolverDirectMatchSharedNameIsUnresolved(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	saveRecord(t, app, "lodging_units", map[string]any{
+		"code": "test-cabin-1", "name": "Shared Cabin Name", "is_active": true, "is_container": false, "year": 2025,
+	})
+	saveRecord(t, app, "lodging_units", map[string]any{
+		"code": "test-cabin-2", "name": "Shared Cabin Name", "is_active": true, "is_container": false, "year": 2025,
+	})
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("Shared Cabin Name", 2025)
+	if got.Resolved {
+		t.Errorf("shared name resolved to %v; must fall through unresolved rather than pick one", got.UnitCodes)
+	}
+	if got.Ambiguous {
+		t.Error("shared name must be unresolved, not Ambiguous -- that flag is reserved for overlapping alias windows")
+	}
+}
+
+// TestAliasResolverContainerNameCollidesWithLeafStaysUnresolved pins a gap the
+// leaf-only exclusion (kindred#2762) left open. Excluding containers from
+// EVER WINNING the direct-name fallback is not the same as excluding them
+// from the ambiguity check: a container skipped before it ever reaches the
+// candidate loop never poisons `directByKey`, so an unrelated leaf that
+// happens to carry the exact same `name` string wins uncontested instead of
+// the string staying unresolved -- contradicting this file's own stated
+// invariant ("a string naming a container with no alias stays unresolved")
+// and diverging from Python's `HousingNameResolver`, which direct-matches
+// containers as ordinary candidates and so correctly marks a shared name
+// ambiguous rather than silently picking the leaf.
+func TestAliasResolverContainerNameCollidesWithLeafStaysUnresolved(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	saveRecord(t, app, "lodging_units", map[string]any{
+		"code": "test-container-x", "name": "Shared Name", "is_active": true, "is_container": true, "year": 2025,
+	})
+	saveRecord(t, app, "lodging_units", map[string]any{
+		"code": "test-leaf-x", "name": "Shared Name", "is_active": true, "is_container": false, "year": 2025,
+	})
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("Shared Name", 2025)
+	if got.Resolved {
+		t.Errorf("a name shared with a container resolved to %v; the container's presence must poison the key",
+			got.UnitCodes)
+	}
+	if got.Ambiguous {
+		t.Error("shared name must be unresolved, not Ambiguous -- that flag is reserved for overlapping alias windows")
+	}
+}
+
+// TestAliasResolverDirectMatchRespectsYear: a name that exists only in
+// another season must not resolve, matching every other year check this
+// resolver makes.
+func TestAliasResolverDirectMatchRespectsYear(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	addUnit(t, app, "test-cabin-2026-only", 2026)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	if got := r.Resolve("test-cabin-2026-only", 2025); got.Resolved {
+		t.Errorf("resolved for 2025 from a name that only exists in 2026: %+v", got)
+	}
+	if got := r.Resolve("test-cabin-2026-only", 2026); !got.Resolved {
+		t.Errorf("did not resolve for 2026, the year the unit actually exists: %+v", got)
+	}
+}
