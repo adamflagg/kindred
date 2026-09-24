@@ -94,6 +94,16 @@ DROP_LIST_TABLES: tuple[str, ...] = (
     "bunk_request_sources",
     "sheets_workbooks",
     "enrollment_snapshots",
+    # Adult-weekend Jotform pull (kindred#2759, migration 1500000180). Stores every
+    # answered question generically -- names, medical, emergency contacts -- with no
+    # PHI gate or allowlist, so a surviving row is a real leak. Unlike lodging_*,
+    # these are NOT prefix-discovered, so they must be listed explicitly here for
+    # both halves of the gate: build_synthetic_db's _empty_tables(conn,
+    # scan_leaks.DROP_LIST_TABLES) wipes them, and the scan below fails loud if any
+    # row ever survives into the committed artifact.
+    "jotform_forms",
+    "jotform_submissions",
+    "jotform_answers",
 )
 
 # PB ``_``-prefixed auth/system tables that must hold zero rows in the artifact (no

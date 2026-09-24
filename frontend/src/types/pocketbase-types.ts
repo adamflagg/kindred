@@ -41,6 +41,9 @@ export const Collections = {
   HouseholdCustomValues: 'household_custom_values',
   HouseholdDemographics: 'household_demographics',
   Households: 'households',
+  JotformAnswers: 'jotform_answers',
+  JotformForms: 'jotform_forms',
+  JotformSubmissions: 'jotform_submissions',
   LockedGroupMembers: 'locked_group_members',
   LockedGroups: 'locked_groups',
   LodgingAreas: 'lodging_areas',
@@ -968,6 +971,58 @@ export type HouseholdsRecord = {
   id: string
   mailing_title?: string
   updated: IsoAutoDateString
+  year: number
+}
+
+export type JotformAnswersRecord<Tanswer_json = unknown> = {
+  answer_json?: null | Tanswer_json
+  answer_text?: string
+  created: IsoAutoDateString
+  id: string
+  order?: number
+  question_id: string
+  question_text?: string
+  question_type?: string
+  submission: RecordIdString
+  updated: IsoAutoDateString
+}
+
+export type JotformFormsRecord<Tfield_map = unknown> = {
+  created: IsoAutoDateString
+  enabled?: boolean
+  field_map?: null | Tfield_map
+  form_id: string
+  id: string
+  last_pull_status?: string
+  last_pulled_at?: IsoDateString
+  session_cm_id: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const JotformSubmissionsMatchStatusOptions = {
+  auto: 'auto',
+  staff: 'staff',
+  unmatched: 'unmatched',
+  ignored: 'ignored',
+} as const
+export type JotformSubmissionsMatchStatusOptions =
+  (typeof JotformSubmissionsMatchStatusOptions)[keyof typeof JotformSubmissionsMatchStatusOptions]
+export type JotformSubmissionsRecord = {
+  created: IsoAutoDateString
+  form: RecordIdString
+  id: string
+  jotform_status?: string
+  linked_at?: IsoDateString
+  linked_by?: string
+  match_status: JotformSubmissionsMatchStatusOptions
+  match_tier?: number
+  person_cm_id?: number
+  session_cm_id: number
+  submission_id: string
+  submitted_at: string
+  updated: IsoAutoDateString
+  updated_at?: string
   year: number
 }
 
@@ -1917,6 +1972,16 @@ export type HouseholdDemographicsResponse<Texpand = unknown> =
   Required<HouseholdDemographicsRecord> & BaseSystemFields<Texpand>
 export type HouseholdsResponse<Texpand = unknown> = Required<HouseholdsRecord> &
   BaseSystemFields<Texpand>
+export type JotformAnswersResponse<Tanswer_json = unknown, Texpand = unknown> = Required<
+  JotformAnswersRecord<Tanswer_json>
+> &
+  BaseSystemFields<Texpand>
+export type JotformFormsResponse<Tfield_map = unknown, Texpand = unknown> = Required<
+  JotformFormsRecord<Tfield_map>
+> &
+  BaseSystemFields<Texpand>
+export type JotformSubmissionsResponse<Texpand = unknown> = Required<JotformSubmissionsRecord> &
+  BaseSystemFields<Texpand>
 export type LockedGroupMembersResponse<Texpand = unknown> = Required<LockedGroupMembersRecord> &
   BaseSystemFields<Texpand>
 export type LockedGroupsResponse<Texpand = unknown> = Required<LockedGroupsRecord> &
@@ -2062,6 +2127,9 @@ export type CollectionRecords = {
   household_custom_values: HouseholdCustomValuesRecord
   household_demographics: HouseholdDemographicsRecord
   households: HouseholdsRecord
+  jotform_answers: JotformAnswersRecord
+  jotform_forms: JotformFormsRecord
+  jotform_submissions: JotformSubmissionsRecord
   locked_group_members: LockedGroupMembersRecord
   locked_groups: LockedGroupsRecord
   lodging_areas: LodgingAreasRecord
@@ -2141,6 +2209,9 @@ export type CollectionResponses = {
   household_custom_values: HouseholdCustomValuesResponse
   household_demographics: HouseholdDemographicsResponse
   households: HouseholdsResponse
+  jotform_answers: JotformAnswersResponse
+  jotform_forms: JotformFormsResponse
+  jotform_submissions: JotformSubmissionsResponse
   locked_group_members: LockedGroupMembersResponse
   locked_groups: LockedGroupsResponse
   lodging_areas: LodgingAreasResponse

@@ -188,6 +188,62 @@ def test_artifact_only_skips_denylist(tmp_path, scan_module):
     assert "nonempty_drop_table" in cats
 
 
+# ---------------------------------------------------------------------------
+# Jotform tables (kindred#2759, PR B of the adult-weekend Jotform plan)
+# ---------------------------------------------------------------------------
+
+
+def _make_db_with_jotform_tables(path: Path, *, rows: dict[str, list[tuple[object, ...]]]) -> None:
+    """Build an artifact-shaped DB with the three Jotform tables. Answers can carry
+    free-text names/medical/emergency-contact content synced with no PHI gate
+    (kindred#2759's owner ruling), so a surviving row is a real PII leak."""
+    conn = sqlite3.connect(path)
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE jotform_forms (id TEXT PRIMARY KEY, form_id TEXT)")
+    cur.execute("CREATE TABLE jotform_submissions (id TEXT PRIMARY KEY, submission_id TEXT)")
+    cur.execute("CREATE TABLE jotform_answers (id TEXT PRIMARY KEY, answer_text TEXT)")
+    cur.executemany("INSERT INTO jotform_forms (id, form_id) VALUES (?, ?)", rows.get("jotform_forms", []))
+    cur.executemany(
+        "INSERT INTO jotform_submissions (id, submission_id) VALUES (?, ?)", rows.get("jotform_submissions", [])
+    )
+    cur.executemany("INSERT INTO jotform_answers (id, answer_text) VALUES (?, ?)", rows.get("jotform_answers", []))
+    conn.commit()
+    conn.close()
+
+
+def test_flags_nonempty_jotform_tables_via_default_drop_list(tmp_path, scan_module):
+    """kindred#2759: jotform_forms/jotform_submissions/jotform_answers must be on the
+    module's REAL default DROP_LIST_TABLES. Unlike the other tests in this file, this
+    one deliberately does NOT override ``drop_list`` -- it fails until the three
+    tables are actually added to the default tuple, which is the point: the synthetic
+    builder only calls ``scan_leaks.DROP_LIST_TABLES`` (the default), so an override
+    here would prove nothing about the real committed-artifact gate."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_jotform_tables(
+        db,
+        rows={
+            "jotform_forms": [("f1", "12345")],
+            "jotform_submissions": [("s1", "67890")],
+            "jotform_answers": [("a1", "Emma Johnson")],
+        },
+    )
+    violations = scan_module.scan(str(db), denylist=None)
+    cats_by_table = {v.table: v.category for v in violations}
+    for table in ("jotform_forms", "jotform_submissions", "jotform_answers"):
+        assert cats_by_table.get(table) == "nonempty_drop_table", (
+            f"expected {table} on the default DROP_LIST_TABLES, got {violations}"
+        )
+
+
+def test_clean_jotform_tables_pass(tmp_path, scan_module):
+    """Empty Jotform tables (the normal committed-artifact state) must not trip the
+    check, using the module's real defaults (no overrides)."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_jotform_tables(db, rows={})
+    violations = scan_module.scan(str(db), denylist=None)
+    assert violations == [], f"clean jotform tables should pass, got {violations}"
+
+
 def _make_db_with_lodging_table(path: Path, *, table_name: str, rows: list[tuple[object, ...]]) -> None:
     """Build an artifact-shaped DB with a ``lodging_*`` table. ``table_name`` may be a
     name invented only for the test — the check must be prefix-based, not a fixed list."""
