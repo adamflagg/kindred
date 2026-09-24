@@ -634,9 +634,9 @@ describe('per-weekend cabins from the CampMinder layer (kindred#2775)', () => {
   // The row reuses its own grammar: the housing name with its FCx weekend
   // list, one such line per DISTINCT cabin. When every weekend shares one
   // cabin it is exactly today's single line.
-  const FC1 = { session_cm_id: 1309514, name: 'Family Camp 1', start_date: '2026-05-22' }
-  const FC4 = { session_cm_id: 1309517, name: 'Family Camp 4', start_date: '2026-09-04' }
-  const FC6 = { session_cm_id: 1309519, name: 'Family Camp 6', start_date: '2026-10-02' }
+  const FC1 = { session_cm_id: 1000001, name: 'Family Camp 1', start_date: '2026-05-22' }
+  const FC4 = { session_cm_id: 1000004, name: 'Family Camp 4', start_date: '2026-09-04' }
+  const FC6 = { session_cm_id: 1000006, name: 'Family Camp 6', start_date: '2026-10-02' }
 
   function textsOf(year: number, testId: string): string[] {
     return within(rowFor(year))

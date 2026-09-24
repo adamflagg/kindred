@@ -1599,6 +1599,22 @@ class TestLastYearCabinReadsLiveRowsFrom2027:
         assert roster.parties[0].last_year_cabin == "Meadow House 1"
 
     @pytest.mark.asyncio
+    async def test_an_undated_enrolled_weekend_still_counts_toward_every_weekend(self) -> None:
+        """Coverage is keyed on the weekend's id, never on whether its end date
+        parses: an undated FC1 enrollment with no live row must keep the year
+        on today's rule, not let FC4's live row stand for the whole year
+        (CodeRabbit, #2789)."""
+        undated_fc1 = _rec(cm_id=1000001, end_date="")
+        repo = self._family_repo(
+            fetch_family_enrolled_attendees=self._enrolled_family(undated_fc1, self.FC4_2026),
+            fetch_live_assignments=[_live_hh_row(2026, 1000004, "u2")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Meadow House 1"
+
+    @pytest.mark.asyncio
     async def test_the_family_card_fallback_still_needs_attendance(self) -> None:
         repo = self._family_repo(fetch_family_enrolled_attendees=[])
 

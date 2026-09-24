@@ -653,13 +653,16 @@ def _last_year_family_live_cabins(
 
     out: dict[int, str] = {}
     for household_cm_id, rows in live_by_household.items():
-        weekends = [
-            w for w in adult_weekends_from_rows(enrolled_by_household.get(household_cm_id, [])) if w.year == year
-        ]
+        enrolled = [row for row in enrolled_by_household.get(household_cm_id, []) if _i(row, "year") == year]
+        # COVERAGE IS KEYED ON THE WEEKEND'S ID, never on whether its end date
+        # parses: an undated enrollment with no live row must still hold the
+        # year on today's rule. The dated `weekends` are only the tie-breaker.
+        enrolled_sessions = {cm_id for row in enrolled if (cm_id := _expanded_cm_id(row, "session", "cm_id")) > 0}
+        weekends = adult_weekends_from_rows(enrolled)
         names = live_names(rows, housing_names.display_name_for_unit_ids)
         live = live_cabins_for_year(
             year,
-            {w.session_cm_id for w in weekends},
+            enrolled_sessions,
             {session: name for (live_year, session), name in names.items() if live_year == year},
         )
         if live is None:

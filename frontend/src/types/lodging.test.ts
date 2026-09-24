@@ -144,7 +144,7 @@ void _exhaustiveHouseholdJourneyRow
  * regen that dropped it would silently lose the hover.
  */
 const _exhaustiveHouseholdJourneyWeekendCabin: Required<HouseholdJourneyWeekendCabinRow> = {
-  session_cm_id: 1309517,
+  session_cm_id: 1000004,
   cabin_name: 'Meadow House 1',
   cabin_name_raw: 'Old Meadow 1',
 }
