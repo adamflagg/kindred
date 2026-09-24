@@ -253,7 +253,7 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 		return guardConfigWrite(e, false)
 	})
 
-	// Invalidate FastAPI metrics cache when registration config changes
+	// Invalidate FastAPI metrics cache when metrics-read config changes
 	registerConfigHooks(app)
 
 	// Register OIDC admin group sync hook

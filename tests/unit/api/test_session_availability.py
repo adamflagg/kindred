@@ -64,8 +64,7 @@ def mock_repository():
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_bunk_plans = AsyncMock(return_value=[])
     repo.fetch_capacity_config = AsyncMock(return_value=12)
-    repo.pb = Mock()
-    repo.pb.collection = Mock(return_value=Mock(get_full_list=Mock(return_value=[])))
+    repo.fetch_availability_config = AsyncMock(return_value=[])
     return repo
 
 
@@ -205,7 +204,7 @@ class TestCapacityCalculation:
                 },
             ),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+        mock_repository.fetch_availability_config.return_value = config_records
 
         result = await service.calculate_availability(year=2026)
 
@@ -320,7 +319,7 @@ class TestGradeEligibility:
                 },
             ),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+        mock_repository.fetch_availability_config.return_value = config_records
 
         result = await service.calculate_availability(year=2026)
 
@@ -385,7 +384,7 @@ class TestThreshold:
         config_records = [
             create_mock_config("limited_threshold", 90, record_id="thr1"),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+        mock_repository.fetch_availability_config.return_value = config_records
 
         result = await service.calculate_availability(year=2026)
 

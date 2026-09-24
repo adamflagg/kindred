@@ -72,6 +72,7 @@ class MetricsSQLRepository:
             f"{prefix}cm_id": "cm_id",
             f"{prefix}first_name": "first_name",
             f"{prefix}last_name": "last_name",
+            f"{prefix}preferred_name": "preferred_name",
             f"{prefix}gender": "gender",
             f"{prefix}grade": "grade",
             f"{prefix}school": "school",
@@ -82,6 +83,7 @@ class MetricsSQLRepository:
             f"{prefix}normalized_city": "normalized_city",
             f"{prefix}normalized_congregation": "normalized_congregation",
             f"{prefix}years_at_camp": "years_at_camp",
+            f"{prefix}age": "age",
         }
         for col, attr in field_map.items():
             if col in keys:
@@ -422,7 +424,7 @@ class MetricsSQLRepository:
     ) -> list[Any]:
         """Fetch attendees with both person and session expansion."""
         sql = """SELECT a.person_id, a.year, a.status, a.status_id,
-                        a.enrollment_date,
+                        a.enrollment_date, a.effective_date,
                         cs.cm_id AS _session_cm_id, cs.name AS _session_name,
                         cs.session_type AS _session_type,
                         cs.parent_id AS _session_parent_id,
@@ -431,6 +433,7 @@ class MetricsSQLRepository:
                         p.cm_id AS _person_cm_id,
                         p.first_name AS _person_first_name,
                         p.last_name AS _person_last_name,
+                        p.preferred_name AS _person_preferred_name,
                         p.gender AS _person_gender,
                         p.grade AS _person_grade,
                         p.school AS _person_school,
@@ -440,7 +443,8 @@ class MetricsSQLRepository:
                         p.address_city AS _person_city,
                         p.address_state AS _person_state,
                         p.household_id AS _person_household_id,
-                        p.years_at_camp AS _person_years_at_camp
+                        p.years_at_camp AS _person_years_at_camp,
+                        p.age AS _person_age
                  FROM attendees a
                  JOIN camp_sessions cs ON a.session = cs.id
                  JOIN persons p ON a.person = p.id
@@ -465,6 +469,7 @@ class MetricsSQLRepository:
                 status=r["status"],
                 status_id=r["status_id"],
                 enrollment_date=r["enrollment_date"],
+                effective_date=r["effective_date"],
                 expand={
                     "session": self._session_ns(r),
                     "person": self._person_ns(r),
@@ -680,6 +685,32 @@ class MetricsSQLRepository:
             (str(year),),
         )
         return {r["config_key"]: json.loads(r["value"]) if r["value"] else "" for r in rows}
+
+    # ------------------------------------------------------------------
+    # 17. fetch_availability_config
+    # ------------------------------------------------------------------
+
+    async def fetch_availability_config(self, year: int) -> list[Any]:
+        """Fetch session_availability config records for a year.
+
+        Returns objects with ``config_key`` and ``value`` attributes, matching
+        the shape SessionAvailabilityService expects — parsed JSON, not the
+        raw TEXT column, so a per-session dict and the ``limited_threshold``
+        int both come back the same way the PocketBase HTTP path returns them.
+        """
+        rows = self._query(
+            "SELECT config_key, value FROM config WHERE category = 'session_availability' AND subcategory = ?",
+            (str(year),),
+        )
+        result: list[Any] = []
+        for r in rows:
+            raw = r["value"]
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError, TypeError, json.JSONDecodeError:
+                parsed = None
+            result.append(SimpleNamespace(config_key=r["config_key"], value=parsed))
+        return result
 
     async def has_pre_anchor_enrollments(self, year: int, anchor_date: str) -> bool:
         """Check if any attendees have enrollment dates before the anchor."""

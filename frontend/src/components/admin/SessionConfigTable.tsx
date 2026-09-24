@@ -284,6 +284,11 @@ export function SessionConfigTable() {
         }
       }
 
+      // Forecast also sits in the API's 2 h server-side metrics_cache, so clear
+      // it BEFORE the invalidations below trigger a refetch, or the refetch
+      // reads the stale cached body. Best-effort: a failed clear must not turn
+      // a saved config into a reported failure.
+      await fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.gradeEligibilityConfig(currentYear),

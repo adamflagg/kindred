@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from api.constants.collections import CONFIG
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -108,8 +107,8 @@ class SessionAvailabilityService:
             duration_session_ids = resolve_duration_sessions(sessions, duration)
             sessions = {sid: s for sid, s in sessions.items() if sid in duration_session_ids}
 
-        # Fetch availability config from PocketBase
-        config_records = await self._fetch_availability_config(year)
+        # Fetch availability config
+        config_records = await self.repository.fetch_availability_config(year)
         session_configs = self._parse_session_configs(config_records)
         threshold = self._parse_threshold(config_records)
 
@@ -239,17 +238,6 @@ class SessionAvailabilityService:
             teen_sessions=teen_sessions,
             limited_threshold=threshold,
         )
-
-    async def _fetch_availability_config(self, year: int) -> list[Any]:
-        """Fetch session_availability config records."""
-        try:
-            return await asyncio.to_thread(
-                self.repository.pb.collection(CONFIG).get_full_list,
-                query_params={"filter": f'category = "session_availability" && subcategory = "{year}"'},
-            )
-        except Exception:
-            logger.warning("Could not fetch session availability config")
-            return []
 
     def _parse_session_configs(self, config_records: list[Any]) -> dict[int | str, dict[str, Any]]:
         """Parse config records into a dict keyed by session cm_id or type string.

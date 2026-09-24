@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 func TestIsRegistrationConfig(t *testing.T) {
@@ -49,6 +52,91 @@ func TestIsRegistrationConfig(t *testing.T) {
 				t.Errorf("isRegistrationConfig(%q) = %v, want %v", tt.category, result, tt.expected)
 			}
 		})
+	}
+}
+
+// The forecast endpoint reads budget config and registration dates, and the
+// session-availability endpoint reads session_availability config; all three
+// sit behind FastAPI's 2-hour metrics_cache. A write to any of them from the
+// PocketBase admin UI (which no frontend invalidation can see) must clear it.
+func TestConfigCategoryInvalidatesMetricsCache(t *testing.T) {
+	tests := []struct {
+		category string
+		expected bool
+	}{
+		{"registration", true},
+		{"budget", true},
+		{"session_availability", true},
+		{"", false},
+		{"general", false},
+		{"sync", false},
+		{"constraint", false},
+		{"Registration", false}, // case-sensitive
+		{"Budget", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.category, func(t *testing.T) {
+			if got := configCategoryInvalidatesMetricsCache(tt.category); got != tt.expected {
+				t.Errorf("configCategoryInvalidatesMetricsCache(%q) = %v, want %v", tt.category, got, tt.expected)
+			}
+		})
+	}
+}
+
+// Create, update AND delete of a metrics-read config row each clear the cache:
+// deleting a budget goal or a grade range changes the forecast just as editing
+// one does. A row in a category no metric reads does not.
+func TestConfigHooksNotifyOnCreateUpdateDelete(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	col := core.NewBaseCollection("config")
+	col.Fields.Add(&core.TextField{Name: "category"})
+	col.Fields.Add(&core.TextField{Name: "config_key"})
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("create config collection: %v", saveErr)
+	}
+
+	var notified atomic.Int32
+	bindConfigHooks(app, func() { notified.Add(1) })
+
+	rec := core.NewRecord(col)
+	rec.Set("category", "budget")
+	rec.Set("config_key", "session_1000001")
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("create: %v", saveErr)
+	}
+	if got := notified.Load(); got != 1 {
+		t.Fatalf("after create: notified %d times, want 1", got)
+	}
+
+	rec.Set("config_key", "session_1000002")
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("update: %v", saveErr)
+	}
+	if got := notified.Load(); got != 2 {
+		t.Fatalf("after update: notified %d times, want 2", got)
+	}
+
+	if delErr := app.Delete(rec); delErr != nil {
+		t.Fatalf("delete: %v", delErr)
+	}
+	if got := notified.Load(); got != 3 {
+		t.Fatalf("after delete: notified %d times, want 3", got)
+	}
+
+	other := core.NewRecord(col)
+	other.Set("category", "sync")
+	other.Set("config_key", "schedule")
+	if saveErr := app.Save(other); saveErr != nil {
+		t.Fatalf("create unrelated: %v", saveErr)
+	}
+	if got := notified.Load(); got != 3 {
+		t.Errorf("an unrelated category notified: %d, want 3", got)
 	}
 }
 

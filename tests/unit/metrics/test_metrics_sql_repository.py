@@ -434,6 +434,112 @@ class TestFetchAttendeesWithPersons:
         assert len(result) == 1
         assert result[0].person_id == 1001
 
+    @pytest.mark.asyncio
+    async def test_preferred_name_present_in_expand(self, sql_db: sqlite3.Connection) -> None:
+        """Person expand carries preferred_name (cache-gap audit row 2).
+
+        The SQL repository previously omitted this column entirely, so it
+        silently read as None for every camper (0 of 55 set, versus 55 of 55
+        over the PocketBase HTTP path). Session availability's waitlist
+        tooltip reads this field directly off the expanded person.
+        """
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_persons(2025, status_filter=["enrolled", "waitlisted"])
+        by_person = {a.person_id: a.expand["person"] for a in result}
+        assert by_person[1001].preferred_name == "Emmy"
+        assert by_person[1003].preferred_name == "Liv"
+
+    @pytest.mark.asyncio
+    async def test_preferred_name_blank_when_unset(self, sql_db: sqlite3.Connection) -> None:
+        """A camper with no preferred_name set reads as the stored blank string, not a crash."""
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_persons(2025, status_filter=["enrolled", "waitlisted"])
+        by_person = {a.person_id: a.expand["person"] for a in result}
+        assert by_person[1002].preferred_name == ""
+
+    @pytest.mark.asyncio
+    async def test_age_present_in_expand(self, sql_db: sqlite3.Connection) -> None:
+        """Person expand carries age, matching the PocketBase HTTP path.
+
+        The waitlist drilldown (/api/metrics/drilldown) builds
+        DrilldownAttendee.age from this expand; without the column it read
+        None on every row over SQL while HTTP returned the stored value.
+        """
+        sql_db.execute("UPDATE persons SET age = 11.5 WHERE id = 'per_emma'")
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_persons(2025, status_filter=["enrolled", "waitlisted"])
+        by_person = {a.person_id: a.expand["person"] for a in result}
+        assert by_person[1001].age == 11.5
+
+    @pytest.mark.asyncio
+    async def test_effective_date_present(self, sql_db: sqlite3.Connection) -> None:
+        """effective_date must round-trip — found live on the dev DB while proving
+        session-availability's SQL/HTTP outputs identical: this method silently
+        dropped the column, so every waitlist tie-break sorted on enrollment_date
+        alone and reordered relative to the HTTP path (and to /api/metrics/drilldown,
+        which already reads this repository and sorts waitlist position on this
+        same field).
+        """
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_attendees_with_persons(2025, status_filter=["enrolled", "waitlisted"])
+        by_person_id = {a.person_id: a for a in result}
+        # Emma's waitlisted record (att_4) has effective_date 2025-02-15, distinct
+        # from her enrolled record (att_1)'s 2025-01-15 — proves the real column
+        # value round-trips per row, not just a non-empty default.
+        waitlisted = next(a for a in result if a.person_id == 1001 and a.status == "waitlisted")
+        assert waitlisted.effective_date == "2025-02-15"
+        assert by_person_id[1003].effective_date == "2025-02-01"
+
+
+# ============================================================================
+# Test: fetch_availability_config
+# ============================================================================
+
+
+class TestFetchAvailabilityConfig:
+    """Test fetching session_availability config records (moved off the router's
+
+    direct ``repository.pb.collection(...)`` reach-through per the cache-gap
+    audit — the SQL repository has no ``.pb`` attribute at all).
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_records_for_year(self, sql_db: sqlite3.Connection) -> None:
+        """Returns config rows scoped to category=session_availability, subcategory=year."""
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_availability_config(2025)
+        keys = {r.config_key for r in result}
+        assert keys == {"1000001", "limited_threshold"}
+
+    @pytest.mark.asyncio
+    async def test_per_session_value_parsed_as_dict(self, sql_db: sqlite3.Connection) -> None:
+        """Per-session config values parse from JSON into a dict."""
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_availability_config(2025)
+        session_cfg = next(r for r in result if r.config_key == "1000001")
+        assert session_cfg.value == {"min_grade": 3, "max_grade": 6, "capacity_override": None}
+
+    @pytest.mark.asyncio
+    async def test_threshold_value_parsed_as_int(self, sql_db: sqlite3.Connection) -> None:
+        """limited_threshold comes back as a plain int, not a string.
+
+        The fixture's config.value is JSON-typed like PocketBase's, so the bare
+        number is stored as a native SQLite integer — this exercises the
+        non-string passthrough branch production actually takes.
+        """
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_availability_config(2025)
+        threshold_cfg = next(r for r in result if r.config_key == "limited_threshold")
+        assert threshold_cfg.value == 90
+        assert isinstance(threshold_cfg.value, int)
+
+    @pytest.mark.asyncio
+    async def test_empty_year_returns_empty(self, sql_db: sqlite3.Connection) -> None:
+        """A year with no session_availability config returns an empty list."""
+        repo = _make_repo(sql_db)
+        result = await repo.fetch_availability_config(2030)
+        assert result == []
+
 
 # ============================================================================
 # Test: fetch_status_history

@@ -215,6 +215,12 @@ export function PopulateFromPreviousYear() {
         created++
       }
 
+      // Forecast reads the budget + registration config written above and sits
+      // in the API's 2 h server-side metrics_cache, so clear it BEFORE the
+      // invalidations below trigger a refetch, or the refetch reads the stale
+      // cached body. Best-effort: a failed clear must not fail the populate.
+      await fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+
       // Invalidate all registration config queries
       await Promise.all([
         queryClient.invalidateQueries({
@@ -229,6 +235,14 @@ export function PopulateFromPreviousYear() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.gradeEligibilityThreshold(currentYear),
         }),
+        // Grade ranges/thresholds populated above live under the same
+        // `session_availability` config category the Session Availability
+        // metrics endpoint reads. Without this, the board can show stale
+        // data for up to that query's staleTime after a populate.
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessionAvailabilityRoot(),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.forecastRoot() }),
         // Invalidate our own queries so preview refreshes
         queryClient.invalidateQueries({
           queryKey: ['populate-config'],

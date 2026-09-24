@@ -57,8 +57,7 @@ def mock_repository():
     repo.fetch_sessions = AsyncMock(return_value={})
     repo.fetch_bunk_plans = AsyncMock(return_value=[])
     repo.fetch_capacity_config = AsyncMock(return_value=12)
-    repo.pb = Mock()
-    repo.pb.collection = Mock(return_value=Mock(get_full_list=Mock(return_value=[])))
+    repo.fetch_availability_config = AsyncMock(return_value=[])
     return repo
 
 
@@ -123,7 +122,7 @@ class TestTeenAggregation:
             create_mock_config("type_scit", {"min_grade": 12, "max_grade": 12, "capacity_override": 50}, "cfg_scit"),
             create_mock_config("type_tli", {"min_grade": 11, "max_grade": 11, "capacity_override": 40}, "cfg_tli"),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+        mock_repository.fetch_availability_config.return_value = config_records
 
         result = await service.calculate_availability(year=2026, session_types=["main", "scit", "tli"])
 
@@ -305,7 +304,7 @@ class TestTeenAggregation:
             create_mock_config("type_scit", {"min_grade": 12, "max_grade": 12, "capacity_override": 50}, "cfg_scit"),
             create_mock_config("type_tli", {"min_grade": 11, "max_grade": 11, "capacity_override": 40}, "cfg_tli"),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+        mock_repository.fetch_availability_config.return_value = config_records
 
         result = await service.calculate_availability(
             year=2026, session_types=["main", "scit", "tli"], session_cm_id=1001
@@ -355,7 +354,7 @@ class TestTeenWindowGate:
         config_records = [
             create_mock_config("type_scit", {"min_grade": 12, "max_grade": 12, "capacity_override": 50}, "cfg_scit"),
         ]
-        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+        mock_repository.fetch_availability_config.return_value = config_records
 
         result = await service.calculate_availability(year=2026, session_types=["main", "scit"])
 
@@ -404,7 +403,7 @@ class TestTeenNoConfig:
         mock_repository.fetch_attendees_with_persons.return_value = attendees
 
         # No type_ config — empty config records
-        mock_repository.pb.collection.return_value.get_full_list.return_value = []
+        mock_repository.fetch_availability_config.return_value = []
 
         result = await service.calculate_availability(year=2026, session_types=["main", "scit", "tli"])
 

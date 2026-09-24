@@ -396,6 +396,17 @@ class MetricsRepository:
         except Exception:
             return {}
 
+    async def fetch_availability_config(self, year: int) -> list[Any]:
+        """Fetch session_availability config records for a year."""
+        try:
+            return await asyncio.to_thread(
+                self.pb.collection(CONFIG).get_full_list,
+                query_params={"filter": f'category = "session_availability" && subcategory = "{year}"'},
+            )
+        except Exception:
+            logger.warning("Could not fetch session availability config")
+            return []
+
     async def has_pre_anchor_enrollments(self, year: int, anchor_date: str) -> bool:
         """Check if any attendees have enrollment dates before the anchor.
 

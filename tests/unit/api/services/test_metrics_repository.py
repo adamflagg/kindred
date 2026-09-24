@@ -382,3 +382,58 @@ class TestMetricsRepositoryFetchAttendeesWithPersons:
 
         assert isinstance(result, list)
         assert len(result) == 1
+
+
+class TestMetricsRepositoryFetchAvailabilityConfig:
+    """Tests for fetch_availability_config (moved off the router/service reach-through)."""
+
+    @pytest.mark.asyncio
+    async def test_filters_by_category_and_year(self) -> None:
+        """fetch_availability_config filters on category=session_availability and the year."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = []
+
+        repo = MetricsRepository(mock_pb)
+        await repo.fetch_availability_config(2025)
+
+        mock_pb.collection.assert_called_with("config")
+        call_args = mock_collection.get_full_list.call_args
+        filter_str = call_args.kwargs["query_params"]["filter"]
+        assert 'category = "session_availability"' in filter_str
+        assert 'subcategory = "2025"' in filter_str
+
+    @pytest.mark.asyncio
+    async def test_returns_records(self) -> None:
+        """fetch_availability_config returns whatever PocketBase hands back."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.return_value = [
+            MockRecord(id="cfg1", cm_id=0),
+        ]
+
+        repo = MetricsRepository(mock_pb)
+        result = await repo.fetch_availability_config(2025)
+
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_on_error(self) -> None:
+        """A PocketBase error is swallowed — matches the pre-move inline behavior."""
+        from api.services.metrics_repository import MetricsRepository
+
+        mock_pb = MagicMock()
+        mock_collection = MagicMock()
+        mock_pb.collection.return_value = mock_collection
+        mock_collection.get_full_list.side_effect = Exception("boom")
+
+        repo = MetricsRepository(mock_pb)
+        result = await repo.fetch_availability_config(2025)
+
+        assert result == []

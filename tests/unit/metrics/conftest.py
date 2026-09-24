@@ -18,6 +18,7 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             cm_id INTEGER NOT NULL,
             first_name TEXT,
             last_name TEXT,
+            preferred_name TEXT,
             gender TEXT,
             grade INTEGER,
             school TEXT,
@@ -28,7 +29,8 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             normalized_congregation TEXT,
             years_at_camp INTEGER,
             household_id INTEGER,
-            year INTEGER NOT NULL
+            year INTEGER NOT NULL,
+            age REAL
         );
 
         CREATE TABLE camp_sessions (
@@ -80,7 +82,10 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             category TEXT,
             subcategory TEXT,
             config_key TEXT,
-            value TEXT
+            -- JSON, not TEXT: PocketBase declares this column JSON, which gives it
+            -- NUMERIC affinity, so a bare number like limited_threshold's 80 is
+            -- stored as a native integer and read back as int, not "80".
+            value JSON
         );
 
         CREATE TABLE attendee_status_history (
@@ -130,17 +135,28 @@ def _create_schema(conn: sqlite3.Connection) -> None:
     """)
 
 
+_PERSONS_INSERT = (
+    "INSERT INTO persons (id, cm_id, first_name, last_name, preferred_name, gender, grade, school,"
+    " normalized_school, address_city, address_state, normalized_city, normalized_congregation,"
+    " years_at_camp, household_id, year) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+
+
 def _seed_data(conn: sqlite3.Connection) -> None:
     """Seed test data using fictional names per CLAUDE.md."""
     # -- Persons (year 2025) --
+    # preferred_name is deliberately mixed: set for Emma/Olivia, blank for Liam,
+    # so tests can pin both the present and the absent case (kindred cache-gap
+    # audit row 2: the SQL repo silently dropped this column entirely).
     conn.executemany(
-        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        _PERSONS_INSERT,
         [
             (
                 "per_emma",
                 1001,
                 "Emma",
                 "Johnson",
+                "Emmy",
                 "F",
                 5,
                 "Riverside Elementary",
@@ -158,6 +174,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 1002,
                 "Liam",
                 "Garcia",
+                "",
                 "M",
                 6,
                 "Oak Valley Middle",
@@ -175,6 +192,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 1003,
                 "Olivia",
                 "Chen",
+                "Liv",
                 "F",
                 7,
                 "Hillcrest High",
@@ -192,13 +210,14 @@ def _seed_data(conn: sqlite3.Connection) -> None:
 
     # -- Persons (year 2024) for enrollment history --
     conn.executemany(
-        "INSERT INTO persons VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        _PERSONS_INSERT,
         [
             (
                 "per_emma_24",
                 1001,
                 "Emma",
                 "Johnson",
+                "Emmy",
                 "F",
                 4,
                 "Riverside Elementary",
@@ -216,6 +235,7 @@ def _seed_data(conn: sqlite3.Connection) -> None:
                 1002,
                 "Liam",
                 "Garcia",
+                "",
                 "M",
                 5,
                 "Oak Valley Middle",
@@ -328,6 +348,14 @@ def _seed_data(conn: sqlite3.Connection) -> None:
             ("cfg_reg1", "registration", "2025", "priority_reg_date", json.dumps("2025-01-01")),
             ("cfg_reg2", "registration", "2025", "early_reg_date", json.dumps("2025-01-15")),
             ("cfg_reg3", "registration", "2025", "open_reg_date", json.dumps("2025-02-01")),
+            (
+                "cfg_avail1",
+                "session_availability",
+                "2025",
+                "1000001",
+                json.dumps({"min_grade": 3, "max_grade": 6, "capacity_override": None}),
+            ),
+            ("cfg_avail_thr", "session_availability", "2025", "limited_threshold", json.dumps(90)),
         ],
     )
 
