@@ -699,7 +699,7 @@ class LodgingRepository:
         was with us, and a hard-coded floor would either invent empty rows or
         silently truncate a long-standing family's history.
 
-        ⚠️ `person.household_id`, NOT `person.household`. Both exist on
+        ⚠️ `persons.household_id`, NOT `persons.household`. Both exist on
         `persons` and both look right. `household` is a PocketBase relation
         into the YEAR-SCOPED `households` table, and `persons` rows are
         themselves per-year (11,432 distinct people across 28,635 rows on the
@@ -746,14 +746,28 @@ class LodgingRepository:
         """
         # Never issue the query for an unresolvable household.
         # `_build_household_parties` gives one `household_cm_id = 0`, and
-        # `person.household_id = 0` is a real predicate that matches whatever
+        # `household_id = 0` is a real predicate that matches whatever
         # rows carry a zero rather than an error.
         if household_cm_id <= 0:
             return []
+        # TWO STEPS, NOT ONE JOIN. `persons.household_id` has no index, so
+        # filtering attendees on `person.household_id` joined the whole
+        # attendees table to persons -- and the SDK runs that query a second
+        # time for its count. It was the warm journey's whole critical path
+        # (about 360 ms of service time; 135 ms this way). The household's
+        # person rows come first -- every year's, since `persons` is
+        # year-scoped -- and `idx_attendees_person` answers the rest. Same
+        # rows: an attendee matched `person.household_id = X` exactly when its
+        # `person` is one of these.
+        people = await self._page(PERSONS, query_params={"filter": f"household_id = {household_cm_id}", "fields": "id"})
+        person_ids = sorted({str(person.id) for person in people})
+        if not person_ids:
+            return []
+        person_clause = " || ".join(f'person = "{pb_escape(person_id)}"' for person_id in person_ids)
         return await self._page(
             ATTENDEES,
             query_params={
-                "filter": (f'person.household_id = {household_cm_id} && session.session_type = "family"'),
+                "filter": f'({person_clause}) && session.session_type = "family"',
                 # `session` alongside `person` (kindred#2420): the journey
                 # needs to know WHICH session this attendee row is enrolled
                 # in, to compute that child's age at that specific session's
@@ -978,7 +992,14 @@ class LodgingRepository:
         rows = await self._page(
             FAMILY_CAMP_REGISTRATIONS,
             query_params={
-                "filter": f"household.cm_id = {household_cm_id}",
+                # `household.year = year` is a field-to-field comparison, so
+                # PocketBase checks each row against its OWN household record.
+                # A registration hung off another year's `households` row is
+                # skipped, exactly as the year-wide join
+                # (`fetch_cabin_assignments_by_household_cm_id`) skips it --
+                # the household journey takes its cabin from here instead of
+                # from that join, and the two must name the same rows.
+                "filter": f"household.cm_id = {household_cm_id} && household.year = year",
                 # `cabin_assignment` alongside `year`: requesting `year` alone
                 # is what made this a bare year set, and the whole point of the
                 # read now is the string beside it.
@@ -1001,6 +1022,36 @@ class LodgingRepository:
             if cabin or year not in cabins:
                 cabins[year] = cabin
         return cabins
+
+    async def year_has_any_cabin(self, year: int) -> bool:
+        """Whether `year` records a cabin for ANY household.
+
+        The one fact the household journey used to take from the emptiness of
+        `fetch_cabin_assignments_by_household_cm_id(year)`, and the second
+        argument `_housing_state` turns on: a blank cabin in a year that
+        housed nobody (2017-2021) is "unknown", and in a year that housed
+        others it is "not placed". The predicates are that join's own -- a
+        non-blank string, on a registration hung off the SAME year's
+        household, with a CampMinder id -- so the two cannot disagree about
+        which rows count. (The join also strips; a year whose only cabins
+        were whitespace would differ, and none has one.)
+
+        ONE ROW and no total, via `get_list` rather than `_page`: existence
+        needs neither the rows nor a COUNT. About 3 ms, so it is NOT cached --
+        the year-wide join it replaces cost two whole-year reads, and not
+        caching this leaves nothing for a sync to make stale.
+        """
+        result = await asyncio.to_thread(
+            self.pb.collection(FAMILY_CAMP_REGISTRATIONS).get_list,
+            1,
+            1,
+            query_params={
+                "filter": f'year = {year} && cabin_assignment != "" && household.year = year && household.cm_id > 0',
+                "fields": "id",
+                "skipTotal": 1,
+            },
+        )
+        return bool(list(result.items))
 
     @cached_by_year(lodging_cache, tables=(HOUSEHOLDS,))
     async def fetch_households(self, year: int) -> dict[str, Any]:
@@ -1507,12 +1558,17 @@ class LodgingRepository:
         joining on the PB id finds 0.
 
         THE YEAR IS THE PARAMETER, and no "last year" arithmetic happens here
-        (kindred#2073 wants this same read once per year of 2022-2025;
-        kindred#2075's card asks only for `year - 1`). Composed from the two
+        (kindred#2075's card asks for `year - 1`). Composed from the two
         existing `@cached_by_year` reads rather than a bespoke narrower query,
-        so a year already in hand costs nothing and a sweep across four years
-        pays each of them once per process. Its own cache entry on top is for
-        the join, not the round trips.
+        so a year the board already loaded costs nothing. Its own cache entry
+        on top is for the join, not the round trips.
+
+        ⚠️ NOT FOR ONE HOUSEHOLD. The household journey swept this once per
+        year it traced, back to 2017 -- two whole-year reads apiece for one
+        string, about 2.9 s of a 3.3 s first open. It now reads its own rows
+        (`fetch_household_registration_cabins`, which applies this join's
+        rules) and asks `year_has_any_cabin` for what this map's emptiness
+        told it. Use this where the WHOLE year's map is the answer.
 
         Empty for every year before 2022: `cabin_assignment` is blank on all
         1,433 rows from 2017-2021, so a family last here in 2019 is genuinely

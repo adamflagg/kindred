@@ -6804,6 +6804,31 @@ class TestHouseholdJourneyHousingAcrossYears:
             (2019, "unknown", "", "", None),
         ]
 
+    @pytest.mark.asyncio
+    async def test_the_journey_never_sweeps_a_whole_year(self) -> None:
+        """The household's own cabin is already in hand from its per-household
+        read, so a year-wide join of `households` and `family_camp_registrations`
+        -- once per journey year, back to 2017 -- bought one string it already
+        had. It was about 2.9 s of a 3.3 s first open.
+
+        What the sweep's emptiness decided is asked directly instead, and only
+        where it can matter: a year this household holds a cabin in is placed
+        whatever anyone else holds.
+        """
+        repo = self.WORLD.repo(
+            fetch_household_family_attendees=[
+                _rec(year=2019, status_id=2, **vars(_child())),
+                _rec(year=2022, status_id=2, **vars(_child())),
+                _rec(year=2023, status_id=2, **vars(_child())),
+            ],
+        )
+
+        await LodgingRosterService(repo).build_household_journey(2000001)
+
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+        asked = sorted(call.args[0] for call in repo.year_has_any_cabin.await_args_list)
+        assert asked == [2019, 2023]
+
 
 class TestHouseholdJourney:
     """The household's year-over-year record (kindred#2073).
@@ -7104,11 +7129,9 @@ class TestHouseholdJourney:
         assert [y.year for y in journey.years] == [2024, 2018]
 
     @pytest.mark.asyncio
-    async def test_the_cabin_read_is_issued_once_per_traced_year(self) -> None:
-        """Composes kindred#2075's helper rather than writing a second
-        housing query, and never at a hard-coded year: the helper takes a
-        plain year precisely so this can sweep. It is asked only about years
-        the household actually appears in.
+    async def test_the_any_cabin_check_is_asked_only_about_traced_years(self) -> None:
+        """Never at a hard-coded year: the check is asked only about years the
+        household actually appears in, and the year-wide sweep not at all.
         """
         repo = _journey_repo(
             fetch_household_family_attendees=[
@@ -7119,8 +7142,9 @@ class TestHouseholdJourney:
 
         await LodgingRosterService(repo).build_household_journey(2000001)
 
-        asked = sorted(call.args[0] for call in repo.fetch_cabin_assignments_by_household_cm_id.await_args_list)
+        asked = sorted(call.args[0] for call in repo.year_has_any_cabin.await_args_list)
         assert asked == [2024, 2025]
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_household_with_no_trace_at_all_returns_no_years(self) -> None:
@@ -7183,6 +7207,7 @@ class TestHouseholdJourney:
 
         assert journey.years == []
         repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+        repo.year_has_any_cabin.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_historical_years_age_is_the_childs_age_that_year_not_today_kindred_2420(self) -> None:
