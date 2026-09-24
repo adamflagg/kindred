@@ -604,6 +604,38 @@ func TestHistoryAttributionPartialCloseSaysTheEarlierWeekendWasLost(t *testing.T
 	}
 }
 
+// A weekend history determined but could not place -- its cabin string maps to
+// no unit yet -- is named in the closing note. Otherwise the note lists only the
+// weekend that WAS placed and reads as a complete answer, while the other
+// weekend sits unplaced behind an alias row the note never mentions.
+func TestHistoryAttributionCloseNoteNamesAWeekendItCouldNotPlace(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedHistoryHousehold(t, app)
+	const unmapped = "Cabin Unmapped"
+	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
+		"", histCabinA, "2026-05-10T16:00:00.0000000+00:00", "2026-05-11 10:00:00.000Z", true)
+	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
+		histCabinA, unmapped, "2026-06-01T16:00:00.0000000+00:00", "2026-06-02 10:00:00.000Z", false)
+	addHouseholdValue(t, app, f.household, f.cabinDef, unmapped, "2026-06-01T16:00:00.0000000+00:00", 2026)
+	openID := seedIssue(t, app, map[string]any{
+		"kind": issueAmbiguousSession, "raw_value": unmapped,
+		"source_field": fieldNameFamilyCampCabin, "year": 2026,
+		"household_cm_id": histHousehold, "is_resolved": false, "occurrences": 1,
+	})
+
+	runLodgingSync(t, app, 2026, false)
+
+	row, err := app.FindRecordById("lodging_ingest_issues", openID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	note := row.GetString("resolution_note")
+	if !strings.Contains(note, "Family Camp 2") {
+		t.Errorf("note = %q, want it to name Family Camp 2, which history determined but could not place", note)
+	}
+}
+
 // An unparseable source_changed_at falls back to observed_at, and says so in
 // the log. Without the fallback W1 would be undetermined: the only other clock
 // is the current value's, which is after W1 started.
@@ -750,6 +782,47 @@ func TestHistoryAttributionDryRunWritesAndClosesNothing(t *testing.T) {
 // its own the current value's clock then puts the knowledge floor after W1
 // started; the history's genesis row shows the same cabin was in place before
 // W1. A replay that did not read history would place W2 alone.
+// The replay reads the current value's clock the way the sync does. The sync
+// times an unparseable last_updated by the row's own `updated` stamp
+// (currentValueClock); a replay that kept the old strict parse would get the
+// zero time, decline the history rule, and flag a party the next sync places.
+func TestHistoryAttributionReplayReadsTheCurrentClockLikeTheSync(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	f := seedHistoryHousehold(t, app)
+	aliasB, err := app.FindFirstRecordByFilter("lodging_unit_aliases", "alias_string = {:a}",
+		map[string]any{"a": histCabinB})
+	if err != nil {
+		t.Fatalf("find alias: %v", err)
+	}
+	if delErr := app.Delete(aliasB); delErr != nil {
+		t.Fatalf("delete alias: %v", delErr)
+	}
+	addValueHistoryRow(t, app, cmIDFamilyCampCabin, histHousehold, 0,
+		"", histCabinB, "2026-05-10T16:00:00.0000000+00:00", "2026-05-11 10:00:00.000Z", true)
+	addHouseholdValue(t, app, f.household, f.cabinDef, histCabinB, "not a timestamp", 2026)
+
+	runLodgingSync(t, app, 2026, false)
+	unresolved := issuesOfKind(t, app, issueUnresolvedAlias)
+	if len(unresolved) != 1 {
+		t.Fatalf("unresolved_alias rows = %d, want 1 for the unmapped string", len(unresolved))
+	}
+
+	newAlias := addAlias(t, app, histCabinB, []string{f.unitB}, 0, 0)
+	unresolved[0].Set("is_resolved", true)
+	unresolved[0].Set("resolved_alias", newAlias)
+	if saveErr := app.Save(unresolved[0]); saveErr != nil {
+		t.Fatalf("tick alias row: %v", saveErr)
+	}
+	if _, replayErr := ReplayPartylessIssue(app, unresolved[0].Id); replayErr != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", replayErr)
+	}
+
+	got := placementsBySession(t, app)
+	assertPlaced(t, got, f.w1, f.unitB, "W1 after replay")
+	assertPlaced(t, got, f.w2, f.unitB, "W2 after replay")
+}
+
 func TestHistoryAttributionReplayFanOutAgreesWithTheSync(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)

@@ -114,6 +114,9 @@ func newSyncTestApp(t *testing.T) core.App {
 	// e.g. "2025-04-21T17:51:11.5964281+00:00".
 	hcv.Fields.Add(&core.TextField{Name: "last_updated"})
 	hcv.Fields.Add(&core.NumberField{Name: "year"})
+	// Production carries the autodate pair (migration 1500000029), and
+	// currentValueClock falls back to `updated` when last_updated is unreadable.
+	hcv.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
 	saveCollection(t, app, hcv)
 
 	pcv := core.NewBaseCollection("person_custom_values")
@@ -122,6 +125,7 @@ func newSyncTestApp(t *testing.T) core.App {
 	pcv.Fields.Add(&core.TextField{Name: "value"})
 	pcv.Fields.Add(&core.TextField{Name: "last_updated"})
 	pcv.Fields.Add(&core.NumberField{Name: "year"})
+	pcv.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
 	saveCollection(t, app, pcv)
 
 	units := core.NewBaseCollection("lodging_units")

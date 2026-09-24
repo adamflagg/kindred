@@ -607,7 +607,9 @@ func (s *LodgingAssignmentsSync) historyWeekends(in *ingestContext) ([]weekendVa
 //
 // Each weekend's string is resolved on its own: an earlier weekend's cabin is
 // a different string from the current one. A weekend the rule could not
-// determine is left unplaced, as it always was, and named in the closing note.
+// determine is left unplaced, as it always was, and named in the closing note --
+// as is one it determined but could not place (its string maps to no unit, or
+// the write failed), so the note never reads as a complete answer when it is not.
 // The answer is recorded only when at least one weekend was actually placed --
 // a party whose every string failed to resolve is still blocked, by the alias
 // rows queued above, and its session question has not been settled on the board.
@@ -630,6 +632,8 @@ func (s *LodgingAssignmentsSync) ingestFromHistory(in *ingestContext, weekends [
 			attr := Attribution{SessionID: w.Window.ID, Candidates: in.Candidates, Reason: attrSingleSession}
 			if s.writeAttributed(&one, res, attr) {
 				answer.Placed = append(answer.Placed, w.Window)
+			} else {
+				answer.Unplaced = append(answer.Unplaced, w.Window)
 			}
 		}
 	}

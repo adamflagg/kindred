@@ -285,6 +285,10 @@ type SessionAnswer struct {
 	Overwritten []SessionWindow
 	// Cleared had no cabin recorded when they started.
 	Cleared []SessionWindow
+	// Unplaced had a cabin string history determined, but it wrote no placement:
+	// the string maps to no unit (its alias row is queued), or the write failed
+	// (its own row is queued).
+	Unplaced []SessionWindow
 }
 
 func (a *SessionAnswer) key() string {
@@ -305,6 +309,10 @@ func (a *SessionAnswer) note() string {
 	if len(a.Cleared) > 0 {
 		b.WriteString(" Not placed: " + sessionNames(a.Cleared) +
 			" -- no cabin was recorded when that weekend started.")
+	}
+	if len(a.Unplaced) > 0 {
+		b.WriteString(" Not placed: " + sessionNames(a.Unplaced) +
+			" -- its cabin value could not be placed yet; see that value's own queue row.")
 	}
 	return b.String()
 }
