@@ -8,10 +8,11 @@
  * ── STORE EVERYTHING, GENERICALLY (owner ruling 2026-09-24) ────────────────
  * Every answered question is synced, one row per submission per question,
  * the way the CampMinder sync keeps every custom-field value. There is NO PHI
- * gate and NO allowlist: `bunking.manage` gates all three tables here, and the
- * API re-checks it. Question ids change every year (each year's form is a new
- * form), so nothing here names a question: `jotform_forms.field_map` maps a
- * ROLE ("bunking_request") to that form's question id, set per form in admin.
+ * gate and NO allowlist: `bunking.manage` gates all three tables here, and every
+ * FastAPI read of them must re-check it. Question ids change every year (each
+ * year's form is a new form), so nothing here names a question:
+ * `jotform_forms.field_map` maps a ROLE ("bunking_request") to that form's
+ * question id, set per form in admin.
  *
  * ── IDS ────────────────────────────────────────────────────────────────────
  * Relationships to the rest of Kindred use CampMinder ids (`person_cm_id`,
@@ -28,6 +29,12 @@
  * ── DELETION ───────────────────────────────────────────────────────────────
  * A submission deleted on Jotform is MARKED (`jotform_status = 'DELETED'`),
  * never hard-deleted, and only after a COMPLETE pull no longer returns it.
+ * The two relations deliberately differ. `answer -> submission` cascades, so
+ * dropping a submission takes its answers. `submission -> form` is required
+ * and does NOT cascade, so PocketBase REFUSES to delete a form that has any
+ * submission ("part of a required relation reference"). That refusal is the
+ * point: a form is retired by clearing `enabled`, never by deleting it, and a
+ * delete would otherwise take every staff link with it.
  *
  * Field properties are direct (never inside an options wrapper, which v0.23
  * ignores silently). Writes are superuser-only: the Go sync and FastAPI's

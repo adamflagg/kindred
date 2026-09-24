@@ -133,7 +133,7 @@ SUPERUSERS = "_superusers"
 
 # Adult-weekend Jotform pull (kindred#2759, migration 1500000180). Generic:
 # every answered question, one row per submission per question. All three are
-# `bunking.manage`-only in PocketBase, and every API read re-checks it.
+# `bunking.manage`-only in PocketBase, and every API read of them must re-check it.
 JOTFORM_FORMS = "jotform_forms"
 JOTFORM_SUBMISSIONS = "jotform_submissions"
 JOTFORM_ANSWERS = "jotform_answers"
