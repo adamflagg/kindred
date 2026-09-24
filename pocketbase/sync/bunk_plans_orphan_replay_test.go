@@ -54,7 +54,7 @@ func setupBunkPlansReplayCollections(t *testing.T, app core.App, grain *Collecti
 	plans.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	plans.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	plans.Indexes = []string{fmt.Sprintf(
-		"CREATE UNIQUE INDEX `%s` ON `bunk_plans` (`year`, `bunk`, `session`, `cm_id`)",
+		"CREATE UNIQUE INDEX %#q ON `bunk_plans` (`year`, `bunk`, `session`, `cm_id`)",
 		grain.UniqueIndex)}
 	if err := app.Save(plans); err != nil {
 		t.Fatalf("create bunk_plans: %v", err)

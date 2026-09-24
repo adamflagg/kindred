@@ -36,7 +36,7 @@ func setupCustomValuesReplayCollection(
 	col.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	col.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	col.Indexes = []string{fmt.Sprintf(
-		"CREATE UNIQUE INDEX `%s` ON `%s` (`year`, `%s`, `field_definition`)",
+		"CREATE UNIQUE INDEX %#q ON %#q (`year`, %#q, `field_definition`)",
 		grain.UniqueIndex, collection, owner)}
 	if err := app.Save(col); err != nil {
 		t.Fatalf("create %s: %v", collection, err)
