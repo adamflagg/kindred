@@ -88,6 +88,7 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
+from api.services.adult_need_answers import ADULT_NEED_FIELD_CM_IDS
 from api.services.lodging_cache import cached_by_year
 from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
@@ -1139,17 +1140,26 @@ class LodgingRepository:
             },
         )
 
-    @cached_by_year(lodging_cache)
-    async def fetch_adult_cabin_values(self, year: int) -> list[Any]:
-        """Every adult-weekend cabin value in `year` -- the cohort twin of
-        `fetch_person_cabin_values` (kindred#2767).
+    async def _fetch_cohort_person_values(self, year: int, field_cm_ids: tuple[int, ...]) -> list[Any]:
+        """Allowlisted `person_custom_values` for a whole cohort, one season --
+        the ONE shared shape behind every cohort-wide custom-value read
+        (kindred#2766, reused by kindred#2767's cabin read).
 
-        ⛔ THE SAME ALLOWLIST, and for the same reason: `person_custom_values`
-        holds this cohort's Race, financial aid and salary-bearing staff
-        history. `person` is expanded for its cm_id, which is how the caller
-        groups the values by guest.
+        ⛔ `field_cm_ids` IS AN ALLOWLIST, and callers pass a named, test-pinned
+        constant, never a list built at runtime. This table holds the cohort's
+        Race, Judaism, financial aid and `20XX History` staff records (which
+        embed salary) -- the best-covered fields it has -- so a read that is not
+        narrowed to named field ids is how one reaches the wire. An empty
+        allowlist is refused outright: it would not narrow the read at all.
+
+        `person` is expanded for its cm_id, which is how callers group values
+        by guest; `field_definition` for the cm_id each value answers.
+        Deliberately uncached itself: each caller caches under its own name, so
+        the two reads never share a `(read, year)` key.
         """
-        field_filter = " || ".join(f"field_definition.cm_id = {cm_id}" for cm_id in ADULT_WEEKEND_CABIN_FIELD_CM_IDS)
+        if not field_cm_ids:
+            raise ValueError("an empty person custom-value allowlist would read every field")
+        field_filter = " || ".join(f"field_definition.cm_id = {cm_id}" for cm_id in field_cm_ids)
         return await self._page(
             PERSON_CUSTOM_VALUES,
             query_params={
@@ -1158,6 +1168,30 @@ class LodgingRepository:
                 "sort": STABLE_SORT,
             },
         )
+
+    @cached_by_year(lodging_cache)
+    async def fetch_adult_cabin_values(self, year: int) -> list[Any]:
+        """Every adult-weekend cabin value in `year` -- the cohort twin of
+        `fetch_person_cabin_values` (kindred#2767).
+
+        ⛔ THE SAME ALLOWLIST, and for the same reason: `person_custom_values`
+        holds this cohort's Race, financial aid and salary-bearing staff
+        history.
+        """
+        return await self._fetch_cohort_person_values(year, ADULT_WEEKEND_CABIN_FIELD_CM_IDS)
+
+    @cached_by_year(lodging_cache)
+    async def fetch_adult_need_values(self, year: int) -> list[Any]:
+        """Every adult guest's own housing-need answers in `year` (kindred#2766):
+        Adult-Bathroom, Adult-CPAP, Housing Accomodation and Adult-Opt Out.
+
+        ⛔ `ADULT_NEED_FIELD_CM_IDS`, and nothing else. Only the booleans parsed
+        from these reach the roster (`adult_need_answers.adult_need_flags_by_person`).
+        Never `family_camp_registrations` for an adult guest: that row is
+        household grain, missing for two thirds of the cohort's households, and
+        can carry another weekend's -- or another person's -- answer.
+        """
+        return await self._fetch_cohort_person_values(year, ADULT_NEED_FIELD_CM_IDS)
 
     @cached_by_year(lodging_cache)
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:

@@ -57,6 +57,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
     WriteInCover,
 )
+from api.services.adult_need_answers import adult_need_flags_by_person
 from api.services.lodging_repository import ADULT_SESSION_TYPE, FAMILY_SESSION_TYPE
 from api.services.lodging_rules import (
     REQUEST_TEXT_SOURCES,
@@ -2408,6 +2409,7 @@ class LodgingRosterService:
         prior_adult_task: asyncio.Task[set[int]] | None = None
         adult_values_task: asyncio.Task[list[Any]] | None = None
         adult_weekends_task: asyncio.Task[list[Any]] | None = None
+        adult_needs_task: asyncio.Task[list[Any]] | None = None
 
         # TaskGroup rather than asyncio.gather: typeshed only types gather
         # precisely up to six awaitables, and beyond that every result widens to
@@ -2485,6 +2487,10 @@ class LodgingRosterService:
                 prior_adult_task = tg.create_task(self.repository.fetch_prior_adult_person_cm_ids(year))
                 adult_values_task = tg.create_task(self.repository.fetch_adult_cabin_values(year - 1))
                 adult_weekends_task = tg.create_task(self.repository.fetch_adult_weekend_attendees(year - 1))
+                # kindred#2766: each guest's OWN need answers, this year, one
+                # allowlisted read for the cohort. Absent from `build_summary`:
+                # no count reads a flag.
+                adult_needs_task = tg.create_task(self.repository.fetch_adult_need_values(year))
             elif reads_live_last_year:
                 # kindred#2775: the WEEKENDS each household was enrolled on,
                 # which the every-weekend rule needs and which also say
@@ -2659,6 +2665,9 @@ class LodgingRosterService:
                 )
                 if adult_values_task is not None and adult_weekends_task is not None
                 else {}
+            ),
+            flags_by_person=(
+                adult_need_flags_by_person(adult_needs_task.result()) if adult_needs_task is not None else {}
             ),
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
@@ -3526,6 +3535,10 @@ class LodgingRosterService:
         # counts, and neither is a count.
         prior_person_cm_ids: set[int] | None = None,
         last_year_cabins_by_person: dict[int, str] | None = None,
+        # kindred#2766: each guest's need flags from their own answers, keyed
+        # by the guest's CampMinder id. DEFAULTED for the same reason: the
+        # lander keeps only counts, and no count reads a flag.
+        flags_by_person: Mapping[int, AccessibilityFlagSummary] | None = None,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
 
@@ -3536,6 +3549,7 @@ class LodgingRosterService:
                 unit_index,
                 prior_person_cm_ids=prior_person_cm_ids or set(),
                 last_year_cabins=last_year_cabins_by_person or {},
+                flags_by_person=flags_by_person or {},
             )
 
         return self._build_household_parties(
@@ -3615,6 +3629,7 @@ class LodgingRosterService:
         *,
         prior_person_cm_ids: set[int],
         last_year_cabins: dict[int, str],
+        flags_by_person: Mapping[int, AccessibilityFlagSummary],
     ) -> list[RosterParty]:
         parties: list[RosterParty] = []
         for attendee in attendees:
@@ -3650,6 +3665,14 @@ class LodgingRosterService:
                     # any prior enrolled ADULT session, by the guest's own id.
                     is_returning=person_cm_id in prior_person_cm_ids,
                     last_year_cabin=last_year_cabins.get(person_cm_id, ""),
+                    # kindred#2766: the guest's OWN answers, parsed by ports of
+                    # the Go ingest's rules (`adult_need_answers`). NOT
+                    # `_build_flags`: that reads the household's
+                    # `family_camp_registrations` row, which is the wrong grain
+                    # for a guest -- missing for two thirds of the cohort and
+                    # shared by every guest in a household. A guest who
+                    # answered nothing honestly reads no needs.
+                    flags=flags_by_person.get(person_cm_id, AccessibilityFlagSummary()),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
@@ -3912,6 +3935,12 @@ class LodgingRosterService:
 
         One writer, one reader. If a flag looks wrong, fix it in the ingest
         layer so every surface sees the correction.
+
+        HOUSEHOLD GRAIN ONLY. An adult-weekend guest's flags do not come
+        through here (kindred#2766): they are person-grain answers with no
+        derived table behind them, so `adult_need_answers` parses them with
+        ports of the ingest's own rules. See that module for why the
+        household row is the wrong source for a guest.
         """
         if registration is None:
             # A household with no registration row still builds a party, and
