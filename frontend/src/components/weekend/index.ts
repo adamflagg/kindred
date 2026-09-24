@@ -46,13 +46,7 @@ export { CabinWeekendEntry } from './CabinWeekendEntry'
 export { PushWriteInsEntry } from './PushWriteInsEntry'
 export { ScenarioCompareEntry } from './ScenarioCompareEntry'
 export { WeekendStatsBar } from './WeekendStatsBar'
-export {
-  resolveWeekendRef,
-  shortWeekendName,
-  splitWeekendName,
-  weekendRef,
-  weekendSlug,
-} from './weekendNames'
+export { resolveWeekendRef, splitWeekendName, weekendRef, weekendSlug } from './weekendNames'
 export type { AddressableWeekend, WeekendName } from './weekendNames'
 export {
   calendarKey,

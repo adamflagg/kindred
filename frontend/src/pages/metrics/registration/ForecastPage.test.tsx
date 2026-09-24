@@ -323,7 +323,7 @@ describe('ForecastPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
-      // shortenSessionName("AG Session 2") → "AG 2"
+      // sessionName("AG Session 2", undefined, 'short') → "AG 2"
       expect(screen.getByText('AG 2')).toBeInTheDocument()
     })
 

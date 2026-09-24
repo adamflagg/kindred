@@ -8,7 +8,7 @@
 import type { EdgeSingular, ElementDefinition, NodeSingular, StylesheetStyle } from 'cytoscape'
 import { resolveEdgeColor } from './graph/cytoscapeStyles'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
-import { getSessionShorthand } from '../utils/sessionDisplay'
+import { sessionName } from '../utils/sessionName'
 
 export const BUNK_NODE_COLORS = {
   // Binary connection state — anything > 0 reads as "has connections".
@@ -228,7 +228,7 @@ export function buildBunkGraphElements(
         id: nodeId,
         label: `${node.name} (${formatGradeOrdinal(node.grade)})${
           node.last_year_bunk && node.last_year_session
-            ? `\n${getSessionShorthand(node.last_year_session)}: ${node.last_year_bunk}`
+            ? `\n${sessionName(node.last_year_session, undefined, 'tiny')}: ${node.last_year_bunk}`
             : ''
         }`,
         fullName: node.name,

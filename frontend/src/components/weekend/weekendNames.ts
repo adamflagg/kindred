@@ -28,6 +28,14 @@
  *   A prose name comes back whole, because an invented abbreviation is how a
  *   UI starts disagreeing with CampMinder about what a session is called —
  *   `FFCI` for "Fall Family Camp II" is that, on the screen.
+ *
+ * ★ RENDER THROUGH `sessionName` (utils/sessionName.ts, kindred#2763), not
+ * through these. `shortWeekendName`, `weekendTitle`, `adultWeekendTitle` and
+ * `weekendLabel` are the family and adult rows of its rules tables — the
+ * `identity`, `title` and `tiny` forms — and live here beside the slug the
+ * tiny label is built from. `weekendSlug`/`weekendRef` stay URL helpers, and
+ * `splitWeekendName(...).qualifier` / `weekendSubtitle` are the second line
+ * under a name, not a form of it.
  */
 
 export interface WeekendName {
@@ -348,7 +356,7 @@ export function weekendTitle(name: string): string {
  * `LEGACY_MID`/`UNNUMBERED_TITLES` maps and its "carry the subtitle" half are
  * pure family-camp concerns (2017-2019 renumbering, Keshet/JFAM/JFoC) that an
  * adult weekend never has. Scoped to `session_type === 'adult'` in
- * `getSessionDisplayNameFromString` — never applied to a summer AG name,
+ * `sessionName`'s rules tables (the adult row's `title` and `short`) — never applied to a summer AG name,
  * whose parenthetical (a grade range) is meaningful and must survive intact.
  */
 export function adultWeekendTitle(name: string): string {

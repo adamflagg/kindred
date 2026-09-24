@@ -16,7 +16,7 @@ import {
   isQuestSession,
   isTeenProgram,
 } from '../../../utils/sessionTypePredicates'
-import { shortenSessionName } from '../../../utils/sessionDisplay'
+import { sessionName } from '../../../utils/sessionName'
 import { buildForecastSections } from '../../../utils/forecastUtils'
 import { resolveWeekOffset } from '../../../utils/resolveWeekOffset'
 import type { SessionForecast } from '../../../types/forecast'
@@ -98,7 +98,7 @@ function SessionRow({ session, isTotal }: { session: SessionForecast; isTotal?: 
   return (
     <tr className={rowClass}>
       <td className="px-3 py-2 text-sm whitespace-nowrap">
-        {shortenSessionName(session.session_name)}
+        {sessionName(session.session_name, undefined, 'short')}
       </td>
       <td className="px-3 py-2 text-right text-sm">{fmt(session.participant_goal)}</td>
       <td className="px-3 py-2 text-right text-sm font-medium">

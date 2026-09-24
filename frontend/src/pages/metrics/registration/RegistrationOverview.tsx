@@ -24,7 +24,7 @@ import { MetricCard } from '../../../components/metrics/MetricCard'
 import { BreakdownChart } from '../../../components/metrics/BreakdownChart'
 import { CssHorizontalBarChart } from '../../../components/metrics/CssHorizontalBarChart'
 import { CssVerticalStackedBarChart } from '../../../components/metrics/CssVerticalStackedBarChart'
-import { getSessionChartLabel } from '../../../utils/sessionDisplay'
+import { sessionName } from '../../../utils/sessionName'
 import { SESSION_NAME_ALIASES, resolveSessionAlias } from '../../../utils/sessionAliases'
 import {
   buildSessionDateLookup,
@@ -806,7 +806,7 @@ export default function RegistrationOverview() {
                   className="border-border hover:bg-muted/20 border-b transition-colors last:border-0"
                 >
                   <td className="text-foreground px-4 py-3 font-medium">
-                    {getSessionChartLabel(session.session_name, undefined, sessionDateLookup)}
+                    {sessionName(session.session_name, undefined, 'chart')}
                     {isComparing &&
                       compData &&
                       (() => {

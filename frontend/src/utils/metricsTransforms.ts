@@ -14,7 +14,7 @@ import type {
   SessionLengthBreakdown,
   SummerYearsBreakdown,
 } from '../types/metrics'
-import { getSessionChartLabel } from './sessionDisplay'
+import { sessionName } from './sessionName'
 import {
   sortSessionDataByDate,
   sortSessionDataByCampThenQuest,
@@ -85,7 +85,7 @@ export function transformSessionData(
     ? sortSessionDataByCampThenQuest(data, sessionDateLookup, sessionTypeLookup)
     : sortSessionDataByDate(data, sessionDateLookup)
   return sorted.map((s) => ({
-    name: getSessionChartLabel(s.session_name, undefined, sessionDateLookup),
+    name: sessionName(s.session_name, undefined, 'chart'),
     value: s.count,
     percentage: s.utilization ?? 0,
     id: String(s.session_cm_id),
@@ -160,7 +160,7 @@ export function transformRetentionSessionData(
   if (!data?.length) return []
   const sorted = sortSessionDataByDate(data, sessionDateLookup)
   return sorted.map((s) => ({
-    name: getSessionChartLabel(s.session_name, undefined, sessionDateLookup),
+    name: sessionName(s.session_name, undefined, 'chart'),
     value: s.returned_count,
     percentage: s.retention_rate * 100,
   }))
@@ -216,7 +216,7 @@ export function transformPriorSessionData(
   if (!data?.length) return []
   const sorted = sortPriorSessionDataByDate(data, sessionDateLookup)
   return sorted.map((s) => ({
-    name: getSessionChartLabel(s.prior_session, undefined, sessionDateLookup),
+    name: sessionName(s.prior_session, undefined, 'chart'),
     value: s.returned_count,
     percentage: s.retention_rate * 100,
   }))

@@ -46,7 +46,6 @@ import {
   resolvePartyUnit,
   resolveWeekendRef,
   scenarioForWeekend,
-  shortWeekendName,
   sortWeekendsByDate,
   weekendRef,
   WeekendFriendGroups,
@@ -62,6 +61,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendFriendGroups } from '../hooks/useWeekendFriendGroups'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
+import { sessionName } from '../utils/sessionName'
 
 /**
  * Imported by DIRECT PATH, never through `../components/weekend` (#1964). A
@@ -315,7 +315,7 @@ export default function WeekendRosterPage() {
               icon={Home}
               label={
                 selectedSession
-                  ? shortWeekendName(selectedSession.name)
+                  ? sessionName(selectedSession.name, selectedSession.session_type, 'identity')
                   : sessionsQuery.isLoading
                     ? 'Loading weekends…'
                     : 'Weekend not found'
@@ -326,7 +326,7 @@ export default function WeekendRosterPage() {
                 // — a slug's uniqueness must not shift depending on which
                 // other weekends happen to be cancelled this season.
                 value: weekendRef(session, sessions),
-                label: shortWeekendName(session.name),
+                label: sessionName(session.name, session.session_type, 'identity'),
               }))}
               onChange={(value: string) => {
                 // CARRIES THE TAB. Switching weekends from inside one is how
@@ -467,7 +467,15 @@ export default function WeekendRosterPage() {
                 attributionChip={
                   <CabinWeekendEntry
                     sessionCmId={selectedCmId ?? 0}
-                    weekendLabel={selectedSession ? shortWeekendName(selectedSession.name) : ''}
+                    weekendLabel={
+                      selectedSession
+                        ? sessionName(
+                            selectedSession.name,
+                            selectedSession.session_type,
+                            'identity'
+                          )
+                        : ''
+                    }
                     canManage={canManageLodging}
                     parties={parties}
                     onOpenFamily={openFamilyPanel}

@@ -54,7 +54,7 @@ import { displayCampMinderAge } from '../../utils/age'
 import { formatGradeName } from '../../utils/gradeUtils'
 import { Modal } from '../ui/Modal'
 import { isAttendingAdultName } from './householdIdentity'
-import { weekendLabel } from './weekendNames'
+import { sessionName } from '../../utils/sessionName'
 
 /**
  * Mirrors `CamperLink.tsx`'s own validity check — a CampMinder ID is only
@@ -234,8 +234,10 @@ export function HouseholdYearMembersModal({
               const label =
                 cmId === null
                   ? 'All'
-                  : weekendLabel(
-                      sessions.find((session) => session.session_cm_id === cmId)?.name ?? ''
+                  : sessionName(
+                      sessions.find((session) => session.session_cm_id === cmId)?.name ?? '',
+                      'family',
+                      'tiny'
                     )
               return (
                 <button

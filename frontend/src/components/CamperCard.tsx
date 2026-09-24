@@ -9,7 +9,7 @@ import {
   getGenderCategory,
   getGenderColorClasses,
 } from '../utils/genderUtils'
-import { getSessionShorthand } from '../utils/sessionDisplay'
+import { sessionName } from '../utils/sessionName'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { displayCampMinderAge } from '../utils/age'
@@ -206,7 +206,7 @@ function CamperCard({
 
   // Format historical data for display
   const historyDisplay = lastYearHistory
-    ? `${getSessionShorthand(lastYearHistory.sessionName, lastYearHistory.sessionType)} ${lastYearHistory.bunkName}`
+    ? `${sessionName(lastYearHistory.sessionName, lastYearHistory.sessionType, 'tiny')} ${lastYearHistory.bunkName}`
     : ''
 
   return (
