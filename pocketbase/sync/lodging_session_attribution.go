@@ -320,6 +320,10 @@ func reliableEnrolledSessions(index map[int][]SessionWindow) map[int]bool {
 // spec 3.6 requires flagging those 6-10 households a year for manual entry, and
 // a wrong cabin on the board is worse than a blank one.
 //
+// From 2026 the ingest answers most multi-weekend parties from captured value
+// history instead (attributeFromHistory, kindred#2784), and reaches this only
+// for a season before capture began or a value with no usable clock.
+//
 // The suggestion is the earliest session starting on or after lastUpdated --
 // staff edit the value shortly before the weekend it applies to, which held for
 // all six ambiguous 2025 households. A value edited after every weekend has
@@ -348,4 +352,164 @@ func AttributeSession(candidates []SessionWindow, lastUpdated time.Time) Attribu
 	}
 	out.BestGuess = candidates[len(candidates)-1].ID
 	return out
+}
+
+// historyAttributionFirstSeason is the first season whose multi-weekend parties
+// are attributed from captured value history (kindred#2784). Capture began on
+// 2026-08-21 (kindred#2482), so no earlier season has any history, and the
+// owner ruled the rule applies "for 2026 onward". Gating on the year rather
+// than on "history exists" is what keeps a prior season untouched when the
+// ingest is driven for it explicitly (?year=, a historical re-registration):
+// with no history the current value alone would still place its last weekend,
+// and 21 of 2025's household values were last edited in December.
+const historyAttributionFirstSeason = 2026
+
+// valueWrite is one known write of a cabin value: the value, and when CampMinder
+// says it was written.
+type valueWrite struct {
+	At    time.Time
+	Value string
+}
+
+// weekendValue is one weekend's cabin under the history rule.
+//
+// Known is false when the weekend started before the earliest write the
+// timeline holds: whatever was in effect then was overwritten before capture
+// began, so nothing can be said about it. A Known weekend with an empty Value
+// had its cabin cleared when it started. Either way it is not placed.
+type weekendValue struct {
+	Window SessionWindow
+	Value  string
+	Known  bool
+}
+
+// placed reports whether this weekend has a cabin to write.
+func (w *weekendValue) placed() bool { return w.Known && w.Value != "" }
+
+// sessionCutoff is the moment a weekend's cabin is read: the start of its first
+// day, camp-local.
+//
+// camp_sessions.start_date is already stored as local midnight (07:00Z in
+// summer, 08:00Z in winter), so for every current row this is the identity.
+// Truncating anyway keeps the rule true if a start ever carries a check-in time:
+// an edit made on the morning of arrival is after the cutoff, not before it.
+func sessionCutoff(start time.Time, loc *time.Location) time.Time {
+	local := start.In(loc)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+}
+
+// attributeFromHistory gives each of a party's weekends the cabin value in
+// effect when that weekend started (kindred#2784, owner rulings 2026-09-23).
+//
+// candidates are the party's enrolled weekends of the field's own session type,
+// sorted by Start ascending. history holds the captured writes in any order.
+// current is the value CampMinder holds now, with its own change time.
+//
+// The rule, weekend by weekend:
+//
+//   - A weekend that has not started yet takes the current value. Until it
+//     starts, what is in CampMinder now is its answer.
+//   - The party's LAST weekend takes the current value if anything was written
+//     after it started -- the "lone late edit": staff edit housing before
+//     weekends, not after, so a later write is a correction of the last one.
+//   - Every other weekend takes the latest value written strictly before its
+//     cutoff. An unchanged value therefore carries forward to every later
+//     weekend, which is ruling 3 and also why this does not "smear" one yearly
+//     value the way #2393 guarded against: a value written after a weekend
+//     started can never land on it.
+//   - The timeline is known only from its earliest write. A weekend whose cutoff
+//     falls before that floor gets Known=false. With no history row the floor
+//     is the current value's own change time, which is sound on its own:
+//     CampMinder is saying the value has not changed since then.
+//
+// Ordering is by time, never by position. Ties go to the current value, which is
+// appended last and sorted stably, so the history row that recorded the current
+// value (same time, same value) and the current value itself agree.
+func attributeFromHistory(
+	candidates []SessionWindow, history []valueWrite, current valueWrite, now time.Time, loc *time.Location,
+) []weekendValue {
+	timeline := make([]valueWrite, 0, len(history)+1)
+	timeline = append(timeline, history...)
+	timeline = append(timeline, current)
+	slices.SortStableFunc(timeline, func(a, b valueWrite) int { return a.At.Compare(b.At) })
+
+	last := len(candidates) - 1
+	out := make([]weekendValue, 0, len(candidates))
+	for i, w := range candidates {
+		cutoff := sessionCutoff(w.Start, loc)
+		wv := weekendValue{Window: w}
+		switch {
+		case cutoff.After(now):
+			wv.Value, wv.Known = current.Value, true
+		case i == last && !timeline[len(timeline)-1].At.Before(cutoff):
+			wv.Value, wv.Known = current.Value, true
+		default:
+			wv.Value, wv.Known = latestBefore(timeline, cutoff)
+		}
+		out = append(out, wv)
+	}
+	return out
+}
+
+// latestBefore returns the value of the last write strictly before cutoff in a
+// time-sorted timeline, and false when the timeline starts at or after it.
+func latestBefore(timeline []valueWrite, cutoff time.Time) (string, bool) {
+	value, known := "", false
+	for _, w := range timeline {
+		if !w.At.Before(cutoff) {
+			break
+		}
+		value, known = w.Value, true
+	}
+	return value, known
+}
+
+// changeTimeLayoutsWithZone are the zoned layouts parseSourceChangeTime tries
+// after ParseCampMinderTimestamp. Fractional seconds need no layout of their
+// own: time.Parse accepts them after the seconds field regardless.
+var changeTimeLayoutsWithZone = []string{
+	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02 15:04:05Z",
+}
+
+// changeTimeLayoutsLocal carry no zone, so they are read as camp-local time.
+// A bare date is local midnight, which puts an edit on arrival day on the right
+// side of that day's cutoff (not before it).
+var changeTimeLayoutsLocal = []string{
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02",
+	"1/2/2006 3:04:05 PM",
+	"1/2/2006 3:04 PM",
+	"1/2/2006 15:04:05",
+	"1/2/2006 15:04",
+	"1/2/2006",
+}
+
+// parseSourceChangeTime reads a CampMinder change time defensively.
+//
+// Every captured value in the 2026 snapshot is the .NET DateTimeOffset
+// ParseCampMinderTimestamp already reads, but CampMinder's free-text dates have
+// appeared in 7+ formats elsewhere in this repo, and a value this cannot read
+// is not dropped: the caller falls back to our own observation time and logs.
+// Anything no layout accepts returns false rather than a guess.
+func parseSourceChangeTime(s string, loc *time.Location) (time.Time, bool) {
+	if t, ok := ParseCampMinderTimestamp(s); ok {
+		return t, true
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range changeTimeLayoutsWithZone {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	for _, layout := range changeTimeLayoutsLocal {
+		if t, err := time.ParseInLocation(layout, s, loc); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }

@@ -341,6 +341,14 @@ func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
 	if s.confirmed, err = loadConfirmedSessions(app, year); err != nil {
 		return nil, err
 	}
+	// The same reasoning holds for captured value history (kindred#2784). A
+	// replay without it still attributes a multi-weekend party, but from the
+	// current value's own clock alone, whose knowledge floor can sit after a
+	// weekend the history covers (a bare last_updated bump does exactly that):
+	// the click would place fewer weekends than the next sync.
+	if histErr := s.loadHistory(year); histErr != nil {
+		return nil, histErr
+	}
 	s.issues = NewIssueRecorder(app, year)
 	return s, nil
 }
@@ -425,7 +433,9 @@ func (s *LodgingAssignmentsSync) partiesWritingValue(
 		if !byHousehold {
 			p = replayParty{PersonCMID: cmID}
 		}
-		p.LastUpdated, _ = ParseCampMinderTimestamp(v.GetString("last_updated"))
+		// The sync's own clock read (currentValueClock), so a click and the next
+		// sync time the current value identically (kindred#2784).
+		p.LastUpdated = s.currentValueClock(v, year)
 
 		if i, seen := at[cmID]; seen {
 			// CampMinder holds one cabin answer per party per year, so a second row
@@ -599,9 +609,11 @@ func (s *LodgingAssignmentsSync) observationTimestampFor(
 		return time.Time{}, nil
 	}
 
-	// A value that does not parse yields the zero time, same as a missing row.
-	ts, _ := ParseCampMinderTimestamp(rows[0].GetString("last_updated"))
-	return ts, nil
+	// Read exactly as the sync reads it (currentValueClock): a click and the next
+	// sync must time the current value identically, or the history rule applies
+	// to one and not the other. A prior season keeps the strict parse, where a
+	// value that does not parse yields the zero time, same as a missing row.
+	return s.currentValueClock(rows[0], year), nil
 }
 
 // sessionWindowsFor returns the weekend windows this party's value could

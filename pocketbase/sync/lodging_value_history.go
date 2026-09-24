@@ -22,9 +22,12 @@ import (
 //
 // This table keeps what the source overwrites, so the question "which cabin was
 // in effect for THIS weekend" becomes answerable from recorded observations
-// instead of a timestamp heuristic. Nothing in this file derives a session --
-// that read side is deliberately not built here, and no published value moves
-// because of this capture.
+// instead of a timestamp heuristic. The write side is recordLodgingValueChange
+// below. The read side is loadValueHistory, which hands the assignment ingest
+// each party's timeline; the rule that turns a timeline into a weekend's cabin
+// is attributeFromHistory (lodging_session_attribution.go, kindred#2784), and it
+// lives only there -- displays read the per-weekend rows the ingest writes and
+// never re-derive attribution.
 //
 // WHY NOT lodging_assignment_history
 //
@@ -211,4 +214,85 @@ func logLodgingValueChange(app core.App, obs *lodgingValueObservation) {
 			"is_genesis", obs.IsGenesis,
 			"error", err)
 	}
+}
+
+// valueHistoryKey addresses one party's captured writes to one cabin field.
+// Exactly one of the two party ids is set, as in the table itself.
+type valueHistoryKey struct {
+	FieldCMID     int
+	HouseholdCMID int
+	PersonCMID    int
+}
+
+// valueHistoryIndex is every captured cabin write for one season, per party,
+// in the order the table returned them. attributeFromHistory sorts by time, so
+// the order here carries no meaning.
+type valueHistoryIndex map[valueHistoryKey][]valueWrite
+
+// loadValueHistory reads one season's lodging_value_history into a per-party
+// timeline index.
+//
+// THE CLOCK IS CAMPMINDER'S. Each write is timed by source_changed_at -- when
+// staff made the edit -- not by observed_at, when our daily sync saw it. The
+// difference is the whole point: an edit typed the evening before arrival can
+// be observed the next morning, after the weekend's cutoff, and only the source
+// time keeps it on the right side.
+//
+// observed_at is the fallback only when source_changed_at cannot be parsed, and
+// every fallback is logged: it is our clock standing in for theirs, and it can
+// only ever be LATER than the real edit, which can push a value onto a later
+// weekend. A row with neither clock is skipped, also logged -- a write that
+// cannot be placed in time cannot be placed in a timeline.
+//
+// A genesis row is read like any other write: it is the earliest thing this
+// table knows, which is exactly what makes it the knowledge floor
+// (lodgingValueObservation.IsGenesis explains why it is a floor and not proof
+// that nothing came before). A row whose new_value is empty is kept: staff
+// cleared the cabin, and a weekend that started then had none.
+//
+// ~250 rows a season, so one unpaged read of the year is the whole cost.
+func loadValueHistory(app core.App, year int, loc *time.Location) (valueHistoryIndex, error) {
+	rows, err := findAllRecords(app, lodgingValueHistoryCollection, fmt.Sprintf("year = %d", year))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s for %d: %w", lodgingValueHistoryCollection, year, err)
+	}
+
+	out := make(valueHistoryIndex)
+	for _, r := range rows {
+		key := valueHistoryKey{
+			FieldCMID:     r.GetInt("field_cm_id"),
+			HouseholdCMID: r.GetInt("household_cm_id"),
+			PersonCMID:    r.GetInt("person_cm_id"),
+		}
+		source := r.GetString("source_changed_at")
+		when, ok := parseSourceChangeTime(source, loc)
+		if !ok {
+			when = r.GetDateTime("observed_at").Time()
+			if when.IsZero() {
+				slog.Warn("lodging_value_history: row has no usable clock; left out of the timeline",
+					"id", r.Id, "field_cm_id", key.FieldCMID,
+					"household_cm_id", key.HouseholdCMID, "person_cm_id", key.PersonCMID,
+					"source_changed_at", source)
+				continue
+			}
+			slog.Warn("lodging_value_history: source_changed_at unparseable; timing the write by observed_at",
+				"id", r.Id, "field_cm_id", key.FieldCMID,
+				"household_cm_id", key.HouseholdCMID, "person_cm_id", key.PersonCMID,
+				"source_changed_at", source, "observed_at", when.Format(time.RFC3339))
+		}
+		out[key] = append(out[key], valueWrite{At: when, Value: r.GetString("new_value")})
+	}
+	return out, nil
+}
+
+// retainedFieldCMID maps a source field's display name back to its CampMinder
+// id -- the key lodging_value_history rows carry -- for the two cabin fields in
+// the retention scope.
+func retainedFieldCMID(sourceField string) (int, bool) {
+	for cmID, name := range lodgingRetainedHistoryFields {
+		if name == sourceField {
+			return cmID, true
+		}
+	}
+	return 0, false
 }
