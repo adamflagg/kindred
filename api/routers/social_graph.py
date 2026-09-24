@@ -10,7 +10,8 @@ This router handles:
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Annotated
+from itertools import batched
+from typing import Annotated, Any
 
 import networkx as nx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -24,6 +25,7 @@ from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
 from ..constants.collections import BUNK_REQUESTS, BUNKS, PERSONS
+from ..constants.paging import PB_PAGE_SIZE
 from ..dependencies import graph_cache, pb
 from ..schemas import (
     BunkGraphMetrics,
@@ -44,6 +46,39 @@ _settings = get_settings()
 GRAPH_RANDOM_SEED = _settings.graph_random_seed
 
 router = APIRouter(tags=["social-graph"])
+
+# The persons columns the node labels read. A column missing here comes back
+# absent and reads as None, so add one only alongside the code that reads it.
+_PERSON_LABEL_FIELDS = "cm_id,first_name,last_name,grade,years_at_camp"
+
+
+def _fetch_person_labels(cm_ids: list[int], year: int) -> dict[int, Any]:
+    """This year's persons rows for the graph's nodes, keyed by cm_id.
+
+    One read (per 100 ids, to keep the filter under the URL limit) instead of
+    a `get_first_list_item` per node. The per-node lookups ran on every
+    request, cache hit included, so labelling a cached 356-camper graph cost
+    356 sequential round trips. A node with no row is absent, and the caller
+    labels it "Person <id>" exactly as a failed lookup did.
+
+    Synchronous: callers run it through asyncio.to_thread.
+    """
+    by_cm_id: dict[int, Any] = {}
+    for chunk in batched(cm_ids, 100, strict=False):
+        cm_id_filter = " || ".join(f"cm_id = {cm_id}" for cm_id in chunk)
+        try:
+            persons = pb.collection(PERSONS).get_full_list(
+                batch=PB_PAGE_SIZE,
+                query_params={"filter": f"year = {year} && ({cm_id_filter})", "fields": _PERSON_LABEL_FIELDS},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to get person details for {len(chunk)} graph node(s): {e}")
+            continue
+        for person in persons:
+            cm_id = getattr(person, "cm_id", None)
+            if cm_id is not None:
+                by_cm_id[int(cm_id)] = person
+    return by_cm_id
 
 
 # ========================================
@@ -141,7 +176,9 @@ async def get_session_social_graph(
 
             # Build the graph — pass scenario_id so bunk assignments are sourced
             # from bunk_assignments_draft when a scenario is active.
-            graph = builder.build_social_network(year, session_cm_id, scenario_id=scenario_id)
+            # In a worker thread: the build is synchronous PocketBase + NetworkX
+            # work, and on the event loop it would stall every other request.
+            graph = await asyncio.to_thread(builder.build_social_network, year, session_cm_id, scenario_id=scenario_id)
 
             # Cache under a scenario-scoped key so production and scenario
             # graphs are stored independently.
@@ -180,19 +217,18 @@ async def get_session_social_graph(
                 f"{len(cross_scope_node_ids)} cross-scope ghost nodes"
             )
 
-        # Convert to response format
+        # Convert to response format. Person details must be this year's row
+        # to get the correct grade.
+        person_by_cm_id = await asyncio.to_thread(_fetch_person_labels, list(graph.nodes()), year)
         nodes = []
         for node_id in graph.nodes():
             node_data = graph.nodes[node_id]
 
-            # Get person details - must filter by year to get correct grade
-            try:
-                person = await asyncio.to_thread(
-                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
-                )
+            person = person_by_cm_id.get(node_id)
+            if person is not None:
                 name = f"{person.first_name} {person.last_name}"
                 grade = getattr(person, "grade", None)
-            except Exception:
+            else:
                 name = f"Person {node_id}"
                 grade = None
 
@@ -418,7 +454,9 @@ async def get_bunk_social_graph(
             # Build bunk-specific graph with only request and sibling edges.
             # Pass scenario_id so membership is sourced from the scenario's
             # draft assignments when active.
-            bunk_graph = builder.build_bunk_graph(year, bunk_cm_id, session_cm_id, scenario_id=scenario_id)
+            bunk_graph = await asyncio.to_thread(
+                builder.build_bunk_graph, year, bunk_cm_id, session_cm_id, scenario_id=scenario_id
+            )
 
             # Cache it if not empty
             if bunk_graph.number_of_nodes() > 0:
@@ -445,16 +483,15 @@ async def get_bunk_social_graph(
 
         # We'll determine first-year status when we fetch person details below
 
-        # Convert nodes
+        # Convert nodes. Person details must be this year's row to get the
+        # correct grade.
+        person_by_cm_id = await asyncio.to_thread(_fetch_person_labels, bunk_member_ids, year)
         nodes = []
         for node_id in bunk_graph.nodes():
             node_data = bunk_graph.nodes[node_id]
 
-            # Get person details - must filter by year to get correct grade
-            try:
-                person = await asyncio.to_thread(
-                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
-                )
+            person = person_by_cm_id.get(node_id)
+            if person is not None:
                 name = f"{person.first_name} {person.last_name}"
                 grade = getattr(person, "grade", None)
 
@@ -465,10 +502,10 @@ async def get_bunk_social_graph(
                     logger.info(f"Person {node_id} ({name}) is a first-year camper (years_at_camp={years_at_camp})")
 
                 logger.debug(f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}")
-            except Exception as e:
+            else:
                 name = f"Person {node_id}"
                 grade = None
-                logger.warning(f"Failed to get person details for {node_id}: {e}")
+                logger.warning(f"No {year} person details for {node_id}")
 
             nodes.append(
                 SocialGraphNode(
@@ -686,7 +723,7 @@ async def update_camper_position(
             # from bunk_assignments_draft when a scenario is active.  Without this the
             # graph is built from production data and then stored under the scenario-scoped
             # cache key, poisoning that slot with stale production data.
-            graph = builder.build_social_network(year, session_cm_id, scenario_id=scenario_id)
+            graph = await asyncio.to_thread(builder.build_social_network, year, session_cm_id, scenario_id=scenario_id)
             graph_cache.cache_session_graph(session_cm_id, year, graph, scenario_id=scenario_id)
         else:
             # Use the builder's graph
