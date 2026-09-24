@@ -20,6 +20,7 @@ import {
 import {
   Accessibility,
   Bath,
+  BedDouble,
   CloudOff,
   Thermometer,
   Merge,
@@ -28,6 +29,7 @@ import {
   Refrigerator,
   Snowflake,
   Split,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
@@ -543,20 +545,9 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   /*
    * What the write-ins covering THIS card take from it (kindred#2503) —
    * `writeInDemand`'s own doc in `writeIn.ts` carries the full arithmetic;
-   * this card is one of its readers, not a second copy of the rule.
-   *
-   * ⚠️ `usable`, NOT `known` (kindred#2543, owner ruling 2026-08-29). The two
-   * are different questions and this card asks the second: `known` is "did
-   * somebody size every party", `usable` is "may `consumed` be published".
-   * Reading the first for the second is what made the board go quiet about a
-   * card the stats bar was publishing a free-spot count for — one screen, two
-   * answers. `writeInDemand`'s own doc carries the three meanings of
-   * `known: false` and why only one of them withholds.
-   *
-   * IT ALSO ABSORBS THE `capacityKnown` FOLD-IN this line used to do by hand.
-   * `known` is vacuously true when nothing covers this card, independent of
-   * whether anybody ever measured it, so `writeInDemand(null, [])` answering
-   * `known: true` had to be corrected here. `usable` answers that itself.
+   * this card is one of its readers, not a second copy of the rule. Only
+   * `sized` is read here; the `usable`-not-`known` reading of the free-bed
+   * arithmetic lives in `unitDragCapacity` (`needsFit.ts`).
    */
   // Against `claim.limit`, not `capacity`: identical on a family weekend; on
   // an adult one `writeInDemand` charges an unsized write-in one guest.
@@ -804,7 +795,18 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * refuse), and never an ancestor's count (a fact about the house; printing
    * it on both halves of a split house would spend one party twice).
    */
-  const wholesaleWriteIn = writtenInto && occupants + writeInPeople === 0
+  //
+  // NEVER ON AN ADULT WEEKEND (kindred#2765, scan D8). There every
+  // non-ancestor write-in is at least one guest in `sized`, so a written-into
+  // card reaching zero is a split-house ROOM covered only by its house's row
+  // — one guest somewhere in the house, not a claim on every room of it. The
+  // room prints its real count and names the house instead (`houseWriteIn`).
+  const writtenIntoAtZero = writtenInto && occupants + writeInPeople === 0
+  const wholesaleWriteIn = !isAdult && writtenIntoAtZero
+  const houseNames = [
+    ...new Set(writeIns.filter((w) => !w.source.isOwn).map((w) => w.source.unitName)),
+  ].join(', ')
+  const houseWriteIn = isAdult && writtenIntoAtZero && houseNames !== ''
   const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants + writeInPeople)
 
   /*
@@ -852,30 +854,51 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   // room has beds left over. Empty (and the sentence unchanged) whenever
   // nobody recorded a write-in size, which is every card today.
   const writeInClause = writeInPeople > 0 ? ` · ${String(writeInPeople)} written in` : ''
-  const occupancyTooltip = wholesaleWriteIn
-    ? capacityKnown
-      ? `Written in — occupies the whole room · sleeps ${String(capacity)}`
-      : 'Written in — occupies the whole room · capacity not recorded'
-    : capacityKnown
-      ? `Sleeps ${String(capacity)} · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
-      : `Capacity not recorded · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
+  const occupancyTooltip = houseWriteIn
+    ? `Written in on ${houseNames}`
+    : wholesaleWriteIn
+      ? capacityKnown
+        ? `Written in — occupies the whole room · sleeps ${String(capacity)}`
+        : 'Written in — occupies the whole room · capacity not recorded'
+      : capacityKnown
+        ? `Sleeps ${String(capacity)} · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
+        : `Capacity not recorded · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
 
   /*
    * The corner figure itself (kindred#2765). A family weekend and an adult
    * shared cabin both read `N/M` — M the beds, or the 8-guest ceiling. Every
    * other unit on an adult weekend makes no claim, so it states guests and
-   * beds side by side as neutral text: never red, never "0 free".
+   * beds side by side, neutral: never red, never "0 free". As ICONS — the
+   * words wrapped to two lines on the card (owner visual review 2026-09-23) —
+   * with the words kept as the tooltip.
    */
+  const guestCount = occupants + writeInPeople
   const cornerFigure =
-    claim.kind === 'none'
-      ? guestsAndBeds(occupants + writeInPeople, capacity)
-      : claim.kind === 'guests'
-        ? `${occupancyFigure}/${String(claim.limit)}`
-        : `${occupancyFigure}/${capacityKnown ? String(capacity) : '—'}`
+    claim.kind === 'none' ? (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        <Users className="h-3.5 w-3.5 flex-shrink-0" />
+        {guestCount}
+        {capacityKnown && (
+          <>
+            <span>·</span>
+            <BedDouble className="h-3.5 w-3.5 flex-shrink-0" />
+            {capacity}
+          </>
+        )}
+      </span>
+    ) : claim.kind === 'guests' ? (
+      `${occupancyFigure}/${String(claim.limit)}`
+    ) : (
+      `${occupancyFigure}/${capacityKnown ? String(capacity) : '—'}`
+    )
   const cornerTooltip =
     claim.kind === 'guests'
       ? `Up to ${String(claim.limit)} guests · ${occupancyTooltip}`
-      : occupancyTooltip
+      : claim.kind === 'none'
+        ? `${guestsAndBeds(guestCount, capacity)}${
+            houseWriteIn ? ` · ${occupancyTooltip}` : `${writeInClause}${infantExemptionClause}`
+          }`
+        : occupancyTooltip
 
   /*
    * Beds the family in flight already holds ON THIS CARD, added back before

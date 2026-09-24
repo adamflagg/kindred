@@ -770,7 +770,7 @@ function ClusterSummary({
             final scan, FINDING 3). Rendered unconditionally, a cluster written
             into WHOLESALE printed `Beds 0 of 8` directly beneath `Rooms 4 · 4
             taken, 0 open` -- `writeInSized` sums recorded counts only, so a
-            cover with no count contributes 0 and the row claimed an empty
+            cover with no count contributes 0 (one on an adult weekend) and the row claimed an empty
             building the line above had just called full. Every production row
             is unsized, so this was the live reading, not an edge case.
 
