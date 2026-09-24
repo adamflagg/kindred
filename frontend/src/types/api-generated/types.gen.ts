@@ -2585,6 +2585,150 @@ export type IncrementalUpdateResponse = {
 }
 
 /**
+ * JotformDuplicateGroup
+ */
+export type JotformDuplicateGroup = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Guest Name
+   */
+  guest_name: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Change Kind
+   */
+  change_kind?: 'list' | 'prose' | 'identical' | 'none'
+  /**
+   * Submissions
+   */
+  submissions?: Array<JotformQueueItem>
+}
+
+/**
+ * JotformFormRow
+ *
+ * One active-season adult weekend and its form setting (absent = not set up).
+ */
+export type JotformFormRow = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Form Id
+   */
+  form_id?: string
+  /**
+   * Field Map
+   */
+  field_map?: {
+    [key: string]: string
+  }
+  /**
+   * Suggested Field Map
+   */
+  suggested_field_map?: {
+    [key: string]: string
+  }
+  /**
+   * Questions
+   */
+  questions?: Array<JotformQuestion>
+  /**
+   * Enabled
+   */
+  enabled?: boolean
+  /**
+   * Last Pulled At
+   */
+  last_pulled_at?: string
+  /**
+   * Last Pull Status
+   */
+  last_pull_status?: string
+  /**
+   * Submission Count
+   */
+  submission_count?: number
+}
+
+/**
+ * JotformFormWrite
+ */
+export type JotformFormWrite = {
+  /**
+   * Form Ref
+   */
+  form_ref: string
+  /**
+   * Field Map
+   */
+  field_map?: {
+    [key: string]: string
+  }
+  /**
+   * Enabled
+   */
+  enabled?: boolean
+}
+
+/**
+ * JotformFormsResponse
+ */
+export type JotformFormsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rows
+   */
+  rows?: Array<JotformFormRow>
+}
+
+/**
+ * JotformGuest
+ */
+export type JotformGuest = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Display Name
+   */
+  display_name: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Has Submission
+   */
+  has_submission?: boolean
+}
+
+/**
+ * JotformLinkRequest
+ */
+export type JotformLinkRequest = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+}
+
+/**
  * JotformNeedAnswer
  *
  * A need the Jotform answers differently from CampMinder registration
@@ -2611,6 +2755,134 @@ export type JotformNeedAnswer = {
    * Submitted At
    */
   submitted_at?: string
+}
+
+/**
+ * JotformQuestion
+ */
+export type JotformQuestion = {
+  /**
+   * Question Id
+   */
+  question_id: string
+  /**
+   * Text
+   */
+  text?: string
+  /**
+   * Type
+   */
+  type?: string
+}
+
+/**
+ * JotformQueueItem
+ */
+export type JotformQueueItem = {
+  /**
+   * Submission Id
+   */
+  submission_id: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name?: string
+  /**
+   * Submitted Name
+   */
+  submitted_name: string
+  /**
+   * Nametag
+   */
+  nametag?: string
+  /**
+   * Submitted At
+   */
+  submitted_at: string
+  /**
+   * Bunking Request
+   */
+  bunking_request?: string
+  /**
+   * Match Status
+   */
+  match_status: 'auto' | 'staff' | 'unmatched' | 'ignored'
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Guest Name
+   */
+  guest_name?: string
+  /**
+   * Suggestions
+   */
+  suggestions?: Array<JotformSuggestion>
+}
+
+/**
+ * JotformQueueResponse
+ */
+export type JotformQueueResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Unmatched
+   */
+  unmatched?: Array<JotformQueueItem>
+  /**
+   * Resolved
+   */
+  resolved?: Array<JotformQueueItem>
+  /**
+   * Duplicates
+   */
+  duplicates?: Array<JotformDuplicateGroup>
+  /**
+   * Guests
+   */
+  guests?: Array<JotformGuest>
+}
+
+/**
+ * JotformSuggestion
+ */
+export type JotformSuggestion = {
+  /**
+   * Kind
+   */
+  kind: 'likely_duplicate' | 'did_you_mean' | 'probably_different'
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Guest Name
+   */
+  guest_name?: string
+  /**
+   * Other Submission Id
+   */
+  other_submission_id?: string
+  /**
+   * Score
+   */
+  score?: number
+  /**
+   * Demoted
+   */
+  demoted?: boolean
 }
 
 /**
@@ -12095,6 +12367,203 @@ export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses = {
 
 export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponse =
   UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses[keyof UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses]
+
+export type ListFormsApiJotformFormsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/jotform/forms'
+}
+
+export type ListFormsApiJotformFormsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListFormsApiJotformFormsGetError =
+  ListFormsApiJotformFormsGetErrors[keyof ListFormsApiJotformFormsGetErrors]
+
+export type ListFormsApiJotformFormsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: JotformFormsResponse
+}
+
+export type ListFormsApiJotformFormsGetResponse =
+  ListFormsApiJotformFormsGetResponses[keyof ListFormsApiJotformFormsGetResponses]
+
+export type SaveFormApiJotformFormsSessionCmIdPutData = {
+  body: JotformFormWrite
+  path: {
+    /**
+     * Session Cm Id
+     */
+    session_cm_id: number
+  }
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/jotform/forms/{session_cm_id}'
+}
+
+export type SaveFormApiJotformFormsSessionCmIdPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveFormApiJotformFormsSessionCmIdPutError =
+  SaveFormApiJotformFormsSessionCmIdPutErrors[keyof SaveFormApiJotformFormsSessionCmIdPutErrors]
+
+export type SaveFormApiJotformFormsSessionCmIdPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: JotformFormRow
+}
+
+export type SaveFormApiJotformFormsSessionCmIdPutResponse =
+  SaveFormApiJotformFormsSessionCmIdPutResponses[keyof SaveFormApiJotformFormsSessionCmIdPutResponses]
+
+export type GetQueueApiJotformQueueGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/jotform/queue'
+}
+
+export type GetQueueApiJotformQueueGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetQueueApiJotformQueueGetError =
+  GetQueueApiJotformQueueGetErrors[keyof GetQueueApiJotformQueueGetErrors]
+
+export type GetQueueApiJotformQueueGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: JotformQueueResponse
+}
+
+export type GetQueueApiJotformQueueGetResponse =
+  GetQueueApiJotformQueueGetResponses[keyof GetQueueApiJotformQueueGetResponses]
+
+export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostData = {
+  body: JotformLinkRequest
+  path: {
+    /**
+     * Submission Id
+     */
+    submission_id: string
+  }
+  query?: never
+  url: '/api/jotform/submissions/{submission_id}/link'
+}
+
+export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostError =
+  LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostErrors[keyof LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostErrors]
+
+export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostResponse =
+  LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostResponses[keyof LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostResponses]
+
+export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostData = {
+  body?: never
+  path: {
+    /**
+     * Submission Id
+     */
+    submission_id: string
+  }
+  query?: never
+  url: '/api/jotform/submissions/{submission_id}/ignore'
+}
+
+export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostError =
+  IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors[keyof IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors]
+
+export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostResponse =
+  IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostResponses[keyof IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostResponses]
+
+export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostData = {
+  body?: never
+  path: {
+    /**
+     * Submission Id
+     */
+    submission_id: string
+  }
+  query?: never
+  url: '/api/jotform/submissions/{submission_id}/unlink'
+}
+
+export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostError =
+  UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostErrors[keyof UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostErrors]
+
+export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponse =
+  UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses[keyof UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

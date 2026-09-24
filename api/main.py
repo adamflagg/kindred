@@ -40,6 +40,7 @@ from .routers import (
     debug,
     geo,
     internal,
+    jotform,
     lodging,
     lodging_friend_groups,
     metrics,
@@ -173,6 +174,7 @@ def create_app() -> FastAPI:
     app.include_router(session_availability.router)
     app.include_router(lodging.router)
     app.include_router(lodging_friend_groups.router)
+    app.include_router(jotform.router)
     app.include_router(campers.router)
     app.include_router(geo.router)
     app.include_router(internal.router)
