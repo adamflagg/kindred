@@ -171,6 +171,44 @@ STABLE_SORT = "id"
 # though it did something.
 PAGE_SIZE = 1000
 
+# `fields=` projections for the YEAR-WIDE reads (kindred#2803). Each names
+# exactly the columns its consumer reads and nothing else.
+#
+# Measured on the 2026-09-23 production snapshot: `fetch_prior_household_cm_ids`
+# expanded all 42 `persons` columns to read one, `household_id` -- 9.0 MB over
+# 7 requests, and 99% of a cold roster's wall time, most of it JSON decode and
+# SDK `Record` construction under the GIL. Projected, it is 0.28 MB.
+#
+# ⚠️ A column missing from one of these lists does not fail -- it comes back
+# ABSENT, and every consumer reads with `getattr(..., default)`, so it reads as
+# "" or 0: a returning family silently badged first-time, a contributor's name
+# silently blank. `tests/unit/api/services/test_lodging_read_projection.py`
+# serves each read's rows projected exactly as PocketBase projects them and
+# asserts the consumer's output matches the unprojected read; add a column here
+# only alongside the consumer that reads it.
+#
+# Deliberately NOT paired with `skipTotal`: the SDK's `get_full_list` (which
+# `_page` wraps) decides whether to fetch the next page from `totalItems`, and
+# with `skipTotal` that is -1 -- it would stop after the FIRST 1,000 rows and
+# return them as the whole year.
+_HOUSEHOLD_ID_VIA_PERSON_FIELDS = "expand.person.household_id"
+_PERSON_ID_FIELDS = "person_id"
+# The name columns are what `_person_display_name` reads, `household` is what
+# `_request_value` groups on.
+_FAMILY_CAMP_REQUEST_FIELDS = (
+    "value,expand.field_definition.cm_id,"
+    "expand.person.household,expand.person.first_name,expand.person.last_name,expand.person.preferred_name"
+)
+_BUNKING_CSV_REQUEST_FIELDS = (
+    "field,content,"
+    "expand.requester.household,expand.requester.first_name,expand.requester.last_name,"
+    "expand.requester.preferred_name"
+)
+# `adult_need_flags_by_person` reads person/field cm_id and `value`;
+# `cabin_values_from_rows` adds `year` and `last_updated` (the attribution
+# rule's write time).
+_COHORT_VALUE_FIELDS = "year,value,last_updated,expand.person.cm_id,expand.field_definition.cm_id"
+
 
 def _weekend_type_filter() -> str:
     return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
@@ -995,6 +1033,7 @@ class LodgingRepository:
                     f'year < {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person",
+                "fields": _HOUSEHOLD_ID_VIA_PERSON_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1020,6 +1059,7 @@ class LodgingRepository:
                     f'year = {year} && session.session_type = "{FAMILY_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
                 "expand": "person",
+                "fields": _HOUSEHOLD_ID_VIA_PERSON_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1109,6 +1149,7 @@ class LodgingRepository:
                 "filter": (
                     f'year < {year} && session.session_type = "{ADULT_SESSION_TYPE}" && {ACTIVE_ENROLLED_FILTER}'
                 ),
+                "fields": _PERSON_ID_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1165,6 +1206,7 @@ class LodgingRepository:
             query_params={
                 "filter": f"year = {year} && ({field_filter})",
                 "expand": "person,field_definition",
+                "fields": _COHORT_VALUE_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1299,6 +1341,7 @@ class LodgingRepository:
             query_params={
                 "filter": f"year = {year} && ({cm_id_filter})",
                 "expand": "person,field_definition",
+                "fields": _FAMILY_CAMP_REQUEST_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
@@ -1327,6 +1370,7 @@ class LodgingRepository:
             query_params={
                 "filter": f"year = {year} && ({field_filter})",
                 "expand": "requester",
+                "fields": _BUNKING_CSV_REQUEST_FIELDS,
                 "sort": STABLE_SORT,
             },
         )
