@@ -74,9 +74,9 @@ export interface FamilyDetailsPanelProps {
    */
   backdropInteractive?: boolean
   /**
-   * The weekend's `session_type` (kindred#2759), read ONLY through
-   * `isAdultSessionType` — never inferred from the party's grain. Draws the
-   * adult guest's Jotform section on an adult weekend.
+   * The weekend's `session_type` (kindred#2759), forwarded to
+   * `PartyRequestSections`, which reads it ONLY through `isAdultSessionType`
+   * — never the party's grain — to draw the adult guest's Jotform section.
    */
   sessionType?: string | undefined
 }
