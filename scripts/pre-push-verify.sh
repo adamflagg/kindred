@@ -135,23 +135,30 @@ else
     done <<< "$CHANGED_FILES"
 
     # Broader pattern matching for paths that don't match simple globs
-    if echo "$CHANGED_FILES" | grep -qE '\.py$|pyproject\.toml|ruff\.toml'; then
+    # Piping through `echo | grep -q` is unsafe under `set -o pipefail` (this
+    # script sets it): grep -q exits as soon as it finds a match, and on a
+    # large enough CHANGED_FILES an early match can make echo receive SIGPIPE
+    # before it finishes writing. Pipefail then reports the pipeline's status
+    # as echo's non-zero SIGPIPE exit rather than grep's successful match,
+    # silently taking the "no match" branch on a real match (kindred#2796
+    # review). A here-string avoids the pipe entirely.
+    if grep -qE '\.py$|pyproject\.toml|ruff\.toml' <<< "$CHANGED_FILES"; then
         HAS_PYTHON=true
     fi
-    if echo "$CHANGED_FILES" | grep -qE 'pocketbase/.*\.go$|\.golangci\.yml|pocketbase/go\.(mod|sum)'; then
+    if grep -qE 'pocketbase/.*\.go$|\.golangci\.yml|pocketbase/go\.(mod|sum)' <<< "$CHANGED_FILES"; then
         HAS_GO=true
     fi
-    if echo "$CHANGED_FILES" | grep -qE 'frontend/.*\.(ts|tsx|js|jsx|css)$|frontend/eslint\.config|frontend/tsconfig|frontend/vitest\.config'; then
+    if grep -qE 'frontend/.*\.(ts|tsx|js|jsx|css)$|frontend/eslint\.config|frontend/tsconfig|frontend/vitest\.config' <<< "$CHANGED_FILES"; then
         HAS_FRONTEND=true
     fi
-    if echo "$CHANGED_FILES" | grep -qE 'pocketbase/pb_migrations/.*\.js$'; then
+    if grep -qE 'pocketbase/pb_migrations/.*\.js$' <<< "$CHANGED_FILES"; then
         HAS_MIGRATIONS=true
         HAS_PB_JS=true
     fi
-    if echo "$CHANGED_FILES" | grep -qE 'pocketbase/pb_hooks/.*\.js$'; then
+    if grep -qE 'pocketbase/pb_hooks/.*\.js$' <<< "$CHANGED_FILES"; then
         HAS_PB_JS=true
     fi
-    if echo "$CHANGED_FILES" | grep -qE '\.sh$'; then
+    if grep -qE '\.sh$' <<< "$CHANGED_FILES"; then
         HAS_SHELL=true
     fi
     # kindred#2778: mirrors CI's lodging-guard job, which scans six fixed
@@ -161,7 +168,7 @@ else
     # SCAN_ROOTS default and its `--include` list -- the guard itself has no
     # per-file mode, so this is only a decision about whether to pay for its
     # sub-second whole-tree scan at all, not about what it scans once run.
-    if echo "$CHANGED_FILES" | grep -qE '^(pocketbase|api|bunking|frontend/src|scripts|tests)/.*\.(go|py|ts|tsx|js|sh)$'; then
+    if grep -qE '^(pocketbase|api|bunking|frontend/src|scripts|tests)/.*\.(go|py|ts|tsx|js|sh)$' <<< "$CHANGED_FILES"; then
         HAS_LODGING=true
     fi
 fi
@@ -262,7 +269,7 @@ if $HAS_FRONTEND; then
     # editing only frontend/eslint.config.js set HAS_FRONTEND=true (line ~137) but
     # left CHANGED_FRONTEND_ESLINT empty -- so the one edit that moves every lint
     # result in the repo was the one edit never linted locally. kindred#2669.
-    if [[ "$RUN_ALL" == true ]] || echo "$CHANGED_FILES" | grep -qE '^frontend/(eslint\.config\.js|package\.json)$'; then
+    if [[ "$RUN_ALL" == true ]] || grep -qE '^frontend/(eslint\.config\.js|package\.json)$' <<< "$CHANGED_FILES"; then
         ( cd frontend && npm run lint ) >"$LOGDIR/eslint.log" 2>&1 &
         PIDS[eslint]=$!
     elif [[ -n "$CHANGED_FRONTEND_ESLINT" ]]; then
