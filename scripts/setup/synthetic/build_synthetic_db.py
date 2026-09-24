@@ -4,10 +4,11 @@
 Pipeline (never mutates the real DB — copies it via SQLite's backup API):
   1. backup real data.db -> scratch (folds WAL, leaves real untouched)
   2. select a tiny, referentially-closed subset (select_subset)
-  3. prune kept tables to the subset; empty the high-risk drop-list tables
+  3. prune kept tables to the subset; empty the high-risk drop-list tables and
+     every lodging_* table (discovered by prefix, see LODGING_TABLE_PREFIX)
   4. clear auth/system tables that carry real emails (users, _superusers, ...)
   5. anonymize PII (anonymizer); relabel + token-scrub brand language (debrand)
-  6. scrub _params (camp name / SMTP sender)
+  6. scrub _params (camp name / SMTP sender) and strip brand-token schema columns
   7. VACUUM  <-- critical: physically purges deleted real rows from the file
   8. build-time leak scan (real-value denylist + camp tokens + system-table emptiness);
      ABORT and write nothing if any violation is found
@@ -148,6 +149,28 @@ def _empty_tables(conn: sqlite3.Connection, tables: Iterable[str]) -> None:
             conn.execute(f"DELETE FROM [{t}]")
 
 
+# Private weekend/Family Camp lodging registry (units, aliases, write-ins, drafts,
+# scenarios, history, ingest issues, ...) — discovered by prefix, not a hardcoded
+# list, so a future lodging_* table is emptied automatically instead of shipping
+# into the artifact the first time someone forgets to add it here (kindred#2792).
+# Deliberately kept OFF scan_leaks.DROP_LIST_TABLES: the builder empties these
+# directly, and listing them there too would fail the leak gate the moment #2773
+# starts fabricating fictional lodging rows on purpose.
+LODGING_TABLE_PREFIX = "lodging_"
+
+
+def _lodging_tables(conn: sqlite3.Connection) -> list[str]:
+    """Every table whose name starts with ``LODGING_TABLE_PREFIX``, discovered live
+    from the scratch DB's schema rather than a maintained list. The prefix's own
+    underscore is escaped so the SQL ``LIKE`` wildcard doesn't also match it."""
+    like_pattern = LODGING_TABLE_PREFIX.replace("_", "\\_") + "%"
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '\\'",
+        (like_pattern,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
 def _scrub_params(conn: sqlite3.Connection) -> None:
     """Neutralize PB app settings: camp name / app URL / SMTP sender."""
     if not _exists(conn, "_params"):
@@ -281,6 +304,8 @@ def build(real_db: Path, out: Path, branding: Path) -> int:
     _prune(conn, subset)
     print("[3/9] emptying drop-list tables")
     _empty_tables(conn, scan_leaks.DROP_LIST_TABLES)
+    print("[3/9] emptying lodging_* tables (discovered by prefix)")
+    _empty_tables(conn, _lodging_tables(conn))
     print("[4/9] clearing auth/system tables")
     _empty_tables(conn, AUTH_TABLES)
     conn.commit()
