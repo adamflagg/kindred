@@ -447,6 +447,162 @@ describe('family-camp housing (kindred#2466)', () => {
   })
 })
 
+// kindred#2801, mirroring the household journey card's own rule (kindred#2775,
+// shipped in #2789): from 2026, a household year whose EVERY enrolled weekend
+// has a live CampMinder-layer row publishes `weekend_cabins`, one entry per
+// weekend, which can name a DIFFERENT cabin per weekend even though the
+// year's own `cabin_name` still holds only one string. `familySeasonHousing`
+// reads a matching entry before falling back to today's year-level rule.
+describe('per-weekend cabins from the CampMinder layer (kindred#2801)', () => {
+  beforeEach(() => {
+    mockAttendeesGetFullList.mockReset().mockResolvedValue([])
+    mockAssignmentsGetFullList.mockReset().mockResolvedValue([])
+    mockSessionsGetFullList.mockReset().mockResolvedValue([])
+  })
+
+  interface WeekendCabinOverrides {
+    session_cm_id?: number
+    cabin_name?: string
+    cabin_name_raw?: string
+  }
+
+  function weekendCabin(overrides: WeekendCabinOverrides = {}) {
+    return {
+      session_cm_id: 900,
+      cabin_name: 'Cedar Lodge',
+      cabin_name_raw: 'Cedar Lodge',
+      ...overrides,
+    }
+  }
+
+  // Two live weekends that season, named apart — the shape #2789 publishes
+  // only once EVERY enrolled weekend has a live row. The year-level fields
+  // still hold just the first weekend's cabin (never a partial fan-out).
+  function liveHouseholdYear(overrides: Record<string, unknown> = {}) {
+    return {
+      year: 2026,
+      housing: 'placed' as const,
+      cabin_name: 'Cedar Lodge',
+      cabin_name_raw: 'Cedar Lodge',
+      housing_session_cm_id: null,
+      sessions: [
+        { session_cm_id: 900, name: 'Family Camp 2: Keshet Weekend', start_date: '2026-05-23' },
+        { session_cm_id: 901, name: 'Family Camp 5', start_date: '2026-08-15' },
+      ],
+      weekend_cabins: [
+        weekendCabin({
+          session_cm_id: 900,
+          cabin_name: 'Cedar Lodge',
+          cabin_name_raw: 'Cedar Lodge',
+        }),
+        weekendCabin({
+          session_cm_id: 901,
+          cabin_name: 'Meadow House 1',
+          cabin_name_raw: 'Meadow House 1',
+        }),
+      ],
+      adults: [],
+      children: [],
+      ...overrides,
+    }
+  }
+
+  it("shows each weekend's own live cabin, not the year's single label, when the weekends differ", async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2026, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+      attendee(2026, 901, 'family', 'Family Camp 5'),
+    ])
+    const { rows: out } = await fetchCamperJourney(PERSON, 2027, {
+      familyHousingYears: [liveHouseholdYear()],
+    })
+    const keshet = out.find((r) => r.sessionName === 'Family Camp 2: Keshet Weekend')
+    const fc5 = out.find((r) => r.sessionName === 'Family Camp 5')
+    // Without the per-weekend read, the unpinned year would label BOTH
+    // weekends "Cedar Lodge" (owner ruling 2026-09-22 late) — FC5 showing
+    // "Meadow House 1" is what the live rows are for.
+    expect(keshet?.bunkName).toBe('Cedar Lodge')
+    expect(fc5?.bunkName).toBe('Meadow House 1')
+  })
+
+  it("carries each weekend's OWN as-typed string as bunkNameRecorded, from its own weekend_cabins entry", async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2026, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+      attendee(2026, 901, 'family', 'Family Camp 5'),
+    ])
+    const { rows: out } = await fetchCamperJourney(PERSON, 2027, {
+      familyHousingYears: [
+        liveHouseholdYear({
+          weekend_cabins: [
+            weekendCabin({
+              session_cm_id: 900,
+              cabin_name: 'Cedar Lodge',
+              cabin_name_raw: 'Old Cedar',
+            }),
+            weekendCabin({
+              session_cm_id: 901,
+              cabin_name: 'Meadow House 1',
+              cabin_name_raw: 'Meadow House 1',
+            }),
+          ],
+        }),
+      ],
+    })
+    const keshet = out.find((r) => r.sessionName === 'Family Camp 2: Keshet Weekend')
+    const fc5 = out.find((r) => r.sessionName === 'Family Camp 5')
+    expect(keshet).toMatchObject({ bunkName: 'Cedar Lodge', bunkNameRecorded: 'Old Cedar' })
+    expect(fc5?.bunkName).toBe('Meadow House 1')
+    expect(fc5?.bunkNameRecorded).toBeUndefined() // agrees with its own label
+  })
+
+  it('falls back to today’s year-level rule when no per-weekend cabins are published', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2026, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+      attendee(2026, 901, 'family', 'Family Camp 5'),
+    ])
+    const { rows: out } = await fetchCamperJourney(PERSON, 2027, {
+      familyHousingYears: [liveHouseholdYear({ weekend_cabins: [] })],
+    })
+    const keshet = out.find((r) => r.sessionName === 'Family Camp 2: Keshet Weekend')
+    const fc5 = out.find((r) => r.sessionName === 'Family Camp 5')
+    // Unpinned season, no live rows: today's rule labels every weekend with
+    // the one year cabin (owner ruling 2026-09-22 late) — unchanged by #2801.
+    expect(keshet?.bunkName).toBe('Cedar Lodge')
+    expect(fc5?.bunkName).toBe('Cedar Lodge')
+  })
+
+  it('applies the same per-weekend override to a parent weekend', async () => {
+    // No attendee rows for PERSON themself — both weekends reach the row set
+    // only via `parentFamilyWeekends`, which reads `familySeasonHousing` too.
+    const out = await fetchCamperJourney(PERSON, 2027, {
+      familyHousingYears: [liveHouseholdYear()],
+      viewerIsAdult: true,
+    })
+    const keshet = out.rows.find((r) => r.sessionName === 'Family Camp 2: Keshet Weekend')
+    const fc5 = out.rows.find((r) => r.sessionName === 'Family Camp 5')
+    expect(keshet?.bunkName).toBe('Cedar Lodge')
+    expect(fc5?.bunkName).toBe('Meadow House 1')
+  })
+
+  it('leaves 2025 and earlier unaffected — no weekend_cabins field to read', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2025, 900, 'family', 'Family Camp 2: Keshet Weekend'),
+    ])
+    const { rows: out } = await fetchCamperJourney(PERSON, CURRENT_YEAR, {
+      familyHousingYears: [
+        liveHouseholdYear({
+          year: 2025,
+          sessions: [
+            { session_cm_id: 900, name: 'Family Camp 2: Keshet Weekend', start_date: '2025-05-24' },
+          ],
+          weekend_cabins: [],
+          housing_session_cm_id: 900,
+        }),
+      ],
+    })
+    expect(out[0]).toMatchObject({ bunkName: 'Cedar Lodge' })
+  })
+})
+
 describe('adult programs', () => {
   // Each test starts from no enrollments — without this, a test that sets no
   // attendees inherits the previous test's mock (vi.fn keeps its last value).
