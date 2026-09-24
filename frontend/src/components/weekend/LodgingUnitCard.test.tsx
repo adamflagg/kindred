@@ -2592,6 +2592,139 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
   })
 })
 
+/**
+ * kindred#2804. `canPlace: false` means no scenario is selected — the
+ * CampMinder mirror, where `lodging_assignments` is written only by the Go
+ * ingest and staff cannot place from this box at all. `canSetAvailability` is
+ * independent of a scenario (`LodgingBoard`'s own gate), so the write-in half
+ * stays live here exactly as it does on the real board.
+ *
+ * Two failures, both found reviewing #2767 (PR #2785): the pill's VISIBLE
+ * text stayed "Assign" regardless of `canOfferPlacement` even though its
+ * `aria-label` already forked correctly, and the caller's `parties={[]}`
+ * (the only signal `AssignFamilyModal` had for "not live") is indistinguishable
+ * from a scenario that has genuinely placed everyone.
+ */
+describe('LodgingUnitCard — CampMinder mode offers no false Assign (kindred#2804)', () => {
+  const unplaced = party({
+    household_cm_id: 202,
+    display_name: 'Garcia',
+    adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+    children: [],
+    unit_code: '',
+    unit_name: '',
+  })
+
+  const guest: RosterPartyRow = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 501,
+    display_name: 'Guest 501',
+    adults: [],
+    children: [],
+    party_size: 1,
+    unit_code: '',
+    unit_name: '',
+  })
+
+  function renderCampMinderMode(overrides: Record<string, unknown> = {}) {
+    return render(
+      <LodgingUnitCard
+        slot={slot()}
+        canPlace={false}
+        canSetAvailability={true}
+        onSetAvailability={vi.fn()}
+        onPlaceParty={vi.fn()}
+        unplacedParties={[unplaced]}
+        onOpenParty={vi.fn()}
+        {...overrides}
+      />
+    )
+  }
+
+  it('shows "Write in", never "Assign", when no scenario is selected', () => {
+    renderCampMinderMode()
+    const button = screen.getByRole('button', { name: /write in an occupant for cedar 1/i })
+    expect(button).toHaveTextContent('Write in')
+    expect(button).not.toHaveTextContent('Assign')
+    expect(screen.queryByRole('button', { name: /assign to cedar 1/i })).not.toBeInTheDocument()
+  })
+
+  it('shows "Write in" on an adult weekend too — driven by `canPlace`, never party grain', () => {
+    renderCampMinderMode({ unplacedParties: [guest], sessionType: 'adult' })
+    const button = screen.getByRole('button', { name: /write in an occupant for cedar 1/i })
+    expect(button).toHaveTextContent('Write in')
+    expect(button).not.toHaveTextContent('Assign')
+  })
+
+  it('opens the write-in-only modal: no party list, and never "Everyone has a cabin"', async () => {
+    const user = userEvent.setup()
+    renderCampMinderMode()
+    await user.click(screen.getByRole('button', { name: /write in an occupant for cedar 1/i }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).not.toHaveTextContent('Everyone has a cabin')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  })
+
+  it('opens the write-in-only modal on an adult weekend too, with the same guarantee', async () => {
+    const user = userEvent.setup()
+    renderCampMinderMode({ unplacedParties: [guest], sessionType: 'adult' })
+    await user.click(screen.getByRole('button', { name: /write in an occupant for cedar 1/i }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).not.toHaveTextContent('Everyone has a cabin')
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  })
+
+  it('still writes the occupant in through set_availability from CampMinder mode', async () => {
+    const user = userEvent.setup()
+    const onSetAvailability = vi.fn()
+    renderCampMinderMode({ onSetAvailability })
+    await user.click(screen.getByRole('button', { name: /write in an occupant for cedar 1/i }))
+    await user.type(screen.getByRole('searchbox'), 'Burst pipe')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
+    expect(onSetAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({ occupantName: 'Burst pipe', familyAvailable: false })
+    )
+  })
+
+  it('scenario mode is unchanged: an empty queue still says "Everyone has a cabin"', async () => {
+    const user = userEvent.setup()
+    render(
+      <LodgingUnitCard
+        slot={slot()}
+        canPlace={true}
+        canSetAvailability={true}
+        onSetAvailability={vi.fn()}
+        onPlaceParty={vi.fn()}
+        unplacedParties={[]}
+        onOpenParty={vi.fn()}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /assign to cedar 1/i }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Everyone has a cabin')
+  })
+
+  it('scenario mode with parties waiting is unchanged', async () => {
+    const user = userEvent.setup()
+    render(
+      <LodgingUnitCard
+        slot={slot()}
+        canPlace={true}
+        canSetAvailability={true}
+        onSetAvailability={vi.fn()}
+        onPlaceParty={vi.fn()}
+        unplacedParties={[unplaced]}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const button = screen.getByRole('button', { name: /assign to cedar 1/i })
+    expect(button).toHaveTextContent('Assign')
+    await user.click(button)
+    expect(screen.getByRole('option', { name: /Liam Garcia/ })).toBeInTheDocument()
+  })
+})
+
 describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () => {
   /*
    * The site kindred#2249's sweep MISSED: kindred#2230 shipped a
