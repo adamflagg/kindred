@@ -26,8 +26,9 @@ Two modes:
 - **full** (build time): denylist + camp tokens supplied from the real DB / local
   branding config (never committed) → catches real names/schools/essays directly.
 - **--artifact-only** (pre-commit / CI): no real DB present, so denylist/camp tokens
-  are empty; the drop-list-row-count-zero + email/phone shape checks still run and
-  catch the same content (the high-risk tables are simply absent).
+  are empty; the drop-list-row-count-zero, lodging-table-row-count-zero and
+  email/phone shape checks still run and catch the same content (the high-risk
+  tables are simply absent).
 
 Exit code is non-zero if any violation is found.
 """
@@ -314,7 +315,7 @@ def scan(
             if n:
                 violations.append(Violation("nonempty_drop_table", table, f"{n} row(s) in dropped table"))
 
-        # 1b. every lodging_* table must be empty (kindred#2802). Denylist-independent
+        # 6. every lodging_* table must be empty (kindred#2802). Denylist-independent
         # and matched by NAME PREFIX rather than a fixed list, mirroring the system-table
         # check below: a --artifact-only run (empty denylist, no real DB) must still catch
         # a regression that lets a real cabin name / write-in reach the artifact, and a
@@ -350,7 +351,7 @@ def scan(
                     if tok in folded:
                         violations.append(Violation("camp_token", table, f"{col}: matched camp token"))
 
-        # 6. system tables: _data_tables() skips ``_``-prefixed tables (schema vocab
+        # 7. system tables: _data_tables() skips ``_``-prefixed tables (schema vocab
         # false-matches the name denylist), so check the two things that DO matter here:
         #   - auth/system tables hold no rows (no real users/emails/credentials)
         #   - _params settings carry no real email domain or camp brand token
