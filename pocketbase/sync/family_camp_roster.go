@@ -2,7 +2,6 @@ package sync
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -22,12 +21,6 @@ import (
 var rosterAdultPlaceholders = map[string]bool{
 	"na": true, "n/a": true, "none": true, "-": true, "0": true, "no": true,
 }
-
-// rosterStateSuffix matches the trailing ", CA" that normalized_city carries.
-// It is dropped because it is redundant on a roster whose families are almost
-// all in one state, and because today's hand-made sheet omits it. Two UPPERCASE
-// letters only: "Washington, District" is a city, not a state suffix.
-var rosterStateSuffix = regexp.MustCompile(`,\s*[A-Z]{2}$`)
 
 // rosterCamper is one enrolled child, before rendering.
 type rosterCamper struct {
@@ -97,13 +90,16 @@ func parseRosterBirthdate(birthdate string) (time.Time, bool) {
 }
 
 // rosterCleanCity prefers normalized_city, which fixes casing ("berkeley" ->
-// "Berkeley, CA"), and falls back to the raw address_city.
+// "Berkeley, CA"), and falls back to the raw address_city. It is dropped
+// because the state suffix is redundant on a roster whose families are
+// almost all in one state, and because today's hand-made sheet omits it.
+//
+// This is a thin wrapper over PersonLocationCityOnly (location_label.go),
+// which owns the rule now shared with the adult per-cabin export
+// (kindred#2770, kindred#2755) -- kept so existing callers and
+// TestRosterCleanCity don't have to change name.
 func rosterCleanCity(normalized, raw string) string {
-	value := strings.TrimSpace(normalized)
-	if value == "" {
-		value = strings.TrimSpace(raw)
-	}
-	return strings.TrimSpace(rosterStateSuffix.ReplaceAllString(value, ""))
+	return PersonLocationCityOnly(normalized, raw)
 }
 
 // isRosterAdultName reports whether a coalesced adult name names a real person.

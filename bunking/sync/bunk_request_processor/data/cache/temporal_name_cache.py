@@ -11,6 +11,7 @@ This eliminates SQL queries for name resolution and fixes the apostrophe bug
 
 from typing import Any
 
+from api.utils.location_label import person_city_only
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
 
@@ -722,8 +723,13 @@ class TemporalNameCache:
             if hasattr(db_record, "birthdate") and db_record.birthdate:
                 birth_date = parse_date(db_record.birthdate)
 
-            # Read city/state from normalized columns (address JSON deleted in migration 1500000054)
-            city = getattr(db_record, "normalized_city", None) or getattr(db_record, "address_city", None) or None
+            # City/state for school_disambiguation's independent equality check
+            # (kindred#2755): person_city_only strips the state suffix
+            # normalized_city carries as a complete "City, ST" label, so city
+            # and state don't skew each other the way they did before
+            # (address JSON was deleted in migration 1500000054; this reads
+            # the normalized columns that replaced it).
+            city = person_city_only(db_record)
             state = getattr(db_record, "address_state", None) or None
 
             # Prefer normalized school over raw

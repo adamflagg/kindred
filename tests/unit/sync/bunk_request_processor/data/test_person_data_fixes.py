@@ -126,3 +126,19 @@ class TestPersonRepositoryMapping:
         assert person is not None
         assert person.city == "Oakland"
         assert person.state == "CA"
+
+    def test_city_strips_the_state_suffix_normalized_city_carries(self):
+        """normalized_city is a complete "City, ST" label (kindred#2755). If
+        person.city kept that suffix while person.state ALSO held the raw
+        address_state, school_disambiguation's independent city/state
+        equality check (_schools_match) would compare "Oakland, CA" against a
+        sibling record that only ever had raw address_city ("Oakland") and
+        spuriously fail to match -- the same shape as the "San Carlos, CA, CA"
+        display bug (kindred#2753), here skewing name-resolution matching
+        instead of a label."""
+        repo = PersonRepository.__new__(PersonRepository)
+        record = self._make_db_record(normalized_city="Oakland, CA", address_city="oakland", address_state="CA")
+        person = repo._map_to_person(record)
+        assert person is not None
+        assert person.city == "Oakland"
+        assert person.state == "CA"
