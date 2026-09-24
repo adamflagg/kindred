@@ -67,13 +67,20 @@ existing `POST /api/metrics/cache/invalidate` now calls `invalidate_all()`
 here too, alongside `metrics_cache.invalidate_all()` and geo_service's
 `clear_person_id_cache()`. That endpoint already fires on every CampMinder
 sync completion (the frontend's `invalidateSyncData`, via
-`useSyncCompletionToasts`), and both of this cache's writers -- the
-"persons" sync (households) and the "family_camp_derived" sync
-(family_camp_adults, family_camp_registrations) -- are polled sync types
-that trigger it. So a hit here is stale only for the gap between a sync
-finishing and a staff member's browser polling it (typically seconds), or
+`useSyncCompletionToasts`). So a hit here is stale only for the gap between a
+sync finishing and a staff member's browser polling it (typically seconds), or
 for the rare sync that runs with nobody watching, in which case the TTL is
 what closes the gap.
+
+SCOPED AND WARMED since kindred#2803 (api/services/lodging_cache_warm.py).
+The completion names its sync, and this cache is cleared only when that sync
+writes a table some cached read declares in `cached_by_year(tables=...)` --
+the job-to-table half lives in api/constants/sync_job_writes.py. Before that,
+the HOURLY `bunk_assignments` sync, which writes nothing here, cleared the
+whole cache for every open tab. Every clear, and every TTL, is now followed by
+a background warm, so the re-read no longer lands on somebody's click; the
+generation counter below stops a warm that straddles a clear from writing its
+pre-clear answer back.
 
 A cached `fetch_households` snapshot can still miss a household a FRESH
 attendee already names, in the narrow window before that invalidation call
@@ -126,6 +133,23 @@ class LodgingYearCache:
         # across the fetch, but that await happens after `_lock_for` has
         # already released `self._lock`.
         self._inflight_locks: dict[str, asyncio.Lock] = {}
+        # Bumped by every `invalidate_all()` (kindred#2803). A fetch records
+        # the generation it STARTED in and hands it to `set`, which drops the
+        # value if a clear landed while the fetch was in flight. Without it a
+        # read that began before a sync -- a background warm, most likely --
+        # would write its pre-sync answer back AFTER the sync's clear, and
+        # that answer would stand until the TTL.
+        self._generation = 0
+
+    @property
+    def ttl_seconds(self) -> int:
+        return self._ttl
+
+    @property
+    def generation(self) -> int:
+        """How many times this cache has been cleared -- see `set`."""
+        with self._lock:
+            return self._generation
 
     @staticmethod
     def _make_key(read_name: str, year: int) -> str:
@@ -143,15 +167,24 @@ class LodgingYearCache:
                 return self._cache[key]
             return None
 
-    def set(self, read_name: str, year: int, value: Any) -> None:
+    def set(self, read_name: str, year: int, value: Any, *, generation: int | None = None) -> bool:
+        """Store one read's value. Returns whether it was stored.
+
+        `generation`, when given, is `self.generation` as it stood when the
+        value's fetch STARTED; a clear since then means the value may predate
+        the data that clear announced, so it is dropped rather than stored.
+        """
         key = self._make_key(read_name, year)
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return False
             if len(self._cache) >= self._max_size and key not in self._cache:
                 self._evict_lru()
             now = time.time()
             self._cache[key] = value
             self._cache_times[key] = now
             self._access_times[key] = now
+            return True
 
     def invalidate_all(self) -> int:
         """Clear every cached entry. Returns the number cleared.
@@ -177,6 +210,7 @@ class LodgingYearCache:
             self._cache_times.clear()
             self._access_times.clear()
             self._inflight_locks.clear()
+            self._generation += 1
             if count:
                 logger.info(f"Lodging year cache invalidated: cleared {count} entries")
             return count
@@ -211,9 +245,22 @@ class LodgingYearCache:
 
 _YearRead = Callable[[Any, int], Coroutine[Any, Any, T]]
 
+# The attribute `cached_by_year` sets on each wrapper: the PocketBase tables
+# that read depends on. `api/services/lodging_cache_warm.py` collects them.
+CACHED_TABLES_ATTR = "lodging_cache_tables"
 
-def cached_by_year(cache: LodgingYearCache) -> Callable[[_YearRead[T]], _YearRead[T]]:
+
+def cached_by_year(cache: LodgingYearCache, *, tables: tuple[str, ...]) -> Callable[[_YearRead[T]], _YearRead[T]]:
     """Wrap a `(self, year: int) -> T` repository method with `cache`.
+
+    `tables` (kindred#2803) is every PocketBase table the read's answer depends
+    on -- the collection it pages, AND any table a filter or an expand reaches
+    through a relation (`session.session_type` is `camp_sessions`,
+    `expand.person.household_id` is `persons`). It is what decides which sync
+    completions clear this cache (`lodging_cache_warm.sync_invalidates_lodging_cache`),
+    so an omission here is a sync that leaves the board stale until the TTL.
+    Required, and refused when empty, because a read that declared nothing
+    would make every sync look like a non-writer.
 
     Keyed on the wrapped function's own `__name__`, not a hand-typed string --
     the four call sites in lodging_repository.py used to each repeat their own
@@ -228,7 +275,13 @@ def cached_by_year(cache: LodgingYearCache) -> Callable[[_YearRead[T]], _YearRea
     key finds the winner's result already written and never calls `fn` at
     all. The fast-path check above stays lock-free -- only a miss pays for
     the lock.
+
+    Generation-guarded (kindred#2803): the fetch's result is written back only
+    if no `invalidate_all()` landed while it was in flight -- see
+    `LodgingYearCache.set`. The caller gets the result either way.
     """
+    if not tables:
+        raise ValueError("cached_by_year needs the tables the read depends on (tables=...)")
 
     def decorator(fn: _YearRead[T]) -> _YearRead[T]:
         @functools.wraps(fn)
@@ -242,10 +295,12 @@ def cached_by_year(cache: LodgingYearCache) -> Callable[[_YearRead[T]], _YearRea
                 cached = cache.get(fn.__name__, year)
                 if cached is not None:
                     return cached  # type: ignore[no-any-return]
+                generation = cache.generation
                 result = await fn(self, year)
-                cache.set(fn.__name__, year, result)
+                cache.set(fn.__name__, year, result, generation=generation)
                 return result
 
+        setattr(wrapper, CACHED_TABLES_ATTR, tuple(tables))
         return wrapper
 
     return decorator

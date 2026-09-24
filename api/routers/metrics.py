@@ -17,6 +17,7 @@ from api.services.drilldown_service import DrilldownService
 from api.services.forecast_service import ForecastService
 from api.services.geo_service import clear_person_id_cache
 from api.services.historical_service import HistoricalService
+from api.services.lodging_cache_warm import schedule_lodging_warm, sync_invalidates_lodging_cache
 from api.services.metrics_repository import MetricsRepository
 from api.services.metrics_sql_repository import MetricsSQLRepository
 from api.services.registration_service import RegistrationService
@@ -633,7 +634,15 @@ async def get_day1(
 
 
 @router.post("/cache/invalidate")
-async def invalidate_metrics_cache() -> dict[str, int]:
+async def invalidate_metrics_cache(
+    sync_type: str | None = Query(
+        None,
+        description=(
+            "The sync job whose completion triggered this call. Scopes only the lodging year cache: "
+            "it is cleared when this job writes a table the cache reads, or when no job is named."
+        ),
+    ),
+) -> dict[str, int]:
     """Invalidate all cached metrics responses + geo person-id cache + lodging year cache.
 
     Auth is handled by the middleware (skipped for this path since cache
@@ -645,15 +654,20 @@ async def invalidate_metrics_cache() -> dict[str, int]:
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
     changes attendee status_id, which feeds _fetch_active_person_pb_ids.
 
-    lodging_cache (kindred#1963) piggybacks here too (kindred#2142): its four
-    cached reads are written only by the "persons" sync (households) and the
-    "family_camp_derived" sync (family_camp_adults, family_camp_registrations),
-    both of which are polled sync types that fire invalidateSyncData on
-    completion — same signal, same reasoning as geo's cache above.
+    lodging_cache (kindred#1963) piggybacks here too (kindred#2142), but SCOPED
+    (kindred#2803): the frontend names the completed sync, and the lodging
+    cache is cleared only when that sync writes a table one of its cached reads
+    depends on -- see `api/services/lodging_cache_warm.py`. The hourly
+    `bunk_assignments` sync writes none of them and used to clear it every
+    hour. A call naming no sync (the config hook, the registration-dates
+    panel) clears it as before. Every clear is followed by a background warm,
+    so the next weekend load does not pay for the re-read.
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
-    lodging_cache.invalidate_all()
+    if sync_invalidates_lodging_cache(sync_type):
+        lodging_cache.invalidate_all()
+        schedule_lodging_warm()
     return {"cleared": cleared}
 
 

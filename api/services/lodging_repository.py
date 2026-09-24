@@ -68,6 +68,7 @@ from api.constants.collections import (
     ATTENDEES,
     BUNK_ASSIGNMENTS,
     CAMP_SESSIONS,
+    CUSTOM_FIELD_DEFS,
     FAMILY_CAMP_ADULTS,
     FAMILY_CAMP_MEDICAL,
     FAMILY_CAMP_REGISTRATIONS,
@@ -210,6 +211,9 @@ _BUNKING_CSV_REQUEST_FIELDS = (
 # `cabin_values_from_rows` adds `year` and `last_updated` (the attribution
 # rule's write time).
 _COHORT_VALUE_FIELDS = "year,value,last_updated,expand.person.cm_id,expand.field_definition.cm_id"
+# The tables `_fetch_cohort_person_values` reads, filter and expands included --
+# see `cached_by_year` for why the relation targets count.
+_COHORT_VALUE_TABLES = (PERSON_CUSTOM_VALUES, PERSONS, CUSTOM_FIELD_DEFS)
 
 
 def _weekend_type_filter() -> str:
@@ -998,7 +1002,7 @@ class LodgingRepository:
                 cabins[year] = cabin
         return cabins
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(HOUSEHOLDS,))
     async def fetch_households(self, year: int) -> dict[str, Any]:
         """Households for a year, keyed by PocketBase record id.
 
@@ -1054,7 +1058,7 @@ class LodgingRepository:
         )
         return rows[0] if rows else None
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(ATTENDEES, CAMP_SESSIONS, PERSONS))
     async def fetch_prior_household_cm_ids(self, year: int) -> set[int]:
         """CampMinder ids of every household with an ENROLLED weekend attendee
         in an EARLIER year -- the returning-family signal (kindred#2475).
@@ -1114,7 +1118,7 @@ class LodgingRepository:
         )
         return _household_cm_ids(rows)
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(ATTENDEES, CAMP_SESSIONS, PERSONS))
     async def fetch_family_enrolled_household_cm_ids(self, year: int) -> set[int]:
         """CampMinder ids of every household with an ENROLLED family-session
         attendee in exactly `year` (kindred#2767).
@@ -1140,7 +1144,7 @@ class LodgingRepository:
         )
         return _household_cm_ids(rows)
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(ATTENDEES, CAMP_SESSIONS, PERSONS))
     async def fetch_family_enrolled_attendees(self, year: int) -> list[Any]:
         """Every ENROLLED family-session attendee row in `year`, with `person`
         and `session` expanded (kindred#2775).
@@ -1162,7 +1166,7 @@ class LodgingRepository:
             },
         )
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(LODGING_ASSIGNMENTS,))
     async def fetch_live_assignments(self, year: int) -> list[Any]:
         """Every live `lodging_assignments` row in `year`, both grains --
         the CampMinder layer, for a whole cohort at once (kindred#2775).
@@ -1208,7 +1212,7 @@ class LodgingRepository:
             },
         )
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(ATTENDEES, CAMP_SESSIONS))
     async def fetch_prior_adult_person_cm_ids(self, year: int) -> set[int]:
         """CampMinder person ids with an ENROLLED adult-program attendee row in
         an EARLIER year -- the adult guest's returning signal (kindred#2767).
@@ -1235,7 +1239,7 @@ class LodgingRepository:
                 ids.add(person_id)
         return ids
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(ATTENDEES, CAMP_SESSIONS))
     async def fetch_adult_weekend_attendees(self, year: int) -> list[Any]:
         """Every ENROLLED adult-program attendee row in `year`, with `session`
         expanded -- the cohort twin of `fetch_person_adult_attendees`
@@ -1286,7 +1290,7 @@ class LodgingRepository:
             },
         )
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=_COHORT_VALUE_TABLES)
     async def fetch_adult_cabin_values(self, year: int) -> list[Any]:
         """Every adult-weekend cabin value in `year` -- the cohort twin of
         `fetch_person_cabin_values` (kindred#2767).
@@ -1297,7 +1301,7 @@ class LodgingRepository:
         """
         return await self._fetch_cohort_person_values(year, ADULT_WEEKEND_CABIN_FIELD_CM_IDS)
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=_COHORT_VALUE_TABLES)
     async def fetch_adult_need_values(self, year: int) -> list[Any]:
         """Every adult guest's own housing-need answers in `year` (kindred#2766):
         Adult-Bathroom, Adult-CPAP, Housing Accomodation and Adult-Opt Out.
@@ -1310,7 +1314,7 @@ class LodgingRepository:
         """
         return await self._fetch_cohort_person_values(year, ADULT_NEED_FIELD_CM_IDS)
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(FAMILY_CAMP_ADULTS,))
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:
         """Accompanying adults grouped by household PB id, in adult_number order.
 
@@ -1331,7 +1335,7 @@ class LodgingRepository:
             adults.sort(key=lambda a: int(getattr(a, "adult_number", 0) or 0))
         return dict(grouped)
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(FAMILY_CAMP_REGISTRATIONS,))
     async def fetch_family_camp_registrations(self, year: int) -> dict[str, Any]:
         """Registration answers keyed by household PB id.
 
@@ -1353,7 +1357,7 @@ class LodgingRepository:
         )
         return {str(getattr(row, "household", "")): row for row in rows}
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(PERSON_CUSTOM_VALUES, PERSONS, CUSTOM_FIELD_DEFS, ORIGINAL_BUNK_REQUESTS))
     async def fetch_request_text_values(self, year: int) -> dict[str, list[RequestValueRow]]:
         """The RAW free-text bunk-request answers, keyed by household PB id.
 
@@ -1459,7 +1463,7 @@ class LodgingRepository:
                 out.append(entry)
         return out
 
-    @cached_by_year(lodging_cache)
+    @cached_by_year(lodging_cache, tables=(FAMILY_CAMP_REGISTRATIONS, HOUSEHOLDS))
     async def fetch_cabin_assignments_by_household_cm_id(self, year: int) -> dict[int, str]:
         """Where each household slept in `year`, keyed by household CampMinder id.
 

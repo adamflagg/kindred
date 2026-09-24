@@ -51,6 +51,7 @@ from .routers import (
     solver,
     validation,
 )
+from .services.lodging_cache_warm import start_lodging_cache_refresher
 from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
 
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Startup
     refresh_task = None
+    lodging_refresh_task = None
     if not settings.skip_pb_auth:
         await authenticate_pb()
         refresh_task = await start_pb_token_refresh()
@@ -75,6 +77,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             validate_on_init=True,
         )
         logger.info("ConfigLoader initialized with validate_on_init=True")
+        # kindred#2803: warm the weekend year cache in the background -- now,
+        # and again every TTL -- so a staff member's first click after a
+        # restart or an idle quarter-hour is not the one that pays for it.
+        lodging_refresh_task = start_lodging_cache_refresher()
     else:
         logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
         auth_state.pb_client = pb
@@ -84,6 +90,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown
     if refresh_task:
         refresh_task.cancel()
+    if lodging_refresh_task:
+        lodging_refresh_task.cancel()
     close_connection()
 
 

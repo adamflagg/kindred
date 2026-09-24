@@ -67,4 +67,24 @@ describe('invalidateSyncData', () => {
       method: 'POST',
     })
   })
+
+  // kindred#2803: the server clears its weekend cache only for a sync that writes a
+  // table the cache holds, so it has to be told which sync completed. The hourly
+  // `bunk_assignments` sync used to wipe it for every open tab.
+  it('names the completed sync so the server can scope what it clears', () => {
+    invalidateSyncData('bunk_assignments')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/metrics/cache/invalidate?sync_type=bunk_assignments',
+      { method: 'POST' }
+    )
+  })
+
+  it('still invalidates every sync-dependent query key when a sync is named', () => {
+    invalidateSyncData('bunk_assignments')
+    const invalidatedPrefixes = spy.mock.calls.map(
+      (call: unknown[]) => (call[0] as { queryKey: string[] }).queryKey[0]
+    )
+    expect(invalidatedPrefixes).toContain('weekend-roster')
+    expect(invalidatedPrefixes).toContain('weekend-summary')
+  })
 })

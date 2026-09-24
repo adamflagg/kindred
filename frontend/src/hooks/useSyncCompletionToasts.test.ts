@@ -11,6 +11,7 @@ import {
 } from './useSyncCompletionToasts'
 import type { SyncStatusResponse } from './useSyncStatusAPI'
 import { getBackendSyncJobIds } from '../test/backendSyncJobIds'
+import { invalidateSyncData } from '../utils/queryClient'
 
 vi.mock('react-hot-toast', () => ({
   default: Object.assign(vi.fn(), {
@@ -25,6 +26,13 @@ vi.mock('react-hot-toast', () => ({
 let mockSyncStatus: Partial<SyncStatusResponse> | null = null
 vi.mock('./useSyncStatusAPI', () => ({
   useSyncStatusAPI: () => ({ data: mockSyncStatus }),
+}))
+
+// kindred#2803: spied so a test can see WHICH sync the completion names. Every other
+// export of the module stays real.
+vi.mock('../utils/queryClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../utils/queryClient')>()),
+  invalidateSyncData: vi.fn(),
 }))
 
 // Helper function to format stats (should match implementation)
@@ -299,5 +307,39 @@ describe('SYNC_DISPLAY_NAMES backend coverage (kindred#2593)', () => {
     const backendIds = getBackendSyncJobIds().slice().sort()
     const displayNameIds = Object.keys(SYNC_DISPLAY_NAMES).sort()
     expect(displayNameIds).toEqual(backendIds)
+  })
+})
+
+// kindred#2803: the server clears its weekend cache only for a sync that writes a table the
+// cache holds, which it can decide only if the completion says which sync it was.
+describe('useSyncCompletionToasts names the completed sync when it invalidates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSyncStatus = null
+  })
+
+  it.each(['bunk_assignments', 'attendees'])('passes %s to invalidateSyncData', (syncType) => {
+    mockSyncStatus = { [syncType]: { status: 'running' } } as unknown as SyncStatusResponse
+    const { rerender } = renderHook(() => useSyncCompletionToasts())
+
+    mockSyncStatus = {
+      [syncType]: { status: 'success', summary: { created: 0, updated: 1, skipped: 0, errors: 0 } },
+    } as unknown as SyncStatusResponse
+    rerender()
+
+    expect(invalidateSyncData).toHaveBeenCalledTimes(1)
+    expect(invalidateSyncData).toHaveBeenCalledWith(syncType)
+  })
+
+  it('names the sync on a failed completion too', () => {
+    mockSyncStatus = { persons: { status: 'running' } } as unknown as SyncStatusResponse
+    const { rerender } = renderHook(() => useSyncCompletionToasts())
+
+    mockSyncStatus = {
+      persons: { status: 'failed', error: 'boom' },
+    } as unknown as SyncStatusResponse
+    rerender()
+
+    expect(invalidateSyncData).toHaveBeenCalledWith('persons')
   })
 })
