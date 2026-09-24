@@ -1305,6 +1305,11 @@ class RosterParty(BaseModel):
     last_year_cabin: str = ""
     share: ShareRequestSummary = Field(default_factory=ShareRequestSummary)
     flags: AccessibilityFlagSummary = Field(default_factory=AccessibilityFlagSummary)
+    # kindred#2759: an adult-weekend guest's Jotform bunking request. ONLY for
+    # a `bunking.manage` caller (None otherwise) and only on a person-grain
+    # party; a household never carries one. None is "not visible to you", not
+    # "nothing filed" -- that is `state="no_form"`.
+    bunking_request: BunkingRequestSummary | None = None
 
 
 class RosterCounts(BaseModel):

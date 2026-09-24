@@ -27,6 +27,7 @@ from api.schemas.lodging import (
     MEDICAL_GATE_FIELD_NAMES,
     MEDICAL_NARRATIVE_FIELD_NAMES,
     AccessibilityFlagSummary,
+    BunkingRequestSummary,
     EffectiveBathroom,
     HouseholdJourneyResponse,
     HouseholdJourneySession,
@@ -57,7 +58,8 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
     WriteInCover,
 )
-from api.services.adult_need_answers import adult_need_flags_by_person
+from api.services.adult_need_answers import adult_need_flags_by_person, adult_need_raw_by_person
+from api.services.jotform_bunking import JotformBunkingRows, build_bunking_request, filings_by_person
 from api.services.lodging_repository import ADULT_SESSION_TYPE, FAMILY_SESSION_TYPE
 from api.services.lodging_rules import (
     REQUEST_TEXT_SOURCES,
@@ -2374,6 +2376,10 @@ class LodgingRosterService:
         # a caller that forgets this shows staff less than it could, never
         # more than it may. The router passes the caller's `bunking.manage`.
         include_staff_notes: bool = False,
+        # kindred#2759: the guest's Jotform bunking request. DEFAULTS FALSE for
+        # include_staff_notes' reason. The router passes the caller's
+        # bunking.manage.
+        include_bunking_request: bool = False,
     ) -> WeekendRosterResponse:
         """One weekend's roster, resolved through a scenario or not.
 
@@ -2418,6 +2424,7 @@ class LodgingRosterService:
         adult_values_task: asyncio.Task[list[Any]] | None = None
         adult_weekends_task: asyncio.Task[list[Any]] | None = None
         adult_needs_task: asyncio.Task[list[Any]] | None = None
+        jotform_task: asyncio.Task[JotformBunkingRows] | None = None
 
         # TaskGroup rather than asyncio.gather: typeshed only types gather
         # precisely up to six awaitables, and beyond that every result widens to
@@ -2499,6 +2506,10 @@ class LodgingRosterService:
                 # allowlisted read for the cohort. Absent from `build_summary`:
                 # no count reads a flag.
                 adult_needs_task = tg.create_task(self.repository.fetch_adult_need_values(year))
+                if include_bunking_request:
+                    # kindred#2759: gated at the READ, not only the wire -- a
+                    # caller without bunking.manage costs no Jotform read.
+                    jotform_task = tg.create_task(self.repository.fetch_jotform_bunking_rows(year))
             elif reads_live_last_year:
                 # kindred#2775: the WEEKENDS each household was enrolled on,
                 # which the every-weekend rule needs and which also say
@@ -2635,6 +2646,16 @@ class LodgingRosterService:
             live_family_cabins = _last_year_family_live_cabins(
                 enrolled_rows, live_last_year, housing_names, year=year - 1, board_session_cm_id=session_cm_id
             )
+        bunking_requests: dict[int, BunkingRequestSummary] | None = None
+        if jotform_task is not None:
+            registration_raw = (
+                adult_need_raw_by_person(adult_needs_task.result()) if adult_needs_task is not None else {}
+            )
+            filings = filings_by_person(jotform_task.result(), session_cm_id=session_cm_id)
+            bunking_requests = {
+                person_cm_id: build_bunking_request(person_filings, registration_raw.get(person_cm_id))
+                for person_cm_id, person_filings in filings.items()
+            }
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
@@ -2683,6 +2704,7 @@ class LodgingRosterService:
             registrations=registrations_task.result(),
             request_values=request_values_task.result(),
             include_staff_notes=include_staff_notes,
+            bunking_requests=bunking_requests,
             assignments=placements_task.result(),
             unit_index=unit_index,
         )
@@ -3566,6 +3588,8 @@ class LodgingRosterService:
         # by the guest's CampMinder id. DEFAULTED for the same reason: the
         # lander keeps only counts, and no count reads a flag.
         flags_by_person: Mapping[int, AccessibilityFlagSummary] | None = None,
+        # kindred#2759: None means the caller may not see Jotform data at all.
+        bunking_requests: Mapping[int, BunkingRequestSummary] | None = None,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
 
@@ -3577,6 +3601,7 @@ class LodgingRosterService:
                 prior_person_cm_ids=prior_person_cm_ids or set(),
                 last_year_cabins=last_year_cabins_by_person or {},
                 flags_by_person=flags_by_person or {},
+                bunking_requests=bunking_requests,
             )
 
         return self._build_household_parties(
@@ -3657,6 +3682,7 @@ class LodgingRosterService:
         prior_person_cm_ids: set[int],
         last_year_cabins: dict[int, str],
         flags_by_person: Mapping[int, AccessibilityFlagSummary],
+        bunking_requests: Mapping[int, BunkingRequestSummary] | None = None,
     ) -> list[RosterParty]:
         parties: list[RosterParty] = []
         for attendee in attendees:
@@ -3700,6 +3726,13 @@ class LodgingRosterService:
                     # shared by every guest in a household. A guest who
                     # answered nothing honestly reads no needs.
                     flags=flags_by_person.get(person_cm_id, AccessibilityFlagSummary()),
+                    # kindred#2759. None = not visible to this caller; a visible
+                    # guest with nothing matched is state "no_form".
+                    bunking_request=(
+                        None
+                        if bunking_requests is None
+                        else bunking_requests.get(person_cm_id, BunkingRequestSummary(state="no_form"))
+                    ),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))

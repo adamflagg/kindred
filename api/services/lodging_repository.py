@@ -73,6 +73,9 @@ from api.constants.collections import (
     FAMILY_CAMP_MEDICAL,
     FAMILY_CAMP_REGISTRATIONS,
     HOUSEHOLDS,
+    JOTFORM_ANSWERS,
+    JOTFORM_FORMS,
+    JOTFORM_SUBMISSIONS,
     LODGING_ASSIGNMENTS,
     LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
@@ -92,6 +95,7 @@ from api.constants.collections import (
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
 from api.services.adult_need_answers import ADULT_NEED_FIELD_CM_IDS
+from api.services.jotform_bunking import ROSTER_ROLES, JotformBunkingRows
 from api.services.lodging_cache import cached_by_year
 from api.services.lodging_rules import (
     BUNKING_CSV_REQUEST_TEXT_FIELDS,
@@ -1416,6 +1420,52 @@ class LodgingRepository:
         can carry another weekend's -- or another person's -- answer.
         """
         return await self._fetch_cohort_person_values(year, ADULT_NEED_FIELD_CM_IDS)
+
+    @cached_by_year(lodging_cache, tables=(JOTFORM_FORMS, JOTFORM_SUBMISSIONS, JOTFORM_ANSWERS))
+    async def fetch_jotform_bunking_rows(self, year: int) -> JotformBunkingRows:
+        """The year's Jotform forms, live matched submissions, and ONLY the
+        answers to the roles the board shows (kindred#2759).
+
+        Called only for a `bunking.manage` caller on an adult weekend. Cached per
+        year like every other roster read; the pull invalidates it through
+        `SYNC_JOB_WRITES`, and the admin link/ignore/unlink writes clear it
+        directly. Answers are narrowed to the mapped question ids of
+        `ROSTER_ROLES` -- identity and emergency answers never reach this read.
+        """
+        forms = await self._page(
+            JOTFORM_FORMS,
+            query_params={"filter": f"year = {year}", "fields": "id,session_cm_id,field_map", "sort": STABLE_SORT},
+        )
+        submissions = await self._page(
+            JOTFORM_SUBMISSIONS,
+            query_params={
+                "filter": (
+                    f"year = {year} && jotform_status != 'DELETED' && (match_status = 'auto' || match_status = 'staff')"
+                ),
+                "fields": "id,submission_id,form,session_cm_id,person_cm_id,submitted_at,match_status,jotform_status",
+                "sort": STABLE_SORT,
+            },
+        )
+        question_ids = sorted(
+            {
+                str(qid)
+                for form in forms
+                for role, qid in (getattr(form, "field_map", None) or {}).items()
+                if role in ROSTER_ROLES and qid
+            }
+        )
+        if not question_ids or not submissions:
+            return JotformBunkingRows(forms=forms, submissions=submissions, answers=[])
+        question_filter = " || ".join(f"question_id = '{pb_escape(qid)}'" for qid in question_ids)
+        answers = await self._page(
+            JOTFORM_ANSWERS,
+            query_params={
+                "filter": f"submission.year = {year} && ({question_filter})",
+                "fields": "submission,question_id,answer_text,answer_json",
+                "sort": STABLE_SORT,
+            },
+        )
+        return JotformBunkingRows(forms=forms, submissions=submissions, answers=answers)
 
     @cached_by_year(lodging_cache, tables=(FAMILY_CAMP_ADULTS,))
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:

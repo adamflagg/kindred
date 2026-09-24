@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from api.schemas.lodging import LodgingUnitSummary, RosterCounts
+from api.services.jotform_bunking import JotformBunkingRows
 from api.services.lodging_repository import RequestValueRow
 from api.services.lodging_roster_service import (
     SUMMARY_ENTRY_CONCURRENCY,
@@ -252,6 +253,10 @@ def _repo(**overrides: Any) -> MagicMock:
         # allowlisted fields. Empty by default -- no answers must read as no
         # needs, which is the honest shape for a guest who skipped them.
         "fetch_adult_need_values": [],
+        # kindred#2759: the year's Jotform rows. EMPTY by default -- a
+        # bunking.manage caller on an adult weekend with no pull yet sees every
+        # guest as "no form"; a caller without it must never trigger this read.
+        "fetch_jotform_bunking_rows": JotformBunkingRows(forms=[], submissions=[], answers=[]),
         # The per-person journey reads. The roster must NEVER call these --
         # see TestAdultGuestCardLine2 -- and a bare MagicMock would make that
         # assertion vacuous.
@@ -9995,3 +10000,93 @@ class TestHousingRendersInTodaysLanguage:
 
         repo.fetch_all_units.assert_not_called()
         repo.fetch_unit_aliases.assert_not_called()
+
+
+def _jotform_rows(person_cm_id: int, text: str, session_cm_id: int = 1000002) -> JotformBunkingRows:
+    return JotformBunkingRows(
+        forms=[
+            _rec(
+                id="form_ww",
+                session_cm_id=session_cm_id,
+                field_map={"bunking_request": "21", "housing_accommodation": "22"},
+            )
+        ],
+        submissions=[
+            _rec(
+                id="sub_1",
+                submission_id="6600000000000000001",
+                form="form_ww",
+                session_cm_id=session_cm_id,
+                person_cm_id=person_cm_id,
+                submitted_at="2026-08-31 09:00:00",
+                match_status="auto",
+                jotform_status="ACTIVE",
+            )
+        ],
+        answers=[
+            _rec(submission="sub_1", question_id="21", answer_text=text, answer_json=None),
+            _rec(submission="sub_1", question_id="22", answer_text="Yes", answer_json=None),
+        ],
+    )
+
+
+class TestAdultGuestBunkingRequest:
+    """kindred#2759: each adult guest's Jotform bunking request, for a
+    `bunking.manage` caller only, on adult weekends only."""
+
+    @pytest.mark.asyncio
+    async def test_manage_caller_gets_request_and_no_form_states(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004), _guest(cm_id=1000005, first="Emma", last="Johnson")],
+            fetch_jotform_bunking_rows=_jotform_rows(1000004, "Emma Johnson, Liam Garcia"),
+            fetch_adult_need_values=[_need_value(1000004, HOUSING_ACCOMODATION, "No")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002, include_bunking_request=True)
+
+        by_guest = {p.person_cm_id: p.bunking_request for p in roster.parties}
+        olivia, emma = by_guest[1000004], by_guest[1000005]
+        assert olivia is not None
+        assert olivia.state == "request"
+        assert olivia.current_text == "Emma Johnson, Liam Garcia"
+        assert [(s.need, s.registration, s.jotform) for s in olivia.jotform_says] == [("accommodation", "No", "Yes")]
+        assert emma is not None
+        assert emma.state == "no_form"
+        repo.fetch_jotform_bunking_rows.assert_awaited_once_with(2026)
+
+    @pytest.mark.asyncio
+    async def test_without_the_permission_nothing_is_read_or_sent(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004)],
+            fetch_jotform_bunking_rows=_jotform_rows(1000004, "Emma Johnson"),
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert all(p.bunking_request is None for p in roster.parties)
+        repo.fetch_jotform_bunking_rows.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_family_weekend_never_reads_jotform(self) -> None:
+        repo = _repo(fetch_session=FAMILY_SESSION)
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, include_bunking_request=True)
+
+        assert all(p.bunking_request is None for p in roster.parties)
+        repo.fetch_jotform_bunking_rows.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_another_weekends_filing_does_not_leak_onto_this_board(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest(cm_id=1000004)],
+            fetch_jotform_bunking_rows=_jotform_rows(1000004, "Emma Johnson", session_cm_id=1000099),
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002, include_bunking_request=True)
+
+        request = roster.parties[0].bunking_request
+        assert request is not None
+        assert request.state == "no_form"

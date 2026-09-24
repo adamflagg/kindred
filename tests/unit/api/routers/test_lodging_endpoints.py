@@ -2522,3 +2522,27 @@ class TestPersonHousingEndpoint:
             "lodging_units",
             "lodging_unit_aliases",
         }
+
+
+class TestRosterPassesTheJotformGate:
+    """kindred#2759: `bunking_request` travels only to a bunking.manage caller.
+    Asserted on the ARGUMENT, for TestScenarioParameter's reason."""
+
+    @staticmethod
+    def _include_for(user: AuthUser, mock_pb: MagicMock) -> bool:
+        app = _build_app(user, mock_pb)
+        with patch("api.routers.lodging.LodgingRosterService") as service_cls:
+            service_cls.return_value.build_roster = AsyncMock(return_value=_EMPTY_ROSTER)
+            with patch("api.routers.lodging.pb", mock_pb):
+                response = TestClient(app).get("/api/lodging/roster", params={"year": 2026, "session_cm_id": 1000002})
+            assert response.status_code == 200
+            return bool(service_cls.return_value.build_roster.await_args.kwargs["include_bunking_request"])
+
+    def test_a_caller_holding_nothing_does_not_get_it(self, mock_pb: MagicMock) -> None:
+        assert self._include_for(_plain_user(), mock_pb) is False
+
+    def test_bunking_manage_does(self, mock_pb: MagicMock) -> None:
+        assert self._include_for(_manage_user(), mock_pb) is True
+
+    def test_an_admin_does(self, mock_pb: MagicMock) -> None:
+        assert self._include_for(ADMIN, mock_pb) is True

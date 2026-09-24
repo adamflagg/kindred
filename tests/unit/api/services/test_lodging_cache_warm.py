@@ -72,6 +72,8 @@ EXPECTED_CACHED_READ_TABLES = {
     "fetch_adult_weekend_attendees": {"attendees", "camp_sessions"},
     "fetch_adult_cabin_values": {"person_custom_values", "persons", "custom_field_defs"},
     "fetch_adult_need_values": {"person_custom_values", "persons", "custom_field_defs"},
+    # kindred#2759: the answers filter reaches `submission.year`, already covered.
+    "fetch_jotform_bunking_rows": {"jotform_forms", "jotform_submissions", "jotform_answers"},
     "fetch_family_camp_adults": {"family_camp_adults"},
     "fetch_family_camp_registrations": {"family_camp_registrations"},
     "fetch_request_text_values": {"person_custom_values", "persons", "custom_field_defs", "original_bunk_requests"},
