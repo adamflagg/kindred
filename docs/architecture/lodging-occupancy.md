@@ -49,6 +49,26 @@ Adult weekends count **people**, not households, because attendance is
 per-person. A couple in one room is two attendee records against one unit, which
 under family-camp rules would look like a violation and is not one.
 
+### ⚠ If a season ever runs two adult programs
+
+Men's Weekend is cancelled from 2027. For the foreseeable future, Women's Weekend
+is the only adult program, and no person can hold two adult sessions in one
+season. 2026 had no Women's/Men's Weekend overlap. The code quietly relies on
+that, and the precondition is worth knowing about if it changes:
+
+- **It has happened before.** One person attended two adult programs in the same
+  season 10 times across 2022–2025. In 2025, for example, 3 people did so across
+  Adults Unplugged, Women's Weekend and Divorce & Discovery.
+- **The cabin value is one per season.** `Reportable Family Camp Cabin` (field
+  223823) holds one person-grain value per season, so the ingest must attribute
+  it to each weekend. The captured value-history rule (kindred#2784) does this
+  where the history can determine it. Otherwise the ingest files an
+  `ambiguous_session` queue row.
+- **Known gap.** A person-grain queue row is labelled `Person <id>` rather than
+  the guest's name (`SessionAttributionRow.tsx`, and the evidence label in
+  `lodging_attribution_service.py`). kindred#2772 tracked this and was closed as
+  not planned on 2026-09-23. Reopen it if a second adult program returns.
+
 ### The grain distinction already exists
 
 The ingest already carries this seam: `Family Camp Cabin` is a household-grain
