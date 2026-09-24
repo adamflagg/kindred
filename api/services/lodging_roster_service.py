@@ -1305,8 +1305,16 @@ def _resolve_family_availability(
     units: list[LodgingUnitSummary],
     capacity_by_code: dict[str, int | None],
     write_in_rows: Mapping[str, list[OwnWriteIn]],
+    *,
+    is_adult: bool,
 ) -> dict[str, int | None]:
     """Recompute `is_family_available` from the RESOLVED covers, in place.
+
+    `is_adult` selects the adult-weekend write-in rule (kindred#2765): an
+    unsized write-in is one guest, not a wholesale claim -- see
+    `write_in_demand`. BOTH orchestrators pass it from the weekend's own
+    `session_type`, or the lander and the board disagree about which cabins
+    are open.
 
     RETURNS the free-spot map it had to compute anyway (unit_id -> free
     spots), which `_build_counts` sums rather than deriving a second time. Two
@@ -1382,7 +1390,7 @@ def _resolve_family_availability(
             )
             for cover in unit.write_ins
         ]
-        free = free_family_spots(capacity_by_code.get(unit.code), loads)
+        free = free_family_spots(capacity_by_code.get(unit.code), loads, is_adult=is_adult)
         if free is None and unit.unit_id in write_in_rows:
             # A row the code-keyed walk could not represent -- see the
             # docstring's blank-code paragraph. Covered, and unmeasurable.
@@ -2610,7 +2618,9 @@ class LodgingRosterService:
         # takes the id set as well as the covers: a blank-coded unit is dropped
         # from the code-keyed cover map on purpose, and the set is what still
         # closes it. See the resolver's own blank-code paragraph.
-        free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_index)
+        free_spots_by_unit = _resolve_family_availability(
+            unit_summaries, capacity_by_code, write_in_index, is_adult=is_adult
+        )
         housing_names = housing_names_task.result()
         live_last_year = live_last_year_task.result() if live_last_year_task is not None else []
         enrolled_last_year: set[int] = set()
@@ -2894,7 +2904,12 @@ class LodgingRosterService:
             capacity_by_code = _capacity_by_code(unit_summaries, unit_index)
             write_in_index = write_in_rows_by_unit(write_ins_task.result())
             _resolve_write_in_covers(unit_summaries, write_in_index, capacity_by_code)
-            free_spots_by_unit = _resolve_family_availability(unit_summaries, capacity_by_code, write_in_index)
+            free_spots_by_unit = _resolve_family_availability(
+                unit_summaries,
+                capacity_by_code,
+                write_in_index,
+                is_adult=_s(session, "session_type") == ADULT_SESSION_TYPE,
+            )
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 # THIS weekend's start. The six year-scoped fetches above are

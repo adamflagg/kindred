@@ -137,7 +137,7 @@ describe('CamperCard — context-menu overlay token (kindred#2237)', () => {
 
 // The 21+ age rule is global (owner ruling 2026-09-22: cutoff raised from 18
 // to 21 -- teens 18-20 are still campers in summer and teen programs): at 21
-// and over CampMinder's yy.mm age drops its months ("21.02" reads "21");
+// and over the display drops the yy.mm months ("21.02" reads "21");
 // under 21 the full yy.mm stays.
 describe('CamperCard — age line', () => {
   beforeEach(() => {

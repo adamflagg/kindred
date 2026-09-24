@@ -78,6 +78,7 @@ import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { unplacedFilterGroup, type UnplacedFilterKey } from './unplacedFilters'
 import { partyIdentityLabel } from './householdIdentity'
 import { resolveNeedGlyphs } from './needGlyphs'
+import { occupancyClaim } from './adultCapacity'
 import { worseOf, type NeedsFit } from './needsFit'
 import { effectiveSleeps, partySpots } from './rosterAttention'
 import { coveringWriteIns, writeInDemand } from './writeIn'
@@ -172,15 +173,19 @@ export interface UnitCapacityReading {
 
 export function readUnitCapacity(
   unit: LodgingUnitRow,
-  units: LodgingUnitRow[]
+  units: LodgingUnitRow[],
+  isAdult: boolean
 ): UnitCapacityReading {
-  const capacity = effectiveSleeps(unit, units)
+  // kindred#2765: on an adult weekend a shared cabin is graded against 8
+  // guests and every other unit makes no claim — `occupancyClaim`'s `none`
+  // arrives here as a `null` capacity, which grades `fits` with no note.
+  const { limit: capacity } = occupancyClaim(unit, effectiveSleeps(unit, units), isAdult)
   // No `capacity === null` early return any more. `writeInDemand` takes a
   // NULLABLE capacity and answers that case itself — `consumed: 0`, and
   // `usable: false` to say the 0 means nothing — so short-circuiting here
   // would be this call site re-deriving the rule the field exists to state
   // once.
-  const { consumed, usable } = writeInDemand(capacity, coveringWriteIns(unit))
+  const { consumed, usable } = writeInDemand(capacity, coveringWriteIns(unit), isAdult)
   return { capacity, consumed, usable }
 }
 
@@ -282,7 +287,9 @@ export function candidateFit(
   // unit-only reading `placementCandidates` computes ONCE for a whole list
   // (kindred#2540 final scan, FINDING 10). Passing it is a pure optimisation —
   // `readUnitCapacity(unit, units)` is exactly what the default does.
-  reading: UnitCapacityReading = readUnitCapacity(unit, units)
+  // A family weekend's reading when none is passed; `placementCandidates` — the
+  // path the Assign modal takes — always passes its own.
+  reading: UnitCapacityReading = readUnitCapacity(unit, units, false)
 ): PlacementCandidate {
   // ONE grading, in `needGlyphs.ts`, read in its PROSPECTIVE sense — see that
   // module's `NeedReading`. All four ruled needs are RESOLVED here, but only
@@ -319,10 +326,13 @@ export function placementCandidates(
   parties: RosterPartyRow[],
   unit: LodgingUnitRow,
   units: LodgingUnitRow[] = [],
-  occupied = 0
+  occupied = 0,
+  // kindred#2765. Defaulted to a family weekend so the grading every existing
+  // caller relies on is unchanged; the Assign modal passes its own.
+  isAdult = false
 ): PlacementCandidate[] {
   // ONCE for the whole list, not once per party — see `readUnitCapacity`.
-  const reading = readUnitCapacity(unit, units)
+  const reading = readUnitCapacity(unit, units, isAdult)
   return parties
     .map((party) => candidateFit(party, unit, units, occupied, reading))
     .sort((a, b) => {

@@ -185,6 +185,12 @@ export default function WeekendRosterPage() {
   // in exactly that gap, so there is nothing more to add here.
 
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
+  // Computed ONCE and handed to every surface that grades capacity or wording
+  // by weekend type (kindred#2765): the stats bar, the board (→ its cards →
+  // the Assign modal), the map (→ its popover), the roster table and the
+  // friend groups. Each reads it through `isAdultSessionType`, never through
+  // the parties' grain.
+  const sessionType = selectedSession?.session_type ?? ''
 
   // The switcher must not OFFER a cancelled weekend (kindred#2333) — it stays
   // reachable by URL and still resolves `selectedSession` above from the full
@@ -455,6 +461,9 @@ export default function WeekendRosterPage() {
                 counts={roster.counts ?? {}}
                 spotsNeeded={spotsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
+                sessionType={sessionType}
+                parties={parties}
+                units={units}
                 attributionChip={
                   <CabinWeekendEntry
                     sessionCmId={selectedCmId ?? 0}
@@ -532,6 +541,7 @@ export default function WeekendRosterPage() {
                           scenario={scenario}
                           sessionCmId={selectedCmId ?? 0}
                           canManage={canManageLodging}
+                          sessionType={sessionType}
                         />
                       </Suspense>
                     </ErrorBoundary>
@@ -556,7 +566,7 @@ export default function WeekendRosterPage() {
                         /* The roster export (kindred#2433) is family-only and
                            gated on bunking.manage, same pair `WeekendFriendGroups`
                            below already takes. */
-                        sessionType={selectedSession?.session_type ?? ''}
+                        sessionType={sessionType}
                         canManage={canManageLodging}
                       />
                     </ErrorBoundary>
@@ -588,7 +598,7 @@ export default function WeekendRosterPage() {
                         sessionCmId={selectedCmId ?? 0}
                         parties={parties}
                         canManage={canManageLodging}
-                        sessionType={selectedSession?.session_type ?? ''}
+                        sessionType={sessionType}
                       />
                     </ErrorBoundary>
                   </Activity>
@@ -610,6 +620,7 @@ export default function WeekendRosterPage() {
                           units={units}
                           year={currentYear}
                           sessionCmId={selectedCmId ?? 0}
+                          sessionType={sessionType}
                         />
                       </Suspense>
                     </ErrorBoundary>

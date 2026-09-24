@@ -362,7 +362,7 @@ describe('two write-ins on ONE unit', () => {
   it('pays for both parties, so the cabin has eight beds left and not eleven', () => {
     // `writeInDemand` never deduped — the collapse was upstream of it, in the
     // payload. This pins that the pair arrives whole.
-    expect(writeInDemand(15, shared.write_ins ?? []).sized).toBe(7)
+    expect(writeInDemand(15, shared.write_ins ?? [], false).sized).toBe(7)
   })
 })
 
@@ -388,12 +388,17 @@ describe('writeInDemand', () => {
   })
 
   it('is nothing on a card with no write-ins', () => {
-    expect(writeInDemand(15, [])).toEqual({ consumed: 0, sized: 0, known: true, usable: true })
+    expect(writeInDemand(15, [], false)).toEqual({
+      consumed: 0,
+      sized: 0,
+      known: true,
+      usable: true,
+    })
   })
 
   it('takes a recorded size', () => {
     expect(
-      writeInDemand(15, [demandCover({ relation: 'own', party_size: 2, unit_sleeps: 15 })])
+      writeInDemand(15, [demandCover({ relation: 'own', party_size: 2, unit_sleeps: 15 })], false)
     ).toEqual({ consumed: 2, sized: 2, known: true, usable: true })
   })
 
@@ -401,7 +406,11 @@ describe('writeInDemand', () => {
     // `sized: 0` is the em dash's meaning. A wholesale fallback must never
     // reach the numerator — it would print a headcount nobody wrote down.
     expect(
-      writeInDemand(15, [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })])
+      writeInDemand(
+        15,
+        [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })],
+        false
+      )
     ).toEqual({ consumed: 15, sized: 0, known: false, usable: true })
   })
 
@@ -410,7 +419,12 @@ describe('writeInDemand', () => {
     const rooms = [3, 1, 2, 2].map((n) =>
       demandCover({ relation: 'descendant', party_size: null, unit_sleeps: n })
     )
-    expect(writeInDemand(8, rooms)).toEqual({ consumed: 8, sized: 0, known: false, usable: true })
+    expect(writeInDemand(8, rooms, false)).toEqual({
+      consumed: 8,
+      sized: 0,
+      known: false,
+      usable: true,
+    })
   })
 
   it('sums a mixture both ways and withholds the claim', () => {
@@ -420,14 +434,23 @@ describe('writeInDemand', () => {
       demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 2 }),
       demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 2 }),
     ]
-    expect(writeInDemand(8, rooms)).toEqual({ consumed: 7, sized: 2, known: false, usable: true })
+    expect(writeInDemand(8, rooms, false)).toEqual({
+      consumed: 7,
+      sized: 2,
+      known: false,
+      usable: true,
+    })
   })
 
   it('lets an ancestor take the whole card without printing its size', () => {
     // A house written into whole, then split. Printing 2 on both rooms would
     // spend one two-person party twice on one screen.
     expect(
-      writeInDemand(4, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
+      writeInDemand(
+        4,
+        [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })],
+        false
+      )
     ).toEqual({ consumed: 4, sized: 0, known: true, usable: true })
   })
 
@@ -445,8 +468,8 @@ describe('writeInDemand', () => {
       unit_sleeps: 3,
     })
     const ancestor = demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })
-    const forward = writeInDemand(4, [unsizedDescendant, ancestor])
-    const backward = writeInDemand(4, [ancestor, unsizedDescendant])
+    const forward = writeInDemand(4, [unsizedDescendant, ancestor], false)
+    const backward = writeInDemand(4, [ancestor, unsizedDescendant], false)
     expect(forward).toEqual({ consumed: 4, sized: 0, known: true, usable: true })
     expect(backward).toEqual(forward)
   })
@@ -455,18 +478,22 @@ describe('writeInDemand', () => {
     // A hand-typed count above the card's own beds is over capacity, which is
     // a real state the card reddens for — `sized` has to carry the true
     // recorded figure or that overage would be invisible.
-    const demand = writeInDemand(4, [
-      demandCover({ relation: 'own', party_size: 9, unit_sleeps: 4 }),
-    ])
+    const demand = writeInDemand(
+      4,
+      [demandCover({ relation: 'own', party_size: 9, unit_sleeps: 4 })],
+      false
+    )
     expect(demand.consumed).toBe(4)
     expect(demand.sized).toBe(9)
   })
 
   it('withholds everything when an unsized cover names an unmeasured unit', () => {
     expect(
-      writeInDemand(8, [
-        demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null }),
-      ])
+      writeInDemand(
+        8,
+        [demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null })],
+        false
+      )
     ).toEqual({ consumed: 8, sized: 0, known: false, usable: true })
   })
 
@@ -474,7 +501,7 @@ describe('writeInDemand', () => {
     // `sized` is computed before the capacity guard and never depends on
     // capacity — a cabin nobody has measured, holding a two-person write-in,
     // still prints 2/-, not -/-.
-    expect(writeInDemand(null, [demandCover({ relation: 'own', party_size: 2 })])).toEqual({
+    expect(writeInDemand(null, [demandCover({ relation: 'own', party_size: 2 })], false)).toEqual({
       consumed: 0,
       sized: 2,
       known: false,
@@ -491,8 +518,11 @@ describe('writeInDemand', () => {
     // an ancestor cover asserting occupancy is not the same fact as a
     // measured card, and only the capacity guard can tell them apart.
     expect(
-      writeInDemand(null, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
-        .known
+      writeInDemand(
+        null,
+        [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })],
+        false
+      ).known
     ).toBe(false)
   })
 
@@ -512,10 +542,14 @@ describe('writeInDemand', () => {
     // CASE 3, and the case the ruling exists for: a container of 10, one
     // cover sized at 2, one unsized cover on a measured room of 3. 5 is a
     // floor, and it is the number the stats bar already publishes.
-    const demand = writeInDemand(10, [
-      demandCover({ relation: 'descendant', party_size: 2, unit_sleeps: 3 }),
-      demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 3 }),
-    ])
+    const demand = writeInDemand(
+      10,
+      [
+        demandCover({ relation: 'descendant', party_size: 2, unit_sleeps: 3 }),
+        demandCover({ relation: 'descendant', party_size: null, unit_sleeps: 3 }),
+      ],
+      false
+    )
     expect(demand).toEqual({ consumed: 5, sized: 2, known: false, usable: true })
   })
 
@@ -523,9 +557,11 @@ describe('writeInDemand', () => {
     // CASE 2. `consumed === capacity`, so the remainder is 0 — exactly what
     // `free_family_spots` publishes for the same card.
     expect(
-      writeInDemand(8, [
-        demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null }),
-      ]).usable
+      writeInDemand(
+        8,
+        [demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null })],
+        false
+      ).usable
     ).toBe(true)
   })
 
@@ -534,9 +570,9 @@ describe('writeInDemand', () => {
     // nothing — there was no capacity to subtract it from. Reading `usable`
     // as "not known" would offer an unmeasured, written-into cabin as wholly
     // free.
-    expect(writeInDemand(null, [demandCover({ relation: 'own', party_size: 2 })]).usable).toBe(
-      false
-    )
+    expect(
+      writeInDemand(null, [demandCover({ relation: 'own', party_size: 2 })], false).usable
+    ).toBe(false)
     // The UNSIZED cover on a measured leaf, at an unmeasured card. Python's
     // `test_an_unmeasured_card_is_the_one_thing_that_is_not_usable` asserts all
     // three and this side asserted two (kindred#2604 review). It is the middle
@@ -544,12 +580,18 @@ describe('writeInDemand', () => {
     // publishes a floor from, and it must still withhold when the CARD itself
     // is unmeasured, because there is no capacity to subtract the 3 from.
     expect(
-      writeInDemand(null, [demandCover({ relation: 'own', party_size: null, unit_sleeps: 3 })])
-        .usable
+      writeInDemand(
+        null,
+        [demandCover({ relation: 'own', party_size: null, unit_sleeps: 3 })],
+        false
+      ).usable
     ).toBe(false)
     expect(
-      writeInDemand(null, [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })])
-        .usable
+      writeInDemand(
+        null,
+        [demandCover({ relation: 'ancestor', party_size: 2, unit_sleeps: 7 })],
+        false
+      ).usable
     ).toBe(false)
   })
 
@@ -585,8 +627,8 @@ describe('writeInDemand', () => {
     ]
     for (const covers of shapes) {
       const shape = JSON.stringify(covers.map((c) => [c.relation, c.party_size, c.unit_sleeps]))
-      expect(writeInDemand(9, covers).usable, shape).toBe(true)
-      expect(writeInDemand(null, covers).usable, shape).toBe(false)
+      expect(writeInDemand(9, covers, false).usable, shape).toBe(true)
+      expect(writeInDemand(null, covers, false).usable, shape).toBe(false)
     }
   })
 
@@ -597,7 +639,82 @@ describe('writeInDemand', () => {
     // uncovered room reads as a known zero. `LodgingUnitCard` folded
     // `capacityKnown` back in by hand for exactly this; the rule answers it
     // itself now.
-    expect(writeInDemand(null, [])).toEqual({ consumed: 0, sized: 0, known: true, usable: false })
-    expect(writeInDemand(15, []).usable).toBe(true)
+    expect(writeInDemand(null, [], false)).toEqual({
+      consumed: 0,
+      sized: 0,
+      known: true,
+      usable: false,
+    })
+    expect(writeInDemand(15, [], false).usable).toBe(true)
+  })
+})
+
+describe('writeInDemand on an adult weekend (kindred#2765, owner ruling 2026-09-23)', () => {
+  // THE MIRROR of `TestAdultWeekendWriteIns` in
+  // tests/unit/api/services/test_lodging_rules.py — same cases, same order.
+  // On an adult weekend an unsized write-in is ONE guest and a sized one is
+  // its `party_size`; nothing is a wholesale claim on the unit it names.
+  const demandCover = (over: Partial<WriteInCoverRow>): WriteInCoverRow => ({
+    unit_id: 'u',
+    unit_code: 'c',
+    unit_name: 'n',
+    occupant_name: '',
+    note: '',
+    party_size: null,
+    relation: 'own',
+    unit_sleeps: null,
+    ...over,
+  })
+
+  it('counts an unsized write-in as one guest, not the whole cabin', () => {
+    expect(
+      writeInDemand(15, [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })], true)
+    ).toEqual({ consumed: 1, sized: 1, known: false, usable: true })
+  })
+
+  it('counts a sized write-in as its party size', () => {
+    expect(
+      writeInDemand(15, [demandCover({ relation: 'own', party_size: 3, unit_sleeps: 15 })], true)
+    ).toEqual({ consumed: 3, sized: 3, known: true, usable: true })
+  })
+
+  it('counts an unsized write-in on an unmeasured room as one guest', () => {
+    const demand = writeInDemand(
+      8,
+      [demandCover({ relation: 'descendant', party_size: null, unit_sleeps: null })],
+      true
+    )
+    expect([demand.consumed, demand.sized]).toEqual([1, 1])
+  })
+
+  it('charges an ancestor write-in its guests without printing them on the room', () => {
+    const demand = writeInDemand(
+      4,
+      [demandCover({ relation: 'ancestor', party_size: null, unit_sleeps: 7 })],
+      true
+    )
+    expect([demand.consumed, demand.sized]).toEqual([1, 0])
+  })
+
+  it('leaves the family rule unchanged', () => {
+    expect(
+      writeInDemand(
+        15,
+        [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })],
+        false
+      ).consumed
+    ).toBe(15)
+  })
+
+  it('reads one unsized write-in plus seven guests on a shared cabin as 0 free, not over', () => {
+    // The body's named test. The ceiling is the 8-guest claim, not the beds.
+    const { consumed, sized } = writeInDemand(
+      8,
+      [demandCover({ relation: 'own', party_size: null, unit_sleeps: 15 })],
+      true
+    )
+    const guests = 7
+    expect(8 - guests - consumed).toBe(0)
+    expect(guests + sized > 8).toBe(false)
   })
 })

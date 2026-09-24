@@ -468,11 +468,23 @@ export function coveringWriteIns(unit: LodgingUnitRow): WriteInCoverRow[] {
  * is not separately lettable — the alternative, each room subtracting the
  * ancestor's size, spends one party once per room and would report a
  * seven-bed house holding four people as having five beds free.
+ *
+ * ⚠️ ON AN ADULT WEEKEND NONE OF THE WHOLESALE RULES ABOVE APPLY (kindred#2765,
+ * owner ruling 2026-09-23). `isAdult` is REQUIRED, as `is_adult` is on the
+ * Python side, so no caller gets a rule by omission. Registration is
+ * individual, so an unsized write-in is ONE guest and a sized one is its
+ * `party_size`, on every relation and whatever the named unit sleeps. An
+ * ancestor cover pays into `consumed` (a floor on what is free) and stays out
+ * of `sized` (printing it on every room would show one guest once per room).
+ * Staff type notes into unsized write-ins today and each overcounts by one;
+ * the owner accepted that.
  */
 export function writeInDemand(
   capacity: number | null,
-  covers: WriteInCoverRow[]
+  covers: WriteInCoverRow[],
+  isAdult: boolean
 ): { consumed: number; sized: number; known: boolean; usable: boolean } {
+  if (isAdult) return adultWriteInDemand(capacity, covers)
   // `usable` is NOT vacuously true the way `known` is: with no covers there is
   // no unsized party to spoil `known`, but this branch runs BEFORE the
   // capacity guard, so an unmeasured card reaches it — and an unmeasured,
@@ -524,6 +536,35 @@ export function writeInDemand(
     consumed += sourceCapacity
   }
   return { consumed: Math.min(consumed, capacity), sized, known, usable: true }
+}
+
+/** One write-in's guests on an adult weekend: its recorded size, or one. */
+function guests(cover: WriteInCoverRow): number {
+  return cover.party_size ?? 1
+}
+
+/**
+ * `writeInDemand`'s adult-weekend branch — THE MIRROR of
+ * `_adult_write_in_demand` in `api/services/lodging_rules.py`.
+ */
+function adultWriteInDemand(
+  capacity: number | null,
+  covers: WriteInCoverRow[]
+): { consumed: number; sized: number; known: boolean; usable: boolean } {
+  const sized = covers.reduce(
+    (total, c) => ((c.relation ?? 'own') === 'ancestor' ? total : total + guests(c)),
+    0
+  )
+  const known = covers.every((c) => c.party_size != null)
+  if (capacity === null) {
+    // Nothing to subtract from, exactly as on a family weekend.
+    return { consumed: 0, sized, known: known && covers.length === 0, usable: false }
+  }
+  const consumed = Math.min(
+    covers.reduce((total, c) => total + guests(c), 0),
+    capacity
+  )
+  return { consumed, sized, known, usable: true }
 }
 
 /**

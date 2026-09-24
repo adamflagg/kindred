@@ -91,6 +91,14 @@ export interface LodgingBoardProps {
   sessionCmId?: number
   /** `bunking.manage` — what every lodging write rule gates on. */
   canManage?: boolean
+  /**
+   * The weekend's `session_type` (kindred#2765), handed down from
+   * `WeekendRosterPage` under the name `HouseholdRosterTable` uses. An adult
+   * weekend judges a shared cabin against 8 guests and makes no capacity claim
+   * about anything else. Optional, defaulting to a family weekend, for the
+   * reason `sessionCmId` is.
+   */
+  sessionType?: string
 }
 
 /**
@@ -167,6 +175,7 @@ export function LodgingBoard({
   scenario = '',
   sessionCmId = 0,
   canManage = false,
+  sessionType = '',
 }: LodgingBoardProps) {
   // ── The swap happens AT the gesture, not at the refetch (owner ruling,
   // kindred#2537: no perceptible delay between the click and the morph).
@@ -733,6 +742,7 @@ export function LodgingBoard({
                           <LodgingUnitCard
                             key={slot.unit.unit_id}
                             slot={slot}
+                            sessionType={sessionType}
                             // The registry, so the card's per-party sharing
                             // chip expands a container code to its rooms —
                             // the same `overlappingPartyKeys` the slot flag

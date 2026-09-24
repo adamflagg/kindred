@@ -1021,3 +1021,35 @@ describe('LodgingBoard — the actual medical fetch (kindred#2139)', () => {
     expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
   })
 })
+
+describe('LodgingBoard — the weekend type reaches every card (kindred#2765)', () => {
+  // `WeekendRosterPage` hands `sessionType` down; the board must pass it to
+  // each card, or an adult weekend's shared cabin is judged on beds.
+  const guests = Array.from({ length: 9 }, (_, i) =>
+    party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 600 + i,
+      display_name: `Guest ${String(i)}`,
+      adults: [],
+      children: [],
+      party_size: 1,
+      unit_code: 'ridge-d',
+      unit_name: 'Ridge D',
+    })
+  )
+  const shared = unit({ code: 'ridge-d', name: 'Ridge D', shareability: 'shareable', sleeps: 15 })
+
+  it('judges a shared cabin against 8 guests on an adult weekend', () => {
+    render(<LodgingBoard parties={guests} units={[shared]} year={2026} sessionType="adult" />, {
+      wrapper,
+    })
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('9/8')
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+
+  it('judges the same cabin on beds on a family weekend', () => {
+    render(<LodgingBoard parties={guests} units={[shared]} year={2026} />, { wrapper })
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('9/15')
+  })
+})

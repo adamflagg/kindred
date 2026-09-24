@@ -1852,3 +1852,88 @@ describe('MapUnitPopover write-in party size in the peek figure (kindred#2503)',
     expect(screen.getByText('5 of 3')).toHaveClass('text-amber-700')
   })
 })
+
+describe('MapUnitPopover on an adult weekend (kindred#2765)', () => {
+  /*
+   * The map follows the board's adult rule, so the two agree about the same
+   * unit: a shared cabin is judged against 8 guests (its `Beds` line becomes
+   * `Guests N of 8`, amber past 8), every other unit makes no claim.
+   */
+  function guest(personCmId: number): RosterPartyRow {
+    return {
+      ...party(`Guest ${String(personCmId)}`),
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: personCmId,
+      party_size: 1,
+    }
+  }
+  const guests = (n: number) => Array.from({ length: n }, (_, i) => guest(700 + i))
+  const sharedCabin = row({ shareability: 'shareable', sleeps: 15 })
+
+  it('marks a 9th guest in a shared cabin, even with beds left', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(sharedCabin, guests(9))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    expect(screen.getByText('9 of 8')).toHaveClass('text-amber-700')
+  })
+
+  it('does not mark a shared cabin holding 8', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(sharedCabin, guests(8))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    expect(screen.getByText('8 of 8')).not.toHaveClass('text-amber-700')
+  })
+
+  it('counts an unsized write-in as one guest', () => {
+    const written = row({
+      shareability: 'shareable',
+      sleeps: 15,
+      write_ins: [cover({ party_size: null, unit_sleeps: 15 })],
+    })
+    render(
+      <MapUnitPopover
+        units={[mapUnit(written, guests(7))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    expect(screen.getByText('8 of 8')).not.toHaveClass('text-amber-700')
+  })
+
+  it('makes no claim about a single-party unit holding more guests than beds', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 4 }), guests(5))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    const figure = screen.getByText('5 guests · 4 beds')
+    expect(figure).not.toHaveClass('text-amber-700')
+  })
+
+  it('leaves a family weekend unchanged', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 4 }), guests(5))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="family"
+      />
+    )
+    expect(screen.getByText('5 of 4')).toHaveClass('text-amber-700')
+  })
+})

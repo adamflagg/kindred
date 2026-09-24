@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { hasNoRoom, resolveDragFit, worseOf } from './needsFit'
+import { hasNoRoom, resolveDragFit, unitDragCapacity, worseOf } from './needsFit'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -434,5 +434,78 @@ describe('hasNoRoom — the capacity predicate, single-sourced', () => {
         }
       }
     }
+  })
+})
+
+describe('unitDragCapacity — the card’s drag-time capacity, adult or family (kindred#2765)', () => {
+  /*
+   * The one place a card's drag-time `DragCapacity` is built, so the adult
+   * rule reaches BOTH marks — `resolveDragFit`'s match and `hasNoRoom`'s red —
+   * through one input. Family weekends are judged on beds, exactly as the card
+   * used to build it inline.
+   */
+  const guest = party({ grain: 'person', household_cm_id: 0, person_cm_id: 7, party_size: 1 })
+  const sharedCabin = unit({ shareability: 'shareable', is_container: false, sleeps: 15 })
+  const singleParty = unit({ shareability: 'single_party', is_container: false, sleeps: 4 })
+  const combinedHouse = unit({ shareability: 'shareable', is_container: true, is_combined: true })
+  const rest = { occupants: 8, spanWidth: 0 }
+
+  it('reddens a 9th guest on an adult shared cabin, even with beds left', () => {
+    const capacity = unitDragCapacity(sharedCabin, 15, rest, 0, true)
+    expect(capacity).toEqual({ known: true, free: 0 })
+    expect(hasNoRoom(guest, capacity)).toBe(true)
+  })
+
+  it('lets the 8th guest in', () => {
+    const capacity = unitDragCapacity(sharedCabin, 15, { occupants: 7, spanWidth: 0 }, 0, true)
+    expect(hasNoRoom(guest, capacity)).toBe(false)
+  })
+
+  it('makes no claim about a single-party unit on an adult weekend, however full', () => {
+    const capacity = unitDragCapacity(singleParty, 4, { occupants: 5, spanWidth: 0 }, 0, true)
+    expect(capacity.known).toBe(false)
+    expect(hasNoRoom(guest, capacity)).toBe(false)
+  })
+
+  it('makes no claim about an unclassified unit or a combined house on an adult weekend', () => {
+    const unknown = unit({ shareability: 'unknown', sleeps: 15 })
+    expect(unitDragCapacity(unknown, 15, rest, 0, true).known).toBe(false)
+    expect(unitDragCapacity(combinedHouse, 8, { occupants: 12, spanWidth: 0 }, 0, true).known).toBe(
+      false
+    )
+  })
+
+  it('counts an unsized write-in as one guest on an adult weekend', () => {
+    const written = unit({
+      shareability: 'shareable',
+      sleeps: 15,
+      write_ins: [
+        {
+          unit_id: 'u1',
+          unit_code: 'ridge-1',
+          unit_name: 'Ridge 1',
+          occupant_name: 'Ava Martinez',
+          note: '',
+          party_size: null,
+          relation: 'own',
+          unit_sleeps: 15,
+        },
+      ],
+    })
+    const capacity = unitDragCapacity(written, 15, { occupants: 7, spanWidth: 0 }, 0, true)
+    expect(capacity).toEqual({ known: true, free: 0 })
+  })
+
+  it('judges a family weekend on beds, unchanged', () => {
+    expect(unitDragCapacity(sharedCabin, 15, rest, 0, false)).toEqual({ known: true, free: 7 })
+    expect(unitDragCapacity(singleParty, 4, { occupants: 5, spanWidth: 0 }, 0, false)).toEqual({
+      known: true,
+      free: -1,
+    })
+    expect(unitDragCapacity(singleParty, null, rest, 0, false).known).toBe(false)
+  })
+
+  it('adds back the beds the dragged party already holds here', () => {
+    expect(unitDragCapacity(sharedCabin, 15, rest, 1, true)).toEqual({ known: true, free: 1 })
   })
 })

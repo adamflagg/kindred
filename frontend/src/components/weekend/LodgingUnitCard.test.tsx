@@ -14,6 +14,7 @@ import type { LodgingUnitRow, RosterPartyRow, WriteInCoverRow } from '../../type
 import type { BoardSlot } from './boardLayout'
 import { mergeDragId, unitDroppableId } from './dragPlacement'
 import { LodgingUnitCard } from './LodgingUnitCard'
+import { MapUnitPopover } from './MapUnitPopover'
 
 /**
  * The amenity-cap hover cue is GSAP-driven and jsdom "cannot run GSAP
@@ -3969,5 +3970,339 @@ describe('LodgingUnitCard — the shell/body split actually bails (perf)', () =>
     const before = bodyRenders.count
     view.rerender(<LodgingUnitCard slot={theSlot} onOpenParty={vi.fn()} />)
     expect(bodyRenders.count).toBeGreaterThan(before)
+  })
+})
+
+describe('LodgingUnitCard on an adult weekend (kindred#2765)', () => {
+  /*
+   * Owner ruling 2026-09-23. On an adult weekend a shared (`shareable`,
+   * non-container) cabin holds 8 guests and a 9th reads as over in the same
+   * red `hasNoRoom` uses; every other unit makes NO capacity claim and shows
+   * neutral guests and beds. An unsized write-in is one guest.
+   * Warning only — nothing here touches the droppable.
+   *
+   * Owner visual review 2026-09-23: the words wrapped to two lines on the
+   * card, so the no-claim figure is ICONS on one line — `Users` N · `BedDouble`
+   * N — and the words move to the tooltip.
+   */
+  function expectGuestsAndBedsIcons(guestCount: number, beds: number, words: string) {
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure.querySelector('.lucide-users')).not.toBeNull()
+    expect(figure.querySelector('.lucide-bed-double')).not.toBeNull()
+    // Spacing around the dot is the flex gap, not text.
+    expect(figure).toHaveTextContent(new RegExp(`^${String(guestCount)}\\s*·\\s*${String(beds)}$`))
+    expect(figure).not.toHaveTextContent(/guest|bed/)
+    // One line: the icon row may not wrap.
+    expect(figure.querySelector('.whitespace-nowrap')).not.toBeNull()
+    expect(figure).not.toHaveClass('text-destructive')
+    fireEvent.focus(figure)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(words)
+  }
+  function guest(personCmId: number, unitCode = 'cedar-1'): RosterPartyRow {
+    return party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: personCmId,
+      display_name: `Guest ${String(personCmId)}`,
+      adults: [],
+      children: [],
+      party_size: 1,
+      unit_code: unitCode,
+    })
+  }
+  const guests = (n: number) => Array.from({ length: n }, (_, i) => guest(500 + i))
+  const sharedCabin = (over: Partial<LodgingUnitRow> = {}) =>
+    unit({ shareability: 'shareable', sleeps: 15, ...over })
+
+  it('reads a shared cabin holding 8 guests as full, not over', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: sharedCabin(), parties: guests(8) })}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure).toHaveTextContent('8/8')
+    expect(figure).not.toHaveClass('text-destructive')
+  })
+
+  it('reads a 9th guest as over capacity, even with beds left', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: sharedCabin(), parties: guests(9) })}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure).toHaveTextContent('9/8')
+    expect(figure).toHaveClass('text-destructive')
+  })
+
+  it('reads one unsized write-in plus 7 guests as full, not over', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: sharedCabin({ write_ins: [cover({ party_size: null, unit_sleeps: 15 })] }),
+          parties: guests(7),
+        })}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure).toHaveTextContent('8/8')
+    expect(figure).not.toHaveClass('text-destructive')
+  })
+
+  it('reddens the figure when a guest is dragged onto a full shared cabin', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: sharedCabin(), parties: guests(8) })}
+        sessionType="adult"
+        draggingParty={guest(900, '')}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-destructive')
+  })
+
+  it('shows neutral guests and beds on a single-party unit holding more guests than beds', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'single_party', sleeps: 4 }), parties: guests(5) })}
+        sessionType="adult"
+        draggingParty={guest(900, '')}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expectGuestsAndBedsIcons(5, 4, '5 guests · 4 beds')
+    expect(screen.queryByText(/0 free/)).not.toBeInTheDocument()
+  })
+
+  it('makes no claim about an unclassified unit', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'unknown', sleeps: 2 }), parties: guests(3) })}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expectGuestsAndBedsIcons(3, 2, '3 guests · 2 beds')
+  })
+
+  it('reads a combined shareable house as a no-claim unit', () => {
+    const house = unit({
+      unit_id: 'h1',
+      code: 'oak-house',
+      name: 'Oak House',
+      shareability: 'shareable',
+      is_container: true,
+      is_combined: true,
+      sleeps: null,
+    })
+    const rooms = [
+      unit({ unit_id: 'r1', code: 'oak-1', name: 'Oak 1', parent_code: 'oak-house', sleeps: 3 }),
+      unit({ unit_id: 'r2', code: 'oak-2', name: 'Oak 2', parent_code: 'oak-house', sleeps: 3 }),
+    ]
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: house,
+          parties: guests(12).map((g) => ({ ...g, unit_code: 'oak-house' })),
+        })}
+        units={[house, ...rooms]}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expectGuestsAndBedsIcons(12, 6, '12 guests · 6 beds')
+  })
+
+  it('leaves a family weekend unchanged: the same full cabin is judged on beds', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: sharedCabin(), parties: guests(9) })}
+        sessionType="family"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure).toHaveTextContent('9/15')
+    expect(figure).not.toHaveClass('text-destructive')
+  })
+
+  it('keeps the family card on its N/M figure, with no guest or bed icons', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'single_party', sleeps: 4 }), parties: guests(5) })}
+        sessionType="family"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure).toHaveTextContent('5/4')
+    expect(figure.querySelector('.lucide-users')).toBeNull()
+    expect(figure.querySelector('.lucide-bed-double')).toBeNull()
+  })
+
+  it('keeps a shared cabin on its N/8 figure, with no icons', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: sharedCabin(), parties: guests(5) })}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const figure = screen.getByTestId('unit-occupancy')
+    expect(figure).toHaveTextContent('5/8')
+    expect(figure.querySelector('.lucide-users')).toBeNull()
+  })
+
+  describe('a split-house room covered only by the house write-in (scan D8)', () => {
+    // The house's own row reaches each of its rooms as an `ancestor` cover.
+    // On a family weekend that is the wholesale state — the house is let whole,
+    // so the room reads `—` and "occupies the whole room". On an adult weekend
+    // the house write-in is one guest, somewhere in the house, not a claim on
+    // every room: the room says where the write-in is instead.
+    const houseCover = () =>
+      cover({
+        unit_id: 'h1',
+        unit_code: 'oak-house',
+        unit_name: 'Oak House',
+        relation: 'ancestor',
+        party_size: null,
+        unit_sleeps: 6,
+      })
+
+    it('names the house on a shared room, never the wholesale state', () => {
+      render(
+        <LodgingUnitCard
+          slot={slot({ unit: sharedCabin({ write_ins: [houseCover()] }) })}
+          sessionType="adult"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const figure = screen.getByTestId('unit-occupancy')
+      expect(figure).toHaveTextContent('0/8')
+      expect(figure).not.toHaveTextContent('—')
+      fireEvent.focus(figure)
+      const tip = screen.getByRole('tooltip')
+      expect(tip).toHaveTextContent('Written in on Oak House')
+      expect(tip).not.toHaveTextContent(/occupies the whole room/)
+    })
+
+    it('names the house on a no-claim room too', () => {
+      render(
+        <LodgingUnitCard
+          slot={slot({
+            unit: unit({ shareability: 'single_party', sleeps: 3, write_ins: [houseCover()] }),
+          })}
+          sessionType="adult"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const figure = screen.getByTestId('unit-occupancy')
+      expect(figure).not.toHaveTextContent('—')
+      fireEvent.focus(figure)
+      const tip = screen.getByRole('tooltip')
+      expect(tip).toHaveTextContent('Written in on Oak House')
+      expect(tip).not.toHaveTextContent(/occupies the whole room/)
+    })
+
+    it('leaves the family weekend on the wholesale state', () => {
+      render(
+        <LodgingUnitCard
+          slot={slot({ unit: unit({ write_ins: [houseCover()] }) })}
+          sessionType="family"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const figure = screen.getByTestId('unit-occupancy')
+      expect(figure).toHaveTextContent('—/5')
+      fireEvent.focus(figure)
+      expect(screen.getByRole('tooltip')).toHaveTextContent(
+        'Written in — occupies the whole room · sleeps 5'
+      )
+    })
+  })
+
+  it('states the adult rule in the Assign modal header', async () => {
+    const user = userEvent.setup()
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: sharedCabin(), parties: guests(6) })}
+        canPlace={true}
+        unplacedParties={[guest(900, '')]}
+        sessionType="adult"
+        onPlaceParty={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /assign to cedar 1/i }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('2 of 8 guest places free')
+  })
+})
+
+describe('the map popover and the card agree on an adult weekend (kindred#2765)', () => {
+  // One unit, one set of guests, both surfaces: over on both or on neither.
+  const guests = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      party({
+        grain: 'person',
+        household_cm_id: 0,
+        person_cm_id: 800 + i,
+        display_name: `Guest ${String(i)}`,
+        adults: [],
+        children: [],
+        party_size: 1,
+      })
+    )
+  const cases: [string, Partial<LodgingUnitRow>, number, boolean][] = [
+    ['shared cabin, 9 guests', { shareability: 'shareable', sleeps: 15 }, 9, true],
+    ['shared cabin, 8 guests', { shareability: 'shareable', sleeps: 15 }, 8, false],
+    [
+      'single-party unit, 5 guests in 4 beds',
+      { shareability: 'single_party', sleeps: 4 },
+      5,
+      false,
+    ],
+  ]
+  it.each(cases)('%s', (_label, over, count, isOver) => {
+    const theUnit = unit(over)
+    const theGuests = guests(count)
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: theUnit, parties: theGuests })}
+        sessionType="adult"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const cardOver = screen.getByTestId('unit-occupancy').classList.contains('text-destructive')
+    cleanup()
+    render(
+      <MapUnitPopover
+        units={[
+          {
+            unit: theUnit,
+            parties: theGuests,
+            consent: null,
+            hue: 'hsl(160 45% 42%)',
+            buildingCode: theUnit.code,
+            roomCount: 1,
+            capacity: theUnit.sleeps ?? null,
+            spanWidth: 0,
+            x: 0.4,
+            y: 0.5,
+          },
+        ]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    const mapOver = document.querySelector('.text-amber-700') !== null
+    expect([cardOver, mapOver]).toEqual([isOver, isOver])
   })
 })

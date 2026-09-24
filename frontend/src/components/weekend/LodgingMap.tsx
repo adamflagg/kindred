@@ -176,9 +176,23 @@ export interface LodgingMapProps {
    * weekend's map and never exercise a session change.
    */
   sessionCmId?: number
+  /**
+   * The weekend's `session_type` (kindred#2765), handed down from
+   * `WeekendRosterPage` under the name `HouseholdRosterTable` uses. An adult
+   * weekend judges a shared cabin against 8 guests and makes no capacity claim
+   * about anything else. Optional, defaulting to a family weekend, for the
+   * reason `sessionCmId` is.
+   */
+  sessionType?: string
 }
 
-export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMapProps) {
+export function LodgingMap({
+  parties,
+  units,
+  year,
+  sessionCmId = 0,
+  sessionType = '',
+}: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
   // sorting, hue assignment, the lot — on every frame of a drag.
@@ -1145,6 +1159,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   hue={openCluster.members[0]?.item.hue ?? ''}
                   onOpenParty={openParty}
                   wholeBuildingKeys={wholeBuildingKeys}
+                  sessionType={sessionType}
                 />
               </div>
             )}

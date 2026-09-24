@@ -1,8 +1,11 @@
 /**
- * At 21 and over, CampMinder's yy.mm age drops its months: "37.11" reads "37"
- * (owner ruling 2026-09-22, cutoff raised from 18 to 21: teens 18-20 are
- * still campers in summer and teen programs, so the owner wants 21 "to be
- * safe"). Still CampMinder's own value — never derived from birthdate
+ * At 21 and over, the DISPLAY drops the months: "37.11" reads "37" (owner
+ * ruling 2026-09-22, cutoff raised from 18 to 21: teens 18-20 are still
+ * campers in summer and teen programs, so the owner wants 21 "to be safe").
+ * CampMinder itself keeps them — most 21+ ages carry a fraction — so this is
+ * a display choice, not a property of the data. Comparing the raw yy.mm with
+ * `age >= ADULT_AGE` is safe because the months never exceed `.11`: 20.11
+ * stays below 21. Still CampMinder's own value — never derived from birthdate
  * (#2088). Applied here so every surface inherits it.
  *
  * Exported so `useCamperJourney`'s `viewerIsAdult` reads the SAME constant —

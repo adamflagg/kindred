@@ -1977,3 +1977,30 @@ describe('LodgingMap — pin dragging recovers a stuck gesture (kindred#2396)', 
     }
   })
 })
+
+describe('LodgingMap — the weekend type reaches the popover (kindred#2765)', () => {
+  const guests = Array.from({ length: 9 }, (_, i) =>
+    party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 600 + i,
+      display_name: `Guest ${String(i)}`,
+      party_size: 1,
+      unit_code: 'ridge-d',
+      unit_name: 'Ridge D',
+    })
+  )
+  const shared = unit({ code: 'ridge-d', name: 'Ridge D', shareability: 'shareable', sleeps: 15 })
+
+  it('judges a shared cabin against 8 guests on an adult weekend', async () => {
+    render(<LodgingMap parties={guests} units={[shared]} year={2026} sessionType="adult" />)
+    await userEvent.click(screen.getByTestId('map-mark'))
+    expect(screen.getByText('9 of 8')).toHaveClass('text-amber-700')
+  })
+
+  it('judges the same cabin on beds on a family weekend', async () => {
+    render(<LodgingMap parties={guests} units={[shared]} year={2026} />)
+    await userEvent.click(screen.getByTestId('map-mark'))
+    expect(screen.getByText('9 of 15')).not.toHaveClass('text-amber-700')
+  })
+})
