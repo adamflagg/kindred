@@ -122,6 +122,7 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_prior_adult_person_cm_ids(2026), id="fetch_prior_adult_ids"),
             pytest.param(lambda r: r.fetch_adult_weekend_attendees(2025), id="fetch_adult_attendees_year"),
             pytest.param(lambda r: r.fetch_adult_cabin_values(2025), id="fetch_adult_cabin_values_year"),
+            pytest.param(lambda r: r.fetch_adult_need_values(2026), id="fetch_adult_need_values_year"),
         ],
     )
     async def test_paginated_read_pins_a_sort_key(self, repo: LodgingRepository, pb: MagicMock, call: Any) -> None:
@@ -1206,6 +1207,56 @@ class TestFetchAdultCabinValues:
         assert params["expand"] == "person,field_definition"
 
 
+class TestFetchAdultNeedValues:
+    """kindred#2766's cohort read of an adult guest's own housing-need
+    answers, through the same allowlisted helper as the cabin read."""
+
+    # Fictional ids standing in for two of the sensitive fields this cohort
+    # answers best: Race, and a salary-bearing `20XX History` staff record.
+    RACE_FIELD_CM_ID = 9100001
+    STAFF_HISTORY_FIELD_CM_ID = 9100002
+
+    @pytest.mark.asyncio
+    async def test_reads_only_the_four_allowlisted_need_fields_for_one_year(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_adult_need_values(2026)
+
+        pb.collection.assert_called_with("person_custom_values")
+        params = _last_query(pb)
+        assert "year = 2026" in params["filter"]
+        # ⛔ Exactly the allowlist, nothing else: this table holds Race,
+        # financial aid and salary-bearing staff history.
+        assert re.findall(r"field_definition\.cm_id = (\d+)", params["filter"]) == [
+            "256933",
+            "256935",
+            "274053",
+            "274055",
+        ]
+        assert str(self.RACE_FIELD_CM_ID) not in params["filter"]
+        assert str(self.STAFF_HISTORY_FIELD_CM_ID) not in params["filter"]
+        # No free-text field, and no Adult-Infant (257248).
+        assert "257248" not in params["filter"]
+        assert params["expand"] == "person,field_definition"
+
+    @pytest.mark.asyncio
+    async def test_the_cabin_read_is_unchanged_by_the_shared_helper(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Both reads go through one allowlisted cohort helper; neither may
+        pick up the other's fields."""
+        await repo.fetch_adult_cabin_values(2025)
+
+        params = _last_query(pb)
+        assert re.findall(r"field_definition\.cm_id = (\d+)", params["filter"]) == ["212997", "223823"]
+
+    @pytest.mark.asyncio
+    async def test_an_empty_allowlist_is_refused_rather_than_read(self, repo: LodgingRepository) -> None:
+        """An empty OR group would not narrow the read at all."""
+        with pytest.raises(ValueError, match="allowlist"):
+            await repo._fetch_cohort_person_values(2026, ())
+
+
 class TestLiveHousingReads:
     """kindred#2775: the per-weekend CampMinder-layer rows (live
     `lodging_assignments`, written by the Go ingest alone) are the housing
@@ -1877,6 +1928,8 @@ CACHED_YEAR_SCOPED_READS = [
     "fetch_prior_adult_person_cm_ids",
     "fetch_adult_weekend_attendees",
     "fetch_adult_cabin_values",
+    # kindred#2766: person_custom_values, sync-written only.
+    "fetch_adult_need_values",
     # kindred#2775: both sync-written only (the Go ingest is the sole writer
     # of live `lodging_assignments`; no API or browser path reaches it).
     "fetch_live_assignments",

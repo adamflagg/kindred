@@ -248,6 +248,10 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_prior_adult_person_cm_ids": set(),
         "fetch_adult_weekend_attendees": [],
         "fetch_adult_cabin_values": [],
+        # kindred#2766: an adult guest's own housing-need answers, the four
+        # allowlisted fields. Empty by default -- no answers must read as no
+        # needs, which is the honest shape for a guest who skipped them.
+        "fetch_adult_need_values": [],
         # The per-person journey reads. The roster must NEVER call these --
         # see TestAdultGuestCardLine2 -- and a bare MagicMock would make that
         # assertion vacuous.
@@ -1480,6 +1484,198 @@ class TestAdultGuestCardLine2:
         repo.fetch_adult_cabin_values.assert_not_called()
         repo.fetch_adult_weekend_attendees.assert_not_called()
         repo.fetch_family_enrolled_household_cm_ids.assert_not_called()
+
+
+def _need_value(person_cm_id: int, field_cm_id: int, value: str, year: int = 2026) -> Any:
+    """One allowlisted adult need answer from the board-year cohort read."""
+    return _rec(
+        year=year,
+        value=value,
+        expand={"person": _rec(cm_id=person_cm_id), "field_definition": _rec(cm_id=field_cm_id)},
+    )
+
+
+ADULT_BATHROOM = 274053
+ADULT_CPAP = 256933
+HOUSING_ACCOMODATION = 274055
+ADULT_OPT_OUT = 256935
+ADULT_INFANT = 257248
+OPT_OUT_MANDATORY = "No, I am only able to attend with this accommodation in place"
+OPT_OUT_FLEXIBLE = "Yes, please register regardless of cabin type"
+
+
+class TestAdultGuestNeedFlags:
+    """kindred#2766: an adult-weekend guest's need glyphs come from the
+    guest's OWN answers, at person grain -- never from a household's
+    `family_camp_registrations` row."""
+
+    @pytest.mark.asyncio
+    async def test_each_answer_lights_its_flag_on_the_guest(self) -> None:
+        guests = [
+            _guest(cm_id=1000004),
+            _guest(cm_id=1000005, last="Garcia"),
+            _guest(cm_id=1000006, last="Kim"),
+            _guest(cm_id=1000007, last="Patel"),
+        ]
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=guests,
+            fetch_adult_need_values=[
+                _need_value(1000004, ADULT_BATHROOM, "Yes"),
+                _need_value(1000004, ADULT_CPAP, "No"),
+                _need_value(1000005, ADULT_CPAP, "Yes"),
+                _need_value(1000006, HOUSING_ACCOMODATION, "Yes"),
+                _need_value(1000006, ADULT_OPT_OUT, OPT_OUT_MANDATORY),
+                _need_value(1000007, HOUSING_ACCOMODATION, "Yes"),
+                _need_value(1000007, ADULT_OPT_OUT, OPT_OUT_FLEXIBLE),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        flags = {p.person_cm_id: p.flags for p in roster.parties}
+        assert flags[1000004].needs_private_bathroom is True
+        assert flags[1000004].needs_power is False
+        assert flags[1000005].needs_power is True
+        assert flags[1000006].needs_accommodation is True
+        # The "No, I am only able to attend..." answer is the BLOCKER.
+        assert flags[1000006].accommodation_is_mandatory is True
+        # "Yes, please register regardless..." is the flexible pole.
+        assert flags[1000007].needs_accommodation is True
+        assert flags[1000007].accommodation_is_mandatory is False
+
+    @pytest.mark.asyncio
+    async def test_the_board_year_is_read_once_for_the_whole_cohort(self) -> None:
+        guests = [_guest(cm_id=1000004), _guest(cm_id=1000005, last="Garcia")]
+        repo = _repo(fetch_session=ADULT_SESSION, fetch_attendees_for_session=guests)
+
+        await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        repo.fetch_adult_need_values.assert_awaited_once_with(2026)
+
+    @pytest.mark.asyncio
+    async def test_a_guest_with_no_answers_has_no_needs(self) -> None:
+        repo = _repo(fetch_session=ADULT_SESSION, fetch_attendees_for_session=[_guest()])
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert not any(roster.parties[0].flags.model_dump().values())
+
+    @pytest.mark.asyncio
+    async def test_a_household_registration_does_not_light_a_guest(self) -> None:
+        """Only about a third of adult-cohort households have a registration
+        row, 27% of a measured sample were false positives, and two guests of
+        one household would share one flag. The guest's household `hh_9`
+        carries every need here; the guest answered none of them."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_family_camp_registrations={
+                "hh_9": _rec(
+                    needs_private_bathroom=True,
+                    needs_power=True,
+                    needs_accommodation=True,
+                    accommodation_is_mandatory=True,
+                    has_infant=True,
+                    needs_fridge=True,
+                    needs_step_free=True,
+                )
+            },
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert not any(roster.parties[0].flags.model_dump().values())
+
+    @pytest.mark.asyncio
+    async def test_sensitive_values_never_reach_the_response(self) -> None:
+        """⛔ Even rows the allowlisted read should never return -- a Race
+        answer and a salary-bearing staff history record on the same guest --
+        must not surface anywhere in the payload, nor light a flag."""
+        race_marker = "Fictional-Race-Answer-7Q"
+        salary_marker = "2025 History: Counselor, $4,200 stipend"
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_need_values=[
+                _need_value(1000004, ADULT_BATHROOM, "Yes"),
+                _need_value(1000004, 9100001, race_marker),
+                _need_value(1000004, 9100002, salary_marker),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        payload = roster.model_dump_json()
+        assert race_marker not in payload
+        assert "4,200" not in payload
+        assert "9100001" not in payload
+        assert "9100002" not in payload
+        lit = {name for name, value in roster.parties[0].flags.model_dump().items() if value}
+        assert lit == {"needs_private_bathroom"}
+
+    @pytest.mark.asyncio
+    async def test_adult_infant_never_feeds_has_infant(self) -> None:
+        """A deliberate divergence from the Go ingest: Adult-Infant's only
+        non-"No" 2026 value is "I'm attending Men's Weekend"."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_adult_need_values=[_need_value(1000004, ADULT_INFANT, "Yes")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].flags.has_infant is False
+
+    @pytest.mark.asyncio
+    async def test_a_bathroom_guest_in_a_camper_cabin_carries_the_family_shape(self) -> None:
+        """Owner ruling 2026-09-23: marks identical to the family boards. A
+        bathroom-flagged guest placed in a shared cabin carries the same pair a
+        family does -- the need, and a unit with no bathroom -- which is what
+        draws the red "No bathroom in unit"."""
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_guest()],
+            fetch_units=[_unit("u1", "cabin-7", "Cabin 7", bathroom="none")],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=0,
+                    person_cm_id=1000004,
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="cabin-7", name="Cabin 7")]},
+                )
+            ],
+            fetch_adult_need_values=[_need_value(1000004, ADULT_BATHROOM, "Yes")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        party = roster.parties[0]
+        assert party.flags.needs_private_bathroom is True
+        assert party.effective_bathroom == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_family_board_does_not_read_it(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_adult_need_values.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_lander_does_not_read_it(self) -> None:
+        """No count reads a flag, so the summary would pay for a field nothing
+        renders."""
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        repo.fetch_adult_need_values.assert_not_called()
 
 
 class TestFamilyLastYearCabinNeedsAttendance:

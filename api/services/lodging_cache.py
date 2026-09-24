@@ -46,6 +46,10 @@ Their writers join the two named below and fire the same invalidation: the
 `person_custom_values_family_camp`, which covers adult programs since
 kindred#2760, and the on-demand `person_custom_values`).
 
+kindred#2766 added one more, `fetch_adult_need_values`: the same
+`person_custom_values` table and writers as `fetch_adult_cabin_values`, read at
+the board's own year rather than `year - 1`, and only on an adult board.
+
 kindred#2775 added two more, both only ever read for a PRIOR season:
 `fetch_live_assignments` (live `lodging_assignments`, whose sole writer is the
 Go ingest) and `fetch_family_enrolled_attendees` (`attendees`). Neither is

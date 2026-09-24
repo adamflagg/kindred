@@ -241,6 +241,16 @@ resolved by an implementer without guessing.
   at 21+), last year's cabin right-anchored opposite it, the same span the
   household card uses. No headcount badge on a one-person card — a summer
   camper card has none. A null age draws nothing, never `Age 0`.
+- **An adult-weekend guest's need glyphs come from the guest's own answers**
+  (kindred#2766, owner ruling 2026-09-23): Adult-Bathroom, Adult-CPAP, Housing
+  Accomodation and Adult-Opt Out, read by an explicit allowlist and parsed by
+  ports of the ingest's rules (`api/services/adult_need_answers.py`) — never
+  from the household's registration row. The marks are identical to the family
+  boards, so a bathroom-flagged guest in a camper cabin shows the same red _No
+  bathroom in unit_ a family would; that steers them to the houses and rooms
+  that have one. No fridge, step-free or infant mark: the adult form asks no
+  question for the first two, and Adult-Infant's only non-"No" answer is
+  _I'm attending Men's Weekend_.
 - **A last-year cabin needs enrolled attendance that year behind it**
   (kindred#2767, folding in the FC5 staff report). The cabin string survives a
   cancellation; the card now agrees with the journey (kindred#2618) on which

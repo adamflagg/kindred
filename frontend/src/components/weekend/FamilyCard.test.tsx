@@ -2097,3 +2097,47 @@ describe('FamilyCard — an adult weekend guest’s line 2 models summer (kindre
     expect(screen.getByTestId('family-card-last-year-cabin')).toHaveTextContent('Pine Cabin')
   })
 })
+
+describe('FamilyCard — an adult weekend guest’s need glyphs are the family’s (kindred#2766)', () => {
+  // Owner ruling 2026-09-23: the marks are IDENTICAL to the family boards. The
+  // server now fills a guest's `flags` from the guest's own answers, and the
+  // glyph row is not grain-gated, so a bathroom-flagged guest in a shared
+  // camper cabin shows the same red mark a family would. Pinned here so a
+  // later grain gate cannot quietly hide the needs staff place by.
+  function guest(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 5001,
+      display_name: 'Olivia Chen',
+      adults: [{ adult_number: 1, display_name: 'Olivia Chen', age: 41 }],
+      children: [],
+      party_size: 1,
+      ...overrides,
+    })
+  }
+
+  it('draws the unmet bathroom glyph for a guest placed in a cabin with none', () => {
+    render(
+      <FamilyCard
+        party={guest({ flags: { needs_private_bathroom: true }, effective_bathroom: 'none' })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    const glyph = screen.getByTestId('need-glyph-bathroom')
+    expect(glyph.className).toContain('bg-red-100')
+    expect(glyph.className).toContain('border-red-800')
+  })
+
+  it('draws the power glyph for a CPAP guest', () => {
+    render(
+      <FamilyCard
+        party={guest({ flags: { needs_power: true } })}
+        unit={confirmedUnit({ power_coverage: 'all' })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('need-glyph-power')).toBeInTheDocument()
+  })
+})
