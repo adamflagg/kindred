@@ -10,7 +10,7 @@ read order still wins.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -78,6 +78,10 @@ class _PB:
         return coll
 
 
+def _builder(pb: _PB) -> OptimizedSocialGraphBuilder:
+    return OptimizedSocialGraphBuilder(cast(Any, pb), random_seed=42)
+
+
 # Person 1 in bunk 10; person 2 has two rows (first wins); person 3 is parked
 # with an empty bunk relation; person 4 has no row at all.
 ASSIGNMENTS = [_assignment(1, 10), _assignment(2, 11), _assignment(2, 12), _assignment(3, None)]
@@ -91,7 +95,7 @@ EXPECTED_BUNKS = {1: 10, 2: 11, 3: None, 4: None}
 def test_assignments_are_read_once_for_the_whole_session(scenario: str | None, collection: str, clause: str) -> None:
     pb = _PB(ASSIGNMENTS)
 
-    graph = OptimizedSocialGraphBuilder(pb, random_seed=42).build_social_network(YEAR, SESSION, scenario_id=scenario)
+    graph = _builder(pb).build_social_network(YEAR, SESSION, scenario_id=scenario)
 
     assert pb.first_item_calls == [], pb.first_item_calls
     (call,) = pb.calls[collection]
@@ -101,7 +105,7 @@ def test_assignments_are_read_once_for_the_whole_session(scenario: str | None, c
 
 def test_assignment_read_pages_at_the_ceiling_with_a_projection_and_no_skip_total() -> None:
     pb = _PB(ASSIGNMENTS)
-    OptimizedSocialGraphBuilder(pb, random_seed=42).build_social_network(YEAR, SESSION)
+    _builder(pb).build_social_network(YEAR, SESSION)
 
     (call,) = pb.calls["bunk_assignments"]
     assert call["batch"] == 1000
@@ -110,9 +114,7 @@ def test_assignment_read_pages_at_the_ceiling_with_a_projection_and_no_skip_tota
 
 
 def test_projected_assignment_read_builds_the_same_graph_as_full_rows() -> None:
-    full = OptimizedSocialGraphBuilder(_PB(ASSIGNMENTS, project_rows=False), random_seed=42).build_social_network(
-        YEAR, SESSION
-    )
-    projected = OptimizedSocialGraphBuilder(_PB(ASSIGNMENTS), random_seed=42).build_social_network(YEAR, SESSION)
+    full = _builder(_PB(ASSIGNMENTS, project_rows=False)).build_social_network(YEAR, SESSION)
+    projected = _builder(_PB(ASSIGNMENTS)).build_social_network(YEAR, SESSION)
 
     assert dict(projected.nodes(data=True)) == dict(full.nodes(data=True))
