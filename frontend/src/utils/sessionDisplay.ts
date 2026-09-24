@@ -1,5 +1,4 @@
 import type { Session } from '../types/app-types'
-import type { SessionDateLookup } from './sessionUtils'
 import { isAgSession, isQuestSession } from './sessionTypePredicates'
 import { sessionName } from './sessionName'
 
@@ -39,16 +38,6 @@ export function getSessionShortName(
   if (isQuestSession(session)) return name ?? 'Quest'
   if (session.session_type === 'adult') return null
   return name ?? null
-}
-
-/** @deprecated kindred#2763 — `sessionName(name, undefined, 'short')`. */
-export function shortenSessionName(name: string): string {
-  return sessionName(name, undefined, 'short')
-}
-
-/** @deprecated kindred#2763 — `sessionName(name, undefined, 'matrix')`. */
-export function formatAgSessionLabel(name: string): string {
-  return sessionName(name, undefined, 'matrix')
 }
 
 /**
@@ -122,26 +111,4 @@ export function getParentSessionId(session: Session, allSessions: Session[]): st
 
   // Return original CampMinder ID for all other session types
   return session.cm_id
-}
-
-/** @deprecated kindred#2763 — `sessionName(name, type, 'title')`. */
-export function getSessionDisplayNameFromString(
-  sessionName_: string,
-  sessionType?: string
-): string {
-  return sessionName(sessionName_, sessionType, 'title')
-}
-
-/** @deprecated kindred#2763 — `sessionName(name, type, 'chart')`. */
-export function getSessionChartLabel(
-  name: string,
-  sessionType?: string,
-  _sessionDateLookup?: SessionDateLookup
-): string {
-  return sessionName(name, sessionType, 'chart')
-}
-
-/** @deprecated kindred#2763 — `sessionName(name, type, 'tiny')`. */
-export function getSessionShorthand(name: string, sessionType?: string): string {
-  return sessionName(name, sessionType, 'tiny')
 }

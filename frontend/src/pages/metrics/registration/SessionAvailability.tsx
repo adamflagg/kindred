@@ -9,7 +9,7 @@ import {
   type WaitlistedPerson,
 } from '../../../hooks/useSessionAvailability'
 import { splitCampAndQuest } from '../../../utils/sessionUtils'
-import { formatAgSessionLabel } from '../../../utils/sessionDisplay'
+import { sessionName } from '../../../utils/sessionName'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 import { WaitlistTooltip } from '../../../components/metrics/WaitlistTooltip'
 import { useDrilldown } from '../../../hooks/useDrilldown'
@@ -605,7 +605,7 @@ export default function SessionAvailability() {
                               {ag_sessions.map((session) => (
                                 <tr key={session.session_cm_id}>
                                   <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
-                                    {formatAgSessionLabel(session.session_name)}
+                                    {sessionName(session.session_name, undefined, 'matrix')}
                                   </td>
                                   <AGSessionRow session={session} {...waitlistHandlers} />
                                 </tr>

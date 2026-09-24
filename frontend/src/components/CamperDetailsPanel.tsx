@@ -26,10 +26,8 @@ import {
 } from '../utils/genderUtils'
 import { formatGradeName } from '../utils/gradeUtils'
 import { formatAge } from '../utils/age'
-import {
-  getSessionDisplayNameFromString,
-  getSessionShortName as getSessionShortNameUtil,
-} from '../utils/sessionDisplay'
+import { getSessionShortName as getSessionShortNameUtil } from '../utils/sessionDisplay'
+import { sessionName } from '../utils/sessionName'
 import {
   buildSummerSessionTypeFilter,
   isFamilySessionType,
@@ -1282,7 +1280,7 @@ export default function CamperDetailsPanel({
                                 )}
                                 <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
                                 <span className="min-w-0 truncate">
-                                  {getSessionDisplayNameFromString(entry.name, entry.sessionType)}
+                                  {sessionName(entry.name, entry.sessionType, 'title')}
                                 </span>
                                 {entry.bunkName && (
                                   <>

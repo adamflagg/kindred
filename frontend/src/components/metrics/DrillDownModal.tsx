@@ -17,22 +17,24 @@ import {
   type SortDirection as HeaderSortDirection,
 } from '../ui/SortableColumnHeader'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
-import { shortenSessionName } from '../../utils/sessionDisplay'
+import { sessionName } from '../../utils/sessionName'
 import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/csvExport'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
 function getSessionDisplay(a: DrilldownAttendee): string {
   if (a.sessions && a.sessions.length > 0) {
-    return a.sessions.map((s) => shortenSessionName(s.session_name)).join(', ')
+    return a.sessions.map((s) => sessionName(s.session_name, undefined, 'short')).join(', ')
   }
-  return shortenSessionName(a.session_name)
+  return sessionName(a.session_name, undefined, 'short')
 }
 
 /** Get enrolled sessions display: comma-joined or "—" if empty. */
 function getEnrolledDisplay(a: DrilldownAttendee): string {
   if (a.enrolled_sessions && a.enrolled_sessions.length > 0) {
-    return a.enrolled_sessions.map((s) => shortenSessionName(s.session_name)).join(', ')
+    return a.enrolled_sessions
+      .map((s) => sessionName(s.session_name, undefined, 'short'))
+      .join(', ')
   }
   return '—'
 }

@@ -47,7 +47,7 @@ import type {
   SessionAttributionOccupant,
 } from '../components/admin/lodging/attributionEvidence'
 import { invalidateLodgingRegistryQueries, queryKeys, userDataOptions } from '../utils/queryKeys'
-import { shortWeekendName } from '../components/weekend/weekendNames'
+import { sessionName } from '../utils/sessionName'
 import { formatSessionDates } from '../components/weekend/sessionDates'
 import { useApiWithAuth } from './useApiWithAuth'
 import { useSessionAttributionConflicts } from './useSessionAttributionConflicts'
@@ -56,7 +56,7 @@ import { useYear } from './useCurrentYear'
 /** One weekend this row's household or person could belong to. */
 export interface SessionAttributionCandidate {
   sessionCmId: number
-  /** `shortWeekendName`, or `#<cm_id>` when the id isn't in the fetched session list. */
+  /** `sessionName(…, 'identity')`, or `#<cm_id>` when the id isn't in the fetched session list. */
   short: string
   dateRange: string
   /**
@@ -173,7 +173,9 @@ function buildItem(
     const candidateEvidence = evidence?.byCandidate.get(cmId)
     return {
       sessionCmId: cmId,
-      short: session ? shortWeekendName(session.name) : `#${String(cmId)}`,
+      short: session
+        ? sessionName(session.name, session.session_type, 'identity')
+        : `#${String(cmId)}`,
       dateRange: session ? formatSessionDates(session.start_date, session.end_date) : '',
       isSuggested: bestGuessCmId !== undefined && bestGuessCmId === cmId,
       // Spread rather than assigned undefined: `exactOptionalPropertyTypes` is

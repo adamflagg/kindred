@@ -11,7 +11,7 @@ import CamperDetailsPanel from './CamperDetailsPanel'
 import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 import { mockPerson } from '../test/mockData'
 import { SourceField } from '../types/sourceField'
-import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
+import { sessionName } from '../utils/sessionName'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 import type { HistoricalRecord, JourneyCounts } from '../hooks/camper/types'
 
@@ -1180,7 +1180,7 @@ describe('CamperDetailsPanel', () => {
       const row = nameEl.closest('a')
       if (!row) throw new Error('sibling row anchor not found')
 
-      const sessionLabel = getSessionDisplayNameFromString('Session 4', 'main')
+      const sessionLabel = sessionName('Session 4', 'main', 'title')
       const sessionEl = within(row).getByText(sessionLabel)
       const cabinEl = within(row).getByText('Bunk 12')
       expect(sessionEl).toBeInTheDocument()
@@ -1216,8 +1216,8 @@ describe('CamperDetailsPanel', () => {
       const row = nameEl.closest('a')
       if (!row) throw new Error('sibling row anchor not found')
 
-      const sessionLabel = getSessionDisplayNameFromString('Session 3a', 'main')
-      const familyLabel = getSessionDisplayNameFromString('Family Camp 1', 'family')
+      const sessionLabel = sessionName('Session 3a', 'main', 'title')
+      const familyLabel = sessionName('Family Camp 1', 'family', 'title')
       const lines = row.querySelectorAll('[class*="mt-0.5"]')
       const line2Text = lines[lines.length - 1]?.textContent ?? ''
 
@@ -1245,8 +1245,8 @@ describe('CamperDetailsPanel', () => {
       const row = nameEl.closest('a')
       if (!row) throw new Error('sibling row anchor not found')
 
-      const sessionLabel = getSessionDisplayNameFromString('Session 5', 'main')
-      const tliLabel = getSessionDisplayNameFromString('TLI', 'tli')
+      const sessionLabel = sessionName('Session 5', 'main', 'title')
+      const tliLabel = sessionName('TLI', 'tli', 'title')
       const lines = row.querySelectorAll('[class*="mt-0.5"]')
       const line2Text = lines[lines.length - 1]?.textContent ?? ''
 
@@ -1285,7 +1285,7 @@ describe('CamperDetailsPanel', () => {
       const row = nameEl.closest('a')
       if (!row) throw new Error('sibling row anchor not found')
 
-      const familyLabel = getSessionDisplayNameFromString('Family Camp 2', 'family')
+      const familyLabel = sessionName('Family Camp 2', 'family', 'title')
       expect(within(row).queryByText(familyLabel)).not.toBeInTheDocument()
       expect(row.querySelector('.lucide-calendar')).not.toBeInTheDocument()
       expect(row.querySelector('.lucide-home')).not.toBeInTheDocument()

@@ -4,7 +4,7 @@
  * summer board's camper modal), so the rules for WHAT a row shows live in one
  * place and each surface only decides WHERE its rows come from.
  */
-import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
+import { sessionName } from '../../utils/sessionName'
 import { getStatusIndicator } from '../../utils/enrollmentFilter'
 import { isFamilySessionType } from '../../utils/sessionTypePredicates'
 import { weekendSubtitle } from '../weekend/weekendNames'
@@ -72,7 +72,7 @@ export function journeyRowsFromHistory(
       year: record.year,
       showYear,
       isCurrentYear,
-      session: getSessionDisplayNameFromString(record.sessionName, record.sessionType),
+      session: sessionName(record.sessionName, record.sessionType, 'title'),
       subtitle: subtitle.length > 0 ? subtitle : undefined,
       // Housing only for enrolled rows that actually have a label. No-label
       // prior years (teen / 2022 gap / unresolved housing) get an empty cell.

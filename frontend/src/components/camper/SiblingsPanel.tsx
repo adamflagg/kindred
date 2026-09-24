@@ -6,7 +6,7 @@ import { Link } from 'react-router'
 import { Users, Home, Calendar, ChevronRight } from 'lucide-react'
 import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
-import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
+import { sessionName } from '../../utils/sessionName'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { formatGradeName } from '../../utils/gradeUtils'
 import { StatusBadge } from '../StatusBadge'
@@ -95,10 +95,7 @@ export function SiblingsPanel({
                       <>
                         <Calendar className="h-3 w-3" />
                         <span>
-                          {getSessionDisplayNameFromString(
-                            sibling.session.name,
-                            sibling.session.session_type
-                          )}
+                          {sessionName(sibling.session.name, sibling.session.session_type, 'title')}
                         </span>
                       </>
                     )}
@@ -111,7 +108,7 @@ export function SiblingsPanel({
                     {sibling.additionalSessions?.map((s, idx) => (
                       <Fragment key={`${s.name}-${String(idx)}`}>
                         <span className="text-border mx-1">|</span>
-                        <span>{getSessionDisplayNameFromString(s.name, s.session_type)}</span>
+                        <span>{sessionName(s.name, s.session_type, 'title')}</span>
                       </Fragment>
                     ))}
                   </div>

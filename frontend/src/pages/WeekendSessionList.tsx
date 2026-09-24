@@ -47,6 +47,7 @@ import { getCampNameShort } from '../config/branding'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { useWeekendSummary } from '../hooks/useWeekendRoster'
 import type { RosterCountSummary, WeekendSession } from '../types/lodging'
+import { sessionName } from '../utils/sessionName'
 
 interface WeekendStats {
   parties: number
@@ -159,7 +160,10 @@ function WeekendRow({
   const isMuted = isCompleted || isCancelled
   const isAdult = session.session_type === 'adult'
   const dates = formatSessionDates(session.start_date, session.end_date)
-  const { short, qualifier } = splitWeekendName(session.name)
+  const short = sessionName(session.name, session.session_type, 'identity')
+  // The second line under the title — not a form of the name, so it is read
+  // off the same split the identity form uses.
+  const { qualifier } = splitWeekendName(session.name)
 
   return (
     <Link

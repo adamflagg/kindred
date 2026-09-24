@@ -48,7 +48,7 @@ import { QueryGuard } from '../QueryGuard'
 import { Tooltip } from '../ui/Tooltip'
 import { childSurnames, familyNameLabel, isAttendingAdultName } from './householdIdentity'
 import { HouseholdYearMembersModal } from './HouseholdYearMembersModal'
-import { weekendLabel } from './weekendNames'
+import { sessionName } from '../../utils/sessionName'
 
 export interface HouseholdJourneyCardProps {
   /**
@@ -196,7 +196,8 @@ interface HousingLineModel {
 
 function housingLines(row: HouseholdJourneyRow, housing: string): HousingLineModel[] {
   // kindred#2393. `FC1 · FC4`, in the order the server sent — which is the
-  // season's own, earliest first. `weekendLabel` is the one sanctioned display
+  // season's own, earliest first. The family `tiny` form (`weekendLabel`'s
+  // rule, via `sessionName`) is the one sanctioned display
   // use of the slug and falls back to the weekend's short name rather than to
   // its CampMinder id, which names nothing a staff member reads.
   const sessions = row.sessions ?? []
@@ -208,12 +209,16 @@ function housingLines(row: HouseholdJourneyRow, housing: string): HousingLineMod
         key: 'year',
         housing,
         rawHousing: (row.cabin_name_raw ?? '').trim(),
-        weekends: sessions.map((session) => weekendLabel(session.name ?? '')),
+        weekends: sessions.map((session) => sessionName(session.name ?? '', 'family', 'tiny')),
       },
     ]
   }
   const labelOf = (cmId: number): string =>
-    weekendLabel(sessions.find((session) => session.session_cm_id === cmId)?.name ?? '')
+    sessionName(
+      sessions.find((session) => session.session_cm_id === cmId)?.name ?? '',
+      'family',
+      'tiny'
+    )
   return distinct.map((name) => {
     const entries = perWeekend.filter((entry) => (entry.cabin_name ?? '') === name)
     return {
