@@ -470,6 +470,42 @@ func TestAliasResolverDirectMatchSharedNameIsUnresolved(t *testing.T) {
 	}
 }
 
+// TestAliasResolverContainerNameCollidesWithLeafStaysUnresolved pins a gap the
+// leaf-only exclusion (kindred#2762) left open. Excluding containers from
+// EVER WINNING the direct-name fallback is not the same as excluding them
+// from the ambiguity check: a container skipped before it ever reaches the
+// candidate loop never poisons `directByKey`, so an unrelated leaf that
+// happens to carry the exact same `name` string wins uncontested instead of
+// the string staying unresolved -- contradicting this file's own stated
+// invariant ("a string naming a container with no alias stays unresolved")
+// and diverging from Python's `HousingNameResolver`, which direct-matches
+// containers as ordinary candidates and so correctly marks a shared name
+// ambiguous rather than silently picking the leaf.
+func TestAliasResolverContainerNameCollidesWithLeafStaysUnresolved(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	saveRecord(t, app, "lodging_units", map[string]any{
+		"code": "test-container-x", "name": "Shared Name", "is_active": true, "is_container": true, "year": 2025,
+	})
+	saveRecord(t, app, "lodging_units", map[string]any{
+		"code": "test-leaf-x", "name": "Shared Name", "is_active": true, "is_container": false, "year": 2025,
+	})
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("Shared Name", 2025)
+	if got.Resolved {
+		t.Errorf("a name shared with a container resolved to %v; the container's presence must poison the key",
+			got.UnitCodes)
+	}
+	if got.Ambiguous {
+		t.Error("shared name must be unresolved, not Ambiguous -- that flag is reserved for overlapping alias windows")
+	}
+}
+
 // TestAliasResolverDirectMatchRespectsYear: a name that exists only in
 // another season must not resolve, matching every other year check this
 // resolver makes.

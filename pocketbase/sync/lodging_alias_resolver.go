@@ -98,16 +98,28 @@ func NewAliasResolver(app core.App) (*AliasResolver, error) {
 		// Direct-name fallback candidates: LEAF units only (kindred#2762).
 		// A string naming a container with no alias stays unresolved and
 		// goes to the work queue, as it does today -- placing a party on a
-		// whole building should always take a deliberate alias.
-		if u.GetBool("is_container") {
-			continue
-		}
+		// whole building should always take a deliberate alias. A container
+		// must never WIN the fallback, but it still has to occupy the
+		// ambiguity index: `continue`-ing past it entirely (as this used to)
+		// made it invisible to the collision check, so an unrelated leaf
+		// sharing the container's exact name/code won uncontested instead of
+		// the string staying unresolved -- diverging from Python's
+		// HousingNameResolver, which direct-matches containers as ordinary
+		// candidates and so correctly marks a shared name ambiguous.
+		isContainer := u.GetBool("is_container")
 		for _, candidate := range [2]string{u.GetString("name"), code} {
 			key := AliasLookupKey(candidate)
 			if key == "" {
 				continue
 			}
 			dk := directKey{key: key, year: year}
+			if isContainer {
+				// Sticky-ambiguous unconditionally: a container's mere
+				// presence on this key must poison it, regardless of
+				// whether a leaf has claimed it already or claims it later.
+				r.directByKey[dk] = ""
+				continue
+			}
 			if existing, ok := r.directByKey[dk]; ok {
 				if existing != u.Id {
 					// Two units answer to this key in this year -- sticky

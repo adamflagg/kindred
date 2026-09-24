@@ -57,14 +57,33 @@ _CHILD_B = _unit("u-leaf-b", "test-leaf-b", "Test Leaf B", parent_id="u-containe
 # direct-name fallback's leaf-only filter on its real code path.
 _LONE_CONTAINER = _unit("u-lone-container", "test-lone-container", "Test Lone Container")
 
-_UNITS = [_LEAF_1, _LEAF_2, _CONTAINER, _CHILD_A, _CHILD_B, _LONE_CONTAINER]
+# A THIRD container, dedicated to the ambiguity-poisoning fix: unlike
+# `_LONE_CONTAINER` above (deliberately alone, so Python's "direct-matches the
+# container itself" case has a clean witness with no collision), this one
+# shares its exact `name` with an unrelated leaf below. Excluding a container
+# from the fallback's ambiguity index entirely -- rather than only from being
+# a candidate WINNER -- let that leaf win the shared name uncontested; both
+# languages must agree it stays unresolved instead.
+_CONTAINER_NAME_COLLISION = _unit("u-collision-container", "test-collision-container", "Collision Name")
+_LEAF_SHARING_CONTAINER_NAME = _unit("u-collision-leaf", "test-collision-leaf", "Collision Name")
+
+_UNITS = [
+    _LEAF_1,
+    _LEAF_2,
+    _CONTAINER,
+    _CHILD_A,
+    _CHILD_B,
+    _LONE_CONTAINER,
+    _CONTAINER_NAME_COLLISION,
+    _LEAF_SHARING_CONTAINER_NAME,
+]
 
 # `RegistryUnit` (unlike Go's `lodging_units` row) carries no `is_container`
 # column -- Python's direct-name index does not need one, since it deliberately
 # direct-matches containers too. The Go mirror below needs to know which of
 # these codes are containers, so it is tracked here instead, alongside the
 # fixture that defines it.
-_CONTAINER_CODES = frozenset({_CONTAINER.code, _LONE_CONTAINER.code})
+_CONTAINER_CODES = frozenset({_CONTAINER.code, _LONE_CONTAINER.code, _CONTAINER_NAME_COLLISION.code})
 
 _ALIASES = [
     # The container-name alias: covers "Test Container One" and expands to
@@ -104,11 +123,21 @@ def _go_direct_match_codes(raw: str, year: int) -> tuple[str, ...]:
 
     direct_by_key: dict[str, str | None] = {}
     for unit in _UNITS:
-        if unit.year != year or unit.code in _CONTAINER_CODES:
+        if unit.year != year:
             continue
+        is_container = unit.code in _CONTAINER_CODES
         for candidate in (unit.name, unit.code):
             candidate_key = housing_lookup_key(candidate)
             if not candidate_key:
+                continue
+            if is_container:
+                # A container may never WIN the fallback, but its presence
+                # still has to poison the key -- an unrelated leaf sharing
+                # its exact name/code must not win uncontested. Mirrors the
+                # Go fix: `continue`-ing past a container entirely made it
+                # invisible to this collision check, not just ineligible to
+                # win it.
+                direct_by_key[candidate_key] = None
                 continue
             if candidate_key in direct_by_key and direct_by_key[candidate_key] != unit.code:
                 direct_by_key[candidate_key] = None
@@ -133,6 +162,7 @@ class TestGoDirectNameFallbackParity:
             "test-cabin-2",
             "test-leaf-a",
             "test leaf a",
+            "collision name",
         }
         for alias in _ALIASES:
             assert housing_lookup_key(alias.alias_string) not in covered
@@ -191,3 +221,27 @@ class TestContainerDirectMatchDivergesOnPurpose:
 
     def test_go_never_direct_matches_a_container_so_it_stays_unresolved(self) -> None:
         assert _go_direct_match_codes("Test Lone Container", YEAR) == ()
+
+
+class TestContainerAmbiguityPoisoningIsInParity:
+    """A THIRD container behaviour, discovered in code review -- and unlike
+    the two divergences above, this one is NOT a deliberate difference: both
+    languages must agree.
+
+    `_CONTAINER_NAME_COLLISION` and `_LEAF_SHARING_CONTAINER_NAME` share one
+    name and nothing else. A container may never WIN the direct-name
+    fallback, but excluding it from the ambiguity index entirely -- rather
+    than only from being a candidate winner -- left an unrelated leaf free to
+    claim their shared name uncontested, the same way any other two-claimant
+    name has to fall through unresolved
+    (`TestAliasResolverDirectMatchSharedNameIsUnresolved`'s Go counterpart).
+    Python's `HousingNameResolver` already got this right, because it never
+    special-cased containers out of the index in the first place; the Go
+    mirror above did, and `_go_direct_match_codes` used to reproduce that
+    same exclusion rather than the corrected algorithm.
+    """
+
+    def test_a_leaf_sharing_a_containers_exact_name_stays_unresolved_in_both(self) -> None:
+        resolver = HousingNameResolver.build(_UNITS, _ALIASES)
+        assert resolver.resolve_codes("Collision Name", YEAR) == ()
+        assert _go_direct_match_codes("Collision Name", YEAR) == ()
