@@ -104,6 +104,7 @@ HAS_FRONTEND=false
 HAS_MIGRATIONS=false
 HAS_SHELL=false
 HAS_PB_JS=false
+HAS_LODGING=false
 
 if [[ "$RUN_ALL" == true ]]; then
     HAS_PYTHON=true
@@ -112,6 +113,7 @@ if [[ "$RUN_ALL" == true ]]; then
     HAS_MIGRATIONS=true
     HAS_SHELL=true
     HAS_PB_JS=true
+    HAS_LODGING=true
 else
     while IFS= read -r file; do
         [[ -z "$file" ]] && continue
@@ -152,6 +154,16 @@ else
     if echo "$CHANGED_FILES" | grep -qE '\.sh$'; then
         HAS_SHELL=true
     fi
+    # kindred#2778: mirrors CI's lodging-guard job, which scans six fixed
+    # roots (pocketbase/ api/ bunking/ frontend/src/ scripts/ tests/) rather
+    # than reacting to any one filetype. Keep this pattern's root list and
+    # extensions in sync with scripts/dev/verify-no-hardcoded-lodging.sh's
+    # SCAN_ROOTS default and its `--include` list -- the guard itself has no
+    # per-file mode, so this is only a decision about whether to pay for its
+    # sub-second whole-tree scan at all, not about what it scans once run.
+    if echo "$CHANGED_FILES" | grep -qE '^(pocketbase|api|bunking|frontend/src|scripts|tests)/.*\.(go|py|ts|tsx|js|sh)$'; then
+        HAS_LODGING=true
+    fi
 fi
 
 # ── Summary of what will run ───────────────────────────────────────────
@@ -165,6 +177,7 @@ $HAS_FRONTEND   && echo "  - Frontend (prettier, eslint, tsc, vitest)" || true
 $HAS_MIGRATIONS && echo "  - Migrations (header, options anti-pattern, build)" || true
 $HAS_PB_JS      && echo "  - PocketBase JS (eslint)" || true
 $HAS_SHELL      && echo "  - Shell (shellcheck)" || true
+$HAS_LODGING    && echo "  - Lodging Name Guard (no hardcoded unit names)" || true
 echo ""
 
 # ── Track failures ─────────────────────────────────────────────────────
@@ -364,6 +377,64 @@ if $HAS_SHELL; then
         run_check "shellcheck" bash scripts/ci/shellcheck-all.sh
     else
         skip "shellcheck (not installed)"
+    fi
+fi
+
+# ── Lodging Name Guard ──────────────────────────────────────────────────
+# kindred#2778: this was previously wired into CI only (ci.yml's
+# "No hardcoded lodging unit names" step) -- nothing local ran it, so a PR
+# could pass pre-push-verify.sh clean and still go red in CI on a unit name
+# in a test docstring. Mirrors that CI step's two gates below rather than
+# just calling the guard, because the guard's own exit code alone cannot
+# distinguish "clean scan against the real registry" from "clean scan
+# because the registry silently wasn't readable" -- see the guard's own
+# header comment on why that distinction matters.
+#
+# DO NOT change what this prints beyond the guard's own output lines: the
+# guard's stdout/stderr never contain the registry-derived needle pattern
+# itself (only the mode announcement and OK/FAIL lines), so relaying it
+# verbatim is safe -- but nothing here may add a needle list of its own.
+if $HAS_LODGING; then
+    header "Lodging Name Guard"
+
+    lodging_status=0
+    LODGING_OUT=$(./scripts/dev/verify-no-hardcoded-lodging.sh 2>&1) || lodging_status=$?
+    printf '%s\n' "$LODGING_OUT"
+
+    # Same override the guard itself reads (scripts/dev/verify-no-hardcoded-lodging.sh),
+    # so a caller pointing the guard at a different/missing path via this var
+    # gets consistent PASS/SKIP reporting here too.
+    LODGING_REGISTRY_PATH="${LODGING_REGISTRY_PATH:-config/lodging_registry.json}"
+
+    if [[ "$lodging_status" -eq 2 ]]; then
+        fail "lodging name guard (did not run)"
+        FAILURES+=("lodging name guard (did not run)")
+    elif [[ "$lodging_status" -eq 1 ]]; then
+        fail "lodging name guard"
+        FAILURES+=("lodging name guard")
+    elif [[ "$lodging_status" -eq 0 ]]; then
+        if [[ -r "$LODGING_REGISTRY_PATH" ]]; then
+            # GATE: the registry is readable, so the guard must have USED it --
+            # a clean run on the fallback sample while a real registry sat
+            # unread would report OK having checked a fraction of the real
+            # unit list. Never printed as a bare PASS if this doesn't hold.
+            if printf '%s\n' "$LODGING_OUT" | grep -q 'needle source = registry'; then
+                pass "lodging name guard (registry)"
+            else
+                fail "lodging name guard (registry readable but not used -- would silently run on the fallback sample)"
+                FAILURES+=("lodging name guard (registry readable but not used)")
+            fi
+        else
+            # No readable registry: the guard's fallback-sample scan still ran
+            # and came back clean, but that only covers ~15 hand-picked terms.
+            # SKIP/DEGRADED, never a bare PASS -- and not a failure either,
+            # since this is expected for anyone without kindred-local checked
+            # out locally.
+            skip "lodging name guard (DEGRADED: fallback sample only -- $LODGING_REGISTRY_PATH not readable)"
+        fi
+    else
+        fail "lodging name guard (unexpected exit $lodging_status)"
+        FAILURES+=("lodging name guard (unexpected exit $lodging_status)")
     fi
 fi
 

@@ -14,13 +14,16 @@
 # THE REGISTRY (scripts/dev/lib/build_lodging_needles.py) whenever one is
 # readable, rather than sampled by hand. Two facts forced this over the
 # cheaper separator-tolerant widening (Option A) first proposed for the same
-# issue: (1) this guard runs ONLY in CI -- it is wired into neither
+# issue: (1) at the time, this guard ran ONLY in CI -- wired into neither
 # .lefthook.yml nor scripts/pre-push-verify.sh -- so widening a sample CI
-# already ran past fixes nothing CI actually gates; and (2) re-measuring the
-# sample's blind spot found separator tolerance would have closed 1 of 14
-# known misses, not all of them -- the other 13 were area and unit names the
-# sample never sampled at all, which no widening of a hand list closes for
-# the NEXT unit either.
+# already ran past fixes nothing CI actually gates (kindred#2778 later wired
+# this guard into pre-push-verify.sh, mirroring CI's two gates rather than
+# just calling it; it is still not in .lefthook.yml, so a bare `git push`
+# without running that script first still won't catch a leak locally); and
+# (2) re-measuring the sample's blind spot found separator tolerance would
+# have closed 1 of 14 known misses, not all of them -- the other 13 were area
+# and unit names the sample never sampled at all, which no widening of a hand
+# list closes for the NEXT unit either.
 #
 # The cost, taken deliberately: the `lodging-guard` CI job now clones the
 # private kindred-local repo via the `KINDRED_LOCAL_DEPLOY_KEY` secret
