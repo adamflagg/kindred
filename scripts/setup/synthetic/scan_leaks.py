@@ -10,7 +10,11 @@ Scans every data-table cell of a SQLite artifact and asserts the ABSENCE of leak
 3. ``bad_phone`` — a phone-shaped value outside the fake ``555-0XXX`` band.
 4. ``real_value_leak`` — a token from the (build-time-only) real-value denylist.
 5. ``camp_token`` — a camp brand token (e.g. from the gitignored branding config).
-6. ``nonempty_system_table`` — a PB ``_``-prefixed auth/system table that must be
+6. ``nonempty_lodging_table`` — any table whose name starts with ``lodging_`` has rows.
+   Denylist-independent and matched by name prefix (kindred#2802), so the private
+   lodging registry / write-ins can never reach the artifact even if the builder's
+   own emptying (kindred#2792) regresses.
+7. ``nonempty_system_table`` — a PB ``_``-prefixed auth/system table that must be
    empty (no real users/emails/credentials) still has rows.
 
 The denylist/email/phone/camp scans run over the data tables (``_``-prefixed system
@@ -22,8 +26,9 @@ Two modes:
 - **full** (build time): denylist + camp tokens supplied from the real DB / local
   branding config (never committed) → catches real names/schools/essays directly.
 - **--artifact-only** (pre-commit / CI): no real DB present, so denylist/camp tokens
-  are empty; the drop-list-row-count-zero + email/phone shape checks still run and
-  catch the same content (the high-risk tables are simply absent).
+  are empty; the drop-list-row-count-zero, lodging-table-row-count-zero and
+  email/phone shape checks still run and catch the same content (the high-risk
+  tables are simply absent).
 
 Exit code is non-zero if any violation is found.
 """
@@ -310,6 +315,22 @@ def scan(
             if n:
                 violations.append(Violation("nonempty_drop_table", table, f"{n} row(s) in dropped table"))
 
+        # 6. every lodging_* table must be empty (kindred#2802). Denylist-independent
+        # and matched by NAME PREFIX rather than a fixed list, mirroring the system-table
+        # check below: a --artifact-only run (empty denylist, no real DB) must still catch
+        # a regression that lets a real cabin name / write-in reach the artifact, and a
+        # newly added lodging_* table is covered automatically. Deliberately NOT folded
+        # into DROP_LIST_TABLES — build_synthetic_db empties these tables directly, and
+        # putting them on the drop list too would fail this gate the moment #2773 starts
+        # fabricating fictional lodging rows on purpose (that will need a narrow, tested
+        # exemption here, not removal of this check).
+        for table in sorted(present):
+            if not table.startswith("lodging_"):
+                continue
+            (n,) = conn.execute(f"SELECT count(*) FROM [{table}]").fetchone()
+            if n:
+                violations.append(Violation("nonempty_lodging_table", table, f"{n} row(s) in lodging table"))
+
         # 2-5. cell-level scans across every surviving table
         for table in present:
             for col, value in _iter_cells(conn, table):
@@ -330,7 +351,7 @@ def scan(
                     if tok in folded:
                         violations.append(Violation("camp_token", table, f"{col}: matched camp token"))
 
-        # 6. system tables: _data_tables() skips ``_``-prefixed tables (schema vocab
+        # 7. system tables: _data_tables() skips ``_``-prefixed tables (schema vocab
         # false-matches the name denylist), so check the two things that DO matter here:
         #   - auth/system tables hold no rows (no real users/emails/credentials)
         #   - _params settings carry no real email domain or camp brand token

@@ -186,3 +186,46 @@ def test_artifact_only_skips_denylist(tmp_path, scan_module):
     cats = {v.category for v in violations}
     assert "real_value_leak" not in cats
     assert "nonempty_drop_table" in cats
+
+
+def _make_db_with_lodging_table(path: Path, *, table_name: str, rows: list[tuple[object, ...]]) -> None:
+    """Build an artifact-shaped DB with a ``lodging_*`` table. ``table_name`` may be a
+    name invented only for the test — the check must be prefix-based, not a fixed list."""
+    conn = sqlite3.connect(path)
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE persons (id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT)")
+    cur.execute("INSERT INTO persons VALUES ('p1', 'Emma', 'Johnson')")
+    cur.execute(f"CREATE TABLE {table_name} (id TEXT PRIMARY KEY, note TEXT)")
+    cur.executemany(f"INSERT INTO {table_name} (id, note) VALUES (?, ?)", rows)
+    conn.commit()
+    conn.close()
+
+
+def test_flags_nonempty_lodging_table_by_prefix(tmp_path, scan_module):
+    """Issue #2802: any ``lodging_*`` table holding a row must fail --artifact-only
+    (denylist=None, empty drop_list) — even a table name that exists nowhere else in
+    the codebase, proving the check matches by name prefix, not a fixed table list."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_lodging_table(
+        db,
+        table_name="lodging_totally_invented_test_table",
+        rows=[("l1", "cabin note")],
+    )
+    violations = scan_module.scan(str(db), denylist=None, drop_list=[])
+    cats = {v.category for v in violations}
+    assert "nonempty_lodging_table" in cats, f"expected nonempty_lodging_table, got {violations}"
+    assert any(v.table == "lodging_totally_invented_test_table" for v in violations)
+
+
+def test_clean_lodging_table_passes(tmp_path, scan_module):
+    """An empty lodging_* table (e.g. the real lodging_units) must not trip the check.
+    Uses the module's real DROP_LIST_TABLES/MUST_BE_EMPTY_SYSTEM defaults (no overrides)
+    to also confirm the check is denylist- and drop-list-independent in the passing case."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_lodging_table(
+        db,
+        table_name="lodging_units",
+        rows=[],
+    )
+    violations = scan_module.scan(str(db))
+    assert violations == [], f"clean lodging table should pass, got {violations}"
