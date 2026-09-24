@@ -28,9 +28,10 @@ const personsCollection = "persons"
 const householdsCollection = "households"
 
 // adultAgeCutoff mirrors frontend/src/utils/age.ts's ADULT_AGE (owner ruling
-// 2026-09-22, raised from 18 to 21). CampMinder's yy.mm age format drops the
-// months fraction at 21+, so a plain float comparison against the raw
-// CampMinder value is safe on either side of the cutoff. Keep the two
+// 2026-09-22, raised from 18 to 21). CampMinder's yy.mm age format encodes
+// months as two-digit hundredths (never exceeding .11), so a plain float
+// comparison against a whole-number cutoff is always safe on either side --
+// e.g. 20.11 and 21.05 both order correctly around 21.0. Keep the two
 // constants in sync if the cutoff ever moves — see kindred#2777.
 const adultAgeCutoff = 21.0
 
