@@ -31,9 +31,10 @@ already covered by the paragraph above, and it inherits their safety argument
 -- but note the one thing it does not inherit: an LRU eviction of either
 input would let this derived entry outlive the data it was computed from,
 until its own TTL or the next `invalidate_all()` (both of which it shares
-with them). `max_size` is 64 against a handful of reads times a handful of
+with them). `max_size` is 128 against a handful of reads times a handful of
 years, so that eviction does not happen in practice; if the read set ever
 grows, raise `max_size` rather than reasoning about which entry went first.
+(Raised from 64 by kindred#2767, which took the cached read set from 6 to 10.)
 
 kindred#2767 added four more, each a plain year-scoped read of a sync-written
 table (`attendees`, `person_custom_values`) and so under the same safety
@@ -99,7 +100,7 @@ class LodgingYearCache:
     lands under that key like any other.
     """
 
-    def __init__(self, ttl_seconds: int = 900, max_size: int = 64) -> None:
+    def __init__(self, ttl_seconds: int = 900, max_size: int = 128) -> None:
         self._cache: dict[str, Any] = {}
         self._cache_times: dict[str, float] = {}
         self._access_times: dict[str, float] = {}
