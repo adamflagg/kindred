@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow, WriteInCoverRow } from '../../types/lodging'
+import { wholeBuildingHolders } from './boardLayout'
 import type { MapUnit } from './mapModel'
 import { MapUnitPopover } from './MapUnitPopover'
 import { partyKey } from './partyKey'
@@ -1935,5 +1936,110 @@ describe('MapUnitPopover on an adult weekend (kindred#2765)', () => {
       />
     )
     expect(screen.getByText('5 of 4')).toHaveClass('text-amber-700')
+  })
+})
+
+describe('MapUnitPopover — person-grain parties get no household-shaped signals (kindred#2771)', () => {
+  /*
+   * Owner ruling 2026-09-23: the map is a review surface, not for placing.
+   * Scope here is removing signals that are wrong or meaningless for a
+   * person-grain party (an adult-weekend guest) -- no new visuals. Findings
+   * that concern a PARTY gate on `party.grain === 'person'`, never on
+   * `sessionType`: a guest is never a "family", whatever weekend they're on.
+   */
+  function guest(personCmId: number, overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return {
+      ...party(`Guest ${String(personCmId)}`),
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: personCmId,
+      party_size: 1,
+      ...overrides,
+    }
+  }
+
+  it('does not tag a shared adult cabin `shared by N` -- it would fire on nearly every one', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ shareability: 'shareable', sleeps: 15 }), [guest(701), guest(702)])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    expect(screen.queryByText(/shared by/)).not.toBeInTheDocument()
+  })
+
+  it('never shows the whole-building badge for a guest, even one whose own placement structurally covers the whole house', () => {
+    // The REAL derivation (`wholeBuildingHolders`), not a hand-built Set --
+    // the same wiring `LodgingMap` uses, so this proves the rendered contract
+    // end to end rather than only the popover's trust in whatever Set it is
+    // handed.
+    const house = [
+      row({ unit_id: 'house', code: 'house', name: 'Guest House', is_container: true }),
+      row({ unit_id: 'r1', code: 'r1', name: 'Room 1', parent_code: 'house' }),
+      row({ unit_id: 'r2', code: 'r2', name: 'Room 2', parent_code: 'house' }),
+    ]
+    const solo = guest(703, { unit_code: 'house', unit_codes: ['house'] })
+    const holderKeys = wholeBuildingHolders([solo], house)
+    render(
+      <MapUnitPopover
+        units={[mapUnit(house[0]!, [solo])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        wholeBuildingKeys={holderKeys}
+        sessionType="adult"
+      />
+    )
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+
+  it('still shows the whole-building badge for a FAMILY holding the whole house (unchanged)', () => {
+    const house = [
+      row({ unit_id: 'house', code: 'house', name: 'Family House', is_container: true }),
+      row({ unit_id: 'r1', code: 'r1', name: 'Room 1', parent_code: 'house' }),
+      row({ unit_id: 'r2', code: 'r2', name: 'Room 2', parent_code: 'house' }),
+    ]
+    const johnson = party('Johnson')
+    johnson.unit_code = 'house'
+    johnson.unit_codes = ['house']
+    const holderKeys = wholeBuildingHolders([johnson], house)
+    render(
+      <MapUnitPopover
+        units={[mapUnit(house[0]!, [johnson])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        wholeBuildingKeys={holderKeys}
+      />
+    )
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+  })
+
+  it('lists an unmet need for a person-grain party, from its OWN flags (kindred#2766 audit)', () => {
+    // #2766 populates a guest's `flags` from their own adult-registration
+    // answers. `partyAttention`/`needGlyphs` never special-cased household
+    // grain -- they read `party.flags` and the unit's resolved coverage, so
+    // once the flag is populated correctly the unmet line "just works" at
+    // person grain with no map-side change needed. This pins that audit
+    // finding rather than a fix.
+    const needy = guest(704, {
+      effective_bathroom: 'none',
+      flags: {
+        needs_private_bathroom: true,
+        needs_power: false,
+        needs_accommodation: false,
+        accommodation_is_mandatory: false,
+        has_infant: false,
+      },
+    })
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ bathroom: 'none' }), [needy])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />
+    )
+    expect(screen.getByText(/Guest 704 — No bathroom in unit/)).toBeInTheDocument()
   })
 })

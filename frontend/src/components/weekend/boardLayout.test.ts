@@ -1473,6 +1473,23 @@ describe("wholeBuildingHolders — #2008's placement marker, keyed by party", ()
     const alpha = party({ household_cm_id: 500001, unit_code: 'cedar-1', unit_codes: ['cedar-1'] })
     expect(wholeBuildingHolders([alpha], [unit()]).size).toBe(0)
   })
+
+  it('never marks a person-grain party, even one whose own unit_codes structurally cover a whole half (kindred#2771)', () => {
+    // Owner ruling 2026-09-23: the whole-building badge is a household-shaped
+    // signal (a FAMILY holding a building) and reads as nonsense for an
+    // adult-weekend guest, who is never a family. Same registry fact as the
+    // first test in this block ('marks a party whose own unit_codes cover one
+    // whole half') -- only the grain differs, and that alone must withhold it.
+    const guest = party({
+      grain: 'person',
+      person_cm_id: 700001,
+      household_cm_id: 0,
+      unit_code: '',
+      unit_codes: ['up-r1', 'up-r2'],
+      is_merged_slot: true,
+    })
+    expect(wholeBuildingHolders([guest], halvedHouse).size).toBe(0)
+  })
 })
 
 describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirmed share (kindred#2339)', () => {
