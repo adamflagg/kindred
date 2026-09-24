@@ -31,7 +31,7 @@ func setupPersonsReplayCollections(t *testing.T, app core.App, grain *Collection
 	persons.Fields.Add(&core.BoolField{Name: "is_camper"})
 	persons.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	persons.Indexes = []string{fmt.Sprintf(
-		"CREATE UNIQUE INDEX `%s` ON `persons` (`cm_id`, `year`)", grain.UniqueIndex)}
+		"CREATE UNIQUE INDEX %#q ON `persons` (`cm_id`, `year`)", grain.UniqueIndex)}
 	if err := app.Save(persons); err != nil {
 		t.Fatalf("create persons: %v", err)
 	}
