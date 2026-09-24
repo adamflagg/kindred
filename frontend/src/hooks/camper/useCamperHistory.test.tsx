@@ -24,6 +24,10 @@ let journeyCounts: JourneyCounts = { summers: 0, familyWeekends: 0, adultWeekend
 // Q9 for CURRENT-year rows (owner ruling 2026-09-22, late): the registry-
 // resolved TLI/SCIT map travels alongside the feed's rows/counts.
 let teenCabinsByWeekend: Map<string, CabinLabel> = new Map()
+// kindred#2812: a parent's current-year family rows (the one current-year row
+// no live attendee builds) and the attributed adult cabins.
+let currentYearParentRows: HistoricalRecord[] = []
+let adultCabinsByWeekend: Map<string, CabinLabel> = new Map()
 const mockUseCamperJourney = vi.fn()
 vi.mock('./useCamperJourney', () => ({
   useCamperJourney: (...args: unknown[]) => mockUseCamperJourney(...args),
@@ -71,12 +75,16 @@ describe('useCamperHistory', () => {
     priorRows = []
     journeyCounts = { summers: 0, familyWeekends: 0, adultWeekends: 0 }
     teenCabinsByWeekend = new Map()
+    currentYearParentRows = []
+    adultCabinsByWeekend = new Map()
     mockUseCamperJourney.mockImplementation(() => ({
       rows: priorRows,
+      currentYearParentRows,
       counts: journeyCounts,
       isLoading: false,
       error: null,
       teenCabinsByWeekend,
+      adultCabinsByWeekend,
     }))
     mockFetchParentMainSessions.mockResolvedValue(new Map())
   })
@@ -298,5 +306,133 @@ describe('useCamperHistory', () => {
     expect(current.sessionType).toBe('main')
     expect(current.sessionName).toBe('Session B')
     expect(mockFetchParentMainSessions).toHaveBeenCalledWith([{ year: 2026, cmId: 199 }])
+  })
+
+  // ==========================================================================
+  // kindred#2812 (owner rulings 2026-09-24): the current year, everywhere.
+  // ==========================================================================
+
+  it("shows a 2026 parent's household weekends FC1 and FC6 with their cabins, and counts what it shows", async () => {
+    // Her own current-year attendee row is WW alone: a parent has no
+    // family-camp attendee row, so FC1 and FC6 come from the feed.
+    journeyCounts = { summers: 0, familyWeekends: 2, adultWeekends: 1 }
+    currentYearParentRows = [
+      {
+        year: YEAR,
+        sessionName: 'Family Camp 1: Memorial Day Weekend',
+        sessionType: 'family',
+        bunkName: 'Cedar Lodge',
+        startDate: '2026-05-22',
+      },
+      {
+        year: YEAR,
+        sessionName: 'Family Camp 6',
+        sessionType: 'family',
+        bunkName: 'Meadow House 1',
+        bunkNameRecorded: 'Old Meadow 1',
+        startDate: '2026-09-18',
+      },
+    ]
+    adultCabinsByWeekend = new Map([
+      [`${String(YEAR)}:1001`, { cabinName: 'River F', cabinNameRaw: 'River F' }],
+    ])
+    const ww = currentCamper({
+      sessionCmId: 1001,
+      sessionType: 'adult',
+      name: "Women's Weekend",
+      startDate: '2026-07-10',
+    })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, ww, [ww]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const current = result.current.camperHistory.filter((r) => r.year === YEAR)
+    expect(current.map((r) => [r.sessionName, r.bunkName])).toEqual([
+      ['Family Camp 1: Memorial Day Weekend', 'Cedar Lodge'],
+      ["Women's Weekend", 'River F'],
+      ['Family Camp 6', 'Meadow House 1'],
+    ])
+    const history = result.current.camperHistory
+    expect(history.filter((r) => r.sessionType === 'family')).toHaveLength(
+      result.current.counts.familyWeekends
+    )
+    expect(history.filter((r) => r.sessionType === 'adult')).toHaveLength(
+      result.current.counts.adultWeekends
+    )
+  })
+
+  it('labels a current-year adult row with the attributed registry name, never its raw bunk', async () => {
+    adultCabinsByWeekend = new Map([
+      [`${String(YEAR)}:1001`, { cabinName: 'Meadow House 1', cabinNameRaw: 'Old Meadow 1' }],
+    ])
+    const ww = currentCamper({
+      sessionCmId: 1001,
+      sessionType: 'adult',
+      name: "Women's Weekend",
+      bunkName: 'Raw Bunk',
+    })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, ww, [ww]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const current = result.current.camperHistory.filter((r) => r.year === YEAR)
+    expect(current).toHaveLength(1)
+    expect(current[0]).toMatchObject({
+      sessionName: "Women's Weekend",
+      bunkName: 'Meadow House 1',
+      bunkNameRecorded: 'Old Meadow 1',
+    })
+  })
+
+  it('shows a current-year adult row with no cabin when none has been typed yet', async () => {
+    const ww = currentCamper({
+      sessionCmId: 1001,
+      sessionType: 'adult',
+      name: "Women's Weekend",
+      bunkName: 'Raw Bunk',
+    })
+    const { result } = renderHook(() => useCamperHistory(8000101, YEAR, ww, [ww]), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const current = expectDefined(result.current.camperHistory.find((r) => r.year === YEAR))
+    expect(current.sessionName).toBe("Women's Weekend")
+    expect(current.bunkName).toBeUndefined()
+  })
+
+  it('shows two summer sessions in one year as two rows, even in the same cabin', async () => {
+    priorRows = [
+      { year: 2025, sessionName: 'Session 2a', sessionType: 'embedded', bunkName: 'B-2' },
+    ]
+    const campers = [
+      currentCamper({
+        sessionCmId: 201,
+        sessionType: 'embedded',
+        name: 'Session 2a',
+        startDate: '2026-06-14',
+        bunkName: 'B-1',
+      }),
+      currentCamper({
+        sessionCmId: 301,
+        sessionType: 'embedded',
+        name: 'Session 3a',
+        startDate: '2026-07-05',
+        bunkName: 'B-1',
+      }),
+    ]
+    const { result } = renderHook(
+      () => useCamperHistory(8000101, YEAR, campers[0] as Camper, campers),
+      { wrapper: createWrapper() }
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.camperHistory.map((r) => [r.year, r.sessionName, r.bunkName])).toEqual([
+      [YEAR, 'Session 2a', 'B-1'],
+      [YEAR, 'Session 3a', 'B-1'],
+      [2025, 'Session 2a', 'B-2'],
+    ])
   })
 })

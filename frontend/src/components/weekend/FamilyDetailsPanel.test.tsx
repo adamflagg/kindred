@@ -60,7 +60,7 @@ const journeyCalls: Array<number | null> = []
 const personJourneyCalls: Array<[number | null, number]> = []
 const personJourney = {
   value: {
-    rows: [
+    history: [
       { year: 2025, sessionName: "Women's Weekend", sessionType: 'adult', bunkName: 'River F' },
     ],
     counts: { summers: 0, familyWeekends: 0, adultWeekends: 5 },
@@ -68,8 +68,10 @@ const personJourney = {
     error: null as Error | null,
   },
 }
-vi.mock('../../hooks/camper/useCamperJourney', () => ({
-  useCamperJourney: (personCmId: number | null, year: number) => {
+// PersonJourneyCard's one read since kindred#2812: the camper record's own
+// current-year build over the shared feed. A plain source of rows here.
+vi.mock('../../hooks/camper/useCamperJourneyWithCurrentYear', () => ({
+  useCamperJourneyWithCurrentYear: (personCmId: number | null, year: number) => {
     personJourneyCalls.push([personCmId, year])
     return personJourney.value
   },
@@ -954,7 +956,7 @@ describe('adult weekend guest journey', () => {
     const loaded = personJourney.value
     personJourney.value = {
       ...loaded,
-      rows: [
+      history: [
         {
           year: 2024,
           sessionName: 'Family Camp 8: JFAM Weekend w/ SFJCC (w/ kids 10 and under)',
@@ -978,7 +980,7 @@ describe('adult weekend guest journey', () => {
     const loaded = personJourney.value
     personJourney.value = {
       ...loaded,
-      rows: [],
+      history: [],
       counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
       isLoading: true,
     }
@@ -1000,7 +1002,7 @@ describe('adult weekend guest journey', () => {
     const loaded = personJourney.value
     personJourney.value = {
       ...loaded,
-      rows: [],
+      history: [],
       counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
       isLoading: false,
       error: new Error('boom'),

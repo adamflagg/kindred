@@ -1,6 +1,12 @@
 /**
  * Hook for fetching camper's historical session and bunk data
  * Aggregates current year and past years' camp history
+ *
+ * THE ONE CURRENT-YEAR BUILD (owner rulings 2026-09-24, kindred#2812): every
+ * journey surface shows the current year's enrollments — the camper record,
+ * the summer board's sidebar and the Women's/Men's Weekend sidebar (the last
+ * two through `useCamperJourneyWithCurrentYear`) — and they all show THESE
+ * rows, so one surface can never show a row another drops or doubles.
  */
 
 import { useMemo } from 'react'
@@ -101,7 +107,8 @@ function buildCurrentYearRecords(
 function applyCurrentYearCabinRule(
   records: RawCurrentYearRecord[],
   currentYear: number,
-  teenCabins: Map<string, CabinLabel>
+  teenCabins: Map<string, CabinLabel>,
+  adultCabins: Map<string, CabinLabel>
 ): HistoricalRecord[] {
   return records.map(({ sessionCmId, bunkName: rawBunkName, ...rest }) => {
     const cabin = currentYearCabin(
@@ -109,7 +116,8 @@ function applyCurrentYearCabinRule(
       currentYear,
       sessionCmId,
       rawBunkName,
-      teenCabins
+      teenCabins,
+      adultCabins
     )
     const bunkName =
       cabin.bunkName ?? (isAtCampSessionType(rest.sessionType) ? 'Unassigned' : undefined)
@@ -180,10 +188,17 @@ export function useCamperHistory(
   })
 
   // Q9 (owner, 2026-09-22 late): reactive to the registry's teen-cabin map,
-  // independent of the attendee-keyed query above.
+  // independent of the attendee-keyed query above — and, since kindred#2812,
+  // to the attributed adult-cabin map the same way.
   const resolvedCurrentRows = useMemo(
-    () => applyCurrentYearCabinRule(currentRows, currentYear, journey.teenCabinsByWeekend),
-    [currentRows, currentYear, journey.teenCabinsByWeekend]
+    () =>
+      applyCurrentYearCabinRule(
+        currentRows,
+        currentYear,
+        journey.teenCabinsByWeekend,
+        journey.adultCabinsByWeekend
+      ),
+    [currentRows, currentYear, journey.teenCabinsByWeekend, journey.adultCabinsByWeekend]
   )
 
   // The SHARED comparator, not a second year-only one. This merge is where
@@ -191,9 +206,17 @@ export function useCamperHistory(
   // chronological by luck of the fetch order, the current year's do not, and
   // a year-only sort preserves both — so 2025 read correctly while 2026 read
   // "2a, 3a, FC1, FC6".
+  //
+  // A parent's current-year family weekends (kindred#2812) join here: the
+  // feed counted them all along, and no live attendee row of the parent's can
+  // build them. The server leaves out any weekend the person is enrolled on
+  // themself, so none of them repeats a row built above.
   const camperHistory = useMemo(
-    () => [...resolvedCurrentRows, ...journey.rows].sort(byYearThenChronological),
-    [resolvedCurrentRows, journey.rows]
+    () =>
+      [...resolvedCurrentRows, ...journey.currentYearParentRows, ...journey.rows].sort(
+        byYearThenChronological
+      ),
+    [resolvedCurrentRows, journey.currentYearParentRows, journey.rows]
   )
 
   return {

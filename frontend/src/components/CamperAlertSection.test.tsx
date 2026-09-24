@@ -304,9 +304,12 @@ vi.mock('../lib/pocketbase', () => ({
 vi.mock('../hooks/camper/useCamperJourney', () => ({
   useCamperJourney: () => ({
     rows: [],
+    currentYearParentRows: [],
     counts: { summers: 0, familyWeekends: 0, adultWeekends: 0 },
     isLoading: false,
     error: null,
+    teenCabinsByWeekend: new Map(),
+    adultCabinsByWeekend: new Map(),
   }),
 }))
 

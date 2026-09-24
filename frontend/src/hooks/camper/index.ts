@@ -11,6 +11,10 @@ export { useCamperEnrollment, type UseCamperEnrollmentResult } from './useCamper
 export { useCamperHistory, type UseCamperHistoryResult } from './useCamperHistory'
 export { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
 export { useCamperJourney } from './useCamperJourney'
+export {
+  useCamperJourneyWithCurrentYear,
+  type UseCamperJourneyWithCurrentYearResult,
+} from './useCamperJourneyWithCurrentYear'
 export { useSiblings, type UseSiblingsResult } from './useSiblings'
 export { useOriginalBunkData, type UseOriginalBunkDataResult } from './useOriginalBunkData'
 export {

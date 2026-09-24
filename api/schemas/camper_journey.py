@@ -59,12 +59,25 @@ class CamperJourneyResponse(BaseModel):
     """A person's journey as of one viewed year.
 
     `rows` are the years BEFORE it, newest year first and chronological
-    within a year. `teen_cabins` is the person-housing read's list, passed
-    through unchanged: the client's current-year rows are built from live
-    attendees rather than from this feed, and they label a TLI/SCIT row from
-    it (owner ruling 2026-09-22 late, Q9).
+    within a year. The viewed year itself is built on the client, from live
+    attendees and live bunks, by every journey surface alike (owner rulings
+    2026-09-24, kindred#2812); the three fields after `counts` are what that
+    build needs from here.
     """
 
     rows: list[CamperJourneyRow] = Field(default_factory=list)
     counts: CamperJourneyCounts = Field(default_factory=CamperJourneyCounts)
+    # The viewed year's family weekends the person attended AS A PARENT, for
+    # a 21+ person: every weekend a child in the household was enrolled on
+    # that they were not enrolled on themself. Labelled like a prior year's
+    # parent row, chronological. Counted in `family_weekends`, and the one
+    # current-year row the client cannot build -- a parent has no family-camp
+    # attendee row of their own (kindred#2812).
+    current_year_parent_rows: list[CamperJourneyRow] = Field(default_factory=list)
+    # The person-housing read's two lists, passed through unchanged, current
+    # year included: the client labels a live current-year TLI/SCIT row from
+    # `teen_cabins` (owner ruling 2026-09-22 late, Q9) and a live adult-program
+    # row from `adult_cabins` (kindred#2812) -- never from the raw CampMinder
+    # bunk, exactly as the prior-year rows above.
     teen_cabins: list[PersonHousingWeekend] = Field(default_factory=list)
+    adult_cabins: list[PersonHousingWeekend] = Field(default_factory=list)

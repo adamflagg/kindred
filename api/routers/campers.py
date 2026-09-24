@@ -26,8 +26,10 @@ async def get_camper_journey(
     user: AuthUser = Depends(get_current_user),
 ) -> CamperJourneyResponse:
     """A person's camper journey as of one viewed year: the prior-year rows,
-    the header counts, and the TLI/SCIT cabins a current-year row looks
-    itself up by.
+    the header counts, a 21+ person's current-year family weekends as a parent,
+    and the TLI/SCIT and adult cabins a current-year row looks itself up by
+    (the client builds the rest of the current year from live attendees,
+    kindred#2812).
 
     THE YEAR IS REQUIRED, unlike the household journey and person-housing
     reads this one composes, because the answer depends on it: rows stop

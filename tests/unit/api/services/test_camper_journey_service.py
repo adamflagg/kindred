@@ -1097,3 +1097,137 @@ class TestJourneyTypesMatchTheClient:
         detail = set(re.findall(r"'([a-z]+)'", match.group(1)))
         assert set(CAMPER_JOURNEY_SESSION_TYPES) == detail | {"family"}
         assert len(set(CAMPER_JOURNEY_SESSION_TYPES)) == len(CAMPER_JOURNEY_SESSION_TYPES)
+
+
+# --------------------------------------------------------------------------
+# New: the viewed year (kindred#2812, owner rulings 2026-09-24).
+# --------------------------------------------------------------------------
+
+
+def fc1_fc6_household_year(**overrides: Any) -> HouseholdJourneyYear:
+    """A 2026 household on FC1 and FC6, each with its own live cabin -- the
+    per-weekend shape #2789 publishes once EVERY weekend has a live row."""
+    fields: dict[str, Any] = {
+        "year": CURRENT_YEAR,
+        "housing": "placed",
+        "cabin_name": "Cedar Lodge",
+        "cabin_name_raw": "Cedar Lodge",
+        "housing_session_cm_id": None,
+        "sessions": [
+            household_session(101, "Family Camp 1: Memorial Day Weekend", "2026-05-22"),
+            household_session(106, "Family Camp 6", "2026-09-18"),
+        ],
+        "weekend_cabins": [
+            weekend_cabin(101, "Cedar Lodge", "Cedar Lodge"),
+            weekend_cabin(106, "Meadow House 1", "Old Meadow 1"),
+        ],
+    }
+    fields.update(overrides)
+    return HouseholdJourneyYear(**fields)
+
+
+class TestCurrentYearParentRows:
+    """Every journey surface shows the viewed year's enrollments. The camper
+    record builds its own from live attendees and live bunks, and every
+    sidebar now shares that build -- except a parent's family weekends,
+    which have no attendee row of the parent's to build from. Those, and only
+    those, come from here: `rows` stays the years BEFORE the viewed one."""
+
+    @pytest.mark.asyncio
+    async def test_a_parent_gets_both_current_year_household_weekends_with_their_per_weekend_cabins(
+        self, pb: FakePB
+    ) -> None:
+        out = await _feed(pb, family_years=[fc1_fc6_household_year()], viewer_is_adult=True)
+
+        assert out.rows == []
+        assert [row.session_name for row in out.current_year_parent_rows] == [
+            "Family Camp 1: Memorial Day Weekend",
+            "Family Camp 6",
+        ]
+        assert_matches(
+            by_name(out.current_year_parent_rows, "Family Camp 1: Memorial Day Weekend"),
+            year=CURRENT_YEAR,
+            session_type="family",
+            bunk_name="Cedar Lodge",
+            bunk_name_recorded=None,
+            start_date="2026-05-22",
+        )
+        assert_matches(
+            by_name(out.current_year_parent_rows, "Family Camp 6"),
+            bunk_name="Meadow House 1",
+            bunk_name_recorded="Old Meadow 1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_parents_family_count_equals_the_family_rows_shown(self, pb: FakePB) -> None:
+        """No family attendee row of her own, so every family row she is shown
+        is a parent row: the prior years' and the viewed year's."""
+        out = await _feed(pb, family_years=[household_year(), fc1_fc6_household_year()], viewer_is_adult=True)
+
+        shown = [row for row in [*out.current_year_parent_rows, *out.rows] if row.session_type == "family"]
+        assert out.family_weekends == 3
+        assert len(shown) == out.family_weekends
+
+    @pytest.mark.asyncio
+    async def test_adds_no_current_year_parent_rows_for_a_child_viewer(self, pb: FakePB) -> None:
+        out = await _feed(pb, family_years=[fc1_fc6_household_year()])
+
+        assert out.current_year_parent_rows == []
+
+    @pytest.mark.asyncio
+    async def test_leaves_out_a_current_year_weekend_the_person_is_enrolled_on_themself(self, pb: FakePB) -> None:
+        """Their own enrollment is a live attendee row, which the client
+        already builds -- a parent row for it too would show it twice."""
+        pb.lists["attendees"].return_value = [
+            attendee(CURRENT_YEAR, 101, "family", "Family Camp 1: Memorial Day Weekend", start_date="2026-05-22")
+        ]
+        out = await _feed(pb, family_years=[fc1_fc6_household_year()], viewer_is_adult=True)
+
+        assert [row.session_name for row in out.current_year_parent_rows] == ["Family Camp 6"]
+        assert out.family_weekends == 2
+
+    @pytest.mark.asyncio
+    async def test_builds_no_current_year_row_from_the_persons_own_enrollments(self, pb: FakePB) -> None:
+        pb.lists["attendees"].return_value = [
+            attendee(CURRENT_YEAR, 500, "main", "Session 2"),
+            attendee(CURRENT_YEAR, 1001, "adult", "Women's Weekend"),
+        ]
+        out = await _feed(pb, adult_weekends=[adult_housing(CURRENT_YEAR, 1001, "River F")])
+
+        assert out.current_year_parent_rows == []
+        assert out.rows == []
+
+
+class TestCamperJourneyServiceCurrentYear:
+    @pytest.mark.asyncio
+    async def test_the_response_carries_the_current_year_parent_rows_beside_the_prior_years(
+        self, people_pb: FakePB
+    ) -> None:
+        people_pb.lists["persons"].return_value = [person_row(YEAR, age=43.01)]
+        household = HouseholdJourneyResponse(household_cm_id=555, years=[household_year(), fc1_fc6_household_year()])
+        service, _, _ = _service(people_pb, household=household)
+
+        result = await service.build_camper_journey(PERSON, YEAR)
+
+        assert [row.year for row in result.rows] == [2024]
+        assert [row.session_name for row in result.current_year_parent_rows] == [
+            "Family Camp 1: Memorial Day Weekend",
+            "Family Camp 6",
+        ]
+        assert result.counts.family_weekends == 3
+
+    @pytest.mark.asyncio
+    async def test_passes_the_adult_cabins_through_for_the_clients_current_year_rows(self, people_pb: FakePB) -> None:
+        """A current-year adult-program row is built on the client from live
+        attendees, and must read the ATTRIBUTED cabin the prior years read --
+        never the raw CampMinder bunk (kindred#2812). The same pass-through
+        `teen_cabins` makes for TLI/SCIT."""
+        people_pb.lists["persons"].return_value = [person_row(YEAR)]
+        prior = adult_housing(2025, 1001, "River F")
+        current = housing_weekend(YEAR, 1001, "Meadow House 1", "Old Meadow 1")
+        housing = PersonHousingResponse(person_cm_id=PERSON, weekends=[prior, current])
+        service, _, _ = _service(people_pb, housing=housing)
+
+        result = await service.build_camper_journey(PERSON, YEAR)
+
+        assert result.adult_cabins == [prior, current]

@@ -25,13 +25,19 @@ import { cabinsByWeekend, type CabinLabel } from './teenCabinLabel'
 import type { HistoricalRecord, JourneyCounts } from './types'
 
 const NO_ROWS: HistoricalRecord[] = []
-const NO_TEEN_CABINS: Map<string, CabinLabel> = new Map()
+const NO_CABINS: Map<string, CabinLabel> = new Map()
 
 export interface UseCamperJourneyResult {
   rows: HistoricalRecord[]
   counts: JourneyCounts
   isLoading: boolean
   error: Error | null
+  /**
+   * The viewed year's family weekends as a PARENT (kindred#2812) — the one
+   * current-year row no live attendee builds. Every other current-year row is
+   * the caller's own (`useCamperHistory`).
+   */
+  currentYearParentRows: HistoricalRecord[]
   /**
    * The registry-resolved TLI/SCIT cabins, keyed `${year}:${sessionCmId}`
    * (Q9, owner ruling 2026-09-22 late). Exposed so a CURRENT-year row —
@@ -40,6 +46,12 @@ export interface UseCamperJourneyResult {
    * years.
    */
   teenCabinsByWeekend: Map<string, CabinLabel>
+  /**
+   * The attributed adult-program cabins, keyed the same way (kindred#2812):
+   * a live current-year adult row reads its cabin here, never from the raw
+   * CampMinder bunk — the rule the server applies to prior years.
+   */
+  adultCabinsByWeekend: Map<string, CabinLabel>
 }
 
 export function useCamperJourney(
@@ -63,18 +75,25 @@ export function useCamperJourney(
 
   const teenCabins = journeyQ.data?.teenCabins
   const teenCabinsByWeekend = useMemo(
-    () => (teenCabins ? cabinsByWeekend(teenCabins) : NO_TEEN_CABINS),
+    () => (teenCabins ? cabinsByWeekend(teenCabins) : NO_CABINS),
     [teenCabins]
+  )
+  const adultCabins = journeyQ.data?.adultCabins
+  const adultCabinsByWeekend = useMemo(
+    () => (adultCabins ? cabinsByWeekend(adultCabins) : NO_CABINS),
+    [adultCabins]
   )
 
   const error = journeyQ.error ?? null
   return {
     rows: journeyQ.data?.rows ?? NO_ROWS,
+    currentYearParentRows: journeyQ.data?.currentYearParentRows ?? NO_ROWS,
     counts: journeyQ.data?.counts ?? EMPTY_JOURNEY_COUNTS,
     // A disabled query (waiting on auth) is pending too, and that wait is
     // loading — callers render a loader rather than an empty journey.
     isLoading: validPerson && error === null && journeyQ.isPending,
     error,
     teenCabinsByWeekend,
+    adultCabinsByWeekend,
   }
 }
