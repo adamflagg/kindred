@@ -136,7 +136,7 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # service rather than metrics_cache's router-owned 2-hour fallback. Wired to
 # POST /api/metrics/cache/invalidate (kindred#2142) -- see lodging_cache.py's
 # module docstring for why the TTL is the fallback rather than the plan.
-lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=64)
+lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=128)
 
 
 # ========================================

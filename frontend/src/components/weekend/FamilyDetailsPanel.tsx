@@ -305,13 +305,11 @@ export function FamilyDetailsPanel({
               Returning
             </span>
           )}
-          {/* `is_returning` is only ever computed for household-grain parties
-              (`_build_household_parties` sets it from `prior_cm_ids`). An
-              adult weekend guest is `grain: 'person'`, for which the field is
-              never set and arrives as the Pydantic default `false` --
-              untracked, not "no". Gating on grain keeps this badge from
-              calling every adult weekend regular a first-timer. */}
-          {party.is_returning !== true && isHousehold && (
+          {/* Both grains since kindred#2767 (owner ruling 2026-09-23, one
+              returning rule): the server computes `is_returning` for an adult
+              weekend guest too, from any prior enrolled adult session by the
+              guest's own id, so `false` is a real "no" at either grain. */}
+          {party.is_returning !== true && (
             <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
               <Star className="h-3.5 w-3.5" />
               First-time

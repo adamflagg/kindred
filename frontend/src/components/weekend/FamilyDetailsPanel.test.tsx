@@ -547,27 +547,33 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
   })
 
-  // Adult weekend guests are `grain: 'person'`. `_build_person_parties` never
-  // sets `is_returning` server-side, so it always arrives as the Pydantic
-  // default `false` -- untracked, not "no". Neither badge should claim to
-  // know a status the API never computed for this grain.
-  it('stays silent on returning status for an adult weekend guest (person grain)', () => {
-    render(
-      <FamilyDetailsPanel
-        party={party({
-          grain: 'person',
-          household_cm_id: 0,
-          person_cm_id: 5001,
-          is_returning: false,
-        })}
-        year={2026}
-        onClose={vi.fn()}
-      />,
-      { wrapper }
-    )
-    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
-    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
-  })
+  // RECORDED SPEC CHANGE (kindred#2767, owner ruling 2026-09-23). This test
+  // pinned SILENCE for an adult weekend guest, when `_build_person_parties`
+  // never computed `is_returning`. It does now -- any prior enrolled adult
+  // session, by the guest's own id -- so both badges state it.
+  it.each([
+    [true, 'Returning', 'First-time'],
+    [false, 'First-time', 'Returning'],
+  ])(
+    'states returning status for an adult weekend guest (person grain, is_returning=%s)',
+    (isReturning, shown, hidden) => {
+      render(
+        <FamilyDetailsPanel
+          party={party({
+            grain: 'person',
+            household_cm_id: 0,
+            person_cm_id: 5001,
+            is_returning: isReturning,
+          })}
+          year={2026}
+          onClose={vi.fn()}
+        />,
+        { wrapper }
+      )
+      expect(screen.getByText(shown)).toBeInTheDocument()
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+    }
+  )
 })
 
 describe('FamilyDetailsPanel — current placement', () => {

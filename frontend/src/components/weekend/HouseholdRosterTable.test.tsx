@@ -629,20 +629,29 @@ describe('HouseholdRosterTable', () => {
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
   })
 
-  // Adult weekends never compute `is_returning` server-side (person grain
-  // takes the Pydantic `bool = False` default, unset rather than "no"), so
-  // neither badge should render a claim the API never made.
-  it('stays silent on returning status for an adult weekend guest (person grain)', () => {
-    render(
-      <HouseholdRosterTable
-        year={2026}
-        parties={[party({ grain: 'person', display_name: 'Olivia Chen', is_returning: false })]}
-      />,
-      { wrapper }
-    )
-    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
-    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
-  })
+  // RECORDED SPEC CHANGE (kindred#2767, owner ruling 2026-09-23). This test
+  // pinned SILENCE for an adult weekend guest, when the server never computed
+  // `is_returning` at person grain. It does now -- any prior enrolled adult
+  // session, by the guest's own id -- so the row states it.
+  it.each([
+    [true, 'Returning', 'First-time'],
+    [false, 'First-time', 'Returning'],
+  ])(
+    'states returning status for an adult weekend guest (person grain, is_returning=%s)',
+    (isReturning, shown, hidden) => {
+      render(
+        <HouseholdRosterTable
+          year={2026}
+          parties={[
+            party({ grain: 'person', display_name: 'Olivia Chen', is_returning: isReturning }),
+          ]}
+        />,
+        { wrapper }
+      )
+      expect(screen.getByText(shown)).toBeInTheDocument()
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+    }
+  )
 
   it('shows the arrival ETA when the family gave one', () => {
     render(

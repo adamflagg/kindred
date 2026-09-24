@@ -3410,7 +3410,8 @@ export type ParsedIntent = {
 /**
  * PartyAdult
  *
- * An accompanying adult, from family_camp_adults.
+ * An accompanying adult, from family_camp_adults -- or, on an adult
+ * weekend, the guest themselves.
  */
 export type PartyAdult = {
   /**
@@ -3425,6 +3426,10 @@ export type PartyAdult = {
    * Relationship
    */
   relationship?: string
+  /**
+   * Age
+   */
+  age?: number | null
 }
 
 /**

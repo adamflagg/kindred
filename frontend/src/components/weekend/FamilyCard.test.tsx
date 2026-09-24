@@ -459,14 +459,20 @@ describe('FamilyCard — what it shows', () => {
     expect(historyMark()).toBe('First-time family')
   })
 
-  // Adult weekend guests are `grain: 'person'`. The API never computes
-  // `is_returning` for that grain (`_build_person_parties` omits the field
-  // entirely, so Pydantic's `bool = False` default fills the wire value) --
-  // it is not "false", it is "not tracked". Showing "First-time" here would
-  // brand every adult weekend regular a newcomer on every visit.
-  it('stays silent on returning status for an adult weekend guest (person grain)', () => {
+  // RECORDED SPEC CHANGE (kindred#2767, owner ruling 2026-09-23). This test
+  // used to pin SILENCE for an adult weekend guest, because the API never
+  // computed `is_returning` at person grain. It does now -- one returning
+  // rule, any prior enrolled adult session, by the guest's own id -- so the
+  // mark draws, and it names a GUEST, not a family.
+  it('marks an adult weekend guest returning or first-time, as a guest (person grain)', () => {
+    const { unmount } = render(
+      <FamilyCard party={party({ grain: 'person', is_returning: true })} onOpen={vi.fn()} />
+    )
+    expect(historyMark()).toBe('Returning guest')
+    unmount()
+
     render(<FamilyCard party={party({ grain: 'person', is_returning: false })} onOpen={vi.fn()} />)
-    expect(screen.queryByTestId('family-card-history')).not.toBeInTheDocument()
+    expect(historyMark()).toBe('First-time guest')
   })
 
   // The `unverified` ("Fit not verified") and `unmet` ("No power") chips are
@@ -1261,11 +1267,12 @@ describe('FamilyCard — last year’s housing', () => {
     expect(screen.queryByTestId('family-card-adults')).not.toBeInTheDocument()
   })
 
-  // Same grain gate as the "Returning" badge, and for the same reason: the
-  // server only ever keys this off a HOUSEHOLD cm_id, so a person-grain adult
-  // weekend guest has no prior-year cabin to have. Rendering one would put a
-  // line on a card that has no grey line at all.
-  it('never renders on a person-grain adult weekend guest', () => {
+  // RECORDED SPEC CHANGE (kindred#2767, owner ruling 2026-09-23: last
+  // year's cabin is in scope for adult guests). This pinned the cabin's
+  // ABSENCE on a person-grain card, when the server keyed it off a household
+  // only. The server now sends the guest's own year - 1 adult cabin, and the
+  // card renders it right-anchored on line 2, as summer's CamperCard does.
+  it('renders on a person-grain adult weekend guest, right-anchored on line 2', () => {
     render(
       <FamilyCard
         party={party({
@@ -1273,14 +1280,16 @@ describe('FamilyCard — last year’s housing', () => {
           household_cm_id: 0,
           person_cm_id: 5001,
           display_name: 'Liam Garcia',
-          adults: [],
+          adults: [{ adult_number: 1, display_name: 'Liam Garcia', age: 44.02 }],
           children: [],
           last_year_cabin: 'Pine Cabin',
         })}
         onOpen={vi.fn()}
       />
     )
-    expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
+    const cabin = screen.getByTestId('family-card-last-year-cabin')
+    expect(cabin).toHaveTextContent('Pine Cabin')
+    expect(cabin.className).toContain('ml-auto')
   })
 
   it('carries the cabin into the drag overlay too', () => {
@@ -1873,14 +1882,16 @@ describe('FamilyCard — Returning / First-time is a 20px icon, bottom right (R3
     expect(mark.parentElement?.lastElementChild).toBe(mark)
   })
 
-  it('still draws nothing at all for a person-grain party', () => {
-    // `is_returning` is only ever computed for household-grain parties, so an
-    // adult weekend guest arrives with the Pydantic default `false` —
-    // untracked, not "no".
+  // RECORDED SPEC CHANGE (kindred#2767): this pinned the mark's ABSENCE on a
+  // person-grain party, when `is_returning` was untracked at that grain. It
+  // is computed now, so the mark draws, pinned in the same corner.
+  it('draws the mark on a person-grain party too, pinned bottom-right', () => {
     render(
-      <FamilyCard party={party({ grain: 'person', display_name: 'Ada Okafor' })} onOpen={vi.fn()} />
+      <FamilyCard party={party({ grain: 'person', display_name: 'Riley Sam' })} onOpen={vi.fn()} />
     )
-    expect(screen.queryByTestId('family-card-history')).not.toBeInTheDocument()
+    const mark = screen.getByTestId('family-card-history')
+    expect(mark.className).toContain('ml-auto')
+    expect(mark.parentElement?.lastElementChild).toBe(mark)
   })
 })
 
@@ -2002,5 +2013,87 @@ describe('FamilyCard — the shell/body split actually bails (perf)', () => {
     const before = bodyRenders.count
     view.rerender(<FamilyCard party={theParty} onOpen={vi.fn()} />)
     expect(bodyRenders.count).toBeGreaterThan(before)
+  })
+})
+
+describe('FamilyCard — an adult weekend guest’s line 2 models summer (kindred#2767)', () => {
+  // Owner ruling 2026-09-23: the person-grain card's line 2 is summer
+  // CamperCard's -- CampMinder age on the left, last year's cabin on the
+  // right. A one-person card needs no headcount badge, just as a summer
+  // camper card has none.
+  function guest(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 5001,
+      display_name: 'Olivia Chen',
+      adults: [{ adult_number: 1, display_name: 'Olivia Chen', age: 37.11 }],
+      children: [],
+      party_size: 1,
+      ...overrides,
+    })
+  }
+
+  it('renders the age as "Age N" in whole years, through the shared summer helper', () => {
+    render(<FamilyCard party={guest()} onOpen={vi.fn()} />)
+    // displayCampMinderAge drops the months at 21+: 37.11 reads 37.
+    expect(screen.getByTestId('family-card-age')).toHaveTextContent(/^Age 37$/)
+  })
+
+  it('puts the age on the left of line 2 and last year’s cabin on the right', () => {
+    render(<FamilyCard party={guest({ last_year_cabin: 'Meadow House 1' })} onOpen={vi.fn()} />)
+    const age = screen.getByTestId('family-card-age')
+    const cabin = screen.getByTestId('family-card-last-year-cabin')
+    // One row, age first, cabin last and pushed right.
+    expect(age.parentElement).toBe(cabin.parentElement)
+    expect(age.parentElement?.firstElementChild).toBe(age)
+    expect(cabin.parentElement?.lastElementChild).toBe(cabin)
+    expect(cabin.className).toContain('ml-auto')
+  })
+
+  it('draws no age at all for a null age — never "Age 0"', () => {
+    render(
+      <FamilyCard
+        party={guest({ adults: [{ adult_number: 1, display_name: 'Olivia Chen', age: null }] })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByTestId('family-card-age')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Age 0/)).not.toBeInTheDocument()
+  })
+
+  it('draws no cabin for a guest with none last year, and no placeholder', () => {
+    render(<FamilyCard party={guest({ last_year_cabin: '' })} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
+    expect(screen.getByTestId('family-card-age')).toHaveTextContent('Age 37')
+  })
+
+  it('still shows last year’s cabin for a guest with no age on file', () => {
+    render(
+      <FamilyCard
+        party={guest({
+          adults: [{ adult_number: 1, display_name: 'Olivia Chen', age: null }],
+          last_year_cabin: 'Pine Cabin',
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-last-year-cabin')).toHaveTextContent('Pine Cabin')
+  })
+
+  it('carries no headcount badge on a person-grain card', () => {
+    render(<FamilyCard party={guest()} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-headcount')).not.toBeInTheDocument()
+  })
+
+  it('keeps the headcount badge on a household card', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('family-card-headcount')).toHaveTextContent('3')
+  })
+
+  it('carries line 2 into the drag overlay too', () => {
+    render(<FamilyCardPreview party={guest({ last_year_cabin: 'Pine Cabin' })} />)
+    expect(screen.getByTestId('family-card-age')).toHaveTextContent('Age 37')
+    expect(screen.getByTestId('family-card-last-year-cabin')).toHaveTextContent('Pine Cabin')
   })
 })
