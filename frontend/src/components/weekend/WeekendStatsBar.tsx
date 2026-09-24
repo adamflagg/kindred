@@ -25,12 +25,23 @@
  * admin unit list, the unit form's allocation field, and the board legend's
  * dashed square. Anything added here from now on costs one of the figures
  * above it.
+ *
+ * AN ADULT WEEKEND DRAWS DIFFERENT FIGURES IN THE SAME SLOTS (kindred#2765).
+ * Every guest is a party of one, so "spaces (N spare / N short)" compares guests
+ * against family spaces and reports a shortage on a weekend where guests share,
+ * and "beds" is the family-pool bed total nobody plans an adult weekend by. The
+ * adult bar shows guests placed and the shared-cabin places — 8 × the open
+ * shared cabins, the only fixed denominator — then everyone else as "other
+ * lodging": "84 placed · 52 of 240 shared-cabin places · 32 in other lodging".
+ * Same three groups, so the same one-line budget. The family bar is unchanged.
  */
 import { AlertCircle, BedDouble, Home, Users } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
-import type { RosterCountSummary } from '../../types/lodging'
+import type { LodgingUnitRow, RosterCountSummary, RosterPartyRow } from '../../types/lodging'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Tooltip } from '../ui/Tooltip'
+import { ADULT_SHARED_CABIN_GUESTS, adultLodgingTally } from './adultCapacity'
 
 export interface WeekendStatsBarProps {
   counts: RosterCountSummary
@@ -56,7 +67,18 @@ export interface WeekendStatsBarProps {
    * kindred#2686 relieved by striking the staff-housing count a day earlier.
    */
   attributionChip?: ReactNode
+  /**
+   * The weekend's `session_type` (kindred#2765), read ONLY through
+   * `isAdultSessionType`. `''` (the default) is a family weekend.
+   */
+  sessionType?: string
+  /** The roster's parties and units — read on an adult weekend only, by `adultLodgingTally`. */
+  parties?: RosterPartyRow[]
+  units?: LodgingUnitRow[]
 }
+
+const NO_PARTIES: RosterPartyRow[] = []
+const NO_UNITS: LodgingUnitRow[] = []
 
 const DIVIDER = <span className="text-border hidden sm:inline">|</span>
 
@@ -65,7 +87,15 @@ export function WeekendStatsBar({
   spotsNeeded,
   spacesUnmeasured,
   attributionChip,
+  sessionType = '',
+  parties = NO_PARTIES,
+  units = NO_UNITS,
 }: WeekendStatsBarProps) {
+  const isAdult = isAdultSessionType(sessionType)
+  const adult = useMemo(
+    () => (isAdult ? adultLodgingTally(parties, units) : null),
+    [isAdult, parties, units]
+  )
   const partiesTotal = counts.parties_total ?? 0
   const partiesAssigned = counts.parties_assigned ?? 0
   const partiesUnassigned = counts.parties_unassigned ?? 0
@@ -95,65 +125,101 @@ export function WeekendStatsBar({
           segmented area control 40px tall. This one holds a single line of
           `text-sm` — 20px — so identical padding still reads 20px tighter. */}
       <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-        <div className="flex items-center gap-2">
-          <Users className="text-primary h-4 w-4 flex-shrink-0" />
-          <span className="tabular-nums">
-            <span className="font-semibold">{partiesAssigned}</span>
-            <span className="text-muted-foreground">/{partiesTotal}</span>
-          </span>
-          <span className="text-muted-foreground">placed</span>
-        </div>
+        {adult !== null ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Users className="text-primary h-4 w-4 flex-shrink-0" />
+              <span className="font-semibold tabular-nums">{adult.placed}</span>
+              <span className="text-muted-foreground">placed</span>
+            </div>
 
-        {DIVIDER}
+            {DIVIDER}
 
-        <div className="flex items-center gap-2">
-          <Home className="text-bark-500 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
-          {/* kindred#2177: all three notes in this group were `title` on a
-              plain `<span>`, so a staff member on a tablet could read the
-              figure and never why it moves. */}
-          {/* Each figure names its own unit. As a `<span>` these were never
-              focusable and the word beside them was enough; as tab stops they
-              were three buttons called "79", "3" and "21", because the word
-              lives in a sibling the accessible name cannot reach. Each label
-              still CONTAINS its visible text, so the name matches what is on
-              screen (WCAG 2.5.3). */}
-          <Tooltip
-            content="Merging or splitting cabins on the board changes this count"
-            aria-label={`${String(spaces)} spaces`}
-            className="font-semibold tabular-nums"
-          >
-            {spaces}
-          </Tooltip>
-          <span className="text-muted-foreground">spaces</span>
-          <span className="text-muted-foreground tabular-nums">
-            ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
-          </span>
-          {/* Two chips used to hang off this figure and both are gone. The
-              write-ins one went 2026-08-21 (kindred#2503): its tooltip said a
-              write-in was "excluded from family spaces", which stopped being
-              true the moment a sized write-in left the cabin available with
-              beds free. The staff-housing one (`units_staff_housing`) went
-              2026-09-01, for room rather than for being wrong — see the
-              header comment. */}
-        </div>
+            <div className="flex items-center gap-2">
+              <Home className="text-bark-500 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
+              <span className="font-semibold tabular-nums">{adult.sharedGuests}</span>
+              <span className="text-muted-foreground">of</span>
+              <Tooltip
+                content={`Up to ${String(ADULT_SHARED_CABIN_GUESTS)} guests in each shared cabin open this weekend`}
+                aria-label={`${String(adult.sharedPlaces)} shared-cabin places`}
+                className="font-semibold tabular-nums"
+              >
+                {adult.sharedPlaces}
+              </Tooltip>
+              <span className="text-muted-foreground">shared-cabin places</span>
+            </div>
 
-        {DIVIDER}
+            {DIVIDER}
 
-        {/* Beds answer "does this family fit this cabin" — the board's
-            question. Present, never leading. */}
-        <div className="flex items-center gap-2">
-          <BedDouble className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-          <span className="tabular-nums">
-            <span className="font-semibold">{spotsNeeded}</span>
-            <span className="text-muted-foreground">/{spots}</span>
-          </span>
-          <span className="text-muted-foreground">beds</span>
-          {spacesUnmeasured > 0 && (
-            <span className="text-muted-foreground">
-              ({spacesUnmeasured} unmeasured space{spacesUnmeasured === 1 ? '' : 's'})
-            </span>
-          )}
-        </div>
+            <div className="flex items-center gap-2">
+              <BedDouble className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+              <span className="font-semibold tabular-nums">{adult.otherGuests}</span>
+              <span className="text-muted-foreground">in other lodging</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <Users className="text-primary h-4 w-4 flex-shrink-0" />
+              <span className="tabular-nums">
+                <span className="font-semibold">{partiesAssigned}</span>
+                <span className="text-muted-foreground">/{partiesTotal}</span>
+              </span>
+              <span className="text-muted-foreground">placed</span>
+            </div>
+
+            {DIVIDER}
+
+            <div className="flex items-center gap-2">
+              <Home className="text-bark-500 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
+              {/* kindred#2177: all three notes in this group were `title` on a
+                plain `<span>`, so a staff member on a tablet could read the
+                figure and never why it moves. */}
+              {/* Each figure names its own unit. As a `<span>` these were never
+                focusable and the word beside them was enough; as tab stops they
+                were three buttons called "79", "3" and "21", because the word
+                lives in a sibling the accessible name cannot reach. Each label
+                still CONTAINS its visible text, so the name matches what is on
+                screen (WCAG 2.5.3). */}
+              <Tooltip
+                content="Merging or splitting cabins on the board changes this count"
+                aria-label={`${String(spaces)} spaces`}
+                className="font-semibold tabular-nums"
+              >
+                {spaces}
+              </Tooltip>
+              <span className="text-muted-foreground">spaces</span>
+              <span className="text-muted-foreground tabular-nums">
+                ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
+              </span>
+              {/* Two chips used to hang off this figure and both are gone. The
+                write-ins one went 2026-08-21 (kindred#2503): its tooltip said a
+                write-in was "excluded from family spaces", which stopped being
+                true the moment a sized write-in left the cabin available with
+                beds free. The staff-housing one (`units_staff_housing`) went
+                2026-09-01, for room rather than for being wrong — see the
+                header comment. */}
+            </div>
+
+            {DIVIDER}
+
+            {/* Beds answer "does this family fit this cabin" — the board's
+              question. Present, never leading. */}
+            <div className="flex items-center gap-2">
+              <BedDouble className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+              <span className="tabular-nums">
+                <span className="font-semibold">{spotsNeeded}</span>
+                <span className="text-muted-foreground">/{spots}</span>
+              </span>
+              <span className="text-muted-foreground">beds</span>
+              {spacesUnmeasured > 0 && (
+                <span className="text-muted-foreground">
+                  ({spacesUnmeasured} unmeasured space{spacesUnmeasured === 1 ? '' : 's'})
+                </span>
+              )}
+            </div>
+          </>
+        )}
 
         {partiesUnassigned > 0 && (
           <>

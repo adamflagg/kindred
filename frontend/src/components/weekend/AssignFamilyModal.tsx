@@ -89,7 +89,9 @@ import { useMemo, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { displayTruncatedAge } from '../../utils/age'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Modal } from '../ui/Modal'
+import { guestsAndBeds, occupancyClaim } from './adultCapacity'
 import { childrenRunLabel, partyIdentityLabel, partySearchText } from './householdIdentity'
 import { NeedGlyphMark } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
@@ -152,6 +154,14 @@ export interface AssignFamilyModalProps {
     ((write: { occupantName: string; note: string; partySize: number | null }) => void) | undefined
   /** True while a write THIS card started is in flight. */
   isSaving?: boolean
+  /**
+   * The weekend's `session_type`, from the card that opened this (kindred#2765).
+   * Read ONLY through `isAdultSessionType` — never inferred from the parties'
+   * grain, because `parties` is `[]` wherever placement is refused. On an adult
+   * weekend the header and the candidate rows follow `adultCapacity.ts`; `''`
+   * is a family weekend, unchanged.
+   */
+  sessionType?: string
 }
 
 /**
@@ -286,9 +296,28 @@ function capacitySentence(
   unit: LodgingUnitRow,
   units: LodgingUnitRow[],
   occupants: number,
-  spanWidth: number
+  spanWidth: number,
+  isAdult: boolean
 ): string {
   const capacity = effectiveSleeps(unit, units)
+  // kindred#2765 — an adult weekend states guests, not beds. A shared cabin
+  // counts guests against 8 (a write-in is its size, or ONE unsized) and says
+  // "over" past it; every other unit makes no claim and states guests and beds
+  // side by side. The family sentence below is untouched.
+  const claim = occupancyClaim(unit, capacity, isAdult)
+  if (claim.kind === 'none') {
+    const { sized } = writeInDemand(null, coveringWriteIns(unit), isAdult)
+    return guestsAndBeds(occupants + sized, capacity)
+  }
+  if (claim.kind === 'guests') {
+    const limit = claim.limit
+    const { consumed, sized } = writeInDemand(limit, coveringWriteIns(unit), isAdult)
+    const guests = occupants + sized
+    if (guests > limit && spanWidth === 0) {
+      return `Over capacity — ${String(guests)} guests, up to ${String(limit)}`
+    }
+    return `${String(Math.max(0, limit - occupants - consumed))} of ${String(limit)} guest places free`
+  }
   // ⚠️ `consumed`, NOT `sized` — DELIBERATE, and the same reviewer who
   // flagged it agreed once the reasoning was in front of them (kindred#2540
   // fix-round FINDING 7, declined by the owner 2026-08-22). The card
@@ -313,7 +342,7 @@ function capacitySentence(
   // different questions, not two copies of one answer that drifted. Do NOT
   // "harmonise" this to `sized` — that is precisely the change the owner
   // declined.
-  const { consumed, usable } = writeInDemand(capacity, coveringWriteIns(unit))
+  const { consumed, usable } = writeInDemand(capacity, coveringWriteIns(unit), false)
   // ⚠️ THE WRITE-IN REFUSAL IS GONE, NOT NARROWED AGAIN — kindred#2543, owner
   // ruling 2026-08-29: *"sure modal can follow the floor, roll that fix in as
   // well."* This header carried a sentence of its own,
@@ -497,7 +526,9 @@ export function AssignFamilyModal({
   onSelect,
   onWriteIn,
   isSaving = false,
+  sessionType = '',
 }: AssignFamilyModalProps) {
+  const isAdult = isAdultSessionType(sessionType)
   /*
    * ⚠️ THE SEARCH BOX IS FOCUSED THROUGH `ui/Modal`, NOT THROUGH `autoFocus`,
    * and that is a fix rather than a style choice. Measured 2026-08-20 in a
@@ -572,11 +603,11 @@ export function AssignFamilyModal({
   const occupied = spanWidth === 0 ? occupants : 0
   const candidates = useMemo(
     () =>
-      placementCandidates(parties, unit, units, occupied).filter(
+      placementCandidates(parties, unit, units, occupied, isAdult).filter(
         (candidate) =>
           needle === '' || partySearchText(candidate.party).toLowerCase().includes(needle)
       ),
-    [parties, unit, units, occupied, needle]
+    [parties, unit, units, occupied, isAdult, needle]
   )
 
   /**
@@ -718,7 +749,9 @@ export function AssignFamilyModal({
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3.5 pr-14 pb-[9px]">
       <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
       <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
-        {[capacitySentence(unit, units, occupants, spanWidth), ...amenityWords(unit)].join(' · ')}
+        {[capacitySentence(unit, units, occupants, spanWidth, isAdult), ...amenityWords(unit)].join(
+          ' · '
+        )}
       </p>
     </div>
   )

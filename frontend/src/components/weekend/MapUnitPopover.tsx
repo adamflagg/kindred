@@ -24,7 +24,9 @@ import { Accessibility, Bath, Home, Plug, Refrigerator, Snowflake } from 'lucide
 import { type ReactNode, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Tooltip } from '../ui/Tooltip'
+import { guestsAndBeds, occupancyClaim } from './adultCapacity'
 import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
@@ -74,6 +76,14 @@ export interface MapUnitPopoverProps {
    * building here" rather than needing a threaded-through empty set.
    */
   wholeBuildingKeys?: Set<string>
+  /**
+   * The weekend's `session_type`, threaded from `WeekendRosterPage` through
+   * `LodgingMap` (kindred#2765). Read ONLY through `isAdultSessionType`. On an
+   * adult weekend the room card judges a shared cabin against 8 guests and
+   * makes no claim about anything else — the rule `LodgingUnitCard` applies,
+   * so the map and the board agree. `''` (the default) is a family weekend.
+   */
+  sessionType?: string
 }
 
 /** Referentially stable so an omitted `wholeBuildingKeys` never re-triggers
@@ -279,9 +289,10 @@ interface DetailCardProps {
   hue: string
   onOpenParty: (party: RosterPartyRow) => void
   wholeBuildingKeys: Set<string>
+  isAdult: boolean
 }
 
-function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardProps) {
+function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys, isAdult }: DetailCardProps) {
   const { unit, parties, consent, capacity, spanWidth } = entry
   // `capacity`, NOT `unit.sleeps` (kindred#2183). They are the same number for
   // every ordinary room, and different for the one case this card could not
@@ -320,7 +331,13 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
    * mirrors it exactly — the figure and the over-capacity verdict below are
    * the SAME number compared against capacity, as they are on the card.
    */
-  const { sized: writeInSized } = writeInDemand(capacity, coveringWriteIns(unit))
+  //
+  // kindred#2765: judged against `claim.limit` — `capacity` on a family
+  // weekend, the 8-guest ceiling on an adult shared cabin, and no claim
+  // (`null`) on anything else an adult weekend holds. An unsized write-in is
+  // one guest there, which `writeInDemand`'s adult branch counts into `sized`.
+  const claim = occupancyClaim(unit, capacity, isAdult)
+  const { sized: writeInSized } = writeInDemand(claim.limit, coveringWriteIns(unit), isAdult)
   /*
    * THE AMBER IS A CLAIM, AND `spanWidth` IS WHAT WITHHOLDS IT — the same gate
    * `LodgingUnitCard`'s `overCapacity` and `AssignFamilyModal`'s header take,
@@ -345,7 +362,8 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
    * `consumed` (which folds in the wholesale fallback and is capped at
    * `capacity` — a number this popover never shows).
    */
-  const overCapacity = capacityKnown && spanWidth === 0 && spotsNeeded + writeInSized > capacity
+  const overCapacity =
+    claim.limit !== null && spanWidth === 0 && spotsNeeded + writeInSized > claim.limit
 
   // Only the ACTIONABLE levels. `unverified` no longer means "nobody has
   // confirmed this cabin" — kindred#2526 removed that gate and `partyAttention`
@@ -408,11 +426,24 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
             such a room named its occupant and then printed no figure beside
             them. A recorded write-in count is exactly the kind of fact this
             hint exists to show. */}
-        {(parties.length > 0 || writeInSized > 0) && capacityKnown && (
+        {(parties.length > 0 || writeInSized > 0) && claim.kind === 'beds' && capacityKnown && (
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Beds</dt>
             <dd className={overCapacity ? 'font-semibold text-amber-700' : ''}>
               {`${String(spotsNeeded + writeInSized)} of ${String(capacity)}`}
+            </dd>
+          </div>
+        )}
+        {/* kindred#2765 — an adult weekend counts GUESTS. A shared cabin reads
+            `N of 8`, amber past it, as the board card reads `N/8`; any other
+            unit makes no claim and states guests and beds as neutral text. */}
+        {(parties.length > 0 || writeInSized > 0) && claim.kind !== 'beds' && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">Guests</dt>
+            <dd className={overCapacity ? 'font-semibold text-amber-700' : ''}>
+              {claim.kind === 'guests'
+                ? `${String(spotsNeeded + writeInSized)} of ${String(claim.limit)}`
+                : guestsAndBeds(spotsNeeded + writeInSized, capacity)}
             </dd>
           </div>
         )}
@@ -641,6 +672,7 @@ interface ClusterSummaryProps {
   prefix: string
   onOpenParty: (party: RosterPartyRow) => void
   wholeBuildingKeys: Set<string>
+  isAdult: boolean
 }
 
 /**
@@ -659,6 +691,7 @@ function ClusterSummary({
   prefix,
   onOpenParty,
   wholeBuildingKeys,
+  isAdult,
 }: ClusterSummaryProps) {
   const rooms = units.reduce((total, entry) => total + entry.roomCount, 0)
   // A drawn unit is taken as a WHOLE: a family holding a combined house holds
@@ -716,8 +749,9 @@ function ClusterSummary({
   // descendant cover this reduces to the same figure the old per-unit sum
   // produced; only the ancestor case changes.
   const writeIns = summaryWriteIns(resolved)
+  // On an adult weekend an unsized write-in is ONE guest (kindred#2765).
   const writeInSized = writeIns.reduce(
-    (total, { occupant }) => total + (occupant.partySize ?? 0),
+    (total, { occupant }) => total + (occupant.partySize ?? (isAdult ? 1 : 0)),
     0
   )
   const placed = families.reduce((total, { party }) => total + partySpots(party), 0) + writeInSized
@@ -755,9 +789,17 @@ function ClusterSummary({
               `DetailCard`'s own combined figure is labelled `Beds` and reads
               `X of Y` for exactly this reason; this matches it rather than
               inventing a third phrasing. */}
-            <dt className="text-muted-foreground">Beds</dt>
+            {/* kindred#2765: a building on an adult weekend makes no capacity
+                claim, so it states guests and beds as neutral text. */}
+            <dt className="text-muted-foreground">{isAdult ? 'Guests' : 'Beds'}</dt>
             <dd>
-              {capacity === null ? <em>unknown</em> : `${String(placed)} of ${String(capacity)}`}
+              {isAdult ? (
+                guestsAndBeds(placed, capacity)
+              ) : capacity === null ? (
+                <em>unknown</em>
+              ) : (
+                `${String(placed)} of ${String(capacity)}`
+              )}
             </dd>
           </div>
         )}
@@ -988,7 +1030,9 @@ export function MapUnitPopover({
   hue,
   onOpenParty,
   wholeBuildingKeys = NO_WHOLE_BUILDING_HOLDERS,
+  sessionType = '',
 }: MapUnitPopoverProps) {
+  const isAdult = isAdultSessionType(sessionType)
   // LOCAL and nothing leaves the popover: which room of a container is being
   // read is not a fact the map, the board or the URL has any use for.
   const [pickedUnitId, setPickedUnitId] = useState<string | null>(null)
@@ -1025,6 +1069,7 @@ export function MapUnitPopover({
           hue={hue}
           onOpenParty={onOpenParty}
           wholeBuildingKeys={wholeBuildingKeys}
+          isAdult={isAdult}
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -1035,6 +1080,7 @@ export function MapUnitPopover({
               prefix={prefix}
               onOpenParty={onOpenParty}
               wholeBuildingKeys={wholeBuildingKeys}
+              isAdult={isAdult}
             />
           ) : (
             <div className="flex flex-col gap-1.5">
@@ -1052,6 +1098,7 @@ export function MapUnitPopover({
                 hue={hue}
                 onOpenParty={onOpenParty}
                 wholeBuildingKeys={wholeBuildingKeys}
+                isAdult={isAdult}
               />
             </div>
           )}

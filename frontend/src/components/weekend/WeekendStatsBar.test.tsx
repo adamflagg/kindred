@@ -345,9 +345,11 @@ describe('WeekendStatsBar on an adult weekend (kindred#2765)', () => {
     const { container } = renderAdult()
     // 4 guests + 1 unsized write-in = 5 placed; 4 of them in the two shared
     // cabins (16 places), 1 in the single-party unit.
-    expect(container).toHaveTextContent('5 placed')
-    expect(container).toHaveTextContent('4 of 16 shared-cabin places')
-    expect(container).toHaveTextContent('1 in other lodging')
+    // The figures sit in sibling spans separated by `gap`, not by spaces, so
+    // the DOM text runs them together.
+    expect(container).toHaveTextContent(/5\s*placed/)
+    expect(container).toHaveTextContent(/4\s*of\s*16\s*shared-cabin places/)
+    expect(container).toHaveTextContent(/1\s*in other lodging/)
   })
 
   it('drops the family figures that report a false shortage at person grain', () => {

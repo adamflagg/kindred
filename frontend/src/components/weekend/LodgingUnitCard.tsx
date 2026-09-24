@@ -33,7 +33,9 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Tooltip } from '../ui/Tooltip'
+import { guestsAndBeds, occupancyClaim } from './adultCapacity'
 import { capAmenityMarks, type AmenityMark, type AmenityMarkKey } from './amenityCap'
 import { startAmenityCapCueBreath, type AmenityCapCueBreath } from './amenityCapCue'
 import { overlappingPartyKeys, partySize, slotOccupancy, type BoardSlot } from './boardLayout'
@@ -41,7 +43,14 @@ import { AssignFamilyModal } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
-import { NEUTRAL, hasNoRoom, resolveDragFit, type DragCapacity, type DragFit } from './needsFit'
+import {
+  NEUTRAL,
+  hasNoRoom,
+  resolveDragFit,
+  unitDragCapacity,
+  type DragCapacity,
+  type DragFit,
+} from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { effectiveSleeps } from './rosterAttention'
 import { partyKey } from './partyKey'
@@ -355,6 +364,17 @@ export interface LodgingUnitCardProps {
    */
   onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => void
   onOpenParty: (party: RosterPartyRow) => void
+  /**
+   * The weekend's `session_type`, threaded from `WeekendRosterPage` through
+   * `LodgingBoard` (kindred#2765) — the same name and shape
+   * `HouseholdRosterTable` takes. Read ONLY through `isAdultSessionType`.
+   *
+   * On an adult weekend a shared cabin is judged against
+   * `ADULT_SHARED_CABIN_GUESTS` rather than its beds, every other unit makes no
+   * capacity claim, and an unsized write-in is one guest — `adultCapacity.ts`.
+   * `''` (the default) is a family weekend, unchanged.
+   */
+  sessionType?: string
 }
 
 /**
@@ -409,8 +429,10 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   unplacedParties = [],
   onPlaceParty,
   onOpenParty,
+  sessionType = '',
 }: LodgingUnitCardProps & DndBridge) {
   const { unit, parties, consent } = slot
+  const isAdult = isAdultSessionType(sessionType)
   // Suppressed for a write-in ONLY on this card (kindred#2252). The chip and
   // the well's `WriteInCard` below said the same thing twice — the occupant's
   // own name, once as a slate "Write-in" chip and once spelled out in the
@@ -497,6 +519,14 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   const capacity = effectiveSleeps(unit, units)
   const capacityKnown = capacity !== null
   /*
+   * What this card's occupancy is JUDGED against (kindred#2765). On a family
+   * weekend that is `capacity` itself and nothing below moves. On an adult
+   * weekend a shared cabin is judged against 8 guests and every other unit
+   * makes no claim at all (`limit: null`) — `adultCapacity.ts` carries the
+   * table. `capacity` stays the BEDS, which the adult figure still prints.
+   */
+  const claim = occupancyClaim(unit, capacity, isAdult)
+  /*
    * How full the room is. The corner figure used to be CAPACITY alone, so the
    * card read identically whether the room was empty or full.
    *
@@ -528,11 +558,9 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * whether anybody ever measured it, so `writeInDemand(null, [])` answering
    * `known: true` had to be corrected here. `usable` answers that itself.
    */
-  const {
-    consumed: writeInConsumed,
-    sized: writeInPeople,
-    usable: writeInSpotsUsable,
-  } = writeInDemand(capacity, coveringWriteIns(unit))
+  // Against `claim.limit`, not `capacity`: identical on a family weekend; on
+  // an adult one `writeInDemand` charges an unsized write-in one guest.
+  const { sized: writeInPeople } = writeInDemand(claim.limit, coveringWriteIns(unit), isAdult)
 
   // `capacity` rather than `capacity ?? 0`: TypeScript narrows it through
   // `capacityKnown`, which is an aliased `!== null` check, so the fallback is
@@ -543,7 +571,12 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   // (`writeInDemand`'s doc) precisely so a hand-typed write-in count above
   // the room's own beds drives this same red figure, the way an over-full
   // placement always has.
-  const overCapacity = capacityKnown && spanWidth === 0 && occupants + writeInPeople > capacity
+  //
+  // `claim.limit` is `capacity` on a family weekend; on an adult one it is the
+  // 8-guest ceiling on a shared cabin and `null` — no claim, never red —
+  // everywhere else (kindred#2765).
+  const overCapacity =
+    claim.limit !== null && spanWidth === 0 && occupants + writeInPeople > claim.limit
   // The "N families" count chip below: a true statement about the CARD
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
@@ -828,6 +861,23 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
       : `Capacity not recorded · ${String(occupants)} placed${writeInClause}${infantExemptionClause}`
 
   /*
+   * The corner figure itself (kindred#2765). A family weekend and an adult
+   * shared cabin both read `N/M` — M the beds, or the 8-guest ceiling. Every
+   * other unit on an adult weekend makes no claim, so it states guests and
+   * beds side by side as neutral text: never red, never "0 free".
+   */
+  const cornerFigure =
+    claim.kind === 'none'
+      ? guestsAndBeds(occupants + writeInPeople, capacity)
+      : claim.kind === 'guests'
+        ? `${occupancyFigure}/${String(claim.limit)}`
+        : `${occupancyFigure}/${capacityKnown ? String(capacity) : '—'}`
+  const cornerTooltip =
+    claim.kind === 'guests'
+      ? `Up to ${String(claim.limit)} guests · ${occupancyTooltip}`
+      : occupancyTooltip
+
+  /*
    * Beds the family in flight already holds ON THIS CARD, added back before
    * anything asks whether it fits.
    *
@@ -839,28 +889,21 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    */
   const dragOccupiesHere =
     draggingParty !== null && slot.parties.some((p) => partyKey(p) === partyKey(draggingParty))
-  // `capacityKnown` is an aliased `!== null` check that TypeScript narrows
-  // through, which is why `capacity` needs no fallback inside it.
-  //
-  // `writeInConsumed` joins `occupants` here (kindred#2503): a write-in's
-  // beds are gone from this card whether or not a family is placed beside
-  // it, and free beds have to pay for them the same way they pay for a
-  // placed party's beds.
-  const freeBeds = capacityKnown
-    ? capacity -
-      occupants -
-      writeInConsumed +
-      (dragOccupiesHere && draggingParty ? partySize(draggingParty) : 0)
-    : 0
+  const heldHere = dragOccupiesHere ? partySize(draggingParty) : 0
 
   /*
+   * The arithmetic below lives in `needsFit.ts`'s `unitDragCapacity` since
+   * kindred#2765, which is where the adult-weekend rule reaches both marks.
+   * Free beds pay for the write-ins covering this card the same way they pay
+   * for a placed party's beds (kindred#2503).
+   *
    * `known` is withheld on TWO conditions, and kindred#2543 narrowed the
    * second one to what it was always trying to say.
    *
    * `spanWidth > 0` — the occupant count is an upper bound, not a fact, so a
    * positive claim must not be built on it (see `slotOccupancy`). Unchanged.
    *
-   * `writeInSpotsUsable` — is there a free-spot number to stand behind at
+   * `writeInDemand`'s `usable` — is there a free-spot number to stand behind at
    * all. ⚠️ THIS USED TO BE `capacityKnown && writeInDemandKnown`, i.e. "every
    * cover on this card is sized", and that is the gate the owner struck on
    * 2026-08-29: *"it should subsume its leaf as it does today, but also
@@ -904,10 +947,13 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
    * were separate inline expressions until the write-in rule had to be applied
    * to both by hand.
    */
-  const dragCapacity: DragCapacity = {
-    known: writeInSpotsUsable && spanWidth === 0,
-    free: freeBeds,
-  }
+  const dragCapacity: DragCapacity = unitDragCapacity(
+    unit,
+    capacity,
+    { occupants, spanWidth },
+    heldHere,
+    isAdult
+  )
 
   /*
    * Where the family in flight stands against this space — one `DragFit`,
@@ -1490,7 +1536,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             exactly what the figure states in colour, on the two cards a
             weekend that qualify. */}
         <Tooltip
-          content={occupancyTooltip}
+          content={cornerTooltip}
           data-testid="unit-occupancy"
           className={`ml-auto text-sm tabular-nums ${
             overCapacity || noRoomForDrag
@@ -1506,7 +1552,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
               bed arithmetic, so `0/5` beside a full room is a lie and `5/5`
               is a different one. The em dash is this card's existing way of
               refusing to assert a number it does not have. */}
-          {`${occupancyFigure}/${capacityKnown ? String(capacity) : '—'}`}
+          {cornerFigure}
         </Tooltip>
       </div>
 
@@ -1912,6 +1958,9 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
           // so the two surfaces cannot answer "is this over capacity" two
           // different ways.
           spanWidth={spanWidth}
+          // The weekend's type (kindred#2765), so the header and the candidate
+          // rows grade an adult weekend by the same rule this card does.
+          sessionType={sessionType}
           isSaving={savingAvailability}
           onSelect={(party) => {
             onPlaceParty?.(unit, party)
