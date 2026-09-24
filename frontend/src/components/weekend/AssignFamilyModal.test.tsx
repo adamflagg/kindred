@@ -1792,6 +1792,30 @@ describe('AssignFamilyModal — CampMinder mode never claims everyone is placed 
     expect(screen.getByRole('dialog')).not.toHaveTextContent('Everyone has a cabin')
     expect(searchBox()).toHaveAccessibleName('Write in an occupant for Ridge 1')
   })
+
+  it('never titles the dialog "Assign" when placement is not live', () => {
+    // The pill reads "Write in" here; the dialog it opens must not then say
+    // "Assign to …" over a box that cannot place anyone.
+    renderModal({ parties: [], canPlace: false })
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).not.toHaveTextContent('Assign')
+    expect(dialog).toHaveTextContent('Write in for Ridge 1')
+    expect(dialog).toHaveAccessibleName('Write in for Ridge 1')
+  })
+
+  it('keeps "Assign to …" as the title in scenario mode, queue empty or not', () => {
+    renderModal({ parties: [], canPlace: true })
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Assign to Ridge 1')
+  })
+
+  it('leaves the scenario-mode search box exactly as before when the queue is empty', () => {
+    // Scenario mode is unchanged by kindred#2804. With nobody left to place,
+    // the box is a write-in box and has always said so — `canPlace` must not
+    // turn it back into an invitation to place a family that does not exist.
+    renderModal({ parties: [], canPlace: true })
+    expect(searchBox()).toHaveAccessibleName('Write in an occupant for Ridge 1')
+    expect(searchBox()).toHaveAttribute('placeholder', 'Write in a name…')
+  })
 })
 
 describe('AssignFamilyModal — it is the shared dialog, not a second pattern', () => {

@@ -725,22 +725,27 @@ export function AssignFamilyModal({
   }
 
   /**
-   * Whether this card can place a family at all — now read straight off the
-   * `canPlace` prop (kindred#2804).
+   * Whether the search box can place a family RIGHT NOW — which is what its
+   * label and placeholder describe. Two conditions, and both are needed.
    *
-   * FALSE on the CampMinder mirror, where there is no scenario: recording who
-   * is sleeping in a cabin is a fact about the WEEKEND, not about a plan, so
-   * the write-in half stays live where the placement half cannot be.
+   * `canPlace` (kindred#2804): FALSE on the CampMinder mirror, where there is
+   * no scenario. Recording who is sleeping in a cabin is a fact about the
+   * WEEKEND, not about a plan, so the write-in half stays live where the
+   * placement half cannot be.
    *
-   * ⚠️ USED TO BE DERIVED FROM `parties.length` AND `onWriteIn` ALONE, and
-   * that heuristic is exactly what kindred#2804 found broken: it agreed with
-   * `canPlace` only in the corner where `onWriteIn` is absent, and everywhere
-   * else — the ordinary case, where a caller offers write-in and placement
-   * together — it could not tell "no scenario" from "scenario, nobody left to
-   * place" apart, because both hand this component `parties: []`. The prop is
-   * the second flag that heuristic was missing, not a second derivation of it.
+   * `parties.length > 0 || onWriteIn === undefined`: the original rule, kept
+   * whole so scenario mode is unchanged. In a scenario whose queue is empty the
+   * box has always been labelled a write-in box — there is no family left to
+   * invite the staff member to place.
+   *
+   * ⚠️ `canPlace` ALONE IS NOT ENOUGH. It says whether placement is possible
+   * on this weekend, not whether anyone is waiting; read by itself it turned
+   * the empty-queue scenario box back into "Place a family, or write in…".
+   * Where `canPlace` IS the whole answer is the "Everyone has a cabin" branch
+   * and the dialog's title below, which are claims about the scenario rather
+   * than about the queue.
    */
-  const placementLive = canPlace
+  const placementLive = canPlace && (parties.length > 0 || onWriteIn === undefined)
 
   /*
    * ONE BASELINE ROW — title and sub together, the artifact's `.mhead`
@@ -768,9 +773,15 @@ export function AssignFamilyModal({
    * whitespace between `.mhead` and `.pinput`), and the ruled 9px is now
    * undivided and carried entirely here, in `pb-[9px]`.
    */
+  // kindred#2804. On the CampMinder mirror the pill that opens this reads
+  // "Write in", and the dialog must not then call itself "Assign" over a box
+  // that cannot place anyone. `canPlace`, not `placementLive`: a scenario whose
+  // queue is empty is still the assign dialog, and its title is unchanged.
+  const title = canPlace ? `Assign to ${unit.name}` : `Write in for ${unit.name}`
+
   const header = (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3.5 pr-14 pb-[9px]">
-      <h2 className="min-w-0 truncate text-lg font-bold">{`Assign to ${unit.name}`}</h2>
+      <h2 className="min-w-0 truncate text-lg font-bold">{title}</h2>
       <p data-testid="assign-capacity" className="text-muted-foreground text-xs">
         {[capacitySentence(unit, units, occupants, spanWidth, isAdult), ...amenityWords(unit)].join(
           ' · '
@@ -820,7 +831,7 @@ export function AssignFamilyModal({
       // from. Threaded for that reason rather than as an accessibility
       // measure — it names the dialog after the cabin it writes to, which is
       // also the only thing distinguishing one of these from another.
-      ariaLabel={`Assign to ${unit.name}`}
+      ariaLabel={title}
       // ⚠️ TOP-ANCHORED, and it is load-bearing. Centred, the dialog is laid
       // out around a content-height card, so every change in the swap region
       // re-centres the whole thing — measured at 133px of search-box travel
