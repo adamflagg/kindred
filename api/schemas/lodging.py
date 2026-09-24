@@ -1093,6 +1093,84 @@ class AccessibilityFlagSummary(BaseModel):
     # filtered, and what deleting it removed from the read path.
 
 
+# ---------------------------------------------------------------------------
+# kindred#2759: an adult-weekend guest's Jotform bunking request.
+#
+# Present on a person-grain party ONLY for a `bunking.manage` caller (None
+# otherwise, and never on a household). The request is shown AS WRITTEN --
+# nothing resolves the names in 2026. The change rule runs server-side
+# (`api/services/jotform_bunking.py`) so the card and panel cannot disagree.
+# ---------------------------------------------------------------------------
+BunkingRequestState = Literal["request", "none", "no_form"]
+ComingWithToken = Literal["solo", "family", "friends", "partner"]
+
+
+class BunkingRequestVersion(BaseModel):
+    """One filing's bunking answer, "no request"-style words already blanked."""
+
+    # Jotform's own "YYYY-MM-DD HH:MM:SS", verbatim (account local time).
+    submitted_at: str
+    text: str = ""
+
+
+class BunkingRequestChangeItem(BaseModel):
+    text: str
+    op: Literal["add", "remove", "keep", "respell"]
+    # For a respelling, only the words that moved ("Johnston"), else "".
+    was: str = ""
+
+
+class BunkingRequestChange(BaseModel):
+    """How the request moved across a guest's filings.
+
+    `list`: the first filing diffed against the current one, in the current
+    order with each drop re-inserted where it sat. `prose`: some filing is not
+    name-shaped, so every version is shown. `identical`: re-filed, same names.
+    `from_date`/`to_date` rather than from/to: `from` is a Python keyword.
+    """
+
+    kind: Literal["list", "prose", "identical"]
+    items: list[BunkingRequestChangeItem] = Field(default_factory=list)
+    versions: list[BunkingRequestVersion] = Field(default_factory=list)
+    count: int = 0
+    from_date: str = ""
+    to_date: str = ""
+
+
+class JotformNeedAnswer(BaseModel):
+    """A need the Jotform answers differently from CampMinder registration
+    (#2766). Registration still drives the need glyphs; this is context."""
+
+    need: Literal["accommodation", "cpap"]
+    registration: str  # "Yes" | "No" | "blank"
+    jotform: str  # "Yes" | "No"
+    detail: str = ""
+    submitted_at: str = ""
+
+
+class BunkingRequestSummary(BaseModel):
+    """`state`: `request` (a non-empty current filing), `none` (filed, no
+    request), `no_form` (enrolled, nothing filed or matched yet)."""
+
+    state: BunkingRequestState
+    # The LATEST filing's request, or "" when the latest is blank (owner
+    # ruling 2026-09-24: a blank re-file withdraws the request).
+    current_text: str = ""
+    versions: list[BunkingRequestVersion] = Field(default_factory=list)
+    change: BunkingRequestChange | None = None
+    # P15 (owner, 2026-09-24): true when ANY two consecutive filings differ,
+    # compared as normalized item lists. The card's amber dot reads THIS, not
+    # `change` -- a request that moved and moved back (A -> A+B -> A) is
+    # changed, yet `change.items` (the NET first-vs-latest markup) is all keep.
+    changed: bool = False
+    # Every tick of the latest filing's "coming with", ordered solo, family,
+    # friends, partner.
+    coming_with: list[ComingWithToken] = Field(default_factory=list)
+    submitted: list[str] = Field(default_factory=list)
+    staff_linked: bool = False
+    jotform_says: list[JotformNeedAnswer] = Field(default_factory=list)
+
+
 class RosterParty(BaseModel):
     """One placeable party.
 
