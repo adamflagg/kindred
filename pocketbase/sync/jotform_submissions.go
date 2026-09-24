@@ -34,7 +34,9 @@ type JotformFetcher interface {
 // JotformSubmissionsSync pulls every ENABLED adult-weekend form for the season
 // (kindred#2759), stores every answered question generically, marks vanished
 // submissions DELETED, and auto-matches with jotform.Match against the
-// session's enrolled guests. Rows staff linked or ignored are never touched.
+// session's enrolled guests. Rows staff linked or ignored are never re-matched:
+// their Jotform content (answers, dates, status, a DELETED mark) still refreshes,
+// but match_status, person_cm_id and match_tier stay as staff left them.
 //
 // Not CampMinder: it has its own key (JOTFORM_API_KEY) and base URL
 // (JOTFORM_API_BASE). Until the enterprise-account move it runs only on an
@@ -151,9 +153,8 @@ func (s *JotformSubmissionsSync) pullForm(
 		if seen[id] || rec.GetString("jotform_status") == jotformStatusDeleted {
 			continue
 		}
-		rec.Set("jotform_status", jotformStatusDeleted)
-		if saveErr := s.App.Save(rec); saveErr != nil {
-			return fmt.Errorf("marking submission %s deleted: %w", id, saveErr)
+		if markErr := s.markDeleted(rec.Id); markErr != nil {
+			return fmt.Errorf("marking submission %s deleted: %w", id, markErr)
 		}
 		s.Stats.Deleted++
 	}
@@ -401,6 +402,27 @@ func (s *JotformSubmissionsSync) matchForm(
 		}
 	}
 	return matched, unmatched, nil
+}
+
+// markDeleted stamps jotform_status DELETED on a FRESH copy of the row, inside
+// a transaction: the copy pullForm loaded predates the whole upsert loop, and
+// Save writes every column, so marking it would revert a staff link made since.
+func (s *JotformSubmissionsSync) markDeleted(recordID string) error {
+	err := s.App.RunInTransaction(func(tx core.App) error {
+		fresh, err := tx.FindRecordById("jotform_submissions", recordID)
+		if err != nil {
+			return fmt.Errorf("re-reading: %w", err)
+		}
+		fresh.Set("jotform_status", jotformStatusDeleted)
+		if err := tx.Save(fresh); err != nil {
+			return fmt.Errorf("saving: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("in transaction: %w", err)
+	}
+	return nil
 }
 
 // saveMatch writes one match decision onto a FRESH copy of the row, inside a

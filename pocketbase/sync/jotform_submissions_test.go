@@ -488,3 +488,56 @@ func TestJotformPullStatusDoesNotRevertAConcurrentFormEdit(t *testing.T) {
 		t.Errorf("last_pull_status = %q, want the ok stamp", form.GetString("last_pull_status"))
 	}
 }
+
+// Marking a vanished submission DELETED must not revert a staff edit made to
+// that row while the pull ran: the mark is written on a fresh copy too.
+func TestJotformDeletedMarkKeepsAStaffEditMadeDuringThePull(t *testing.T) {
+	t.Parallel()
+	app := newJotformTestApp(t)
+	seedWeekend(t, app)
+	kept, vanished := "6600000000000000001", "6600000000000000002"
+	if _, err := runJotform(t, app, &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
+		submission(kept, "2026-08-03 09:00:00", "Olivia", "Chen", ""),
+		submission(vanished, "2026-08-04 09:00:00", "Emma", "Johnsonn", ""),
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second pull: the kept row was edited on Jotform (so the job re-saves it),
+	// and the other vanished. While the kept row saves, staff link the other.
+	edited := submission(kept, "2026-08-03 09:00:00", "Olivia", "Chen", "")
+	edited.UpdatedAt = "2026-08-06 09:00:00"
+	fired := false
+	app.OnRecordUpdate("jotform_submissions").BindFunc(func(e *core.RecordEvent) error {
+		if fired || e.Record.GetString("submission_id") != kept {
+			return e.Next()
+		}
+		fired = true
+		other, err := e.App.FindFirstRecordByFilter("jotform_submissions",
+			"submission_id = {:id}", map[string]any{"id": vanished})
+		if err != nil {
+			return fmt.Errorf("finding the row to link: %w", err)
+		}
+		other.Set("match_status", matchStatusStaff)
+		other.Set("person_cm_id", 1000005)
+		if err := e.App.Save(other); err != nil {
+			return fmt.Errorf("linking: %w", err)
+		}
+		return e.Next()
+	})
+	if _, err := runJotform(t, app, &fakeJotform{subs: map[string][]jotform.Submission{
+		"261700000000001": {edited},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if !fired {
+		t.Fatal("the hook never fired, so this test exercised nothing")
+	}
+	got := subRecord(t, app, vanished)
+	if got.GetString("jotform_status") != jotformStatusDeleted {
+		t.Errorf("the vanished row must still be marked DELETED: %v", got.PublicExport())
+	}
+	if got.GetString("match_status") != matchStatusStaff || got.GetInt("person_cm_id") != 1000005 {
+		t.Errorf("marking it DELETED reverted a staff link made during the pull: %v", got.PublicExport())
+	}
+}
