@@ -378,7 +378,15 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys, isAdult }: Det
   const tags: string[] = []
   if (unit.near_bathhouse) tags.push('near bathhouse')
   if (unit.inventory_class === 'staff_default') tags.push('staff-default')
-  if (parties.length > 1) tags.push(`shared by ${String(parties.length)}`)
+  // kindred#2771, owner ruling 2026-09-23: this tag is a household-shaped
+  // signal — "more than one FAMILY is here" — and it is meaningless at person
+  // grain, where a shared adult cabin is the norm rather than the exception
+  // this tag exists to flag. Left ungated it would fire on nearly every
+  // multi-guest adult cabin. Gated on the PARTY's own grain, not on
+  // `sessionType`: a guest is never a family, whatever weekend they're on.
+  if (parties.length > 1 && !parties.some((party) => party.grain === 'person')) {
+    tags.push(`shared by ${String(parties.length)}`)
+  }
   // kindred#2026, and it belongs HERE rather than only on the board because
   // this popover is the one surface that already prints `shared by N`. Saying
   // a room is shared by two while saying nothing about whether it MAY be is

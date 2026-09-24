@@ -594,6 +594,14 @@ export function overlappingPartyKeys(
  * placement, not a card. See `unitLevel.ts`'s `wholeBuildingHeld` for the
  * grain (immediate parent, ruled on #2008) and why a one-room "building" can
  * never qualify.
+ *
+ * PERSON-GRAIN PARTIES NEVER QUALIFY (kindred#2771, owner ruling
+ * 2026-09-23). The badge says a FAMILY holds a building; an adult-weekend
+ * guest is never a family, whatever they structurally occupy. Left ungated,
+ * this would mark every guest placed at a multi-room building — the shape
+ * `wholeBuildingHeld` requires (`group.length > 1`) is exactly how most
+ * adult-weekend cabins are registered. Skipped before the leaf walk rather
+ * than filtered after, so a guest never even pays for the registry lookup.
  */
 export function wholeBuildingHolders(
   parties: RosterPartyRow[],
@@ -602,6 +610,7 @@ export function wholeBuildingHolders(
   const unitsByCode = indexUnitsByCode(units)
   const holders = new Set<string>()
   for (const party of parties) {
+    if (party.grain === 'person') continue
     const leaves = occupiedLeafCodes(party, units, unitsByCode)
     if (wholeBuildingHeld(leaves, units)) holders.add(partyKey(party))
   }
