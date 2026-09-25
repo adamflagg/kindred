@@ -157,3 +157,42 @@ def test_a_refused_weekend_queue_maps_to_404_and_422() -> None:
         bare = client.get("/api/jotform/queue", params={"year": 2026, "scenario": "x"})
     assert (other.status_code, other.json()["detail"]) == (404, "not this weekend's")
     assert (bare.status_code, bare.json()["detail"]) == (422, "name the weekend")
+
+
+# --- One filer, one decision (kindred#2839 follow-up) ---------------------------
+
+
+def test_an_action_that_also_moved_the_filers_other_filings_names_them() -> None:
+    from api.schemas.jotform import JotformActionResult, JotformSiblingFiling
+
+    result = JotformActionResult(
+        action="ignored",
+        also=[
+            JotformSiblingFiling(
+                submission_id="6600000000000000002", submitted_name="Emma Johnson", submitted_at="2026-08-09 09:00:00"
+            )
+        ],
+    )
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.ignore = AsyncMock(return_value=result)
+        response = _client(_user(Permission.BUNKING_MANAGE)).post("/api/jotform/submissions/6600000000000000001/ignore")
+    assert response.status_code == 200
+    assert response.json() == {
+        "action": "ignored",
+        "also": [
+            {
+                "submission_id": "6600000000000000002",
+                "submitted_name": "Emma Johnson",
+                "submitted_at": "2026-08-09 09:00:00",
+            }
+        ],
+    }
+
+
+def test_an_action_that_moved_only_the_clicked_filing_stays_a_204() -> None:
+    from api.schemas.jotform import JotformActionResult
+
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.unlink = AsyncMock(return_value=JotformActionResult(action="unlinked"))
+        response = _client(_user(Permission.BUNKING_MANAGE)).post("/api/jotform/submissions/6600000000000000001/unlink")
+    assert (response.status_code, response.content) == (204, b"")

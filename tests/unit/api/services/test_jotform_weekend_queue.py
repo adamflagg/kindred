@@ -490,3 +490,117 @@ class TestLinkingKeepsTheFilingsKey:
 
         assert repo.set_write_in_key.await_args_list == []
         assert repo.update_submission.await_args.args[1]["write_in_key"] == "k3"
+
+
+class TestSimilarNameSuggestions:
+    """Staff mistype write-in names -- a nametag of "Emmy" typed "Emny". When
+    no exact tier finds a write-in, the Suggested links offer the one write-in
+    whose name is closest to the filer's (Jaro-Winkler >= 0.85), labelled as a
+    similar name. Never the dropdown's pre-selection, never a link on its own."""
+
+    @pytest.mark.asyncio
+    async def test_a_typo_in_a_nametag_is_suggested_as_a_similar_name(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s30")],
+            fetch_answers=_answers("s30", "Emma", "Johnson", nametag="Emmy"),
+            fetch_live_write_ins=[_write_in("w1", "Emny")],
+        )
+
+        queue = await _weekend(repo)
+
+        [suggestion] = queue.write_in_link_suggestions
+        assert (suggestion.option_id, suggestion.submission_id, suggestion.label) == (
+            "u_cedar/Emny",
+            "6600000000000000030",
+            "Similar name: link to Emma Johnson's filing?",
+        )
+        # The dropdown stays exact: nothing is pre-selected for a similar name.
+        [item] = queue.unmatched
+        assert item.write_in_suggestion == ""
+        repo.update_submission.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_tie_for_the_closest_name_suggests_nothing(self) -> None:
+        # "Emmi" and "Emme" are equally close to "Emmy": no unique best hit.
+        repo = _repo(
+            fetch_submissions=[_sub("s31")],
+            fetch_answers=_answers("s31", "Emma", "Johnson", nametag="Emmy"),
+            fetch_live_write_ins=[_write_in("w1", "Emmi"), _write_in("w2", "Emme", unit="u_fern", unit_name="Fern 1")],
+        )
+
+        assert (await _weekend(repo)).write_in_link_suggestions == []
+
+    @pytest.mark.asyncio
+    async def test_an_exact_hit_leaves_no_room_for_a_similar_one(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s32")],
+            fetch_answers=_answers("s32", "Emma", "Johnson", nametag="Emmy"),
+            fetch_live_write_ins=[_write_in("w1", "Emmy"), _write_in("w2", "Emny", unit="u_fern", unit_name="Fern 1")],
+        )
+
+        suggestions = (await _weekend(repo)).write_in_link_suggestions
+
+        assert [(s.occupant_name, s.label) for s in suggestions] == [("Emmy", "Link to Emma Johnson's filing")]
+
+    @pytest.mark.asyncio
+    async def test_an_ambiguous_exact_tier_suggests_no_similar_name_either(self) -> None:
+        # Two exact "Emmy"s: the exact tier found something, just not one thing.
+        repo = _repo(
+            fetch_submissions=[_sub("s33")],
+            fetch_answers=_answers("s33", "Emma", "Johnson", nametag="Emmy"),
+            fetch_live_write_ins=[
+                _write_in("w1", "Emmy"),
+                _write_in("w2", "Emmy", unit="u_fern", unit_name="Fern 1"),
+                _write_in("w3", "Emny", unit="u_oak", unit_name="Oak 2"),
+            ],
+        )
+
+        assert (await _weekend(repo)).write_in_link_suggestions == []
+
+    @pytest.mark.asyncio
+    async def test_a_similar_write_in_carrying_another_filings_link_is_never_suggested(self) -> None:
+        # The closest name's live copy carries Olivia's link: suggesting it
+        # would merge two filings. Nor does the runner-up take its place.
+        repo = _repo(
+            fetch_submissions=[_sub("s34"), _sub("s35", "write_in", write_in_key="k-olivia")],
+            fetch_answers=[
+                *_answers("s34", "Emma", "Johnson", nametag="Emmy"),
+                *_answers("s35", "Olivia", "Chen"),
+            ],
+            fetch_live_write_ins=[_write_in("w1", "Emmyy", key="k-olivia")],
+            fetch_draft_write_ins=[
+                _write_in("d1", "Emmyy", scenario="scn_a"),
+                _write_in("d2", "Emny", unit="u_oak", unit_name="Oak 2", scenario="scn_a"),
+            ],
+        )
+
+        suggestions = (await _weekend(repo, scenario="scn_a")).write_in_link_suggestions
+
+        assert all(s.submission_id != "6600000000000000034" for s in suggestions)
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_that_exactly_names_another_filer_is_not_a_typo_of_this_one(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s36"), _sub("s37")],
+            fetch_answers=[*_answers("s36", "Emma", "Johnson"), *_answers("s37", "Emmi", "Johnson")],
+            fetch_live_write_ins=[_write_in("w1", "Emmi Johnson")],
+        )
+
+        suggestions = (await _weekend(repo)).write_in_link_suggestions
+
+        assert [(s.submission_id, s.label) for s in suggestions] == [
+            ("6600000000000000037", "Link to Emmi Johnson's filing")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_linked_filing_unplaced_here_gets_a_similar_name_too(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s38", "write_in", write_in_key="k1")],
+            fetch_answers=_answers("s38", "Emma", "Johnson", nametag="Emmy"),
+            fetch_live_write_ins=[_write_in("w1", "Emma J.", key="k1")],
+            fetch_draft_write_ins=[_write_in("d1", "Emny", unit="u_fern", unit_name="Fern 1", scenario="scn_a")],
+        )
+
+        [suggestion] = (await _weekend(repo, scenario="scn_a")).write_in_link_suggestions
+
+        assert suggestion.label == "Similar name: link to Emma Johnson's filing? (linked in the live board)"

@@ -2589,6 +2589,24 @@ export type IncrementalUpdateResponse = {
 }
 
 /**
+ * JotformActionResult
+ *
+ * What a link, ignore, unlink or restore did (kindred#2839 follow-up):
+ * one filer, one decision. `also` names the filer's other filings of the
+ * weekend the same decision reached.
+ */
+export type JotformActionResult = {
+  /**
+   * Action
+   */
+  action: 'linked' | 'ignored' | 'unlinked' | 'restored'
+  /**
+   * Also
+   */
+  also?: Array<JotformSiblingFiling>
+}
+
+/**
  * JotformDuplicateGroup
  */
 export type JotformDuplicateGroup = {
@@ -2930,6 +2948,27 @@ export type JotformRoleMeta = {
    * Flag
    */
   flag?: 'wording_changed' | 'missing' | 'needs_pick' | null
+}
+
+/**
+ * JotformSiblingFiling
+ *
+ * Another filing of the same weekend by an identical submitter that a
+ * staff action moved along with the one clicked.
+ */
+export type JotformSiblingFiling = {
+  /**
+   * Submission Id
+   */
+  submission_id: string
+  /**
+   * Submitted Name
+   */
+  submitted_name: string
+  /**
+   * Submitted At
+   */
+  submitted_at: string
 }
 
 /**
@@ -12698,6 +12737,10 @@ export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostError =
 
 export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostResponses = {
   /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
+  /**
    * Successful Response
    */
   204: void
@@ -12729,6 +12772,10 @@ export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostError =
   IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors[keyof IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors]
 
 export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostResponses = {
+  /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
   /**
    * Successful Response
    */
@@ -12762,6 +12809,10 @@ export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostError =
 
 export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses = {
   /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
+  /**
    * Successful Response
    */
   204: void
@@ -12793,6 +12844,10 @@ export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostE
   LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors[keyof LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors]
 
 export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses = {
+  /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
   /**
    * Successful Response
    */

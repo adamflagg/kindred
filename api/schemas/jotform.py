@@ -184,3 +184,21 @@ class JotformWriteInLinkRequest(BaseModel):
 
     unit_id: str = Field(min_length=1, max_length=64)
     occupant_name: str = Field(min_length=1, max_length=500)
+
+
+class JotformSiblingFiling(BaseModel):
+    """Another filing of the same weekend by an identical submitter that a
+    staff action moved along with the one clicked."""
+
+    submission_id: str
+    submitted_name: str
+    submitted_at: str
+
+
+class JotformActionResult(BaseModel):
+    """What a link, ignore, unlink or restore did (kindred#2839 follow-up):
+    one filer, one decision. `also` names the filer's other filings of the
+    weekend the same decision reached."""
+
+    action: Literal["linked", "ignored", "unlinked", "restored"]
+    also: list[JotformSiblingFiling] = Field(default_factory=list)

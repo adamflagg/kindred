@@ -207,6 +207,50 @@ def same_person(a: QueueSubmission, b: QueueSubmission) -> str | None:
     return "shared emergency contact and the same first name" if shared and first_ok else None
 
 
+# --- One filer, one decision (kindred#2839 follow-up) ---------------------------
+
+# Filings no decision has been made about: still needing a guest, or matched
+# only to a cancelled registration. A staff link or ignore reaches these.
+_WAITING = frozenset({"unmatched", "cancelled"})
+
+
+def same_filer(a: QueueSubmission, b: QueueSubmission) -> bool:
+    """Two filings of one weekend by an identical submitter: the same folded
+    first AND last name from the form. Deliberately narrower than
+    `same_person`: a decision is copied on this alone, never on a likeness."""
+    first, last = fold(a.first), fold(a.last)
+    return (
+        a.record_id != b.record_id
+        and a.session_cm_id == b.session_cm_id
+        and first != ""
+        and last != ""
+        and (first, last) == (fold(b.first), fold(b.last))
+    )
+
+
+def waiting_siblings(sub: QueueSubmission, subs: Sequence[QueueSubmission]) -> list[QueueSubmission]:
+    """The filer's other filings a link or ignore of `sub` also decides. One
+    already decided -- auto, staff, ignored, write-in -- is left as it is."""
+    return [o for o in subs if same_filer(sub, o) and o.match_status in _WAITING]
+
+
+def same_link_siblings(sub: QueueSubmission, subs: Sequence[QueueSubmission]) -> list[QueueSubmission]:
+    """The filer's other filings carrying the very link an unlink (or restore)
+    of `sub` undoes: the same guest by a staff link, the same write-in, or
+    both ignored. A different decision is left alone."""
+
+    def same_link(other: QueueSubmission) -> bool:
+        if other.match_status != sub.match_status:
+            return False
+        if sub.match_status == "staff":
+            return sub.person_cm_id > 0 and other.person_cm_id == sub.person_cm_id
+        if sub.match_status == "write_in":
+            return sub.write_in_key != "" and other.write_in_key == sub.write_in_key
+        return sub.match_status == "ignored"
+
+    return [o for o in subs if same_filer(sub, o) and same_link(o)]
+
+
 def _named_in_request(request: str, guest: QueueGuest) -> bool:
     text = fold(request)
     return bool(text) and fold(guest.last) in text and any(first in text for first in guest.firsts)
@@ -389,7 +433,15 @@ def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOptio
       2. nametag (its first word) + last;
       3. the whole nametag;
       4. first name or nametag alone.
-    A tier with several candidates pre-selects nothing."""
+    A tier with several candidates pre-selects nothing. Exact tiers only: a
+    similar name is a Suggested link (`link_suggestions`), never a pre-selection."""
+    hits = _exact_write_in_hits(sub, options)
+    return next(iter(hits)) if len(hits) == 1 else ""
+
+
+def _exact_write_in_hits(sub: QueueSubmission, options: Sequence[JotformWriteInOption]) -> set[str]:
+    """The write-ins the first exact tier with any hit finds (see
+    `suggest_write_in`); empty when no exact tier finds one."""
     first, last = fold(sub.first), fold(sub.last)
     nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
     mine = [o for o in options if o.session_cm_id == sub.session_cm_id]
@@ -400,14 +452,51 @@ def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOptio
         {name for name in (first, nametag_first) if name},
     ]
     for wanted in tiers:
-        if not wanted:
-            continue
         hits = {o.option_id for o in mine if fold(o.occupant_name) in wanted}
-        if len(hits) == 1:
-            return next(iter(hits))
         if hits:
-            return ""
-    return ""
+            return hits
+    return set()
+
+
+# Staff mistype write-in names ("Emny" for a filer whose nametag is "Emmy").
+# Below jotform_bunking's 0.88 respelling bar because a write-in is often one
+# short first name, where a single wrong letter costs more.
+SIMILAR_THRESHOLD = 0.85
+
+
+def _name_variants(sub: QueueSubmission) -> set[str]:
+    first, last = fold(sub.first), fold(sub.last)
+    nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
+    return {
+        name
+        for name in (
+            f"{first} {last}" if first and last else "",
+            f"{nametag_first} {last}" if nametag_first and last else "",
+            nametag,
+            first,
+            nametag_first,
+        )
+        if name
+    }
+
+
+def _similar_write_in(sub: QueueSubmission, rows: Mapping[str, WriteInRow]) -> str:
+    """The one write-in whose name is closest to any of the filer's names, at
+    Jaro-Winkler >= SIMILAR_THRESHOLD, or "" -- none that close, or a tie."""
+    variants = _name_variants(sub)
+    scored = sorted(
+        (
+            (max(JaroWinkler.similarity(fold(row.occupant_name), name) for name in variants), option_id)
+            for option_id, row in rows.items()
+            if row.session_cm_id == sub.session_cm_id
+        ),
+        reverse=True,
+    )
+    if not variants or not scored or scored[0][0] < SIMILAR_THRESHOLD:
+        return ""
+    if len(scored) > 1 and scored[1][0] >= scored[0][0]:
+        return ""
+    return scored[0][1]
 
 
 LIVE_BOARD = "the live board"
@@ -434,6 +523,9 @@ def link_suggestions(
         filer -- which also catches a write-in made by hand outside the copy
         and push paths;
       - a filing still NEEDING A GUEST that the pre-selection picks it for.
+    Where no exact tier finds any write-in for a filing, the one candidate
+    whose name is closest to the filer's is offered as a SIMILAR NAME
+    (`_similar_write_in`) -- unless another filing's exact tier picks it.
     """
     active = {s.write_in_key for s in linked if s.write_in_key}
     placed = {row.write_in_key for row in viewed if row.write_in_key in active}
@@ -452,13 +544,23 @@ def link_suggestions(
         if row.occupant_name.strip() and row.write_in_key not in active
     }
 
+    exact = {sub.record_id: _exact_write_in_hits(sub, options) for sub in (*linked, *unlinked)}
+    # A write-in that exactly names some filer is that filer's, not a typo of another's.
+    similar_pool = {
+        option_id: row for option_id, row in candidates.items() if not any(option_id in hits for hits in exact.values())
+    }
+
     out: list[JotformWriteInLinkSuggestion] = []
 
-    def suggest(option_id: str, sub: QueueSubmission, where: str) -> None:
+    def suggest(option_id: str, sub: QueueSubmission, where: str, *, similar: bool = False) -> None:
         if copy_links.get(option_id, set()) - {sub.write_in_key}:
             return
         row = candidates[option_id]
-        label = f"Link to {sub.submitted_name}'s filing" + (f" (linked in {where})" if where else "")
+        label = (
+            f"Similar name: link to {sub.submitted_name}'s filing?"
+            if similar
+            else f"Link to {sub.submitted_name}'s filing"
+        ) + (f" (linked in {where})" if where else "")
         out.append(
             JotformWriteInLinkSuggestion(
                 option_id=option_id,
@@ -489,10 +591,18 @@ def link_suggestions(
             hits.add(picked)
         for option_id in sorted(hits):
             suggest(option_id, sub, where)
+        if not hits and not exact[sub.record_id]:
+            similar = _similar_write_in(sub, similar_pool)
+            if similar:
+                suggest(similar, sub, where, similar=True)
 
     for sub in unlinked:
         picked = suggest_write_in(sub, options)
         if picked in candidates:
             suggest(picked, sub, "")
+        elif not exact[sub.record_id]:
+            similar = _similar_write_in(sub, similar_pool)
+            if similar:
+                suggest(similar, sub, "", similar=True)
 
     return sorted(out, key=lambda s: (fold(s.occupant_name), fold(s.filer_name)))

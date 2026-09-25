@@ -3,8 +3,10 @@ two errors. EVERY endpoint gates on `bunking.manage` -- the tables carry every
 answer on the form, medical included."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 
 from api.schemas.jotform import (
+    JotformActionResult,
     JotformFormRow,
     JotformFormsResponse,
     JotformFormWrite,
@@ -32,6 +34,21 @@ def _http(exc: Exception) -> HTTPException:
     if isinstance(exc, JotformNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
+
+
+# One filer, one decision (kindred#2839 follow-up): a staff action also moves
+# the same filer's other filings of the weekend. When it did, the 200 names
+# them so the tab can say so; when it moved only the clicked filing, there is
+# nothing to report and the answer stays a 204.
+_ACTION_RESPONSES: dict[int | str, dict[str, object]] = {
+    200: {"model": JotformActionResult, "description": "The filer's other filings the action also moved"}
+}
+
+
+def _done(result: JotformActionResult | None) -> Response:
+    if result is None or not result.also:
+        return Response(status_code=204)
+    return JSONResponse(result.model_dump(mode="json"))
 
 
 @router.get("/forms", response_model=JotformFormsResponse)
@@ -66,40 +83,46 @@ async def get_queue(
         raise _http(exc) from exc
 
 
-@router.post("/submissions/{submission_id}/link", status_code=204, response_class=Response)
+@router.post("/submissions/{submission_id}/link", status_code=204, response_class=Response, responses=_ACTION_RESPONSES)
 async def link_submission(submission_id: str, body: JotformLinkRequest, user: AuthUser = _MANAGE) -> Response:
     try:
-        await _service().link(submission_id, body.person_cm_id, user.email)
+        result = await _service().link(submission_id, body.person_cm_id, user.email)
     except (JotformNotFoundError, JotformValidationError) as exc:
         raise _http(exc) from exc
-    return Response(status_code=204)
+    return _done(result)
 
 
-@router.post("/submissions/{submission_id}/ignore", status_code=204, response_class=Response)
+@router.post(
+    "/submissions/{submission_id}/ignore", status_code=204, response_class=Response, responses=_ACTION_RESPONSES
+)
 async def ignore_submission(submission_id: str, user: AuthUser = _MANAGE) -> Response:
     try:
-        await _service().ignore(submission_id, user.email)
+        result = await _service().ignore(submission_id, user.email)
     except JotformNotFoundError as exc:
         raise _http(exc) from exc
-    return Response(status_code=204)
+    return _done(result)
 
 
-@router.post("/submissions/{submission_id}/unlink", status_code=204, response_class=Response)
+@router.post(
+    "/submissions/{submission_id}/unlink", status_code=204, response_class=Response, responses=_ACTION_RESPONSES
+)
 async def unlink_submission(submission_id: str, user: AuthUser = _MANAGE) -> Response:
     try:
-        await _service().unlink(submission_id)
+        result = await _service().unlink(submission_id)
     except JotformNotFoundError as exc:
         raise _http(exc) from exc
-    return Response(status_code=204)
+    return _done(result)
 
 
-@router.post("/submissions/{submission_id}/write-in", status_code=204, response_class=Response)
+@router.post(
+    "/submissions/{submission_id}/write-in", status_code=204, response_class=Response, responses=_ACTION_RESPONSES
+)
 async def link_submission_to_write_in(
     submission_id: str, body: JotformWriteInLinkRequest, user: AuthUser = _MANAGE
 ) -> Response:
     """Link a filing to one of its weekend's board write-ins (kindred#2759 follow-up)."""
     try:
-        await _service().link_write_in(submission_id, body.unit_id, body.occupant_name, user.email)
+        result = await _service().link_write_in(submission_id, body.unit_id, body.occupant_name, user.email)
     except (JotformNotFoundError, JotformValidationError) as exc:
         raise _http(exc) from exc
-    return Response(status_code=204)
+    return _done(result)

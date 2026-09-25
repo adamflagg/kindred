@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import secrets
 from collections import Counter, defaultdict
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,6 +20,7 @@ from pydantic import ValidationError
 from api.constants.collections import LODGING_WRITE_INS, LODGING_WRITE_INS_DRAFT
 from api.dependencies import lodging_cache
 from api.schemas.jotform import (
+    JotformActionResult,
     JotformFormRow,
     JotformFormsResponse,
     JotformFormWrite,
@@ -27,6 +29,7 @@ from api.schemas.jotform import (
     JotformQueueItem,
     JotformQueueResponse,
     JotformRoleMeta,
+    JotformSiblingFiling,
     JotformUnmappedForm,
     MatchStatus,
 )
@@ -41,8 +44,10 @@ from api.services.jotform_queue import (
     link_suggestions,
     parse_form_id,
     queue_item,
+    same_link_siblings,
     suggest_write_in,
     suggestions_for,
+    waiting_siblings,
     write_in_options,
 )
 from api.services.jotform_repository import JotformRepository
@@ -161,6 +166,45 @@ def _cleared_links(record: Any) -> dict[str, str]:
     """Blank whichever of a row's link columns are set: a staff decision that
     is not a write-in link or a cancelled match must not leave one behind."""
     return {field: "" for field in ("write_in_key", "registration_status") if str(getattr(record, field, "") or "")}
+
+
+def _queue_submissions(
+    submissions: Sequence[Any], answers: Sequence[Any], field_maps: dict[str, dict[str, Any]]
+) -> list[QueueSubmission]:
+    """Each submission as the queue reads it: what the form says, through its field map."""
+    by_submission: dict[str, dict[str, Any]] = defaultdict(dict)
+    for answer in answers:
+        by_submission[str(answer.submission)][str(answer.question_id)] = answer
+    subs: list[QueueSubmission] = []
+    for record in submissions:
+        identity = identity_from_answers(by_submission.get(str(record.id), {}), field_maps.get(str(record.form), {}))
+        subs.append(
+            QueueSubmission(
+                record_id=str(record.id),
+                submission_id=str(record.submission_id),
+                session_cm_id=int(record.session_cm_id),
+                submitted_at=str(record.submitted_at),
+                first=identity["first"],
+                last=identity["last"],
+                nametag=identity["nametag"],
+                email=identity["email"],
+                emergency_phone=identity["emergency_phone"],
+                emergency_email=identity["emergency_email"],
+                bunking_request=identity["bunking_request"],
+                match_status=_match_status(getattr(record, "match_status", "")),
+                person_cm_id=int(getattr(record, "person_cm_id", 0) or 0),
+                registration_status=str(getattr(record, "registration_status", "") or ""),
+                write_in_key=str(getattr(record, "write_in_key", "") or ""),
+            )
+        )
+    return subs
+
+
+def _field_maps(forms: Sequence[Any]) -> dict[str, dict[str, Any]]:
+    return {str(f.id): dict(getattr(f, "field_map", None) or {}) for f in forms}
+
+
+_Siblings = Callable[[QueueSubmission, Sequence[QueueSubmission]], list[QueueSubmission]]
 
 
 class JotformAdminService:
@@ -350,36 +394,9 @@ class JotformAdminService:
                 viewed_rows.setdefault((row.session_cm_id, row.write_in_key), row)
 
         session_names = {int(s.cm_id): str(s.name) for s in sessions}
-        field_maps = {str(f.id): dict(getattr(f, "field_map", None) or {}) for f in forms}
+        field_maps = _field_maps(forms)
         unmapped_forms = {form_pb_id for form_pb_id, fm in field_maps.items() if not _has_identity(fm)}
-        by_submission: dict[str, dict[str, Any]] = defaultdict(dict)
-        for answer in answers:
-            by_submission[str(answer.submission)][str(answer.question_id)] = answer
-
-        subs: list[QueueSubmission] = []
-        for record in submissions:
-            identity = identity_from_answers(
-                by_submission.get(str(record.id), {}), field_maps.get(str(record.form), {})
-            )
-            subs.append(
-                QueueSubmission(
-                    record_id=str(record.id),
-                    submission_id=str(record.submission_id),
-                    session_cm_id=int(record.session_cm_id),
-                    submitted_at=str(record.submitted_at),
-                    first=identity["first"],
-                    last=identity["last"],
-                    nametag=identity["nametag"],
-                    email=identity["email"],
-                    emergency_phone=identity["emergency_phone"],
-                    emergency_email=identity["emergency_email"],
-                    bunking_request=identity["bunking_request"],
-                    match_status=_match_status(getattr(record, "match_status", "")),
-                    person_cm_id=int(getattr(record, "person_cm_id", 0) or 0),
-                    registration_status=str(getattr(record, "registration_status", "") or ""),
-                    write_in_key=str(getattr(record, "write_in_key", "") or ""),
-                )
-            )
+        subs = _queue_submissions(submissions, answers, field_maps)
 
         names = {g.person_cm_id: g.display_name for g in guests}
         # Per (guest, weekend): filing for one adult weekend is not a submission for another.
@@ -470,55 +487,89 @@ class JotformAdminService:
             raise JotformNotFoundError(f"No Jotform submission {submission_id}")
         return record
 
-    async def link(self, submission_id: str, person_cm_id: int, actor: str) -> None:
+    async def _siblings(self, record: Any, pick: _Siblings) -> list[QueueSubmission]:
+        """The filer's other filings of this weekend a decision on `record`
+        also reaches (kindred#2839 follow-up: one filer, one decision), read
+        BEFORE anything is written: `pick` compares against its state now."""
+        year = int(record.year)
+        subs = _queue_submissions(
+            await self.repository.fetch_submissions(year),
+            await self.repository.fetch_answers(year),
+            _field_maps(await self.repository.fetch_forms(year)),
+        )
+        me = next((sub for sub in subs if sub.record_id == str(record.id)), None)
+        return pick(me, subs) if me is not None else []
+
+    async def _decide(
+        self, record: Any, siblings: list[QueueSubmission], body: dict[str, Any], action: str
+    ) -> JotformActionResult:
+        """Write one decision to the clicked filing and each sibling, blanking
+        whatever link columns each one had set, then drop the roster cache once."""
+        # The body wins: a write-in link sets the very key column the clear blanks.
+        await self.repository.update_submission(str(record.id), {**_cleared_links(record), **body})
+        for sibling in siblings:
+            await self.repository.update_submission(sibling.record_id, {**_cleared_links(sibling), **body})
+        _roster_changed()
+        return JotformActionResult.model_validate(
+            {
+                "action": action,
+                "also": [
+                    JotformSiblingFiling(
+                        submission_id=sub.submission_id,
+                        submitted_name=sub.submitted_name,
+                        submitted_at=sub.submitted_at,
+                    )
+                    for sub in sorted(siblings, key=lambda sub: sub.submitted_at)
+                ],
+            }
+        )
+
+    async def link(self, submission_id: str, person_cm_id: int, actor: str) -> JotformActionResult:
+        """Link a filing to an enrolled guest, and with it the same filer's
+        other filings of the weekend that are still waiting."""
         record = await self._submission(submission_id)
         guests = _guests(await self.repository.fetch_enrolled_guests(int(record.year)))
         session_cm_id = int(record.session_cm_id)
         if not any(g.person_cm_id == person_cm_id and g.session_cm_id == session_cm_id for g in guests):
             raise JotformValidationError("That person is not an enrolled guest of this weekend")
-        await self.repository.update_submission(
-            str(record.id),
+        siblings = await self._siblings(record, waiting_siblings)
+        return await self._decide(
+            record,
+            siblings,
             {
                 "match_status": "staff",
                 "person_cm_id": person_cm_id,
                 "match_tier": 0,
                 "linked_by": actor,
                 "linked_at": _pb_now(),
-                **_cleared_links(record),
             },
+            "linked",
         )
-        _roster_changed()
 
-    async def ignore(self, submission_id: str, actor: str) -> None:
+    async def ignore(self, submission_id: str, actor: str) -> JotformActionResult:
+        """Ignore a filing, and the same filer's other filings still waiting."""
         record = await self._submission(submission_id)
-        await self.repository.update_submission(
-            str(record.id),
-            {
-                "match_status": "ignored",
-                "person_cm_id": 0,
-                "match_tier": 0,
-                "linked_by": actor,
-                "linked_at": _pb_now(),
-                **_cleared_links(record),
-            },
+        siblings = await self._siblings(record, waiting_siblings)
+        return await self._decide(
+            record,
+            siblings,
+            {"match_status": "ignored", "person_cm_id": 0, "match_tier": 0, "linked_by": actor, "linked_at": _pb_now()},
+            "ignored",
         )
-        _roster_changed()
 
-    async def unlink(self, submission_id: str) -> None:
-        """Back to the queue; the next pull may auto-match it again (use ignore to stop that)."""
+    async def unlink(self, submission_id: str) -> JotformActionResult:
+        """Back to the queue; the next pull may auto-match it again (use ignore
+        to stop that). The same filer's other filings carrying the same link --
+        the same guest, the same write-in, or ignored alike -- go back too."""
         record = await self._submission(submission_id)
-        await self.repository.update_submission(
-            str(record.id),
-            {
-                "match_status": "unmatched",
-                "person_cm_id": 0,
-                "match_tier": 0,
-                "linked_by": "",
-                "linked_at": "",
-                **_cleared_links(record),
-            },
+        restored = str(getattr(record, "match_status", "") or "") == "ignored"
+        siblings = await self._siblings(record, same_link_siblings)
+        return await self._decide(
+            record,
+            siblings,
+            {"match_status": "unmatched", "person_cm_id": 0, "match_tier": 0, "linked_by": "", "linked_at": ""},
+            "restored" if restored else "unlinked",
         )
-        _roster_changed()
 
     async def check_write_in_filing(self, submission_id: str, year: int, session_cm_id: int) -> None:
         """Refuse, before the board writes anything, a filing that is not this
@@ -527,12 +578,15 @@ class JotformAdminService:
         if int(record.year) != year or int(record.session_cm_id) != session_cm_id:
             raise JotformValidationError("That Jotform filing belongs to another weekend")
 
-    async def link_write_in(self, submission_id: str, unit_id: str, occupant_name: str, actor: str) -> None:
+    async def link_write_in(
+        self, submission_id: str, unit_id: str, occupant_name: str, actor: str
+    ) -> JotformActionResult:
         """Link a filing to one of its weekend's board write-ins (kindred#2759
         follow-up), addressed as the board addresses it: (unit, occupant name).
 
         The link is a key. The write-in's rows -- the live board's and every
-        scenario's copy of it -- carry it, and so does the filing. An existing
+        scenario's copy of it -- carry it, and so does the filing -- and so do the same filer's other
+        filings of the weekend still waiting (one filer, one decision). An existing
         key on the write-in is reused (a party of several may have several
         filings); otherwise one is minted and stamped on every copy that has
         none. A rename leaves the key where it is, and every path that copies
@@ -587,12 +641,14 @@ class JotformAdminService:
             key = next((key_of(row) for _, row in rows if key_of(row) in held), "") or own
         else:
             key = next((key_of(row) for _, row in rows if key_of(row)), "") or secrets.token_hex(8)
+        siblings = await self._siblings(record, waiting_siblings)
         for table, row in rows:
             current = key_of(row)
             if not current or (own and current != key and current not in held):
                 await self.repository.set_write_in_key(table, str(row.id), key)
-        await self.repository.update_submission(
-            str(record.id),
+        return await self._decide(
+            record,
+            siblings,
             {
                 "match_status": "write_in",
                 "write_in_key": key,
@@ -602,5 +658,5 @@ class JotformAdminService:
                 "linked_by": actor,
                 "linked_at": _pb_now(),
             },
+            "linked",
         )
-        _roster_changed()
