@@ -1,6 +1,9 @@
 package rbac
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -74,34 +77,74 @@ func decideViewAs(kind authKind, realIsAdmin bool, realPerms []string, header st
 // viewAsMiddlewareID names the handler so it is identifiable in the router.
 const viewAsMiddlewareID = "kindredViewAs"
 
-// viewAsMiddleware applies a real admin's persona to e.Auth for this request.
+// viewAsPersonaEmailDomain marks a persona stand-in user. .invalid is reserved
+// (RFC 2606), so no real address can collide; the frontend's
+// isViewAsPersonaUser (frontend/src/auth/viewAs.ts) filters on the same string.
+const viewAsPersonaEmailDomain = "view-as.invalid"
+
+// viewAsPersonaID derives a stand-in's record id from its permission set, so a
+// persona always maps to the same row: "va" + 13 hex chars = the 15 [a-z0-9]
+// chars PocketBase ids require. perms must already be sorted (parseViewAs does).
+func viewAsPersonaID(perms []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(perms, ",")))
+	return "va" + hex.EncodeToString(sum[:])[:13]
+}
+
+// viewAsPersonaName is the stand-in's display name.
+func viewAsPersonaName(perms []string) string {
+	if len(perms) == 0 {
+		return "View as: No role"
+	}
+	return "View as: " + strings.Join(perms, " · ")
+}
+
+// ensureViewAsPersona returns the users row that stands in for a persona,
+// creating it on first use. Collection rules read @request.auth.is_admin and
+// cached_permissions by joining users on e.Auth.Id, so the persona has to be a
+// real row: an in-memory clone reaches Go hooks but never a rule.
 //
-// It runs right after PocketBase's loadAuthToken. guardConfigWrite and
-// sync/api.go read e.Auth directly in Go, so swapping e.Auth downgrades both
-// of them. It swaps in a CLONE: the stored record is never written.
+// A stand-in cannot be signed into (password auth on users is off, it has no
+// OAuth link, and its password is random), has no user_roles so nothing
+// recomputes it, and is shared by every admin who previews the same persona.
+func ensureViewAsPersona(app core.App, perms []string) (*core.Record, error) {
+	id := viewAsPersonaID(perms)
+	if existing, err := app.FindRecordById("users", id); err == nil {
+		return existing, nil
+	}
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		return nil, fmt.Errorf("find users collection: %w", err)
+	}
+	stand := core.NewRecord(users)
+	stand.Id = id
+	stand.SetEmail(id + "@" + viewAsPersonaEmailDomain)
+	stand.SetEmailVisibility(true)
+	stand.SetRandomPassword()
+	stand.Set("name", viewAsPersonaName(perms))
+	stand.Set(fieldIsAdmin, false)
+	stand.Set(fieldCachedPermissions, perms)
+	if err := app.Save(stand); err != nil {
+		// A concurrent request for the same persona may have created it first.
+		if existing, findErr := app.FindRecordById("users", id); findErr == nil {
+			return existing, nil
+		}
+		return nil, fmt.Errorf("create view-as persona %s: %w", id, err)
+	}
+	return stand, nil
+}
+
+// viewAsMiddleware makes a real admin's request act as their persona.
 //
-// KNOWN GAP, verified against PocketBase v0.40.4 (not merely the traversal
-// case the original design assumed): a collection rule's "@request.auth.X"
-// resolves from this in-memory clone ONLY for a fixed system-field allowlist
-// -- id, collectionId, collectionName, email, emailVisibility, verified
-// (core/record_field_resolver_runner.go's plainRequestAuthFields). Every
-// other field, including is_admin and cached_permissions -- the two fields
-// this whole feature turns on -- is resolved by processRequestAuthField via a
-// live SQL JOIN back to the real "users" row by e.Auth.Id (same file,
-// ~line 211), which reads the REAL persisted values and never sees this
-// clone. That holds for a single segment (@request.auth.is_admin) exactly as
-// much as for a relation traversal (@request.auth.role.name) -- the
-// traversal-only framing in view_as_schema_test.go is real but narrower than
-// this. Concretely: a PocketBase list/view/create/update/delete rule written
-// as "@request.auth.is_admin = true || @request.auth.cached_permissions ~
-// \"X\"" (the shape of every rule pb_migrations/1500000077_rbac_simplify_rules.js
-// and its siblings write) is UNAFFECTED by a preview. See
-// view_as_router_test.go's "KNOWN GAP" scenarios for the verified evidence.
-// This middleware still downgrades every Go-code reader of e.Auth
-// (guardConfigWrite, sync/api.go) correctly.
+// It runs right after PocketBase's loadAuthToken and points e.Auth at the
+// persona's stand-in users row (ensureViewAsPersona). Collection rules join
+// users on e.Auth.Id for is_admin and cached_permissions, and guardConfigWrite
+// and sync/api.go read e.Auth directly, so all of them see the persona. The
+// real admin's stored record is never written. To PocketBase the request is
+// made AS the stand-in: rules comparing @request.auth.id and any write it
+// makes are attributed to the persona, which is the honest record of a preview.
 //
 // auth-* routes are skipped: auth-refresh returns e.Auth as the record the SDK
-// stores, and a downgraded one would erase is_admin from the tab, hiding the
+// stores, and a stand-in there would replace the admin in the tab, hiding the
 // switcher that is the only way back.
 func viewAsMiddleware() *hook.Handler[*core.RequestEvent] {
 	return &hook.Handler[*core.RequestEvent]{
@@ -120,10 +163,12 @@ func viewAsMiddleware() *hook.Handler[*core.RequestEvent] {
 			decision := decideViewAs(kind, e.Auth.GetBool(fieldIsAdmin),
 				e.Auth.GetStringSlice(fieldCachedPermissions), e.Request.Header.Get(ViewAsHeader))
 			if decision.Applied {
-				clone := e.Auth.Clone()
-				clone.Set(fieldIsAdmin, false)
-				clone.Set(fieldCachedPermissions, decision.Permissions)
-				e.Auth = clone
+				persona, err := ensureViewAsPersona(e.App, decision.Permissions)
+				if err != nil {
+					// Fail closed: never let a preview silently run as the real admin.
+					return apis.NewInternalServerError("View-as persona unavailable", err)
+				}
+				e.Auth = persona
 			}
 			return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
 		},

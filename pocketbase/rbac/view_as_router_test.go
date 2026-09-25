@@ -75,59 +75,48 @@ func TestViewAsMiddleware(t *testing.T) {
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "bunking.manage"), Headers: headers,
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
 		},
-		// KNOWN GAP (verified against real PocketBase v0.40.4, not a test bug):
-		// the next three scenarios were originally written expecting the persona
-		// to restrict a PocketBase collection RULE the way it restricts
-		// guardConfigWrite below. It does not, and no e.Auth-swap-only middleware
-		// can make it. PocketBase's rule resolver reads "@request.auth.X" from
-		// this middleware's in-memory clone ONLY for a fixed system-field
-		// allowlist -- id, collectionId, collectionName, email, emailVisibility,
-		// verified (core/record_field_resolver_runner.go's plainRequestAuthFields,
-		// PocketBase v0.40.4). Every other field -- including is_admin and
-		// cached_permissions, the two fields this whole feature turns on -- goes
-		// through processRequestAuthField's live SQL JOIN back to the real
-		// "users" row by e.Auth.Id (same file, ~line 211), which reads the
-		// REAL, undowngraded, persisted values and never sees the clone. This
-		// is true for a single segment (@request.auth.is_admin) exactly as much
-		// as for a relation traversal -- it is NOT limited to the traversal case
-		// view_as_schema_test.go guards. Confirmed empirically: writing the
-		// SAME admin's is_admin=false via app.Save (a real DB write, no header
-		// at all) DOES make this exact rule return "totalItems":0; only the
-		// in-memory clone fails to. Concretely: bunkingManageRule and
-		// adminOnlyRule -- the shape of virtually every RBAC-gated collection
-		// rule in pb_migrations/1500000077_rbac_simplify_rules.js and its
-		// siblings -- are UNAFFECTED by a preview. See task-2-report.md for the
-		// full trace. This is a real, load-bearing product gap, not a cosmetic
-		// one: an admin previewing "Registrar" still sees full bunking data
-		// through any endpoint gated this way. It needs a design decision
-		// (flagged DONE_WITH_CONCERNS), not a workaround here.
 		{
-			Name:   "admin previewing Registrar: KNOWN GAP -- rule still sees the real (undowngraded) DB row",
-			Method: http.MethodGet, URL: listProbe,
+			Name: "admin previewing Registrar loses bunking data", Method: http.MethodGet, URL: listProbe,
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "registration.manage,metrics.geo"), Headers: headers,
-			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
+			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":0`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				stand, err := app.FindRecordById("users", viewAsPersonaID([]string{"metrics.geo", "registration.manage"}))
+				if err != nil {
+					t.Fatalf("the Registrar stand-in was not created: %v", err)
+				}
+				assertAccess(t, stand, false, []string{"metrics.geo", "registration.manage"})
+				assertAccess(t, findUser(t, app, viewAsEmail), true, nil)
+			},
 		},
 		{
-			Name:   "admin previewing No role: KNOWN GAP -- rule still sees the real (undowngraded) DB row",
-			Method: http.MethodGet, URL: listProbe,
+			Name: "admin previewing No role loses bunking data", Method: http.MethodGet, URL: listProbe,
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "none"), Headers: headers,
-			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
+			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":0`},
 		},
 		{
-			Name:   "a persona drops is_admin in Go, but not in the admin-only RULE: KNOWN GAP",
-			Method: http.MethodGet, URL: listSolverRuns,
+			Name: "a persona drops is_admin: the admin-only list goes empty", Method: http.MethodGet, URL: listSolverRuns,
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "bunking.manage"), Headers: headers,
-			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
+			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":0`},
 		},
 		{
 			Name: "non-admin header is inert: no self-downgrade", Method: http.MethodGet, URL: listProbe,
 			TestAppFactory: factory, BeforeTestFunc: asUser(false, []string{"bunking.manage"}, "none"), Headers: headers,
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				if n := len(personaUsers(t, app)); n != 0 {
+					t.Errorf("a stand-in was created for a caller whose header must be inert (%d rows)", n)
+				}
+			},
 		},
 		{
 			Name: "non-admin header is inert: no escalation", Method: http.MethodGet, URL: listProbe,
 			TestAppFactory: factory, BeforeTestFunc: asUser(false, nil, "bunking.manage"), Headers: headers,
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":0`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				if n := len(personaUsers(t, app)); n != 0 {
+					t.Errorf("a stand-in was created for a caller whose header must be inert (%d rows)", n)
+				}
+			},
 		},
 		{
 			Name: "superuser with a header is untouched", Method: http.MethodGet, URL: listSolverRuns,
@@ -137,6 +126,11 @@ func TestViewAsMiddleware(t *testing.T) {
 				headers[ViewAsHeader] = "none"
 			},
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				if n := len(personaUsers(t, app)); n != 0 {
+					t.Errorf("a stand-in was created for a caller whose header must be inert (%d rows)", n)
+				}
+			},
 		},
 		{
 			// The exit invariant: authRefresh returns e.Auth as the record, and the
@@ -154,16 +148,17 @@ func TestViewAsMiddleware(t *testing.T) {
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"is_admin":true`},
 		},
 		{
-			// The totalItems:1 here is the SAME known gap as above (the
-			// bunking.manage rule reads the real, undowngraded DB row, not the
-			// clone) -- it is not what this scenario is testing. What it proves
-			// is narrower and still true: the swap never touches the STORED
-			// record. assertAccess below reads the DB-persisted row directly and
-			// confirms is_admin/cached_permissions are exactly what they were
-			// before the request, regardless of the rule-evaluation gap above.
+			// With the persona stand-in, a "none" preview correctly loses
+			// bunking data too (is_admin=false, cached_permissions=[] on the
+			// stand-in row), same as "admin previewing No role loses bunking
+			// data" above. What this scenario tests is narrower: the request
+			// runs AS the stand-in, but the REAL admin's own stored record is
+			// never written. assertAccess below reads the DB-persisted row
+			// directly and confirms is_admin/cached_permissions are exactly
+			// what they were before the request.
 			Name: "a previewed request leaves the stored record untouched", Method: http.MethodGet, URL: listProbe,
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, []string{"sheets.export"}, "none"), Headers: headers,
-			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":1`},
+			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":0`},
 			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
 				assertAccess(t, findUser(t, app, viewAsEmail), true, []string{"sheets.export"})
 			},
