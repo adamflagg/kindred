@@ -1283,7 +1283,7 @@ jobs:
         # Every test named here SKIPS without the env above, and `go test -run`
         # exits 0 on a pattern that matches nothing -- so each must be seen to
         # PASS by name, or this step asserted nothing.
-        TESTS="TestBootedSchemaAuthRules TestBootedRolesCarryFinancialAidGrants TestBootedSchemaFinancialAidRulesAreNull"
+        TESTS="TestBootedSchemaAuthRules TestBootedRolesCarryFinancialAidGrants TestBootedSchemaFinancialAidRulesAreNull TestBootedAidChangeLogShape"
         go test -count=1 ./rbac/... -run "^($(echo "$TESTS" | tr ' ' '|'))\$" -v 2>&1 \
           | tee "$RUNNER_TEMP/auth-rules.log"
         for t in $TESTS; do

@@ -3,6 +3,8 @@ package rbac
 import (
 	"encoding/json"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -78,4 +80,72 @@ func TestBootedSchemaFinancialAidRulesAreNull(t *testing.T) {
 			assertAllRulesNull(t, c)
 		}
 	})
+
+	// Discovered by PREFIX, so an aid_ collection a later sub-project adds is
+	// covered the day it lands, with no list here to update. Case-folded:
+	// PocketBase resolves collection names case-insensitively.
+	t.Run("every aid_ collection", func(t *testing.T) {
+		var found []string
+		for _, c := range cols {
+			if strings.HasPrefix(strings.ToLower(c.Name), "aid_") {
+				found = append(found, c.Name)
+				assertAllRulesNull(t, c)
+			}
+		}
+		// Without this the loop can pass by looking at nothing.
+		if !slices.Contains(found, "aid_change_log") {
+			t.Fatalf("aid_change_log missing; aid_ collections found: %v -- the prefix check is checking nothing", found)
+		}
+	})
+}
+
+// TestBootedAidChangeLogShape pins the fixed contract other sub-projects write
+// against (bunking/financial_aid/change_log.py): exactly these fields, these
+// types, these required flags.
+func TestBootedAidChangeLogShape(t *testing.T) {
+	cols := loadBootedCollections(t)
+	var fields []bootedField
+	found := false
+	for _, c := range cols {
+		if c.Name == "aid_change_log" {
+			fields, found = c.Fields, true
+		}
+	}
+	if !found {
+		t.Fatal("aid_change_log missing from the booted schema")
+	}
+	type spec struct {
+		typ      string
+		required bool
+	}
+	want := map[string]spec{
+		"entity":    {"text", true},
+		"entity_id": {"text", true},
+		"year":      {"number", true},
+		"action":    {"text", true},
+		"before":    {"json", false},
+		"after":     {"json", false},
+		"actor":     {"text", true},
+		"reason":    {"text", false},
+		"created":   {"autodate", false},
+	}
+	got := make(map[string]bootedField, len(fields))
+	for _, f := range fields {
+		got[f.Name] = f
+	}
+	for name, w := range want {
+		f, ok := got[name]
+		if !ok {
+			t.Errorf("aid_change_log.%s missing", name)
+			continue
+		}
+		if f.Type != w.typ || f.Required != w.required {
+			t.Errorf("aid_change_log.%s = %s required=%v, want %s required=%v", name, f.Type, f.Required, w.typ, w.required)
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok && name != "id" {
+			t.Errorf("aid_change_log.%s is not in the fixed contract", name)
+		}
+	}
 }
