@@ -18,8 +18,32 @@ jobs:
 
       - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v2
         id: metadata
+      # Enabling auto-merge the instant a PR opens can race GitHub's mergeability
+      # computation: in a burst of Dependabot PRs, #2854's call landed while
+      # `mergeable` was still UNKNOWN and was refused with a spurious "without
+      # `workflows` permission" error, and nothing retried it. So wait (bounded)
+      # for mergeability to resolve, then retry the enable a few times. The fix
+      # is timing, not scope -- do NOT grant `workflows: write` here.
       - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: |
+          set -uo pipefail
+          for _ in $(seq 1 12); do
+            state=$(gh pr view "$PR_URL" --json mergeable --jq .mergeable || echo UNKNOWN)
+            [ "$state" != "UNKNOWN" ] && break
+            sleep 10
+          done
+          # A conflict is not the race: retrying cannot fix it, so say so at once.
+          if [ "$state" = "CONFLICTING" ]; then
+            echo "::error::PR has merge conflicts; resolve them (e.g. comment '@dependabot rebase'), then enable auto-merge"
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            gh pr merge --auto --squash "$PR_URL" && exit 0
+            echo "::warning::enabling auto-merge failed (attempt ${attempt}/3); retrying"
+            sleep $((attempt * 20))
+          done
+          echo "::error::could not enable auto-merge after 3 attempts; merge this PR by hand once CI is green"
+          exit 1
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
