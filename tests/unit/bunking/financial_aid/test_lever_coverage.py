@@ -19,20 +19,49 @@ from bunking.financial_aid.rules.schema import AidRules
 _HERE = Path(__file__).parent
 _NOT_LEVERS = {"schema_version", "year"}
 
-# Settings the calculator never reads -- StageDef is data for a decisions workflow
-# no sub-project in this repo owns yet (the money semantics live once, in
-# awards.decision_types; see the plan's decision #2). Each is a real field with no
-# behaviour to test against today. Unlike _NOT_LEVERS (paths that are never
-# meaningfully changeable, like a schema version number), each of these WILL become
-# a normal lever once something reads it: the sub-project that wires one must
-# delete its entry here and add a behavioural test, the same as any other lever.
+# Levers that nothing in this sub-project READS. Validation may check their shape or
+# their consistency (pools summing to 100%, milestones in order), and test_schema.py
+# proves a bad value is refused, but no award, trace or lookup changes when they do --
+# so there is no behaviour to test yet. Each was verified by grep outside schema.py and
+# validation.py (final review, 2026-09-25). Unlike _NOT_LEVERS (never meaningfully
+# changeable, like a schema version number), each WILL become a normal lever once
+# something reads it: the sub-project that wires one must delete its entry here and add
+# a behavioural test, the same as any other lever.
+_SP5 = "sub-project 5 (applications and requests) reads it; the calculator does not"
+_SP9 = "sub-project 9 (scenarios, budget and targeting) reads it; the calculator does not"
+_SP10 = "sub-project 10 (decisions, stages and rounds) reads it; the calculator does not"
 _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
-    "stages.stages.is_offer": "sub-project 10 (decisions workflow) reads it; the calculator does not",
-    "stages.stages.is_accepted": "sub-project 10 (decisions workflow) reads it; the calculator does not",
-    "stages.stages.is_cancel": "sub-project 10 (decisions workflow) reads it; the calculator does not",
-    "stages.stages.counts_toward_budget": "sub-project 10 (decisions workflow) reads it; the calculator does not",
-    "stages.stages.include_default": "sub-project 10 (decisions workflow) reads it; the calculator does not",
-    "stages.stages.allows_appeal": "sub-project 10 (decisions workflow) reads it; the calculator does not",
+    "stages.stages.code": _SP10,
+    "stages.stages.round": _SP10,
+    "stages.stages.decision_type": _SP10,
+    "stages.stages.is_offer": _SP10,
+    "stages.stages.is_accepted": _SP10,
+    "stages.stages.is_cancel": _SP10,
+    "stages.stages.counts_toward_budget": _SP10,
+    "stages.stages.include_default": _SP10,
+    "stages.stages.allows_appeal": _SP10,
+    "awards.decision_types.*.round": _SP10,
+    "milestones.application_deadline": _SP10,
+    "milestones.r1_run": _SP10,
+    "milestones.response_deadline": _SP10,
+    "milestones.r2_window_start": _SP10,
+    "milestones.r2_window_end": _SP10,
+    "milestones.r3_window_start": _SP10,
+    "milestones.r3_window_end": _SP10,
+    "budget.total": _SP9,
+    "budget.pools.*.share_pct": _SP9,
+    "budget.pools.*.amount": _SP9,
+    "budget.reserves": _SP9,
+    "budget.spillover": _SP9,
+    "budget.commit_on": _SP9,
+    "programs.*.budget_pool": _SP9,
+    "awards.decision_types.*.budget_line": _SP9,
+    "cost.infant_age_cutoff_months": _SP5 + " (it pre-fills family-camp headcounts)",
+    "tiers.bands.upper": "sub-project 12 (rules screen) displays it; the tier lookup uses lower bounds only",
+    "awards.rounding": (
+        "no sub-project yet: it allows one value, and the calculator always rounds half up "
+        "(money.round_dollars); whoever adds a second value must read it"
+    ),
 }
 
 
@@ -127,9 +156,14 @@ def test_wired_by_later_subproject_entries_are_real_levers() -> None:
     assert not set(_WIRED_BY_LATER_SUBPROJECT) & _NOT_LEVERS, "a path cannot be both deferred and not-a-lever"
 
 
+# test_schema.py only proves a bad value is refused and a good one kept. That is a type
+# check, not behaviour, so a literal there never counts as a lever being exercised.
+_NOT_BEHAVIOUR = {Path(__file__).name, "test_schema.py"}
+
+
 def test_every_lever_is_exercised_by_a_test() -> None:
     sources = "\n".join(
-        p.read_text(encoding="utf-8") for p in sorted(_HERE.glob("test_*.py")) if p.name != Path(__file__).name
+        p.read_text(encoding="utf-8") for p in sorted(_HERE.glob("test_*.py")) if p.name not in _NOT_BEHAVIOUR
     )
     exempt = _NOT_LEVERS | set(_WIRED_BY_LATER_SUBPROJECT)
     missing = [p for p in lever_paths(AidRules) if p not in exempt and not _literal(p).search(sources)]

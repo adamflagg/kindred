@@ -206,9 +206,12 @@ def test_decision_type_amounts_must_fit_the_kind() -> None:
         )
 
 
-# Levers the calculator does not read. Sub-projects 5, 9 and 10 consume them; here
-# they are exercised by proving a bad value is refused and a good one is kept.
-_NON_CALCULATOR_LEVERS: list[tuple[str, Any, Any]] = [
+# Type checks only: each path refuses a bad value and keeps a good one. This is not
+# lever coverage -- test_lever_coverage.py deliberately ignores this file. The levers
+# here that the calculator reads (a decision type's kind, amount and extra_amount, a
+# check's severity) are exercised in test_decision_types.py and test_quality.py; the
+# ones nothing reads yet are deferred in test_lever_coverage._WIRED_BY_LATER_SUBPROJECT.
+_SCHEMA_TYPE_CHECKS: list[tuple[str, Any, Any]] = [
     ("cost.infant_age_cutoff_months", -1, 18),
     ("awards.rounding", "half_even", "half_up"),
     ("budget.total", "-1", "750000"),
@@ -223,8 +226,8 @@ _NON_CALCULATOR_LEVERS: list[tuple[str, Any, Any]] = [
 ]
 
 
-@pytest.mark.parametrize(("path", "bad", "good"), _NON_CALCULATOR_LEVERS)
-def test_non_calculator_levers_refuse_bad_values_and_keep_good_ones(path: str, bad: Any, good: Any) -> None:
+@pytest.mark.parametrize(("path", "bad", "good"), _SCHEMA_TYPE_CHECKS)
+def test_the_schema_refuses_bad_lever_values_and_keeps_good_ones(path: str, bad: Any, good: Any) -> None:
     rules = fictional_rules()
     with pytest.raises(ValidationError):
         with_lever(rules, path, bad)
