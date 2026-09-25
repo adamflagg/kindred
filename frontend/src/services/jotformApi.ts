@@ -60,6 +60,25 @@ export async function fetchJotformQueue(
   return (await response.json()) as JotformQueue
 }
 
+/**
+ * One adult weekend's queue, read in `scenario` (`''` = the live board) —
+ * the weekend Requests tab (kindred#2828 ruling 2026-09-25).
+ */
+export async function fetchJotformWeekendQueue(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  sessionCmId: number,
+  scenario: string
+): Promise<JotformQueue> {
+  const params = new URLSearchParams({ year: String(year), session_cm_id: String(sessionCmId) })
+  if (scenario !== '') params.set('scenario', scenario)
+  const response = await ok(
+    await fetchWithAuth(`${BASE}/queue?${params.toString()}`),
+    'Failed to load the Jotform requests'
+  )
+  return (await response.json()) as JotformQueue
+}
+
 async function post(fetchWithAuth: FetchWithAuth, url: string, body?: unknown): Promise<void> {
   await ok(
     await fetchWithAuth(url, {

@@ -1,7 +1,15 @@
 /**
- * The unmatched queue, duplicates, and staff links (kindred#2759). Kindred
- * never picks between candidates: every suggestion is a labelled button, and
- * any enrolled guest of the weekend can be chosen by hand.
+ * The unmatched queue, duplicates, and staff links (kindred#2759) — the adult
+ * weekend's Requests tab since the kindred#2828 ruling of 2026-09-25, which
+ * moved it off the Manage Jotform tab (that tab keeps setup and links here).
+ * Kindred never picks between candidates: every suggestion is a labelled
+ * button, and any enrolled guest of the weekend can be chosen by hand.
+ *
+ * Read in the scenario being viewed. Who a filing belongs to — a guest,
+ * ignored, a cancelled registration — reads the same in every scenario; a
+ * write-in link says whether the viewed scenario (or the live board) places
+ * it, the Write-in dropdown offers that scenario's write-ins, and an unlinked
+ * write-in that looks like a filer is suggested, never linked on its own.
  *
  * A filer who is not a guest at all -- staff, say -- can be linked to one of
  * the weekend's board write-ins instead (kindred#2759 follow-up); the one
@@ -10,12 +18,13 @@
  */
 import { useState } from 'react'
 
-import { useJotformQueue, useJotformSubmissionAction } from '../../../hooks/useJotformAdmin'
+import { useJotformSubmissionAction, useJotformWeekendQueue } from '../../../hooks/useJotformAdmin'
 import type {
   JotformDuplicateGroupRow,
   JotformGuestRow,
   JotformQueueEntry,
   JotformWriteInChoice,
+  JotformWriteInLinkSuggestionRow,
 } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
 import { shortDate } from '../../weekend/bunkingRequest'
@@ -307,14 +316,85 @@ function ResolvedList({
 }
 
 /**
- * One weekend's slice of the queue: the panel draws a tab per weekend, and
- * the year's queue (one cached read) is filtered to the tab's session here.
- *
- * Laid out for a wide admin screen: the filings that need a decision beside
- * the short staff-links and ignored lists, then repeat filers as a grid.
+ * Unlinked write-ins of the viewed scenario that look like a filer: one that
+ * is linked in another scenario or on the live board, or one still needing a
+ * guest. A label and a Link button each; nothing links until staff click.
  */
-export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId: number }) {
-  const queue = useJotformQueue(year)
+function SuggestedLinks({ rows }: { rows: readonly JotformWriteInLinkSuggestionRow[] }) {
+  const action = useJotformSubmissionAction()
+  return (
+    <section data-testid="jotform-suggested-links" className="card-lodge p-4">
+      <h3 className={GROUP_HEADING}>{`Suggested links (${String(rows.length)})`}</h3>
+      <ul className="divide-border/60 mt-1 divide-y">
+        {rows.map((row) => (
+          <li
+            key={`${row.option_id}-${row.submission_id}`}
+            className="flex items-baseline gap-2 py-1.5 text-sm"
+          >
+            <span className="min-w-0">
+              <span className="font-semibold">
+                {row.unit_name ? `${row.occupant_name} · ${row.unit_name}` : row.occupant_name}
+              </span>
+              <span className="text-muted-foreground block text-xs">{row.label}</span>
+            </span>
+            <button
+              type="button"
+              className={`${ACTION_LINK} text-primary ml-auto shrink-0`}
+              disabled={action.isPending}
+              aria-label={`Link ${row.occupant_name} to ${row.filer_name}'s filing`}
+              onClick={() => {
+                action.mutate({
+                  kind: 'write_in',
+                  submissionId: row.submission_id,
+                  unitId: row.unit_id,
+                  occupantName: row.occupant_name,
+                })
+              }}
+            >
+              Link
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** Where a linked write-in sits in the scope being viewed. */
+function writeInDetail(item: JotformQueueEntry, scenario: string): string {
+  const name = item.write_in_name ?? ''
+  const unit = item.write_in_unit ?? ''
+  let where: string
+  if (item.write_in_placed === true) {
+    where = unit === '' ? '' : `placed in ${unit}`
+  } else if (item.write_in_placed === false) {
+    // The live board is not a scenario; say which one the filing is missing from.
+    where = scenario === '' ? 'not placed on the live board' : 'not placed in this scenario'
+  } else {
+    where = unit
+  }
+  return [name, where].filter((part) => part !== '').join(' · ')
+}
+
+/**
+ * One adult weekend's queue, read in `scenario` (`''` = the live board). The
+ * server scopes the read to the weekend; the per-session filter below is kept
+ * so a response carrying another weekend's rows can never show them here.
+ *
+ * Laid out for a wide screen: the filings that need a decision beside the
+ * short suggested-links, staff-links and ignored lists, then repeat filers as
+ * a grid.
+ */
+export function JotformQueue({
+  year,
+  sessionCmId,
+  scenario,
+}: {
+  year: number
+  sessionCmId: number
+  scenario: string
+}) {
+  const queue = useJotformWeekendQueue(year, sessionCmId, scenario)
   return (
     <QueryGuard
       isLoading={queue.isLoading || year <= 0}
@@ -338,6 +418,7 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
         const writeIns = mine(data.write_ins)
         const cancelled = mine(data.cancelled)
         const writeInChoices = mine(data.write_in_options)
+        const suggestedLinks = data.write_in_link_suggestions ?? []
         return (
           <div className="flex flex-col gap-4">
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -352,7 +433,9 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                   <ul className="mt-1">
                     {unmatched.map((item) => (
                       <UnmatchedItem
-                        key={item.submission_id}
+                        // Keyed by scenario too: the write-in pre-selection is
+                        // the viewed scenario's, and must not survive a switch.
+                        key={`${scenario}-${item.submission_id}`}
                         item={item}
                         guests={data.guests ?? []}
                         writeIns={writeInChoices}
@@ -367,16 +450,13 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                 )}
               </section>
               <div className="flex flex-col gap-4">
+                {suggestedLinks.length > 0 && <SuggestedLinks rows={suggestedLinks} />}
                 <ResolvedList testId="jotform-staff-links" title="Staff links" rows={staffLinks} />
                 <ResolvedList
                   testId="jotform-write-ins"
                   title="Write-ins"
                   rows={writeIns}
-                  detail={(item) =>
-                    [item.write_in_name ?? '', item.write_in_unit ?? '']
-                      .filter((part) => part !== '')
-                      .join(' · ')
-                  }
+                  detail={(item) => writeInDetail(item, scenario)}
                 />
                 <ResolvedList
                   testId="jotform-cancelled"

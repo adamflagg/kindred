@@ -15,7 +15,12 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { queryKeys } from '../utils/queryKeys'
-import { useJotformForms, useJotformQueue, useJotformSubmissionAction } from './useJotformAdmin'
+import {
+  useJotformForms,
+  useJotformQueue,
+  useJotformSubmissionAction,
+  useJotformWeekendQueue,
+} from './useJotformAdmin'
 
 vi.mock('../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -117,5 +122,72 @@ describe('useJotformAdmin', () => {
     expect(keys).toContainEqual(queryKeys.weekendRosterPrefix())
     expect(keys).toContainEqual(queryKeys.pushPreviewPrefix())
     expect(keys).toContainEqual(queryKeys.scenarioComparePrefix())
+  })
+})
+
+describe('useJotformWeekendQueue (the weekend Requests tab)', () => {
+  it('reads one weekend in the viewed scenario, with the JWT, one cache entry per scenario', async () => {
+    const { rerender } = renderHook(
+      ({ scenario }: { scenario: string }) => useJotformWeekendQueue(2026, 1000002, scenario),
+      { wrapper, initialProps: { scenario: '' } }
+    )
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    rerender({ scenario: 'scn_a' })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+
+    expect(fetchSpy.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/jotform/queue?year=2026&session_cm_id=1000002',
+      '/api/jotform/queue?year=2026&session_cm_id=1000002&scenario=scn_a',
+    ])
+    for (const call of fetchSpy.mock.calls) {
+      expect(authHeaderOf(call)).toBe('Bearer test-jwt')
+    }
+    expect(client.getQueryData(queryKeys.jotformWeekendQueue(2026, 1000002, 'scn_a'))).toBeDefined()
+  })
+
+  it('reads nothing when disabled or before the weekend is known', async () => {
+    renderHook(
+      () => {
+        useJotformWeekendQueue(2026, 1000002, '', false)
+        useJotformWeekendQueue(2026, 0, '')
+      },
+      { wrapper }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('refreshes every scenario of the tab after a link, ignore or write-in link', async () => {
+    // The tab's key sits under the Jotform prefix, which every Jotform write
+    // invalidates -- alongside the roster whose marks the link moves.
+    client.setQueryData(queryKeys.jotformWeekendQueue(2026, 1000002, 'scn_a'), { year: 2026 })
+    client.setQueryData(queryKeys.jotformWeekendQueue(2026, 1000002, ''), { year: 2026 })
+    fetchSpy.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })))
+    const { result } = renderHook(() => useJotformSubmissionAction(), { wrapper })
+    for (const action of [
+      { kind: 'ignore' as const, submissionId: '6600000000000000001' },
+      {
+        kind: 'write_in' as const,
+        submissionId: '6600000000000000001',
+        unitId: 'u_fern',
+        occupantName: 'Pat Doe',
+      },
+    ]) {
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      result.current.mutate(action)
+      await waitFor(() => expect(invalidate).toHaveBeenCalled())
+      const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey)
+      expect(keys).toContainEqual(queryKeys.jotformPrefix())
+      expect(keys).toContainEqual(queryKeys.weekendRosterPrefix())
+      invalidate.mockRestore()
+    }
+    await waitFor(() =>
+      expect(
+        client.getQueryState(queryKeys.jotformWeekendQueue(2026, 1000002, 'scn_a'))?.isInvalidated
+      ).toBe(true)
+    )
+    expect(
+      client.getQueryState(queryKeys.jotformWeekendQueue(2026, 1000002, ''))?.isInvalidated
+    ).toBe(true)
   })
 })

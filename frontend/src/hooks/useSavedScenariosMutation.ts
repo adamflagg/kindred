@@ -76,6 +76,9 @@ export function useCreateScenario() {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.weekendRoster(params.year, params.session_cm_id, scenario.id),
       })
+      // An adult weekend's Requests tab names the scenario a filing's
+      // write-in is linked in, and a copy carries the link keys (kindred#2828).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
     },
   })
 }
@@ -95,6 +98,9 @@ export function useDeleteScenario() {
     onSuccess: () => {
       // Invalidate all scenarios queries to refetch
       void queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
+      // The cascade takes the scenario's write-ins with it: a filing linked
+      // only there goes back to Needs a guest on the Requests tab (kindred#2828).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
     },
   })
 }

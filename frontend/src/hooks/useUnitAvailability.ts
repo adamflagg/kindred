@@ -248,8 +248,10 @@ export function useUnitAvailability({
     // refresh the mirror and every other draft of the weekend, or a board
     // somewhere keeps drawing an occupant who is gone for the 30 minutes the
     // weekend queries stay fresh. And the Jotform queue, as the write does:
-    // removing a linked write-in returns its filing to the queue (kindred#2828
-    // ruling), which the admin tab and the board's picker only see refetched.
+    // removing a linked write-in makes its filing "not placed" in that scope on
+    // the weekend's Requests tab, or -- gone from every scope -- returns it to
+    // Needs a guest (kindred#2828 rulings), which the tab and the board's
+    // picker only see refetched.
     onSettled: () => {
       invalidateLodgingRegistryQueries(queryClient)
       invalidateJotformQueries(queryClient)

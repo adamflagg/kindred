@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import {
   fetchJotformForms,
   fetchJotformQueue,
+  fetchJotformWeekendQueue,
   ignoreJotformSubmission,
   linkJotformSubmission,
   linkJotformWriteIn,
@@ -58,6 +59,27 @@ export function useJotformQueue(year: number, enabled = true) {
     queryKey: queryKeys.jotformQueue(year),
     enabled: enabled && year > 0,
     queryFn: () => fetchJotformQueue(fetchWithAuth, year),
+  })
+}
+
+/**
+ * One adult weekend's queue for its Requests tab (kindred#2828 ruling
+ * 2026-09-25), read in the scenario being viewed. The page reads it for the
+ * tab's count and the tab for its lists: one cache entry serves both. Inherits
+ * the app cache defaults; every Jotform write and write-in writer invalidates
+ * it by the Jotform prefix.
+ */
+export function useJotformWeekendQueue(
+  year: number,
+  sessionCmId: number,
+  scenario: string,
+  enabled = true
+) {
+  const { fetchWithAuth } = useApiWithAuth()
+  return useQuery({
+    queryKey: queryKeys.jotformWeekendQueue(year, sessionCmId, scenario),
+    enabled: enabled && year > 0 && sessionCmId > 0,
+    queryFn: () => fetchJotformWeekendQueue(fetchWithAuth, year, sessionCmId, scenario),
   })
 }
 

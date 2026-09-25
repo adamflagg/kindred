@@ -24,7 +24,7 @@
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
-import { Heart, Home, Map as MapIcon, Users } from 'lucide-react'
+import { Heart, Home, Link2, Map as MapIcon, Users } from 'lucide-react'
 import { Activity, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router'
@@ -56,12 +56,14 @@ import {
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { useDismissOnDeadSpace } from '../hooks/useDismissOnDeadSpace'
+import { useJotformWeekendQueue } from '../hooks/useJotformAdmin'
 import { usePanelParty } from '../hooks/usePanelParty'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendFriendGroups } from '../hooks/useWeekendFriendGroups'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 import { sessionName } from '../utils/sessionName'
+import { isAdultSessionType } from '../utils/sessionTypePredicates'
 
 /**
  * Imported by DIRECT PATH, never through `../components/weekend` (#1964). A
@@ -79,6 +81,14 @@ const LodgingBoard = lazy(() =>
 )
 const LodgingMap = lazy(() =>
   import('../components/weekend/LodgingMap').then((m) => ({ default: m.LodgingMap }))
+)
+/**
+ * The adult weekend's Jotform queue (kindred#2828 ruling 2026-09-25). Split
+ * like the board and the map: only `bunking.manage` staff on an adult weekend
+ * ever see the tab, so nobody else should download it.
+ */
+const JotformQueue = lazy(() =>
+  import('../components/admin/lodging/JotformQueue').then((m) => ({ default: m.JotformQueue }))
 )
 
 /**
@@ -111,10 +121,14 @@ function TabLoadingFallback() {
  * is a happy accident rather than a route: the URL is left exactly as the
  * bookmark wrote it.
  */
-type View = 'roster' | 'housing' | 'groups' | 'map'
+type View = 'roster' | 'housing' | 'groups' | 'map' | 'requests'
 
-/** Tab order. `DEFAULT_VIEW` is a separate choice — see below. */
-const VIEWS: View[] = ['housing', 'roster', 'groups', 'map']
+/**
+ * Tab order. `DEFAULT_VIEW` is a separate choice — see below.
+ *
+ * `requests` is last and is not offered everywhere: see `offeredViews`.
+ */
+const VIEWS: View[] = ['housing', 'roster', 'groups', 'map', 'requests']
 
 /**
  * Housing, not the roster: the tab strip already leads with it, as summer's
@@ -135,8 +149,26 @@ const DEFAULT_VIEW: View = 'housing'
  * An unrecognised segment falls back rather than rendering nothing: it arrives
  * from a stale bookmark or a typo, and a blank panel reads as a broken page.
  */
-function parseView(segment: string | undefined): View {
-  return VIEWS.find((candidate) => candidate === segment) ?? DEFAULT_VIEW
+function parseView(segment: string | undefined, offered: readonly View[]): View {
+  return offered.find((candidate) => candidate === segment) ?? DEFAULT_VIEW
+}
+
+/**
+ * Requests is summer's session Requests tab, one program over — and like
+ * summer's it is shown only to `bunking.manage` (kindred#2828 ruling
+ * 2026-09-25). It holds an adult weekend's Jotform queue.
+ *
+ * ADULT WEEKENDS ONLY, read off the session's own type and never inferred from
+ * the parties' grain. DELIBERATELY NOT ON FAMILY CAMP, where summer's model
+ * would suggest one: a Family Camp household's share requests come from
+ * CampMinder, so there is no Jotform queue to review there, and an empty tab
+ * would say "nothing needs you" about requests it never reads.
+ *
+ * A `requests` segment where the tab is not offered falls back as an unknown
+ * one does, rather than rendering a panel the caller may not see.
+ */
+function offeredViews(showRequests: boolean): View[] {
+  return showRequests ? VIEWS : VIEWS.filter((view) => view !== 'requests')
 }
 
 export default function WeekendRosterPage() {
@@ -147,7 +179,6 @@ export default function WeekendRosterPage() {
   // an admin flag would let the wrong people in and keep bunking staff out.
   const { hasPermission } = usePermissions()
   const canManageLodging = hasPermission(Permission.BUNKING_MANAGE)
-  const view = parseView(viewParam)
 
   const sessionsQuery = useWeekendSessions(currentYear)
   // Chronological, as the summer session picker is — CampMinder's sort_order
@@ -191,6 +222,20 @@ export default function WeekendRosterPage() {
   // friend groups. Each reads it through `isAdultSessionType`, never through
   // the parties' grain.
   const sessionType = selectedSession?.session_type ?? ''
+  const showRequests = canManageLodging && isAdultSessionType(sessionType)
+  const view = parseView(viewParam, offeredViews(showRequests))
+
+  // Read here for the tab's count as well as inside the tab — one cache entry
+  // for both, as the Groups count above. IN THE VIEWED SCENARIO, as the tab
+  // reads it: a write-in link's placement follows the scenario, though the
+  // count (filings needing a guest) does not. Never read where the tab is not
+  // offered — the endpoint is `bunking.manage`-gated and Family Camp has no queue.
+  const requestsQuery = useJotformWeekendQueue(
+    currentYear,
+    selectedCmId ?? 0,
+    scenario,
+    showRequests
+  )
 
   // The switcher must not OFFER a cancelled weekend (kindred#2333) — it stays
   // reachable by URL and still resolves `selectedSession` above from the full
@@ -297,6 +342,18 @@ export default function WeekendRosterPage() {
       count: friendGroupsQuery.data?.groups?.length ?? 0,
     },
     { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
+    // Summer's Requests tab wears the same icon and counts what needs staff;
+    // here that is the Jotform filings still needing a guest.
+    ...(showRequests
+      ? [
+          {
+            id: 'requests' as const,
+            label: 'Requests',
+            icon: Link2,
+            count: requestsQuery.data?.unmatched?.length ?? 0,
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -486,7 +543,8 @@ export default function WeekendRosterPage() {
               />
             </div>
 
-            {/* FOUR STATIC PANELS, not one panel whose id follows `view`.
+            {/* FOUR STATIC PANELS (five where Requests is offered: its panel
+                exists exactly while its tab does), not one panel whose id follows `view`.
                 Under `Activity` all four subtrees stay mounted at once, so a
                 single dynamic id would either collide across them (all four
                 claiming `weekend-panel-${view}` — impossible, there is
@@ -637,6 +695,31 @@ export default function WeekendRosterPage() {
                   </Activity>
                 )}
               </div>
+
+              {showRequests && (
+                <div
+                  role="tabpanel"
+                  id="weekend-panel-requests"
+                  aria-labelledby="weekend-tab-requests"
+                  hidden={view !== 'requests'}
+                >
+                  {/* In the scenario being viewed, as the board is: a write-in
+                      link says whether THIS scenario places it. */}
+                  {openedViews.has('requests') && (
+                    <Activity mode={view === 'requests' ? 'visible' : 'hidden'}>
+                      <ErrorBoundary>
+                        <Suspense fallback={<TabLoadingFallback />}>
+                          <JotformQueue
+                            year={currentYear}
+                            sessionCmId={selectedCmId ?? 0}
+                            scenario={scenario}
+                          />
+                        </Suspense>
+                      </ErrorBoundary>
+                    </Activity>
+                  )}
+                </div>
+              )}
             </div>
 
             {familyPanelParty !== null &&

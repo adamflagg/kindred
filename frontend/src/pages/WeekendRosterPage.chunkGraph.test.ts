@@ -84,6 +84,13 @@ describe('weekend route chunk graph (kindred#2057 review)', () => {
     expect(staticImportersOf(lodgingMap)).toEqual([])
   })
 
+  it('the Requests tab queue has no static importers — only its lazy import() reaches it (kindred#2828)', () => {
+    // Moved off the Manage tab onto the weekend page, and split there: only
+    // bunking.manage staff on an adult weekend ever open it.
+    const jotformQueue = findChunk('JotformQueue')
+    expect(staticImportersOf(jotformQueue)).toEqual([])
+  })
+
   it('neither weekend route chunk (roster or lander) statically imports LodgingBoard or LodgingMap', () => {
     const lodgingBoard = findChunk('LodgingBoard')
     const lodgingMap = findChunk('LodgingMap')

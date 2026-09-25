@@ -648,6 +648,15 @@ export const queryKeys = {
    */
   jotformForms: (year: number) => ['jotform', 'forms', year] as const,
   jotformQueue: (year: number) => ['jotform', 'queue', year] as const,
+  /**
+   * One adult weekend's queue, for its Requests tab (kindred#2828 ruling
+   * 2026-09-25), read in the scenario being viewed (`''` = the live board):
+   * write-in links resolve against that scenario's write-ins, so each
+   * scenario is its own entry. Under `jotformPrefix`, which every Jotform
+   * write and every write-in writer invalidates.
+   */
+  jotformWeekendQueue: (year: number, sessionCmId: number, scenario: string) =>
+    ['jotform', 'weekend-queue', year, sessionCmId, scenario] as const,
   jotformPrefix: () => ['jotform'] as const,
   /**
    * The occupancy evidence annotating that queue (§12.8) — GET
@@ -810,6 +819,11 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // occupants from a snapshot taken at push time, not from this query, so
   // refetching under it is safe.
   void queryClient.invalidateQueries({ queryKey: queryKeys.pushPreviewPrefix() })
+  // The weekend Requests tab (kindred#2828 ruling 2026-09-25) says "placed in
+  // <unit>" from the registry's unit name, and a push or unpush -- which call
+  // this helper -- moves the live board's write-ins and the link keys they
+  // carry. Free where no Jotform query is mounted: Family Camp enables none.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
 }
 
 /**
