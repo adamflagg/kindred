@@ -1197,51 +1197,38 @@ func (c *Client) GetPaymentMethods() ([]map[string]any, error) {
 	return results, nil
 }
 
-// GetTransactionDetails retrieves financial transaction details from CampMinder
-// Endpoint: GET /financials/transactionreporting/transactiondetails
-// Parameters: season (required), includeReversals (optional, default false)
-// Returns: array of transactions with full detail (see TransactionDetail schema)
-// Note: Year-scoped data - uses seasonID
-// Note: This endpoint doesn't support pagination, so we fetch by month chunks
-// to avoid timeouts on large datasets (10,000+ transactions)
+// transactionDetailsTimeout is GetTransactionDetails' own deadline. One season is a single
+// ~19 MB response that took ~20 s when measured (2026-09-24), which the client's 30 s
+// default leaves too little room for. A var so a test can shorten it.
+var transactionDetailsTimeout = 120 * time.Second
+
+// GetTransactionDetails retrieves every transaction CampMinder files under one season.
+// Endpoint: GET /financials/transactionreporting/transactiondetails. The response is a bare,
+// unpaginated array.
+//
+// One call, no post-date bounds (campership design §6.1). The old month-by-month window
+// over Jan-Dec of the season lost every row posted in the preceding Nov-Dec (most of a
+// summer's tuition) and every late posting after Dec 31.
 func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map[string]any, error) {
-	var allResults []map[string]any
-
-	// Fetch transactions month by month to avoid timeout on large datasets
-	// Camp season typically runs Jan-Dec, so we cover the full year
-	for month := 1; month <= 12; month++ {
-		// Calculate month date range
-		startDate := time.Date(season, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
-		endDate := startDate.AddDate(0, 1, -1) // Last day of month
-
-		params := map[string]string{
-			paramClientID:      c.clientID,
-			"season":           strconv.Itoa(season),
-			"includeReversals": strconv.FormatBool(includeReversals),
-			"postDateStart":    startDate.Format("2006-01-02"),
-			"postDateEnd":      endDate.Format("2006-01-02"),
-		}
-
-		slog.Info("Fetching transactions", "month", fmt.Sprintf("%d/12", month), "year", season)
-
-		body, err := c.makeRequest("GET", "financials/transactionreporting/transactiondetails", params)
-		if err != nil {
-			return nil, fmt.Errorf("fetch transactions for month %d: %w", month, err)
-		}
-
-		results, err := c.parseTransactionResponse(body)
-		if err != nil {
-			return nil, fmt.Errorf("parse transactions for month %d: %w", month, err)
-		}
-
-		allResults = append(allResults, results...)
-		slog.Info("Fetched transactions",
-			"month", fmt.Sprintf("%d/12", month),
-			"batch", len(results),
-			"total", len(allResults))
+	params := map[string]string{
+		paramClientID:      c.clientID,
+		"season":           strconv.Itoa(season),
+		"includeReversals": strconv.FormatBool(includeReversals),
 	}
 
-	return allResults, nil
+	slog.Info("Fetching transactions", "season", season)
+	body, err := c.makeRequestWithTimeout(
+		"GET", "financials/transactionreporting/transactiondetails", params, transactionDetailsTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("fetch transactions for season %d: %w", season, err)
+	}
+
+	results, err := c.parseTransactionResponse(body)
+	if err != nil {
+		return nil, fmt.Errorf("parse transactions for season %d: %w", season, err)
+	}
+	slog.Info("Fetched transactions", "season", season, "count", len(results))
+	return results, nil
 }
 
 // parseTransactionResponse parses the transaction details API response

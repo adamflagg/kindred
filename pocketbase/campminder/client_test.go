@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -1018,5 +1019,61 @@ func TestRateLimitWait_NormalHintedWaitUnaffectedByCap(t *testing.T) {
 	want := 35 * time.Second
 	if got := rateLimitWait(body, 0); got != want {
 		t.Errorf("rateLimitWait(30s hint) = %v, want %v", got, want)
+	}
+}
+
+// TestGetTransactionDetails_OneCallPerSeasonWithoutPostDateBounds: the month-window fetch
+// lost Nov-Dec postings and anything posted after Dec 31 (analysis §5.4). A season call
+// with no post-date bounds returns every row CampMinder files under that season.
+func TestGetTransactionDetails_OneCallPerSeasonWithoutPostDateBounds(t *testing.T) {
+	var queries []url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.Query())
+		_, _ = w.Write([]byte(`[{"transactionId":1,"season":2026,"amount":10}]`))
+	}))
+	defer srv.Close()
+
+	rows, err := newTestAPIClient(srv).GetTransactionDetails(2026, true)
+	if err != nil {
+		t.Fatalf("GetTransactionDetails: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("rows = %d, want 1", len(rows))
+	}
+	if len(queries) != 1 {
+		t.Fatalf("requests = %d, want exactly 1 per season", len(queries))
+	}
+	q := queries[0]
+	if q.Get("season") != "2026" || q.Get("includeReversals") != "true" {
+		t.Errorf("query = %v, want season=2026 and includeReversals=true", q)
+	}
+	for _, bound := range []string{"postDateStart", "postDateEnd", "effectiveDateStart", "effectiveDateEnd"} {
+		if q.Has(bound) {
+			t.Errorf("query carries %s=%q; a season fetch must not be date-bounded", bound, q.Get(bound))
+		}
+	}
+}
+
+// TestGetTransactionDetails_UsesItsOwnTimeout: a season is ~19 MB and ~20 s, so this call
+// has its own deadline, and the client's default must stay untouched for every other call.
+func TestGetTransactionDetails_UsesItsOwnTimeout(t *testing.T) {
+	orig := transactionDetailsTimeout
+	transactionDetailsTimeout = 5 * time.Second
+	t.Cleanup(func() { transactionDetailsTimeout = orig })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := newTestAPIClient(srv)
+	c.httpClient.Timeout = 50 * time.Millisecond
+
+	if _, err := c.GetTransactionDetails(2026, true); err != nil {
+		t.Fatalf("GetTransactionDetails under a 50ms default and a 5s own timeout: %v", err)
+	}
+	if c.httpClient.Timeout != 50*time.Millisecond {
+		t.Errorf("client default timeout changed to %v; the long deadline must not leak", c.httpClient.Timeout)
 	}
 }
