@@ -79,6 +79,22 @@ def test_nan_is_refused_not_stored() -> None:
         _call(MagicMock(), after={"amount": math.nan})
 
 
+@pytest.mark.parametrize("bad", [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity"), Decimal("sNaN")])
+@pytest.mark.parametrize("field", ["before", "after"])
+def test_non_finite_decimal_is_refused_not_stored(bad: Decimal, field: str) -> None:
+    """`_json_default` turns every Decimal into str(value): NaN, Infinity and
+    sNaN would otherwise be written as those literal strings. `allow_nan=False`
+    only catches float, never Decimal, so this must be checked explicitly."""
+    pb = MagicMock()
+    kwargs: dict[str, object] = {"before": None, "after": None}
+    kwargs[field] = {"amount": bad}
+    if field == "before":
+        kwargs["after"] = {"amount": Decimal(1)}
+    with pytest.raises(ValueError):
+        _call(pb, **kwargs)
+    pb.collection.assert_not_called()
+
+
 def test_an_unserialisable_value_is_refused_with_its_type() -> None:
     with pytest.raises(TypeError, match="set"):
         _call(MagicMock(), after={"tiers": {1, 2}})

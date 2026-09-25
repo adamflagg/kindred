@@ -132,6 +132,14 @@ class TestAssertPersonaAccess:
         with pytest.raises(AssertionError, match="unknown persona"):
             assert_persona_access(router, "GET", "/demo/view", allowed={"treasurer"})
 
+    def test_persona_none_in_allowed_is_refused(self):
+        """A route every persona can reach (PERSONA_NONE in allowed) has no gate
+        for this helper to test: every persona would get a non-403, so the
+        helper would pass vacuously without proving anything. Refuse it rather
+        than silently pass an ungated route."""
+        with pytest.raises(ValueError, match="no gate"):
+            assert_persona_access(router, "GET", "/demo/view", allowed={PERSONA_NONE, PERSONA_FINANCE})
+
 
 class TestGateIntrospection:
     def test_require_permission_found(self):

@@ -116,6 +116,13 @@ def assert_persona_access(
     unknown = sorted(set(allowed) - set(PERSONAS))
     if unknown:
         raise AssertionError(f"unknown persona(s) in allowed: {unknown}; known: {sorted(PERSONAS)}")
+    if PERSONA_NONE in allowed:
+        raise ValueError(
+            f"{method.upper()} {url}: PERSONA_NONE is in allowed, meaning every persona is expected through. "
+            "A route every persona can reach has no gate, and this helper cannot test a route with no gate -- "
+            "every persona would get a non-403 and the assertion would pass vacuously. Remove PERSONA_NONE from "
+            "allowed, or if the route is genuinely open to everyone, don't test it with assert_persona_access."
+        )
     wrong: list[str] = []
     for persona in PERSONAS:
         response = persona_client(router, persona).request(method.upper(), url, json=json, params=params)

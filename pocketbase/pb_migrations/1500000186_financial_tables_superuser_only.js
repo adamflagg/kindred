@@ -5,10 +5,11 @@
  * Dependencies: 1500000031, 1500000036
  *
  * Per-family money reaches a browser only through FastAPI endpoints gated by
- * require_permission; FastAPI reads PocketBase as a superuser, and the Go sync
- * and Sheets exporter read through the DAO. None of them is affected by these
- * rules. Before this, both tables were `@request.auth.is_admin = true` on all
- * five rules, so any admin could read or WRITE them through the SDK.
+ * require_permission, and, until kindred#2836 lands, the live Google Sheets
+ * export; FastAPI reads PocketBase as a superuser, and the Go sync and Sheets
+ * exporter read through the DAO. None of them is affected by these rules.
+ * Before this, both tables were `@request.auth.is_admin = true` on all five
+ * rules, so any admin could read or WRITE them through the SDK.
  *
  * Searched 2026-09-25 (git grep, all of api/ bunking/ frontend/src scripts/
  * pb_hooks/): no SDK or REST reader of either table exists -- every mention is

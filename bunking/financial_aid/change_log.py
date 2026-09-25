@@ -33,6 +33,8 @@ _MAX_YEAR = 2100
 
 def _json_default(value: object) -> str:
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError(f"aid_change_log cannot store a non-finite Decimal ({value!s}); refuse the write")
         return str(value)
     if isinstance(value, date):  # datetime is a date subclass
         return value.isoformat()

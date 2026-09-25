@@ -9,7 +9,7 @@ Kindred uses PocketBase as its database layer. All collections follow these patt
 - **CampMinder IDs**: Cross-table relationships use CampMinder IDs (`cm_id`, `person_id`, etc.), never PocketBase IDs
 - **Year Scoping**: Most data tables include a `year` field to isolate data across camp seasons
 - **Auto Timestamps**: All tables include `created` and `updated` autodate fields
-- **Access Rules**: Vary by table; read the collection's migration. Financial tables (`financial_transactions`, `financial_aid_applications`) and every `aid_*` table are superuser-only (`null` on all five rules) and reach the browser only through permission-gated FastAPI endpoints. `null` means superusers only, while `''` means PUBLIC and is never used.
+- **Access Rules**: Vary by table; read the collection's migration. Financial tables (`financial_transactions`, `financial_aid_applications`) and every `aid_*` table are superuser-only (`null` on all five rules) and reach the browser only through permission-gated FastAPI endpoints — except `financial_transactions` and `financial_aid_applications`, which, until kindred#2836 lands, also reach the live Google Sheets export; every `aid_*` table is guarded against ever reaching Sheets. `null` means superusers only, while `''` means PUBLIC and is never used.
 
 ## Quick Reference
 
