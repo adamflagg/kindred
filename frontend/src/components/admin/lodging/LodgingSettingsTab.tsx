@@ -26,7 +26,7 @@ import { UnresolvedAliasQueue } from './UnresolvedAliasQueue'
 import { WeekendStatusPanel } from './WeekendStatusPanel'
 
 // The summer session view's tab grammar (`SessionTabs`), not a second one.
-// An icon per section for the same reason it has them: five pills of similar
+// An icon per section for the same reason it has them: seven pills of similar
 // length are hard to reacquire after looking away at a 93-row table.
 //
 // `status` is here rather than on the weekend lander because every other

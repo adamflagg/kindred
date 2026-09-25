@@ -5,7 +5,11 @@
  */
 import { useState } from 'react'
 
-import { useJotformQueue, useJotformSubmissionAction } from '../../../hooks/useJotformAdmin'
+import {
+  useJotformForms,
+  useJotformQueue,
+  useJotformSubmissionAction,
+} from '../../../hooks/useJotformAdmin'
 import type { JotformGuestRow, JotformQueueEntry } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
 import { shortDate } from '../../weekend/bunkingRequest'
@@ -27,6 +31,7 @@ function UnmatchedItem({
   const action = useJotformSubmissionAction()
   const [chosen, setChosen] = useState('')
   const sessionGuests = guests.filter((guest) => guest.session_cm_id === item.session_cm_id)
+  const enrolled = new Set(sessionGuests.map((guest) => guest.person_cm_id))
   const nametag = item.nametag ?? ''
   const request = item.bunking_request ?? ''
   return (
@@ -59,9 +64,11 @@ function UnmatchedItem({
               {suggestion.demoted === true && (
                 <span className="text-muted-foreground text-xs">· named in their own request</span>
               )}
-              {/* A likely duplicate can point at another unmatched SUBMISSION,
-                  which has no person to link to. */}
-              {personCmId > 0 && (
+              {/* A likely duplicate can point at another unmatched SUBMISSION
+                  (no person), or at a filing whose person has since left the
+                  weekend (the server refuses that link). Only an enrolled
+                  guest of this weekend gets a Link. */}
+              {personCmId > 0 && enrolled.has(personCmId) && (
                 <button
                   type="button"
                   className={`${ACTION_LINK} text-primary`}
@@ -133,6 +140,12 @@ const CHANGE_CAPTION: Readonly<Record<string, string>> = {
 
 export function JotformQueue({ year }: { year: number }) {
   const queue = useJotformQueue(year)
+  // The duplicate filings carry no session_name; the weekend's name comes
+  // from the forms list (the same cached query the cards above read).
+  const forms = useJotformForms(year)
+  const sessionNames = new Map(
+    (forms.data?.rows ?? []).map((row) => [row.session_cm_id, row.session_name])
+  )
   const action = useJotformSubmissionAction()
   return (
     <QueryGuard
@@ -172,7 +185,10 @@ export function JotformQueue({ year }: { year: number }) {
               </h3>
               <ul className="mt-2 flex flex-col gap-3">
                 {duplicates.map((group) => {
-                  const sessionName = group.submissions?.[0]?.session_name ?? ''
+                  const sessionName =
+                    sessionNames.get(group.session_cm_id) ??
+                    group.submissions?.[0]?.session_name ??
+                    ''
                   return (
                     // One group per (guest, weekend): a guest enrolled in two
                     // adult weekends can be in two groups.
@@ -204,30 +220,35 @@ export function JotformQueue({ year }: { year: number }) {
                 {`Staff links and ignored (${String(resolved.length)})`}
               </h3>
               <ul className="mt-2 flex flex-col gap-1">
-                {resolved.map((item) => (
-                  <li
-                    key={item.submission_id}
-                    className="flex flex-wrap items-center gap-2 text-sm"
-                  >
-                    <span className="font-semibold">{item.submitted_name}</span>
-                    <span className="text-muted-foreground text-xs">
-                      {item.match_status === 'ignored'
-                        ? 'ignored'
-                        : `linked to ${item.guest_name ?? ''}`}
-                    </span>
-                    <button
-                      type="button"
-                      className={`${ACTION_LINK} text-primary`}
-                      disabled={action.isPending}
-                      aria-label={`Unlink ${item.submitted_name}`}
-                      onClick={() => {
-                        action.mutate({ kind: 'unlink', submissionId: item.submission_id })
-                      }}
+                {resolved.map((item) => {
+                  // Un-ignoring shares the unlink endpoint, but an ignored row
+                  // was never linked to anyone: it is restored to the queue.
+                  const verb = item.match_status === 'ignored' ? 'Restore' : 'Unlink'
+                  return (
+                    <li
+                      key={item.submission_id}
+                      className="flex flex-wrap items-center gap-2 text-sm"
                     >
-                      Unlink
-                    </button>
-                  </li>
-                ))}
+                      <span className="font-semibold">{item.submitted_name}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {item.match_status === 'ignored'
+                          ? 'ignored'
+                          : `linked to ${item.guest_name ?? ''}`}
+                      </span>
+                      <button
+                        type="button"
+                        className={`${ACTION_LINK} text-primary`}
+                        disabled={action.isPending}
+                        aria-label={`${verb} ${item.submitted_name}`}
+                        onClick={() => {
+                          action.mutate({ kind: 'unlink', submissionId: item.submission_id })
+                        }}
+                      >
+                        {verb}
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           </div>

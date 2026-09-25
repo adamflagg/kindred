@@ -13,8 +13,11 @@ import type { FetchWithAuth } from './lodgingApi'
 
 const BASE = '/api/jotform'
 
+/** A Jotform admin API failure. See `apiError.ts` for why each domain keeps its own subclass. */
+export class JotformApiError extends ApiError {}
+
 async function ok(response: Response, fallback: string): Promise<Response> {
-  if (!response.ok) throw await toApiError(response, fallback, ApiError)
+  if (!response.ok) throw await toApiError(response, fallback, JotformApiError)
   return response
 }
 

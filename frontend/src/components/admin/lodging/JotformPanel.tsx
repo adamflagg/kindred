@@ -39,7 +39,7 @@ export function JotformPanel() {
             runSync.mutate(JOTFORM_SYNC_ID)
           }}
         >
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          <RefreshCw className="h-4 w-4" />
           Pull now
         </button>
       </div>
@@ -56,7 +56,14 @@ export function JotformPanel() {
           ) : (
             <div className="flex flex-col gap-3">
               {(data.rows ?? []).map((row) => (
-                <JotformFormCard key={row.session_cm_id} row={row} year={currentYear} />
+                // Keyed by year too: CampMinder reuses a weekend's session id
+                // across years, and the card's unsaved edits must not follow
+                // a year switch.
+                <JotformFormCard
+                  key={`${String(currentYear)}-${String(row.session_cm_id)}`}
+                  row={row}
+                  year={currentYear}
+                />
               ))}
             </div>
           )

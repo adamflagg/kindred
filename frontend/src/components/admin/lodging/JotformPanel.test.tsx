@@ -9,8 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JotformPanel } from './JotformPanel'
 
+const yearState = { currentYear: 2026 }
 vi.mock('../../../hooks/useCurrentYear', () => ({
-  useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn(), isYearReady: true }),
+  useCurrentYear: () => ({
+    currentYear: yearState.currentYear,
+    setCurrentYear: vi.fn(),
+    isYearReady: true,
+  }),
 }))
 
 const runSync = { mutate: vi.fn(), isPending: false }
@@ -38,6 +43,7 @@ const QUESTIONS = [
 ]
 
 beforeEach(() => {
+  yearState.currentYear = 2026
   runSync.mutate.mockReset()
   save.mutate.mockReset()
   act.mutate.mockReset()
@@ -202,6 +208,25 @@ describe('JotformPanel — forms', () => {
     )
   })
 
+  it("drops a card's unsaved edits when the year changes", () => {
+    // CampMinder reuses a weekend's session id across years, so the card for
+    // next year's Women's Weekend must not inherit this year's typed link.
+    const { rerender } = render(<JotformPanel />)
+    const link = within(screen.getByTestId('jotform-form-1000002')).getByRole('textbox', {
+      name: "Form link for Women's Weekend",
+    })
+    fireEvent.change(link, { target: { value: '261700000000999' } })
+    yearState.currentYear = 2027
+    const rows = (forms.data as { rows: Array<Record<string, unknown>> }).rows
+    forms.data = { year: 2027, rows: [{ ...rows[0], form_id: '271700000000001' }] }
+    rerender(<JotformPanel />)
+    expect(
+      within(screen.getByTestId('jotform-form-1000002')).getByRole('textbox', {
+        name: "Form link for Women's Weekend",
+      })
+    ).toHaveValue('271700000000001')
+  })
+
   it('Pull now runs the Jotform sync job', () => {
     render(<JotformPanel />)
     fireEvent.click(screen.getByRole('button', { name: 'Pull now' }))
@@ -269,6 +294,58 @@ describe('JotformPanel — queue', () => {
     expect(group).toHaveTextContent('Olivia Chen')
     expect(group).toHaveTextContent('Emma Johnson, Riley Sam')
     expect(group).toHaveTextContent('Aug 3')
+  })
+
+  it('labels an ignored row Restore, which un-ignores it, and keeps Unlink for staff links', () => {
+    // Un-ignoring is the same endpoint as unlinking, but "Unlink" on a row
+    // that was never linked to anyone misdescribes what the button does.
+    const data = queue.data as { resolved: Array<Record<string, unknown>> }
+    data.resolved.push({
+      submission_id: '6600000000000000004',
+      session_cm_id: 1000002,
+      submitted_name: 'Riley Sam',
+      submitted_at: '2026-09-02 09:00:00',
+      match_status: 'ignored',
+      person_cm_id: 0,
+    })
+    render(<JotformPanel />)
+    expect(screen.queryByRole('button', { name: 'Unlink Riley Sam' })).not.toBeInTheDocument()
+    const restore = screen.getByRole('button', { name: 'Restore Riley Sam' })
+    expect(restore).toHaveTextContent('Restore')
+    fireEvent.click(restore)
+    expect(act.mutate).toHaveBeenLastCalledWith({
+      kind: 'unlink',
+      submissionId: '6600000000000000004',
+    })
+    expect(screen.getByRole('button', { name: 'Unlink Liam Riley' })).toHaveTextContent('Unlink')
+  })
+
+  it("names a duplicate group's weekend from the forms list", () => {
+    // The API sends duplicate filings without a session_name; the weekend
+    // comes from the group's session_cm_id.
+    render(<JotformPanel />)
+    expect(screen.getByTestId('jotform-duplicate-1000004')).toHaveTextContent("Women's Weekend")
+  })
+
+  it('offers no Link for a suggested person who is not an enrolled guest of the weekend', () => {
+    // A likely duplicate can point at another filing whose person has since
+    // left the weekend; the server refuses that link, so no button is drawn.
+    const data = queue.data as { unmatched: Array<{ suggestions: unknown[] }> }
+    data.unmatched[0]!.suggestions = [
+      {
+        kind: 'likely_duplicate',
+        label: 'Likely a duplicate of Olivia Chen’s submission',
+        person_cm_id: 1000009,
+        guest_name: 'Olivia Chen',
+        other_submission_id: '6600000000000000010',
+      },
+    ]
+    render(<JotformPanel />)
+    const item = screen.getByTestId('jotform-unmatched-6600000000000000002')
+    expect(
+      within(item).getByText('Likely a duplicate of Olivia Chen’s submission')
+    ).toBeInTheDocument()
+    expect(within(item).queryByRole('button', { name: /^Link to/ })).not.toBeInTheDocument()
   })
 
   it('draws one duplicate group per weekend when a guest filed twice for each', () => {
