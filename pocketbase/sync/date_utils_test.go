@@ -1,7 +1,9 @@
 package sync
 
 import (
+	"errors"
 	"testing"
+	"time"
 )
 
 // TestParseDate_SharedFunction tests the shared ParseDate function that consolidates
@@ -230,5 +232,35 @@ func TestParseCampMinderInstant(t *testing.T) {
 				t.Errorf("ParseCampMinderInstant(%v) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestLoadCampMinderLocationFallsBackOnLoadFailure pins the fix-round-1 ruling: a
+// zoneinfo load failure must never crash the server (the sync package is imported by
+// main.go, so a package-level panic in campMinderLocation's initializer would take down
+// the whole PocketBase process at startup), and the fallback must be fixed MST
+// (UTC-7), not UTC -- off by at most one hour during DST, against 6-7 hours for UTC.
+func TestLoadCampMinderLocationFallsBackOnLoadFailure(t *testing.T) {
+	t.Parallel()
+	failing := func(string) (*time.Location, error) {
+		return nil, errors.New("no zoneinfo")
+	}
+
+	var loc *time.Location
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("loadCampMinderLocation panicked: %v", r)
+			}
+		}()
+		loc = loadCampMinderLocation(failing)
+	}()
+
+	if loc == nil {
+		t.Fatal("loadCampMinderLocation returned a nil location")
+	}
+	july := time.Date(2026, 7, 1, 12, 0, 0, 0, loc)
+	if _, offset := july.Zone(); offset != -7*60*60 {
+		t.Errorf("July offset = %ds, want %ds (fixed MST, -7h even in what would be MDT)", offset, -7*60*60)
 	}
 }

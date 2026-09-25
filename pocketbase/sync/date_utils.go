@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -73,15 +72,32 @@ func ParseDateValue(value any) string {
 // stores every timestamp 6-7 hours early.
 const campMinderZone = "America/Denver"
 
-// campMinderLocation is loaded once. time/tzdata is embedded, so the load cannot fail at
-// runtime; a panic at init is the loud failure wanted if that import is ever removed.
-var campMinderLocation = func() *time.Location {
-	loc, err := time.LoadLocation(campMinderZone)
+// campMinderMSTFallback is the fallback when campMinderZone cannot be loaded: fixed
+// Mountain Standard Time, UTC-7 year round. It is off by at most one hour during MDT
+// (mid-March to early November), against the 6-7 hours a literal-UTC read is off by --
+// see ParseCampMinderInstant's doc comment for the failure this whole file exists to fix.
+var campMinderMSTFallback = time.FixedZone("MST", -7*60*60)
+
+// loadCampMinderLocation loads campMinderZone via load, falling back to
+// campMinderMSTFallback on failure. It never panics: this package is imported by
+// main.go, so a panic in a package-level initializer would crash the entire
+// PocketBase server at startup over a timestamp-formatting concern. With time/tzdata
+// embedded (see the import above), the failure path is not expected to run in
+// production; it exists for the day that import is removed or the embedded data is
+// somehow incomplete, and a loud, non-fatal fallback beats a wrong instant that
+// still shipped and a crash that took down sync, RBAC and everything else with it.
+func loadCampMinderLocation(load func(string) (*time.Location, error)) *time.Location {
+	loc, err := load(campMinderZone)
 	if err != nil {
-		panic(fmt.Sprintf("load %s: %v", campMinderZone, err))
+		slog.Error("could not load CampMinder timezone, reading timestamps as fixed MST",
+			"zone", campMinderZone, "fallback", "MST (UTC-7, no DST)", "error", err)
+		return campMinderMSTFallback
 	}
 	return loc
-}()
+}
+
+// campMinderLocation is loaded once at package init.
+var campMinderLocation = loadCampMinderLocation(time.LoadLocation)
 
 // ParseCampMinderInstant converts a CampMinder API timestamp to PocketBase's UTC format
 // "2006-01-02 15:04:05Z".
