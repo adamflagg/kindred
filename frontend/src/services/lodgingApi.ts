@@ -9,6 +9,7 @@
 
 import type { PartyGrainBody } from '../components/weekend/dragPlacement'
 import type {
+  BunkingRequest,
   HouseholdJourney,
   HouseholdMedical,
   LodgingWriteResult,
@@ -287,6 +288,12 @@ export interface AvailabilityWrite {
    * the moment step 8 narrows the unique index.
    */
   previousOccupantName: string | null
+  /**
+   * The adult-weekend Jotform filing this write-in is made FROM (kindred#2759
+   * follow-up): the server links the two in the same request. Sent only when
+   * set, so every other write's body is unchanged.
+   */
+  jotformSubmissionId?: string | null | undefined
 }
 
 /**
@@ -317,6 +324,7 @@ export async function setUnitAvailability(
     reason,
     partySize,
     previousOccupantName,
+    jotformSubmissionId,
   }: AvailabilityWrite
 ): Promise<LodgingWriteResult> {
   const response = await fetchWithAuth(`${API_BASE}/availability`, {
@@ -332,6 +340,7 @@ export async function setUnitAvailability(
       reason,
       party_size: partySize,
       previous_occupant_name: previousOccupantName,
+      ...(jotformSubmissionId ? { jotform_submission_id: jotformSubmissionId } : {}),
     }),
   })
   if (!response.ok) throw await toError(response, 'Failed to update availability')
@@ -528,6 +537,14 @@ export interface PushRowPayload {
    * `sleeps` still count as the same row.
    */
   sleeps: number | null
+  /**
+   * The row's adult-weekend Jotform write-in link (kindred#2759 follow-up),
+   * `''` for none -- every Family Camp row. Differing between the two sides
+   * makes a building a conflict; the deck diffs it on an adult weekend only.
+   */
+  write_in_key?: string
+  /** The linked filing's bunking request, adult weekends only; else null. */
+  bunking_request?: BunkingRequest | null
 }
 
 /**

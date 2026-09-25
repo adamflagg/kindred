@@ -92,4 +92,30 @@ describe('useJotformAdmin', () => {
     expect(keys).toContainEqual(queryKeys.jotformPrefix())
     expect(keys).toContainEqual(queryKeys.weekendRosterPrefix())
   })
+
+  it('links a filing to a board write-in, then refreshes every surface that shows the link', async () => {
+    fetchSpy.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })))
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useJotformSubmissionAction(), { wrapper })
+    result.current.mutate({
+      kind: 'write_in',
+      submissionId: '6600000000000000001',
+      unitId: 'u_cedar',
+      occupantName: 'Pat Doe',
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/jotform/submissions/6600000000000000001/write-in')
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer test-jwt')
+    expect(JSON.parse(String(init.body))).toEqual({ unit_id: 'u_cedar', occupant_name: 'Pat Doe' })
+
+    // The board's write-in mark, the push deck and the compare modal all
+    // draw the linked filing's request.
+    const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(queryKeys.jotformPrefix())
+    expect(keys).toContainEqual(queryKeys.weekendRosterPrefix())
+    expect(keys).toContainEqual(queryKeys.pushPreviewPrefix())
+    expect(keys).toContainEqual(queryKeys.scenarioComparePrefix())
+  })
 })

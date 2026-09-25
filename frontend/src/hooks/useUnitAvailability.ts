@@ -61,7 +61,7 @@ import { useCallback } from 'react'
 import toast from 'react-hot-toast'
 
 import { deleteWriteIn, setUnitAvailability } from '../services/lodgingApi'
-import { invalidateLodgingRegistryQueries } from '../utils/queryKeys'
+import { invalidateJotformQueries, invalidateLodgingRegistryQueries } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 
 export interface UseUnitAvailabilityOptions {
@@ -126,6 +126,8 @@ export interface AvailabilityIntent {
    * rename would silently create a second row the moment step 8 lands.
    */
   previousOccupantName: string | null
+  /** kindred#2759 follow-up: the Jotform filing this write-in is made from. */
+  jotformSubmissionId?: string | null | undefined
 }
 
 /** Taking ONE occupant out of one unit, as the card's corner × states it. */
@@ -192,6 +194,9 @@ export function useUnitAvailability({
         // place to decide whether a write renames anybody — the card that
         // opened the form is the only thing that knows the name it loaded.
         previousOccupantName: intent.previousOccupantName,
+        // kindred#2759 follow-up: the Jotform filing this write-in is made
+        // from, linked by the server in the same request.
+        ...(intent.jotformSubmissionId ? { jotformSubmissionId: intent.jotformSubmissionId } : {}),
       })
     },
 
@@ -204,8 +209,10 @@ export function useUnitAvailability({
     // `set_availability`'s own lost-race recovery can fail after the create
     // landed. Refetching is what makes the board agree with the server either
     // way.
-    onSettled: () => {
+    onSettled: (_data, _error, intent) => {
       invalidateLodgingRegistryQueries(queryClient)
+      // A write that linked a Jotform filing moves the admin queue too.
+      if (intent.jotformSubmissionId) invalidateJotformQueries(queryClient)
     },
   })
 

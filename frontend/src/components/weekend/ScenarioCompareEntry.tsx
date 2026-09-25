@@ -38,6 +38,8 @@ interface ScenarioCompareEntryProps {
   /** `''` is the CampMinder mirror — nothing to compare, so nothing renders. */
   scenario: string
   canManage: boolean
+  /** The weekend's `session_type`: an adult weekend marks Jotform-linked write-ins. */
+  sessionType?: string | undefined
 }
 
 export function ScenarioCompareEntry({
@@ -45,6 +47,7 @@ export function ScenarioCompareEntry({
   sessionCmId,
   scenario,
   canManage,
+  sessionType,
 }: ScenarioCompareEntryProps) {
   const [open, setOpen] = useState(false)
 
@@ -68,6 +71,7 @@ export function ScenarioCompareEntry({
       </button>
       <ScenarioCompareModal
         year={year}
+        sessionType={sessionType}
         sessionCmId={sessionCmId}
         scenario={scenario}
         isOpen={open}

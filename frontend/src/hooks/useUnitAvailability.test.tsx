@@ -110,6 +110,24 @@ describe('useUnitAvailability', () => {
     })
   })
 
+  it('forwards the Jotform filing a write-in is made from, and refreshes the Jotform queue', async () => {
+    const { result } = renderAvailability()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.setAvailability({
+        ...WRITE_IN,
+        jotformSubmissionId: '6600000000000000001',
+      })
+    })
+
+    expect(setUnitAvailability.mock.calls[0]?.[1]).toMatchObject({
+      jotformSubmissionId: '6600000000000000001',
+    })
+    const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(queryKeys.jotformPrefix())
+  })
+
   it('forwards a non-null party size, rather than hardcoding one', async () => {
     // MAJOR B: `WRITE_IN`'s own `partySize: null` cannot distinguish
     // FORWARDING `intent.partySize` from hardcoding `null` at this hop's

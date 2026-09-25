@@ -385,6 +385,7 @@ export default function WeekendRosterPage() {
                 sessionCmId={selectedCmId ?? 0}
                 scenario={scenario}
                 canManage={canManageLodging}
+                sessionType={sessionType}
               />
               {/* No `units` prop: kindred#2589 moved the badge's count onto
                   `usePushPreview`, so the entry no longer needs the registry
@@ -394,6 +395,7 @@ export default function WeekendRosterPage() {
                 sessionCmId={selectedCmId ?? 0}
                 scenario={scenario}
                 canManage={canManageLodging}
+                sessionType={sessionType}
               />
               {/* One guide for every tab — the same move summer's SessionHeader
                   makes, mounted here rather than on the map tab alone so the

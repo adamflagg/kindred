@@ -4,6 +4,7 @@ import {
   fetchJotformForms,
   ignoreJotformSubmission,
   linkJotformSubmission,
+  linkJotformWriteIn,
   saveJotformForm,
   unlinkJotformSubmission,
 } from './jotformApi'
@@ -63,5 +64,14 @@ describe('jotformApi', () => {
     expect(JSON.parse(String((fetchWithAuth.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
       person_cm_id: 1000005,
     })
+  })
+
+  it('posts a write-in link addressed by unit and occupant name', async () => {
+    const fetchWithAuth = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    await linkJotformWriteIn(fetchWithAuth, '6600000000000000001', 'u_cedar', 'Pat Doe')
+    const [url, init] = fetchWithAuth.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/jotform/submissions/6600000000000000001/write-in')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({ unit_id: 'u_cedar', occupant_name: 'Pat Doe' })
   })
 })

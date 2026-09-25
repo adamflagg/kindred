@@ -59,6 +59,8 @@ interface PushWriteInsEntryProps {
   /** `''` is the CampMinder mirror — nothing to push, so nothing renders. */
   scenario: string
   canManage: boolean
+  /** The weekend's `session_type`: an adult weekend marks Jotform-linked write-ins. */
+  sessionType?: string | undefined
 }
 
 export function PushWriteInsEntry({
@@ -66,6 +68,7 @@ export function PushWriteInsEntry({
   sessionCmId,
   scenario,
   canManage,
+  sessionType,
 }: PushWriteInsEntryProps) {
   const [open, setOpen] = useState(false)
   const visible = scenario !== '' && canManage && sessionCmId > 0
@@ -113,6 +116,7 @@ export function PushWriteInsEntry({
       </button>
       <PushWriteInsModal
         year={year}
+        sessionType={sessionType}
         sessionCmId={sessionCmId}
         scenario={scenario}
         isOpen={open}

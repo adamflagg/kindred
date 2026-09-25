@@ -109,6 +109,14 @@ import {
 import { effectiveSleeps, partySpots } from './rosterAttention'
 import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
 
+/** One adult Jotform filing a write-in can be made from (kindred#2759 follow-up). */
+export interface JotformFilingChoice {
+  submissionId: string
+  /** The filer's first and last name, as submitted: the occupant name it fills in. */
+  name: string
+  nametag: string
+}
+
 export interface AssignFamilyModalProps {
   isOpen: boolean
   onClose: () => void
@@ -165,7 +173,22 @@ export interface AssignFamilyModalProps {
    * must not be shown an affordance it cannot honour.
    */
   onWriteIn?:
-    ((write: { occupantName: string; note: string; partySize: number | null }) => void) | undefined
+    | ((write: {
+        occupantName: string
+        note: string
+        partySize: number | null
+        /** Set only when the write-in is made FROM a Jotform filing. */
+        jotformSubmissionId?: string
+      }) => void)
+    | undefined
+  /**
+   * kindred#2759 follow-up: the weekend's adult Jotform filings that no guest
+   * or write-in holds yet. When given, the write-in box offers them: picking
+   * one fills the occupant name with the filer's first and last name (staff
+   * can still edit it) and the write links the filing in the same request.
+   * Empty or absent -- every Family Camp weekend -- and nothing is drawn.
+   */
+  jotformFilings?: readonly JotformFilingChoice[] | undefined
   /** True while a write THIS card started is in flight. */
   isSaving?: boolean
   /**
@@ -542,6 +565,7 @@ export function AssignFamilyModal({
   onWriteIn,
   isSaving = false,
   sessionType = '',
+  jotformFilings,
 }: AssignFamilyModalProps) {
   const isAdult = isAdultSessionType(sessionType)
   /*
@@ -595,6 +619,9 @@ export function AssignFamilyModal({
    */
   const [people, setPeople] = useState('')
   const partySize = people === '' ? null : Number(people)
+  // The Jotform filing this write-in is made from, or '' for none.
+  const [filing, setFiling] = useState('')
+  const filings = jotformFilings ?? []
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -706,6 +733,7 @@ export function AssignFamilyModal({
     setQuery('')
     setNote('')
     setPeople('')
+    setFiling('')
     onClose()
   }
 
@@ -717,10 +745,16 @@ export function AssignFamilyModal({
     if (!offersWriteIn) return
     // The TRIMMED text, which is what the offer shows. Staff type into a search
     // box and a trailing space is a typing artefact, not a name.
-    onWriteIn({ occupantName: trimmed, note: note.trim(), partySize })
+    onWriteIn({
+      occupantName: trimmed,
+      note: note.trim(),
+      partySize,
+      ...(filing !== '' ? { jotformSubmissionId: filing } : {}),
+    })
     setQuery('')
     setNote('')
     setPeople('')
+    setFiling('')
     onClose()
   }
 
@@ -1076,6 +1110,30 @@ export function AssignFamilyModal({
                   `items-end` so the two controls sit on a common baseline
                   despite `People`'s narrower label; `gap-2` matches the
                   artifact's field rhythm. */}
+              {filings.length > 0 && (
+                <label className="flex flex-col gap-[3px] text-xs font-medium">
+                  From Jotform
+                  <select
+                    aria-label="Jotform filing"
+                    value={filing}
+                    disabled={isSaving}
+                    onChange={(event) => {
+                      const id = event.target.value
+                      setFiling(id)
+                      const chosen = filings.find((f) => f.submissionId === id)
+                      if (chosen !== undefined) setQuery(chosen.name)
+                    }}
+                    className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+                  >
+                    <option value="">None</option>
+                    {filings.map((f) => (
+                      <option key={f.submissionId} value={f.submissionId}>
+                        {f.nametag !== '' ? `${f.name} (nametag “${f.nametag}”)` : f.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div data-testid="write-in-fields" className="flex items-end gap-2">
                 {/* `gap-[3px]` is the artifact's `.mfield`, matching `Note`. */}
                 <label className="flex w-[5.5rem] shrink-0 flex-col gap-[3px] text-xs font-medium">
