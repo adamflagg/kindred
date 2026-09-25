@@ -45,9 +45,12 @@ def _client(user: AuthUser) -> TestClient:
 def test_the_write_in_is_written_then_linked() -> None:
     order: list[str] = []
     writes = MagicMock()
-    writes.set_availability = AsyncMock(
-        side_effect=lambda _req: order.append("write") or LodgingWriteResponse(record_id="w1")
-    )
+
+    async def write(_req: object) -> LodgingWriteResponse:
+        order.append("write")
+        return LodgingWriteResponse(record_id="w1")
+
+    writes.set_availability = AsyncMock(side_effect=write)
     jot = MagicMock()
     jot.check_write_in_filing = AsyncMock(side_effect=lambda *_: order.append("check"))
     jot.link_write_in = AsyncMock(side_effect=lambda *_: order.append("link"))
