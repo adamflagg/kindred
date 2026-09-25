@@ -2869,6 +2869,10 @@ export type JotformQueueItem = {
    * Write In Suggestion
    */
   write_in_suggestion?: string
+  /**
+   * Name Tiers
+   */
+  name_tiers?: Array<Array<string>>
 }
 
 /**
@@ -3080,6 +3084,10 @@ export type JotformWriteInLinkSuggestion = {
    * Label
    */
   label: string
+  /**
+   * Similar
+   */
+  similar?: boolean
 }
 
 /**

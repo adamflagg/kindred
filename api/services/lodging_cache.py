@@ -214,6 +214,21 @@ class LodgingYearCache:
                 logger.info(f"Lodging year cache invalidated: cleared {count} entries")
             return count
 
+    def invalidate_read(self, read_name: str, year: int) -> None:
+        """Drop one read of one year (kindred#2839 follow-up): a write that
+        changes only what that read returns -- a Jotform staff link -- need
+        not make the board rebuild every other read of the year.
+
+        Bumps the generation like `invalidate_all`, so a fetch of this read
+        already in flight is not written back with its pre-write answer. That
+        also drops any OTHER read's in-flight result, which costs a re-read
+        and never a stale answer. The per-key lock is kept: it is bound to the
+        loop serving this request, the loop any waiter on it is using.
+        """
+        with self._lock:
+            self._evict(self._make_key(read_name, year))
+            self._generation += 1
+
     def _lock_for(self, read_name: str, year: int) -> asyncio.Lock:
         """The per-(read_name, year) asyncio.Lock, created on first ask.
 

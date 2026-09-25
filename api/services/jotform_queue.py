@@ -445,19 +445,29 @@ def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOptio
     return next(iter(hits)) if len(hits) == 1 else ""
 
 
+def name_tiers(sub: QueueSubmission) -> list[list[str]]:
+    """The filer's folded names in `suggest_write_in`'s exact tiers, best
+    first: first + last, nametag (its first word) + last, the whole nametag,
+    then first name or nametag alone. The ONE place a filer's names are
+    folded for matching a write-in: the queue sends these to the board, whose
+    write-in box matches a typed name against them (kindred#2839 follow-up,
+    `frontend/src/components/weekend/filerMatch.ts`), and
+    `tests/fixtures/jotform_filer_match_cases.json` pins both sides."""
+    first, last = fold(sub.first), fold(sub.last)
+    nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
+    return [
+        [f"{first} {last}"] if first and last else [],
+        [f"{nametag_first} {last}"] if nametag_first and last else [],
+        [nametag] if nametag else [],
+        list(dict.fromkeys(name for name in (first, nametag_first) if name)),
+    ]
+
+
 def _exact_write_in_hits(sub: QueueSubmission, options: Sequence[JotformWriteInOption]) -> set[str]:
     """The write-ins the first exact tier with any hit finds (see
     `suggest_write_in`); empty when no exact tier finds one."""
-    first, last = fold(sub.first), fold(sub.last)
-    nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
     mine = [o for o in options if o.session_cm_id == sub.session_cm_id]
-    tiers: list[set[str]] = [
-        {f"{first} {last}"} if first and last else set(),
-        {f"{nametag_first} {last}"} if nametag_first and last else set(),
-        {nametag} if nametag else set(),
-        {name for name in (first, nametag_first) if name},
-    ]
-    for wanted in tiers:
+    for wanted in name_tiers(sub):
         hits = {o.option_id for o in mine if fold(o.occupant_name) in wanted}
         if hits:
             return hits
@@ -471,19 +481,7 @@ SIMILAR_THRESHOLD = 0.85
 
 
 def _name_variants(sub: QueueSubmission) -> set[str]:
-    first, last = fold(sub.first), fold(sub.last)
-    nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
-    return {
-        name
-        for name in (
-            f"{first} {last}" if first and last else "",
-            f"{nametag_first} {last}" if nametag_first and last else "",
-            nametag,
-            first,
-            nametag_first,
-        )
-        if name
-    }
+    return {name for tier in name_tiers(sub) for name in tier}
 
 
 def _similar_write_in(sub: QueueSubmission, rows: Mapping[str, WriteInRow]) -> str:
@@ -583,6 +581,7 @@ def link_suggestions(
                 filer_name=sub.submitted_name,
                 linked_in=where,
                 label=label,
+                similar=similar,
             )
         )
 

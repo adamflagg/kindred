@@ -1,10 +1,12 @@
 """The Jotform admin (kindred#2759): per-weekend form settings, the unmatched
 queue with labelled suggestions, duplicates, and staff link/ignore/unlink.
 
-Every write clears the weekend year cache, because the roster's
-`fetch_jotform_bunking_rows` is cached per year and a staff link changes whose
-card a request lands on. The cache has no per-read eviction, so the whole year
-cache goes, followed -- as after every other clear -- by a background re-warm.
+Every write drops the roster's cached Jotform read for the filing's year,
+because `fetch_jotform_bunking_rows` is cached per year and a staff link
+changes whose card a request lands on. Only the reads that declared a table
+these writes touch go (kindred#2839 follow-up): dropping the whole year made
+the board's next read rebuild every cached read. A background re-warm follows,
+as after every other clear.
 """
 
 from __future__ import annotations
@@ -17,7 +19,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from api.constants.collections import LODGING_WRITE_INS, LODGING_WRITE_INS_DRAFT
+from api.constants.collections import (
+    JOTFORM_ANSWERS,
+    JOTFORM_FORMS,
+    JOTFORM_SUBMISSIONS,
+    LODGING_WRITE_INS,
+    LODGING_WRITE_INS_DRAFT,
+)
 from api.dependencies import lodging_cache
 from api.schemas.jotform import (
     JotformActionResult,
@@ -42,6 +50,7 @@ from api.services.jotform_queue import (
     duplicate_groups,
     identity_from_answers,
     link_suggestions,
+    name_tiers,
     parse_form_id,
     queue_item,
     same_link_siblings,
@@ -51,7 +60,7 @@ from api.services.jotform_queue import (
     write_in_options,
 )
 from api.services.jotform_repository import JotformRepository
-from api.services.lodging_cache_warm import schedule_lodging_warm
+from api.services.lodging_cache_warm import reads_depending_on, schedule_lodging_warm
 
 _MATCH_STATUSES: dict[str, MatchStatus] = {
     "auto": "auto",
@@ -75,10 +84,20 @@ def _pb_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
 
 
-def _roster_changed() -> None:
-    """Drop the roster's cached Jotform read (and, the cache being keyed by
-    year with no per-read eviction, the rest of the year cache), then re-warm."""
-    lodging_cache.invalidate_all()
+# Every table a Jotform admin write touches. No cached roster read declares a
+# write-in table today (the board reads write-ins per weekend, uncached); they
+# are listed so one that starts caching them is dropped here too.
+_WRITTEN_TABLES = frozenset(
+    {JOTFORM_FORMS, JOTFORM_SUBMISSIONS, JOTFORM_ANSWERS, LODGING_WRITE_INS, LODGING_WRITE_INS_DRAFT}
+)
+
+
+def _roster_changed(year: int) -> None:
+    """Drop the year's cached reads that depend on what a Jotform write
+    changes -- `fetch_jotform_bunking_rows` -- and nothing else, then re-warm
+    (the warm re-reads only what is missing)."""
+    for read in reads_depending_on(_WRITTEN_TABLES):
+        lodging_cache.invalidate_read(read, year)
     schedule_lodging_warm()
 
 
@@ -325,7 +344,7 @@ class JotformAdminService:
             enabled=body.enabled,
             clear_definition=repointed,
         )
-        _roster_changed()
+        _roster_changed(year)
         forms = await self.build_forms(year)
         return next(row for row in forms.rows if row.session_cm_id == session_cm_id)
 
@@ -364,17 +383,26 @@ class JotformAdminService:
         def in_scope(cm_id: int) -> bool:
             return session_cm_id is None or cm_id == session_cm_id
 
+        # One weekend's read asks PocketBase for that weekend's rows alone
+        # (kindred#2839 follow-up); `in_scope` still filters what comes back.
+        weekend = {"session_cm_id": session_cm_id}
         forms = await self.repository.fetch_forms(year)
-        submissions = [r for r in await self.repository.fetch_submissions(year) if in_scope(int(r.session_cm_id))]
-        answers = await self.repository.fetch_answers(year)
-        guests = [g for g in _guests(await self.repository.fetch_enrolled_guests(year)) if in_scope(g.session_cm_id)]
+        submissions = [
+            r for r in await self.repository.fetch_submissions(year, **weekend) if in_scope(int(r.session_cm_id))
+        ]
+        answers = await self.repository.fetch_answers(year, **weekend)
+        guests = [
+            g
+            for g in _guests(await self.repository.fetch_enrolled_guests(year, **weekend))
+            if in_scope(g.session_cm_id)
+        ]
         # The live board's write-ins first, so an option and a link name read
         # the live row's spelling wherever a scenario copy exists too.
         write_in_rows = [
             row
             for row in [
-                *(_write_in_row(r) for r in await self.repository.fetch_live_write_ins(year)),
-                *(_write_in_row(r, draft=True) for r in await self.repository.fetch_draft_write_ins(year)),
+                *(_write_in_row(r) for r in await self.repository.fetch_live_write_ins(year, **weekend)),
+                *(_write_in_row(r, draft=True) for r in await self.repository.fetch_draft_write_ins(year, **weekend)),
             ]
             if in_scope(row.session_cm_id)
         ]
@@ -443,6 +471,7 @@ class JotformAdminService:
                 item = queue_item(sub, session_name=session_name)
                 item.suggestions = suggestions_for(sub, guests, subs)
                 item.write_in_suggestion = suggest_write_in(sub, options)
+                item.name_tiers = name_tiers(sub)
                 unmatched.append(item)
                 unlinked_subs.append(sub)
             elif sub.match_status == "cancelled":
@@ -491,10 +520,12 @@ class JotformAdminService:
         """The filer's other filings of this weekend a decision on `record`
         also reaches (kindred#2839 follow-up: one filer, one decision), read
         BEFORE anything is written: `pick` compares against its state now."""
-        year = int(record.year)
+        year, weekend = int(record.year), int(record.session_cm_id)
+        # A sibling is a filing of the same weekend (`same_filer`): read that
+        # weekend's filings alone.
         subs = _queue_submissions(
-            await self.repository.fetch_submissions(year),
-            await self.repository.fetch_answers(year),
+            await self.repository.fetch_submissions(year, session_cm_id=weekend),
+            await self.repository.fetch_answers(year, session_cm_id=weekend),
             _field_maps(await self.repository.fetch_forms(year)),
         )
         me = next((sub for sub in subs if sub.record_id == str(record.id)), None)
@@ -513,7 +544,7 @@ class JotformAdminService:
             for sibling in siblings:
                 await self.repository.update_submission(sibling.record_id, {**_cleared_links(sibling), **body})
         finally:
-            _roster_changed()
+            _roster_changed(int(record.year))
         return JotformActionResult.model_validate(
             {
                 "action": action,
@@ -532,8 +563,8 @@ class JotformAdminService:
         """Link a filing to an enrolled guest, and with it the same filer's
         other filings of the weekend that are still waiting."""
         record = await self._submission(submission_id)
-        guests = _guests(await self.repository.fetch_enrolled_guests(int(record.year)))
         session_cm_id = int(record.session_cm_id)
+        guests = _guests(await self.repository.fetch_enrolled_guests(int(record.year), session_cm_id=session_cm_id))
         if not any(g.person_cm_id == person_cm_id and g.session_cm_id == session_cm_id for g in guests):
             raise JotformValidationError("That person is not an enrolled guest of this weekend")
         siblings = await self._siblings(record, waiting_siblings)
@@ -601,8 +632,11 @@ class JotformAdminService:
         weekend_rows: list[tuple[str, Any]] = [
             (table, row)
             for table, fetched in (
-                (LODGING_WRITE_INS, await self.repository.fetch_live_write_ins(year)),
-                (LODGING_WRITE_INS_DRAFT, await self.repository.fetch_draft_write_ins(year)),
+                (LODGING_WRITE_INS, await self.repository.fetch_live_write_ins(year, session_cm_id=session_cm_id)),
+                (
+                    LODGING_WRITE_INS_DRAFT,
+                    await self.repository.fetch_draft_write_ins(year, session_cm_id=session_cm_id),
+                ),
             )
             for row in fetched
             if int(getattr(row, "session_cm_id", 0) or 0) == session_cm_id
@@ -637,7 +671,9 @@ class JotformAdminService:
         if own:
             held = {
                 key_of(other)
-                for other in await self.repository.fetch_submissions(year)
+                # A key is minted per write-in of one weekend, so only that
+                # weekend's filings can hold one of these rows' keys.
+                for other in await self.repository.fetch_submissions(year, session_cm_id=session_cm_id)
                 if str(other.id) != str(record.id)
                 and str(getattr(other, "match_status", "") or "") == "write_in"
                 and key_of(other)

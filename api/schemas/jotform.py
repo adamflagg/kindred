@@ -101,6 +101,11 @@ class JotformQueueItem(BaseModel):
     write_in_placed: bool | None = None
     # Needs a guest: the write-in option pre-selected for it, or "" for none.
     write_in_suggestion: str = ""
+    # Needs a guest: the filer's folded names in `suggest_write_in`'s exact
+    # tiers, best first (`jotform_queue.name_tiers`). The board's write-in box
+    # matches a typed name against them (kindred#2839 follow-up); empty on
+    # every other list.
+    name_tiers: list[list[str]] = Field(default_factory=list)
 
 
 class JotformGuest(BaseModel):
@@ -152,6 +157,10 @@ class JotformWriteInLinkSuggestion(BaseModel):
     filer_name: str
     linked_in: str = ""
     label: str
+    # Offered because the name is only CLOSE to the filer's (Jaro-Winkler),
+    # not one of `suggest_write_in`'s exact tiers. The filer's own row says
+    # so; a similar name never pre-selects the dropdown.
+    similar: bool = False
 
 
 class JotformQueueResponse(BaseModel):

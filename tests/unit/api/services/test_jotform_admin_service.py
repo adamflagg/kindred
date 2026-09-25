@@ -149,7 +149,7 @@ class TestForms:
             enabled=True,
             clear_definition=False,
         )
-        cache.invalidate_all.assert_called_once()
+        cache.invalidate_read.assert_called_once_with("fetch_jotform_bunking_rows", YEAR)
 
     @pytest.mark.asyncio
     async def test_save_marks_only_the_roles_staff_changed_as_staff(self) -> None:
@@ -428,7 +428,7 @@ class TestQueueAndLinks:
             "staff@example.com",
         )
         assert body["linked_at"], "a staff link stamps when it was made"
-        cache.invalidate_all.assert_called_once()
+        cache.invalidate_read.assert_called_once_with("fetch_jotform_bunking_rows", YEAR)
 
     @pytest.mark.asyncio
     async def test_link_refuses_a_guest_enrolled_only_in_another_weekend(self) -> None:
@@ -507,3 +507,48 @@ class TestStaffWritesClearTheCachedRosterRead:
         await roster_repo.fetch_jotform_bunking_rows(YEAR)
         assert pb.collection.return_value.get_full_list.call_count > reads_while_cached
         background_warm.assert_called_once()
+
+
+class TestStaffWritesKeepTheRestOfTheYearCache:
+    """kindred#2839 follow-up (queue actions feel slow): a staff write changes
+    Jotform rows and nothing else the roster caches, so it drops only the
+    cached reads that declared a Jotform table -- today exactly
+    `fetch_jotform_bunking_rows` -- and only for the filing's year. Dropping
+    the whole year made the board's next read rebuild every cached read
+    (~1.4 s on the dev database against ~0.1 s warm)."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_cache(self) -> Iterator[None]:
+        lodging_cache.invalidate_all()
+        yield
+        lodging_cache.invalidate_all()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "write",
+        [
+            pytest.param(lambda s: s.link("6600000000000000001", 1000005, "staff@example.com"), id="link"),
+            pytest.param(lambda s: s.ignore("6600000000000000001", "staff@example.com"), id="ignore"),
+            pytest.param(lambda s: s.unlink("6600000000000000001"), id="unlink"),
+            pytest.param(
+                lambda s: s.save_form(YEAR, 1000002, JotformFormWrite(form_ref="261700000000001", enabled=True)),
+                id="save_form",
+            ),
+        ],
+    )
+    async def test_only_the_jotform_read_of_that_year_is_dropped(self, write: _Write) -> None:
+        lodging_cache.set("fetch_households", YEAR, ["kept"])
+        lodging_cache.set("fetch_adult_weekend_attendees", YEAR, ["kept"])
+        lodging_cache.set("fetch_jotform_bunking_rows", YEAR, ["dropped"])
+        lodging_cache.set("fetch_jotform_bunking_rows", YEAR - 1, ["kept"])
+        repo = _repo(
+            fetch_submission=TestQueueAndLinks.SUB,
+            fetch_enrolled_guests=[_guest(1000005, "Emma", "Johnson")],
+        )
+
+        await write(JotformAdminService(repo))
+
+        assert lodging_cache.get("fetch_jotform_bunking_rows", YEAR) is None
+        assert lodging_cache.get("fetch_households", YEAR) == ["kept"]
+        assert lodging_cache.get("fetch_adult_weekend_attendees", YEAR) == ["kept"]
+        assert lodging_cache.get("fetch_jotform_bunking_rows", YEAR - 1) == ["kept"]

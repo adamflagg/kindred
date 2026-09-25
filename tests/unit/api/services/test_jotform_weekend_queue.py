@@ -653,3 +653,235 @@ class TestSimilarNameSuggestions:
             ("u_cedar/Emny", "6600000000000000042"),
             ("u_cedar/Emny", "6600000000000000043"),
         }
+
+
+# --- The filer's own row, and the board's name -> filing match -----------------
+#
+# Owner report on #2839 (2026-09-25): a write-in named like a filer ("Emny" for
+# a nametag "Emmy") was suggested only in the separate Suggested links card,
+# not on the filer's own row, and the board's write-in box never suggested the
+# filing from a typed name at all. The row joins the suggestions by
+# submission id (one list, one source of truth), so each says whether it is a
+# similar name; and every filing still needing a guest carries its folded
+# names in `suggest_write_in`'s tiers for the board to match a typed name.
+
+
+class TestSuggestionsSayWhetherTheyAreSimilar:
+    @pytest.mark.asyncio
+    async def test_an_exact_name_is_not_similar(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s50")],
+            fetch_answers=_answers("s50", "Emma", "Johnson"),
+            fetch_live_write_ins=[_write_in("w1", "Emma Johnson")],
+        )
+
+        [suggestion] = (await _weekend(repo)).write_in_link_suggestions
+
+        assert (suggestion.submission_id, suggestion.similar) == ("6600000000000000050", False)
+
+    @pytest.mark.asyncio
+    async def test_a_similar_name_says_so_and_still_pre_selects_nothing(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s51")],
+            fetch_answers=_answers("s51", "Emma", "Johnson", nametag="Emmy"),
+            fetch_live_write_ins=[_write_in("w1", "Emny")],
+        )
+
+        queue = await _weekend(repo)
+
+        [suggestion] = queue.write_in_link_suggestions
+        assert (suggestion.submission_id, suggestion.similar) == ("6600000000000000051", True)
+        assert queue.unmatched[0].write_in_suggestion == ""
+
+
+class TestFilerNamesForTheBoard:
+    @pytest.mark.asyncio
+    async def test_a_filing_needing_a_guest_carries_its_names_in_tier_order(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s52")],
+            fetch_answers=_answers("s52", "Emma", "Johnson", nametag="Emmy"),
+        )
+
+        for queue in (await _weekend(repo), await JotformAdminService(repo).build_queue(YEAR)):
+            [item] = queue.unmatched
+            assert item.name_tiers == [["emma johnson"], ["emmy johnson"], ["emmy"], ["emma", "emmy"]]
+
+    @pytest.mark.asyncio
+    async def test_a_decided_filing_carries_none(self) -> None:
+        repo = _repo(
+            fetch_submissions=[_sub("s53", "ignored")],
+            fetch_answers=_answers("s53", "Emma", "Johnson", nametag="Emmy"),
+        )
+
+        [item] = (await _weekend(repo)).resolved
+
+        assert item.name_tiers == []
+
+
+# --- One weekend's reads (kindred#2839 follow-up: queue actions feel slow) -----
+#
+# Measured on the dev database: the year's answers are ~90% of the queue's
+# read time, and one weekend's are a fraction of them. The Requests tab and
+# every staff action are one weekend's, so they ask PocketBase for that
+# weekend alone. The in-memory weekend filter stays: a repository that
+# returns more can never widen the answer.
+
+
+def _guest(cm: int, first: str, last: str, session: int = WW_CM) -> SimpleNamespace:
+    return SimpleNamespace(
+        expand={
+            "person": SimpleNamespace(cm_id=cm, first_name=first, preferred_name="", last_name=last),
+            "session": SimpleNamespace(cm_id=session),
+        }
+    )
+
+
+def _two_weekends() -> dict[str, list[Any]]:
+    """A year with filings, guests and write-ins on both adult weekends."""
+    return {
+        "submissions": [
+            _sub("s60"),
+            _sub("s61", "staff", person_cm_id=1000005),
+            _sub("s62", "write_in", write_in_key="k1"),
+            _sub("s63", form="form_mw", session_cm_id=MW_CM),
+            _sub("s64", "staff", form="form_mw", session_cm_id=MW_CM, person_cm_id=1000006),
+        ],
+        "answers": [
+            *_answers("s60", "Emma", "Johnson", nametag="Emmy"),
+            *_answers("s61", "Olivia", "Chen"),
+            *_answers("s62", "Riley", "Sam"),
+            *_answers("s63", "Emma", "Johnson"),
+            *_answers("s64", "Liam", "Garcia"),
+        ],
+        "guests": [
+            _guest(1000005, "Olivia", "Chen"),
+            _guest(1000007, "Emma", "Johnston"),
+            _guest(1000006, "Liam", "Garcia", session=MW_CM),
+        ],
+        "live": [
+            _write_in("w1", "Riley Sam", key="k1"),
+            _write_in("w2", "Emny"),
+            _write_in("w3", "Emma Johnson", session=MW_CM),
+        ],
+        "drafts": [_write_in("d1", "Riley Sam", key="k1", scenario="scn_a")],
+    }
+
+
+def _session_of(row: Any) -> int:
+    expand = getattr(row, "expand", None) or {}
+    if "session" in expand:
+        return int(expand["session"].cm_id)
+    return int(row.session_cm_id)
+
+
+def _answer_session(data: dict[str, list[Any]]) -> dict[str, int]:
+    return {str(s.id): int(s.session_cm_id) for s in data["submissions"]}
+
+
+def _scoping_repo(data: dict[str, list[Any]]) -> MagicMock:
+    """A repository that honours `session_cm_id=` the way PocketBase will."""
+    of_answer = _answer_session(data)
+
+    def scoped(rows: list[Any], session: Any, key: Any = _session_of) -> list[Any]:
+        return rows if session is None else [r for r in rows if key(r) == session]
+
+    repo = _repo()
+    repo.fetch_submissions = AsyncMock(
+        side_effect=lambda year, session_cm_id=None: scoped(data["submissions"], session_cm_id)
+    )
+    repo.fetch_answers = AsyncMock(
+        side_effect=lambda year, session_cm_id=None: scoped(
+            data["answers"], session_cm_id, lambda a: of_answer[str(a.submission)]
+        )
+    )
+    repo.fetch_enrolled_guests = AsyncMock(
+        side_effect=lambda year, session_cm_id=None: scoped(data["guests"], session_cm_id)
+    )
+    repo.fetch_live_write_ins = AsyncMock(
+        side_effect=lambda year, session_cm_id=None: scoped(data["live"], session_cm_id)
+    )
+    repo.fetch_draft_write_ins = AsyncMock(
+        side_effect=lambda year, session_cm_id=None: scoped(data["drafts"], session_cm_id)
+    )
+    return repo
+
+
+class TestOneWeekendsReads:
+    @pytest.mark.asyncio
+    async def test_the_requests_tab_asks_for_its_weekend_alone(self) -> None:
+        repo = _scoping_repo(_two_weekends())
+
+        await _weekend(repo, scenario="scn_a")
+
+        for read in (
+            repo.fetch_submissions,
+            repo.fetch_answers,
+            repo.fetch_enrolled_guests,
+            repo.fetch_live_write_ins,
+            repo.fetch_draft_write_ins,
+        ):
+            read.assert_awaited_once_with(YEAR, session_cm_id=WW_CM)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("scenario", ["", "scn_a", "scn_b"])
+    async def test_the_scoped_reads_return_the_same_queue(self, scenario: str) -> None:
+        # Parity: the year's rows filtered in memory, and the weekend's rows as
+        # PocketBase returns them, are one queue.
+        data = _two_weekends()
+        year_wide = _repo(
+            fetch_submissions=data["submissions"],
+            fetch_answers=data["answers"],
+            fetch_enrolled_guests=data["guests"],
+            fetch_live_write_ins=data["live"],
+            fetch_draft_write_ins=data["drafts"],
+        )
+
+        expected = await _weekend(year_wide, scenario=scenario)
+        scoped = await _weekend(_scoping_repo(data), scenario=scenario)
+
+        assert scoped.model_dump() == expected.model_dump()
+        # The fixture exercises every list the scoped reads feed.
+        assert expected.unmatched
+        assert expected.resolved
+        assert expected.write_ins
+
+    @pytest.mark.asyncio
+    async def test_the_year_wide_read_still_reads_the_year(self) -> None:
+        repo = _scoping_repo(_two_weekends())
+
+        queue = await JotformAdminService(repo).build_queue(YEAR)
+
+        assert sorted(i.session_cm_id for i in queue.unmatched) == [WW_CM, MW_CM]
+        for read in (repo.fetch_submissions, repo.fetch_answers, repo.fetch_enrolled_guests):
+            assert read.await_args.kwargs.get("session_cm_id") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "action",
+        [
+            pytest.param(lambda s: s.ignore("6600000000000000060", "staff@example.com"), id="ignore"),
+            pytest.param(lambda s: s.unlink("6600000000000000060"), id="unlink"),
+            pytest.param(lambda s: s.link("6600000000000000060", 1000007, "staff@example.com"), id="link"),
+            pytest.param(
+                lambda s: s.link_write_in("6600000000000000060", "u_cedar", "Emny", "staff@example.com"), id="write-in"
+            ),
+        ],
+    )
+    async def test_each_action_reads_its_filings_weekend_alone(self, action: Any) -> None:
+        data = _two_weekends()
+        repo = _scoping_repo(data)
+        repo.fetch_submission = AsyncMock(return_value=data["submissions"][0])
+
+        with patch("api.services.jotform_admin_service.lodging_cache"):
+            await action(JotformAdminService(repo))
+
+        for read in (
+            repo.fetch_submissions,
+            repo.fetch_answers,
+            repo.fetch_enrolled_guests,
+            repo.fetch_live_write_ins,
+            repo.fetch_draft_write_ins,
+        ):
+            for call in read.await_args_list:
+                assert call.kwargs.get("session_cm_id") == WW_CM, (read, call)
+        repo.fetch_answers.assert_awaited()
