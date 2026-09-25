@@ -708,7 +708,10 @@ export function AssignFamilyModal({
    * the far more common mistake is writing in somebody who IS registered — and
    * an extra distinguishing word reaches the offer.
    */
-  const offersWriteIn = onWriteIn !== undefined && trimmed !== '' && candidates.length === 0
+  // A picked Jotform filing is the other way in: the filer is not registered,
+  // so a family that happens to share the name is not them (kindred#2837).
+  const offersWriteIn =
+    onWriteIn !== undefined && trimmed !== '' && (candidates.length === 0 || filing !== '')
 
   /*
    * ⚠️ THE OVERWRITE WARNING WAS DELETED HERE BY STEP 8 (kindred#2583), and
@@ -1079,6 +1082,38 @@ export function AssignFamilyModal({
             that can change height inside it would reopen the jump. Here the row
             is constant and the region below is untouched. */}
 
+        {/* THE JOTFORM PICKER -- above the swap region, beside the group chips
+            and for the same reason: it is constant (present whenever the
+            weekend has unlinked filings), so it moves nothing when the region
+            flips. It used to sit inside the write-in offer, which only appears
+            once a typed name matches no family -- so staff could not find it
+            until they had typed a non-matching name, and a filed name that
+            also matched a family made it vanish (scan of kindred#2837). */}
+        {filings.length > 0 && (
+          <label className="flex flex-col gap-[3px] pb-2 text-xs font-medium">
+            From Jotform
+            <select
+              aria-label="Jotform filing"
+              value={filing}
+              disabled={isSaving}
+              onChange={(event) => {
+                const id = event.target.value
+                setFiling(id)
+                const chosen = filings.find((f) => f.submissionId === id)
+                if (chosen !== undefined) setQuery(chosen.name)
+              }}
+              className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+            >
+              <option value="">None</option>
+              {filings.map((f) => (
+                <option key={f.submissionId} value={f.submissionId}>
+                  {f.nametag !== '' ? `${f.name} (nametag “${f.nametag}”)` : f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <div
           data-testid="assign-swap-region"
           className="border-border h-80 overflow-y-auto border-t border-dashed pt-[9px]"
@@ -1098,7 +1133,9 @@ export function AssignFamilyModal({
                   on the flip; inside a region whose height is fixed it costs
                   nothing, and all three measure 0px of travel. */}
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                {`No family matches “${trimmed}” — this will be written in.`}
+                {filing !== ''
+                  ? `“${trimmed}” from Jotform will be written in.`
+                  : `No family matches “${trimmed}” — this will be written in.`}
               </p>
               {/* ONE ROW, People then Note (owner ruling 2026-08-23). They
                   were stacked; a select needs ~5.5rem and the note wants the
@@ -1110,30 +1147,6 @@ export function AssignFamilyModal({
                   `items-end` so the two controls sit on a common baseline
                   despite `People`'s narrower label; `gap-2` matches the
                   artifact's field rhythm. */}
-              {filings.length > 0 && (
-                <label className="flex flex-col gap-[3px] text-xs font-medium">
-                  From Jotform
-                  <select
-                    aria-label="Jotform filing"
-                    value={filing}
-                    disabled={isSaving}
-                    onChange={(event) => {
-                      const id = event.target.value
-                      setFiling(id)
-                      const chosen = filings.find((f) => f.submissionId === id)
-                      if (chosen !== undefined) setQuery(chosen.name)
-                    }}
-                    className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
-                  >
-                    <option value="">None</option>
-                    {filings.map((f) => (
-                      <option key={f.submissionId} value={f.submissionId}>
-                        {f.nametag !== '' ? `${f.name} (nametag “${f.nametag}”)` : f.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
               <div data-testid="write-in-fields" className="flex items-end gap-2">
                 {/* `gap-[3px]` is the artifact's `.mfield`, matching `Note`. */}
                 <label className="flex w-[5.5rem] shrink-0 flex-col gap-[3px] text-xs font-medium">

@@ -296,14 +296,17 @@ describe('LodgingBoard — linked write-ins', () => {
 })
 
 describe('AssignFamilyModal — the Jotform picker', () => {
-  function renderModal(filings?: Parameters<typeof AssignFamilyModal>[0]['jotformFilings']) {
+  function renderModal(
+    filings?: Parameters<typeof AssignFamilyModal>[0]['jotformFilings'],
+    parties: Parameters<typeof AssignFamilyModal>[0]['parties'] = []
+  ) {
     const onWriteIn = vi.fn()
     render(
       <AssignFamilyModal
         isOpen
         onClose={vi.fn()}
         unit={unit({ is_family_available: true })}
-        parties={[]}
+        parties={parties}
         canPlace={false}
         occupants={0}
         onSelect={vi.fn()}
@@ -324,6 +327,44 @@ describe('AssignFamilyModal — the Jotform picker', () => {
       occupantName: 'Kitchen crew',
       note: '',
       partySize: null,
+    })
+  })
+
+  it('shows the picker before anything is typed', () => {
+    renderModal([{ submissionId: '6600000000000000011', name: 'Pat Doe', nametag: '' }])
+    expect(screen.getByRole('combobox', { name: 'Jotform filing' })).toBeInTheDocument()
+  })
+
+  it('writes in a picked filing even when its name also matches a family', async () => {
+    // The filer is not registered, so a family sharing the name is not them:
+    // picking the filing is the staff member saying "write this person in".
+    const user = userEvent.setup()
+    const onWriteIn = renderModal(
+      [{ submissionId: '6600000000000000011', name: 'Pat Doe', nametag: '' }],
+      [
+        {
+          grain: 'household',
+          household_cm_id: 101,
+          display_name: 'Doe',
+          sort_name: 'Doe',
+          adults: [{ adult_number: 1, display_name: 'Pat Doe', relationship: 'Mother' }],
+          children: [],
+          party_size: 1,
+          unit_code: '',
+          unit_name: '',
+        },
+      ]
+    )
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Jotform filing' }),
+      '6600000000000000011'
+    )
+    await user.click(screen.getByRole('button', { name: 'Write in' }))
+    expect(onWriteIn).toHaveBeenCalledWith({
+      occupantName: 'Pat Doe',
+      note: '',
+      partySize: null,
+      jotformSubmissionId: '6600000000000000011',
     })
   })
 
