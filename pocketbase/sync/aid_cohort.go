@@ -122,3 +122,17 @@ func unionCMIDs(a, b []int) []int {
 	}
 	return out
 }
+
+// withAidCohort widens the bounded daily pass's family-camp cohort by the aid cohort
+// (design §6.4). pick selects the person or household half. If the aid half cannot be
+// read, it is logged and the family-camp cohort is returned alone: that half feeds the
+// weekend board and must not go stale because the aid half failed.
+func withAidCohort(app core.App, year int, job string, base []int, pick func(aidCohort) []int) []int {
+	cohort, err := loadAidCohort(app, year)
+	if err != nil {
+		slog.Error("Aid cohort unavailable; the daily targeted pass covers its family-camp cohort only",
+			"job", job, "year", year, "error", err)
+		return base
+	}
+	return unionCMIDs(base, pick(cohort))
+}

@@ -281,6 +281,7 @@ func TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testing.
 	if saveErr := app.Save(col); saveErr != nil {
 		t.Fatalf("create camp_sessions: %v", saveErr)
 	}
+	addAidCohortCollections(t, app)
 
 	// GetSeasonID is a pure getter -- no network call -- so a real *campminder.Client built
 	// from a fake key is sufficient here (see attendees_dryrun_test.go's identical rationale).

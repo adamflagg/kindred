@@ -208,13 +208,18 @@ var syncJobMeta = []JobMeta{
 	// weekend's cabin is a person custom field, and staff may type it into CampMinder while
 	// placing guests. The job keeps its "_family_camp" ID so sync_runs history and the admin
 	// UI stay continuous; SessionResolver.GetWeekendPersonIDsAnyStatus defines the cohort.
+	//
+	// Campership SP1 widens both daily cohorts by the aid cohort (aid_cohort.go); the ids
+	// are unchanged -- see scope.go.
 	{ID: "person_custom_values_family_camp", Phase: PhaseExpensive,
-		Description: "Person custom field values -- bounded daily pass, family-camp and adult-program attendees, any status",
-		Base:        "person_custom_values", Scope: ScopeFamilyCamp,
+		Description: "Person custom field values -- bounded daily pass: family-camp and " +
+			"adult-program attendees (any status) plus the financial-aid cohort",
+		Base: "person_custom_values", Scope: ScopeFamilyCamp,
 		Cadences: CadenceDaily, CurrentYearOnly: true},
 	{ID: "household_custom_values_family_camp", Phase: PhaseExpensive,
-		Description: "Household custom field values -- bounded daily pass, family-camp attendees, any status",
-		Base:        "household_custom_values", Scope: ScopeFamilyCamp,
+		Description: "Household custom field values -- bounded daily pass: family-camp attendees " +
+			"(any status) plus the financial-aid cohort's households",
+		Base: "household_custom_values", Scope: ScopeFamilyCamp,
 		Cadences: CadenceDaily, CurrentYearOnly: true},
 
 	// Transform phase - PocketBase → PocketBase. On the daily cron, these run using the

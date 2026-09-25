@@ -262,6 +262,7 @@ func TestHouseholdCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testi
 	if saveErr := app.Save(col); saveErr != nil {
 		t.Fatalf("create camp_sessions: %v", saveErr)
 	}
+	addAidCohortCollections(t, app)
 
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 	client, err := campminder.NewClient(&campminder.Config{APIKey: "test-key", ClientID: "test-client", SeasonID: 2026})
