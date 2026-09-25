@@ -125,6 +125,20 @@ def test_renovate_does_not_manage_any_go_directive():
     assert "go" not in mod.EXPECTED_DEPS
 
 
+def test_ci_downloaded_scanners_are_expected():
+    """gitleaks and zizmor used to be unpinned; losing their markers must be loud."""
+    assert {"gitleaks/gitleaks", "zizmor"} <= mod.EXPECTED_DEPS
+
+
+def test_scanners_that_add_checks_need_review():
+    """A gitleaks or zizmor release can add a rule and fail CI by design, as actionlint's can."""
+    config = json.loads(RENOVATE_CONFIG.read_text())
+    rule = next(r for r in config["packageRules"] if "rhysd/actionlint" in r.get("matchDepNames", []))
+    assert {"gitleaks/gitleaks", "zizmor"} <= set(rule["matchDepNames"])
+    assert rule["automerge"] is False
+    assert "needs-review" in rule["addLabels"]
+
+
 # --------------------------- mutation tests ---------------------------
 
 
@@ -160,6 +174,12 @@ jobs:
     - run: |
         # renovate: datasource=docker depName=hadolint/hadolint
         HADOLINT_VERSION=v2.15.1
+    - run: |
+        # renovate: datasource=github-releases depName=gitleaks/gitleaks
+        GITLEAKS_VERSION="8.22.1"
+    - run: |
+        # renovate: datasource=pypi depName=zizmor
+        ZIZMOR_VERSION="1.30.1"
 """
 
 

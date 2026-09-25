@@ -15,7 +15,7 @@
   "packageRules": [
     {
       "description": "Linters break CI by design when a release adds checks. Own PR, never automerge.",
-      "matchDepNames": ["golangci/golangci-lint", "rhysd/actionlint"],
+      "matchDepNames": ["golangci/golangci-lint", "rhysd/actionlint", "gitleaks/gitleaks", "zizmor"],
       "automerge": false,
       "addLabels": ["needs-review"]
     },
