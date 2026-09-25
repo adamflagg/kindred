@@ -224,6 +224,7 @@ function weekendQueue(scenario: string) {
               filer_name: FILING.submitted_name,
               linked_in: '',
               label: `Similar name: link to ${FILING.submitted_name}'s filing?`,
+              similar: true,
             },
           ]
         : [],
@@ -339,7 +340,7 @@ describe('WeekendRosterPage — a board write-in reaches the Requests tab', () =
     const select = await within(panel).findByLabelText('Write-in for Miriam Garcia')
     expect(within(select).getByRole('option', { name: 'Mini · Cedar 1' })).toBeInTheDocument()
     expect(
-      await within(panel).findByText("Similar name: link to Miriam Garcia's filing?")
+      await within(panel).findByText('Similar name: write-in Mini · Cedar 1')
     ).toBeInTheDocument()
 
     // Then the right spelling: the exact match is pre-selected.
@@ -369,7 +370,7 @@ describe('WeekendRosterPage — a board write-in reaches the Requests tab', () =
     await user.click(screen.getByRole('tab', { name: /requests/i }))
     const panel = screen.getByRole('tabpanel', { name: /requests/i })
     expect(
-      await within(panel).findByText("Similar name: link to Miriam Garcia's filing?")
+      await within(panel).findByText('Similar name: write-in Mini · Cedar 1')
     ).toBeInTheDocument()
   })
 })

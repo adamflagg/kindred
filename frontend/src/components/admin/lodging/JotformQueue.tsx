@@ -56,16 +56,34 @@ function alsoLine(outcome: JotformActionOutcome): string {
   return `Also ${outcome.action} ${first.submitted_name}'s ${filings} (${dates})`
 }
 
+/**
+ * A suggested write-in link as its filer's row words it: which write-in, and
+ * whether it is only a similar name (kindred#2839 follow-up).
+ */
+function writeInSuggestionLabel(suggestion: JotformWriteInLinkSuggestionRow): string {
+  const unit = suggestion.unit_name ?? ''
+  const name = unit === '' ? suggestion.occupant_name : `${suggestion.occupant_name} · ${unit}`
+  return suggestion.similar === true ? `Similar name: write-in ${name}` : `Write-in ${name}`
+}
+
 function UnmatchedItem({
   item,
   guests,
   writeIns,
+  writeInSuggestions,
   onDone,
 }: {
   item: JotformQueueEntry
   guests: readonly JotformGuestRow[]
   /** This weekend's board write-ins, already filtered to its session. */
   writeIns: readonly JotformWriteInChoice[]
+  /**
+   * The server's suggested write-in links for THIS filing (kindred#2839
+   * follow-up): shown on the row, beside the guest suggestions, rather than
+   * only in a card staff looking at the row never saw. A similar name is
+   * offered here and never pre-selects the dropdown.
+   */
+  writeInSuggestions: readonly JotformWriteInLinkSuggestionRow[]
   onDone: OnDone
 }) {
   const action = useJotformSubmissionAction(onDone)
@@ -150,6 +168,34 @@ function UnmatchedItem({
                 </li>
               )
             })}
+          </ul>
+        )}
+        {writeInSuggestions.length > 0 && (
+          <ul className="flex flex-col gap-0.5">
+            {writeInSuggestions.map((suggestion) => (
+              <li
+                key={suggestion.option_id}
+                className="flex flex-wrap items-baseline gap-x-2 text-sm"
+              >
+                <span>{writeInSuggestionLabel(suggestion)}</span>
+                <button
+                  type="button"
+                  className={`${ACTION_LINK} text-primary`}
+                  disabled={action.isPending}
+                  aria-label={`Link write-in ${suggestion.occupant_name}`}
+                  onClick={() => {
+                    action.mutate({
+                      kind: 'write_in',
+                      submissionId: item.submission_id,
+                      unitId: suggestion.unit_id,
+                      occupantName: suggestion.occupant_name,
+                    })
+                  }}
+                >
+                  Link
+                </button>
+              </li>
+            ))}
           </ul>
         )}
       </div>
@@ -352,9 +398,10 @@ function ResolvedList({
 }
 
 /**
- * Unlinked write-ins of the viewed scenario that look like a filer: one that
- * is linked in another scenario or on the live board, or one still needing a
- * guest. A label and a Link button each; nothing links until staff click.
+ * Unlinked write-ins of the viewed scenario that look like a LINKED filer --
+ * one linked in another scenario or on the live board but not placed here. A
+ * filing still needing a guest shows its suggestions on its own row instead.
+ * A label and a Link button each; nothing links until staff click.
  */
 function SuggestedLinks({
   rows,
@@ -472,7 +519,21 @@ export function JotformQueue({
         const writeIns = mine(data.write_ins)
         const cancelled = mine(data.cancelled)
         const writeInChoices = mine(data.write_in_options)
-        const suggestedLinks = data.write_in_link_suggestions ?? []
+        // One list from the server, shown once: a suggestion for a filing in
+        // Needs a guest sits on that filing's row; only the rest -- a linked
+        // filing not placed in the viewed scenario -- keep the card.
+        const needsAGuest = new Set(unmatched.map((item) => item.submission_id))
+        const rowSuggestions = new Map<string, JotformWriteInLinkSuggestionRow[]>()
+        const suggestedLinks: JotformWriteInLinkSuggestionRow[] = []
+        for (const suggestion of data.write_in_link_suggestions ?? []) {
+          if (needsAGuest.has(suggestion.submission_id)) {
+            const onRow = rowSuggestions.get(suggestion.submission_id) ?? []
+            onRow.push(suggestion)
+            rowSuggestions.set(suggestion.submission_id, onRow)
+          } else {
+            suggestedLinks.push(suggestion)
+          }
+        }
         return (
           <div className="flex flex-col gap-4">
             {also.line !== '' && <p className="text-muted-foreground text-sm">{also.line}</p>}
@@ -494,6 +555,7 @@ export function JotformQueue({
                         item={item}
                         guests={data.guests ?? []}
                         writeIns={writeInChoices}
+                        writeInSuggestions={rowSuggestions.get(item.submission_id) ?? []}
                         onDone={onDone}
                       />
                     ))}

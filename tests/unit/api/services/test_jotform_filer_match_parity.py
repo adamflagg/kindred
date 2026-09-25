@@ -72,6 +72,11 @@ def test_name_tiers(case: dict[str, Any]) -> None:
     assert name_tiers(_sub(0, case["first"], case["last"], case["nametag"])) == case["tiers"]
 
 
+@pytest.mark.parametrize(("key", "filing"), CASES["filings"].items())
+def test_each_match_filing_carries_the_tiers_the_server_sends(key: str, filing: dict[str, Any]) -> None:
+    assert name_tiers(_sub(0, filing["first"], filing["last"], filing["nametag"])) == filing["tiers"], key
+
+
 @pytest.mark.parametrize("case", CASES["match"], ids=lambda c: c["name"])
 def test_each_decision_agrees_with_the_write_in_direction(case: dict[str, Any]) -> None:
     """The board matches name -> filing; the Requests tab matches filing ->
@@ -79,7 +84,10 @@ def test_each_decision_agrees_with_the_write_in_direction(case: dict[str, Any]) 
     tab's side: an exact pick is one `suggest_write_in` would make for a
     write-in of that name, and a similar pick one no exact tier finds and
     `_similar_write_in` would offer."""
-    subs = [_sub(i, **CASES["filings"][key]) for i, key in enumerate(case["filings"])]
+    subs = [
+        _sub(i, CASES["filings"][key]["first"], CASES["filings"][key]["last"], CASES["filings"][key]["nametag"])
+        for i, key in enumerate(case["filings"])
+    ]
     expect = case["expect"]
     if case["typed"].strip() == "":
         assert expect["kind"] == "none"

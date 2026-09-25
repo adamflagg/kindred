@@ -92,6 +92,7 @@ import { displayTruncatedAge } from '../../utils/age'
 import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Modal } from '../ui/Modal'
 import { guestsAndBeds, occupancyClaim } from './adultCapacity'
+import { matchFiler } from './filerMatch'
 import { childrenRunLabel, partyIdentityLabel, partySearchText } from './householdIdentity'
 import { NeedGlyphMark } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
@@ -115,6 +116,12 @@ export interface JotformFilingChoice {
   /** The filer's first and last name, as submitted: the occupant name it fills in. */
   name: string
   nametag: string
+  /**
+   * The filer's folded names in the server's exact tiers (`name_tiers`), for
+   * suggesting this filing from a typed name (kindred#2839 follow-up). Absent,
+   * the filing is only ever picked by hand.
+   */
+  nameTiers?: ReadonlyArray<readonly string[]> | undefined
 }
 
 export interface AssignFamilyModalProps {
@@ -619,12 +626,45 @@ export function AssignFamilyModal({
    */
   const [people, setPeople] = useState('')
   const partySize = people === '' ? null : Number(people)
-  // The Jotform filing this write-in is made from, or '' for none.
+  // The Jotform filing staff PICKED ('' for None), and whether they have
+  // picked at all. Until they do, the picker follows the typed name.
   const [filing, setFiling] = useState('')
-  const filings = jotformFilings ?? []
+  const [pickedFiling, setPickedFiling] = useState(false)
+  const filings = useMemo(() => jotformFilings ?? [], [jotformFilings])
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
+
+  /*
+   * THE FILER SUGGESTED FROM THE TYPED NAME (kindred#2839 follow-up). Staff
+   * type a write-in as they know the person -- a nametag, a first name and an
+   * initial -- and the filing it belongs to should not need finding by hand.
+   * `matchFiler` is the Requests tab's own matching run the other way (the
+   * server's name tiers; shared vectors pin the two): an EXACT unique match
+   * pre-selects the filing, visibly, and staff can set it back to None; a
+   * SIMILAR one is only offered, beside the picker. Either stops the moment
+   * staff pick anything themselves.
+   */
+  const filerMatch = useMemo(
+    () =>
+      pickedFiling || filings.length === 0
+        ? null
+        : matchFiler(
+            trimmed,
+            filings.map((f) => ({ submissionId: f.submissionId, nameTiers: f.nameTiers ?? [] }))
+          ),
+    [pickedFiling, filings, trimmed]
+  )
+  // What the write-in will link: staff's pick, or else an exact match.
+  const chosenFiling = pickedFiling
+    ? filing
+    : filerMatch?.kind === 'exact'
+      ? filerMatch.submissionId
+      : ''
+  const similarFiling =
+    filerMatch?.kind === 'similar'
+      ? filings.find((f) => f.submissionId === filerMatch.submissionId)
+      : undefined
   // Annotated and ordered FIRST, then narrowed by what the staff member typed.
   // The typed filter is the user's own; it is not a fit gate, and it is the
   // only thing that ever removes a row.
@@ -710,6 +750,8 @@ export function AssignFamilyModal({
    */
   // A picked Jotform filing is the other way in: the filer is not registered,
   // so a family that happens to share the name is not them (kindred#2837).
+  // Staff's PICK only: a filing suggested from the typed name never hides a
+  // family that name still matches.
   const offersWriteIn =
     onWriteIn !== undefined && trimmed !== '' && (candidates.length === 0 || filing !== '')
 
@@ -737,6 +779,7 @@ export function AssignFamilyModal({
     setNote('')
     setPeople('')
     setFiling('')
+    setPickedFiling(false)
     onClose()
   }
 
@@ -752,12 +795,13 @@ export function AssignFamilyModal({
       occupantName: trimmed,
       note: note.trim(),
       partySize,
-      ...(filing !== '' ? { jotformSubmissionId: filing } : {}),
+      ...(chosenFiling !== '' ? { jotformSubmissionId: chosenFiling } : {}),
     })
     setQuery('')
     setNote('')
     setPeople('')
     setFiling('')
+    setPickedFiling(false)
     onClose()
   }
 
@@ -1090,15 +1134,16 @@ export function AssignFamilyModal({
             until they had typed a non-matching name, and a filed name that
             also matched a family made it vanish (scan of kindred#2837). */}
         {filings.length > 0 && (
-          <label className="flex flex-col gap-[3px] pb-2 text-xs font-medium">
+          <label className="flex flex-col gap-[3px] text-xs font-medium">
             From Jotform
             <select
               aria-label="Jotform filing"
-              value={filing}
+              value={chosenFiling}
               disabled={isSaving}
               onChange={(event) => {
                 const id = event.target.value
                 setFiling(id)
+                setPickedFiling(true)
                 const chosen = filings.find((f) => f.submissionId === id)
                 if (chosen !== undefined) setQuery(chosen.name)
               }}
@@ -1112,6 +1157,31 @@ export function AssignFamilyModal({
               ))}
             </select>
           </label>
+        )}
+        {/* The similar-name hint's line is ALWAYS there when the picker is,
+            empty or not: a line that came and went as staff typed would move
+            the swap region below it, the jump the region's fixed height
+            exists to prevent. Picking it keeps the typed name: staff chose
+            what the write-in is called, and only the form is being linked. */}
+        {filings.length > 0 && (
+          <p className="text-muted-foreground flex min-h-6 items-center gap-2 pb-1 text-xs">
+            {similarFiling !== undefined && (
+              <>
+                <span>{`Looks like ${similarFiling.name}'s form`}</span>
+                <button
+                  type="button"
+                  className="text-primary font-medium hover:underline disabled:opacity-50"
+                  disabled={isSaving}
+                  onClick={() => {
+                    setFiling(similarFiling.submissionId)
+                    setPickedFiling(true)
+                  }}
+                >
+                  Use it
+                </button>
+              </>
+            )}
+          </p>
         )}
 
         <div
@@ -1133,7 +1203,7 @@ export function AssignFamilyModal({
                   on the flip; inside a region whose height is fixed it costs
                   nothing, and all three measure 0px of travel. */}
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                {filing !== ''
+                {chosenFiling !== ''
                   ? `“${trimmed}” from Jotform will be written in.`
                   : `No family matches “${trimmed}” — this will be written in.`}
               </p>
