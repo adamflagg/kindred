@@ -9,14 +9,12 @@ import pytest
 
 from api.services.jotform_queue import (
     FormReferenceError,
-    Question,
     QueueGuest,
     QueueSubmission,
     duplicate_groups,
     identity_from_answers,
     parse_form_id,
     same_person,
-    suggest_field_map,
     suggestions_for,
 )
 
@@ -46,63 +44,8 @@ class TestParseFormId:
             parse_form_id("   ")
 
 
-QUESTIONS_2026_SHAPE = [
-    Question("3", "First Name", "control_textbox", 3),
-    Question("4", "Last Name", "control_textbox", 4),
-    Question("5", "Preferred name for your nametag (if different than above): ", "control_textbox", 5),
-    Question("10", "Emergency Contact: First and Last Name", "control_fullname", 10),
-    Question("12", "Emergency Contact: Phone Number ", "control_phone", 12),
-    Question("13", "Emergency Contact: Email", "control_email", 13),
-    Question("16", "Who are you coming to this program with? ", "control_checkbox", 16),
-    Question(
-        "21",
-        "We can accommodate up to eight people per cabin. If you have a bunking request, please list "
-        "their first and last name(s) here (up to five people). ",
-        "control_textarea",
-        21,
-    ),
-    Question(
-        "22",
-        "Our typical cabins are shared. Do you need special housing accommodation(s) for medical, "
-        "accessibility-related or personal reasons?",
-        "control_radio",
-        22,
-    ),
-    Question(
-        "23",
-        "If yes, please comment below (ie: request to live alone, live close to the primary program area).",
-        "control_textarea",
-        23,
-    ),
-    Question("27", "If yes, please list the allergy and reaction: ", "control_textarea", 27),
-    Question("29", "Are you bringing a CPAP machine to Camp? ", "control_radio", 29),
-    Question("50", "Email", "control_email", 50),
-]
-
-
-class TestSuggestFieldMap:
-    def test_every_role_is_suggested_from_the_2026_labels(self) -> None:
-        assert suggest_field_map(QUESTIONS_2026_SHAPE) == {
-            "first_name": "3",
-            "last_name": "4",
-            "nametag_name": "5",
-            "respondent_email": "50",
-            "bunking_request": "21",
-            "coming_with": "16",
-            "emergency_name": "10",
-            "emergency_phone": "12",
-            "emergency_email": "13",
-            "housing_accommodation": "22",
-            "accommodation_details": "23",
-            "cpap": "29",
-        }
-
-    def test_a_single_fullname_question_serves_first_and_last(self) -> None:
-        suggested = suggest_field_map([Question("4", "Name", "control_fullname", 4)])
-        assert (suggested["first_name"], suggested["last_name"]) == ("4", "4")
-
-    def test_nothing_recognisable_suggests_nothing(self) -> None:
-        assert suggest_field_map([Question("7", "Favourite colour", "control_textbox", 7)]) == {}
+# The field-map suggester moved to Go with kindred#2828 (the pull resolves the
+# mapping itself); its tests live in pocketbase/jotform/mapping_test.go.
 
 
 S = 1000002

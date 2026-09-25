@@ -987,14 +987,21 @@ export type JotformAnswersRecord<Tanswer_json = unknown> = {
   updated: IsoAutoDateString
 }
 
-export type JotformFormsRecord<Tfield_map = unknown> = {
+export type JotformFormsRecord<
+  Tfield_map = unknown,
+  Tfield_map_meta = unknown,
+  Tquestions = unknown,
+> = {
   created: IsoAutoDateString
   enabled?: boolean
   field_map?: null | Tfield_map
+  field_map_meta?: null | Tfield_map_meta
   form_id: string
+  form_title?: string
   id: string
   last_pull_status?: string
   last_pulled_at?: IsoDateString
+  questions?: null | Tquestions
   session_cm_id: number
   updated: IsoAutoDateString
   year: number
@@ -1976,9 +1983,12 @@ export type JotformAnswersResponse<Tanswer_json = unknown, Texpand = unknown> = 
   JotformAnswersRecord<Tanswer_json>
 > &
   BaseSystemFields<Texpand>
-export type JotformFormsResponse<Tfield_map = unknown, Texpand = unknown> = Required<
-  JotformFormsRecord<Tfield_map>
-> &
+export type JotformFormsResponse<
+  Tfield_map = unknown,
+  Tfield_map_meta = unknown,
+  Tquestions = unknown,
+  Texpand = unknown,
+> = Required<JotformFormsRecord<Tfield_map, Tfield_map_meta, Tquestions>> &
   BaseSystemFields<Texpand>
 export type JotformSubmissionsResponse<Texpand = unknown> = Required<JotformSubmissionsRecord> &
   BaseSystemFields<Texpand>

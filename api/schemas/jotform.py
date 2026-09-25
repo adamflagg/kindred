@@ -13,15 +13,32 @@ class JotformQuestion(BaseModel):
     type: str = ""
 
 
+RoleSource = Literal["staff", "carried", "guessed"]
+RoleFlag = Literal["wording_changed", "missing", "needs_pick"]
+
+
+class JotformRoleMeta(BaseModel):
+    """How the pull resolved one role (kindred#2828). `source` is absent for a
+    role nothing resolved; `flag` is what staff should look at, if anything."""
+
+    question_id: str = ""
+    text: str = ""
+    source: RoleSource | None = None
+    flag: RoleFlag | None = None
+
+
 class JotformFormRow(BaseModel):
     """One active-season adult weekend and its form setting (absent = not set up)."""
 
     session_cm_id: int
     session_name: str
     form_id: str = ""
+    # The title in Jotform, read by the pull: shown so a wrong year's form is noticed.
+    form_title: str = ""
+    # The EFFECTIVE map the pull resolved (staff, carried or guessed per role).
     field_map: dict[str, str] = Field(default_factory=dict)
-    # From the stored questions' text; empty until the first pull brings them in.
-    suggested_field_map: dict[str, str] = Field(default_factory=dict)
+    field_map_meta: dict[str, JotformRoleMeta] = Field(default_factory=dict)
+    # The form's questions at the last pull, from its definition; empty until then.
     questions: list[JotformQuestion] = Field(default_factory=list)
     enabled: bool = False
     last_pulled_at: str = ""
@@ -85,9 +102,18 @@ class JotformDuplicateGroup(BaseModel):
     submissions: list[JotformQueueItem] = Field(default_factory=list)
 
 
+class JotformUnmappedForm(BaseModel):
+    """A weekend whose form has submissions but no first + last name mapped, so
+    matching has not run: its submissions are not listed as needing a guest."""
+
+    session_cm_id: int
+    session_name: str = ""
+
+
 class JotformQueueResponse(BaseModel):
     year: int
     unmatched: list[JotformQueueItem] = Field(default_factory=list)
+    unmapped: list[JotformUnmappedForm] = Field(default_factory=list)
     # Staff-linked and ignored submissions, so a link can be undone.
     resolved: list[JotformQueueItem] = Field(default_factory=list)
     duplicates: list[JotformDuplicateGroup] = Field(default_factory=list)
