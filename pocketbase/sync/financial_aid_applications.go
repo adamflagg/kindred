@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -23,9 +24,9 @@ const (
 	faFieldFamilyCampAmtRequested        = "Family Camp: Amt Requested"
 	faFieldBnaiMitzvahAmtRequested       = "B'nai Mitzvah: Amt Requested"
 	// WW- fields are the adult weekends' equivalent of the CA- interest
-	// indicators above -- same four-question shape (interest / amount
-	// awarded / donation amount / donation other), routed to the same four
-	// program-neutral columns. See kindred#2436.
+	// indicators above -- same four-question shape (interest /
+	// registration-time amount request / donation amount / donation other),
+	// routed to the same four program-neutral columns. See kindred#2436.
 	faFieldWWFinancialAssistanceInterest = "WW-FA"
 	faFieldWWFinancialAssistanceAmount   = "WW-FA Amount"
 	faFieldWWDonationAmount              = "WW-Donation Amount"
@@ -94,10 +95,10 @@ type faApplicationData struct {
 	personCMID    int
 
 	// Interest indicators
-	interestExpressed  bool
-	donationPreference string
-	donationOther      string
-	amountAwarded      float64
+	interestExpressed         bool
+	donationPreference        string
+	donationOther             string
+	registrationRequestAmount float64
 
 	// Contact Parent 1
 	contactFirstName     string
@@ -168,7 +169,6 @@ type faApplicationData struct {
 	tbmAmountRequested    float64
 	numPrograms           int
 	numSessions           int
-	amountRequested       float64
 
 	// COVID/Disaster
 	covidChildcare          bool
@@ -181,11 +181,18 @@ type faApplicationData struct {
 	fireDetail              string
 
 	// Admin/Status
-	depositPaid        float64
 	depositPaidAdult   float64
 	applicantSignature string
-	incomeConfirmed    bool
+	incomeConfirmed    float64
 	amountConfirmed    bool
+
+	// is_applicant is true once the row has at least one seasonal aid answer
+	// (design §6.4). Donation-only and carry-over-only rows stay false.
+	isApplicant bool
+
+	// carryoverUpdated maps a non-seasonal ("carry-over") CampMinder field name to the
+	// date part of its person_custom_values.last_updated. See stampCarryover.
+	carryoverUpdated map[string]string
 }
 
 // Sync executes the financial aid applications computation
@@ -236,7 +243,7 @@ func (s *FinancialAidApplicationsSync) Sync(ctx context.Context) error {
 
 	// Step 4: Process applications
 	applications := s.processApplications(personValues, personInfo)
-	slog.Info("Processed applications", "count", len(applications))
+	slog.Info("Processed applications", "rows", len(applications), "applicants", countApplicants(applications))
 
 	if s.DryRun {
 		slog.Info("Dry run mode - computed but not writing",
@@ -271,9 +278,28 @@ func (s *FinancialAidApplicationsSync) Sync(ctx context.Context) error {
 	return nil
 }
 
-// loadFieldDefinitions builds a map of field_definition PB ID -> field name
-func (s *FinancialAidApplicationsSync) loadFieldDefinitions(_ context.Context) (map[string]string, error) {
-	result := make(map[string]string)
+// faFieldDef is one admitted FA field definition: its trimmed CampMinder name and whether
+// CampMinder asks it every season. A non-seasonal answer is carried over from whenever the
+// family last typed it.
+type faFieldDef struct {
+	name     string
+	seasonal bool
+}
+
+// countApplicants counts how many computed rows have at least one seasonal aid answer.
+func countApplicants(apps []*faApplicationData) int {
+	n := 0
+	for _, a := range apps {
+		if a.isApplicant {
+			n++
+		}
+	}
+	return n
+}
+
+// loadFieldDefinitions builds a map of field_definition PB ID -> faFieldDef
+func (s *FinancialAidApplicationsSync) loadFieldDefinitions(_ context.Context) (map[string]faFieldDef, error) {
+	result := make(map[string]faFieldDef)
 
 	// Query all field definitions
 	records, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 0, 0)
@@ -284,7 +310,7 @@ func (s *FinancialAidApplicationsSync) loadFieldDefinitions(_ context.Context) (
 	for _, record := range records {
 		name := normalizeFieldName(record.GetString("name"))
 		if isFAFieldName(name) {
-			result[record.Id] = name
+			result[record.Id] = faFieldDef{name: name, seasonal: record.GetBool("is_seasonal")}
 		}
 	}
 
@@ -379,14 +405,16 @@ func (s *FinancialAidApplicationsSync) loadPersonInfo(
 
 // faCustomValueEntry represents a loaded FA custom value
 type faCustomValueEntry struct {
-	personPBID string
-	fieldName  string
-	value      string
+	personPBID  string
+	fieldName   string
+	value       string
+	seasonal    bool
+	lastUpdated string
 }
 
 // loadPersonCustomValues loads person custom values for FA fields
 func (s *FinancialAidApplicationsSync) loadPersonCustomValues(
-	ctx context.Context, year int, fieldNameMap map[string]string,
+	ctx context.Context, year int, fieldDefs map[string]faFieldDef,
 ) ([]faCustomValueEntry, error) {
 	var result []faCustomValueEntry
 
@@ -408,7 +436,7 @@ func (s *FinancialAidApplicationsSync) loadPersonCustomValues(
 
 		for _, record := range records {
 			fieldDefID := record.GetString("field_definition")
-			fieldName, ok := fieldNameMap[fieldDefID]
+			def, ok := fieldDefs[fieldDefID]
 			if !ok {
 				continue // Not an FA field
 			}
@@ -418,9 +446,11 @@ func (s *FinancialAidApplicationsSync) loadPersonCustomValues(
 
 			if personID != "" && value != "" {
 				result = append(result, faCustomValueEntry{
-					personPBID: personID,
-					fieldName:  fieldName,
-					value:      value,
+					personPBID:  personID,
+					fieldName:   def.name,
+					value:       value,
+					seasonal:    def.seasonal,
+					lastUpdated: record.GetString("last_updated"),
 				})
 			}
 		}
@@ -457,6 +487,14 @@ func (s *FinancialAidApplicationsSync) processApplications(
 
 		app := appMap[v.personPBID]
 		s.mapFieldToApplication(app, v.fieldName, v.value)
+
+		if !v.seasonal {
+			app.stampCarryover(v.fieldName, v.lastUpdated)
+			continue
+		}
+		if countsAsAidAnswer(v.fieldName, v.value) {
+			app.isApplicant = true
+		}
 	}
 
 	// Convert map to slice (preallocate for efficiency)
@@ -478,8 +516,8 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 			app.interestExpressed = hasInterestExpressed(value)
 		}
 	case faFieldCAFinancialAssistanceAmount:
-		if app.amountAwarded == 0 {
-			app.amountAwarded = parseNumberValue(value)
+		if app.registrationRequestAmount == 0 {
+			app.registrationRequestAmount = parseNumberValue(value)
 		}
 	case faFieldCADonationAmount:
 		if app.donationPreference == "" {
@@ -499,8 +537,8 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 			app.interestExpressed = hasInterestExpressed(value)
 		}
 	case faFieldWWFinancialAssistanceAmount:
-		if app.amountAwarded == 0 {
-			app.amountAwarded = parseNumberValue(value)
+		if app.registrationRequestAmount == 0 {
+			app.registrationRequestAmount = parseNumberValue(value)
 		}
 	case faFieldWWDonationAmount:
 		if app.donationPreference == "" {
@@ -736,10 +774,6 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		if app.numSessions == 0 {
 			app.numSessions = int(parseNumberValue(value))
 		}
-	case "FA-Amt of Assistance Requested":
-		if app.amountRequested == 0 {
-			app.amountRequested = parseNumberValue(value)
-		}
 
 	// COVID/Disaster
 	case "FA-COVIDchild care":
@@ -776,23 +810,70 @@ func (s *FinancialAidApplicationsSync) mapFieldToApplication(app *faApplicationD
 		}
 
 	// Admin/Status
-	case "FA-Deposit":
-		if app.depositPaid == 0 {
-			app.depositPaid = parseNumberValue(value)
-		}
 	case "FA-Applicant Signature":
 		if app.applicantSignature == "" {
 			app.applicantSignature = value
 		}
 	case "FA-confirmpretax income":
-		if !app.incomeConfirmed {
-			app.incomeConfirmed = parseBoolValue(value)
+		if app.incomeConfirmed == 0 {
+			app.incomeConfirmed = parseNumberValue(value)
 		}
 	case "FA-ComfirmationRequestedAmount":
 		if !app.amountConfirmed {
 			app.amountConfirmed = parseBoolValue(value)
 		}
 	}
+}
+
+// countsAsAidAnswer reports whether one SEASONAL answer makes a row an application rather
+// than a registration-form side effect (design §6.4: donation-only rows stay out of
+// applicant counts). A donation answer never counts. The two interest questions count
+// only when they say yes. The registration-time amount and the three per-program requests
+// count only when positive. Any other FA- answer counts.
+func countsAsAidAnswer(fieldName, value string) bool {
+	switch fieldName {
+	case faFieldCADonationAmount, faFieldCADonationOther, faFieldWWDonationAmount, faFieldWWDonationOther:
+		return false
+	case faFieldCAFinancialAssistanceInterest, faFieldWWFinancialAssistanceInterest:
+		return hasInterestExpressed(value)
+	case faFieldCAFinancialAssistanceAmount, faFieldWWFinancialAssistanceAmount,
+		faFieldSummerQuestAmtRequested, faFieldFamilyCampAmtRequested, faFieldBnaiMitzvahAmtRequested:
+		return parseNumberValue(value) > 0
+	default:
+		return strings.TrimSpace(value) != ""
+	}
+}
+
+// stampCarryover records when CampMinder last updated a non-seasonal ("carry-over") answer
+// (design §6.4). Such answers read as this season's but were often typed years ago; the
+// stamp lets a reader tell. Keyed by CampMinder field name; the value is the date part of
+// person_custom_values.last_updated, or "" when CampMinder sent none. The first stamp for a
+// field wins, matching mapFieldToApplication's first-non-empty rule.
+func (app *faApplicationData) stampCarryover(fieldName, lastUpdated string) {
+	if app.carryoverUpdated == nil {
+		app.carryoverUpdated = map[string]string{}
+	}
+	if _, seen := app.carryoverUpdated[fieldName]; seen {
+		return
+	}
+	date := ""
+	if len(lastUpdated) >= len("2006-01-02") {
+		date = lastUpdated[:len("2006-01-02")]
+	}
+	app.carryoverUpdated[fieldName] = date
+}
+
+// carryoverJSON renders the stamps as canonical JSON (encoding/json sorts map keys), so an
+// unchanged set compares equal to what the previous run stored and the row is skipped.
+func (app *faApplicationData) carryoverJSON() string {
+	if len(app.carryoverUpdated) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(app.carryoverUpdated)
+	if err != nil {
+		return "{}" // unreachable: a map[string]string always marshals
+	}
+	return string(b)
 }
 
 // hasInterestExpressed checks if the value indicates interest was expressed
@@ -918,10 +999,10 @@ func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[stri
 		"year":      record.Get("year"),
 
 		// Interest indicators
-		"interest_expressed":  record.GetBool("interest_expressed"),
-		"donation_preference": record.GetString("donation_preference"),
-		"donation_other":      record.GetString("donation_other"),
-		"amount_awarded":      record.Get("amount_awarded"),
+		"interest_expressed":          record.GetBool("interest_expressed"),
+		"donation_preference":         record.GetString("donation_preference"),
+		"donation_other":              record.GetString("donation_other"),
+		"registration_request_amount": record.Get("registration_request_amount"),
 
 		// Contact Parent 1
 		"contact_first_name":     record.GetString("contact_first_name"),
@@ -992,7 +1073,6 @@ func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[stri
 		"tbm_amount_requested":    record.Get("tbm_amount_requested"),
 		"num_programs":            record.Get("num_programs"),
 		"num_sessions":            record.Get("num_sessions"),
-		"amount_requested":        record.Get("amount_requested"),
 
 		// COVID/Disaster
 		"covid_childcare":           record.GetBool("covid_childcare"),
@@ -1005,11 +1085,12 @@ func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[stri
 		"fire_detail":               record.GetString("fire_detail"),
 
 		// Admin/Status
-		"deposit_paid":        record.Get("deposit_paid"),
-		"deposit_paid_adult":  record.Get("deposit_paid_adult"),
-		"applicant_signature": record.GetString("applicant_signature"),
-		"income_confirmed":    record.GetBool("income_confirmed"),
-		"amount_confirmed":    record.GetBool("amount_confirmed"),
+		"deposit_paid_adult":     record.Get("deposit_paid_adult"),
+		"applicant_signature":    record.GetString("applicant_signature"),
+		"income_confirmed":       record.Get("income_confirmed"),
+		"amount_confirmed":       record.GetBool("amount_confirmed"),
+		"is_applicant":           record.GetBool("is_applicant"),
+		"carryover_last_updated": record.GetString("carryover_last_updated"),
 	}
 }
 
@@ -1076,10 +1157,10 @@ func (app *faApplicationData) toRecordData(year int) map[string]any {
 		"year":      year,
 
 		// Interest indicators
-		"interest_expressed":  app.interestExpressed,
-		"donation_preference": app.donationPreference,
-		"donation_other":      app.donationOther,
-		"amount_awarded":      app.amountAwarded,
+		"interest_expressed":          app.interestExpressed,
+		"donation_preference":         app.donationPreference,
+		"donation_other":              app.donationOther,
+		"registration_request_amount": app.registrationRequestAmount,
 
 		// Contact Parent 1
 		"contact_first_name":     app.contactFirstName,
@@ -1150,7 +1231,6 @@ func (app *faApplicationData) toRecordData(year int) map[string]any {
 		"tbm_amount_requested":    app.tbmAmountRequested,
 		"num_programs":            float64(app.numPrograms),
 		"num_sessions":            float64(app.numSessions),
-		"amount_requested":        app.amountRequested,
 
 		// COVID/Disaster
 		"covid_childcare":           app.covidChildcare,
@@ -1163,11 +1243,12 @@ func (app *faApplicationData) toRecordData(year int) map[string]any {
 		"fire_detail":               app.fireDetail,
 
 		// Admin/Status
-		"deposit_paid":        app.depositPaid,
-		"deposit_paid_adult":  app.depositPaidAdult,
-		"applicant_signature": app.applicantSignature,
-		"income_confirmed":    app.incomeConfirmed,
-		"amount_confirmed":    app.amountConfirmed,
+		"deposit_paid_adult":     app.depositPaidAdult,
+		"applicant_signature":    app.applicantSignature,
+		"income_confirmed":       app.incomeConfirmed,
+		"amount_confirmed":       app.amountConfirmed,
+		"is_applicant":           app.isApplicant,
+		"carryover_last_updated": app.carryoverJSON(),
 	}
 }
 

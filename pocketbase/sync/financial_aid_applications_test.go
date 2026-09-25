@@ -29,7 +29,8 @@ func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 		"FA-Contact Parent Name":  true,
 		"FA-Contact Parent Email": true,
 	}
-	for _, name := range got {
+	for _, def := range got {
+		name := def.name
 		if !want[name] {
 			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
 		}
@@ -57,10 +58,11 @@ func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 // against the production snapshot: 63 WW-FA Amount answers in 2025, 24 in
 // 2026.
 //
-// These four fields are structurally identical (interest / awarded amount /
-// donation amount / donation-other) to the CA- fields that already share the
-// same four columns -- interest_expressed, amount_awarded,
-// donation_preference, donation_other -- none of which carry a "_summer" or
+// These four fields are structurally identical (interest / registration
+// request amount / donation amount / donation-other) to the CA- fields that
+// already share the same four columns -- interest_expressed,
+// registration_request_amount, donation_preference, donation_other -- none of
+// which carry a "_summer" or
 // any other program suffix. Routing WW- into them is admission, not a grain
 // change: the column's meaning ("did this person express interest in
 // financial assistance, for whatever program they applied to") does not
@@ -87,7 +89,8 @@ func TestFinancialAidApplicationsAdmitsWWFields(t *testing.T) {
 		"WW-Donation Amount":       true,
 		"WW-Donation Amount Other": true,
 	}
-	for _, name := range got {
+	for _, def := range got {
+		name := def.name
 		if !want[name] {
 			continue // other tests' fixtures may share this app; only check ours are present
 		}
@@ -103,8 +106,9 @@ func TestFinancialAidApplicationsAdmitsWWFields(t *testing.T) {
 		t.Errorf("mapFieldToApplication(%q) did not set interestExpressed", "WW-FA")
 	}
 	s.mapFieldToApplication(fa, "WW-FA Amount", "$1,200")
-	if fa.amountAwarded != 1200 {
-		t.Errorf("mapFieldToApplication(%q) amountAwarded = %v, want 1200", "WW-FA Amount", fa.amountAwarded)
+	if fa.registrationRequestAmount != 1200 {
+		t.Errorf("mapFieldToApplication(%q) registrationRequestAmount = %v, want 1200",
+			"WW-FA Amount", fa.registrationRequestAmount)
 	}
 
 	fa2 := &faApplicationData{}
@@ -276,7 +280,6 @@ func TestFAFieldMapping(t *testing.T) {
 		{"B'nai Mitzvah: Amt Requested", "tbm_amount_requested"},
 		{"FA-Number of Programs", "num_programs"},
 		{"FA-How many sessions", "num_sessions"},
-		{"FA-Amt of Assistance Requested", "amount_requested"},
 
 		// COVID/disaster
 		{"FA-COVIDchild care", "covid_childcare"},
@@ -289,14 +292,13 @@ func TestFAFieldMapping(t *testing.T) {
 		{"FA-Fire Detail", "fire_detail"},
 
 		// Admin/status
-		{"FA-Deposit", "deposit_paid"},
 		{"FA-Applicant Signature", "applicant_signature"},
 		{"FA-confirmpretax income", "income_confirmed"},
 		{"FA-ComfirmationRequestedAmount", "amount_confirmed"},
 
 		// CA- prefix interest indicators
 		{"CA-FinancialAssistanceInterest", "interest_expressed"},
-		{"CA-FinancialAssistanceAmount", "amount_awarded"},
+		{"CA-FinancialAssistanceAmount", "registration_request_amount"},
 		{"CA-Donation amount", "donation_preference"},
 		{"CA-Donation other", "donation_other"},
 	}
@@ -503,7 +505,7 @@ func TestFAFieldTypeDetection(t *testing.T) {
 	boolFields := []string{
 		"unemployment", "still_unemployed", "owns_home", "single_parent",
 		"affiliated_jcc", "russian_speaking", "gov_subsidies",
-		"covid_childcare", "fire_affected", "income_confirmed", "amount_confirmed",
+		"covid_childcare", "fire_affected", "amount_confirmed",
 		"interest_expressed",
 	}
 
@@ -513,10 +515,10 @@ func TestFAFieldTypeDetection(t *testing.T) {
 		"student_debt", "total_medical_expenses", "total_edu_expenses",
 		"total_housing_expenses", "total_rent", "num_children",
 		"summer_amount_requested", "fc_amount_requested", "tbm_amount_requested",
-		"num_programs", "num_sessions", "amount_requested",
+		"num_programs", "num_sessions",
 		"covid_childcare_amount", "covid_expenses_amount",
-		"deposit_paid", "deposit_paid_adult", "amount_awarded",
-		"other_support_amount",
+		"deposit_paid_adult", "registration_request_amount",
+		"other_support_amount", "income_confirmed",
 	}
 
 	for _, field := range boolFields {
@@ -683,15 +685,14 @@ func mapFAFieldToColumn(fieldName string) string {
 		"FA-Financial Support":          "financial_support",
 
 		// Program requests
-		"FA-What Program":                "summer_program",
-		"Summer/Quest: Amt Requested":    "summer_amount_requested",
-		"FA-What Family Camp Program":    "fc_program",
-		"Family Camp: Amt Requested":     "fc_amount_requested",
-		"FA-What Bar and Bat Mitzvah":    "tbm_program",
-		"B'nai Mitzvah: Amt Requested":   "tbm_amount_requested",
-		"FA-Number of Programs":          "num_programs",
-		"FA-How many sessions":           "num_sessions",
-		"FA-Amt of Assistance Requested": "amount_requested",
+		"FA-What Program":              "summer_program",
+		"Summer/Quest: Amt Requested":  "summer_amount_requested",
+		"FA-What Family Camp Program":  "fc_program",
+		"Family Camp: Amt Requested":   "fc_amount_requested",
+		"FA-What Bar and Bat Mitzvah":  "tbm_program",
+		"B'nai Mitzvah: Amt Requested": "tbm_amount_requested",
+		"FA-Number of Programs":        "num_programs",
+		"FA-How many sessions":         "num_sessions",
 
 		// COVID/disaster
 		"FA-COVIDchild care":          "covid_childcare",
@@ -704,14 +705,13 @@ func mapFAFieldToColumn(fieldName string) string {
 		"FA-Fire Detail":              "fire_detail",
 
 		// Admin/status
-		"FA-Deposit":                     "deposit_paid",
 		"FA-Applicant Signature":         "applicant_signature",
 		"FA-confirmpretax income":        "income_confirmed",
 		"FA-ComfirmationRequestedAmount": "amount_confirmed",
 
 		// CA- prefix interest indicators
 		"CA-FinancialAssistanceInterest": "interest_expressed",
-		"CA-FinancialAssistanceAmount":   "amount_awarded",
+		"CA-FinancialAssistanceAmount":   "registration_request_amount",
 		"CA-Donation amount":             "donation_preference",
 		"CA-Donation other":              "donation_other",
 	}
@@ -903,7 +903,6 @@ func isFABoolColumn(column string) bool {
 		"gov_subsidies":      true,
 		"covid_childcare":    true,
 		"fire_affected":      true,
-		"income_confirmed":   true,
 		"amount_confirmed":   true,
 	}
 	return boolColumns[column]
@@ -912,30 +911,29 @@ func isFABoolColumn(column string) bool {
 // isFANumberColumn returns true if the column stores numeric values
 func isFANumberColumn(column string) bool {
 	numberColumns := map[string]bool{
-		"total_gross_income":      true,
-		"expected_gross_income":   true,
-		"total_adjusted_income":   true,
-		"total_exemptions":        true,
-		"non_retirement_savings":  true,
-		"retirement_accounts":     true,
-		"student_debt":            true,
-		"total_medical_expenses":  true,
-		"total_edu_expenses":      true,
-		"total_housing_expenses":  true,
-		"total_rent":              true,
-		"num_children":            true,
-		"summer_amount_requested": true,
-		"fc_amount_requested":     true,
-		"tbm_amount_requested":    true,
-		"num_programs":            true,
-		"num_sessions":            true,
-		"amount_requested":        true,
-		"covid_childcare_amount":  true,
-		"covid_expenses_amount":   true,
-		"deposit_paid":            true,
-		"deposit_paid_adult":      true,
-		"amount_awarded":          true,
-		"other_support_amount":    true,
+		"total_gross_income":          true,
+		"expected_gross_income":       true,
+		"total_adjusted_income":       true,
+		"total_exemptions":            true,
+		"non_retirement_savings":      true,
+		"retirement_accounts":         true,
+		"student_debt":                true,
+		"total_medical_expenses":      true,
+		"total_edu_expenses":          true,
+		"total_housing_expenses":      true,
+		"total_rent":                  true,
+		"num_children":                true,
+		"summer_amount_requested":     true,
+		"fc_amount_requested":         true,
+		"tbm_amount_requested":        true,
+		"num_programs":                true,
+		"num_sessions":                true,
+		"covid_childcare_amount":      true,
+		"covid_expenses_amount":       true,
+		"deposit_paid_adult":          true,
+		"registration_request_amount": true,
+		"other_support_amount":        true,
+		"income_confirmed":            true,
 	}
 	return numberColumns[column]
 }
