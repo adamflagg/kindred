@@ -65,8 +65,14 @@ def test_dependency_review_hardens_the_runner_first_and_blocks_egress():
     first = steps[0]
     assert first["uses"].startswith("step-security/harden-runner@")
     assert first["with"]["egress-policy"] == "block"
-    allowed = first["with"]["allowed-endpoints"].split()
-    assert "api.github.com:443" in allowed
+    # The exact set, so a widened allowlist fails here too.
+    allowed = set(first["with"]["allowed-endpoints"].split())
+    assert allowed == {
+        "agent.api.stepsecurity.io:443",
+        "api.github.com:443",
+        "prod.app-api.stepsecurity.io:443",
+        "productionresultssa*.blob.core.windows.net:443",
+    }
 
 
 def test_dependency_review_action_is_sha_pinned_with_a_version_comment():
