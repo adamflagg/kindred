@@ -43,6 +43,9 @@ from api.constants.collections import (
     FAMILY_CAMP_REGISTRATIONS,
     HOUSEHOLD_CUSTOM_VALUES,
     HOUSEHOLDS,
+    JOTFORM_ANSWERS,
+    JOTFORM_FORMS,
+    JOTFORM_SUBMISSIONS,
     LODGING_ASSIGNMENT_HISTORY,
     LODGING_ASSIGNMENTS,
     LODGING_ASSIGNMENTS_DRAFT,
@@ -108,6 +111,10 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     "reconcile_request_lifecycle": frozenset({ORIGINAL_BUNK_REQUESTS}),
     "bunk_requests": frozenset({ORIGINAL_BUNK_REQUESTS}),
     "process_requests": frozenset({ORIGINAL_BUNK_REQUESTS, BUNK_REQUESTS}),
+    # kindred#2759: the adult-weekend Jotform pull. Writes its three tables
+    # (and each form's last-pull status on jotform_forms); reads attendees and
+    # persons to match, and writes neither.
+    "jotform_submissions": frozenset({JOTFORM_FORMS, JOTFORM_SUBMISSIONS, JOTFORM_ANSWERS}),
     # Export phase -- Google Sheets, plus its own workbook bookkeeping.
     "multi_workbook_export": frozenset({"sheets_workbooks"}),
 }

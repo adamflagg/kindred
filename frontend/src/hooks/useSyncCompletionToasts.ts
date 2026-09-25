@@ -36,6 +36,7 @@ export const SYNC_DISPLAY_NAMES: Record<string, string> = {
   household_custom_values_family_camp: 'Household CV (Family Camp)',
   reconcile_request_lifecycle: 'Reconcile Request Lifecycle',
   bunk_requests: 'Intake Requests',
+  jotform_submissions: 'Jotform Submissions',
   process_requests: 'Process Requests',
   // Transform phase (derived tables)
   family_camp_derived: 'Weekend Programs',

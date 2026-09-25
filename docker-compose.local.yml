@@ -39,6 +39,8 @@ services:
       - CAMPMINDER_CLIENT_ID=${CAMPMINDER_CLIENT_ID:-}
       - CAMPMINDER_SEASON_ID=${CAMPMINDER_SEASON_ID:-2025}
       - SKIP_CAMPMINDER=${SKIP_CAMPMINDER:-false}
+      - JOTFORM_API_KEY=${JOTFORM_API_KEY:-}
+      - JOTFORM_API_BASE=${JOTFORM_API_BASE:-}
       - API_URL=http://api:8000
       - TZ=${TZ:-America/Los_Angeles}
     healthcheck:

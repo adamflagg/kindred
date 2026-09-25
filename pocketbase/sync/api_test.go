@@ -2225,12 +2225,13 @@ func TestPhaseExecutionJobsExcludesScopeFamilyCampForExpensivePhase(t *testing.T
 			"a copy, not mutate the underlying classification", classified)
 	}
 
-	// Every other phase must pass through unfiltered.
+	// Every other phase must pass through unfiltered, but for its declared manual-only
+	// members (manualOnlyPhaseMembers, registry_test.go).
 	for _, phase := range GetAllPhases() {
 		if phase == PhaseExpensive {
 			continue
 		}
-		want := GetJobsForPhase(phase)
+		want := withoutManualOnly(phase, GetJobsForPhase(phase))
 		got := phaseExecutionJobs(phase)
 		if len(got) != len(want) {
 			t.Errorf("phaseExecutionJobs(%q) = %v, want unfiltered %v", phase, got, want)
@@ -2332,16 +2333,19 @@ func TestPhasesPayloadPublishesBothLists(t *testing.T) {
 	foundExpensive := false
 	for _, phase := range body.Phases {
 		if phase.ID != string(PhaseExpensive) {
-			if len(phase.Jobs) != len(phase.RunJobs) {
-				t.Errorf("phase %q: jobs = %v (%d), run_jobs = %v (%d), expected equal for a "+
-					"phase where membership and execution do not diverge",
-					phase.ID, phase.Jobs, len(phase.Jobs), phase.RunJobs, len(phase.RunJobs))
+			// Equal but for the phase's declared manual-only members (manualOnlyPhaseMembers,
+			// registry_test.go): Process's Jotform pull is counted but never phase-run (#2759).
+			wantRun := withoutManualOnly(Phase(phase.ID), phase.Jobs)
+			if len(wantRun) != len(phase.RunJobs) {
+				t.Errorf("phase %q: jobs = %v (%d), run_jobs = %v (%d), expected run_jobs = %v "+
+					"(membership less only its declared manual-only members)",
+					phase.ID, phase.Jobs, len(phase.Jobs), phase.RunJobs, len(phase.RunJobs), wantRun)
 				continue
 			}
-			for i := range phase.Jobs {
-				if phase.Jobs[i] != phase.RunJobs[i] {
-					t.Errorf("phase %q: jobs[%d] = %q, run_jobs[%d] = %q, expected equal",
-						phase.ID, i, phase.Jobs[i], i, phase.RunJobs[i])
+			for i := range wantRun {
+				if wantRun[i] != phase.RunJobs[i] {
+					t.Errorf("phase %q: run_jobs[%d] = %q, want %q",
+						phase.ID, i, phase.RunJobs[i], wantRun[i])
 				}
 			}
 			continue

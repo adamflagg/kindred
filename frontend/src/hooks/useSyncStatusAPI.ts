@@ -131,6 +131,7 @@ export interface SyncStatusResponse {
   bunk_plans: SyncStatus
   bunk_assignments: SyncStatus
   bunk_requests: SyncStatus
+  jotform_submissions: SyncStatus // Adult-weekend Jotform pull (kindred#2759)
   process_requests: SyncStatus
   divisions: SyncStatus
   staff: SyncStatus

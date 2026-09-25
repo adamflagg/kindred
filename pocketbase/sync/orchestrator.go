@@ -281,6 +281,18 @@ var syncJobMeta = []JobMeta{
 		Description: "Import bunk request CSV",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun,
 		CurrentYearOnly: true},
+	// kindred#2759. The adult-weekend Jotform pull: every answered question of
+	// every ENABLED form in jotform_forms for the season, plus the auto-match
+	// against each session's enrolled guests (so it reads attendees and persons,
+	// and sits after them). Not CampMinder -- its own key and base URL.
+	//
+	// MANUAL ONLY until the forms move to the enterprise Jotform account: no
+	// Cadences, only the individual route (admin "Pull now"). P2 adds
+	// CadenceDaily and a JOTFORM_API_KEY gate. Never a full or phase run: a
+	// historical replay must not re-pull a live external form.
+	{ID: "jotform_submissions", Phase: PhaseProcess,
+		Description: "Adult-weekend Jotform submissions (bunking requests)",
+		Triggers:    TriggerIndividualRoute, CurrentYearOnly: true},
 	// process_requests only runs in Docker (Gate) -- development skips AI processing to
 	// avoid unnecessary API costs, matching getDailySyncJobs' IS_DOCKER check.
 	{ID: "process_requests", Phase: PhaseProcess,
@@ -3059,6 +3071,11 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Enrollment snapshots (captures daily enrollment counts per session)
 	o.RegisterService("enrollment_snapshots", NewEnrollmentSnapshotsSync(o.app))
+
+	// Adult-weekend Jotform pull (kindred#2759) -- its own key, not CampMinder's.
+	// A string literal, not serviceNameJotformSubmissions: registry_test.go finds
+	// registrations by matching literals.
+	o.RegisterService("jotform_submissions", NewJotformSubmissionsSync(o.app))
 
 	slog.Info("All sync services registered")
 	return nil

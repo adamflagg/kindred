@@ -105,6 +105,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/feedback/
 !pocketbase/config/
 !pocketbase/bunk_requests/
+!pocketbase/jotform/
 !pocketbase/cmd/
 !pocketbase/README.md
 !pocketbase/CLAUDE.md
