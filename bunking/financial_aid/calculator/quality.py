@@ -46,7 +46,13 @@ def run_quality_checks(
 
     if (check := active("ask_above_cost")) and cost is not None and request.ask > cost:
         fire("ask_above_cost", check, "The ask is above the cost")
-    if (check := active("income_above")) and check.threshold is not None and income.adjusted_income > check.threshold:
+    adjusted = income.adjusted_income
+    if (
+        (check := active("income_above"))
+        and check.threshold is not None
+        and adjusted is not None
+        and adjusted > check.threshold
+    ):
         fire("income_above", check, f"Adjusted income is above {check.threshold}")
     largest_expense = max(income.medical_excess, income.education_excess, income.dependent_reduction)
     if (check := active("expense_above")) and check.threshold is not None and largest_expense > check.threshold:
@@ -97,6 +103,9 @@ def run_quality_checks(
         and application.income_override is None
     ):
         confirmed = application.model_copy(update={"income_override": IncomeOverride(mode="confirmed_prior_year")})
-        if tier_of(household_income(confirmed, rules).adjusted_income, rules) != income_tier:
+        confirmed_income = household_income(confirmed, rules).adjusted_income
+        # Silent when the confirmed figure cannot be priced (a needed figure is absent):
+        # there is no tier to compare, and the missing figure is reported elsewhere.
+        if confirmed_income is not None and tier_of(confirmed_income, rules) != income_tier:
             fire("py_confirm_tier_change", check, "The confirmed prior-year income would change the tier")
     return issues

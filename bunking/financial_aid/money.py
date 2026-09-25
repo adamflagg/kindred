@@ -30,10 +30,10 @@ def pct_of(pct: Decimal, amount: Decimal) -> Decimal:
     return pct * amount / HUNDRED
 
 
-def to_money(value: Decimal | int | str | None) -> Decimal:
-    """An intake figure as Decimal. Absent counts as zero, as the sheet's blank cells did."""
-    if value is None:
-        return ZERO
-    if isinstance(value, Decimal):
-        return value
-    return Decimal(value)
+def zero_if_blank(value: Decimal | None) -> Decimal:
+    """An intake figure where a blank legitimately means none: expenses and savings.
+
+    Never use this for income. An absent income figure is unknown, not 0 (spec
+    principle 5); the income module reports it as missing instead.
+    """
+    return ZERO if value is None else value

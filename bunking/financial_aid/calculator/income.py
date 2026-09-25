@@ -8,6 +8,14 @@
 `tested` is `base` when income.floor_applies_after == "deductions" (the 2026
 order, where a large family can end below zero) and `adjusted` otherwise.
 Income belongs to the household: compute it once per application.
+
+An income figure the calculation NEEDS but the family did not report is unknown,
+never 0 (spec principle 5): `missing_figures` names it, `weighted_income` and
+`adjusted_income` stay None, and the engine returns needs_input. A figure is
+needed when it carries a weight above 0 -- the basis's prior-year figure, the
+current-year gross in a blend -- or when an override picks it. A figure whose
+weight is 0 is not needed. The confirmed basis still falls back to gross when a
+family has no confirmed figure; only when both are absent is it missing.
 """
 
 from __future__ import annotations
@@ -19,51 +27,74 @@ from pydantic import BaseModel, ConfigDict
 
 from bunking.financial_aid.calculator.inputs import ApplicationInputs
 from bunking.financial_aid.calculator.result import TraceStep
-from bunking.financial_aid.money import ONE, ZERO, round_dollars, to_money
+from bunking.financial_aid.money import ONE, ZERO, round_dollars, zero_if_blank
 from bunking.financial_aid.rules.schema import AidRules, IncomeSection
+
+_FIGURE_LABELS = {
+    "prior_year_gross": "prior-year gross",
+    "prior_year_agi": "prior-year AGI",
+    "prior_year_confirmed": "confirmed prior-year income",
+    "current_year_gross": "current-year gross",
+}
 
 
 class IncomeResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    weighted_income: Decimal
+    weighted_income: Decimal | None
     medical_excess: Decimal
     education_excess: Decimal
     savings_excess: Decimal
     dependent_reduction: Decimal
-    adjusted_income: Decimal
+    adjusted_income: Decimal | None
     income_missing: bool
+    # ApplicationInputs field names of the needed figures that were not reported.
+    missing_figures: tuple[str, ...] = ()
     trace: list[TraceStep]
 
 
 class _Weighted(NamedTuple):
     """The blended figure plus everything an auditor needs to see WHY it is what it is."""
 
-    value: Decimal
+    value: Decimal | None
     note: str | None
     prior_used: Decimal | None
     weight_prior: Decimal | None
     weight_current: Decimal | None
     basis_used: str | None
     override_mode: str | None
+    missing: tuple[str, ...] = ()
+
+
+class _Prior(NamedTuple):
+    value: Decimal | None
+    note: str | None
+    # The field(s) that would have supplied it, named when value is None.
+    wanted: tuple[str, ...]
 
 
 def household_income(application: ApplicationInputs, rules: AidRules) -> IncomeResult:
     income = rules.income
     weighted = _weighted_income(application, income)
-    missing = _income_missing(application)
+    missing = weighted.missing
     medical = _excess(application.medical_expenses, income.medical_threshold, income.medical_rate)
     education = _excess(application.education_expenses, income.education_threshold, income.education_rate)
     savings = _excess(application.savings, income.savings_threshold, income.savings_inclusion_rate)
     dependents = application.dependents or 0
     reduction = income.per_dependent_reduction * dependents if income.dependents_mode == "income_reduction" else ZERO
-    base = weighted.value - medical - education + savings
-    adjusted = base - reduction
-    tested = base if income.floor_applies_after == "deductions" else adjusted
-    if round_dollars(tested) <= income.floor:
-        result, bound = income.floor, "floor"
-    else:
-        result, bound = round_dollars(adjusted), None
+    adjustments = savings - medical - education
+    base: Decimal | None = None
+    adjusted: Decimal | None = None
+    result: Decimal | None = None
+    bound: str | None = None
+    if weighted.value is not None:
+        base = weighted.value + adjustments
+        adjusted = base - reduction
+        tested = base if income.floor_applies_after == "deductions" else adjusted
+        if round_dollars(tested) <= income.floor:
+            result, bound = income.floor, "floor"
+        else:
+            result = round_dollars(adjusted)
     trace = [
         TraceStep(
             key="weighted_income",
@@ -71,18 +102,18 @@ def household_income(application: ApplicationInputs, rules: AidRules) -> IncomeR
             value=weighted.value,
             inputs={
                 "prior_year": weighted.prior_used,
-                "current_year": to_money(application.current_year_gross),
+                "current_year": application.current_year_gross,
                 "weight_prior": weighted.weight_prior,
                 "weight_current": weighted.weight_current,
                 "basis": weighted.basis_used,
                 "override_mode": weighted.override_mode,
             },
-            note="no income figures reported" if missing else weighted.note,
+            note=_missing_note(application, missing) if missing else weighted.note,
         ),
         TraceStep(
             key="income_adjustments",
             label="Income adjustments",
-            value=base - weighted.value,
+            value=adjustments,
             inputs={
                 "medical_excess": medical,
                 "education_excess": education,
@@ -106,17 +137,19 @@ def household_income(application: ApplicationInputs, rules: AidRules) -> IncomeR
         savings_excess=savings,
         dependent_reduction=reduction,
         adjusted_income=result,
-        income_missing=missing,
+        income_missing=bool(missing),
+        missing_figures=missing,
         trace=trace,
     )
 
 
-def _income_missing(application: ApplicationInputs) -> bool:
-    """True only when every income figure is unreported (None) and nothing overrides them.
+def describe_missing(missing: tuple[str, ...]) -> str:
+    """The missing figures as staff read them, e.g. "prior-year AGI and current-year gross"."""
+    return " and ".join(_FIGURE_LABELS.get(name, name) for name in missing)
 
-    A figure reported as 0 is a real answer, not a missing one -- only the absence
-    of all four figures, with no income_override to supply a value instead, counts.
-    """
+
+def nothing_reported(application: ApplicationInputs) -> bool:
+    """No income figure at all and no override -- as opposed to one needed figure absent."""
     figures = (
         application.prior_year_gross,
         application.prior_year_agi,
@@ -126,42 +159,100 @@ def _income_missing(application: ApplicationInputs) -> bool:
     return all(figure is None for figure in figures) and application.income_override is None
 
 
+def _missing_note(application: ApplicationInputs, missing: tuple[str, ...]) -> str:
+    if nothing_reported(application):
+        return "no income figures reported"
+    return f"Not reported, but needed by this season's rules: {describe_missing(missing)}"
+
+
 def _excess(amount: Decimal | None, threshold: Decimal, rate: Decimal) -> Decimal:
-    value = to_money(amount)
+    # A blank expense or savings figure means the family has none: 0 is right here.
+    value = zero_if_blank(amount)
     return (value - threshold) * rate if value > threshold else ZERO
 
 
-def _prior_year(application: ApplicationInputs, basis: str) -> tuple[Decimal, str | None]:
+def _prior_year(application: ApplicationInputs, basis: str) -> _Prior:
     if basis == "agi":
-        return to_money(application.prior_year_agi), None
+        return _Prior(application.prior_year_agi, None, ("prior_year_agi",))
     if basis == "confirmed":
         if application.prior_year_confirmed is not None:
-            return application.prior_year_confirmed, None
-        return to_money(application.prior_year_gross), "No confirmed prior-year figure; used prior-year gross"
-    return to_money(application.prior_year_gross), None
+            return _Prior(application.prior_year_confirmed, None, ("prior_year_confirmed",))
+        if application.prior_year_gross is not None:
+            return _Prior(
+                application.prior_year_gross,
+                "No confirmed prior-year figure; used prior-year gross",
+                ("prior_year_gross",),
+            )
+        return _Prior(None, None, ("prior_year_confirmed", "prior_year_gross"))
+    return _Prior(application.prior_year_gross, None, ("prior_year_gross",))
+
+
+def _blend(
+    prior: _Prior, current: Decimal | None, weight_prior: Decimal, weight_current: Decimal
+) -> tuple[Decimal | None, tuple[str, ...]]:
+    """weight x figure summed over the figures that carry weight; a weighted figure that is absent is missing."""
+    missing: list[str] = []
+    total = ZERO
+    if weight_prior > 0:
+        if prior.value is None:
+            missing.extend(prior.wanted)
+        else:
+            total += weight_prior * prior.value
+    if weight_current > 0:
+        if current is None:
+            missing.append("current_year_gross")
+        else:
+            total += weight_current * current
+    return (None, tuple(missing)) if missing else (total, ())
 
 
 def _weighted_income(application: ApplicationInputs, income: IncomeSection) -> _Weighted:
-    prior, note = _prior_year(application, income.basis)
-    current = to_money(application.current_year_gross)
+    prior = _prior_year(application, income.basis)
+    current = application.current_year_gross
     weights = income.weights
     override = application.income_override
     if override is not None:
         if override.mode == "staff_entered":
-            return _Weighted(to_money(override.amount), "Staff-entered income", None, None, None, None, override.mode)
+            # The validator guarantees an amount for staff_entered.
+            return _Weighted(override.amount, "Staff-entered income", None, None, None, None, override.mode)
         if override.mode == "prior_year_only":
-            return _Weighted(prior, "Override: prior year only", prior, ONE, ZERO, income.basis, override.mode)
+            value, missing = _blend(prior, None, ONE, ZERO)
+            return _Weighted(
+                value, "Override: prior year only", prior.value, ONE, ZERO, income.basis, override.mode, missing
+            )
         if override.mode == "current_year_only":
-            return _Weighted(current, "Override: current year only", None, ZERO, ONE, None, override.mode)
-        confirmed, confirmed_note = _prior_year(application, "confirmed")
-        blended = weights.prior_year * confirmed + weights.current_year * current
-        note_out = confirmed_note or "Override: confirmed prior-year figure"
+            value, missing = _blend(_Prior(None, None, ()), current, ZERO, ONE)
+            return _Weighted(value, "Override: current year only", None, ZERO, ONE, None, override.mode, missing)
+        confirmed = _prior_year(application, "confirmed")
+        value, missing = _blend(confirmed, current, weights.prior_year, weights.current_year)
+        note_out = confirmed.note or "Override: confirmed prior-year figure"
         return _Weighted(
-            blended, note_out, confirmed, weights.prior_year, weights.current_year, "confirmed", override.mode
+            value,
+            note_out,
+            confirmed.value,
+            weights.prior_year,
+            weights.current_year,
+            "confirmed",
+            override.mode,
+            missing,
         )
-    if current == 0 and prior > 0 and income.current_year_zero_fallback == "prior_year_only":
+    if (
+        current is not None
+        and current == 0
+        and prior.value is not None
+        and prior.value > 0
+        and income.current_year_zero_fallback == "prior_year_only"
+    ):
         return _Weighted(
-            prior, "Current-year income is 0; used the prior year alone", prior, ONE, ZERO, income.basis, None
+            prior.value,
+            "Current-year income is 0; used the prior year alone",
+            prior.value,
+            ONE,
+            ZERO,
+            income.basis,
+            None,
         )
-    blended = weights.prior_year * prior + weights.current_year * current
-    return _Weighted(blended, note, prior, weights.prior_year, weights.current_year, income.basis, None)
+    value, missing = _blend(prior, current, weights.prior_year, weights.current_year)
+    return _Weighted(
+        value, prior.note, prior.value, weights.prior_year, weights.current_year, income.basis, None, missing
+    )

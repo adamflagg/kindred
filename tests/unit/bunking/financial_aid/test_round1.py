@@ -243,6 +243,33 @@ def test_missing_income_needs_input_and_is_never_priced_as_tier_1() -> None:
     assert ("income_missing", "needs_input") in {(i.code, i.severity) for i in result.issues}
 
 
+@pytest.mark.parametrize(
+    ("levers", "application"),
+    [
+        # C1 repro 1: an AGI basis with only gross reported priced AGI at 0 -> tier 1, status ok.
+        ({"income.basis": "agi"}, {"prior_year_gross": "100000", "current_year_gross": "100000"}),
+        # C1 repro 2: a blend with the current year missing blended it as 0.
+        ({}, {"prior_year_gross": "100000", "current_year_gross": None}),
+        # C1 repro 3: an override choosing an absent figure.
+        (
+            {},
+            {"prior_year_gross": None, "current_year_gross": "100000", "income_override": {"mode": "prior_year_only"}},
+        ),
+    ],
+)
+def test_a_needed_income_figure_that_is_absent_needs_input(levers: dict[str, Any], application: dict[str, Any]) -> None:
+    rules = with_levers(fictional_rules(), levers)
+    result = _calc(rules, application=app(**application))
+    assert (result.status, result.adjusted_income, result.income_tier, result.r1, result.total) == (
+        "needs_input",
+        None,
+        None,
+        None,
+        None,
+    )
+    assert ("income_missing", "needs_input") in {(i.code, i.severity) for i in result.issues}
+
+
 def test_a_reported_zero_income_is_priced_not_missing() -> None:
     result = _calc(application=app(prior_year_gross="0", current_year_gross="0"))
     assert (result.status, result.income_tier, result.r1) == ("ok", 1, Decimal(3600))  # 90% of 4,000

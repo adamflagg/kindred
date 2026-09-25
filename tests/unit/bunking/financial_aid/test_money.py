@@ -4,7 +4,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 
 import pytest
 
-from bunking.financial_aid.money import floor_dollars, pct_of, round_dollars, to_money
+from bunking.financial_aid.money import floor_dollars, pct_of, round_dollars, zero_if_blank
 
 
 @pytest.mark.parametrize(
@@ -39,8 +39,8 @@ def test_pct_of_is_percentage_points_and_unrounded() -> None:
     assert pct_of(Decimal(0), Decimal(4000)) == Decimal(0)
 
 
-def test_to_money_treats_absent_as_zero() -> None:
-    assert to_money(None) == Decimal(0)
-    assert to_money(7) == Decimal(7)
-    assert to_money("12.50") == Decimal("12.50")
-    assert to_money(Decimal(3)) == Decimal(3)
+def test_zero_if_blank_is_for_figures_where_blank_means_none() -> None:
+    # Expenses and savings only: a blank there means the family has none. Income never
+    # goes through this helper -- an absent income figure is unknown, not 0 (C1).
+    assert zero_if_blank(None) == Decimal(0)
+    assert zero_if_blank(Decimal(3)) == Decimal(3)

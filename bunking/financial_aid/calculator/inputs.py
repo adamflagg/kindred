@@ -37,7 +37,16 @@ class IncomeOverride(_Input):
 
 
 class ApplicationInputs(_Input):
-    """One household's application for one season. Absent money figures count as 0."""
+    """One household's application for one season.
+
+    Income figures left as None are UNKNOWN, not 0. When the season's rules need a
+    figure (its weight is above 0, or an override picks it) and it is None, the
+    calculator returns needs_input rather than pricing it (spec principle 5). A
+    reported 0 is a real answer and is priced.
+
+    Expenses, savings and dependents left as None DO count as 0: a blank there means
+    the family has none, so 0 is the honest reading, not a guess.
+    """
 
     household_cm_id: int | None = None
     prior_year_gross: Decimal | None = None

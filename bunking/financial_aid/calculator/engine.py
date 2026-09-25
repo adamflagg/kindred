@@ -25,7 +25,7 @@ from decimal import Decimal
 
 from bunking.financial_aid.calculator.cost import CostResolution, resolve_cost
 from bunking.financial_aid.calculator.grants import grants_offset, incentive_adjustments
-from bunking.financial_aid.calculator.income import household_income
+from bunking.financial_aid.calculator.income import describe_missing, household_income, nothing_reported
 from bunking.financial_aid.calculator.inputs import ApplicationInputs, RequestInputs
 from bunking.financial_aid.calculator.quality import run_quality_checks
 from bunking.financial_aid.calculator.result import (
@@ -126,19 +126,22 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     decision = _decision_type(work, request, rules)
     if request.decision_type is not None and decision is None:
         return work.result()
-    if income.income_missing:
-        # Nothing reported is not an income of 0: pricing it would land on tier 1, the
-        # most generous. A reported 0 is a real answer and is priced normally.
-        work.adjusted_income = None
-        work.issue(
-            "income_missing",
-            "needs_input",
-            "No income figure was reported and there is no income override, so the request cannot be priced",
-            "adjusted_income",
-        )
+    adjusted_income = income.adjusted_income
+    if adjusted_income is None:
+        # An unreported figure is not an income of 0: pricing it would land on a lower tier
+        # (all of them absent lands on tier 1, the most generous). A reported 0 is a real
+        # answer and is priced normally. See income.py for which figures are "needed".
+        if nothing_reported(application):
+            message = "No income figure was reported and there is no income override, so the request cannot be priced"
+        else:
+            message = (
+                f"The {describe_missing(income.missing_figures)} income figure is needed by the {rules.year} "
+                "rules but was not reported, so the request cannot be priced"
+            )
+        work.issue("income_missing", "needs_input", message, "adjusted_income")
         return work.result()
 
-    tier = income_tier(income.adjusted_income, rules)
+    tier = income_tier(adjusted_income, rules)
     if tier is None:
         work.issue(
             "income_below_first_band",
@@ -148,7 +151,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
         )
         return work.result()
     work.income_tier = tier
-    work.step("income_tier", "Income tier", tier, inputs={"adjusted_income": income.adjusted_income})
+    work.step("income_tier", "Income tier", tier, inputs={"adjusted_income": adjusted_income})
     shift, shift_step = equity_shift(application, request, program, rules)
     work.trace.append(shift_step)
     work.equity_shift = shift
@@ -175,7 +178,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     work.grants_offset = grants
 
     ceiling = rules.tiers.income_ceiling
-    above_ceiling = ceiling is not None and income.adjusted_income > ceiling
+    above_ceiling = ceiling is not None and adjusted_income > ceiling
     _round1(work, request, rules, program, decision, cost, final, reduce_award, above_ceiling=above_ceiling)
     _round2(work, request, rules, program, decision, final, above_ceiling=above_ceiling)
     _round3(work, request, rules, decision, above_ceiling=above_ceiling)

@@ -12,7 +12,9 @@ from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, with
 
 
 def _income(rules: AidRules | None = None, **fields: Any) -> Decimal:
-    return household_income(app(**fields), rules or fictional_rules()).adjusted_income
+    adjusted = household_income(app(**fields), rules or fictional_rules()).adjusted_income
+    assert adjusted is not None
+    return adjusted
 
 
 def test_the_blend_weights_prior_and_current_year() -> None:
@@ -169,3 +171,70 @@ def test_explicit_zero_income_is_not_missing() -> None:
         ApplicationInputs(prior_year_gross=Decimal(0), current_year_gross=Decimal(0)), fictional_rules()
     )
     assert result.income_missing is False
+
+
+# --- C1 (final review): a figure the rules NEED that is not reported is never priced as 0 ---
+
+
+def test_an_agi_basis_with_only_gross_reported_is_missing_not_zero() -> None:
+    # Pricing the absent AGI at 0 put this household on tier 1, the most generous.
+    rules = with_lever(fictional_rules(), "income.basis", "agi")
+    result = household_income(app(prior_year_gross="100000", current_year_gross="50000"), rules)
+    assert result.income_missing is True
+    assert result.missing_figures == ("prior_year_agi",)
+    assert (result.weighted_income, result.adjusted_income) == (None, None)
+    assert result.trace[0].value is None
+    assert result.trace[0].inputs["prior_year"] is None
+
+
+def test_a_blend_with_the_current_year_missing_is_missing_not_zero() -> None:
+    # The blend used to price the absent current year at 0 and understate income by a tier.
+    result = household_income(app(prior_year_gross="100000", current_year_gross=None), fictional_rules())
+    assert result.income_missing is True
+    assert result.missing_figures == ("current_year_gross",)
+    assert result.adjusted_income is None
+    assert result.trace[0].inputs["current_year"] is None
+
+
+@pytest.mark.parametrize(
+    ("override", "fields", "missing"),
+    [
+        ("prior_year_only", {"prior_year_gross": None, "current_year_gross": "50000"}, "prior_year_gross"),
+        ("current_year_only", {"prior_year_gross": "100000", "current_year_gross": None}, "current_year_gross"),
+        ("confirmed_prior_year", {"prior_year_gross": None, "current_year_gross": "50000"}, "prior_year_gross"),
+    ],
+)
+def test_an_override_on_an_absent_figure_is_missing_not_zero(
+    override: str, fields: dict[str, Any], missing: str
+) -> None:
+    result = household_income(app(income_override={"mode": override}, **fields), fictional_rules())
+    assert result.income_missing is True
+    assert missing in result.missing_figures
+    assert result.adjusted_income is None
+
+
+def test_a_figure_whose_weight_is_zero_is_not_needed() -> None:
+    rules = with_levers(fictional_rules(), {"income.weights.prior_year": "1", "income.weights.current_year": "0"})
+    result = household_income(app(prior_year_gross="100000", current_year_gross=None), rules)
+    assert (result.income_missing, result.missing_figures, result.adjusted_income) == (False, (), Decimal(100000))
+    prior_zero = with_levers(fictional_rules(), {"income.weights.prior_year": "0", "income.weights.current_year": "1"})
+    result = household_income(app(prior_year_gross=None, current_year_gross="50000"), prior_zero)
+    assert (result.income_missing, result.adjusted_income) == (False, Decimal(50000))
+
+
+def test_the_confirmed_basis_still_falls_back_to_gross_and_is_missing_only_when_both_are() -> None:
+    rules = with_lever(fictional_rules(), "income.basis", "confirmed")
+    fallback = household_income(app(prior_year_gross="100000", current_year_gross="50000"), rules)
+    assert (fallback.income_missing, fallback.adjusted_income) == (False, Decimal(85000))
+    assert "gross" in (fallback.trace[0].note or "")
+    neither = household_income(app(prior_year_gross=None, prior_year_agi="90000", current_year_gross="50000"), rules)
+    assert neither.income_missing is True
+    # Either figure would do, so both are named: neither was reported.
+    assert neither.missing_figures == ("prior_year_confirmed", "prior_year_gross")
+
+
+def test_a_staff_entered_income_needs_no_reported_figure() -> None:
+    result = household_income(
+        ApplicationInputs(income_override={"mode": "staff_entered", "amount": Decimal(42000)}), fictional_rules()
+    )
+    assert (result.income_missing, result.adjusted_income) == (False, Decimal(42000))
