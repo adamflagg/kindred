@@ -104,10 +104,24 @@ def test_a_program_with_no_equity_class_never_shifts() -> None:
     assert _final(fictional_rules(), program="family_camp", bipoc="Yes")[0] == 3
     rules = with_lever(fictional_rules(), "programs.summer.equity_class", None)
     assert _final(rules, bipoc="Yes")[0] == 3
+    shift, step = equity_shift(app(), req(equity_answers={"bipoc": "Yes"}), rules.programs["summer"], rules)
+    assert (shift, step.note) == (0, "This program has no equity class")
 
 
 def test_a_class_with_no_weights_never_shifts() -> None:
     assert _final(fictional_rules(), program="adult_weekend", bipoc="Yes")[0] == 3
+
+
+def test_an_unknown_equity_class_gives_no_shift_and_an_explicit_note() -> None:
+    # The program's equity_class points at a class the season never defined weights
+    # for. Separate rules validation flags this too, but the calculator must not
+    # silently zero it out without saying why (spec principle 5: an unknown is
+    # explicit, never a silent no-op).
+    rules = with_lever(fictional_rules(), "programs.summer.equity_class", "nosuch")
+    shift, step = equity_shift(app(), req(equity_answers={"bipoc": "Yes"}), rules.programs["summer"], rules)
+    assert shift == 0
+    assert step.note is not None
+    assert "nosuch" in step.note
 
 
 def test_siblings_in_one_household_can_land_in_different_tiers() -> None:

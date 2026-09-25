@@ -74,6 +74,7 @@ def equity_shift(
     equity = rules.equity
     if program.equity_class is None:
         return 0, TraceStep(key="equity_shift", label="Equity shift", value=0, note="This program has no equity class")
+    unknown_class = program.equity_class not in equity.weights
     weights = equity.weights.get(program.equity_class, {})
     total = ZERO
     met: list[str] = []
@@ -87,6 +88,7 @@ def equity_shift(
     bound = None
     if equity.max_shift is not None and shift > equity.max_shift:
         shift, bound = equity.max_shift, "max_shift"
+    note = f"No weights for equity class '{program.equity_class}'" if unknown_class else None
     step = TraceStep(
         key="equity_shift",
         label="Equity shift",
@@ -98,6 +100,7 @@ def equity_shift(
             "aggregation": equity.aggregation,
         },
         bound=bound,
+        note=note,
     )
     return shift, step
 
