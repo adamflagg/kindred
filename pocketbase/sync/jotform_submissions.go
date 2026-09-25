@@ -28,6 +28,8 @@ const (
 	matchStatusStaff      = "staff"
 	matchStatusUnmatched  = "unmatched"
 	matchStatusIgnored    = "ignored"
+	matchStatusCancelled  = "cancelled"
+	matchStatusWriteIn    = "write_in"
 	jotformPullStatusMax  = 2000
 	jotformEnrolledStatus = 2
 )
@@ -212,18 +214,25 @@ func (s *JotformSubmissionsSync) pullForm(
 	if err != nil {
 		return err
 	}
-	if eligible := plan.auto + plan.unmatched; guessedNames(meta) && eligible >= guardMinSubmissions &&
-		plan.auto*2 < eligible {
+	// A cancelled-registration match is a name match too: it counts as
+	// matched for the guard, which polices a name role landing on the wrong
+	// question.
+	if matched, eligible := plan.auto+plan.cancelled, plan.auto+plan.cancelled+plan.unmatched; guessedNames(meta) &&
+		eligible >= guardMinSubmissions && matched*2 < eligible {
 		s.recordStatus(form, withMapping(fmt.Sprintf(
 			"ok · %d submissions · matching held: the guessed name questions matched only %d of %d — check the mapping",
-			len(subs), plan.auto, eligible), mapping))
+			len(subs), matched, eligible), mapping))
 		return nil
 	}
 	if err := s.applyMatches(plan); err != nil {
 		return err
 	}
-	s.recordStatus(form, withMapping(fmt.Sprintf("ok · %d submissions · %d matched · %d unmatched",
-		len(subs), plan.staff+plan.auto, plan.unmatched), mapping))
+	status := fmt.Sprintf("ok · %d submissions · %d matched · %d unmatched",
+		len(subs), plan.staff+plan.auto, plan.unmatched)
+	if plan.cancelled > 0 {
+		status += fmt.Sprintf(" · %d cancelled", plan.cancelled)
+	}
+	s.recordStatus(form, withMapping(status, mapping))
 	return nil
 }
 
@@ -549,24 +558,46 @@ func readQuestions(form *core.Record) ([]jotform.FormQuestion, error) {
 }
 
 // matchDecision is one submission's re-decided match, before it is written.
+// registrationStatus is the matched registration's status text for a
+// `cancelled` match. droppedKey names the dropped write-in link this decision
+// replaces, so saving it can tell that link from one staff made mid-pull.
 type matchDecision struct {
 	recordID, submissionID, status string
+	registrationStatus, droppedKey string
 	result                         jotform.Result
 }
 
 // matchPlan is a whole form's re-decided matches: the counts decide whether
 // the wrong-guess guard holds them, and only then are they written.
 type matchPlan struct {
-	writes                 []matchDecision
-	staff, auto, unmatched int
+	writes                            []matchDecision
+	staff, auto, cancelled, unmatched int
 }
 
 // planMatches re-evaluates every live, non-staff submission of one form. An
-// auto match is re-decided each pull, so a guest who cancels drops back to
-// staff. Nothing is written here.
+// auto match is re-decided each pull, so a guest who cancels drops out of it.
+// A filer who matches no enrolled guest is tried against the weekend's other
+// registrations and, on a unique hit, recorded `cancelled` (kindred#2759
+// follow-up) -- re-decided every pull the same way, so a re-enrolment matches
+// normally next time.
+//
+// A `write_in` link is a staff decision and is left alone while any write-in
+// row of the weekend (live board or any scenario) still carries its key. A
+// key nothing carries any more is a dropped link -- staff removed that
+// write-in -- and the filing is re-decided like an unmatched one.
+// Nothing is written here.
 func (s *JotformSubmissionsSync) planMatches(form *core.Record, fm jotform.FieldMap, year int) (matchPlan, error) {
 	var plan matchPlan
-	guests, err := s.enrolledGuests(year, form.GetInt("session_cm_id"))
+	sessionCMID := form.GetInt("session_cm_id")
+	guests, err := s.enrolledGuests(year, sessionCMID)
+	if err != nil {
+		return plan, err
+	}
+	others, statusOf, err := s.otherRegistrations(year, sessionCMID, guests)
+	if err != nil {
+		return plan, err
+	}
+	liveKeys, err := s.writeInKeys(year, sessionCMID)
 	if err != nil {
 		return plan, err
 	}
@@ -590,36 +621,67 @@ func (s *JotformSubmissionsSync) planMatches(form *core.Record, fm jotform.Field
 	}
 
 	for _, rec := range subs {
+		droppedKey := ""
 		switch rec.GetString("match_status") {
 		case matchStatusStaff:
 			plan.staff++
 			continue
 		case matchStatusIgnored:
 			continue
+		case matchStatusWriteIn:
+			key := rec.GetString("write_in_key")
+			if key != "" && liveKeys[key] {
+				continue
+			}
+			droppedKey = key
 		}
-		result := jotform.Match(jotform.ExtractIdentity(rowsBySub[rec.Id], fm), guests)
-		status := matchStatusUnmatched
-		if result.PersonCMID > 0 {
+		result, cancelled := jotform.MatchRegistration(jotform.ExtractIdentity(rowsBySub[rec.Id], fm), guests, others)
+		status, registrationStatus := matchStatusUnmatched, ""
+		switch {
+		case cancelled:
+			status, registrationStatus = matchStatusCancelled, statusOf[result.PersonCMID]
+			plan.cancelled++
+		case result.PersonCMID > 0:
 			status = matchStatusAuto
 			plan.auto++
-		} else {
+		default:
 			plan.unmatched++
 		}
 		if rec.GetString("match_status") == status && rec.GetInt("person_cm_id") == result.PersonCMID &&
-			rec.GetInt("match_tier") == result.Tier {
+			rec.GetInt("match_tier") == result.Tier && rec.GetString("registration_status") == registrationStatus &&
+			rec.GetString("write_in_key") == "" {
 			continue
 		}
 		plan.writes = append(plan.writes, matchDecision{
-			recordID: rec.Id, submissionID: rec.GetString("submission_id"), status: status, result: result,
+			recordID: rec.Id, submissionID: rec.GetString("submission_id"), status: status,
+			registrationStatus: registrationStatus, droppedKey: droppedKey, result: result,
 		})
 	}
 	return plan, nil
 }
 
+// writeInKeys is every write-in link key a row of this weekend still carries,
+// on the live board or in any scenario.
+func (s *JotformSubmissionsSync) writeInKeys(year, sessionCMID int) (map[string]bool, error) {
+	keys := map[string]bool{}
+	for _, table := range []string{"lodging_write_ins", "lodging_write_ins_draft"} {
+		rows, err := findAllRecords(s.App, table,
+			"year = {:year} && session_cm_id = {:session} && write_in_key != ''",
+			dbx.Params{"year": year, "session": sessionCMID})
+		if err != nil {
+			return nil, fmt.Errorf("loading %s links: %w", table, err)
+		}
+		for _, row := range rows {
+			keys[row.GetString("write_in_key")] = true
+		}
+	}
+	return keys, nil
+}
+
 // applyMatches writes a plan's changed decisions.
 func (s *JotformSubmissionsSync) applyMatches(plan matchPlan) error {
 	for _, d := range plan.writes {
-		if err := s.saveMatch(d.recordID, d.status, d.result); err != nil {
+		if err := s.saveMatch(d); err != nil {
 			return fmt.Errorf("saving match of %s: %w", d.submissionID, err)
 		}
 	}
@@ -648,20 +710,29 @@ func (s *JotformSubmissionsSync) markDeleted(recordID string) error {
 }
 
 // saveMatch writes one match decision onto a FRESH copy of the row, inside a
-// transaction, and writes nothing if staff linked or ignored it after planMatches
-// loaded it: a staff decision is never overwritten, even mid-pull.
-func (s *JotformSubmissionsSync) saveMatch(recordID, status string, result jotform.Result) error {
+// transaction, and writes nothing if staff linked, ignored or wrote it in after
+// planMatches loaded it: a staff decision is never overwritten, even mid-pull.
+func (s *JotformSubmissionsSync) saveMatch(d matchDecision) error {
 	err := s.App.RunInTransaction(func(tx core.App) error {
-		fresh, err := tx.FindRecordById("jotform_submissions", recordID)
+		fresh, err := tx.FindRecordById("jotform_submissions", d.recordID)
 		if err != nil {
 			return fmt.Errorf("re-reading: %w", err)
 		}
-		if st := fresh.GetString("match_status"); st == matchStatusStaff || st == matchStatusIgnored {
+		switch fresh.GetString("match_status") {
+		case matchStatusStaff, matchStatusIgnored:
 			return nil
+		case matchStatusWriteIn:
+			// Only the dropped link this decision was planned against: a
+			// write-in link staff made (or re-made) mid-pull is theirs.
+			if d.droppedKey == "" || fresh.GetString("write_in_key") != d.droppedKey {
+				return nil
+			}
 		}
-		fresh.Set("match_status", status)
-		fresh.Set("person_cm_id", result.PersonCMID)
-		fresh.Set("match_tier", result.Tier)
+		fresh.Set("match_status", d.status)
+		fresh.Set("person_cm_id", d.result.PersonCMID)
+		fresh.Set("match_tier", d.result.Tier)
+		fresh.Set("registration_status", d.registrationStatus)
+		fresh.Set("write_in_key", "")
 		if err := tx.Save(fresh); err != nil {
 			return fmt.Errorf("saving: %w", err)
 		}
@@ -680,14 +751,62 @@ func (s *JotformSubmissionsSync) enrolledGuests(year, sessionCMID int) ([]jotfor
 	if err != nil {
 		return nil, fmt.Errorf("loading enrolled guests: %w", err)
 	}
+	return s.guestsOf(year, attendees)
+}
+
+// otherRegistrations is the weekend's NON-enrolled registrations (status_id
+// != 2: cancelled, incomplete, applied, none...), minus anyone also enrolled,
+// with each person's registration status text. A person with several such
+// rows reports the first by the stable sort.
+func (s *JotformSubmissionsSync) otherRegistrations(
+	year, sessionCMID int, enrolled []jotform.Guest,
+) ([]jotform.Guest, map[int]string, error) {
+	attendees, err := findAllRecords(s.App, "attendees",
+		"year = {:year} && status_id != {:status} && session.cm_id = {:session}",
+		dbx.Params{"year": year, "status": jotformEnrolledStatus, "session": sessionCMID})
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading the weekend's other registrations: %w", err)
+	}
+	isEnrolled := make(map[int]bool, len(enrolled))
+	for _, g := range enrolled {
+		isEnrolled[g.PersonCMID] = true
+	}
+	statusOf := map[int]string{}
+	kept := make([]*core.Record, 0, len(attendees))
+	for _, a := range attendees {
+		id := a.GetInt("person_id")
+		if id <= 0 || isEnrolled[id] {
+			continue
+		}
+		if _, seen := statusOf[id]; !seen {
+			status := strings.TrimSpace(a.GetString("status"))
+			if status == "" {
+				status = "not enrolled"
+			}
+			statusOf[id] = status
+			kept = append(kept, a)
+		}
+	}
+	guests, err := s.guestsOf(year, kept)
+	if err != nil {
+		return nil, nil, err
+	}
+	return guests, statusOf, nil
+}
+
+// guestsOf loads the persons behind a set of attendee rows.
+func (s *JotformSubmissionsSync) guestsOf(year int, attendees []*core.Record) ([]jotform.Guest, error) {
 	ids := make([]string, 0, len(attendees))
 	for _, a := range attendees {
 		if id := a.GetInt("person_id"); id > 0 {
 			ids = append(ids, fmt.Sprint(id))
 		}
 	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	var guests []jotform.Guest
-	err = forEachRosterIDChunk(ids, func(filter string, params dbx.Params) error {
+	err := forEachRosterIDChunk(ids, func(filter string, params dbx.Params) error {
 		params["year"] = year
 		persons, findErr := findAllRecords(s.App, "persons", "year = {:year} && ("+filter+")", params)
 		if findErr != nil {

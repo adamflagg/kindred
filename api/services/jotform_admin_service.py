@@ -9,12 +9,14 @@ cache goes, followed -- as after every other clear -- by a background re-warm.
 
 from __future__ import annotations
 
+import secrets
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
 
+from api.constants.collections import LODGING_WRITE_INS, LODGING_WRITE_INS_DRAFT
 from api.dependencies import lodging_cache
 from api.schemas.jotform import (
     JotformFormRow,
@@ -33,11 +35,14 @@ from api.services.jotform_queue import (
     FormReferenceError,
     QueueGuest,
     QueueSubmission,
+    WriteInRow,
     duplicate_groups,
     identity_from_answers,
     parse_form_id,
     queue_item,
+    suggest_write_in,
     suggestions_for,
+    write_in_options,
 )
 from api.services.jotform_repository import JotformRepository
 from api.services.lodging_cache_warm import schedule_lodging_warm
@@ -47,6 +52,8 @@ _MATCH_STATUSES: dict[str, MatchStatus] = {
     "staff": "staff",
     "unmatched": "unmatched",
     "ignored": "ignored",
+    "cancelled": "cancelled",
+    "write_in": "write_in",
 }
 
 
@@ -134,6 +141,23 @@ def _has_identity(field_map: dict[str, Any]) -> bool:
 
 def _guest_key(guest: JotformGuest) -> tuple[int, str]:
     return (guest.session_cm_id, guest.display_name.casefold())
+
+
+def _write_in_row(row: Any) -> WriteInRow:
+    unit = (getattr(row, "expand", None) or {}).get("unit")
+    return WriteInRow(
+        unit_id=str(getattr(row, "unit", "") or ""),
+        unit_name=str(getattr(unit, "name", "") or "") if unit is not None else "",
+        occupant_name=str(getattr(row, "occupant_name", "") or ""),
+        session_cm_id=int(getattr(row, "session_cm_id", 0) or 0),
+        write_in_key=str(getattr(row, "write_in_key", "") or ""),
+    )
+
+
+def _cleared_links(record: Any) -> dict[str, str]:
+    """Blank whichever of a row's link columns are set: a staff decision that
+    is not a write-in link or a cancelled match must not leave one behind."""
+    return {field: "" for field in ("write_in_key", "registration_status") if str(getattr(record, field, "") or "")}
 
 
 class JotformAdminService:
@@ -265,6 +289,22 @@ class JotformAdminService:
         submissions = await self.repository.fetch_submissions(year)
         answers = await self.repository.fetch_answers(year)
         guests = _guests(await self.repository.fetch_enrolled_guests(year))
+        # The live board's write-ins first, so an option and a link name read
+        # the live row's spelling wherever a scenario copy exists too.
+        write_in_rows = [
+            _write_in_row(row)
+            for row in [
+                *await self.repository.fetch_live_write_ins(year),
+                *await self.repository.fetch_draft_write_ins(year),
+            ]
+        ]
+        options = write_in_options(write_in_rows)
+        # A link is live while ANY row of its weekend, live or in a scenario,
+        # carries its key; the first such row names it.
+        linked_rows: dict[tuple[int, str], WriteInRow] = {}
+        for row in write_in_rows:
+            if row.write_in_key:
+                linked_rows.setdefault((row.session_cm_id, row.write_in_key), row)
 
         session_names = {int(s.cm_id): str(s.name) for s in sessions}
         field_maps = {str(f.id): dict(getattr(f, "field_map", None) or {}) for f in forms}
@@ -293,6 +333,8 @@ class JotformAdminService:
                     bunking_request=identity["bunking_request"],
                     match_status=_match_status(getattr(record, "match_status", "")),
                     person_cm_id=int(getattr(record, "person_cm_id", 0) or 0),
+                    registration_status=str(getattr(record, "registration_status", "") or ""),
+                    write_in_key=str(getattr(record, "write_in_key", "") or ""),
                 )
             )
 
@@ -305,6 +347,8 @@ class JotformAdminService:
         }
         unmatched: list[JotformQueueItem] = []
         resolved: list[JotformQueueItem] = []
+        cancelled: list[JotformQueueItem] = []
+        written_in: list[JotformQueueItem] = []
         # kindred#2828: matching never ran for a form without first + last name
         # mapped, so its submissions are not "needs a guest"; the weekend is
         # reported once instead.
@@ -312,12 +356,26 @@ class JotformAdminService:
         form_of = {str(r.id): str(r.form) for r in submissions}
         for sub in subs:
             session_name = session_names.get(sub.session_cm_id, "")
+            if sub.match_status == "write_in":
+                link = linked_rows.get((sub.session_cm_id, sub.write_in_key)) if sub.write_in_key else None
+                if link is not None:
+                    item = queue_item(sub, session_name=session_name)
+                    item.write_in_name = link.occupant_name.strip()
+                    item.write_in_unit = link.unit_name
+                    written_in.append(item)
+                    continue
+                # The write-in was removed everywhere: the link went with it,
+                # and the filing needs a guest again (the next pull re-decides it).
+                sub = QueueSubmission(**{**vars(sub), "match_status": "unmatched", "write_in_key": ""})
             if sub.match_status == "unmatched" and form_of.get(sub.record_id) in unmapped_forms:
                 unmapped_sessions.add(sub.session_cm_id)
             elif sub.match_status == "unmatched":
                 item = queue_item(sub, session_name=session_name)
                 item.suggestions = suggestions_for(sub, guests, subs)
+                item.write_in_suggestion = suggest_write_in(sub, options)
                 unmatched.append(item)
+            elif sub.match_status == "cancelled":
+                cancelled.append(queue_item(sub, session_name=session_name))
             elif sub.match_status in ("staff", "ignored"):
                 resolved.append(queue_item(sub, session_name=session_name, guest_name=names.get(sub.person_cm_id, "")))
         listed = [
@@ -338,6 +396,9 @@ class JotformAdminService:
                 if int(s.cm_id) in unmapped_sessions
             ],
             resolved=resolved,
+            cancelled=cancelled,
+            write_ins=written_in,
+            write_in_options=options,
             duplicates=duplicate_groups(subs, guests),
             guests=sorted(listed, key=_guest_key),
         )
@@ -362,6 +423,7 @@ class JotformAdminService:
                 "match_tier": 0,
                 "linked_by": actor,
                 "linked_at": _pb_now(),
+                **_cleared_links(record),
             },
         )
         _roster_changed()
@@ -370,7 +432,14 @@ class JotformAdminService:
         record = await self._submission(submission_id)
         await self.repository.update_submission(
             str(record.id),
-            {"match_status": "ignored", "person_cm_id": 0, "match_tier": 0, "linked_by": actor, "linked_at": _pb_now()},
+            {
+                "match_status": "ignored",
+                "person_cm_id": 0,
+                "match_tier": 0,
+                "linked_by": actor,
+                "linked_at": _pb_now(),
+                **_cleared_links(record),
+            },
         )
         _roster_changed()
 
@@ -379,6 +448,67 @@ class JotformAdminService:
         record = await self._submission(submission_id)
         await self.repository.update_submission(
             str(record.id),
-            {"match_status": "unmatched", "person_cm_id": 0, "match_tier": 0, "linked_by": "", "linked_at": ""},
+            {
+                "match_status": "unmatched",
+                "person_cm_id": 0,
+                "match_tier": 0,
+                "linked_by": "",
+                "linked_at": "",
+                **_cleared_links(record),
+            },
+        )
+        _roster_changed()
+
+    async def check_write_in_filing(self, submission_id: str, year: int, session_cm_id: int) -> None:
+        """Refuse, before the board writes anything, a filing that is not this
+        weekend's: a write-in made from it would be linked to the wrong board."""
+        record = await self._submission(submission_id)
+        if int(record.year) != year or int(record.session_cm_id) != session_cm_id:
+            raise JotformValidationError("That Jotform filing belongs to another weekend")
+
+    async def link_write_in(self, submission_id: str, unit_id: str, occupant_name: str, actor: str) -> None:
+        """Link a filing to one of its weekend's board write-ins (kindred#2759
+        follow-up), addressed as the board addresses it: (unit, occupant name).
+
+        The link is a key. The write-in's rows -- the live board's and every
+        scenario's copy of it -- carry it, and so does the filing. An existing
+        key on the write-in is reused (a party of several may have several
+        filings); otherwise one is minted and stamped on every copy that has
+        none. A rename leaves the key where it is, and every path that copies
+        write-in rows carries it, so the link survives both."""
+        record = await self._submission(submission_id)
+        year, session_cm_id = int(record.year), int(record.session_cm_id)
+        name = occupant_name.strip()
+        rows: list[tuple[str, Any]] = [
+            (table, row)
+            for table, fetched in (
+                (LODGING_WRITE_INS, await self.repository.fetch_live_write_ins(year)),
+                (LODGING_WRITE_INS_DRAFT, await self.repository.fetch_draft_write_ins(year)),
+            )
+            for row in fetched
+            if int(getattr(row, "session_cm_id", 0) or 0) == session_cm_id
+            and str(getattr(row, "unit", "") or "") == unit_id
+            and str(getattr(row, "occupant_name", "") or "").strip() == name
+        ]
+        if not rows:
+            raise JotformValidationError("That write-in is not on this weekend's board")
+        key = next(
+            (str(getattr(row, "write_in_key", "") or "") for _, row in rows if getattr(row, "write_in_key", "")),
+            "",
+        ) or secrets.token_hex(8)
+        for table, row in rows:
+            if not str(getattr(row, "write_in_key", "") or ""):
+                await self.repository.set_write_in_key(table, str(row.id), key)
+        await self.repository.update_submission(
+            str(record.id),
+            {
+                "match_status": "write_in",
+                "write_in_key": key,
+                "person_cm_id": 0,
+                "match_tier": 0,
+                "registration_status": "",
+                "linked_by": actor,
+                "linked_at": _pb_now(),
+            },
         )
         _roster_changed()

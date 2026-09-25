@@ -13,7 +13,15 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from api.constants.collections import ATTENDEES, CAMP_SESSIONS, JOTFORM_ANSWERS, JOTFORM_FORMS, JOTFORM_SUBMISSIONS
+from api.constants.collections import (
+    ATTENDEES,
+    CAMP_SESSIONS,
+    JOTFORM_ANSWERS,
+    JOTFORM_FORMS,
+    JOTFORM_SUBMISSIONS,
+    LODGING_WRITE_INS,
+    LODGING_WRITE_INS_DRAFT,
+)
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.lodging_repository import ADULT_SESSION_TYPE, STABLE_SORT
 from api.utils.pb_filters import pb_escape
@@ -114,3 +122,29 @@ class JotformRepository:
 
     async def update_submission(self, record_id: str, body: dict[str, Any]) -> None:
         await asyncio.to_thread(self.pb.collection(JOTFORM_SUBMISSIONS).update, record_id, body)
+
+    # --- Board write-ins (kindred#2759 follow-up) ------------------------------
+    #
+    # Read year-wide: a weekend has a few dozen write-ins across the live board
+    # and its scenarios, and the queue offers every adult weekend's at once.
+
+    async def fetch_live_write_ins(self, year: int) -> list[Any]:
+        return await self._page(
+            LODGING_WRITE_INS,
+            query_params={"filter": f"year = {year}", "expand": "unit", "sort": STABLE_SORT},
+        )
+
+    async def fetch_draft_write_ins(self, year: int) -> list[Any]:
+        """Every scenario's write-ins: a link is to the write-in wherever it
+        appears, so a write-in made inside a scenario can be linked too."""
+        return await self._page(
+            LODGING_WRITE_INS_DRAFT,
+            query_params={"filter": f"year = {year}", "expand": "unit", "sort": STABLE_SORT},
+        )
+
+    async def set_write_in_key(self, table: str, record_id: str, key: str) -> None:
+        """Stamp a write-in row with its link key. A PATCH of that one field, so
+        nothing else on the row moves."""
+        if table not in (LODGING_WRITE_INS, LODGING_WRITE_INS_DRAFT):
+            raise ValueError(f"not a write-in table: {table}")
+        await asyncio.to_thread(self.pb.collection(table).update, record_id, {"write_in_key": key})

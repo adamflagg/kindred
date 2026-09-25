@@ -37,6 +37,8 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
     WriteInDeleteRequest,
 )
+from api.services.jotform_admin_service import JotformAdminService, JotformNotFoundError, JotformValidationError
+from api.services.jotform_repository import JotformRepository
 from api.services.lodging_attribution_service import LodgingAttributionService
 from api.services.lodging_compare_service import LodgingCompareService
 from api.services.lodging_repository import LodgingRepository
@@ -83,6 +85,10 @@ def _may_read_staff_notes(user: AuthUser) -> bool:
 
 def _writes() -> LodgingWriteService:
     return LodgingWriteService(LodgingRepository(pb))
+
+
+def _jotform() -> JotformAdminService:
+    return JotformAdminService(JotformRepository(pb))
 
 
 def _compare() -> LodgingCompareService:
@@ -386,8 +392,27 @@ async def set_availability(
     the row moved under the card, and falling through to a create is what
     turns one rename into two rows now that step 8 has narrowed the index.
     """
+    # kindred#2759 follow-up: a write-in made FROM a Jotform filing. The
+    # filing is checked BEFORE anything is written, so one from another weekend
+    # refuses the whole request rather than leaving an unlinked write-in; the
+    # link follows the write, addressed the way the board addresses the row.
+    jotform = _jotform() if request.jotform_submission_id is not None else None
+    if jotform is not None and request.jotform_submission_id is not None:
+        try:
+            await jotform.check_write_in_filing(request.jotform_submission_id, request.year, request.session_cm_id)
+        except JotformNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except JotformValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
-        return await _writes().set_availability(request)
+        response = await _writes().set_availability(request)
+        if jotform is not None and request.jotform_submission_id is not None:
+            await jotform.link_write_in(
+                request.jotform_submission_id, request.unit_id, request.occupant_name, user.email
+            )
+        return response
+    except (JotformNotFoundError, JotformValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc
     except WriteInRenameConflictError as exc:

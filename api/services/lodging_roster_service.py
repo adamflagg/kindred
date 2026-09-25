@@ -59,7 +59,12 @@ from api.schemas.lodging import (
     WriteInCover,
 )
 from api.services.adult_need_answers import adult_need_flags_by_person, adult_need_raw_by_person
-from api.services.jotform_bunking import JotformBunkingRows, build_bunking_request, filings_by_person
+from api.services.jotform_bunking import (
+    JotformBunkingRows,
+    build_bunking_request,
+    filings_by_person,
+    filings_by_write_in,
+)
 from api.services.lodging_repository import ADULT_SESSION_TYPE, FAMILY_SESSION_TYPE
 from api.services.lodging_rules import (
     REQUEST_TEXT_SOURCES,
@@ -967,6 +972,8 @@ class OwnWriteIn:
     occupant_name: str
     note: str
     party_size: int | None
+    # The row's Jotform write-in link (kindred#2759 follow-up), "" for none.
+    write_in_key: str = ""
 
 
 def write_in_rows_by_unit(write_ins: list[Any]) -> dict[str, list[OwnWriteIn]]:
@@ -1011,6 +1018,7 @@ def write_in_rows_by_unit(write_ins: list[Any]) -> dict[str, list[OwnWriteIn]]:
                 occupant_name=_s(row, "occupant_name"),
                 note=_s(row, "note"),
                 party_size=_i_or_none(row, "party_size"),
+                write_in_key=_s(row, "write_in_key"),
             )
         )
     return rows_by_unit
@@ -1235,6 +1243,7 @@ def write_in_covers(
                 occupant_name=row.occupant_name,
                 note=row.note,
                 party_size=row.party_size,
+                write_in_key=row.write_in_key,
                 relation=relation,
                 # 0, not the raw lookup, when the SOURCE is retired AND the
                 # cover is not the unit's OWN row (kindred#2540 fix-round
@@ -2656,6 +2665,16 @@ class LodgingRosterService:
                 person_cm_id: build_bunking_request(person_filings, registration_raw.get(person_cm_id))
                 for person_cm_id, person_filings in filings.items()
             }
+            # kindred#2759 follow-up: a board write-in linked to a filing
+            # carries that filing's request, drawn with the adult card's mark.
+            write_in_requests = {
+                key: build_bunking_request(linked)
+                for key, linked in filings_by_write_in(jotform_task.result(), session_cm_id=session_cm_id).items()
+            }
+            for unit_summary in unit_summaries:
+                for cover in unit_summary.write_ins:
+                    if cover.write_in_key:
+                        cover.bunking_request = write_in_requests.get(cover.write_in_key)
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
