@@ -8,9 +8,12 @@ this module does no permission check of its own.
 A version is (year, version). Each section has its own lifecycle
 (bunking.financial_aid.rules.lifecycle): saving a change to an approved section
 sends it back to draft, and a change to a locked section is refused -- that
-change needs a new version. A draft with validation errors still saves, and the
-report comes back with it, so staff see what is wrong; approval is what errors
-block.
+change needs a new version. Because sections refer to each other, `save` judges
+the whole document after the edit: an approved section the edit leaves with
+validation errors also goes back to draft (each such change is recorded), and
+an edit that would give a locked section new errors is refused. A draft with
+validation errors still saves, and the report comes back with it, so staff see
+what is wrong; approval and locking are what errors block.
 
 A write to `save`, `approve_section` or `lock_section` targets a specific
 version; if that version is no longer the latest for its year, the write is
@@ -20,8 +23,13 @@ an older version on purpose (a "what changed since" comparison, or picking up a
 draft that was not the last one made); its result always becomes the new latest.
 
 Every write calls the required RulesChangeRecorder, passing the PocketBase
-record id of the version written. The change log belongs to sub-project 2; the
-router that sub-project 12 adds wires that writer in here.
+record id of the version written and, for an approval, its note as `reason`.
+The change log belongs to sub-project 2, whose writer is synchronous and takes
+a different signature, so the router that sub-project 12 adds wires it in here
+through a small async adapter that passes `reason` on.
+
+Every refusal raised here subclasses FinancialAidError, so a router can map
+them with one `except` without catching pydantic's ValidationError.
 """
 
 from __future__ import annotations
@@ -36,11 +44,13 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import BaseModel, ConfigDict
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import (
     AidRules,
     SectionName,
     SessionRef,
     ValidationContext,
+    ValidationIssue,
     ValidationReport,
     validate_rules,
 )
@@ -64,19 +74,19 @@ PAGE_SIZE = 1000
 STABLE_SORT = "id"
 
 
-class RulesNotFoundError(LookupError):
+class RulesNotFoundError(FinancialAidError, LookupError):
     """No aid_rules row for the year (and version) asked for."""
 
 
-class VersionExistsError(ValueError):
+class VersionExistsError(FinancialAidError, ValueError):
     """The year already has rules; "start from last year" only starts an empty season."""
 
 
-class YearMismatchError(ValueError):
+class YearMismatchError(FinancialAidError, ValueError):
     """The document's year is not the year it is being saved under."""
 
 
-class NotLatestVersionError(ValueError):
+class NotLatestVersionError(FinancialAidError, ValueError):
     """A write targeted a version that is no longer the latest for its year.
 
     An older version is read-only once a newer one exists -- branch from the
@@ -108,6 +118,7 @@ class RulesChangeRecorder(Protocol):
         actor: str,
         before: dict[str, Any] | None,
         after: dict[str, Any] | None,
+        reason: str | None,
     ) -> None: ...
 
 
@@ -177,7 +188,7 @@ class AidRulesRepository:
         return await asyncio.to_thread(self.pb.collection(AID_RULES).update, record_id, body)
 
 
-def _json_object(record: Any, field: str) -> dict[str, Any]:
+def _json_object(record: Any, field: str) -> dict[str, Any] | None:
     """One PB JSON field, normalised to the dict it always logically is.
 
     Mirrors `lodging_write_service._json_list`: the Python SDK's own HTTP client
@@ -189,8 +200,8 @@ def _json_object(record: Any, field: str) -> dict[str, Any]:
     """
     value = getattr(record, field, None)
     if isinstance(value, str):
-        return dict(json.loads(value)) if value else {}
-    return dict(value or {})
+        value = json.loads(value) if value.strip() else None
+    return None if value is None else dict(value)
 
 
 def _to_version(record: Any) -> RulesVersion:
@@ -201,7 +212,7 @@ def _to_version(record: Any) -> RulesVersion:
         record_id=str(record.id),
         year=int(record.year),
         version=int(record.version),
-        document=AidRules.model_validate(_json_object(record, "document")),
+        document=AidRules.model_validate(_json_object(record, "document") or {}),
         section_status=status_from_json(_json_object(record, "section_status")),
         parent_year=parent_year or None,
         parent_version=parent_version or None,
@@ -252,8 +263,12 @@ class FinancialAidRulesService:
         return _to_version(record)
 
     async def validate_document(self, document: AidRules) -> ValidationReport:
-        sessions = await self._store.fetch_session_refs(document.year)
-        return validate_rules(document, ValidationContext(sessions=sessions))
+        """Validation against the season's synced sessions. A season with none synced
+        warns (no_sessions_to_check) rather than passing the coverage check silently."""
+        return validate_rules(document, await self._context(document.year))
+
+    async def _context(self, year: int) -> ValidationContext:
+        return ValidationContext(sessions=await self._store.fetch_session_refs(year))
 
     async def validate(self, year: int, version: int) -> ValidationReport:
         return await self.validate_document((await self.load(year, version)).document)
@@ -274,29 +289,45 @@ class FinancialAidRulesService:
             raise YearMismatchError(f"The document is for {document.year}, not {year}")
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
-        status = apply_edit(current.document, document, current.section_status)
+        context = await self._context(year)
+        before = validate_rules(current.document, context)
+        report = validate_rules(document, context)
+        outcome = apply_edit(current.document, document, current.section_status, before=before, after=report)
         record = await self._store.update(
-            current.record_id, {"document": _dump(document), "section_status": status_to_json(status)}
+            current.record_id, {"document": _dump(document), "section_status": status_to_json(outcome.status)}
         )
         saved = _to_version(record)
         await self._record(
             "save", saved, section=None, actor=actor, before=_dump(current.document), after=_dump(saved.document)
         )
-        return saved, await self.validate_document(document)
+        for name in outcome.reverted:
+            await self._record(
+                "revert_to_draft",
+                saved,
+                section=name,
+                actor=actor,
+                before=current.section_status[name].model_dump(mode="json"),
+                after=saved.section_status[name].model_dump(mode="json"),
+            )
+        return saved, report
 
     async def approve_section(
         self, year: int, version: int, section: SectionName, *, actor: str, note: str | None
-    ) -> RulesVersion:
+    ) -> tuple[RulesVersion, ValidationReport]:
+        """Approve one section. The report comes back so its warnings reach the approver
+        (for example no_sessions_to_check when the season has no synced sessions yet)."""
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
         report = await self.validate_document(current.document)
         status = approve(current.section_status, section, by=actor, at=self._clock(), note=note, report=report)
-        return await self._write_status("approve", current, status, section, actor)
+        return await self._write_status("approve", current, status, section, actor, reason=note), report
 
     async def lock_section(self, year: int, version: int, section: SectionName, *, actor: str) -> RulesVersion:
+        """Lock an approved section; refused while the document has any validation error."""
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
-        status = lock(current.section_status, section, at=self._clock())
+        report = await self.validate_document(current.document)
+        status = lock(current.section_status, section, at=self._clock(), report=report)
         return await self._write_status("lock", current, status, section, actor)
 
     async def new_version(self, year: int, from_version: int, *, actor: str) -> RulesVersion:
@@ -324,16 +355,20 @@ class FinancialAidRulesService:
         )
         return created
 
-    async def start_from_last_year(self, year: int, *, actor: str) -> RulesVersion:
+    async def start_from_last_year(self, year: int, *, actor: str) -> tuple[RulesVersion, ValidationReport]:
         """Copy the previous season's latest version into an empty season, every section draft.
 
-        Milestone dates are cleared: they belong to a season. Approvals are not
-        carried: a new season's rules go to the board again.
+        Milestone dates are cleared: they belong to a season. Tuition and family-camp
+        rates are cleared too, with a warning on the report: they are keyed by
+        CampMinder session id, and CampMinder reuses session ids across years, so a
+        carried price would silently price this year's session of the same id at last
+        year's rate. Approvals are not carried: a new season's rules go to the board again.
         """
         if await self._store.list_versions(year):
             raise VersionExistsError(f"{year} already has aid rules; make a new version instead")
         prior = await self.load(year - 1)
-        document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection()})
+        cost = prior.document.cost.model_copy(update={"tuition": {}, "family_rates": []})
+        document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection(), "cost": cost})
         record = await self._store.create(
             _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
         )
@@ -341,7 +376,18 @@ class FinancialAidRulesService:
         await self._record(
             "start_from_last_year", created, section=None, actor=actor, before=None, after=_dump(created.document)
         )
-        return created
+        report = await self.validate_document(created.document)
+        cleared = ValidationIssue(
+            section="cost",
+            code="prices_cleared_for_new_season",
+            severity="warning",
+            path="cost.tuition",
+            message=(
+                f"Tuition and family-camp rates were not carried from {prior.year}: session ids are reused "
+                f"across years, so enter {year}'s prices"
+            ),
+        )
+        return created, ValidationReport(issues=[cleared, *report.issues])
 
     async def _latest_version_number(self, year: int) -> int | None:
         rows = await self._store.list_versions(year)
@@ -367,7 +413,14 @@ class FinancialAidRulesService:
         return (latest or 0) + 1
 
     async def _write_status(
-        self, action: str, current: RulesVersion, status: StatusMap, section: SectionName, actor: str
+        self,
+        action: str,
+        current: RulesVersion,
+        status: StatusMap,
+        section: SectionName,
+        actor: str,
+        *,
+        reason: str | None = None,
     ) -> RulesVersion:
         record = await self._store.update(current.record_id, {"section_status": status_to_json(status)})
         updated = _to_version(record)
@@ -378,6 +431,7 @@ class FinancialAidRulesService:
             actor=actor,
             before=current.section_status[section].model_dump(mode="json"),
             after=updated.section_status[section].model_dump(mode="json"),
+            reason=reason,
         )
         return updated
 
@@ -390,6 +444,7 @@ class FinancialAidRulesService:
         actor: str,
         before: dict[str, Any] | None,
         after: dict[str, Any] | None,
+        reason: str | None = None,
     ) -> None:
         await self._recorder(
             action=action,
@@ -400,6 +455,7 @@ class FinancialAidRulesService:
             actor=actor,
             before=before,
             after=after,
+            reason=reason,
         )
 
 

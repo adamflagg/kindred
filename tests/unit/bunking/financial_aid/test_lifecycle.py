@@ -4,11 +4,15 @@ from datetime import UTC, datetime
 
 import pytest
 
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import SECTION_NAMES, SectionName, SessionRef, ValidationContext, validate_rules
 from bunking.financial_aid.rules.lifecycle import (
+    DocumentHasErrorsError,
     LockedSectionError,
+    LockedSectionInvalidatedError,
     SectionHasErrorsError,
     SectionNotApprovedError,
+    SectionStatusMissingError,
     StatusMap,
     apply_edit,
     approve,
@@ -19,14 +23,23 @@ from bunking.financial_aid.rules.lifecycle import (
     status_from_json,
     status_to_json,
 )
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever
+from bunking.financial_aid.rules.schema import AidRules
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
+
+
+def _edit(old: AidRules, new: AidRules, status: StatusMap) -> StatusMap:
+    return apply_edit(old, new, status, before=validate_rules(old), after=validate_rules(new)).status
 
 
 def _approved(section: SectionName = "income") -> StatusMap:
     report = validate_rules(fictional_rules())
     return approve(initial_status(), section, by="finance@example.com", at=AT, note="Board, Jan 15", report=report)
+
+
+def _lock(status: StatusMap, section: SectionName) -> StatusMap:
+    return lock(status, section, at=AT, report=validate_rules(fictional_rules()))
 
 
 def test_every_section_starts_as_draft() -> None:
@@ -64,44 +77,109 @@ def test_changed_sections_names_only_what_moved() -> None:
 def test_editing_an_approved_section_sends_it_back_to_draft() -> None:
     old = fictional_rules()
     status = _approved("income")
-    status = apply_edit(old, with_lever(old, "income.medical_threshold", "4500"), status)
+    status = _edit(old, with_lever(old, "income.medical_threshold", "4500"), status)
     assert status["income"].state == "draft"
     assert status["income"].approved_by is None
 
 
 def test_editing_a_locked_section_is_refused() -> None:
     old = fictional_rules()
-    status = lock(_approved("income"), "income", at=AT)
+    status = _lock(_approved("income"), "income")
     with pytest.raises(LockedSectionError) as caught:
-        apply_edit(old, with_lever(old, "income.medical_threshold", "4500"), status)
+        _edit(old, with_lever(old, "income.medical_threshold", "4500"), status)
     assert caught.value.sections == ["income"]
     # Changing a different, unlocked section is fine.
-    assert apply_edit(old, with_lever(old, "tiers.floor_tier", 2), status)["income"].state == "locked"
+    assert _edit(old, with_lever(old, "tiers.floor_tier", 2), status)["income"].state == "locked"
 
 
 def test_only_an_approved_section_can_lock() -> None:
     with pytest.raises(SectionNotApprovedError):
-        lock(initial_status(), "income", at=AT)
-    assert lock(_approved(), "income", at=AT)["income"].locked_at == AT
+        _lock(initial_status(), "income")
+    assert _lock(_approved(), "income")["income"].locked_at == AT
 
 
 def test_a_locked_section_cannot_be_re_approved() -> None:
-    status = lock(_approved(), "income", at=AT)
+    status = _lock(_approved(), "income")
     with pytest.raises(LockedSectionError):
         approve(status, "income", by="f@example.com", at=AT, note=None, report=validate_rules(fictional_rules()))
 
 
 def test_a_new_version_keeps_approvals_but_unlocks() -> None:
-    status = carry_forward(lock(_approved(), "income", at=AT))
+    status = carry_forward(_lock(_approved(), "income"))
     assert status["income"].state == "approved"
     assert status["income"].approved_by == "finance@example.com"
     assert status["income"].locked_at is None
     assert status["tiers"].state == "draft"
 
 
-def test_status_json_round_trip_fills_missing_sections_with_draft() -> None:
-    status = lock(_approved(), "income", at=AT)
+def test_status_json_round_trips() -> None:
+    status = _lock(_approved(), "income")
     raw = status_to_json(status)
     assert raw["income"]["state"] == "locked"
     assert status_from_json(raw) == status
-    assert status_from_json({})["milestones"].state == "draft"
+
+
+@pytest.mark.parametrize("raw", [None, {}, {"income": {"state": "approved"}}])
+def test_a_missing_status_raises_and_never_means_all_draft(raw: dict[str, object] | None) -> None:
+    # A record with no section_status (or one missing sections) used to load as
+    # all-draft, silently un-approving and UN-LOCKING what the board had signed off.
+    with pytest.raises(SectionStatusMissingError):
+        status_from_json(raw)
+
+
+# --- I3 (final review): an edit elsewhere must not leave an approved/locked section invalid ---
+
+
+def _without_teen_table() -> AidRules:
+    doc = fictional_rules_json()
+    del doc["award_tables"]["teen"]
+    return AidRules.model_validate(doc)
+
+
+def test_an_approved_section_an_edit_elsewhere_breaks_goes_back_to_draft() -> None:
+    old = fictional_rules()
+    status = _approved("programs")
+    new = _without_teen_table()  # programs.teen.r1_table now names no table
+    outcome = apply_edit(old, new, status, before=validate_rules(old), after=validate_rules(new))
+    assert outcome.status["programs"].state == "draft"
+    assert outcome.reverted == ["programs"]
+
+
+def test_an_edit_that_would_break_a_locked_section_is_refused() -> None:
+    old = fictional_rules()
+    status = _lock(_approved("award_tables"), "award_tables")
+    bands = [*old.model_dump(mode="json")["tiers"]["bands"], {"lower": "300001"}]
+    new = with_lever(old, "tiers.bands", bands)  # the camp table no longer covers every band
+    with pytest.raises(LockedSectionInvalidatedError) as caught:
+        apply_edit(old, new, status, before=validate_rules(old), after=validate_rules(new))
+    assert caught.value.sections == ["award_tables"]
+    assert "award_tables" in str(caught.value)
+
+
+def test_a_locked_section_that_already_had_an_error_does_not_block_unrelated_edits() -> None:
+    # "Would GAIN errors": an error the locked section already carried (for example a
+    # session synced after the lock) is not this edit's doing.
+    old = with_lever(fictional_rules(), "programs.teen.r1_table", "gone")
+    approved = _approved("programs")
+    status = {**approved, "programs": approved["programs"].model_copy(update={"state": "locked", "locked_at": AT})}
+    new = with_lever(old, "income.medical_threshold", "4500")
+    outcome = apply_edit(old, new, status, before=validate_rules(old), after=validate_rules(new))
+    assert outcome.status["programs"].state == "locked"
+
+
+def test_lock_refuses_while_the_document_has_errors_anywhere() -> None:
+    broken = with_lever(fictional_rules(), "budget.pools.camp_pool.share_pct", "79")
+    with pytest.raises(DocumentHasErrorsError, match="budget"):
+        lock(_approved("income"), "income", at=AT, report=validate_rules(broken))
+
+
+def test_every_lifecycle_refusal_is_a_financial_aid_error() -> None:
+    for error in (
+        LockedSectionError,
+        LockedSectionInvalidatedError,
+        SectionHasErrorsError,
+        SectionNotApprovedError,
+        DocumentHasErrorsError,
+        SectionStatusMissingError,
+    ):
+        assert issubclass(error, FinancialAidError), error

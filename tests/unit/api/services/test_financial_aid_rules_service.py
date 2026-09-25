@@ -6,10 +6,11 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+from pydantic import ValidationError
 
 from api.services.financial_aid_rules_service import (
     PAGE_SIZE,
@@ -21,8 +22,18 @@ from api.services.financial_aid_rules_service import (
     YearMismatchError,
     _to_version,
 )
-from bunking.financial_aid.rules import SectionName, SessionRef
-from bunking.financial_aid.rules.lifecycle import LockedSectionError, SectionHasErrorsError, SectionNotApprovedError
+from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.rules import AidRules, SectionName, SessionRef
+from bunking.financial_aid.rules.lifecycle import (
+    DocumentHasErrorsError,
+    LockedSectionError,
+    LockedSectionInvalidatedError,
+    SectionHasErrorsError,
+    SectionNotApprovedError,
+    SectionStatusMissingError,
+    initial_status,
+    status_to_json,
+)
 from tests.unit.bunking.financial_aid.fixtures import (
     FICTIONAL_SESSION_IDS,
     fictional_rules,
@@ -79,6 +90,7 @@ class Recorder:
         actor: str,
         before: dict[str, Any] | None,
         after: dict[str, Any] | None,
+        reason: str | None,
     ) -> None:
         self.calls.append(
             {
@@ -90,6 +102,7 @@ class Recorder:
                 "actor": actor,
                 "before": before,
                 "after": after,
+                "reason": reason,
             }
         )
 
@@ -178,7 +191,7 @@ async def test_approval_validates_against_the_seasons_sessions() -> None:
     await service.create_version(fictional_rules(), actor=FINANCE)
     with pytest.raises(SectionHasErrorsError, match="programs"):
         await service.approve_section(2031, 1, "programs", actor=FINANCE, note=None)
-    approved = await service.approve_section(2031, 1, "income", actor=FINANCE, note="Board, Jan 15")
+    approved, _ = await service.approve_section(2031, 1, "income", actor=FINANCE, note="Board, Jan 15")
     income = approved.section_status["income"]
     assert (income.state, income.approved_by, income.approved_at, income.note) == (
         "approved",
@@ -215,7 +228,7 @@ async def test_start_from_last_year() -> None:
     service = _service(recorder=recorder)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
-    started = await service.start_from_last_year(2032, actor=FINANCE)
+    started, _ = await service.start_from_last_year(2032, actor=FINANCE)
     assert (started.year, started.version, started.parent_year, started.parent_version) == (2032, 1, 2031, 1)
     assert started.document.year == 2032
     assert started.document.income == fictional_rules().income
@@ -237,7 +250,7 @@ async def test_every_write_is_recorded() -> None:
     changed = with_lever(fictional_rules(), "income.medical_threshold", "4500")
     created = await service.create_version(fictional_rules(), actor=FINANCE)
     saved, _ = await service.save(2031, 1, changed, actor=FINANCE)
-    approved = await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
+    approved, _ = await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
     locked = await service.lock_section(2031, 1, "income", actor=FINANCE)
     new_version = await service.new_version(2031, 1, actor=FINANCE)
     assert [c["action"] for c in recorder.calls] == ["create", "save", "approve", "lock", "new_version"]
@@ -367,6 +380,7 @@ async def test_create_and_update_go_to_aid_rules() -> None:
     repo = AidRulesRepository(pb)
     await repo.create({"year": 2031})
     await repo.update("rec1", {"version": 2})
+    assert pb.collection.call_args_list == [call("aid_rules"), call("aid_rules")]
     pb.collection.return_value.create.assert_called_once_with({"year": 2031})
     pb.collection.return_value.update.assert_called_once_with("rec1", {"version": 2})
 
@@ -396,10 +410,122 @@ def test_to_version_accepts_a_document_and_section_status_that_arrive_as_json_st
         year=2031,
         version=1,
         document=json.dumps(fictional_rules_json()),
-        section_status="{}",
+        section_status=json.dumps(status_to_json(initial_status())),
         parent_year=0,
         parent_version=0,
     )
     version = _to_version(row)
     assert version.document == fictional_rules()
     assert {s.state for s in version.section_status.values()} == {"draft"}
+
+
+# --- final review: a missing section_status never means all-draft --------------------------
+
+
+@pytest.mark.parametrize("section_status", [None, "", "{}", {}])
+def test_a_record_with_no_section_status_raises_on_load(section_status: Any) -> None:
+    row = SimpleNamespace(
+        id="rec1",
+        year=2031,
+        version=1,
+        document=fictional_rules_json(),
+        section_status=section_status,
+        parent_year=0,
+        parent_version=0,
+    )
+    with pytest.raises(SectionStatusMissingError):
+        _to_version(row)
+
+
+# --- I3 (final review): an edit elsewhere must not leave an approved/locked section invalid ---
+
+
+def _without_teen_table() -> AidRules:
+    doc = fictional_rules_json()
+    del doc["award_tables"]["teen"]
+    return AidRules.model_validate(doc)
+
+
+@pytest.mark.asyncio
+async def test_an_approved_section_an_edit_breaks_returns_to_draft_and_is_recorded() -> None:
+    recorder = Recorder()
+    service = _service(recorder=recorder)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Board, Jan 15")
+    # Renaming a table away: programs.teen.r1_table now names no table (unknown_table).
+    saved, report = await service.save(2031, 1, _without_teen_table(), actor=FINANCE)
+    assert "unknown_table" in {i.code for i in report.errors_in("programs")}
+    assert saved.section_status["programs"].state == "draft"
+    revert = recorder.calls[-1]
+    assert (revert["action"], revert["section"], revert["reason"]) == ("revert_to_draft", "programs", None)
+    assert (revert["before"]["state"], revert["after"]["state"]) == ("approved", "draft")
+
+
+@pytest.mark.asyncio
+async def test_a_save_that_would_break_a_locked_section_is_refused() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_section(2031, 1, "award_tables", actor=FINANCE, note=None)
+    await service.lock_section(2031, 1, "award_tables", actor=FINANCE)
+    bands = [*fictional_rules_json()["tiers"]["bands"], {"lower": "300001"}]
+    with pytest.raises(LockedSectionInvalidatedError, match="award_tables"):
+        await service.save(2031, 1, with_lever(fictional_rules(), "tiers.bands", bands), actor=FINANCE)
+    assert (await service.load(2031, 1)).document == fictional_rules()
+
+
+@pytest.mark.asyncio
+async def test_lock_is_refused_while_the_document_has_errors_elsewhere() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
+    await service.save(2031, 1, with_lever(fictional_rules(), "budget.pools.camp_pool.share_pct", "79"), actor=FINANCE)
+    with pytest.raises(DocumentHasErrorsError, match="budget"):
+        await service.lock_section(2031, 1, "income", actor=FINANCE)
+    assert (await service.load(2031, 1)).section_status["income"].state == "approved"
+
+
+# --- final review minors -----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_approving_with_no_synced_sessions_warns_instead_of_skipping() -> None:
+    service = _service(FakeStore(sessions=[]))
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    approved, report = await service.approve_section(2031, 1, "programs", actor=FINANCE, note=None)
+    assert approved.section_status["programs"].state == "approved"
+    assert "no_sessions_to_check" in {w.code for w in report.warnings}
+
+
+@pytest.mark.asyncio
+async def test_the_recorder_carries_the_approval_note_as_its_reason() -> None:
+    recorder = Recorder()
+    service = _service(recorder=recorder)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.save(2031, 1, with_lever(fictional_rules(), "income.medical_threshold", "4500"), actor=FINANCE)
+    await service.approve_section(2031, 1, "income", actor=FINANCE, note="Board, Jan 15")
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    assert [(c["action"], c["reason"]) for c in recorder.calls] == [
+        ("create", None),
+        ("save", None),
+        ("approve", "Board, Jan 15"),
+        ("lock", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_start_from_last_year_clears_prices_and_warns() -> None:
+    # CampMinder reuses session ids across years, so last year's price keyed by a
+    # session id would silently price this year's session of the same id.
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    started, report = await service.start_from_last_year(2032, actor=FINANCE)
+    assert (started.document.cost.tuition, started.document.cost.family_rates) == ({}, [])
+    assert started.document.cost.override_reasons == fictional_rules().cost.override_reasons
+    warning = next(w for w in report.warnings if w.code == "prices_cleared_for_new_season")
+    assert (warning.section, warning.path) == ("cost", "cost.tuition")
+
+
+def test_every_service_refusal_is_a_financial_aid_error_and_pydantic_is_not() -> None:
+    for error in (NotLatestVersionError, RulesNotFoundError, VersionExistsError, YearMismatchError):
+        assert issubclass(error, FinancialAidError), error
+    assert not issubclass(ValidationError, FinancialAidError)
