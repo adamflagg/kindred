@@ -74,19 +74,32 @@ class JotformRepository:
         )
 
     async def upsert_form(
-        self, *, year: int, session_cm_id: int, form_id: str, field_map: dict[str, str], enabled: bool
+        self,
+        *,
+        year: int,
+        session_cm_id: int,
+        form_id: str,
+        field_map: dict[str, str],
+        field_map_meta: dict[str, dict[str, str]],
+        enabled: bool,
+        clear_definition: bool = False,
     ) -> Any:
+        """`clear_definition` drops the questions snapshot and title the pull
+        stored, for a weekend repointed at a different form."""
         existing = await self._page(
             JOTFORM_FORMS,
             query_params={"filter": f"year = {year} && session_cm_id = {session_cm_id}", "sort": STABLE_SORT},
         )
-        body = {
+        body: dict[str, Any] = {
             "year": year,
             "session_cm_id": session_cm_id,
             "form_id": form_id,
             "field_map": field_map,
+            "field_map_meta": field_map_meta,
             "enabled": enabled,
         }
+        if clear_definition:
+            body.update({"questions": None, "form_title": ""})
         collection = self.pb.collection(JOTFORM_FORMS)
         if existing:
             return await asyncio.to_thread(collection.update, existing[0].id, body)

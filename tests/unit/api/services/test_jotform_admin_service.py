@@ -59,11 +59,31 @@ def _guest(cm: int, first: str, last: str, session: int = 1000002) -> SimpleName
     )
 
 
+QUESTIONS = [
+    {"question_id": "3", "text": "First Name", "type": "control_textbox", "order": 3},
+    {"question_id": "4", "text": "Last Name", "type": "control_textbox", "order": 4},
+    {"question_id": "21", "text": "Bunking request", "type": "control_textarea", "order": 21},
+    {"question_id": "29", "text": "CPAP?", "type": "control_radio", "order": 29},
+]
+
 FORM = SimpleNamespace(
     id="form_ww",
     session_cm_id=1000002,
     form_id="261700000000001",
     field_map={"first_name": "3", "last_name": "4", "bunking_request": "21"},
+    field_map_meta={
+        "first_name": {"question_id": "3", "text": "First Name", "source": "carried"},
+        "last_name": {"question_id": "4", "text": "Last Name", "source": "guessed"},
+        "bunking_request": {
+            "question_id": "21",
+            "text": "Who would you like to room with?",
+            "source": "staff",
+            "flag": "wording_changed",
+        },
+        "cpap": {"question_id": "", "text": "", "flag": "needs_pick"},
+    },
+    questions=QUESTIONS,
+    form_title="Women's Weekend 2026",
     enabled=True,
     last_pulled_at="2026-09-24 10:00:00.000Z",
     last_pull_status="ok · 1 submissions · 0 matched · 1 unmatched",
@@ -73,33 +93,34 @@ FORM = SimpleNamespace(
 class TestForms:
     @pytest.mark.asyncio
     async def test_one_row_per_adult_weekend_whether_set_up_or_not(self) -> None:
+        # kindred#2828: the questions come from the form's DEFINITION snapshot,
+        # not from stored answers, so they exist before anyone submits.
         repo = _repo(
             fetch_forms=[FORM],
             fetch_submissions=[SimpleNamespace(id="s1", form="form_ww", jotform_status="ACTIVE")],
-            fetch_answers=[
-                SimpleNamespace(
-                    submission="s1",
-                    question_id="3",
-                    question_text="First Name",
-                    question_type="control_textbox",
-                    order=3,
-                ),
-                SimpleNamespace(
-                    submission="s1",
-                    question_id="4",
-                    question_text="Last Name",
-                    question_type="control_textbox",
-                    order=4,
-                ),
-            ],
         )
         forms = await JotformAdminService(repo).build_forms(YEAR)
         assert [r.session_name for r in forms.rows] == ["Women's Weekend", "Men's Weekend"]
         ww, mw = forms.rows
         assert (ww.form_id, ww.enabled, ww.submission_count) == ("261700000000001", True, 1)
-        assert ww.suggested_field_map == {"first_name": "3", "last_name": "4"}
-        assert [q.question_id for q in ww.questions] == ["3", "4"]
-        assert (mw.form_id, mw.enabled) == ("", False)
+        assert ww.form_title == "Women's Weekend 2026"
+        assert [q.question_id for q in ww.questions] == ["3", "4", "21", "29"]
+        assert ww.field_map == {"first_name": "3", "last_name": "4", "bunking_request": "21"}
+        meta = {role: (m.source, m.flag) for role, m in ww.field_map_meta.items()}
+        assert meta == {
+            "first_name": ("carried", None),
+            "last_name": ("guessed", None),
+            "bunking_request": ("staff", "wording_changed"),
+            "cpap": (None, "needs_pick"),
+        }
+        repo.fetch_answers.assert_not_awaited()
+        assert (mw.form_id, mw.enabled, mw.form_title, mw.questions) == ("", False, "", [])
+
+    @pytest.mark.asyncio
+    async def test_unreadable_meta_is_dropped_not_a_500(self) -> None:
+        odd = SimpleNamespace(**{**vars(FORM), "field_map_meta": {"cpap": {"source": "psychic"}, "coming_with": 7}})
+        forms = await JotformAdminService(_repo(fetch_forms=[odd])).build_forms(YEAR)
+        assert forms.rows[0].field_map_meta == {}
 
     @pytest.mark.asyncio
     async def test_save_parses_the_link_drops_blank_roles_and_clears_the_roster_cache(self) -> None:
@@ -115,14 +136,116 @@ class TestForms:
                 ),
             )
         repo.upsert_form.assert_awaited_once_with(
-            year=YEAR, session_cm_id=1000002, form_id="261700000000001", field_map={"first_name": "3"}, enabled=True
+            year=YEAR,
+            session_cm_id=1000002,
+            form_id="261700000000001",
+            field_map={"first_name": "3"},
+            # No questions snapshot yet (a first save): the pull fills the wording in.
+            field_map_meta={"first_name": {"question_id": "3", "text": "", "source": "staff"}},
+            enabled=True,
+            clear_definition=False,
         )
         cache.invalidate_all.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_save_marks_only_the_roles_staff_changed_as_staff(self) -> None:
+        # Owner ruling 2026-09-24 (kindred#2828): Save confirms what staff
+        # changed, not every guess on the card. An untouched carried or guessed
+        # role keeps its source, so an unreviewed guess is never carried into
+        # next year as staff-confirmed and the wrong-guess guard still applies.
+        # A role staff picked, or re-saved from staff, is stamped with its
+        # wording now, which a later rewording is detected against.
+        repo = _repo(fetch_forms=[FORM])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(
+                form_ref="261700000000001",
+                field_map={"first_name": "3", "last_name": "4", "bunking_request": "21", "cpap": "29"},
+                enabled=True,
+            ),
+        )
+        meta = repo.upsert_form.await_args.kwargs["field_map_meta"]
+        assert meta == {
+            "first_name": {"question_id": "3", "text": "First Name", "source": "carried"},
+            "last_name": {"question_id": "4", "text": "Last Name", "source": "guessed"},
+            "bunking_request": {"question_id": "21", "text": "Bunking request", "source": "staff"},
+            "cpap": {"question_id": "29", "text": "CPAP?", "source": "staff"},
+        }
+        assert repo.upsert_form.await_args.kwargs["clear_definition"] is False
+
+    @pytest.mark.asyncio
+    async def test_repicking_a_guessed_role_to_another_question_makes_it_staff(self) -> None:
+        repo = _repo(fetch_forms=[FORM])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(
+                form_ref="261700000000001",
+                field_map={"first_name": "3", "last_name": "21", "bunking_request": "21"},
+                enabled=True,
+            ),
+        )
+        meta = repo.upsert_form.await_args.kwargs["field_map_meta"]
+        assert meta["last_name"] == {"question_id": "21", "text": "Bunking request", "source": "staff"}
+        assert meta["first_name"]["source"] == "carried"
+
+    @pytest.mark.asyncio
+    async def test_a_role_staff_cleared_stays_cleared(self) -> None:
+        # Cleared, it is recorded as "staff chose no question", or the next pull
+        # would guess it straight back. A role that never had a question and
+        # still has none is left for the pull to resolve.
+        repo = _repo(fetch_forms=[FORM])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(form_ref="261700000000001", field_map={"first_name": "3", "last_name": "4"}, enabled=True),
+        )
+        kwargs = repo.upsert_form.await_args.kwargs
+        assert kwargs["field_map"] == {"first_name": "3", "last_name": "4"}
+        assert kwargs["field_map_meta"]["bunking_request"] == {"question_id": "", "text": "", "source": "staff"}
+        assert "cpap" not in kwargs["field_map_meta"]
+
+    @pytest.mark.asyncio
+    async def test_a_removed_staff_question_stays_flagged_across_an_unrelated_save(self) -> None:
+        # The pull drops a staff role whose question left the form and flags it
+        # "missing"; the card cannot send it (it is not in the effective map).
+        # An unrelated save must not turn that into "staff chose none", which
+        # hides the flag and leaves the role unset without anyone choosing.
+        form = SimpleNamespace(
+            **{
+                **vars(FORM),
+                "field_map": {"first_name": "3", "last_name": "4"},
+                "field_map_meta": {
+                    **FORM.field_map_meta,
+                    "bunking_request": {
+                        "question_id": "19",
+                        "text": "Bunking request",
+                        "source": "staff",
+                        "flag": "missing",
+                    },
+                },
+            }
+        )
+        repo = _repo(fetch_forms=[form])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(form_ref="261700000000001", field_map={"first_name": "3", "last_name": "4"}, enabled=True),
+        )
+        kwargs = repo.upsert_form.await_args.kwargs
+        assert kwargs["field_map_meta"]["bunking_request"] == {
+            "question_id": "19",
+            "text": "Bunking request",
+            "source": "staff",
+        }
 
     @pytest.mark.asyncio
     async def test_saving_a_different_form_drops_the_old_forms_mapping(self) -> None:
         # Question ids belong to one form: carried onto another form they
         # would name the wrong questions (or none), so a new form starts blank.
+        # kindred#2828: its questions snapshot, title and meta go too; the next
+        # pull reads the new form and resolves afresh.
         repo = _repo(fetch_forms=[FORM])
         await JotformAdminService(repo).save_form(
             YEAR,
@@ -130,7 +253,13 @@ class TestForms:
             JotformFormWrite(form_ref="261700000000002", field_map={"first_name": "3"}, enabled=True),
         )
         repo.upsert_form.assert_awaited_once_with(
-            year=YEAR, session_cm_id=1000002, form_id="261700000000002", field_map={}, enabled=True
+            year=YEAR,
+            session_cm_id=1000002,
+            form_id="261700000000002",
+            field_map={},
+            field_map_meta={},
+            enabled=True,
+            clear_definition=True,
         )
 
     @pytest.mark.asyncio
@@ -145,12 +274,11 @@ class TestForms:
                 enabled=True,
             ),
         )
-        repo.upsert_form.assert_awaited_once_with(
-            year=YEAR,
-            session_cm_id=1000002,
-            form_id="261700000000001",
-            field_map={"first_name": "3", "bunking_request": "21"},
-            enabled=True,
+        kwargs = repo.upsert_form.await_args.kwargs
+        assert (kwargs["form_id"], kwargs["field_map"], kwargs["clear_definition"]) == (
+            "261700000000001",
+            {"first_name": "3", "bunking_request": "21"},
+            False,
         )
 
     @pytest.mark.asyncio
@@ -212,6 +340,33 @@ class TestQueueAndLinks:
         assert (item.submitted_name, item.session_name) == ("Emma Ohnson", "Women's Weekend")
         assert item.suggestions[0].label == "Did you mean Emma Johnson?"
         assert [(g.person_cm_id, g.has_submission) for g in queue.guests] == [(1000005, False)]
+
+    @pytest.mark.asyncio
+    async def test_a_form_without_first_and_last_name_mapped_lists_no_submission(self) -> None:
+        # kindred#2828: matching never ran for it, so listing every submission
+        # as "needs a guest" would be noise. The form is reported once instead.
+        unmapped = SimpleNamespace(**{**vars(FORM), "field_map": {"bunking_request": "21"}})
+        resolved = SimpleNamespace(
+            **{**vars(self.SUB), "id": "s3", "submission_id": "6600000000000000003", "match_status": "ignored"}
+        )
+        repo = _repo(
+            fetch_forms=[unmapped],
+            fetch_submissions=[self.SUB, resolved],
+            fetch_answers=self.ANSWERS,
+            fetch_enrolled_guests=[_guest(1000005, "Emma", "Johnson")],
+        )
+        queue = await JotformAdminService(repo).build_queue(YEAR)
+        assert queue.unmatched == []
+        assert [(u.session_cm_id, u.session_name) for u in queue.unmapped] == [(1000002, "Women's Weekend")]
+        # A staff decision already made is still listed, so it can be undone.
+        assert [r.submission_id for r in queue.resolved] == ["6600000000000000003"]
+
+    @pytest.mark.asyncio
+    async def test_a_mapped_form_is_not_reported_unmapped(self) -> None:
+        repo = _repo(fetch_forms=[FORM], fetch_submissions=[self.SUB], fetch_answers=self.ANSWERS)
+        queue = await JotformAdminService(repo).build_queue(YEAR)
+        assert queue.unmapped == []
+        assert len(queue.unmatched) == 1
 
     @pytest.mark.asyncio
     async def test_has_submission_is_per_weekend(self) -> None:

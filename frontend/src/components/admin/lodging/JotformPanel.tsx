@@ -5,37 +5,34 @@
  * tab lives in the URL (`?session=<cm_id>`), so it is linkable and survives a
  * reload (CLAUDE.md "Family Camp Models Summer"); it defaults to the first.
  *
- * "Pull now" runs the `jotform_submissions` sync job, which pulls EVERY enabled
- * form, not only the open tab's; a completed pull refreshes this tab through
- * SYNC_DEPENDENT_PREFIXES.
+ * Each card's Save & pull (kindred#2828) runs the `jotform_submissions` sync
+ * job, which pulls EVERY enabled form, not only the open tab's, and refreshes
+ * this tab when that run finishes (`useJotformPull`).
  */
-import { RefreshCw } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useJotformForms } from '../../../hooks/useJotformAdmin'
-import { useRunIndividualSync } from '../../../hooks/useRunIndividualSync'
 import { QueryGuard } from '../../QueryGuard'
 import { JotformFormCard } from './JotformFormCard'
 import { JotformQueue } from './JotformQueue'
-import { BUTTON_SECONDARY, TAB_NAV, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from './lodgingStyles'
+import { TAB_NAV, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from './lodgingStyles'
 
-export const JOTFORM_SYNC_ID = 'jotform_submissions'
 const SESSION_PARAM = 'session'
 
 export function JotformPanel() {
   const { currentYear } = useCurrentYear()
   const yearReady = currentYear > 0
   const forms = useJotformForms(currentYear)
-  const runSync = useRunIndividualSync()
   const [searchParams] = useSearchParams()
   const requested = Number(searchParams.get(SESSION_PARAM))
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground max-w-2xl text-sm">
-        One Jotform per adult weekend this season. Paste the form&apos;s builder link, confirm which
-        question is which, and pull. Bunking requests then appear on the adult board for staff with
+        One Jotform per adult weekend this season. Paste the form&apos;s builder link and click Save
+        &amp; pull: Kindred reads the form, maps its questions and matches the submissions. Check
+        any question marked in amber. Bunking requests then appear on the adult board for staff with
         bunking access.
       </p>
 
@@ -74,23 +71,6 @@ export function JotformPanel() {
                   })}
                 </div>
               </nav>
-
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <span className="text-muted-foreground text-xs">
-                  Pulls every enabled weekend&apos;s form, not only this one.
-                </span>
-                <button
-                  type="button"
-                  className={BUTTON_SECONDARY}
-                  disabled={runSync.isPending}
-                  onClick={() => {
-                    runSync.mutate(JOTFORM_SYNC_ID)
-                  }}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Pull now
-                </button>
-              </div>
 
               {/* Keyed by year too: CampMinder reuses a weekend's session id
                   across years, and the card's unsaved edits must not follow a

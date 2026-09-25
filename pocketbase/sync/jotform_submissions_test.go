@@ -16,10 +16,14 @@ import (
 const jfYear = 2026
 const jfSession = 1000002 // a fictional adult weekend
 
-// fakeJotform serves canned submissions per form id, or an error.
+// fakeJotform serves canned submissions per form id, or an error, and each
+// form's definition: its questions (defaultQuestions when none are set) and title.
 type fakeJotform struct {
-	subs map[string][]jotform.Submission
-	err  error
+	subs      map[string][]jotform.Submission
+	err       error
+	questions map[string][]jotform.FormQuestion
+	titles    map[string]string
+	defErr    error
 	// onFetch, when set, runs inside the pull after the job loaded its forms:
 	// the seam for an admin edit made while a pull is in flight.
 	onFetch func()
@@ -35,8 +39,37 @@ func (f *fakeJotform) FormSubmissions(_ context.Context, formID string) ([]jotfo
 	return f.subs[formID], nil
 }
 
+func (f *fakeJotform) FormQuestions(_ context.Context, formID string) ([]jotform.FormQuestion, error) {
+	if f.defErr != nil {
+		return nil, f.defErr
+	}
+	if qs, ok := f.questions[formID]; ok {
+		return qs, nil
+	}
+	return defaultQuestions(), nil
+}
+
+func (f *fakeJotform) FormTitle(_ context.Context, formID string) (string, error) {
+	if f.defErr != nil {
+		return "", f.defErr
+	}
+	return f.titles[formID], nil
+}
+
+// defaultQuestions is the definition of seedWeekend's form: every question
+// its field_map names exists.
+func defaultQuestions() []jotform.FormQuestion {
+	return []jotform.FormQuestion{
+		{QuestionID: "4", Text: "Name", Type: "control_fullname", Order: 4},
+		{QuestionID: "5", Text: "Name for your nametag", Type: "control_textbox", Order: 5},
+		{QuestionID: "21", Text: "Bunking request", Type: "control_textarea", Order: 21},
+		{QuestionID: "40", Text: "Email", Type: "control_email", Order: 40},
+		{QuestionID: "77", Text: "Are you bringing a CPAP machine?", Type: "control_radio", Order: 77},
+	}
+}
+
 // newJotformTestApp extends the sync package's shared fixture with the three
-// Jotform tables (shaped like migration 1500000180) and the persons email
+// Jotform tables (shaped like migrations 1500000180 and 1500000181) and the persons email
 // columns the email tiebreak reads.
 func newJotformTestApp(t *testing.T) core.App {
 	t.Helper()
@@ -61,6 +94,9 @@ func newJotformTestApp(t *testing.T) core.App {
 	forms.Fields.Add(&core.BoolField{Name: "enabled"})
 	forms.Fields.Add(&core.DateField{Name: "last_pulled_at"})
 	forms.Fields.Add(&core.TextField{Name: "last_pull_status"})
+	forms.Fields.Add(&core.JSONField{Name: "field_map_meta"})
+	forms.Fields.Add(&core.JSONField{Name: "questions"})
+	forms.Fields.Add(&core.TextField{Name: "form_title"})
 	saveCollection(t, app, forms)
 
 	subs := core.NewBaseCollection("jotform_submissions")
@@ -348,7 +384,10 @@ func TestJotformAutoMatchIsReevaluatedEachPull(t *testing.T) {
 	}
 }
 
-func TestJotformUnmappedFormStoresButSkipsMatching(t *testing.T) {
+// kindred#2828 changed this test's premise: an empty field_map no longer
+// means "unmapped", because the pull now resolves roles itself. What still
+// skips matching is a form where no tier resolves first AND last name.
+func TestJotformFormWithNoResolvableNameStoresButSkipsMatching(t *testing.T) {
 	t.Parallel()
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
@@ -357,9 +396,15 @@ func TestJotformUnmappedFormStoresButSkipsMatching(t *testing.T) {
 	if err := app.Save(form); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runJotform(t, app, &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": {
-		submission("6600000000000000001", "2026-08-03 09:00:00", "Olivia", "Chen", ""),
-	}}}); err != nil {
+	if _, err := runJotform(t, app, &fakeJotform{
+		subs: map[string][]jotform.Submission{"261700000000001": {
+			submission("6600000000000000001", "2026-08-03 09:00:00", "Olivia", "Chen", ""),
+		}},
+		questions: map[string][]jotform.FormQuestion{"261700000000001": {
+			{QuestionID: "4", Text: "Who are you?", Type: "control_textbox", Order: 4},
+			{QuestionID: "21", Text: "Bunking request", Type: "control_textarea", Order: 21},
+		}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if got := subRecord(t, app, "6600000000000000001"); got.GetString("match_status") != "unmatched" {

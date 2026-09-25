@@ -67,11 +67,17 @@ async def test_upsert_updates_the_existing_row_or_creates_one() -> None:
         "session_cm_id": 1000002,
         "form_id": "261700000000001",
         "field_map": {"first_name": "3"},
+        "field_map_meta": {"first_name": {"question_id": "3", "text": "First Name", "source": "staff"}},
         "enabled": True,
     }
     for pb, method in ((_pb([SimpleNamespace(id="form_ww")]), "update"), (_pb(), "create")):
         await JotformRepository(pb).upsert_form(
-            year=2026, session_cm_id=1000002, form_id="261700000000001", field_map={"first_name": "3"}, enabled=True
+            year=2026,
+            session_cm_id=1000002,
+            form_id="261700000000001",
+            field_map={"first_name": "3"},
+            field_map_meta={"first_name": {"question_id": "3", "text": "First Name", "source": "staff"}},
+            enabled=True,
         )
         collection = pb.collection.return_value
         if method == "update":
@@ -80,3 +86,20 @@ async def test_upsert_updates_the_existing_row_or_creates_one() -> None:
         else:
             collection.create.assert_called_once_with(expected)
             collection.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upsert_can_clear_the_old_forms_definition() -> None:
+    # kindred#2828: repointed at another form, the old questions and title go.
+    pb = _pb([SimpleNamespace(id="form_ww")])
+    await JotformRepository(pb).upsert_form(
+        year=2026,
+        session_cm_id=1000002,
+        form_id="261700000000002",
+        field_map={},
+        field_map_meta={},
+        enabled=True,
+        clear_definition=True,
+    )
+    body = pb.collection.return_value.update.call_args.args[1]
+    assert (body["questions"], body["form_title"], body["field_map"], body["field_map_meta"]) == (None, "", {}, {})

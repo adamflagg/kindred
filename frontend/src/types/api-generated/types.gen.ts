@@ -2629,16 +2629,20 @@ export type JotformFormRow = {
    */
   form_id?: string
   /**
+   * Form Title
+   */
+  form_title?: string
+  /**
    * Field Map
    */
   field_map?: {
     [key: string]: string
   }
   /**
-   * Suggested Field Map
+   * Field Map Meta
    */
-  suggested_field_map?: {
-    [key: string]: string
+  field_map_meta?: {
+    [key: string]: JotformRoleMeta
   }
   /**
    * Questions
@@ -2838,6 +2842,10 @@ export type JotformQueueResponse = {
    */
   unmatched?: Array<JotformQueueItem>
   /**
+   * Unmapped
+   */
+  unmapped?: Array<JotformUnmappedForm>
+  /**
    * Resolved
    */
   resolved?: Array<JotformQueueItem>
@@ -2849,6 +2857,31 @@ export type JotformQueueResponse = {
    * Guests
    */
   guests?: Array<JotformGuest>
+}
+
+/**
+ * JotformRoleMeta
+ *
+ * How the pull resolved one role (kindred#2828). `source` is absent for a
+ * role nothing resolved; `flag` is what staff should look at, if anything.
+ */
+export type JotformRoleMeta = {
+  /**
+   * Question Id
+   */
+  question_id?: string
+  /**
+   * Text
+   */
+  text?: string
+  /**
+   * Source
+   */
+  source?: 'staff' | 'carried' | 'guessed' | null
+  /**
+   * Flag
+   */
+  flag?: 'wording_changed' | 'missing' | 'needs_pick' | null
 }
 
 /**
@@ -2883,6 +2916,23 @@ export type JotformSuggestion = {
    * Demoted
    */
   demoted?: boolean
+}
+
+/**
+ * JotformUnmappedForm
+ *
+ * A weekend whose form has submissions but no first + last name mapped, so
+ * matching has not run: its submissions are not listed as needing a guest.
+ */
+export type JotformUnmappedForm = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name?: string
 }
 
 /**

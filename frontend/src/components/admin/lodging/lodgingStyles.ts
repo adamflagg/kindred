@@ -59,6 +59,10 @@ export const ACTION_LINK = 'text-xs font-medium hover:underline'
 /** A status badge, in the roster's badge shape. */
 export const PILL = 'rounded-full px-2 py-0.5 text-xs font-medium'
 export const MUTED_PILL = `bg-muted text-muted-foreground ${PILL}`
+/** A badge asking staff to look (WeekendStatusPanel's amber pill). */
+export const AMBER_PILL = `bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 ${PILL}`
+/** A one-line amber note, as the unit editors draw one. */
+export const AMBER_NOTE = 'text-xs text-amber-700 dark:text-amber-400'
 
 /** A table's header row, and the heading over a group of rows. */
 export const HEADER_ROW =

@@ -18,6 +18,10 @@ const (
 	RoleRespondentEmail = "respondent_email"
 )
 
+// typeFullname is Jotform's full-name control: one question answering both
+// first and last name.
+const typeFullname = "control_fullname"
+
 // AnswerRow is one answered question, stored generically in jotform_answers.
 type AnswerRow struct {
 	QuestionID   string
@@ -152,7 +156,7 @@ func namePart(byQuestion map[string]AnswerRow, qid, part string) string {
 	if qid == "" || !ok {
 		return ""
 	}
-	if row.QuestionType == "control_fullname" && len(row.AnswerJSON) > 0 {
+	if row.QuestionType == typeFullname && len(row.AnswerJSON) > 0 {
 		var parts map[string]any
 		if json.Unmarshal(row.AnswerJSON, &parts) == nil {
 			if s, ok := parts[part].(string); ok {
