@@ -254,24 +254,39 @@ func (s *FinancialAidApplicationsSync) Sync(ctx context.Context) error {
 		return nil
 	}
 
-	// Step 5: Upsert applications (compare with existing, create/update/skip)
-	created, updated, errors := s.upsertApplications(ctx, applications, year)
+	// Step 5: Upsert, then sweep this season's rows whose person has no FA answer left.
+	existingMap, err := s.loadExistingApplications(ctx, year)
+	if err != nil {
+		return fmt.Errorf("loading existing applications: %w", err)
+	}
+	created, updated, errs := s.upsertApplications(ctx, applications, year, existingMap)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
-	s.Stats.Errors = errors
+	s.Stats.Errors = errs
+	s.SyncSuccessful = true
 
-	// WAL checkpoint
-	if s.Stats.Created > 0 || s.Stats.Updated > 0 {
+	computed := make(map[string]bool, len(applications))
+	for _, a := range applications {
+		computed[a.personPBID] = true
+	}
+	deleted, sweepErr := s.deleteOrphans(existingMap, computed, year)
+	s.Stats.Deleted = deleted
+
+	// Checkpoint before the error return below: the upsert has already written.
+	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
 	}
+	if sweepErr != nil {
+		return wrapOrphanSweepError(sweepErr)
+	}
 
-	s.SyncSuccessful = true
 	slog.Info("Financial aid applications computation completed",
 		"year", year,
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
+		"deleted", s.Stats.Deleted,
 		"errors", s.Stats.Errors,
 	)
 
@@ -912,23 +927,16 @@ func parseNumberValue(value string) float64 {
 	return num
 }
 
-// upsertApplications creates or updates application records
+// upsertApplications creates or updates application records. existingMap is preloaded by the
+// caller (Sync), which also reuses it to compute the orphan sweep afterwards.
 func (s *FinancialAidApplicationsSync) upsertApplications(
-	ctx context.Context, applications []*faApplicationData, year int,
+	ctx context.Context, applications []*faApplicationData, year int, existingMap map[string]*core.Record,
 ) (created, updated, errors int) {
 	col, err := s.App.FindCollectionByNameOrId("financial_aid_applications")
 	if err != nil {
 		slog.Error("Error finding financial_aid_applications collection", "error", err)
 		return 0, 0, len(applications)
 	}
-
-	// Preload existing records for this year
-	existingMap, err := s.loadExistingApplications(ctx, year)
-	if err != nil {
-		slog.Error("Error loading existing applications", "error", err)
-		return 0, 0, len(applications)
-	}
-	slog.Info("Loaded existing applications", "count", len(existingMap))
 
 	// Fields to skip during idempotency comparison (always update these)
 	skipFields := map[string]bool{"year": true}
@@ -987,6 +995,41 @@ func (s *FinancialAidApplicationsSync) upsertApplications(
 	}
 
 	return created, updated, errors
+}
+
+// deleteOrphans removes this season's application rows whose person no longer has any FA
+// answer (design §6.4). existing is keyed by person PB id, as loadExistingApplications
+// builds it; computed is the set this run produced. Guarded like every sweep in the
+// package: an empty or collapsed answer load must not read as "every family withdrew".
+func (s *FinancialAidApplicationsSync) deleteOrphans(
+	existing map[string]*core.Record, computed map[string]bool, year int,
+) (int, error) {
+	guard := OrphanSweepGuard{
+		Entity:   serviceNameFinancialAidApplications,
+		Year:     year,
+		Computed: len(computed),
+		Hint:     "check that person_custom_values holds this season's FA- answers (the weekly custom-values sweep)",
+	}
+	if err := guard.Check(len(existing)); err != nil {
+		return 0, err
+	}
+
+	deleted := 0
+	for personPBID, record := range existing {
+		if computed[personPBID] {
+			continue
+		}
+		if err := s.App.Delete(record); err != nil {
+			slog.Error("Error deleting orphan financial aid application", "id", record.Id, "error", err)
+			s.Stats.Errors++
+			continue
+		}
+		deleted++
+	}
+	if deleted > 0 {
+		slog.Info("Deleted orphan financial aid applications", "year", year, "count", deleted)
+	}
+	return deleted, nil
 }
 
 // recordToMap converts a PocketBase record to a map for comparison

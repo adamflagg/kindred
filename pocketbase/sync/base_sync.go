@@ -237,7 +237,7 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
 // exempt rather than overlooked -- it builds its key set upstream of the transform
 // that rejects, so nothing is ever missing from it. The reasoning is at that
-// function. Nine OTHER services carry their own deleteOrphans without embedding
+// function. Ten OTHER services carry their own deleteOrphans without embedding
 // this type at all and are out of reach entirely; see OrphanSweepGuard's doc.
 //
 // The count is service-scoped, not collection-scoped, so in a service that syncs

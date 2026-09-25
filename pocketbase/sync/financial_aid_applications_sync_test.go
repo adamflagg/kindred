@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -216,5 +217,93 @@ func TestFASync_MirrorsGrantCrossCheckAnswers(t *testing.T) {
 	if rec.GetString("one_happy_camper") != "Yes" || rec.GetString("synagogue_grant") != "No" {
 		t.Errorf("one_happy_camper=%q synagogue_grant=%q, want Yes/No",
 			rec.GetString("one_happy_camper"), rec.GetString("synagogue_grant"))
+	}
+}
+
+func TestFASync_SweepsAnApplicationWhoseAnswersAreGone(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	interest := faAddDef(t, app, 1, "CA-FinancialAssistanceInterest", true)
+	kept := faAddPerson(t, app, 9200051)
+	gone := faAddPerson(t, app, 9200052)
+	faAddValue(t, app, kept, interest, "Yes", faSeasonalAt)
+	faAddValue(t, app, gone, interest, "Yes", faSeasonalAt)
+	faRun(t, app)
+
+	rows, err := app.FindRecordsByFilter("person_custom_values", "person = {:p}", "", 0, 0, map[string]any{"p": gone})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("find gone's value: %v (%d rows)", err, len(rows))
+	}
+	if err := app.Delete(rows[0]); err != nil {
+		t.Fatalf("delete value: %v", err)
+	}
+
+	s := faRun(t, app)
+	if s.Stats.Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", s.Stats.Deleted)
+	}
+	if _, err := app.FindFirstRecordByFilter("financial_aid_applications", "person = {:p}",
+		map[string]any{"p": gone}); err == nil {
+		t.Error("the application whose answers are gone was not swept")
+	}
+	faRow(t, app, kept)
+}
+
+// A sweep covers only its own season.
+func TestFASync_SweepLeavesOtherSeasonsAlone(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	interest := faAddDef(t, app, 1, "CA-FinancialAssistanceInterest", true)
+	p := faAddPerson(t, app, 9200061)
+	faAddValue(t, app, p, interest, "Yes", faSeasonalAt)
+	saveRecord(t, app, "financial_aid_applications", map[string]any{"person": "prior", "person_id": 9200062, "year": 2025})
+
+	faRun(t, app)
+
+	if _, err := app.FindFirstRecordByFilter("financial_aid_applications", "year = 2025"); err != nil {
+		t.Error("a 2026 run swept a 2025 application")
+	}
+}
+
+// No answers at all for a season with stored applications is a collapse, not a mass
+// withdrawal: nothing is deleted and the run fails loudly.
+func TestFASync_RefusesToSweepWhenNoAnswersLoad(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	for i := range 3 {
+		saveRecord(t, app, "financial_aid_applications", map[string]any{
+			"person": fmt.Sprintf("p%d", i), "person_id": 9200070 + i, "year": faTestYear,
+		})
+	}
+	s := NewFinancialAidApplicationsSync(app)
+	s.Year = faTestYear
+	err := s.Sync(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "refus") {
+		t.Errorf("Sync = %v, want a refused-sweep error", err)
+	}
+	rows, _ := app.FindRecordsByFilter("financial_aid_applications", fmt.Sprintf("year = %d", faTestYear), "", 0, 0)
+	if len(rows) != 3 {
+		t.Errorf("rows = %d, want 3 (nothing deleted)", len(rows))
+	}
+}
+
+// Review Focus 4: an unchanged season rewrites nothing, including the JSON column.
+func TestFASync_SecondIdenticalRunUpdatesNothing(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	income := faAddDef(t, app, 2, "FA-Total Gross Pre-Tax Income", true)
+	govSubsidies := faAddDef(t, app, 4, "FA-Gov Subsidies", false)
+	confirmed := faAddDef(t, app, 7, "FA-confirmpretax income", true)
+	p := faAddPerson(t, app, 9200081)
+	faAddValue(t, app, p, income, "$60,000", faSeasonalAt)
+	faAddValue(t, app, p, govSubsidies, "Yes", "2019-03-02T18:04:05.000+00:00")
+	faAddValue(t, app, p, confirmed, "$60,000", faSeasonalAt)
+	donorOnly := faAddPerson(t, app, 9200082)
+	faAddValue(t, app, donorOnly, faAddDef(t, app, 3, "CA-Donation amount", true), "$25", faSeasonalAt)
+
+	faRun(t, app)
+	s := faRun(t, app)
+	if s.Stats.Created != 0 || s.Stats.Updated != 0 || s.Stats.Deleted != 0 {
+		t.Errorf("second run stats = %+v, want nothing created, updated or deleted", s.Stats)
 	}
 }

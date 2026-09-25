@@ -29,7 +29,7 @@ package sync
 // Only the six BaseSyncService.DeleteOrphansGuarded callers carry that shape,
 // because they are the only services where both halves are readable from a
 // single call site (ruled 2026-08-31). Deriving a key for the other 30
-// collection-writers was considered and rejected: nine of them carry their own
+// collection-writers was considered and rejected: ten of them carry their own
 // deleteOrphans without embedding BaseSyncService at all (see OrphanSweepGuard's
 // doc comment), so a key declared for those would be asserted here and read
 // nowhere -- it would drift from the real write path with nothing to catch it,
@@ -357,7 +357,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 	{Service: "household_custom_values_family_camp", SameGrainAs: "household_custom_values"},
 
 	// ------------------------------------------------------------- Transform
-	// Nine of the services below carry their own deleteOrphans without embedding
+	// Ten of the services below carry their own deleteOrphans without embedding
 	// BaseSyncService at all -- OrphanSweepGuard's doc comment names them. They
 	// build the collapse guard themselves, but the key pair is not readable from
 	// one call site, so declaring one here would assert something nothing reads.
@@ -404,50 +404,50 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "staff_skills", Writes: []CollectionGrain{{
 		Collection: "staff_skills",
-		NoGrain: "StaffSkillsSync.deleteOrphans is hand-rolled -- one of the nine " +
+		NoGrain: "StaffSkillsSync.deleteOrphans is hand-rolled -- one of the ten " +
 			"services OrphanSweepGuard's doc names as not embedding BaseSyncService",
 	}}},
 
 	{Service: "financial_aid_applications", Writes: []CollectionGrain{{
 		Collection: "financial_aid_applications",
-		NoGrain: "financial_aid_applications.go performs no orphan sweep at all, so " +
-			"there is no orphan key for a write key to agree with",
+		NoGrain: "FinancialAidApplicationsSync.deleteOrphans is hand-rolled -- it does not " +
+			"embed BaseSyncService; keyed by person PB id against loadExistingApplications' map",
 	}}},
 
 	{Service: "household_demographics", Writes: []CollectionGrain{{
 		Collection: "household_demographics",
 		NoGrain: "HouseholdDemographicsSync.deleteOrphans is hand-rolled -- one of the " +
-			"nine services that do not embed BaseSyncService",
+			"ten services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "camper_dietary", Writes: []CollectionGrain{{
 		Collection: "camper_dietary",
-		NoGrain: "CamperDietarySync.deleteOrphans is hand-rolled -- one of the nine " +
+		NoGrain: "CamperDietarySync.deleteOrphans is hand-rolled -- one of the ten " +
 			"services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "camper_transportation", Writes: []CollectionGrain{{
 		Collection: "camper_transportation",
 		NoGrain: "CamperTransportationSync.deleteOrphans is hand-rolled -- one of the " +
-			"nine services that do not embed BaseSyncService",
+			"ten services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "quest_registrations", Writes: []CollectionGrain{{
 		Collection: "quest_registrations",
 		NoGrain: "QuestRegistrationsSync.deleteOrphans is hand-rolled -- one of the " +
-			"nine services that do not embed BaseSyncService",
+			"ten services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "staff_applications", Writes: []CollectionGrain{{
 		Collection: "staff_applications",
-		NoGrain: "StaffApplicationsSync.deleteOrphans is hand-rolled -- one of the nine " +
+		NoGrain: "StaffApplicationsSync.deleteOrphans is hand-rolled -- one of the ten " +
 			"services that do not embed BaseSyncService (it shipped one of the two " +
 			"hand-written guard copies OrphanSweepGuard replaced)",
 	}}},
 
 	{Service: "staff_vehicle_info", Writes: []CollectionGrain{{
 		Collection: "staff_vehicle_info",
-		NoGrain: "StaffVehicleInfoSync.deleteOrphans is hand-rolled -- one of the nine " +
+		NoGrain: "StaffVehicleInfoSync.deleteOrphans is hand-rolled -- one of the ten " +
 			"services that do not embed BaseSyncService (it shipped the other " +
 			"hand-written guard copy)",
 	}}},
@@ -455,7 +455,7 @@ var serviceGrainDeclarations = []ServiceGrain{
 	{Service: "normalize_geographic", Writes: []CollectionGrain{{
 		Collection: "normalized_mappings",
 		NoGrain: "NormalizeGeographicSync.deleteOrphans is hand-rolled -- one of the " +
-			"nine services that do not embed BaseSyncService",
+			"ten services that do not embed BaseSyncService",
 	}}},
 
 	{Service: "enrollment_snapshots", Writes: []CollectionGrain{{
