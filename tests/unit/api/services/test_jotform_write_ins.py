@@ -299,7 +299,7 @@ class TestLinkWriteIn:
             0,
             "staff@example.com",
         )
-        cache.invalidate_all.assert_called_once()
+        cache.invalidate_read.assert_called_once_with("fetch_jotform_bunking_rows", YEAR)
 
     @pytest.mark.asyncio
     async def test_a_second_filing_reuses_the_write_ins_key(self) -> None:

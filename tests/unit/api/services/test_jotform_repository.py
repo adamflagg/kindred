@@ -103,3 +103,56 @@ async def test_upsert_can_clear_the_old_forms_definition() -> None:
     )
     body = pb.collection.return_value.update.call_args.args[1]
     assert (body["questions"], body["form_title"], body["field_map"], body["field_map_meta"]) == (None, "", {}, {})
+
+
+@pytest.mark.asyncio
+async def test_a_weekends_scenarios_are_scoped_to_its_year_and_session() -> None:
+    # The Requests tab validates `?scenario=` against these and names them.
+    pb = _pb()
+    await JotformRepository(pb).fetch_weekend_scenarios(2026, 1000002)
+    pb.collection.assert_called_with("saved_scenarios")
+    kwargs = pb.collection.return_value.get_full_list.call_args.kwargs
+    assert kwargs["query_params"]["filter"] == "year = 2026 && session.cm_id = 1000002"
+    assert kwargs["query_params"]["sort"].split(",")[-1] == "id"
+    assert kwargs["batch"] == PAGE_SIZE
+
+
+# kindred#2839 follow-up: the Requests tab and every staff action are one
+# weekend's, so they ask PocketBase for that weekend's rows alone. The year's
+# answers were ~90% of the queue's read time on the dev database.
+_WEEKEND = 1000002
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("read", "clause"),
+    [
+        pytest.param(
+            lambda r, s: r.fetch_submissions(2026, session_cm_id=s), "session_cm_id = 1000002", id="submissions"
+        ),
+        pytest.param(
+            lambda r, s: r.fetch_answers(2026, session_cm_id=s), "submission.session_cm_id = 1000002", id="answers"
+        ),
+        pytest.param(
+            lambda r, s: r.fetch_enrolled_guests(2026, session_cm_id=s), "session.cm_id = 1000002", id="guests"
+        ),
+        pytest.param(lambda r, s: r.fetch_live_write_ins(2026, session_cm_id=s), "session_cm_id = 1000002", id="live"),
+        pytest.param(
+            lambda r, s: r.fetch_draft_write_ins(2026, session_cm_id=s), "session_cm_id = 1000002", id="drafts"
+        ),
+    ],
+)
+async def test_a_weekends_read_is_narrowed_to_that_weekend_and_keeps_the_year(
+    read: Callable[[JotformRepository, int | None], Awaitable[Any]], clause: str
+) -> None:
+    pb = _pb()
+    await read(JotformRepository(pb), _WEEKEND)
+    scoped = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["filter"]
+    assert clause in scoped
+    assert "2026" in scoped
+
+    pb = _pb()
+    await read(JotformRepository(pb), None)
+    year_wide = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["filter"]
+    assert "1000002" not in year_wide
+    assert scoped.startswith(year_wide)

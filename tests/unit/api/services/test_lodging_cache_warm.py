@@ -37,6 +37,7 @@ from api.services.lodging_cache import LodgingYearCache, cached_by_year
 from api.services.lodging_cache_warm import (
     cached_read_tables,
     current_season_year,
+    reads_depending_on,
     refresh_lodging_cache_forever,
     sync_invalidates_lodging_cache,
     warm_lodging_year,
@@ -418,3 +419,44 @@ def test_the_jotform_pull_writes_exactly_its_three_tables() -> None:
     from api.constants.sync_job_writes import SYNC_JOB_WRITES
 
     assert SYNC_JOB_WRITES["jotform_submissions"] == frozenset({JOTFORM_FORMS, JOTFORM_SUBMISSIONS, JOTFORM_ANSWERS})
+
+
+# ----------------------------------------------------- one read's eviction
+
+
+class TestInvalidatingOneRead:
+    """kindred#2839 follow-up: a Jotform staff write drops only the reads that
+    depend on Jotform tables, not the whole year."""
+
+    def test_it_drops_that_read_of_that_year_alone(self) -> None:
+        cache = LodgingYearCache()
+        cache.set("fetch_a", 2026, 1)
+        cache.set("fetch_a", 2025, 2)
+        cache.set("fetch_b", 2026, 3)
+
+        cache.invalidate_read("fetch_a", 2026)
+
+        assert (cache.get("fetch_a", 2026), cache.get("fetch_a", 2025), cache.get("fetch_b", 2026)) == (None, 2, 3)
+
+    @pytest.mark.asyncio
+    async def test_a_fetch_that_straddles_it_is_not_written_back(self) -> None:
+        cache = LodgingYearCache()
+        release = asyncio.Event()
+
+        class Repo:
+            @cached_by_year(cache, tables=("jotform_submissions",))
+            async def fetch_thing(self, year: int) -> dict[str, int]:
+                await release.wait()
+                return {"answer": year}
+
+        in_flight = asyncio.create_task(Repo().fetch_thing(2026))
+        await asyncio.sleep(0)
+        cache.invalidate_read("fetch_thing", 2026)
+        release.set()
+
+        assert await in_flight == {"answer": 2026}
+        assert cache.get("fetch_thing", 2026) is None
+
+    def test_the_reads_a_table_reaches_are_the_ones_that_declared_it(self) -> None:
+        assert reads_depending_on(frozenset({"jotform_submissions"})) == ("fetch_jotform_bunking_rows",)
+        assert reads_depending_on(frozenset({"lodging_write_ins"})) == ()

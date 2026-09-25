@@ -2589,6 +2589,24 @@ export type IncrementalUpdateResponse = {
 }
 
 /**
+ * JotformActionResult
+ *
+ * What a link, ignore, unlink or restore did (kindred#2839 follow-up):
+ * one filer, one decision. `also` names the filer's other filings of the
+ * weekend the same decision reached.
+ */
+export type JotformActionResult = {
+  /**
+   * Action
+   */
+  action: 'linked' | 'ignored' | 'unlinked' | 'restored'
+  /**
+   * Also
+   */
+  also?: Array<JotformSiblingFiling>
+}
+
+/**
  * JotformDuplicateGroup
  */
 export type JotformDuplicateGroup = {
@@ -2844,9 +2862,17 @@ export type JotformQueueItem = {
    */
   write_in_unit?: string
   /**
+   * Write In Placed
+   */
+  write_in_placed?: boolean | null
+  /**
    * Write In Suggestion
    */
   write_in_suggestion?: string
+  /**
+   * Name Tiers
+   */
+  name_tiers?: Array<Array<string>>
 }
 
 /**
@@ -2857,6 +2883,14 @@ export type JotformQueueResponse = {
    * Year
    */
   year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number | null
+  /**
+   * Scenario
+   */
+  scenario?: string
   /**
    * Unmatched
    */
@@ -2881,6 +2915,10 @@ export type JotformQueueResponse = {
    * Write In Options
    */
   write_in_options?: Array<JotformWriteInOption>
+  /**
+   * Write In Link Suggestions
+   */
+  write_in_link_suggestions?: Array<JotformWriteInLinkSuggestion>
   /**
    * Duplicates
    */
@@ -2914,6 +2952,27 @@ export type JotformRoleMeta = {
    * Flag
    */
   flag?: 'wording_changed' | 'missing' | 'needs_pick' | null
+}
+
+/**
+ * JotformSiblingFiling
+ *
+ * Another filing of the same weekend by an identical submitter that a
+ * staff action moved along with the one clicked.
+ */
+export type JotformSiblingFiling = {
+  /**
+   * Submission Id
+   */
+  submission_id: string
+  /**
+   * Submitted Name
+   */
+  submitted_name: string
+  /**
+   * Submitted At
+   */
+  submitted_at: string
 }
 
 /**
@@ -2984,6 +3043,54 @@ export type JotformWriteInLinkRequest = {
 }
 
 /**
+ * JotformWriteInLinkSuggestion
+ *
+ * An unlinked write-in of the viewed scenario that looks like a filer
+ * (kindred#2828 ruling 2026-09-25): a label and a one-click link, never a
+ * link made on its own. `linked_in` names where the filing is already
+ * linked ("the live board" or a scenario's name), or is "" for a filing
+ * still needing a guest.
+ */
+export type JotformWriteInLinkSuggestion = {
+  /**
+   * Option Id
+   */
+  option_id: string
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Unit Name
+   */
+  unit_name?: string
+  /**
+   * Occupant Name
+   */
+  occupant_name: string
+  /**
+   * Submission Id
+   */
+  submission_id: string
+  /**
+   * Filer Name
+   */
+  filer_name: string
+  /**
+   * Linked In
+   */
+  linked_in?: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Similar
+   */
+  similar?: boolean
+}
+
+/**
  * JotformWriteInOption
  *
  * One of a weekend's board write-ins a filing can be linked to: a
@@ -3010,6 +3117,10 @@ export type JotformWriteInOption = {
    * Occupant Name
    */
   occupant_name: string
+  /**
+   * Linked Filers
+   */
+  linked_filers?: Array<string>
 }
 
 /**
@@ -12578,6 +12689,18 @@ export type GetQueueApiJotformQueueGetData = {
      * Year
      */
     year: number
+    /**
+     * Session Cm Id
+     *
+     * One adult weekend: its Requests tab
+     */
+    session_cm_id?: number | null
+    /**
+     * Scenario
+     *
+     * Saved scenario id; empty reads the live board
+     */
+    scenario?: string
   }
   url: '/api/jotform/queue'
 }
@@ -12626,6 +12749,10 @@ export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostError =
 
 export type LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostResponses = {
   /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
+  /**
    * Successful Response
    */
   204: void
@@ -12657,6 +12784,10 @@ export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostError =
   IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors[keyof IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostErrors]
 
 export type IgnoreSubmissionApiJotformSubmissionsSubmissionIdIgnorePostResponses = {
+  /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
   /**
    * Successful Response
    */
@@ -12690,6 +12821,10 @@ export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostError =
 
 export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses = {
   /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
+  /**
    * Successful Response
    */
   204: void
@@ -12721,6 +12856,10 @@ export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostE
   LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors[keyof LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors]
 
 export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses = {
+  /**
+   * The filer's other filings the action also moved
+   */
+  200: JotformActionResult
   /**
    * Successful Response
    */

@@ -69,6 +69,12 @@ def cached_read_tables() -> dict[str, tuple[str, ...]]:
     }
 
 
+def reads_depending_on(tables: frozenset[str]) -> tuple[str, ...]:
+    """The cached reads whose declared tables include any of `tables`: what a
+    write to those tables must drop (kindred#2839 follow-up)."""
+    return tuple(name for name, declared in cached_read_tables().items() if tables & set(declared))
+
+
 def _cached_tables() -> frozenset[str]:
     return frozenset(table for tables in cached_read_tables().values() for table in tables)
 

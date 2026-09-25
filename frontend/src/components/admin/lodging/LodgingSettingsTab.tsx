@@ -44,7 +44,8 @@ const SECTIONS = [
   { id: 'attribution', label: 'Cabin Weekends', icon: CalendarCheck },
   { id: 'season', label: 'Season', icon: CalendarPlus },
   { id: 'status', label: 'Weekend status', icon: Ban },
-  // kindred#2759: adult-weekend Jotform forms, the pull, and the unmatched queue.
+  // kindred#2759: adult-weekend Jotform forms and the pull. The unmatched queue
+  // is each adult weekend's Requests tab (kindred#2828 ruling 2026-09-25).
   { id: 'jotform', label: 'Jotform', icon: ClipboardList },
 ] as const
 

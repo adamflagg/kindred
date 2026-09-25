@@ -77,6 +77,8 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 // here like the others; the picker has its own tests in writeInJotform.test.tsx.
 vi.mock('../hooks/useJotformAdmin', () => ({
   useJotformQueue: () => ({ data: undefined, isLoading: false, error: null }),
+  // The adult weekend's Requests tab count (kindred#2828 ruling 2026-09-25).
+  useJotformWeekendQueue: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
 vi.mock('../hooks/useLodgingPlacement', () => ({

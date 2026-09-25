@@ -23,6 +23,7 @@ from api.schemas.jotform import (
     JotformDuplicateGroup,
     JotformQueueItem,
     JotformSuggestion,
+    JotformWriteInLinkSuggestion,
     JotformWriteInOption,
     MatchStatus,
     SuggestionKind,
@@ -206,6 +207,56 @@ def same_person(a: QueueSubmission, b: QueueSubmission) -> str | None:
     return "shared emergency contact and the same first name" if shared and first_ok else None
 
 
+# --- One filer, one decision (kindred#2839 follow-up) ---------------------------
+
+# Filings no decision has been made about: still needing a guest, or matched
+# only to a cancelled registration. A staff link or ignore reaches these.
+_WAITING = frozenset({"unmatched", "cancelled"})
+
+
+def same_filer(a: QueueSubmission, b: QueueSubmission) -> bool:
+    """Two filings of one weekend by an identical submitter: the same folded
+    first AND last name from the form. Deliberately narrower than
+    `same_person`: a decision is copied on this alone, never on a likeness."""
+    first, last = fold(a.first), fold(a.last)
+    return (
+        a.record_id != b.record_id
+        and a.session_cm_id == b.session_cm_id
+        and first != ""
+        and last != ""
+        and (first, last) == (fold(b.first), fold(b.last))
+    )
+
+
+def _filer_key(sub: QueueSubmission) -> tuple[object, ...]:
+    """Who filed `sub`, as `same_filer` groups filings: a nameless filing is its own."""
+    first, last = fold(sub.first), fold(sub.last)
+    return (sub.session_cm_id, first, last) if first and last else ("filing", sub.record_id)
+
+
+def waiting_siblings(sub: QueueSubmission, subs: Sequence[QueueSubmission]) -> list[QueueSubmission]:
+    """The filer's other filings a link or ignore of `sub` also decides. One
+    already decided -- auto, staff, ignored, write-in -- is left as it is."""
+    return [o for o in subs if same_filer(sub, o) and o.match_status in _WAITING]
+
+
+def same_link_siblings(sub: QueueSubmission, subs: Sequence[QueueSubmission]) -> list[QueueSubmission]:
+    """The filer's other filings carrying the very link an unlink (or restore)
+    of `sub` undoes: the same guest by a staff link, the same write-in, or
+    both ignored. A different decision is left alone."""
+
+    def same_link(other: QueueSubmission) -> bool:
+        if other.match_status != sub.match_status:
+            return False
+        if sub.match_status == "staff":
+            return sub.person_cm_id > 0 and other.person_cm_id == sub.person_cm_id
+        if sub.match_status == "write_in":
+            return sub.write_in_key != "" and other.write_in_key == sub.write_in_key
+        return sub.match_status == "ignored"
+
+    return [o for o in subs if same_filer(sub, o) and same_link(o)]
+
+
 def _named_in_request(request: str, guest: QueueGuest) -> bool:
     text = fold(request)
     return bool(text) and fold(guest.last) in text and any(first in text for first in guest.firsts)
@@ -348,6 +399,8 @@ class WriteInRow:
     occupant_name: str
     session_cm_id: int
     write_in_key: str = ""
+    # The scenario the row belongs to; "" for the live board's.
+    scenario: str = ""
 
 
 def write_in_option_id(unit_id: str, occupant_name: str) -> str:
@@ -377,6 +430,29 @@ def write_in_options(rows: Sequence[WriteInRow]) -> list[JotformWriteInOption]:
     return list(seen.values())
 
 
+def mark_linked_filers(
+    options: Sequence[JotformWriteInOption], rows: Sequence[WriteInRow], linked: Sequence[QueueSubmission]
+) -> None:
+    """Name on each option the filers whose filing is linked to it: a filing
+    whose key a row of that (unit, name) in `rows` carries -- the viewed
+    scope's rows, so a link placed only in another scenario marks nothing
+    here. Each filer once, in the order `linked` lists them."""
+    filers: dict[tuple[int, str], list[str]] = {}
+    for sub in linked:
+        if sub.write_in_key:
+            filers.setdefault((sub.session_cm_id, sub.write_in_key), []).append(sub.submitted_name)
+    by_option: dict[tuple[int, str], list[str]] = {}
+    for row in rows:
+        names = filers.get((row.session_cm_id, row.write_in_key)) if row.write_in_key else None
+        if names:
+            by_option.setdefault((row.session_cm_id, write_in_option_id(row.unit_id, row.occupant_name)), []).extend(
+                names
+            )
+    for option in options:
+        names = by_option.get((option.session_cm_id, option.option_id), [])
+        option.linked_filers = list(dict.fromkeys(names))
+
+
 def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOption]) -> str:
     """The write-in to pre-select for a filing, or "". Staff type write-in
     names without knowing the form, so this is forgiving -- folded case and
@@ -386,22 +462,191 @@ def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOptio
       2. nametag (its first word) + last;
       3. the whole nametag;
       4. first name or nametag alone.
-    A tier with several candidates pre-selects nothing."""
+    A tier with several candidates pre-selects nothing. Exact tiers only: a
+    similar name is a Suggested link (`link_suggestions`), never a pre-selection."""
+    hits = _exact_write_in_hits(sub, options)
+    return next(iter(hits)) if len(hits) == 1 else ""
+
+
+def name_tiers(sub: QueueSubmission) -> list[list[str]]:
+    """The filer's folded names in `suggest_write_in`'s exact tiers, best
+    first: first + last, nametag (its first word) + last, the whole nametag,
+    then first name or nametag alone. The ONE place a filer's names are
+    folded for matching a write-in: the queue sends these to the board, whose
+    write-in box matches a typed name against them (kindred#2839 follow-up,
+    `frontend/src/components/weekend/filerMatch.ts`), and
+    `tests/fixtures/jotform_filer_match_cases.json` pins both sides."""
     first, last = fold(sub.first), fold(sub.last)
     nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
-    mine = [o for o in options if o.session_cm_id == sub.session_cm_id]
-    tiers: list[set[str]] = [
-        {f"{first} {last}"} if first and last else set(),
-        {f"{nametag_first} {last}"} if nametag_first and last else set(),
-        {nametag} if nametag else set(),
-        {name for name in (first, nametag_first) if name},
+    return [
+        [f"{first} {last}"] if first and last else [],
+        [f"{nametag_first} {last}"] if nametag_first and last else [],
+        [nametag] if nametag else [],
+        list(dict.fromkeys(name for name in (first, nametag_first) if name)),
     ]
-    for wanted in tiers:
-        if not wanted:
-            continue
+
+
+def _exact_write_in_hits(sub: QueueSubmission, options: Sequence[JotformWriteInOption]) -> set[str]:
+    """The write-ins the first exact tier with any hit finds (see
+    `suggest_write_in`); empty when no exact tier finds one."""
+    mine = [o for o in options if o.session_cm_id == sub.session_cm_id]
+    for wanted in name_tiers(sub):
         hits = {o.option_id for o in mine if fold(o.occupant_name) in wanted}
-        if len(hits) == 1:
-            return next(iter(hits))
         if hits:
-            return ""
-    return ""
+            return hits
+    return set()
+
+
+# Staff mistype write-in names ("Emny" for a filer whose nametag is "Emmy").
+# Below jotform_bunking's 0.88 respelling bar because a write-in is often one
+# short first name, where a single wrong letter costs more.
+SIMILAR_THRESHOLD = 0.85
+
+
+def _name_variants(sub: QueueSubmission) -> set[str]:
+    return {name for tier in name_tiers(sub) for name in tier}
+
+
+def _similar_write_in(sub: QueueSubmission, rows: Mapping[str, WriteInRow]) -> str:
+    """The one write-in whose name is closest to any of the filer's names, at
+    Jaro-Winkler >= SIMILAR_THRESHOLD, or "" -- none that close, or a tie."""
+    variants = _name_variants(sub)
+    if not variants:
+        # A filer who left every name blank: nothing to compare (and `max`
+        # below would raise on an empty sequence, failing the whole queue).
+        return ""
+    scored = sorted(
+        (
+            (max(JaroWinkler.similarity(fold(row.occupant_name), name) for name in variants), option_id)
+            for option_id, row in rows.items()
+            if row.session_cm_id == sub.session_cm_id
+        ),
+        reverse=True,
+    )
+    if not scored or scored[0][0] < SIMILAR_THRESHOLD:
+        return ""
+    if len(scored) > 1 and scored[1][0] >= scored[0][0]:
+        return ""
+    return scored[0][1]
+
+
+LIVE_BOARD = "the live board"
+
+
+def link_suggestions(
+    viewed: Sequence[WriteInRow],
+    elsewhere: Sequence[WriteInRow],
+    linked: Sequence[QueueSubmission],
+    unlinked: Sequence[QueueSubmission],
+    scenario_names: Mapping[str, str],
+) -> list[JotformWriteInLinkSuggestion]:
+    """Suggested links for one weekend's Requests tab (kindred#2828 ruling
+    2026-09-25): labels with a one-click Link, never a link made on its own.
+
+    `viewed` is the weekend's write-ins in the scenario being viewed (or the
+    live board's); `elsewhere` is the same weekend's rows in every OTHER
+    scope. A candidate is a viewed write-in no linked filing's key is on --
+    unkeyed, or left with the key of a filing since unlinked. It is suggested
+    for:
+      - a LINKED filing not placed in the viewed scope, when the candidate
+        bears the name of the write-in carrying its link elsewhere (folded),
+        or the dropdown pre-selection (`suggest_write_in`) picks it for the
+        filer -- which also catches a write-in made by hand outside the copy
+        and push paths;
+      - a filing still NEEDING A GUEST that the pre-selection picks it for.
+    Where no exact tier finds any write-in for a filing, the one candidate
+    whose name is closest to the filer's is offered as a SIMILAR NAME
+    (`_similar_write_in`) -- unless another filing's exact tier picks it,
+    or it is the closest for another filing too.
+    """
+    active = {s.write_in_key for s in linked if s.write_in_key}
+    placed = {row.write_in_key for row in viewed if row.write_in_key in active}
+    # The links a candidate's copies carry in ANY scope: linking writes the key
+    # onto every row of the same (unit, name), and adopts one another filing
+    # holds (`link_write_in`). A candidate whose copy carries someone else's
+    # link would merge the two filings, so it is never suggested to anyone else.
+    copy_links: dict[str, set[str]] = {}
+    for row in (*viewed, *elsewhere):
+        if row.write_in_key in active:
+            copy_links.setdefault(write_in_option_id(row.unit_id, row.occupant_name), set()).add(row.write_in_key)
+    options = write_in_options(viewed)
+    candidates = {
+        write_in_option_id(row.unit_id, row.occupant_name): row
+        for row in viewed
+        if row.occupant_name.strip() and row.write_in_key not in active
+    }
+
+    exact = {sub.record_id: _exact_write_in_hits(sub, options) for sub in (*linked, *unlinked)}
+    # A write-in that exactly names some filer is that filer's, not a typo of another's.
+    similar_pool = {
+        option_id: row for option_id, row in candidates.items() if not any(option_id in hits for hits in exact.values())
+    }
+
+    out: list[JotformWriteInLinkSuggestion] = []
+    similar_picks: list[tuple[str, QueueSubmission, str]] = []
+
+    def suggest(option_id: str, sub: QueueSubmission, where: str, *, similar: bool = False) -> None:
+        if copy_links.get(option_id, set()) - {sub.write_in_key}:
+            return
+        row = candidates[option_id]
+        label = (
+            f"Similar name: link to {sub.submitted_name}'s filing?"
+            if similar
+            else f"Link to {sub.submitted_name}'s filing"
+        ) + (f" (linked in {where})" if where else "")
+        out.append(
+            JotformWriteInLinkSuggestion(
+                option_id=option_id,
+                unit_id=row.unit_id,
+                unit_name=row.unit_name,
+                occupant_name=row.occupant_name.strip(),
+                submission_id=sub.submission_id,
+                filer_name=sub.submitted_name,
+                linked_in=where,
+                label=label,
+                similar=similar,
+            )
+        )
+
+    for sub in linked:
+        if not sub.write_in_key or sub.write_in_key in placed:
+            continue
+        # The live board first: it names the link where staff most expect it.
+        carriers = sorted(
+            (row for row in elsewhere if row.write_in_key == sub.write_in_key), key=lambda row: row.scenario != ""
+        )
+        if not carriers:
+            continue
+        where = LIVE_BOARD if carriers[0].scenario == "" else scenario_names.get(carriers[0].scenario, "a scenario")
+        names = {fold(row.occupant_name) for row in carriers}
+        hits = {option_id for option_id, row in candidates.items() if fold(row.occupant_name) in names}
+        picked = suggest_write_in(sub, options)
+        if picked in candidates:
+            hits.add(picked)
+        for option_id in sorted(hits):
+            suggest(option_id, sub, where)
+        if not hits and not exact[sub.record_id]:
+            similar = _similar_write_in(sub, similar_pool)
+            if similar:
+                similar_picks.append((similar, sub, where))
+
+    for sub in unlinked:
+        picked = suggest_write_in(sub, options)
+        if picked in candidates:
+            suggest(picked, sub, "")
+        elif not exact[sub.record_id]:
+            similar = _similar_write_in(sub, similar_pool)
+            if similar:
+                similar_picks.append((similar, sub, ""))
+
+    # A write-in closest to two filers is no one's unique best hit: offering it
+    # to both would let two clicks merge two people onto one write-in. One
+    # filer's several filings (`same_filer`) are one claim, not several.
+    claimants: dict[str, set[tuple[object, ...]]] = defaultdict(set)
+    for option_id, sub, _ in similar_picks:
+        claimants[option_id].add(_filer_key(sub))
+    for option_id, sub, where in similar_picks:
+        if len(claimants[option_id]) == 1:
+            suggest(option_id, sub, where, similar=True)
+
+    return sorted(out, key=lambda s: (fold(s.occupant_name), fold(s.filer_name)))

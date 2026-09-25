@@ -1,23 +1,36 @@
 /**
- * The unmatched queue, duplicates, and staff links (kindred#2759). Kindred
- * never picks between candidates: every suggestion is a labelled button, and
- * any enrolled guest of the weekend can be chosen by hand.
+ * The unmatched queue, duplicates, and staff links (kindred#2759) — the adult
+ * weekend's Requests tab since the kindred#2828 ruling of 2026-09-25, which
+ * moved it off the Manage Jotform tab (that tab keeps setup and links here).
+ * Kindred never picks between candidates: every suggestion is a labelled
+ * button, and any enrolled guest of the weekend can be chosen by hand.
+ *
+ * Read in the scenario being viewed. Who a filing belongs to — a guest,
+ * ignored, a cancelled registration — reads the same in every scenario; a
+ * write-in link says whether the viewed scenario (or the live board) places
+ * it, the Write-in dropdown offers that scenario's write-ins, and an unlinked
+ * write-in that looks like a filer is suggested, never linked on its own.
  *
  * A filer who is not a guest at all -- staff, say -- can be linked to one of
  * the weekend's board write-ins instead (kindred#2759 follow-up); the one
  * whose name matches is pre-selected, never linked on its own. Filers who
  * match a registration that is not enrolled are listed apart, needing nothing.
  */
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
+import { ChevronDown, FileCheck2 } from 'lucide-react'
 import { useState } from 'react'
 
-import { useJotformQueue, useJotformSubmissionAction } from '../../../hooks/useJotformAdmin'
+import { useJotformSubmissionAction, useJotformWeekendQueue } from '../../../hooks/useJotformAdmin'
 import type {
+  JotformActionOutcome,
   JotformDuplicateGroupRow,
   JotformGuestRow,
   JotformQueueEntry,
   JotformWriteInChoice,
+  JotformWriteInLinkSuggestionRow,
 } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
+import { Tooltip } from '../../ui/Tooltip'
 import { shortDate } from '../../weekend/bunkingRequest'
 import {
   ACTION_LINK,
@@ -29,20 +42,154 @@ import {
   MUTED_PILL,
 } from './lodgingStyles'
 
+/** Hears what a staff action did, for the line under the tab's lists. */
+type OnDone = (outcome: JotformActionOutcome) => void
+
+/**
+ * One filer, one decision (kindred#2839 follow-up): an action also moves the
+ * same filer's other filings of the weekend, and this says which. "" when it
+ * moved only the filing clicked.
+ */
+function alsoLine(outcome: JotformActionOutcome): string {
+  const also = outcome?.also ?? []
+  const [first] = also
+  if (outcome === null || first === undefined) return ''
+  const dates = also.map((filing) => shortDate(filing.submitted_at)).join(', ')
+  const filings = also.length === 1 ? 'other filing' : 'other filings'
+  return `Also ${outcome.action} ${first.submitted_name}'s ${filings} (${dates})`
+}
+
+/**
+ * A suggested write-in link as its filer's row words it: which write-in, and
+ * whether it is only a similar name (kindred#2839 follow-up).
+ */
+function writeInSuggestionLabel(suggestion: JotformWriteInLinkSuggestionRow): string {
+  const unit = suggestion.unit_name ?? ''
+  const name = unit === '' ? suggestion.occupant_name : `${suggestion.occupant_name} · ${unit}`
+  return suggestion.similar === true ? `Similar name: write-in ${name}` : `Write-in ${name}`
+}
+
+/** The tooltip on a write-in already linked to one or more filings. */
+function linkedTooltip(filers: readonly string[]): string {
+  const owners = filers.map((name) => `${name}'s`)
+  const last = owners.at(-1) ?? ''
+  return owners.length <= 1
+    ? `Linked to ${last} form`
+    : `Linked to ${owners.slice(0, -1).join(', ')} and ${last} forms`
+}
+
+/** One choice in a row's picker. */
+interface PickerChoice {
+  value: string
+  label: string
+  /** Set when the choice already has a Jotform form: the icon's tooltip. */
+  formNote?: string
+  /** Small muted text after the icon -- a linked write-in's filer names. */
+  detail?: string
+}
+
+/**
+ * A row's guest or write-in picker (kindred#2839 owner ask). A Headless UI
+ * listbox rather than a native <select>, because an <option> cannot hold the
+ * icon that marks a choice already having a Jotform form -- which replaced a
+ * "(has a submission)" suffix that made the list hard to read. Sized as the
+ * <select> was (`FIELD_INLINE`, `w-56`), so the row does not move; the menu
+ * is the app's `listbox-options`. `''` is the explicit empty choice.
+ */
+function RowPicker({
+  label,
+  placeholder,
+  value,
+  choices,
+  onChange,
+}: {
+  /** The button's accessible name, which the tests query by. */
+  label: string
+  placeholder: string
+  value: string
+  choices: readonly PickerChoice[]
+  onChange: (value: string) => void
+}) {
+  const selected = choices.find((choice) => choice.value === value)
+  return (
+    <Listbox value={value} onChange={onChange}>
+      <div className="relative">
+        <ListboxButton
+          aria-label={label}
+          className={`${FIELD_INLINE} flex w-56 cursor-pointer items-center gap-2 text-left`}
+        >
+          <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder}</span>
+          <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+        </ListboxButton>
+        <ListboxOptions transition className="listbox-options w-max min-w-full">
+          <ListboxOption value="" className="listbox-option py-1.5">
+            {placeholder}
+          </ListboxOption>
+          {choices.map((choice) => (
+            <ListboxOption
+              key={choice.value}
+              value={choice.value}
+              className="listbox-option flex items-center gap-1.5 py-1.5"
+            >
+              <span>{choice.label}</span>
+              {choice.formNote !== undefined && (
+                <Tooltip
+                  content={choice.formNote}
+                  aria-label={choice.formNote}
+                  className="text-muted-foreground inline-flex"
+                >
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                </Tooltip>
+              )}
+              {choice.detail !== undefined && (
+                <span className="text-muted-foreground text-xs">{choice.detail}</span>
+              )}
+            </ListboxOption>
+          ))}
+        </ListboxOptions>
+      </div>
+    </Listbox>
+  )
+}
+
 function UnmatchedItem({
   item,
   guests,
   writeIns,
+  writeInSuggestions,
+  onDone,
 }: {
   item: JotformQueueEntry
   guests: readonly JotformGuestRow[]
   /** This weekend's board write-ins, already filtered to its session. */
   writeIns: readonly JotformWriteInChoice[]
+  /**
+   * The server's suggested write-in links for THIS filing (kindred#2839
+   * follow-up): shown on the row, beside the guest suggestions, rather than
+   * only in a card staff looking at the row never saw. A similar name is
+   * offered here and never pre-selects the dropdown.
+   */
+  writeInSuggestions: readonly JotformWriteInLinkSuggestionRow[]
+  onDone: OnDone
 }) {
-  const action = useJotformSubmissionAction()
+  const action = useJotformSubmissionAction(onDone)
   const [chosen, setChosen] = useState('')
   // Pre-selected when a write-in's name matches the filer's; staff can pick any.
-  const [chosenWriteIn, setChosenWriteIn] = useState(item.write_in_suggestion ?? '')
+  // ONLY staff's own pick is state -- null while they have not touched the
+  // dropdown -- and the pre-selection is read from the queue on every render.
+  // The tab stays mounted under `Activity` and refetches behind staff's back
+  // after a board write-in, so a suggestion seeded into state once, at mount,
+  // never showed the one that arrived later (kindred#2839 owner report).
+  // The row is keyed by scenario, so a pick never crosses a scenario switch.
+  const [picked, setPicked] = useState<string | null>(null)
+  // A pick whose write-in is gone -- removed or renamed on the board -- is
+  // dropped for good, back to the pre-selection: holding it would show
+  // "Choose a write-in…" over a suggestion the server is making. `''` is a pick
+  // too (staff cleared the pre-selection) and always stays offered.
+  if (picked !== null && picked !== '' && !writeIns.some((o) => o.option_id === picked)) {
+    setPicked(null)
+  }
+  const chosenWriteIn = picked ?? item.write_in_suggestion ?? ''
   const writeIn = writeIns.find((option) => option.option_id === chosenWriteIn)
   const sessionGuests = guests.filter((guest) => guest.session_cm_id === item.session_cm_id)
   const enrolled = new Set(sessionGuests.map((guest) => guest.person_cm_id))
@@ -109,23 +256,47 @@ function UnmatchedItem({
             })}
           </ul>
         )}
+        {writeInSuggestions.length > 0 && (
+          <ul className="flex flex-col gap-0.5">
+            {writeInSuggestions.map((suggestion) => (
+              <li
+                key={suggestion.option_id}
+                className="flex flex-wrap items-baseline gap-x-2 text-sm"
+              >
+                <span>{writeInSuggestionLabel(suggestion)}</span>
+                <button
+                  type="button"
+                  className={`${ACTION_LINK} text-primary`}
+                  disabled={action.isPending}
+                  aria-label={`Link write-in ${suggestion.occupant_name}`}
+                  onClick={() => {
+                    action.mutate({
+                      kind: 'write_in',
+                      submissionId: item.submission_id,
+                      unitId: suggestion.unit_id,
+                      occupantName: suggestion.occupant_name,
+                    })
+                  }}
+                >
+                  Link
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <select
-          className={`${FIELD_INLINE} w-56`}
-          aria-label={`Guest for ${item.submitted_name}`}
+        <RowPicker
+          label={`Guest for ${item.submitted_name}`}
+          placeholder="Choose a guest…"
           value={chosen}
-          onChange={(event) => {
-            setChosen(event.target.value)
-          }}
-        >
-          <option value="">Choose a guest…</option>
-          {sessionGuests.map((guest) => (
-            <option key={guest.person_cm_id} value={String(guest.person_cm_id)}>
-              {`${guest.display_name}${guest.has_submission === true ? ' (has a submission)' : ''}`}
-            </option>
-          ))}
-        </select>
+          choices={sessionGuests.map((guest) => ({
+            value: String(guest.person_cm_id),
+            label: guest.display_name,
+            ...(guest.has_submission === true && { formNote: 'Already has a Jotform form' }),
+          }))}
+          onChange={setChosen}
+        />
         <button
           type="button"
           className={BUTTON_SECONDARY}
@@ -155,23 +326,28 @@ function UnmatchedItem({
           // Its own line under the guest picker: the two lists are different
           // kinds of thing, and one wide row would crowd the filing.
           <div className="flex basis-full items-center gap-2">
-            <select
-              className={`${FIELD_INLINE} w-56`}
-              aria-label={`Write-in for ${item.submitted_name}`}
+            <RowPicker
+              label={`Write-in for ${item.submitted_name}`}
+              placeholder="Choose a write-in…"
               value={chosenWriteIn}
-              onChange={(event) => {
-                setChosenWriteIn(event.target.value)
-              }}
-            >
-              <option value="">Choose a write-in…</option>
-              {writeIns.map((option) => (
-                <option key={option.option_id} value={option.option_id}>
-                  {option.unit_name
+              // A write-in already linked -- to another filer, or this filer's
+              // other filing -- is marked, and stays offered: a party can
+              // share one.
+              choices={writeIns.map((option) => {
+                const filers = option.linked_filers ?? []
+                return {
+                  value: option.option_id,
+                  label: option.unit_name
                     ? `${option.occupant_name} · ${option.unit_name}`
-                    : option.occupant_name}
-                </option>
-              ))}
-            </select>
+                    : option.occupant_name,
+                  ...(filers.length > 0 && {
+                    formNote: linkedTooltip(filers),
+                    detail: filers.join(', '),
+                  }),
+                }
+              })}
+              onChange={setPicked}
+            />
             <button
               type="button"
               className={BUTTON_SECONDARY}
@@ -252,6 +428,7 @@ function ResolvedList({
   rows,
   detail,
   undoable = true,
+  onDone,
 }: {
   testId: string
   title: string
@@ -260,8 +437,9 @@ function ResolvedList({
   detail?: (item: JotformQueueEntry) => string
   /** False for a list that asks nothing of staff (cancelled registrations). */
   undoable?: boolean
+  onDone: OnDone
 }) {
-  const action = useJotformSubmissionAction()
+  const action = useJotformSubmissionAction(onDone)
   return (
     <section data-testid={testId} className="card-lodge p-4">
       <h3 className={GROUP_HEADING}>{`${title} (${String(rows.length)})`}</h3>
@@ -307,14 +485,104 @@ function ResolvedList({
 }
 
 /**
- * One weekend's slice of the queue: the panel draws a tab per weekend, and
- * the year's queue (one cached read) is filtered to the tab's session here.
- *
- * Laid out for a wide admin screen: the filings that need a decision beside
- * the short staff-links and ignored lists, then repeat filers as a grid.
+ * Unlinked write-ins of the viewed scenario that look like a LINKED filer --
+ * one linked in another scenario or on the live board but not placed here. A
+ * filing still needing a guest shows its suggestions on its own row instead.
+ * A label and a Link button each; nothing links until staff click.
  */
-export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId: number }) {
-  const queue = useJotformQueue(year)
+function SuggestedLinks({
+  rows,
+  onDone,
+}: {
+  rows: readonly JotformWriteInLinkSuggestionRow[]
+  onDone: OnDone
+}) {
+  const action = useJotformSubmissionAction(onDone)
+  return (
+    <section data-testid="jotform-suggested-links" className="card-lodge p-4">
+      <h3 className={GROUP_HEADING}>{`Suggested links (${String(rows.length)})`}</h3>
+      <ul className="divide-border/60 mt-1 divide-y">
+        {rows.map((row) => (
+          <li
+            key={`${row.option_id}-${row.submission_id}`}
+            className="flex items-baseline gap-2 py-1.5 text-sm"
+          >
+            <span className="min-w-0">
+              <span className="font-semibold">
+                {row.unit_name ? `${row.occupant_name} · ${row.unit_name}` : row.occupant_name}
+              </span>
+              <span className="text-muted-foreground block text-xs">{row.label}</span>
+            </span>
+            <button
+              type="button"
+              className={`${ACTION_LINK} text-primary ml-auto shrink-0`}
+              disabled={action.isPending}
+              aria-label={`Link ${row.occupant_name} to ${row.filer_name}'s filing`}
+              onClick={() => {
+                action.mutate({
+                  kind: 'write_in',
+                  submissionId: row.submission_id,
+                  unitId: row.unit_id,
+                  occupantName: row.occupant_name,
+                })
+              }}
+            >
+              Link
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** Where a linked write-in sits in the scope being viewed. */
+function writeInDetail(item: JotformQueueEntry, scenario: string): string {
+  const name = item.write_in_name ?? ''
+  const unit = item.write_in_unit ?? ''
+  let where: string
+  if (item.write_in_placed === true) {
+    where = unit === '' ? '' : `placed in ${unit}`
+  } else if (item.write_in_placed === false) {
+    // The live board is not a scenario; say which one the filing is missing from.
+    where = scenario === '' ? 'not placed on the live board' : 'not placed in this scenario'
+  } else {
+    where = unit
+  }
+  return [name, where].filter((part) => part !== '').join(' · ')
+}
+
+/**
+ * One adult weekend's queue, read in `scenario` (`''` = the live board). The
+ * server scopes the read to the weekend; the per-session filter below is kept
+ * so a response carrying another weekend's rows can never show them here.
+ *
+ * Laid out for a wide screen: the filings that need a decision beside the
+ * short suggested-links, staff-links and ignored lists, then repeat filers as
+ * a grid.
+ */
+export function JotformQueue({
+  year,
+  sessionCmId,
+  scenario,
+}: {
+  year: number
+  sessionCmId: number
+  scenario: string
+}) {
+  const queue = useJotformWeekendQueue(year, sessionCmId, scenario)
+  // The "Also …" line speaks for the weekend and scenario the action was taken
+  // in. The tab stays mounted across a switch of either, so the line is
+  // cleared on one -- adjusted during render, as `WeekendRosterPage` does for
+  // `openedViews` -- rather than left naming filings of another scope.
+  const scope = `${String(sessionCmId)}:${scenario}`
+  const [also, setAlso] = useState({ scope, line: '' })
+  if (also.scope !== scope) {
+    setAlso({ scope, line: '' })
+  }
+  const onDone: OnDone = (outcome) => {
+    setAlso({ scope, line: alsoLine(outcome) })
+  }
   return (
     <QueryGuard
       isLoading={queue.isLoading || year <= 0}
@@ -338,8 +606,24 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
         const writeIns = mine(data.write_ins)
         const cancelled = mine(data.cancelled)
         const writeInChoices = mine(data.write_in_options)
+        // One list from the server, shown once: a suggestion for a filing in
+        // Needs a guest sits on that filing's row; only the rest -- a linked
+        // filing not placed in the viewed scenario -- keep the card.
+        const needsAGuest = new Set(unmatched.map((item) => item.submission_id))
+        const rowSuggestions = new Map<string, JotformWriteInLinkSuggestionRow[]>()
+        const suggestedLinks: JotformWriteInLinkSuggestionRow[] = []
+        for (const suggestion of data.write_in_link_suggestions ?? []) {
+          if (needsAGuest.has(suggestion.submission_id)) {
+            const onRow = rowSuggestions.get(suggestion.submission_id) ?? []
+            onRow.push(suggestion)
+            rowSuggestions.set(suggestion.submission_id, onRow)
+          } else {
+            suggestedLinks.push(suggestion)
+          }
+        }
         return (
           <div className="flex flex-col gap-4">
+            {also.line !== '' && <p className="text-muted-foreground text-sm">{also.line}</p>}
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <section className="card-lodge p-4">
                 <h3 className={GROUP_HEADING}>{`Needs a guest (${String(unmatched.length)})`}</h3>
@@ -352,10 +636,14 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                   <ul className="mt-1">
                     {unmatched.map((item) => (
                       <UnmatchedItem
-                        key={item.submission_id}
+                        // Keyed by scenario too: the write-in pre-selection is
+                        // the viewed scenario's, and must not survive a switch.
+                        key={`${scenario}-${item.submission_id}`}
                         item={item}
                         guests={data.guests ?? []}
                         writeIns={writeInChoices}
+                        writeInSuggestions={rowSuggestions.get(item.submission_id) ?? []}
+                        onDone={onDone}
                       />
                     ))}
                   </ul>
@@ -367,16 +655,21 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                 )}
               </section>
               <div className="flex flex-col gap-4">
-                <ResolvedList testId="jotform-staff-links" title="Staff links" rows={staffLinks} />
+                {suggestedLinks.length > 0 && (
+                  <SuggestedLinks rows={suggestedLinks} onDone={onDone} />
+                )}
+                <ResolvedList
+                  testId="jotform-staff-links"
+                  title="Staff links"
+                  rows={staffLinks}
+                  onDone={onDone}
+                />
                 <ResolvedList
                   testId="jotform-write-ins"
                   title="Write-ins"
                   rows={writeIns}
-                  detail={(item) =>
-                    [item.write_in_name ?? '', item.write_in_unit ?? '']
-                      .filter((part) => part !== '')
-                      .join(' · ')
-                  }
+                  detail={(item) => writeInDetail(item, scenario)}
+                  onDone={onDone}
                 />
                 <ResolvedList
                   testId="jotform-cancelled"
@@ -387,8 +680,14 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                     return status === '' ? 'cancelled' : status
                   }}
                   undoable={false}
+                  onDone={onDone}
                 />
-                <ResolvedList testId="jotform-ignored" title="Ignored" rows={ignored} />
+                <ResolvedList
+                  testId="jotform-ignored"
+                  title="Ignored"
+                  rows={ignored}
+                  onDone={onDone}
+                />
               </div>
             </div>
 

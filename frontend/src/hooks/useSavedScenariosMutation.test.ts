@@ -286,3 +286,39 @@ describe('useDeleteScenario: relies on server-side cascade', () => {
     expect(drafts.delete).not.toHaveBeenCalled()
   })
 })
+
+describe('scenario create and delete refresh the weekend Requests tab (kindred#2828)', () => {
+  // The tab names the scenario a filing is linked in, and a filing whose only
+  // write-in lived in a deleted scenario goes back to Needs a guest. A copied
+  // scenario starts with the write-ins (and link keys) its source had.
+  function recorded() {
+    const qc = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children)
+    const keys = () =>
+      invalidateSpy.mock.calls.map(([arg]) => (arg as { queryKey: readonly unknown[] }).queryKey)
+    return { wrapper, keys }
+  }
+
+  it('invalidates the Jotform queries after a create', async () => {
+    const { wrapper, keys } = recorded()
+    const { result } = renderHook(() => useCreateScenario(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ name: 'My Scenario', session_cm_id: 1000002, year: 2026 })
+    })
+    expect(keys()).toContainEqual(['jotform'])
+  })
+
+  it('invalidates the Jotform queries after a delete', async () => {
+    getCollection('saved_scenarios').delete.mockResolvedValue(true)
+    const { wrapper, keys } = recorded()
+    const { result } = renderHook(() => useDeleteScenario(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync('scenario-to-delete')
+    })
+    expect(keys()).toContainEqual(['jotform'])
+  })
+})

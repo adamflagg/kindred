@@ -1,0 +1,245 @@
+{
+  "_doc": "Shared vectors for matching a typed write-in name to an adult Jotform filing (kindred#2839 follow-up). The server computes each filing's folded name tiers (api/services/jotform_queue.py `name_tiers`); the board's write-in box folds what staff type and matches it against them (frontend/src/components/weekend/filerMatch.ts). Python (tests/unit/api/services/test_jotform_filer_match_parity.py) and Vitest (filerMatch.parity.test.ts) both read this file, so the fold, the Jaro-Winkler score, the tiers and the decisions cannot drift apart. Each match filing carries the tiers the server sends for it, which Python checks against `name_tiers`. Fictional names only.",
+  "similar_threshold": 0.85,
+  "fold": [
+    ["Emma Johnson", "emma johnson"],
+    ["  Emma   JOHNSON ", "emma johnson"],
+    ["Zoë Chen", "zoe chen"],
+    ["José-Luis Garcia", "jose-luis garcia"],
+    ["\tOlivia\nChen", "olivia chen"],
+    ["", ""]
+  ],
+  "jaro_winkler": [
+    ["emma j", "emma johnson", 0.9],
+    ["emma j", "emma", 0.9333333333333333],
+    ["emny", "emmy", 0.8666666666666667],
+    ["emny", "emma", 0.6666666666666666],
+    ["olivia chen", "olivia", 0.9090909090909091],
+    ["martha", "marhta", 0.9611111111111111],
+    ["crate", "trace", 0.7333333333333334],
+    ["ab", "ba", 0.0],
+    ["dwayne", "duane", 0.8400000000000001],
+    ["zed", "emma", 0.5277777777777778],
+    ["emma j", "emma garcia", 0.8575757575757577],
+    ["emma", "emma", 1.0]
+  ],
+  "tiers": [
+    {
+      "first": "Emma",
+      "last": "Johnson",
+      "nametag": "Emmy",
+      "tiers": [["emma johnson"], ["emmy johnson"], ["emmy"], ["emma", "emmy"]]
+    },
+    {
+      "first": "Olivia",
+      "last": "Chen",
+      "nametag": "",
+      "tiers": [["olivia chen"], [], [], ["olivia"]]
+    },
+    {
+      "first": "Elizabeth",
+      "last": "Garcia",
+      "nametag": "Prefer just Liz",
+      "tiers": [
+        ["elizabeth garcia"],
+        ["liz garcia"],
+        ["prefer just liz"],
+        ["elizabeth", "liz"]
+      ]
+    },
+    {
+      "first": "Emma",
+      "last": "Johnson",
+      "nametag": "Emma",
+      "tiers": [["emma johnson"], ["emma johnson"], ["emma"], ["emma"]]
+    },
+    {
+      "first": "Zoë",
+      "last": "",
+      "nametag": "",
+      "tiers": [[], [], [], ["zoe"]]
+    }
+  ],
+  "match": [
+    {
+      "name": "first and last name",
+      "typed": "Emma Johnson",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "the whole nametag",
+      "typed": "Emmy",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "nametag and last name",
+      "typed": "emmy johnson",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "a first name alone, when only one filer has it",
+      "typed": "Olivia",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 1
+      }
+    },
+    {
+      "name": "a first name two filers share picks nothing",
+      "typed": "Emma",
+      "filings": ["emma", "emma_garcia"],
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "a better tier decides before a worse one is ambiguous",
+      "typed": "Em",
+      "filings": ["emma_em", "em_garcia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "one filer's two filings are one match",
+      "typed": "Emma Johnson",
+      "filings": ["emma", "emma", "olivia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "the nametag's 'prefer just' name",
+      "typed": "Liz",
+      "filings": ["liz", "olivia"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "accents fold away",
+      "typed": "Zoe Chen",
+      "filings": ["zoe_chen", "emma"],
+      "expect": {
+        "kind": "exact",
+        "filing": 0
+      }
+    },
+    {
+      "name": "a shortened name is a similar name, never exact",
+      "typed": "Emma J",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "similar",
+        "filing": 0
+      }
+    },
+    {
+      "name": "a typo in the nametag",
+      "typed": "Emny",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "similar",
+        "filing": 0
+      }
+    },
+    {
+      "name": "one filer's two filings are one similar match",
+      "typed": "Emny",
+      "filings": ["emma", "emma", "olivia"],
+      "expect": {
+        "kind": "similar",
+        "filing": 0
+      }
+    },
+    {
+      "name": "a similar name two filers tie on picks nothing",
+      "typed": "Emma J",
+      "filings": ["emma", "emma_garcia"],
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "nothing close enough",
+      "typed": "Zed",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "nothing typed",
+      "typed": "   ",
+      "filings": ["emma", "olivia"],
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ],
+  "filings": {
+    "emma": {
+      "first": "Emma",
+      "last": "Johnson",
+      "nametag": "Emmy",
+      "tiers": [["emma johnson"], ["emmy johnson"], ["emmy"], ["emma", "emmy"]]
+    },
+    "olivia": {
+      "first": "Olivia",
+      "last": "Chen",
+      "nametag": "",
+      "tiers": [["olivia chen"], [], [], ["olivia"]]
+    },
+    "emma_garcia": {
+      "first": "Emma",
+      "last": "Garcia",
+      "nametag": "",
+      "tiers": [["emma garcia"], [], [], ["emma"]]
+    },
+    "emma_em": {
+      "first": "Emma",
+      "last": "Johnson",
+      "nametag": "Em",
+      "tiers": [["emma johnson"], ["em johnson"], ["em"], ["emma", "em"]]
+    },
+    "em_garcia": {
+      "first": "Em",
+      "last": "Garcia",
+      "nametag": "",
+      "tiers": [["em garcia"], [], [], ["em"]]
+    },
+    "liz": {
+      "first": "Elizabeth",
+      "last": "Garcia",
+      "nametag": "Prefer just Liz",
+      "tiers": [
+        ["elizabeth garcia"],
+        ["liz garcia"],
+        ["prefer just liz"],
+        ["elizabeth", "liz"]
+      ]
+    },
+    "zoe_chen": {
+      "first": "Zoë",
+      "last": "Chen",
+      "nametag": "",
+      "tiers": [["zoe chen"], [], [], ["zoe"]]
+    }
+  }
+}

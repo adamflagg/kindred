@@ -349,6 +349,7 @@ export function LodgingBoard({
           submissionId: item.submission_id,
           name: item.submitted_name,
           nametag: item.nametag ?? '',
+          nameTiers: item.name_tiers ?? [],
         })),
     [jotformQueue.data, sessionCmId]
   )

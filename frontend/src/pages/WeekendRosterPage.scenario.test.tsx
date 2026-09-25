@@ -166,6 +166,15 @@ vi.mock('../components/weekend/CabinWeekendEntry', () => ({
 // which the `useQueryClient` stub above does not satisfy. These files are
 // about layout, navigation and the scenario picker; drag placement has its own
 // tests in `components/weekend/LodgingBoard.drag.test.tsx`.
+// The adult weekend's Requests tab count (kindred#2828 ruling 2026-09-25) is
+// a real `useQuery` read at page level, which needs a QueryClient this file
+// does not mount -- stubbed like every other data hook here. The board's
+// write-in picker reads the year's queue from the same module.
+vi.mock('../hooks/useJotformAdmin', () => ({
+  useJotformQueue: () => ({ data: undefined, isLoading: false, error: null }),
+  useJotformWeekendQueue: () => ({ data: undefined, isLoading: false, error: null }),
+}))
+
 vi.mock('../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(() => Promise.resolve()), isMoving: false }),
 }))

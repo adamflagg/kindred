@@ -49,6 +49,10 @@ export function useUpdateScenario() {
       void queryClient.invalidateQueries({ queryKey: ['saved-scenarios'] })
       // Note: We can't easily get the session CM ID from the update response
       // So we invalidate all scenario queries to be safe
+      // An adult weekend's Requests tab names the scenario a filing's write-in
+      // is linked in (kindred#2828), so a rename must reach it, as a create
+      // and a delete do (useSavedScenariosMutation).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
     },
   })
 }

@@ -1,5 +1,6 @@
 /** Jotform admin types (kindred#2759) — aliases over the generated FastAPI models. */
 import type {
+  JotformActionResult,
   JotformDuplicateGroup,
   JotformFormRow,
   JotformFormsResponse,
@@ -8,6 +9,7 @@ import type {
   JotformQueueItem,
   JotformQueueResponse,
   JotformSuggestion,
+  JotformWriteInLinkSuggestion,
   JotformWriteInOption,
 } from './api-generated'
 
@@ -21,3 +23,11 @@ export type JotformGuestRow = JotformGuest
 export type JotformDuplicateGroupRow = JotformDuplicateGroup
 /** One board write-in a filing can be linked to (kindred#2759 follow-up). */
 export type JotformWriteInChoice = JotformWriteInOption
+/** An unlinked write-in the Requests tab suggests linking to a filing (kindred#2828). */
+export type JotformWriteInLinkSuggestionRow = JotformWriteInLinkSuggestion
+/**
+ * What a staff action on a filing did (kindred#2839 follow-up): the filer's
+ * other filings of the weekend it also moved, or null when it moved only the
+ * filing clicked (the server's 204).
+ */
+export type JotformActionOutcome = JotformActionResult | null

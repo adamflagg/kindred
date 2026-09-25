@@ -78,8 +78,18 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 // kindred#2759 follow-up: the board reads the Jotform queue for its write-in
 // picker (adult weekend, bunking.manage). An auth-touching query hook, stubbed
 // here like the others; the picker has its own tests in writeInJotform.test.tsx.
+// The Requests tab (kindred#2828 ruling 2026-09-25) reads the weekend's queue
+// for its count, and renders the queue itself; both are stubbed, the queue's
+// own behaviour being pinned in `components/admin/lodging/JotformQueue*.test.tsx`.
+const jotformWeekendQueue = vi.fn()
 vi.mock('../hooks/useJotformAdmin', () => ({
   useJotformQueue: () => ({ data: undefined, isLoading: false, error: null }),
+  useJotformWeekendQueue: (...args: unknown[]) => jotformWeekendQueue(...args) as unknown,
+}))
+vi.mock('../components/admin/lodging/JotformQueue', () => ({
+  JotformQueue: (props: { year: number; sessionCmId: number; scenario: string }) => (
+    <div data-testid="requests-queue">{`${String(props.sessionCmId)}|${props.scenario}`}</div>
+  ),
 }))
 
 vi.mock('../hooks/useLodgingPlacement', () => ({
@@ -302,6 +312,14 @@ beforeEach(() => {
   rosterQuery.data = { year: 2026, session_cm_id: 1000001, parties: [], units: [], counts: {} }
   rosterQuery.isLoading = false
   rosterQuery.error = null
+  jotformWeekendQueue.mockReset().mockReturnValue({
+    data: {
+      year: 2026,
+      unmatched: [{ submission_id: '66a' }, { submission_id: '66b' }],
+    },
+    isLoading: false,
+    error: null,
+  })
   attributionQuery.mockReset().mockReturnValue({
     isLoading: false,
     error: null,
@@ -1214,5 +1232,131 @@ describe('the weekend type is threaded to every surface (kindred#2765)', () => {
     renderPage('1000001')
     expect(screen.queryByText(/shared-cabin places/)).not.toBeInTheDocument()
     expect(await screen.findByText('9/15')).toBeInTheDocument()
+  })
+})
+
+describe('the Requests tab (kindred#2828 ruling 2026-09-25)', () => {
+  it('ends the tab strip on an adult weekend, counting the filings that need a guest', () => {
+    renderPage('1000002')
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Housing (0)',
+      'Roster (0)',
+      'Groups (0)',
+      'Map (0)',
+      'Requests (2)',
+    ])
+    expect(jotformWeekendQueue).toHaveBeenLastCalledWith(2026, 1000002, '', true)
+  })
+
+  it('never appears on Family Camp, whose share requests come from CampMinder', () => {
+    renderPage('1000001')
+    expect(screen.queryByRole('tab', { name: /Requests/ })).not.toBeInTheDocument()
+    // Nor is the queue read there.
+    expect(jotformWeekendQueue).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      true
+    )
+  })
+
+  it('never appears for a caller without bunking.manage', () => {
+    isAdmin = false
+    renderPage('1000002')
+    expect(screen.queryByRole('tab', { name: /Requests/ })).not.toBeInTheDocument()
+  })
+
+  it('counts nothing while the queue is loading', () => {
+    jotformWeekendQueue.mockReturnValue({ data: undefined, isLoading: true, error: null })
+    renderPage('1000002')
+    expect(screen.getByRole('tab', { name: /Requests/ })).toHaveTextContent('Requests (0)')
+  })
+
+  it('opens at its own URL, with the queue read in the viewed scenario', async () => {
+    renderPage('1000002', 'requests')
+    expect(screen.getByRole('tab', { name: /Requests/ })).toHaveAttribute('aria-selected', 'true')
+    // Lazy, like the board and the map: it paints once its chunk resolves.
+    expect(await screen.findByTestId('requests-queue')).toHaveTextContent('1000002|')
+  })
+
+  it('puts the tab in the URL when chosen', async () => {
+    renderPage('1000002')
+    await userEvent.click(screen.getByRole('tab', { name: /Requests/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000002/requests')
+    expect(screen.getByTestId('requests-queue')).toBeInTheDocument()
+  })
+
+  it('falls back to Housing where the tab is not offered', () => {
+    renderPage('1000001', 'requests')
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('requests-queue')).not.toBeInTheDocument()
+  })
+
+  it('falls back to Housing for a caller without bunking.manage', () => {
+    isAdmin = false
+    renderPage('1000002', 'requests')
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('requests-queue')).not.toBeInTheDocument()
+  })
+})
+
+describe('a hard refresh on the Requests tab (scan of #2839)', () => {
+  // Whether the tab is offered depends on the weekend's type, which arrives
+  // with the sessions list. Until then `requests` is PENDING, not refused: the
+  // page must neither show Housing nor mount it, or a reload of
+  // /weekend/X/requests would paint (and fetch) the board first.
+  function page() {
+    return (
+      <MemoryRouter initialEntries={['/weekend/1000002/requests']}>
+        <Routes>
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    )
+  }
+
+  it('waits for the weekend instead of falling back to Housing', async () => {
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    const { rerender } = render(page())
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'false')
+    expect(document.getElementById('weekend-panel-housing')?.childElementCount).toBe(0)
+
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
+    sessionsQuery.isLoading = false
+    rerender(page())
+    expect(screen.getByRole('tab', { name: /Requests/ })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByTestId('requests-queue')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000002/requests')
+    // Housing was never opened on the way.
+    expect(document.getElementById('weekend-panel-housing')?.childElementCount).toBe(0)
+  })
+
+  it('still falls back to Housing once the weekend turns out to be Family Camp', () => {
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    // A fresh element each render: re-passing the same one lets React skip it.
+    const familyPage = () => (
+      <MemoryRouter initialEntries={['/weekend/1000001/requests']}>
+        <Routes>
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(familyPage())
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
+    sessionsQuery.isLoading = false
+    rerender(familyPage())
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('requests-queue')).not.toBeInTheDocument()
+  })
+
+  it('falls back at once for a caller without bunking.manage, loading or not', () => {
+    isAdmin = false
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    render(page())
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
   })
 })

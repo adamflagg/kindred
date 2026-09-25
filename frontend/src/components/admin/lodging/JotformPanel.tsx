@@ -1,7 +1,9 @@
 /**
  * Adult-weekend Jotform setup (kindred#2759). One TAB per active-season adult
  * weekend — built from camp_sessions by the API, never a hardcoded list — each
- * holding that weekend's form card and its slice of the queue. The selected
+ * holding that weekend's form card. The queue of filings lives on the weekend
+ * itself, in its Requests tab (kindred#2828 ruling 2026-09-25); each tab here
+ * links there with the count that needs a guest. The selected
  * tab lives in the URL (`?session=<cm_id>`), so it is linkable and survives a
  * reload (CLAUDE.md "Family Camp Models Summer"); it defaults to the first.
  *
@@ -12,18 +14,42 @@
 import { Link, useSearchParams } from 'react-router'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { useJotformForms } from '../../../hooks/useJotformAdmin'
+import { useJotformForms, useJotformQueue } from '../../../hooks/useJotformAdmin'
 import { QueryGuard } from '../../QueryGuard'
 import { JotformFormCard } from './JotformFormCard'
-import { JotformQueue } from './JotformQueue'
 import { TAB_NAV, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from './lodgingStyles'
 
 const SESSION_PARAM = 'session'
+
+/**
+ * The one line pointing at the weekend's Requests tab, where its filings are
+ * reviewed. Addressed by CampMinder id, which the weekend route resolves as
+ * readily as a slug, so this tab needs no weekend list of its own.
+ */
+function RequestsLink({ sessionCmId, needsAGuest }: { sessionCmId: number; needsAGuest: number }) {
+  const count =
+    needsAGuest === 0
+      ? 'No filings need a guest.'
+      : `${String(needsAGuest)} ${needsAGuest === 1 ? 'filing needs' : 'filings need'} a guest.`
+  return (
+    <p data-testid="jotform-requests-link" className="text-muted-foreground text-sm">
+      {`${count} `}
+      <Link
+        to={`/weekend/${String(sessionCmId)}/requests`}
+        className="text-primary font-semibold hover:underline"
+      >
+        Review filings on the weekend&apos;s Requests tab
+      </Link>
+    </p>
+  )
+}
 
 export function JotformPanel() {
   const { currentYear } = useCurrentYear()
   const yearReady = currentYear > 0
   const forms = useJotformForms(currentYear)
+  // The year's queue, for each weekend's needs-a-guest count only.
+  const queue = useJotformQueue(currentYear, yearReady)
   const [searchParams] = useSearchParams()
   const requested = Number(searchParams.get(SESSION_PARAM))
 
@@ -80,7 +106,14 @@ export function JotformPanel() {
                 row={row}
                 year={currentYear}
               />
-              <JotformQueue year={currentYear} sessionCmId={row.session_cm_id} />
+              <RequestsLink
+                sessionCmId={row.session_cm_id}
+                needsAGuest={
+                  (queue.data?.unmatched ?? []).filter(
+                    (item) => item.session_cm_id === row.session_cm_id
+                  ).length
+                }
+              />
             </div>
           )
         }}

@@ -118,3 +118,81 @@ def test_a_write_in_link_the_service_refuses_is_a_422() -> None:
             json={"unit_id": "u_cedar", "occupant_name": "Pat Doe"},
         )
     assert (response.status_code, response.json()["detail"]) == (422, "not on this board")
+
+
+# --- The weekend Requests tab (kindred#2828 ruling 2026-09-25) ----------------
+
+
+def test_the_weekend_queue_is_bunking_manage_only() -> None:
+    response = _client(_user()).get(
+        "/api/jotform/queue", params={"year": 2026, "session_cm_id": 1000002, "scenario": "scn_a"}
+    )
+    assert response.status_code == 403
+
+
+def test_the_weekend_queue_passes_the_weekend_and_scenario_through() -> None:
+    from api.schemas.jotform import JotformQueueResponse
+
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.build_queue = AsyncMock(
+            return_value=JotformQueueResponse(year=2026, session_cm_id=1000002, scenario="scn_a")
+        )
+        client = _client(_user(Permission.BUNKING_MANAGE))
+        scoped = client.get("/api/jotform/queue", params={"year": 2026, "session_cm_id": 1000002, "scenario": "scn_a"})
+        yearly = client.get("/api/jotform/queue", params={"year": 2026})
+    assert (scoped.status_code, yearly.status_code) == (200, 200)
+    assert scoped.json()["scenario"] == "scn_a"
+    calls = service_cls.return_value.build_queue.await_args_list
+    assert calls[0].args == (2026,)
+    assert calls[0].kwargs == {"session_cm_id": 1000002, "scenario": "scn_a"}
+    assert calls[1].kwargs == {"session_cm_id": None, "scenario": ""}
+
+
+def test_a_refused_weekend_queue_maps_to_404_and_422() -> None:
+    client = _client(_user(Permission.BUNKING_MANAGE))
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.build_queue = AsyncMock(side_effect=JotformNotFoundError("not this weekend's"))
+        other = client.get("/api/jotform/queue", params={"year": 2026, "session_cm_id": 1000002, "scenario": "x"})
+        service_cls.return_value.build_queue = AsyncMock(side_effect=JotformValidationError("name the weekend"))
+        bare = client.get("/api/jotform/queue", params={"year": 2026, "scenario": "x"})
+    assert (other.status_code, other.json()["detail"]) == (404, "not this weekend's")
+    assert (bare.status_code, bare.json()["detail"]) == (422, "name the weekend")
+
+
+# --- One filer, one decision (kindred#2839 follow-up) ---------------------------
+
+
+def test_an_action_that_also_moved_the_filers_other_filings_names_them() -> None:
+    from api.schemas.jotform import JotformActionResult, JotformSiblingFiling
+
+    result = JotformActionResult(
+        action="ignored",
+        also=[
+            JotformSiblingFiling(
+                submission_id="6600000000000000002", submitted_name="Emma Johnson", submitted_at="2026-08-09 09:00:00"
+            )
+        ],
+    )
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.ignore = AsyncMock(return_value=result)
+        response = _client(_user(Permission.BUNKING_MANAGE)).post("/api/jotform/submissions/6600000000000000001/ignore")
+    assert response.status_code == 200
+    assert response.json() == {
+        "action": "ignored",
+        "also": [
+            {
+                "submission_id": "6600000000000000002",
+                "submitted_name": "Emma Johnson",
+                "submitted_at": "2026-08-09 09:00:00",
+            }
+        ],
+    }
+
+
+def test_an_action_that_moved_only_the_clicked_filing_stays_a_204() -> None:
+    from api.schemas.jotform import JotformActionResult
+
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.unlink = AsyncMock(return_value=JotformActionResult(action="unlinked"))
+        response = _client(_user(Permission.BUNKING_MANAGE)).post("/api/jotform/submissions/6600000000000000001/unlink")
+    assert (response.status_code, response.content) == (204, b"")

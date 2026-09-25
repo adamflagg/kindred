@@ -134,6 +134,26 @@ describe('invalidateLodgingRegistryQueries', () => {
     }
   }
 
+  it('invalidates the Jotform queue, whose write-in links name units and follow pushes', () => {
+    // The weekend Requests tab (kindred#2828 ruling 2026-09-25) says "placed
+    // in <unit>" from the registry's unit name, and a push or unpush moves
+    // the live board's write-ins and the link keys they carry. Every one of
+    // those writers already calls this helper.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    expect(client.keys).toContainEqual([...queryKeys.jotformPrefix()])
+    expect(queryKeys.jotformWeekendQueue(2026, 1000002, 'scn_a').slice(0, 1)).toEqual([
+      ...queryKeys.jotformPrefix(),
+    ])
+  })
+
+  it('keys the weekend queue by weekend AND scenario', () => {
+    expect(queryKeys.jotformWeekendQueue(2026, 1000002, '')).not.toEqual(
+      queryKeys.jotformWeekendQueue(2026, 1000002, 'scn_a')
+    )
+  })
+
   it('invalidates the weekend roster, summary and session list', () => {
     const client = recordingClient()
     invalidateLodgingRegistryQueries(client)

@@ -4,6 +4,7 @@
  * pinned in `useJotformAdmin.test.tsx`. Fictional names only.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JotformQueue } from './JotformQueue'
@@ -11,7 +12,7 @@ import { JotformQueue } from './JotformQueue'
 const act = { mutate: vi.fn(), isPending: false }
 const queue = { data: undefined as unknown, isLoading: false, error: null as Error | null }
 vi.mock('../../../hooks/useJotformAdmin', () => ({
-  useJotformQueue: () => queue,
+  useJotformWeekendQueue: () => queue,
   useJotformSubmissionAction: () => act,
 }))
 
@@ -90,15 +91,18 @@ beforeEach(() => {
 })
 
 describe('JotformQueue — write-ins', () => {
-  it("offers this weekend's write-ins, pre-selected, and links the chosen one", () => {
-    render(<JotformQueue year={2026} sessionCmId={1000002} />)
+  it("offers this weekend's write-ins, pre-selected, and links the chosen one", async () => {
+    render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" />)
     const item = screen.getByTestId('jotform-unmatched-6600000000000000011')
-    const select = within(item).getByRole('combobox', { name: 'Write-in for Pat Doe' })
-    expect((select as HTMLSelectElement).value).toBe('u_cedar/Patty Doe')
-    const labels = within(select)
+    // A listbox since kindred#2839's icon ask: the button shows the pick.
+    const picker = within(item).getByRole('button', { name: 'Write-in for Pat Doe' })
+    expect(picker).toHaveTextContent('Patty Doe · Cedar 3')
+    await userEvent.click(picker)
+    const labels = within(screen.getByRole('listbox'))
       .getAllByRole('option')
       .map((option) => option.textContent)
     expect(labels).toEqual(['Choose a write-in…', 'Kitchen crew · Fern 1', 'Patty Doe · Cedar 3'])
+    await userEvent.keyboard('{Escape}')
 
     fireEvent.click(within(item).getByRole('button', { name: 'Link chosen write-in' }))
     expect(act.mutate).toHaveBeenLastCalledWith({
@@ -108,7 +112,8 @@ describe('JotformQueue — write-ins', () => {
       occupantName: 'Patty Doe',
     })
 
-    fireEvent.change(select, { target: { value: 'u_fern/Kitchen crew' } })
+    await userEvent.click(picker)
+    await userEvent.click(screen.getByRole('option', { name: 'Kitchen crew · Fern 1' }))
     fireEvent.click(within(item).getByRole('button', { name: 'Link chosen write-in' }))
     expect(act.mutate).toHaveBeenLastCalledWith({
       kind: 'write_in',
@@ -121,16 +126,16 @@ describe('JotformQueue — write-ins', () => {
   it('offers no write-in control on a weekend with no write-ins', () => {
     const data = queue.data as { write_in_options: unknown[] }
     data.write_in_options = []
-    const { container } = render(<JotformQueue year={2026} sessionCmId={1000002} />)
+    const { container } = render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" />)
     const item = within(container).getByTestId('jotform-unmatched-6600000000000000011')
-    expect(within(item).queryByRole('combobox', { name: /^Write-in for/ })).not.toBeInTheDocument()
+    expect(within(item).queryByRole('button', { name: /^Write-in for/ })).not.toBeInTheDocument()
     expect(
       within(item).queryByRole('button', { name: 'Link chosen write-in' })
     ).not.toBeInTheDocument()
   })
 
   it('lists linked write-ins with the name staff gave the write-in, and unlinks', () => {
-    render(<JotformQueue year={2026} sessionCmId={1000002} />)
+    render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" />)
     const list = screen.getByTestId('jotform-write-ins')
     expect(list).toHaveTextContent('Write-ins (1)')
     expect(list).toHaveTextContent('Olivia Chen')
@@ -145,7 +150,7 @@ describe('JotformQueue — write-ins', () => {
 
 describe('JotformQueue — cancelled registrations', () => {
   it('lists them apart with their status and asks nothing of staff', () => {
-    render(<JotformQueue year={2026} sessionCmId={1000002} />)
+    render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" />)
     const list = screen.getByTestId('jotform-cancelled')
     expect(list).toHaveTextContent('Cancelled registrations (2)')
     expect(list).toHaveTextContent('Liam Garcia')
