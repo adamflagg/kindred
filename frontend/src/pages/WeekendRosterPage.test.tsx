@@ -1299,3 +1299,64 @@ describe('the Requests tab (kindred#2828 ruling 2026-09-25)', () => {
     expect(screen.queryByTestId('requests-queue')).not.toBeInTheDocument()
   })
 })
+
+describe('a hard refresh on the Requests tab (scan of #2839)', () => {
+  // Whether the tab is offered depends on the weekend's type, which arrives
+  // with the sessions list. Until then `requests` is PENDING, not refused: the
+  // page must neither show Housing nor mount it, or a reload of
+  // /weekend/X/requests would paint (and fetch) the board first.
+  function page() {
+    return (
+      <MemoryRouter initialEntries={['/weekend/1000002/requests']}>
+        <Routes>
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    )
+  }
+
+  it('waits for the weekend instead of falling back to Housing', async () => {
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    const { rerender } = render(page())
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'false')
+    expect(document.getElementById('weekend-panel-housing')?.childElementCount).toBe(0)
+
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
+    sessionsQuery.isLoading = false
+    rerender(page())
+    expect(screen.getByRole('tab', { name: /Requests/ })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByTestId('requests-queue')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000002/requests')
+    // Housing was never opened on the way.
+    expect(document.getElementById('weekend-panel-housing')?.childElementCount).toBe(0)
+  })
+
+  it('still falls back to Housing once the weekend turns out to be Family Camp', () => {
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    // A fresh element each render: re-passing the same one lets React skip it.
+    const familyPage = () => (
+      <MemoryRouter initialEntries={['/weekend/1000001/requests']}>
+        <Routes>
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(familyPage())
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
+    sessionsQuery.isLoading = false
+    rerender(familyPage())
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('requests-queue')).not.toBeInTheDocument()
+  })
+
+  it('falls back at once for a caller without bunking.manage, loading or not', () => {
+    isAdmin = false
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    render(page())
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
+  })
+})

@@ -223,7 +223,17 @@ export default function WeekendRosterPage() {
   // the parties' grain.
   const sessionType = selectedSession?.session_type ?? ''
   const showRequests = canManageLodging && isAdultSessionType(sessionType)
-  const view = parseView(viewParam, offeredViews(showRequests))
+  // Whether Requests is offered turns on the weekend's type, which arrives
+  // with the sessions list. Until then a `requests` URL is PENDING, not
+  // refused: parsed as offered, so a hard refresh neither shows Housing nor
+  // seeds `openedViews` with it (mounting the board for nothing). Nothing
+  // renders for it meanwhile -- its tab and panel still wait on
+  // `showRequests` -- and once the weekend is known the normal fallback
+  // applies (Family Camp, say). A caller without `bunking.manage` is known
+  // already, and falls back at once.
+  const requestsPending =
+    canManageLodging && selectedSession === undefined && sessionsQuery.isLoading
+  const view = parseView(viewParam, offeredViews(showRequests || requestsPending))
 
   // Read here for the tab's count as well as inside the tab — one cache entry
   // for both, as the Groups count above. IN THE VIEWED SCENARIO, as the tab
