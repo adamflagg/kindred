@@ -296,10 +296,10 @@ var serviceGrainDeclarations = []ServiceGrain{
 
 	{Service: "financial_transactions", Writes: []CollectionGrain{{
 		Collection: "financial_transactions",
-		NoGrain: "ProcessSimpleRecord + the UNGUARDED DeleteOrphansFromPreloaded " +
-			"(financial_transactions.go:162); the sweep reuses the keys of the map " +
-			"PreloadRecords already built rather than rebuilding one from a stored " +
-			"row, so there is no second key builder for a WriteKey to disagree with",
+		NoGrain: "ProcessSimpleRecord + DeleteOrphansFromPreloaded behind an " +
+			"OrphanSweepGuard.Check in sweepOrphanTransactions; the sweep reuses the keys " +
+			"of the map PreloadRecords already built rather than rebuilding one from a " +
+			"stored row, so there is no second key builder for a WriteKey to disagree with",
 	}}},
 
 	// ------------------------------------------------------------- Expensive

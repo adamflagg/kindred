@@ -19,17 +19,26 @@ const serviceNameFinancialTransactions = "financial_transactions"
 // This is a year-scoped table that runs in the daily sync
 type FinancialTransactionsSync struct {
 	BaseSyncService
+
+	// fetchSeason fetches one season's rows, reversals included. nil means the CampMinder
+	// client; tests replace it.
+	fetchSeason func(season int) ([]map[string]any, error)
+
+	// crossSeason holds the transaction cm_ids the last SyncForYear flagged as posted
+	// against another season's session. Logged, never re-keyed (design §6.1).
+	crossSeason []int
 }
 
 // TransactionLookupMaps holds all the lookup maps needed for relation resolution
 type TransactionLookupMaps struct {
-	FinancialCategories map[int]string // cm_id -> PB ID
-	PaymentMethods      map[int]string // cm_id -> PB ID
-	Sessions            map[int]string // cm_id -> PB ID
-	SessionGroups       map[int]string // cm_id -> PB ID
-	Divisions           map[int]string // cm_id -> PB ID
-	Persons             map[int]string // cm_id -> PB ID
-	Households          map[int]string // cm_id -> PB ID
+	FinancialCategories map[int]string       // cm_id -> PB ID
+	PaymentMethods      map[int]string       // cm_id -> PB ID
+	Sessions            map[int]string       // cm_id -> PB ID
+	SessionGroups       map[int]string       // cm_id -> PB ID
+	Divisions           map[int]string       // cm_id -> PB ID
+	Persons             map[int]string       // cm_id -> PB ID
+	Households          map[int]string       // cm_id -> PB ID
+	SessionSeasons      map[int]map[int]bool // session cm_id -> every season it appears in
 }
 
 // NewFinancialTransactionsSync creates a new financial transactions sync service
@@ -46,6 +55,14 @@ func (s *FinancialTransactionsSync) SetDryRun(dryRun bool) {
 	s.DryRun = dryRun
 }
 
+// fetch returns one season's rows from the test hook, or from CampMinder when none is set.
+func (s *FinancialTransactionsSync) fetch(season int) ([]map[string]any, error) {
+	if s.fetchSeason != nil {
+		return s.fetchSeason(season)
+	}
+	return s.Client.GetTransactionDetails(season, true)
+}
+
 // Sync performs the year-scoped financial transactions sync
 func (s *FinancialTransactionsSync) Sync(ctx context.Context) error {
 	return s.SyncForYear(ctx, s.Client.GetSeasonID())
@@ -54,9 +71,12 @@ func (s *FinancialTransactionsSync) Sync(ctx context.Context) error {
 // SyncForYear syncs financial transactions for a specific year
 // This is exposed for historical data syncing
 func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) error {
-	s.LogSyncStart(serviceNameFinancialTransactions)
+	// Logged from the requested year, not the client's season: a rolling run syncs several
+	// seasons through one client, and DB-backed tests have no client at all.
+	slog.Info("Starting sync", "service", serviceNameFinancialTransactions, "season", year)
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
+	s.crossSeason = nil
 
 	slog.Info("Syncing financial transactions", "year", year)
 
@@ -85,7 +105,7 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 	}
 
 	// Fetch transactions from CampMinder (include reversals for complete audit trail)
-	transactions, err := s.Client.GetTransactionDetails(year, true)
+	transactions, err := s.fetch(year)
 	if err != nil {
 		return fmt.Errorf("fetching transactions: %w", err)
 	}
@@ -93,10 +113,9 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 	// Deduplicate by cm_id + amount (CampMinder bug returns some $0 transactions twice)
 	transactions = s.deduplicateTransactions(transactions)
 
-	slog.Info("Fetched financial transactions", "count", len(transactions))
-	s.SyncSuccessful = true // Mark successful after fetch - enables orphan deletion
+	slog.Info("Fetched financial transactions", "season", year, "count", len(transactions))
+	s.SyncSuccessful = true // Fetch succeeded: the sweep may run (behind its guard)
 
-	totalTxns := len(transactions)
 	unresolved := unresolvedTransactionIDs{}
 	for i, data := range transactions {
 		select {
@@ -107,60 +126,125 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 
 		// Log progress every 2000 records
 		if i > 0 && i%2000 == 0 {
-			slog.Info("Processing transactions", "current", i, "total", totalTxns,
+			slog.Info("Processing transactions", "current", i, "total", len(transactions),
 				"created", s.Stats.Created, "updated", s.Stats.Updated, "skipped", s.Stats.Skipped)
 		}
 
-		pbData, err := s.transformTransactionToPB(data, year, lookupMaps)
-		if err != nil {
-			slog.Error("Error transforming transaction", "error", err)
-			s.Stats.Rejected++
-			continue
-		}
-
-		cmID, ok := pbData["cm_id"].(int)
-		if !ok || cmID == 0 {
-			slog.Error("Invalid transaction cm_id")
-			s.Stats.Rejected++
-			continue
-		}
-
-		amount, _ := pbData["amount"].(float64)
-		txnKey := s.transactionKey(cmID, amount)
-
-		s.TrackProcessedKey(txnKey, year)
-		unresolved.tally(pbData)
-
-		err = s.ProcessSimpleRecord(
-			"financial_transactions", txnKey, pbData, existingRecords, transactionCompareFields)
-		if err != nil {
-			if errors.Is(err, errRejectedRecord) {
-				slog.Warn("Rejected transaction", "cm_id", cmID, "amount", amount, "error", err)
-				s.Stats.Rejected++
-			} else {
-				slog.Error("Error processing transaction", "cm_id", cmID, "amount", amount, "error", err)
-				s.Stats.Errors++
-			}
-		}
+		s.syncTransaction(data, year, lookupMaps, existingRecords, unresolved)
 	}
 
-	unresolved.log(year)
+	sweepErr := s.sweepOrphanTransactions(existingRecords, year)
 
-	// Delete orphans using preloaded data (avoids re-querying 22K+ records)
-	if err := s.DeleteOrphansFromPreloaded(existingRecords, "financial transaction"); err != nil {
-		slog.Error("Error deleting orphan transactions", "error", err)
-	}
-
-	// Force WAL checkpoint
+	// Checkpoint before any error return: the loop above has already written.
 	if err := s.ForceWALCheckpoint(); err != nil {
 		slog.Warn("WAL checkpoint failed", "error", err)
 	}
 
 	// Log summary of which fields caused updates (for idempotency debugging)
 	s.LogFieldDiffSummary()
+	unresolved.log(year)
+	s.logCrossSeason(year)
 
 	s.LogSyncComplete("Financial Transactions")
-	return nil
+	return wrapOrphanSweepError(sweepErr)
+}
+
+// syncTransaction transforms and upserts one CampMinder row for season `year`.
+func (s *FinancialTransactionsSync) syncTransaction(
+	data map[string]any, year int, lookups TransactionLookupMaps,
+	existing map[any]*core.Record, unresolved unresolvedTransactionIDs,
+) {
+	pbData, err := s.transformTransactionToPB(data, year, lookups)
+	if err != nil {
+		slog.Error("Error transforming transaction", "error", err)
+		s.Stats.Rejected++
+		return
+	}
+
+	cmID, ok := pbData["cm_id"].(int)
+	if !ok || cmID == 0 {
+		slog.Error("Invalid transaction cm_id")
+		s.Stats.Rejected++
+		return
+	}
+
+	// A season-scoped fetch should never return another season's row. If it does, leave it
+	// for that season's own run instead of writing it under a preload and a sweep that are
+	// both keyed to this one. Skipped before TrackProcessedKey, so the sweep cannot read it
+	// as a processed row of this season.
+	if rowYear, _ := pbData["year"].(int); rowYear != year {
+		slog.Warn("Transaction filed under another season; skipped in this season's run",
+			"cm_id", cmID, "row_season", rowYear, "requested_season", year)
+		s.Stats.Skipped++
+		return
+	}
+
+	unresolved.tally(pbData)
+	if crossSeasonSession(pbData, lookups, year) {
+		s.crossSeason = append(s.crossSeason, cmID)
+	}
+
+	amount, _ := pbData["amount"].(float64)
+	txnKey := s.transactionKey(cmID, amount)
+	s.TrackProcessedKey(txnKey, year)
+
+	err = s.ProcessSimpleRecord("financial_transactions", txnKey, pbData, existing, transactionCompareFields)
+	if err != nil {
+		if errors.Is(err, errRejectedRecord) {
+			slog.Warn("Rejected transaction", "cm_id", cmID, "amount", amount, "error", err)
+			s.Stats.Rejected++
+		} else {
+			slog.Error("Error processing transaction", "cm_id", cmID, "amount", amount, "error", err)
+			s.Stats.Errors++
+		}
+	}
+}
+
+// crossSeasonSession reports a row filed under season `year` whose session CampMinder
+// holds only under other seasons (design §6.1). The row is flagged, never re-keyed.
+//
+// No flag at all while `year` has no camp_sessions synced (an N+1 season, a backfill
+// year): CampMinder reuses session ids across seasons, so every session-bearing row would
+// otherwise read as cross-season.
+func crossSeasonSession(pbData map[string]any, lookups TransactionLookupMaps, year int) bool {
+	sessionCMID, _ := pbData["session_cm_id"].(int)
+	if sessionCMID == 0 || len(lookups.Sessions) == 0 {
+		return false
+	}
+	seasons := lookups.SessionSeasons[sessionCMID]
+	return len(seasons) > 0 && !seasons[year]
+}
+
+// sweepOrphanTransactions deletes this season's stored rows the fetch no longer returned,
+// behind the collapse guard. DeleteOrphansFromPreloaded alone would read an empty or short
+// response (a season CampMinder has no rows for yet, a truncated body) as "everything was
+// deleted upstream". Transactions only accumulate upstream, so a large shortfall is never
+// real.
+func (s *FinancialTransactionsSync) sweepOrphanTransactions(existing map[any]*core.Record, year int) error {
+	if !s.SyncSuccessful {
+		return nil
+	}
+	guard := OrphanSweepGuard{
+		Entity:   serviceNameFinancialTransactions,
+		Year:     year,
+		Computed: len(s.ProcessedKeys),
+		Rejected: s.Stats.Rejected,
+		Hint:     "check CampMinder's transactiondetails response for this season before re-running",
+	}
+	if err := guard.Check(len(existing)); err != nil && !guard.RejectionsExplainShortfall(len(existing)) {
+		return err
+	}
+	return s.DeleteOrphansFromPreloaded(existing, "financial transaction")
+}
+
+// logCrossSeason reports the rows crossSeasonSession flagged this run, with a short sample.
+func (s *FinancialTransactionsSync) logCrossSeason(year int) {
+	if len(s.crossSeason) == 0 {
+		return
+	}
+	sample := s.crossSeason[:min(len(s.crossSeason), 10)]
+	slog.Warn("Transactions filed against a session CampMinder holds only under another season: flagged, not re-keyed",
+		"year", year, "count", len(s.crossSeason), "sample_transaction_cm_ids", sample)
 }
 
 // buildLookupMaps builds all the lookup maps needed for relation resolution
@@ -173,6 +257,7 @@ func (s *FinancialTransactionsSync) buildLookupMaps(year int) (TransactionLookup
 		Divisions:           make(map[int]string),
 		Persons:             make(map[int]string),
 		Households:          make(map[int]string),
+		SessionSeasons:      make(map[int]map[int]bool),
 	}
 
 	// Financial categories (global table)
@@ -209,6 +294,24 @@ func (s *FinancialTransactionsSync) buildLookupMaps(year int) (TransactionLookup
 			if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 				maps.Sessions[int(cmID)] = record.Id
 			}
+		}
+	}
+
+	// Every season each session id appears in, for the cross-season flag. CampMinder
+	// reuses session ids across seasons, so this is a set per id.
+	allSessions, err := s.App.FindRecordsByFilter("camp_sessions", "", "", 0, 0)
+	if err != nil {
+		slog.Warn("Error loading sessions across seasons", "error", err)
+	} else {
+		for _, record := range allSessions {
+			cmID, season := record.GetInt("cm_id"), record.GetInt("year")
+			if cmID <= 0 || season <= 0 {
+				continue
+			}
+			if maps.SessionSeasons[cmID] == nil {
+				maps.SessionSeasons[cmID] = map[int]bool{}
+			}
+			maps.SessionSeasons[cmID][season] = true
 		}
 	}
 
@@ -289,7 +392,8 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 	pbData["cm_id"] = int(txnID)
 
 	// year is CampMinder's own per-row season (campership design §6.1); the requested
-	// season is a fallback for a row that omits it.
+	// season is a fallback for a row that omits it. SyncForYear refuses a row whose season
+	// disagrees with the one it asked for.
 	pbData["year"] = year
 	if season, ok := data["season"].(float64); ok && season > 0 {
 		pbData["year"] = int(season)
