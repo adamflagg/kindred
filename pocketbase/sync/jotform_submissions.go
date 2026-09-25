@@ -680,7 +680,8 @@ func (s *JotformSubmissionsSync) writeInKeys(year, sessionCMID int) (map[string]
 
 // applyMatches writes a plan's changed decisions.
 func (s *JotformSubmissionsSync) applyMatches(plan matchPlan) error {
-	for _, d := range plan.writes {
+	for i := range plan.writes {
+		d := &plan.writes[i]
 		if err := s.saveMatch(d); err != nil {
 			return fmt.Errorf("saving match of %s: %w", d.submissionID, err)
 		}
@@ -712,7 +713,7 @@ func (s *JotformSubmissionsSync) markDeleted(recordID string) error {
 // saveMatch writes one match decision onto a FRESH copy of the row, inside a
 // transaction, and writes nothing if staff linked, ignored or wrote it in after
 // planMatches loaded it: a staff decision is never overwritten, even mid-pull.
-func (s *JotformSubmissionsSync) saveMatch(d matchDecision) error {
+func (s *JotformSubmissionsSync) saveMatch(d *matchDecision) error {
 	err := s.App.RunInTransaction(func(tx core.App) error {
 		fresh, err := tx.FindRecordById("jotform_submissions", d.recordID)
 		if err != nil {

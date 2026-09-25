@@ -44,7 +44,8 @@ func setStatusText(t *testing.T, app core.App, cmID int, status string) {
 
 func pullOne(t *testing.T, app core.App, subs ...jotform.Submission) {
 	t.Helper()
-	if _, err := runJotform(t, app, &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": subs}}); err != nil {
+	fake := &fakeJotform{subs: map[string][]jotform.Submission{"261700000000001": subs}}
+	if _, err := runJotform(t, app, fake); err != nil {
 		t.Fatal(err)
 	}
 }

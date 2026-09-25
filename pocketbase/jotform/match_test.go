@@ -107,7 +107,8 @@ func TestMatchRegistrationNeverFallsBackPastAnEnrolledAmbiguity(t *testing.T) {
 		{PersonCMID: 1000012, First: "Emma", Last: "Johnson"},
 	}
 	others := []Guest{{PersonCMID: 1000013, First: "Emma", Last: "Johnson"}}
-	if got, cancelled := MatchRegistration(Identity{First: "Emma", Last: "Johnson"}, twins, others); got != (Result{}) || cancelled {
+	got, cancelled := MatchRegistration(Identity{First: "Emma", Last: "Johnson"}, twins, others)
+	if got != (Result{}) || cancelled {
 		t.Errorf("got %+v, %v; want unmatched", got, cancelled)
 	}
 }

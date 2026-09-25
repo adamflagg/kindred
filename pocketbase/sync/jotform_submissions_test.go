@@ -251,7 +251,8 @@ func TestJotformPullStoresEveryAnswerAndMatches(t *testing.T) {
 		t.Errorf("stored %d answers, want 5", len(answers))
 	}
 	form, _ := app.FindFirstRecordByFilter("jotform_forms", "form_id = '261700000000001'")
-	if !strings.HasPrefix(form.GetString("last_pull_status"), "ok · 3 submissions · 1 matched · 1 unmatched · 1 cancelled") {
+	const wantStatus = "ok · 3 submissions · 1 matched · 1 unmatched · 1 cancelled"
+	if !strings.HasPrefix(form.GetString("last_pull_status"), wantStatus) {
 		t.Errorf("last_pull_status = %q", form.GetString("last_pull_status"))
 	}
 }
