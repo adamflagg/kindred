@@ -140,6 +140,11 @@ class JotformWriteInOption(BaseModel):
     unit_id: str
     unit_name: str = ""
     occupant_name: str
+    # One weekend's read only: who has a filing linked to this write-in in the
+    # viewed scenario (or on the live board), each filer once. The Requests
+    # tab marks it in the dropdown (kindred#2839 owner ask) and still offers
+    # it -- a party can share a write-in.
+    linked_filers: list[str] = Field(default_factory=list)
 
 
 class JotformWriteInLinkSuggestion(BaseModel):

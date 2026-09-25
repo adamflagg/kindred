@@ -430,6 +430,29 @@ def write_in_options(rows: Sequence[WriteInRow]) -> list[JotformWriteInOption]:
     return list(seen.values())
 
 
+def mark_linked_filers(
+    options: Sequence[JotformWriteInOption], rows: Sequence[WriteInRow], linked: Sequence[QueueSubmission]
+) -> None:
+    """Name on each option the filers whose filing is linked to it: a filing
+    whose key a row of that (unit, name) in `rows` carries -- the viewed
+    scope's rows, so a link placed only in another scenario marks nothing
+    here. Each filer once, in the order `linked` lists them."""
+    filers: dict[tuple[int, str], list[str]] = {}
+    for sub in linked:
+        if sub.write_in_key:
+            filers.setdefault((sub.session_cm_id, sub.write_in_key), []).append(sub.submitted_name)
+    by_option: dict[tuple[int, str], list[str]] = {}
+    for row in rows:
+        names = filers.get((row.session_cm_id, row.write_in_key)) if row.write_in_key else None
+        if names:
+            by_option.setdefault((row.session_cm_id, write_in_option_id(row.unit_id, row.occupant_name)), []).extend(
+                names
+            )
+    for option in options:
+        names = by_option.get((option.session_cm_id, option.option_id), [])
+        option.linked_filers = list(dict.fromkeys(names))
+
+
 def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOption]) -> str:
     """The write-in to pre-select for a filing, or "". Staff type write-in
     names without knowing the form, so this is forgiving -- folded case and

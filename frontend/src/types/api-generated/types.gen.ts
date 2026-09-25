@@ -3117,6 +3117,10 @@ export type JotformWriteInOption = {
    * Occupant Name
    */
   occupant_name: string
+  /**
+   * Linked Filers
+   */
+  linked_filers?: Array<string>
 }
 
 /**

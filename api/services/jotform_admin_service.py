@@ -50,6 +50,7 @@ from api.services.jotform_queue import (
     duplicate_groups,
     identity_from_answers,
     link_suggestions,
+    mark_linked_filers,
     name_tiers,
     parse_form_id,
     queue_item,
@@ -478,6 +479,8 @@ class JotformAdminService:
                 cancelled.append(queue_item(sub, session_name=session_name))
             elif sub.match_status in ("staff", "ignored"):
                 resolved.append(queue_item(sub, session_name=session_name, guest_name=names.get(sub.person_cm_id, "")))
+        if session_cm_id is not None:
+            mark_linked_filers(options, viewed, linked_subs)
         listed = [
             JotformGuest(
                 person_cm_id=g.person_cm_id,

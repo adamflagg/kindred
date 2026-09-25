@@ -290,6 +290,59 @@ class TestViewedScenarioOptions:
         assert live_item.write_in_suggestion == ""
         assert plan_item.write_in_suggestion == "u_cedar/Bobby Doe"
 
+    @pytest.mark.asyncio
+    async def test_an_option_names_the_filers_linked_to_it_in_the_viewed_scenario(self) -> None:
+        # The dropdown marks a write-in already linked to a filing (kindred#2839
+        # owner ask): staff linking another filer can see the write-in is taken,
+        # though it stays offered -- a party can share one.
+        repo = _repo(
+            fetch_submissions=[
+                _sub("s15", "write_in", write_in_key="k-liv"),
+                _sub("s16", "write_in", write_in_key="k-liv"),
+                _sub("s17", "write_in", write_in_key="k-sam"),
+                _sub("s20"),
+            ],
+            fetch_answers=[
+                *_answers("s15", "Olivia", "Chen"),
+                *_answers("s16", "Riley", "Sam"),
+                *_answers("s17", "Samuel", "Johnson"),
+                *_answers("s20", "Emma", "Johnson"),
+            ],
+            fetch_live_write_ins=[
+                _write_in("w1", "Liv C.", key="k-liv"),
+                _write_in("w2", "Kitchen crew", unit="u_fern", unit_name="Fern 1"),
+            ],
+            # Samuel's write-in is placed only in Plan B: in the live view it is
+            # not an option at all, and in Plan B it is linked.
+            fetch_draft_write_ins=[
+                _write_in("d1", "Sam J.", unit="u_oak", unit_name="Oak 2", key="k-sam", scenario="scn_b")
+            ],
+        )
+
+        live = await _weekend(repo)
+        plan = await _weekend(repo, scenario="scn_b")
+
+        assert [(o.occupant_name, o.linked_filers) for o in live.write_in_options] == [
+            ("Liv C.", ["Olivia Chen", "Riley Sam"]),
+            ("Kitchen crew", []),
+        ]
+        assert [(o.occupant_name, o.linked_filers) for o in plan.write_in_options] == [("Sam J.", ["Samuel Johnson"])]
+
+    @pytest.mark.asyncio
+    async def test_one_filers_two_filings_name_them_once(self) -> None:
+        repo = _repo(
+            fetch_submissions=[
+                _sub("s21", "write_in", write_in_key="k-liv"),
+                _sub("s22", "write_in", write_in_key="k-liv", submitted_at="2026-09-02 09:00:00"),
+            ],
+            fetch_answers=[*_answers("s21", "Olivia", "Chen"), *_answers("s22", "Olivia", "Chen")],
+            fetch_live_write_ins=[_write_in("w1", "Liv C.", key="k-liv")],
+        )
+
+        [option] = (await _weekend(repo)).write_in_options
+
+        assert option.linked_filers == ["Olivia Chen"]
+
 
 class TestSuggestedLinks:
     @pytest.mark.asyncio
