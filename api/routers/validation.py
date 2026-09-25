@@ -91,7 +91,8 @@ def calculate_age(birthdate_str: str) -> float:
         # Return in CampMinder format: 12.02 for 12 years, 2 months
         return years + (months / 100)
     except Exception as e:
-        logger.error(f"Error calculating age from {birthdate_str}: {e}")
+        # Neither the value nor str(e) (which repeats it) goes to the log: a birthdate is PII.
+        logger.error("Error calculating age from birthdate (%s); using age 0", type(e).__name__)
         return 0.0
 
 
