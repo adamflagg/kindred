@@ -13,11 +13,12 @@
  */
 import type { SharePreferenceValue } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
+import { ANSWER_PILL_CLASS, ANSWER_PILL_TONE } from './answerPill'
 
 const CHIP: Record<SharePreferenceValue, { label: string; className: string }> = {
   no_share: {
     label: 'Will not share',
-    className: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+    className: ANSWER_PILL_TONE.no,
   },
   maybe_mutual: {
     label: 'Only if mutual',
@@ -25,7 +26,7 @@ const CHIP: Record<SharePreferenceValue, { label: string; className: string }> =
   },
   yes_share: {
     label: 'Open to sharing',
-    className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
+    className: ANSWER_PILL_TONE.yes,
   },
   unknown: {
     label: 'Not answered',
@@ -48,7 +49,7 @@ export function SharePreferenceChip({ preference, raw }: SharePreferenceChipProp
   // preference value before these types are regenerated, an unmapped key
   // would otherwise crash the whole roster on `chip.label`.
   const chip = Object.hasOwn(CHIP, preference) ? CHIP[preference] : CHIP.unknown
-  const chipClassName = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`
+  const chipClassName = `${ANSWER_PILL_CLASS} ${chip.className}`
 
   // Only a chip with an answer behind it becomes a control. "Not answered"
   // explains itself, and a focusable chip that reveals nothing is a dead stop

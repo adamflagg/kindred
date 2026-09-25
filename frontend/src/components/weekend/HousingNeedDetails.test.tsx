@@ -318,9 +318,17 @@ describe('Jotform says (kindred#2759)', () => {
     )
     const row = screen.getByTestId('need-row-accommodation')
     expect(within(row).getByText('Registration')).toBeInTheDocument()
-    expect(within(row).getByTestId('jotform-says-accommodation')).toHaveTextContent(
-      'Jotform says: No (registration: Yes)'
-    )
+    const line = within(row).getByTestId('jotform-says-accommodation')
+    // Owner review 2026-09-24: no "Jotform says" prefix -- the source tag
+    // already says Jotform -- and the answer is a coloured Yes/No pill in the
+    // SharePreferenceChip grammar.
+    expect(line).not.toHaveTextContent('Jotform says')
+    expect(within(line).getByText('Jotform · Aug 31')).toBeInTheDocument()
+    const chip = within(line).getByTestId('jotform-answer-accommodation')
+    expect(chip).toHaveTextContent(/^No$/)
+    expect(chip.className).toContain('rounded-full')
+    expect(chip.className).toContain('bg-red-100')
+    expect(line).toHaveTextContent('No (registration: Yes)')
   })
 
   it('hangs the CPAP disagreement under the power row', () => {
@@ -335,7 +343,8 @@ describe('Jotform says (kindred#2759)', () => {
     )
     expect(
       within(screen.getByTestId('need-row-power')).getByTestId('jotform-says-cpap')
-    ).toHaveTextContent('Jotform says: No (registration: Yes)')
+    ).toHaveTextContent('No (registration: Yes)')
+    expect(screen.getByTestId('jotform-answer-cpap')).toHaveTextContent(/^No$/)
   })
 
   it('gives a Jotform-only need its own row instead of dropping it', () => {
@@ -351,9 +360,13 @@ describe('Jotform says (kindred#2759)', () => {
         sourceTag="Registration"
       />
     )
-    expect(screen.getByTestId('need-row-jotform-accommodation')).toHaveTextContent(
-      'Jotform says: Yes — Near a bathroom (registration: No)'
-    )
+    const orphan = screen.getByTestId('need-row-jotform-accommodation')
+    expect(orphan).not.toHaveTextContent('Jotform says')
+    expect(orphan).toHaveTextContent('Yes — Near a bathroom (registration: No)')
+    const chip = within(orphan).getByTestId('jotform-answer-accommodation')
+    expect(chip).toHaveTextContent(/^Yes$/)
+    expect(chip.className).toContain('bg-emerald-100')
+    expect(within(orphan).getByText('Jotform · Aug 31')).toBeInTheDocument()
     expect(screen.getByTestId('need-row-jotform-cpap')).toHaveTextContent('Power (CPAP)')
   })
 

@@ -41,6 +41,7 @@ import { usePermissions } from '../../hooks/usePermissions'
 import { useHouseholdMedical } from '../../hooks/useWeekendRoster'
 import type { JotformNeedAnswerRow, RosterPartyRow } from '../../types/lodging'
 import { shortDate } from './bunkingRequest'
+import { ANSWER_PILL_CLASS, ANSWER_PILL_TONE } from './answerPill'
 import { askedNeedGlyphs, needExplainTexts } from './needGlyphs'
 import { ProvenanceTag } from './panelRows'
 
@@ -65,13 +66,28 @@ interface PanelRow {
   isBlocker?: boolean
 }
 
-/** The muted "Jotform says" line under a registration need (kindred#2759). Context only: registration still drives the glyphs. */
+/**
+ * The muted Jotform line under a registration need (kindred#2759). Context
+ * only: registration still drives the glyphs. The answer is a Yes/No pill in
+ * `SharePreferenceChip`'s grammar and tones, after the Jotform source tag --
+ * no "Jotform says" prefix, which the tag already says (owner review
+ * 2026-09-24).
+ */
 function JotformSays({ says }: { says: JotformNeedAnswerRow }) {
   const detail = (says.detail ?? '').trim()
+  const tone = says.jotform === 'Yes' ? ANSWER_PILL_TONE.yes : ANSWER_PILL_TONE.no
   return (
-    <p data-testid={`jotform-says-${says.need}`} className="text-muted-foreground pl-6 text-xs">
+    <p
+      data-testid={`jotform-says-${says.need}`}
+      className="text-muted-foreground flex flex-wrap items-center gap-1.5 pl-6 text-xs"
+    >
+      {/* The `{' '}`s draw nothing inside the flex row (gap spaces it); they
+          keep the line's copied text and textContent readable. */}
       <ProvenanceTag>{`Jotform · ${shortDate(says.submitted_at ?? '')}`}</ProvenanceTag>{' '}
-      {`Jotform says: ${says.jotform}${detail.length > 0 ? ` — ${detail}` : ''} (registration: ${says.registration})`}
+      <span data-testid={`jotform-answer-${says.need}`} className={`${ANSWER_PILL_CLASS} ${tone}`}>
+        {says.jotform}
+      </span>{' '}
+      <span>{`${detail.length > 0 ? `— ${detail} ` : ''}(registration: ${says.registration})`}</span>
     </p>
   )
 }
