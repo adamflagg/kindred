@@ -95,6 +95,16 @@ def test_round_2_rounds_half_up() -> None:
     assert (result.r1, result.r2_cap, result.r2) == (Decimal(602), Decimal("602.5"), Decimal(603))
 
 
+def test_a_malformed_round_2_table_is_a_rules_error() -> None:
+    # Ruling P2 applies to Round 2 too: a rules draft naming a table that is not there
+    # gives a graceful rules_error, never an uncaught exception.
+    rules = with_lever(fictional_rules(), "programs.summer.r2_table", "gold")
+    result = _calc(rules, appeal_amount="500")
+    assert result.status == "error"
+    assert "rules_error" in result.issue_codes()
+    assert (result.r2, result.total) == (None, None)
+
+
 # --- the total-aid cap ----------------------------------------------------------------
 
 _CAP_80 = {"pct_of_cost": "80", "include_grants": True}

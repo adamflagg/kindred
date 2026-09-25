@@ -333,7 +333,10 @@ def _round2(
         work.issue("cost_unknown", "needs_input", "Cost is unknown; the Round 2 cap cannot be computed", "r2_cap")
         work.r2_bound = "cost_unknown"
         return
-    total_pct = resolved_table(rules, program.r2_table)[tier].total_pct
+    percents = _tier_percents(work, rules, program.r2_table, tier, "r2_cap")
+    if percents is None:
+        return
+    total_pct = percents.total_pct
     cap = pct_of(total_pct, work.cost) - work.r1
     if rules.round2.cap_subtracts_grants:
         cap -= work.grants_offset
@@ -436,7 +439,10 @@ def _top_up(work: _Work, decision: DecisionType | None) -> None:
 
 
 def _total(work: _Work) -> None:
-    if work.r1 is None:
+    # A rules_error already blanks r1 by returning before it is set (see _tier_percents).
+    # A Round 2 rules_error can strike after r1 is already computed, so the total needs its
+    # own guard: an error status never produces a total, only r1/r2/r3 taken individually do.
+    if work.r1 is None or status_of(work.issues) == "error":
         return
     work.total = work.r1 + (work.r2 or ZERO) + (work.r3 or ZERO) + work.top_up + work.discretionary
     work.step(
