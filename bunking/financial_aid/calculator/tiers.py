@@ -17,10 +17,26 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 from bunking.financial_aid.calculator.inputs import AnswerValue, ApplicationInputs, RequestInputs
 from bunking.financial_aid.calculator.result import TraceStep
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ONE, ZERO
 from bunking.financial_aid.rules.schema import AidRules, EquityCriterion, ProgramProfile
 
 _ROUNDING = {"ceil": ROUND_CEILING, "round": ROUND_HALF_UP, "floor": ROUND_FLOOR}
+
+
+class UnknownEquityClassError(FinancialAidError, KeyError):
+    """A program names an equity class the season defines no weights for.
+
+    A shift of 0 there would be a silent 0 (spec principle 5); the engine turns
+    this into a rules_error result, as it does a missing award table (ruling P2).
+    """
+
+    def __init__(self, program_class: str) -> None:
+        super().__init__(program_class)
+        self.equity_class = program_class
+
+    def __str__(self) -> str:
+        return f"Equity class '{self.equity_class}' has no weights in this season's rules"
 
 
 def income_tier(income: Decimal, rules: AidRules) -> int | None:
@@ -74,8 +90,9 @@ def equity_shift(
     equity = rules.equity
     if program.equity_class is None:
         return 0, TraceStep(key="equity_shift", label="Equity shift", value=0, note="This program has no equity class")
-    unknown_class = program.equity_class not in equity.weights
-    weights = equity.weights.get(program.equity_class, {})
+    if program.equity_class not in equity.weights:
+        raise UnknownEquityClassError(program.equity_class)
+    weights = equity.weights[program.equity_class]
     total = ZERO
     met: list[str] = []
     for criterion in equity.criteria:
@@ -88,7 +105,6 @@ def equity_shift(
     bound = None
     if equity.max_shift is not None and shift > equity.max_shift:
         shift, bound = equity.max_shift, "max_shift"
-    note = f"No weights for equity class '{program.equity_class}'" if unknown_class else None
     step = TraceStep(
         key="equity_shift",
         label="Equity shift",
@@ -100,7 +116,6 @@ def equity_shift(
             "aggregation": equity.aggregation,
         },
         bound=bound,
-        note=note,
     )
     return shift, step
 

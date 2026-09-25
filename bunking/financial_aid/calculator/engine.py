@@ -14,8 +14,9 @@ that ignores grants (round2.cap_subtracts_grants), a program with no Round 1
 table (programs.<key>.r1_table = null).
 
 An unknown -- a program not in the rules, a cost nobody set, an income below
-the first band, no income reported at all, a rules draft naming a table or
-tier that is not there -- is an explicit issue on the result, never a silent 0.
+the first band, an income figure the rules need that was not reported, a rules
+draft naming a table, tier or equity class that is not there -- is an explicit
+issue on the result, never a silent 0.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from bunking.financial_aid.calculator.result import (
     TraceValue,
     status_of,
 )
-from bunking.financial_aid.calculator.tiers import equity_shift, final_tier, income_tier
+from bunking.financial_aid.calculator.tiers import UnknownEquityClassError, equity_shift, final_tier, income_tier
 from bunking.financial_aid.money import HUNDRED, ZERO, floor_dollars, pct_of, round_dollars
 from bunking.financial_aid.rules.lookup import resolved_table
 from bunking.financial_aid.rules.schema import AidRules, DecisionType, ProgramProfile, TierPercents
@@ -152,7 +153,19 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
         return work.result()
     work.income_tier = tier
     work.step("income_tier", "Income tier", tier, inputs={"adjusted_income": adjusted_income})
-    shift, shift_step = equity_shift(application, request, program, rules)
+    try:
+        shift, shift_step = equity_shift(application, request, program, rules)
+    except UnknownEquityClassError as exc:
+        # Ruling P2 extended (I2): a draft naming an equity class with no weights is a
+        # rules error, never a silent shift of 0.
+        work.issue(
+            "rules_error",
+            "error",
+            f"Program '{request.program_key}' names equity class '{exc.equity_class}', "
+            f"which has no weights in the {rules.year} rules",
+            "equity_shift",
+        )
+        return work.result()
     work.trace.append(shift_step)
     work.equity_shift = shift
     final, tier_bound = final_tier(tier, shift, rules)

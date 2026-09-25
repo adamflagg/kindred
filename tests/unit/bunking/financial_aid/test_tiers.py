@@ -6,7 +6,13 @@ from typing import Any
 import pytest
 
 from bunking.financial_aid.calculator.inputs import ApplicationInputs
-from bunking.financial_aid.calculator.tiers import criterion_met, equity_shift, final_tier, income_tier
+from bunking.financial_aid.calculator.tiers import (
+    UnknownEquityClassError,
+    criterion_met,
+    equity_shift,
+    final_tier,
+    income_tier,
+)
 from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
@@ -114,16 +120,13 @@ def test_a_class_with_no_weights_never_shifts() -> None:
     assert _final(fictional_rules(), program="adult_weekend", bipoc="Yes")[0] == 3
 
 
-def test_an_unknown_equity_class_gives_no_shift_and_an_explicit_note() -> None:
-    # The program's equity_class points at a class the season never defined weights
-    # for. Separate rules validation flags this too, but the calculator must not
-    # silently zero it out without saying why (spec principle 5: an unknown is
-    # explicit, never a silent no-op).
+def test_an_unknown_equity_class_is_a_rules_error_not_a_zero_shift() -> None:
+    # I2 (final review): the program's equity_class names a class the season never
+    # defined weights for. A shift of 0 there is a silent 0 (spec principle 5), so the
+    # lookup refuses, the way a missing award table does (ruling P2).
     rules = with_lever(fictional_rules(), "programs.summer.equity_class", "nosuch")
-    shift, step = equity_shift(app(), req(equity_answers={"bipoc": "Yes"}), rules.programs["summer"], rules)
-    assert shift == 0
-    assert step.note is not None
-    assert "nosuch" in step.note
+    with pytest.raises(UnknownEquityClassError, match="nosuch"):
+        equity_shift(app(), req(equity_answers={"bipoc": "Yes"}), rules.programs["summer"], rules)
 
 
 def test_siblings_in_one_household_can_land_in_different_tiers() -> None:

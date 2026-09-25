@@ -285,6 +285,18 @@ def test_a_program_naming_a_missing_table_is_a_rules_error_not_a_crash() -> None
     assert "no_such_table" in next(i.message for i in result.issues if i.code == "rules_error")
 
 
+def test_a_program_naming_an_unknown_equity_class_is_a_rules_error() -> None:
+    # I2 (final review): a draft whose program names an equity class with no weights
+    # used to shift by a silent 0 and price the request as if nothing were wrong.
+    rules = with_lever(fictional_rules(), "programs.summer.equity_class", "nosuch")
+    result = _calc(rules, equity_answers={"bipoc": "Yes"})
+    assert (result.status, result.final_tier, result.r1, result.total) == ("error", None, None, None)
+    assert result.issue_codes() == {"rules_error"}
+    issue = next(i for i in result.issues if i.code == "rules_error")
+    assert "nosuch" in issue.message
+    assert issue.step == "equity_shift"
+
+
 def test_a_table_missing_the_final_tier_is_a_rules_error() -> None:
     rules = with_lever(fictional_rules(), "award_tables.camp.tiers", {"1": {"r1_pct": "90", "total_pct": "97"}})
     result = _calc(rules)  # tier 2, which the table no longer has
