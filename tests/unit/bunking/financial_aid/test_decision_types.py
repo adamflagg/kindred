@@ -1,0 +1,89 @@
+"""Named decision types: the full-cost program with its extra, a fixed top-up, discretionary."""
+
+from decimal import Decimal
+from typing import Any
+
+from bunking.financial_aid.calculator.engine import calculate
+from bunking.financial_aid.calculator.result import CalcResult
+from bunking.financial_aid.rules.schema import AidRules
+from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
+
+TIER_3 = {"prior_year_gross": "100000", "current_year_gross": "100000"}
+
+
+def _full_cost(rules: AidRules | None = None, **request: Any) -> CalcResult:
+    fields = {"ask": "5000", "decision_type": "full_cost_program", **request}
+    return calculate(app(**TIER_3), req(**fields), rules or fictional_rules())
+
+
+def test_full_cost_lands_the_total_at_cost_plus_the_extra() -> None:
+    result = _full_cost()
+    assert (result.r1, result.r1_bound, result.top_up, result.total) == (
+        Decimal(4000),
+        "full_cost",
+        Decimal(50),
+        Decimal(4050),
+    )
+    assert result.step("top_up").label == "Top-up: Full-cost program"
+
+
+def test_when_the_ask_binds_the_top_up_covers_the_rest() -> None:
+    result = _full_cost(ask="3000")
+    assert (result.r1, result.r1_bound, result.top_up, result.total) == (
+        Decimal(3000),
+        "ask",
+        Decimal(1050),
+        Decimal(4050),
+    )
+
+
+def test_a_grant_is_netted_out_of_a_full_cost_award() -> None:
+    result = _full_cost(grants_applicable=[{"amount": "1000", "state": "committed"}])
+    assert (result.r1, result.top_up, result.total) == (Decimal(3000), Decimal(50), Decimal(3050))
+
+
+def test_the_extra_is_a_lever() -> None:
+    # Ruling P4: extra_amount must move to a non-zero value the pre-implementation engine
+    # cannot reproduce. "0" / 4000 passes even before Round 3/top-up exists (top_up defaults
+    # to 0 and full_cost R1 already lands at cost), so it would prove nothing.
+    rules = with_lever(fictional_rules(), "awards.decision_types.full_cost_program.extra_amount", "20")
+    assert _full_cost(rules).total == Decimal(4020)
+
+
+def test_a_full_cost_award_takes_no_appeal() -> None:
+    result = _full_cost(appeal_amount="500")
+    assert (result.r2, result.r2_bound, result.total) == (Decimal(0), "not_allowed", Decimal(4050))
+    assert "appeal_not_allowed" in result.issue_codes()
+
+
+def test_allowing_an_appeal_on_full_cost_shows_why_it_was_barred() -> None:
+    # 75% of 4,000 = 3,000 is below the 4,000 already given: the cap is negative.
+    rules = with_lever(fictional_rules(), "awards.decision_types.full_cost_program.allows_appeal", True)
+    result = _full_cost(rules, appeal_amount="500")
+    assert (result.r2_cap, result.r2) == (Decimal(-1000), Decimal(0))
+    assert "r2_cap_negative" in result.issue_codes()
+
+
+def test_a_fixed_top_up_adds_its_amount() -> None:
+    request = req(decision_type="appeal_top_up", appeal_amount="400")
+    result = calculate(app(), request, fictional_rules())
+    assert (result.r2, result.top_up, result.total) == (Decimal(400), Decimal(250), Decimal(3650))
+    rules = with_lever(fictional_rules(), "awards.decision_types.appeal_top_up.amount", "125")
+    assert calculate(app(), request, rules).total == Decimal(3525)
+
+
+def test_a_decision_type_kind_is_a_lever() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "awards.decision_types.appeal_top_up.kind": "discretionary",
+            "awards.decision_types.appeal_top_up.amount": None,
+        },
+    )
+    result = calculate(app(), req(decision_type="appeal_top_up", appeal_amount="400"), rules)
+    assert (result.top_up, result.total) == (Decimal(0), Decimal(3400))
+
+
+def test_a_discretionary_decision_takes_the_typed_amount() -> None:
+    result = calculate(app(), req(decision_type="discretionary", discretionary_amount="175"), fictional_rules())
+    assert (result.top_up, result.discretionary, result.total) == (Decimal(0), Decimal(175), Decimal(3175))

@@ -36,7 +36,7 @@ from bunking.financial_aid.calculator.result import (
     status_of,
 )
 from bunking.financial_aid.calculator.tiers import equity_shift, final_tier, income_tier
-from bunking.financial_aid.money import HUNDRED, ZERO, pct_of, round_dollars
+from bunking.financial_aid.money import HUNDRED, ZERO, floor_dollars, pct_of, round_dollars
 from bunking.financial_aid.rules.lookup import resolved_table
 from bunking.financial_aid.rules.schema import AidRules, DecisionType, ProgramProfile, TierPercents
 
@@ -176,6 +176,10 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     ceiling = rules.tiers.income_ceiling
     above_ceiling = ceiling is not None and income.adjusted_income > ceiling
     _round1(work, request, rules, program, decision, cost, final, reduce_award, above_ceiling=above_ceiling)
+    _round2(work, request, rules, program, decision, final, above_ceiling=above_ceiling)
+    _round3(work, request, rules, above_ceiling=above_ceiling)
+    _total_cap(work, rules)
+    _top_up(work, decision)
     _total(work)
     return work.result()
 
@@ -292,6 +296,143 @@ def _round1(
         note = f"Reduced by an incentive of {reduce_award}"
     work.r1, work.r1_bound = r1, bound
     work.step("r1", "Round 1 award", r1, inputs={"ask": request.ask, "potential": potential}, bound=bound, note=note)
+
+
+def _round2(
+    work: _Work,
+    request: RequestInputs,
+    rules: AidRules,
+    program: ProgramProfile,
+    decision: DecisionType | None,
+    tier: int,
+    *,
+    above_ceiling: bool,
+) -> None:
+    appeal = request.appeal_amount
+    if appeal is None:
+        return
+    if above_ceiling:
+        work.r2, work.r2_bound = ZERO, "income_ceiling"
+        work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="income_ceiling")
+        return
+    if decision is not None and not decision.allows_appeal:
+        work.issue(
+            "appeal_not_allowed",
+            "warn",
+            f"Decision type '{request.decision_type}' does not allow an appeal; Round 2 is 0",
+            "r2",
+        )
+        work.r2, work.r2_bound = ZERO, "not_allowed"
+        work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="not_allowed")
+        return
+    if program.r2_table is None:
+        work.r2, work.r2_bound = ZERO, "no_table"
+        work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="no_table", note="No Round 2 table")
+        return
+    if work.cost is None or work.r1 is None:
+        work.issue("cost_unknown", "needs_input", "Cost is unknown; the Round 2 cap cannot be computed", "r2_cap")
+        work.r2_bound = "cost_unknown"
+        return
+    total_pct = resolved_table(rules, program.r2_table)[tier].total_pct
+    cap = pct_of(total_pct, work.cost) - work.r1
+    if rules.round2.cap_subtracts_grants:
+        cap -= work.grants_offset
+    cap_bound = "cap"
+    if rules.round2.cap_by_original_ask and request.ask - work.r1 < cap:
+        cap, cap_bound = request.ask - work.r1, "original_ask"
+    work.r2_cap = cap
+    work.step(
+        "r2_cap",
+        "Round 2 cap",
+        cap,
+        inputs={
+            "total_pct": total_pct,
+            "cost": work.cost,
+            "r1": work.r1,
+            "grants_subtracted": rules.round2.cap_subtracts_grants,
+        },
+        bound=cap_bound,
+    )
+    raw, bound = (appeal, "appeal") if appeal <= cap else (cap, cap_bound)
+    r2 = round_dollars(raw)
+    if r2 < 0:
+        work.issue(
+            "r2_cap_negative", "warn", "Round 1 is already above the Round 2 cap; Round 2 is 0, not negative", "r2"
+        )
+        r2 = ZERO
+    work.r2, work.r2_bound = r2, bound
+    work.step("r2", "Round 2 award", r2, inputs={"appeal": appeal, "cap": cap}, bound=bound)
+
+
+def _round3(work: _Work, request: RequestInputs, rules: AidRules, *, above_ceiling: bool) -> None:
+    amount = request.round3_amount
+    if amount is None:
+        return
+    settings = rules.round3
+    if above_ceiling:
+        work.r3, work.r3_bound = ZERO, "income_ceiling"
+        work.step("r3", "Round 3 award", ZERO, inputs={"requested": amount}, bound="income_ceiling")
+        return
+    missing = []
+    if settings.require_round2 and not request.round2_decided:
+        missing.append("a Round 2 decision")
+    if settings.require_statement_of_need and not request.round3_statement_of_need:
+        missing.append("a statement of need")
+    if missing:
+        work.issue("round3_not_eligible", "warn", "Round 3 needs " + " and ".join(missing), "r3")
+        work.r3, work.r3_bound = ZERO, "not_eligible"
+        work.step("r3", "Round 3 award", ZERO, inputs={"requested": amount}, bound="not_eligible")
+        return
+    raw, bound = amount, "request"
+    if settings.max_amount is not None and settings.max_amount < raw:
+        raw, bound = settings.max_amount, "max_amount"
+    if settings.max_total_pct_of_cost is not None:
+        if work.cost is None or work.r1 is None:
+            work.issue("cost_unknown", "needs_input", "Cost is unknown; the Round 3 limit cannot be computed", "r3")
+            work.r3_bound = "cost_unknown"
+            return
+        room = max(pct_of(settings.max_total_pct_of_cost, work.cost) - work.r1 - (work.r2 or ZERO), ZERO)
+        if room < raw:
+            raw, bound = room, "cap"
+    work.r3 = floor_dollars(raw) if bound == "cap" else round_dollars(raw)
+    work.r3_bound = bound
+    work.step("r3", "Round 3 award", work.r3, inputs={"requested": amount}, bound=bound)
+
+
+def _total_cap(work: _Work, rules: AidRules) -> None:
+    """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut."""
+    cap = rules.awards.total_cap
+    if cap is None or work.cost is None or work.r1 is None or (work.r2 is None and work.r3 is None):
+        return
+    limit = pct_of(cap.pct_of_cost, work.cost) - (work.grants_offset if cap.include_grants else ZERO)
+    room = max(limit - work.r1, ZERO)
+    if work.r2 is not None and work.r2 > room:
+        work.r2, work.r2_bound = floor_dollars(room), "total_cap"
+    room = max(room - (work.r2 or ZERO), ZERO)
+    if work.r3 is not None and work.r3 > room:
+        work.r3, work.r3_bound = floor_dollars(room), "total_cap"
+    work.step(
+        "total_cap",
+        "Total-aid cap",
+        limit,
+        inputs={"pct_of_cost": cap.pct_of_cost, "include_grants": cap.include_grants, "r2": work.r2, "r3": work.r3},
+    )
+
+
+def _top_up(work: _Work, decision: DecisionType | None) -> None:
+    if decision is None or decision.kind == "discretionary":
+        return
+    note = None
+    if decision.kind == "top_up":
+        amount = decision.amount if decision.amount is not None else ZERO
+    else:
+        if work.cost is None or work.r1 is None:
+            return
+        target = work.cost - work.grants_offset + decision.extra_amount
+        amount = max(round_dollars(target - work.r1 - (work.r2 or ZERO)), ZERO)
+        note = "Brings the total to the cost, less grants, plus the named extra"
+    work.top_up = amount
+    work.step("top_up", f"Top-up: {decision.label}", amount, inputs={"kind": decision.kind}, note=note)
 
 
 def _total(work: _Work) -> None:
