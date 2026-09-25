@@ -169,9 +169,10 @@ export function queueAfterAction(
       match_status: 'write_in',
       write_in_name: action.occupantName,
       write_in_unit: option?.unit_name ?? '',
-      // Linked from the viewed scenario's own write-ins, so placed in it; the
-      // year-wide read views no scenario.
-      write_in_placed: queue.session_cm_id != null ? true : null,
+      // Placed in a scope whose own write-ins hold it -- the link stamps every
+      // copy -- and not in a cached scenario without it; the year-wide read
+      // views no scenario.
+      write_in_placed: queue.session_cm_id != null ? option !== undefined : null,
     })
   } else {
     list = 'unmatched'
@@ -185,6 +186,9 @@ export function queueAfterAction(
   next[list] = [...(next[list] ?? []), ...found.map(moved)]
   return next
 }
+
+/** Every staff action on a filing, so one can tell whether another is in flight. */
+const JOTFORM_ACTION = ['jotform', 'submission-action'] as const
 
 /** Every cached queue: each scenario's Requests tab, and the year's queue. */
 const QUEUE_READS = {
@@ -204,16 +208,25 @@ const QUEUE_READS = {
  * filings the server names follow on its answer, and a refused action puts
  * every cached queue back. The Jotform reads, roster and previews are then
  * invalidated as before, and the refetch is what the tab settles on.
+ *
+ * Only the LAST action in flight refetches or rolls back. Each row has its
+ * own mutation, so staff can act on a second row before the first answers;
+ * the first answer's refetch would otherwise read the queue before the second
+ * POST landed and put that row back, live, to be acted on twice -- and a
+ * rollback would undo the other row's move with its own snapshot.
  */
 export function useJotformSubmissionAction(onDone?: (outcome: JotformActionOutcome) => void) {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
+  // This action is still counted while its own callbacks run.
+  const lastInFlight = () => queryClient.isMutating({ mutationKey: JOTFORM_ACTION }) <= 1
   const move = (action: JotformAction, submissionIds: readonly string[]) => {
     queryClient.setQueriesData<JotformQueue>(QUEUE_READS, (queue) =>
       queue === undefined ? queue : queueAfterAction(queue, action, submissionIds)
     )
   }
   return useMutation({
+    mutationKey: JOTFORM_ACTION,
     mutationFn: (action: JotformAction) => {
       if (action.kind === 'link')
         return linkJotformSubmission(fetchWithAuth, action.submissionId, action.personCmId)
@@ -238,12 +251,15 @@ export function useJotformSubmissionAction(onDone?: (outcome: JotformActionOutco
     onSuccess: (outcome, action) => {
       const also = (outcome?.also ?? []).map((filing) => filing.submission_id)
       if (also.length > 0) move(action, also)
-      invalidateJotformQueries(queryClient)
+      if (lastInFlight()) invalidateJotformQueries(queryClient)
       onDone?.(outcome)
     },
     onError: (error, _action, context) => {
-      for (const [key, queue] of context?.before ?? []) queryClient.setQueryData(key, queue)
-      invalidateJotformQueries(queryClient)
+      // With another action in flight, its settling refetch restores this row.
+      if (lastInFlight()) {
+        for (const [key, queue] of context?.before ?? []) queryClient.setQueryData(key, queue)
+        invalidateJotformQueries(queryClient)
+      }
       toast.error(
         error instanceof Error ? error.message : 'Failed to update the Jotform submission'
       )

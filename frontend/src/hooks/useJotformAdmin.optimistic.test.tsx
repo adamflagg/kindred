@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import type { JotformQueue, JotformQueueEntry } from '../types/jotform'
 import { queryKeys } from '../utils/queryKeys'
-import { useJotformSubmissionAction } from './useJotformAdmin'
+import { useJotformSubmissionAction, useJotformWeekendQueue } from './useJotformAdmin'
 
 vi.mock('../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -248,5 +248,98 @@ describe('useJotformSubmissionAction moves the row before the server answers', (
       expect(result.current.isError).toBe(true)
     })
     expect([cached(WEEKEND_KEY), cached(SCENARIO_KEY), cached(YEAR_KEY)]).toEqual(before)
+  })
+})
+
+describe('a write-in link in a scope without that write-in', () => {
+  it('reads as not placed there, as the server will say', async () => {
+    client.setQueryData(SCENARIO_KEY, { ...seed(), scenario: 'scn_a', write_in_options: [] })
+    hangingPost()
+    const { result } = renderHook(() => useJotformSubmissionAction(), { wrapper })
+    act(() => {
+      result.current.mutate({
+        kind: 'write_in',
+        submissionId: 's1',
+        unitId: 'u_cedar',
+        occupantName: 'Emma J',
+      })
+    })
+    await waitFor(() => {
+      expect(ids(cached(SCENARIO_KEY)?.unmatched)).toEqual(['s2'])
+    })
+    const here = cached(WEEKEND_KEY)?.write_ins?.find((r) => r.submission_id === 's1')
+    const there = cached(SCENARIO_KEY)?.write_ins?.find((r) => r.submission_id === 's1')
+    expect(here?.write_in_placed).toBe(true)
+    expect(there?.write_in_placed).toBe(false)
+  })
+})
+
+describe('two actions in flight at once', () => {
+  /**
+   * Staff act on two rows faster than the server answers. The first answer's
+   * refetch must not put the second row back while its own POST is still in
+   * flight: the row would reappear with live buttons and could be acted on
+   * twice. The refetch waits for the last action to settle.
+   */
+  it("the first answer's refetch does not bring back a row still being acted on", async () => {
+    let answerFirst: (response: Response) => void = () => undefined
+    const firstPost = new Promise<Response>((resolve) => {
+      answerFirst = resolve
+    })
+    let answerSecond: (response: Response) => void = () => undefined
+    const secondPost = new Promise<Response>((resolve) => {
+      answerSecond = resolve
+    })
+    let posts = 0
+    // The server's queue before the second action lands: s2 still waiting.
+    const serverQueue = () => ({ ...seed(), unmatched: [entry('s2', 'Emma Johnson')] })
+    fetchSpy.mockImplementation((input, init) => {
+      if (init?.method === 'POST') {
+        posts++
+        return posts === 1 ? firstPost : secondPost
+      }
+      void input
+      return Promise.resolve(new Response(JSON.stringify(serverQueue()), { status: 200 }))
+    })
+    const { result } = renderHook(
+      () => ({
+        queue: useJotformWeekendQueue(2026, WW, ''),
+        first: useJotformSubmissionAction(),
+        second: useJotformSubmissionAction(),
+      }),
+      { wrapper }
+    )
+    await waitFor(() => {
+      expect(result.current.queue.isFetching).toBe(false)
+    })
+    client.setQueryData(WEEKEND_KEY, seed())
+
+    act(() => {
+      result.current.first.mutate({ kind: 'ignore', submissionId: 's1' })
+    })
+    act(() => {
+      result.current.second.mutate({ kind: 'ignore', submissionId: 's2' })
+    })
+    await waitFor(() => {
+      expect(ids(cached()?.unmatched)).toEqual([])
+    })
+
+    answerFirst(new Response(null, { status: 204 }))
+    await waitFor(() => {
+      expect(result.current.first.isSuccess).toBe(true)
+    })
+    await waitFor(() => {
+      expect(result.current.queue.isFetching).toBe(false)
+    })
+    expect(ids(cached()?.unmatched)).toEqual([])
+
+    answerSecond(new Response(null, { status: 204 }))
+    await waitFor(() => {
+      expect(result.current.second.isSuccess).toBe(true)
+    })
+    // The last one to settle refetches, and the tab settles on the server.
+    await waitFor(() => {
+      expect(ids(cached()?.unmatched)).toEqual(['s2'])
+    })
   })
 })

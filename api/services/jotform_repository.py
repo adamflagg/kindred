@@ -140,8 +140,9 @@ class JotformRepository:
 
     # --- Board write-ins (kindred#2759 follow-up) ------------------------------
     #
-    # Read year-wide: a weekend has a few dozen write-ins across the live board
-    # and its scenarios, and the queue offers every adult weekend's at once.
+    # Read year-wide for the year's queue, which offers every adult weekend's at
+    # once; a weekend's Requests tab and a write-in link pass `session_cm_id`
+    # and read that weekend's alone (see the module docstring).
 
     async def fetch_live_write_ins(self, year: int, *, session_cm_id: int | None = None) -> list[Any]:
         return await self._page(
