@@ -6,10 +6,19 @@
  * in source code — not the area list, the unit list, the alias mapping, the
  * parent relations, the staff-default flags, or any amenity.
  */
-import { AlertCircle, Ban, BedDouble, CalendarCheck, CalendarPlus, Link2 } from 'lucide-react'
+import {
+  AlertCircle,
+  Ban,
+  BedDouble,
+  CalendarCheck,
+  CalendarPlus,
+  ClipboardList,
+  Link2,
+} from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
 import { CabinWeekendsQueue } from './CabinWeekendsQueue'
+import { JotformPanel } from './JotformPanel'
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 import { SeasonRollForwardPanel } from './SeasonRollForwardPanel'
@@ -34,6 +43,8 @@ const SECTIONS = [
   { id: 'attribution', label: 'Cabin Weekends', icon: CalendarCheck },
   { id: 'season', label: 'Season', icon: CalendarPlus },
   { id: 'status', label: 'Weekend status', icon: Ban },
+  // kindred#2759: adult-weekend Jotform forms, the pull, and the unmatched queue.
+  { id: 'jotform', label: 'Jotform', icon: ClipboardList },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]['id']
@@ -83,6 +94,7 @@ export function LodgingSettingsTab() {
       {active === 'attribution' && <CabinWeekendsQueue />}
       {active === 'season' && <SeasonRollForwardPanel />}
       {active === 'status' && <WeekendStatusPanel />}
+      {active === 'jotform' && <JotformPanel />}
     </div>
   )
 }

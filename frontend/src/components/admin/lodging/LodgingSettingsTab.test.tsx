@@ -1,5 +1,5 @@
 /**
- * The lodging settings host: five sections, driven by the route param.
+ * The lodging settings host: seven sections, driven by the route param.
  *
  * The docstring said "three" while the file rendered four — `season` shipped
  * without being covered here, and this test was the thing that should have
@@ -23,6 +23,7 @@ vi.mock('./SeasonRollForwardPanel', () => ({
   SeasonRollForwardPanel: () => <div>SEASON PANEL</div>,
 }))
 vi.mock('./WeekendStatusPanel', () => ({ WeekendStatusPanel: () => <div>STATUS PANEL</div> }))
+vi.mock('./JotformPanel', () => ({ JotformPanel: () => <div>JOTFORM PANEL</div> }))
 
 function renderAt(path: string) {
   return render(
@@ -106,10 +107,19 @@ describe('LodgingSettingsTab', () => {
       ['Cabin Weekends', '/manage/lodging/attribution'],
       ['Season', '/manage/lodging/season'],
       ['Weekend status', '/manage/lodging/status'],
+      ['Jotform', '/manage/lodging/jotform'],
     ]
     for (const [name, href] of expected) {
       expect(screen.getByRole('link', { name })).toHaveAttribute('href', href)
     }
     expect(screen.getAllByRole('link')).toHaveLength(expected.length)
+  })
+})
+
+describe('Jotform section (kindred#2759)', () => {
+  it('renders at /manage/lodging/jotform', () => {
+    renderAt('/manage/lodging/jotform')
+    expect(screen.getByText('JOTFORM PANEL')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Jotform' })).toHaveAttribute('aria-current', 'page')
   })
 })
