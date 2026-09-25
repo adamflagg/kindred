@@ -29,6 +29,12 @@
  * Idempotent: a grant already present is skipped, the development role is
  * created only when its slug is absent, and descriptions are rewritten only
  * while they still read as seeded.
+ *
+ * Down only undoes what up did: if a role already occupied the "development"
+ * slug before this migration ran, down must not delete it (user_roles.role
+ * cascades, so that would also delete its memberships) -- it only revokes
+ * DEVELOPMENT_PERMISSIONS, exactly as revokePermissions does for GRANTS. See
+ * wasCreatedByThisMigration.
  */
 
 const VIEW = "financial_aid.view"
@@ -198,9 +204,28 @@ function ensureDevelopmentRole(app) {
   app.save(record)
 }
 
+/**
+ * True only for the record ensureDevelopmentRole created: it always sets
+ * description to DEVELOPMENT_DESCRIPTION and is_system to true, and no other
+ * code path in this file (DESCRIPTIONS/retitle covers only finance and
+ * registrar) ever rewrites the development role's description. A role that
+ * already occupied the slug keeps its own description and, per the roles
+ * seed (1500000070), is not a system role -- so it fails this check and down
+ * only revokes the grant instead of deleting it.
+ */
+function wasCreatedByThisMigration(role) {
+  return role.getString("description") === DEVELOPMENT_DESCRIPTION && role.getBool("is_system")
+}
+
 function removeDevelopmentRole(app) {
   const role = findRoleBy(app, "slug", DEVELOPMENT_SLUG)
   if (!role) {
+    return
+  }
+  if (!wasCreatedByThisMigration(role)) {
+    // A role at this slug predates this migration -- undo only the grant,
+    // the same way revokePermissions does for GRANTS.
+    revokePermissions(app, DEVELOPMENT_SLUG, DEVELOPMENT_PERMISSIONS)
     return
   }
   const holders = holdersOf(app, role.id)

@@ -72,3 +72,54 @@ func TestFinancialAidPermissionsMigrationRecomputesCachedPermissions(t *testing.
 		t.Errorf("%s: v0.23+ ignores an options: {} wrapper silently", path)
 	}
 }
+
+// extractFunctionBody returns the source between a `function <name>(...) {`
+// header and the following top-level `function ` (or, if none follows, the
+// end of the file). Good enough for a flat file of sibling functions like
+// this migration's -- not a real parser.
+func extractFunctionBody(t *testing.T, body, name string) string {
+	t.Helper()
+	start := strings.Index(body, "function "+name+"(")
+	if start == -1 {
+		t.Fatalf("function %s not found", name)
+	}
+	rest := body[start:]
+	next := strings.Index(rest[1:], "\nfunction ")
+	if next == -1 {
+		return rest
+	}
+	return rest[:next+1]
+}
+
+// CodeRabbit finding on PR #2838: removeDevelopmentRole unconditionally
+// deleted any role at the "development" slug, so rolling back after a
+// pre-existing "development" role happened to occupy that slug destroyed a
+// role (and, via the user_roles cascade, its memberships) this migration
+// never created. Down must only undo what up did: delete the role ONLY when
+// this migration created it, and otherwise just revoke DEVELOPMENT_PERMISSIONS
+// -- the same way revokePermissions already does for GRANTS.
+func TestFinancialAidPermissionsMigrationDownOnlyDeletesItsOwnDevelopmentRole(t *testing.T) {
+	path, body := readFinancialAidPermissionsMigration(t)
+
+	remove := extractFunctionBody(t, body, "removeDevelopmentRole")
+	if !strings.Contains(remove, "revokePermissions(app, DEVELOPMENT_SLUG, DEVELOPMENT_PERMISSIONS)") {
+		t.Errorf("%s: removeDevelopmentRole must fall back to revokePermissions when the role "+
+			"predates this migration, instead of deleting it", path)
+	}
+
+	// The fingerprint that tells "this migration's role" apart from a
+	// pre-existing one at the same slug -- wherever removeDevelopmentRole
+	// gets it from (inline or a helper it calls).
+	fingerprint := remove
+	if idx := strings.Index(body, "function wasCreatedByThisMigration("); idx != -1 {
+		fingerprint += extractFunctionBody(t, body, "wasCreatedByThisMigration")
+	}
+	if !strings.Contains(fingerprint, "DEVELOPMENT_DESCRIPTION") {
+		t.Errorf("%s: down's delete-vs-revoke check must compare DEVELOPMENT_DESCRIPTION -- "+
+			"a pre-existing role at the development slug must not be identified as this migration's own", path)
+	}
+	if !strings.Contains(fingerprint, "is_system") {
+		t.Errorf("%s: down's delete-vs-revoke check must compare is_system -- "+
+			"description alone is not enough to fingerprint the role this migration created", path)
+	}
+}
