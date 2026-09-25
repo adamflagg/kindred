@@ -383,7 +383,7 @@ describe('JotformPanel — queue', () => {
 
   it('says (no request) for a filing that left the bunking request empty', () => {
     const data = queue.data as {
-      duplicates: Array<{ submissions: Array<Record<string, unknown>> }>
+      duplicates: Array<{ submissions: Array<{ bunking_request?: string }> }>
     }
     data.duplicates[0]!.submissions[0]!.bunking_request = ''
     render(<JotformPanel />)
