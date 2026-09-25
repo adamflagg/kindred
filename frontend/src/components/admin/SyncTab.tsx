@@ -64,8 +64,15 @@ function PipelineConnector({ gradient }: { gradient: string }) {
 
 export function SyncTab() {
   const currentYear = useYear()
-  // Unified sync state (replaces separate daily/historical)
-  const [syncYear, setSyncYear] = useState(currentYear)
+  // Unified sync state (replaces separate daily/historical). currentYear is 0 until the
+  // backend's _configured_year loads (CurrentYearContext.tsx) -- on a hard refresh SyncTab
+  // mounts before that resolves. Snapshotting it into useState would freeze syncYear at 0
+  // forever once currentYear later updates, hiding every currentYearOnly card and submitting
+  // year-0 syncs from the per-card Run buttons. Track only the user's explicit override and
+  // derive the effective year from the live currentYear otherwise, so it tracks context updates
+  // after mount the same way it does before mount.
+  const [syncYearOverride, setSyncYearOverride] = useState<number | null>(null)
+  const syncYear = syncYearOverride ?? currentYear
   const [syncService, setSyncService] = useState('all')
   const [includeCustomValues, setIncludeCustomValues] = useState(false)
   const [syncDebug, setSyncDebug] = useState(false)
@@ -196,7 +203,7 @@ export function SyncTab() {
 
   // Handle year change - reset service if it becomes unavailable
   const handleYearChange = (year: number) => {
-    setSyncYear(year)
+    setSyncYearOverride(year)
     // Reset a current-year-only selection when switching to a historical year. Derived from the
     // flag rather than a hand-written list of ids: the literal pair this used to name was
     // already two short of the five entries carrying currentYearOnly, and a stale selection is

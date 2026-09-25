@@ -13,8 +13,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SyncTab } from './SyncTab'
 import { hasManualTrigger, YEAR_SYNC_TYPES } from './syncTypes'
 
+// Mutable so tests can simulate CurrentYearContext going from 0 (not yet loaded) to the real
+// configured year across a rerender -- see the "live year after a hard refresh" describe block
+// below. Reset to the file's long-standing default in that block's own afterEach so it doesn't
+// leak into every other test here, which all assume 2027.
+let currentYearMock = 2027
 vi.mock('../../hooks/useCurrentYear', () => ({
-  useYear: () => 2027,
+  useYear: () => currentYearMock,
 }))
 
 const idleStatus = { status: 'idle' } as const
@@ -127,11 +132,24 @@ vi.mock('../../hooks/useSyncPhasesAPI', () => ({
 
 function renderSyncTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <SyncTab />
     </QueryClientProvider>
   )
+  return {
+    ...utils,
+    // Re-renders the SAME mounted tree against the SAME queryClient, so a test can change
+    // `currentYearMock` (simulating CurrentYearContext resolving the backend's configured year
+    // after mount) and observe how SyncTab's own state responds -- rather than mounting a fresh
+    // instance, which would start from the new year and never exercise the stale-state bug.
+    rerenderSyncTab: () =>
+      utils.rerender(
+        <QueryClientProvider client={queryClient}>
+          <SyncTab />
+        </QueryClientProvider>
+      ),
+  }
 }
 
 function getCard(cardName: string) {
@@ -639,5 +657,60 @@ describe('SyncTab phase header counts membership, button counts what it starts (
     expect(
       within(headerRow as HTMLElement).getByRole('button', { name: 'Run Phase' })
     ).toBeInTheDocument()
+  })
+})
+
+// Regression test: on a hard refresh, CurrentYearContext deliberately reports currentYear = 0
+// until the backend's `_configured_year` loads (CurrentYearContext.tsx). SyncTab used to snapshot
+// that into local state with `useState(currentYear)`, so once currentYear later resolved to the
+// real year the component's own syncYear stayed frozen at 0 forever -- 0 !== the real year, so
+// every currentYearOnly type (all four Process-phase cards) vanished from the page, and any card
+// whose Run button calls `<hook>.mutate(syncYear)` would have submitted a sync for year 0.
+// Navigating to the tab from elsewhere never hit this because currentYear is already resolved by
+// the time SyncTab mounts.
+describe('SyncTab tracks the live year after CurrentYearContext resolves post-refresh', () => {
+  afterEach(() => {
+    currentYearMock = 2027
+  })
+
+  it('shows the Process phase and its cards once currentYear resolves from 0 to the real year', () => {
+    currentYearMock = 0
+    const { rerenderSyncTab } = renderSyncTab()
+
+    currentYearMock = 2026
+    rerenderSyncTab()
+
+    expect(screen.getByText('Process')).toBeInTheDocument()
+    expect(getCard('Intake Requests')).toBeInTheDocument()
+  })
+
+  it('fires a per-card Run with the resolved year, never the year-0 the component mounted with', () => {
+    currentYearMock = 0
+    const { rerenderSyncTab } = renderSyncTab()
+
+    currentYearMock = 2026
+    rerenderSyncTab()
+
+    notPending.mutate.mockClear()
+    fireEvent.click(getCardRunButton('Staff Skills'))
+
+    expect(notPending.mutate).toHaveBeenCalledWith(2026)
+    expect(notPending.mutate).not.toHaveBeenCalledWith(0)
+  })
+})
+
+// Companion test: the fix must keep a user's manual historical-year pick working exactly as
+// before -- it must not turn syncYear into something that always tracks currentYear regardless
+// of the selector.
+describe('SyncTab still hides current-year-only types when a user manually picks a historical year', () => {
+  it('hides the Process phase after selecting a historical year from the selector', () => {
+    renderSyncTab()
+
+    expect(screen.getByText('Process')).toBeInTheDocument()
+
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+
+    expect(screen.queryByText('Process')).not.toBeInTheDocument()
   })
 })
