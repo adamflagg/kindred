@@ -195,3 +195,33 @@ def test_build_empties_all_lodging_tables_by_prefix(build_mod, tmp_path):
         assert n_persons > 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# aid_* table handling (campership SP2)
+# ---------------------------------------------------------------------------
+
+_INVENTED_AID_TABLE = "aid_totally_new_for_test"
+
+
+def test_aid_tables_discovered_by_prefix(build_mod, tmp_path):
+    """``_aid_tables`` finds every aid_* table by prefix alone, including one no
+    code lists, and never a table that merely contains 'aid'."""
+    db = tmp_path / "scratch.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE aid_change_log (id TEXT PRIMARY KEY, entity TEXT)")
+    conn.execute(f"CREATE TABLE {_INVENTED_AID_TABLE} (id TEXT PRIMARY KEY, value TEXT)")
+    conn.execute("CREATE TABLE financial_aid_applications (id TEXT PRIMARY KEY, year INTEGER)")
+    conn.execute("CREATE TABLE aidx_unrelated (id TEXT PRIMARY KEY)")
+    conn.execute("CREATE TABLE persons (id TEXT PRIMARY KEY, first_name TEXT)")
+    conn.commit()
+    found = set(build_mod._aid_tables(conn))
+    conn.close()
+    assert found == {"aid_change_log", _INVENTED_AID_TABLE}
+
+
+def test_build_empties_aid_tables(build_mod):
+    """The emptying step is wired into build(): a regression that drops the call
+    is caught here, not by the build-time scan aborting on someone's laptop."""
+    source = Path(build_mod.__file__).read_text()
+    assert "_empty_tables(conn, _aid_tables(conn))" in source

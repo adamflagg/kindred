@@ -119,16 +119,21 @@ type JobMeta struct {
 var syncJobMeta = []JobMeta{
 	// Global phase -- cross-year definition tables, refreshed by the Sunday-2am cron.
 	// PhaseGlobal is a classification, NOT an execution phase: see GetAllPhases. These carry
-	// only CadenceWeeklyGlobal and TriggerIndividualRoute, so they appear in no daily,
-	// phase-run or full-run queue and cannot perturb any derived ordering below.
+	// only CadenceWeeklyGlobal and TriggerIndividualRoute, so they appear in no phase-run or
+	// full-run queue and cannot perturb any derived ordering below. financial_lookups is the
+	// one exception on the daily side: it also carries CadenceDaily (campership SP1). None
+	// carries TriggerPhaseRun or TriggerFullRun.
 	{ID: "person_tag_defs", Phase: PhaseGlobal, Description: "Tag definitions",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
 	{ID: "custom_field_defs", Phase: PhaseGlobal, Description: "Custom field definitions",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
 	{ID: "staff_lookups", Phase: PhaseGlobal, Description: "Positions, org categories, program areas",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	// Weekly global AND daily (campership design §6.4: awards roll all year, so every
+	// financial input refreshes daily). Declared first, so it also runs first in the daily
+	// queue -- ahead of financial_transactions, which resolves categories through it.
 	{ID: "financial_lookups", Phase: PhaseGlobal, Description: "Financial categories, payment methods",
-		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+		Cadences: CadenceWeeklyGlobal | CadenceDaily, Triggers: TriggerIndividualRoute},
 	{ID: "divisions", Phase: PhaseGlobal, Description: "Division definitions (no year field)",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
 
@@ -208,13 +213,18 @@ var syncJobMeta = []JobMeta{
 	// weekend's cabin is a person custom field, and staff may type it into CampMinder while
 	// placing guests. The job keeps its "_family_camp" ID so sync_runs history and the admin
 	// UI stay continuous; SessionResolver.GetWeekendPersonIDsAnyStatus defines the cohort.
+	//
+	// Campership SP1 widens both daily cohorts by the aid cohort (aid_cohort.go); the ids
+	// are unchanged -- see scope.go.
 	{ID: "person_custom_values_family_camp", Phase: PhaseExpensive,
-		Description: "Person custom field values -- bounded daily pass, family-camp and adult-program attendees, any status",
-		Base:        "person_custom_values", Scope: ScopeFamilyCamp,
+		Description: "Person custom field values -- bounded daily pass: family-camp and " +
+			"adult-program attendees (any status) plus the financial-aid cohort",
+		Base: "person_custom_values", Scope: ScopeFamilyCamp,
 		Cadences: CadenceDaily, CurrentYearOnly: true},
 	{ID: "household_custom_values_family_camp", Phase: PhaseExpensive,
-		Description: "Household custom field values -- bounded daily pass, family-camp attendees, any status",
-		Base:        "household_custom_values", Scope: ScopeFamilyCamp,
+		Description: "Household custom field values -- bounded daily pass: family-camp attendees " +
+			"(any status) plus the financial-aid cohort's households",
+		Base: "household_custom_values", Scope: ScopeFamilyCamp,
 		Cadences: CadenceDaily, CurrentYearOnly: true},
 
 	// Transform phase - PocketBase → PocketBase. On the daily cron, these run using the
@@ -3002,8 +3012,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("process_requests", processor)
 	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
 	o.RegisterService("staff", NewStaffSync(o.app, client))
-	// Financial transactions: year-scoped transaction data (depends on financial_lookups running in weekly sync)
-	o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, client))
+	// Financial transactions, rolling seasons N-1, N and N+1 (campership design §6.1).
+	o.RegisterService("financial_transactions", NewRollingFinancialTransactionsSync(o.app, client))
 
 	// Register Google Sheets multi-workbook export (optional, requires configuration)
 	if google.IsEnabled() {

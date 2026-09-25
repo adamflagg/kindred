@@ -68,7 +68,7 @@ CampMinder API  ──►  Go Sync Services  ──┐
 
 - **Frontend**: React 19, TypeScript 6.0, Vite, Tailwind CSS, React Query, @dnd-kit, Cytoscape.js
 - **Backend API**: Python 3.14+, FastAPI, Google OR-Tools, Pydantic v2
-- **Database & Auth**: PocketBase (Go 1.26+) on SQLite (WAL), OIDC auto-discovery for SSO
+- **Database & Auth**: PocketBase (Go 1.27) on SQLite (WAL), OIDC auto-discovery for SSO
 - **Sync & Integrations**: Go services for CampMinder, Google Sheets/Drive, OpenAI (GPT-5-nano for bunk request parsing)
 - **Infrastructure**: Docker, Caddy, GitHub Actions CI/CD, Trivy security scanning
 - **Dev tooling**: `uv` for Python, `lefthook` for git hooks, ruff / mypy / golangci-lint / eslint / prettier

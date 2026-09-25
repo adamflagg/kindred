@@ -28,6 +28,12 @@ const (
 	// is a person custom field), while the HOUSEHOLD pass covers family-camp weekends only
 	// (GetFamilyCampHouseholdIDsAnyStatus). The name predates the adult half and is kept so the
 	// registered job IDs, sync_runs history and the admin UI stay continuous.
+	//
+	// Since campership SP1 the no-session (daily cron) cohort on both sides also includes
+	// the financial-aid cohort (aid_cohort.go). The name, and the registered job ids built
+	// from it, are kept on purpose: the ids key sync_runs history, the weekend "Housing
+	// synced" freshness read in the Python lodging services, and the admin cards, and
+	// "family camp" is still exactly what the one-weekend Refresh Housing branch covers.
 	ScopeFamilyCamp Scope = "family_camp"
 )
 

@@ -285,3 +285,35 @@ def test_clean_lodging_table_passes(tmp_path, scan_module):
     )
     violations = scan_module.scan(str(db))
     assert violations == [], f"clean lodging table should pass, got {violations}"
+
+
+def _make_db_with_aid_table(path: Path, *, table_name: str, rows: list[tuple[object, ...]]) -> None:
+    """An artifact-shaped DB with one ``aid_*`` table. ``table_name`` may be
+    invented: the check must match by prefix, not a fixed list."""
+    conn = sqlite3.connect(path)
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE persons (id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT)")
+    cur.execute("INSERT INTO persons VALUES ('p1', 'Emma', 'Johnson')")
+    cur.execute(f"CREATE TABLE {table_name} (id TEXT PRIMARY KEY, note TEXT)")
+    cur.executemany(f"INSERT INTO {table_name} (id, note) VALUES (?, ?)", rows)
+    conn.commit()
+    conn.close()
+
+
+def test_flags_nonempty_aid_table_by_prefix(tmp_path, scan_module):
+    """Campership SP2: any ``aid_*`` row in the artifact is a leak of family
+    financial data. --artifact-only mode (no denylist, empty drop list) must
+    still catch it, for a table name no code lists."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_aid_table(db, table_name="aid_totally_invented_test_table", rows=[("a1", "award note")])
+    violations = scan_module.scan(str(db), denylist=None, drop_list=[])
+    cats = {v.category for v in violations}
+    assert "nonempty_aid_table" in cats, f"expected nonempty_aid_table, got {violations}"
+    assert any(v.table == "aid_totally_invented_test_table" for v in violations)
+
+
+def test_clean_aid_table_passes(tmp_path, scan_module):
+    db = tmp_path / "artifact.db"
+    _make_db_with_aid_table(db, table_name="aid_change_log", rows=[])
+    violations = scan_module.scan(str(db))
+    assert violations == [], f"an empty aid table should pass, got {violations}"

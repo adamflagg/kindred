@@ -261,10 +261,11 @@ func TestScopedServiceInterface(t *testing.T) {
 // "completing" is this log line, the one carrying the created/updated/errors counts, not just
 // the start line LogSyncStart already fixed.
 //
-// Exercises the bounded instance's own "nothing to sync" early return (zero family-camp
-// sessions in the year), which needs no CampMinder mock: GetFamilyCampSessionCMIDs queries only
-// camp_sessions, finds none, and getPersonIDsToSync returns an empty slice before any network
-// call would happen.
+// Exercises the bounded instance's own "nothing to sync" early return, which needs no
+// CampMinder mock. The cohort is read from the database alone: camp_sessions holds no
+// family-camp or adult session, and the aid cohort's four collections (created empty by
+// addAidCohortCollections) hold no applicant or aid posting, so getPersonIDsToSync returns
+// an empty slice before any network call would happen.
 func TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testing.T) {
 	// Not t.Parallel(): t.Setenv panics if the test may run in parallel, and captureSweepLogs
 	// swaps the process-global slog default for the test's duration.
@@ -281,6 +282,7 @@ func TestPersonCustomFieldValuesSync_CompletionLogUsesBoundedJobName(t *testing.
 	if saveErr := app.Save(col); saveErr != nil {
 		t.Fatalf("create camp_sessions: %v", saveErr)
 	}
+	addAidCohortCollections(t, app)
 
 	// GetSeasonID is a pure getter -- no network call -- so a real *campminder.Client built
 	// from a fake key is sufficient here (see attendees_dryrun_test.go's identical rationale).

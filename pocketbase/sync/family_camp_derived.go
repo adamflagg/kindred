@@ -3141,7 +3141,7 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 //
 // Computed is the size of the key set THIS RUN built, not the number of stored
 // rows it happens to match; see OrphanSweepGuard's doc comment. Rejected is
-// deliberately left unset, matching the nine other services that construct
+// deliberately left unset, matching the ten other services that construct
 // their own guard: this service counts no rejections, so the REJECTION arm
 // cannot fire and there is nothing for it to fire on.
 // ============================================================================

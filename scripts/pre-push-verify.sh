@@ -105,6 +105,7 @@ HAS_MIGRATIONS=false
 HAS_SHELL=false
 HAS_PB_JS=false
 HAS_LODGING=false
+HAS_GO_ALIGN=false
 
 if [[ "$RUN_ALL" == true ]]; then
     HAS_PYTHON=true
@@ -114,6 +115,7 @@ if [[ "$RUN_ALL" == true ]]; then
     HAS_SHELL=true
     HAS_PB_JS=true
     HAS_LODGING=true
+    HAS_GO_ALIGN=true
 else
     while IFS= read -r file; do
         [[ -z "$file" ]] && continue
@@ -131,6 +133,12 @@ else
                 HAS_PB_JS=true ;;
             *.sh)
                 HAS_SHELL=true ;;
+        esac
+        # Mirrors the dockerLint filter entries ci.yml adds for the
+        # `Go version alignment` step: everything the guard reads.
+        case "$file" in
+            docker/Dockerfile*|pocketbase/go.mod|docker/healthcheck/go.mod|go.work|.github/workflows/*|scripts/ci/check-go-version-alignment.sh|scripts/ci/test-check-go-version-alignment.sh)
+                HAS_GO_ALIGN=true ;;
         esac
     done <<< "$CHANGED_FILES"
 
@@ -185,6 +193,7 @@ $HAS_MIGRATIONS && echo "  - Migrations (header, options anti-pattern, build)" |
 $HAS_PB_JS      && echo "  - PocketBase JS (eslint)" || true
 $HAS_SHELL      && echo "  - Shell (shellcheck)" || true
 $HAS_LODGING    && echo "  - Lodging Name Guard (no hardcoded unit names)" || true
+$HAS_GO_ALIGN   && echo "  - Go version alignment (go.mod minor, latest patch everywhere)" || true
 echo ""
 
 # ── Track failures ─────────────────────────────────────────────────────
@@ -443,6 +452,15 @@ if $HAS_LODGING; then
         fail "lodging name guard (unexpected exit $lodging_status)"
         FAILURES+=("lodging name guard (unexpected exit $lodging_status)")
     fi
+fi
+
+# ── Go version alignment ────────────────────────────────────────────────
+# Same two commands as ci.yml's docker-lint `Go version alignment` step: the
+# self-test first, so a guard that stopped detecting cannot pass the tree.
+if $HAS_GO_ALIGN; then
+    header "Go version alignment"
+    run_check "go alignment guard self-test" bash scripts/ci/test-check-go-version-alignment.sh
+    run_check "go alignment guard" bash scripts/ci/check-go-version-alignment.sh
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────

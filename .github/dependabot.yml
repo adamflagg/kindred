@@ -215,6 +215,13 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    # Go minor bumps start at pocketbase/go.mod, by hand: it picks the minor and
+    # every build uses the latest patch of it. The golang stages float on
+    # `golang:X.Y-<variant>`, so a patch needs no PR, and a minor bump here alone
+    # would fail scripts/ci/check-go-version-alignment.sh, which enforces the
+    # rest (go.work, docker/healthcheck/go.mod, every golang stage, setup-go).
+    ignore:
+      - dependency-name: "golang"
     cooldown:
       default-days: 3
     open-pull-requests-limit: 3
