@@ -367,6 +367,7 @@ export function HouseholdRosterTable({
           year={year}
           requestClose={requestClose}
           onClose={closePanel}
+          sessionType={sessionType}
         />
       )}
     </>

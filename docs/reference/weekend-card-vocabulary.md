@@ -251,6 +251,19 @@ resolved by an implementer without guessing.
   that have one. No fridge, step-free or infant mark: the adult form asks no
   question for the first two, and Adult-Infant's only non-"No" answer is
   _I'm attending Men's Weekend_.
+- **An adult-weekend guest's Jotform bunking request takes the share-mark
+  slot** (kindred#2759, owner picks locked in the adult-request lab
+  2026-09-24). ONE `Handshake` anchor in the family anchor's own tones
+  (`ANCHOR_CLASS`): solid = a request, muted = submitted with none, dotted = no
+  form yet. Glow and breathe only on solid. An amber corner dot means the
+  request changed across filings, read from the payload's `changed` flag (any
+  consecutive difference), never from the net `change.kind`. "Coming with" is
+  its own muted circle per tick, flushed into a capsule, icon set A
+  (`UserRound` solo, `House` family, `UsersRound` friends, `Heart` partner),
+  never hot. Order: Jotform marks, then the need glyphs. Drawn only when
+  `isAdultSessionType(sessionType)` — never inferred from grain — and only when
+  the payload carries `bunking_request` (a `bunking.manage` caller); a family
+  weekend's card is unchanged. Module: `components/weekend/bunkingRequest.ts`.
 - **A last-year cabin needs enrolled attendance that year behind it**
   (kindred#2767, folding in the FC5 staff report). The cabin string survives a
   cancellation; the card now agrees with the journey (kindred#2618) on which

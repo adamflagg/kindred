@@ -1053,3 +1053,77 @@ describe('LodgingBoard — the weekend type reaches every card (kindred#2765)', 
     expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('9/15')
   })
 })
+
+describe('LodgingBoard — the weekend type reaches every card’s Jotform marks (kindred#2759)', () => {
+  const guest = (overrides: Partial<RosterPartyRow>) =>
+    party({
+      grain: 'person',
+      household_cm_id: 0,
+      adults: [],
+      children: [],
+      party_size: 1,
+      bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+      ...overrides,
+    })
+  const guests = [
+    // In a cabin card.
+    guest({
+      person_cm_id: 1000004,
+      display_name: 'Olivia Chen',
+      unit_code: 'ridge-d',
+      unit_name: 'Ridge D',
+    }),
+    // Off the board: placed on a unit the payload does not carry.
+    guest({
+      person_cm_id: 1000005,
+      display_name: 'Riley Sam',
+      unit_code: 'ghost-1',
+      unit_name: 'Ghost 1',
+    }),
+    // Unplaced: in the corner queue.
+    guest({ person_cm_id: 1000006, display_name: 'Emma Johnson', unit_code: '', unit_name: '' }),
+  ]
+  const shared = unit({ code: 'ridge-d', name: 'Ridge D', shareability: 'shareable', sleeps: 15 })
+
+  it('draws the anchor in a cabin, off the board and in the unplaced queue on an adult weekend', async () => {
+    render(<LodgingBoard parties={guests} units={[shared]} year={2026} sessionType="adult" />, {
+      wrapper,
+    })
+    expect(screen.getAllByRole('button', { name: 'Jotform: Has a bunking request' })).toHaveLength(
+      2
+    )
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
+    expect(screen.getAllByRole('button', { name: 'Jotform: Has a bunking request' })).toHaveLength(
+      3
+    )
+  })
+
+  it('draws none on a family weekend', () => {
+    render(<LodgingBoard parties={guests} units={[shared]} year={2026} />, { wrapper })
+    expect(screen.queryByRole('button', { name: /^Jotform:/ })).toBeNull()
+  })
+})
+
+describe('LodgingBoard — the weekend type reaches the panel (kindred#2759)', () => {
+  const guest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 1000004,
+    display_name: 'Olivia Chen',
+    sort_name: 'Olivia Chen',
+    adults: [],
+    children: [],
+    party_size: 1,
+    unit_code: 'cedar-1',
+    unit_name: 'Cedar 1',
+    bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+  })
+
+  it('opens an adult guest on the Jotform section', async () => {
+    render(<LodgingBoard parties={[guest]} units={[unit()]} year={2026} sessionType="adult" />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    expect(screen.getByRole('heading', { name: 'Bunking request (Jotform)' })).toBeInTheDocument()
+  })
+})

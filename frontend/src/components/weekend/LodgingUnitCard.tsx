@@ -1854,6 +1854,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             unit={unit}
             sharedSlot={overlappingKeys.has(partyKey(party))}
             isDraggable={canPlace}
+            sessionType={sessionType}
             onOpen={onOpenParty}
           />
         ))}

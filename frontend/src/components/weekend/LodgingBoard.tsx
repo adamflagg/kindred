@@ -859,6 +859,7 @@ export function LodgingBoard({
                       // merged slot's empty `unit_code`.
                       unit={resolvePartyUnit(party, unitsByCode)}
                       isDraggable={canPlace}
+                      sessionType={sessionType}
                       onOpen={openParty}
                     />
                   ))}
@@ -873,6 +874,7 @@ export function LodgingBoard({
           onOpenParty={openParty}
           isPanelOpen={panelParty !== null}
           canPlace={canPlace}
+          sessionType={sessionType}
         />
 
         {panelParty !== null && (
@@ -882,6 +884,7 @@ export function LodgingBoard({
             year={year}
             requestClose={requestClose}
             onClose={closePanel}
+            sessionType={sessionType}
           />
         )}
 
@@ -891,7 +894,7 @@ export function LodgingBoard({
         <DragOverlay dropAnimation={null}>
           {dragging === null ? null : (
             <div className="w-[200px] opacity-95">
-              <FamilyCardPreview party={dragging} />
+              <FamilyCardPreview party={dragging} sessionType={sessionType} />
             </div>
           )}
         </DragOverlay>

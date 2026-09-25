@@ -1385,3 +1385,21 @@ describe('roster export button', () => {
     expect(screen.queryByRole('button', { name: /export roster/i })).not.toBeInTheDocument()
   })
 })
+
+describe('HouseholdRosterTable — the weekend type reaches the panel (kindred#2759)', () => {
+  it('opens an adult guest on the Jotform section', async () => {
+    const guest = party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 1000004,
+      display_name: 'Olivia Chen',
+      children: [],
+      bunking_request: { state: 'request', current_text: 'Emma Johnson' },
+    })
+    render(<HouseholdRosterTable year={2026} parties={[guest]} sessionType="adult" />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    expect(screen.getByRole('heading', { name: 'Bunking request (Jotform)' })).toBeInTheDocument()
+  })
+})

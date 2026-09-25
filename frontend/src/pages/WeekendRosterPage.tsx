@@ -691,6 +691,7 @@ export default function WeekendRosterPage() {
                     requestClose={familyPanelRequestClose}
                     onClose={closeFamilyPanel}
                     backdropInteractive
+                    sessionType={sessionType}
                   />
                 </div>,
                 document.body

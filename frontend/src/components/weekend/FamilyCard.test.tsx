@@ -2141,3 +2141,131 @@ describe('FamilyCard — an adult weekend guest’s need glyphs are the family�
     expect(screen.getByTestId('need-glyph-power')).toBeInTheDocument()
   })
 })
+
+describe('adult guest Jotform marks (kindred#2759)', () => {
+  const guest = (bunking_request: Exclude<RosterPartyRow['bunking_request'], undefined>) =>
+    party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 1000004,
+      display_name: 'Olivia Chen',
+      adults: [{ adult_number: 1, display_name: 'Olivia Chen' }],
+      children: [],
+      flags: { needs_power: true },
+      bunking_request,
+    })
+
+  it('draws the solid anchor, glowing, BEFORE the need glyphs', () => {
+    render(
+      <FamilyCard
+        party={guest({ state: 'request', current_text: 'Emma Johnson' })}
+        unit={confirmedUnit()}
+        sessionType="adult"
+        onOpen={vi.fn()}
+      />
+    )
+    const anchor = screen.getByRole('button', { name: 'Jotform: Has a bunking request' })
+    expect(anchor.closest('[data-share-emphasis-motion]')).not.toBeNull()
+    const glyph = screen.getByTestId('need-glyph-power')
+    expect(anchor.compareDocumentPosition(glyph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('draws muted and dotted anchors without any glow', () => {
+    const { rerender } = render(
+      <FamilyCard party={guest({ state: 'none' })} sessionType="adult" onOpen={vi.fn()} />
+    )
+    expect(
+      screen
+        .getByRole('button', { name: 'Jotform: Submitted, no bunking request' })
+        .closest('[data-share-emphasis-motion]')
+    ).toBeNull()
+    rerender(
+      <FamilyCard party={guest({ state: 'no_form' })} sessionType="adult" onOpen={vi.fn()} />
+    )
+    expect(screen.getByRole('button', { name: 'Jotform: No Jotform yet' }).className).toContain(
+      'border-dotted'
+    )
+    expect(document.querySelector('[data-share-emphasis-motion]')).toBeNull()
+  })
+
+  it('dots a changed request and capsules every coming-with tick', () => {
+    render(
+      <FamilyCard
+        party={guest({
+          state: 'request',
+          current_text: 'Emma Johnson',
+          changed: true,
+          change: { kind: 'list', from_date: '2026-08-03', to_date: '2026-08-31' },
+          coming_with: ['family', 'friends'],
+        })}
+        sessionType="adult"
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('bunking-request-changed-dot')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Coming with family' }).className).toContain(
+      'rounded-l-full'
+    )
+    expect(screen.getByRole('button', { name: 'Coming with friends' }).className).toContain(
+      'rounded-r-full'
+    )
+    // The capsule never glows; only the solid anchor does.
+    expect(
+      screen.getByTestId('coming-with-capsule').hasAttribute('data-share-emphasis-motion')
+    ).toBe(false)
+  })
+
+  it('does not dot a request re-filed identically', () => {
+    render(
+      <FamilyCard
+        party={guest({
+          state: 'request',
+          current_text: 'Emma Johnson',
+          changed: false,
+          change: { kind: 'identical', count: 2 },
+        })}
+        sessionType="adult"
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByTestId('bunking-request-changed-dot')).toBeNull()
+  })
+
+  it('draws nothing unless the WEEKEND is adult, whatever the grain', () => {
+    render(
+      <FamilyCard
+        party={guest({ state: 'request', current_text: 'Emma Johnson' })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /^Jotform:/ })).toBeNull()
+  })
+
+  it('draws nothing on a family weekend either', () => {
+    render(
+      <FamilyCard
+        party={guest({ state: 'request', current_text: 'Emma Johnson' })}
+        sessionType="family"
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /^Jotform:/ })).toBeNull()
+  })
+
+  it('draws nothing when the payload withholds the request (no bunking.manage)', () => {
+    render(<FamilyCard party={guest(null)} sessionType="adult" onOpen={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /^Jotform:/ })).toBeNull()
+  })
+
+  it('draws the marks on the drag preview too (P14)', () => {
+    render(
+      <FamilyCardPreview
+        party={guest({ state: 'request', current_text: 'Emma Johnson' })}
+        sessionType="adult"
+      />
+    )
+    expect(
+      screen.getByRole('button', { name: 'Jotform: Has a bunking request' })
+    ).toBeInTheDocument()
+  })
+})

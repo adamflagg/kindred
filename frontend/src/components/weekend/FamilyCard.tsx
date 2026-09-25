@@ -105,14 +105,17 @@ import { Fragment, memo } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Tooltip } from '../ui/Tooltip'
 import { SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { resolveBunkingRequestRuns } from './bunkingRequest'
 import {
   attendingAdults as computeAttendingAdults,
   childrenRun,
   dedupeAdultNames,
   partyHeadcount,
 } from './householdIdentity'
+import { MarkRuns } from './MarkRun'
 import { GLYPH_BASE, NeedGlyphMark, WARN_TONE } from './NeedGlyph'
 import { resolveNeedGlyphs } from './needGlyphs'
 import { partyKey } from './partyKey'
@@ -146,6 +149,12 @@ export interface FamilyCardProps {
    * with the id `resolveDrop` looks the party back up by.
    */
   isDraggable?: boolean
+  /**
+   * The weekend's `session_type` (kindred#2759), read ONLY through
+   * `isAdultSessionType` — never inferred from the party's grain. Draws the
+   * adult guest's Jotform marks on an adult weekend.
+   */
+  sessionType?: string | undefined
   onOpen: (party: RosterPartyRow) => void
 }
 
@@ -584,10 +593,12 @@ function FamilyCardChips({
   party,
   unit,
   sharedSlot,
+  sessionType,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot: boolean
+  sessionType?: string | undefined
 }) {
   const isHousehold = party.grain === 'household'
   // The four ruled needs, graded once, in `needGlyphs.ts`. A need the
@@ -614,6 +625,13 @@ function FamilyCardChips({
             of this row — see `docs/reference/weekend-card-vocabulary.md`
             §2/§3). */}
         <ShareMarks party={party} />
+        {/* kindred#2759: the adult guest's Jotform request, in the family
+            share-mark slot (owner pick: family slot order — Jotform marks,
+            then the need glyphs). Absent when the payload withholds it (no
+            bunking.manage) and on any non-adult weekend. */}
+        {isAdultSessionType(sessionType) && party.bunking_request != null && (
+          <MarkRuns runs={resolveBunkingRequestRuns(party.bunking_request)} />
+        )}
         {glyphs.map((glyph) => (
           <NeedGlyphMark
             key={glyph.key}
@@ -785,6 +803,7 @@ const FamilyCardInner = memo(function FamilyCardInner({
   sharedSlot = false,
   inQueue = false,
   isDraggable = false,
+  sessionType,
   onOpen,
   attributes,
   listeners,
@@ -838,7 +857,12 @@ const FamilyCardInner = memo(function FamilyCardInner({
       >
         <FamilyCardIdentity party={party} />
       </button>
-      <FamilyCardChips party={party} unit={unit} sharedSlot={sharedSlot} />
+      <FamilyCardChips
+        party={party}
+        unit={unit}
+        sharedSlot={sharedSlot}
+        sessionType={sessionType}
+      />
     </div>
   )
 })
@@ -895,15 +919,23 @@ export function FamilyCardPreview({
   party,
   unit,
   sharedSlot = false,
+  sessionType,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot?: boolean
+  /** See `FamilyCardProps.sessionType` — the preview must draw what the card draws. */
+  sessionType?: string | undefined
 }) {
   return (
     <div className={`${CARD_FRAME} bg-card shadow-lodge-lg border-primary/50 rotate-2`}>
       <FamilyCardIdentity party={party} />
-      <FamilyCardChips party={party} unit={unit} sharedSlot={sharedSlot} />
+      <FamilyCardChips
+        party={party}
+        unit={unit}
+        sharedSlot={sharedSlot}
+        sessionType={sessionType}
+      />
     </div>
   )
 }
