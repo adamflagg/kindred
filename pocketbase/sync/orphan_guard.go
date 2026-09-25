@@ -55,10 +55,10 @@ const (
 // camper_dietary, camper_transportation, family_camp_derived, financial_aid_applications,
 // household_demographics, normalize_geographic, quest_registrations, staff_skills,
 // staff_applications and staff_vehicle_info -- each construct one inside their own
-// deleteOrphans (kindred#2280, kindred#2296). camper_history was the tenth until it was
-// removed entirely in kindred#2366. family_camp_derived was the ninth to arrive: it
-// performs THREE sweeps rather than one, so it builds three guards, one per derived
-// table. financial_aid_applications is the tenth and the last to arrive.
+// deleteOrphans (kindred#2280, kindred#2296). camper_history was once among them until
+// it was removed entirely in kindred#2366. family_camp_derived performs THREE sweeps
+// rather than one, so it builds three guards, one per derived table.
+// financial_aid_applications is the latest to arrive.
 //
 // The REJECTION arm is narrower, and that is the part to watch. Only BaseSyncService
 // fills in Rejected, so for those ten SkipReason and RejectionsExplainShortfall can

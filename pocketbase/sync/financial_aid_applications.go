@@ -1001,6 +1001,10 @@ func (s *FinancialAidApplicationsSync) upsertApplications(
 // answer (design §6.4). existing is keyed by person PB id, as loadExistingApplications
 // builds it; computed is the set this run produced. Guarded like every sweep in the
 // package: an empty or collapsed answer load must not read as "every family withdrew".
+// A person who has FA answers but no persons row for the year -- the "shouldn't happen"
+// skip in processApplications -- never enters computed, so their application row is
+// swept too; that is safe because person_custom_values.person cascades on person delete
+// (kindred#2394), so a real person deletion would have already carried the answers away.
 func (s *FinancialAidApplicationsSync) deleteOrphans(
 	existing map[string]*core.Record, computed map[string]bool, year int,
 ) (int, error) {
