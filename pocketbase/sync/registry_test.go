@@ -296,6 +296,7 @@ func assertSeqIgnoring(t *testing.T, label string, got, want []string, ignore ..
 // wants the bounded pass between source and transform; #1416/#1417 want the cleanup last).
 func TestDailyQueueDerivation(t *testing.T) {
 	t.Setenv("IS_DOCKER", "true")
+	t.Setenv("JOTFORM_API_KEY", "test-key")
 	want := []string{
 		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
 		"bunk_assignments", "staff", "financial_transactions",
@@ -304,7 +305,7 @@ func TestDailyQueueDerivation(t *testing.T) {
 		"financial_aid_applications", "household_demographics", "camper_dietary",
 		"camper_transportation", "quest_registrations", "staff_applications",
 		"staff_vehicle_info", "normalize_geographic", "enrollment_snapshots",
-		"reconcile_request_lifecycle", "bunk_requests", "process_requests",
+		"reconcile_request_lifecycle", "bunk_requests", "jotform_submissions", "process_requests",
 		// multi_workbook_export lands before the cleanup only when google.IsEnabled();
 		// ignored here and asserted by TestDailyQueueGate instead.
 		"stranded_assignment_cleanup",

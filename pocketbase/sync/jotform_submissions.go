@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/camp/kindred/pocketbase/jotform"
@@ -15,6 +16,10 @@ import (
 )
 
 const serviceNameJotformSubmissions = "jotform_submissions"
+
+// jotformConfigured gates the daily Jotform pull: a deployment with no key
+// (dev, CI, a fresh stack) skips it instead of failing it every night.
+func jotformConfigured() bool { return strings.TrimSpace(os.Getenv("JOTFORM_API_KEY")) != "" }
 
 const (
 	jotformStatusDeleted  = "DELETED"

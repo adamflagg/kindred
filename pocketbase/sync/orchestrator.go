@@ -286,13 +286,15 @@ var syncJobMeta = []JobMeta{
 	// against each session's enrolled guests (so it reads attendees and persons,
 	// and sits after them). Not CampMinder -- its own key and base URL.
 	//
-	// MANUAL ONLY until the forms move to the enterprise Jotform account: no
-	// Cadences, only the individual route (admin "Pull now"). P2 adds
-	// CadenceDaily and a JOTFORM_API_KEY gate. Never a full or phase run: a
+	// P2: runs on the daily cron now, gated on jotformConfigured -- a deployment
+	// with no JOTFORM_API_KEY (dev, CI, a fresh stack) skips it instead of
+	// failing every night. When the forms move to the enterprise Jotform
+	// account, only the key and base URL change. Never a full or phase run: a
 	// historical replay must not re-pull a live external form.
 	{ID: "jotform_submissions", Phase: PhaseProcess,
 		Description: "Adult-weekend Jotform submissions (bunking requests)",
-		Triggers:    TriggerIndividualRoute, CurrentYearOnly: true},
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute, CurrentYearOnly: true,
+		Gate: jotformConfigured},
 	// process_requests only runs in Docker (Gate) -- development skips AI processing to
 	// avoid unnecessary API costs, matching getDailySyncJobs' IS_DOCKER check.
 	{ID: "process_requests", Phase: PhaseProcess,
