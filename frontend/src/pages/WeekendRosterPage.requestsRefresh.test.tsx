@@ -348,9 +348,13 @@ describe('WeekendRosterPage — a board write-in reaches the Requests tab', () =
 
     await user.click(screen.getByRole('tab', { name: /requests/i }))
     const panel = screen.getByRole('tabpanel', { name: /requests/i })
-    // The dropdown offers it, and the similar-name suggestion is shown.
-    const select = await within(panel).findByLabelText('Write-in for Miriam Garcia')
-    expect(within(select).getByRole('option', { name: 'Mini · Cedar 1' })).toBeInTheDocument()
+    // The dropdown offers it, and the similar-name suggestion is shown. The
+    // dropdown is a listbox (kindred#2839 icon ask): open it to read it.
+    await user.click(
+      await within(panel).findByRole('button', { name: 'Write-in for Miriam Garcia' })
+    )
+    expect(screen.getByRole('option', { name: 'Mini · Cedar 1' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
     expect(
       await within(panel).findByText('Similar name: write-in Mini · Cedar 1')
     ).toBeInTheDocument()
@@ -363,10 +367,10 @@ describe('WeekendRosterPage — a board write-in reaches the Requests tab', () =
     await user.click(screen.getByRole('tab', { name: /requests/i }))
     await waitFor(() => {
       expect(
-        within(
-          screen.getByRole('tabpanel', { name: /requests/i })
-        ).getByLabelText<HTMLSelectElement>('Write-in for Miriam Garcia').value
-      ).toBe('u_cedar1/Mimi')
+        within(screen.getByRole('tabpanel', { name: /requests/i })).getByRole('button', {
+          name: 'Write-in for Miriam Garcia',
+        }).textContent
+      ).toBe('Mimi · Cedar 1')
     })
   })
 

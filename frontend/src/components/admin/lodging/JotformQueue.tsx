@@ -16,6 +16,8 @@
  * whose name matches is pre-selected, never linked on its own. Filers who
  * match a registration that is not enrolled are listed apart, needing nothing.
  */
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
+import { ChevronDown, FileCheck2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { useJotformSubmissionAction, useJotformWeekendQueue } from '../../../hooks/useJotformAdmin'
@@ -28,6 +30,7 @@ import type {
   JotformWriteInLinkSuggestionRow,
 } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
+import { Tooltip } from '../../ui/Tooltip'
 import { shortDate } from '../../weekend/bunkingRequest'
 import {
   ACTION_LINK,
@@ -64,6 +67,89 @@ function writeInSuggestionLabel(suggestion: JotformWriteInLinkSuggestionRow): st
   const unit = suggestion.unit_name ?? ''
   const name = unit === '' ? suggestion.occupant_name : `${suggestion.occupant_name} · ${unit}`
   return suggestion.similar === true ? `Similar name: write-in ${name}` : `Write-in ${name}`
+}
+
+/** The tooltip on a write-in already linked to one or more filings. */
+function linkedTooltip(filers: readonly string[]): string {
+  const owners = filers.map((name) => `${name}'s`)
+  const last = owners.at(-1) ?? ''
+  return owners.length <= 1
+    ? `Linked to ${last} form`
+    : `Linked to ${owners.slice(0, -1).join(', ')} and ${last} forms`
+}
+
+/** One choice in a row's picker. */
+interface PickerChoice {
+  value: string
+  label: string
+  /** Set when the choice already has a Jotform form: the icon's tooltip. */
+  formNote?: string
+  /** Small muted text after the icon -- a linked write-in's filer names. */
+  detail?: string
+}
+
+/**
+ * A row's guest or write-in picker (kindred#2839 owner ask). A Headless UI
+ * listbox rather than a native <select>, because an <option> cannot hold the
+ * icon that marks a choice already having a Jotform form -- which replaced a
+ * "(has a submission)" suffix that made the list hard to read. Sized as the
+ * <select> was (`FIELD_INLINE`, `w-56`), so the row does not move; the menu
+ * is the app's `listbox-options`. `''` is the explicit empty choice.
+ */
+function RowPicker({
+  label,
+  placeholder,
+  value,
+  choices,
+  onChange,
+}: {
+  /** The button's accessible name, which the tests query by. */
+  label: string
+  placeholder: string
+  value: string
+  choices: readonly PickerChoice[]
+  onChange: (value: string) => void
+}) {
+  const selected = choices.find((choice) => choice.value === value)
+  return (
+    <Listbox value={value} onChange={onChange}>
+      <div className="relative">
+        <ListboxButton
+          aria-label={label}
+          className={`${FIELD_INLINE} flex w-56 cursor-pointer items-center gap-2 text-left`}
+        >
+          <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder}</span>
+          <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+        </ListboxButton>
+        <ListboxOptions transition className="listbox-options w-max min-w-full">
+          <ListboxOption value="" className="listbox-option py-1.5">
+            {placeholder}
+          </ListboxOption>
+          {choices.map((choice) => (
+            <ListboxOption
+              key={choice.value}
+              value={choice.value}
+              className="listbox-option flex items-center gap-1.5 py-1.5"
+            >
+              <span>{choice.label}</span>
+              {choice.formNote !== undefined && (
+                <Tooltip
+                  content={choice.formNote}
+                  aria-label={choice.formNote}
+                  className="text-muted-foreground inline-flex"
+                >
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                </Tooltip>
+              )}
+              {choice.detail !== undefined && (
+                <span className="text-muted-foreground text-xs">{choice.detail}</span>
+              )}
+            </ListboxOption>
+          ))}
+        </ListboxOptions>
+      </div>
+    </Listbox>
+  )
 }
 
 function UnmatchedItem({
@@ -200,21 +286,17 @@ function UnmatchedItem({
         )}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <select
-          className={`${FIELD_INLINE} w-56`}
-          aria-label={`Guest for ${item.submitted_name}`}
+        <RowPicker
+          label={`Guest for ${item.submitted_name}`}
+          placeholder="Choose a guest…"
           value={chosen}
-          onChange={(event) => {
-            setChosen(event.target.value)
-          }}
-        >
-          <option value="">Choose a guest…</option>
-          {sessionGuests.map((guest) => (
-            <option key={guest.person_cm_id} value={String(guest.person_cm_id)}>
-              {`${guest.display_name}${guest.has_submission === true ? ' (has a submission)' : ''}`}
-            </option>
-          ))}
-        </select>
+          choices={sessionGuests.map((guest) => ({
+            value: String(guest.person_cm_id),
+            label: guest.display_name,
+            ...(guest.has_submission === true && { formNote: 'Already has a Jotform form' }),
+          }))}
+          onChange={setChosen}
+        />
         <button
           type="button"
           className={BUTTON_SECONDARY}
@@ -244,23 +326,28 @@ function UnmatchedItem({
           // Its own line under the guest picker: the two lists are different
           // kinds of thing, and one wide row would crowd the filing.
           <div className="flex basis-full items-center gap-2">
-            <select
-              className={`${FIELD_INLINE} w-56`}
-              aria-label={`Write-in for ${item.submitted_name}`}
+            <RowPicker
+              label={`Write-in for ${item.submitted_name}`}
+              placeholder="Choose a write-in…"
               value={chosenWriteIn}
-              onChange={(event) => {
-                setPicked(event.target.value)
-              }}
-            >
-              <option value="">Choose a write-in…</option>
-              {writeIns.map((option) => (
-                <option key={option.option_id} value={option.option_id}>
-                  {option.unit_name
+              // A write-in already linked -- to another filer, or this filer's
+              // other filing -- is marked, and stays offered: a party can
+              // share one.
+              choices={writeIns.map((option) => {
+                const filers = option.linked_filers ?? []
+                return {
+                  value: option.option_id,
+                  label: option.unit_name
                     ? `${option.occupant_name} · ${option.unit_name}`
-                    : option.occupant_name}
-                </option>
-              ))}
-            </select>
+                    : option.occupant_name,
+                  ...(filers.length > 0 && {
+                    formNote: linkedTooltip(filers),
+                    detail: filers.join(', '),
+                  }),
+                }
+              })}
+              onChange={setPicked}
+            />
             <button
               type="button"
               className={BUTTON_SECONDARY}

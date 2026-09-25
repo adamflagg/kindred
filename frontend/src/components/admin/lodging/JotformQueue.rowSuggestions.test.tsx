@@ -117,9 +117,9 @@ describe('JotformQueue — write-in suggestions on the filer’s row', () => {
     render(<JotformQueue year={2026} sessionCmId={WW} scenario="" />)
     const emma = row('6600000000000000031')
     expect(within(emma).getByText('Similar name: write-in Emny · Cedar 3')).toBeInTheDocument()
-    expect(within(emma).getByRole('combobox', { name: 'Write-in for Emma Johnson' })).toHaveValue(
-      ''
-    )
+    expect(
+      within(emma).getByRole('button', { name: 'Write-in for Emma Johnson' })
+    ).toHaveTextContent('Choose a write-in…')
     fireEvent.click(within(emma).getByRole('button', { name: 'Link write-in Emny' }))
     expect(act.mutate).toHaveBeenCalledWith({
       kind: 'write_in',

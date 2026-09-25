@@ -8,6 +8,7 @@
  * Fictional names only.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JotformQueue } from './JotformQueue'
@@ -119,7 +120,7 @@ describe('JotformQueue — the Requests tab queue', () => {
     expect(screen.queryByText(/Matching hasn't run/)).not.toBeInTheDocument()
   })
 
-  it('links a suggestion, links by hand, and ignores', () => {
+  it('links a suggestion, links by hand, and ignores', async () => {
     renderQueue()
     const item = screen.getByTestId('jotform-unmatched-6600000000000000002')
     expect(within(item).getByText('Did you mean Emma Johnson?')).toBeInTheDocument()
@@ -130,9 +131,10 @@ describe('JotformQueue — the Requests tab queue', () => {
       personCmId: 1000005,
     })
 
-    fireEvent.change(within(item).getByRole('combobox', { name: 'Guest for Emma Ohnson' }), {
-      target: { value: '1000006' },
-    })
+    // The guest picker is a listbox (kindred#2839 owner ask: an icon, not
+    // "(has a submission)", marks a guest who has filed).
+    await userEvent.click(within(item).getByRole('button', { name: 'Guest for Emma Ohnson' }))
+    await userEvent.click(screen.getByRole('option', { name: /^Liam Garcia/ }))
     fireEvent.click(within(item).getByRole('button', { name: 'Link chosen guest' }))
     expect(act.mutate).toHaveBeenLastCalledWith({
       kind: 'link',

@@ -7,6 +7,7 @@
  * `useJotformAdmin.test.tsx`. Fictional names only.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JotformQueue } from './JotformQueue'
@@ -126,22 +127,27 @@ describe('JotformQueue — read in the viewed scenario', () => {
     expect(screen.queryByTestId('jotform-unmatched-6600000000000000014')).not.toBeInTheDocument()
   })
 
-  it('switching scenario changes the placement and the Write-in dropdown', () => {
+  it('switching scenario changes the placement and the Write-in dropdown', async () => {
     const { rerender } = render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" />)
-    const optionsOf = () =>
-      within(
-        within(screen.getByTestId('jotform-unmatched-6600000000000000011')).getByRole('combobox', {
+    // A listbox since kindred#2839's icon ask: open it to read what it offers.
+    const optionsOf = async () => {
+      await userEvent.click(
+        within(screen.getByTestId('jotform-unmatched-6600000000000000011')).getByRole('button', {
           name: 'Write-in for Samuel Johnson',
         })
       )
+      const labels = within(screen.getByRole('listbox'))
         .getAllByRole('option')
         .map((option) => option.textContent)
-    expect(optionsOf()).toEqual(['Choose a write-in…', 'Liv C. · Cedar 3'])
+      await userEvent.keyboard('{Escape}')
+      return labels
+    }
+    expect(await optionsOf()).toEqual(['Choose a write-in…', 'Liv C. · Cedar 3'])
 
     rerender(<JotformQueue year={2026} sessionCmId={1000002} scenario="scn_a" />)
 
     expect(weekendQueue).toHaveBeenLastCalledWith(2026, 1000002, 'scn_a')
-    expect(optionsOf()).toEqual([
+    expect(await optionsOf()).toEqual([
       'Choose a write-in…',
       'Sam Johnson · Oak 2',
       'olivia chen · Fern 1',
@@ -153,9 +159,9 @@ describe('JotformQueue — read in the viewed scenario', () => {
     const { rerender } = render(<JotformQueue year={2026} sessionCmId={1000002} scenario="" />)
     rerender(<JotformQueue year={2026} sessionCmId={1000002} scenario="scn_a" />)
     const item = screen.getByTestId('jotform-unmatched-6600000000000000011')
-    expect(within(item).getByRole('combobox', { name: 'Write-in for Samuel Johnson' })).toHaveValue(
-      'u_oak/Sam Johnson'
-    )
+    expect(
+      within(item).getByRole('button', { name: 'Write-in for Samuel Johnson' })
+    ).toHaveTextContent('Sam Johnson · Oak 2')
   })
 })
 

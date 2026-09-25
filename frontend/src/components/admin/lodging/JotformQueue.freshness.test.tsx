@@ -14,6 +14,7 @@
  * `pages/WeekendRosterPage.requestsRefresh.test.tsx`. Fictional names only.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { JotformActionOutcome } from '../../../hooks/useJotformAdmin'
@@ -88,12 +89,27 @@ function page(scenario = '', sessionCmId = SESSION) {
   return <JotformQueue year={2026} sessionCmId={sessionCmId} scenario={scenario} />
 }
 
-function select(): HTMLSelectElement {
+/**
+ * The write-in picker is a listbox (kindred#2839 owner ask: an icon marks a
+ * write-in already linked to a filing, and a native <option> cannot hold one),
+ * so what it holds is read from what its button shows.
+ */
+function picker(): HTMLElement {
   const item = screen.getByTestId(`jotform-unmatched-${FILING.submission_id}`)
-  return within(item).getByRole<HTMLSelectElement>('combobox', {
-    name: 'Write-in for Miriam Garcia',
-  })
+  return within(item).getByRole('button', { name: 'Write-in for Miriam Garcia' })
 }
+
+function shown(): string {
+  return picker().textContent
+}
+
+async function pick(label: string) {
+  await userEvent.click(picker())
+  await userEvent.click(screen.getByRole('option', { name: label }))
+}
+
+const NONE = 'Choose a write-in…'
+const label = (o: ReturnType<typeof option>) => `${o.occupant_name} · ${o.unit_name}`
 
 beforeEach(() => {
   onDones.length = 0
@@ -105,13 +121,13 @@ beforeEach(() => {
 describe('the write-in pre-selection follows the refetched queue', () => {
   it('pre-selects a suggestion that arrives after the row mounted', () => {
     const { rerender } = render(page())
-    expect(select().value).toBe('')
+    expect(shown()).toBe(NONE)
 
     // Staff write "Mimi" on the board; the queue refetches behind the tab.
     queue.data = queueOf([KITCHEN, MINI, MIMI], MIMI.option_id)
     rerender(page())
 
-    expect(select().value).toBe(MIMI.option_id)
+    expect(shown()).toBe(label(MIMI))
     fireEvent.click(screen.getByRole('button', { name: 'Link chosen write-in' }))
     expect(act.mutate).toHaveBeenLastCalledWith({
       kind: 'write_in',
@@ -124,58 +140,58 @@ describe('the write-in pre-selection follows the refetched queue', () => {
   it('follows the suggestion when it goes away again', () => {
     queue.data = queueOf([KITCHEN, MIMI], MIMI.option_id)
     const { rerender } = render(page())
-    expect(select().value).toBe(MIMI.option_id)
+    expect(shown()).toBe(label(MIMI))
 
     queue.data = queueOf([KITCHEN], '')
     rerender(page())
-    expect(select().value).toBe('')
+    expect(shown()).toBe(NONE)
   })
 
-  it("keeps staff's own pick across a refetch that changes the suggestion", () => {
+  it("keeps staff's own pick across a refetch that changes the suggestion", async () => {
     const { rerender } = render(page())
-    fireEvent.change(select(), { target: { value: KITCHEN.option_id } })
+    await pick(label(KITCHEN))
 
     queue.data = queueOf([KITCHEN, MINI, MIMI], MIMI.option_id)
     rerender(page())
 
-    expect(select().value).toBe(KITCHEN.option_id)
+    expect(shown()).toBe(label(KITCHEN))
   })
 
-  it('keeps an explicit "Choose a write-in…" too', () => {
+  it('keeps an explicit "Choose a write-in…" too', async () => {
     queue.data = queueOf([KITCHEN, MIMI], MIMI.option_id)
     const { rerender } = render(page())
-    fireEvent.change(select(), { target: { value: '' } })
+    await pick(NONE)
 
     queue.data = queueOf([KITCHEN, MINI, MIMI], MIMI.option_id)
     rerender(page())
 
-    expect(select().value).toBe('')
+    expect(shown()).toBe(NONE)
   })
 
-  it("drops staff's pick once its write-in is gone, back to the suggestion", () => {
+  it("drops staff's pick once its write-in is gone, back to the suggestion", async () => {
     const { rerender } = render(page())
-    fireEvent.change(select(), { target: { value: MINI.option_id } })
-    expect(select().value).toBe(MINI.option_id)
+    await pick(label(MINI))
+    expect(shown()).toBe(label(MINI))
 
     // "Mini" is removed from the board and "Mimi" written in its place.
     queue.data = queueOf([KITCHEN, MIMI], MIMI.option_id)
     rerender(page())
-    expect(select().value).toBe(MIMI.option_id)
+    expect(shown()).toBe(label(MIMI))
 
     // And it stays dropped: the write-in coming back does not revive the pick.
     queue.data = queueOf([KITCHEN, MINI, MIMI], MIMI.option_id)
     rerender(page())
-    expect(select().value).toBe(MIMI.option_id)
+    expect(shown()).toBe(label(MIMI))
   })
 
-  it("does not carry staff's pick into another scenario", () => {
+  it("does not carry staff's pick into another scenario", async () => {
     const { rerender } = render(page('scn_a'))
-    fireEvent.change(select(), { target: { value: KITCHEN.option_id } })
+    await pick(label(KITCHEN))
 
     queue.data = queueOf([KITCHEN, MIMI], MIMI.option_id)
     rerender(page('scn_b'))
 
-    expect(select().value).toBe(MIMI.option_id)
+    expect(shown()).toBe(label(MIMI))
   })
 })
 
