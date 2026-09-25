@@ -25,13 +25,23 @@
 
 	# Traefik (or cloudflared in legacy deploys) is the immediate upstream on
 	# the local Docker network. Trust private ranges so {client_ip} and logs
-	# reflect the real origin IP from X-Forwarded-For, not the proxy peer.
-	# Safe because the VPS is port-closed with ufw; there is no untrusted
-	# internal network. Required for downstream features (e.g. /_/ IP gate)
-	# that key on {client_ip}.
+	# reflect the real origin IP, not the proxy peer. Safe because the VPS is
+	# port-closed with ufw; there is no untrusted internal network. Required
+	# for the IP gates below (/_/ and the superuser API) that key on
+	# {client_ip}.
+	#
+	# CF-Connecting-IP is read FIRST. Production ingress is Cloudflare Tunnel
+	# only, and Cloudflare sets that header itself and rejects a client-supplied
+	# one, so it cannot be forged. X-Forwarded-For can: Caddy takes its
+	# left-most entry, so a client that prepends an allowlisted address would
+	# pass the gates. XFF remains the fallback for paths without Cloudflare
+	# (dev). Do NOT switch on trusted_proxies_strict instead: it reads XFF
+	# right-to-left and resolves an admin on a private-range address to the
+	# proxy's own IP, locking them out of /_/.
+	# scripts/ci/probe-caddy-superuser-gate.sh pins all of this.
 	servers {
 		trusted_proxies static private_ranges
-		client_ip_headers X-Forwarded-For
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
 	}
 
 	log {

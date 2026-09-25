@@ -112,6 +112,43 @@ for path in "${GATED[@]}"; do
   expect open "$ALLOWED_IP" POST "$path"
 done
 
+# expect_headers <want: blocked|open> <label> <curl header args...>
+# Same verdicts as expect(), against the password-login path, with full control
+# of the client-IP headers.
+expect_headers() {
+  local want=$1 label=$2 code
+  shift 2
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$@" \
+    "http://127.0.0.1:${PORT}/api/collections/_superusers/auth-with-password")
+  if [ "$want" = blocked ] && [ "$code" != 403 ]; then
+    echo "FAIL: $label -> $code, want 403"
+    failures=$((failures + 1))
+  elif [ "$want" = open ] && [ "$code" != 502 ]; then
+    echo "FAIL: $label -> $code, want 502 (reached the proxy, no upstream)"
+    failures=$((failures + 1))
+  else
+    echo "ok:   $label -> $code"
+  fi
+}
+
+# Client IP comes from CF-Connecting-IP first. In production every request
+# arrives through Cloudflare Tunnel, which sets that header itself and rejects
+# a client-supplied one, so it cannot be forged -- unlike X-Forwarded-For,
+# where Caddy takes the LEFT-most entry and a client can prepend any address.
+expect_headers open "CF-Connecting-IP allowlisted" \
+  -H "CF-Connecting-IP: $ALLOWED_IP"
+expect_headers blocked "CF-Connecting-IP outside + XFF spoofing an allowlisted IP" \
+  -H "CF-Connecting-IP: $BLOCKED_IP" -H "X-Forwarded-For: $ALLOWED_IP, $BLOCKED_IP"
+expect_headers blocked "CF-Connecting-IP outside, no XFF" \
+  -H "CF-Connecting-IP: $BLOCKED_IP"
+# DOCUMENTED FALLBACK, not a guarantee: with no CF-Connecting-IP (dev, or any
+# path that bypasses Cloudflare) Caddy falls back to X-Forwarded-For and takes
+# the left-most entry, so a prepended allowlisted address passes. Production
+# has no such path (the VPS publishes no web ports; ingress is the Tunnel), and
+# Traefik's own gate sits in front. Pinned here so a change is deliberate.
+expect_headers open "fallback: no CF header, XFF '<allowlisted>, <real>' (dev-only path)" \
+  -H "X-Forwarded-For: $ALLOWED_IP, $BLOCKED_IP"
+
 # Not gated: staff sign-in and ordinary collections must stay reachable.
 expect open "$BLOCKED_IP" POST /api/collections/users/auth-with-oauth2
 expect open "$BLOCKED_IP" GET /api/collections/users/auth-methods
