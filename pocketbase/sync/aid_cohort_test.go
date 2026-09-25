@@ -58,8 +58,13 @@ func TestAidCohort_ApplicantsAndPostingsInSeasonsNAndNPlus1(t *testing.T) {
 		cadenceAddPerson(t, app, 9300000+i, 9310000+i, year, hh)
 	}
 	cadenceAddPerson(t, app, 9300008, 0, year, "") // household_id 0: on no household
+	// A season-N households row with cm_id 0. Without it no zero id can reach the household
+	// set, and the no-zero assertion below could never fail: with it, dropping either `> 0`
+	// guard (on a posting's household_cm_id, or on a cohort person's household_id) leaks 0.
+	cadenceAddHousehold(t, app, 0, year)
 
 	aidApplication(t, app, year, 9300001, true)  // applicant: in
+	aidApplication(t, app, year, 9300008, true)  // applicant on no household: in, household not
 	aidApplication(t, app, year, 9300002, false) // donation-only: out
 	// N+1 posting names 9300003 only (household_cm_id 0) -- case (b) alone must carry him
 	// in, and his season-N household (9310003) must still surface as the household of a
@@ -75,7 +80,7 @@ func TestAidCohort_ApplicantsAndPostingsInSeasonsNAndNPlus1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadAidCohort: %v", err)
 	}
-	if want := []int{9300001, 9300003, 9300004}; !slices.Equal(cohort.personCMIDs, want) {
+	if want := []int{9300001, 9300003, 9300004, 9300008}; !slices.Equal(cohort.personCMIDs, want) {
 		t.Errorf("persons = %v, want %v", cohort.personCMIDs, want)
 	}
 	if want := []int{9310001, 9310003, 9310004}; !slices.Equal(cohort.householdCMIDs, want) {

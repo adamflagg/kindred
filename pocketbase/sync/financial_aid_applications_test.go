@@ -62,12 +62,11 @@ func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 // request amount / donation amount / donation-other) to the CA- fields that
 // already share the same four columns -- interest_expressed,
 // registration_request_amount, donation_preference, donation_other -- none of
-// which carry a "_summer" or
-// any other program suffix. Routing WW- into them is admission, not a grain
-// change: the column's meaning ("did this person express interest in
-// financial assistance, for whatever program they applied to") does not
-// change, and a WW- answer only ever lands on the row for the adult who filled
-// out that form.
+// which carry a "_summer" or any other program suffix. Routing WW- into them
+// is admission, not a grain change: the column's meaning ("did this person
+// express interest in financial assistance, for whatever program they applied
+// to") does not change, and a WW- answer only ever lands on the row for the
+// adult who filled out that form.
 func TestFinancialAidApplicationsAdmitsWWFields(t *testing.T) {
 	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{

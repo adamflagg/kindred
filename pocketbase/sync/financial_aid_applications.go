@@ -186,8 +186,9 @@ type faApplicationData struct {
 	incomeConfirmed    float64
 	amountConfirmed    bool
 
-	// is_applicant is true once the row has at least one seasonal aid answer
-	// (design §6.4). Donation-only and carry-over-only rows stay false.
+	// is_applicant is true once the row has at least one seasonal answer that
+	// countsAsAidAnswer accepts (design §6.4). Donation-only and carry-over-only
+	// rows stay false.
 	isApplicant bool
 
 	// carryoverUpdated maps a non-seasonal ("carry-over") CampMinder field name to the

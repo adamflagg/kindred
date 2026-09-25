@@ -103,6 +103,15 @@ func TestFinancialAidApplicationsMigrationFixesTheColumns(t *testing.T) {
 	if !strings.Contains(down, "indexes.push(AWARDED_INDEX_SQL)") {
 		t.Error("down path must restore idx_fa_apps_awarded")
 	}
+	// Down drops both new indexes before the rename back: left in place, the request index
+	// names a column that no longer exists and the applicant index a removed field.
+	for _, drop := range []string{
+		"withoutIndex(collection, REQUEST_INDEX_NAME)", "withoutIndex(collection, APPLICANT_INDEX_NAME)",
+	} {
+		if !strings.Contains(down, drop) {
+			t.Errorf("down path must contain %s", drop)
+		}
+	}
 
 	// 2. income_confirmed: bool -> number. PocketBase refuses a type change on a field id,
 	// so the bool is removed in one save and the number added in a second.
@@ -115,9 +124,22 @@ func TestFinancialAidApplicationsMigrationFixesTheColumns(t *testing.T) {
 	if !regexp.MustCompile(`type: "bool",\s*name: "income_confirmed"`).MatchString(down) {
 		t.Error("down path must restore income_confirmed as a bool")
 	}
-	for name, half := range map[string]string{"up": up, "down": down} {
-		if strings.Count(half, "app.save(collection)") < 2 {
+	// The ORDER matters, not just the count: the removal must be saved before the field is
+	// re-added under the other type, or both land in one save and PocketBase refuses it.
+	for name, half := range map[string]struct {
+		body, readdedType string
+	}{"up": {up, "number"}, "down": {down, "bool"}} {
+		firstSave := strings.Index(half.body, "app.save(collection)")
+		removed := strings.Index(half.body, `removeByName("income_confirmed")`)
+		readded := regexp.MustCompile(`type: "` + half.readdedType + `",\s*name: "income_confirmed"`).
+			FindStringIndex(half.body)
+		switch {
+		case firstSave < 0 || strings.Count(half.body, "app.save(collection)") < 2:
 			t.Errorf("%s path must save twice (remove, then re-add with the other type)", name)
+		case removed < 0 || removed > firstSave:
+			t.Errorf("%s path must remove income_confirmed before the first save", name)
+		case readded == nil || readded[0] < firstSave:
+			t.Errorf("%s path must re-add income_confirmed as %s AFTER the first save", name, half.readdedType)
 		}
 	}
 
@@ -126,8 +148,10 @@ func TestFinancialAidApplicationsMigrationFixesTheColumns(t *testing.T) {
 		if !strings.Contains(up, `removeByName("`+f+`")`) {
 			t.Errorf("up path must drop %s", f)
 		}
-		if !strings.Contains(down, `name: "`+f+`"`) {
-			t.Errorf("down path must restore %s", f)
+		restored := regexp.MustCompile(`type: "number",\s*name: "` + f + `",` +
+			`[^}]*min: null,\s*max: null,\s*onlyInt: false`)
+		if !restored.MatchString(down) {
+			t.Errorf("down path must restore %s as the unbounded, non-integer number it was", f)
 		}
 	}
 
