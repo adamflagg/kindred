@@ -12,6 +12,7 @@ export const Collections = {
   Otps: '_otps',
   Superusers: '_superusers',
   AidChangeLog: 'aid_change_log',
+  AidRules: 'aid_rules',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
   BunkAssignments: 'bunk_assignments',
@@ -177,6 +178,18 @@ export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   entity_id: string
   id: string
   reason?: string
+  year: number
+}
+
+export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
+  created: IsoAutoDateString
+  document?: null | Tdocument
+  id: string
+  parent_version?: number
+  parent_year?: number
+  section_status?: null | Tsection_status
+  updated: IsoAutoDateString
+  version: number
   year: number
 }
 
@@ -1917,6 +1930,11 @@ export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = 
   AidChangeLogRecord<Tafter, Tbefore>
 > &
   BaseSystemFields<Texpand>
+export type AidRulesResponse<
+  Tdocument = unknown,
+  Tsection_status = unknown,
+  Texpand = unknown,
+> = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
 export type AttendeeStatusHistoryResponse<Texpand = unknown> =
   Required<AttendeeStatusHistoryRecord> & BaseSystemFields<Texpand>
 export type AttendeesResponse<Texpand = unknown> = Required<AttendeesRecord> &
@@ -2138,6 +2156,7 @@ export type CollectionRecords = {
   _otps: OtpsRecord
   _superusers: SuperusersRecord
   aid_change_log: AidChangeLogRecord
+  aid_rules: AidRulesRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
   bunk_assignments: BunkAssignmentsRecord
@@ -2221,6 +2240,7 @@ export type CollectionResponses = {
   _otps: OtpsResponse
   _superusers: SuperusersResponse
   aid_change_log: AidChangeLogResponse
+  aid_rules: AidRulesResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse
   bunk_assignments: BunkAssignmentsResponse

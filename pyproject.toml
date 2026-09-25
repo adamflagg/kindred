@@ -188,6 +188,7 @@ module = [
     "jellyfish.*",
     "fuzzywuzzy.*",
     "Levenshtein.*",
+    "openpyxl.*",
 ]
 ignore_missing_imports = true
 
