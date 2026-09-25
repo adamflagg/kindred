@@ -61,6 +61,18 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 ```
 
+### Jotform Configuration
+```bash
+# Required (secret): Adult-weekend Jotform pull (kindred#2759)
+# When unset, the nightly job is skipped and "Pull now" fails fast.
+# Read by the pocketbase service.
+JOTFORM_API_KEY=your-jotform-api-key-here
+
+# Optional: API endpoint override for enterprise accounts
+# Default: https://api.jotform.com
+JOTFORM_API_BASE=https://<team>.jotform.com/API
+```
+
 ### Authentication Configuration
 ```bash
 # Auth mode: production, bypass (dev only)

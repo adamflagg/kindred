@@ -68,6 +68,10 @@ AI_PROVIDER=openai
 AI_API_KEY=your_openai_api_key_here
 AI_MODEL=gpt-4.1-mini
 
+# Jotform (Optional)
+JOTFORM_API_KEY=your_jotform_api_key_here
+JOTFORM_API_BASE=https://api.jotform.com
+
 # PocketBase Admin (first-run setup)
 POCKETBASE_ADMIN_EMAIL=admin@example.com
 POCKETBASE_ADMIN_PASSWORD=secure_password_here
