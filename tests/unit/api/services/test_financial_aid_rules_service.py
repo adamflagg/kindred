@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from api.services.financial_aid_rules_service import (
     PAGE_SIZE,
@@ -18,10 +19,16 @@ from api.services.financial_aid_rules_service import (
     RulesNotFoundError,
     VersionExistsError,
     YearMismatchError,
+    _to_version,
 )
 from bunking.financial_aid.rules import SectionName, SessionRef
 from bunking.financial_aid.rules.lifecycle import LockedSectionError, SectionHasErrorsError, SectionNotApprovedError
-from tests.unit.bunking.financial_aid.fixtures import FICTIONAL_SESSION_IDS, fictional_rules, with_lever
+from tests.unit.bunking.financial_aid.fixtures import (
+    FICTIONAL_SESSION_IDS,
+    fictional_rules,
+    fictional_rules_json,
+    with_lever,
+)
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
 FINANCE = "finance@example.com"
@@ -81,6 +88,8 @@ class Recorder:
                 "section": section,
                 "record_id": record_id,
                 "actor": actor,
+                "before": before,
+                "after": after,
             }
         )
 
@@ -202,7 +211,8 @@ async def test_a_new_version_copies_the_document_and_keeps_approvals_unlocked() 
 
 @pytest.mark.asyncio
 async def test_start_from_last_year() -> None:
-    service = _service()
+    recorder = Recorder()
+    service = _service(recorder=recorder)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
     started = await service.start_from_last_year(2032, actor=FINANCE)
@@ -211,6 +221,9 @@ async def test_start_from_last_year() -> None:
     assert started.document.income == fictional_rules().income
     assert started.document.milestones.r1_run is None  # dates belong to a season
     assert {s.state for s in started.section_status.values()} == {"draft"}  # a new season needs the board again
+    # (Fix round 1, item 1) start_from_last_year is a write too, and needs recording like the rest.
+    assert recorder.calls[-1]["action"] == "start_from_last_year"
+    assert recorder.calls[-1]["record_id"] == started.record_id
     with pytest.raises(VersionExistsError):
         await service.start_from_last_year(2032, actor=FINANCE)
     with pytest.raises(RulesNotFoundError):
@@ -221,10 +234,9 @@ async def test_start_from_last_year() -> None:
 async def test_every_write_is_recorded() -> None:
     recorder = Recorder()
     service = _service(recorder=recorder)
+    changed = with_lever(fictional_rules(), "income.medical_threshold", "4500")
     created = await service.create_version(fictional_rules(), actor=FINANCE)
-    saved, _ = await service.save(
-        2031, 1, with_lever(fictional_rules(), "income.medical_threshold", "4500"), actor=FINANCE
-    )
+    saved, _ = await service.save(2031, 1, changed, actor=FINANCE)
     approved = await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
     locked = await service.lock_section(2031, 1, "income", actor=FINANCE)
     new_version = await service.new_version(2031, 1, actor=FINANCE)
@@ -241,6 +253,13 @@ async def test_every_write_is_recorded() -> None:
         new_version.record_id,
     ]
     assert new_version.record_id != created.record_id
+    # (Fix round 1, item 2) before/after carry meaningful content, not just placeholders.
+    assert recorder.calls[1]["before"] == fictional_rules().model_dump(mode="json")
+    assert recorder.calls[1]["after"] == changed.model_dump(mode="json")
+    approve_before, approve_after = recorder.calls[2]["before"], recorder.calls[2]["after"]
+    assert approve_before["state"] == "draft"
+    assert approve_after["state"] == "approved"
+    assert approve_after["approved_by"] == FINANCE
 
 
 # --- Ruling P1: the recorder is required ------------------------------------------------
@@ -350,3 +369,37 @@ async def test_create_and_update_go_to_aid_rules() -> None:
     await repo.update("rec1", {"version": 2})
     pb.collection.return_value.create.assert_called_once_with({"year": 2031})
     pb.collection.return_value.update.assert_called_once_with("rec1", {"version": 2})
+
+
+# --- Fix round 1, item 4: a unique-index collision on create maps to VersionExistsError ------
+
+
+@pytest.mark.asyncio
+async def test_create_maps_a_unique_index_collision_to_version_exists_error() -> None:
+    pb = _pb()
+    pb.collection.return_value.create.side_effect = ClientResponseError(
+        "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+    )
+    with pytest.raises(VersionExistsError):
+        await AidRulesRepository(pb).create({"year": 2031, "version": 1})
+
+
+# --- Fix round 1, item 5: a document/section_status field may arrive as a JSON string --------
+
+
+def test_to_version_accepts_a_document_and_section_status_that_arrive_as_json_strings() -> None:
+    # Mirrors lodging_write_service._json_list's reasoning: the SDK hands back native
+    # dicts, but a mock repository -- or a differently-configured client -- can still
+    # hand back the raw serialised column instead.
+    row = SimpleNamespace(
+        id="rec1",
+        year=2031,
+        version=1,
+        document=json.dumps(fictional_rules_json()),
+        section_status="{}",
+        parent_year=0,
+        parent_version=0,
+    )
+    version = _to_version(row)
+    assert version.document == fictional_rules()
+    assert {s.state for s in version.section_status.values()} == {"draft"}

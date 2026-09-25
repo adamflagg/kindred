@@ -27,10 +27,12 @@ router that sub-project 12 adds wires that writer in here.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import BaseModel, ConfigDict
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
@@ -157,10 +159,38 @@ class AidRulesRepository:
         ]
 
     async def create(self, body: dict[str, Any]) -> Any:
-        return await asyncio.to_thread(self.pb.collection(AID_RULES).create, body)
+        try:
+            return await asyncio.to_thread(self.pb.collection(AID_RULES).create, body)
+        except ClientResponseError as exc:
+            # The unique index on (year, version) is the only constraint create_version,
+            # new_version and start_from_last_year could hit here -- everything else about
+            # the body was already validated (a real AidRules document, a computed version
+            # number) -- so a 400 on this specific write is that index, same reasoning as
+            # lodging_write_service's REFUSAL_STATUSES split (401/403 are answers, not this).
+            if exc.status == 400:
+                raise VersionExistsError(
+                    f"aid_rules already has year {body.get('year')} version {body.get('version')}"
+                ) from exc
+            raise
 
     async def update(self, record_id: str, body: dict[str, Any]) -> Any:
         return await asyncio.to_thread(self.pb.collection(AID_RULES).update, record_id, body)
+
+
+def _json_object(record: Any, field: str) -> dict[str, Any]:
+    """One PB JSON field, normalised to the dict it always logically is.
+
+    Mirrors `lodging_write_service._json_list`: the Python SDK's own HTTP client
+    hands back a native `dict` through `pb.collection(...).get_full_list`/`create`,
+    but a mock repository (this file's own tests, or a caller building a
+    `AidRulesStore` some other way) can hand over a `SimpleNamespace` straight
+    through, or a differently-configured client can still hand back the
+    column's raw serialised string.
+    """
+    value = getattr(record, field, None)
+    if isinstance(value, str):
+        return dict(json.loads(value)) if value else {}
+    return dict(value or {})
 
 
 def _to_version(record: Any) -> RulesVersion:
@@ -171,8 +201,8 @@ def _to_version(record: Any) -> RulesVersion:
         record_id=str(record.id),
         year=int(record.year),
         version=int(record.version),
-        document=AidRules.model_validate(record.document),
-        section_status=status_from_json(getattr(record, "section_status", None) or {}),
+        document=AidRules.model_validate(_json_object(record, "document")),
+        section_status=status_from_json(_json_object(record, "section_status")),
         parent_year=parent_year or None,
         parent_version=parent_version or None,
     )
@@ -318,6 +348,13 @@ class FinancialAidRulesService:
         return int(rows[-1].version) if rows else None
 
     async def _assert_latest(self, year: int, version: int) -> None:
+        # NOT atomic with the write that follows it: this read and that write are
+        # two separate PocketBase round trips, so a `new_version` that lands in
+        # between can still slip a write through against a version that was
+        # latest when this check ran but is not by the time the write does.
+        # Accepted for a single-user staff tool (campership design section 7);
+        # the unique index on (year, version) is what actually protects a
+        # concurrent `create` from a torn write, not this check.
         latest = await self._latest_version_number(year)
         if latest != version:
             raise NotLatestVersionError(
