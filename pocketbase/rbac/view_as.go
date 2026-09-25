@@ -8,7 +8,7 @@ import (
 // ViewAsHeader carries a real admin's preview persona: comma-separated
 // permission codenames, or "none" for a persona holding no permissions.
 //
-// A persona downgrades; it never grants. It is honoured only when the
+// A persona downgrades; it never grants. It is honored only when the
 // DB-loaded auth record is a users record with is_admin = true, and it always
 // yields is_admin = false -- so no persona can reach anything the caller could
 // not already reach, which is why there is no permission allow-list here.
