@@ -64,6 +64,20 @@ def test_allowing_an_appeal_on_full_cost_shows_why_it_was_barred() -> None:
     assert "r2_cap_negative" in result.issue_codes()
 
 
+def test_a_full_cost_award_takes_no_round_3_bonus() -> None:
+    # A full-cost award that disallows an appeal must disallow Round 3 too, or the total
+    # can exceed cost + extra with status "ok" -- exactly the appeal_not_allowed pattern.
+    result = _full_cost(round3_amount="500", round2_decided=True, round3_statement_of_need=True)
+    assert (result.r3, result.r3_bound, result.total) == (Decimal(0), "not_allowed", Decimal(4050))
+    assert "round3_not_allowed" in result.issue_codes()
+
+
+def test_full_cost_with_an_unknown_cost_needs_input() -> None:
+    result = _full_cost(session_cm_id=1000999)
+    assert (result.status, result.total) == ("needs_input", None)
+    assert "cost_unknown" in result.issue_codes()
+
+
 def test_a_fixed_top_up_adds_its_amount() -> None:
     request = req(decision_type="appeal_top_up", appeal_amount="400")
     result = calculate(app(), request, fictional_rules())

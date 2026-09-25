@@ -177,7 +177,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     above_ceiling = ceiling is not None and income.adjusted_income > ceiling
     _round1(work, request, rules, program, decision, cost, final, reduce_award, above_ceiling=above_ceiling)
     _round2(work, request, rules, program, decision, final, above_ceiling=above_ceiling)
-    _round3(work, request, rules, above_ceiling=above_ceiling)
+    _round3(work, request, rules, decision, above_ceiling=above_ceiling)
     _total_cap(work, rules)
     _top_up(work, decision)
     _total(work)
@@ -367,7 +367,14 @@ def _round2(
     work.step("r2", "Round 2 award", r2, inputs={"appeal": appeal, "cap": cap}, bound=bound)
 
 
-def _round3(work: _Work, request: RequestInputs, rules: AidRules, *, above_ceiling: bool) -> None:
+def _round3(
+    work: _Work,
+    request: RequestInputs,
+    rules: AidRules,
+    decision: DecisionType | None,
+    *,
+    above_ceiling: bool,
+) -> None:
     amount = request.round3_amount
     if amount is None:
         return
@@ -375,6 +382,16 @@ def _round3(work: _Work, request: RequestInputs, rules: AidRules, *, above_ceili
     if above_ceiling:
         work.r3, work.r3_bound = ZERO, "income_ceiling"
         work.step("r3", "Round 3 award", ZERO, inputs={"requested": amount}, bound="income_ceiling")
+        return
+    if decision is not None and not decision.allows_appeal:
+        work.issue(
+            "round3_not_allowed",
+            "warn",
+            f"Decision type '{request.decision_type}' does not allow an appeal; Round 3 is 0",
+            "r3",
+        )
+        work.r3, work.r3_bound = ZERO, "not_allowed"
+        work.step("r3", "Round 3 award", ZERO, inputs={"requested": amount}, bound="not_allowed")
         return
     missing = []
     if settings.require_round2 and not request.round2_decided:
@@ -405,7 +422,10 @@ def _round3(work: _Work, request: RequestInputs, rules: AidRules, *, above_ceili
 def _total_cap(work: _Work, rules: AidRules) -> None:
     """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut."""
     cap = rules.awards.total_cap
-    if cap is None or work.cost is None or work.r1 is None or (work.r2 is None and work.r3 is None):
+    if cap is None or (work.r2 is None and work.r3 is None):
+        return
+    if work.cost is None or work.r1 is None:
+        work.issue("cost_unknown", "needs_input", "Cost is unknown; the total-aid cap cannot be computed", "total_cap")
         return
     limit = pct_of(cap.pct_of_cost, work.cost) - (work.grants_offset if cap.include_grants else ZERO)
     room = max(limit - work.r1, ZERO)
@@ -430,6 +450,9 @@ def _top_up(work: _Work, decision: DecisionType | None) -> None:
         amount = decision.amount if decision.amount is not None else ZERO
     else:
         if work.cost is None or work.r1 is None:
+            work.issue(
+                "cost_unknown", "needs_input", "Cost is unknown; the full-cost top-up cannot be computed", "top_up"
+            )
             return
         target = work.cost - work.grants_offset + decision.extra_amount
         amount = max(round_dollars(target - work.r1 - (work.r2 or ZERO)), ZERO)
@@ -440,9 +463,10 @@ def _top_up(work: _Work, decision: DecisionType | None) -> None:
 
 def _total(work: _Work) -> None:
     # A rules_error already blanks r1 by returning before it is set (see _tier_percents).
-    # A Round 2 rules_error can strike after r1 is already computed, so the total needs its
-    # own guard: an error status never produces a total, only r1/r2/r3 taken individually do.
-    if work.r1 is None or status_of(work.issues) == "error":
+    # A Round 2/3 rules_error or a cost_unknown needs_input can strike after r1 is already
+    # computed, so the total needs its own guard: neither an error nor an unresolved
+    # needs_input ever produces a total, only r1/r2/r3 taken individually do.
+    if work.r1 is None or status_of(work.issues) in ("error", "needs_input"):
         return
     work.total = work.r1 + (work.r2 or ZERO) + (work.r3 or ZERO) + work.top_up + work.discretionary
     work.step(

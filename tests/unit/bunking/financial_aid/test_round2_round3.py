@@ -85,6 +85,7 @@ def test_a_program_with_only_a_round_2_table_can_still_appeal() -> None:
 def test_an_appeal_with_an_unknown_cost_needs_input() -> None:
     result = _calc(session_cm_id=1000999, appeal_amount="500")
     assert (result.status, result.r1, result.r2) == ("needs_input", Decimal(100), None)
+    assert result.total is None
 
 
 def test_round_2_rounds_half_up() -> None:
@@ -128,6 +129,15 @@ def test_the_total_cap_trims_round_3_after_round_2() -> None:
     assert (result.r3, result.r3_bound) == (Decimal(200), "total_cap")
 
 
+def test_the_total_cap_with_an_unknown_cost_needs_input() -> None:
+    # The total cap silently skipped its own computation when cost was unknown, dropping
+    # the cost_unknown signal instead of surfacing it like Round 2 and Round 3 do.
+    rules = with_lever(fictional_rules(), "awards.total_cap", _CAP_80)
+    result = _calc(rules, session_cm_id=1000999, round3_amount="1000", **ELIGIBLE_R3)
+    assert (result.status, result.total) == ("needs_input", None)
+    assert "cost_unknown" in result.issue_codes()
+
+
 # --- Round 3 --------------------------------------------------------------------------
 
 
@@ -161,6 +171,12 @@ def test_round_3_share_of_cost_limit() -> None:
     rules = with_lever(fictional_rules(), "round3.max_total_pct_of_cost", "100")
     result = _calc(rules, appeal_amount="1000", round3_amount="1000", **ELIGIBLE_R3)
     assert (result.r2, result.r3, result.r3_bound) == (Decimal(600), Decimal(400), "cap")
+
+
+def test_round_3_with_an_unknown_cost_needs_input() -> None:
+    rules = with_lever(fictional_rules(), "round3.max_total_pct_of_cost", "100")
+    result = _calc(rules, session_cm_id=1000999, round3_amount="1000", **ELIGIBLE_R3)
+    assert (result.status, result.r3, result.total) == ("needs_input", None, None)
 
 
 def test_the_full_trace_order() -> None:
