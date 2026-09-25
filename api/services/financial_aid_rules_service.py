@@ -1,0 +1,370 @@
+"""Financial-aid rules: the versioned per-season documents in `aid_rules` (campership design section 7).
+
+Reads and writes go through FastAPI's superuser client: all five PocketBase rules
+on `aid_rules` are null, so nothing else can reach the table. The router that
+exposes this (a later sub-project) gates every call on `financial_aid.rules`;
+this module does no permission check of its own.
+
+A version is (year, version). Each section has its own lifecycle
+(bunking.financial_aid.rules.lifecycle): saving a change to an approved section
+sends it back to draft, and a change to a locked section is refused -- that
+change needs a new version. A draft with validation errors still saves, and the
+report comes back with it, so staff see what is wrong; approval is what errors
+block.
+
+A write to `save`, `approve_section` or `lock_section` targets a specific
+version; if that version is no longer the latest for its year, the write is
+refused with `NotLatestVersionError` -- an older version is read-only once a
+newer one exists. `new_version` is the one write that is allowed to branch from
+an older version on purpose (a "what changed since" comparison, or picking up a
+draft that was not the last one made); its result always becomes the new latest.
+
+Every write calls the required RulesChangeRecorder, passing the PocketBase
+record id of the version written. The change log belongs to sub-project 2; the
+router that sub-project 12 adds wires that writer in here.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any, Protocol
+
+from pydantic import BaseModel, ConfigDict
+
+from api.constants.collections import AID_RULES, CAMP_SESSIONS
+from bunking.financial_aid.rules import (
+    AidRules,
+    SectionName,
+    SessionRef,
+    ValidationContext,
+    ValidationReport,
+    validate_rules,
+)
+from bunking.financial_aid.rules.lifecycle import (
+    SectionStatus,
+    StatusMap,
+    apply_edit,
+    approve,
+    carry_forward,
+    initial_status,
+    lock,
+    status_from_json,
+    status_to_json,
+)
+from bunking.financial_aid.rules.schema import MilestonesSection
+
+# Rows per request for every paged read; PocketBase clamps anything above 1000.
+PAGE_SIZE = 1000
+# Every paged read ends its sort on the record id: LIMIT/OFFSET paging without a
+# total order can skip or repeat a row.
+STABLE_SORT = "id"
+
+
+class RulesNotFoundError(LookupError):
+    """No aid_rules row for the year (and version) asked for."""
+
+
+class VersionExistsError(ValueError):
+    """The year already has rules; "start from last year" only starts an empty season."""
+
+
+class YearMismatchError(ValueError):
+    """The document's year is not the year it is being saved under."""
+
+
+class NotLatestVersionError(ValueError):
+    """A write targeted a version that is no longer the latest for its year.
+
+    An older version is read-only once a newer one exists -- branch from the
+    latest version instead (`new_version`).
+    """
+
+
+class RulesVersion(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    record_id: str
+    year: int
+    version: int
+    document: AidRules
+    section_status: dict[SectionName, SectionStatus]
+    parent_year: int | None
+    parent_version: int | None
+
+
+class RulesChangeRecorder(Protocol):
+    async def __call__(
+        self,
+        *,
+        action: str,
+        year: int,
+        version: int,
+        section: SectionName | None,
+        record_id: str,
+        actor: str,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+    ) -> None: ...
+
+
+class AidRulesStore(Protocol):
+    async def list_versions(self, year: int) -> list[Any]: ...
+
+    async def fetch_version(self, year: int, version: int) -> Any | None: ...
+
+    async def fetch_session_refs(self, year: int) -> list[SessionRef]: ...
+
+    async def create(self, body: dict[str, Any]) -> Any: ...
+
+    async def update(self, record_id: str, body: dict[str, Any]) -> Any: ...
+
+
+class AidRulesRepository:
+    """PocketBase access for aid_rules (and the season's sessions, for validation)."""
+
+    def __init__(self, pb: Any) -> None:
+        self.pb = pb
+
+    async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
+        rows: list[Any] = await asyncio.to_thread(
+            self.pb.collection(collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
+        )
+        return rows
+
+    async def list_versions(self, year: int) -> list[Any]:
+        return await self._page(AID_RULES, {"filter": f"year = {int(year)}", "sort": f"version,{STABLE_SORT}"})
+
+    async def fetch_version(self, year: int, version: int) -> Any | None:
+        rows = await self._page(
+            AID_RULES, {"filter": f"year = {int(year)} && version = {int(version)}", "sort": STABLE_SORT}
+        )
+        return rows[0] if rows else None
+
+    async def fetch_session_refs(self, year: int) -> list[SessionRef]:
+        rows = await self._page(
+            CAMP_SESSIONS,
+            {"filter": f"year = {int(year)}", "fields": "id,cm_id,session_type,name", "sort": f"cm_id,{STABLE_SORT}"},
+        )
+        return [
+            SessionRef(
+                cm_id=int(row.cm_id),
+                session_type=getattr(row, "session_type", None) or None,
+                name=getattr(row, "name", None) or None,
+            )
+            for row in rows
+        ]
+
+    async def create(self, body: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(AID_RULES).create, body)
+
+    async def update(self, record_id: str, body: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(AID_RULES).update, record_id, body)
+
+
+def _to_version(record: Any) -> RulesVersion:
+    # PocketBase returns 0 for an unset number field; 0 means "no parent" here.
+    parent_year = int(getattr(record, "parent_year", 0) or 0)
+    parent_version = int(getattr(record, "parent_version", 0) or 0)
+    return RulesVersion(
+        record_id=str(record.id),
+        year=int(record.year),
+        version=int(record.version),
+        document=AidRules.model_validate(record.document),
+        section_status=status_from_json(getattr(record, "section_status", None) or {}),
+        parent_year=parent_year or None,
+        parent_version=parent_version or None,
+    )
+
+
+def _body(
+    year: int,
+    version: int,
+    document: AidRules,
+    status: StatusMap,
+    *,
+    parent_year: int | None,
+    parent_version: int | None,
+) -> dict[str, Any]:
+    return {
+        "year": year,
+        "version": version,
+        "document": document.model_dump(mode="json"),
+        "section_status": status_to_json(status),
+        "parent_year": parent_year or 0,
+        "parent_version": parent_version or 0,
+    }
+
+
+class FinancialAidRulesService:
+    def __init__(
+        self,
+        store: AidRulesStore,
+        *,
+        recorder: RulesChangeRecorder,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._store = store
+        self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        self._recorder: RulesChangeRecorder = recorder
+
+    async def load(self, year: int, version: int | None = None) -> RulesVersion:
+        """One version, or the year's highest version when `version` is None."""
+        if version is None:
+            rows = await self._store.list_versions(year)
+            if not rows:
+                raise RulesNotFoundError(f"No aid rules for {year}")
+            return _to_version(rows[-1])
+        record = await self._store.fetch_version(year, version)
+        if record is None:
+            raise RulesNotFoundError(f"No aid rules for {year} version {version}")
+        return _to_version(record)
+
+    async def validate_document(self, document: AidRules) -> ValidationReport:
+        sessions = await self._store.fetch_session_refs(document.year)
+        return validate_rules(document, ValidationContext(sessions=sessions))
+
+    async def validate(self, year: int, version: int) -> ValidationReport:
+        return await self.validate_document((await self.load(year, version)).document)
+
+    async def create_version(self, document: AidRules, *, actor: str) -> RulesVersion:
+        version = await self._next_version(document.year)
+        record = await self._store.create(
+            _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
+        )
+        created = _to_version(record)
+        await self._record("create", created, section=None, actor=actor, before=None, after=_dump(created.document))
+        return created
+
+    async def save(
+        self, year: int, version: int, document: AidRules, *, actor: str
+    ) -> tuple[RulesVersion, ValidationReport]:
+        if document.year != year:
+            raise YearMismatchError(f"The document is for {document.year}, not {year}")
+        current = await self.load(year, version)
+        await self._assert_latest(year, current.version)
+        status = apply_edit(current.document, document, current.section_status)
+        record = await self._store.update(
+            current.record_id, {"document": _dump(document), "section_status": status_to_json(status)}
+        )
+        saved = _to_version(record)
+        await self._record(
+            "save", saved, section=None, actor=actor, before=_dump(current.document), after=_dump(saved.document)
+        )
+        return saved, await self.validate_document(document)
+
+    async def approve_section(
+        self, year: int, version: int, section: SectionName, *, actor: str, note: str | None
+    ) -> RulesVersion:
+        current = await self.load(year, version)
+        await self._assert_latest(year, current.version)
+        report = await self.validate_document(current.document)
+        status = approve(current.section_status, section, by=actor, at=self._clock(), note=note, report=report)
+        return await self._write_status("approve", current, status, section, actor)
+
+    async def lock_section(self, year: int, version: int, section: SectionName, *, actor: str) -> RulesVersion:
+        current = await self.load(year, version)
+        await self._assert_latest(year, current.version)
+        status = lock(current.section_status, section, at=self._clock())
+        return await self._write_status("lock", current, status, section, actor)
+
+    async def new_version(self, year: int, from_version: int, *, actor: str) -> RulesVersion:
+        """Copy `from_version`'s document and approvals (locks lifted) into a new, latest version.
+
+        `from_version` need not be the current latest -- branching from an older
+        version on purpose is the one write this module allows on a superseded
+        version, and its result becomes the new latest.
+        """
+        source = await self.load(year, from_version)
+        version = await self._next_version(year)
+        record = await self._store.create(
+            _body(
+                year,
+                version,
+                source.document,
+                carry_forward(source.section_status),
+                parent_year=year,
+                parent_version=from_version,
+            )
+        )
+        created = _to_version(record)
+        await self._record(
+            "new_version", created, section=None, actor=actor, before=None, after=_dump(created.document)
+        )
+        return created
+
+    async def start_from_last_year(self, year: int, *, actor: str) -> RulesVersion:
+        """Copy the previous season's latest version into an empty season, every section draft.
+
+        Milestone dates are cleared: they belong to a season. Approvals are not
+        carried: a new season's rules go to the board again.
+        """
+        if await self._store.list_versions(year):
+            raise VersionExistsError(f"{year} already has aid rules; make a new version instead")
+        prior = await self.load(year - 1)
+        document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection()})
+        record = await self._store.create(
+            _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
+        )
+        created = _to_version(record)
+        await self._record(
+            "start_from_last_year", created, section=None, actor=actor, before=None, after=_dump(created.document)
+        )
+        return created
+
+    async def _latest_version_number(self, year: int) -> int | None:
+        rows = await self._store.list_versions(year)
+        return int(rows[-1].version) if rows else None
+
+    async def _assert_latest(self, year: int, version: int) -> None:
+        latest = await self._latest_version_number(year)
+        if latest != version:
+            raise NotLatestVersionError(
+                f"Version {version} of {year} is not the latest version ({latest}); "
+                "branch from the latest version instead"
+            )
+
+    async def _next_version(self, year: int) -> int:
+        latest = await self._latest_version_number(year)
+        return (latest or 0) + 1
+
+    async def _write_status(
+        self, action: str, current: RulesVersion, status: StatusMap, section: SectionName, actor: str
+    ) -> RulesVersion:
+        record = await self._store.update(current.record_id, {"section_status": status_to_json(status)})
+        updated = _to_version(record)
+        await self._record(
+            action,
+            updated,
+            section=section,
+            actor=actor,
+            before=current.section_status[section].model_dump(mode="json"),
+            after=updated.section_status[section].model_dump(mode="json"),
+        )
+        return updated
+
+    async def _record(
+        self,
+        action: str,
+        version: RulesVersion,
+        *,
+        section: SectionName | None,
+        actor: str,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+    ) -> None:
+        await self._recorder(
+            action=action,
+            year=version.year,
+            version=version.version,
+            section=section,
+            record_id=version.record_id,
+            actor=actor,
+            before=before,
+            after=after,
+        )
+
+
+def _dump(document: AidRules) -> dict[str, Any]:
+    return document.model_dump(mode="json")
