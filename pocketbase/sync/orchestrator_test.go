@@ -4595,3 +4595,57 @@ func TestRunSyncWithOptionsHistoricalReRegistersScopedFamilyCampVariants(t *test
 		t.Errorf("%s: expected Scope=%q, got %q", householdID, ScopeFamilyCamp, hcv.Scope)
 	}
 }
+
+// Only the registered current-year instance rolls. A historical replay (opts.Year > 0)
+// must re-register financial_transactions single-season, or a 2019 replay would also
+// rewrite 2018 and 2020.
+//
+// Registered in serialGroups: CAMPMINDER_PRIMARY_KEY (campminder.NewClient) is t.Setenv.
+func TestRunSyncWithOptionsHistoricalTransactionsAreSingleSeason(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+	bootClient, err := campminder.NewClient(&campminder.Config{APIKey: "boot-key", ClientID: "c", SeasonID: 2026})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	o.baseClient = bootClient
+	o.RegisterService("financial_transactions", NewRollingFinancialTransactionsSync(app, bootClient))
+
+	probe := &registrationSnapshotProbe{orchestrator: o, ids: []string{"financial_transactions"}}
+	o.RegisterService("probe", probe)
+	if err := o.RunSyncWithOptions(context.Background(), Options{Year: 2020, Services: []string{"probe"}}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+	ft, ok := probe.seen["financial_transactions"].(*FinancialTransactionsSync)
+	if !ok {
+		t.Fatalf("financial_transactions during the historical run = %T", probe.seen["financial_transactions"])
+	}
+	if ft.RollingSeasons {
+		t.Error("the historical run's financial_transactions instance rolls; it must be single-season")
+	}
+}
+
+// The instance the 03:00 cron runs is the rolling one.
+//
+// Registered in serialGroups: InitializeSyncServices reads the CAMPMINDER_* env itself.
+func TestInitializeSyncServicesRegistersRollingTransactions(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+	t.Setenv("CAMPMINDER_API_KEY", "test-api-key")
+	t.Setenv("CAMPMINDER_CLIENT_ID", "test-client")
+	t.Setenv("CAMPMINDER_SEASON_ID", "2026")
+	t.Setenv("GOOGLE_SHEETS_ENABLED", "")
+
+	o := NewOrchestrator(newDryRunTestApp(t))
+	if err := o.InitializeSyncServices(); err != nil {
+		t.Fatalf("InitializeSyncServices: %v", err)
+	}
+	ft, ok := o.GetService("financial_transactions").(*FinancialTransactionsSync)
+	if !ok {
+		t.Fatalf("financial_transactions registered as %T", o.GetService("financial_transactions"))
+	}
+	if !ft.RollingSeasons {
+		t.Error("the registered financial_transactions instance must roll seasons N-1, N and N+1")
+	}
+}

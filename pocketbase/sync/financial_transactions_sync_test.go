@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
@@ -338,5 +339,66 @@ func TestFinancialTransactionsSync_DedupDoesNotShadowAcrossSeasons(t *testing.T)
 	}
 	if got := countTransactions(t, app, 2026); got != 1 {
 		t.Errorf("2026 rows = %d, want the 2026 row written despite the 2025 twin listed first", got)
+	}
+}
+
+func TestFinancialTransactionsSync_SeasonsToSync(t *testing.T) {
+	t.Parallel()
+	rolling := NewRollingFinancialTransactionsSync(nil, nil)
+	if got := rolling.seasonsToSync(2026); !slices.Equal(got, []int{2025, 2026, 2027}) {
+		t.Errorf("rolling seasonsToSync(2026) = %v, want [2025 2026 2027]", got)
+	}
+	single := NewFinancialTransactionsSync(nil, nil)
+	if got := single.seasonsToSync(2026); !slices.Equal(got, []int{2026}) {
+		t.Errorf("single seasonsToSync(2026) = %v, want [2026]", got)
+	}
+}
+
+// One season failing must not stop the others, and the run's stats are the sum.
+func TestFinancialTransactionsSync_RollingRunContinuesPastAFailedSeason(t *testing.T) {
+	t.Parallel()
+	app := newTransactionsTestApp(t)
+	s := NewRollingFinancialTransactionsSync(app, nil)
+	s.fetchSeason = func(season int) ([]map[string]any, error) {
+		if season == 2025 {
+			return nil, errors.New("upstream timeout")
+		}
+		return []map[string]any{txnRow(5000+season, season, 100, nil)}, nil
+	}
+	err := s.syncSeasons(context.Background(), []int{2025, 2026, 2027})
+	if err == nil || !strings.Contains(err.Error(), "season 2025") {
+		t.Errorf("syncSeasons error = %v, want one naming season 2025", err)
+	}
+	if countTransactions(t, app, 2026) != 1 || countTransactions(t, app, 2027) != 1 {
+		t.Error("seasons after the failed one were not synced")
+	}
+	if s.Stats.Created != 2 {
+		t.Errorf("Stats.Created = %d, want 2 summed across seasons", s.Stats.Created)
+	}
+	if s.SyncSuccessful {
+		t.Error("SyncSuccessful must be false when any season failed")
+	}
+}
+
+func TestTransactionBackfillYear(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		param   string
+		want    int
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"2017", 2017, false},
+		{"2026", 2026, false},
+		{"2027", 2027, false}, // N+1 is live in CampMinder and in the daily run
+		{"2028", 0, true},
+		{"2016", 0, true},
+		{"abc", 0, true},
+	} {
+		got, err := transactionBackfillYear(tt.param, now)
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("transactionBackfillYear(%q) = %d, %v; want %d, err=%v", tt.param, got, err, tt.want, tt.wantErr)
+		}
 	}
 }

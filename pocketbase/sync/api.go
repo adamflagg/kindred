@@ -2031,6 +2031,22 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	})
 }
 
+// transactionBackfillYear parses the financial-transactions route's optional ?year=. ""
+// means the configured season (0). Anything else must be a valid sync year no later than
+// next season: CampMinder already holds season N+1 while N is live, and the daily run
+// covers N+1, so an on-demand re-sync of it must not be refused.
+func transactionBackfillYear(param string, now time.Time) (int, error) {
+	if param == "" {
+		return 0, nil
+	}
+	y, err := strconv.Atoi(param)
+	if err != nil || !ValidSyncYear(y) || y > now.Year()+1 {
+		return 0, fmt.Errorf("invalid year parameter %q: must be between %d and %d",
+			param, syncYearMin, now.Year()+1)
+	}
+	return y, nil
+}
+
 // handleFinancialTransactionsSync handles the financial transactions sync
 // Accepts optional ?year=YYYY parameter for historical data sync
 func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler) error {
@@ -2047,21 +2063,9 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 	}
 
 	// Parse optional year parameter for historical sync
-	yearParam := e.Request.URL.Query().Get("year")
-	year := 0 // Default: current year from env
-	if yearParam != "" {
-		// Deliberately stricter than ValidSyncYear at the top end, and the one handler here
-		// that is: this backfills financial transactions FROM CampMinder, and a year that
-		// has not happened has none. syncYearMax (2050) is a schema bound, not a claim that
-		// 2049's ledger is fetchable. The floor stays shared.
-		if y, err := strconv.Atoi(yearParam); err == nil && ValidSyncYear(y) && y <= time.Now().Year() {
-			year = y
-		} else {
-			return e.JSON(http.StatusBadRequest, map[string]any{
-				"error": fmt.Sprintf("Invalid year parameter. Must be between %d and the current year.",
-					syncYearMin),
-			})
-		}
+	year, err := transactionBackfillYear(e.Request.URL.Query().Get("year"), time.Now())
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 	}
 
 	// For historical sync, use year-specific client

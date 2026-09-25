@@ -3002,8 +3002,8 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("process_requests", processor)
 	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
 	o.RegisterService("staff", NewStaffSync(o.app, client))
-	// Financial transactions: year-scoped transaction data (depends on financial_lookups running in weekly sync)
-	o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, client))
+	// Financial transactions, rolling seasons N-1, N and N+1 (campership design §6.1).
+	o.RegisterService("financial_transactions", NewRollingFinancialTransactionsSync(o.app, client))
 
 	// Register Google Sheets multi-workbook export (optional, requires configuration)
 	if google.IsEnabled() {

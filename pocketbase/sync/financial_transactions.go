@@ -27,6 +27,12 @@ type FinancialTransactionsSync struct {
 	// crossSeason holds the transaction cm_ids the last SyncForYear flagged as posted
 	// against another season's session. Logged, never re-keyed (design §6.1).
 	crossSeason []int
+
+	// RollingSeasons makes Sync cover seasons N-1, N and N+1 around the configured season
+	// (design §6.1): N-1 still collects late postings and reversals, and N+1 already takes
+	// deposits and early awards. Set only on the instance InitializeSyncServices registers.
+	// A historical replay and the ?year= route construct a single-season instance.
+	RollingSeasons bool
 }
 
 // TransactionLookupMaps holds all the lookup maps needed for relation resolution
@@ -63,9 +69,60 @@ func (s *FinancialTransactionsSync) fetch(season int) ([]map[string]any, error) 
 	return s.Client.GetTransactionDetails(season, true)
 }
 
-// Sync performs the year-scoped financial transactions sync
+// NewRollingFinancialTransactionsSync is the instance the daily cron runs: NewFinancialTransactionsSync
+// with RollingSeasons set.
+func NewRollingFinancialTransactionsSync(app core.App, client *campminder.Client) *FinancialTransactionsSync {
+	s := NewFinancialTransactionsSync(app, client)
+	s.RollingSeasons = true
+	return s
+}
+
+// Sync syncs the configured season, or N-1..N+1 around it when RollingSeasons is set.
 func (s *FinancialTransactionsSync) Sync(ctx context.Context) error {
-	return s.SyncForYear(ctx, s.Client.GetSeasonID())
+	return s.syncSeasons(ctx, s.seasonsToSync(s.Client.GetSeasonID()))
+}
+
+func (s *FinancialTransactionsSync) seasonsToSync(configured int) []int {
+	if s.RollingSeasons {
+		return []int{configured - 1, configured, configured + 1}
+	}
+	return []int{configured}
+}
+
+// syncSeasons runs SyncForYear for each season in turn. A failed season is logged and the
+// next one still runs; the returned error joins every failure. Stats hold the sum across
+// seasons. They are deliberately not SubStats, which the admin toast would render as a new
+// breakdown.
+func (s *FinancialTransactionsSync) syncSeasons(ctx context.Context, seasons []int) error {
+	var total Stats
+	var errs []error
+	for _, season := range seasons {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			break
+		}
+		err := s.SyncForYear(ctx, season)
+		addTransactionStats(&total, &s.Stats)
+		if err != nil {
+			slog.Error("Financial transactions season failed; continuing with the next",
+				"season", season, "error", err)
+			errs = append(errs, fmt.Errorf("season %d: %w", season, err))
+		}
+	}
+	s.Stats = total
+	s.SyncSuccessful = len(errs) == 0
+	return errors.Join(errs...)
+}
+
+// addTransactionStats folds one season's counters into the run's total. Only the counters
+// SyncForYear touches are summed. Takes pointers to avoid golangci's hugeParam on Stats.
+func addTransactionStats(total, season *Stats) {
+	total.Created += season.Created
+	total.Updated += season.Updated
+	total.Deleted += season.Deleted
+	total.Skipped += season.Skipped
+	total.Errors += season.Errors
+	total.Rejected += season.Rejected
 }
 
 // SyncForYear syncs financial transactions for a specific year
