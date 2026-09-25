@@ -71,7 +71,21 @@ function UnmatchedItem({
   const action = useJotformSubmissionAction(onDone)
   const [chosen, setChosen] = useState('')
   // Pre-selected when a write-in's name matches the filer's; staff can pick any.
-  const [chosenWriteIn, setChosenWriteIn] = useState(item.write_in_suggestion ?? '')
+  // ONLY staff's own pick is state -- null while they have not touched the
+  // dropdown -- and the pre-selection is read from the queue on every render.
+  // The tab stays mounted under `Activity` and refetches behind staff's back
+  // after a board write-in, so a suggestion seeded into state once, at mount,
+  // never showed the one that arrived later (kindred#2839 owner report).
+  // The row is keyed by scenario, so a pick never crosses a scenario switch.
+  const [picked, setPicked] = useState<string | null>(null)
+  // A pick whose write-in is gone -- removed or renamed on the board -- is
+  // dropped for good, back to the pre-selection: holding it would show
+  // "Choose a write-in…" over a suggestion the server is making. `''` is a pick
+  // too (staff cleared the pre-selection) and always stays offered.
+  if (picked !== null && picked !== '' && !writeIns.some((o) => o.option_id === picked)) {
+    setPicked(null)
+  }
+  const chosenWriteIn = picked ?? item.write_in_suggestion ?? ''
   const writeIn = writeIns.find((option) => option.option_id === chosenWriteIn)
   const sessionGuests = guests.filter((guest) => guest.session_cm_id === item.session_cm_id)
   const enrolled = new Set(sessionGuests.map((guest) => guest.person_cm_id))
@@ -189,7 +203,7 @@ function UnmatchedItem({
               aria-label={`Write-in for ${item.submitted_name}`}
               value={chosenWriteIn}
               onChange={(event) => {
-                setChosenWriteIn(event.target.value)
+                setPicked(event.target.value)
               }}
             >
               <option value="">Choose a write-in…</option>
@@ -423,9 +437,17 @@ export function JotformQueue({
   scenario: string
 }) {
   const queue = useJotformWeekendQueue(year, sessionCmId, scenario)
-  const [also, setAlso] = useState('')
+  // The "Also …" line speaks for the weekend and scenario the action was taken
+  // in. The tab stays mounted across a switch of either, so the line is
+  // cleared on one -- adjusted during render, as `WeekendRosterPage` does for
+  // `openedViews` -- rather than left naming filings of another scope.
+  const scope = `${String(sessionCmId)}:${scenario}`
+  const [also, setAlso] = useState({ scope, line: '' })
+  if (also.scope !== scope) {
+    setAlso({ scope, line: '' })
+  }
   const onDone: OnDone = (outcome) => {
-    setAlso(alsoLine(outcome))
+    setAlso({ scope, line: alsoLine(outcome) })
   }
   return (
     <QueryGuard
@@ -453,7 +475,7 @@ export function JotformQueue({
         const suggestedLinks = data.write_in_link_suggestions ?? []
         return (
           <div className="flex flex-col gap-4">
-            {also !== '' && <p className="text-muted-foreground text-sm">{also}</p>}
+            {also.line !== '' && <p className="text-muted-foreground text-sm">{also.line}</p>}
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <section className="card-lodge p-4">
                 <h3 className={GROUP_HEADING}>{`Needs a guest (${String(unmatched.length)})`}</h3>

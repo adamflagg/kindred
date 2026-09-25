@@ -212,8 +212,8 @@ export default function WeekendRosterPage() {
   const friendGroupsQuery = useWeekendFriendGroups(currentYear, selectedCmId)
 
   // A slug with no list yet is UNRESOLVED, not unknown — but the title's
-  // existing `sessionsQuery.isLoading` branch already says "Loading weekends…"
-  // in exactly that gap, so there is nothing more to add here.
+  // `sessionsPending` branch already says "Loading weekends…" in exactly that
+  // gap (year 0 included, see below), so there is nothing more to add here.
 
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
   // Computed ONCE and handed to every surface that grades capacity or wording
@@ -231,8 +231,15 @@ export default function WeekendRosterPage() {
   // `showRequests` -- and once the weekend is known the normal fallback
   // applies (Family Camp, say). A caller without `bunking.manage` is known
   // already, and falls back at once.
-  const requestsPending =
-    canManageLodging && selectedSession === undefined && sessionsQuery.isLoading
+  //
+  // PENDING, NOT `isLoading`: on a cold load the year is 0 until the backend
+  // reports it, and the sessions query sits DISABLED meanwhile -- `isLoading`
+  // false with no data -- which read as loaded, refused `requests` and seeded
+  // the page on Housing. "No list and no error" is TanStack's `isPending`,
+  // spelled from the two fields so it holds on any query-shaped value; a
+  // failed load ends it, so a broken list falls back instead of waiting forever.
+  const sessionsPending = sessionsQuery.data === undefined && !sessionsQuery.error
+  const requestsPending = canManageLodging && selectedSession === undefined && sessionsPending
   const view = parseView(viewParam, offeredViews(showRequests || requestsPending))
 
   // Read here for the tab's count as well as inside the tab — one cache entry
@@ -383,7 +390,7 @@ export default function WeekendRosterPage() {
               label={
                 selectedSession
                   ? sessionName(selectedSession.name, selectedSession.session_type, 'identity')
-                  : sessionsQuery.isLoading
+                  : sessionsPending
                     ? 'Loading weekends…'
                     : 'Weekend not found'
               }
