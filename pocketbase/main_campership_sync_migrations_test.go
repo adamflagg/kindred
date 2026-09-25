@@ -10,8 +10,8 @@ import (
 // Task 16 of the plan boots them for real. readMigration, migrationHalves and constValue
 // live in main_lodging_write_in_occupant_index_test.go.
 const (
-	ftSeasonKeyMigration = "pb_migrations/1500000182_financial_transactions_raw_ids_season_key.js"
-	faFixesMigration     = "pb_migrations/1500000183_financial_aid_applications_fixes.js"
+	ftSeasonKeyMigration = "pb_migrations/1500000183_financial_transactions_raw_ids_season_key.js"
+	faFixesMigration     = "pb_migrations/1500000184_financial_aid_applications_fixes.js"
 )
 
 var ruleAssignment = regexp.MustCompile(`\b(list|view|create|update|delete)Rule\b`)

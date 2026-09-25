@@ -14,7 +14,7 @@ import (
 )
 
 // newTransactionsTestApp builds camp_sessions and a financial_transactions collection
-// shaped like production after migration 1500000182, including its (cm_id, amount, year)
+// shaped like production after migration 1500000183, including its (cm_id, amount, year)
 // unique index. Dates and relations are text: the sync compares them as strings.
 func newTransactionsTestApp(t *testing.T) core.App {
 	t.Helper()
