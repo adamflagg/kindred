@@ -119,16 +119,21 @@ type JobMeta struct {
 var syncJobMeta = []JobMeta{
 	// Global phase -- cross-year definition tables, refreshed by the Sunday-2am cron.
 	// PhaseGlobal is a classification, NOT an execution phase: see GetAllPhases. These carry
-	// only CadenceWeeklyGlobal and TriggerIndividualRoute, so they appear in no daily,
-	// phase-run or full-run queue and cannot perturb any derived ordering below.
+	// only CadenceWeeklyGlobal and TriggerIndividualRoute, so they appear in no phase-run or
+	// full-run queue and cannot perturb any derived ordering below. financial_lookups is the
+	// one exception on the daily side: it also carries CadenceDaily (campership SP1). None
+	// carries TriggerPhaseRun or TriggerFullRun.
 	{ID: "person_tag_defs", Phase: PhaseGlobal, Description: "Tag definitions",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
 	{ID: "custom_field_defs", Phase: PhaseGlobal, Description: "Custom field definitions",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
 	{ID: "staff_lookups", Phase: PhaseGlobal, Description: "Positions, org categories, program areas",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+	// Weekly global AND daily (campership design §6.4: awards roll all year, so every
+	// financial input refreshes daily). Declared first, so it also runs first in the daily
+	// queue -- ahead of financial_transactions, which resolves categories through it.
 	{ID: "financial_lookups", Phase: PhaseGlobal, Description: "Financial categories, payment methods",
-		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
+		Cadences: CadenceWeeklyGlobal | CadenceDaily, Triggers: TriggerIndividualRoute},
 	{ID: "divisions", Phase: PhaseGlobal, Description: "Division definitions (no year field)",
 		Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute},
 

@@ -502,11 +502,13 @@ func TestWeeklySyncServices(t *testing.T) {
 	}
 }
 
-// TestWeeklySyncNotInDailySync verifies weekly services are NOT in daily sync
+// TestWeeklySyncNotInDailySync verifies weekly services are NOT in daily sync.
+// financial_lookups is deliberately in both (campership SP1); the literal daily list below
+// does not include it.
 func TestWeeklySyncNotInDailySync(t *testing.T) {
 	t.Parallel()
 	// Daily sync jobs - these should NOT include weekly sync services
-	// (person_tag_defs, custom_field_defs, staff_lookups, financial_lookups, divisions are weekly)
+	// (person_tag_defs, custom_field_defs, staff_lookups, divisions are weekly-only)
 	dailyJobs := []string{
 		"session_groups",
 		"sessions",
