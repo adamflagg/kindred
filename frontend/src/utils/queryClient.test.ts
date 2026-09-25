@@ -54,6 +54,8 @@ describe('invalidateSyncData', () => {
       'bunk-staff',
       'metrics',
       'sync-status',
+      // kindred#2759: a completed Jotform pull refreshes the admin tab.
+      'jotform',
     ]
 
     for (const prefix of requiredPrefixes) {

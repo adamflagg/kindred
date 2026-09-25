@@ -168,6 +168,15 @@ class JotformAdminService:
         bad = sorted(role for role, qid in field_map.items() if not qid.isdigit())
         if bad:
             raise JotformValidationError(f"Question ids must be numbers: {', '.join(bad)}")
+        # Question ids belong to one form. A save that points this weekend at a
+        # DIFFERENT form drops the mapping: carried over, the old ids would name
+        # the wrong questions. The first pull of the new form brings its
+        # questions and a fresh suggestion for staff to confirm.
+        previous = next(
+            (f for f in await self.repository.fetch_forms(year) if int(f.session_cm_id) == session_cm_id), None
+        )
+        if previous is not None and str(getattr(previous, "form_id", "") or "") not in ("", form_id):
+            field_map = {}
         await self.repository.upsert_form(
             year=year, session_cm_id=session_cm_id, form_id=form_id, field_map=field_map, enabled=body.enabled
         )

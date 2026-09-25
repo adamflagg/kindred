@@ -639,6 +639,14 @@ export const queryKeys = {
   sessionAttributionQueue: (year: number) => ['session-attribution-queue', year] as const,
   sessionAttributionQueuePrefix: () => ['session-attribution-queue'] as const,
   /**
+   * The Jotform admin (kindred#2759). Year-scoped like the registry keys.
+   * `jotformPrefix` is what a completed pull (SYNC_DEPENDENT_PREFIXES) and
+   * every admin write invalidate.
+   */
+  jotformForms: (year: number) => ['jotform', 'forms', year] as const,
+  jotformQueue: (year: number) => ['jotform', 'queue', year] as const,
+  jotformPrefix: () => ['jotform'] as const,
+  /**
    * The occupancy evidence annotating that queue (§12.8) — GET
    * /api/lodging/attribution/conflicts. Its own key rather than a widened
    * `sessionAttributionQueue`: the queue rows come from PocketBase and the
