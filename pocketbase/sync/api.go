@@ -708,20 +708,32 @@ func refreshFamilyCampOverrides(app core.App, client *campminder.Client, session
 	}
 }
 
+// refreshFamilyCampTimeout bounds one Refresh Housing press. See handleRefreshFamilyCamp.
+const refreshFamilyCampTimeout = 45 * time.Minute
+
 // handleRefreshFamilyCamp triggers a full family-camp housing refresh: attendees ->
 // persons -> person_custom_values_family_camp -> household_custom_values_family_camp
 // -> family_camp_derived -> lodging_assignments (kindred#2478).
 //
-// The timeout is 25 minutes, not handleRefreshBunking's 10: measured against
-// sync_runs (production snapshot 2026-08-23, status='success'), this chain averages
-// 13m31s and has been seen at 17m39s — almost entirely the two bounded custom-values
-// jobs. 25 minutes leaves headroom above the worst observed run without risking a
-// truncated timeout on an ordinary one.
+// The timeout (refreshFamilyCampTimeout) is 45 minutes, not handleRefreshBunking's 10.
+// Measured against sync_runs (production snapshot 2026-08-23, status='success'), this
+// chain averaged 13m31s and was seen at 17m39s -- almost entirely the two bounded
+// custom-values jobs, over a family-camp union of 782 persons / 448 households. That
+// sized the old 25-minute timeout.
+//
+// Since campership SP1 the unscoped chain also carries the aid cohort: those same two
+// registered jobs widen by it (withAidCohort), measured at about 890 persons / 513
+// households on the prod snapshot, before the newly fetched Nov-Dec postings
+// (a posting household brings in every member). That roughly doubles the custom-values
+// share, so the estimate is ~27 minutes typical and ~35 at the old worst case. 45 minutes
+// leaves ~25% above that; 25 would cut the chain off before family_camp_derived and
+// lodging_assignments, leaving the board on yesterday's cabins.
 //
 // Those figures are the UNSCOPED chain, and the timeout is still sized for it
 // deliberately: a request naming one weekend runs several times faster
-// (kindred#2601), but an absent session is still a supported mode and still has to
-// fit. Sizing the timeout to the scoped case would truncate the unscoped one.
+// (kindred#2601) and never includes the aid cohort, but an absent session is still a
+// supported mode and still has to fit. Sizing the timeout to the scoped case would
+// truncate the unscoped one.
 func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
@@ -802,7 +814,7 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	overrides := refreshFamilyCampOverrides(e.App, orchestrator.BaseClient(), session)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshFamilyCampTimeout)
 		defer cancel()
 
 		if err := orchestrator.RunSyncSequenceWithServices(
