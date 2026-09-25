@@ -209,10 +209,15 @@ export function useUnitAvailability({
     // `set_availability`'s own lost-race recovery can fail after the create
     // landed. Refetching is what makes the board agree with the server either
     // way.
-    onSettled: (_data, _error, intent) => {
+    //
+    // The Jotform queue too, on EVERY write and not only one that links a
+    // filing: its write-in dropdown and its linked write-ins' names are read
+    // from the board's write-ins, so a new write-in or a rename moves it, and
+    // it inherits the 30-minute app default. Free on Family Camp -- no Jotform
+    // query is ever enabled there, and the push/compare reads are staleTime 0.
+    onSettled: () => {
       invalidateLodgingRegistryQueries(queryClient)
-      // A write that linked a Jotform filing moves the admin queue too.
-      if (intent.jotformSubmissionId) invalidateJotformQueries(queryClient)
+      invalidateJotformQueries(queryClient)
     },
   })
 
@@ -242,9 +247,12 @@ export function useUnitAvailability({
     // reason and with the same reach: a removal made inside one draft has to
     // refresh the mirror and every other draft of the weekend, or a board
     // somewhere keeps drawing an occupant who is gone for the 30 minutes the
-    // weekend queries stay fresh.
+    // weekend queries stay fresh. And the Jotform queue, as the write does:
+    // removing a linked write-in returns its filing to the queue (kindred#2828
+    // ruling), which the admin tab and the board's picker only see refetched.
     onSettled: () => {
       invalidateLodgingRegistryQueries(queryClient)
+      invalidateJotformQueries(queryClient)
     },
   })
 
