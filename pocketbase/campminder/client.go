@@ -1233,6 +1233,11 @@ func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map
 
 // parseTransactionResponse parses the transaction details API response
 // CampMinder uses inconsistent casing across endpoints
+//
+// A wrapped response whose TotalCount exceeds the rows it carries is a page of the season,
+// not the season, and is an error. Returned as if complete, the sync would store it as the
+// whole season and could run the orphan sweep on it -- the sweep's count guard refuses only
+// a response FAR shorter than what is stored. The error fails that season before its sweep.
 func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error) {
 	// Try PascalCase paginated response
 	var pascalResponse struct {
@@ -1240,7 +1245,7 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 		Results    []map[string]any `json:"Results"`
 	}
 	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
-		return pascalResponse.Results, nil
+		return completeTransactionResults(pascalResponse.TotalCount, pascalResponse.Results)
 	}
 
 	// Try camelCase with singular result
@@ -1249,7 +1254,7 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 		Result     []map[string]any `json:"result"`
 	}
 	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
-		return camelResponse.Result, nil
+		return completeTransactionResults(camelResponse.TotalCount, camelResponse.Result)
 	}
 
 	// Try camelCase with plural results
@@ -1258,7 +1263,7 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 		Results    []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
-		return camelPluralResponse.Results, nil
+		return completeTransactionResults(camelPluralResponse.TotalCount, camelPluralResponse.Results)
 	}
 
 	// Fall back to raw array response
@@ -1268,4 +1273,13 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 	}
 
 	return results, nil
+}
+
+// completeTransactionResults returns rows, or an error when totalCount says the response
+// holds only part of the season. A totalCount of 0 means the field was absent.
+func completeTransactionResults(totalCount int, rows []map[string]any) ([]map[string]any, error) {
+	if totalCount > len(rows) {
+		return nil, fmt.Errorf("partial transaction details response: %d of %d rows", len(rows), totalCount)
+	}
+	return rows, nil
 }

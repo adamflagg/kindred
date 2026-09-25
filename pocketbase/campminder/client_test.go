@@ -1077,3 +1077,56 @@ func TestGetTransactionDetails_UsesItsOwnTimeout(t *testing.T) {
 		t.Errorf("client default timeout changed to %v; the long deadline must not leak", c.httpClient.Timeout)
 	}
 }
+
+// TestParseTransactionResponse_PartialResponseIsAnError: a wrapped response whose TotalCount
+// exceeds the rows it carries is a page, not the season. Returned as if complete, the sync
+// would treat it as the whole season and the orphan sweep could run on it (the count guard
+// only refuses a response FAR shorter than what is stored). So it must be an error, which
+// fails the season before its sweep.
+func TestParseTransactionResponse_PartialResponseIsAnError(t *testing.T) {
+	c := &Client{}
+	for name, body := range map[string]string{
+		"PascalCase Results":     `{"TotalCount":3,"Results":[{"transactionId":1},{"transactionId":2}]}`,
+		"camelCase result":       `{"totalCount":3,"result":[{"transactionId":1}]}`,
+		"camelCase results":      `{"totalCount":2,"results":[{"transactionId":1}]}`,
+		"wrapped, nothing in it": `{"totalCount":5,"results":[]}`,
+	} {
+		if rows, err := c.parseTransactionResponse([]byte(body)); err == nil {
+			t.Errorf("%s: parseTransactionResponse returned %d rows and no error; want an error", name, len(rows))
+		}
+	}
+}
+
+// TestParseTransactionResponse_CompleteResponsesStillParse: the guard must not refuse a
+// complete wrapped response, one with no count at all, or the bare array the endpoint serves.
+func TestParseTransactionResponse_CompleteResponsesStillParse(t *testing.T) {
+	c := &Client{}
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"PascalCase, count matches": {`{"TotalCount":2,"Results":[{"transactionId":1},{"transactionId":2}]}`, 2},
+		"camelCase, no count":       {`{"results":[{"transactionId":1}]}`, 1},
+		"bare array":                {`[{"transactionId":1},{"transactionId":2}]`, 2},
+		"empty bare array":          {`[]`, 0},
+	} {
+		rows, err := c.parseTransactionResponse([]byte(tc.body))
+		if err != nil || len(rows) != tc.want {
+			t.Errorf("%s: parseTransactionResponse = %d rows, %v; want %d rows, no error", name, len(rows), err, tc.want)
+		}
+	}
+}
+
+// TestGetTransactionDetails_PartialResponseFailsTheSeason: the error reaches the caller,
+// which is what makes SyncForYear return before its sweep
+// (TestFinancialTransactionsSync_FailedFetchDeletesNothing pins that half).
+func TestGetTransactionDetails_PartialResponseFailsTheSeason(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"totalCount":2,"results":[{"transactionId":1}]}`))
+	}))
+	defer srv.Close()
+
+	if rows, err := newTestAPIClient(srv).GetTransactionDetails(2026, true); err == nil {
+		t.Fatalf("GetTransactionDetails returned %d rows of a partial season and no error", len(rows))
+	}
+}
