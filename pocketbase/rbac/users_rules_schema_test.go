@@ -29,7 +29,7 @@ func ruleString(r *string) string {
 	return "\"" + *r + "\""
 }
 
-func assertRule(t *testing.T, col, which string, got *string, want *string) {
+func assertRule(t *testing.T, col, which string, got, want *string) {
 	t.Helper()
 	if (got == nil) != (want == nil) || (got != nil && *got != *want) {
 		t.Errorf("%s.%s = %s, want %s", col, which, ruleString(got), ruleString(want))
@@ -42,7 +42,7 @@ func ptr(s string) *string { return &s }
 // the REAL pb_migrations carries against the constants TestUsersAuthHardening
 // uses as its fixture. The runtime tests prove those constants plus the
 // request hooks behave; this proves the migrations actually produce those
-// constants. Together: migration file -> real schema -> behaviour.
+// constants. Together: migration file -> real schema -> behavior.
 //
 // Needs KINDRED_PROD_SCHEMA_JSON: the /api/collections dump that
 // .github/workflows/ci.yml's "Migrations & Schema Agreement" job writes after
@@ -121,7 +121,8 @@ func TestBootedSchemaAuthRules(t *testing.T) {
 			"createRule": c.CreateRule, "updateRule": c.UpdateRule, "deleteRule": c.DeleteRule,
 		} {
 			if rule != nil && *rule == "" {
-				t.Errorf("%s.%s is \"\" -- PUBLIC access, guests included; use nil (superusers only) or a real filter", c.Name, which)
+				t.Errorf("%s.%s is \"\" -- PUBLIC access, guests included; "+
+					"use nil (superusers only) or a real filter", c.Name, which)
 			}
 		}
 	}

@@ -30,7 +30,7 @@ const (
 	adminOnlyRule           = `@request.auth.is_admin = true`
 
 	// preHardeningOwnerRule is PocketBase's default users update rule, which
-	// production carried until 2026-09-24. The defence-in-depth scenarios put
+	// production carried until 2026-09-24. The defense-in-depth scenarios put
 	// it (or a public create rule) back, to prove the request hooks keep
 	// is_admin and cached_permissions server-owned even if a rule is loosened.
 	preHardeningOwnerRule = "id = @request.auth.id"
@@ -57,9 +57,9 @@ func (p *oauth2MockProvider) FetchAuthUser(*oauth2.Token) (*auth.AuthUser, error
 	return p.AuthUser, nil
 }
 
-// useMockIdP makes the test provider return user on the next OAuth2 login.
+// useMockIDP makes the test provider return user on the next OAuth2 login.
 // auth.Providers is a package global, so these tests must not run in parallel.
-func useMockIdP(t testing.TB, user *auth.AuthUser) {
+func useMockIDP(t testing.TB, user *auth.AuthUser) {
 	t.Helper()
 	auth.Providers[testOAuth2Provider] = func() auth.Provider {
 		return &oauth2MockProvider{AuthUser: user, Token: &oauth2.Token{AccessToken: "abc"}}
@@ -83,7 +83,7 @@ func newAuthTestApp(t testing.TB, adminGroup string) *tests.TestApp {
 	}
 
 	// The provider must exist before the collection referencing it is saved.
-	useMockIdP(t, &auth.AuthUser{Id: "unused"})
+	useMockIDP(t, &auth.AuthUser{Id: "unused"})
 
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
@@ -319,7 +319,7 @@ func TestUsersAuthHardening(t *testing.T) {
 			},
 		},
 		{
-			// Defence in depth: with the pre-hardening owner update rule back,
+			// Defense in depth: with the pre-hardening owner update rule back,
 			// the request is allowed but the access fields do not move.
 			Name:           "loosened update rule: self PATCH cannot change is_admin or cached_permissions",
 			Method:         http.MethodPatch,
@@ -343,7 +343,7 @@ func TestUsersAuthHardening(t *testing.T) {
 			},
 		},
 		{
-			// Defence in depth: with PocketBase's default public create rule
+			// Defense in depth: with PocketBase's default public create rule
 			// back, a guest can create an account but not an admin one.
 			Name:   "loosened create rule: guest create cannot set is_admin or cached_permissions",
 			Method: http.MethodPost,
@@ -384,7 +384,7 @@ func TestUsersAuthHardening(t *testing.T) {
 			Body:           strings.NewReader(oauth2LoginBody),
 			TestAppFactory: factory(testAdminGroup),
 			BeforeTestFunc: func(t testing.TB, _ *tests.TestApp, _ *core.ServeEvent) {
-				useMockIdP(t, &auth.AuthUser{
+				useMockIDP(t, &auth.AuthUser{
 					Id: "idp-admin", Email: "lead@example.com", Name: "Olivia Chen",
 					RawUser: map[string]any{"groups": []any{testAdminGroup}},
 				})
@@ -402,7 +402,7 @@ func TestUsersAuthHardening(t *testing.T) {
 			Body:           strings.NewReader(oauth2LoginBody),
 			TestAppFactory: factory(testAdminGroup),
 			BeforeTestFunc: func(t testing.TB, _ *tests.TestApp, _ *core.ServeEvent) {
-				useMockIdP(t, &auth.AuthUser{
+				useMockIDP(t, &auth.AuthUser{
 					Id: "idp-staff", Email: "counselor@example.com", Name: "Liam Garcia",
 					RawUser: map[string]any{"groups": []any{"staff"}},
 				})
@@ -422,7 +422,7 @@ func TestUsersAuthHardening(t *testing.T) {
 			Body:           strings.NewReader(oauth2LoginBody),
 			TestAppFactory: factory(""),
 			BeforeTestFunc: func(t testing.TB, _ *tests.TestApp, _ *core.ServeEvent) {
-				useMockIdP(t, &auth.AuthUser{
+				useMockIDP(t, &auth.AuthUser{
 					Id: "idp-staff", Email: "counselor@example.com", Name: "Liam Garcia",
 					RawUser: map[string]any{"groups": []any{testAdminGroup}},
 				})
@@ -450,7 +450,7 @@ func TestUsersAuthHardening(t *testing.T) {
 				link.SetProvider(testOAuth2Provider)
 				link.SetProviderId("idp-director")
 				mustSave(t, app, link)
-				useMockIdP(t, &auth.AuthUser{
+				useMockIDP(t, &auth.AuthUser{
 					Id: "idp-director", Email: "director@example.com", Name: "Samuel Johnson",
 					RawUser: map[string]any{"groups": []any{testAdminGroup}},
 				})

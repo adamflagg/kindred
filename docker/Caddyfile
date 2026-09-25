@@ -1,7 +1,10 @@
 # Production Caddyfile for multi-container deployment.
 # Sits behind Traefik on the VPS (and historically behind Traefik on Unraid).
 # Traefik terminates TLS, runs WAF/rate-limit, and forwards over the local
-# Docker network. Cloudflare Tunnel + Access front Traefik at the edge.
+# Docker network. Cloudflare Tunnel fronts Traefik at the edge. There is NO
+# Cloudflare Access (or any other auth) gate in front of this Caddy: requests
+# arrive unauthenticated, and PocketBase's collection rules and Go hooks are
+# the only auth on /api/collections/*.
 #
 # Routes to upstream services via env vars (with defaults for compose service names):
 #   POCKETBASE_HOST (default: pocketbase) → port 8090
@@ -88,6 +91,19 @@
 
 	# PocketBase routes (database, auth, sync, file uploads)
 	handle @pocketbase {
+		# The superuser collection's API -- password login, OTP, record CRUD --
+		# is IP-gated like /_/ below. Both spellings, because PocketBase
+		# resolves {collection} by name OR id and ignores its case; Caddy's
+		# path matcher is case-insensitive too. The Traefik rule this backs up
+		# was a literal PathPrefix that `_SUPERUSERS` and the id walked past.
+		# scripts/ci/probe-caddy-superuser-gate.sh checks every spelling.
+		# Internal superuser logins (kindred-api, sync, scripts on the host) go
+		# straight to pocketbase:8090 and never pass through here.
+		@superuser_api_blocked {
+			path /api/collections/_superusers /api/collections/_superusers/* /api/collections/pbc_3142635823 /api/collections/pbc_3142635823/*
+			not client_ip {$ADMIN_ALLOWLIST}
+		}
+		respond @superuser_api_blocked 403
 		reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {
 			header_up Host {host}
 		}

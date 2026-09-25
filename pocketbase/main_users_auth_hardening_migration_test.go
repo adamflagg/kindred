@@ -15,7 +15,7 @@ const usersAuthHardeningMigration = "pb_migrations/1500000181_users_auth_hardeni
 // migration tests here, because tests.NewTestApp() does not run JS migrations.
 // What the migration actually PRODUCES on a booted database is checked by
 // rbac.TestBootedSchemaAuthRules in CI's Migrations & Schema Agreement job,
-// and the resulting behaviour by rbac.TestUsersAuthHardening.
+// and the resulting behavior by rbac.TestUsersAuthHardening.
 func TestUsersAuthHardeningMigrationSetsHardenedRules(t *testing.T) {
 	content, err := os.ReadFile(usersAuthHardeningMigration)
 	if err != nil {
@@ -28,7 +28,7 @@ func TestUsersAuthHardeningMigrationSetsHardenedRules(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		`'@request.context = "oauth2"'`,    // users create: OAuth2 sign-up only
+		`'@request.context = "oauth2"'`,   // users create: OAuth2 sign-up only
 		`'@request.auth.is_admin = true'`, // solver_runs reads
 		`"_pb_users_auth_"`,
 		`"solver_runs"`,
@@ -54,7 +54,7 @@ var denyAllEmptyString = regexp.MustCompile(`(?i)deny\w*\s*=\s*(''|"")`)
 
 // TestNoMigrationTreatsEmptyStringAsDeny guards the root cause. In PocketBase
 // a "" rule is PUBLIC -- anyone, guests included -- while nil is superusers
-// only. Migrations 1500000023 and 1500000027 bound '' as "denyAll", which left
+// only. Migrations 1500000023 and 1500000027 bound ” as "denyAll", which left
 // solver_runs and debug_parse_results open to the internet.
 func TestNoMigrationTreatsEmptyStringAsDeny(t *testing.T) {
 	files, err := filepath.Glob("pb_migrations/*.js")
