@@ -173,12 +173,20 @@ class AidRulesRepository:
         try:
             return await asyncio.to_thread(self.pb.collection(AID_RULES).create, body)
         except ClientResponseError as exc:
-            # The unique index on (year, version) is the only constraint create_version,
-            # new_version and start_from_last_year could hit here -- everything else about
-            # the body was already validated (a real AidRules document, a computed version
-            # number) -- so a 400 on this specific write is that index, same reasoning as
+            # The unique index on (year, version) is one constraint create_version,
+            # new_version and start_from_last_year could hit here, but a 400 also covers
+            # ordinary field validation (document.maxSize, section_status.maxSize, numeric
+            # bounds) -- status alone can't tell those apart. PocketBase nests a
+            # `validation_not_unique` code under `data.data.<field>` on a unique-index
+            # collision, so check for that specifically before mapping to
+            # VersionExistsError; anything else about the body was already validated (a
+            # real AidRules document, a computed version number), same reasoning as
             # lodging_write_service's REFUSAL_STATUSES split (401/403 are answers, not this).
-            if exc.status == 400:
+            fields = (exc.data or {}).get("data", {}) if isinstance(exc.data, dict) else {}
+            not_unique = any(
+                isinstance(value, dict) and value.get("code") == "validation_not_unique" for value in fields.values()
+            )
+            if exc.status == 400 and not_unique:
                 raise VersionExistsError(
                     f"aid_rules already has year {body.get('year')} version {body.get('version')}"
                 ) from exc

@@ -64,6 +64,21 @@ def test_allowing_an_appeal_on_full_cost_shows_why_it_was_barred() -> None:
     assert "r2_cap_negative" in result.issue_codes()
 
 
+def test_an_eligible_round_3_reduces_the_full_cost_top_up_instead_of_stacking() -> None:
+    # With allows_appeal=True and a small, eligible Round 3, the top-up must absorb
+    # the Round 3 amount rather than being computed against r1/r2 alone -- otherwise
+    # the total overshoots cost - grants + extra by however much Round 3 paid.
+    rules = with_lever(fictional_rules(), "awards.decision_types.full_cost_program.allows_appeal", True)
+    result = _full_cost(rules, round3_amount="20", round2_decided=True, round3_statement_of_need=True)
+    assert (result.r1, result.r2, result.r3, result.top_up, result.total) == (
+        Decimal(4000),
+        None,
+        Decimal(20),
+        Decimal(30),
+        Decimal(4050),
+    )
+
+
 def test_a_full_cost_award_takes_no_round_3_bonus() -> None:
     # A full-cost award that disallows an appeal must disallow Round 3 too, or the total
     # can exceed cost + extra with status "ok" -- exactly the appeal_not_allowed pattern.

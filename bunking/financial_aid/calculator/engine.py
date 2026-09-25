@@ -544,7 +544,7 @@ def _top_up(work: _Work, decision: DecisionType | None) -> None:
         if work.r1 is None:
             return  # Round 1 already said why; the top-up is measured against it
         target = work.cost - (work.grants_offset or ZERO) + decision.extra_amount
-        amount = max(round_dollars(target - work.r1 - (work.r2 or ZERO)), ZERO)
+        amount = max(round_dollars(target - work.r1 - (work.r2 or ZERO) - (work.r3 or ZERO)), ZERO)
         note = "Brings the total to the cost, less grants, plus the named extra"
     work.top_up = amount
     work.step("top_up", f"Top-up: {decision.label}", amount, inputs={"kind": decision.kind}, note=note)

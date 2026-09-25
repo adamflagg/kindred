@@ -392,10 +392,44 @@ async def test_create_and_update_go_to_aid_rules() -> None:
 async def test_create_maps_a_unique_index_collision_to_version_exists_error() -> None:
     pb = _pb()
     pb.collection.return_value.create.side_effect = ClientResponseError(
-        "validation_not_unique", status=400, data={}, url="", is_abort=False, original_error=None
+        "validation_not_unique",
+        status=400,
+        data={
+            "status": 400,
+            "message": "Failed to create record.",
+            "data": {"year": {"code": "validation_not_unique", "message": "Value must be unique."}},
+        },
+        url="",
+        is_abort=False,
+        original_error=None,
     )
     with pytest.raises(VersionExistsError):
         await AidRulesRepository(pb).create({"year": 2031, "version": 1})
+
+
+@pytest.mark.asyncio
+async def test_create_reraises_a_400_that_is_not_a_unique_index_collision() -> None:
+    # A 400 can also be a field validation failure (document.maxSize, numeric
+    # bounds, ...) -- status alone can't tell that apart from a (year, version)
+    # collision, so only the nested `validation_not_unique` code should map to
+    # VersionExistsError. Anything else must re-raise the original error.
+    pb = _pb()
+    original = ClientResponseError(
+        "validation_max_size_exceeded",
+        status=400,
+        data={
+            "status": 400,
+            "message": "Failed to create record.",
+            "data": {"document": {"code": "validation_max_size_exceeded", "message": "Value must not exceed 20000."}},
+        },
+        url="",
+        is_abort=False,
+        original_error=None,
+    )
+    pb.collection.return_value.create.side_effect = original
+    with pytest.raises(ClientResponseError) as exc_info:
+        await AidRulesRepository(pb).create({"year": 2031, "version": 1})
+    assert exc_info.value is original
 
 
 # --- Fix round 1, item 5: a document/section_status field may arrive as a JSON string --------
