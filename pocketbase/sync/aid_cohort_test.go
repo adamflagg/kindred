@@ -52,16 +52,23 @@ func TestAidCohort_ApplicantsAndPostingsInSeasonsNAndNPlus1(t *testing.T) {
 	t.Parallel()
 	app := cadenceTestApp(t) // includes addAidCohortCollections (below)
 	const year = 2026
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 7; i++ {
 		hh := cadenceAddHousehold(t, app, 9310000+i, year)
 		cadenceAddPerson(t, app, 9300000+i, 9310000+i, year, hh)
 	}
-	aidApplication(t, app, year, 9300001, true)                                  // applicant: in
-	aidApplication(t, app, year, 9300002, false)                                 // donation-only: out
-	aidPosting(t, app, year+1, 9300003, 9310003, aidCategoryFinancialAssistance) // N+1 posting: in
+	cadenceAddPerson(t, app, 9300008, 0, year, "") // household_id 0: on no household
+
+	aidApplication(t, app, year, 9300001, true)  // applicant: in
+	aidApplication(t, app, year, 9300002, false) // donation-only: out
+	// N+1 posting names 9300003 only (household_cm_id 0) -- case (b) alone must carry him
+	// in, and his season-N household (9310003) must still surface as the household of a
+	// cohort person (fixture no longer relies on this posting also naming the household).
+	aidPosting(t, app, year+1, 9300003, 0, aidCategoryFinancialAssistance)
 	aidPosting(t, app, year, 0, 9310004, aidCategoryJFAM)                        // household-only: in
 	aidPosting(t, app, year-1, 9300005, 9310005, aidCategoryFinancialAssistance) // N-1: out
 	aidPosting(t, app, year, 9300006, 9310006, 22650)                            // tuition: out
+	aidApplication(t, app, year-1, 9300007, true)                                // wrong-year applicant: out
+	aidPosting(t, app, year, 0, 0, aidCategoryFinancialAssistance)               // all-zero ids: out
 
 	cohort, err := loadAidCohort(app, year)
 	if err != nil {
@@ -73,13 +80,21 @@ func TestAidCohort_ApplicantsAndPostingsInSeasonsNAndNPlus1(t *testing.T) {
 	if want := []int{9310001, 9310003, 9310004}; !slices.Equal(cohort.householdCMIDs, want) {
 		t.Errorf("households = %v, want %v", cohort.householdCMIDs, want)
 	}
+	if slices.Contains(cohort.personCMIDs, 0) || slices.Contains(cohort.householdCMIDs, 0) {
+		t.Errorf("cohort = %+v, want no zero id (person_cm_id/household_cm_id 0 means absent)", cohort)
+	}
 }
 
-// Review Focus 5: a family new in N+1 has no season-N persons or households row yet.
+// Review Focus 5: a family new in N+1 has no season-N persons or households row yet. The
+// person and household exist ONLY as N+1 rows, so this also pins that loadAidCohort reads
+// persons/households filtered to season N rather than fetching them unfiltered.
 func TestAidCohort_DropsIDsWithNoSeasonNRecord(t *testing.T) {
 	t.Parallel()
 	app := cadenceTestApp(t)
+	hh := cadenceAddHousehold(t, app, 9310099, 2027)
+	cadenceAddPerson(t, app, 9300099, 9310099, 2027, hh)
 	aidPosting(t, app, 2027, 9300099, 9310099, aidCategoryFinancialAssistance)
+
 	cohort, err := loadAidCohort(app, 2026)
 	if err != nil {
 		t.Fatalf("loadAidCohort: %v", err)
