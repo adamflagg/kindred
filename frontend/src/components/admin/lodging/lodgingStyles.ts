@@ -41,6 +41,18 @@ export const BUTTON_PRIMARY =
 export const BUTTON_SECONDARY =
   'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50'
 
+/**
+ * A row of tab pills: `SessionTabs`' grammar, for tabs on this surface (the
+ * settings sections, and the Jotform tab's one-per-weekend tabs).
+ */
+export const TAB_NAV = 'border-border/50 border-b py-2'
+const TAB_PILL =
+  'flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200'
+export const TAB_PILL_ACTIVE = `${TAB_PILL} bg-primary text-primary-foreground shadow-lodge-sm`
+// forest-800 where `SessionTabs` writes forest-950: the scale stops at 900, so
+// its dark hover generates no rule at all. Matching the grammar, not the bug.
+export const TAB_PILL_IDLE = `${TAB_PILL} text-muted-foreground hover:text-foreground hover:bg-forest-50/50 dark:hover:bg-forest-800/60`
+
 /** An inline row action — Edit, Delete, Confirm. */
 export const ACTION_LINK = 'text-xs font-medium hover:underline'
 
