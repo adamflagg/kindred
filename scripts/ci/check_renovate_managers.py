@@ -24,6 +24,8 @@ RENOVATE_CONFIG = REPO_ROOT / "renovate.json"
 # Every dependency a customManager must still capture. Names match the
 # `depName=` value in the marker comments (or depNameTemplate in the config).
 EXPECTED_DEPS = {
+    "gitleaks/gitleaks",
+    "zizmor",
     "golangci/golangci-lint",
     "rhysd/actionlint",
     "hadolint/hadolint",
