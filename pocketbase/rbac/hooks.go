@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
@@ -33,7 +33,7 @@ func flattenPermissions(rolePermissions [][]string) []string {
 
 // recomputeUserPermissions fetches all roles for a user and updates
 // their cached_permissions field.
-func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
+func recomputeUserPermissions(app core.App, userID string) error {
 	// Find all user_roles for this user
 	userRoles, err := app.FindRecordsByFilter("user_roles", "user = {:userId}", "", 100, 0,
 		map[string]any{"userId": userID})
@@ -207,7 +207,7 @@ func guardConfigWrite(e *core.RecordRequestEvent, isCreate bool) error {
 }
 
 // RegisterHooks registers RBAC-related hooks on the PocketBase app.
-func RegisterHooks(app *pocketbase.PocketBase) {
+func RegisterHooks(app core.App) {
 	// On user_roles create: recompute affected user's permissions
 	app.OnRecordAfterCreateSuccess("user_roles").BindFunc(func(e *core.RecordEvent) error {
 		userID := e.Record.GetString("user")
@@ -255,6 +255,10 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 
 	// Invalidate FastAPI metrics cache when metrics-read config changes
 	registerConfigHooks(app)
+
+	// Keep is_admin and cached_permissions server-owned on every API write to
+	// users. Reads ADMIN_GROUP_NAME for the same reason RegisterOIDCHooks does.
+	registerUsersWriteGuard(app, os.Getenv("ADMIN_GROUP_NAME"))
 
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)

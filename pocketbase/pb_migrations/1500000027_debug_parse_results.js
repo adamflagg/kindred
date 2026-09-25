@@ -13,8 +13,10 @@
 const COLLECTION_ID_DEBUG_PARSE_RESULTS = "col_debug_parse_results";
 
 migrate((app) => {
-  // Tier 3 (FastAPI-only): deny all direct collection access; access only via admin endpoints.
-  const denyAll = '';
+  // Meant as Tier 3 (FastAPI-only, no direct collection access), but '' is
+  // PUBLIC in PocketBase -- anyone, guests included; null is superusers only.
+  // 1500000181 sets all five rules to null.
+  const publicAccess = '';
 
   // Dynamic lookups - these collections were created in earlier migrations
   const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests");
@@ -24,11 +26,11 @@ migrate((app) => {
     id: COLLECTION_ID_DEBUG_PARSE_RESULTS,
     type: "base",
     name: "debug_parse_results",
-    listRule: denyAll,
-    viewRule: denyAll,
-    createRule: denyAll,
-    updateRule: denyAll,
-    deleteRule: denyAll,
+    listRule: publicAccess,
+    viewRule: publicAccess,
+    createRule: publicAccess,
+    updateRule: publicAccess,
+    deleteRule: publicAccess,
     fields: [
       {
         type: "relation",

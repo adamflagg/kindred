@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -42,7 +41,7 @@ func buildLastLoginTimestamp() string {
 // registerLastLoginHook registers a hook that sets last_login and emailVisibility on every OAuth2 login.
 // This runs after any admin-sync hook (which only sets fields), so a single Save()
 // persists last_login, is_admin, and emailVisibility changes together.
-func registerLastLoginHook(app *pocketbase.PocketBase) {
+func registerLastLoginHook(app core.App) {
 	app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(e *core.RecordAuthWithOAuth2RequestEvent) error {
 		if e.OAuth2User == nil {
 			return e.Next()
@@ -81,7 +80,7 @@ func registerLastLoginHook(app *pocketbase.PocketBase) {
 // registerAdminSyncHook registers a hook that syncs is_admin from OIDC group claims.
 // It only sets fields on the record — Save() is handled by the last-login hook which
 // runs after this one (hooks fire in registration order).
-func registerAdminSyncHook(app *pocketbase.PocketBase, adminGroup string) {
+func registerAdminSyncHook(app core.App, adminGroup string) {
 	app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(e *core.RecordAuthWithOAuth2RequestEvent) error {
 		if e.OAuth2User == nil {
 			return e.Next()
@@ -123,7 +122,7 @@ func registerAdminSyncHook(app *pocketbase.PocketBase, adminGroup string) {
 //
 // Registration order matters: admin sync runs first (field-setter), then last-login
 // saves everything in a single write.
-func RegisterOIDCHooks(app *pocketbase.PocketBase) {
+func RegisterOIDCHooks(app core.App) {
 	adminGroup := os.Getenv("ADMIN_GROUP_NAME")
 	if adminGroup != "" {
 		// Register admin sync first so it sets fields before the save

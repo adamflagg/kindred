@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"github.com/camp/kindred/pocketbase/fastapi"
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -62,7 +61,7 @@ func configHooksAPIBaseURL() string {
 
 // registerConfigHooks registers hooks that invalidate the FastAPI metrics cache
 // when a config row a metric reads is created, updated or deleted.
-func registerConfigHooks(app *pocketbase.PocketBase) {
+func registerConfigHooks(app core.App) {
 	apiBaseURL := configHooksAPIBaseURL()
 	bindConfigHooks(app, func() { notifyMetricsCacheInvalidation(apiBaseURL) })
 }

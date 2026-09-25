@@ -50,10 +50,11 @@
  * merged CREATE migration #007.
  * Note: staff_skills trimmed — final adminOnly rules baked into
  * merged CREATE migration #042.
- * Note: debug_parse_results trimmed — final denyAll ('') rules baked into
- * merged CREATE migration #027.
- * Note: solver_runs trimmed — final denyAll ('') rules baked into
- * merged CREATE migration #023. Both tier2[] and tier3[] are now empty;
+ * Note: debug_parse_results trimmed — its '' rules were baked into merged
+ * CREATE migration #027.
+ * Note: solver_runs trimmed — its '' rules were baked into merged CREATE
+ * migration #023. ('' is PUBLIC in PocketBase, not deny-all as these notes
+ * once said; 1500000181 locks both collections down.) Both tier2[] and tier3[] are now empty;
  * this file is dead code and can be deleted in a follow-up cleanup round.
  */
 

@@ -7,8 +7,10 @@
  * and error information. Each run is associated with a scenario and
  * contains detailed logs and statistics.
  *
- * Access: tier3 denyAll — frontend hits FastAPI admin endpoints; direct
- * PB CRUD is denied via empty-string rules.
+ * Access: created with '' rules. That was meant as "deny all", but in
+ * PocketBase '' is PUBLIC -- anyone, guests included -- and null is
+ * superusers only. 1500000181 replaces them: admin-only reads (the Solver
+ * Debug page reads this collection directly) and null writes.
  */
 
 migrate((app) => {
