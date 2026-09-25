@@ -393,7 +393,10 @@ for y in $(seq 2017 2026); do
   # Capture the start time before the request, so a retry of a failed season (within the
   # same 10-minute window) can't match the PREVIOUS attempt's completed/failed line.
   START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  curl -fsS -X POST "$BASE/api/custom/sync/financial-transactions?year=$y" -H "Authorization: $TOKEN"
+  if ! curl -fsS -X POST "$BASE/api/custom/sync/financial-transactions?year=$y" -H "Authorization: $TOKEN"; then
+    echo "Season $y: the request itself failed (token or year?). Stopping the backfill." >&2
+    exit 1
+  fi
   echo
   # Wait for this season's completion OR failure line, logged after $START. A failure
   # stops the whole loop — re-run that season on its own before continuing. So does a

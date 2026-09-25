@@ -392,8 +392,8 @@ func (r *FieldResolver) resolveMultiRelation(value any, col *ColumnConfig) strin
 // Financial transactions' post_date and reversal_date are stored as true UTC since campership
 // SP1 (design §6.2). Before that they held the Mountain wall clock read as UTC, and that is
 // what staff saw in Sheets, trailing "Z" included. Rendering back in Mountain keeps the
-// exported values where they were while the stored data stays correct. A value that does not
-// parse as a DateTime is exported as-is rather than dropped.
+// exported values where they were while the stored data stays correct. A string PocketBase
+// cannot parse comes back as a zero DateTime and is exported blank; no value is invented.
 func mountainWallClock(value any) string {
 	s := safeString(value)
 	if s == "" {
