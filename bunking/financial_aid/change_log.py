@@ -74,8 +74,10 @@ def record_change(
     ``entity`` names the collection or concept changed (for example
     ``"aid_decisions"``); ``entity_id`` its key as text; ``year`` the season;
     ``action`` a short verb (``"create"``, ``"update"``, ``"delete"``,
-    ``"approve"``...); ``actor`` the staff user's id or email. ``before`` is
-    None for a creation and ``after`` is None for a deletion; never both.
+    ``"approve"``...); ``actor`` the staff user's id or email. ``before`` and
+    ``after`` may not both be None. For ``action == "create"``, ``before``
+    must be None; for ``action == "delete"``, ``after`` must be None. Other
+    actions may carry either or both snapshots.
     """
     if isinstance(year, bool) or not isinstance(year, int):
         raise TypeError(f"year must be an int season, got {type(year).__name__}")
@@ -93,4 +95,8 @@ def record_change(
     }
     if body["before"] is None and body["after"] is None:
         raise ValueError("a change needs a before or an after snapshot")
+    if body["action"] == "create" and body["before"] is not None:
+        raise ValueError("a create change must not carry a before snapshot")
+    if body["action"] == "delete" and body["after"] is not None:
+        raise ValueError("a delete change must not carry an after snapshot")
     pb.collection(COLLECTION).create(body)

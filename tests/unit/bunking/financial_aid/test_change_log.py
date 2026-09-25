@@ -61,7 +61,15 @@ def test_decimal_is_stored_exactly_as_its_string() -> None:
     """Money is Decimal (spec §8). A float would turn 0.1 + 0.2 into 0.30000000000000004;
     the SDK's JSON encoder would simply crash on a Decimal."""
     pb = MagicMock()
-    _call(pb, before={"amount": Decimal("0.10")}, after={"amount": Decimal("0.30"), "nested": [Decimal(5)]})
+    # "update" (not the default "create") because this test exercises Decimal
+    # encoding on both snapshot fields at once, and a non-null before is
+    # otherwise rejected outright by the create/delete snapshot rule.
+    _call(
+        pb,
+        action="update",
+        before={"amount": Decimal("0.10")},
+        after={"amount": Decimal("0.30"), "nested": [Decimal(5)]},
+    )
     body = _body(pb)
     assert body["before"] == {"amount": "0.10"}
     assert body["after"] == {"amount": "0.30", "nested": ["5"]}
@@ -89,7 +97,11 @@ def test_non_finite_decimal_is_refused_not_stored(bad: Decimal, field: str) -> N
     kwargs: dict[str, object] = {"before": None, "after": None}
     kwargs[field] = {"amount": bad}
     if field == "before":
+        # "update" (not the default "create") because a non-null before is
+        # otherwise rejected outright by the create/delete snapshot rule,
+        # which would mask the non-finite-Decimal check this test targets.
         kwargs["after"] = {"amount": Decimal(1)}
+        kwargs["action"] = "update"
     with pytest.raises(ValueError):
         _call(pb, **kwargs)
     pb.collection.assert_not_called()
@@ -113,6 +125,28 @@ def test_a_change_with_neither_snapshot_is_refused() -> None:
     with pytest.raises(ValueError, match="before or an after"):
         _call(pb, before=None, after=None)
     pb.collection.assert_not_called()
+
+
+def test_a_create_with_a_before_snapshot_is_refused() -> None:
+    pb = MagicMock()
+    with pytest.raises(ValueError, match="create"):
+        _call(pb, action="create", before={"stage": "draft"}, after={"stage": "offered"})
+    pb.collection.assert_not_called()
+
+
+def test_a_delete_with_an_after_snapshot_is_refused() -> None:
+    pb = MagicMock()
+    with pytest.raises(ValueError, match="delete"):
+        _call(pb, action="delete", before={"stage": "offered"}, after={"stage": "closed"})
+    pb.collection.assert_not_called()
+
+
+def test_other_actions_may_carry_both_snapshots() -> None:
+    pb = MagicMock()
+    _call(pb, action="update", before={"stage": "draft"}, after={"stage": "offered"})
+    body = _body(pb)
+    assert body["before"] == {"stage": "draft"}
+    assert body["after"] == {"stage": "offered"}
 
 
 @pytest.mark.parametrize("field", ["entity", "entity_id", "action", "actor"])
