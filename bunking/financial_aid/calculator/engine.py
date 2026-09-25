@@ -27,6 +27,7 @@ from bunking.financial_aid.calculator.cost import CostResolution, resolve_cost
 from bunking.financial_aid.calculator.grants import grants_offset, incentive_adjustments
 from bunking.financial_aid.calculator.income import household_income
 from bunking.financial_aid.calculator.inputs import ApplicationInputs, RequestInputs
+from bunking.financial_aid.calculator.quality import run_quality_checks
 from bunking.financial_aid.calculator.result import (
     CalcIssue,
     CalcResult,
@@ -181,6 +182,20 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     _total_cap(work, rules)
     _top_up(work, decision)
     _total(work)
+    work.issues.extend(
+        run_quality_checks(
+            application,
+            request,
+            rules,
+            program,
+            income,
+            income_tier=tier,
+            cost=work.cost,
+            total=work.total,
+            r1=work.r1,
+            grants=work.grants_offset,
+        )
+    )
     return work.result()
 
 
