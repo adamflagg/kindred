@@ -31,7 +31,7 @@ def run_quality_checks(
     cost: Decimal | None,
     total: Decimal | None,
     r1: Decimal | None,
-    grants: Decimal,
+    grants: Decimal | None,
     extra_amount: Decimal,
 ) -> list[CalcIssue]:
     checks = rules.quality_checks.checks
@@ -44,7 +44,7 @@ def run_quality_checks(
     def fire(key: QualityCheckKey, check: QualityCheck, message: str) -> None:
         issues.append(CalcIssue(code=key, severity=check.severity, message=message, step="quality"))
 
-    if (check := active("ask_above_cost")) and cost is not None and request.ask > cost:
+    if (check := active("ask_above_cost")) and cost is not None and request.ask is not None and request.ask > cost:
         fire("ask_above_cost", check, "The ask is above the cost")
     adjusted = income.adjusted_income
     if (
@@ -77,12 +77,14 @@ def run_quality_checks(
         (check := active("award_above_cost"))
         and cost is not None
         and total is not None
+        and grants is not None
         and total + grants > cost + extra_amount
     ):
         fire("award_above_cost", check, "Aid plus outside grants is above the cost")
     if (
         (check := active("appeal_above_ask"))
         and request.appeal_amount is not None
+        and request.ask is not None
         and r1 is not None
         and request.appeal_amount > request.ask - r1
     ):

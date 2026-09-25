@@ -81,8 +81,15 @@ class CostOverride(_Input):
 
 
 class Headcount(_Input):
-    """Family-camp headcount. `standard` counts every non-infant person, parents
-    included; `children` are priced separately only if the season sets a child rate."""
+    """Family-camp headcount.
+
+    `standard` counts every non-infant person priced at the standard rate, parents
+    included. `children` counts the children priced at the season's child rate, and
+    a child counted there must NOT also be counted in `standard` -- the three counts
+    are disjoint and the cost is standard x rate + infants x rate + children x rate.
+    When the season sets no child rate, children are priced at the standard rate, so
+    counting them in either field gives the same cost; count each person once.
+    """
 
     standard: int = Field(ge=0)
     infants: int = Field(default=0, ge=0)
@@ -90,12 +97,22 @@ class Headcount(_Input):
 
 
 class RequestInputs(_Input):
-    """One request: a camper x session, or a household x session for family camp."""
+    """One request: a camper x session, or a household x session for family camp.
+
+    `ask` must be given, and may be None when the family left it blank. When the
+    ask caps an award (awards.ask_cap, round2.cap_by_original_ask) a None ask makes
+    the result needs_input; it is never read as an ask of 0.
+
+    `discretionary_amount` is always added to the total, whatever the decision
+    type -- including under a full_cost decision, where it comes on top of the
+    top-up that already brings the award to cost. Staff who do not want both must
+    leave it at 0.
+    """
 
     person_cm_id: int | None = None
     session_cm_id: int | None = None
     program_key: str
-    ask: Money
+    ask: Money | None
     # This camper's own equity answers, keyed by the criterion's `field` (e.g. "bipoc").
     equity_answers: dict[str, AnswerValue] = Field(default_factory=dict)
     cost_override: CostOverride | None = None

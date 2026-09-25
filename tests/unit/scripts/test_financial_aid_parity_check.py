@@ -8,13 +8,22 @@ row 2's camper makes correct mode differ on that row only.
 
 import json
 import re
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 from openpyxl import Workbook
 
-from scripts.financial_aid.parity_check import CALC_COLUMNS, GRANT_COLUMNS, RAW_COLUMNS, REF_COLUMNS, main
+from scripts.financial_aid.parity_check import (
+    CALC_COLUMNS,
+    GRANT_COLUMNS,
+    RAW_COLUMNS,
+    REF_COLUMNS,
+    Diagnostics,
+    _required_number,
+    main,
+)
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules_json
 
 _CONFIG = {
@@ -245,6 +254,17 @@ def test_blank_ask_and_unparsable_override_are_counted_not_silent(
     out = capsys.readouterr().out
     assert re.search(r"blank required cells by column:.*'ask': 1", out)
     assert re.search(r"unparsable cells by column:.*'override': 1", out)
+
+
+def test_a_blank_ask_reaches_the_calculator_as_none_not_zero() -> None:
+    # The ask is optional on RequestInputs now: a blank cell is counted and passed as
+    # None (needs_input when the ask caps the award), never built into a $0 ask.
+    diagnostics = Diagnostics()
+    assert _required_number({"ask": None}, "ask", diagnostics) is None
+    assert _required_number({"ask": "  "}, "ask", diagnostics) is None
+    assert _required_number({"ask": "oops"}, "ask", diagnostics) is None
+    assert _required_number({"ask": 1200}, "ask", diagnostics) == Decimal(1200)
+    assert (diagnostics.blank["ask"], diagnostics.unparsable["ask"]) == (2, 1)
 
 
 def test_mode_both_does_not_double_count_diagnostics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

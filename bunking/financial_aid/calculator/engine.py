@@ -51,10 +51,10 @@ class _Work:
     issues: list[CalcIssue] = field(default_factory=list)
     adjusted_income: Decimal | None = None
     income_tier: int | None = None
-    equity_shift: int = 0
+    equity_shift: int | None = None
     final_tier: int | None = None
     cost: Decimal | None = None
-    grants_offset: Decimal = ZERO
+    grants_offset: Decimal | None = None
     r1_potential: Decimal | None = None
     r1: Decimal | None = None
     r1_bound: str | None = None
@@ -63,7 +63,7 @@ class _Work:
     r2_bound: str | None = None
     r3: Decimal | None = None
     r3_bound: str | None = None
-    top_up: Decimal = ZERO
+    top_up: Decimal | None = None
     discretionary: Decimal = ZERO
     total: Decimal | None = None
 
@@ -300,7 +300,7 @@ def _round1(
         pct, source = percents.r1_pct, "table"
     work.step("r1_pct", "Round 1 percentage", pct, inputs={"table": program.r1_table, "tier": tier, "source": source})
 
-    grants = work.grants_offset
+    grants = work.grants_offset or ZERO  # set by the grants step, which always runs before Round 1
     if work.cost is None:
         if not awards.minimum_when_cost_unknown:
             work.issue(
@@ -332,8 +332,18 @@ def _round1(
         bound=bound,
     )
     raw = potential
-    if awards.ask_cap and request.ask < potential:
-        raw, bound = request.ask, "ask"
+    if awards.ask_cap:
+        if request.ask is None:
+            work.issue(
+                "ask_missing",
+                "needs_input",
+                "No ask was entered, and the ask caps Round 1 this season; Round 1 cannot be computed",
+                "r1",
+            )
+            work.r1_bound = "ask_missing"
+            return
+        if request.ask < potential:
+            raw, bound = request.ask, "ask"
     r1 = round_dollars(raw)
     note = None
     if reduce_award > 0:
@@ -374,9 +384,14 @@ def _round2(
         work.r2, work.r2_bound = ZERO, "no_table"
         work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="no_table", note="No Round 2 table")
         return
-    if work.cost is None or work.r1 is None:
+    if work.cost is None:
         work.issue("cost_unknown", "needs_input", "Cost is unknown; the Round 2 cap cannot be computed", "r2_cap")
         work.r2_bound = "cost_unknown"
+        return
+    if work.r1 is None:
+        # Round 1 already failed and said why (a rules error, a missing ask); Round 2 is
+        # built on it, so it is not computed either -- without blaming the cost.
+        work.r2_bound = "r1_unknown"
         return
     percents = _tier_percents(work, rules, program.r2_table, tier, "r2_cap")
     if percents is None:
@@ -384,10 +399,20 @@ def _round2(
     total_pct = percents.total_pct
     cap = pct_of(total_pct, work.cost) - work.r1
     if rules.round2.cap_subtracts_grants:
-        cap -= work.grants_offset
+        cap -= work.grants_offset or ZERO
     cap_bound = "cap"
-    if rules.round2.cap_by_original_ask and request.ask - work.r1 < cap:
-        cap, cap_bound = request.ask - work.r1, "original_ask"
+    if rules.round2.cap_by_original_ask:
+        if request.ask is None:
+            work.issue(
+                "ask_missing",
+                "needs_input",
+                "No ask was entered, and the original ask caps Round 2 this season; Round 2 cannot be computed",
+                "r2_cap",
+            )
+            work.r2_bound = "ask_missing"
+            return
+        if request.ask - work.r1 < cap:
+            cap, cap_bound = request.ask - work.r1, "original_ask"
     work.r2_cap = cap
     work.step(
         "r2_cap",
@@ -452,9 +477,12 @@ def _round3(
     if settings.max_amount is not None and settings.max_amount < raw:
         raw, bound = settings.max_amount, "max_amount"
     if settings.max_total_pct_of_cost is not None:
-        if work.cost is None or work.r1 is None:
+        if work.cost is None:
             work.issue("cost_unknown", "needs_input", "Cost is unknown; the Round 3 limit cannot be computed", "r3")
             work.r3_bound = "cost_unknown"
+            return
+        if work.r1 is None:
+            work.r3_bound = "r1_unknown"  # Round 1 already said why
             return
         room = max(pct_of(settings.max_total_pct_of_cost, work.cost) - work.r1 - (work.r2 or ZERO), ZERO)
         if room < raw:
@@ -469,9 +497,11 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
     cap = rules.awards.total_cap
     if cap is None or (work.r2 is None and work.r3 is None):
         return
-    if work.cost is None or work.r1 is None:
+    if work.cost is None:
         work.issue("cost_unknown", "needs_input", "Cost is unknown; the total-aid cap cannot be computed", "total_cap")
         return
+    if work.r1 is None:
+        return  # Round 1 already said why; there is nothing to cap against
     grants = work.grants_offset or ZERO
     limit = pct_of(cap.pct_of_cost, work.cost) - (grants if cap.include_grants else ZERO)
     r2_before, r3_before = work.r2, work.r3
@@ -500,17 +530,20 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
 
 def _top_up(work: _Work, decision: DecisionType | None) -> None:
     if decision is None or decision.kind == "discretionary":
+        work.top_up = ZERO  # evaluated: this request has no named top-up
         return
     note = None
     if decision.kind == "top_up":
         amount = decision.amount if decision.amount is not None else ZERO
     else:
-        if work.cost is None or work.r1 is None:
+        if work.cost is None:
             work.issue(
                 "cost_unknown", "needs_input", "Cost is unknown; the full-cost top-up cannot be computed", "top_up"
             )
             return
-        target = work.cost - work.grants_offset + decision.extra_amount
+        if work.r1 is None:
+            return  # Round 1 already said why; the top-up is measured against it
+        target = work.cost - (work.grants_offset or ZERO) + decision.extra_amount
         amount = max(round_dollars(target - work.r1 - (work.r2 or ZERO)), ZERO)
         note = "Brings the total to the cost, less grants, plus the named extra"
     work.top_up = amount
@@ -522,7 +555,7 @@ def _total(work: _Work) -> None:
     # A Round 2/3 rules_error or a cost_unknown needs_input can strike after r1 is already
     # computed, so the total needs its own guard: neither an error nor an unresolved
     # needs_input ever produces a total, only r1/r2/r3 taken individually do.
-    if work.r1 is None or status_of(work.issues) in ("error", "needs_input"):
+    if work.r1 is None or work.top_up is None or status_of(work.issues) in ("error", "needs_input"):
         return
     work.total = work.r1 + (work.r2 or ZERO) + (work.r3 or ZERO) + work.top_up + work.discretionary
     work.step(

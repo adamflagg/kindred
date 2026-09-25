@@ -179,9 +179,9 @@ class Diagnostics:
     price_conflicts: set[str] = field(default_factory=set)
     # Unparsable: a non-blank cell that could not be read as a number.
     unparsable: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
-    # Blank: a required field (only `ask` today) whose cell was empty, so it fell
-    # back to 0 rather than the sheet's own figure. Never set for an optional
-    # field -- a blank override, appeal or discretionary amount is legitimate.
+    # Blank: a required field (only `ask` today) whose cell was empty, so the
+    # calculator got None (needs_input where the ask caps the award). Never set for
+    # an optional field -- a blank override, appeal or discretionary amount is legitimate.
     blank: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
@@ -324,10 +324,10 @@ def _counted_number(source: dict[str, Any], key: str, diagnostics: Diagnostics) 
     return number
 
 
-def _required_number(source: dict[str, Any], key: str, diagnostics: Diagnostics) -> Decimal:
-    """A required Money field (only `ask` today). Blank and unparsable are both
-    counted, in separate buckets, and both fall back to 0 -- the calculator needs
-    *a* value either way, but principle 5 says that fallback must never be silent."""
+def _required_number(source: dict[str, Any], key: str, diagnostics: Diagnostics) -> Decimal | None:
+    """A field the family should have filled in (only `ask` today). Blank and
+    unparsable are both counted, in separate buckets, and both reach the calculator
+    as None -- never as 0 (principle 5)."""
     value = source[key]
     number = _number(value)
     if number is not None:
@@ -336,7 +336,7 @@ def _required_number(source: dict[str, Any], key: str, diagnostics: Diagnostics)
         diagnostics.blank[key] += 1
     else:
         diagnostics.unparsable[key] += 1
-    return Decimal(0)
+    return None
 
 
 def _dependents(raw: dict[str, Any], diagnostics: Diagnostics) -> int | None:
@@ -367,7 +367,7 @@ class ParsedRow:
     application: ApplicationInputs
     session_cm_id: int | None
     program_key: str
-    ask: Decimal
+    ask: Decimal | None
     equity_answers: dict[str, Any]
     cost_override: CostOverride | None
     appeal_amount: Decimal | None
@@ -417,8 +417,7 @@ def _parse_row(
         # On these rows the sheet's X is the top-up the calculator computes itself.
         discretionary = Decimal(0)
     override = _counted_number(calc, "override", diagnostics)
-    # ask is a required Money on RequestInputs: a blank cell still needs *a*
-    # value to build the input, but that fallback to 0 is counted, never silent.
+    # A blank ask is counted and passed as None; the calculator decides whether it is needed.
     ask = _required_number(calc, "ask", diagnostics)
     appeal_amount = _counted_number(calc, "appeal", diagnostics)
     return ParsedRow(

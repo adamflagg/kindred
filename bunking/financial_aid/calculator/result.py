@@ -40,15 +40,27 @@ class CalcIssue(BaseModel):
 
 
 class CalcResult(BaseModel):
+    """One request's award.
+
+    Every figure is None until the step that computes it has run: a result that
+    stops early (an unknown program, missing income, a rules error) leaves the later
+    figures None, never 0. A figure that WAS evaluated and came to nothing is 0.
+
+    `status` says whether the award could be computed: "error", "needs_input" or
+    "ok". It does not summarise the data-quality checks. An "ok" result can still
+    carry a `block` issue, which means "do not finalize until staff look" -- so a
+    caller must check `issues` for severity "block" as well as `status`.
+    """
+
     model_config = ConfigDict(frozen=True)
 
     status: CalcStatus
     adjusted_income: Decimal | None
     income_tier: int | None
-    equity_shift: int
+    equity_shift: int | None
     final_tier: int | None
     cost: Decimal | None
-    grants_offset: Decimal
+    grants_offset: Decimal | None
     r1_potential: Decimal | None
     r1: Decimal | None
     r1_bound: str | None
@@ -57,7 +69,7 @@ class CalcResult(BaseModel):
     r2_bound: str | None
     r3: Decimal | None
     r3_bound: str | None
-    top_up: Decimal
+    top_up: Decimal | None
     discretionary: Decimal
     total: Decimal | None
     trace: list[TraceStep]
