@@ -1275,14 +1275,23 @@ jobs:
       working-directory: ./pocketbase
       env:
         KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
+        # Absolute for the reason the grain step below gives: the test binary
+        # runs with pocketbase/rbac as its working directory.
+        KINDRED_PROD_SCHEMA_DB: ${{ github.workspace }}/pocketbase/pb_test_data/data.db
       run: |
         set -o pipefail
-        go test -count=1 ./rbac/... -run TestBootedSchemaAuthRules -v 2>&1 \
+        # Every test named here SKIPS without the env above, and `go test -run`
+        # exits 0 on a pattern that matches nothing -- so each must be seen to
+        # PASS by name, or this step asserted nothing.
+        TESTS="TestBootedSchemaAuthRules TestBootedRolesCarryFinancialAidGrants"
+        go test -count=1 ./rbac/... -run "^($(echo "$TESTS" | tr ' ' '|'))\$" -v 2>&1 \
           | tee "$RUNNER_TEMP/auth-rules.log"
-        if ! grep -q '^--- PASS: TestBootedSchemaAuthRules' "$RUNNER_TEMP/auth-rules.log"; then
-          echo "::error::TestBootedSchemaAuthRules did not run to PASS (renamed, filtered out, or skipped) -- this step asserted nothing"
-          exit 1
-        fi
+        for t in $TESTS; do
+          if ! grep -q "^--- PASS: $t (" "$RUNNER_TEMP/auth-rules.log"; then
+            echo "::error::$t did not run to PASS (renamed, filtered out, or skipped) -- this step asserted nothing"
+            exit 1
+          fi
+        done
 
     - name: Grain declaration index agreement (kindred#2627)
       working-directory: ./pocketbase
