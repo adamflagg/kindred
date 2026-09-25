@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from bunking.financial_aid.rules.schema import AidRules, TierPercents
+from bunking.financial_aid.rules.schema import AidRules, EquityCriterion, TierPercents
+
+
+def is_dependents_criterion(criterion: EquityCriterion) -> bool:
+    """The household criterion that reads the application's dependents count.
+
+    It only shifts the tier when income.dependents_mode is "tier_shift".
+    """
+    return criterion.source == "household" and criterion.field == "dependents"
 
 
 def resolved_table(rules: AidRules, name: str) -> dict[int, TierPercents]:

@@ -19,6 +19,7 @@ from bunking.financial_aid.calculator.inputs import AnswerValue, ApplicationInpu
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ONE, ZERO
+from bunking.financial_aid.rules.lookup import is_dependents_criterion
 from bunking.financial_aid.rules.schema import AidRules, EquityCriterion, ProgramProfile
 
 _ROUNDING = {"ceil": ROUND_CEILING, "round": ROUND_HALF_UP, "floor": ROUND_FLOOR}
@@ -48,15 +49,11 @@ def income_tier(income: Decimal, rules: AidRules) -> int | None:
     return tier
 
 
-def _is_dependents_criterion(criterion: EquityCriterion) -> bool:
-    return criterion.source == "household" and criterion.field == "dependents"
-
-
 def _answer(
     criterion: EquityCriterion, field: str, application: ApplicationInputs, request: RequestInputs
 ) -> AnswerValue:
     if criterion.source == "household":
-        if _is_dependents_criterion(criterion) and field == criterion.field:
+        if is_dependents_criterion(criterion) and field == criterion.field:
             return application.dependents
         return application.answers.get(field)
     return request.equity_answers.get(field)
@@ -96,7 +93,7 @@ def equity_shift(
     total = ZERO
     met: list[str] = []
     for criterion in equity.criteria:
-        if _is_dependents_criterion(criterion) and rules.income.dependents_mode != "tier_shift":
+        if is_dependents_criterion(criterion) and rules.income.dependents_mode != "tier_shift":
             continue
         if criterion_met(criterion, application, request):
             met.append(criterion.key)

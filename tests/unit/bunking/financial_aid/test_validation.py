@@ -288,3 +288,34 @@ def test_milestones_run_forward(earlier: str, later: str) -> None:
     report = validate_rules(rules)
     assert ("milestones_out_of_order", later) in {(e.code, e.path) for e in report.errors}
     assert {e.code for e in report.errors} == {"milestones_out_of_order"}
+
+
+# --- final review minors ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("key", ["income_above", "expense_above", "placeholder_income", "implausible_dependents"])
+def test_an_enabled_check_that_needs_a_threshold_and_has_none_warns(key: str) -> None:
+    # Without a threshold the check can never fire, so staff think they are covered
+    # when they are not.
+    rules = with_lever(fictional_rules(), f"quality_checks.checks.{key}", {"severity": "warn"})
+    report = validate_rules(rules, _context())
+    assert ("quality_checks", "check_has_no_threshold", f"quality_checks.checks.{key}.threshold") in {
+        (w.section, w.code, w.path) for w in report.warnings
+    }
+    assert report.ok  # a warning, not an error
+    disabled = with_lever(fictional_rules(), f"quality_checks.checks.{key}", {"enabled": False, "severity": "warn"})
+    assert "check_has_no_threshold" not in validate_rules(disabled, _context()).codes()
+
+
+def test_a_check_that_needs_no_threshold_does_not_warn_without_one() -> None:
+    report = validate_rules(fictional_rules(), _context())  # ask_above_cost etc. carry none
+    assert "check_has_no_threshold" not in report.codes()
+
+
+def test_a_season_with_no_synced_sessions_warns_instead_of_skipping_coverage() -> None:
+    # An empty session list used to make the unmapped-session check pass by skipping it.
+    report = validate_rules(fictional_rules(), ValidationContext(sessions=[]))
+    assert ("programs", "no_sessions_to_check") in {(w.section, w.code) for w in report.warnings}
+    assert report.ok
+    # No context at all (the parity harness) is a deliberate choice and stays quiet.
+    assert "no_sessions_to_check" not in validate_rules(fictional_rules()).codes()

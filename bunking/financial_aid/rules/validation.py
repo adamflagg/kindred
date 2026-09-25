@@ -6,7 +6,8 @@ section it is in (lifecycle.approve); a WARNING never blocks.
 
 "An unmapped session is an error, never a silent 0" needs the season's sessions,
 which only the caller has: pass a ValidationContext listing them. Without one the
-session-coverage check is skipped (the parity harness runs that way).
+session-coverage check is skipped (the parity harness runs that way). A context
+listing NO sessions (a season nothing has synced yet) warns instead of passing.
 """
 
 from __future__ import annotations
@@ -17,8 +18,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.money import pct_of
-from bunking.financial_aid.rules.lookup import resolve_program, resolved_table
-from bunking.financial_aid.rules.schema import AidRules, SectionName
+from bunking.financial_aid.rules.lookup import is_dependents_criterion, resolve_program, resolved_table
+from bunking.financial_aid.rules.schema import AidRules, QualityCheckKey, SectionName
 
 Severity = Literal["error", "warning"]
 
@@ -94,11 +95,8 @@ def validate_rules(rules: AidRules, context: ValidationContext | None = None) ->
     _check_budget(rules, issues)
     _check_stages(rules, issues)
     _check_milestones(rules, issues)
+    _check_quality_checks(rules, issues)
     return ValidationReport(issues=issues.items)
-
-
-def _is_dependents_criterion(source: str, field: str) -> bool:
-    return source == "household" and field == "dependents"
 
 
 def _check_income(rules: AidRules, issues: _Issues) -> None:
@@ -168,7 +166,7 @@ def _check_equity(rules: AidRules, issues: _Issues) -> None:
         if n > 1:
             issues.error("equity", "duplicate_criterion", "equity.criteria", f"Criterion '{key}' appears {n} times")
     known = set(counts)
-    dependents_keys = {c.key for c in rules.equity.criteria if _is_dependents_criterion(c.source, c.field)}
+    dependents_keys = {c.key for c in rules.equity.criteria if is_dependents_criterion(c)}
     for cls, weights in rules.equity.weights.items():
         for key, weight in weights.items():
             path = f"equity.weights.{cls}.{key}"
@@ -292,6 +290,15 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
             types[session_type] = key
     if context is None:
         return
+    if not context.sessions:
+        issues.warn(
+            "programs",
+            "no_sessions_to_check",
+            "programs",
+            "The season has no synced sessions, so no session could be checked for a program; "
+            "approve again after the sessions sync",
+        )
+        return
     for ref in context.sessions:
         if resolve_program(rules, ref.cm_id, ref.session_type) is None:
             label = f" ({ref.name})" if ref.name else ""
@@ -380,3 +387,24 @@ def _check_milestones(rules: AidRules, issues: _Issues) -> None:
         a, b = getattr(milestones, earlier), getattr(milestones, later)
         if a is not None and b is not None and a > b:
             issues.error("milestones", "milestones_out_of_order", f"milestones.{later}", f"{later} is before {earlier}")
+
+
+# Checks that compare against a threshold, and cannot fire without one.
+_THRESHOLD_CHECKS: tuple[QualityCheckKey, ...] = (
+    "income_above",
+    "expense_above",
+    "placeholder_income",
+    "implausible_dependents",
+)
+
+
+def _check_quality_checks(rules: AidRules, issues: _Issues) -> None:
+    for key in _THRESHOLD_CHECKS:
+        check = rules.quality_checks.checks.get(key)
+        if check is not None and check.enabled and check.threshold is None:
+            issues.warn(
+                "quality_checks",
+                "check_has_no_threshold",
+                f"quality_checks.checks.{key}.threshold",
+                f"The '{key}' check is on but has no threshold, so it can never fire",
+            )
