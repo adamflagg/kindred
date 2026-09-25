@@ -79,6 +79,19 @@ class _Work:
     ) -> None:
         self.trace.append(TraceStep(key=key, label=label, value=value, inputs=inputs or {}, bound=bound, note=note))
 
+    def retrace(self, key: str, value: Decimal, bound: str, *, before: Decimal | None) -> None:
+        """Rewrite step `key` to the value a later limit cut it to, so the trace never disagrees with the result."""
+        for i, existing in enumerate(self.trace):
+            if existing.key == key:
+                self.trace[i] = existing.model_copy(
+                    update={
+                        "value": value,
+                        "bound": bound,
+                        "inputs": {**existing.inputs, "before_total_cap": before},
+                        "note": "Cut to fit the total-aid cap",
+                    }
+                )
+
     def issue(self, code: str, severity: IssueSeverity, message: str, step: str | None = None) -> None:
         self.issues.append(CalcIssue(code=code, severity=severity, message=message, step=step))
 
@@ -459,18 +472,29 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
     if work.cost is None or work.r1 is None:
         work.issue("cost_unknown", "needs_input", "Cost is unknown; the total-aid cap cannot be computed", "total_cap")
         return
-    limit = pct_of(cap.pct_of_cost, work.cost) - (work.grants_offset if cap.include_grants else ZERO)
+    grants = work.grants_offset or ZERO
+    limit = pct_of(cap.pct_of_cost, work.cost) - (grants if cap.include_grants else ZERO)
+    r2_before, r3_before = work.r2, work.r3
     room = max(limit - work.r1, ZERO)
     if work.r2 is not None and work.r2 > room:
         work.r2, work.r2_bound = floor_dollars(room), "total_cap"
+        work.retrace("r2", work.r2, "total_cap", before=r2_before)
     room = max(room - (work.r2 or ZERO), ZERO)
     if work.r3 is not None and work.r3 > room:
         work.r3, work.r3_bound = floor_dollars(room), "total_cap"
+        work.retrace("r3", work.r3, "total_cap", before=r3_before)
     work.step(
         "total_cap",
         "Total-aid cap",
         limit,
-        inputs={"pct_of_cost": cap.pct_of_cost, "include_grants": cap.include_grants, "r2": work.r2, "r3": work.r3},
+        inputs={
+            "pct_of_cost": cap.pct_of_cost,
+            "include_grants": cap.include_grants,
+            "r2_before": r2_before,
+            "r2_after": work.r2,
+            "r3_before": r3_before,
+            "r3_after": work.r3,
+        },
     )
 
 

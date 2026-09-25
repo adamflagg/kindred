@@ -129,6 +129,35 @@ def test_the_total_cap_trims_round_3_after_round_2() -> None:
     assert (result.r3, result.r3_bound) == (Decimal(200), "total_cap")
 
 
+def test_a_total_cap_trim_of_round_2_shows_in_the_trace() -> None:
+    # I4 (final review): staff read the trace directly, so the r2 step must carry the
+    # trimmed value the result carries, and the total_cap step must show before/after.
+    rules = with_lever(fictional_rules(), "awards.total_cap", _CAP_80)
+    result = _calc(rules, appeal_amount="1000")
+    step = result.step("r2")
+    assert (step.value, step.bound) == (result.r2, result.r2_bound) == (Decimal(200), "total_cap")
+    assert step.inputs["before_total_cap"] == Decimal(600)  # the Round 2 cap: 90% of 4,000 - 3,000
+    cap = result.step("total_cap")
+    assert (cap.inputs["r2_before"], cap.inputs["r2_after"]) == (Decimal(600), Decimal(200))
+
+
+def test_a_total_cap_trim_of_round_3_shows_in_the_trace() -> None:
+    rules = with_lever(fictional_rules(), "awards.total_cap", _CAP_80)
+    result = _calc(rules, round3_amount="1000", **ELIGIBLE_R3)
+    step = result.step("r3")
+    assert (step.value, step.bound) == (result.r3, result.r3_bound) == (Decimal(200), "total_cap")
+    cap = result.step("total_cap")
+    assert (cap.inputs["r3_before"], cap.inputs["r3_after"]) == (Decimal(1000), Decimal(200))
+
+
+def test_an_untrimmed_round_keeps_its_own_trace_step() -> None:
+    rules = with_lever(fictional_rules(), "awards.total_cap", {"pct_of_cost": "100", "include_grants": True})
+    result = _calc(rules, appeal_amount="400")
+    assert (result.step("r2").value, result.step("r2").bound) == (Decimal(400), "appeal")
+    cap = result.step("total_cap")
+    assert cap.inputs["r2_before"] == cap.inputs["r2_after"] == Decimal(400)
+
+
 def test_the_total_cap_with_an_unknown_cost_needs_input() -> None:
     # The total cap silently skipped its own computation when cost was unknown, dropping
     # the cost_unknown signal instead of surfacing it like Round 2 and Round 3 do.
