@@ -72,6 +72,13 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 // and that reaches for a QueryClient through react-query's own internals,
 // which the `useQueryClient` stub above does not satisfy. Drag placement has
 // its own tests in `components/weekend/LodgingBoard.drag.test.tsx`.
+// kindred#2759 follow-up: the board reads the Jotform queue for its write-in
+// picker (adult weekend, bunking.manage). An auth-touching query hook, stubbed
+// here like the others; the picker has its own tests in writeInJotform.test.tsx.
+vi.mock('../hooks/useJotformAdmin', () => ({
+  useJotformQueue: () => ({ data: undefined, isLoading: false, error: null }),
+}))
+
 vi.mock('../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(() => Promise.resolve()), isMoving: false }),
 }))

@@ -278,6 +278,10 @@ export type AvailabilityWriteRequest = {
    * Previous Occupant Name
    */
   previous_occupant_name?: string | null
+  /**
+   * Jotform Submission Id
+   */
+  jotform_submission_id?: string | null
 }
 
 /**
@@ -2814,7 +2818,7 @@ export type JotformQueueItem = {
   /**
    * Match Status
    */
-  match_status: 'auto' | 'staff' | 'unmatched' | 'ignored'
+  match_status: 'auto' | 'staff' | 'unmatched' | 'ignored' | 'cancelled' | 'write_in'
   /**
    * Person Cm Id
    */
@@ -2827,6 +2831,22 @@ export type JotformQueueItem = {
    * Suggestions
    */
   suggestions?: Array<JotformSuggestion>
+  /**
+   * Registration Status
+   */
+  registration_status?: string
+  /**
+   * Write In Name
+   */
+  write_in_name?: string
+  /**
+   * Write In Unit
+   */
+  write_in_unit?: string
+  /**
+   * Write In Suggestion
+   */
+  write_in_suggestion?: string
 }
 
 /**
@@ -2849,6 +2869,18 @@ export type JotformQueueResponse = {
    * Resolved
    */
   resolved?: Array<JotformQueueItem>
+  /**
+   * Cancelled
+   */
+  cancelled?: Array<JotformQueueItem>
+  /**
+   * Write Ins
+   */
+  write_ins?: Array<JotformQueueItem>
+  /**
+   * Write In Options
+   */
+  write_in_options?: Array<JotformWriteInOption>
   /**
    * Duplicates
    */
@@ -2933,6 +2965,51 @@ export type JotformUnmappedForm = {
    * Session Name
    */
   session_name?: string
+}
+
+/**
+ * JotformWriteInLinkRequest
+ *
+ * The write-in to link a filing to, by the address the board uses.
+ */
+export type JotformWriteInLinkRequest = {
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Occupant Name
+   */
+  occupant_name: string
+}
+
+/**
+ * JotformWriteInOption
+ *
+ * One of a weekend's board write-ins a filing can be linked to: a
+ * (unit, occupant name) on the live board or in any scenario, listed once.
+ */
+export type JotformWriteInOption = {
+  /**
+   * Option Id
+   */
+  option_id: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Unit Name
+   */
+  unit_name?: string
+  /**
+   * Occupant Name
+   */
+  occupant_name: string
 }
 
 /**
@@ -5385,6 +5462,11 @@ export type PushRowPayload = {
    * Sleeps
    */
   sleeps?: number | null
+  /**
+   * Write In Key
+   */
+  write_in_key?: string
+  bunking_request?: BunkingRequestSummary | null
 }
 
 /**
@@ -8676,6 +8758,7 @@ export type WriteInCover = {
    * Unit Sleeps
    */
   unit_sleeps?: number | null
+  bunking_request?: BunkingRequestSummary | null
 }
 
 /**
@@ -12614,6 +12697,38 @@ export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses
 
 export type UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponse =
   UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses[keyof UnlinkSubmissionApiJotformSubmissionsSubmissionIdUnlinkPostResponses]
+
+export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostData = {
+  body: JotformWriteInLinkRequest
+  path: {
+    /**
+     * Submission Id
+     */
+    submission_id: string
+  }
+  query?: never
+  url: '/api/jotform/submissions/{submission_id}/write-in'
+}
+
+export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostError =
+  LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors[keyof LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostErrors]
+
+export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponse =
+  LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses[keyof LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

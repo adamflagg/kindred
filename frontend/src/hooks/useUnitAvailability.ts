@@ -61,7 +61,7 @@ import { useCallback } from 'react'
 import toast from 'react-hot-toast'
 
 import { deleteWriteIn, setUnitAvailability } from '../services/lodgingApi'
-import { invalidateLodgingRegistryQueries } from '../utils/queryKeys'
+import { invalidateJotformQueries, invalidateLodgingRegistryQueries } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 
 export interface UseUnitAvailabilityOptions {
@@ -126,6 +126,8 @@ export interface AvailabilityIntent {
    * rename would silently create a second row the moment step 8 lands.
    */
   previousOccupantName: string | null
+  /** kindred#2759 follow-up: the Jotform filing this write-in is made from. */
+  jotformSubmissionId?: string | null | undefined
 }
 
 /** Taking ONE occupant out of one unit, as the card's corner × states it. */
@@ -192,6 +194,9 @@ export function useUnitAvailability({
         // place to decide whether a write renames anybody — the card that
         // opened the form is the only thing that knows the name it loaded.
         previousOccupantName: intent.previousOccupantName,
+        // kindred#2759 follow-up: the Jotform filing this write-in is made
+        // from, linked by the server in the same request.
+        ...(intent.jotformSubmissionId ? { jotformSubmissionId: intent.jotformSubmissionId } : {}),
       })
     },
 
@@ -204,8 +209,15 @@ export function useUnitAvailability({
     // `set_availability`'s own lost-race recovery can fail after the create
     // landed. Refetching is what makes the board agree with the server either
     // way.
+    //
+    // The Jotform queue too, on EVERY write and not only one that links a
+    // filing: its write-in dropdown and its linked write-ins' names are read
+    // from the board's write-ins, so a new write-in or a rename moves it, and
+    // it inherits the 30-minute app default. Free on Family Camp -- no Jotform
+    // query is ever enabled there, and the push/compare reads are staleTime 0.
     onSettled: () => {
       invalidateLodgingRegistryQueries(queryClient)
+      invalidateJotformQueries(queryClient)
     },
   })
 
@@ -235,9 +247,12 @@ export function useUnitAvailability({
     // reason and with the same reach: a removal made inside one draft has to
     // refresh the mirror and every other draft of the weekend, or a board
     // somewhere keeps drawing an occupant who is gone for the 30 minutes the
-    // weekend queries stay fresh.
+    // weekend queries stay fresh. And the Jotform queue, as the write does:
+    // removing a linked write-in returns its filing to the queue (kindred#2828
+    // ruling), which the admin tab and the board's picker only see refetched.
     onSettled: () => {
       invalidateLodgingRegistryQueries(queryClient)
+      invalidateJotformQueries(queryClient)
     },
   })
 

@@ -170,3 +170,15 @@ export function wordDiff(before: string, after: string): WordOp[] {
   while (j < b.length) ops.push({ op: 'add', text: b[j++] ?? '' })
   return ops
 }
+
+/**
+ * A push/compare write-in row's linked request, or null. ADULT WEEKENDS ONLY,
+ * read from the weekend's own `session_type`: a Family Camp surface draws
+ * nothing, whatever a row carries.
+ */
+export function linkedRequest(
+  row: { bunking_request?: BunkingRequest | null | undefined },
+  isAdult: boolean
+): BunkingRequest | null {
+  return isAdult ? (row.bunking_request ?? null) : null
+}

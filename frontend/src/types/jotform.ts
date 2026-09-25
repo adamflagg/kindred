@@ -8,6 +8,7 @@ import type {
   JotformQueueItem,
   JotformQueueResponse,
   JotformSuggestion,
+  JotformWriteInOption,
 } from './api-generated'
 
 export type JotformFormsList = JotformFormsResponse
@@ -18,3 +19,5 @@ export type JotformQueueEntry = JotformQueueItem
 export type JotformSuggestionRow = JotformSuggestion
 export type JotformGuestRow = JotformGuest
 export type JotformDuplicateGroupRow = JotformDuplicateGroup
+/** One board write-in a filing can be linked to (kindred#2759 follow-up). */
+export type JotformWriteInChoice = JotformWriteInOption

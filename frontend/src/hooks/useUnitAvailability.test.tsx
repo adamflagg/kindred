@@ -110,6 +110,40 @@ describe('useUnitAvailability', () => {
     })
   })
 
+  it('forwards the Jotform filing a write-in is made from, and refreshes the Jotform queue', async () => {
+    const { result } = renderAvailability()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.setAvailability({
+        ...WRITE_IN,
+        jotformSubmissionId: '6600000000000000001',
+      })
+    })
+
+    expect(setUnitAvailability.mock.calls[0]?.[1]).toMatchObject({
+      jotformSubmissionId: '6600000000000000001',
+    })
+    const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(queryKeys.jotformPrefix())
+  })
+
+  it('refreshes the Jotform queue on a write made WITHOUT a filing, too', async () => {
+    // The queue's write-in dropdown and its linked-write-in names are read
+    // from the board's write-ins, so a new write-in or a rename moves it. The
+    // queue inherits the 30-minute app default, so without this the admin tab
+    // and the board's "From Jotform" picker keep the old list.
+    const { result } = renderAvailability()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.setAvailability(WRITE_IN)
+    })
+
+    const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(queryKeys.jotformPrefix())
+  })
+
   it('forwards a non-null party size, rather than hardcoding one', async () => {
     // MAJOR B: `WRITE_IN`'s own `partySize: null` cannot distinguish
     // FORWARDING `intent.partySize` from hardcoding `null` at this hop's
@@ -355,6 +389,22 @@ describe('useUnitAvailability — removing ONE occupant', () => {
       expect(client.getQueryState(rosterKey(DRAFT))?.isInvalidated).toBe(true)
       expect(client.getQueryState(rosterKey(''))?.isInvalidated).toBe(true)
     })
+  })
+
+  it('refreshes the Jotform queue, so a removed linked write-in returns its filing', async () => {
+    // kindred#2828 ruling: deleting the write-in returns the filing to the
+    // queue. The server derives that from the key no row carries any more;
+    // the admin tab and the board's "From Jotform" picker only show it once
+    // the queue is refetched.
+    const { result } = renderAvailability()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.removeWriteIn(REMOVAL)
+    })
+
+    const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey)
+    expect(keys).toContainEqual(queryKeys.jotformPrefix())
   })
 
   it('names the unit being removed from, so one card waits and the rest do not', async () => {

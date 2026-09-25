@@ -10,7 +10,9 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// Guest is one ENROLLED guest of the form's session (attendees.status_id = 2).
+// Guest is one registration of the form's session: an ENROLLED guest
+// (attendees.status_id = 2) for Match, or any other registration for
+// MatchRegistration's fallback pool.
 type Guest struct {
 	PersonCMID int
 	First      string
@@ -94,9 +96,31 @@ func intersects(a, b map[string]bool) bool {
 // by the respondent email; otherwise the result is unmatched. Never emergency
 // contacts, never last name alone, never fuzzy (kindred#2759).
 func Match(id Identity, enrolled []Guest) Result {
+	result, _ := decide(id, enrolled)
+	return result
+}
+
+// MatchRegistration is Match against the weekend's ENROLLED guests first and,
+// only when no tier found any enrolled candidate at all, the same tiers
+// against its other registrations (`others`: cancelled, incomplete, applied
+// -- attendees.status_id != 2). The second result says the match is one of
+// those registrations. An enrolled ambiguity is left to staff rather than
+// resolved by a cancelled namesake.
+func MatchRegistration(id Identity, enrolled, others []Guest) (Result, bool) {
+	result, candidates := decide(id, enrolled)
+	if result.PersonCMID > 0 || candidates {
+		return result, false
+	}
+	result, _ = decide(id, others)
+	return result, result.PersonCMID > 0
+}
+
+// decide runs the tiers over one pool. The second result is whether any tier
+// had a candidate, which is how an ambiguity is told from no match at all.
+func decide(id Identity, enrolled []Guest) (Result, bool) {
 	first, last := Fold(id.First), Fold(id.Last)
 	if first == "" || last == "" {
-		return Result{}
+		return Result{}, false
 	}
 	subFirsts := map[string]bool{first: true}
 	if nt := nametagFirst(id.Nametag); nt != "" {
@@ -119,15 +143,15 @@ func Match(id Identity, enrolled []Guest) Result {
 		}
 		if len(hits) == 1 {
 			for cmID := range hits {
-				return Result{PersonCMID: cmID, Tier: i + 1}
+				return Result{PersonCMID: cmID, Tier: i + 1}, true
 			}
 		}
 		if g, ok := emailTiebreak(hits, id.Email); ok {
-			return Result{PersonCMID: g.PersonCMID, Tier: i + 1}
+			return Result{PersonCMID: g.PersonCMID, Tier: i + 1}, true
 		}
-		return Result{}
+		return Result{}, true
 	}
-	return Result{}
+	return Result{}, false
 }
 
 func twoPartSurname(submittedLast string, subFirsts map[string]bool, g *Guest, enrolled []Guest) bool {

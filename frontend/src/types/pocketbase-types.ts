@@ -1012,6 +1012,8 @@ export const JotformSubmissionsMatchStatusOptions = {
   staff: 'staff',
   unmatched: 'unmatched',
   ignored: 'ignored',
+  cancelled: 'cancelled',
+  write_in: 'write_in',
 } as const
 export type JotformSubmissionsMatchStatusOptions =
   (typeof JotformSubmissionsMatchStatusOptions)[keyof typeof JotformSubmissionsMatchStatusOptions]
@@ -1025,11 +1027,13 @@ export type JotformSubmissionsRecord = {
   match_status: JotformSubmissionsMatchStatusOptions
   match_tier?: number
   person_cm_id?: number
+  registration_status?: string
   session_cm_id: number
   submission_id: string
   submitted_at: string
   updated: IsoAutoDateString
   updated_at?: string
+  write_in_key?: string
   year: number
 }
 
@@ -1356,6 +1360,7 @@ export type LodgingWriteInsRecord = {
   session_cm_id: number
   unit: RecordIdString
   updated: IsoAutoDateString
+  write_in_key?: string
   year: number
 }
 
@@ -1370,6 +1375,7 @@ export type LodgingWriteInsDraftRecord = {
   session_cm_id: number
   unit: RecordIdString
   updated: IsoAutoDateString
+  write_in_key?: string
   year: number
 }
 

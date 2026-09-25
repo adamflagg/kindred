@@ -66,6 +66,8 @@ from api.schemas.lodging import (
     UnpushResponse,
     WriteInDeleteRequest,
 )
+from api.services.jotform_bunking import build_bunking_request, filings_by_write_in
+from api.services.lodging_repository import ADULT_SESSION_TYPE
 from api.services.lodging_roster_service import (
     SessionNotFoundError,
     _BathroomIndex,
@@ -894,6 +896,10 @@ class LodgingWriteService:
                         # row already carries, and `0` copied to `0` already
                         # round-trips to the right answer without asking it.
                         "party_size": getattr(row, "party_size", None),
+                        # kindred#2759 follow-up: the row's Jotform write-in
+                        # link travels with it, so a scenario forked from a
+                        # board with a linked write-in still shows the link.
+                        "write_in_key": str(getattr(row, "write_in_key", "") or ""),
                     }
                 )
             except ClientResponseError as exc:
@@ -1644,6 +1650,7 @@ class LodgingWriteService:
                     note=str(getattr(row, "note", "") or ""),
                     party_size=_i_or_none(row, "party_size"),
                     sleeps=capacity_by_unit_id.get(unit_id),
+                    write_in_key=str(getattr(row, "write_in_key", "") or ""),
                 )
             )
         return out
@@ -1669,13 +1676,40 @@ class LodgingWriteService:
             capacity_by_unit_id,
         )
         buildings = classify_push(live, draft, units)
+        reports = [_building_report(b) for b in buildings]
+        await self._attach_write_in_requests(year, session_cm_id, reports)
         return PushPreviewResponse(
             year=year,
             session_cm_id=session_cm_id,
             scenario=scenario,
             digest=push_digest(buildings),
-            buildings=[_building_report(b) for b in buildings],
+            buildings=reports,
         )
+
+    async def _attach_write_in_requests(self, year: int, session_cm_id: int, reports: list[PushBuildingReport]) -> None:
+        """Give each linked write-in row its filing's bunking request, for the
+        push deck's and the compare modal's mark (kindred#2759 follow-up).
+
+        ADULT WEEKENDS ONLY, checked on the weekend's own `session_type` --
+        a Family Camp weekend never reads Jotform, whatever a row carries.
+        Both endpoints that serve this are `bunking.manage`-gated, the
+        permission every other Jotform read requires. Nothing here feeds the
+        digest: `push_digest` hashes the classified rows, not these payloads.
+        """
+        keys = {row.write_in_key for b in reports for row in (*b.live, *b.draft) if row.write_in_key}
+        if not keys:
+            return
+        session = await self.repository.fetch_session(year, session_cm_id)
+        if str(getattr(session, "session_type", "") or "") != ADULT_SESSION_TYPE:
+            return
+        rows = await self.repository.fetch_jotform_bunking_rows(year)
+        requests = {
+            key: build_bunking_request(filings)
+            for key, filings in filings_by_write_in(rows, session_cm_id=session_cm_id).items()
+        }
+        for b in reports:
+            for row in (*b.live, *b.draft):
+                row.bunking_request = requests.get(row.write_in_key) if row.write_in_key else None
 
     async def _live_rows_with_ids(self, year: int, session_cm_id: int) -> list[tuple[Any, PushRow]]:
         """The live board's write-ins, paired with the raw record each `PushRow`
@@ -1940,6 +1974,9 @@ class LodgingWriteService:
                 "occupant_name": r.occupant_name,
                 "note": r.note,
                 "party_size": r.party_size,
+                # kindred#2759 follow-up: the row's Jotform write-in link, so
+                # an unpush restores a removed row WITH its link.
+                "write_in_key": r.write_in_key,
             }
             for r in removes
         ] + [
@@ -1950,6 +1987,7 @@ class LodgingWriteService:
                 "occupant_name": r.occupant_name,
                 "note": r.note,
                 "party_size": r.party_size,
+                "write_in_key": r.write_in_key,
             }
             for r in adds
         ]
@@ -1995,6 +2033,8 @@ class LodgingWriteService:
                         "occupant_name": r.occupant_name,
                         "note": r.note,
                         "party_size": r.party_size,
+                        # The scenario row's Jotform link lands with it.
+                        "write_in_key": r.write_in_key,
                     }
                 )
         except ClientResponseError as exc:
@@ -2232,6 +2272,9 @@ class LodgingWriteService:
                             "occupant_name": c["occupant_name"],
                             "note": c["note"],
                             "party_size": c["party_size"],
+                            # Absent on a ledger row written before links
+                            # existed: that row had none to restore.
+                            "write_in_key": c.get("write_in_key", "") or "",
                         }
                     )
                     restored += 1
@@ -2255,6 +2298,7 @@ def _row_payload(row: PushRow) -> PushRowPayload:
         note=row.note,
         party_size=row.party_size,
         sleeps=row.sleeps,
+        write_in_key=row.write_in_key,
     )
 
 

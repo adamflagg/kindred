@@ -289,6 +289,13 @@ class WriteInCover(BaseModel):
     # unit clamp above is what would make them diverge if the server kept
     # re-deriving its own answer instead of reading the one it just published.
     unit_sleeps: int | None = None
+    # kindred#2759 follow-up: the Jotform filing(s) linked to this write-in,
+    # as the adult card's bunking request. Only for a `bunking.manage` caller
+    # on an adult weekend; None otherwise and on every unlinked write-in.
+    bunking_request: BunkingRequestSummary | None = None
+    # The row's link key. Server-side only: it joins the row to its filings
+    # and never reaches the wire.
+    write_in_key: str = Field(default="", exclude=True)
 
 
 class PushRowPayload(BaseModel):
@@ -310,6 +317,12 @@ class PushRowPayload(BaseModel):
     # `PushRow.tuple_key()` treats it as such rather than coercing it to 0.
     party_size: int | None = None
     sleeps: int | None = None
+    # kindred#2759 follow-up: the row's Jotform write-in link ("" for none --
+    # every Family Camp row), so the push deck can show a link that differs
+    # between the two sides, and the linked filing's bunking request (adult
+    # weekends only; None otherwise) for the row's mark.
+    write_in_key: str = ""
+    bunking_request: BunkingRequestSummary | None = None
 
 
 class PushBuildingReport(BaseModel):
@@ -1890,6 +1903,10 @@ class AvailabilityWriteRequest(BaseModel):
     # no row id) -- an optional `write_in_id` with this name path as the
     # fallback, needing no migration and re-opening no index decision.
     previous_occupant_name: str | None = Field(None, max_length=500)
+    # kindred#2759 follow-up: the adult-weekend Jotform filing this write-in
+    # is made FROM. When set, the router links the filing to the write-in it
+    # just wrote, in the same request. Occupancy writes only.
+    jotform_submission_id: str | None = Field(None, pattern=r"^[0-9]{1,32}$")
 
     @field_validator("occupant_name", "previous_occupant_name")
     @classmethod
@@ -1974,6 +1991,13 @@ class AvailabilityWriteRequest(BaseModel):
         """
         if self.family_available is False and not self.occupant_name.strip():
             raise ValueError("occupant_name is required when writing somebody in")
+        return self
+
+    @model_validator(mode="after")
+    def _only_an_occupancy_links_a_filing(self) -> Self:
+        """A release and a clear name no occupant to link a Jotform filing to."""
+        if self.jotform_submission_id is not None and self.family_available is not False:
+            raise ValueError("jotform_submission_id links a write-in; it needs family_available false")
         return self
 
     @model_validator(mode="after")
@@ -2212,3 +2236,8 @@ class SessionAttributionConflictsResponse(BaseModel):
 
     year: int = 0
     rows: list[SessionAttributionConflictRow] = []
+
+
+# Forward references to `BunkingRequestSummary`, declared further down this module.
+WriteInCover.model_rebuild()
+PushRowPayload.model_rebuild()

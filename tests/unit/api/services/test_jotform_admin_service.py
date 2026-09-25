@@ -42,6 +42,10 @@ def _repo(**overrides: Any) -> MagicMock:
         "upsert_form": SimpleNamespace(id="form_ww"),
         "fetch_submission": None,
         "update_submission": None,
+        # The board's write-ins, which the queue offers to link a filing to.
+        "fetch_live_write_ins": [],
+        "fetch_draft_write_ins": [],
+        "set_write_in_key": None,
     }
     defaults.update(overrides)
     for name, value in defaults.items():

@@ -41,7 +41,7 @@ import { guestsAndBeds, occupancyClaim } from './adultCapacity'
 import { capAmenityMarks, type AmenityMark, type AmenityMarkKey } from './amenityCap'
 import { startAmenityCapCueBreath, type AmenityCapCueBreath } from './amenityCapCue'
 import { overlappingPartyKeys, partySize, slotOccupancy, type BoardSlot } from './boardLayout'
-import { AssignFamilyModal } from './AssignFamilyModal'
+import { AssignFamilyModal, type JotformFilingChoice } from './AssignFamilyModal'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyHeadcount } from './householdIdentity'
@@ -61,6 +61,7 @@ import {
   writeInDemand,
   writeInEntries,
   type UnitAvailabilityWrite,
+  type WriteInEntry,
   type WriteInRemoval,
 } from './writeIn'
 import { WriteInCard } from './WriteInCard'
@@ -377,6 +378,14 @@ export interface LodgingUnitCardProps {
    * `''` (the default) is a family weekend, unchanged.
    */
   sessionType?: string
+  /**
+   * kindred#2759 follow-up, ADULT WEEKENDS ONLY. The weekend's unlinked
+   * Jotform filings, offered by the write-in box so a write-in can be made
+   * FROM one; and the click a Jotform-linked write-in answers with its panel.
+   * Both are ignored on any other weekend, whatever the payload carries.
+   */
+  jotformFilings?: readonly JotformFilingChoice[] | undefined
+  onOpenWriteIn?: ((entry: WriteInEntry) => void) | undefined
 }
 
 /**
@@ -432,6 +441,8 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   onPlaceParty,
   onOpenParty,
   sessionType = '',
+  jotformFilings,
+  onOpenWriteIn,
 }: LodgingUnitCardProps & DndBridge) {
   const { unit, parties, consent } = slot
   const isAdult = isAdultSessionType(sessionType)
@@ -1827,6 +1838,17 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                 }
               : {})}
             isSaving={savingAvailability}
+            // kindred#2759 follow-up: a Jotform-linked write-in draws the
+            // adult card's mark and opens its own panel -- on an adult
+            // weekend only, never inferred from the payload alone.
+            bunkingRequest={isAdult ? entry.bunkingRequest : undefined}
+            onOpen={
+              isAdult && entry.bunkingRequest !== undefined && onOpenWriteIn !== undefined
+                ? () => {
+                    onOpenWriteIn(entry)
+                  }
+                : undefined
+            }
           />
         ))}
         {/* ⚠️ THE EMPTY-STATE SENTENCE IS STRUCK, AND ITS ABSENCE IS THE
@@ -1998,6 +2020,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
           // The weekend's type (kindred#2765), so the header and the candidate
           // rows grade an adult weekend by the same rule this card does.
           sessionType={sessionType}
+          jotformFilings={isAdult ? jotformFilings : undefined}
           isSaving={savingAvailability}
           onSelect={(party) => {
             onPlaceParty?.(unit, party)
@@ -2022,6 +2045,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                   occupantName: string
                   note: string
                   partySize: number | null
+                  jotformSubmissionId?: string
                 }) => {
                   onSetAvailability({
                     unitId: unit.unit_id,
@@ -2038,6 +2062,10 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
                     // error rather than a silent fall-through to the create
                     // path the pencil must never take.
                     previousOccupantName: null,
+                    // kindred#2759 follow-up: made FROM a Jotform filing.
+                    ...(write.jotformSubmissionId !== undefined
+                      ? { jotformSubmissionId: write.jotformSubmissionId }
+                      : {}),
                   })
                 },
               }

@@ -2,6 +2,11 @@
  * The unmatched queue, duplicates, and staff links (kindred#2759). Kindred
  * never picks between candidates: every suggestion is a labelled button, and
  * any enrolled guest of the weekend can be chosen by hand.
+ *
+ * A filer who is not a guest at all -- staff, say -- can be linked to one of
+ * the weekend's board write-ins instead (kindred#2759 follow-up); the one
+ * whose name matches is pre-selected, never linked on its own. Filers who
+ * match a registration that is not enrolled are listed apart, needing nothing.
  */
 import { useState } from 'react'
 
@@ -10,6 +15,7 @@ import type {
   JotformDuplicateGroupRow,
   JotformGuestRow,
   JotformQueueEntry,
+  JotformWriteInChoice,
 } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
 import { shortDate } from '../../weekend/bunkingRequest'
@@ -26,12 +32,18 @@ import {
 function UnmatchedItem({
   item,
   guests,
+  writeIns,
 }: {
   item: JotformQueueEntry
   guests: readonly JotformGuestRow[]
+  /** This weekend's board write-ins, already filtered to its session. */
+  writeIns: readonly JotformWriteInChoice[]
 }) {
   const action = useJotformSubmissionAction()
   const [chosen, setChosen] = useState('')
+  // Pre-selected when a write-in's name matches the filer's; staff can pick any.
+  const [chosenWriteIn, setChosenWriteIn] = useState(item.write_in_suggestion ?? '')
+  const writeIn = writeIns.find((option) => option.option_id === chosenWriteIn)
   const sessionGuests = guests.filter((guest) => guest.session_cm_id === item.session_cm_id)
   const enrolled = new Set(sessionGuests.map((guest) => guest.person_cm_id))
   const nametag = item.nametag ?? ''
@@ -139,6 +151,46 @@ function UnmatchedItem({
         >
           Ignore
         </button>
+        {writeIns.length > 0 && (
+          // Its own line under the guest picker: the two lists are different
+          // kinds of thing, and one wide row would crowd the filing.
+          <div className="flex basis-full items-center gap-2">
+            <select
+              className={`${FIELD_INLINE} w-56`}
+              aria-label={`Write-in for ${item.submitted_name}`}
+              value={chosenWriteIn}
+              onChange={(event) => {
+                setChosenWriteIn(event.target.value)
+              }}
+            >
+              <option value="">Choose a write-in…</option>
+              {writeIns.map((option) => (
+                <option key={option.option_id} value={option.option_id}>
+                  {option.unit_name
+                    ? `${option.occupant_name} · ${option.unit_name}`
+                    : option.occupant_name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={BUTTON_SECONDARY}
+              disabled={writeIn === undefined || action.isPending}
+              aria-label="Link chosen write-in"
+              onClick={() => {
+                if (writeIn === undefined) return
+                action.mutate({
+                  kind: 'write_in',
+                  submissionId: item.submission_id,
+                  unitId: writeIn.unit_id,
+                  occupantName: writeIn.occupant_name,
+                })
+              }}
+            >
+              Write-in
+            </button>
+          </div>
+        )}
       </div>
     </li>
   )
@@ -198,10 +250,16 @@ function ResolvedList({
   testId,
   title,
   rows,
+  detail,
+  undoable = true,
 }: {
   testId: string
   title: string
   rows: readonly JotformQueueEntry[]
+  /** What the filing resolved to, after the arrow; nothing when absent. */
+  detail?: (item: JotformQueueEntry) => string
+  /** False for a list that asks nothing of staff (cancelled registrations). */
+  undoable?: boolean
 }) {
   const action = useJotformSubmissionAction()
   return (
@@ -216,25 +274,29 @@ function ResolvedList({
             // never linked to anyone: it is restored to the queue.
             const ignored = item.match_status === 'ignored'
             const verb = ignored ? 'Restore' : 'Unlink'
+            const after =
+              detail !== undefined ? detail(item) : ignored ? '' : (item.guest_name ?? '')
             return (
               <li key={item.submission_id} className="flex items-baseline gap-2 py-1.5 text-sm">
                 <span className="min-w-0 truncate">
                   <span className="font-semibold">{item.submitted_name}</span>
-                  {!ignored && (
-                    <span className="text-muted-foreground text-xs">{` → ${item.guest_name ?? ''}`}</span>
+                  {after !== '' && (
+                    <span className="text-muted-foreground text-xs">{` → ${after}`}</span>
                   )}
                 </span>
-                <button
-                  type="button"
-                  className={`${ACTION_LINK} text-primary ml-auto shrink-0`}
-                  disabled={action.isPending}
-                  aria-label={`${verb} ${item.submitted_name}`}
-                  onClick={() => {
-                    action.mutate({ kind: 'unlink', submissionId: item.submission_id })
-                  }}
-                >
-                  {verb}
-                </button>
+                {undoable && (
+                  <button
+                    type="button"
+                    className={`${ACTION_LINK} text-primary ml-auto shrink-0`}
+                    disabled={action.isPending}
+                    aria-label={`${verb} ${item.submitted_name}`}
+                    onClick={() => {
+                      action.mutate({ kind: 'unlink', submissionId: item.submission_id })
+                    }}
+                  >
+                    {verb}
+                  </button>
+                )}
               </li>
             )
           })}
@@ -273,6 +335,9 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
         const resolved = mine(data.resolved)
         const staffLinks = resolved.filter((row) => row.match_status !== 'ignored')
         const ignored = resolved.filter((row) => row.match_status === 'ignored')
+        const writeIns = mine(data.write_ins)
+        const cancelled = mine(data.cancelled)
+        const writeInChoices = mine(data.write_in_options)
         return (
           <div className="flex flex-col gap-4">
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -290,6 +355,7 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                         key={item.submission_id}
                         item={item}
                         guests={data.guests ?? []}
+                        writeIns={writeInChoices}
                       />
                     ))}
                   </ul>
@@ -302,6 +368,26 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
               </section>
               <div className="flex flex-col gap-4">
                 <ResolvedList testId="jotform-staff-links" title="Staff links" rows={staffLinks} />
+                <ResolvedList
+                  testId="jotform-write-ins"
+                  title="Write-ins"
+                  rows={writeIns}
+                  detail={(item) =>
+                    [item.write_in_name ?? '', item.write_in_unit ?? '']
+                      .filter((part) => part !== '')
+                      .join(' · ')
+                  }
+                />
+                <ResolvedList
+                  testId="jotform-cancelled"
+                  title="Cancelled registrations"
+                  rows={cancelled}
+                  detail={(item) => {
+                    const status = item.registration_status ?? ''
+                    return status === '' ? 'cancelled' : status
+                  }}
+                  undoable={false}
+                />
                 <ResolvedList testId="jotform-ignored" title="Ignored" rows={ignored} />
               </div>
             </div>

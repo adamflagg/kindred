@@ -109,8 +109,11 @@ func newJotformTestApp(t *testing.T) core.App {
 	subs.Fields.Add(&core.TextField{Name: "jotform_status"})
 	subs.Fields.Add(&core.NumberField{Name: "person_cm_id"})
 	subs.Fields.Add(&core.SelectField{
-		Name: "match_status", Values: []string{"auto", "staff", "unmatched", "ignored"}, MaxSelect: 1,
+		Name: "match_status", Values: []string{"auto", "staff", "unmatched", "ignored", "cancelled", "write_in"},
+		MaxSelect: 1,
 	})
+	subs.Fields.Add(&core.TextField{Name: "registration_status"})
+	subs.Fields.Add(&core.TextField{Name: "write_in_key"})
 	subs.Fields.Add(&core.NumberField{Name: "match_tier"})
 	subs.Fields.Add(&core.TextField{Name: "linked_by"})
 	subs.Fields.Add(&core.DateField{Name: "linked_at"})
@@ -125,6 +128,30 @@ func newJotformTestApp(t *testing.T) core.App {
 	answers.Fields.Add(&core.JSONField{Name: "answer_json"})
 	answers.Fields.Add(&core.NumberField{Name: "order"})
 	saveCollection(t, app, answers)
+
+	// The attendee's status TEXT, which a `cancelled` match reports.
+	attendees, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attendees.Fields.GetByName("status") == nil {
+		attendees.Fields.Add(&core.TextField{Name: "status"})
+	}
+	saveCollection(t, app, attendees)
+
+	// The write-in tables, shaped like 1500000161 + 1500000182: only what the
+	// pull reads to tell a live write-in link from a dropped one.
+	for _, name := range []string{"lodging_write_ins", "lodging_write_ins_draft"} {
+		c := core.NewBaseCollection(name)
+		c.Fields.Add(&core.NumberField{Name: "session_cm_id"})
+		c.Fields.Add(&core.NumberField{Name: "year"})
+		c.Fields.Add(&core.TextField{Name: "occupant_name"})
+		c.Fields.Add(&core.TextField{Name: "write_in_key"})
+		if name == "lodging_write_ins_draft" {
+			c.Fields.Add(&core.TextField{Name: "scenario"})
+		}
+		saveCollection(t, app, c)
+	}
 	return app
 }
 
@@ -210,9 +237,13 @@ func TestJotformPullStoresEveryAnswerAndMatches(t *testing.T) {
 		got.GetInt("person_cm_id") != 0 {
 		t.Errorf("a typo goes to staff: %v", got.PublicExport())
 	}
-	// Liam Garcia's attendee row is cancelled (status 4): not a candidate.
-	if got := subRecord(t, app, "6600000000000000003"); got.GetString("match_status") != "unmatched" {
-		t.Errorf("a non-enrolled person must not match: %v", got.PublicExport())
+	// Liam Garcia's attendee row is not enrolled (status 4): never an AUTO
+	// match. Since the cancelled-registrations ruling (kindred#2759 follow-up)
+	// it is recorded as a `cancelled` match to that registration instead of
+	// sitting in the unmatched queue.
+	if got := subRecord(t, app, "6600000000000000003"); got.GetString("match_status") != "cancelled" ||
+		got.GetInt("person_cm_id") != 1000006 {
+		t.Errorf("a non-enrolled registration must match as cancelled, never auto: %v", got.PublicExport())
 	}
 	answers, _ := app.FindRecordsByFilter("jotform_answers", "", "", 0, 0)
 	// 3 names + 2 non-blank bunking answers; the blank one is not stored.
@@ -220,7 +251,8 @@ func TestJotformPullStoresEveryAnswerAndMatches(t *testing.T) {
 		t.Errorf("stored %d answers, want 5", len(answers))
 	}
 	form, _ := app.FindFirstRecordByFilter("jotform_forms", "form_id = '261700000000001'")
-	if !strings.HasPrefix(form.GetString("last_pull_status"), "ok · 3 submissions · 1 matched · 2 unmatched") {
+	const wantStatus = "ok · 3 submissions · 1 matched · 1 unmatched · 1 cancelled"
+	if !strings.HasPrefix(form.GetString("last_pull_status"), wantStatus) {
 		t.Errorf("last_pull_status = %q", form.GetString("last_pull_status"))
 	}
 }
@@ -378,9 +410,11 @@ func TestJotformAutoMatchIsReevaluatedEachPull(t *testing.T) {
 	if _, err := runJotform(t, app, fake); err != nil {
 		t.Fatal(err)
 	}
-	if got := subRecord(t, app, "6600000000000000001"); got.GetString("match_status") != "unmatched" ||
-		got.GetInt("person_cm_id") != 0 {
-		t.Errorf("an auto match to a no-longer-enrolled guest must be withdrawn: %v", got.PublicExport())
+	// Withdrawn as an AUTO match; since the cancelled-registrations ruling the
+	// same registration is what it now matches, as `cancelled`.
+	if got := subRecord(t, app, "6600000000000000001"); got.GetString("match_status") != "cancelled" ||
+		got.GetInt("person_cm_id") != 1000004 {
+		t.Errorf("an auto match to a no-longer-enrolled guest must be withdrawn to cancelled: %v", got.PublicExport())
 	}
 }
 

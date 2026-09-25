@@ -43,12 +43,15 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
+import { useJotformQueue } from '../../hooks/useJotformAdmin'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
 import { usePanelParty } from '../../hooks/usePanelParty'
 import { useShareEmphasisBurst } from '../../hooks/useShareEmphasisBurst'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
+import type { JotformFilingChoice } from './AssignFamilyModal'
 import { areaTokens, buildBoard } from './boardLayout'
 import { setBoardMorphHint } from './boardMorph'
 import { BoardMorphBoundary } from './BoardMorphBoundary'
@@ -66,8 +69,9 @@ import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
-import type { UnitAvailabilityWrite, WriteInRemoval } from './writeIn'
+import type { UnitAvailabilityWrite, WriteInEntry, WriteInRemoval } from './writeIn'
 import { writeInEntries } from './writeIn'
+import { WriteInDetailsPanel } from './WriteInDetailsPanel'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -285,8 +289,69 @@ export function LodgingBoard({
     () => new Set(searchParams.getAll(CLOSED_PARAM)),
     [searchParams]
   )
-  const { panelParty, requestClose, openParty, closePanel, requestPanelClose } =
-    usePanelParty(parties)
+  const {
+    panelParty,
+    requestClose,
+    openParty: openPartyPanel,
+    closePanel,
+    requestPanelClose,
+  } = usePanelParty(parties)
+
+  /*
+   * kindred#2759 follow-up, ADULT WEEKENDS ONLY. A write-in linked to a
+   * Jotform filing opens its own bare-bones panel. Held as the row's address
+   * (unit + occupant name) rather than a snapshot, so a roster refetch
+   * updates it and a write-in that leaves the board closes it. One side panel
+   * at a time: opening either closes the other.
+   */
+  const isAdult = isAdultSessionType(sessionType)
+  const [writeInPanel, setWriteInPanel] = useState<{ unitId: string; name: string } | null>(null)
+  const [writeInClosing, setWriteInClosing] = useState(false)
+  const panelWriteIn = useMemo(() => {
+    if (writeInPanel === null || !isAdult) return null
+    for (const unit of units) {
+      for (const entry of writeInEntries(unit)) {
+        if (
+          entry.source.unitId === writeInPanel.unitId &&
+          entry.occupant.name === writeInPanel.name &&
+          entry.bunkingRequest !== undefined
+        ) {
+          return { name: entry.occupant.name, request: entry.bunkingRequest }
+        }
+      }
+    }
+    return null
+  }, [writeInPanel, isAdult, units])
+  const openParty = useCallback(
+    (party: RosterPartyRow) => {
+      setWriteInPanel(null)
+      openPartyPanel(party)
+    },
+    [openPartyPanel]
+  )
+  const openWriteIn = useCallback(
+    (entry: WriteInEntry) => {
+      closePanel()
+      setWriteInClosing(false)
+      setWriteInPanel({ unitId: entry.source.unitId, name: entry.occupant.name })
+    },
+    [closePanel]
+  )
+  // The board's weekend's unlinked adult Jotform filings, for the write-in
+  // box. Read only for a `bunking.manage` caller on an adult weekend -- the
+  // endpoint is `bunking.manage`-gated -- and never on Family Camp.
+  const jotformQueue = useJotformQueue(year, canManage && isAdult && sessionCmId > 0)
+  const jotformFilings = useMemo<JotformFilingChoice[]>(
+    () =>
+      (jotformQueue.data?.unmatched ?? [])
+        .filter((item) => item.session_cm_id === sessionCmId)
+        .map((item) => ({
+          submissionId: item.submission_id,
+          name: item.submitted_name,
+          nametag: item.nametag ?? '',
+        })),
+    [jotformQueue.data, sessionCmId]
+  )
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
@@ -603,6 +668,10 @@ export function LodgingBoard({
         // step 8 narrows the index. `''` is a real address (the row nobody
         // named), so nothing on this hop may collapse it into `null`.
         previousOccupantName: write.previousOccupantName,
+        // kindred#2759 follow-up: made FROM an adult Jotform filing.
+        ...(write.jotformSubmissionId !== undefined
+          ? { jotformSubmissionId: write.jotformSubmissionId }
+          : {}),
       }).catch(() => undefined)
     },
     [setAvailability]
@@ -639,6 +708,9 @@ export function LodgingBoard({
 
   // Same dead-space dismissal the summer board uses, through the same hook.
   useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
+  useDismissOnDeadSpace(panelWriteIn !== null, () => {
+    setWriteInClosing(true)
+  })
 
   const toggleArea = (token: string) => {
     setSearchParams(
@@ -815,6 +887,8 @@ export function LodgingBoard({
                             unplacedParties={board.unplaced}
                             onPlaceParty={placeParty}
                             onOpenParty={openParty}
+                            jotformFilings={jotformFilings}
+                            onOpenWriteIn={openWriteIn}
                           />
                         ))}
                       </div>
@@ -876,6 +950,18 @@ export function LodgingBoard({
           canPlace={canPlace}
           sessionType={sessionType}
         />
+
+        {panelWriteIn !== null && (
+          <WriteInDetailsPanel
+            name={panelWriteIn.name}
+            request={panelWriteIn.request}
+            requestClose={writeInClosing}
+            onClose={() => {
+              setWriteInPanel(null)
+              setWriteInClosing(false)
+            }}
+          />
+        )}
 
         {panelParty !== null && (
           <FamilyDetailsPanel

@@ -109,6 +109,14 @@ import {
 import { effectiveSleeps, partySpots } from './rosterAttention'
 import { PARTY_SIZE_CHOICES, coveringWriteIns, writeInDemand } from './writeIn'
 
+/** One adult Jotform filing a write-in can be made from (kindred#2759 follow-up). */
+export interface JotformFilingChoice {
+  submissionId: string
+  /** The filer's first and last name, as submitted: the occupant name it fills in. */
+  name: string
+  nametag: string
+}
+
 export interface AssignFamilyModalProps {
   isOpen: boolean
   onClose: () => void
@@ -165,7 +173,22 @@ export interface AssignFamilyModalProps {
    * must not be shown an affordance it cannot honour.
    */
   onWriteIn?:
-    ((write: { occupantName: string; note: string; partySize: number | null }) => void) | undefined
+    | ((write: {
+        occupantName: string
+        note: string
+        partySize: number | null
+        /** Set only when the write-in is made FROM a Jotform filing. */
+        jotformSubmissionId?: string
+      }) => void)
+    | undefined
+  /**
+   * kindred#2759 follow-up: the weekend's adult Jotform filings that no guest
+   * or write-in holds yet. When given, the write-in box offers them: picking
+   * one fills the occupant name with the filer's first and last name (staff
+   * can still edit it) and the write links the filing in the same request.
+   * Empty or absent -- every Family Camp weekend -- and nothing is drawn.
+   */
+  jotformFilings?: readonly JotformFilingChoice[] | undefined
   /** True while a write THIS card started is in flight. */
   isSaving?: boolean
   /**
@@ -542,6 +565,7 @@ export function AssignFamilyModal({
   onWriteIn,
   isSaving = false,
   sessionType = '',
+  jotformFilings,
 }: AssignFamilyModalProps) {
   const isAdult = isAdultSessionType(sessionType)
   /*
@@ -595,6 +619,9 @@ export function AssignFamilyModal({
    */
   const [people, setPeople] = useState('')
   const partySize = people === '' ? null : Number(people)
+  // The Jotform filing this write-in is made from, or '' for none.
+  const [filing, setFiling] = useState('')
+  const filings = jotformFilings ?? []
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
@@ -681,7 +708,10 @@ export function AssignFamilyModal({
    * the far more common mistake is writing in somebody who IS registered — and
    * an extra distinguishing word reaches the offer.
    */
-  const offersWriteIn = onWriteIn !== undefined && trimmed !== '' && candidates.length === 0
+  // A picked Jotform filing is the other way in: the filer is not registered,
+  // so a family that happens to share the name is not them (kindred#2837).
+  const offersWriteIn =
+    onWriteIn !== undefined && trimmed !== '' && (candidates.length === 0 || filing !== '')
 
   /*
    * ⚠️ THE OVERWRITE WARNING WAS DELETED HERE BY STEP 8 (kindred#2583), and
@@ -706,6 +736,7 @@ export function AssignFamilyModal({
     setQuery('')
     setNote('')
     setPeople('')
+    setFiling('')
     onClose()
   }
 
@@ -717,10 +748,16 @@ export function AssignFamilyModal({
     if (!offersWriteIn) return
     // The TRIMMED text, which is what the offer shows. Staff type into a search
     // box and a trailing space is a typing artefact, not a name.
-    onWriteIn({ occupantName: trimmed, note: note.trim(), partySize })
+    onWriteIn({
+      occupantName: trimmed,
+      note: note.trim(),
+      partySize,
+      ...(filing !== '' ? { jotformSubmissionId: filing } : {}),
+    })
     setQuery('')
     setNote('')
     setPeople('')
+    setFiling('')
     onClose()
   }
 
@@ -1045,6 +1082,38 @@ export function AssignFamilyModal({
             that can change height inside it would reopen the jump. Here the row
             is constant and the region below is untouched. */}
 
+        {/* THE JOTFORM PICKER -- above the swap region, beside the group chips
+            and for the same reason: it is constant (present whenever the
+            weekend has unlinked filings), so it moves nothing when the region
+            flips. It used to sit inside the write-in offer, which only appears
+            once a typed name matches no family -- so staff could not find it
+            until they had typed a non-matching name, and a filed name that
+            also matched a family made it vanish (scan of kindred#2837). */}
+        {filings.length > 0 && (
+          <label className="flex flex-col gap-[3px] pb-2 text-xs font-medium">
+            From Jotform
+            <select
+              aria-label="Jotform filing"
+              value={filing}
+              disabled={isSaving}
+              onChange={(event) => {
+                const id = event.target.value
+                setFiling(id)
+                const chosen = filings.find((f) => f.submissionId === id)
+                if (chosen !== undefined) setQuery(chosen.name)
+              }}
+              className="border-border bg-background text-foreground focus:border-primary/50 focus:ring-primary/10 rounded-md border px-1.5 py-1 text-sm font-normal focus:ring-2 focus:outline-none"
+            >
+              <option value="">None</option>
+              {filings.map((f) => (
+                <option key={f.submissionId} value={f.submissionId}>
+                  {f.nametag !== '' ? `${f.name} (nametag “${f.nametag}”)` : f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <div
           data-testid="assign-swap-region"
           className="border-border h-80 overflow-y-auto border-t border-dashed pt-[9px]"
@@ -1064,7 +1133,9 @@ export function AssignFamilyModal({
                   on the flip; inside a region whose height is fixed it costs
                   nothing, and all three measure 0px of travel. */}
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                {`No family matches “${trimmed}” — this will be written in.`}
+                {filing !== ''
+                  ? `“${trimmed}” from Jotform will be written in.`
+                  : `No family matches “${trimmed}” — this will be written in.`}
               </p>
               {/* ONE ROW, People then Note (owner ruling 2026-08-23). They
                   were stacked; a select needs ~5.5rem and the note wants the

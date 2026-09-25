@@ -214,6 +214,27 @@ describe('unplaceParty', () => {
 describe('setUnitAvailability', () => {
   const WEEKEND = { year: 2026, sessionCmId: 1000001, unitId: 'u1', scenario: '' }
 
+  it('sends the Jotform filing a write-in is made from, and only when there is one', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+    const base = {
+      ...WEEKEND,
+      familyAvailable: false,
+      occupantName: 'Pat Doe',
+      reason: '',
+      partySize: null,
+      previousOccupantName: null,
+    }
+
+    await setUnitAvailability(mockFetch, { ...base, jotformSubmissionId: '6600000000000000001' })
+    await setUnitAvailability(mockFetch, base)
+
+    const bodies = mockFetch.mock.calls.map((call) =>
+      JSON.parse((call[1] as RequestInit).body as string)
+    )
+    expect(bodies[0].jotform_submission_id).toBe('6600000000000000001')
+    expect('jotform_submission_id' in bodies[1]).toBe(false)
+  })
+
   it('PUTs the weekend, the unit and the explicit boolean', async () => {
     const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
 

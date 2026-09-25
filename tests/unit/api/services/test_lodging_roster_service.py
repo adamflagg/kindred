@@ -10090,3 +10090,78 @@ class TestAdultGuestBunkingRequest:
         request = roster.parties[0].bunking_request
         assert request is not None
         assert request.state == "no_form"
+
+
+def _write_in_jotform_rows(key: str, text: str, session_cm_id: int = 1000002) -> JotformBunkingRows:
+    """One filing linked to a board write-in by `key` (kindred#2759 follow-up)."""
+    return JotformBunkingRows(
+        forms=[_rec(id="form_ww", session_cm_id=session_cm_id, field_map={"bunking_request": "21"})],
+        submissions=[
+            _rec(
+                id="sub_w",
+                submission_id="6600000000000000020",
+                form="form_ww",
+                session_cm_id=session_cm_id,
+                person_cm_id=0,
+                submitted_at="2026-08-31 09:00:00",
+                match_status="write_in",
+                write_in_key=key,
+                jotform_status="ACTIVE",
+            )
+        ],
+        answers=[_rec(submission="sub_w", question_id="21", answer_text=text, answer_json=None)],
+    )
+
+
+class TestWriteInBunkingRequest:
+    """A board write-in linked to a Jotform filing carries that filing's
+    bunking request, for a `bunking.manage` caller on an adult weekend only."""
+
+    @pytest.mark.asyncio
+    async def test_a_linked_write_in_carries_the_request(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_units=[_unit("u1", "cedar-3", "Cedar 3", sleeps=4)],
+            fetch_write_ins=[
+                _rec(unit="u1", occupant_name="Pat Doe", note="", party_size=0, write_in_key="k1"),
+                _rec(unit="u1", occupant_name="Kitchen crew", note="", party_size=0, write_in_key=""),
+            ],
+            fetch_jotform_bunking_rows=_write_in_jotform_rows("k1", "Emma Johnson"),
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002, include_bunking_request=True)
+
+        covers = {c.occupant_name: c for c in roster.units[0].write_ins}
+        linked = covers["Pat Doe"].bunking_request
+        assert linked is not None
+        assert (linked.state, linked.current_text) == ("request", "Emma Johnson")
+        assert covers["Kitchen crew"].bunking_request is None
+        # The link key itself never reaches the wire.
+        assert "write_in_key" not in roster.units[0].write_ins[0].model_dump()
+
+    @pytest.mark.asyncio
+    async def test_without_the_permission_no_write_in_carries_a_request(self) -> None:
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_units=[_unit("u1", "cedar-3", "Cedar 3", sleeps=4)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Pat Doe", note="", party_size=0, write_in_key="k1")],
+            fetch_jotform_bunking_rows=_write_in_jotform_rows("k1", "Emma Johnson"),
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert all(c.bunking_request is None for c in roster.units[0].write_ins)
+
+    @pytest.mark.asyncio
+    async def test_a_family_weekend_write_in_never_carries_one(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "cedar-3", "Cedar 3", sleeps=4)],
+            fetch_write_ins=[_rec(unit="u1", occupant_name="Pat Doe", note="", party_size=0, write_in_key="k1")],
+            fetch_jotform_bunking_rows=_write_in_jotform_rows("k1", "Emma Johnson", session_cm_id=1000001),
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, include_bunking_request=True)
+
+        assert all(c.bunking_request is None for c in roster.units[0].write_ins)
+        repo.fetch_jotform_bunking_rows.assert_not_called()

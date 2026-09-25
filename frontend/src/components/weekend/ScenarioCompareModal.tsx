@@ -108,7 +108,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 
 import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { useWeekendRoster } from '../../hooks/useWeekendRoster'
@@ -116,9 +116,12 @@ import { fetchScenarioCompare } from '../../services/lodgingApi'
 import type { CompareParty, ScenarioCompare } from '../../types/lodging'
 import { displayTruncatedAge } from '../../utils/age'
 import { queryKeys } from '../../utils/queryKeys'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { QueryGuard } from '../QueryGuard'
 import { Modal } from '../ui/Modal'
 import { boardPlacementNamer, placementUnitNamer } from './boardLayout'
+import { BunkingRequestMark } from './BunkingRequestMark'
+import { linkedRequest } from './bunkingRequest'
 import { childrenRunLabel } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { VERDICT_TONE, type Verdict } from './verdictTone'
@@ -394,9 +397,40 @@ function occupantsOf(rows: NonNullable<CompareWriteIn['draft']>): string {
     .join(' · ')
 }
 
-function WriteInRow({ building }: { building: CompareWriteIn }) {
-  const draft = occupantsOf(building.draft ?? [])
-  const live = occupantsOf(building.live ?? [])
+/**
+ * `occupantsOf`, with the bunking-request mark after each Jotform-linked
+ * write-in's name (kindred#2759 follow-up). Adult weekends only; the text reads
+ * the same as `occupantsOf`'s.
+ */
+function markedOccupantsOf(rows: NonNullable<CompareWriteIn['draft']>): ReactNode {
+  const named = rows.filter((row) => row.occupant_name !== '')
+  return named.map((row, index) => {
+    const request = linkedRequest(row, true)
+    return (
+      <Fragment key={`${row.unit_id}/${row.occupant_name}/${String(index)}`}>
+        {index > 0 && ' · '}
+        {row.party_size == null
+          ? row.occupant_name
+          : `${row.occupant_name} (${String(row.party_size)})`}
+        {request !== null && (
+          <span className="ml-1 inline-flex align-middle">
+            <BunkingRequestMark request={request} />
+          </span>
+        )}
+      </Fragment>
+    )
+  })
+}
+
+function WriteInRow({ building, isAdult }: { building: CompareWriteIn; isAdult: boolean }) {
+  const draftText = occupantsOf(building.draft ?? [])
+  const liveText = occupantsOf(building.live ?? [])
+  // Family Camp keeps the plain strings, exactly as before; an adult weekend
+  // draws the same text with the linked write-ins marked.
+  const draft: ReactNode =
+    isAdult && draftText !== '' ? markedOccupantsOf(building.draft ?? []) : draftText
+  const live: ReactNode =
+    isAdult && liveText !== '' ? markedOccupantsOf(building.live ?? []) : liveText
   return (
     <div
       data-testid="compare-write-in-row"
@@ -406,12 +440,20 @@ function WriteInRow({ building }: { building: CompareWriteIn }) {
           name on its own says nothing: "Gamma 1 — Only in this plan" does not
           tell staff who the scenario put there. */}
       <span className="min-w-48 flex-1 text-sm font-semibold">
-        {building.cls === 'conflict' && draft !== '' && live !== '' ? (
+        {building.cls === 'conflict' && draftText !== '' && liveText !== '' ? (
           <>
             {draft} <span className="text-muted-foreground font-normal">&rarr;</span> {live}
           </>
         ) : (
-          draft || live || <span className="text-muted-foreground">&mdash;</span>
+          <>
+            {draftText !== '' ? (
+              draft
+            ) : liveText !== '' ? (
+              live
+            ) : (
+              <span className="text-muted-foreground">&mdash;</span>
+            )}
+          </>
         )}
       </span>
       <span className="text-sm">{building.label}</span>
@@ -434,7 +476,13 @@ function WriteInRow({ building }: { building: CompareWriteIn }) {
  * write-in is agreement, and a screen whose job is to surface disagreement
  * should not make you scroll past the agreement to find it.
  */
-function WriteInSection({ buildings }: { buildings: readonly CompareWriteIn[] }) {
+function WriteInSection({
+  buildings,
+  isAdult,
+}: {
+  buildings: readonly CompareWriteIn[]
+  isAdult: boolean
+}) {
   const [showMatches, setShowMatches] = useState(false)
   if (buildings.length === 0) return null
   const differing = buildings.filter((b) => b.cls !== 'match')
@@ -451,7 +499,7 @@ function WriteInSection({ buildings }: { buildings: readonly CompareWriteIn[] })
       ) : (
         <div className="flex flex-col">
           {differing.map((building) => (
-            <WriteInRow key={building.key} building={building} />
+            <WriteInRow key={building.key} building={building} isAdult={isAdult} />
           ))}
         </div>
       )}
@@ -469,7 +517,7 @@ function WriteInSection({ buildings }: { buildings: readonly CompareWriteIn[] })
           {showMatches && (
             <div className="flex flex-col">
               {matching.map((building) => (
-                <WriteInRow key={building.key} building={building} />
+                <WriteInRow key={building.key} building={building} isAdult={isAdult} />
               ))}
             </div>
           )}
@@ -516,10 +564,12 @@ function CompareScreen({
   compare,
   nameOnBoard,
   nameUnits,
+  isAdult,
 }: {
   compare: ScenarioCompare
   nameOnBoard: (codes: readonly string[]) => string
   nameUnits: (codes: readonly string[]) => string
+  isAdult: boolean
 }) {
   const [showMatches, setShowMatches] = useState(false)
   const parties = compare.parties ?? []
@@ -592,7 +642,7 @@ function CompareScreen({
           </section>
         )}
 
-        <WriteInSection buildings={compare.write_ins ?? []} />
+        <WriteInSection buildings={compare.write_ins ?? []} isAdult={isAdult} />
       </div>
 
       <CompareFooter syncedAt={compare.mirror_synced_at} />
@@ -606,6 +656,11 @@ export interface ScenarioCompareModalProps {
   scenario: string
   isOpen: boolean
   onClose: () => void
+  /**
+   * The weekend's `session_type` (kindred#2759 follow-up): an adult weekend
+   * marks Jotform-linked write-ins. Family Camp renders as it always has.
+   */
+  sessionType?: string | undefined
 }
 
 export function ScenarioCompareModal({
@@ -614,6 +669,7 @@ export function ScenarioCompareModal({
   scenario,
   isOpen,
   onClose,
+  sessionType,
 }: ScenarioCompareModalProps) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
   // `!isAuthLoading` on BOTH reads below, per `frontend/CLAUDE.md`:
@@ -667,7 +723,12 @@ export function ScenarioCompareModal({
         label="comparison"
       >
         {(compare) => (
-          <CompareScreen compare={compare} nameOnBoard={nameOnBoard} nameUnits={nameUnits} />
+          <CompareScreen
+            compare={compare}
+            nameOnBoard={nameOnBoard}
+            nameUnits={nameUnits}
+            isAdult={isAdultSessionType(sessionType)}
+          />
         )}
       </QueryGuard>
     </Modal>

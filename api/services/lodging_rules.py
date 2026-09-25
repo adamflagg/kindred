@@ -1373,6 +1373,13 @@ class PushRow:
     note: str
     party_size: int | None
     sleeps: int | None
+    # The row's Jotform write-in link (kindred#2759 follow-up), "" for none --
+    # every Family Camp row. NOT part of `tuple_key`, which is the RULED
+    # identity the push resolves live rows by; `classify_push` and
+    # `push_digest` compare it beside that tuple, so a link that differs
+    # between the board and the scenario is a conflict staff decide, and the
+    # winning row's link is the one that lands.
+    write_in_key: str = ""
 
     def tuple_key(self) -> tuple[str, str, str, int | None]:
         # The RULED matching tuple (kindred#2477): placement, occupant, note,
@@ -1380,6 +1387,24 @@ class PushRow:
         # and None people is a VALUE (occupies wholesale, #2540), so a live
         # None against a recorded count IS a difference.
         return (self.unit_id, self.occupant_name.strip(), self.note.strip(), self.party_size)
+
+
+def _linked_keys(rows: Sequence[PushRow]) -> list[tuple[tuple[str, str, str, int | None], str]]:
+    """Each row's ruled tuple beside its write-in link, in a stable order.
+
+    With no links anywhere (every Family Camp weekend) this compares and
+    hashes exactly as the bare tuples did, plus a constant "" per row."""
+    return sorted(
+        ((r.tuple_key(), r.write_in_key) for r in rows),
+        key=lambda pair: (_tuple_key_sort_key(pair[0]), pair[1]),
+    )
+
+
+def _digest_entry(pair: tuple[tuple[str, str, str, int | None], str]) -> tuple[Any, ...]:
+    """The bare ruled tuple for an unlinked row, so a weekend with no links
+    (every Family Camp weekend) hashes exactly as it did before links existed."""
+    key, link = pair
+    return key if not link else (*key, link)
 
 
 @dataclass(frozen=True)
@@ -1433,9 +1458,7 @@ def classify_push(live: Sequence[PushRow], draft: Sequence[PushRow], units: Sequ
             cls = "add"
         elif lrows and not drows:
             cls = "remove"
-        elif sorted((r.tuple_key() for r in lrows), key=_tuple_key_sort_key) == sorted(
-            (r.tuple_key() for r in drows), key=_tuple_key_sort_key
-        ):
+        elif _linked_keys(lrows) == _linked_keys(drows):
             cls = "match"
         else:
             cls = "conflict"
@@ -1451,8 +1474,8 @@ def push_digest(buildings: Sequence[PushBuilding]) -> str:
         (
             b.key,
             b.cls,
-            sorted((r.tuple_key() for r in b.live), key=_tuple_key_sort_key),
-            sorted((r.tuple_key() for r in b.draft), key=_tuple_key_sort_key),
+            [_digest_entry(pair) for pair in _linked_keys(b.live)],
+            [_digest_entry(pair) for pair in _linked_keys(b.draft)],
         )
         for b in sorted(buildings, key=lambda b: b.key)
     ]

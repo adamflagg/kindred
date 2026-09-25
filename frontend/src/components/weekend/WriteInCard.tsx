@@ -105,6 +105,9 @@
 import { Pencil } from 'lucide-react'
 import { useState } from 'react'
 
+import type { BunkingRequest } from '../../types/lodging'
+import { resolveBunkingRequestRuns } from './bunkingRequest'
+import { MarkRuns } from './MarkRun'
 import { partySizeOptions, writeInOccupantLabel, type WriteInOccupant } from './writeIn'
 
 /** `FamilyCard`'s `CARD_FRAME`, verbatim. Pinned by this module's test. */
@@ -174,9 +177,24 @@ export interface WriteInCardProps {
    * alternative leaves an X live beside a row that is already going away.
    */
   isSaving?: boolean
+  /**
+   * The linked Jotform filing's bunking request (kindred#2759 follow-up). When
+   * present the card draws the adult card's Handshake mark and, given
+   * `onOpen`, its name opens the write-in panel. The caller passes it only on
+   * an adult weekend.
+   */
+  bunkingRequest?: BunkingRequest | undefined
+  onOpen?: (() => void) | undefined
 }
 
-export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: WriteInCardProps) {
+export function WriteInCard({
+  occupant,
+  onRemove,
+  onEdit,
+  isSaving = false,
+  bunkingRequest,
+  onOpen,
+}: WriteInCardProps) {
   const named = occupant.name !== ''
   const label = writeInOccupantLabel(occupant)
 
@@ -388,20 +406,33 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           — which this card used to drop because it had no party-size badge to
           share it with. It has a control to share it with now. */}
       <div className="flex items-start gap-1">
-        <span
-          className={
-            named
-              ? 'text-foreground min-w-0 flex-1 text-sm leading-tight font-semibold'
-              : 'text-muted-foreground min-w-0 flex-1 text-sm leading-tight italic'
-          }
-        >
-          {/* STATED, not left blank. A row can reach here unnamed — the write
-              schema is permissive where the control is not, and a pre-1500000148
-              row with an empty note backfilled to nothing — and an empty card in
-              a closed room reads as an open room the board mysteriously refuses
-              drops on. */}
-          {label}
-        </span>
+        {bunkingRequest !== undefined && onOpen !== undefined ? (
+          // Linked to a Jotform filing: the name opens the write-in panel,
+          // the same click an adult guest's card answers with its own panel.
+          <button
+            type="button"
+            aria-label={`Open ${label}`}
+            onClick={onOpen}
+            className="text-foreground min-w-0 flex-1 text-left text-sm leading-tight font-semibold hover:underline"
+          >
+            {label}
+          </button>
+        ) : (
+          <span
+            className={
+              named
+                ? 'text-foreground min-w-0 flex-1 text-sm leading-tight font-semibold'
+                : 'text-muted-foreground min-w-0 flex-1 text-sm leading-tight italic'
+            }
+          >
+            {/* STATED, not left blank. A row can reach here unnamed — the write
+                schema is permissive where the control is not, and a pre-1500000148
+                row with an empty note backfilled to nothing — and an empty card in
+                a closed room reads as an open room the board mysteriously refuses
+                drops on. */}
+            {label}
+          </span>
+        )}
         {onEdit !== undefined && (
           <button
             type="button"
@@ -435,6 +466,13 @@ export function WriteInCard({ occupant, onRemove, onEdit, isSaving = false }: Wr
           </button>
         )}
       </div>
+      {/* The adult card's mark, in the same place a FamilyCard draws it: under
+          the name line. Only a linked write-in has one. */}
+      {bunkingRequest !== undefined && (
+        <div className="flex flex-wrap items-center gap-1">
+          <MarkRuns runs={resolveBunkingRequestRuns(bunkingRequest)} />
+        </div>
+      )}
       {occupant.note !== '' && (
         // INSIDE the card, where the old italic line sat above it: the note
         // describes the occupant, not the room. Empty on every historical row

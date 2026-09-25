@@ -13,11 +13,12 @@ import {
   fetchJotformQueue,
   ignoreJotformSubmission,
   linkJotformSubmission,
+  linkJotformWriteIn,
   saveJotformForm,
   unlinkJotformSubmission,
 } from '../services/jotformApi'
 import type { JotformFormWriteBody } from '../types/jotform'
-import { queryKeys } from '../utils/queryKeys'
+import { invalidateJotformQueries, queryKeys } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import { useRunIndividualSync } from './useRunIndividualSync'
 import { useSyncStatusAPI } from './useSyncStatusAPI'
@@ -31,13 +32,11 @@ const PULL_WATCH_LIMIT_MS = 10 * 60 * 1000
 export type JotformAction =
   | { kind: 'link'; submissionId: string; personCmId: number }
   | { kind: 'ignore' | 'unlink'; submissionId: string }
+  | { kind: 'write_in'; submissionId: string; unitId: string; occupantName: string }
 
-export function invalidateJotformQueries(queryClient: {
-  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
-}): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
-  void queryClient.invalidateQueries({ queryKey: queryKeys.weekendRosterPrefix() })
-}
+// Shared with the board's write-in picker (`useUnitAvailability`), so it
+// lives beside `invalidateLodgingRegistryQueries`.
+export { invalidateJotformQueries }
 
 export function useJotformForms(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
@@ -48,11 +47,16 @@ export function useJotformForms(year: number) {
   })
 }
 
-export function useJotformQueue(year: number) {
+/**
+ * `enabled` lets a surface that only sometimes needs the queue -- the board's
+ * write-in picker, for a `bunking.manage` caller on an adult weekend -- skip
+ * the read entirely otherwise.
+ */
+export function useJotformQueue(year: number, enabled = true) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery({
     queryKey: queryKeys.jotformQueue(year),
-    enabled: year > 0,
+    enabled: enabled && year > 0,
     queryFn: () => fetchJotformQueue(fetchWithAuth, year),
   })
 }
@@ -82,6 +86,13 @@ export function useJotformSubmissionAction() {
         return linkJotformSubmission(fetchWithAuth, action.submissionId, action.personCmId)
       if (action.kind === 'ignore')
         return ignoreJotformSubmission(fetchWithAuth, action.submissionId)
+      if (action.kind === 'write_in')
+        return linkJotformWriteIn(
+          fetchWithAuth,
+          action.submissionId,
+          action.unitId,
+          action.occupantName
+        )
       return unlinkJotformSubmission(fetchWithAuth, action.submissionId)
     },
     onSuccess: () => {

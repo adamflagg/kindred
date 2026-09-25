@@ -48,9 +48,13 @@
  * this component's tests run at all.
  */
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { PushBuildingReport, PushRowPayload } from '../../services/lodgingApi'
+import type { BunkingRequest } from '../../types/lodging'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
+import { BunkingRequestMark } from './BunkingRequestMark'
+import { linkedRequest } from './bunkingRequest'
 import type { Decision } from './PushWriteInsModal'
 
 export interface PushDecisionDeckProps {
@@ -61,6 +65,13 @@ export interface PushDecisionDeckProps {
   onPush: () => void
   /** D33: block until every building in `buildings` has a decision. */
   pushDisabled: boolean
+  /**
+   * The weekend's `session_type` (kindred#2759 follow-up). On an adult
+   * weekend a Jotform-linked write-in carries the bunking-request mark beside
+   * its name, and a pairwise conflict diffs the link. Every other weekend --
+   * Family Camp -- renders exactly as it did.
+   */
+  sessionType?: string | undefined
 }
 
 /** Which building this card is FOR, resolved from `cls` and row count. */
@@ -140,10 +151,13 @@ function FieldRow({
   value,
   differs,
   title,
+  mark,
 }: {
   label: string
   value: string
   differs: boolean
+  /** A mark beside the value -- the Jotform one, on an adult weekend. */
+  mark?: ReactNode
   /** Set only on the People row's em dash — "no headcount recorded", not a
    * missing value (kindred#2540). Cheap accessibility-adjacent hint, not a
    * behavior change. */
@@ -156,9 +170,18 @@ function FieldRow({
       }`}
     >
       <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="truncate font-medium" title={title}>
-        {value || '—'}
-      </span>
+      {mark === undefined || mark === null ? (
+        <span className="truncate font-medium" title={title}>
+          {value || '—'}
+        </span>
+      ) : (
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate font-medium" title={title}>
+            {value || '—'}
+          </span>
+          {mark}
+        </span>
+      )}
     </div>
   )
 }
@@ -178,14 +201,21 @@ function PairwiseConflictCard({
   building,
   decision,
   onPick,
+  isAdult,
 }: {
   building: PushBuildingReport
   decision: Decision | undefined
   onPick: (decision: Decision) => void
+  isAdult: boolean
 }) {
   const live = building.live[0]
   const draft = building.draft[0]
   if (live === undefined || draft === undefined) return null
+  const liveRequest = linkedRequest(live, isAdult)
+  const draftRequest = linkedRequest(draft, isAdult)
+  // kindred#2759 follow-up: the Jotform link is one more diffed field, shown
+  // only where the two sides disagree about it, on an adult weekend.
+  const linkDiffers = isAdult && (live.write_in_key ?? '') !== (draft.write_in_key ?? '')
 
   const fields = [
     {
@@ -193,6 +223,9 @@ function PairwiseConflictCard({
       liveValue: live.occupant_name,
       scenarioValue: draft.occupant_name,
       differs: live.occupant_name !== draft.occupant_name,
+      liveMark: liveRequest === null ? undefined : <BunkingRequestMark request={liveRequest} />,
+      scenarioMark:
+        draftRequest === null ? undefined : <BunkingRequestMark request={draftRequest} />,
     },
     {
       label: 'Note',
@@ -208,7 +241,26 @@ function PairwiseConflictCard({
       liveTitle: live.party_size === null ? NO_HEADCOUNT_TITLE : undefined,
       scenarioTitle: draft.party_size === null ? NO_HEADCOUNT_TITLE : undefined,
     },
-  ]
+    ...(linkDiffers
+      ? [
+          {
+            label: 'Jotform',
+            liveValue: (live.write_in_key ?? '') !== '' ? 'Linked' : '',
+            scenarioValue: (draft.write_in_key ?? '') !== '' ? 'Linked' : '',
+            differs: true,
+          },
+        ]
+      : []),
+  ] as Array<{
+    label: string
+    liveValue: string
+    scenarioValue: string
+    differs: boolean
+    liveTitle?: string | undefined
+    scenarioTitle?: string | undefined
+    liveMark?: ReactNode
+    scenarioMark?: ReactNode
+  }>
 
   // Column headers + button names speak staff language, never "live" (owner
   // ruling 2026-08-24, visual round 2, item 2). Both aria-label and the
@@ -238,6 +290,7 @@ function PairwiseConflictCard({
               value={field.liveValue}
               differs={field.differs}
               title={field.liveTitle}
+              mark={field.liveMark}
             />
           ))}
         </button>
@@ -257,6 +310,7 @@ function PairwiseConflictCard({
               value={field.scenarioValue}
               differs={field.differs}
               title={field.scenarioTitle}
+              mark={field.scenarioMark}
             />
           ))}
         </button>
@@ -278,14 +332,30 @@ const AFTER_STATE_CLASS: Record<'stay' | 'gone' | 'new', string> = {
  * occupant + unit name, which hid what a whole-building "use this
  * scenario's" decision was actually about to write.
  */
-function AfterRow({ row, state }: { row: PushRowPayload; state: 'stay' | 'gone' | 'new' }) {
+function AfterRow({
+  row,
+  state,
+  isAdult = false,
+}: {
+  row: PushRowPayload
+  state: 'stay' | 'gone' | 'new'
+  isAdult?: boolean
+}) {
+  const request = linkedRequest(row, isAdult)
   return (
     <div
       data-after-state={state}
       className={`flex flex-col gap-0.5 rounded-md border px-2 py-1.5 text-sm ${AFTER_STATE_CLASS[state]}`}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate font-medium">{row.occupant_name}</span>
+        {request === null ? (
+          <span className="truncate font-medium">{row.occupant_name}</span>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate font-medium">{row.occupant_name}</span>
+            <BunkingRequestMark request={request} />
+          </span>
+        )}
         <span className="text-xs opacity-80">{row.unit_name}</span>
       </div>
       <div className="flex items-baseline justify-between gap-2 text-xs opacity-80">
@@ -302,10 +372,12 @@ function WholeBuildingCard({
   building,
   decision,
   onPick,
+  isAdult,
 }: {
   building: PushBuildingReport
   decision: Decision | undefined
   onPick: (decision: Decision) => void
+  isAdult: boolean
 }) {
   // Previewing "scenario" when nobody has decided yet — see module doc.
   const effective = decision === 'live' ? 'live' : 'scenario'
@@ -359,7 +431,7 @@ function WholeBuildingCard({
       </div>
       <div className="flex flex-col gap-1.5">
         {rows.map(({ key, row, state }) => (
-          <AfterRow key={key} row={row} state={state} />
+          <AfterRow key={key} row={row} state={state} isAdult={isAdult} />
         ))}
       </div>
     </div>
@@ -370,10 +442,12 @@ function RemoveCard({
   building,
   decision,
   onPick,
+  isAdult,
 }: {
   building: PushBuildingReport
   decision: Decision | undefined
   onPick: (decision: Decision) => void
+  isAdult: boolean
 }) {
   // ALL of `building.live`, not just the first row: `execute_push` removes
   // every live row for a `remove` building (a multi-room building the
@@ -388,7 +462,14 @@ function RemoveCard({
       </p>
       {building.live.map((live, i) => (
         <div key={`live-${String(i)}`} className="border-border bg-muted/30 rounded-xl border p-3">
-          <p className="font-semibold">{live.occupant_name}</p>
+          {linkedRequest(live, isAdult) === null ? (
+            <p className="font-semibold">{live.occupant_name}</p>
+          ) : (
+            <p className="flex items-center gap-1 font-semibold">
+              {live.occupant_name}
+              <BunkingRequestMark request={linkedRequest(live, isAdult) as BunkingRequest} />
+            </p>
+          )}
           {live.note !== '' && <p className="text-muted-foreground text-sm">{live.note}</p>}
           <p className="text-muted-foreground text-sm">
             <span title={live.party_size === null ? NO_HEADCOUNT_TITLE : undefined}>
@@ -439,7 +520,9 @@ export function PushDecisionDeck({
   onDecide,
   onPush,
   pushDisabled,
+  sessionType,
 }: PushDecisionDeckProps) {
+  const isAdult = isAdultSessionType(sessionType)
   const [currentIndex, setCurrentIndex] = useState(0)
   const safeIndex = buildings.length === 0 ? 0 : Math.min(currentIndex, buildings.length - 1)
   const building = buildings[safeIndex]
@@ -616,13 +699,28 @@ export function PushDecisionDeck({
 
       <div ref={cardRef} key={building.key}>
         {shape === 'pairwise' && (
-          <PairwiseConflictCard building={building} decision={decision} onPick={applyDecision} />
+          <PairwiseConflictCard
+            building={building}
+            decision={decision}
+            onPick={applyDecision}
+            isAdult={isAdult}
+          />
         )}
         {shape === 'whole-building' && (
-          <WholeBuildingCard building={building} decision={decision} onPick={applyDecision} />
+          <WholeBuildingCard
+            building={building}
+            decision={decision}
+            onPick={applyDecision}
+            isAdult={isAdult}
+          />
         )}
         {shape === 'remove' && (
-          <RemoveCard building={building} decision={decision} onPick={applyDecision} />
+          <RemoveCard
+            building={building}
+            decision={decision}
+            onPick={applyDecision}
+            isAdult={isAdult}
+          />
         )}
       </div>
 
