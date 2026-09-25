@@ -186,3 +186,49 @@ func TestParseDate_ConsistentOutputFormat(t *testing.T) {
 		}
 	}
 }
+
+// TestParseCampMinderInstant pins the Mountain-time reading of CampMinder's "Z"
+// timestamps (campership design §6.2) across both 2026 DST transitions. America/Denver:
+// MST (UTC-7) until 2026-03-08 02:00, MDT (UTC-6) until 2026-11-01 02:00.
+//
+// Named ParseCampMinderInstant, not the brief's literal ParseCampMinderTimestamp:
+// sync/lodging_session_attribution.go already declares a ParseCampMinderTimestamp
+// with a different signature ((s string) (time.Time, bool), for custom_values'
+// last_updated column) and a TestParseCampMinderTimestamp of its own. Both names
+// collide in this package. See preflight.md's a3 row for the rename note left for
+// Task 5.
+func TestParseCampMinderInstant(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input any
+		want  string
+	}{
+		{"winter is MST, +7h", "2026-01-15T12:00:00Z", "2026-01-15 19:00:00Z"},
+		{"summer is MDT, +6h, fraction dropped", "2026-07-01T12:00:00.363Z", "2026-07-01 18:00:00Z"},
+		{"last second before spring forward", "2026-03-08T01:59:59Z", "2026-03-08 08:59:59Z"},
+		{"first second after spring forward", "2026-03-08T03:00:00Z", "2026-03-08 09:00:00Z"},
+		{"last second before the repeated hour", "2026-11-01T00:59:59Z", "2026-11-01 06:59:59Z"},
+		// Review Focus 2: 01:30 happens twice. Go resolves it to the first (MDT) instant.
+		{"ambiguous fall-back hour resolves to the earlier instant", "2026-11-01T01:30:00Z", "2026-11-01 07:30:00Z"},
+		{"after fall back is MST again", "2026-11-01T02:00:00Z", "2026-11-01 09:00:00Z"},
+		{"evening posting crosses the UTC date and year", "2025-12-31T20:00:00Z", "2026-01-01 03:00:00Z"},
+		{"+00:00 is CampMinder's other zero-offset spelling", "2026-01-15T12:00:00+00:00", "2026-01-15 19:00:00Z"},
+		{"no zone at all is Mountain too", "2026-01-15T12:00:00", "2026-01-15 19:00:00Z"},
+		// Review Focus 3: a real, non-zero offset is honored as written.
+		{"explicit -05:00 is honored", "2026-01-15T12:00:00-05:00", "2026-01-15 17:00:00Z"},
+		{"explicit -06:00 in summer is honored", "2026-07-01T12:00:00-06:00", "2026-07-01 18:00:00Z"},
+		{"empty", "", ""},
+		{"nil", nil, ""},
+		{"not a string", 12345.0, ""},
+		{"garbage", "not-a-date", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ParseCampMinderInstant(tt.input); got != tt.want {
+				t.Errorf("ParseCampMinderInstant(%v) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

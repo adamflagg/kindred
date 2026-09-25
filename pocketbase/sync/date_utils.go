@@ -1,8 +1,18 @@
 package sync
 
 import (
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	// campMinderLocation below calls time.LoadLocation("America/Denver"). PocketBase ships
+	// on chainguard/static, which carries no guarantee of /usr/share/zoneinfo, and a
+	// LoadLocation that silently failed would read every CampMinder timestamp as UTC again
+	// -- the exact bug this file fixes. Embedding the database costs ~450KB and removes the
+	// dependency on the base image entirely. Also imported in family_camp_roster_sheet.go;
+	// importing it here too makes this file's own dependency explicit.
+	_ "time/tzdata"
 )
 
 // DateFormats lists the date formats that CampMinder may return, ordered from
@@ -56,4 +66,67 @@ func ParseDateValue(value any) string {
 		return ""
 	}
 	return ParseDate(dateStr)
+}
+
+// campMinderZone is the zone of CampMinder's API timestamps. The API appends "Z", but the
+// wall clock is US Mountain time (campership design §6.2), so reading the "Z" literally
+// stores every timestamp 6-7 hours early.
+const campMinderZone = "America/Denver"
+
+// campMinderLocation is loaded once. time/tzdata is embedded, so the load cannot fail at
+// runtime; a panic at init is the loud failure wanted if that import is ever removed.
+var campMinderLocation = func() *time.Location {
+	loc, err := time.LoadLocation(campMinderZone)
+	if err != nil {
+		panic(fmt.Sprintf("load %s: %v", campMinderZone, err))
+	}
+	return loc
+}()
+
+// ParseCampMinderInstant converts a CampMinder API timestamp to PocketBase's UTC format
+// "2006-01-02 15:04:05Z".
+//
+// Not named ParseCampMinderTimestamp: sync/lodging_session_attribution.go already declares
+// a function of that name, with a different signature, for a different column
+// (household_custom_values.last_updated / person_custom_values.last_updated). That one keeps
+// its literal-UTC reading -- untouched by this task.
+//
+//   - "...Z", "...+00:00", "...-00:00" or no zone: the wall clock is Mountain time. It is
+//     read in America/Denver, which applies MST or MDT for that date, then converted.
+//   - A non-zero numeric offset ("-05:00"): honored as written.
+//   - Anything else, such as a US-style date: ParseDate's fallbacks.
+//
+// In the fall-back hour a wall clock names two instants and Go picks the first (daylight)
+// one; TestParseCampMinderInstant pins that. Use this for true instants only. A calendar
+// date (service_start_date, effective_date) stays on ParseDate, because midnight must not
+// become 06:00 UTC.
+func ParseCampMinderInstant(value any) string {
+	s, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	wall, zeroOffset := s, false
+	for _, suffix := range []string{"Z", "+00:00", "-00:00"} {
+		if trimmed, found := strings.CutSuffix(s, suffix); found {
+			wall, zeroOffset = trimmed, true
+			break
+		}
+	}
+	if !zeroOffset {
+		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+			return t.UTC().Format("2006-01-02 15:04:05Z")
+		}
+	}
+	// Parsing accepts a fractional second after :05 even though the layout omits it.
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, wall, campMinderLocation); err == nil {
+			return t.UTC().Format("2006-01-02 15:04:05Z")
+		}
+	}
+	return ParseDate(s)
 }
