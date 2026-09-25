@@ -70,7 +70,7 @@ AI_MODEL=gpt-4.1-mini
 
 # Jotform (Optional)
 JOTFORM_API_KEY=your_jotform_api_key_here
-JOTFORM_API_BASE=https://api.jotform.com
+# JOTFORM_API_BASE=https://api.jotform.com  # only for an enterprise account
 
 # PocketBase Admin (first-run setup)
 POCKETBASE_ADMIN_EMAIL=admin@example.com

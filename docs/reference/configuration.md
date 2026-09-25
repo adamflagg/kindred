@@ -70,7 +70,7 @@ JOTFORM_API_KEY=your-jotform-api-key-here
 
 # Optional: API endpoint override for enterprise accounts
 # Default: https://api.jotform.com
-JOTFORM_API_BASE=https://<team>.jotform.com/API
+# JOTFORM_API_BASE=https://<team>.jotform.com/API
 ```
 
 ### Authentication Configuration
