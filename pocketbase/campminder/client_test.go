@@ -3,8 +3,10 @@ package campminder
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -869,5 +871,133 @@ func TestGetSessions_SinglePageUnderLimit(t *testing.T) {
 	}
 	if requestCount != 1 {
 		t.Errorf("GetSessions() made %d requests, want 1 (all results fit in one page)", requestCount)
+	}
+}
+
+// newTestAPIClient returns a Client whose API requests go to srv with a token that is
+// already valid, so no auth round trip happens.
+func newTestAPIClient(srv *httptest.Server) *Client {
+	return &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2026,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		accessToken:     "pre-seeded-token",
+		tokenExpiry:     time.Now().Add(time.Hour),
+		apiBaseURL:      srv.URL,
+	}
+}
+
+// recordSleeps swaps sleepFn for a recorder and restores it on cleanup.
+func recordSleeps(t *testing.T) *[]time.Duration {
+	t.Helper()
+	var waits []time.Duration
+	orig := sleepFn
+	sleepFn = func(d time.Duration) { waits = append(waits, d) }
+	t.Cleanup(func() { sleepFn = orig })
+	return &waits
+}
+
+// TestMakeRequest_RetriesOn429ThenSucceeds: a 429 carrying CampMinder's hint is retried
+// after hint+5s, and the eventual 200 body is returned.
+func TestMakeRequest_RetriesOn429ThenSucceeds(t *testing.T) {
+	waits := recordSleeps(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"message":"Rate limit is exceeded. Try again in 2 seconds."}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	body, err := newTestAPIClient(srv).makeRequest("GET", "sessions", map[string]string{"a": "b"})
+	if err != nil {
+		t.Fatalf("makeRequest: %v", err)
+	}
+	if string(body) != `{"ok":true}` {
+		t.Errorf("body = %s, want the 200 body", body)
+	}
+	if got := calls.Load(); got != 3 {
+		t.Errorf("calls = %d, want 3 (two 429s, then success)", got)
+	}
+	want := []time.Duration{7 * time.Second, 7 * time.Second}
+	if !slices.Equal(*waits, want) {
+		t.Errorf("waits = %v, want %v (hint 2s + 5s buffer)", *waits, want)
+	}
+}
+
+// TestMakeRequest_UnhintedBackoffDoublesAndIsCapped: with no hint the wait doubles from
+// 5s to a 60s ceiling, and the retry count is capped at maxRequestRetries.
+func TestMakeRequest_UnhintedBackoffDoublesAndIsCapped(t *testing.T) {
+	waits := recordSleeps(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("Too Many Requests"))
+	}))
+	defer srv.Close()
+
+	_, err := newTestAPIClient(srv).makeRequest("GET", "sessions", nil)
+	if err == nil {
+		t.Fatal("makeRequest returned nil error on a persistent 429")
+	}
+	if !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("error %q must keep \"429\" and \"rate limit\" -- ratelimit.HandleError matches on them", err)
+	}
+	if got := int(calls.Load()); got != maxRequestRetries+1 {
+		t.Errorf("calls = %d, want %d (1 + maxRequestRetries)", got, maxRequestRetries+1)
+	}
+	want := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
+	for len(want) < maxRequestRetries {
+		want = append(want, 60*time.Second)
+	}
+	if !slices.Equal(*waits, want) {
+		t.Errorf("waits = %v, want %v", *waits, want)
+	}
+}
+
+// TestMakeRequest_NoRetryOnServerError: only 429 is retried.
+func TestMakeRequest_NoRetryOnServerError(t *testing.T) {
+	waits := recordSleeps(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	if _, err := newTestAPIClient(srv).makeRequest("GET", "sessions", nil); err == nil {
+		t.Fatal("makeRequest returned nil error on a 500")
+	}
+	if calls.Load() != 1 || len(*waits) != 0 {
+		t.Errorf("calls = %d, sleeps = %d; want 1 and 0", calls.Load(), len(*waits))
+	}
+}
+
+// TestMakeRequest_RetryResendsPOSTBody: a consumed request body must be rebuilt per attempt.
+func TestMakeRequest_RetryResendsPOSTBody(t *testing.T) {
+	recordSleeps(t)
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		if len(bodies) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	if _, err := newTestAPIClient(srv).makeRequest("POST", "x", map[string]string{"a": "b"}); err != nil {
+		t.Fatalf("makeRequest: %v", err)
+	}
+	if len(bodies) != 2 || bodies[0] != `{"a":"b"}` || bodies[1] != `{"a":"b"}` {
+		t.Errorf("bodies = %q, want the same JSON body twice", bodies)
 	}
 }
