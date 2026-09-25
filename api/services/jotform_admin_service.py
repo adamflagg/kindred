@@ -172,9 +172,11 @@ class JotformAdminService:
         return JotformFormsResponse(year=year, rows=rows)
 
     async def save_form(self, year: int, session_cm_id: int, body: JotformFormWrite) -> JotformFormRow:
-        """Save staff's form setting. Every role in the saved map becomes
-        staff-set, stamped with its question's wording now (kindred#2828): the
-        pull keeps a staff role and flags it if that wording later moves. A
+        """Save staff's form setting. A role staff picked (or that was already
+        staff-set) becomes staff-set, stamped with its question's wording now
+        (kindred#2828): the pull keeps a staff role and flags it if that wording
+        later moves. A carried or guessed role saved on its same question keeps
+        its source -- Save confirms what staff changed, not every guess. A
         role that had a question and was cleared is recorded as "staff chose
         none" -- dropped from the meta, the next pull would guess it straight
         back. A staff role the pull flagged missing (its question left the
@@ -207,13 +209,25 @@ class JotformAdminService:
             field_map = {}
         else:
             wording = {q.question_id: q.text for q in _questions(previous)} if previous is not None else {}
-            field_map_meta = {
-                role: {"question_id": qid, "text": wording.get(qid, ""), "source": "staff"}
-                for role, qid in field_map.items()
-            }
+            before = dict(getattr(previous, "field_map", None) or {}) if previous is not None else {}
+            raw_meta = dict(getattr(previous, "field_map_meta", None) or {}) if previous is not None else {}
+            before_meta = _field_map_meta(previous) if previous is not None else {}
+            for role, qid in field_map.items():
+                kept = before_meta.get(role)
+                # Owner ruling 2026-09-24 (kindred#2828): Save confirms only what
+                # staff changed. A carried or guessed role saved on the same
+                # question keeps its source, so an unreviewed guess never
+                # becomes "staff-confirmed" wording carried into next year.
+                if (
+                    kept is not None
+                    and kept.source in ("carried", "guessed")
+                    and str(before.get(role, "") or "").strip() == qid
+                    and isinstance(raw_meta.get(role), dict)
+                ):
+                    field_map_meta[role] = dict(raw_meta[role])
+                else:
+                    field_map_meta[role] = {"question_id": qid, "text": wording.get(qid, ""), "source": "staff"}
             if previous is not None:
-                before = dict(getattr(previous, "field_map", None) or {})
-                before_meta = _field_map_meta(previous)
                 for role in JOTFORM_ROLES:
                     had_question = bool(str(before.get(role, "") or "").strip())
                     was_staff = role in before_meta and before_meta[role].source == "staff"

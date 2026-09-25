@@ -148,9 +148,13 @@ class TestForms:
         cache.invalidate_all.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_save_marks_every_saved_role_staff_with_its_wording_now(self) -> None:
-        # kindred#2828: what staff save is theirs, and the wording at save time
-        # is what a later rewording is detected against.
+    async def test_save_marks_only_the_roles_staff_changed_as_staff(self) -> None:
+        # Owner ruling 2026-09-24 (kindred#2828): Save confirms what staff
+        # changed, not every guess on the card. An untouched carried or guessed
+        # role keeps its source, so an unreviewed guess is never carried into
+        # next year as staff-confirmed and the wrong-guess guard still applies.
+        # A role staff picked, or re-saved from staff, is stamped with its
+        # wording now, which a later rewording is detected against.
         repo = _repo(fetch_forms=[FORM])
         await JotformAdminService(repo).save_form(
             YEAR,
@@ -163,12 +167,28 @@ class TestForms:
         )
         meta = repo.upsert_form.await_args.kwargs["field_map_meta"]
         assert meta == {
-            "first_name": {"question_id": "3", "text": "First Name", "source": "staff"},
-            "last_name": {"question_id": "4", "text": "Last Name", "source": "staff"},
+            "first_name": {"question_id": "3", "text": "First Name", "source": "carried"},
+            "last_name": {"question_id": "4", "text": "Last Name", "source": "guessed"},
             "bunking_request": {"question_id": "21", "text": "Bunking request", "source": "staff"},
             "cpap": {"question_id": "29", "text": "CPAP?", "source": "staff"},
         }
         assert repo.upsert_form.await_args.kwargs["clear_definition"] is False
+
+    @pytest.mark.asyncio
+    async def test_repicking_a_guessed_role_to_another_question_makes_it_staff(self) -> None:
+        repo = _repo(fetch_forms=[FORM])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(
+                form_ref="261700000000001",
+                field_map={"first_name": "3", "last_name": "21", "bunking_request": "21"},
+                enabled=True,
+            ),
+        )
+        meta = repo.upsert_form.await_args.kwargs["field_map_meta"]
+        assert meta["last_name"] == {"question_id": "21", "text": "Bunking request", "source": "staff"}
+        assert meta["first_name"]["source"] == "carried"
 
     @pytest.mark.asyncio
     async def test_a_role_staff_cleared_stays_cleared(self) -> None:
