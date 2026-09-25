@@ -177,7 +177,12 @@ class Diagnostics:
     unmapped_catalog_sessions: set[str] = field(default_factory=set)
     routing_mismatch_rows: set[int] = field(default_factory=set)
     price_conflicts: set[str] = field(default_factory=set)
+    # Unparsable: a non-blank cell that could not be read as a number.
     unparsable: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Blank: a required field (only `ask` today) whose cell was empty, so it fell
+    # back to 0 rather than the sheet's own figure. Never set for an optional
+    # field -- a blank override, appeal or discretionary amount is legitimate.
+    blank: defaultdict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
 @dataclass(frozen=True)
@@ -234,9 +239,15 @@ def _read(ws: Any, columns: dict[str, tuple[str, str]], row: int) -> dict[str, A
 
 def _check_headers(ws: Any, tab: str, columns: dict[str, tuple[str, str]]) -> None:
     for key, (column, expected) in columns.items():
-        found = str(_cell(ws, column, 1) or "").strip().lower()
+        raw_value = _cell(ws, column, 1)
+        found = str(raw_value or "").strip().lower()
         if found != expected:
-            raise SheetLayoutError(f"{tab}!{column}1 reads {found!r}; expected {expected!r} ({key})")
+            # Never echo what the cell held -- a moved header row could carry a
+            # name, amount or other private value. Only the shape of the miss.
+            raise SheetLayoutError(
+                f"{tab}!{column}1 does not read {expected!r} ({key}); "
+                f"found a {type(raw_value).__name__} of length {len(found)}"
+            )
 
 
 def load_sheet(path: Path, config: ParityConfig) -> Sheet:
@@ -254,12 +265,18 @@ def load_sheet(path: Path, config: ParityConfig) -> Sheet:
         _check_headers(tabs[tab], tab, columns)
 
     raw_by_id: dict[str, dict[str, Any]] = {}
+    raw_row_of: dict[str, int] = {}
     raw_ws = tabs[RAW_DATA]
     for row in range(2, raw_ws.max_row + 1):
         values = _read(raw_ws, RAW_COLUMNS, row)
         unique_id = _text(values["unique_id"])
-        if unique_id:
-            raw_by_id[unique_id] = values
+        if not unique_id:
+            continue
+        if unique_id in raw_row_of:
+            # Never name the id itself -- only the two row numbers that collide.
+            raise SheetLayoutError(f"{RAW_DATA} rows {raw_row_of[unique_id]} and {row} share a Unique ID")
+        raw_by_id[unique_id] = values
+        raw_row_of[unique_id] = row
 
     # Rows join on the sheet's Unique ID, never on row position.
     rows: list[SheetRow] = []
@@ -296,16 +313,34 @@ def load_sheet(path: Path, config: ParityConfig) -> Sheet:
     return Sheet(rows=rows, catalog=catalog, grants_by_person=dict(grants))
 
 
-def _raw_number(raw: dict[str, Any], key: str, diagnostics: Diagnostics) -> Decimal | None:
-    value = raw[key]
+def _counted_number(source: dict[str, Any], key: str, diagnostics: Diagnostics) -> Decimal | None:
+    """A number read from any sheet dict (raw or calc). A non-blank cell that
+    fails to parse is counted; a blank cell is not -- callers decide whether
+    blank is legitimate (most fields) or must itself be counted (`_required_number`)."""
+    value = source[key]
     number = _number(value)
     if number is None and value not in (None, ""):
         diagnostics.unparsable[key] += 1
     return number
 
 
+def _required_number(source: dict[str, Any], key: str, diagnostics: Diagnostics) -> Decimal:
+    """A required Money field (only `ask` today). Blank and unparsable are both
+    counted, in separate buckets, and both fall back to 0 -- the calculator needs
+    *a* value either way, but principle 5 says that fallback must never be silent."""
+    value = source[key]
+    number = _number(value)
+    if number is not None:
+        return number
+    if value in (None, "") or (isinstance(value, str) and not value.strip()):
+        diagnostics.blank[key] += 1
+    else:
+        diagnostics.unparsable[key] += 1
+    return Decimal(0)
+
+
 def _dependents(raw: dict[str, Any], diagnostics: Diagnostics) -> int | None:
-    number = _raw_number(raw, "dependents", diagnostics)
+    number = _counted_number(raw, "dependents", diagnostics)
     if number is None:
         return None
     if number != number.to_integral_value() or number < 0:
@@ -324,11 +359,27 @@ def _grants(row: SheetRow, sheet: Sheet, mode: Mode) -> list[GrantInput]:
     return [GrantInput(amount=amount, state="committed") for amount in sheet.grants_by_person.get(person, [])]
 
 
-def build_inputs(
-    row: SheetRow, sheet: Sheet, rules: AidRules, config: ParityConfig, mode: Mode, diagnostics: Diagnostics
-) -> tuple[ApplicationInputs, RequestInputs]:
+@dataclass(frozen=True)
+class ParsedRow:
+    """Everything about one row that does NOT depend on --mode. Computed once per
+    row so a blank or unparsable cell is counted once, not once per mode."""
+
+    application: ApplicationInputs
+    session_cm_id: int | None
+    program_key: str
+    ask: Decimal
+    equity_answers: dict[str, Any]
+    cost_override: CostOverride | None
+    appeal_amount: Decimal | None
+    decision_type: str | None
+    discretionary_amount: Decimal
+
+
+def _parse_row(
+    row: SheetRow, sheet: Sheet, rules: AidRules, config: ParityConfig, diagnostics: Diagnostics
+) -> ParsedRow:
     raw, calc = row.raw, row.calc
-    numbers = {key: _raw_number(raw, key, diagnostics) for key in _RAW_NUMBERS}
+    numbers = {key: _counted_number(raw, key, diagnostics) for key in _RAW_NUMBERS}
     application = ApplicationInputs(
         prior_year_gross=numbers["py_gross"],
         prior_year_confirmed=numbers["py_confirm"],
@@ -361,27 +412,45 @@ def build_inputs(
     stage = (_text(calc["stage"]) or "").lower()
     decision_type = config.stage_decision_types.get(stage)
     decision = rules.awards.decision_types.get(decision_type) if decision_type else None
-    discretionary = _number(calc["discretionary"]) or Decimal(0)
+    discretionary = _counted_number(calc, "discretionary", diagnostics) or Decimal(0)
     if decision is not None and decision.kind == "full_cost":
         # On these rows the sheet's X is the top-up the calculator computes itself.
         discretionary = Decimal(0)
-    override = _number(calc["override"])
-    request = RequestInputs(
+    override = _counted_number(calc, "override", diagnostics)
+    # ask is a required Money on RequestInputs: a blank cell still needs *a*
+    # value to build the input, but that fallback to 0 is counted, never silent.
+    ask = _required_number(calc, "ask", diagnostics)
+    appeal_amount = _counted_number(calc, "appeal", diagnostics)
+    return ParsedRow(
+        application=application,
         session_cm_id=session_cm_id,
         program_key=program_key,
-        ask=_number(calc["ask"]) or Decimal(0),
+        ask=ask,
         equity_answers={
             "bipoc": _text(raw["bipoc"]),
             "gender_identity": _text(raw["gender_identity"]),
             "pronouns": _text(raw["pronouns"]),
         },
         cost_override=CostOverride(amount=override, reason=config.override_reason) if override is not None else None,
-        grants_applicable=_grants(row, sheet, mode),
-        appeal_amount=_number(calc["appeal"]),
+        appeal_amount=appeal_amount,
         decision_type=decision_type,
         discretionary_amount=discretionary,
     )
-    return application, request
+
+
+def _build_request(parsed: ParsedRow, row: SheetRow, sheet: Sheet, mode: Mode) -> RequestInputs:
+    # Only the grant source differs by mode; everything else was parsed once.
+    return RequestInputs(
+        session_cm_id=parsed.session_cm_id,
+        program_key=parsed.program_key,
+        ask=parsed.ask,
+        equity_answers=parsed.equity_answers,
+        cost_override=parsed.cost_override,
+        grants_applicable=_grants(row, sheet, mode),
+        appeal_amount=parsed.appeal_amount,
+        decision_type=parsed.decision_type,
+        discretionary_amount=parsed.discretionary_amount,
+    )
 
 
 def _matches(sheet_value: Any, ours: Decimal | int | None, *, blank_is_zero: bool) -> bool:
@@ -397,12 +466,13 @@ def _matches(sheet_value: Any, ours: Decimal | int | None, *, blank_is_zero: boo
     return abs(expected - Decimal(ours)) <= TOLERANCE
 
 
-def run_mode(sheet: Sheet, rules: AidRules, config: ParityConfig, mode: Mode, diagnostics: Diagnostics) -> ModeReport:
+def run_mode(sheet: Sheet, parsed_rows: dict[int, ParsedRow], rules: AidRules, mode: Mode) -> ModeReport:
     matched = {key: 0 for key, _, _ in COMPARED}
     mismatched: dict[str, list[int]] = {key: [] for key, _, _ in COMPARED}
     for row in sheet.rows:
-        application, request = build_inputs(row, sheet, rules, config, mode, diagnostics)
-        result = calculate(application, request, rules)
+        parsed = parsed_rows[row.row]
+        request = _build_request(parsed, row, sheet, mode)
+        result = calculate(parsed.application, request, rules)
         for key, _, ours in COMPARED:
             if _matches(row.calc[key], ours(result), blank_is_zero=key == "grants"):
                 matched[key] += 1
@@ -433,6 +503,7 @@ def _print_diagnostics(diagnostics: Diagnostics) -> None:
     print(f"  rows routed to a program other than the sheet's: {sorted(diagnostics.routing_mismatch_rows) or 'none'}")
     print(f"  catalog prices that differ from the rules' tuition: {sorted(diagnostics.price_conflicts) or 'none'}")
     print(f"  unparsable cells by column: {dict(diagnostics.unparsable) or 'none'}")
+    print(f"  blank required cells by column: {dict(diagnostics.blank) or 'none'}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -463,14 +534,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     diagnostics = Diagnostics()
+    # Parsed once per row, independent of --mode: --mode both must not double-count
+    # a blank or unparsable cell just because it runs the row twice.
+    parsed_rows = {row.row: _parse_row(row, sheet, rules, config, diagnostics) for row in sheet.rows}
+
     modes: list[Mode] = ["sheet", "correct"] if args.mode == "both" else [args.mode]
-    reports = [run_mode(sheet, rules, config, mode, diagnostics) for mode in modes]
+    reports = [run_mode(sheet, parsed_rows, rules, mode) for mode in modes]
     for mode_report in reports:
         _print_report(mode_report)
     _print_diagnostics(diagnostics)
+
     sheet_report = next((r for r in reports if r.mode == "sheet"), None)
-    failed = bool(diagnostics.unmapped_catalog_sessions) or (sheet_report is not None and not sheet_report.passed)
-    verdict = "n/a" if sheet_report is None else ("FAIL" if failed else "PASS")
+    unmapped = bool(diagnostics.unmapped_catalog_sessions)
+    failed = unmapped or (sheet_report is not None and not sheet_report.passed)
+    if sheet_report is not None:
+        verdict = "FAIL" if failed else "PASS"
+    elif unmapped:
+        # --mode correct alone still fails on an unmapped catalog session, but
+        # says why instead of printing "n/a" over an exit code of 1.
+        verdict = "FAIL (catalog sessions missing from session_map; sheet mode did not run)"
+    else:
+        verdict = "n/a"
     print(f"RESULT sheet-grant: {verdict}")
     return 1 if failed else 0
 
