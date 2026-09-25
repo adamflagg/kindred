@@ -72,7 +72,7 @@ jobs:
 
     - name: Markdownlint
       # Version pinned to match package.json; bump both when upgrading.
-      run: npx --yes markdownlint-cli2@0.22.1 "**/*.md"
+      run: npx --yes markdownlint-cli2@0.23.3 "**/*.md"
 
     - name: Summary
       run: |
