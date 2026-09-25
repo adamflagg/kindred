@@ -17,6 +17,7 @@ Money is ``Decimal``; JSON carries it as a string.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal, Self, get_args
 
@@ -252,3 +253,188 @@ class CostSection(RulesModel):
     # Used by intake to pre-fill headcounts (sub-project 5); the calculator does not read it.
     infant_age_cutoff_months: int | None = Field(default=None, ge=0)
     override_reasons: list[Key] = Field(default_factory=_default_override_reasons)
+
+
+# --- grants ---------------------------------------------------------------------------
+
+
+class IncentiveRule(RulesModel):
+    """How a family incentive (for example a new-family discount) meets aid."""
+
+    mode: Literal["ignore", "reduce_cost", "reduce_award"]
+
+
+class GrantsSection(RulesModel):
+    # The program keys outside grants offset. 2026: Summer only (a staff ruling).
+    offset_programs: list[Key] = Field(default_factory=list)
+    # "dollar": R1 potential = R1% x cost - grants. "reduce_cost_basis": R1% x (cost - grants).
+    offset_mode: Literal["dollar", "reduce_cost_basis"] = "dollar"
+    # True (2026): the minimum award is paid on top of grants. False: grants may cover it.
+    minimum_after_grants: bool
+    count_when: Literal["committed", "received"] = "committed"
+    # A grant recorded after the Round 1 decision: leave it out, leave it out and flag it,
+    # or count it.
+    late_grant_policy: Literal["ignore", "flag", "recalculate"] = "flag"
+    incentives: dict[Key, IncentiveRule] = Field(default_factory=dict)
+
+
+# --- awards ---------------------------------------------------------------------------
+
+
+class DecisionType(RulesModel):
+    """A named kind of decision with its own budget line.
+
+    full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
+      total to cost - grants + extra_amount (a categorical full-funding program).
+    top_up: a fixed amount added to the award (the appeal top-up).
+    discretionary: staff type the amount on the request (`discretionary_amount`).
+    """
+
+    label: str = Field(min_length=1)
+    kind: Literal["full_cost", "top_up", "discretionary"]
+    round: int = Field(ge=1, le=3)
+    amount: Money | None = None
+    extra_amount: Money = Decimal(0)
+    allows_appeal: bool = True
+    budget_line: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _amounts_fit_the_kind(self) -> Self:
+        if self.kind == "top_up" and self.amount is None:
+            raise ValueError("a top_up decision type needs amount")
+        if self.kind != "top_up" and self.amount is not None:
+            raise ValueError("only a top_up decision type has a fixed amount")
+        if self.kind != "full_cost" and self.extra_amount != 0:
+            raise ValueError("only a full_cost decision type has extra_amount")
+        return self
+
+
+class TotalCap(RulesModel):
+    """Caps Round 2 and Round 3 so that R1 + R2 + R3 (+ grants) stays within a % of cost.
+
+    Named top-ups and discretionary amounts are the allowances: they are never cut.
+    """
+
+    pct_of_cost: Percent
+    include_grants: bool = True
+
+
+class AwardsSection(RulesModel):
+    minimum: Money
+    minimum_when_cost_unknown: bool
+    minimum_without_table: bool
+    rounding: Literal["half_up"] = "half_up"
+    ask_cap: bool = True
+    total_cap: TotalCap | None = None
+    decision_types: dict[Key, DecisionType] = Field(default_factory=dict)
+
+
+class Round2Section(RulesModel):
+    # False (2026): the appeal cap ignores grants, so a capped appeal hands the offset back.
+    cap_subtracts_grants: bool
+    cap_by_original_ask: bool
+
+
+class Round3Section(RulesModel):
+    require_round2: bool = True
+    require_statement_of_need: bool = True
+    max_amount: Money | None = None
+    max_total_pct_of_cost: Percent | None = None
+
+
+# --- budget ---------------------------------------------------------------------------
+
+
+class BudgetPool(RulesModel):
+    label: str = Field(min_length=1)
+    share_pct: Percent | None = None
+    amount: Money | None = None
+
+    @model_validator(mode="after")
+    def _share_or_amount(self) -> Self:
+        if (self.share_pct is None) == (self.amount is None):
+            raise ValueError("a budget pool sets exactly one of share_pct or amount")
+        return self
+
+
+RoundKey = Literal["r1_late", "r2", "r3"]
+
+
+class BudgetSection(RulesModel):
+    total: Money
+    pools: dict[Key, BudgetPool] = Field(default_factory=dict)
+    # pool -> round -> % of that pool held back. Replaces the sheet's cascade.
+    reserves: dict[Key, dict[RoundKey, Percent]] = Field(default_factory=dict)
+    spillover: Literal["none", "shared"] = "none"
+    commit_on: Literal["offered", "accepted"] = "offered"
+
+
+# --- stages ---------------------------------------------------------------------------
+
+
+class StageDef(RulesModel):
+    code: Key
+    label: str = Field(min_length=1)
+    round: int | None = Field(default=None, ge=1, le=3)
+    is_offer: bool = False
+    is_accepted: bool = False
+    is_cancel: bool = False
+    counts_toward_budget: bool = True
+    include_default: bool = True
+    decision_type: Key | None = None
+    allows_appeal: bool = True
+
+
+class StagesSection(RulesModel):
+    stages: list[StageDef] = Field(default_factory=list)
+
+
+# --- quality checks -------------------------------------------------------------------
+
+
+class QualityCheck(RulesModel):
+    enabled: bool = True
+    severity: Literal["block", "warn"] = "warn"
+    threshold: Decimal | None = None
+
+
+class QualityChecksSection(RulesModel):
+    checks: dict[QualityCheckKey, QualityCheck] = Field(default_factory=dict)
+
+
+# --- milestones -----------------------------------------------------------------------
+
+
+class MilestonesSection(RulesModel):
+    application_deadline: date | None = None
+    r1_run: date | None = None
+    response_deadline: date | None = None
+    r2_window_start: date | None = None
+    r2_window_end: date | None = None
+    r3_window_start: date | None = None
+    r3_window_end: date | None = None
+
+
+# --- the document ---------------------------------------------------------------------
+
+
+class AidRules(RulesModel):
+    """One season's rules. The version number and section approvals live on the
+    `aid_rules` record beside it, not in the document."""
+
+    schema_version: Literal[1] = 1
+    year: int = Field(ge=2000, le=2100)
+    income: IncomeSection
+    tiers: TiersSection
+    equity: EquitySection
+    award_tables: dict[Key, AwardTable]
+    programs: dict[Key, ProgramProfile]
+    cost: CostSection
+    grants: GrantsSection
+    awards: AwardsSection
+    round2: Round2Section
+    round3: Round3Section = Field(default_factory=Round3Section)
+    budget: BudgetSection
+    stages: StagesSection = Field(default_factory=StagesSection)
+    quality_checks: QualityChecksSection = Field(default_factory=QualityChecksSection)
+    milestones: MilestonesSection = Field(default_factory=MilestonesSection)
