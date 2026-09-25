@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from bunking.financial_aid.rules.schema import AidRules, EquityCriterion, TierPercents
+from collections.abc import Mapping
+
+from bunking.financial_aid.rules.schema import AidRules, EquityCriterion, R1Percent, TierTable, TotalPercent
 
 
 def is_dependents_criterion(criterion: EquityCriterion) -> bool:
@@ -13,25 +15,24 @@ def is_dependents_criterion(criterion: EquityCriterion) -> bool:
     return criterion.source == "household" and criterion.field == "dependents"
 
 
-def resolved_table(rules: AidRules, name: str) -> dict[int, TierPercents]:
-    """The effective tier -> percentages of table `name`, inheritance applied.
+def resolved_table[V: (R1Percent, TotalPercent)](tables: Mapping[str, TierTable[V]], name: str) -> dict[int, V]:
+    """The effective tier -> percentage of table `name` in `tables` (``rules.award_tables``
+    or ``rules.round2.tables``), inheritance applied.
 
     Raises KeyError for an unknown table or an override of a tier the parent does
     not have, and ValueError for inheritance more than one level deep.
     """
-    table = rules.award_tables[name]
+    table = tables[name]
     if table.inherits is None:
         return dict(table.tiers)
-    parent = rules.award_tables[table.inherits]
+    parent = tables[table.inherits]
     if parent.inherits is not None:
         raise ValueError(f"table '{name}' inherits '{table.inherits}', which itself inherits")
     resolved = dict(parent.tiers)
     for tier, override in table.overrides.items():
-        base = resolved[tier]
-        resolved[tier] = TierPercents(
-            r1_pct=override.r1_pct if override.r1_pct is not None else base.r1_pct,
-            total_pct=override.total_pct if override.total_pct is not None else base.total_pct,
-        )
+        if tier not in resolved:
+            raise KeyError(tier)
+        resolved[tier] = override
     return resolved
 
 

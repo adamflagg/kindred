@@ -2,7 +2,8 @@
 
 draft -> approved (who, when, a note such as the board meeting) -> locked.
 A section locks when the first decision uses it (sub-project 10 calls lock);
-after that it cannot change in this version -- changing it means a new version.
+after that it cannot change in this version -- changing it means a new version,
+which keeps every lock it is not told to lift.
 Editing an approved section sends it back to draft, because the board approved
 the old values, not the new ones.
 
@@ -19,7 +20,7 @@ error anywhere.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import Any, Literal, NamedTuple
 
@@ -183,10 +184,17 @@ def lock(status: StatusMap, section: SectionName, *, at: datetime, report: Valid
     return updated
 
 
-def carry_forward(status: StatusMap) -> StatusMap:
-    """Status for a new version copied from this one: approvals kept, locks lifted."""
+def carry_forward(status: StatusMap, *, unlock: Collection[SectionName] = ()) -> StatusMap:
+    """Status for a new version copied from this one: approvals kept, and every lock kept
+    except on the sections named in `unlock`, which go back to approved.
+
+    Staff set Round 2 after Round 1 results while Round 1 keeps rolling (staff call
+    2026-09-25), so a mid-season version must not re-open the Round 1 sections by default.
+    """
     return {
-        name: s.model_copy(update={"state": "approved", "locked_at": None}) if s.state == "locked" else s
+        name: s.model_copy(update={"state": "approved", "locked_at": None})
+        if s.state == "locked" and name in unlock
+        else s
         for name, s in status.items()
     }
 

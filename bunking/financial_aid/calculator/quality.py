@@ -1,8 +1,9 @@
 """Data-quality checks the calculator can see (spec section 10.5).
 
 Severity and thresholds are rules settings. A check never changes the award or
-the result's status: "block" tells sub-project 10 not to finalize until staff
-look; "warn" only informs. Checks that need data the calculator does not have
+the result's status: "hold" tells sub-project 10 not to finalize until staff
+look; "warn" only informs. `award_above_cost` is not a setting: it always runs
+and always holds (spec section 2 item 19). Checks that need data the calculator does not have
 (an unmatched session, stage vs enrollment, a household's applications
 disagreeing on income) are evaluated where that data is (sub-projects 5, 10).
 
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from bunking.financial_aid.calculator.grants import grants_known_at_offer
 from bunking.financial_aid.calculator.income import IncomeResult, household_income
 from bunking.financial_aid.calculator.inputs import ApplicationInputs, IncomeOverride, RequestInputs
 from bunking.financial_aid.calculator.result import CalcIssue
@@ -31,7 +33,6 @@ def run_quality_checks(
     cost: Decimal | None,
     total: Decimal | None,
     r1: Decimal | None,
-    grants: Decimal | None,
     extra_amount: Decimal,
 ) -> list[CalcIssue]:
     checks = rules.quality_checks.checks
@@ -71,16 +72,18 @@ def run_quality_checks(
                 check,
                 f"Reported income is at or below {check.threshold}; it may be a placeholder",
             )
-    # A full_cost decision type's named extra_amount is a deliberate lever (Round 1 = cost -
-    # grants + extra, by design), so it raises the bar rather than tripping the check itself.
-    if (
-        (check := active("award_above_cost"))
-        and cost is not None
-        and total is not None
-        and grants is not None
-        and total + grants > cost + extra_amount
-    ):
-        fire("award_above_cost", check, "Aid plus outside grants is above the cost")
+    # Always on and always a hold, whatever the season lists. A full_cost decision type's named
+    # extra_amount is a deliberate lever (Round 1 = cost - grants + extra, by design), so it
+    # raises the bar rather than tripping the check itself.
+    if cost is not None and total is not None and total + grants_known_at_offer(request) > cost + extra_amount:
+        issues.append(
+            CalcIssue(
+                code="award_above_cost",
+                severity="hold",
+                message="Aid plus the outside grants known at the offer is above the cost",
+                step="quality",
+            )
+        )
     if (
         (check := active("appeal_above_ask"))
         and request.appeal_amount is not None

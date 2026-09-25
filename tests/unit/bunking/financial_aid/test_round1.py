@@ -93,10 +93,13 @@ def test_a_program_with_no_round_1_table_gets_only_the_minimum() -> None:
     assert _calc(program_key="adult_weekend", session_cm_id=1000401).r1 == Decimal(100)
 
 
-def test_no_table_and_no_minimum_without_one_is_zero() -> None:
+def test_no_table_and_no_minimum_without_one_holds_rather_than_paying_zero() -> None:
+    # Owner ruling 2026-09-25 (spec section 2 item 22): an open program with no Round 1
+    # table holds until finance names one. A silent $0 with status "ok" is what this replaced.
     rules = with_lever(fictional_rules(), "awards.minimum_without_table", False)
     result = _calc(rules, program_key="adult_weekend", session_cm_id=1000401)
-    assert (result.r1, result.r1_bound) == (Decimal(0), "no_table")
+    assert (result.status, result.r1, result.r1_bound, result.total) == ("needs_input", None, "no_table", None)
+    assert ("no_round1_table", "needs_input") in {(i.code, i.severity) for i in result.issues}
 
 
 def test_an_unknown_cost_pays_the_minimum_and_says_so() -> None:
@@ -174,6 +177,18 @@ def test_minimum_after_grants(after_grants: bool, grant: str, r1: int, bound: st
     # Tier 6 at 2,000: the table gives 40. True (2026): the minimum is paid on top of the grant.
     # False: aid + grant together reach the minimum.
     rules = with_lever(fictional_rules(), "grants.minimum_after_grants", after_grants)
+    result = _calc(rules, application=app(**TIER_6), session_cm_id=1000101, grants_applicable=[_grant(grant)])
+    assert (result.r1, result.r1_bound) == (Decimal(r1), bound)
+
+
+@pytest.mark.parametrize(
+    ("when_fully_covered", "grant", "r1", "bound"),
+    [(True, "2000", 100, "minimum"), (False, "2000", 0, "grants_cover"), (False, "500", 100, "minimum")],
+)
+def test_minimum_when_a_grant_covers_the_whole_cost(when_fully_covered: bool, grant: str, r1: int, bound: str) -> None:
+    # Tier 6 at 2,000 with the minimum paid on top of grants. Owner ruling 2026-09-25: a
+    # grant covering the whole cost means no minimum. A partial grant keeps it.
+    rules = with_lever(fictional_rules(), "grants.minimum_when_fully_covered", when_fully_covered)
     result = _calc(rules, application=app(**TIER_6), session_cm_id=1000101, grants_applicable=[_grant(grant)])
     assert (result.r1, result.r1_bound) == (Decimal(r1), bound)
 
@@ -298,7 +313,7 @@ def test_a_program_naming_an_unknown_equity_class_is_a_rules_error() -> None:
 
 
 def test_a_table_missing_the_final_tier_is_a_rules_error() -> None:
-    rules = with_lever(fictional_rules(), "award_tables.camp.tiers", {"1": {"r1_pct": "90", "total_pct": "97"}})
+    rules = with_lever(fictional_rules(), "award_tables.camp.tiers", {"1": {"r1_pct": "90"}})
     result = _calc(rules)  # tier 2, which the table no longer has
     assert (result.status, result.r1, result.total) == ("error", None, None)
     message = next(i.message for i in result.issues if i.code == "rules_error")

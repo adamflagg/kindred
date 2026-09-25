@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 
 from bunking.financial_aid.rules import (
+    SectionName,
     SessionRef,
     ValidationContext,
     resolve_program,
@@ -33,10 +34,12 @@ def test_the_fictional_season_has_no_errors_and_only_the_expected_warnings() -> 
 
 
 def test_r1_above_total_at_a_tier_is_an_error() -> None:
+    # Round 1's and Round 2's tables sit in different sections; each program's pair is
+    # checked, and the error belongs to Round 2, the later-set lever.
     rules = with_lever(fictional_rules(), "award_tables.camp.tiers.3.r1_pct", "80")
     report = validate_rules(rules)
     assert "r1_above_total" in report.codes()
-    assert report.errors_in("award_tables")
+    assert {i.code for i in report.errors_in("round2")} == {"r1_above_total"}
 
 
 def test_r1_rising_with_tier_is_an_error() -> None:
@@ -45,7 +48,7 @@ def test_r1_rising_with_tier_is_an_error() -> None:
 
 
 def test_total_rising_with_tier_is_an_error() -> None:
-    rules = with_lever(fictional_rules(), "award_tables.camp.tiers.4.total_pct", "80")
+    rules = with_lever(fictional_rules(), "round2.tables.camp.tiers.4.total_pct", "80")
     assert "total_increases_with_tier" in validate_rules(rules).codes()
 
 
@@ -55,17 +58,22 @@ def test_a_table_must_cover_every_band() -> None:
     assert "tiers_do_not_match_bands" in report.codes()
 
 
-def test_an_inheriting_table_must_name_a_real_parent() -> None:
-    rules = with_lever(fictional_rules(), "award_tables.teen.inherits", "nowhere")
-    assert "unknown_parent_table" in validate_rules(rules).codes()
+@pytest.mark.parametrize(
+    ("path", "section"), [("award_tables.teen.inherits", "award_tables"), ("round2.tables.teen.inherits", "round2")]
+)
+def test_an_inheriting_table_must_name_a_real_parent(path: str, section: SectionName) -> None:
+    report = validate_rules(with_lever(fictional_rules(), path, "nowhere"))
+    assert "unknown_parent_table" in {i.code for i in report.errors_in(section)}
 
 
 def test_an_override_changes_only_the_tiers_it_names() -> None:
-    rules = with_lever(fictional_rules(), "award_tables.teen.overrides.2.total_pct", "88")
-    table = resolved_table(rules, "teen")
-    assert table[2].r1_pct == Decimal(70)
-    assert table[2].total_pct == Decimal(88)
-    assert table[3] == resolved_table(rules, "camp")[3]
+    rules = with_levers(
+        fictional_rules(),
+        {"award_tables.teen.overrides.2.r1_pct": "65", "round2.tables.teen.overrides.2.total_pct": "88"},
+    )
+    assert resolved_table(rules.award_tables, "teen")[2].r1_pct == Decimal(65)
+    assert resolved_table(rules.round2.tables, "teen")[2].total_pct == Decimal(88)
+    assert resolved_table(rules.round2.tables, "teen")[3] == resolved_table(rules.round2.tables, "camp")[3]
 
 
 def test_a_value_that_cannot_bind_is_a_warning() -> None:
@@ -97,10 +105,12 @@ def test_an_upper_bound_on_the_last_band_is_not_enforced() -> None:
     # lower bounds only), but validation does -- setting it on the last band warns.
     changes = {
         "award_tables.camp.tiers": {
-            "1": {"r1_pct": "90", "total_pct": "97"},
-            "2": {"r1_pct": "75", "total_pct": "90"},
+            "1": {"r1_pct": "90"},
+            "2": {"r1_pct": "75"},
         },
         "award_tables.teen.overrides": {},
+        "round2.tables.camp.tiers": {"1": {"total_pct": "97"}, "2": {"total_pct": "90"}},
+        "round2.tables.teen.overrides": {},
     }
     with_upper = with_levers(
         fictional_rules(),
@@ -182,6 +192,24 @@ def test_a_session_type_maps_a_session_no_program_lists() -> None:
     assert resolve_program(fictional_rules(), 1000777, "main") == "summer"
     assert resolve_program(fictional_rules(), 1000103, "main") == "quest"  # the explicit id wins
     assert resolve_program(fictional_rules(), 1000999, None) is None
+
+
+def test_round_2_routing_names_real_programs_and_tables() -> None:
+    rules = fictional_rules()
+    unknown_table = with_lever(rules, "round2.program_tables.summer", "gold")
+    assert "unknown_table" in {i.code for i in validate_rules(unknown_table).errors_in("round2")}
+    routing = {**rules.round2.program_tables, "sailing": "camp"}
+    unknown_program = rules.model_copy(update={"round2": rules.round2.model_copy(update={"program_tables": routing})})
+    assert "unknown_program" in {i.code for i in validate_rules(unknown_program).errors_in("round2")}
+
+
+def test_an_open_program_must_say_which_round_2_table_it_uses() -> None:
+    # Null is an answer ("no Round 2 table"); a program left out entirely is not.
+    rules = fictional_rules()
+    routing = {k: v for k, v in rules.round2.program_tables.items() if k != "summer"}
+    rules = rules.model_copy(update={"round2": rules.round2.model_copy(update={"program_tables": routing})})
+    report = validate_rules(rules)
+    assert ("missing_round2_table", "round2.program_tables.summer") in {(i.code, i.path) for i in report.errors}
 
 
 def test_a_session_claimed_by_two_programs_is_an_error() -> None:
@@ -327,3 +355,16 @@ def test_a_season_with_no_synced_sessions_warns_instead_of_skipping_coverage() -
     assert report.ok
     # No context at all (the parity harness) is a deliberate choice and stays quiet.
     assert "no_sessions_to_check" not in validate_rules(fictional_rules()).codes()
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("quality_checks.checks.award_above_cost.severity", "warn"),
+        ("quality_checks.checks.award_above_cost.enabled", False),
+    ],
+)
+def test_the_above_cost_check_cannot_be_made_a_warning_or_switched_off(path: str, value: object) -> None:
+    # Owner ruling 2026-09-25: never above cost before the offer; the check always holds.
+    report = validate_rules(with_lever(fictional_rules(), path, value))
+    assert "award_above_cost_must_hold" in {i.code for i in report.errors_in("quality_checks")}

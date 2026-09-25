@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from bunking.financial_aid.calculator.income import household_income
 from bunking.financial_aid.calculator.inputs import ApplicationInputs
@@ -238,3 +239,49 @@ def test_a_staff_entered_income_needs_no_reported_figure() -> None:
         ApplicationInputs(income_override={"mode": "staff_entered", "amount": Decimal(42000)}), fictional_rules()
     )
     assert (result.income_missing, result.adjusted_income) == (False, Decimal(42000))
+
+
+# --- optional income terms over the other synced figures (spec section 7.2, owner ruling C4) --
+
+
+def _with_terms(*terms: dict[str, str]) -> AidRules:
+    return with_lever(fictional_rules(), "income.extra_terms", list(terms))
+
+
+def test_there_are_no_extra_terms_by_default_so_other_figures_change_nothing() -> None:
+    assert fictional_rules().income.extra_terms == []
+    assert _income(figures={"total_rent": "30000"}) == Decimal(60000)
+
+
+def test_an_extra_term_deducts_a_named_figure_strictly_above_its_threshold_at_its_rate() -> None:
+    # Exercises "income.extra_terms.figure", "income.extra_terms.direction",
+    # "income.extra_terms.threshold" and "income.extra_terms.rate".
+    rules = _with_terms({"figure": "total_rent", "direction": "deduct", "threshold": "20000", "rate": "0.5"})
+    assert _income(rules, figures={"total_rent": "30000"}) == Decimal(55000)
+    assert _income(rules, figures={"total_rent": "20000"}) == Decimal(60000)
+
+
+def test_an_extra_term_can_add_a_figure() -> None:
+    rules = _with_terms({"figure": "retirement_accounts", "direction": "add", "threshold": "500000", "rate": "0.1"})
+    assert _income(rules, figures={"retirement_accounts": "700000"}) == Decimal(80000)
+
+
+def test_an_unreported_extra_term_figure_counts_as_zero_like_expenses() -> None:
+    rules = _with_terms({"figure": "total_rent", "direction": "deduct"})
+    assert _income(rules) == Decimal(60000)
+    assert _income(rules, figures={"total_rent": None}) == Decimal(60000)
+
+
+def test_the_trace_shows_what_the_extra_terms_moved() -> None:
+    rules = _with_terms({"figure": "total_rent", "direction": "deduct", "threshold": "20000"})
+    result = household_income(app(figures={"total_rent": "30000"}), rules)
+    assert result.extra_terms == Decimal(-10000)
+    step = next(s for s in result.trace if s.key == "income_adjustments")
+    assert (step.value, step.inputs["extra_terms"]) == (Decimal(-10000), Decimal(-10000))
+
+
+def test_a_figure_the_formula_does_not_know_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        app(figures={"yacht_upkeep": "1"})
+    with pytest.raises(ValidationError):
+        _with_terms({"figure": "yacht_upkeep", "direction": "deduct"})

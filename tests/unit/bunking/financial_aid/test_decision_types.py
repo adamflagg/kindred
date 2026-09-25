@@ -116,3 +116,53 @@ def test_a_decision_type_kind_is_a_lever() -> None:
 def test_a_discretionary_decision_takes_the_typed_amount() -> None:
     result = calculate(app(), req(decision_type="discretionary", discretionary_amount="175"), fictional_rules())
     assert (result.top_up, result.discretionary, result.total) == (Decimal(0), Decimal(175), Decimal(3175))
+
+
+# --- the income ceiling stops all of the camp's own money (spec section 2 item 21) -----------
+
+ABOVE_CEILING = {"prior_year_gross": "230000", "current_year_gross": "230000"}
+
+
+def _above_ceiling(rules: AidRules | None = None, **request: Any) -> CalcResult:
+    rules = with_lever(rules or fictional_rules(), "tiers.income_ceiling", "220000")
+    return calculate(app(**ABOVE_CEILING), req(**request), rules)
+
+
+def test_above_the_ceiling_a_named_top_up_pays_nothing() -> None:
+    result = _above_ceiling(decision_type="appeal_top_up", appeal_amount="400")
+    assert (result.r2, result.top_up, result.total) == (Decimal(0), Decimal(0), Decimal(0))
+    assert result.step("top_up").bound == "income_ceiling"
+
+
+def test_above_the_ceiling_a_full_cost_decision_does_not_pay_the_whole_cost() -> None:
+    # Before the fix Round 1 was forced to 0 and the top-up then paid cost + extra in full.
+    result = _above_ceiling(ask="5000", decision_type="full_cost_program")
+    assert (result.r1, result.top_up, result.total) == (Decimal(0), Decimal(0), Decimal(0))
+
+
+def test_above_the_ceiling_discretionary_money_is_withheld_and_flagged() -> None:
+    result = _above_ceiling(decision_type="discretionary", discretionary_amount="500")
+    assert (result.discretionary, result.total) == (Decimal(0), Decimal(0))
+    assert ("above_income_ceiling", "warn") in {(i.code, i.severity) for i in result.issues}
+    assert result.step("discretionary").inputs["withheld"] == Decimal(500)
+
+
+def test_a_ceiling_exempt_decision_type_still_pays_above_the_ceiling() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {
+            "awards.decision_types.appeal_top_up.ceiling_exempt": True,
+            "awards.decision_types.discretionary.ceiling_exempt": True,
+        },
+    )
+    top_up = _above_ceiling(rules, decision_type="appeal_top_up")
+    assert (top_up.r1, top_up.top_up, top_up.total) == (Decimal(0), Decimal(250), Decimal(250))
+    typed = _above_ceiling(rules, decision_type="discretionary", discretionary_amount="500")
+    assert (typed.discretionary, typed.total) == (Decimal(500), Decimal(500))
+    assert "above_income_ceiling" not in typed.issue_codes()
+
+
+def test_below_the_ceiling_discretionary_money_is_paid_as_before() -> None:
+    rules = with_lever(fictional_rules(), "tiers.income_ceiling", "220000")
+    result = calculate(app(), req(decision_type="discretionary", discretionary_amount="175"), rules)
+    assert (result.discretionary, result.total) == (Decimal(175), Decimal(3175))

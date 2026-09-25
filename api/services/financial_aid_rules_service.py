@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -338,8 +338,11 @@ class FinancialAidRulesService:
         status = lock(current.section_status, section, at=self._clock(), report=report)
         return await self._write_status("lock", current, status, section, actor)
 
-    async def new_version(self, year: int, from_version: int, *, actor: str) -> RulesVersion:
-        """Copy `from_version`'s document and approvals (locks lifted) into a new, latest version.
+    async def new_version(
+        self, year: int, from_version: int, *, actor: str, unlock: Collection[SectionName] = ()
+    ) -> RulesVersion:
+        """Copy `from_version`'s document, approvals and locks into a new, latest version,
+        lifting only the locks named in `unlock` (lifecycle.carry_forward).
 
         `from_version` need not be the current latest -- branching from an older
         version on purpose is the one write this module allows on a superseded
@@ -352,7 +355,7 @@ class FinancialAidRulesService:
                 year,
                 version,
                 source.document,
-                carry_forward(source.section_status),
+                carry_forward(source.section_status, unlock=unlock),
                 parent_year=year,
                 parent_version=from_version,
             )

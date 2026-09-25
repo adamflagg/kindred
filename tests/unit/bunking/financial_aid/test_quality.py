@@ -1,4 +1,8 @@
-"""Data-quality checks: staff-set severity and thresholds, and they never change the status."""
+"""Data-quality checks: staff-set severity and thresholds, and they never change the status.
+
+A "hold" tells sub-project 10 not to finalize until staff look (the owner's 2026-09-25
+rename of "block"); a "warn" only informs. award_above_cost always holds.
+"""
 
 from typing import Any
 
@@ -35,7 +39,7 @@ def test_a_clean_request_raises_nothing() -> None:
             "warn",
             None,
         ),
-        ({"prior_year_gross": "0", "current_year_gross": "0"}, {}, "placeholder_income", "block", None),
+        ({"prior_year_gross": "0", "current_year_gross": "0"}, {}, "placeholder_income", "hold", None),
         (
             # Tier 2's total percentage is raised to the maximum (100%), which lands R1+R2 at
             # exactly cost; a Round 3 award on top then genuinely exceeds it. (A full-cost award
@@ -44,8 +48,8 @@ def test_a_clean_request_raises_nothing() -> None:
             {},
             {"appeal_amount": "2000", "round2_decided": True, "round3_amount": "500", "round3_statement_of_need": True},
             "award_above_cost",
-            "warn",
-            {"award_tables.camp.tiers.2.total_pct": "100"},
+            "hold",
+            {"round2.tables.camp.tiers.2.total_pct": "100"},
         ),
         ({}, {"ask": "3200", "appeal_amount": "1000"}, "appeal_above_ask", "warn", None),
         ({"dependents": 20}, {}, "implausible_dependents", "warn", None),
@@ -53,7 +57,7 @@ def test_a_clean_request_raises_nothing() -> None:
             {},
             {"person_cm_id": None, "program_key": "family_camp", "session_cm_id": 1000201},
             "family_cost_missing",
-            "block",
+            "hold",
             None,
         ),
         ({"prior_year_confirmed": "90000"}, {}, "py_confirm_tier_change", "warn", None),
@@ -72,7 +76,7 @@ def test_each_check_fires_with_its_severity(
     assert _codes(result).get(code) == severity
 
 
-def test_a_blocking_check_does_not_change_the_status() -> None:
+def test_a_holding_check_does_not_change_the_status() -> None:
     result = _run(app_fields={"prior_year_gross": "0", "current_year_gross": "0"})
     assert result.status == "ok"
 
@@ -92,8 +96,8 @@ def test_a_disabled_check_is_silent() -> None:
 
 
 def test_severity_is_a_lever() -> None:
-    rules = with_lever(fictional_rules(), "quality_checks.checks.ask_above_cost.severity", "block")
-    assert _codes(_run(rules, ask="4500"))["ask_above_cost"] == "block"
+    rules = with_lever(fictional_rules(), "quality_checks.checks.ask_above_cost.severity", "hold")
+    assert _codes(_run(rules, ask="4500"))["ask_above_cost"] == "hold"
 
 
 def test_threshold_is_a_lever() -> None:
@@ -144,3 +148,67 @@ def test_appeal_above_ask_is_silent_when_r1_is_unknown() -> None:
     assert result.status == "needs_input"
     assert result.r1 is None
     assert "appeal_above_ask" not in _codes(result)
+
+
+# --- award_above_cost: never above cost before the offer (spec section 2 item 19) ----------
+
+_OVER_COST: dict[str, Any] = {
+    "appeal_amount": "2000",
+    "round2_decided": True,
+    "round3_amount": "500",
+    "round3_statement_of_need": True,
+}
+
+
+def _over_cost_rules(**changes: Any) -> AidRules:
+    return with_levers(fictional_rules(), {"round2.tables.camp.tiers.2.total_pct": "100", **changes})
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        {"quality_checks.checks.award_above_cost.severity": "warn"},
+        {"quality_checks.checks.award_above_cost.enabled": False},
+    ],
+)
+def test_award_above_cost_always_holds_whatever_the_season_says(configured: dict[str, Any]) -> None:
+    # Owner ruling 2026-09-25: the check always holds and cannot be made a warning or
+    # switched off. Validation refuses such a setting; the engine never honours one.
+    assert _codes(_run(_over_cost_rules(**configured), **_OVER_COST))["award_above_cost"] == "hold"
+
+
+def test_award_above_cost_runs_when_the_season_does_not_list_it() -> None:
+    rules = _over_cost_rules()
+    checks = {k: v for k, v in rules.quality_checks.checks.items() if k != "award_above_cost"}
+    rules = rules.model_copy(update={"quality_checks": rules.quality_checks.model_copy(update={"checks": checks})})
+    assert _codes(_run(rules, **_OVER_COST))["award_above_cost"] == "hold"
+
+
+def test_award_above_cost_counts_a_grant_on_a_program_grants_do_not_offset() -> None:
+    # B'mitzvah is not in offset_programs, so the grant does not reduce Round 1 (75% of
+    # 3,000 = 2,250) -- but it is money the family has, and 2,250 + 1,000 is above 3,000.
+    result = _run(
+        program_key="bmitzvah",
+        session_cm_id=1000301,
+        grants_applicable=[{"amount": "1000", "state": "committed"}],
+    )
+    assert result.grants_offset == 0
+    assert _codes(result)["award_above_cost"] == "hold"
+
+
+def test_award_above_cost_counts_a_committed_grant_when_only_received_ones_offset() -> None:
+    rules = with_lever(fictional_rules(), "grants.count_when", "received")
+    result = _run(rules, grants_applicable=[{"amount": "2000", "state": "committed"}])
+    assert result.grants_offset == 0
+    assert _codes(result)["award_above_cost"] == "hold"
+
+
+def test_a_grant_that_arrives_after_the_offer_may_take_the_family_above_cost() -> None:
+    # Only a grant known before the camp's offer counts toward the cap; one recorded after
+    # the Round 1 decision (the offer) is accepted, and nothing is clawed back.
+    result = _run(
+        r1_decided_at="2031-03-01T12:00:00Z",
+        grants_applicable=[{"amount": "2000", "state": "committed", "recorded_at": "2031-04-01T12:00:00Z"}],
+    )
+    assert "award_above_cost" not in _codes(result)
+    assert "late_grant" in _codes(result)
