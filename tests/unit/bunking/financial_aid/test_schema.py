@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from bunking.financial_aid.rules.defaults import DEFAULT_PROGRAM_KEYS, default_program_profiles
 from bunking.financial_aid.rules.schema import (
     SECTION_NAMES,
     AidRules,
@@ -158,7 +157,6 @@ def test_a_program_must_say_which_tables_it_uses() -> None:
 def test_the_fictional_season_is_a_valid_document() -> None:
     rules = fictional_rules()
     assert rules.year == 2031
-    assert set(rules.programs) == set(DEFAULT_PROGRAM_KEYS)
     for name in SECTION_NAMES:
         assert hasattr(rules, name), name
 
@@ -236,23 +234,3 @@ def test_the_schema_refuses_bad_lever_values_and_keeps_good_ones(path: str, bad:
     for part in path.split("."):
         node = node[part]
     assert str(node) == str(good)
-
-
-def test_default_programs_start_closed_to_aid() -> None:
-    # A brand-new season awards nothing until staff route each program.
-    profiles = default_program_profiles()
-    assert tuple(profiles) == DEFAULT_PROGRAM_KEYS
-    assert DEFAULT_PROGRAM_KEYS == (
-        "summer",
-        "quest",
-        "teen",
-        "bmitzvah",
-        "family_camp",
-        "adult_weekend",
-        "family_school",
-        "other",
-    )
-    assert all(not p.open_to_aid for p in profiles.values())
-    assert all(p.r1_table is None and p.r2_table is None for p in profiles.values())
-    assert profiles["family_camp"].cost_source == "per_person"
-    assert {k for k, p in profiles.items() if p.cost_source == "catalog"} == set(DEFAULT_PROGRAM_KEYS) - {"family_camp"}

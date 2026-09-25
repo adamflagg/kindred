@@ -44,7 +44,7 @@ def test_a_grant_is_netted_out_of_a_full_cost_award() -> None:
 
 def test_the_extra_is_a_lever() -> None:
     # Ruling P4: extra_amount must move to a non-zero value the pre-implementation engine
-    # cannot reproduce. "0" / 4000 passes even before Round 3/top-up exists (top_up defaults
+    # cannot reproduce. "0" / 4000 passes even before Round 3/top-up exists (top_up defaulted
     # to 0 and full_cost R1 already lands at cost), so it would prove nothing.
     rules = with_lever(fictional_rules(), "awards.decision_types.full_cost_program.extra_amount", "20")
     assert _full_cost(rules).total == Decimal(4020)
