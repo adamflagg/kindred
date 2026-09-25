@@ -282,6 +282,10 @@ class TestTheWarmCoversEveryCachedReadAPageIssues:
         assert await _misses_during(lambda: service.build_summary(year)) == 0
         assert await _misses_during(lambda: service.build_roster(year, 1000001)) == 0
         assert await _misses_during(lambda: service.build_roster(year, 1000002)) == 0
+        # kindred#2759: a bunking.manage caller's adult board also reads the
+        # Jotform bunking rows -- the read a staff link/ignore/unlink clears.
+        # The router passes include_bunking_request for exactly those callers.
+        assert await _misses_during(lambda: service.build_roster(year, 1000002, include_bunking_request=True)) == 0
 
     @pytest.mark.asyncio
     async def test_a_failed_warm_is_logged_not_raised(self) -> None:

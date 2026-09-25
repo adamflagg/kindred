@@ -1430,8 +1430,8 @@ class LodgingRepository:
         year like every other roster read. The Jotform pull invalidates it once
         its `jotform_submissions` job has a `SYNC_JOB_WRITES` entry naming these
         tables (until then an unclassified sync clears everything, which fails
-        safe), and the staff link/ignore/unlink writes must clear it directly
-        when they land. Answers are narrowed to each form's own mapped question
+        safe), and the staff link/ignore/unlink writes clear it directly
+        (`jotform_admin_service._roster_changed`). Answers are narrowed to each form's own mapped question
         ids for `ROSTER_ROLES` -- identity and emergency answers never reach
         this read.
         """
