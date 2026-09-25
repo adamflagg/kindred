@@ -96,9 +96,9 @@ const viewAsMiddlewareID = "kindredViewAs"
 // as "@request.auth.is_admin = true || @request.auth.cached_permissions ~
 // \"X\"" (the shape of every rule pb_migrations/1500000077_rbac_simplify_rules.js
 // and its siblings write) is UNAFFECTED by a preview. See
-// view_as_router_test.go's "KNOWN GAP" scenarios and task-2-report.md for the
-// verified evidence. This middleware still downgrades every Go-code reader of
-// e.Auth (guardConfigWrite, sync/api.go) correctly.
+// view_as_router_test.go's "KNOWN GAP" scenarios for the verified evidence.
+// This middleware still downgrades every Go-code reader of e.Auth
+// (guardConfigWrite, sync/api.go) correctly.
 //
 // auth-* routes are skipped: auth-refresh returns e.Auth as the record the SDK
 // stores, and a downgraded one would erase is_admin from the tab, hiding the
