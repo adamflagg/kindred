@@ -194,6 +194,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
             total=work.total,
             r1=work.r1,
             grants=work.grants_offset,
+            extra_amount=decision.extra_amount if decision is not None else ZERO,
         )
     )
     return work.result()

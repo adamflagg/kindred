@@ -17,7 +17,6 @@ from bunking.financial_aid.calculator.income import IncomeResult, household_inco
 from bunking.financial_aid.calculator.inputs import ApplicationInputs, IncomeOverride, RequestInputs
 from bunking.financial_aid.calculator.result import CalcIssue
 from bunking.financial_aid.calculator.tiers import income_tier as tier_of
-from bunking.financial_aid.money import to_money
 from bunking.financial_aid.rules.schema import AidRules, ProgramProfile, QualityCheck, QualityCheckKey
 
 
@@ -33,6 +32,7 @@ def run_quality_checks(
     total: Decimal | None,
     r1: Decimal | None,
     grants: Decimal,
+    extra_amount: Decimal,
 ) -> list[CalcIssue]:
     checks = rules.quality_checks.checks
     issues: list[CalcIssue] = []
@@ -53,10 +53,26 @@ def run_quality_checks(
         fire("expense_above", check, f"A counted expense or reduction is above {check.threshold}")
     if (check := active("multiple_grants")) and len(request.grants_applicable) > 1:
         fire("multiple_grants", check, "This camper has more than one outside grant")
-    reported = max(to_money(application.prior_year_gross), to_money(application.current_year_gross))
-    if (check := active("placeholder_income")) and check.threshold is not None and reported <= check.threshold:
-        fire("placeholder_income", check, f"Reported income is at or below {check.threshold}; it may be a placeholder")
-    if (check := active("award_above_cost")) and cost is not None and total is not None and total + grants > cost:
+    # Absent gross figures are unknown, not 0: a household with only a staff override or only
+    # a confirmed prior-year figure has no gross figure to call a placeholder, so the check
+    # is silent rather than comparing an invented 0 to the threshold.
+    reported_grosses = [g for g in (application.prior_year_gross, application.current_year_gross) if g is not None]
+    if reported_grosses:
+        reported = max(reported_grosses)
+        if (check := active("placeholder_income")) and check.threshold is not None and reported <= check.threshold:
+            fire(
+                "placeholder_income",
+                check,
+                f"Reported income is at or below {check.threshold}; it may be a placeholder",
+            )
+    # A full_cost decision type's named extra_amount is a deliberate lever (Round 1 = cost -
+    # grants + extra, by design), so it raises the bar rather than tripping the check itself.
+    if (
+        (check := active("award_above_cost"))
+        and cost is not None
+        and total is not None
+        and total + grants > cost + extra_amount
+    ):
         fire("award_above_cost", check, "Aid plus outside grants is above the cost")
     if (
         (check := active("appeal_above_ask"))
