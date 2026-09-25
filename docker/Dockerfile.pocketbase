@@ -1,14 +1,20 @@
 # =============================================================================
 # Stage 1: Build PocketBase (pure Go, no CGO)
 # =============================================================================
-FROM dhi.io/golang:1.26-dev AS go-builder
+FROM golang:1.27-alpine AS go-builder
 
-# Allow Go to auto-download the toolchain pinned in go.mod when the base image
-# ships an older patch version (dhi.io golang tags lag upstream by a few patches).
-ENV GOTOOLCHAIN=auto
+# Rule: pocketbase/go.mod picks the minor; every build uses the latest patch of
+# it. The floating golang:X.Y-alpine tag IS that latest patch, so the image tag
+# is the toolchain and nothing may download another one. GOTOOLCHAIN=auto did
+# exactly that -- and it fetched the MINIMUM version go.mod allows (go1.27.0),
+# not the latest patch. `local` is already the golang image's default; it is
+# spelled out so no one "fixes" it back. scripts/ci/check-go-version-alignment.sh
+# enforces all of this.
+#
+# No git: `go mod download` fetches every dependency from proxy.golang.org as
+# a zip, and .git is dockerignored so `go build` has no VCS to stamp.
+ENV GOTOOLCHAIN=local
 
-# hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY pocketbase/go.mod pocketbase/go.sum ./
 RUN go mod download

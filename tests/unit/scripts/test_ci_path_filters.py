@@ -716,3 +716,46 @@ def test_every_shellcheck_call_site_runs_the_same_command():
     for name, text in (("ci.yml", ci_run), (".lefthook.yml", lefthook), ("pre-push-verify.sh", prepush)):
         assert script in text, f"{name} does not delegate to {script}"
         assert "-maxdepth" not in text or name != "ci.yml", f"{name} still hand-rolls a find"
+
+
+# --- Go version alignment guard ---------------------------------------------
+#
+# scripts/ci/check-go-version-alignment.sh enforces "pocketbase/go.mod picks the
+# minor; every build uses the latest patch of it". It runs in docker-lint, so
+# every file it READS must be able to trigger docker-lint -- otherwise a PR
+# drifting only a go.mod or a workflow's setup-go pin skips the guard, and a
+# skipped job counts as OK in ci-summary.
+
+
+def _go_alignment_step_scripts() -> list[str]:
+    """The scripts the `Go version alignment` step runs, derived by PARSING the step."""
+    steps = _ci()["jobs"]["docker-lint"]["steps"]
+    step = next((st for st in steps if st.get("name") == "Go version alignment"), None)
+    assert step, "docker-lint has no 'Go version alignment' step"
+    scripts = re.findall(r"(scripts/\S+\.sh)", step["run"])
+    assert len(scripts) == 2, f"expected the guard and its self-test, parsed {scripts}"
+    return scripts
+
+
+def test_docker_lint_gate_covers_the_go_alignment_guard_and_its_self_test():
+    patterns = _patterns_gating("docker-lint")
+    for script in _go_alignment_step_scripts():
+        assert (REPO_ROOT / script).is_file(), f"{script} does not exist"
+        assert _matches(script, patterns), f"{script} cannot trigger docker-lint"
+
+
+def test_docker_lint_gate_covers_every_go_alignment_input():
+    """The go directives, every Dockerfile (the guard globs docker/Dockerfile*,
+    so a NEW Dockerfile is an input the moment it exists), and every workflow
+    (the guard rejects a literal setup-go `go-version:` in any of them)."""
+    patterns = _patterns_gating("docker-lint")
+    inputs = [
+        "pocketbase/go.mod",
+        "docker/healthcheck/go.mod",
+        "go.work",
+        "docker/Dockerfile.some-future-image",
+        *_tracked("docker/Dockerfile*"),
+        *_tracked(".github/workflows/*.yml"),
+    ]
+    uncovered = [f for f in inputs if not _matches(f, patterns)]
+    assert not uncovered, f"Go alignment inputs cannot trigger docker-lint: {uncovered}"

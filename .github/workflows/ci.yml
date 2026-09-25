@@ -370,6 +370,18 @@ jobs:
             # all live here. Same reasoning and the same accepted cost as
             # `goLint` above. kindred#2663.
             - '.github/workflows/ci.yml'
+            # The `Go version alignment` step's inputs. Its guard globs
+            # docker/Dockerfile*, so a NEW Dockerfile is an input the moment it
+            # exists (the four explicit entries above are only hadolint's
+            # list); it reads all three `go` directives; and it rejects a
+            # literal setup-go `go-version:` in ANY workflow, not just this one.
+            - 'docker/Dockerfile*'
+            - 'pocketbase/go.mod'
+            - 'docker/healthcheck/go.mod'
+            - 'go.work'
+            - '.github/workflows/**'
+            - 'scripts/ci/check-go-version-alignment.sh'
+            - 'scripts/ci/test-check-go-version-alignment.sh'
           docker:
             - 'docker/**'
             - 'docker-compose*.yml'
@@ -810,6 +822,17 @@ jobs:
     # at the Traefik layer. No bind mount: the script `docker cp`s the file in.
     - name: Caddy superuser API gate
       run: bash scripts/ci/probe-caddy-superuser-gate.sh
+
+    # Rule: pocketbase/go.mod picks the minor; every build uses the latest
+    # patch of it. The guard fails on a golang stage on another minor, a
+    # patch-pinned or non-official golang image, GOTOOLCHAIN other than
+    # `local`, a drifted go.work / docker/healthcheck/go.mod directive, or a
+    # setup-go step not reading pocketbase/go.mod. Its self-test runs first so
+    # a guard that silently stopped detecting cannot report the tree clean.
+    - name: Go version alignment
+      run: |
+        bash scripts/ci/test-check-go-version-alignment.sh
+        bash scripts/ci/check-go-version-alignment.sh
 
   # Security audits. Split out of the three *Lint jobs (kindred#2729).
   #

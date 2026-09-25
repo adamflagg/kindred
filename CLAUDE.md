@@ -133,7 +133,7 @@ Read the relevant doc before working in these areas:
 
 ### Tooling
 
-- **Versions** — Python 3.14+, Go 1.26+, Node 22+, TypeScript 6.0+/ES2022
+- **Versions** — Python 3.14+, Go 1.27 (`pocketbase/go.mod` picks the minor; every build uses its latest patch — `scripts/ci/check-go-version-alignment.sh`), Node 22+, TypeScript 6.0+/ES2022
 - **Use uv** — `uv sync` to install, `uv run <cmd>` to execute
 - **AI model** — GPT-5-nano via `AI_MODEL` env var (reasoning enabled)
 - **Token caching** — CampMinder JWT cached in `~/.campminder_token_cache.json`
