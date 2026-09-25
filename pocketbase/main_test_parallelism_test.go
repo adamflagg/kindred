@@ -94,6 +94,7 @@ var serialGroups = []struct {
 		reason: "t.Setenv: exercises the JOTFORM_API_KEY read itself",
 		tests: []string{
 			"TestJotformSyncWithoutAKeyFailsLoudly",
+			"TestJotformJobRunsDailyWhenAKeyIsConfigured",
 		},
 	},
 	{

@@ -339,8 +339,8 @@ export const YEAR_SYNC_TYPES = [
     phase: 'process' as SyncPhase,
     currentYearOnly: true,
   },
-  // kindred#2759: the adult-weekend Jotform pull. Manual only until the forms move to the
-  // enterprise Jotform account -- no cron, so this card's Run is the only way to start it.
+  // kindred#2759: the adult-weekend Jotform pull. Runs on the daily cron now, gated on
+  // JOTFORM_API_KEY being configured -- this card's Run button still starts it on demand.
   {
     id: 'jotform_submissions',
     name: 'Jotform Submissions',

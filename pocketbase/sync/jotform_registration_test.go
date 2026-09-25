@@ -5,25 +5,18 @@ import (
 	"testing"
 )
 
-func TestJotformJobIsManualOnlyUntilTheEnterpriseMove(t *testing.T) {
-	t.Parallel()
-	var meta *JobMeta
-	for i := range syncJobMeta {
-		if syncJobMeta[i].ID == serviceNameJotformSubmissions {
-			meta = &syncJobMeta[i]
-		}
+func TestJotformJobRunsDailyWhenAKeyIsConfigured(t *testing.T) {
+	t.Setenv("IS_DOCKER", "true")
+	t.Setenv("JOTFORM_API_KEY", "test-key")
+	if !slices.Contains(getDailySyncJobs(), serviceNameJotformSubmissions) {
+		t.Error("P2: the Jotform pull runs on the daily cron once the enterprise account is live")
 	}
-	if meta == nil {
-		t.Fatal("jotform_submissions has no syncJobMeta row")
-	}
-	if meta.Cadences != 0 {
-		t.Error("P1: no cron may run the Jotform pull before the enterprise-account move (P2 adds CadenceDaily)")
-	}
-	if meta.Triggers != TriggerIndividualRoute || !meta.CurrentYearOnly {
-		t.Errorf("want TriggerIndividualRoute only and CurrentYearOnly, got %+v", *meta)
+	t.Setenv("JOTFORM_API_KEY", "")
+	if slices.Contains(getDailySyncJobs(), serviceNameJotformSubmissions) {
+		t.Error("with no key the daily cron must skip the job rather than fail it every night")
 	}
 	if slices.Contains(GetDefaultUnifiedSyncJobs(true, true), serviceNameJotformSubmissions) {
-		t.Error("the Jotform pull must not join a full run")
+		t.Error("still never part of a full run")
 	}
 }
 
