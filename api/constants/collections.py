@@ -137,3 +137,8 @@ SUPERUSERS = "_superusers"
 JOTFORM_FORMS = "jotform_forms"
 JOTFORM_SUBMISSIONS = "jotform_submissions"
 JOTFORM_ANSWERS = "jotform_answers"
+
+# Financial aid (campership). Every aid_* table has all five PocketBase rules null;
+# FastAPI's superuser client, behind the financial_aid.* permissions, is the only
+# reader and writer.
+AID_RULES = "aid_rules"

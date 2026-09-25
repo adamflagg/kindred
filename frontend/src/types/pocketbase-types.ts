@@ -11,6 +11,7 @@ export const Collections = {
   Mfas: '_mfas',
   Otps: '_otps',
   Superusers: '_superusers',
+  AidRules: 'aid_rules',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
   BunkAssignments: 'bunk_assignments',
@@ -164,6 +165,18 @@ export type SuperusersRecord = {
   tokenKey: string
   updated: IsoAutoDateString
   verified?: boolean
+}
+
+export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
+  created: IsoAutoDateString
+  document?: null | Tdocument
+  id: string
+  parent_version?: number
+  parent_year?: number
+  section_status?: null | Tsection_status
+  updated: IsoAutoDateString
+  version: number
+  year: number
 }
 
 export const AttendeeStatusHistoryOldStatusOptions = {
@@ -1895,6 +1908,11 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AidRulesResponse<
+  Tdocument = unknown,
+  Tsection_status = unknown,
+  Texpand = unknown,
+> = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
 export type AttendeeStatusHistoryResponse<Texpand = unknown> =
   Required<AttendeeStatusHistoryRecord> & BaseSystemFields<Texpand>
 export type AttendeesResponse<Texpand = unknown> = Required<AttendeesRecord> &
@@ -2113,6 +2131,7 @@ export type CollectionRecords = {
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  aid_rules: AidRulesRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
   bunk_assignments: BunkAssignmentsRecord
@@ -2195,6 +2214,7 @@ export type CollectionResponses = {
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  aid_rules: AidRulesResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse
   bunk_assignments: BunkAssignmentsResponse
