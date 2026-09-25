@@ -16,6 +16,9 @@ Scans every data-table cell of a SQLite artifact and asserts the ABSENCE of leak
    own emptying (kindred#2792) regresses.
 7. ``nonempty_system_table`` — a PB ``_``-prefixed auth/system table that must be
    empty (no real users/emails/credentials) still has rows.
+8. ``nonempty_aid_table`` — any table whose name starts with ``aid_`` has rows.
+   Financial aid (campership) holds per-family awards, grants and their change
+   history. Matched by prefix, denylist-independent, like check 6.
 
 The denylist/email/phone/camp scans run over the data tables (``_``-prefixed system
 tables are excluded — their schema vocabulary false-matches the name denylist). The
@@ -340,6 +343,17 @@ def scan(
             (n,) = conn.execute(f"SELECT count(*) FROM [{table}]").fetchone()
             if n:
                 violations.append(Violation("nonempty_lodging_table", table, f"{n} row(s) in lodging table"))
+
+        # 8. every aid_* table must be empty (campership SP2). Same shape and
+        # reasoning as check 6: prefix-matched so a future aid_ table is covered,
+        # and it runs in --artifact-only mode with no denylist. Case-insensitive
+        # match, matching the Go guard and SQL LIKE.
+        for table in sorted(present):
+            if not table.lower().startswith("aid_"):
+                continue
+            (n,) = conn.execute(f"SELECT count(*) FROM [{table}]").fetchone()
+            if n:
+                violations.append(Violation("nonempty_aid_table", table, f"{n} row(s) in financial aid table"))
 
         # 2-5. cell-level scans across every surviving table
         for table in present:
