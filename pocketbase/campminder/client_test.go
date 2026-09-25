@@ -1001,3 +1001,22 @@ func TestMakeRequest_RetryResendsPOSTBody(t *testing.T) {
 		t.Errorf("bodies = %q, want the same JSON body twice", bodies)
 	}
 }
+
+// TestRateLimitWait_HintedWaitIsCappedAtFiveMinutes: a malformed or huge CampMinder hint must
+// not sleep for days -- the hinted branch is clamped at rateLimitMaxHintedWait.
+func TestRateLimitWait_HintedWaitIsCappedAtFiveMinutes(t *testing.T) {
+	body := `{"message":"Rate limit is exceeded. Try again in 999999 seconds."}`
+	if got := rateLimitWait(body, 0); got != rateLimitMaxHintedWait {
+		t.Errorf("rateLimitWait(huge hint) = %v, want %v (rateLimitMaxHintedWait)", got, rateLimitMaxHintedWait)
+	}
+}
+
+// TestRateLimitWait_NormalHintedWaitUnaffectedByCap: a genuine long-but-reasonable hint (well
+// under the cap) is still honored as hint+5s, not silently shortened.
+func TestRateLimitWait_NormalHintedWaitUnaffectedByCap(t *testing.T) {
+	body := `{"message":"Rate limit is exceeded. Try again in 30 seconds."}`
+	want := 35 * time.Second
+	if got := rateLimitWait(body, 0); got != want {
+		t.Errorf("rateLimitWait(30s hint) = %v, want %v", got, want)
+	}
+}

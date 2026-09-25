@@ -29,9 +29,14 @@ const (
 	// rateLimitBaseBackoff is makeRequest's first wait after a 429 whose body carries no
 	// "Try again in N seconds" hint; each further unhinted 429 doubles it.
 	rateLimitBaseBackoff = 5 * time.Second
-	// rateLimitMaxBackoff caps an unhinted wait. A hinted wait is honored as given, the
-	// same as authenticateAtURL and makeRequestWithURLRetry do.
+	// rateLimitMaxBackoff caps an unhinted wait. A hinted wait is honored as given, up to
+	// rateLimitMaxHintedWait, the same as authenticateAtURL and makeRequestWithURLRetry do.
 	rateLimitMaxBackoff = 60 * time.Second
+	// rateLimitMaxHintedWait caps a hinted wait so a malformed or absurd CampMinder hint
+	// (e.g. "Try again in 999999 seconds") can't sleep for days. Deliberately larger than
+	// rateLimitMaxBackoff so a genuine long hint (e.g. 90s) is still honored in full instead
+	// of being truncated into an immediate re-429.
+	rateLimitMaxHintedWait = 5 * time.Minute
 
 	// CampMinder query-parameter names, repeated across nearly every request
 	// this client makes. Named so a typo becomes a compile-time reference
@@ -758,10 +763,15 @@ func (c *Client) parseRateLimitSeconds(body string) int {
 }
 
 // rateLimitWait is how long makeRequest sleeps before retry attempt+1: the hint plus a 5
-// second buffer when CampMinder sent one, otherwise 5s, 10s, 20s, 40s, then 60s.
+// second buffer when CampMinder sent one (clamped at rateLimitMaxHintedWait against a
+// malformed or absurd hint), otherwise 5s, 10s, 20s, 40s, then 60s.
 func rateLimitWait(body string, attempt int) time.Duration {
 	if seconds, ok := parseRateLimitHint(body); ok {
-		return time.Duration(seconds+5) * time.Second
+		wait := time.Duration(seconds+5) * time.Second
+		if wait <= 0 || wait > rateLimitMaxHintedWait {
+			return rateLimitMaxHintedWait
+		}
+		return wait
 	}
 	wait := rateLimitBaseBackoff << attempt
 	if wait <= 0 || wait > rateLimitMaxBackoff {
