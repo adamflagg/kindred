@@ -12,7 +12,7 @@ propagate: a change that could not be recorded must not look recorded.
 
 Snapshots are stored as JSON. ``Decimal`` becomes its exact string (money is
 Decimal throughout the calculator, spec §8), dates and datetimes become ISO
-8601, NaN and infinity are refused, and anything else JSON cannot hold raises
+8601, NaN and infinity are refused, keys must be text at every depth, and anything else JSON cannot hold raises
 ``TypeError`` naming the type.
 """
 
@@ -41,11 +41,24 @@ def _json_default(value: object) -> str:
     raise TypeError(f"aid_change_log cannot store a {type(value).__name__}; convert it before recording")
 
 
+def _require_string_keys(value: object, label: str) -> None:
+    # json.dumps would silently turn 1 into "1", and {1: a, "1": b} into one key.
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{label} has a {type(key).__name__} key ({key!r}); snapshot keys must be text")
+            _require_string_keys(item, label)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _require_string_keys(item, label)
+
+
 def _snapshot(value: dict[str, Any] | None, label: str) -> dict[str, Any] | None:
     if value is None:
         return None
     if not isinstance(value, dict):
         raise TypeError(f"{label} must be a dict or None, got {type(value).__name__}")
+    _require_string_keys(value, label)
     encoded = json.dumps(value, default=_json_default, allow_nan=False)
     decoded: dict[str, Any] = json.loads(encoded)
     return decoded

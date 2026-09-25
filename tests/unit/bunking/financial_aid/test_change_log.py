@@ -8,6 +8,7 @@ import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -110,6 +111,21 @@ def test_non_finite_decimal_is_refused_not_stored(bad: Decimal, field: str) -> N
 def test_an_unserialisable_value_is_refused_with_its_type() -> None:
     with pytest.raises(TypeError, match="set"):
         _call(MagicMock(), after={"tiers": {1, 2}})
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        {"tiers": {1: "a", "1": "b"}},  # json.dumps would collapse these two keys
+        {"rows": [{2: "x"}]},
+        {3: "top level"},
+    ],
+)
+def test_a_non_string_key_is_refused_before_it_can_be_coerced(after: dict[Any, Any]) -> None:
+    pb = MagicMock()
+    with pytest.raises(TypeError, match="key"):
+        _call(pb, action="update", after=after)
+    pb.collection.assert_not_called()
 
 
 def test_delete_has_before_and_no_after() -> None:
