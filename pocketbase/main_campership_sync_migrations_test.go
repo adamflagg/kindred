@@ -138,7 +138,7 @@ func TestFinancialAidApplicationsMigrationFixesTheColumns(t *testing.T) {
 			t.Errorf("%s path must save twice (remove, then re-add with the other type)", name)
 		case removed < 0 || removed > firstSave:
 			t.Errorf("%s path must remove income_confirmed before the first save", name)
-		case readded == nil || readded[0] < firstSave:
+		case len(readded) == 0 || readded[0] < firstSave:
 			t.Errorf("%s path must re-add income_confirmed as %s AFTER the first save", name, half.readdedType)
 		}
 	}
