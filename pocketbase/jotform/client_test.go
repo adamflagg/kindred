@@ -102,3 +102,92 @@ func TestNewClientFromEnvReadsKeyAndBase(t *testing.T) {
 		t.Errorf("from env: %+v err %v", c, err)
 	}
 }
+
+// The questions endpoint returns an OBJECT keyed by question id, and has been
+// seen with qid/order as numbers as well as strings (the POST example). Only
+// questions staff could map are kept: headers, page breaks, buttons and
+// static text carry wording that would mislead the guesser.
+const questionsBody = `{"responseCode":200,"message":"success","content":{
+ "1":{"qid":"1","order":"1","text":"Weekend registration","type":"control_head","name":"header"},
+ "4":{"qid":"4","order":"3","text":"Name","type":"control_fullname","name":"name"},
+ "3":{"qid":3,"order":2,"text":"Email","type":"control_email","name":"email"},
+ "9":{"qid":"9","order":"9","text":"Submit","type":"control_button"},
+ "8":{"qid":"8","order":"8","text":"<p>Thanks!</p>","type":"control_text"},
+ "7":{"qid":"7","order":"7","text":"","type":"control_pagebreak"},
+ "21":{"qid":"21","order":"21","text":"Bunking request","type":"control_textarea","required":"No"}
+}}`
+
+func TestFormQuestionsReadsTheDefinitionInOrder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("APIKEY") != "k" {
+			t.Errorf("APIKEY header = %q", r.Header.Get("APIKEY"))
+		}
+		if r.URL.Path != "/form/261700000000001/questions" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		fmt.Fprint(w, questionsBody)
+	}))
+	defer server.Close()
+
+	client, _ := NewClient(Config{APIKey: "k", BaseURL: server.URL})
+	qs, err := client.FormQuestions(context.Background(), "261700000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []FormQuestion{
+		{QuestionID: "3", Text: "Email", Type: "control_email", Order: 2},
+		{QuestionID: "4", Text: "Name", Type: "control_fullname", Order: 3},
+		{QuestionID: "21", Text: "Bunking request", Type: "control_textarea", Order: 21},
+	}
+	if fmt.Sprint(qs) != fmt.Sprint(want) {
+		t.Errorf("questions = %+v\nwant        %+v", qs, want)
+	}
+}
+
+func TestFormQuestionsOfAFormWithNoneIsEmptyNotAnError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"responseCode":200,"message":"success","content":[]}`)
+	}))
+	defer server.Close()
+	client, _ := NewClient(Config{APIKey: "k", BaseURL: server.URL})
+	qs, err := client.FormQuestions(context.Background(), "261700000000001")
+	if err != nil || len(qs) != 0 {
+		t.Errorf("got %v, %v; want no questions and no error", qs, err)
+	}
+}
+
+func TestFormQuestionsFailsOnAnErrorResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"responseCode":401,"message":"You're not authorized to use (/form-id/questions)"}`)
+	}))
+	defer server.Close()
+	client, _ := NewClient(Config{APIKey: "k", BaseURL: server.URL})
+	if qs, err := client.FormQuestions(context.Background(), "261700000000001"); err == nil || qs != nil {
+		t.Errorf("an error response must fail with no result; got %v, %v", qs, err)
+	}
+}
+
+func TestFormTitleReadsTheFormInfo(t *testing.T) {
+	// The live API answers with an object; the published example wraps it in a
+	// one-element array. Both must read.
+	for name, body := range map[string]string{
+		"object": `{"responseCode":200,"message":"success","content":{"id":"261700000000001","title":"Women's Weekend 2026","status":"ENABLED"}}`,
+		"array":  `{"responseCode":200,"message":"success","content":[{"id":"261700000000001","title":"Women's Weekend 2026"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/form/261700000000001" {
+					t.Errorf("path = %q", r.URL.Path)
+				}
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			client, _ := NewClient(Config{APIKey: "k", BaseURL: server.URL})
+			title, err := client.FormTitle(context.Background(), "261700000000001")
+			if err != nil || title != "Women's Weekend 2026" {
+				t.Errorf("title = %q, err %v", title, err)
+			}
+		})
+	}
+}

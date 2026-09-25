@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,19 +35,38 @@ const (
 // JotformFetcher is the slice of the Jotform client this job uses; tests fake it.
 type JotformFetcher interface {
 	FormSubmissions(ctx context.Context, formID string) ([]jotform.Submission, error)
+	FormQuestions(ctx context.Context, formID string) ([]jotform.FormQuestion, error)
+	FormTitle(ctx context.Context, formID string) (string, error)
 }
+
+// The wrong-guess guard (kindred#2828): with a GUESSED name role, a pull whose
+// live, staff-untouched submissions number at least guardMinSubmissions and
+// auto-match below half writes no match results. A name role that landed on
+// the emergency-contact name would otherwise link people to the wrong guests.
+const guardMinSubmissions = 10
+
+// errFormRepointed: staff pointed the weekend at a different Jotform form
+// while this pull ran, so what it read belongs to the old one.
+var errFormRepointed = errors.New("the form link changed during the pull")
 
 // JotformSubmissionsSync pulls every ENABLED adult-weekend form for the season
 // (kindred#2759), stores every answered question generically, marks vanished
 // submissions DELETED, and auto-matches with jotform.Match against the
-// session's enrolled guests. Rows staff linked or ignored are never re-matched:
-// their Jotform content (answers, dates, status, a DELETED mark) still refreshes,
-// but match_status, person_cm_id and match_tier stay as staff left them.
+// session's enrolled guests.
+//
+// Each pull first reads the form's DEFINITION (title and questions) from
+// Jotform and resolves the field map itself (kindred#2828): staff roles are
+// kept, a role whose wording matches one confirmed on an earlier year's form is
+// carried, and the rest are guessed from the wording. So a freshly pasted form
+// is stored, mapped and matched in one run.
+//
+// Rows staff linked or ignored are never re-matched: their Jotform content
+// (answers, dates, status, a DELETED mark) still refreshes, but match_status,
+// person_cm_id and match_tier stay as staff left them.
 //
 // Not CampMinder: it has its own key (JOTFORM_API_KEY) and base URL
-// (JOTFORM_API_BASE). Until the enterprise-account move it runs only on an
-// explicit trigger (admin "Pull now" / the individual route); P2 adds the
-// daily cadence.
+// (JOTFORM_API_BASE). It runs daily when a key is configured, and on demand
+// from the admin Jotform tab or the individual route.
 type JotformSubmissionsSync struct {
 	App        core.App
 	Fetcher    JotformFetcher
@@ -103,9 +123,13 @@ func (s *JotformSubmissionsSync) Sync(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("loading jotform_forms: %w", err)
 	}
+	history, err := s.confirmedWordings(year)
+	if err != nil {
+		return err
+	}
 	var firstErr error
 	for _, form := range forms {
-		pullErr := s.pullForm(ctx, fetcher, form, year)
+		pullErr := s.pullForm(ctx, fetcher, form, year, history)
 		if pullErr == nil {
 			continue
 		}
@@ -125,13 +149,19 @@ func (s *JotformSubmissionsSync) Sync(ctx context.Context) error {
 }
 
 func (s *JotformSubmissionsSync) pullForm(
-	ctx context.Context, fetcher JotformFetcher, form *core.Record, year int,
+	ctx context.Context, fetcher JotformFetcher, form *core.Record, year int, history []jotform.ConfirmedWording,
 ) error {
-	fieldMap, err := readFieldMap(form)
+	formID := form.GetString("form_id")
+	// The definition first: a failure here writes nothing at all.
+	title, err := fetcher.FormTitle(ctx, formID)
 	if err != nil {
-		return err
+		return fmt.Errorf("reading the form: %w", err)
 	}
-	subs, err := fetcher.FormSubmissions(ctx, form.GetString("form_id"))
+	questions, err := fetcher.FormQuestions(ctx, formID)
+	if err != nil {
+		return fmt.Errorf("reading the form's questions: %w", err)
+	}
+	subs, err := fetcher.FormSubmissions(ctx, formID)
 	if err != nil {
 		// Nothing written, nothing marked deleted.
 		return fmt.Errorf("pulling submissions: %w", err)
@@ -164,18 +194,157 @@ func (s *JotformSubmissionsSync) pullForm(
 		s.Stats.Deleted++
 	}
 
-	if !fieldMap.HasIdentity() {
-		s.recordStatus(form, fmt.Sprintf(
-			"ok · %d submissions stored · matching skipped: map first and last name", len(subs)))
+	fieldMap, meta, err := s.saveMapping(form, title, questions, history)
+	if errors.Is(err, errFormRepointed) {
+		s.recordStatus(form, fmt.Sprintf("ok · %d submissions stored · %s; pull again", len(subs), err))
 		return nil
 	}
-	matched, unmatched, err := s.matchForm(form, fieldMap, year)
 	if err != nil {
 		return err
 	}
-	s.recordStatus(form, fmt.Sprintf("ok · %d submissions · %d matched · %d unmatched",
-		len(subs), matched, unmatched))
+	mapping := meta.Summary()
+	if !fieldMap.HasIdentity() {
+		s.recordStatus(form, withMapping(fmt.Sprintf(
+			"ok · %d submissions stored · matching skipped: map first and last name", len(subs)), mapping))
+		return nil
+	}
+	plan, err := s.planMatches(form, fieldMap, year)
+	if err != nil {
+		return err
+	}
+	if eligible := plan.auto + plan.unmatched; guessedNames(meta) && eligible >= guardMinSubmissions &&
+		plan.auto*2 < eligible {
+		s.recordStatus(form, withMapping(fmt.Sprintf(
+			"ok · %d submissions · matching held: the guessed name questions matched only %d of %d — check the mapping",
+			len(subs), plan.auto, eligible), mapping))
+		return nil
+	}
+	if err := s.applyMatches(plan); err != nil {
+		return err
+	}
+	s.recordStatus(form, withMapping(fmt.Sprintf("ok · %d submissions · %d matched · %d unmatched",
+		len(subs), plan.staff+plan.auto, plan.unmatched), mapping))
 	return nil
+}
+
+func withMapping(status, mapping string) string {
+	if mapping == "" {
+		return status
+	}
+	return status + " · " + mapping
+}
+
+// guessedNames reports whether first or last name rests on the wording rules
+// alone -- the only case the wrong-guess guard polices. A staff or carried
+// name role is a human's (or a past human's) choice.
+func guessedNames(meta jotform.FieldMapMeta) bool {
+	return meta[jotform.RoleFirstName].Source == jotform.SourceGuessed ||
+		meta[jotform.RoleLastName].Source == jotform.SourceGuessed
+}
+
+// saveMapping resolves the form's field map and stores it with the form's
+// definition. It resolves from a FRESH copy of the form, inside the
+// transaction that writes it: an admin save made while the pull ran is what
+// it builds on, so a staff role is never overwritten (Save writes every
+// column, and the copy Sync loaded predates the pull).
+func (s *JotformSubmissionsSync) saveMapping(
+	form *core.Record, title string, questions []jotform.FormQuestion, history []jotform.ConfirmedWording,
+) (jotform.FieldMap, jotform.FieldMapMeta, error) {
+	var fieldMap jotform.FieldMap
+	var meta jotform.FieldMapMeta
+	err := s.App.RunInTransaction(func(tx core.App) error {
+		fresh, err := tx.FindRecordById("jotform_forms", form.Id)
+		if err != nil {
+			return fmt.Errorf("re-reading the form: %w", err)
+		}
+		if fresh.GetString("form_id") != form.GetString("form_id") {
+			return errFormRepointed
+		}
+		stored, err := readFieldMap(fresh)
+		if err != nil {
+			return err
+		}
+		storedMeta, err := readFieldMapMeta(fresh)
+		if err != nil {
+			return err
+		}
+		fieldMap, meta = jotform.ResolveMapping(questions, jotform.StaffRoles(stored, storedMeta), history)
+
+		changed := false
+		for field, value := range map[string]any{"questions": questions, "field_map": fieldMap, "field_map_meta": meta} {
+			raw, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("encoding %s: %w", field, err)
+			}
+			if compactJSON(jsonFieldBytes(fresh.Get(field))) != compactJSON(raw) {
+				fresh.Set(field, types.JSONRaw(raw))
+				changed = true
+			}
+		}
+		if fresh.GetString("form_title") != title {
+			fresh.Set("form_title", title)
+			changed = true
+		}
+		if !changed {
+			return nil
+		}
+		if err := tx.Save(fresh); err != nil {
+			return fmt.Errorf("saving the form's mapping: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errFormRepointed) {
+			return nil, nil, errFormRepointed
+		}
+		return nil, nil, fmt.Errorf("resolving the field map: %w", err)
+	}
+	return fieldMap, meta, nil
+}
+
+// confirmedWordings collects, from every EARLIER year's form (any adult
+// weekend: they share wording), the wording of each role a human confirmed --
+// set by staff, or carried from such a confirmation. A role whose question was
+// removed confirms nothing. Both the wording at confirmation and the
+// question's last-seen wording count: either names that question.
+func (s *JotformSubmissionsSync) confirmedWordings(year int) ([]jotform.ConfirmedWording, error) {
+	rows, err := findAllRecords(s.App, "jotform_forms", "year < {:year}", dbx.Params{"year": year})
+	if err != nil {
+		return nil, fmt.Errorf("loading earlier years' forms: %w", err)
+	}
+	var out []jotform.ConfirmedWording
+	for _, row := range rows {
+		stored, fmErr := readFieldMap(row)
+		meta, metaErr := readFieldMapMeta(row)
+		questions, qErr := readQuestions(row)
+		if fmErr != nil || metaErr != nil || qErr != nil {
+			slog.Warn("Skipping an unreadable earlier Jotform form for carry-forward",
+				"form", row.GetString("form_id"), "year", row.GetInt("year"))
+			continue
+		}
+		textOf := make(map[string]string, len(questions))
+		for _, q := range questions {
+			textOf[q.QuestionID] = q.Text
+		}
+		confirmed := jotform.StaffRoles(stored, meta)
+		for role, m := range meta {
+			if m.Source == jotform.SourceCarried {
+				confirmed[role] = m
+			}
+		}
+		y := row.GetInt("year")
+		for role, m := range confirmed {
+			if m.QuestionID == "" || m.Flag == jotform.FlagMissing {
+				continue
+			}
+			for _, text := range []string{m.Text, textOf[m.QuestionID]} {
+				if strings.TrimSpace(text) != "" {
+					out = append(out, jotform.ConfirmedWording{Year: y, Role: role, Text: text})
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 // upsertSubmission creates or refreshes one submission row and its answers.
@@ -354,24 +523,62 @@ func readFieldMap(form *core.Record) (jotform.FieldMap, error) {
 	return fm, nil
 }
 
-// matchForm re-evaluates every live, non-staff submission of one form. An auto
-// match is re-decided each pull, so a guest who cancels drops back to staff.
-func (s *JotformSubmissionsSync) matchForm(
-	form *core.Record, fm jotform.FieldMap, year int,
-) (matched, unmatched int, err error) {
+func readFieldMapMeta(form *core.Record) (jotform.FieldMapMeta, error) {
+	raw := jsonFieldBytes(form.Get("field_map_meta"))
+	meta := jotform.FieldMapMeta{}
+	if compactJSON(raw) == "" {
+		return meta, nil
+	}
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, fmt.Errorf("field_map_meta of form %s is not a role->meta map: %w",
+			form.GetString("form_id"), err)
+	}
+	return meta, nil
+}
+
+func readQuestions(form *core.Record) ([]jotform.FormQuestion, error) {
+	raw := jsonFieldBytes(form.Get("questions"))
+	var questions []jotform.FormQuestion
+	if compactJSON(raw) == "" {
+		return questions, nil
+	}
+	if err := json.Unmarshal(raw, &questions); err != nil {
+		return nil, fmt.Errorf("questions of form %s are not a question list: %w", form.GetString("form_id"), err)
+	}
+	return questions, nil
+}
+
+// matchDecision is one submission's re-decided match, before it is written.
+type matchDecision struct {
+	recordID, submissionID, status string
+	result                         jotform.Result
+}
+
+// matchPlan is a whole form's re-decided matches: the counts decide whether
+// the wrong-guess guard holds them, and only then are they written.
+type matchPlan struct {
+	writes                 []matchDecision
+	staff, auto, unmatched int
+}
+
+// planMatches re-evaluates every live, non-staff submission of one form. An
+// auto match is re-decided each pull, so a guest who cancels drops back to
+// staff. Nothing is written here.
+func (s *JotformSubmissionsSync) planMatches(form *core.Record, fm jotform.FieldMap, year int) (matchPlan, error) {
+	var plan matchPlan
 	guests, err := s.enrolledGuests(year, form.GetInt("session_cm_id"))
 	if err != nil {
-		return 0, 0, err
+		return plan, err
 	}
 	subs, err := findAllRecords(s.App, "jotform_submissions",
 		"form = {:form} && jotform_status != {:deleted}",
 		dbx.Params{"form": form.Id, "deleted": jotformStatusDeleted})
 	if err != nil {
-		return 0, 0, err
+		return plan, err
 	}
 	answers, err := findAllRecords(s.App, "jotform_answers", "submission.form = {:form}", dbx.Params{"form": form.Id})
 	if err != nil {
-		return 0, 0, err
+		return plan, err
 	}
 	rowsBySub := map[string][]jotform.AnswerRow{}
 	for _, a := range answers {
@@ -385,7 +592,7 @@ func (s *JotformSubmissionsSync) matchForm(
 	for _, rec := range subs {
 		switch rec.GetString("match_status") {
 		case matchStatusStaff:
-			matched++
+			plan.staff++
 			continue
 		case matchStatusIgnored:
 			continue
@@ -394,19 +601,29 @@ func (s *JotformSubmissionsSync) matchForm(
 		status := matchStatusUnmatched
 		if result.PersonCMID > 0 {
 			status = matchStatusAuto
-			matched++
+			plan.auto++
 		} else {
-			unmatched++
+			plan.unmatched++
 		}
 		if rec.GetString("match_status") == status && rec.GetInt("person_cm_id") == result.PersonCMID &&
 			rec.GetInt("match_tier") == result.Tier {
 			continue
 		}
-		if err := s.saveMatch(rec.Id, status, result); err != nil {
-			return 0, 0, fmt.Errorf("saving match of %s: %w", rec.GetString("submission_id"), err)
+		plan.writes = append(plan.writes, matchDecision{
+			recordID: rec.Id, submissionID: rec.GetString("submission_id"), status: status, result: result,
+		})
+	}
+	return plan, nil
+}
+
+// applyMatches writes a plan's changed decisions.
+func (s *JotformSubmissionsSync) applyMatches(plan matchPlan) error {
+	for _, d := range plan.writes {
+		if err := s.saveMatch(d.recordID, d.status, d.result); err != nil {
+			return fmt.Errorf("saving match of %s: %w", d.submissionID, err)
 		}
 	}
-	return matched, unmatched, nil
+	return nil
 }
 
 // markDeleted stamps jotform_status DELETED on a FRESH copy of the row, inside
@@ -431,7 +648,7 @@ func (s *JotformSubmissionsSync) markDeleted(recordID string) error {
 }
 
 // saveMatch writes one match decision onto a FRESH copy of the row, inside a
-// transaction, and writes nothing if staff linked or ignored it after matchForm
+// transaction, and writes nothing if staff linked or ignored it after planMatches
 // loaded it: a staff decision is never overwritten, even mid-pull.
 func (s *JotformSubmissionsSync) saveMatch(recordID, status string, result jotform.Result) error {
 	err := s.App.RunInTransaction(func(tx core.App) error {

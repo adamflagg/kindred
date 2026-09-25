@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -161,9 +162,21 @@ func (c *Client) submissionsPage(ctx context.Context, formID string, offset int)
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(c.pageSize))
 	query.Set("offset", strconv.Itoa(offset))
-	endpoint := fmt.Sprintf("%s/form/%s/submissions?%s",
-		c.baseURL, url.PathEscape(formID), query.Encode())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	content, err := c.get(ctx, fmt.Sprintf("/form/%s/submissions?%s", url.PathEscape(formID), query.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("jotform form %s offset %d: %w", formID, offset, err)
+	}
+	var subs []Submission
+	if err := json.Unmarshal(content, &subs); err != nil {
+		return nil, fmt.Errorf("decoding jotform form %s offset %d: %w", formID, offset, err)
+	}
+	return subs, nil
+}
+
+// get performs one authenticated GET and returns the envelope's content. A
+// non-200 HTTP status or responseCode fails it.
+func (c *Client) get(ctx context.Context, pathAndQuery string) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+pathAndQuery, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("building Jotform request: %w", err)
 	}
@@ -172,23 +185,126 @@ func (c *Client) submissionsPage(ctx context.Context, formID string, offset int)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("jotform form %s offset %d: %w", formID, offset, err)
+		return nil, fmt.Errorf("requesting: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return nil, fmt.Errorf("reading jotform form %s offset %d: %w", formID, offset, err)
+		return nil, fmt.Errorf("reading the response: %w", err)
 	}
 
 	var env envelope
 	decodeErr := json.Unmarshal(body, &env)
 	if resp.StatusCode != http.StatusOK || decodeErr != nil || env.ResponseCode != http.StatusOK {
-		return nil, fmt.Errorf("jotform form %s offset %d: HTTP %d, responseCode %d: %s",
-			formID, offset, resp.StatusCode, env.ResponseCode, env.Message)
+		return nil, fmt.Errorf("HTTP %d, responseCode %d: %s", resp.StatusCode, env.ResponseCode, env.Message)
 	}
-	var subs []Submission
-	if err := json.Unmarshal(env.Content, &subs); err != nil {
-		return nil, fmt.Errorf("decoding jotform form %s offset %d: %w", formID, offset, err)
+	return env.Content, nil
+}
+
+// FormQuestion is one question of a form's DEFINITION, as staff map it. It is
+// read from the form itself, so it exists before anyone has submitted.
+type FormQuestion struct {
+	QuestionID string `json:"question_id"`
+	Text       string `json:"text"`
+	Type       string `json:"type"`
+	Order      int    `json:"order"`
+}
+
+// displayOnlyTypes are controls that take no answer. Their wording (a
+// "Emergency Contact" section header, say) would only mislead the guesser,
+// and no role can point at them.
+var displayOnlyTypes = map[string]bool{
+	"control_head": true, "control_button": true, "control_pagebreak": true, "control_collapse": true,
+	"control_divider": true, "control_text": true, "control_image": true, "control_captcha": true,
+}
+
+// flexString decodes a JSON string or number as its text: the questions
+// endpoint has been seen spelling qid and order both ways.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(data []byte) error {
+	var s string
+	if json.Unmarshal(data, &s) == nil {
+		*f = flexString(s)
+		return nil
 	}
-	return subs, nil
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return fmt.Errorf("neither a string nor a number: %s", data)
+	}
+	*f = flexString(n.String())
+	return nil
+}
+
+type wireQuestion struct {
+	QID   flexString `json:"qid"`
+	Order flexString `json:"order"`
+	Text  flexString `json:"text"`
+	Type  flexString `json:"type"`
+}
+
+// FormQuestions returns the form's answerable questions, by form order then id.
+func (c *Client) FormQuestions(ctx context.Context, formID string) ([]FormQuestion, error) {
+	content, err := c.get(ctx, fmt.Sprintf("/form/%s/questions", url.PathEscape(formID)))
+	if err != nil {
+		return nil, fmt.Errorf("jotform form %s questions: %w", formID, err)
+	}
+	raw := bytes.TrimSpace(content)
+	questions := []FormQuestion{}
+	// A form with no questions answers `[]`, Jotform's spelling of an empty object.
+	if len(raw) == 0 || raw[0] != '{' {
+		return questions, nil
+	}
+	var wire map[string]wireQuestion
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, fmt.Errorf("decoding jotform form %s questions: %w", formID, err)
+	}
+	for key, w := range wire {
+		kind := strings.TrimSpace(string(w.Type))
+		if displayOnlyTypes[kind] {
+			continue
+		}
+		qid := strings.TrimSpace(string(w.QID))
+		if qid == "" {
+			qid = key
+		}
+		order, _ := strconv.Atoi(strings.TrimSpace(string(w.Order)))
+		questions = append(questions, FormQuestion{QuestionID: qid, Text: string(w.Text), Type: kind, Order: order})
+	}
+	SortQuestions(questions)
+	return questions, nil
+}
+
+// SortQuestions orders questions as the form does, then by id for a total order.
+func SortQuestions(questions []FormQuestion) {
+	sort.SliceStable(questions, func(i, j int) bool {
+		if questions[i].Order != questions[j].Order {
+			return questions[i].Order < questions[j].Order
+		}
+		return questions[i].QuestionID < questions[j].QuestionID
+	})
+}
+
+// FormTitle returns the form's title as set in Jotform. The live API answers
+// with an object; the published example wraps it in a one-element array.
+func (c *Client) FormTitle(ctx context.Context, formID string) (string, error) {
+	content, err := c.get(ctx, "/form/"+url.PathEscape(formID))
+	if err != nil {
+		return "", fmt.Errorf("jotform form %s: %w", formID, err)
+	}
+	raw := bytes.TrimSpace(content)
+	var info struct {
+		Title flexString `json:"title"`
+	}
+	if len(raw) > 0 && raw[0] == '[' {
+		var list []json.RawMessage
+		if err := json.Unmarshal(raw, &list); err != nil || len(list) == 0 {
+			return "", fmt.Errorf("decoding jotform form %s: no form in the response", formID)
+		}
+		raw = list[0]
+	}
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return "", fmt.Errorf("decoding jotform form %s: %w", formID, err)
+	}
+	return strings.TrimSpace(string(info.Title)), nil
 }
