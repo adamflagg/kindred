@@ -393,7 +393,7 @@ Transaction details from CampMinder `/financials/transactionreporting/transactio
 |-------|------|-------------|
 | `cm_id` | number | CampMinder transaction ID |
 | `transaction_number` | number | Transaction number |
-| `year` | number | Camp year |
+| `year` | number | CampMinder's per-row season |
 | `post_date` | date | Posting date |
 | `effective_date` | date | Effective date |
 | `service_start_date` | date | Service period start |
@@ -411,8 +411,14 @@ Transaction details from CampMinder `/financials/transactionreporting/transactio
 | `division` | relation | Link to divisions |
 | `person` | relation | Link to persons |
 | `household` | relation | Link to households |
+| `person_cm_id` | number | CampMinder person id as sent (0 = none); kept even when `person` does not resolve |
+| `household_cm_id` | number | CampMinder household id as sent (0 = none) |
+| `session_cm_id` | number | CampMinder session id as sent (0 = none) |
+| `financial_category_cm_id` | number | CampMinder financial category id as sent (0 = none) |
 
-**Unique**: `(cm_id, amount)` - Handles debit/credit pairs with same ID.
+**Unique**: (cm_id, amount, year) - debit/credit pairs share an id; the same id may recur in another season.
+
+`post_date` and `reversal_date` are converted from CampMinder's Mountain wall clock to UTC (with daylight saving); the other dates are calendar dates.
 
 ---
 

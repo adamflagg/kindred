@@ -749,13 +749,12 @@ export type FamilyCampRegistrationsRecord = {
   year: number
 }
 
-export type FinancialAidApplicationsRecord = {
+export type FinancialAidApplicationsRecord<Tcarryover_last_updated = unknown> = {
   affiliated_jcc?: boolean
-  amount_awarded?: number
   amount_confirmed?: boolean
-  amount_requested?: number
   applicant_signature?: string
   camper_name?: string
+  carryover_last_updated?: null | Tcarryover_last_updated
   child_affiliated_synagogue?: string
   children_jewish_day_school?: string
   contact_address?: string
@@ -775,7 +774,6 @@ export type FinancialAidApplicationsRecord = {
   covid_expenses_additional?: string
   covid_expenses_amount?: number
   created: IsoAutoDateString
-  deposit_paid?: number
   deposit_paid_adult?: number
   donation_other?: string
   donation_preference?: string
@@ -790,8 +788,9 @@ export type FinancialAidApplicationsRecord = {
   gov_subsidies_detail?: string
   household?: RecordIdString
   id: string
-  income_confirmed?: boolean
+  income_confirmed?: number
   interest_expressed?: boolean
+  is_applicant?: boolean
   non_retirement_savings?: number
   num_children?: number
   num_programs?: number
@@ -806,6 +805,7 @@ export type FinancialAidApplicationsRecord = {
   parent_2_name?: string
   person: RecordIdString
   person_id: number
+  registration_request_amount?: number
   retirement_accounts?: number
   russian_speaking?: boolean
   single_parent?: boolean
@@ -847,12 +847,15 @@ export type FinancialTransactionsRecord = {
   division?: RecordIdString
   effective_date?: IsoDateString
   financial_category?: RecordIdString
+  financial_category_cm_id?: number
   gl_account_note?: string
   household?: RecordIdString
+  household_cm_id?: number
   id: string
   is_reversed?: boolean
   payment_method?: RecordIdString
   person?: RecordIdString
+  person_cm_id?: number
   post_date?: IsoDateString
   program_id?: number
   quantity?: number
@@ -861,6 +864,7 @@ export type FinancialTransactionsRecord = {
   service_end_date?: IsoDateString
   service_start_date?: IsoDateString
   session?: RecordIdString
+  session_cm_id?: number
   session_group?: RecordIdString
   transaction_note?: string
   transaction_number?: number
@@ -1971,8 +1975,10 @@ export type FamilyCampMedicalResponse<Texpand = unknown> = Required<FamilyCampMe
   BaseSystemFields<Texpand>
 export type FamilyCampRegistrationsResponse<Texpand = unknown> =
   Required<FamilyCampRegistrationsRecord> & BaseSystemFields<Texpand>
-export type FinancialAidApplicationsResponse<Texpand = unknown> =
-  Required<FinancialAidApplicationsRecord> & BaseSystemFields<Texpand>
+export type FinancialAidApplicationsResponse<
+  Tcarryover_last_updated = unknown,
+  Texpand = unknown,
+> = Required<FinancialAidApplicationsRecord<Tcarryover_last_updated>> & BaseSystemFields<Texpand>
 export type FinancialCategoriesResponse<Texpand = unknown> = Required<FinancialCategoriesRecord> &
   BaseSystemFields<Texpand>
 export type FinancialTransactionsResponse<Texpand = unknown> =
