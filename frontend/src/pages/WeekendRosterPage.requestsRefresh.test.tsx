@@ -18,10 +18,10 @@
  * Fictional names only.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { configure, getConfig, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryClient as appQueryClient } from '../utils/queryClient'
 import WeekendRosterPage from './WeekendRosterPage'
@@ -316,6 +316,18 @@ beforeEach(() => {
   writeIns = []
   fetchWithAuth.mockReset()
   fetchWithAuth.mockImplementation(server)
+})
+
+// The page, the board and the Requests view all load lazily, and pre-push runs
+// this suite beside pytest: under that load the first render can take longer
+// than the default 1s async timeout (scan of #2839 saw it flake). A wider
+// timeout for this file only; the assertions are unchanged.
+const defaultAsyncTimeout = getConfig().asyncUtilTimeout
+beforeAll(() => {
+  configure({ asyncUtilTimeout: 5000 })
+})
+afterAll(() => {
+  configure({ asyncUtilTimeout: defaultAsyncTimeout })
 })
 
 describe('WeekendRosterPage — a board write-in reaches the Requests tab', () => {
