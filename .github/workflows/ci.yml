@@ -1057,7 +1057,9 @@ jobs:
       with:
         fail-on-severity: high
         # Default is runtime only; dev tooling (vite, vitest) is attack surface too.
-        fail-on-scopes: runtime, development
+        # `unknown` is what the compare API reports for a dependency it cannot
+        # classify -- left out, that dependency would skip the severity check.
+        fail-on-scopes: runtime, development, unknown
         comment-summary-in-pr: never
         show-openssf-scorecard: false
 

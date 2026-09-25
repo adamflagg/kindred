@@ -92,9 +92,11 @@ def test_dependency_review_config():
     # api.deps.dev) that the blocked egress policy does not allow.
     assert cfg["show-openssf-scorecard"] is False
     # The default is runtime only, which would let a PR add a dev dependency
-    # (vite, vitest, the markdownlint chain) carrying a high advisory.
+    # (vite, vitest, the markdownlint chain) carrying a high advisory. `unknown`
+    # is the scope the compare API reports when it cannot classify a dependency;
+    # leaving it out would filter such a dependency out before the severity check.
     scopes = {s.strip() for s in cfg["fail-on-scopes"].split(",")}
-    assert scopes == {"runtime", "development"}
+    assert scopes == {"runtime", "development", "unknown"}
 
 
 def test_dependency_review_token_is_read_only():
