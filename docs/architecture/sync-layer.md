@@ -374,7 +374,8 @@ empty or far shorter than what is stored is **not swept**. The run fails with
 **Backfill 2017–2026 (once, after the SP1 migrations deploy).** Use the existing route,
 **one season at a time**. The route runs the season in a background goroutine that is not
 registered as running, so parallel calls are not refused and would race each other. Avoid
-the 02:30–04:30 window, when the daily cron's rolling run touches N−1.
+02:30–04:30 in the container's time zone (`TZ`, `America/Los_Angeles` by default), when the
+daily cron's rolling run touches N−1.
 
 The route requires `bunking.manage`, read from an app **user** (`is_admin` or
 `cached_permissions`). A `_superusers` token is refused: `RequirePermission` checks the
@@ -385,15 +386,18 @@ logged-in browser session (the `pocketbase_auth` entry in local storage), then:
 TOKEN='<admin user token>'
 BASE='http://127.0.0.1:8090'          # inside the host that runs kindred-pocketbase
 for y in $(seq 2017 2026); do
+  # Capture the start time before the request, so a retry of a failed season (within the
+  # same 10-minute window) can't match the PREVIOUS attempt's completed/failed line.
+  START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   curl -fsS -X POST "$BASE/api/custom/sync/financial-transactions?year=$y" -H "Authorization: $TOKEN"
   echo
-  # Wait for this season's completion OR failure line before starting the next. A failure
+  # Wait for this season's completion OR failure line, logged after $START. A failure
   # stops the whole loop — re-run that season on its own before continuing.
   status=""
   while [ -z "$status" ]; do
     sleep 15
-    line=$(docker logs --since 10m kindred-pocketbase 2>&1 \
-        | grep -E "Financial transactions historical sync (completed|failed).*year=$y" | tail -1)
+    line=$(docker logs --since "$START" kindred-pocketbase 2>&1 \
+        | grep -E "Financial transactions historical sync (completed|failed).*year=$y([[:space:]]|\$)" | tail -1)
     if [ -n "$line" ]; then
       case "$line" in
         *failed*) status="failed" ;;
@@ -408,4 +412,7 @@ for y in $(seq 2017 2026); do
 done
 ```
 
-Season N+1 is accepted by the route; seasons after N+1 are refused.
+`docker logs --since` accepts this RFC3339 form. The `year=$y([[:space:]]|$)` anchor stops
+`year=201` from matching `year=2017` — `year` is always followed by a space (another `key=value`
+field) or end of line in both log lines (`api.go`'s `slog.Error`/`slog.Info` calls). Season N+1
+is accepted by the route; seasons after N+1 are refused.

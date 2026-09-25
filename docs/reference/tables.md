@@ -416,7 +416,7 @@ Transaction details from CampMinder `/financials/transactionreporting/transactio
 | `session_cm_id` | number | CampMinder session id as sent (0 = none) |
 | `financial_category_cm_id` | number | CampMinder financial category id as sent (0 = none) |
 
-**Unique**: (cm_id, amount, year) - debit/credit pairs share an id; the same id may recur in another season.
+**Unique**: `(cm_id, amount, year)` - debit/credit pairs share an id; the same id may recur in another season.
 
 `post_date` and `reversal_date` are converted from CampMinder's Mountain wall clock to UTC (with daylight saving); the other dates are calendar dates.
 
