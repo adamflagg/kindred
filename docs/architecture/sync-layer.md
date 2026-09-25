@@ -387,6 +387,8 @@ logged-in browser session (the `pocketbase_auth` entry in local storage), then:
 ```bash
 TOKEN='<admin user token>'
 BASE='http://127.0.0.1:8090'          # inside the host that runs kindred-pocketbase
+# The loop runs in a subshell, so its `exit 1` stops the backfill without closing a pasted shell.
+(
 for y in $(seq 2017 2026); do
   # Capture the start time before the request, so a retry of a failed season (within the
   # same 10-minute window) can't match the PREVIOUS attempt's completed/failed line.
@@ -419,6 +421,7 @@ for y in $(seq 2017 2026); do
     exit 1
   fi
 done
+)
 ```
 
 `docker logs --since` accepts this RFC3339 form. The `year=$y([[:space:]]|$)` anchor stops
