@@ -8,8 +8,8 @@ Kindred uses PocketBase as its database layer. All collections follow these patt
 
 - **CampMinder IDs**: Cross-table relationships use CampMinder IDs (`cm_id`, `person_id`, etc.), never PocketBase IDs
 - **Year Scoping**: Most data tables include a `year` field to isolate data across camp seasons
-- **Auto Timestamps**: All tables include `created` and `updated` autodate fields
-- **Access Rules**: All tables require authentication (`@request.auth.id != ""`)
+- **Auto Timestamps**: Most tables include `created` and `updated` autodate fields; a few (e.g. `aid_change_log`) are `created`-only because nothing may update the record
+- **Access Rules**: Vary by table; read the collection's migration. Financial tables (`financial_transactions`, `financial_aid_applications`) and every `aid_*` table are superuser-only (`null` on all five rules) and reach the browser only through permission-gated FastAPI endpoints — except `financial_transactions` and `financial_aid_applications`, which, until kindred#2836 lands, also reach the live Google Sheets export; every `aid_*` table is guarded against ever reaching Sheets. `null` means superusers only, while `''` means PUBLIC. `''` is not used by any table's current forward migration state — `solver_runs` and `debug_parse_results` were created with it, but `1500000181_users_auth_hardening.js` hardened both to `null`; only that migration's rollback restores `''`.
 
 ## Quick Reference
 
@@ -34,6 +34,7 @@ Kindred uses PocketBase as its database layer. All collections follow these patt
 | `bunk_plans` | Year-Scoped | CampMinder | Bunk-session configurations |
 | `staff` | Year-Scoped | CampMinder | Staff employment records |
 | `financial_transactions` | Year-Scoped | CampMinder | Transaction details |
+| `aid_change_log` | Financial Aid | Manual (FastAPI) | History of staff edits made through Kindred's financial-aid services: who, when, before, after, why. `record_change` only ever creates rows; no API rule allows update or delete |
 | `original_bunk_requests` | Bunking | CampMinder CSV | Raw request data from exports |
 | `bunk_requests` | Bunking | Computed | Parsed and resolved requests |
 | `bunk_request_sources` | Bunking | Computed | Links requests to sources |
@@ -810,6 +811,26 @@ cron run that covered the other weekends is gone from memory — the history is 
 `/api/lodging/sessions` answer "when did a run that covered THIS weekend last succeed"
 (`fetch_session_scoped_sync_ends`). `runOrigin.forSession` collapses the `"all"` spelling to
 empty so the stored vocabulary is total.
+
+---
+
+## Financial Aid
+
+### aid_change_log
+
+Change history for staff edits made through Kindred's financial-aid services (campership) — not every financial-aid write; the CampMinder sync writes `financial_aid_applications` directly without logging here. The write helper, `bunking/financial_aid/change_log.py::record_change`, only ever creates rows, run as superuser. No user-facing API rule allows update or delete (all five rules `null`) — but that is an access control, not a database-level append-only guarantee: a superuser can still update or delete a row directly.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entity` | text (required) | What changed, e.g. `aid_decisions` |
+| `entity_id` | text (required) | Its key as text (PocketBase id, CampMinder id, or composite) |
+| `year` | number (required) | Season |
+| `action` | text (required) | `create`, `update`, `delete`, `approve`, … |
+| `before` | json | Snapshot before the change; null on create. Decimals are stored as strings |
+| `after` | json | Snapshot after the change; null on delete |
+| `actor` | text (required) | Staff user id or email |
+| `reason` | text | Why |
+| `created` | autodate | When |
 
 ---
 

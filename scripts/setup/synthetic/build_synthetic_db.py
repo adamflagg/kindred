@@ -4,8 +4,8 @@
 Pipeline (never mutates the real DB — copies it via SQLite's backup API):
   1. backup real data.db -> scratch (folds WAL, leaves real untouched)
   2. select a tiny, referentially-closed subset (select_subset)
-  3. prune kept tables to the subset; empty the high-risk drop-list tables and
-     every lodging_* table (discovered by prefix, see LODGING_TABLE_PREFIX)
+  3. prune kept tables to the subset; empty the high-risk drop-list tables, every
+     lodging_* table (see LODGING_TABLE_PREFIX) and every aid_* table (see AID_TABLE_PREFIX)
   4. clear auth/system tables that carry real emails (users, _superusers, ...)
   5. anonymize PII (anonymizer); relabel + token-scrub brand language (debrand)
   6. scrub _params (camp name / SMTP sender) and strip brand-token schema columns
@@ -159,16 +159,34 @@ def _empty_tables(conn: sqlite3.Connection, tables: Iterable[str]) -> None:
 LODGING_TABLE_PREFIX = "lodging_"
 
 
-def _lodging_tables(conn: sqlite3.Connection) -> list[str]:
-    """Every table whose name starts with ``LODGING_TABLE_PREFIX``, discovered live
-    from the scratch DB's schema rather than a maintained list. The prefix's own
-    underscore is escaped so the SQL ``LIKE`` wildcard doesn't also match it."""
-    like_pattern = LODGING_TABLE_PREFIX.replace("_", "\\_") + "%"
+def _prefixed_tables(conn: sqlite3.Connection, prefix: str) -> list[str]:
+    """Every table whose name starts with ``prefix``, discovered live from the
+    scratch DB's schema. The prefix's own underscore is escaped so the SQL
+    ``LIKE`` wildcard doesn't also match it."""
+    like_pattern = prefix.replace("_", "\\_") + "%"
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '\\'",
         (like_pattern,),
     ).fetchall()
     return [r[0] for r in rows]
+
+
+def _lodging_tables(conn: sqlite3.Connection) -> list[str]:
+    """Every ``lodging_*`` table (kindred#2792)."""
+    return _prefixed_tables(conn, LODGING_TABLE_PREFIX)
+
+
+# Financial aid (campership): per-family awards, grants, decisions and their
+# change history. Emptied wholesale and discovered by prefix, like lodging_*, so
+# an aid_ table a later sub-project adds never ships into the committed artifact
+# because nobody remembered this file. scan_leaks check 8 fails the build if a
+# row survives.
+AID_TABLE_PREFIX = "aid_"
+
+
+def _aid_tables(conn: sqlite3.Connection) -> list[str]:
+    """Every ``aid_*`` table."""
+    return _prefixed_tables(conn, AID_TABLE_PREFIX)
 
 
 def _scrub_params(conn: sqlite3.Connection) -> None:
@@ -306,6 +324,8 @@ def build(real_db: Path, out: Path, branding: Path) -> int:
     _empty_tables(conn, scan_leaks.DROP_LIST_TABLES)
     print("[3/9] emptying lodging_* tables (discovered by prefix)")
     _empty_tables(conn, _lodging_tables(conn))
+    print("[3/9] emptying aid_* tables (discovered by prefix)")
+    _empty_tables(conn, _aid_tables(conn))
     print("[4/9] clearing auth/system tables")
     _empty_tables(conn, AUTH_TABLES)
     conn.commit()

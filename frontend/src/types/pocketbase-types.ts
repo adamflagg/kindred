@@ -11,6 +11,7 @@ export const Collections = {
   Mfas: '_mfas',
   Otps: '_otps',
   Superusers: '_superusers',
+  AidChangeLog: 'aid_change_log',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
   BunkAssignments: 'bunk_assignments',
@@ -164,6 +165,19 @@ export type SuperusersRecord = {
   tokenKey: string
   updated: IsoAutoDateString
   verified?: boolean
+}
+
+export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
+  action: string
+  actor: string
+  after?: null | Tafter
+  before?: null | Tbefore
+  created: IsoAutoDateString
+  entity: string
+  entity_id: string
+  id: string
+  reason?: string
+  year: number
 }
 
 export const AttendeeStatusHistoryOldStatusOptions = {
@@ -1899,6 +1913,10 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
+  AidChangeLogRecord<Tafter, Tbefore>
+> &
+  BaseSystemFields<Texpand>
 export type AttendeeStatusHistoryResponse<Texpand = unknown> =
   Required<AttendeeStatusHistoryRecord> & BaseSystemFields<Texpand>
 export type AttendeesResponse<Texpand = unknown> = Required<AttendeesRecord> &
@@ -2119,6 +2137,7 @@ export type CollectionRecords = {
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  aid_change_log: AidChangeLogRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
   bunk_assignments: BunkAssignmentsRecord
@@ -2201,6 +2220,7 @@ export type CollectionResponses = {
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  aid_change_log: AidChangeLogResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse
   bunk_assignments: BunkAssignmentsResponse
