@@ -418,6 +418,7 @@ export type {
   JotformSuggestion,
   JotformUnmappedForm,
   JotformWriteInLinkRequest,
+  JotformWriteInLinkSuggestion,
   JotformWriteInOption,
   LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostData,
   LinkSubmissionApiJotformSubmissionsSubmissionIdLinkPostError,

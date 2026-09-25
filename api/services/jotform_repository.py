@@ -21,6 +21,7 @@ from api.constants.collections import (
     JOTFORM_SUBMISSIONS,
     LODGING_WRITE_INS,
     LODGING_WRITE_INS_DRAFT,
+    SAVED_SCENARIOS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.lodging_repository import ADULT_SESSION_TYPE, STABLE_SORT
@@ -140,6 +141,17 @@ class JotformRepository:
         return await self._page(
             LODGING_WRITE_INS_DRAFT,
             query_params={"filter": f"year = {year}", "expand": "unit", "sort": STABLE_SORT},
+        )
+
+    async def fetch_weekend_scenarios(self, year: int, session_cm_id: int) -> list[Any]:
+        """One weekend's saved scenarios (kindred#2828 ruling 2026-09-25). The
+        Requests tab checks its `?scenario=` against these -- a scenario of
+        another weekend, or none at all, is refused -- and names the scenario a
+        filing is linked in. Both terms are numbers: nothing client-supplied is
+        interpolated."""
+        return await self._page(
+            SAVED_SCENARIOS,
+            query_params={"filter": f"year = {year} && session.cm_id = {session_cm_id}", "sort": STABLE_SORT},
         )
 
     async def set_write_in_key(self, table: str, record_id: str, key: str) -> None:

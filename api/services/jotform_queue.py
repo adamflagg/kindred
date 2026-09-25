@@ -23,6 +23,7 @@ from api.schemas.jotform import (
     JotformDuplicateGroup,
     JotformQueueItem,
     JotformSuggestion,
+    JotformWriteInLinkSuggestion,
     JotformWriteInOption,
     MatchStatus,
     SuggestionKind,
@@ -348,6 +349,8 @@ class WriteInRow:
     occupant_name: str
     session_cm_id: int
     write_in_key: str = ""
+    # The scenario the row belongs to; "" for the live board's.
+    scenario: str = ""
 
 
 def write_in_option_id(unit_id: str, occupant_name: str) -> str:
@@ -405,3 +408,81 @@ def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOptio
         if hits:
             return ""
     return ""
+
+
+LIVE_BOARD = "the live board"
+
+
+def link_suggestions(
+    viewed: Sequence[WriteInRow],
+    elsewhere: Sequence[WriteInRow],
+    linked: Sequence[QueueSubmission],
+    unlinked: Sequence[QueueSubmission],
+    scenario_names: Mapping[str, str],
+) -> list[JotformWriteInLinkSuggestion]:
+    """Suggested links for one weekend's Requests tab (kindred#2828 ruling
+    2026-09-25): labels with a one-click Link, never a link made on its own.
+
+    `viewed` is the weekend's write-ins in the scenario being viewed (or the
+    live board's); `elsewhere` is the same weekend's rows in every OTHER
+    scope. A candidate is a viewed write-in no linked filing's key is on --
+    unkeyed, or left with the key of a filing since unlinked. It is suggested
+    for:
+      - a LINKED filing not placed in the viewed scope, when the candidate
+        bears the name of the write-in carrying its link elsewhere (folded),
+        or the dropdown pre-selection (`suggest_write_in`) picks it for the
+        filer -- which also catches a write-in made by hand outside the copy
+        and push paths;
+      - a filing still NEEDING A GUEST that the pre-selection picks it for.
+    """
+    active = {s.write_in_key for s in linked if s.write_in_key}
+    placed = {row.write_in_key for row in viewed if row.write_in_key in active}
+    options = write_in_options(viewed)
+    candidates = {
+        write_in_option_id(row.unit_id, row.occupant_name): row
+        for row in viewed
+        if row.occupant_name.strip() and row.write_in_key not in active
+    }
+
+    out: list[JotformWriteInLinkSuggestion] = []
+
+    def suggest(option_id: str, sub: QueueSubmission, where: str) -> None:
+        row = candidates[option_id]
+        label = f"Link to {sub.submitted_name}'s filing" + (f" (linked in {where})" if where else "")
+        out.append(
+            JotformWriteInLinkSuggestion(
+                option_id=option_id,
+                unit_id=row.unit_id,
+                unit_name=row.unit_name,
+                occupant_name=row.occupant_name.strip(),
+                submission_id=sub.submission_id,
+                filer_name=sub.submitted_name,
+                linked_in=where,
+                label=label,
+            )
+        )
+
+    for sub in linked:
+        if not sub.write_in_key or sub.write_in_key in placed:
+            continue
+        # The live board first: it names the link where staff most expect it.
+        carriers = sorted(
+            (row for row in elsewhere if row.write_in_key == sub.write_in_key), key=lambda row: row.scenario != ""
+        )
+        if not carriers:
+            continue
+        where = LIVE_BOARD if carriers[0].scenario == "" else scenario_names.get(carriers[0].scenario, "a scenario")
+        names = {fold(row.occupant_name) for row in carriers}
+        hits = {option_id for option_id, row in candidates.items() if fold(row.occupant_name) in names}
+        picked = suggest_write_in(sub, options)
+        if picked in candidates:
+            hits.add(picked)
+        for option_id in sorted(hits):
+            suggest(option_id, sub, where)
+
+    for sub in unlinked:
+        picked = suggest_write_in(sub, options)
+        if picked in candidates:
+            suggest(picked, sub, "")
+
+    return sorted(out, key=lambda s: (fold(s.occupant_name), fold(s.filer_name)))

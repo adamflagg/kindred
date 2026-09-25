@@ -103,3 +103,15 @@ async def test_upsert_can_clear_the_old_forms_definition() -> None:
     )
     body = pb.collection.return_value.update.call_args.args[1]
     assert (body["questions"], body["form_title"], body["field_map"], body["field_map_meta"]) == (None, "", {}, {})
+
+
+@pytest.mark.asyncio
+async def test_a_weekends_scenarios_are_scoped_to_its_year_and_session() -> None:
+    # The Requests tab validates `?scenario=` against these and names them.
+    pb = _pb()
+    await JotformRepository(pb).fetch_weekend_scenarios(2026, 1000002)
+    pb.collection.assert_called_with("saved_scenarios")
+    kwargs = pb.collection.return_value.get_full_list.call_args.kwargs
+    assert kwargs["query_params"]["filter"] == "year = 2026 && session.cm_id = 1000002"
+    assert kwargs["query_params"]["sort"].split(",")[-1] == "id"
+    assert kwargs["batch"] == PAGE_SIZE

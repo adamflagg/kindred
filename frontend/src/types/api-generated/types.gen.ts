@@ -2844,6 +2844,10 @@ export type JotformQueueItem = {
    */
   write_in_unit?: string
   /**
+   * Write In Placed
+   */
+  write_in_placed?: boolean | null
+  /**
    * Write In Suggestion
    */
   write_in_suggestion?: string
@@ -2857,6 +2861,14 @@ export type JotformQueueResponse = {
    * Year
    */
   year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number | null
+  /**
+   * Scenario
+   */
+  scenario?: string
   /**
    * Unmatched
    */
@@ -2881,6 +2893,10 @@ export type JotformQueueResponse = {
    * Write In Options
    */
   write_in_options?: Array<JotformWriteInOption>
+  /**
+   * Write In Link Suggestions
+   */
+  write_in_link_suggestions?: Array<JotformWriteInLinkSuggestion>
   /**
    * Duplicates
    */
@@ -2981,6 +2997,50 @@ export type JotformWriteInLinkRequest = {
    * Occupant Name
    */
   occupant_name: string
+}
+
+/**
+ * JotformWriteInLinkSuggestion
+ *
+ * An unlinked write-in of the viewed scenario that looks like a filer
+ * (kindred#2828 ruling 2026-09-25): a label and a one-click link, never a
+ * link made on its own. `linked_in` names where the filing is already
+ * linked ("the live board" or a scenario's name), or is "" for a filing
+ * still needing a guest.
+ */
+export type JotformWriteInLinkSuggestion = {
+  /**
+   * Option Id
+   */
+  option_id: string
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Unit Name
+   */
+  unit_name?: string
+  /**
+   * Occupant Name
+   */
+  occupant_name: string
+  /**
+   * Submission Id
+   */
+  submission_id: string
+  /**
+   * Filer Name
+   */
+  filer_name: string
+  /**
+   * Linked In
+   */
+  linked_in?: string
+  /**
+   * Label
+   */
+  label: string
 }
 
 /**
@@ -12578,6 +12638,18 @@ export type GetQueueApiJotformQueueGetData = {
      * Year
      */
     year: number
+    /**
+     * Session Cm Id
+     *
+     * One adult weekend: its Requests tab
+     */
+    session_cm_id?: number | null
+    /**
+     * Scenario
+     *
+     * Saved scenario id; empty reads the live board
+     */
+    scenario?: string
   }
   url: '/api/jotform/queue'
 }

@@ -51,8 +51,19 @@ async def save_form(
 
 
 @router.get("/queue", response_model=JotformQueueResponse)
-async def get_queue(year: int = Query(..., ge=2000, le=2100), user: AuthUser = _MANAGE) -> JotformQueueResponse:
-    return await _service().build_queue(year)
+async def get_queue(
+    year: int = Query(..., ge=2000, le=2100),
+    session_cm_id: int | None = Query(None, gt=0, description="One adult weekend: its Requests tab"),
+    scenario: str = Query("", max_length=64, description="Saved scenario id; empty reads the live board"),
+    user: AuthUser = _MANAGE,
+) -> JotformQueueResponse:
+    """The year's queue, or -- with `session_cm_id` -- one weekend's, read in
+    `scenario` (kindred#2828 ruling 2026-09-25): its write-in links resolve
+    against that scenario's write-ins. The scenario must be the weekend's."""
+    try:
+        return await _service().build_queue(year, session_cm_id=session_cm_id, scenario=scenario)
+    except (JotformNotFoundError, JotformValidationError) as exc:
+        raise _http(exc) from exc
 
 
 @router.post("/submissions/{submission_id}/link", status_code=204, response_class=Response)

@@ -93,6 +93,12 @@ class JotformQueueItem(BaseModel):
     # A `write_in` link: the write-in's occupant name and unit.
     write_in_name: str = ""
     write_in_unit: str = ""
+    # A `write_in` link read for one weekend's Requests tab (kindred#2828
+    # ruling 2026-09-25): whether a write-in of the VIEWED scenario (or the
+    # live board) carries the link. `write_in_unit` is then that row's unit,
+    # and blank when not placed. None on the year-wide read, which views no
+    # scenario.
+    write_in_placed: bool | None = None
     # Needs a guest: the write-in option pre-selected for it, or "" for none.
     write_in_suggestion: str = ""
 
@@ -131,8 +137,29 @@ class JotformWriteInOption(BaseModel):
     occupant_name: str
 
 
+class JotformWriteInLinkSuggestion(BaseModel):
+    """An unlinked write-in of the viewed scenario that looks like a filer
+    (kindred#2828 ruling 2026-09-25): a label and a one-click link, never a
+    link made on its own. `linked_in` names where the filing is already
+    linked ("the live board" or a scenario's name), or is "" for a filing
+    still needing a guest."""
+
+    option_id: str
+    unit_id: str
+    unit_name: str = ""
+    occupant_name: str
+    submission_id: str
+    filer_name: str
+    linked_in: str = ""
+    label: str
+
+
 class JotformQueueResponse(BaseModel):
     year: int
+    # Set when the read is one weekend's Requests tab, with the scenario it
+    # was read in ("" = the live board).
+    session_cm_id: int | None = None
+    scenario: str = ""
     unmatched: list[JotformQueueItem] = Field(default_factory=list)
     unmapped: list[JotformUnmappedForm] = Field(default_factory=list)
     # Staff-linked and ignored submissions, so a link can be undone.
@@ -142,6 +169,8 @@ class JotformQueueResponse(BaseModel):
     # Filings linked to a board write-in that still exists.
     write_ins: list[JotformQueueItem] = Field(default_factory=list)
     write_in_options: list[JotformWriteInOption] = Field(default_factory=list)
+    # One weekend's read only: unlinked write-ins of the viewed scenario that match a filer.
+    write_in_link_suggestions: list[JotformWriteInLinkSuggestion] = Field(default_factory=list)
     duplicates: list[JotformDuplicateGroup] = Field(default_factory=list)
     guests: list[JotformGuest] = Field(default_factory=list)
 
