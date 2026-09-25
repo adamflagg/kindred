@@ -253,6 +253,12 @@ func RegisterHooks(app core.App) {
 		return guardConfigWrite(e, false)
 	})
 
+	// Admin "view as" persona: downgrade e.Auth per request (view_as.go).
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		se.Router.Bind(viewAsMiddleware())
+		return se.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+	})
+
 	// Invalidate FastAPI metrics cache when metrics-read config changes
 	registerConfigHooks(app)
 
