@@ -203,7 +203,8 @@ export function SyncTab() {
 
   // Handle year change - reset service if it becomes unavailable
   const handleYearChange = (year: number) => {
-    setSyncYearOverride(year)
+    // Re-selecting the current year clears the override, so the tab follows the live year again.
+    setSyncYearOverride(year === currentYear ? null : year)
     // Reset a current-year-only selection when switching to a historical year. Derived from the
     // flag rather than a hand-written list of ids: the literal pair this used to name was
     // already two short of the five entries carrying currentYearOnly, and a stale selection is

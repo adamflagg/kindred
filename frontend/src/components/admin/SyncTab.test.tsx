@@ -703,6 +703,10 @@ describe('SyncTab tracks the live year after CurrentYearContext resolves post-re
 // before -- it must not turn syncYear into something that always tracks currentYear regardless
 // of the selector.
 describe('SyncTab still hides current-year-only types when a user manually picks a historical year', () => {
+  afterEach(() => {
+    currentYearMock = 2027
+  })
+
   it('hides the Process phase after selecting a historical year from the selector', () => {
     renderSyncTab()
 
@@ -712,5 +716,20 @@ describe('SyncTab still hides current-year-only types when a user manually picks
     fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
 
     expect(screen.queryByText('Process')).not.toBeInTheDocument()
+  })
+
+  it('goes back to tracking the live year when the user re-selects the current year', () => {
+    const { rerenderSyncTab } = renderSyncTab()
+    const yearSelect = screen.getByRole('option', { name: '2026' }).closest('select')
+
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2026' } })
+    fireEvent.change(yearSelect as HTMLSelectElement, { target: { value: '2027' } })
+
+    // The season rolls over while the tab is open: a re-selected current year must follow it,
+    // not stay pinned as a historical override that hides the current-year-only cards.
+    currentYearMock = 2028
+    rerenderSyncTab()
+
+    expect(screen.getByText('Process')).toBeInTheDocument()
   })
 })
