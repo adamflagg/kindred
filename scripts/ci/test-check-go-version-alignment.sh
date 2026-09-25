@@ -60,16 +60,39 @@ EOF
 FROM chainguard/wolfi-base:latest
 RUN apk add --no-cache python-3.14
 EOF
+  # Both accepted go-version forms: a job output (the normal case) and a step
+  # output in the same job (for a job that cannot depend on detect-changes).
+  # shellcheck disable=SC2016  # the literal ${{ ... }} IS the fixture
   cat > "$ROOT/.github/workflows/ci.yml" <<'EOF'
 jobs:
+  detect-changes:
+    outputs:
+      go_minor: ${{ steps.go.outputs.go_minor }}
+    steps:
+    - id: go
+      run: echo "go_minor=$(sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' pocketbase/go.mod)" >> "$GITHUB_OUTPUT"
   go:
+    needs: detect-changes
     steps:
     - uses: actions/setup-go@v7
       with:
-        go-version-file: pocketbase/go.mod
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
+        check-latest: true
+    - name: Setup Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        # a comment inside the step
+        go-version: '${{ needs.detect-changes.outputs.go_minor }}'
+        check-latest: 'true'
+        cache: true
+  standalone:
+    steps:
+    - id: go
+      run: echo "go_minor=1.27" >> "$GITHUB_OUTPUT"
     - uses: actions/setup-go@v7
       with:
-        go-version-file: 'pocketbase/go.mod'
+        go-version: ${{ steps.go.outputs.go_minor }}
+        check-latest: true
 EOF
 }
 
@@ -158,12 +181,30 @@ new_fixture
 sed -i 's/^go 1.27$/go 1.28/' "$ROOT/go.work"
 expect_fail "TEST 10: go.work go 1.28 fails" "go.work"
 
-# --- TEST 11: a patch in pocketbase/go.mod's go line -------------------------
-# setup-go's go-version-file would then install exactly that patch, not the
-# latest one.
+# --- TEST 11: a patch in a go line is fine; only the MINOR is compared --------
+# The Go tool writes the patch itself: `go get` of a dependency declaring
+# `go 1.27.0` rewrites `go 1.27` to `go 1.27.0`. Rejecting it would fail every
+# Dependabot gomod PR once golang.org/x/* declare a patch. CI never installs the
+# go line's patch -- setup-go gets the minor alone, with check-latest.
 new_fixture
-sed -i 's/^go 1.27$/go 1.27.0/' "$ROOT/pocketbase/go.mod"
-expect_fail "TEST 11: pocketbase/go.mod go 1.27.0 fails" "pocketbase/go.mod"
+sed -i 's/^go 1.27$/go 1.27.0/' "$ROOT/pocketbase/go.mod" "$ROOT/go.work"
+sed -i 's/^go 1.27$/go 1.27.3/' "$ROOT/docker/healthcheck/go.mod"
+run_guard
+if [[ $STATUS -eq 0 ]]; then
+  check "TEST 11: go 1.27.0 / go 1.27.3 directives pass" ok
+else
+  check "TEST 11: go 1.27.0 / go 1.27.3 directives pass (status=$STATUS) -- $OUT" no
+fi
+
+# --- TEST 11b: a patch does not hide a different minor ------------------------
+new_fixture
+sed -i 's/^go 1.27$/go 1.26.9/' "$ROOT/docker/healthcheck/go.mod"
+expect_fail "TEST 11b: docker/healthcheck/go.mod go 1.26.9 fails" "docker/healthcheck/go.mod"
+
+# --- TEST 11c: a pre-release go line is not a minor --------------------------
+new_fixture
+sed -i 's/^go 1.27$/go 1.27rc1/' "$ROOT/go.work"
+expect_fail "TEST 11c: go.work go 1.27rc1 fails" "go.work"
 
 # --- TEST 12: a toolchain directive ------------------------------------------
 new_fixture
@@ -176,13 +217,27 @@ cat >> "$ROOT/.github/workflows/ci.yml" <<'EOF'
     - uses: actions/setup-go@v7
       with:
         go-version: '1.27.x'
+        check-latest: true
 EOF
-expect_fail "TEST 13: literal go-version in a workflow fails" "go-version"
+expect_fail "TEST 13: literal go-version in a workflow fails" "1.27.x"
 
-# --- TEST 14: go-version-file pointing somewhere else ------------------------
+# --- TEST 13b: go-version reading some OTHER output ---------------------------
 new_fixture
-printf '        go-version-file: docker/healthcheck/go.mod\n' >> "$ROOT/.github/workflows/ci.yml"
-expect_fail "TEST 14: go-version-file other than pocketbase/go.mod fails" "go-version-file"
+# shellcheck disable=SC2016  # the literal ${{ ... }} IS the fixture
+sed -i 's/needs.detect-changes.outputs.go_minor }}$/needs.detect-changes.outputs.go }}/' "$ROOT/.github/workflows/ci.yml"
+expect_fail "TEST 13b: go-version from outputs.go (not go_minor) fails" "outputs.go }}"
+
+# --- TEST 14: go-version-file, even pointing at pocketbase/go.mod -------------
+# It installs exactly the patch the go line carries (see TEST 11), not the
+# latest one.
+new_fixture
+cat >> "$ROOT/.github/workflows/ci.yml" <<'EOF'
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: pocketbase/go.mod
+        check-latest: true
+EOF
+expect_fail "TEST 14: go-version-file: pocketbase/go.mod fails" "go-version-file"
 
 # --- TEST 15: untagged, :latest, digest-pinned and ARG-templated images ------
 # shellcheck disable=SC2016  # the literal ${GO_VERSION} IS the fixture
@@ -212,13 +267,56 @@ else
   check "TEST 17: no Dockerfiles exits 2 (status=$STATUS) -- $OUT" no
 fi
 
-# --- TEST 18: the real tree is aligned ---------------------------------------
+# --- TEST 18: a setup-go step without check-latest ---------------------------
+# Without it setup-go takes whatever 1.27.x the runner image caches, which lags
+# the latest patch.
+new_fixture
+cat >> "$ROOT/.github/workflows/ci.yml" <<'EOF'
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
+        cache: true
+EOF
+expect_fail "TEST 18: setup-go without check-latest fails" "check-latest"
+
+# --- TEST 19: check-latest: false ---------------------------------------------
+new_fixture
+sed -i '0,/check-latest: true/s//check-latest: false/' "$ROOT/.github/workflows/ci.yml"
+expect_fail "TEST 19: setup-go with check-latest: false fails" "check-latest"
+
+# --- TEST 20: check-latest on the NEXT step does not count --------------------
+# The last setup-go step in a job, followed by a step of another action that
+# happens to take a check-latest input.
+new_fixture
+cat >> "$ROOT/.github/workflows/ci.yml" <<'EOF'
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
+    - uses: actions/setup-node@v7
+      with:
+        check-latest: true
+EOF
+expect_fail "TEST 20: check-latest on a following step does not satisfy setup-go" "check-latest"
+
+# --- TEST 21: a setup-go step with no go-version at all -----------------------
+# setup-go then uses the runner's preinstalled Go -- whatever minor that is.
+new_fixture
+cat >> "$ROOT/.github/workflows/ci.yml" <<'EOF'
+  another-job:
+    steps:
+    - uses: actions/setup-go@v7
+      with:
+        check-latest: true
+EOF
+expect_fail "TEST 21: setup-go without go-version fails" "no go-version"
+
+# --- TEST 22: the real tree is aligned ---------------------------------------
 STATUS=0
 OUT=$("$GUARD" "$REPO_ROOT" 2>&1) || STATUS=$?
 if [[ $STATUS -eq 0 ]]; then
-  check "TEST 18: the real tree passes" ok
+  check "TEST 22: the real tree passes" ok
 else
-  check "TEST 18: the real tree passes (status=$STATUS) -- $OUT" no
+  check "TEST 22: the real tree passes (status=$STATUS) -- $OUT" no
 fi
 
 echo

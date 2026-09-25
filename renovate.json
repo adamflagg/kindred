@@ -31,12 +31,6 @@
       "matchManagers": ["nvm", "pyenv"],
       "dependencyDashboardApproval": true,
       "automerge": false
-    },
-    {
-      "description": "Healthcheck module Go directive. Dashboard checkbox only.",
-      "matchDepNames": ["go"],
-      "dependencyDashboardApproval": true,
-      "automerge": false
     }
   ],
   "customManagers": [
@@ -48,14 +42,6 @@
         "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?[ \\t]*\\n[ \\t]*version:[ \\t]*[\"']?(?<currentValue>[^\"'\\s]+)",
         "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?[ \\t]*\\n[ \\t]*[A-Z][A-Z0-9_]*_VERSION=[\"']?(?<currentValue>[^\"'\\s]+)"
       ]
-    },
-    {
-      "customType": "regex",
-      "description": "Go directive in the standalone healthcheck module",
-      "managerFilePatterns": ["/^docker/healthcheck/go\\.mod$/"],
-      "matchStrings": ["\\ngo (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"],
-      "depNameTemplate": "go",
-      "datasourceTemplate": "golang-version"
     }
   ]
 }

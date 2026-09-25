@@ -106,16 +106,33 @@ def test_every_expected_dep_has_a_rule_or_a_manager_that_names_it():
     assert named >= mod.EXPECTED_DEPS, f"not named in renovate.json: {mod.EXPECTED_DEPS - named}"
 
 
+def test_renovate_does_not_manage_any_go_directive():
+    """Go minor bumps start at pocketbase/go.mod, by hand; nothing else proposes one.
+
+    The rule is "pocketbase/go.mod picks the minor; every build uses the latest
+    patch of it", and scripts/ci/check-go-version-alignment.sh fails any other
+    go.mod, go.work, golang image or setup-go step that disagrees. A Renovate
+    manager bumping docker/healthcheck/go.mod on its own could only ever open a
+    PR that guard rejects.
+    """
+    config = json.loads(RENOVATE_CONFIG.read_text())
+    named = {n for rule in config["packageRules"] for n in rule.get("matchDepNames", [])}
+    assert "go" not in named
+    for manager in config["customManagers"]:
+        assert manager.get("depNameTemplate") != "go", manager.get("description")
+        assert manager.get("datasourceTemplate") != "golang-version", manager.get("description")
+        assert not any("go\\.mod" in pat or "go.mod" in pat for pat in manager["managerFilePatterns"]), manager
+    assert "go" not in mod.EXPECTED_DEPS
+
+
 # --------------------------- mutation tests ---------------------------
 
 
 def _fake_repo(tmp_path: Path, workflow_body: str) -> Path:
     """A minimal tree carrying the shipped renovate.json and one workflow."""
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
-    (tmp_path / "docker" / "healthcheck").mkdir(parents=True)
     (tmp_path / "renovate.json").write_text(RENOVATE_CONFIG.read_text())
     (tmp_path / ".github" / "workflows" / "ci.yml").write_text(workflow_body)
-    (tmp_path / "docker" / "healthcheck" / "go.mod").write_text("module x\n\ngo 1.24\n")
     return tmp_path
 
 
@@ -190,12 +207,6 @@ def test_a_lowercase_shell_version_var_is_not_matched(tmp_path, monkeypatch):
 def test_a_non_version_shaped_value_fails(tmp_path, monkeypatch):
     body = ALL_MARKERS.replace("version: v0.69.3", "version: latest")
     assert _run_against(_fake_repo(tmp_path, body), monkeypatch) == 1
-
-
-def test_a_missing_go_mod_fails(tmp_path, monkeypatch):
-    repo = _fake_repo(tmp_path, ALL_MARKERS)
-    (repo / "docker" / "healthcheck" / "go.mod").unlink()
-    assert _run_against(repo, monkeypatch) == 1
 
 
 def test_a_bare_glob_file_pattern_is_rejected(tmp_path, monkeypatch):

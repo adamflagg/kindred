@@ -42,6 +42,10 @@ jobs:
       dockerLint: ${{ steps.filter.outputs.dockerLint }}
       docker: ${{ steps.filter.outputs.docker }}
       actions: ${{ steps.filter.outputs.actions }}
+      # Not a paths-filter result: the Go minor every setup-go step installs.
+      # Every Go job already needs this job for its gate, so computing it here
+      # costs no extra job and no extra checkout.
+      go_minor: ${{ steps.go.outputs.go_minor }}
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -373,8 +377,8 @@ jobs:
             # The `Go version alignment` step's inputs. Its guard globs
             # docker/Dockerfile*, so a NEW Dockerfile is an input the moment it
             # exists (the four explicit entries above are only hadolint's
-            # list); it reads all three `go` directives; and it rejects a
-            # literal setup-go `go-version:` in ANY workflow, not just this one.
+            # list); it reads all three `go` directives; and it checks every
+            # setup-go step in ANY workflow, not just this one.
             - 'docker/Dockerfile*'
             - 'pocketbase/go.mod'
             - 'docker/healthcheck/go.mod'
@@ -394,13 +398,24 @@ jobs:
             # checker self-references so edits to either re-run the check.
             - 'renovate.json'
             - 'scripts/ci/check_renovate_managers.py'
-            # The second customManager targets this file, and `go` is one of the
-            # checker's EXPECTED_DEPS. `docker/**` matches it but gates a
-            # different job, so without this line a PR bumping only the Go
-            # directive -- exactly what renovate.json's `go` dashboard rule
-            # produces -- would skip the check that proves the regex still
-            # matches. tests/unit/scripts/test_ci_path_filters.py pins this.
-            - 'docker/healthcheck/go.mod'
+
+    # Rule: pocketbase/go.mod picks the minor; every build uses the latest
+    # patch of it. Every setup-go step installs `go-version: <this minor>` with
+    # `check-latest: true` -- the latest patch of that minor. Not
+    # `go-version-file`, which installs exactly the patch the go line carries,
+    # and the Go tool writes one itself: `go get` of a dependency declaring
+    # `go 1.27.0` rewrites `go 1.27` to `go 1.27.0`. Fails loudly rather than
+    # exporting '', which would make setup-go use the runner's preinstalled Go.
+    # scripts/ci/check-go-version-alignment.sh enforces the setup-go side.
+    - name: Read the Go minor from pocketbase/go.mod
+      id: go
+      run: |
+        go_minor=$(sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' pocketbase/go.mod)
+        if [[ ! "$go_minor" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "::error file=pocketbase/go.mod::no parseable 'go X.Y' line (got '$go_minor')"
+          exit 1
+        fi
+        echo "go_minor=$go_minor" >> "$GITHUB_OUTPUT"
 
   # Secret scanning (runs unconditionally on all pushes/PRs)
   secret-scan:
@@ -566,7 +581,8 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: pocketbase/go.mod
+        # go_minor, not a literal -- see the Go Lint job for why.
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
@@ -667,16 +683,16 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        # go-version-file, not a literal: setup-go pins GOTOOLCHAIN=local, so the
-        # runner CANNOT fetch a newer toolchain the way a developer's machine
-        # does. Whatever this step installs is the only toolchain the job has,
-        # and if go.mod declares a higher minimum every Go command hard-fails
-        # with "requires go >= X (running Y; GOTOOLCHAIN=local)". A floating
-        # '1.26.x' therefore silently breaks the build the moment go.mod is
-        # bumped ahead of the newest release the manifest happens to serve.
-        # Reading the version from go.mod keeps ONE source of truth and makes a
-        # future bump a one-line change there.
-        go-version-file: pocketbase/go.mod
+        # The minor from pocketbase/go.mod (detect-changes' `go` step), never a
+        # literal: setup-go pins GOTOOLCHAIN=local, so the runner CANNOT fetch a
+        # newer toolchain the way a developer's machine does. Whatever this step
+        # installs is the only toolchain the job has, and if go.mod declares a
+        # higher minimum every Go command hard-fails with "requires go >= X
+        # (running Y; GOTOOLCHAIN=local)". Not go-version-file either: that
+        # installs exactly the patch in the go line, while the minor plus
+        # check-latest installs that minor's LATEST patch. ONE source of truth;
+        # a future bump is a one-line change in go.mod.
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
@@ -826,8 +842,9 @@ jobs:
     # Rule: pocketbase/go.mod picks the minor; every build uses the latest
     # patch of it. The guard fails on a golang stage on another minor, a
     # patch-pinned or non-official golang image, GOTOOLCHAIN other than
-    # `local`, a drifted go.work / docker/healthcheck/go.mod directive, or a
-    # setup-go step not reading pocketbase/go.mod. Its self-test runs first so
+    # `local`, a go.work / docker/healthcheck/go.mod directive on another
+    # minor, or a setup-go step not installing detect-changes' go_minor with
+    # check-latest: true. Its self-test runs first so
     # a guard that silently stopped detecting cannot report the tree clean.
     - name: Go version alignment
       run: |
@@ -891,8 +908,8 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        # go-version-file, not a literal -- see the Go Lint job for why.
-        go-version-file: pocketbase/go.mod
+        # go_minor, not a literal -- see the Go Lint job for why.
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
@@ -1084,16 +1101,16 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        # go-version-file, not a literal: setup-go pins GOTOOLCHAIN=local, so the
-        # runner CANNOT fetch a newer toolchain the way a developer's machine
-        # does. Whatever this step installs is the only toolchain the job has,
-        # and if go.mod declares a higher minimum every Go command hard-fails
-        # with "requires go >= X (running Y; GOTOOLCHAIN=local)". A floating
-        # '1.26.x' therefore silently breaks the build the moment go.mod is
-        # bumped ahead of the newest release the manifest happens to serve.
-        # Reading the version from go.mod keeps ONE source of truth and makes a
-        # future bump a one-line change there.
-        go-version-file: pocketbase/go.mod
+        # The minor from pocketbase/go.mod (detect-changes' `go` step), never a
+        # literal: setup-go pins GOTOOLCHAIN=local, so the runner CANNOT fetch a
+        # newer toolchain the way a developer's machine does. Whatever this step
+        # installs is the only toolchain the job has, and if go.mod declares a
+        # higher minimum every Go command hard-fails with "requires go >= X
+        # (running Y; GOTOOLCHAIN=local)". Not go-version-file either: that
+        # installs exactly the patch in the go line, while the minor plus
+        # check-latest installs that minor's LATEST patch. ONE source of truth;
+        # a future bump is a one-line change in go.mod.
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
@@ -1122,16 +1139,16 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        # go-version-file, not a literal: setup-go pins GOTOOLCHAIN=local, so the
-        # runner CANNOT fetch a newer toolchain the way a developer's machine
-        # does. Whatever this step installs is the only toolchain the job has,
-        # and if go.mod declares a higher minimum every Go command hard-fails
-        # with "requires go >= X (running Y; GOTOOLCHAIN=local)". A floating
-        # '1.26.x' therefore silently breaks the build the moment go.mod is
-        # bumped ahead of the newest release the manifest happens to serve.
-        # Reading the version from go.mod keeps ONE source of truth and makes a
-        # future bump a one-line change there.
-        go-version-file: pocketbase/go.mod
+        # The minor from pocketbase/go.mod (detect-changes' `go` step), never a
+        # literal: setup-go pins GOTOOLCHAIN=local, so the runner CANNOT fetch a
+        # newer toolchain the way a developer's machine does. Whatever this step
+        # installs is the only toolchain the job has, and if go.mod declares a
+        # higher minimum every Go command hard-fails with "requires go >= X
+        # (running Y; GOTOOLCHAIN=local)". Not go-version-file either: that
+        # installs exactly the patch in the go line, while the minor plus
+        # check-latest installs that minor's LATEST patch. ONE source of truth;
+        # a future bump is a one-line change in go.mod.
+        go-version: ${{ needs.detect-changes.outputs.go_minor }}
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum

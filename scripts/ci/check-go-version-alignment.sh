@@ -4,11 +4,13 @@
 # The rule (owner-approved): "pocketbase/go.mod picks the minor; every build
 # uses the latest patch of it."
 #
-# pocketbase/go.mod's `go X.Y` line is the single source of truth. This fails if:
-#   - that line carries a patch (`go 1.27.0`) or the file has a `toolchain`
-#     directive -- setup-go's go-version-file would then install exactly that
-#     patch instead of the latest one;
-#   - docker/healthcheck/go.mod or go.work says anything but `go X.Y`;
+# pocketbase/go.mod's `go X.Y[.Z]` line is the single source of truth, and only
+# its MINOR counts. This fails if:
+#   - pocketbase/go.mod, docker/healthcheck/go.mod or go.work says a different
+#     minor, or anything but `go X.Y` / `go X.Y.Z`. A patch is fine: the Go tool
+#     writes one itself (`go get` of a module declaring `go 1.27.0` rewrites
+#     `go 1.27` to `go 1.27.0`), and nothing installs the go line's patch;
+#   - any of them has a `toolchain` directive -- it pins an exact toolchain;
 #   - a Dockerfile stage is FROM a golang image that is not the official
 #     `golang:X.Y[-variant]` -- a different minor, a patch pin
 #     (`golang:1.26.4-alpine`), no tag / `latest`, a digest, an ARG template,
@@ -17,8 +19,13 @@
 #   - a Dockerfile sets GOTOOLCHAIN to anything but `local`. `auto` downloads
 #     the MINIMUM toolchain go.mod allows (go1.27.0), not the latest patch; the
 #     image tag is the toolchain, so nothing may download another one;
-#   - a workflow pins `go-version:` literally, or points `go-version-file:` at
-#     anything but pocketbase/go.mod.
+#   - a workflow's `go-version:` is anything but a `go_minor` output
+#     (`${{ needs.<job>.outputs.go_minor }}`, or `${{ steps.<id>.outputs.go_minor }}`
+#     in a job that cannot depend on the job computing it), or it uses
+#     `go-version-file:` at all -- setup-go would install exactly the patch the
+#     go line carries, not the latest one;
+#   - a setup-go step has no `go-version:` (the runner's preinstalled Go), or
+#     lacks `check-latest: true` (the runner's cached patch, which lags).
 #
 # Usage: check-go-version-alignment.sh [REPO_ROOT]   (default: git toplevel)
 # Exit:  0 aligned, 1 misaligned, 2 could not run (missing inputs).
@@ -52,6 +59,7 @@ MINOR="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 echo "Go minor from pocketbase/go.mod: $MINOR"
 
 # --- go directives ------------------------------------------------------------
+# Only the minor is compared: `go 1.27` and `go 1.27.0` are the same rule.
 for rel in pocketbase/go.mod docker/healthcheck/go.mod go.work; do
   f="$ROOT/$rel"
   if [[ ! -r "$f" ]]; then
@@ -59,11 +67,11 @@ for rel in pocketbase/go.mod docker/healthcheck/go.mod go.work; do
     continue
   fi
   got=$(go_line "$f")
-  if [[ "$got" != "$MINOR" ]]; then
-    fail "$rel says 'go ${got:-<none>}', want exactly 'go $MINOR' (minor only, no patch)"
+  if [[ ! "$got" =~ ^([0-9]+\.[0-9]+)(\.[0-9]+)?$ ]] || [[ "${BASH_REMATCH[1]}" != "$MINOR" ]]; then
+    fail "$rel says 'go ${got:-<none>}', want 'go $MINOR' or 'go $MINOR.<patch>' (pocketbase/go.mod's minor)"
   fi
   if grep -qE '^toolchain[[:space:]]' "$f"; then
-    fail "$rel has a toolchain directive -- setup-go would install that exact patch; remove it"
+    fail "$rel has a toolchain directive -- it pins an exact toolchain; remove it"
   fi
 done
 
@@ -154,23 +162,86 @@ for df in "${dockerfiles[@]}"; do
 done
 
 # --- Workflows --------------------------------------------------------------------
+# setup-go gets the MINOR alone, from a `go_minor` output computed from
+# pocketbase/go.mod, plus `check-latest: true` -- which together install the
+# latest patch of that minor. A step is a YAML list item: it runs from its `- `
+# line to the next line indented at or left of that dash.
+GO_MINOR_EXPR_RE='^\$\{\{[[:space:]]*(needs|steps)\.[A-Za-z0-9_-]+\.outputs\.go_minor[[:space:]]*\}\}$'
+STEP_FORM="'go-version: \${{ needs.<job>.outputs.go_minor }}' with 'check-latest: true'"
+
+# unquote <value> -- trims whitespace, a trailing comment and one layer of quotes.
+unquote() {
+  local v="$1"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%%[[:space:]]#*}"
+  v="${v%"${v##*[![:space:]]}"}"
+  if [[ "$v" =~ ^\'(.*)\'$ || "$v" =~ ^\"(.*)\"$ ]]; then
+    v="${BASH_REMATCH[1]}"
+  fi
+  printf '%s' "$v"
+}
+
+# close_step -- ends the open step; a setup-go step must have had both keys.
+close_step() {
+  if [[ $step_is_setup_go == true ]]; then
+    [[ $step_has_version == true ]] \
+      || fail "$rel:$step_line setup-go step has no go-version -- it would use the runner's preinstalled Go; use $STEP_FORM"
+    [[ $step_has_latest == true ]] \
+      || fail "$rel:$step_line setup-go step lacks 'check-latest: true' -- without it the runner's cached patch is used, not the latest"
+  fi
+  step_indent=-1
+  step_is_setup_go=false
+}
+
 shopt -s nullglob
 workflows=("$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml)
 shopt -u nullglob
 for wf in "${workflows[@]}"; do
   rel=${wf#"$ROOT"/}
   lineno=0
+  step_indent=-1     # indentation of the current step's `- `; -1 = none open
+  step_line=0
+  step_is_setup_go=false
+  step_has_version=false
+  step_has_latest=false
+
   while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$((lineno + 1))
     trimmed="${line#"${line%%[![:space:]]*}"}"
-    [[ "$trimmed" == \#* ]] && continue
-    if [[ "$trimmed" =~ ^-?[[:space:]]*go-version:[[:space:]] ]]; then
-      fail "$rel:$lineno pins a literal go-version -- use 'go-version-file: pocketbase/go.mod'"
-    elif [[ "$trimmed" =~ ^-?[[:space:]]*go-version-file:[[:space:]]*[\"\']?([^\"\'[:space:]]+) ]] \
-        && [[ "${BASH_REMATCH[1]}" != "pocketbase/go.mod" ]]; then
-      fail "$rel:$lineno go-version-file: ${BASH_REMATCH[1]} -- must be pocketbase/go.mod"
+    [[ -z "$trimmed" || "$trimmed" == \#* ]] && continue
+    indent=$(( ${#line} - ${#trimmed} ))
+
+    if [[ $step_indent -ge 0 && $indent -le $step_indent ]]; then
+      close_step
+    fi
+    body="$trimmed"
+    if [[ "$trimmed" == "-" || "$trimmed" == "- "* ]]; then
+      if [[ $step_indent -lt 0 ]]; then
+        step_indent=$indent
+        step_line=$lineno
+        step_is_setup_go=false
+        step_has_version=false
+        step_has_latest=false
+      fi
+      body="${trimmed#-}"
+      body="${body#"${body%%[![:space:]]*}"}"
+    fi
+
+    if [[ "$body" =~ ^uses:[[:space:]]*[\"\']?actions/setup-go@ ]]; then
+      step_is_setup_go=true
+    elif [[ "$body" =~ ^go-version:(.*)$ ]]; then
+      step_has_version=true
+      value=$(unquote "${BASH_REMATCH[1]}")
+      if [[ ! "$value" =~ $GO_MINOR_EXPR_RE ]]; then
+        fail "$rel:$lineno go-version: $value -- must be a go_minor output read from pocketbase/go.mod: $STEP_FORM"
+      fi
+    elif [[ "$body" =~ ^go-version-file: ]]; then
+      fail "$rel:$lineno uses go-version-file -- setup-go would install exactly the patch in the go line, not the latest; use $STEP_FORM"
+    elif [[ "$body" =~ ^check-latest:(.*)$ ]] && [[ "$(unquote "${BASH_REMATCH[1]}")" == "true" ]]; then
+      step_has_latest=true
     fi
   done < "$wf"
+  close_step
 done
 
 if [[ $failures -gt 0 ]]; then

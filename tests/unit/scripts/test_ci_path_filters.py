@@ -256,16 +256,18 @@ def _renovate_manager_files() -> list[str]:
 
 
 def test_security_lint_gate_covers_the_renovate_manager_check_inputs():
-    """`Verify Renovate custom managers still match` reads more than the workflows.
+    """`Verify Renovate custom managers still match` reads every file a manager targets.
 
     The step is gated on `actions`, which watches `.github/workflows/**`,
-    `renovate.json` and the checker itself -- but a customManager also targets
-    `docker/healthcheck/go.mod`, and `go`/`docker` do not gate this job. A PR
-    that bumps only that Go directive -- precisely what renovate.json's
-    `matchDepNames: ["go"]` dashboard rule is built to produce -- would skip the
-    one check that proves the regex still matches, and the red would surface
-    later on an unrelated workflow PR. Same false-green shape as kindred#2652
-    and the python-lint gate above.
+    `renovate.json` and the checker itself. Today every customManager regexes
+    over the workflows, but a manager added for another file would leave a PR
+    bumping only that file skipping the one check that proves the regex still
+    matches, with the red surfacing later on an unrelated workflow PR. The file
+    list is derived from renovate.json, so such a manager fails this test on
+    the PR that adds it. (It happened once: a manager for the healthcheck
+    module's `go` directive, removed when Go minor bumps moved to
+    pocketbase/go.mod alone.) Same false-green shape as kindred#2652 and the
+    python-lint gate above.
     """
     patterns = _patterns_gating("security-lint")
     required = [
@@ -383,6 +385,12 @@ def test_go_vet_step_can_be_triggered_by_the_workspace_file():
     assert _matches("go.work", _patterns_gating_step("go-lint", "Go vet"))
 
 
+# detect-changes outputs that are NOT paths-filter results, each mapped to the
+# expression it must read. `go_minor` is the Go minor every setup-go step
+# installs; see the Go version alignment section at the end of this file.
+NON_FILTER_OUTPUTS = {"go_minor": r"^\$\{\{\s*steps\.go\.outputs\.go_minor\s*\}\}$"}
+
+
 def test_no_detect_changes_output_is_orphaned():
     """Every declared output must exist as a filter, be read, and name its own key.
 
@@ -405,6 +413,9 @@ def test_no_detect_changes_output_is_orphaned():
         return re.search(rf"{prefix}\.{re.escape(name)}(?![A-Za-z0-9_-])", text) is not None
 
     for name, expr in outputs.items():
+        if name in NON_FILTER_OUTPUTS:
+            assert re.search(NON_FILTER_OUTPUTS[name], expr), f"output `{name}` reads {expr!r}"
+            continue
         assert name in filters, f"output `{name}` has no matching filter"
         assert _reads(name, expr, r"steps\.filter\.outputs"), f"output `{name}` reads a different filter: {expr!r}"
 
@@ -759,3 +770,70 @@ def test_docker_lint_gate_covers_every_go_alignment_input():
     ]
     uncovered = [f for f in inputs if not _matches(f, patterns)]
     assert not uncovered, f"Go alignment inputs cannot trigger docker-lint: {uncovered}"
+
+
+# --- Go version alignment: every setup-go installs go_minor's latest patch --
+#
+# The guard checks the SHAPE of each setup-go step line by line. What it cannot
+# see is the job graph -- that `needs.detect-changes.outputs.go_minor` is only
+# non-empty in a job that actually `needs: detect-changes` (otherwise it
+# resolves to '' and setup-go falls back to the runner's preinstalled Go) --
+# nor what the detect-changes step computes. Both are pinned here.
+
+
+def _setup_go_steps() -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
+    found = []
+    for job_name, job in _ci()["jobs"].items():
+        for step in job.get("steps", []):
+            if str(step.get("uses", "")).startswith("actions/setup-go@"):
+                found.append((job_name, job, step))
+    assert found, "ci.yml has no setup-go step -- this test would prove nothing"
+    return found
+
+
+def test_every_setup_go_step_installs_the_latest_patch_of_go_minor():
+    for job_name, job, step in _setup_go_steps():
+        needs = job.get("needs", [])
+        needs = [needs] if isinstance(needs, str) else needs
+        assert "detect-changes" in needs, f"{job_name} reads go_minor but does not need detect-changes"
+        with_ = step.get("with", {})
+        assert "go-version-file" not in with_, f"{job_name}: go-version-file installs the go line's exact patch"
+        assert with_.get("go-version") == "${{ needs.detect-changes.outputs.go_minor }}", (
+            f"{job_name}: go-version is {with_.get('go-version')!r}"
+        )
+        assert with_.get("check-latest") is True, f"{job_name}: setup-go needs check-latest: true"
+
+
+def _run_go_minor_step(tmp_path: Path, go_line: str) -> tuple[int, str]:
+    """Run detect-changes' `go` step against a go.mod whose go line is <go_line>."""
+    steps = _ci()["jobs"]["detect-changes"]["steps"]
+    step = next((st for st in steps if st.get("id") == "go"), None)
+    assert step, "detect-changes has no step with id `go`"
+    (tmp_path / "pocketbase").mkdir()
+    (tmp_path / "pocketbase" / "go.mod").write_text(f"module example.invalid/pb\n\n{go_line}\n\nrequire (\n)\n")
+    out = tmp_path / "github_output"
+    out.write_text("")
+    result = subprocess.run(
+        ["bash", "-e", "-c", step["run"]],
+        cwd=tmp_path,
+        env={"GITHUB_OUTPUT": str(out), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, out.read_text()
+
+
+def test_go_minor_drops_the_patch_the_go_tool_writes(tmp_path):
+    """`go get` rewrites `go 1.27` to `go 1.27.0`; CI must still install 1.27's latest."""
+    assert _run_go_minor_step(tmp_path, "go 1.27.0") == (0, "go_minor=1.27\n")
+
+
+def test_go_minor_reads_a_bare_minor(tmp_path):
+    assert _run_go_minor_step(tmp_path, "go 1.27") == (0, "go_minor=1.27\n")
+
+
+def test_go_minor_fails_loudly_on_an_unparseable_go_line(tmp_path):
+    """An empty go_minor would make every setup-go use the runner's preinstalled Go."""
+    code, written = _run_go_minor_step(tmp_path, "go banana")
+    assert code != 0
+    assert written == ""
