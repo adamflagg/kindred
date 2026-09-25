@@ -1443,9 +1443,13 @@ class LodgingRepository:
             JOTFORM_SUBMISSIONS,
             query_params={
                 "filter": (
-                    f"year = {year} && jotform_status != 'DELETED' && (match_status = 'auto' || match_status = 'staff')"
+                    f"year = {year} && jotform_status != 'DELETED' "
+                    "&& (match_status = 'auto' || match_status = 'staff' || match_status = 'write_in')"
                 ),
-                "fields": "id,submission_id,form,session_cm_id,person_cm_id,submitted_at,match_status,jotform_status",
+                "fields": (
+                    "id,submission_id,form,session_cm_id,person_cm_id,submitted_at,match_status,jotform_status,"
+                    "write_in_key"
+                ),
                 "sort": STABLE_SORT,
             },
         )

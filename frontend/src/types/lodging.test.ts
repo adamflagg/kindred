@@ -378,6 +378,9 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
   // address — the row whose occupant nobody named — and collapsing it into
   // "no rename" would leave exactly that row creating a second one.
   previous_occupant_name: null,
+  // kindred#2759 follow-up: the adult Jotform filing a write-in is made FROM,
+  // linked in the same request. `null` on every other write.
+  jotform_submission_id: null,
 }
 void _exhaustiveAvailabilityWriteRequest
 

@@ -138,6 +138,8 @@ export interface PushWriteInsModalProps {
   scenario: string
   isOpen: boolean
   onClose: () => void
+  /** The weekend's `session_type`, for the deck's adult-only Jotform marks. */
+  sessionType?: string | undefined
 }
 
 const CLASS_ORDER: ReadonlyArray<PushBuildingReport['cls']> = ['add', 'match', 'conflict', 'remove']
@@ -400,6 +402,7 @@ export function PushWriteInsModal({
   scenario,
   isOpen,
   onClose,
+  sessionType,
 }: PushWriteInsModalProps) {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
@@ -604,6 +607,7 @@ export function PushWriteInsModal({
                 }}
                 onPush={handlePush}
                 pushDisabled={deckBuildings.length > decidedCount || pushMutation.isPending}
+                sessionType={sessionType}
               />
             )
           }

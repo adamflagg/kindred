@@ -62,6 +62,9 @@ func cadenceTestApp(t *testing.T) core.App {
 		t.Fatalf("save attendees: %v", err)
 	}
 
+	// The bounded pass's no-session cohort also reads the aid cohort (campership SP1).
+	addAidCohortCollections(t, app)
+
 	return app
 }
 

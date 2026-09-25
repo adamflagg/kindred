@@ -68,3 +68,47 @@ func TestTheEmailAloneNeverMatches(t *testing.T) {
 		t.Errorf("got %+v, want unmatched", got)
 	}
 }
+
+// kindred#2759 follow-up: a filer who matches no ENROLLED guest is tried
+// against the weekend's other registrations (cancelled, incomplete, ...).
+func TestMatchRegistrationFallsBackToNonEnrolledRegistrations(t *testing.T) {
+	others := []Guest{
+		{PersonCMID: 1000020, First: "Noah", Last: "Patel"},
+		{PersonCMID: 1000021, First: "Ava", Last: "Kim"},
+		{PersonCMID: 1000022, First: "Ava", Last: "Kim"},
+	}
+	cases := []struct {
+		name      string
+		id        Identity
+		want      Result
+		cancelled bool
+	}{
+		{"an enrolled match wins first", Identity{First: "Olivia", Last: "Chen"}, Result{1000004, 1}, false},
+		{"a unique non-enrolled hit", Identity{First: "Noah", Last: "Patel"}, Result{1000020, 1}, true},
+		{"an ambiguous non-enrolled hit stays unmatched", Identity{First: "Ava", Last: "Kim"}, Result{}, false},
+		{"no hit anywhere", Identity{First: "Pat", Last: "Nguyen"}, Result{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, cancelled := MatchRegistration(tc.id, guests(), others)
+			if got != tc.want || cancelled != tc.cancelled {
+				t.Errorf("MatchRegistration(%+v) = %+v, %v; want %+v, %v", tc.id, got, cancelled, tc.want, tc.cancelled)
+			}
+		})
+	}
+}
+
+// An enrolled AMBIGUITY is a decision for staff, not a reason to look at
+// cancelled registrations: two enrolled Emma Johnsons and a cancelled one
+// must not resolve to the cancelled one.
+func TestMatchRegistrationNeverFallsBackPastAnEnrolledAmbiguity(t *testing.T) {
+	twins := []Guest{
+		{PersonCMID: 1000011, First: "Emma", Last: "Johnson"},
+		{PersonCMID: 1000012, First: "Emma", Last: "Johnson"},
+	}
+	others := []Guest{{PersonCMID: 1000013, First: "Emma", Last: "Johnson"}}
+	got, cancelled := MatchRegistration(Identity{First: "Emma", Last: "Johnson"}, twins, others)
+	if got != (Result{}) || cancelled {
+		t.Errorf("got %+v, %v; want unmatched", got, cancelled)
+	}
+}

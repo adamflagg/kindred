@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -237,6 +238,21 @@ func TestRefreshFamilyCampOverridesEmptyForWholeCohort(t *testing.T) {
 			t.Errorf("refreshFamilyCampOverrides(%q) = %v, want empty -- an unscoped press "+
 				"must run the registered services exactly as before", session, got)
 		}
+	}
+}
+
+// TestRefreshFamilyCampTimeoutCoversTheAidCohort: an unscoped press runs the registered
+// bounded custom-values jobs, which since campership SP1 also carry the aid cohort (about
+// 890 persons / 513 households on the prod snapshot, against the 782 / 448 family-camp
+// union). That roughly doubles the ~96% of the chain those two jobs are, taking the worst
+// observed 17m39s to about 35 minutes. The old 25-minute timeout would truncate it before
+// family_camp_derived and lodging_assignments ran.
+func TestRefreshFamilyCampTimeoutCoversTheAidCohort(t *testing.T) {
+	t.Parallel()
+	const doubledWorstObserved = 35 * time.Minute
+	if refreshFamilyCampTimeout < doubledWorstObserved+doubledWorstObserved/5 {
+		t.Errorf("refreshFamilyCampTimeout = %v, want at least ~20%% headroom over the ~%v an "+
+			"unscoped press is estimated to take with the aid cohort", refreshFamilyCampTimeout, doubledWorstObserved)
 	}
 }
 

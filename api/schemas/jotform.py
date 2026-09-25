@@ -59,7 +59,10 @@ class JotformFormWrite(BaseModel):
 
 
 SuggestionKind = Literal["likely_duplicate", "did_you_mean", "probably_different"]
-MatchStatus = Literal["auto", "staff", "unmatched", "ignored"]
+# `cancelled`: the pull matched the filer to a registration of the weekend
+# that is not enrolled (kindred#2759 follow-up). `write_in`: staff linked the
+# filing to a board write-in.
+MatchStatus = Literal["auto", "staff", "unmatched", "ignored", "cancelled", "write_in"]
 
 
 class JotformSuggestion(BaseModel):
@@ -85,6 +88,13 @@ class JotformQueueItem(BaseModel):
     person_cm_id: int = 0
     guest_name: str = ""
     suggestions: list[JotformSuggestion] = Field(default_factory=list)
+    # A `cancelled` match: the registration's status (cancelled, incomplete...).
+    registration_status: str = ""
+    # A `write_in` link: the write-in's occupant name and unit.
+    write_in_name: str = ""
+    write_in_unit: str = ""
+    # Needs a guest: the write-in option pre-selected for it, or "" for none.
+    write_in_suggestion: str = ""
 
 
 class JotformGuest(BaseModel):
@@ -110,15 +120,38 @@ class JotformUnmappedForm(BaseModel):
     session_name: str = ""
 
 
+class JotformWriteInOption(BaseModel):
+    """One of a weekend's board write-ins a filing can be linked to: a
+    (unit, occupant name) on the live board or in any scenario, listed once."""
+
+    option_id: str
+    session_cm_id: int
+    unit_id: str
+    unit_name: str = ""
+    occupant_name: str
+
+
 class JotformQueueResponse(BaseModel):
     year: int
     unmatched: list[JotformQueueItem] = Field(default_factory=list)
     unmapped: list[JotformUnmappedForm] = Field(default_factory=list)
     # Staff-linked and ignored submissions, so a link can be undone.
     resolved: list[JotformQueueItem] = Field(default_factory=list)
+    # Filers matched to a registration that is not enrolled. No action needed.
+    cancelled: list[JotformQueueItem] = Field(default_factory=list)
+    # Filings linked to a board write-in that still exists.
+    write_ins: list[JotformQueueItem] = Field(default_factory=list)
+    write_in_options: list[JotformWriteInOption] = Field(default_factory=list)
     duplicates: list[JotformDuplicateGroup] = Field(default_factory=list)
     guests: list[JotformGuest] = Field(default_factory=list)
 
 
 class JotformLinkRequest(BaseModel):
     person_cm_id: int = Field(gt=0)
+
+
+class JotformWriteInLinkRequest(BaseModel):
+    """The write-in to link a filing to, by the address the board uses."""
+
+    unit_id: str = Field(min_length=1, max_length=64)
+    occupant_name: str = Field(min_length=1, max_length=500)

@@ -3,8 +3,11 @@ package campminder
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -869,5 +872,261 @@ func TestGetSessions_SinglePageUnderLimit(t *testing.T) {
 	}
 	if requestCount != 1 {
 		t.Errorf("GetSessions() made %d requests, want 1 (all results fit in one page)", requestCount)
+	}
+}
+
+// newTestAPIClient returns a Client whose API requests go to srv with a token that is
+// already valid, so no auth round trip happens.
+func newTestAPIClient(srv *httptest.Server) *Client {
+	return &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2026,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		accessToken:     "pre-seeded-token",
+		tokenExpiry:     time.Now().Add(time.Hour),
+		apiBaseURL:      srv.URL,
+	}
+}
+
+// recordSleeps swaps sleepFn for a recorder and restores it on cleanup.
+func recordSleeps(t *testing.T) *[]time.Duration {
+	t.Helper()
+	var waits []time.Duration
+	orig := sleepFn
+	sleepFn = func(d time.Duration) { waits = append(waits, d) }
+	t.Cleanup(func() { sleepFn = orig })
+	return &waits
+}
+
+// TestMakeRequest_RetriesOn429ThenSucceeds: a 429 carrying CampMinder's hint is retried
+// after hint+5s, and the eventual 200 body is returned.
+func TestMakeRequest_RetriesOn429ThenSucceeds(t *testing.T) {
+	waits := recordSleeps(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"message":"Rate limit is exceeded. Try again in 2 seconds."}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	body, err := newTestAPIClient(srv).makeRequest("GET", "sessions", map[string]string{"a": "b"})
+	if err != nil {
+		t.Fatalf("makeRequest: %v", err)
+	}
+	if string(body) != `{"ok":true}` {
+		t.Errorf("body = %s, want the 200 body", body)
+	}
+	if got := calls.Load(); got != 3 {
+		t.Errorf("calls = %d, want 3 (two 429s, then success)", got)
+	}
+	want := []time.Duration{7 * time.Second, 7 * time.Second}
+	if !slices.Equal(*waits, want) {
+		t.Errorf("waits = %v, want %v (hint 2s + 5s buffer)", *waits, want)
+	}
+}
+
+// TestMakeRequest_UnhintedBackoffDoublesAndIsCapped: with no hint the wait doubles from
+// 5s to a 60s ceiling, and the retry count is capped at maxRequestRetries.
+func TestMakeRequest_UnhintedBackoffDoublesAndIsCapped(t *testing.T) {
+	waits := recordSleeps(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("Too Many Requests"))
+	}))
+	defer srv.Close()
+
+	_, err := newTestAPIClient(srv).makeRequest("GET", "sessions", nil)
+	if err == nil {
+		t.Fatal("makeRequest returned nil error on a persistent 429")
+	}
+	if !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("error %q must keep \"429\" and \"rate limit\" -- ratelimit.HandleError matches on them", err)
+	}
+	if got := int(calls.Load()); got != maxRequestRetries+1 {
+		t.Errorf("calls = %d, want %d (1 + maxRequestRetries)", got, maxRequestRetries+1)
+	}
+	want := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
+	for len(want) < maxRequestRetries {
+		want = append(want, 60*time.Second)
+	}
+	if !slices.Equal(*waits, want) {
+		t.Errorf("waits = %v, want %v", *waits, want)
+	}
+}
+
+// TestMakeRequest_NoRetryOnServerError: only 429 is retried.
+func TestMakeRequest_NoRetryOnServerError(t *testing.T) {
+	waits := recordSleeps(t)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	if _, err := newTestAPIClient(srv).makeRequest("GET", "sessions", nil); err == nil {
+		t.Fatal("makeRequest returned nil error on a 500")
+	}
+	if calls.Load() != 1 || len(*waits) != 0 {
+		t.Errorf("calls = %d, sleeps = %d; want 1 and 0", calls.Load(), len(*waits))
+	}
+}
+
+// TestMakeRequest_RetryResendsPOSTBody: a consumed request body must be rebuilt per attempt.
+func TestMakeRequest_RetryResendsPOSTBody(t *testing.T) {
+	recordSleeps(t)
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		if len(bodies) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	if _, err := newTestAPIClient(srv).makeRequest("POST", "x", map[string]string{"a": "b"}); err != nil {
+		t.Fatalf("makeRequest: %v", err)
+	}
+	if len(bodies) != 2 || bodies[0] != `{"a":"b"}` || bodies[1] != `{"a":"b"}` {
+		t.Errorf("bodies = %q, want the same JSON body twice", bodies)
+	}
+}
+
+// TestRateLimitWait_HintedWaitIsCappedAtFiveMinutes: a malformed or huge CampMinder hint must
+// not sleep for days -- the hinted branch is clamped at rateLimitMaxHintedWait.
+func TestRateLimitWait_HintedWaitIsCappedAtFiveMinutes(t *testing.T) {
+	body := `{"message":"Rate limit is exceeded. Try again in 999999 seconds."}`
+	if got := rateLimitWait(body, 0); got != rateLimitMaxHintedWait {
+		t.Errorf("rateLimitWait(huge hint) = %v, want %v (rateLimitMaxHintedWait)", got, rateLimitMaxHintedWait)
+	}
+}
+
+// TestRateLimitWait_NormalHintedWaitUnaffectedByCap: a genuine long-but-reasonable hint (well
+// under the cap) is still honored as hint+5s, not silently shortened.
+func TestRateLimitWait_NormalHintedWaitUnaffectedByCap(t *testing.T) {
+	body := `{"message":"Rate limit is exceeded. Try again in 30 seconds."}`
+	want := 35 * time.Second
+	if got := rateLimitWait(body, 0); got != want {
+		t.Errorf("rateLimitWait(30s hint) = %v, want %v", got, want)
+	}
+}
+
+// TestGetTransactionDetails_OneCallPerSeasonWithoutPostDateBounds: the month-window fetch
+// lost Nov-Dec postings and anything posted after Dec 31 (analysis §5.4). A season call
+// with no post-date bounds returns every row CampMinder files under that season.
+func TestGetTransactionDetails_OneCallPerSeasonWithoutPostDateBounds(t *testing.T) {
+	var queries []url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.Query())
+		_, _ = w.Write([]byte(`[{"transactionId":1,"season":2026,"amount":10}]`))
+	}))
+	defer srv.Close()
+
+	rows, err := newTestAPIClient(srv).GetTransactionDetails(2026, true)
+	if err != nil {
+		t.Fatalf("GetTransactionDetails: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("rows = %d, want 1", len(rows))
+	}
+	if len(queries) != 1 {
+		t.Fatalf("requests = %d, want exactly 1 per season", len(queries))
+	}
+	q := queries[0]
+	if q.Get("season") != "2026" || q.Get("includeReversals") != "true" {
+		t.Errorf("query = %v, want season=2026 and includeReversals=true", q)
+	}
+	for _, bound := range []string{"postDateStart", "postDateEnd", "effectiveDateStart", "effectiveDateEnd"} {
+		if q.Has(bound) {
+			t.Errorf("query carries %s=%q; a season fetch must not be date-bounded", bound, q.Get(bound))
+		}
+	}
+}
+
+// TestGetTransactionDetails_UsesItsOwnTimeout: a season is ~19 MB and ~20 s, so this call
+// has its own deadline, and the client's default must stay untouched for every other call.
+func TestGetTransactionDetails_UsesItsOwnTimeout(t *testing.T) {
+	orig := transactionDetailsTimeout
+	transactionDetailsTimeout = 5 * time.Second
+	t.Cleanup(func() { transactionDetailsTimeout = orig })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := newTestAPIClient(srv)
+	c.httpClient.Timeout = 50 * time.Millisecond
+
+	if _, err := c.GetTransactionDetails(2026, true); err != nil {
+		t.Fatalf("GetTransactionDetails under a 50ms default and a 5s own timeout: %v", err)
+	}
+	if c.httpClient.Timeout != 50*time.Millisecond {
+		t.Errorf("client default timeout changed to %v; the long deadline must not leak", c.httpClient.Timeout)
+	}
+}
+
+// TestParseTransactionResponse_PartialResponseIsAnError: a wrapped response whose TotalCount
+// exceeds the rows it carries is a page, not the season. Returned as if complete, the sync
+// would treat it as the whole season and the orphan sweep could run on it (the count guard
+// only refuses a response FAR shorter than what is stored). So it must be an error, which
+// fails the season before its sweep.
+func TestParseTransactionResponse_PartialResponseIsAnError(t *testing.T) {
+	c := &Client{}
+	for name, body := range map[string]string{
+		"PascalCase Results":     `{"TotalCount":3,"Results":[{"transactionId":1},{"transactionId":2}]}`,
+		"camelCase result":       `{"totalCount":3,"result":[{"transactionId":1}]}`,
+		"camelCase results":      `{"totalCount":2,"results":[{"transactionId":1}]}`,
+		"wrapped, nothing in it": `{"totalCount":5,"results":[]}`,
+	} {
+		if rows, err := c.parseTransactionResponse([]byte(body)); err == nil {
+			t.Errorf("%s: parseTransactionResponse returned %d rows and no error; want an error", name, len(rows))
+		}
+	}
+}
+
+// TestParseTransactionResponse_CompleteResponsesStillParse: the guard must not refuse a
+// complete wrapped response, one with no count at all, or the bare array the endpoint serves.
+func TestParseTransactionResponse_CompleteResponsesStillParse(t *testing.T) {
+	c := &Client{}
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"PascalCase, count matches": {`{"TotalCount":2,"Results":[{"transactionId":1},{"transactionId":2}]}`, 2},
+		"camelCase, no count":       {`{"results":[{"transactionId":1}]}`, 1},
+		"bare array":                {`[{"transactionId":1},{"transactionId":2}]`, 2},
+		"empty bare array":          {`[]`, 0},
+	} {
+		rows, err := c.parseTransactionResponse([]byte(tc.body))
+		if err != nil || len(rows) != tc.want {
+			t.Errorf("%s: parseTransactionResponse = %d rows, %v; want %d rows, no error", name, len(rows), err, tc.want)
+		}
+	}
+}
+
+// TestGetTransactionDetails_PartialResponseFailsTheSeason: the error reaches the caller,
+// which is what makes SyncForYear return before its sweep
+// (TestFinancialTransactionsSync_FailedFetchDeletesNothing pins that half).
+func TestGetTransactionDetails_PartialResponseFailsTheSeason(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"totalCount":2,"results":[{"transactionId":1}]}`))
+	}))
+	defer srv.Close()
+
+	if rows, err := newTestAPIClient(srv).GetTransactionDetails(2026, true); err == nil {
+		t.Fatalf("GetTransactionDetails returned %d rows of a partial season and no error", len(rows))
 	}
 }

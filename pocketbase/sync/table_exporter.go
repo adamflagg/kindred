@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // FieldType defines how a column value should be transformed
@@ -27,6 +29,7 @@ const (
 	FieldTypeWriteInOverride // Check write_in field first, fallback to standard field
 	FieldTypeDoubleFKResolve // Resolve through two relations (position → program_area → name)
 	FieldTypeCMIDLookup      // Lookup by CM ID rather than PB ID (for self-references like parent_id)
+	FieldTypeMountainInstant // A stored UTC instant shown as CampMinder's Mountain wall clock
 )
 
 // Boolean string constants
@@ -249,6 +252,9 @@ func (r *FieldResolver) ResolveValue(value any, col *ColumnConfig) any {
 	case FieldTypeDate:
 		return safeString(value)
 
+	case FieldTypeMountainInstant:
+		return mountainWallClock(value)
+
 	case FieldTypeJSON:
 		// For JSON fields, return as-is or stringify
 		return safeString(value)
@@ -378,6 +384,29 @@ func (r *FieldResolver) resolveMultiRelation(value any, col *ColumnConfig) strin
 	// Sort for consistent output
 	slices.Sort(values)
 	return strings.Join(values, ", ")
+}
+
+// mountainWallClock renders a stored UTC instant as CampMinder's Mountain wall clock
+// (America/Denver, MST or MDT for that date), in the layout DateTime.String() produces.
+//
+// Financial transactions' post_date and reversal_date are stored as true UTC since campership
+// SP1 (design §6.2). Before that they held the Mountain wall clock read as UTC, and that is
+// what staff saw in Sheets, trailing "Z" included. Rendering back in Mountain keeps the
+// exported values where they were while the stored data stays correct. A string PocketBase
+// cannot parse comes back as a zero DateTime and is exported blank; no value is invented.
+func mountainWallClock(value any) string {
+	s := safeString(value)
+	if s == "" {
+		return ""
+	}
+	dt, err := types.ParseDateTime(s)
+	if err != nil {
+		return s
+	}
+	if dt.IsZero() {
+		return ""
+	}
+	return dt.Time().In(campMinderLocation).Format(types.DefaultDateLayout)
 }
 
 // resolveMultiSelect handles multi-select fields (non-relation) by joining values
@@ -675,12 +704,12 @@ func GetReadableYearExports() []ExportConfig {
 			Columns: []ColumnConfig{
 				{Field: "cm_id", Header: "Transaction ID", Type: FieldTypeNumber},
 				{Field: "transaction_number", Header: "Transaction Number", Type: FieldTypeNumber},
-				{Field: "post_date", Header: "Post Date", Type: FieldTypeDate},
+				{Field: "post_date", Header: "Post Date", Type: FieldTypeMountainInstant},
 				{Field: "effective_date", Header: "Effective Date", Type: FieldTypeDate},
 				{Field: "service_start_date", Header: "Service Start", Type: FieldTypeDate},
 				{Field: "service_end_date", Header: "Service End", Type: FieldTypeDate},
 				{Field: "is_reversed", Header: "Is Reversed", Type: FieldTypeBool},
-				{Field: "reversal_date", Header: "Reversal Date", Type: FieldTypeDate},
+				{Field: "reversal_date", Header: "Reversal Date", Type: FieldTypeMountainInstant},
 				{
 					Field: "financial_category", Header: "Category ID",
 					Type: FieldTypeForeignKeyID, RelatedCol: "financial_categories",
@@ -830,8 +859,7 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "fc_amount_requested", Header: "FC Amt Req", Type: FieldTypeNumber},
 				{Field: "tbm_program", Header: "TBM Program", Type: FieldTypeText},
 				{Field: "tbm_amount_requested", Header: "TBM Amt Req", Type: FieldTypeNumber},
-				{Field: "amount_requested", Header: "Total Amt Req", Type: FieldTypeNumber},
-				{Field: "amount_awarded", Header: "Amt Awarded", Type: FieldTypeNumber},
+				{Field: "registration_request_amount", Header: "Registration Request Amt", Type: FieldTypeNumber},
 				{Field: "total_gross_income", Header: "Gross Income", Type: FieldTypeNumber},
 				{Field: "num_children", Header: "# Children", Type: FieldTypeNumber},
 				{Field: "single_parent", Header: "Single Parent", Type: FieldTypeBool},

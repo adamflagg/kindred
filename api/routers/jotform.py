@@ -10,6 +10,7 @@ from api.schemas.jotform import (
     JotformFormWrite,
     JotformLinkRequest,
     JotformQueueResponse,
+    JotformWriteInLinkRequest,
 )
 from api.services.jotform_admin_service import JotformAdminService, JotformNotFoundError, JotformValidationError
 from api.services.jotform_repository import JotformRepository
@@ -77,5 +78,17 @@ async def unlink_submission(submission_id: str, user: AuthUser = _MANAGE) -> Res
     try:
         await _service().unlink(submission_id)
     except JotformNotFoundError as exc:
+        raise _http(exc) from exc
+    return Response(status_code=204)
+
+
+@router.post("/submissions/{submission_id}/write-in", status_code=204, response_class=Response)
+async def link_submission_to_write_in(
+    submission_id: str, body: JotformWriteInLinkRequest, user: AuthUser = _MANAGE
+) -> Response:
+    """Link a filing to one of its weekend's board write-ins (kindred#2759 follow-up)."""
+    try:
+        await _service().link_write_in(submission_id, body.unit_id, body.occupant_name, user.email)
+    except (JotformNotFoundError, JotformValidationError) as exc:
         raise _http(exc) from exc
     return Response(status_code=204)

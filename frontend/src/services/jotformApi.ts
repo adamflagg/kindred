@@ -89,3 +89,16 @@ export function ignoreJotformSubmission(fetchWithAuth: FetchWithAuth, submission
 export function unlinkJotformSubmission(fetchWithAuth: FetchWithAuth, submissionId: string) {
   return post(fetchWithAuth, `${BASE}/submissions/${submissionId}/unlink`)
 }
+
+/** Link a filing to a board write-in, addressed as the board addresses it. */
+export function linkJotformWriteIn(
+  fetchWithAuth: FetchWithAuth,
+  submissionId: string,
+  unitId: string,
+  occupantName: string
+) {
+  return post(fetchWithAuth, `${BASE}/submissions/${submissionId}/write-in`, {
+    unit_id: unitId,
+    occupant_name: occupantName,
+  })
+}

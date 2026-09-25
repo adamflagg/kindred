@@ -539,6 +539,9 @@ export const queryKeys = {
    */
   scenarioCompare: (year: number, sessionCmId: number, scenario: string) =>
     ['scenario-compare', year, sessionCmId, scenario] as const,
+  // The invalidation prefix: a Jotform write-in link moves the write-in mark
+  // the compare modal draws, and the Jotform admin knows no scenario.
+  scenarioComparePrefix: () => ['scenario-compare'] as const,
   // Prefixes for invalidation. The lodging admin panels edit registry rows
   // that feed the roster, but know neither the year nor the weekend, so they
   // cannot build a full key — see `invalidateLodgingRegistryQueries`.
@@ -859,3 +862,17 @@ export const userDataOptions = {
 // Legacy aliases for backward compatibility
 export const heavyQueryOptions = syncDataOptions
 export const realtimeQueryOptions = userDataOptions
+
+/**
+ * Everything a Jotform match or link moves: the admin tab, the roster's
+ * bunking-request marks (guests and linked write-ins), and the push deck's and
+ * compare modal's write-in marks (kindred#2759 follow-up).
+ */
+export function invalidateJotformQueries(queryClient: {
+  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+}): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.weekendRosterPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.pushPreviewPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.scenarioComparePrefix() })
+}

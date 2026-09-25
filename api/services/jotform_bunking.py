@@ -313,47 +313,74 @@ def _role_text(by_question: Mapping[str, Any], field_map: Mapping[str, Any], rol
 def filings_by_person(rows: JotformBunkingRows, *, session_cm_id: int) -> dict[int, list[JotformFiling]]:
     """Each guest's live, matched filings for ONE weekend, oldest first.
 
-    Live = auto- or staff-matched, not DELETED on Jotform. Unmatched and
-    ignored submissions belong to the admin queue, not the board.
+    Live = auto- or staff-matched, not DELETED on Jotform. Unmatched, ignored
+    and cancelled submissions belong to the admin queue, not the board; a
+    write-in link is keyed by its write-in (`filings_by_write_in`), not a guest.
     """
+    out: dict[int, list[JotformFiling]] = defaultdict(list)
+    for sub, filing in _filings(rows, session_cm_id=session_cm_id):
+        status = str(getattr(sub, "match_status", "") or "")
+        person_cm_id = int(getattr(sub, "person_cm_id", 0) or 0)
+        if status in _LIVE_MATCHES and person_cm_id > 0:
+            out[person_cm_id].append(filing)
+    for filings in out.values():
+        filings.sort(key=lambda filing: filing.submitted_at)
+    return dict(out)
+
+
+def filings_by_write_in(rows: JotformBunkingRows, *, session_cm_id: int) -> dict[str, list[JotformFiling]]:
+    """Each board write-in's linked filings for ONE weekend, by the write-in's
+    link key, oldest first (kindred#2759 follow-up). A write-in for a party of
+    several may carry several people's filings."""
+    out: dict[str, list[JotformFiling]] = defaultdict(list)
+    for sub, filing in _filings(rows, session_cm_id=session_cm_id):
+        key = str(getattr(sub, "write_in_key", "") or "")
+        if str(getattr(sub, "match_status", "") or "") == "write_in" and key:
+            out[key].append(filing)
+    for filings in out.values():
+        filings.sort(key=lambda filing: filing.submitted_at)
+    return dict(out)
+
+
+def _filings(rows: JotformBunkingRows, *, session_cm_id: int) -> list[tuple[Any, JotformFiling]]:
+    """Every live (not DELETED) submission of one weekend with the answers the
+    board reads."""
     field_maps = {str(form.id): dict(getattr(form, "field_map", None) or {}) for form in rows.forms}
     answers: dict[str, dict[str, Any]] = defaultdict(dict)
     for answer in rows.answers:
         answers[str(answer.submission)][str(answer.question_id)] = answer
 
-    out: dict[int, list[JotformFiling]] = defaultdict(list)
+    out: list[tuple[Any, JotformFiling]] = []
     for sub in rows.submissions:
         if int(getattr(sub, "session_cm_id", 0) or 0) != session_cm_id:
             continue
         if str(getattr(sub, "jotform_status", "") or "").upper() == "DELETED":
             continue
         status = str(getattr(sub, "match_status", "") or "")
-        person_cm_id = int(getattr(sub, "person_cm_id", 0) or 0)
-        if status not in _LIVE_MATCHES or person_cm_id <= 0:
-            continue
         field_map = field_maps.get(str(sub.form), {})
         by_question = answers.get(str(sub.id), {})
         coming = _role_answer(by_question, field_map, ROLE_COMING_WITH)
-        out[person_cm_id].append(
-            JotformFiling(
-                submission_id=str(sub.submission_id),
-                submitted_at=str(getattr(sub, "submitted_at", "") or ""),
-                bunking_request=_role_text(by_question, field_map, ROLE_BUNKING_REQUEST),
-                coming_with=tuple(
-                    coming_with_tokens(
-                        str(getattr(coming, "answer_text", "") or "") if coming is not None else "",
-                        getattr(coming, "answer_json", None) if coming is not None else None,
-                    )
+        out.append(
+            (
+                sub,
+                JotformFiling(
+                    submission_id=str(sub.submission_id),
+                    submitted_at=str(getattr(sub, "submitted_at", "") or ""),
+                    bunking_request=_role_text(by_question, field_map, ROLE_BUNKING_REQUEST),
+                    coming_with=tuple(
+                        coming_with_tokens(
+                            str(getattr(coming, "answer_text", "") or "") if coming is not None else "",
+                            getattr(coming, "answer_json", None) if coming is not None else None,
+                        )
+                    ),
+                    housing_accommodation=_role_text(by_question, field_map, ROLE_HOUSING_ACCOMMODATION),
+                    accommodation_details=_role_text(by_question, field_map, ROLE_ACCOMMODATION_DETAILS),
+                    cpap=_role_text(by_question, field_map, ROLE_CPAP),
+                    staff_linked=status in ("staff", "write_in"),
                 ),
-                housing_accommodation=_role_text(by_question, field_map, ROLE_HOUSING_ACCOMMODATION),
-                accommodation_details=_role_text(by_question, field_map, ROLE_ACCOMMODATION_DETAILS),
-                cpap=_role_text(by_question, field_map, ROLE_CPAP),
-                staff_linked=status == "staff",
             )
         )
-    for filings in out.values():
-        filings.sort(key=lambda filing: filing.submitted_at)
-    return dict(out)
+    return out
 
 
 def _registration_label(raw: str | None, yes: bool) -> str:

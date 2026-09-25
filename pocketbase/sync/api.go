@@ -708,20 +708,32 @@ func refreshFamilyCampOverrides(app core.App, client *campminder.Client, session
 	}
 }
 
+// refreshFamilyCampTimeout bounds one Refresh Housing press. See handleRefreshFamilyCamp.
+const refreshFamilyCampTimeout = 45 * time.Minute
+
 // handleRefreshFamilyCamp triggers a full family-camp housing refresh: attendees ->
 // persons -> person_custom_values_family_camp -> household_custom_values_family_camp
 // -> family_camp_derived -> lodging_assignments (kindred#2478).
 //
-// The timeout is 25 minutes, not handleRefreshBunking's 10: measured against
-// sync_runs (production snapshot 2026-08-23, status='success'), this chain averages
-// 13m31s and has been seen at 17m39s — almost entirely the two bounded custom-values
-// jobs. 25 minutes leaves headroom above the worst observed run without risking a
-// truncated timeout on an ordinary one.
+// The timeout (refreshFamilyCampTimeout) is 45 minutes, not handleRefreshBunking's 10.
+// Measured against sync_runs (production snapshot 2026-08-23, status='success'), this
+// chain averaged 13m31s and was seen at 17m39s -- almost entirely the two bounded
+// custom-values jobs, over a family-camp union of 782 persons / 448 households. That
+// sized the old 25-minute timeout.
+//
+// Since campership SP1 the unscoped chain also carries the aid cohort: those same two
+// registered jobs widen by it (withAidCohort), measured at about 890 persons / 513
+// households on the prod snapshot, before the newly fetched Nov-Dec postings
+// (a posting household brings in every member). That roughly doubles the custom-values
+// share, so the estimate is ~27 minutes typical and ~35 at the old worst case. 45 minutes
+// leaves ~25% above that; 25 would cut the chain off before family_camp_derived and
+// lodging_assignments, leaving the board on yesterday's cabins.
 //
 // Those figures are the UNSCOPED chain, and the timeout is still sized for it
 // deliberately: a request naming one weekend runs several times faster
-// (kindred#2601), but an absent session is still a supported mode and still has to
-// fit. Sizing the timeout to the scoped case would truncate the unscoped one.
+// (kindred#2601) and never includes the aid cohort, but an absent session is still a
+// supported mode and still has to fit. Sizing the timeout to the scoped case would
+// truncate the unscoped one.
 func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
@@ -802,7 +814,7 @@ func handleRefreshFamilyCamp(e *core.RequestEvent, scheduler *Scheduler) error {
 	overrides := refreshFamilyCampOverrides(e.App, orchestrator.BaseClient(), session)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshFamilyCampTimeout)
 		defer cancel()
 
 		if err := orchestrator.RunSyncSequenceWithServices(
@@ -2031,6 +2043,28 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	})
 }
 
+// transactionBackfillYear parses the financial-transactions route's optional ?year=. ""
+// means the configured season (0). Anything else must be a valid sync year no later than
+// next season: CampMinder already holds season N+1 while N is live, and the daily run
+// covers N+1, so an on-demand re-sync of it must not be refused.
+//
+// "Next season" is max(calendar year, configured season) + 1. The owner switches
+// CAMPMINDER_SEASON_ID to the upcoming season around mid-November, and from then until
+// January the daily run's N+1 is two calendar years ahead; a calendar-only bound would
+// refuse it. configured is 0 when the season cannot be read, leaving the calendar bound.
+func transactionBackfillYear(param string, now time.Time, configured int) (int, error) {
+	if param == "" {
+		return 0, nil
+	}
+	upper := max(now.Year(), configured) + 1
+	y, err := strconv.Atoi(param)
+	if err != nil || !ValidSyncYear(y) || y > upper {
+		return 0, fmt.Errorf("invalid year parameter %q: must be between %d and %d",
+			param, syncYearMin, upper)
+	}
+	return y, nil
+}
+
 // handleFinancialTransactionsSync handles the financial transactions sync
 // Accepts optional ?year=YYYY parameter for historical data sync
 func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler) error {
@@ -2047,21 +2081,10 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 	}
 
 	// Parse optional year parameter for historical sync
-	yearParam := e.Request.URL.Query().Get("year")
-	year := 0 // Default: current year from env
-	if yearParam != "" {
-		// Deliberately stricter than ValidSyncYear at the top end, and the one handler here
-		// that is: this backfills financial transactions FROM CampMinder, and a year that
-		// has not happened has none. syncYearMax (2050) is a schema bound, not a claim that
-		// 2049's ledger is fetchable. The floor stays shared.
-		if y, err := strconv.Atoi(yearParam); err == nil && ValidSyncYear(y) && y <= time.Now().Year() {
-			year = y
-		} else {
-			return e.JSON(http.StatusBadRequest, map[string]any{
-				"error": fmt.Sprintf("Invalid year parameter. Must be between %d and the current year.",
-					syncYearMin),
-			})
-		}
+	configured, _ := ParseSeasonYear() // 0 on error: the calendar year alone bounds ?year=
+	year, err := transactionBackfillYear(e.Request.URL.Query().Get("year"), time.Now(), configured)
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 	}
 
 	// For historical sync, use year-specific client

@@ -44,6 +44,13 @@ vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
+// kindred#2759 follow-up: the board reads the Jotform queue for its write-in
+// picker (adult weekend, bunking.manage). An auth-touching query hook, stubbed
+// here like the others; the picker has its own tests in writeInJotform.test.tsx.
+vi.mock('../../hooks/useJotformAdmin', () => ({
+  useJotformQueue: () => ({ data: undefined, isLoading: false, error: null }),
+}))
+
 vi.mock('../../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(), isMoving: false }),
 }))

@@ -298,6 +298,7 @@ func TestDailyQueueDerivation(t *testing.T) {
 	t.Setenv("IS_DOCKER", "true")
 	t.Setenv("JOTFORM_API_KEY", "test-key")
 	want := []string{
+		"financial_lookups", // campership SP1: daily year-round, ahead of financial_transactions
 		"session_groups", "sessions", "attendees", "persons", "bunks", "bunk_plans",
 		"bunk_assignments", "staff", "financial_transactions",
 		"person_custom_values_family_camp", "household_custom_values_family_camp",
@@ -311,6 +312,22 @@ func TestDailyQueueDerivation(t *testing.T) {
 		"stranded_assignment_cleanup",
 	}
 	assertSeqIgnoring(t, "daily", getDailySyncJobs(), want, "multi_workbook_export")
+}
+
+// Campership design §6.4: every financial sync runs daily, year-round. financial_lookups
+// joins the daily queue ahead of financial_transactions, which resolves categories through
+// it, and stays in the weekly global queue (fresh-DB bootstrap, globals export).
+func TestFinancialLookupsRunsDailyAndWeekly(t *testing.T) {
+	t.Parallel()
+	daily := getDailySyncJobs()
+	lookups := slices.Index(daily, "financial_lookups")
+	transactions := slices.Index(daily, "financial_transactions")
+	if lookups < 0 || transactions < 0 || lookups > transactions {
+		t.Errorf("daily queue must run financial_lookups before financial_transactions: %v", daily)
+	}
+	if !slices.Contains(GetWeeklySyncJobs(), "financial_lookups") {
+		t.Error("financial_lookups must stay in the weekly global queue")
+	}
 }
 
 // TestDailyQueueGate pins that a closed gate removes exactly one job.

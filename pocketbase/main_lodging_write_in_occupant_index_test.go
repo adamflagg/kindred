@@ -68,7 +68,7 @@ func constValue(t *testing.T, body, name string) string {
 	t.Helper()
 	at := strings.Index(body, "const "+name+" =")
 	if at < 0 {
-		t.Fatalf("migration %s declares no `const %s`", writeInIndexMigration, name)
+		t.Fatalf("migration under test declares no `const %s`", name)
 	}
 	tail := body[at+len("const "+name+" ="):]
 	for _, stop := range []string{"\nconst ", "\n/**", "\nfunction ", "\nmigrate("} {
@@ -89,12 +89,12 @@ func migrationHalves(t *testing.T, body string) (up, down string) {
 	const arrow = "(app) => {"
 	upAt := strings.Index(body, arrow)
 	if upAt < 0 {
-		t.Fatalf("migration %s has no up path", writeInIndexMigration)
+		t.Fatal("migration under test has no up path")
 	}
 	rest := body[upAt+len(arrow):]
 	downAt := strings.Index(rest, arrow)
 	if downAt < 0 {
-		t.Fatalf("migration %s has no down path", writeInIndexMigration)
+		t.Fatal("migration under test has no down path")
 	}
 	return rest[:downAt], rest[downAt+len(arrow):]
 }

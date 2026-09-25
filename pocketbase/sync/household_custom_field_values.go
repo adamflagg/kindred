@@ -298,7 +298,12 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 			return nil, err
 		}
 
-		s.DebugLog("Resolved family-camp bounded cohort to household IDs",
+		// Plus the financial-aid cohort's households (campership design §6.4); the
+		// one-weekend branch above stays family-camp only.
+		householdIDs = withAidCohort(s.App, year, s.logJobName(), householdIDs,
+			func(c aidCohort) []int { return c.householdCMIDs })
+
+		s.DebugLog("Resolved bounded daily cohort (family camp + aid) to household IDs",
 			"count", len(householdIDs),
 			"year", year)
 

@@ -93,3 +93,28 @@ def test_link_returns_204_and_passes_the_actor() -> None:
         )
     assert response.status_code == 204
     service_cls.return_value.link.assert_awaited_once_with("6600000000000000001", 1000005, "staff@example.com")
+
+
+def test_the_write_in_link_is_bunking_manage_only() -> None:
+    body = {"unit_id": "u_cedar", "occupant_name": "Pat Doe"}
+    refused = _client(_user()).post("/api/jotform/submissions/6600000000000000001/write-in", json=body)
+    assert refused.status_code == 403
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.link_write_in = AsyncMock(return_value=None)
+        ok = _client(_user(Permission.BUNKING_MANAGE)).post(
+            "/api/jotform/submissions/6600000000000000001/write-in", json=body
+        )
+    assert ok.status_code == 204
+    service_cls.return_value.link_write_in.assert_awaited_once_with(
+        "6600000000000000001", "u_cedar", "Pat Doe", "staff@example.com"
+    )
+
+
+def test_a_write_in_link_the_service_refuses_is_a_422() -> None:
+    with patch("api.routers.jotform.JotformAdminService") as service_cls:
+        service_cls.return_value.link_write_in = AsyncMock(side_effect=JotformValidationError("not on this board"))
+        response = _client(_user(Permission.BUNKING_MANAGE)).post(
+            "/api/jotform/submissions/6600000000000000001/write-in",
+            json={"unit_id": "u_cedar", "occupant_name": "Pat Doe"},
+        )
+    assert (response.status_code, response.json()["detail"]) == (422, "not on this board")

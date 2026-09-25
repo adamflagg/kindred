@@ -46,7 +46,7 @@
  * and that one was deliberately removed rather than never written — see
  * `coveringWriteIns`.
  */
-import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
+import type { BunkingRequest, LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 
 /** Who is in a room, and anything staff said about them. */
 /**
@@ -146,6 +146,11 @@ export interface UnitAvailabilityWrite {
    * the bare-rename path this field closes.
    */
   previousOccupantName: string | null
+  /**
+   * kindred#2759 follow-up: the adult Jotform filing a write-in is made FROM,
+   * linked by the server in the same write. Absent on every other write.
+   */
+  jotformSubmissionId?: string | undefined
 }
 
 /**
@@ -258,6 +263,12 @@ export interface WriteInEntry {
    * name, so renaming an occupant does not remount their card mid-edit.
    */
   key: string
+  /**
+   * The Jotform filing(s) linked to this write-in, as an adult guest's bunking
+   * request (kindred#2759 follow-up). Present only when the server sent one --
+   * a `bunking.manage` caller on an adult weekend, on a linked write-in.
+   */
+  bunkingRequest?: BunkingRequest
 }
 
 /**
@@ -336,6 +347,7 @@ export function writeInEntries(unit: LodgingUnitRow): WriteInEntry[] {
         isOwn: unitCode === unit.code,
       },
       key: seen === 0 ? unitId : `${unitId}#${String(seen)}`,
+      ...(cover.bunking_request ? { bunkingRequest: cover.bunking_request } : {}),
     }
   })
 }

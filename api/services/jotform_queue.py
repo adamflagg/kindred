@@ -23,6 +23,7 @@ from api.schemas.jotform import (
     JotformDuplicateGroup,
     JotformQueueItem,
     JotformSuggestion,
+    JotformWriteInOption,
     MatchStatus,
     SuggestionKind,
 )
@@ -98,6 +99,8 @@ class QueueSubmission:
     bunking_request: str = ""
     match_status: MatchStatus = "unmatched"
     person_cm_id: int = 0
+    registration_status: str = ""
+    write_in_key: str = ""
 
     @property
     def submitted_name(self) -> str:
@@ -296,6 +299,7 @@ def queue_item(sub: QueueSubmission, *, session_name: str = "", guest_name: str 
         match_status=sub.match_status,
         person_cm_id=sub.person_cm_id,
         guest_name=guest_name,
+        registration_status=sub.registration_status,
     )
 
 
@@ -330,3 +334,74 @@ def duplicate_groups(subs: Sequence[QueueSubmission], guests: Sequence[QueueGues
             )
         )
     return sorted(groups, key=lambda g: (g.guest_name.casefold(), g.session_cm_id))
+
+
+# --- Board write-ins a filing can be linked to (kindred#2759 follow-up) --------
+
+
+@dataclass(frozen=True)
+class WriteInRow:
+    """One write-in row, live or in a scenario, reduced to what linking reads."""
+
+    unit_id: str
+    unit_name: str
+    occupant_name: str
+    session_cm_id: int
+    write_in_key: str = ""
+
+
+def write_in_option_id(unit_id: str, occupant_name: str) -> str:
+    return f"{unit_id}/{occupant_name.strip()}"
+
+
+def write_in_options(rows: Sequence[WriteInRow]) -> list[JotformWriteInOption]:
+    """Each (weekend, unit, occupant name) once: the same write-in copied into
+    scenarios is one choice, in the order first seen (callers pass the live
+    board's rows first)."""
+    seen: dict[tuple[int, str], JotformWriteInOption] = {}
+    for row in rows:
+        name = row.occupant_name.strip()
+        if not name:
+            continue
+        option_id = write_in_option_id(row.unit_id, name)
+        seen.setdefault(
+            (row.session_cm_id, option_id),
+            JotformWriteInOption(
+                option_id=option_id,
+                session_cm_id=row.session_cm_id,
+                unit_id=row.unit_id,
+                unit_name=row.unit_name,
+                occupant_name=name,
+            ),
+        )
+    return list(seen.values())
+
+
+def suggest_write_in(sub: QueueSubmission, options: Sequence[JotformWriteInOption]) -> str:
+    """The write-in to pre-select for a filing, or "". Staff type write-in
+    names without knowing the form, so this is forgiving -- folded case and
+    accents, the nametag as a first name -- but it only ever PRE-SELECTS: staff
+    can pick any write-in. Tiers, first with exactly one candidate decides:
+      1. first + last;
+      2. nametag (its first word) + last;
+      3. the whole nametag;
+      4. first name or nametag alone.
+    A tier with several candidates pre-selects nothing."""
+    first, last = fold(sub.first), fold(sub.last)
+    nametag, nametag_first = fold(sub.nametag), _nametag_first(sub.nametag)
+    mine = [o for o in options if o.session_cm_id == sub.session_cm_id]
+    tiers: list[set[str]] = [
+        {f"{first} {last}"} if first and last else set(),
+        {f"{nametag_first} {last}"} if nametag_first and last else set(),
+        {nametag} if nametag else set(),
+        {name for name in (first, nametag_first) if name},
+    ]
+    for wanted in tiers:
+        if not wanted:
+            continue
+        hits = {o.option_id for o in mine if fold(o.occupant_name) in wanted}
+        if len(hits) == 1:
+            return next(iter(hits))
+        if hits:
+            return ""
+    return ""
