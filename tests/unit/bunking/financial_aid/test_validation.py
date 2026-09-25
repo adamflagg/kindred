@@ -93,6 +93,8 @@ def test_the_floor_tier_must_exist() -> None:
 
 
 def test_an_upper_bound_on_the_last_band_is_not_enforced() -> None:
+    # Exercises "tiers.bands.upper": the calculator never reads it (the lookup uses
+    # lower bounds only), but validation does -- setting it on the last band warns.
     bands = [{"lower": "0", "upper": "40000"}, {"lower": "40001", "upper": "80000"}]
     rules = with_levers(
         fictional_rules(),
@@ -260,6 +262,8 @@ def test_reserves_name_real_pools_and_never_exceed_100() -> None:
 
 
 def test_stage_codes_are_unique_and_decision_types_exist() -> None:
+    # Exercises "stages.stages.code" (duplicate_stage) and "stages.stages.decision_type"
+    # (unknown_decision_type).
     stages = [
         {"code": "r1_offered", "label": "Offered"},
         {"code": "r1_offered", "label": "Offered again"},

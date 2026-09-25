@@ -24,6 +24,8 @@ def test_below_the_first_band_there_is_no_tier() -> None:
 
 
 def test_the_band_table_is_a_lever() -> None:
+    # Exercises "tiers.bands.lower": each band's own lower bound, not one collapsed
+    # "tiers.bands" setting, decides where an income lands.
     rules = with_lever(fictional_rules(), "tiers.bands", [{"lower": "0"}, {"lower": "25000"}])
     assert income_tier(Decimal(30000), rules) == 2
 
@@ -142,13 +144,33 @@ def test_the_dependents_criterion_counts_only_in_tier_shift_mode() -> None:
     assert _final(reducing, application=app(dependents=5))[0] == 3
 
 
+def test_the_dependents_threshold_is_a_per_criterion_lever() -> None:
+    # Exercises "equity.criteria.min_value": raising the fixture's "4 or more
+    # dependents" threshold to 6 moves a household of 5 from meeting the criterion
+    # (and shifting) to not meeting it.
+    weights = {"camp": {"dependents": "1"}, "teen": {}, "family": {}}
+    shifting = with_levers(fictional_rules(), {"income.dependents_mode": "tier_shift", "equity.weights": weights})
+    assert _final(shifting, application=app(dependents=5))[0] == 2
+    criteria = [c.model_dump(mode="json") for c in shifting.equity.criteria]
+    for criterion in criteria:
+        if criterion["key"] == "dependents":
+            criterion["min_value"] = "6"
+    raised = with_lever(shifting, "equity.criteria", criteria)
+    assert _final(raised, application=app(dependents=5))[0] == 3
+
+
 def test_household_answers_come_from_the_application_not_the_request() -> None:
+    # Exercises "equity.criteria.source": "household" reads ApplicationInputs.answers;
+    # a camper's own equity_answers on the request never satisfy a household criterion.
     rules = with_lever(fictional_rules(), "equity.weights", {"camp": {"unemployment": "1"}, "teen": {}, "family": {}})
     assert _final(rules, application=app(answers={"unemployment": "Yes"}))[0] == 2
     assert _final(rules, unemployment="Yes")[0] == 3
 
 
 def test_a_new_criterion_is_data_not_code() -> None:
+    # Exercises "equity.criteria.key", "equity.criteria.field", "equity.criteria.match"
+    # and "equity.criteria.values": a criterion defined purely in the rules document,
+    # with none of these four hard-coded, changes who gets shifted.
     rules = fictional_rules()
     criteria = [c.model_dump(mode="json") for c in rules.equity.criteria]
     criteria.append(
@@ -180,6 +202,7 @@ def test_the_shift_trace_lists_the_criteria_met() -> None:
 
 
 # --- P6a: EquityCriterion.also_fields --------------------------------------
+# Exercises "equity.criteria.also_fields".
 #
 # A criterion is met if `field` OR any `also_fields` entry qualifies under the
 # criterion's match rule. It still contributes its weight once, however many

@@ -18,6 +18,7 @@ from bunking.financial_aid.rules.schema import (
     EquitySection,
     IncomeSection,
     ProgramProfile,
+    StageDef,
     TierPercents,
 )
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever
@@ -105,6 +106,19 @@ def test_also_fields_defaults_to_empty_and_accepts_a_list() -> None:
     assert default.also_fields == []
     with_also = EquityCriterion.model_validate({**base, "also_fields": ["pronouns"]})
     assert with_also.also_fields == ["pronouns"]
+
+
+def test_stage_round_is_bounded_1_to_3() -> None:
+    # Exercises "stages.stages.round": the calculator does not read it (sub-project 10
+    # will), but it shares awards.decision_types.*.round's bounds and is proven the
+    # same way -- a bad value is refused, a good one is kept.
+    base = {"code": "r1_offered", "label": "Round 1 offered"}
+    with pytest.raises(ValidationError):
+        StageDef.model_validate({**base, "round": 4})
+    with pytest.raises(ValidationError):
+        StageDef.model_validate({**base, "round": 0})
+    assert StageDef.model_validate({**base, "round": 1}).round == 1
+    assert StageDef.model_validate(base).round is None
 
 
 def test_a_table_either_lists_tiers_or_inherits_and_overrides() -> None:
