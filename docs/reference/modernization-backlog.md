@@ -346,8 +346,8 @@ Exceptional baseline: Chainguard/Wolfi + distroless final images, `COPY --link` 
 | **HIGH** | `kindred-caddy` isn't rebuilt/pushed on every CD run — only during release promotion | `.github/workflows/cd.yml` (around line 412) | Add `kindred-caddy` to `IMAGES[]` and `docker/Dockerfile.caddy` to `DOCKERFILES[]` so security patches ship with every merge to main |
 | **MEDIUM** | Release workflow has no `concurrency:` group | `.github/workflows/release.yml` | Add `concurrency: { group: release, cancel-in-progress: false }` so two manual dispatches can't race |
 | **MEDIUM** | `pytest-xdist` not enabled | `pyproject.toml` | Add `pytest-xdist` to dev group + `-n auto` in addopts → ~3–4× CI speedup |
-| **MEDIUM** | CodeQL (SAST) not enabled | `.github/workflows/` | Add `codeql.yml` for Python + JavaScript |
-| **LOW** | GitHub Dependency Review not gating PRs | `ci.yml` | Complements Dependabot by blocking vulnerable deps at PR time |
+| `✓ adopted` | CodeQL (SAST) not enabled | GitHub code scanning | Enabled via CodeQL **default setup** (actions, go, javascript-typescript, python; PRs + weekly) — no `codeql.yml` needed |
+| `✓ shipped #2846` | GitHub Dependency Review not gating PRs | `ci.yml` | `dependency-review` job, PR-only, in CI Gate: fails a PR that adds a high/critical-advisory dependency (runtime, development or unknown scope) |
 | **LOW** | No ARM64 multi-arch builds | `cd.yml` | Only matters if deploying to Pi / Apple Silicon |
 | **LOW** | Caddy base image unpinned (`dhi.io/caddy:2`) | `docker/Dockerfile.caddy` | Pin to minor (e.g. `:2.8`) |
 | **LOW** | No SBOM/provenance attestation, no cosign image signing | `cd.yml` | Supply-chain nice-to-have |
@@ -375,7 +375,7 @@ Exceptional baseline: Chainguard/Wolfi + distroless final images, `COPY --link` 
 2. `build(caddy): minimum hardened config behind Traefik` — the config block above, applied to both Caddyfiles
 3. `ci: add release workflow concurrency group`
 4. `perf(ci): enable pytest-xdist`
-5. `ci: add CodeQL + dependency-review workflows`
+5. ~~`ci: add CodeQL + dependency-review workflows`~~ — done: CodeQL runs via default setup; dependency review shipped in #2846
 6. Optional: ARM64 multi-arch, SBOM/cosign — only if there's a concrete driver
 
 ---
