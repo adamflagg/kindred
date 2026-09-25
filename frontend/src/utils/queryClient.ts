@@ -108,6 +108,9 @@ const SYNC_DEPENDENT_PREFIXES = [
   // Household journey: the weekend board's household card reads it, and the
   // lodging ingest writes the cabins it names.
   'household-journey',
+  // kindred#2759: a completed Jotform pull changes the admin tab's forms
+  // (last pull status, questions) and queue.
+  'jotform',
 ] as const
 
 /**
