@@ -443,6 +443,7 @@ jobs:
         GITLEAKS_VERSION="8.22.1"
         GITLEAKS_SHA256="2f92ab3b8e08319ac30836c32b90818e01519c3a4982771e4f45a7f5607872f7"
         archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+        cd "${RUNNER_TEMP}"
         curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
         if ! echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum -c -; then
           echo "::error::${archive} does not match GITLEAKS_SHA256. After a version bump, copy the linux_x64 hash from gitleaks_${GITLEAKS_VERSION}_checksums.txt on the release."
@@ -1048,12 +1049,15 @@ jobs:
         allowed-endpoints: >
           agent.api.stepsecurity.io:443
           api.github.com:443
+          prod.app-api.stepsecurity.io:443
           productionresultssa*.blob.core.windows.net:443
 
     - name: Dependency review
       uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
       with:
         fail-on-severity: high
+        # Default is runtime only; dev tooling (vite, vitest) is attack surface too.
+        fail-on-scopes: runtime, development
         comment-summary-in-pr: never
         show-openssf-scorecard: false
 
