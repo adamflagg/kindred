@@ -437,6 +437,14 @@ def link_suggestions(
     """
     active = {s.write_in_key for s in linked if s.write_in_key}
     placed = {row.write_in_key for row in viewed if row.write_in_key in active}
+    # The links a candidate's copies carry in ANY scope: linking writes the key
+    # onto every row of the same (unit, name), and adopts one another filing
+    # holds (`link_write_in`). A candidate whose copy carries someone else's
+    # link would merge the two filings, so it is never suggested to anyone else.
+    copy_links: dict[str, set[str]] = {}
+    for row in (*viewed, *elsewhere):
+        if row.write_in_key in active:
+            copy_links.setdefault(write_in_option_id(row.unit_id, row.occupant_name), set()).add(row.write_in_key)
     options = write_in_options(viewed)
     candidates = {
         write_in_option_id(row.unit_id, row.occupant_name): row
@@ -447,6 +455,8 @@ def link_suggestions(
     out: list[JotformWriteInLinkSuggestion] = []
 
     def suggest(option_id: str, sub: QueueSubmission, where: str) -> None:
+        if copy_links.get(option_id, set()) - {sub.write_in_key}:
+            return
         row = candidates[option_id]
         label = f"Link to {sub.submitted_name}'s filing" + (f" (linked in {where})" if where else "")
         out.append(

@@ -540,7 +540,7 @@ class JotformAdminService:
         record = await self._submission(submission_id)
         year, session_cm_id = int(record.year), int(record.session_cm_id)
         name = occupant_name.strip()
-        rows: list[tuple[str, Any]] = [
+        weekend_rows: list[tuple[str, Any]] = [
             (table, row)
             for table, fetched in (
                 (LODGING_WRITE_INS, await self.repository.fetch_live_write_ins(year)),
@@ -548,7 +548,11 @@ class JotformAdminService:
             )
             for row in fetched
             if int(getattr(row, "session_cm_id", 0) or 0) == session_cm_id
-            and str(getattr(row, "unit", "") or "") == unit_id
+        ]
+        rows = [
+            (table, row)
+            for table, row in weekend_rows
+            if str(getattr(row, "unit", "") or "") == unit_id
             and str(getattr(row, "occupant_name", "") or "").strip() == name
         ]
         if not rows:
@@ -562,7 +566,15 @@ class JotformAdminService:
         # keeps its key, so linking it here does not unlink it there. Only a
         # key another filing holds wins over it (a party of several); a key
         # nobody holds any more is stale and is replaced.
+        #
+        # "Linked elsewhere" means some row of the weekend still carries the
+        # key. One no row carries was dropped with its write-in, and a pull
+        # planned since then clears the filing by comparing against exactly
+        # that key (sync `saveMatch`): re-using it would let that pull erase
+        # the link being made now, so such a filing gets a fresh key.
         own = key_of(record) if str(getattr(record, "match_status", "") or "") == "write_in" else ""
+        if own and not any(key_of(row) == own for _, row in weekend_rows):
+            own = ""
         held: set[str] = set()
         if own:
             held = {

@@ -383,6 +383,30 @@ class TestSuggestedLinks:
         )
 
     @pytest.mark.asyncio
+    async def test_a_write_in_whose_copy_holds_another_filings_link_is_not_suggested_to_it(self) -> None:
+        # Scan of #2839: the viewed row is unkeyed, but its live copy (same unit
+        # and name) carries Samuel's link. Clicking Link for Sam would adopt
+        # Samuel's key -- merging two filings and dropping Sam's own link.
+        repo = _repo(
+            fetch_submissions=[
+                _sub("s18", "write_in", write_in_key="k-sam"),
+                _sub("s19", "write_in", write_in_key="k-samuel"),
+            ],
+            fetch_answers=[*_answers("s18", "Sam", "Johnson"), *_answers("s19", "Samuel", "Johnson")],
+            fetch_live_write_ins=[_write_in("w1", "Sam Johnson", key="k-samuel")],
+            fetch_draft_write_ins=[
+                _write_in("d1", "Sam Johnson", unit="u_oak", unit_name="Oak 2", key="k-sam", scenario="scn_b"),
+                # Typed by hand in Plan A: no key, though the live board's copy has one.
+                _write_in("d2", "Sam Johnson", scenario="scn_a"),
+            ],
+        )
+
+        suggestions = (await _weekend(repo, scenario="scn_a")).write_in_link_suggestions
+
+        # Samuel's own write-in, unplaced in Plan A, is still suggested; Sam is not.
+        assert [(s.option_id, s.submission_id) for s in suggestions] == [("u_cedar/Sam Johnson", "6600000000000000019")]
+
+    @pytest.mark.asyncio
     async def test_the_year_wide_read_suggests_nothing(self) -> None:
         repo = _repo(
             fetch_submissions=[_sub("s14")],
@@ -426,3 +450,43 @@ class TestLinkingKeepsTheFilingsKey:
 
         assert [c.args[:3] for c in repo.set_write_in_key.await_args_list] == [("lodging_write_ins_draft", "d1", "k1")]
         assert repo.update_submission.await_args.args[1]["write_in_key"] == "k1"
+
+    @pytest.mark.asyncio
+    async def test_a_filing_whose_link_was_dropped_everywhere_gets_a_fresh_key(self) -> None:
+        # Scan of #2839: "k-gone" is carried by no row of the weekend -- the
+        # write-in was removed everywhere, so the filing is back in Needs a
+        # guest. A pull planned in that state drops the link by comparing
+        # against "k-gone" (sync saveMatch); re-using it would let that pull
+        # erase the link staff just re-made. Linking mints a fresh key, as it
+        # did before key preservation.
+        filing = _sub("s20", "write_in", write_in_key="k-gone")
+        repo = _repo(
+            fetch_submission=filing,
+            fetch_submissions=[filing],
+            fetch_live_write_ins=[_write_in("w1", "Pat Doe")],
+        )
+
+        await JotformAdminService(repo).link_write_in("6600000000000000020", "u_cedar", "Pat Doe", "staff@example.com")
+
+        [stamp] = repo.set_write_in_key.await_args_list
+        key = repo.update_submission.await_args.args[1]["write_in_key"]
+        assert stamp.args[:2] == ("lodging_write_ins", "w1")
+        assert stamp.args[2] == key
+        assert key not in ("", "k-gone")
+
+    @pytest.mark.asyncio
+    async def test_a_key_another_filing_holds_on_the_target_is_adopted(self) -> None:
+        # A party of several: the target already carries Riley's link, so the
+        # linked filing joins it and nothing on the row is re-stamped.
+        filing = _sub("s21", "write_in", write_in_key="k1")
+        repo = _repo(
+            fetch_submission=filing,
+            fetch_submissions=[filing, _sub("s22", "write_in", write_in_key="k3")],
+            fetch_live_write_ins=[_write_in("w1", "Pat Doe", key="k1")],
+            fetch_draft_write_ins=[_write_in("d1", "Riley Sam", unit="u_fern", key="k3", scenario="scn_a")],
+        )
+
+        await JotformAdminService(repo).link_write_in("6600000000000000021", "u_fern", "Riley Sam", "staff@example.com")
+
+        assert repo.set_write_in_key.await_args_list == []
+        assert repo.update_submission.await_args.args[1]["write_in_key"] == "k3"
