@@ -366,10 +366,12 @@ The daily cron's `financial_transactions` re-syncs seasons **N−1, N and N+1** 
 empty or far shorter than what is stored is **not swept**. The run fails with
 "orphan sweep refused" instead. A historical replay and the `?year=` route sync one season only.
 
-> **Owner note:** the daily FA refresh and the aid cohort follow the configured season,
-> `CAMPMINDER_SEASON_ID`. It must be switched to the upcoming season by the time FA applications
-> open (around mid-November) — otherwise upcoming-season answers can be up to 7 days stale,
-> caught only by the weekly full pass.
+> **Owner note:** FA answers sync only for the configured season, `CAMPMINDER_SEASON_ID`.
+> Every custom-values fetch sends that season to CampMinder, and the daily pass, the weekly
+> full pass and the FA transform all run for it alone. So **next season's FA answers are not
+> synced at all** until the setting is switched to it. Switch it by the time FA applications
+> open (around mid-November). Switching it moves **every** season-scoped sync to the new
+> season, not just FA.
 
 **Backfill 2017–2026 (once, after the SP1 migrations deploy).** Use the existing route,
 **one season at a time**. The route runs the season in a background goroutine that is not
@@ -392,10 +394,17 @@ for y in $(seq 2017 2026); do
   curl -fsS -X POST "$BASE/api/custom/sync/financial-transactions?year=$y" -H "Authorization: $TOKEN"
   echo
   # Wait for this season's completion OR failure line, logged after $START. A failure
-  # stops the whole loop — re-run that season on its own before continuing.
+  # stops the whole loop — re-run that season on its own before continuing. So does a
+  # season that logs neither within 60 minutes: it may never have started.
   status=""
+  waited=0
   while [ -z "$status" ]; do
+    if [ "$waited" -ge 3600 ]; then
+      echo "Season $y logged no completed/failed line within 60 minutes — it may never have started (e.g. \"baseClient is nil\"). Check the kindred-pocketbase logs since $START." >&2
+      exit 1
+    fi
     sleep 15
+    waited=$((waited + 15))
     line=$(docker logs --since "$START" kindred-pocketbase 2>&1 \
         | grep -E "Financial transactions historical sync (completed|failed).*year=$y([[:space:]]|\$)" | tail -1)
     if [ -n "$line" ]; then
