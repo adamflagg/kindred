@@ -54,10 +54,8 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     "budget.reserves": _SP9,
     "budget.spillover": _SP9,
     "budget.commit_on": _SP9,
-    "programs.*.budget_pool": _SP9,
     "awards.decision_types.*.budget_line": _SP9,
     "cost.infant_age_cutoff_months": _SP5 + " (it pre-fills family-camp headcounts)",
-    "tiers.bands.upper": "sub-project 12 (rules screen) displays it; the tier lookup uses lower bounds only",
     "awards.rounding": (
         "no sub-project yet: it allows one value, and the calculator always rounds half up "
         "(money.round_dollars); whoever adds a second value must read it"

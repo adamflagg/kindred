@@ -9,10 +9,12 @@ the old values, not the new ones.
 Sections refer to each other (a program names an award table; a table must
 cover every tier band), so an edit to one section can break another without
 touching it. `apply_edit` therefore judges the whole document after the edit:
-an approved section that now has validation errors goes back to draft too, and
-an edit that would give a LOCKED section new errors is refused -- the rules a
-decision was made under must stay valid. `lock` refuses while the document has
-any error anywhere.
+an approved section that changed in this save, or that gained validation
+errors it did not have before the save, goes back to draft too -- an approved
+section is not un-approved by an error it already carried (a session synced
+later, say), the same rule `apply_edit` applies to a LOCKED section's new
+errors, which are refused outright. `lock` refuses while the document has any
+error anywhere.
 """
 
 from __future__ import annotations
@@ -118,7 +120,9 @@ def apply_edit(
     LockedSectionError when the edit changes a locked section, and
     LockedSectionInvalidatedError when it gives a locked section errors it did not
     already have (an error that was there before -- a session synced after the lock,
-    say -- is not this edit's doing and does not block it).
+    say -- is not this edit's doing and does not block it). An approved section
+    reverts to draft on the same "changed or newly errored" test, never on an error
+    it already carried.
     """
     changed = changed_sections(old, new)
     locked = [name for name in changed if status[name].state == "locked"]
@@ -134,7 +138,9 @@ def apply_edit(
     updated = dict(status)
     reverted: list[SectionName] = []
     for name in SECTION_NAMES:
-        if status[name].state == "approved" and (name in changed or after.errors_in(name)):
+        if status[name].state == "approved" and (
+            name in changed or _error_keys(after, name) - _error_keys(before, name)
+        ):
             updated[name] = SectionStatus()
             reverted.append(name)
     return EditOutcome(updated, reverted)
@@ -190,10 +196,12 @@ def status_to_json(status: StatusMap) -> dict[str, Any]:
 
 
 def status_from_json(raw: Mapping[str, Any] | None) -> StatusMap:
-    """Every section's stored status. A missing one raises: assuming "draft" would
-    silently un-approve -- and un-lock -- what the board signed off."""
+    """Every section's stored status. A missing OR EMPTY entry raises: assuming
+    "draft" would silently un-approve -- and un-lock -- what the board signed off.
+    An empty entry such as {} would otherwise validate as SectionStatus()'s all-draft
+    defaults, which is the same silent un-approval as a missing entry."""
     stored = raw or {}
-    missing = [name for name in SECTION_NAMES if stored.get(name) is None]
+    missing = [name for name in SECTION_NAMES if not stored.get(name)]
     if missing:
         raise SectionStatusMissingError(f"The stored section status has no entry for: {', '.join(missing)}")
     return {name: SectionStatus.model_validate(stored[name]) for name in SECTION_NAMES}

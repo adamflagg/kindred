@@ -45,6 +45,9 @@ SectionName = Literal[
     "quality_checks",
     "milestones",
 ]
+# Adding a section here needs a data backfill of `section_status` on existing
+# `aid_rules` rows: status_from_json refuses to load a partial status map, so a
+# row with no stored entry for the new section would stop loading entirely.
 SECTION_NAMES: tuple[SectionName, ...] = get_args(SectionName)
 
 QualityCheckKey = Literal[

@@ -127,6 +127,15 @@ def test_a_missing_status_raises_and_never_means_all_draft(raw: dict[str, object
         status_from_json(raw)
 
 
+def test_an_empty_entry_raises_like_a_missing_one() -> None:
+    # {"income": {}} used to validate as SectionStatus() (all fields default) and
+    # load as draft -- the same silent un-approval a missing entry would cause.
+    raw = status_to_json(_lock(_approved(), "income"))
+    raw["income"] = {}
+    with pytest.raises(SectionStatusMissingError, match="income"):
+        status_from_json(raw)
+
+
 # --- I3 (final review): an edit elsewhere must not leave an approved/locked section invalid ---
 
 
@@ -154,6 +163,18 @@ def test_an_edit_that_would_break_a_locked_section_is_refused() -> None:
         apply_edit(old, new, status, before=validate_rules(old), after=validate_rules(new))
     assert caught.value.sections == ["award_tables"]
     assert "award_tables" in str(caught.value)
+
+
+def test_a_no_op_save_does_not_revert_an_approved_section_with_a_pre_existing_error() -> None:
+    # Mirrors test_a_locked_section_that_already_had_an_error_does_not_block_unrelated_edits,
+    # but for "approved": a save that changes nothing must not un-approve a section over
+    # an error it already carried before the save (e.g. a session synced later).
+    old = with_lever(fictional_rules(), "programs.teen.r1_table", "gone")
+    status = _approved("programs")
+    new = old  # no-op save
+    outcome = apply_edit(old, new, status, before=validate_rules(old), after=validate_rules(new))
+    assert outcome.status["programs"].state == "approved"
+    assert outcome.reverted == []
 
 
 def test_a_locked_section_that_already_had_an_error_does_not_block_unrelated_edits() -> None:

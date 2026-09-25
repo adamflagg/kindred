@@ -95,19 +95,27 @@ def test_the_floor_tier_must_exist() -> None:
 def test_an_upper_bound_on_the_last_band_is_not_enforced() -> None:
     # Exercises "tiers.bands.upper": the calculator never reads it (the lookup uses
     # lower bounds only), but validation does -- setting it on the last band warns.
-    bands = [{"lower": "0", "upper": "40000"}, {"lower": "40001", "upper": "80000"}]
-    rules = with_levers(
-        fictional_rules(),
-        {
-            "tiers.bands": bands,
-            "award_tables.camp.tiers": {
-                "1": {"r1_pct": "90", "total_pct": "97"},
-                "2": {"r1_pct": "75", "total_pct": "90"},
-            },
-            "award_tables.teen.overrides": {},
+    changes = {
+        "award_tables.camp.tiers": {
+            "1": {"r1_pct": "90", "total_pct": "97"},
+            "2": {"r1_pct": "75", "total_pct": "90"},
         },
+        "award_tables.teen.overrides": {},
+    }
+    with_upper = with_levers(
+        fictional_rules(),
+        {**changes, "tiers.bands": [{"lower": "0", "upper": "40000"}, {"lower": "40001", "upper": "80000"}]},
     )
-    assert "last_band_upper_not_enforced" in {w.code for w in validate_rules(rules).warnings}
+    assert "last_band_upper_not_enforced" in {w.code for w in validate_rules(with_upper).warnings}
+
+    # Proves the warning is actually driven by "tiers.bands.upper", not merely present
+    # alongside it: clearing the last band's upper bound (everything else unchanged)
+    # removes the warning.
+    without_upper = with_levers(
+        fictional_rules(),
+        {**changes, "tiers.bands": [{"lower": "0", "upper": "40000"}, {"lower": "40001"}]},
+    )
+    assert "last_band_upper_not_enforced" not in {w.code for w in validate_rules(without_upper).warnings}
 
 
 # --- equity ---------------------------------------------------------------------------
