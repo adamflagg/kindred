@@ -30,8 +30,8 @@
  * `created` and `updated` are PocketBase's autodate columns. Suffixing all ten rather than
  * only the two that collide keeps a reader from having to remember which is which.
  *
- * Access: adminOnly, matching the tier-2 pattern. NOT the tier-3 `''` "denyAll" pattern used
- * by solver_runs — an empty-string rule is not a deny in PocketBase, it is *public*
+ * Access: adminOnly, matching the tier-2 pattern. NOT the tier-3 `''` "denyAll" pattern
+ * solver_runs used until 1500000181 — an empty-string rule is not a deny in PocketBase, it is *public*
  * (apis/record_crud.go:52 gates on `ListRule == nil`, and the filter at :68 is skipped when
  * the rule is empty). Error messages here can quote upstream record data, so this table
  * should not be world-readable.

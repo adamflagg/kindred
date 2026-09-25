@@ -655,6 +655,28 @@ def test_docker_lint_gate_covers_every_caddyfile_it_validates():
     assert not uncovered, f"Caddyfiles cannot trigger docker-lint: {uncovered}"
 
 
+def _docker_lint_superuser_gate_probe() -> str:
+    """The script the `Caddy superuser API gate` step runs, derived by PARSING the step."""
+    steps = _ci()["jobs"]["docker-lint"]["steps"]
+    step = next((st for st in steps if st.get("name") == "Caddy superuser API gate"), None)
+    assert step, "docker-lint has no 'Caddy superuser API gate' step"
+    m = re.search(r"(scripts/\S+\.sh)", step["run"])
+    assert m, f"could not read the probe script out of the step: {step['run']!r}"
+    return m.group(1)
+
+
+def test_docker_lint_gate_covers_the_superuser_gate_probe():
+    """The probe is a real input of the job: editing only the script must re-run it.
+
+    It checks docker/Caddyfile's superuser-API gate by behaviour, every spelling
+    of the path (case, collection id, %-encoding) -- the class of bypass a
+    literal path rule let through at the Traefik layer.
+    """
+    probe = _docker_lint_superuser_gate_probe()
+    assert (REPO_ROOT / probe).is_file(), f"{probe} does not exist"
+    assert _matches(probe, _patterns_gating("docker-lint")), f"{probe} cannot trigger docker-lint"
+
+
 def test_docker_lint_gate_covers_the_hadolint_config():
     """Mounted into the hadolint container as `/.hadolint.yaml`."""
     assert _matches(".hadolint.yaml", _patterns_gating("docker-lint"))
