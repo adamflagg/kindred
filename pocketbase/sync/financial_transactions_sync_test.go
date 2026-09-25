@@ -301,3 +301,42 @@ func TestCrossSeasonSession(t *testing.T) {
 		})
 	}
 }
+
+// A season-N request answered with season N-1 rows must not wipe season N. The mismatch
+// skip runs before TrackProcessedKey, so the computed set stays empty and the guard refuses.
+// Swapped, the foreign rows would count as processed season-N keys, the guard would pass,
+// and the sweep would delete every stored season-N row.
+func TestFinancialTransactionsSync_MisScopedResponseCannotWipeTheStoredSeason(t *testing.T) {
+	t.Parallel()
+	app := newTransactionsTestApp(t)
+	for _, id := range []int{5001, 5002, 5003} {
+		saveRecord(t, app, "financial_transactions", map[string]any{"cm_id": id, "amount": 100.0, "year": 2026})
+	}
+	s := newTestTransactionsSync(app, map[int][]map[string]any{2026: {
+		txnRow(6001, 2025, 100, nil), txnRow(6002, 2025, 100, nil), txnRow(6003, 2025, 100, nil),
+	}})
+	err := s.SyncForYear(context.Background(), 2026)
+	if err == nil || !strings.Contains(err.Error(), "refus") {
+		t.Errorf("SyncForYear on a mis-scoped response = %v, want a refused-sweep error", err)
+	}
+	if got := countTransactions(t, app, 2026); got != 3 {
+		t.Errorf("stored 2026 rows after a 2025-only response = %d, want 3 (nothing deleted)", got)
+	}
+}
+
+// Dedup must key on the season too: a 2025 row listed first must not shadow the 2026 row
+// with the same (cm_id, amount), or the stored 2026 row reads as an orphan.
+func TestFinancialTransactionsSync_DedupDoesNotShadowAcrossSeasons(t *testing.T) {
+	t.Parallel()
+	app := newTransactionsTestApp(t)
+	s := newTestTransactionsSync(app, map[int][]map[string]any{2026: {
+		txnRow(5001, 2025, 100, nil),
+		txnRow(5001, 2026, 100, nil),
+	}})
+	if err := s.SyncForYear(context.Background(), 2026); err != nil {
+		t.Fatalf("SyncForYear: %v", err)
+	}
+	if got := countTransactions(t, app, 2026); got != 1 {
+		t.Errorf("2026 rows = %d, want the 2026 row written despite the 2025 twin listed first", got)
+	}
+}

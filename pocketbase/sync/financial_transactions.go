@@ -110,8 +110,8 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 		return fmt.Errorf("fetching transactions: %w", err)
 	}
 
-	// Deduplicate by cm_id + amount (CampMinder bug returns some $0 transactions twice)
-	transactions = s.deduplicateTransactions(transactions)
+	// Deduplicate by cm_id + amount + season (CampMinder bug returns some $0 transactions twice)
+	transactions = s.deduplicateTransactions(transactions, year)
 
 	slog.Info("Fetched financial transactions", "season", year, "count", len(transactions))
 	s.SyncSuccessful = true // Fetch succeeded: the sweep may run (behind its guard)
@@ -553,9 +553,14 @@ func (s *FinancialTransactionsSync) transactionKey(cmID int, amount float64) str
 }
 
 // deduplicateTransactions removes exact duplicate transactions from CampMinder
-// This handles a CampMinder bug where some $0 transactions are returned twice
+// This handles a CampMinder bug where some $0 transactions are returned twice.
+//
+// The key carries the row's season, matching the (cm_id, amount, year) unique index: without
+// it a foreign-season row listed first would shadow this season's row with the same
+// (cm_id, amount), and the stored row would read as an orphan. A row with no season takes
+// `year`, the same fallback transformTransactionToPB applies.
 func (s *FinancialTransactionsSync) deduplicateTransactions(
-	transactions []map[string]any,
+	transactions []map[string]any, year int,
 ) []map[string]any {
 	seen := make(map[string]bool)
 	result := make([]map[string]any, 0, len(transactions))
@@ -569,7 +574,11 @@ func (s *FinancialTransactionsSync) deduplicateTransactions(
 			continue
 		}
 
-		key := fmt.Sprintf("%d|%.2f", int(txnID), amount)
+		season := year
+		if rowSeason, ok := txn["season"].(float64); ok && rowSeason > 0 {
+			season = int(rowSeason)
+		}
+		key := fmt.Sprintf("%d|%.2f|%d", int(txnID), amount, season)
 		if seen[key] {
 			duplicates++
 			continue
