@@ -21,6 +21,7 @@ import { CabinWeekendsQueue } from './CabinWeekendsQueue'
 import { JotformPanel } from './JotformPanel'
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
+import { TAB_NAV, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from './lodgingStyles'
 import { SeasonRollForwardPanel } from './SeasonRollForwardPanel'
 import { UnresolvedAliasQueue } from './UnresolvedAliasQueue'
 import { WeekendStatusPanel } from './WeekendStatusPanel'
@@ -61,7 +62,7 @@ export function LodgingSettingsTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <nav className="border-border/50 border-b py-2" aria-label="Lodging settings sections">
+      <nav className={TAB_NAV} aria-label="Lodging settings sections">
         <div className="flex flex-wrap items-center gap-1.5">
           {SECTIONS.map((entry) => {
             const Icon = entry.icon
@@ -71,14 +72,7 @@ export function LodgingSettingsTab() {
                 key={entry.id}
                 to={`/manage/lodging/${entry.id}`}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                  isActive
-                    ? 'bg-primary text-primary-foreground shadow-lodge-sm'
-                    : // forest-800 where `SessionTabs` writes forest-950: the
-                      // scale stops at 900, so its dark hover generates no rule
-                      // at all. Matching the grammar, not the bug.
-                      'text-muted-foreground hover:text-foreground hover:bg-forest-50/50 dark:hover:bg-forest-800/60'
-                }`}
+                className={isActive ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
                 <span>{entry.label}</span>

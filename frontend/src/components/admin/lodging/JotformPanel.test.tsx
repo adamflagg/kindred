@@ -5,9 +5,20 @@
  * network and invalidation contract is pinned in `useJotformAdmin.test.tsx`.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JotformPanel } from './JotformPanel'
+
+/** The panel at its route, optionally with a `?session=` tab selected. */
+function renderPanel(search = '') {
+  return render(<JotformPanel />, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={[`/manage/lodging/jotform${search}`]}>{children}</MemoryRouter>
+    ),
+  })
+}
 
 const yearState = { currentYear: 2026 }
 vi.mock('../../../hooks/useCurrentYear', () => ({
@@ -151,7 +162,7 @@ afterEach(() => {
 
 describe('JotformPanel — forms', () => {
   it('draws one card per adult weekend with the suggested mapping preselected', () => {
-    render(<JotformPanel />)
+    renderPanel()
     const ww = screen.getByTestId('jotform-form-1000002')
     expect(
       within(ww).getByText('ok · 3 submissions · 1 matched · 2 unmatched', { exact: false })
@@ -159,6 +170,10 @@ describe('JotformPanel — forms', () => {
     expect(
       within(ww).getByRole('combobox', { name: "Bunking request question for Women's Weekend" })
     ).toHaveValue('21')
+  })
+
+  it("shows a weekend's pull-once hint on that weekend's tab", () => {
+    renderPanel('?session=1000003')
     expect(
       within(screen.getByTestId('jotform-form-1000003')).getByText(
         /pull once to load its questions/i
@@ -167,7 +182,7 @@ describe('JotformPanel — forms', () => {
   })
 
   it('saves the link, the confirmed mapping and the enabled flag', () => {
-    render(<JotformPanel />)
+    renderPanel()
     const ww = screen.getByTestId('jotform-form-1000002')
     fireEvent.change(
       within(ww).getByRole('combobox', { name: "Coming with question for Women's Weekend" }),
@@ -189,7 +204,7 @@ describe('JotformPanel — forms', () => {
     // row gains its questions and suggestions, and the selects must follow
     // rather than keep the empty mapping the card mounted with.
     const rows = (forms.data as { rows: Array<Record<string, unknown>> }).rows
-    const { rerender } = render(<JotformPanel />)
+    const { rerender } = renderPanel('?session=1000003')
     rows[1] = {
       ...rows[1],
       form_id: '261700000000002',
@@ -211,7 +226,7 @@ describe('JotformPanel — forms', () => {
   it("drops a card's unsaved edits when the year changes", () => {
     // CampMinder reuses a weekend's session id across years, so the card for
     // next year's Women's Weekend must not inherit this year's typed link.
-    const { rerender } = render(<JotformPanel />)
+    const { rerender } = renderPanel()
     const link = within(screen.getByTestId('jotform-form-1000002')).getByRole('textbox', {
       name: "Form link for Women's Weekend",
     })
@@ -230,7 +245,7 @@ describe('JotformPanel — forms', () => {
   it('clears the mapping once the form reference changes to another form', () => {
     // Question ids belong to one form; the old form's must never be sent
     // against a different one (the server drops them too).
-    render(<JotformPanel />)
+    renderPanel()
     const ww = screen.getByTestId('jotform-form-1000002')
     fireEvent.change(within(ww).getByRole('textbox', { name: "Form link for Women's Weekend" }), {
       target: { value: 'https://www.jotform.com/build/261700000000555' },
@@ -250,7 +265,7 @@ describe('JotformPanel — forms', () => {
   })
 
   it('keeps the mapping when the same form is pasted as its builder link', () => {
-    render(<JotformPanel />)
+    renderPanel()
     const ww = screen.getByTestId('jotform-form-1000002')
     fireEvent.change(within(ww).getByRole('textbox', { name: "Form link for Women's Weekend" }), {
       target: { value: 'https://www.jotform.com/build/261700000000001' },
@@ -261,7 +276,7 @@ describe('JotformPanel — forms', () => {
   })
 
   it('Pull now runs the Jotform sync job', () => {
-    render(<JotformPanel />)
+    renderPanel()
     fireEvent.click(screen.getByRole('button', { name: 'Pull now' }))
     expect(runSync.mutate).toHaveBeenCalledWith('jotform_submissions')
   })
@@ -269,7 +284,7 @@ describe('JotformPanel — forms', () => {
 
 describe('JotformPanel — queue', () => {
   it('links a suggestion, links by hand, and ignores', () => {
-    render(<JotformPanel />)
+    renderPanel()
     const item = screen.getByTestId('jotform-unmatched-6600000000000000002')
     expect(within(item).getByText('Did you mean Emma Johnson?')).toBeInTheDocument()
     fireEvent.click(within(item).getByRole('button', { name: 'Link to Emma Johnson' }))
@@ -308,7 +323,7 @@ describe('JotformPanel — queue', () => {
         other_submission_id: '6600000000000000009',
       },
     ]
-    render(<JotformPanel />)
+    renderPanel()
     const item = screen.getByTestId('jotform-unmatched-6600000000000000002')
     expect(
       within(item).getByText('Likely the same person as Emma Ohnsen’s submission')
@@ -317,7 +332,7 @@ describe('JotformPanel — queue', () => {
   })
 
   it('unlinks a staff link and shows duplicates with their filings', () => {
-    render(<JotformPanel />)
+    renderPanel()
     fireEvent.click(screen.getByRole('button', { name: 'Unlink Liam Riley' }))
     expect(act.mutate).toHaveBeenLastCalledWith({
       kind: 'unlink',
@@ -341,7 +356,7 @@ describe('JotformPanel — queue', () => {
       match_status: 'ignored',
       person_cm_id: 0,
     })
-    render(<JotformPanel />)
+    renderPanel()
     expect(screen.queryByRole('button', { name: 'Unlink Riley Sam' })).not.toBeInTheDocument()
     const restore = screen.getByRole('button', { name: 'Restore Riley Sam' })
     expect(restore).toHaveTextContent('Restore')
@@ -351,13 +366,6 @@ describe('JotformPanel — queue', () => {
       submissionId: '6600000000000000004',
     })
     expect(screen.getByRole('button', { name: 'Unlink Liam Riley' })).toHaveTextContent('Unlink')
-  })
-
-  it("names a duplicate group's weekend from the forms list", () => {
-    // The API sends duplicate filings without a session_name; the weekend
-    // comes from the group's session_cm_id.
-    render(<JotformPanel />)
-    expect(screen.getByTestId('jotform-duplicate-1000004')).toHaveTextContent("Women's Weekend")
   })
 
   it('offers no Link for a suggested person who is not an enrolled guest of the weekend', () => {
@@ -373,7 +381,7 @@ describe('JotformPanel — queue', () => {
         other_submission_id: '6600000000000000010',
       },
     ]
-    render(<JotformPanel />)
+    renderPanel()
     const item = screen.getByTestId('jotform-unmatched-6600000000000000002')
     expect(
       within(item).getByText('Likely a duplicate of Olivia Chen’s submission')
@@ -386,22 +394,152 @@ describe('JotformPanel — queue', () => {
       duplicates: Array<{ submissions: Array<{ bunking_request?: string }> }>
     }
     data.duplicates[0]!.submissions[0]!.bunking_request = ''
-    render(<JotformPanel />)
+    renderPanel()
     expect(screen.getByTestId('jotform-duplicate-1000004')).toHaveTextContent('Aug 3: (no request)')
   })
 
-  it('draws one duplicate group per weekend when a guest filed twice for each', () => {
+  it("shows a guest who filed twice for each weekend once on each weekend's tab", () => {
     // A person can be enrolled in two adult weekends; the API returns one
-    // group per (person, weekend), so the person alone is not a unique key.
+    // group per (person, weekend).
     const data = queue.data as { duplicates: Array<Record<string, unknown>> }
     const first = data.duplicates[0]!
-    data.duplicates.push({ ...first, session_cm_id: 1000003, change_kind: 'identical' })
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    render(<JotformPanel />)
-    expect(screen.getAllByTestId('jotform-duplicate-1000004')).toHaveLength(2)
-    const keyWarnings = consoleError.mock.calls.filter((call) =>
-      String(call[0]).includes('same key')
+    data.duplicates.push({
+      ...first,
+      session_cm_id: 1000003,
+      change_kind: 'identical',
+      submissions: [
+        {
+          submission_id: '66c',
+          session_cm_id: 1000003,
+          submitted_name: 'Olivia Chen',
+          submitted_at: '2026-09-05 09:00:00',
+          match_status: 'auto',
+          bunking_request: 'Samuel Johnson',
+        },
+      ],
+    })
+    const { unmount } = renderPanel()
+    expect(screen.getAllByTestId('jotform-duplicate-1000004')).toHaveLength(1)
+    expect(screen.getByTestId('jotform-duplicate-1000004')).not.toHaveTextContent('Samuel Johnson')
+    unmount()
+    renderPanel('?session=1000003')
+    expect(screen.getAllByTestId('jotform-duplicate-1000004')).toHaveLength(1)
+    expect(screen.getByTestId('jotform-duplicate-1000004')).toHaveTextContent('Samuel Johnson')
+  })
+})
+
+describe('JotformPanel — one tab per weekend', () => {
+  it('draws a tab per weekend from the API and opens the first by default', () => {
+    renderPanel()
+    const tabs = screen.getByRole('navigation', { name: 'Adult weekends' })
+    expect(
+      within(tabs)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+    ).toEqual(["Women's Weekend", "Men's Weekend"])
+    expect(within(tabs).getByRole('link', { name: "Women's Weekend" })).toHaveAttribute(
+      'aria-current',
+      'page'
     )
-    expect(keyWarnings).toEqual([])
+    expect(screen.getByTestId('jotform-form-1000002')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-form-1000003')).not.toBeInTheDocument()
+  })
+
+  it('takes its tabs from the API, not a fixed list', () => {
+    forms.data = {
+      year: 2026,
+      rows: [{ session_cm_id: 1000007, session_name: 'Adult Retreat', questions: [] }],
+    }
+    renderPanel()
+    const tabs = screen.getByRole('navigation', { name: 'Adult weekends' })
+    expect(
+      within(tabs)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+    ).toEqual(['Adult Retreat'])
+  })
+
+  it('selects the tab named by ?session= and links each tab to its own', () => {
+    renderPanel('?session=1000003')
+    const tabs = screen.getByRole('navigation', { name: 'Adult weekends' })
+    expect(within(tabs).getByRole('link', { name: "Men's Weekend" })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+    expect(within(tabs).getByRole('link', { name: "Women's Weekend" })).toHaveAttribute(
+      'href',
+      '/manage/lodging/jotform?session=1000002'
+    )
+    expect(screen.getByTestId('jotform-form-1000003')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-form-1000002')).not.toBeInTheDocument()
+  })
+
+  it('switches weekends when a tab is clicked', () => {
+    renderPanel()
+    fireEvent.click(screen.getByRole('link', { name: "Men's Weekend" }))
+    expect(screen.getByTestId('jotform-form-1000003')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-form-1000002')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the first weekend for an unknown ?session=', () => {
+    renderPanel('?session=999')
+    expect(screen.getByTestId('jotform-form-1000002')).toBeInTheDocument()
+  })
+
+  it("filters the queue, duplicates and staff links to the tab's weekend", () => {
+    const data = queue.data as {
+      unmatched: Array<Record<string, unknown>>
+      resolved: Array<Record<string, unknown>>
+      duplicates: Array<Record<string, unknown>>
+    }
+    data.unmatched.push({
+      submission_id: '6600000000000000020',
+      session_cm_id: 1000003,
+      session_name: "Men's Weekend",
+      submitted_name: 'Samuel Jonson',
+      submitted_at: '2026-09-10 09:00:00',
+      match_status: 'unmatched',
+      suggestions: [],
+    })
+    data.resolved.push({
+      submission_id: '6600000000000000021',
+      session_cm_id: 1000003,
+      submitted_name: 'Liam Garsia',
+      submitted_at: '2026-09-11 09:00:00',
+      match_status: 'ignored',
+      person_cm_id: 0,
+    })
+    data.duplicates.push({
+      person_cm_id: 1000008,
+      guest_name: 'Riley Sam',
+      session_cm_id: 1000003,
+      change_kind: 'identical',
+      submissions: [],
+    })
+
+    const { unmount } = renderPanel()
+    expect(screen.getByTestId('jotform-unmatched-6600000000000000002')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-unmatched-6600000000000000020')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unlink Liam Riley' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restore Liam Garsia' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('jotform-duplicate-1000004')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-duplicate-1000008')).not.toBeInTheDocument()
+    expect(screen.getByText('Needs a guest (1)')).toBeInTheDocument()
+    unmount()
+
+    renderPanel('?session=1000003')
+    expect(screen.getByTestId('jotform-unmatched-6600000000000000020')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-unmatched-6600000000000000002')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restore Liam Garsia' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unlink Liam Riley' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('jotform-duplicate-1000008')).toBeInTheDocument()
+    expect(screen.queryByTestId('jotform-duplicate-1000004')).not.toBeInTheDocument()
+  })
+
+  it('says beside Pull now that it pulls every enabled weekend', () => {
+    renderPanel('?session=1000003')
+    expect(screen.getByText(/pulls every enabled weekend/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Pull now' }))
+    expect(runSync.mutate).toHaveBeenCalledWith('jotform_submissions')
   })
 })

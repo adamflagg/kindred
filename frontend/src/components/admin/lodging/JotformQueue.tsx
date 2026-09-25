@@ -5,21 +5,11 @@
  */
 import { useState } from 'react'
 
-import {
-  useJotformForms,
-  useJotformQueue,
-  useJotformSubmissionAction,
-} from '../../../hooks/useJotformAdmin'
+import { useJotformQueue, useJotformSubmissionAction } from '../../../hooks/useJotformAdmin'
 import type { JotformGuestRow, JotformQueueEntry } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
 import { shortDate } from '../../weekend/bunkingRequest'
-import {
-  ACTION_LINK,
-  BUTTON_SECONDARY,
-  FIELD_INLINE,
-  GROUP_HEADING,
-  MUTED_PILL,
-} from './lodgingStyles'
+import { ACTION_LINK, BUTTON_SECONDARY, FIELD_INLINE, GROUP_HEADING } from './lodgingStyles'
 
 function UnmatchedItem({
   item,
@@ -43,9 +33,6 @@ function UnmatchedItem({
         <span className="text-foreground font-semibold">{item.submitted_name}</span>
         {nametag !== '' && (
           <span className="text-muted-foreground text-xs">{`nametag “${nametag}”`}</span>
-        )}
-        {(item.session_name ?? '') !== '' && (
-          <span className={MUTED_PILL}>{item.session_name}</span>
         )}
         <span className="text-muted-foreground text-xs">{shortDate(item.submitted_at)}</span>
       </div>
@@ -138,14 +125,12 @@ const CHANGE_CAPTION: Readonly<Record<string, string>> = {
   none: '',
 }
 
-export function JotformQueue({ year }: { year: number }) {
+/**
+ * One weekend's slice of the queue: the panel draws a tab per weekend, and
+ * the year's queue (one cached read) is filtered to the tab's session here.
+ */
+export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId: number }) {
   const queue = useJotformQueue(year)
-  // The duplicate filings carry no session_name; the weekend's name comes
-  // from the forms list (the same cached query the cards above read).
-  const forms = useJotformForms(year)
-  const sessionNames = new Map(
-    (forms.data?.rows ?? []).map((row) => [row.session_cm_id, row.session_name])
-  )
   const action = useJotformSubmissionAction()
   return (
     <QueryGuard
@@ -155,9 +140,11 @@ export function JotformQueue({ year }: { year: number }) {
       label="Jotform queue"
     >
       {(data) => {
-        const unmatched = data.unmatched ?? []
-        const duplicates = data.duplicates ?? []
-        const resolved = data.resolved ?? []
+        const mine = <T extends { session_cm_id: number }>(rows: readonly T[] | undefined) =>
+          (rows ?? []).filter((row) => row.session_cm_id === sessionCmId)
+        const unmatched = mine(data.unmatched)
+        const duplicates = mine(data.duplicates)
+        const resolved = mine(data.resolved)
         return (
           <div className="flex flex-col gap-6">
             <section className="card-lodge p-4">
@@ -184,34 +171,27 @@ export function JotformQueue({ year }: { year: number }) {
                 {`Filed more than once (${String(duplicates.length)})`}
               </h3>
               <ul className="mt-2 flex flex-col gap-3">
-                {duplicates.map((group) => {
-                  const sessionName =
-                    sessionNames.get(group.session_cm_id) ??
-                    group.submissions?.[0]?.session_name ??
-                    ''
-                  return (
-                    // One group per (guest, weekend): a guest enrolled in two
-                    // adult weekends can be in two groups.
-                    <li
-                      key={`${String(group.person_cm_id)}-${String(group.session_cm_id)}`}
-                      data-testid={`jotform-duplicate-${String(group.person_cm_id)}`}
-                      className="text-sm"
-                    >
-                      <span className="text-foreground font-semibold">{group.guest_name}</span>{' '}
-                      {sessionName !== '' && <span className={MUTED_PILL}>{sessionName}</span>}{' '}
-                      <span className="text-muted-foreground text-xs">
-                        {CHANGE_CAPTION[group.change_kind ?? 'none'] ?? ''}
-                      </span>
-                      <ul className="text-muted-foreground mt-1 flex flex-col gap-0.5 pl-4 text-xs">
-                        {(group.submissions ?? []).map((sub) => (
-                          <li key={sub.submission_id}>
-                            {`${shortDate(sub.submitted_at)}: ${(sub.bunking_request ?? '').trim() || '(no request)'}`}
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  )
-                })}
+                {duplicates.map((group) => (
+                  // One group per (guest, weekend): a guest enrolled in two
+                  // adult weekends has a group on each weekend's tab.
+                  <li
+                    key={`${String(group.person_cm_id)}-${String(group.session_cm_id)}`}
+                    data-testid={`jotform-duplicate-${String(group.person_cm_id)}`}
+                    className="text-sm"
+                  >
+                    <span className="text-foreground font-semibold">{group.guest_name}</span>{' '}
+                    <span className="text-muted-foreground text-xs">
+                      {CHANGE_CAPTION[group.change_kind ?? 'none'] ?? ''}
+                    </span>
+                    <ul className="text-muted-foreground mt-1 flex flex-col gap-0.5 pl-4 text-xs">
+                      {(group.submissions ?? []).map((sub) => (
+                        <li key={sub.submission_id}>
+                          {`${shortDate(sub.submitted_at)}: ${(sub.bunking_request ?? '').trim() || '(no request)'}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
               </ul>
             </section>
 
