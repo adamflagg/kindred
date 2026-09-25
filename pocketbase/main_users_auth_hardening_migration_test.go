@@ -54,7 +54,7 @@ var denyAllEmptyString = regexp.MustCompile(`(?i)deny\w*\s*=\s*(''|"")`)
 
 // TestNoMigrationTreatsEmptyStringAsDeny guards the root cause. In PocketBase
 // a "" rule is PUBLIC -- anyone, guests included -- while nil is superusers
-// only. Migrations 1500000023 and 1500000027 bound ” as "denyAll", which left
+// only. Migrations 1500000023 and 1500000027 bound "" as "denyAll", which left
 // solver_runs and debug_parse_results open to the internet.
 func TestNoMigrationTreatsEmptyStringAsDeny(t *testing.T) {
 	files, err := filepath.Glob("pb_migrations/*.js")
