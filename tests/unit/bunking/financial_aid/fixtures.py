@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bunking.financial_aid.calculator.inputs import ApplicationInputs, RequestInputs
 from bunking.financial_aid.rules.schema import AidRules
 
 # summer 1000101-1000102 · quest 1000103 · teen 1000104 · bmitzvah 1000301 ·
@@ -296,3 +297,15 @@ def with_levers(rules: AidRules, changes: dict[str, Any]) -> AidRules:
 def with_lever(rules: AidRules, path: str, value: Any) -> AidRules:
     """A copy of ``rules`` with one lever changed, e.g. ``"grants.minimum_after_grants"``."""
     return with_levers(rules, {path: value})
+
+
+def app(**fields: Any) -> ApplicationInputs:
+    """A fictional household application. Default: 60,000 both years -> tier 2."""
+    base: dict[str, Any] = {"household_cm_id": 1000001, "prior_year_gross": "60000", "current_year_gross": "60000"}
+    return ApplicationInputs.model_validate({**base, **fields})
+
+
+def req(**fields: Any) -> RequestInputs:
+    """A fictional request. Default: Emma Johnson (1000002), summer session 1000102 (4,000), asking 4,000."""
+    base: dict[str, Any] = {"person_cm_id": 1000002, "session_cm_id": 1000102, "program_key": "summer", "ask": "4000"}
+    return RequestInputs.model_validate({**base, **fields})
