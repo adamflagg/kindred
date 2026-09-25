@@ -9,7 +9,13 @@ import { useJotformQueue, useJotformSubmissionAction } from '../../../hooks/useJ
 import type { JotformGuestRow, JotformQueueEntry } from '../../../types/jotform'
 import { QueryGuard } from '../../QueryGuard'
 import { shortDate } from '../../weekend/bunkingRequest'
-import { ACTION_LINK, BUTTON_SECONDARY, FIELD_INLINE, GROUP_HEADING } from './lodgingStyles'
+import {
+  ACTION_LINK,
+  AMBER_NOTE,
+  BUTTON_SECONDARY,
+  FIELD_INLINE,
+  GROUP_HEADING,
+} from './lodgingStyles'
 
 function UnmatchedItem({
   item,
@@ -143,17 +149,21 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
         const mine = <T extends { session_cm_id: number }>(rows: readonly T[] | undefined) =>
           (rows ?? []).filter((row) => row.session_cm_id === sessionCmId)
         const unmatched = mine(data.unmatched)
+        // kindred#2828: matching has not run for a form with no name mapped,
+        // so its submissions are not listed; one line says why instead.
+        const unmapped = mine(data.unmapped)
         const duplicates = mine(data.duplicates)
         const resolved = mine(data.resolved)
         return (
           <div className="flex flex-col gap-6">
             <section className="card-lodge p-4">
               <h3 className={GROUP_HEADING}>{`Needs a guest (${String(unmatched.length)})`}</h3>
-              {unmatched.length === 0 ? (
-                <p className="text-muted-foreground mt-2 text-sm">
-                  Every submission is matched to a guest.
+              {unmapped.map((form) => (
+                <p key={form.session_cm_id} className={`${AMBER_NOTE} mt-2`}>
+                  {`Matching hasn't run for ${form.session_name ?? ''}: first and last name aren't mapped yet.`}
                 </p>
-              ) : (
+              ))}
+              {unmatched.length > 0 && (
                 <ul>
                   {unmatched.map((item) => (
                     <UnmatchedItem
@@ -163,6 +173,11 @@ export function JotformQueue({ year, sessionCmId }: { year: number; sessionCmId:
                     />
                   ))}
                 </ul>
+              )}
+              {unmatched.length === 0 && unmapped.length === 0 && (
+                <p className="text-muted-foreground mt-2 text-sm">
+                  Every submission is matched to a guest.
+                </p>
               )}
             </section>
 

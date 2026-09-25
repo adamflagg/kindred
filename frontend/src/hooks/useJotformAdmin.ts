@@ -5,6 +5,7 @@
  * moves (the server clears its own year cache on the same write).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import {
@@ -18,6 +19,14 @@ import {
 import type { JotformFormWriteBody } from '../types/jotform'
 import { queryKeys } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
+import { useRunIndividualSync } from './useRunIndividualSync'
+import { useSyncStatusAPI } from './useSyncStatusAPI'
+
+/** The Go sync job that pulls every enabled Jotform form. */
+export const JOTFORM_SYNC_ID = 'jotform_submissions'
+
+/** Stop watching a pull that never reports finishing (queued behind a long run, say). */
+const PULL_WATCH_LIMIT_MS = 10 * 60 * 1000
 
 export type JotformAction =
   | { kind: 'link'; submissionId: string; personCmId: number }
@@ -84,4 +93,59 @@ export function useJotformSubmissionAction() {
       )
     },
   })
+}
+
+/**
+ * Start the Jotform pull the way the Sync tab starts a job (the individual-sync
+ * route), then watch the job's status and refresh the Jotform tab when THAT
+ * run finishes (kindred#2828). The job runs in the background, so a refresh on
+ * the POST's return would show nothing new, and the Sync tab's own completion
+ * watcher is not mounted here.
+ *
+ * "That run" is told apart by its end time: the pull is over once the job is
+ * not running and reports an end other than the one it had when staff pressed.
+ */
+export function useJotformPull() {
+  const runSync = useRunIndividualSync()
+  const queryClient = useQueryClient()
+  // The job's end_time when this pull started; null before any pull, or once
+  // a watch has timed out.
+  const [since, setSince] = useState<string | null>(null)
+  const { data: status } = useSyncStatusAPI({ forcePolling: since !== null })
+  const job = status?.jotform_submissions
+  const finished =
+    since !== null &&
+    job !== undefined &&
+    job.status !== 'running' &&
+    job.status !== 'pending' &&
+    (job.end_time ?? '') !== since
+  const watching = since !== null && !finished
+
+  useEffect(() => {
+    if (finished) invalidateJotformQueries(queryClient)
+  }, [finished, queryClient])
+
+  useEffect(() => {
+    if (!watching) return
+    const timer = setTimeout(() => {
+      setSince(null)
+    }, PULL_WATCH_LIMIT_MS)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [watching])
+
+  const { mutateAsync } = runSync
+  const baseline = job?.end_time ?? ''
+  const pull = useCallback(async () => {
+    try {
+      await mutateAsync(JOTFORM_SYNC_ID)
+    } catch {
+      // Refused (already running, say): useRunIndividualSync has toasted why.
+      return
+    }
+    setSince(baseline)
+  }, [mutateAsync, baseline])
+
+  return { pull, isPulling: runSync.isPending || watching }
 }

@@ -1,10 +1,11 @@
 /**
  * The Jotform tab (kindred#2759): one card per active-season adult weekend,
- * the field mapping, Pull now, and the unmatched queue with its labelled
- * suggestions, duplicates and staff links. The hooks are mocked; their
- * network and invalidation contract is pinned in `useJotformAdmin.test.tsx`.
+ * the field mapping, Save & pull (kindred#2828), and the unmatched queue with
+ * its labelled suggestions, duplicates and staff links. The hooks are mocked;
+ * their network and invalidation contract is pinned in
+ * `useJotformAdmin.test.tsx` and `useJotformPull.test.tsx`.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,10 +30,8 @@ vi.mock('../../../hooks/useCurrentYear', () => ({
   }),
 }))
 
-const runSync = { mutate: vi.fn(), isPending: false }
-vi.mock('../../../hooks/useRunIndividualSync', () => ({ useRunIndividualSync: () => runSync }))
-
-const save = { mutate: vi.fn(), isPending: false }
+const pull = { pull: vi.fn(), isPulling: false }
+const save = { mutateAsync: vi.fn(), isPending: false }
 const act = { mutate: vi.fn(), isPending: false }
 const forms = { data: undefined as unknown, isLoading: false, error: null as Error | null }
 const queue = { data: undefined as unknown, isLoading: false, error: null as Error | null }
@@ -41,6 +40,7 @@ vi.mock('../../../hooks/useJotformAdmin', () => ({
   useJotformQueue: () => queue,
   useSaveJotformForm: () => save,
   useJotformSubmissionAction: () => act,
+  useJotformPull: () => pull,
 }))
 
 const QUESTIONS = [
@@ -55,8 +55,10 @@ const QUESTIONS = [
 
 beforeEach(() => {
   yearState.currentYear = 2026
-  runSync.mutate.mockReset()
-  save.mutate.mockReset()
+  pull.pull.mockReset()
+  pull.pull.mockResolvedValue(undefined)
+  save.mutateAsync.mockReset()
+  save.mutateAsync.mockResolvedValue({})
   act.mutate.mockReset()
   forms.data = {
     year: 2026,
@@ -65,8 +67,19 @@ beforeEach(() => {
         session_cm_id: 1000002,
         session_name: "Women's Weekend",
         form_id: '261700000000001',
-        field_map: {},
-        suggested_field_map: { first_name: '3', last_name: '4', bunking_request: '21' },
+        form_title: "Women's Weekend 2026",
+        field_map: { first_name: '3', last_name: '4', bunking_request: '21' },
+        field_map_meta: {
+          first_name: { question_id: '3', text: 'First Name', source: 'carried' },
+          last_name: { question_id: '4', text: 'Last Name', source: 'guessed' },
+          bunking_request: {
+            question_id: '21',
+            text: 'Who would you like to room with?',
+            source: 'staff',
+            flag: 'wording_changed',
+          },
+          coming_with: { question_id: '', text: '', flag: 'needs_pick' },
+        },
         questions: QUESTIONS,
         enabled: true,
         last_pull_status: 'ok · 3 submissions · 1 matched · 2 unmatched',
@@ -161,7 +174,7 @@ afterEach(() => {
 })
 
 describe('JotformPanel — forms', () => {
-  it('draws one card per adult weekend with the suggested mapping preselected', () => {
+  it('draws one card per adult weekend with the resolved mapping selected', () => {
     renderPanel()
     const ww = screen.getByTestId('jotform-form-1000002')
     expect(
@@ -172,24 +185,47 @@ describe('JotformPanel — forms', () => {
     ).toHaveValue('21')
   })
 
-  it("shows a weekend's pull-once hint on that weekend's tab", () => {
+  it('tells a weekend with no form yet that Save & pull does the rest', () => {
     renderPanel('?session=1000003')
-    expect(
-      within(screen.getByTestId('jotform-form-1000003')).getByText(
-        /pull once to load its questions/i
-      )
-    ).toBeInTheDocument()
+    const mw = screen.getByTestId('jotform-form-1000003')
+    expect(within(mw).getByText(/click save & pull/i)).toBeInTheDocument()
+    expect(within(mw).queryByText(/pull once to load its questions/i)).not.toBeInTheDocument()
   })
 
-  it('saves the link, the confirmed mapping and the enabled flag', () => {
+  it('enables a new form by default, so one Save & pull is the whole setup', () => {
+    renderPanel('?session=1000003')
+    expect(within(screen.getByTestId('jotform-form-1000003')).getByRole('checkbox')).toBeChecked()
+  })
+
+  it('reads Pull now when nothing is edited, and only pulls', async () => {
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    expect(within(ww).queryByRole('button', { name: 'Save & pull' })).not.toBeInTheDocument()
+    fireEvent.click(within(ww).getByRole('button', { name: 'Pull now' }))
+    await waitFor(() => expect(pull.pull).toHaveBeenCalledTimes(1))
+    expect(save.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('reads Save & pull once edited, and saves before it pulls', async () => {
+    const order: string[] = []
+    save.mutateAsync.mockImplementation(() => {
+      order.push('save')
+      return Promise.resolve({})
+    })
+    pull.pull.mockImplementation(() => {
+      order.push('pull')
+      return Promise.resolve()
+    })
     renderPanel()
     const ww = screen.getByTestId('jotform-form-1000002')
     fireEvent.change(
       within(ww).getByRole('combobox', { name: "Coming with question for Women's Weekend" }),
       { target: { value: '4' } }
     )
-    fireEvent.click(within(ww).getByRole('button', { name: "Save Women's Weekend" }))
-    expect(save.mutate).toHaveBeenCalledWith({
+    expect(within(ww).queryByRole('button', { name: 'Pull now' })).not.toBeInTheDocument()
+    fireEvent.click(within(ww).getByRole('button', { name: 'Save & pull' }))
+    await waitFor(() => expect(order).toEqual(['save', 'pull']))
+    expect(save.mutateAsync).toHaveBeenCalledWith({
       sessionCmId: 1000002,
       body: {
         form_ref: '261700000000001',
@@ -199,9 +235,19 @@ describe('JotformPanel — forms', () => {
     })
   })
 
-  it('preselects the suggested mapping when a pull first loads the questions', () => {
+  it('does not pull when the save fails', async () => {
+    save.mutateAsync.mockRejectedValue(new Error('That link does not contain the form ID'))
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    fireEvent.click(within(ww).getByRole('checkbox'))
+    fireEvent.click(within(ww).getByRole('button', { name: 'Save & pull' }))
+    await waitFor(() => expect(save.mutateAsync).toHaveBeenCalled())
+    expect(pull.pull).not.toHaveBeenCalled()
+  })
+
+  it('selects the resolved mapping when a pull first loads the questions', () => {
     // The card is already on screen when the first pull lands: the refetched
-    // row gains its questions and suggestions, and the selects must follow
+    // row gains its questions and resolved map, and the selects must follow
     // rather than keep the empty mapping the card mounted with.
     const rows = (forms.data as { rows: Array<Record<string, unknown>> }).rows
     const { rerender } = renderPanel('?session=1000003')
@@ -210,7 +256,7 @@ describe('JotformPanel — forms', () => {
       form_id: '261700000000002',
       enabled: true,
       questions: QUESTIONS,
-      suggested_field_map: { first_name: '3', bunking_request: '21' },
+      field_map: { first_name: '3', bunking_request: '21' },
     }
     forms.data = { year: 2026, rows: [...rows] }
     rerender(<JotformPanel />)
@@ -221,6 +267,69 @@ describe('JotformPanel — forms', () => {
     expect(within(mw).getByRole('textbox', { name: "Form link for Men's Weekend" })).toHaveValue(
       '261700000000002'
     )
+    expect(within(mw).getByRole('button', { name: 'Pull now' })).toBeInTheDocument()
+  })
+
+  it('badges each role with where its question came from, and flags in amber', () => {
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    expect(within(ww).getByTestId('jotform-role-first_name')).toHaveTextContent('Same as last year')
+    expect(within(ww).getByTestId('jotform-role-last_name')).toHaveTextContent('Guessed')
+    const reworded = within(ww).getByTestId('jotform-role-bunking_request')
+    expect(within(reworded).getByText('Wording changed').className).toMatch(/amber/)
+    const unpicked = within(ww).getByTestId('jotform-role-coming_with')
+    expect(within(unpicked).getByText('Pick a question').className).toMatch(/amber/)
+  })
+
+  it('badges a staff role, and a removed question', () => {
+    const rows = (forms.data as { rows: Array<Record<string, unknown>> }).rows
+    rows[0] = {
+      ...rows[0],
+      field_map_meta: {
+        first_name: { question_id: '3', text: 'First Name', source: 'staff' },
+        cpap: { question_id: '88', text: 'CPAP?', source: 'staff', flag: 'missing' },
+      },
+    }
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    expect(within(ww).getByTestId('jotform-role-first_name')).toHaveTextContent('Set by staff')
+    const removed = within(ww).getByTestId('jotform-role-cpap')
+    expect(within(removed).getByText('Question removed').className).toMatch(/amber/)
+  })
+
+  it("drops a role's badge once staff pick a different question", () => {
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    fireEvent.change(
+      within(ww).getByRole('combobox', { name: "Last name question for Women's Weekend" }),
+      { target: { value: '21' } }
+    )
+    expect(within(ww).getByTestId('jotform-role-last_name')).not.toHaveTextContent('Guessed')
+  })
+
+  it("shows the form's Jotform title, with no warning when its year is the tab's", () => {
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    expect(within(ww).getByText("Women's Weekend 2026")).toBeInTheDocument()
+    expect(within(ww).queryByText(/not 2026/)).not.toBeInTheDocument()
+  })
+
+  it("warns when the form's title names a different year", () => {
+    const rows = (forms.data as { rows: Array<Record<string, unknown>> }).rows
+    rows[0] = { ...rows[0], form_title: "Women's Weekend 2025" }
+    renderPanel()
+    const warning = within(screen.getByTestId('jotform-form-1000002')).getByText(/not 2026/)
+    expect(warning).toHaveTextContent('2025')
+    expect(warning.className).toMatch(/amber/)
+  })
+
+  it('gives a title with no year no warning', () => {
+    const rows = (forms.data as { rows: Array<Record<string, unknown>> }).rows
+    rows[0] = { ...rows[0], form_title: "Women's Weekend registration" }
+    renderPanel()
+    const ww = screen.getByTestId('jotform-form-1000002')
+    expect(within(ww).getByText("Women's Weekend registration")).toBeInTheDocument()
+    expect(within(ww).queryByText(/not 2026/)).not.toBeInTheDocument()
   })
 
   it("drops a card's unsaved edits when the year changes", () => {
@@ -242,7 +351,7 @@ describe('JotformPanel — forms', () => {
     ).toHaveValue('271700000000001')
   })
 
-  it('clears the mapping once the form reference changes to another form', () => {
+  it('clears the mapping once the form reference changes to another form', async () => {
     // Question ids belong to one form; the old form's must never be sent
     // against a different one (the server drops them too).
     renderPanel()
@@ -253,15 +362,17 @@ describe('JotformPanel — forms', () => {
     expect(
       within(ww).queryByRole('combobox', { name: "Bunking request question for Women's Weekend" })
     ).not.toBeInTheDocument()
-    fireEvent.click(within(ww).getByRole('button', { name: "Save Women's Weekend" }))
-    expect(save.mutate).toHaveBeenCalledWith({
-      sessionCmId: 1000002,
-      body: {
-        form_ref: 'https://www.jotform.com/build/261700000000555',
-        field_map: {},
-        enabled: true,
-      },
-    })
+    fireEvent.click(within(ww).getByRole('button', { name: 'Save & pull' }))
+    await waitFor(() =>
+      expect(save.mutateAsync).toHaveBeenCalledWith({
+        sessionCmId: 1000002,
+        body: {
+          form_ref: 'https://www.jotform.com/build/261700000000555',
+          field_map: {},
+          enabled: true,
+        },
+      })
+    )
   })
 
   it('keeps the mapping when the same form is pasted as its builder link', () => {
@@ -273,16 +384,27 @@ describe('JotformPanel — forms', () => {
     expect(
       within(ww).getByRole('combobox', { name: "Bunking request question for Women's Weekend" })
     ).toHaveValue('21')
-  })
-
-  it('Pull now runs the Jotform sync job', () => {
-    renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Pull now' }))
-    expect(runSync.mutate).toHaveBeenCalledWith('jotform_submissions')
+    expect(within(ww).getByRole('button', { name: 'Pull now' })).toBeInTheDocument()
   })
 })
 
 describe('JotformPanel — queue', () => {
+  it("says once that matching hasn't run for a weekend with no name mapped", () => {
+    const data = queue.data as { unmatched: unknown[]; unmapped?: unknown[] }
+    data.unmatched = []
+    data.unmapped = [{ session_cm_id: 1000002, session_name: "Women's Weekend" }]
+    const { unmount } = renderPanel()
+    expect(
+      screen.getByText(
+        "Matching hasn't run for Women's Weekend: first and last name aren't mapped yet."
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Every submission is matched to a guest.')).not.toBeInTheDocument()
+    unmount()
+    renderPanel('?session=1000003')
+    expect(screen.queryByText(/Matching hasn't run/)).not.toBeInTheDocument()
+  })
+
   it('links a suggestion, links by hand, and ignores', () => {
     renderPanel()
     const item = screen.getByTestId('jotform-unmatched-6600000000000000002')
@@ -536,10 +658,10 @@ describe('JotformPanel — one tab per weekend', () => {
     expect(screen.queryByTestId('jotform-duplicate-1000004')).not.toBeInTheDocument()
   })
 
-  it('says beside Pull now that it pulls every enabled weekend', () => {
-    renderPanel('?session=1000003')
-    expect(screen.getByText(/pulls every enabled weekend/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Pull now' }))
-    expect(runSync.mutate).toHaveBeenCalledWith('jotform_submissions')
+  it('says beside the pull button that it pulls every enabled weekend', () => {
+    renderPanel()
+    expect(
+      within(screen.getByTestId('jotform-form-1000002')).getByText(/pulls every enabled weekend/i)
+    ).toBeInTheDocument()
   })
 })
