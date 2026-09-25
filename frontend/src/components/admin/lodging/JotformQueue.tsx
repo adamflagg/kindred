@@ -205,7 +205,7 @@ export function JotformQueue({ year }: { year: number }) {
                       <ul className="text-muted-foreground mt-1 flex flex-col gap-0.5 pl-4 text-xs">
                         {(group.submissions ?? []).map((sub) => (
                           <li key={sub.submission_id}>
-                            {`${shortDate(sub.submitted_at)}: ${sub.bunking_request ?? ''}`}
+                            {`${shortDate(sub.submitted_at)}: ${(sub.bunking_request ?? '').trim() || '(no request)'}`}
                           </li>
                         ))}
                       </ul>

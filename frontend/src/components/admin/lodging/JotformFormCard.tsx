@@ -15,6 +15,15 @@ import type { JotformFormRowData } from '../../../types/jotform'
 import { JOTFORM_ROLE_LABELS } from './jotformRoles'
 import { BUTTON_PRIMARY, FIELD, LABEL, MUTED_PILL, SECTION } from './lodgingStyles'
 
+/**
+ * Whether a typed reference still names the saved form: the bare id, or any
+ * link whose path carries it (as the server's `parse_form_id` reads it).
+ */
+function namesForm(ref: string, formId: string): boolean {
+  const value = ref.trim()
+  return value === formId || new RegExp(`(^|/)${formId}(/|$|\\?|#)`).test(value)
+}
+
 function shortQuestion(text: string): string {
   const trimmed = text.trim()
   return trimmed.length > 70 ? `${trimmed.slice(0, 67)}…` : trimmed
@@ -25,16 +34,23 @@ export function JotformFormCard({ row, year }: { row: JotformFormRowData; year: 
   const [editedRef, setEditedRef] = useState<string | undefined>(undefined)
   const [editedEnabled, setEditedEnabled] = useState<boolean | undefined>(undefined)
   const [editedMap, setEditedMap] = useState<Record<string, string>>({})
-  const formRef = editedRef ?? row.form_id ?? ''
+  const savedFormId = row.form_id ?? ''
+  const formRef = editedRef ?? savedFormId
   const enabled = editedEnabled ?? row.enabled ?? false
+  // Question ids belong to one form. Once the reference names a DIFFERENT
+  // form, the old questions and mapping no longer apply: nothing is shown or
+  // sent until that form's first pull (the server drops the mapping too).
+  const otherForm = savedFormId !== '' && !namesForm(formRef, savedFormId)
   // A staff-confirmed mapping wins over the suggestion; an edit ('' included,
   // which is "no question") wins over both.
-  const fieldMap: Record<string, string> = {
-    ...(row.suggested_field_map ?? {}),
-    ...(row.field_map ?? {}),
-    ...editedMap,
-  }
-  const questions = row.questions ?? []
+  const fieldMap: Record<string, string> = otherForm
+    ? {}
+    : {
+        ...(row.suggested_field_map ?? {}),
+        ...(row.field_map ?? {}),
+        ...editedMap,
+      }
+  const questions = otherForm ? [] : (row.questions ?? [])
   const confirmed = Object.keys(row.field_map ?? {}).length > 0
   const lastPull = row.last_pull_status ?? ''
 

@@ -120,6 +120,40 @@ class TestForms:
         cache.invalidate_all.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_saving_a_different_form_drops_the_old_forms_mapping(self) -> None:
+        # Question ids belong to one form: carried onto another form they
+        # would name the wrong questions (or none), so a new form starts blank.
+        repo = _repo(fetch_forms=[FORM])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(form_ref="261700000000002", field_map={"first_name": "3"}, enabled=True),
+        )
+        repo.upsert_form.assert_awaited_once_with(
+            year=YEAR, session_cm_id=1000002, form_id="261700000000002", field_map={}, enabled=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_saving_the_same_form_by_its_builder_link_keeps_the_mapping(self) -> None:
+        repo = _repo(fetch_forms=[FORM])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(
+                form_ref="https://www.jotform.com/build/261700000000001",
+                field_map={"first_name": "3", "bunking_request": "21"},
+                enabled=True,
+            ),
+        )
+        repo.upsert_form.assert_awaited_once_with(
+            year=YEAR,
+            session_cm_id=1000002,
+            form_id="261700000000001",
+            field_map={"first_name": "3", "bunking_request": "21"},
+            enabled=True,
+        )
+
+    @pytest.mark.asyncio
     async def test_save_refuses_a_non_adult_session_an_unknown_role_and_a_vanity_link(self) -> None:
         service = JotformAdminService(_repo())
         with pytest.raises(JotformNotFoundError):

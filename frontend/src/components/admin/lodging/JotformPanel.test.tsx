@@ -227,6 +227,39 @@ describe('JotformPanel — forms', () => {
     ).toHaveValue('271700000000001')
   })
 
+  it('clears the mapping once the form reference changes to another form', () => {
+    // Question ids belong to one form; the old form's must never be sent
+    // against a different one (the server drops them too).
+    render(<JotformPanel />)
+    const ww = screen.getByTestId('jotform-form-1000002')
+    fireEvent.change(within(ww).getByRole('textbox', { name: "Form link for Women's Weekend" }), {
+      target: { value: 'https://www.jotform.com/build/261700000000555' },
+    })
+    expect(
+      within(ww).queryByRole('combobox', { name: "Bunking request question for Women's Weekend" })
+    ).not.toBeInTheDocument()
+    fireEvent.click(within(ww).getByRole('button', { name: "Save Women's Weekend" }))
+    expect(save.mutate).toHaveBeenCalledWith({
+      sessionCmId: 1000002,
+      body: {
+        form_ref: 'https://www.jotform.com/build/261700000000555',
+        field_map: {},
+        enabled: true,
+      },
+    })
+  })
+
+  it('keeps the mapping when the same form is pasted as its builder link', () => {
+    render(<JotformPanel />)
+    const ww = screen.getByTestId('jotform-form-1000002')
+    fireEvent.change(within(ww).getByRole('textbox', { name: "Form link for Women's Weekend" }), {
+      target: { value: 'https://www.jotform.com/build/261700000000001' },
+    })
+    expect(
+      within(ww).getByRole('combobox', { name: "Bunking request question for Women's Weekend" })
+    ).toHaveValue('21')
+  })
+
   it('Pull now runs the Jotform sync job', () => {
     render(<JotformPanel />)
     fireEvent.click(screen.getByRole('button', { name: 'Pull now' }))
@@ -346,6 +379,15 @@ describe('JotformPanel — queue', () => {
       within(item).getByText('Likely a duplicate of Olivia Chen’s submission')
     ).toBeInTheDocument()
     expect(within(item).queryByRole('button', { name: /^Link to/ })).not.toBeInTheDocument()
+  })
+
+  it('says (no request) for a filing that left the bunking request empty', () => {
+    const data = queue.data as {
+      duplicates: Array<{ submissions: Array<Record<string, unknown>> }>
+    }
+    data.duplicates[0]!.submissions[0]!.bunking_request = ''
+    render(<JotformPanel />)
+    expect(screen.getByTestId('jotform-duplicate-1000004')).toHaveTextContent('Aug 3: (no request)')
   })
 
   it('draws one duplicate group per weekend when a guest filed twice for each', () => {
