@@ -19,9 +19,11 @@
 #   - a Dockerfile sets GOTOOLCHAIN to anything but `local`. `auto` downloads
 #     the MINIMUM toolchain go.mod allows (go1.27.0), not the latest patch; the
 #     image tag is the toolchain, so nothing may download another one;
-#   - a workflow's `go-version:` is anything but a `go_minor` output
-#     (`${{ needs.<job>.outputs.go_minor }}`, or `${{ steps.<id>.outputs.go_minor }}`
-#     in a job that cannot depend on the job computing it), or it uses
+#   - a workflow's `go-version:` is anything but detect-changes' `go_minor`
+#     output (`${{ needs.detect-changes.outputs.go_minor }}`) -- any other
+#     expression is unchecked against the job graph, and a typo or a missing
+#     `needs:` makes it empty at runtime, which setup-go treats as "use the
+#     runner's default Go" -- or it uses
 #     `go-version-file:` at all -- setup-go would install exactly the patch the
 #     go line carries, not the latest one;
 #   - a setup-go step has no `go-version:` (the runner's preinstalled Go), or
@@ -166,8 +168,8 @@ done
 # pocketbase/go.mod, plus `check-latest: true` -- which together install the
 # latest patch of that minor. A step is a YAML list item: it runs from its `- `
 # line to the next line indented at or left of that dash.
-GO_MINOR_EXPR_RE='^\$\{\{[[:space:]]*(needs|steps)\.[A-Za-z0-9_-]+\.outputs\.go_minor[[:space:]]*\}\}$'
-STEP_FORM="'go-version: \${{ needs.<job>.outputs.go_minor }}' with 'check-latest: true'"
+GO_MINOR_EXPR_RE='^\$\{\{[[:space:]]*needs\.detect-changes\.outputs\.go_minor[[:space:]]*\}\}$'
+STEP_FORM="'go-version: \${{ needs.detect-changes.outputs.go_minor }}' with 'check-latest: true'"
 
 # unquote <value> -- trims whitespace, a trailing comment and one layer of quotes.
 unquote() {

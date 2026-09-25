@@ -60,8 +60,7 @@ EOF
 FROM chainguard/wolfi-base:latest
 RUN apk add --no-cache python-3.14
 EOF
-  # Both accepted go-version forms: a job output (the normal case) and a step
-  # output in the same job (for a job that cannot depend on detect-changes).
+  # The one accepted go-version form, quoted and unquoted: detect-changes' output.
   # shellcheck disable=SC2016  # the literal ${{ ... }} IS the fixture
   cat > "$ROOT/.github/workflows/ci.yml" <<'EOF'
 jobs:
@@ -85,14 +84,6 @@ jobs:
         go-version: '${{ needs.detect-changes.outputs.go_minor }}'
         check-latest: 'true'
         cache: true
-  standalone:
-    steps:
-    - id: go
-      run: echo "go_minor=1.27" >> "$GITHUB_OUTPUT"
-    - uses: actions/setup-go@v7
-      with:
-        go-version: ${{ steps.go.outputs.go_minor }}
-        check-latest: true
 EOF
 }
 
@@ -226,6 +217,19 @@ new_fixture
 # shellcheck disable=SC2016  # the literal ${{ ... }} IS the fixture
 sed -i 's/needs.detect-changes.outputs.go_minor }}$/needs.detect-changes.outputs.go }}/' "$ROOT/.github/workflows/ci.yml"
 expect_fail "TEST 13b: go-version from outputs.go (not go_minor) fails" "outputs.go }}"
+
+# --- TEST 13c: go-version reading a step output, or another job's output ------
+# Neither is checked against the job graph, so a typo'd id or a missing `needs:`
+# yields an empty go-version at runtime and setup-go silently uses the runner's
+# default Go. Only detect-changes' output is accepted.
+new_fixture
+# shellcheck disable=SC2016  # the literal ${{ ... }} IS the fixture
+sed -i 's/needs.detect-changes.outputs.go_minor }}$/steps.go.outputs.go_minor }}/' "$ROOT/.github/workflows/ci.yml"
+expect_fail "TEST 13c: go-version from a step output fails" "steps.go.outputs.go_minor"
+new_fixture
+# shellcheck disable=SC2016  # the literal ${{ ... }} IS the fixture
+sed -i 's/needs.detect-changes.outputs.go_minor }}$/needs.other-job.outputs.go_minor }}/' "$ROOT/.github/workflows/ci.yml"
+expect_fail "TEST 13d: go-version from a job other than detect-changes fails" "needs.other-job"
 
 # --- TEST 14: go-version-file, even pointing at pocketbase/go.mod -------------
 # It installs exactly the patch the go line carries (see TEST 11), not the
