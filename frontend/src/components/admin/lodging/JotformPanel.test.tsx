@@ -517,7 +517,9 @@ describe('JotformPanel — queue', () => {
     }
     data.duplicates[0]!.submissions[0]!.bunking_request = ''
     renderPanel()
-    expect(screen.getByTestId('jotform-duplicate-1000004')).toHaveTextContent('Aug 3: (no request)')
+    const filing = screen.getByTestId('jotform-filing-66a')
+    expect(filing).toHaveTextContent('Aug 3')
+    expect(filing).toHaveTextContent('(no request)')
   })
 
   it("shows a guest who filed twice for each weekend once on each weekend's tab", () => {
@@ -663,5 +665,73 @@ describe('JotformPanel — one tab per weekend', () => {
     expect(
       within(screen.getByTestId('jotform-form-1000002')).getByText(/pulls every enabled weekend/i)
     ).toBeInTheDocument()
+  })
+})
+
+describe('JotformPanel — queue layout', () => {
+  it('lists staff links and ignored filings as two sections, each with its own count', () => {
+    const data = queue.data as { resolved: Array<Record<string, unknown>> }
+    data.resolved.push({
+      submission_id: '6600000000000000004',
+      session_cm_id: 1000002,
+      submitted_name: 'Riley Sam',
+      submitted_at: '2026-09-02 09:00:00',
+      match_status: 'ignored',
+      person_cm_id: 0,
+    })
+    renderPanel()
+    const links = screen.getByTestId('jotform-staff-links')
+    const ignored = screen.getByTestId('jotform-ignored')
+    expect(within(links).getByText('Staff links (1)')).toBeInTheDocument()
+    expect(within(links).getByText('Liam Garcia', { exact: false })).toBeInTheDocument()
+    expect(within(links).queryByText('Riley Sam')).not.toBeInTheDocument()
+    expect(within(ignored).getByText('Ignored (1)')).toBeInTheDocument()
+    expect(within(ignored).getByText('Riley Sam')).toBeInTheDocument()
+  })
+
+  it('says None yet in an empty staff-links or ignored section', () => {
+    const data = queue.data as { resolved: unknown[] }
+    data.resolved = []
+    renderPanel()
+    expect(
+      within(screen.getByTestId('jotform-staff-links')).getByText('None yet')
+    ).toBeInTheDocument()
+    expect(within(screen.getByTestId('jotform-ignored')).getByText('None yet')).toBeInTheDocument()
+  })
+
+  it('tags each repeat filer Changed or Identical, and lists changed filers first', () => {
+    const data = queue.data as { duplicates: Array<Record<string, unknown>> }
+    data.duplicates.unshift({
+      person_cm_id: 1000007,
+      guest_name: 'Ava Martinez',
+      session_cm_id: 1000002,
+      change_kind: 'identical',
+      submissions: [
+        {
+          submission_id: '66c',
+          session_cm_id: 1000002,
+          submitted_name: 'Ava Martinez',
+          submitted_at: '2026-08-04 09:00:00',
+          match_status: 'auto',
+          bunking_request: 'Sophia Lee',
+        },
+        {
+          submission_id: '66d',
+          session_cm_id: 1000002,
+          submitted_name: 'Ava Martinez',
+          submitted_at: '2026-08-20 09:00:00',
+          match_status: 'auto',
+          bunking_request: 'Sophia Lee',
+        },
+      ],
+    })
+    renderPanel()
+    const groups = screen.getAllByTestId(/^jotform-duplicate-/)
+    expect(groups.map((g) => g.getAttribute('data-testid'))).toEqual([
+      'jotform-duplicate-1000004',
+      'jotform-duplicate-1000007',
+    ])
+    expect(within(groups[0]!).getByText('Changed')).toBeInTheDocument()
+    expect(within(groups[1]!).getByText('Identical')).toBeInTheDocument()
   })
 })
