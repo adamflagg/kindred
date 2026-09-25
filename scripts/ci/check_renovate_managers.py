@@ -28,7 +28,6 @@ EXPECTED_DEPS = {
     "rhysd/actionlint",
     "hadolint/hadolint",
     "aquasecurity/trivy",
-    "go",
 }
 
 VERSION_SHAPE = re.compile(r"^v?\d+\.\d+")
