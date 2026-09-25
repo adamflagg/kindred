@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -64,10 +65,12 @@ func TestTransformTransactionToPB(t *testing.T) {
 	})
 
 	t.Run("dates", func(t *testing.T) {
-		verifyFieldSet(t, pbData, "post_date")
-		verifyFieldSet(t, pbData, "effective_date")
-		verifyFieldSet(t, pbData, "service_start_date")
-		verifyFieldSet(t, pbData, "service_end_date")
+		// postDate is an instant on a Mountain wall clock: 2025-11-11 17:05 MST = 00:05 UTC next day.
+		verifyStringField(t, pbData, "post_date", "2025-11-12 00:05:26Z")
+		// The three calendar dates stay dates: midnight is not shifted.
+		verifyStringField(t, pbData, "effective_date", "2025-11-11 00:00:00Z")
+		verifyStringField(t, pbData, "service_start_date", "2025-06-15 00:00:00Z")
+		verifyStringField(t, pbData, "service_end_date", "2025-07-13 00:00:00Z")
 	})
 
 	t.Run("reversal_tracking", func(t *testing.T) {
@@ -147,13 +150,6 @@ func verifyBoolField(t *testing.T, data map[string]any, field string, want bool)
 	}
 	if got != want {
 		t.Errorf("%s = %v, want %v", field, got, want)
-	}
-}
-
-func verifyFieldSet(t *testing.T, data map[string]any, field string) {
-	t.Helper()
-	if data[field] == nil || data[field] == "" {
-		t.Errorf("%s should be set", field)
 	}
 }
 
@@ -343,5 +339,84 @@ func TestTransformTransactionToPB_NegativeAmount(t *testing.T) {
 	}
 	if got, want := pbData["unit_amount"].(float64), -150.50; got != want {
 		t.Errorf("unit_amount = %f, want %f", got, want)
+	}
+}
+
+// TestTransformTransactionToPB_YearIsCampMindersSeason: year is the row's own season
+// (design §6.1), not the season the caller asked for.
+func TestTransformTransactionToPB_YearIsCampMindersSeason(t *testing.T) {
+	t.Parallel()
+	s := &FinancialTransactionsSync{}
+	withSeason := map[string]any{"transactionId": float64(1), "season": float64(2027), "amount": 10.0}
+	pbData, err := s.transformTransactionToPB(withSeason, 2026, TransactionLookupMaps{})
+	if err != nil {
+		t.Fatalf("transform: %v", err)
+	}
+	verifyIntField(t, pbData, "year", 2027)
+
+	noSeason := map[string]any{"transactionId": float64(2), "amount": 10.0}
+	pbData, err = s.transformTransactionToPB(noSeason, 2026, TransactionLookupMaps{})
+	if err != nil {
+		t.Fatalf("transform: %v", err)
+	}
+	verifyIntField(t, pbData, "year", 2026)
+}
+
+// TestTransformTransactionToPB_KeepsRawIDsThatDoNotResolve: before this, an id with no
+// PocketBase row was silently dropped (setRelation) and a posting to a non-attendee could
+// not be told from a household-level posting (analysis §5.4 item 2).
+func TestTransformTransactionToPB_KeepsRawIDsThatDoNotResolve(t *testing.T) {
+	t.Parallel()
+	s := &FinancialTransactionsSync{}
+	lookups := TransactionLookupMaps{Households: map[int]string{9110001: "pb_hh_9110001"}}
+	data := map[string]any{
+		"transactionId": float64(3), "season": float64(2026), "amount": 10.0,
+		"personId": float64(9100001), "householdId": float64(9110001),
+		"sessionId": float64(9120001), "financialCategoryId": float64(22650),
+	}
+	pbData, err := s.transformTransactionToPB(data, 2026, lookups)
+	if err != nil {
+		t.Fatalf("transform: %v", err)
+	}
+	verifyIntField(t, pbData, "person_cm_id", 9100001)
+	verifyIntField(t, pbData, "household_cm_id", 9110001)
+	verifyIntField(t, pbData, "session_cm_id", 9120001)
+	verifyIntField(t, pbData, "financial_category_cm_id", 22650)
+	verifyStringField(t, pbData, "household", "pb_hh_9110001")
+	if _, set := pbData["person"]; set {
+		t.Error("person relation must stay unset when the id does not resolve")
+	}
+
+	unresolved := unresolvedTransactionIDs{}
+	unresolved.tally(pbData)
+	if unresolved["person"] != 1 || unresolved["session"] != 1 || unresolved["financial_category"] != 1 ||
+		unresolved["household"] != 0 {
+		t.Errorf("tally = %v, want person, session and financial_category 1, household 0", unresolved)
+	}
+}
+
+// TestTransformTransactionToPB_AbsentIDsAreZero: "may be empty" means 0 on a number
+// field, set explicitly so a later sync can clear a value CampMinder stopped sending.
+func TestTransformTransactionToPB_AbsentIDsAreZero(t *testing.T) {
+	t.Parallel()
+	s := &FinancialTransactionsSync{}
+	data := map[string]any{"transactionId": float64(4), "season": float64(2026), "amount": 10.0, "personId": nil}
+	pbData, err := s.transformTransactionToPB(data, 2026, TransactionLookupMaps{})
+	if err != nil {
+		t.Fatalf("transform: %v", err)
+	}
+	for _, f := range []string{"person_cm_id", "household_cm_id", "session_cm_id", "financial_category_cm_id"} {
+		verifyIntField(t, pbData, f, 0)
+	}
+}
+
+// TestTransactionCompareFieldsIncludeRawIDs: ProcessSimpleRecord only compares the listed
+// fields, so an existing row would never get its raw ids unless they are in the list.
+func TestTransactionCompareFieldsIncludeRawIDs(t *testing.T) {
+	t.Parallel()
+	for _, f := range []string{"person_cm_id", "household_cm_id", "session_cm_id", "financial_category_cm_id"} {
+		if !slices.Contains(transactionCompareFields, f) {
+			t.Errorf("transactionCompareFields is missing %q", f)
+		}
 	}
 }

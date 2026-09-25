@@ -97,6 +97,7 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 	s.SyncSuccessful = true // Mark successful after fetch - enables orphan deletion
 
 	totalTxns := len(transactions)
+	unresolved := unresolvedTransactionIDs{}
 	for i, data := range transactions {
 		select {
 		case <-ctx.Done():
@@ -128,25 +129,10 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 		txnKey := s.transactionKey(cmID, amount)
 
 		s.TrackProcessedKey(txnKey, year)
+		unresolved.tally(pbData)
 
-		compareFields := []string{
-			"cm_id", "transaction_number", "year",
-			"post_date", "effective_date", "service_start_date", "service_end_date",
-			"is_reversed", "reversal_date",
-			"financial_category",
-			"description", "transaction_note", "gl_account_note",
-			"quantity", "unit_amount", "amount",
-			"recognition_gl_account_id", "deferral_gl_account_id",
-			"payment_method",
-			"session",
-			"program_id",
-			"session_group",
-			"division",
-			"person",
-			"household",
-		}
 		err = s.ProcessSimpleRecord(
-			"financial_transactions", txnKey, pbData, existingRecords, compareFields)
+			"financial_transactions", txnKey, pbData, existingRecords, transactionCompareFields)
 		if err != nil {
 			if errors.Is(err, errRejectedRecord) {
 				slog.Warn("Rejected transaction", "cm_id", cmID, "amount", amount, "error", err)
@@ -157,6 +143,8 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 			}
 		}
 	}
+
+	unresolved.log(year)
 
 	// Delete orphans using preloaded data (avoids re-querying 22K+ records)
 	if err := s.DeleteOrphansFromPreloaded(existingRecords, "financial transaction"); err != nil {
@@ -299,7 +287,13 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 		return nil, fmt.Errorf("invalid or missing transactionId")
 	}
 	pbData["cm_id"] = int(txnID)
+
+	// year is CampMinder's own per-row season (campership design §6.1); the requested
+	// season is a fallback for a row that omits it.
 	pbData["year"] = year
+	if season, ok := data["season"].(float64); ok && season > 0 {
+		pbData["year"] = int(season)
+	}
 
 	// Optional int/float fields
 	setIntFromFloat(pbData, data, "transactionNumber", "transaction_number")
@@ -307,12 +301,13 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 	setFloatFromFloat(pbData, data, "unitAmount", "unit_amount")
 	setFloatFromFloat(pbData, data, "amount", "amount")
 
-	// Dates
-	pbData["post_date"] = ParseDateValue(data["postDate"])
+	// post_date and reversal_date are instants on a Mountain wall clock under a "Z" suffix
+	// (design §6.2). The other three are calendar dates and must stay dates.
+	pbData["post_date"] = ParseCampMinderInstant(data["postDate"])
 	pbData["effective_date"] = ParseDateValue(data["effectiveDate"])
 	pbData["service_start_date"] = ParseDateValue(data["serviceStartDate"])
 	pbData["service_end_date"] = ParseDateValue(data["serviceEndDate"])
-	pbData["reversal_date"] = ParseDateValue(data["reversalDate"])
+	pbData["reversal_date"] = ParseCampMinderInstant(data["reversalDate"])
 
 	// Reversal tracking
 	pbData["is_reversed"] = false
@@ -339,7 +334,76 @@ func (s *FinancialTransactionsSync) transformTransactionToPB(
 	setRelation(pbData, data, "personId", "person", maps.Persons)
 	setRelation(pbData, data, "householdId", "household", maps.Households)
 
+	// Raw CampMinder ids, stored whether or not they resolve above (design §6.1). 0 means
+	// CampMinder sent none; always set, so a value that disappears upstream is cleared.
+	pbData["person_cm_id"] = rawCMID(data, "personId")
+	pbData["household_cm_id"] = rawCMID(data, "householdId")
+	pbData["session_cm_id"] = rawCMID(data, "sessionId")
+	pbData["financial_category_cm_id"] = rawCMID(data, "financialCategoryId")
+
 	return pbData, nil
+}
+
+// transactionCompareFields are the fields ProcessSimpleRecord compares to decide whether an
+// existing row needs an update. A field missing here is never written to an existing row.
+var transactionCompareFields = []string{
+	"cm_id", "transaction_number", "year",
+	"post_date", "effective_date", "service_start_date", "service_end_date",
+	"is_reversed", "reversal_date",
+	"financial_category",
+	"description", "transaction_note", "gl_account_note",
+	"quantity", "unit_amount", "amount",
+	"recognition_gl_account_id", "deferral_gl_account_id",
+	"payment_method",
+	"session",
+	"program_id",
+	"session_group",
+	"division",
+	"person",
+	"household",
+	"person_cm_id", "household_cm_id", "session_cm_id", "financial_category_cm_id",
+}
+
+// rawCMID returns a CampMinder id from the API row, or 0 when it is absent, null or zero.
+func rawCMID(data map[string]any, key string) int {
+	if id, ok := data[key].(float64); ok && id > 0 {
+		return int(id)
+	}
+	return 0
+}
+
+// unresolvedTransactionIDs counts, per relation, rows whose CampMinder id had no matching
+// PocketBase record. The raw id is stored regardless; this is the line that says how many
+// relation columns are empty for that reason instead of silently.
+type unresolvedTransactionIDs map[string]int
+
+// rawIDRelations pairs each raw-id column with the relation column it resolves into.
+var rawIDRelations = [][2]string{
+	{"person_cm_id", "person"},
+	{"household_cm_id", "household"},
+	{"session_cm_id", "session"},
+	{"financial_category_cm_id", "financial_category"},
+}
+
+func (u unresolvedTransactionIDs) tally(pbData map[string]any) {
+	for _, pair := range rawIDRelations {
+		id, _ := pbData[pair[0]].(int)
+		if id == 0 {
+			continue
+		}
+		if rel, _ := pbData[pair[1]].(string); rel == "" {
+			u[pair[1]]++
+		}
+	}
+}
+
+func (u unresolvedTransactionIDs) log(year int) {
+	if len(u) == 0 {
+		return
+	}
+	slog.Warn("Transaction ids with no matching PocketBase record: raw CampMinder id stored, relation left empty",
+		"year", year, "person", u["person"], "household", u["household"],
+		"session", u["session"], "financial_category", u["financial_category"])
 }
 
 // getStringOrEmpty safely extracts a string from the data map
