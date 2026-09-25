@@ -46,7 +46,7 @@ func TestSuggestFieldMapLetsOneFullnameQuestionServeFirstAndLast(t *testing.T) {
 }
 
 func TestSuggestFieldMapSuggestsNothingUnrecognisable(t *testing.T) {
-	if got := SuggestFieldMap([]FormQuestion{{"7", "Favourite colour", "control_textbox", 7}}); len(got) != 0 {
+	if got := SuggestFieldMap([]FormQuestion{{"7", "Shirt size", "control_textbox", 7}}); len(got) != 0 {
 		t.Errorf("got %v", got)
 	}
 }
@@ -141,7 +141,8 @@ func TestResolveCarriesARoleByExactWordingFromAnEarlierYear(t *testing.T) {
 	if fm["nametag_name"] != "31" {
 		t.Errorf("fm = %v", fm)
 	}
-	if meta["nametag_name"] != (RoleMeta{QuestionID: "31", Text: "What name goes on your NAME-TAG?", Source: SourceCarried}) {
+	want := RoleMeta{QuestionID: "31", Text: "What name goes on your NAME-TAG?", Source: SourceCarried}
+	if meta["nametag_name"] != want {
 		t.Errorf("meta = %+v", meta["nametag_name"])
 	}
 }
@@ -173,7 +174,7 @@ func TestResolveCarryOutranksAGuess(t *testing.T) {
 }
 
 func TestResolveGuessesFromTheWordingRulesAndFlagsTheRest(t *testing.T) {
-	qs := []FormQuestion{{"4", "Name", "control_fullname", 4}, {"8", "Favourite colour", "control_textbox", 8}}
+	qs := []FormQuestion{{"4", "Name", "control_fullname", 4}, {"8", "Shirt size", "control_textbox", 8}}
 	fm, meta := ResolveMapping(qs, nil, nil)
 	if fm["first_name"] != "4" || fm["last_name"] != "4" {
 		t.Errorf("fm = %v", fm)
@@ -205,7 +206,8 @@ func TestResolveAdoptsTheCurrentWordingForAStaffRoleSavedWithoutOne(t *testing.T
 	// new form, or a row mapped before kindred#2828) has no wording to compare.
 	staff := FieldMapMeta{"cpap": {QuestionID: "29", Source: SourceStaff}}
 	_, meta := ResolveMapping(questions2026Shape, staff, nil)
-	if meta["cpap"] != (RoleMeta{QuestionID: "29", Text: "Are you bringing a CPAP machine to Camp? ", Source: SourceStaff}) {
+	want := RoleMeta{QuestionID: "29", Text: "Are you bringing a CPAP machine to Camp? ", Source: SourceStaff}
+	if meta["cpap"] != want {
 		t.Errorf("meta = %+v", meta["cpap"])
 	}
 }
@@ -241,7 +243,8 @@ func TestMappingSummaryCountsSourcesAndFlags(t *testing.T) {
 		"cpap":            {Flag: FlagNeedsPick},
 		"emergency_name":  {Source: SourceStaff},
 	}
-	want := "mapping: 2 same as last year, 1 guessed, 1 set by staff, 1 wording changed, 1 question removed, 1 needs a pick"
+	want := "mapping: 2 same as last year, 1 guessed, 1 set by staff, " +
+		"1 wording changed, 1 question removed, 1 needs a pick"
 	if got := meta.Summary(); got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}

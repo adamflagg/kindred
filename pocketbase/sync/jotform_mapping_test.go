@@ -88,7 +88,8 @@ func TestJotformPullReadsTheFormDefinitionBeforeAnySubmission(t *testing.T) {
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	clearMapping(t, app)
-	if _, err := runJotform(t, app, &fakeJotform{titles: map[string]string{jfFormID: "Women's Weekend 2026"}}); err != nil {
+	fake := &fakeJotform{titles: map[string]string{jfFormID: "Women's Weekend 2026"}}
+	if _, err := runJotform(t, app, fake); err != nil {
 		t.Fatal(err)
 	}
 	form := jfForm(t, app)
@@ -272,7 +273,8 @@ func TestJotformGuessedNamesThatMatchTooFewHoldMatching(t *testing.T) {
 			seedWeekend(t, app)
 			clearMapping(t, app)
 			// First pull: the form has only the right name question.
-			if _, err := runJotform(t, app, &fakeJotform{subs: map[string][]jotform.Submission{jfFormID: subs(tc.n)}}); err != nil {
+			first := &fakeJotform{subs: map[string][]jotform.Submission{jfFormID: subs(tc.n)}}
+			if _, err := runJotform(t, app, first); err != nil {
 				t.Fatal(err)
 			}
 			if got := subRecord(t, app, "6600000000000000100"); got.GetString("match_status") != matchStatusAuto {
@@ -286,8 +288,10 @@ func TestJotformGuessedNamesThatMatchTooFewHoldMatching(t *testing.T) {
 			// Second pull: a roommate-name question now comes first, so the
 			// guess moves onto it and nobody matches.
 			fake := &fakeJotform{
-				subs:      map[string][]jotform.Submission{jfFormID: subs(tc.n)},
-				questions: map[string][]jotform.FormQuestion{jfFormID: append([]jotform.FormQuestion{roommateFirst}, defaultQuestions()...)},
+				subs: map[string][]jotform.Submission{jfFormID: subs(tc.n)},
+				questions: map[string][]jotform.FormQuestion{
+					jfFormID: append([]jotform.FormQuestion{roommateFirst}, defaultQuestions()...),
+				},
 			}
 			if _, err := runJotform(t, app, fake); err != nil {
 				t.Fatal(err)
@@ -319,7 +323,7 @@ func TestJotformGuessedNamesThatMatchHalfAreWritten(t *testing.T) {
 	app := newJotformTestApp(t)
 	seedWeekend(t, app)
 	clearMapping(t, app)
-	var subs []jotform.Submission
+	subs := make([]jotform.Submission, 0, 10)
 	for i := range 10 {
 		first, last := "Olivia", "Chen"
 		if i >= 5 {

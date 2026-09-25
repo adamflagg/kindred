@@ -172,8 +172,10 @@ func TestFormTitleReadsTheFormInfo(t *testing.T) {
 	// The live API answers with an object; the published example wraps it in a
 	// one-element array. Both must read.
 	for name, body := range map[string]string{
-		"object": `{"responseCode":200,"message":"success","content":{"id":"261700000000001","title":"Women's Weekend 2026","status":"ENABLED"}}`,
-		"array":  `{"responseCode":200,"message":"success","content":[{"id":"261700000000001","title":"Women's Weekend 2026"}]}`,
+		"object": `{"responseCode":200,"message":"success",` +
+			`"content":{"id":"261700000000001","title":"Women's Weekend 2026","status":"ENABLED"}}`,
+		"array": `{"responseCode":200,"message":"success",` +
+			`"content":[{"id":"261700000000001","title":"Women's Weekend 2026"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

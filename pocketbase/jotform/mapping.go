@@ -86,17 +86,19 @@ var wordingRules = []wordingRule{
 		return strings.Contains(t, "nametag") || strings.Contains(t, "name tag")
 	}},
 	{RoleFirstName, func(q *FormQuestion) bool {
-		return !emergency(q) && (strings.HasPrefix(ruleText(q), "first name") || q.Type == "control_fullname")
+		return !emergency(q) && (strings.HasPrefix(ruleText(q), "first name") || q.Type == typeFullname)
 	}},
 	{RoleLastName, func(q *FormQuestion) bool {
-		return !emergency(q) && (strings.HasPrefix(ruleText(q), "last name") || q.Type == "control_fullname")
+		return !emergency(q) && (strings.HasPrefix(ruleText(q), "last name") || q.Type == typeFullname)
 	}},
 	{"bunking_request", func(q *FormQuestion) bool { return strings.Contains(ruleText(q), "bunking request") }},
 	{"coming_with", func(q *FormQuestion) bool {
 		t := ruleText(q)
 		return strings.Contains(t, "coming") && strings.Contains(t, "with")
 	}},
-	{"housing_accommodation", func(q *FormQuestion) bool { return strings.Contains(ruleText(q), "housing accommodation") }},
+	{"housing_accommodation", func(q *FormQuestion) bool {
+		return strings.Contains(ruleText(q), "housing accommodation")
+	}},
 	{"accommodation_details", func(q *FormQuestion) bool {
 		t := ruleText(q)
 		return strings.HasPrefix(t, "if yes, please comment") || strings.Contains(t, "live alone")
