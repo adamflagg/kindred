@@ -396,9 +396,35 @@ func TestTransactionBackfillYear(t *testing.T) {
 		{"2016", 0, true},
 		{"abc", 0, true},
 	} {
-		got, err := transactionBackfillYear(tt.param, now)
+		got, err := transactionBackfillYear(tt.param, now, 2026)
 		if (err != nil) != tt.wantErr || got != tt.want {
 			t.Errorf("transactionBackfillYear(%q) = %d, %v; want %d, err=%v", tt.param, got, err, tt.want, tt.wantErr)
+		}
+	}
+}
+
+// Once the owner flips CAMPMINDER_SEASON_ID to next season (around mid-November), the
+// daily run covers configured+1, which is two calendar years ahead. The on-demand route
+// must still accept it, so the bound is max(calendar year, configured season) + 1.
+func TestTransactionBackfillYear_FollowsAFlippedSeason(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		param   string
+		season  int
+		want    int
+		wantErr bool
+	}{
+		{"2028", 2027, 2028, false}, // N+1 after the flip
+		{"2029", 2027, 0, true},
+		{"2027", 0, 2027, false}, // no configured season: calendar year bounds it
+		{"2028", 0, 0, true},
+		{"2027", 2025, 2027, false}, // a season behind the calendar never lowers the bound
+	} {
+		got, err := transactionBackfillYear(tt.param, now, tt.season)
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("transactionBackfillYear(%q, season %d) = %d, %v; want %d, err=%v",
+				tt.param, tt.season, got, err, tt.want, tt.wantErr)
 		}
 	}
 }

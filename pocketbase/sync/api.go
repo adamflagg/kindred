@@ -2035,14 +2035,20 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 // means the configured season (0). Anything else must be a valid sync year no later than
 // next season: CampMinder already holds season N+1 while N is live, and the daily run
 // covers N+1, so an on-demand re-sync of it must not be refused.
-func transactionBackfillYear(param string, now time.Time) (int, error) {
+//
+// "Next season" is max(calendar year, configured season) + 1. The owner switches
+// CAMPMINDER_SEASON_ID to the upcoming season around mid-November, and from then until
+// January the daily run's N+1 is two calendar years ahead; a calendar-only bound would
+// refuse it. configured is 0 when the season cannot be read, leaving the calendar bound.
+func transactionBackfillYear(param string, now time.Time, configured int) (int, error) {
 	if param == "" {
 		return 0, nil
 	}
+	upper := max(now.Year(), configured) + 1
 	y, err := strconv.Atoi(param)
-	if err != nil || !ValidSyncYear(y) || y > now.Year()+1 {
+	if err != nil || !ValidSyncYear(y) || y > upper {
 		return 0, fmt.Errorf("invalid year parameter %q: must be between %d and %d",
-			param, syncYearMin, now.Year()+1)
+			param, syncYearMin, upper)
 	}
 	return y, nil
 }
@@ -2063,7 +2069,8 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 	}
 
 	// Parse optional year parameter for historical sync
-	year, err := transactionBackfillYear(e.Request.URL.Query().Get("year"), time.Now())
+	configured, _ := ParseSeasonYear() // 0 on error: the calendar year alone bounds ?year=
+	year, err := transactionBackfillYear(e.Request.URL.Query().Get("year"), time.Now(), configured)
 	if err != nil {
 		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 	}

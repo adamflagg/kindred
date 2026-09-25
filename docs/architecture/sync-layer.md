@@ -414,5 +414,6 @@ done
 
 `docker logs --since` accepts this RFC3339 form. The `year=$y([[:space:]]|$)` anchor stops
 `year=201` from matching `year=2017` — `year` is always followed by a space (another `key=value`
-field) or end of line in both log lines (`api.go`'s `slog.Error`/`slog.Info` calls). Season N+1
-is accepted by the route; seasons after N+1 are refused.
+field) or end of line in both log lines (`api.go`'s `slog.Error`/`slog.Info` calls). The route
+accepts seasons up to `max(calendar year, CAMPMINDER_SEASON_ID) + 1`, so N+1 is still accepted
+after the season is switched ahead of the calendar in November; later seasons are refused.
