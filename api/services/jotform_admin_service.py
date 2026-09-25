@@ -506,10 +506,14 @@ class JotformAdminService:
         """Write one decision to the clicked filing and each sibling, blanking
         whatever link columns each one had set, then drop the roster cache once."""
         # The body wins: a write-in link sets the very key column the clear blanks.
-        await self.repository.update_submission(str(record.id), {**_cleared_links(record), **body})
-        for sibling in siblings:
-            await self.repository.update_submission(sibling.record_id, {**_cleared_links(sibling), **body})
-        _roster_changed()
+        # One write per row, not a transaction: a sibling write that fails
+        # leaves the rows before it decided, so the cache drops either way.
+        try:
+            await self.repository.update_submission(str(record.id), {**_cleared_links(record), **body})
+            for sibling in siblings:
+                await self.repository.update_submission(sibling.record_id, {**_cleared_links(sibling), **body})
+        finally:
+            _roster_changed()
         return JotformActionResult.model_validate(
             {
                 "action": action,

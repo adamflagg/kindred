@@ -604,3 +604,52 @@ class TestSimilarNameSuggestions:
         [suggestion] = (await _weekend(repo, scenario="scn_a")).write_in_link_suggestions
 
         assert suggestion.label == "Similar name: link to Emma Johnson's filing? (linked in the live board)"
+
+    @pytest.mark.asyncio
+    async def test_a_filing_with_no_name_reads_the_queue_and_gets_no_similar_name(self) -> None:
+        # A mapped form whose filer left every name field blank: no name to
+        # compare, so no similar name -- and the weekend's queue still reads.
+        repo = _repo(
+            fetch_submissions=[_sub("s39")],
+            fetch_answers=_answers("s39", "", ""),
+            fetch_live_write_ins=[_write_in("w1", "Emny")],
+        )
+
+        queue = await _weekend(repo)
+
+        assert queue.write_in_link_suggestions == []
+        assert len(queue.unmatched) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_closest_to_two_filers_is_suggested_to_neither(self) -> None:
+        # "Emny" is the closest write-in for both filers (each nametag "Emmy"):
+        # offering it to both would let two clicks merge two people onto it.
+        repo = _repo(
+            fetch_submissions=[_sub("s40"), _sub("s41")],
+            fetch_answers=[
+                *_answers("s40", "Emma", "Johnson", nametag="Emmy"),
+                *_answers("s41", "Olivia", "Chen", nametag="Emmy"),
+            ],
+            fetch_live_write_ins=[_write_in("w1", "Emny")],
+        )
+
+        assert (await _weekend(repo)).write_in_link_suggestions == []
+
+    @pytest.mark.asyncio
+    async def test_one_filers_two_filings_still_get_their_similar_name(self) -> None:
+        # The same filer twice is one person, not two claims on "Emny".
+        repo = _repo(
+            fetch_submissions=[_sub("s42"), _sub("s43")],
+            fetch_answers=[
+                *_answers("s42", "Emma", "Johnson", nametag="Emmy"),
+                *_answers("s43", "Emma", "Johnson", nametag="Emmy"),
+            ],
+            fetch_live_write_ins=[_write_in("w1", "Emny")],
+        )
+
+        suggestions = (await _weekend(repo)).write_in_link_suggestions
+
+        assert {(s.option_id, s.submission_id) for s in suggestions} == {
+            ("u_cedar/Emny", "6600000000000000042"),
+            ("u_cedar/Emny", "6600000000000000043"),
+        }

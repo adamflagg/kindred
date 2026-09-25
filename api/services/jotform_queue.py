@@ -228,6 +228,12 @@ def same_filer(a: QueueSubmission, b: QueueSubmission) -> bool:
     )
 
 
+def _filer_key(sub: QueueSubmission) -> tuple[object, ...]:
+    """Who filed `sub`, as `same_filer` groups filings: a nameless filing is its own."""
+    first, last = fold(sub.first), fold(sub.last)
+    return (sub.session_cm_id, first, last) if first and last else ("filing", sub.record_id)
+
+
 def waiting_siblings(sub: QueueSubmission, subs: Sequence[QueueSubmission]) -> list[QueueSubmission]:
     """The filer's other filings a link or ignore of `sub` also decides. One
     already decided -- auto, staff, ignored, write-in -- is left as it is."""
@@ -484,6 +490,10 @@ def _similar_write_in(sub: QueueSubmission, rows: Mapping[str, WriteInRow]) -> s
     """The one write-in whose name is closest to any of the filer's names, at
     Jaro-Winkler >= SIMILAR_THRESHOLD, or "" -- none that close, or a tie."""
     variants = _name_variants(sub)
+    if not variants:
+        # A filer who left every name blank: nothing to compare (and `max`
+        # below would raise on an empty sequence, failing the whole queue).
+        return ""
     scored = sorted(
         (
             (max(JaroWinkler.similarity(fold(row.occupant_name), name) for name in variants), option_id)
@@ -492,7 +502,7 @@ def _similar_write_in(sub: QueueSubmission, rows: Mapping[str, WriteInRow]) -> s
         ),
         reverse=True,
     )
-    if not variants or not scored or scored[0][0] < SIMILAR_THRESHOLD:
+    if not scored or scored[0][0] < SIMILAR_THRESHOLD:
         return ""
     if len(scored) > 1 and scored[1][0] >= scored[0][0]:
         return ""
@@ -525,7 +535,8 @@ def link_suggestions(
       - a filing still NEEDING A GUEST that the pre-selection picks it for.
     Where no exact tier finds any write-in for a filing, the one candidate
     whose name is closest to the filer's is offered as a SIMILAR NAME
-    (`_similar_write_in`) -- unless another filing's exact tier picks it.
+    (`_similar_write_in`) -- unless another filing's exact tier picks it,
+    or it is the closest for another filing too.
     """
     active = {s.write_in_key for s in linked if s.write_in_key}
     placed = {row.write_in_key for row in viewed if row.write_in_key in active}
@@ -551,6 +562,7 @@ def link_suggestions(
     }
 
     out: list[JotformWriteInLinkSuggestion] = []
+    similar_picks: list[tuple[str, QueueSubmission, str]] = []
 
     def suggest(option_id: str, sub: QueueSubmission, where: str, *, similar: bool = False) -> None:
         if copy_links.get(option_id, set()) - {sub.write_in_key}:
@@ -594,7 +606,7 @@ def link_suggestions(
         if not hits and not exact[sub.record_id]:
             similar = _similar_write_in(sub, similar_pool)
             if similar:
-                suggest(similar, sub, where, similar=True)
+                similar_picks.append((similar, sub, where))
 
     for sub in unlinked:
         picked = suggest_write_in(sub, options)
@@ -603,6 +615,16 @@ def link_suggestions(
         elif not exact[sub.record_id]:
             similar = _similar_write_in(sub, similar_pool)
             if similar:
-                suggest(similar, sub, "", similar=True)
+                similar_picks.append((similar, sub, ""))
+
+    # A write-in closest to two filers is no one's unique best hit: offering it
+    # to both would let two clicks merge two people onto one write-in. One
+    # filer's several filings (`same_filer`) are one claim, not several.
+    claimants: dict[str, set[tuple[object, ...]]] = defaultdict(set)
+    for option_id, sub, _ in similar_picks:
+        claimants[option_id].add(_filer_key(sub))
+    for option_id, sub, where in similar_picks:
+        if len(claimants[option_id]) == 1:
+            suggest(option_id, sub, where, similar=True)
 
     return sorted(out, key=lambda s: (fold(s.occupant_name), fold(s.filer_name)))

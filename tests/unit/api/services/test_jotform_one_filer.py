@@ -301,3 +301,20 @@ class TestUnlinkAndRestore:
 
         assert set(_writes(repo)) == {"s01"}
         assert result.also == []
+
+
+class TestAHalfAppliedDecision:
+    @pytest.mark.asyncio
+    async def test_a_failed_sibling_write_still_drops_the_roster_cache(self, background_warm: MagicMock) -> None:
+        # The clicked filing is written, then a sibling's write fails: the
+        # roster must not keep serving the clicked filing's old state.
+        clicked = _sub("s01")
+        repo = _repo(
+            clicked, [clicked, _sub("s02")], [*_answers("s01", "Emma", "Johnson"), *_answers("s02", "Emma", "Johnson")]
+        )
+        repo.update_submission = AsyncMock(side_effect=[None, RuntimeError("PocketBase unavailable")])
+
+        with pytest.raises(RuntimeError):
+            await JotformAdminService(repo).ignore("6600000000000000001", "staff@example.com")
+
+        background_warm.assert_called_once()
