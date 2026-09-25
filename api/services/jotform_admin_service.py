@@ -177,7 +177,9 @@ class JotformAdminService:
         pull keeps a staff role and flags it if that wording later moves. A
         role that had a question and was cleared is recorded as "staff chose
         none" -- dropped from the meta, the next pull would guess it straight
-        back."""
+        back. A staff role the pull flagged missing (its question left the
+        form, so the card cannot send it) keeps its staff pick, so the next
+        pull flags it again instead of it quietly becoming "chose none"."""
         sessions = await self.repository.fetch_adult_sessions(year)
         if not any(int(s.cm_id) == session_cm_id for s in sessions):
             raise JotformNotFoundError(f"No adult weekend with CampMinder id {session_cm_id} in {year}")
@@ -215,7 +217,19 @@ class JotformAdminService:
                 for role in JOTFORM_ROLES:
                     had_question = bool(str(before.get(role, "") or "").strip())
                     was_staff = role in before_meta and before_meta[role].source == "staff"
-                    if role not in field_map and (had_question or was_staff):
+                    if role in field_map:
+                        continue
+                    if was_staff and before_meta[role].flag == "missing":
+                        # The pull dropped this staff role because its question
+                        # left the form, so the card could not send it. Keep the
+                        # staff pick: the next pull flags it missing again,
+                        # rather than it silently becoming "staff chose none".
+                        field_map_meta[role] = {
+                            "question_id": before_meta[role].question_id,
+                            "text": before_meta[role].text,
+                            "source": "staff",
+                        }
+                    elif had_question or was_staff:
                         field_map_meta[role] = {"question_id": "", "text": "", "source": "staff"}
         await self.repository.upsert_form(
             year=year,

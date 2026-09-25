@@ -93,6 +93,31 @@ describe('useJotformPull', () => {
     expect(result.current.isPulling).toBe(false)
   })
 
+  it('stops polling the sync status once that run has finished', async () => {
+    // useSyncStatusAPI: "The caller is responsible for dropping [forcePolling]
+    // again". Left on, every card polls every 3 s for as long as the tab is open.
+    const { result } = renderHook(() => useJotformPull(), { wrapper })
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith('/api/custom/sync/status', expect.anything())
+    )
+    await act(async () => {
+      await result.current.pull()
+    })
+    job = { status: 'success', end_time: '2026-09-24T09:00:00Z' }
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100)
+    })
+    await waitFor(() => expect(result.current.isPulling).toBe(false))
+
+    const statusCalls = () =>
+      send.mock.calls.filter((call: unknown[]) => call[0] === '/api/custom/sync/status').length
+    const before = statusCalls()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000)
+    })
+    expect(statusCalls()).toBe(before)
+  })
+
   it('does not watch a pull the server refused', async () => {
     send.mockImplementation((path: string) =>
       path === '/api/custom/sync/status'

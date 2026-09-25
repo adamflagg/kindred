@@ -108,8 +108,8 @@ export function useJotformSubmissionAction() {
 export function useJotformPull() {
   const runSync = useRunIndividualSync()
   const queryClient = useQueryClient()
-  // The job's end_time when this pull started; null before any pull, or once
-  // a watch has timed out.
+  // The job's end_time when this pull started; null when no pull is being
+  // watched (before any, once one finished, or once a watch timed out).
   const [since, setSince] = useState<string | null>(null)
   const { data: status } = useSyncStatusAPI({ forcePolling: since !== null })
   const job = status?.jotform_submissions
@@ -122,7 +122,12 @@ export function useJotformPull() {
   const watching = since !== null && !finished
 
   useEffect(() => {
-    if (finished) invalidateJotformQueries(queryClient)
+    if (!finished) return
+    invalidateJotformQueries(queryClient)
+    // Drop the watch, and with it forcePolling: useSyncStatusAPI leaves turning
+    // it off to the caller, and left on it polls every 3 s while the tab is open.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ending the watch the fetched status just reported finished; forcePolling reads it on the next render.
+    setSince(null)
   }, [finished, queryClient])
 
   useEffect(() => {

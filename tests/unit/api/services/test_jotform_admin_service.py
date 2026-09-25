@@ -187,6 +187,40 @@ class TestForms:
         assert "cpap" not in kwargs["field_map_meta"]
 
     @pytest.mark.asyncio
+    async def test_a_removed_staff_question_stays_flagged_across_an_unrelated_save(self) -> None:
+        # The pull drops a staff role whose question left the form and flags it
+        # "missing"; the card cannot send it (it is not in the effective map).
+        # An unrelated save must not turn that into "staff chose none", which
+        # hides the flag and leaves the role unset without anyone choosing.
+        form = SimpleNamespace(
+            **{
+                **vars(FORM),
+                "field_map": {"first_name": "3", "last_name": "4"},
+                "field_map_meta": {
+                    **FORM.field_map_meta,
+                    "bunking_request": {
+                        "question_id": "19",
+                        "text": "Bunking request",
+                        "source": "staff",
+                        "flag": "missing",
+                    },
+                },
+            }
+        )
+        repo = _repo(fetch_forms=[form])
+        await JotformAdminService(repo).save_form(
+            YEAR,
+            1000002,
+            JotformFormWrite(form_ref="261700000000001", field_map={"first_name": "3", "last_name": "4"}, enabled=True),
+        )
+        kwargs = repo.upsert_form.await_args.kwargs
+        assert kwargs["field_map_meta"]["bunking_request"] == {
+            "question_id": "19",
+            "text": "Bunking request",
+            "source": "staff",
+        }
+
+    @pytest.mark.asyncio
     async def test_saving_a_different_form_drops_the_old_forms_mapping(self) -> None:
         # Question ids belong to one form: carried onto another form they
         # would name the wrong questions (or none), so a new form starts blank.
