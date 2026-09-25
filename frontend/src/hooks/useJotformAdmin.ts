@@ -18,7 +18,12 @@ import {
   saveJotformForm,
   unlinkJotformSubmission,
 } from '../services/jotformApi'
-import type { JotformActionOutcome, JotformFormWriteBody } from '../types/jotform'
+import type {
+  JotformActionOutcome,
+  JotformFormWriteBody,
+  JotformQueue,
+  JotformQueueEntry,
+} from '../types/jotform'
 import { invalidateJotformQueries, queryKeys } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import { useRunIndividualSync } from './useRunIndividualSync'
@@ -101,15 +106,113 @@ export function useSaveJotformForm(year: number) {
 
 export type { JotformActionOutcome }
 
+const LISTS = ['unmatched', 'resolved', 'cancelled', 'write_ins'] as const
+
+/**
+ * The queue as it will read once `action` lands on `submissionIds`: each
+ * filing leaves whichever list holds it and joins the one the action puts it
+ * in, as the server's next read will (kindred#2839 follow-up). A read that
+ * does not hold the filing -- another weekend's -- comes back unchanged.
+ * Suggestions and pre-selections are left for the refetch to fill in.
+ */
+export function queueAfterAction(
+  queue: JotformQueue,
+  action: JotformAction,
+  submissionIds: readonly string[]
+): JotformQueue {
+  const moving = new Set(submissionIds)
+  const found: JotformQueueEntry[] = []
+  const next: JotformQueue = { ...queue }
+  for (const list of LISTS) {
+    const rows = queue[list] ?? []
+    if (!rows.some((row) => moving.has(row.submission_id))) continue
+    next[list] = rows.filter((row) => {
+      if (!moving.has(row.submission_id)) return true
+      found.push(row)
+      return false
+    })
+  }
+  if (found.length === 0) return queue
+  const cleared = {
+    person_cm_id: 0,
+    guest_name: '',
+    registration_status: '',
+    write_in_name: '',
+    write_in_unit: '',
+    write_in_placed: null,
+    suggestions: [],
+    write_in_suggestion: '',
+  }
+  let list: (typeof LISTS)[number]
+  let moved: (row: JotformQueueEntry) => JotformQueueEntry
+  if (action.kind === 'link') {
+    const guest = (queue.guests ?? []).find((g) => g.person_cm_id === action.personCmId)
+    list = 'resolved'
+    moved = (row) => ({
+      ...row,
+      ...cleared,
+      match_status: 'staff',
+      person_cm_id: action.personCmId,
+      guest_name: guest?.display_name ?? '',
+    })
+  } else if (action.kind === 'ignore') {
+    list = 'resolved'
+    moved = (row) => ({ ...row, ...cleared, match_status: 'ignored' })
+  } else if (action.kind === 'write_in') {
+    const option = (queue.write_in_options ?? []).find(
+      (o) => o.unit_id === action.unitId && o.occupant_name === action.occupantName
+    )
+    list = 'write_ins'
+    moved = (row) => ({
+      ...row,
+      ...cleared,
+      match_status: 'write_in',
+      write_in_name: action.occupantName,
+      write_in_unit: option?.unit_name ?? '',
+      // Linked from the viewed scenario's own write-ins, so placed in it; the
+      // year-wide read views no scenario.
+      write_in_placed: queue.session_cm_id != null ? true : null,
+    })
+  } else {
+    list = 'unmatched'
+    moved = (row) => ({
+      ...row,
+      ...cleared,
+      match_status: 'unmatched',
+      name_tiers: row.name_tiers ?? [],
+    })
+  }
+  next[list] = [...(next[list] ?? []), ...found.map(moved)]
+  return next
+}
+
+/** Every cached queue: each scenario's Requests tab, and the year's queue. */
+const QUEUE_READS = {
+  predicate: (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey[0] === 'jotform' &&
+    (query.queryKey[1] === 'queue' || query.queryKey[1] === 'weekend-queue'),
+}
+
 /**
  * `onDone` hears what each action did -- the same filer's other filings it
  * also moved, or null (kindred#2839 follow-up) -- so the tab can say so. It is
  * the hook's own callback, not `mutate`'s: the row that was clicked leaves
- * the list as the queue refetches, and a per-call callback would go with it.
+ * the list at once, and a per-call callback would go with it.
+ *
+ * Optimistic (kindred#2839 follow-up, "unlink feels slow"): the clicked
+ * filing moves in every cached queue before the POST, the filer's other
+ * filings the server names follow on its answer, and a refused action puts
+ * every cached queue back. The Jotform reads, roster and previews are then
+ * invalidated as before, and the refetch is what the tab settles on.
  */
 export function useJotformSubmissionAction(onDone?: (outcome: JotformActionOutcome) => void) {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
+  const move = (action: JotformAction, submissionIds: readonly string[]) => {
+    queryClient.setQueriesData<JotformQueue>(QUEUE_READS, (queue) =>
+      queue === undefined ? queue : queueAfterAction(queue, action, submissionIds)
+    )
+  }
   return useMutation({
     mutationFn: (action: JotformAction) => {
       if (action.kind === 'link')
@@ -125,11 +228,22 @@ export function useJotformSubmissionAction(onDone?: (outcome: JotformActionOutco
         )
       return unlinkJotformSubmission(fetchWithAuth, action.submissionId)
     },
-    onSuccess: (outcome) => {
+    onMutate: async (action) => {
+      // A refetch already in flight would land over the move with the old answer.
+      await queryClient.cancelQueries(QUEUE_READS)
+      const before = queryClient.getQueriesData<JotformQueue>(QUEUE_READS)
+      move(action, [action.submissionId])
+      return { before }
+    },
+    onSuccess: (outcome, action) => {
+      const also = (outcome?.also ?? []).map((filing) => filing.submission_id)
+      if (also.length > 0) move(action, also)
       invalidateJotformQueries(queryClient)
       onDone?.(outcome)
     },
-    onError: (error) => {
+    onError: (error, _action, context) => {
+      for (const [key, queue] of context?.before ?? []) queryClient.setQueryData(key, queue)
+      invalidateJotformQueries(queryClient)
       toast.error(
         error instanceof Error ? error.message : 'Failed to update the Jotform submission'
       )
