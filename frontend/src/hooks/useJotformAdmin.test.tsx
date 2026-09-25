@@ -191,3 +191,37 @@ describe('useJotformWeekendQueue (the weekend Requests tab)', () => {
     ).toBe(true)
   })
 })
+
+describe('useJotformSubmissionAction hands on what the action also moved (kindred#2839 follow-up)', () => {
+  it("passes the server's named siblings to the caller", async () => {
+    const outcome = {
+      action: 'linked',
+      also: [
+        {
+          submission_id: '6600000000000000002',
+          submitted_name: 'Emma Johnson',
+          submitted_at: '2026-08-09 09:00:00',
+        },
+      ],
+    }
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(outcome), { status: 200 }))
+    )
+    const onDone = vi.fn()
+    const { result } = renderHook(() => useJotformSubmissionAction(onDone), { wrapper })
+    result.current.mutate({
+      kind: 'link',
+      submissionId: '6600000000000000001',
+      personCmId: 1000005,
+    })
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(outcome))
+  })
+
+  it('passes null when the action moved only the clicked filing (a 204)', async () => {
+    fetchSpy.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })))
+    const onDone = vi.fn()
+    const { result } = renderHook(() => useJotformSubmissionAction(onDone), { wrapper })
+    result.current.mutate({ kind: 'ignore', submissionId: '6600000000000000001' })
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(null))
+  })
+})

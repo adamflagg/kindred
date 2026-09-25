@@ -3,6 +3,7 @@
  * so every call goes through `fetchWithAuth` — a bare fetch would 401.
  */
 import type {
+  JotformActionOutcome,
   JotformFormRowData,
   JotformFormsList,
   JotformFormWriteBody,
@@ -79,8 +80,17 @@ export async function fetchJotformWeekendQueue(
   return (await response.json()) as JotformQueue
 }
 
-async function post(fetchWithAuth: FetchWithAuth, url: string, body?: unknown): Promise<void> {
-  await ok(
+/**
+ * A staff action on a filing. A 200 names the same filer's other filings the
+ * action also moved (kindred#2839 follow-up: one filer, one decision); a 204
+ * means it moved only the one clicked.
+ */
+async function post(
+  fetchWithAuth: FetchWithAuth,
+  url: string,
+  body?: unknown
+): Promise<JotformActionOutcome> {
+  const response = await ok(
     await fetchWithAuth(url, {
       method: 'POST',
       ...(body === undefined
@@ -89,6 +99,9 @@ async function post(fetchWithAuth: FetchWithAuth, url: string, body?: unknown): 
     }),
     'Failed to update the Jotform submission'
   )
+  return response.status === 204
+    ? null
+    : ((await response.json()) as NonNullable<JotformActionOutcome>)
 }
 
 export function linkJotformSubmission(

@@ -18,7 +18,7 @@ import {
   saveJotformForm,
   unlinkJotformSubmission,
 } from '../services/jotformApi'
-import type { JotformFormWriteBody } from '../types/jotform'
+import type { JotformActionOutcome, JotformFormWriteBody } from '../types/jotform'
 import { invalidateJotformQueries, queryKeys } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 import { useRunIndividualSync } from './useRunIndividualSync'
@@ -99,7 +99,15 @@ export function useSaveJotformForm(year: number) {
   })
 }
 
-export function useJotformSubmissionAction() {
+export type { JotformActionOutcome }
+
+/**
+ * `onDone` hears what each action did -- the same filer's other filings it
+ * also moved, or null (kindred#2839 follow-up) -- so the tab can say so. It is
+ * the hook's own callback, not `mutate`'s: the row that was clicked leaves
+ * the list as the queue refetches, and a per-call callback would go with it.
+ */
+export function useJotformSubmissionAction(onDone?: (outcome: JotformActionOutcome) => void) {
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
   return useMutation({
@@ -117,8 +125,9 @@ export function useJotformSubmissionAction() {
         )
       return unlinkJotformSubmission(fetchWithAuth, action.submissionId)
     },
-    onSuccess: () => {
+    onSuccess: (outcome) => {
       invalidateJotformQueries(queryClient)
+      onDone?.(outcome)
     },
     onError: (error) => {
       toast.error(

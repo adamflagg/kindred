@@ -20,6 +20,7 @@ import { useState } from 'react'
 
 import { useJotformSubmissionAction, useJotformWeekendQueue } from '../../../hooks/useJotformAdmin'
 import type {
+  JotformActionOutcome,
   JotformDuplicateGroupRow,
   JotformGuestRow,
   JotformQueueEntry,
@@ -38,17 +39,36 @@ import {
   MUTED_PILL,
 } from './lodgingStyles'
 
+/** Hears what a staff action did, for the line under the tab's lists. */
+type OnDone = (outcome: JotformActionOutcome) => void
+
+/**
+ * One filer, one decision (kindred#2839 follow-up): an action also moves the
+ * same filer's other filings of the weekend, and this says which. "" when it
+ * moved only the filing clicked.
+ */
+function alsoLine(outcome: JotformActionOutcome): string {
+  const also = outcome?.also ?? []
+  const [first] = also
+  if (outcome === null || first === undefined) return ''
+  const dates = also.map((filing) => shortDate(filing.submitted_at)).join(', ')
+  const filings = also.length === 1 ? 'other filing' : 'other filings'
+  return `Also ${outcome.action} ${first.submitted_name}'s ${filings} (${dates})`
+}
+
 function UnmatchedItem({
   item,
   guests,
   writeIns,
+  onDone,
 }: {
   item: JotformQueueEntry
   guests: readonly JotformGuestRow[]
   /** This weekend's board write-ins, already filtered to its session. */
   writeIns: readonly JotformWriteInChoice[]
+  onDone: OnDone
 }) {
-  const action = useJotformSubmissionAction()
+  const action = useJotformSubmissionAction(onDone)
   const [chosen, setChosen] = useState('')
   // Pre-selected when a write-in's name matches the filer's; staff can pick any.
   const [chosenWriteIn, setChosenWriteIn] = useState(item.write_in_suggestion ?? '')
@@ -261,6 +281,7 @@ function ResolvedList({
   rows,
   detail,
   undoable = true,
+  onDone,
 }: {
   testId: string
   title: string
@@ -269,8 +290,9 @@ function ResolvedList({
   detail?: (item: JotformQueueEntry) => string
   /** False for a list that asks nothing of staff (cancelled registrations). */
   undoable?: boolean
+  onDone: OnDone
 }) {
-  const action = useJotformSubmissionAction()
+  const action = useJotformSubmissionAction(onDone)
   return (
     <section data-testid={testId} className="card-lodge p-4">
       <h3 className={GROUP_HEADING}>{`${title} (${String(rows.length)})`}</h3>
@@ -320,8 +342,14 @@ function ResolvedList({
  * is linked in another scenario or on the live board, or one still needing a
  * guest. A label and a Link button each; nothing links until staff click.
  */
-function SuggestedLinks({ rows }: { rows: readonly JotformWriteInLinkSuggestionRow[] }) {
-  const action = useJotformSubmissionAction()
+function SuggestedLinks({
+  rows,
+  onDone,
+}: {
+  rows: readonly JotformWriteInLinkSuggestionRow[]
+  onDone: OnDone
+}) {
+  const action = useJotformSubmissionAction(onDone)
   return (
     <section data-testid="jotform-suggested-links" className="card-lodge p-4">
       <h3 className={GROUP_HEADING}>{`Suggested links (${String(rows.length)})`}</h3>
@@ -395,6 +423,10 @@ export function JotformQueue({
   scenario: string
 }) {
   const queue = useJotformWeekendQueue(year, sessionCmId, scenario)
+  const [also, setAlso] = useState('')
+  const onDone: OnDone = (outcome) => {
+    setAlso(alsoLine(outcome))
+  }
   return (
     <QueryGuard
       isLoading={queue.isLoading || year <= 0}
@@ -421,6 +453,7 @@ export function JotformQueue({
         const suggestedLinks = data.write_in_link_suggestions ?? []
         return (
           <div className="flex flex-col gap-4">
+            {also !== '' && <p className="text-muted-foreground text-sm">{also}</p>}
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <section className="card-lodge p-4">
                 <h3 className={GROUP_HEADING}>{`Needs a guest (${String(unmatched.length)})`}</h3>
@@ -439,6 +472,7 @@ export function JotformQueue({
                         item={item}
                         guests={data.guests ?? []}
                         writeIns={writeInChoices}
+                        onDone={onDone}
                       />
                     ))}
                   </ul>
@@ -450,13 +484,21 @@ export function JotformQueue({
                 )}
               </section>
               <div className="flex flex-col gap-4">
-                {suggestedLinks.length > 0 && <SuggestedLinks rows={suggestedLinks} />}
-                <ResolvedList testId="jotform-staff-links" title="Staff links" rows={staffLinks} />
+                {suggestedLinks.length > 0 && (
+                  <SuggestedLinks rows={suggestedLinks} onDone={onDone} />
+                )}
+                <ResolvedList
+                  testId="jotform-staff-links"
+                  title="Staff links"
+                  rows={staffLinks}
+                  onDone={onDone}
+                />
                 <ResolvedList
                   testId="jotform-write-ins"
                   title="Write-ins"
                   rows={writeIns}
                   detail={(item) => writeInDetail(item, scenario)}
+                  onDone={onDone}
                 />
                 <ResolvedList
                   testId="jotform-cancelled"
@@ -467,8 +509,14 @@ export function JotformQueue({
                     return status === '' ? 'cancelled' : status
                   }}
                   undoable={false}
+                  onDone={onDone}
                 />
-                <ResolvedList testId="jotform-ignored" title="Ignored" rows={ignored} />
+                <ResolvedList
+                  testId="jotform-ignored"
+                  title="Ignored"
+                  rows={ignored}
+                  onDone={onDone}
+                />
               </div>
             </div>
 
