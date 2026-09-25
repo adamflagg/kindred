@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from bunking.financial_aid.calculator.income import household_income
+from bunking.financial_aid.calculator.inputs import ApplicationInputs
 from bunking.financial_aid.rules.schema import AidRules
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, with_lever, with_levers
 
@@ -144,3 +145,27 @@ def test_the_trace_names_each_step_and_the_parts_are_exposed() -> None:
     assert [s.key for s in result.trace] == ["weighted_income", "income_adjustments", "adjusted_income"]
     assert result.medical_excess == Decimal(1000)
     assert result.adjusted_income == Decimal(59000)
+
+
+def test_the_trace_records_the_prior_year_figure_actually_used_and_the_weights() -> None:
+    rules = with_lever(fictional_rules(), "income.basis", "agi")
+    result = household_income(app(prior_year_gross="100000", prior_year_agi="90000", current_year_gross="50000"), rules)
+    step = result.trace[0]
+    assert step.inputs["prior_year"] == Decimal(90000)
+    assert step.inputs["weight_prior"] == Decimal("0.7")
+    assert step.inputs["weight_current"] == Decimal("0.3")
+    assert step.inputs["basis"] == "agi"
+    assert step.inputs["override_mode"] is None
+
+
+def test_a_household_with_no_income_figures_is_explicitly_missing() -> None:
+    result = household_income(ApplicationInputs(), fictional_rules())
+    assert result.income_missing is True
+    assert "no income figures reported" in (result.trace[0].note or "")
+
+
+def test_explicit_zero_income_is_not_missing() -> None:
+    result = household_income(
+        ApplicationInputs(prior_year_gross=Decimal(0), current_year_gross=Decimal(0)), fictional_rules()
+    )
+    assert result.income_missing is False
