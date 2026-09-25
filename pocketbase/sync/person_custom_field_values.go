@@ -306,7 +306,14 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 			return nil, err
 		}
 
-		s.DebugLog("Resolved family-camp + adult-program bounded cohort to person IDs",
+		// The daily pass also keeps the financial-aid cohort's FA answers fresh (campership
+		// design §6.4). Awards roll all year, and FA answers are custom fields served one
+		// person per call, so they ride on this pass instead of a second job. The
+		// one-weekend branch above (Refresh Housing) stays family-camp only.
+		personIDs = withAidCohort(s.App, year, s.logJobName(), personIDs,
+			func(c aidCohort) []int { return c.personCMIDs })
+
+		s.DebugLog("Resolved bounded daily cohort (family camp + adult programs + aid) to person IDs",
 			"count", len(personIDs),
 			"year", year)
 

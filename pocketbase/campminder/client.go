@@ -21,9 +21,22 @@ import (
 const (
 	baseURL = "https://api.campminder.com"
 
-	// maxRequestRetries caps retries on HTTP 429 responses for both regular
-	// requests (makeRequestWithURLRetry) and auth requests (authenticateAtURL).
+	// maxRequestRetries caps retries on HTTP 429 responses for regular requests
+	// (makeRequestWithURLRetry), auth requests (authenticateAtURL), and every
+	// makeRequest/makeRequestWithTimeout call (doRequest).
 	maxRequestRetries = 10
+
+	// rateLimitBaseBackoff is makeRequest's first wait after a 429 whose body carries no
+	// "Try again in N seconds" hint; each further unhinted 429 doubles it.
+	rateLimitBaseBackoff = 5 * time.Second
+	// rateLimitMaxBackoff caps an unhinted wait. A hinted wait is honored as given, up to
+	// rateLimitMaxHintedWait, the same as authenticateAtURL and makeRequestWithURLRetry do.
+	rateLimitMaxBackoff = 60 * time.Second
+	// rateLimitMaxHintedWait caps a hinted wait so a malformed or absurd CampMinder hint
+	// (e.g. "Try again in 999999 seconds") can't sleep for days. Deliberately larger than
+	// rateLimitMaxBackoff so a genuine long hint (e.g. 90s) is still honored in full instead
+	// of being truncated into an immediate re-429.
+	rateLimitMaxHintedWait = 5 * time.Minute
 
 	// CampMinder query-parameter names, repeated across nearly every request
 	// this client makes. Named so a typo becomes a compile-time reference
@@ -324,19 +337,32 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 	return body, nil
 }
 
-// makeRequest makes an authenticated API request
+// makeRequest makes an authenticated API request with the client's default timeout.
 func (c *Client) makeRequest(method, endpoint string, params map[string]string) ([]byte, error) {
-	if err := c.ensureAuthenticated(); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
-	}
+	return c.doRequest(c.httpClient, method, endpoint, params)
+}
 
-	// Build URL with parameters
+// makeRequestWithTimeout is makeRequest with its own deadline for this one call. The shallow
+// copy shares the parent's Transport (and so its connection pool) and changes only Timeout,
+// so one slow endpoint does not lengthen every other request's deadline.
+func (c *Client) makeRequestWithTimeout(
+	method, endpoint string, params map[string]string, timeout time.Duration,
+) ([]byte, error) {
+	hc := *c.httpClient
+	hc.Timeout = timeout
+	return c.doRequest(&hc, method, endpoint, params)
+}
+
+// doRequest sends one API request, retrying on HTTP 429 up to maxRequestRetries times
+// (rateLimitWait sets each wait). The exhausted-cap error keeps "429" and "rate limit",
+// which ratelimit.RateLimiter.HandleError matches, so the custom-values syncs' outer retry
+// still recognizes it.
+func (c *Client) doRequest(hc *http.Client, method, endpoint string, params map[string]string) ([]byte, error) {
 	base := baseURL
 	if c.apiBaseURL != "" {
 		base = c.apiBaseURL
 	}
 	fullURL := fmt.Sprintf("%s/%s", base, strings.TrimPrefix(endpoint, "/"))
-
 	if len(params) > 0 && method == "GET" {
 		values := url.Values{}
 		for k, v := range params {
@@ -345,48 +371,61 @@ func (c *Client) makeRequest(method, endpoint string, params map[string]string) 
 		fullURL = fmt.Sprintf("%s?%s", fullURL, values.Encode())
 	}
 
+	for attempt := 0; ; attempt++ {
+		if err := c.ensureAuthenticated(); err != nil {
+			return nil, fmt.Errorf("authentication failed: %w", err)
+		}
+		req, err := c.newAPIRequest(method, fullURL, params)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := hc.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("request failed: %w", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if attempt >= maxRequestRetries {
+				return nil, fmt.Errorf("rate limit exceeded (429) after %d retries", maxRequestRetries)
+			}
+			wait := rateLimitWait(string(body), attempt)
+			slog.Warn("CampMinder rate limited",
+				"endpoint", endpoint, "wait", wait, "retry", attempt+1, "max_retries", maxRequestRetries)
+			sleepFn(wait)
+			continue
+		}
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		}
+		return body, nil
+	}
+}
+
+// newAPIRequest builds one attempt's request. A POST/PUT body is rebuilt on every attempt
+// because a sent body has been consumed.
+func (c *Client) newAPIRequest(method, fullURL string, params map[string]string) (*http.Request, error) {
 	var req *http.Request
 	var err error
-
 	if method == "GET" {
 		req, err = http.NewRequestWithContext(context.Background(), method, fullURL, http.NoBody)
 	} else {
-		// For POST/PUT, send params as JSON body
 		jsonBody, _ := json.Marshal(params)
 		req, err = http.NewRequestWithContext(context.Background(), method, fullURL, bytes.NewBuffer(jsonBody))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
 	}
-
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	req.Header.Set("Ocp-Apim-Subscription-Key", c.subscriptionKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	// Check for rate limiting
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("rate limit exceeded (429)")
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
-	}
-
-	return body, nil
+	return req, nil
 }
 
 // sessionsPageSize is the page size used by GetSessions and GetSessionGroups.
@@ -697,27 +736,48 @@ func (c *Client) CloneWithYear(year int) *Client {
 	return newClient
 }
 
-// parseRateLimitSeconds extracts the wait time from a rate limit error message
-// Example: "Rate limit is exceeded. Try again in 60 seconds."
-func (c *Client) parseRateLimitSeconds(body string) int {
-	// First try the JSON format response
+// parseRateLimitHint extracts N from CampMinder's "Rate limit is exceeded. Try again in N
+// seconds." 429 body, sent either plain or as {"message": "..."}.
+func parseRateLimitHint(body string) (int, bool) {
 	var jsonResp struct {
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal([]byte(body), &jsonResp); err == nil && jsonResp.Message != "" {
 		body = jsonResp.Message
 	}
-
-	// Try to extract number from "Try again in X seconds"
 	var seconds int
 	pattern := "Rate limit is exceeded. Try again in %d seconds."
 	if _, err := fmt.Sscanf(body, pattern, &seconds); err == nil && seconds > 0 {
-		// Add 5 second buffer to ensure we're past the limit
+		return seconds, true
+	}
+	return 0, false
+}
+
+// parseRateLimitSeconds returns the hinted wait plus a 5 second buffer, or 60 seconds when
+// the body carries no hint. Used by the auth and pre-built-URL retry loops.
+func (c *Client) parseRateLimitSeconds(body string) int {
+	if seconds, ok := parseRateLimitHint(body); ok {
 		return seconds + 5
 	}
-
-	// Default to 60 seconds if we can't parse
 	return 60
+}
+
+// rateLimitWait is how long makeRequest sleeps before retry attempt+1: the hint plus a 5
+// second buffer when CampMinder sent one (clamped at rateLimitMaxHintedWait against a
+// malformed or absurd hint), otherwise 5s, 10s, 20s, 40s, then 60s.
+func rateLimitWait(body string, attempt int) time.Duration {
+	if seconds, ok := parseRateLimitHint(body); ok {
+		wait := time.Duration(seconds+5) * time.Second
+		if wait <= 0 || wait > rateLimitMaxHintedWait {
+			return rateLimitMaxHintedWait
+		}
+		return wait
+	}
+	wait := rateLimitBaseBackoff << attempt
+	if wait <= 0 || wait > rateLimitMaxBackoff {
+		return rateLimitMaxBackoff
+	}
+	return wait
 }
 
 // GetSessionGroups retrieves session groupings for the configured season,
@@ -1137,55 +1197,47 @@ func (c *Client) GetPaymentMethods() ([]map[string]any, error) {
 	return results, nil
 }
 
-// GetTransactionDetails retrieves financial transaction details from CampMinder
-// Endpoint: GET /financials/transactionreporting/transactiondetails
-// Parameters: season (required), includeReversals (optional, default false)
-// Returns: array of transactions with full detail (see TransactionDetail schema)
-// Note: Year-scoped data - uses seasonID
-// Note: This endpoint doesn't support pagination, so we fetch by month chunks
-// to avoid timeouts on large datasets (10,000+ transactions)
+// transactionDetailsTimeout is GetTransactionDetails' own deadline. One season is a single
+// ~19 MB response that took ~20 s when measured (2026-09-24), which the client's 30 s
+// default leaves too little room for. A var so a test can shorten it.
+var transactionDetailsTimeout = 120 * time.Second
+
+// GetTransactionDetails retrieves every transaction CampMinder files under one season.
+// Endpoint: GET /financials/transactionreporting/transactiondetails. The response is a bare,
+// unpaginated array.
+//
+// One call, no post-date bounds (campership design §6.1). The old month-by-month window
+// over Jan-Dec of the season lost every row posted in the preceding Nov-Dec (most of a
+// summer's tuition) and every late posting after Dec 31.
 func (c *Client) GetTransactionDetails(season int, includeReversals bool) ([]map[string]any, error) {
-	var allResults []map[string]any
-
-	// Fetch transactions month by month to avoid timeout on large datasets
-	// Camp season typically runs Jan-Dec, so we cover the full year
-	for month := 1; month <= 12; month++ {
-		// Calculate month date range
-		startDate := time.Date(season, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
-		endDate := startDate.AddDate(0, 1, -1) // Last day of month
-
-		params := map[string]string{
-			paramClientID:      c.clientID,
-			"season":           strconv.Itoa(season),
-			"includeReversals": strconv.FormatBool(includeReversals),
-			"postDateStart":    startDate.Format("2006-01-02"),
-			"postDateEnd":      endDate.Format("2006-01-02"),
-		}
-
-		slog.Info("Fetching transactions", "month", fmt.Sprintf("%d/12", month), "year", season)
-
-		body, err := c.makeRequest("GET", "financials/transactionreporting/transactiondetails", params)
-		if err != nil {
-			return nil, fmt.Errorf("fetch transactions for month %d: %w", month, err)
-		}
-
-		results, err := c.parseTransactionResponse(body)
-		if err != nil {
-			return nil, fmt.Errorf("parse transactions for month %d: %w", month, err)
-		}
-
-		allResults = append(allResults, results...)
-		slog.Info("Fetched transactions",
-			"month", fmt.Sprintf("%d/12", month),
-			"batch", len(results),
-			"total", len(allResults))
+	params := map[string]string{
+		paramClientID:      c.clientID,
+		"season":           strconv.Itoa(season),
+		"includeReversals": strconv.FormatBool(includeReversals),
 	}
 
-	return allResults, nil
+	slog.Info("Fetching transactions", "season", season)
+	body, err := c.makeRequestWithTimeout(
+		"GET", "financials/transactionreporting/transactiondetails", params, transactionDetailsTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("fetch transactions for season %d: %w", season, err)
+	}
+
+	results, err := c.parseTransactionResponse(body)
+	if err != nil {
+		return nil, fmt.Errorf("parse transactions for season %d: %w", season, err)
+	}
+	slog.Info("Fetched transactions", "season", season, "count", len(results))
+	return results, nil
 }
 
 // parseTransactionResponse parses the transaction details API response
 // CampMinder uses inconsistent casing across endpoints
+//
+// A wrapped response whose TotalCount exceeds the rows it carries is a page of the season,
+// not the season, and is an error. Returned as if complete, the sync would store it as the
+// whole season and could run the orphan sweep on it -- the sweep's count guard refuses only
+// a response FAR shorter than what is stored. The error fails that season before its sweep.
 func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error) {
 	// Try PascalCase paginated response
 	var pascalResponse struct {
@@ -1193,7 +1245,7 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 		Results    []map[string]any `json:"Results"`
 	}
 	if err := json.Unmarshal(body, &pascalResponse); err == nil && pascalResponse.Results != nil {
-		return pascalResponse.Results, nil
+		return completeTransactionResults(pascalResponse.TotalCount, pascalResponse.Results)
 	}
 
 	// Try camelCase with singular result
@@ -1202,7 +1254,7 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 		Result     []map[string]any `json:"result"`
 	}
 	if err := json.Unmarshal(body, &camelResponse); err == nil && camelResponse.Result != nil {
-		return camelResponse.Result, nil
+		return completeTransactionResults(camelResponse.TotalCount, camelResponse.Result)
 	}
 
 	// Try camelCase with plural results
@@ -1211,7 +1263,7 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 		Results    []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(body, &camelPluralResponse); err == nil && camelPluralResponse.Results != nil {
-		return camelPluralResponse.Results, nil
+		return completeTransactionResults(camelPluralResponse.TotalCount, camelPluralResponse.Results)
 	}
 
 	// Fall back to raw array response
@@ -1221,4 +1273,13 @@ func (c *Client) parseTransactionResponse(body []byte) ([]map[string]any, error)
 	}
 
 	return results, nil
+}
+
+// completeTransactionResults returns rows, or an error when totalCount says the response
+// holds only part of the season. A totalCount of 0 means the field was absent.
+func completeTransactionResults(totalCount int, rows []map[string]any) ([]map[string]any, error) {
+	if totalCount > len(rows) {
+		return nil, fmt.Errorf("partial transaction details response: %d of %d rows", len(rows), totalCount)
+	}
+	return rows, nil
 }

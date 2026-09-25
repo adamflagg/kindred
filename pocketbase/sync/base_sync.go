@@ -237,7 +237,7 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
 // exempt rather than overlooked -- it builds its key set upstream of the transform
 // that rejects, so nothing is ever missing from it. The reasoning is at that
-// function. Nine OTHER services carry their own deleteOrphans without embedding
+// function. Ten OTHER services carry their own deleteOrphans without embedding
 // this type at all and are out of reach entirely; see OrphanSweepGuard's doc.
 //
 // The count is service-scoped, not collection-scoped, so in a service that syncs
@@ -687,11 +687,12 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 	// Extract year from recordData - required for year isolation. A missing or
 	// malformed year means recordData itself is malformed -- a rejection, not an
 	// infrastructure failure -- so it's wrapped in errRejectedRecord for the call
-	// site (kindred#2292). Every one of ProcessSimpleRecord's five callers builds
-	// "year" locally from s.Client.GetSeasonID(), never from raw upstream data, so
-	// this path is defensive today rather than reachable; it is typed correctly
-	// regardless, for the same reason a function's error return is not scoped to
-	// what its current callers happen to pass.
+	// site (kindred#2292). Four of ProcessSimpleRecord's callers build "year" locally
+	// from the client's season. financial_transactions takes CampMinder's own
+	// per-row season instead, with the requested season as a fallback for a row
+	// that omits it, so this path is still defensive rather than reachable; it is
+	// typed correctly regardless, for the same reason a function's error return is
+	// not scoped to what its current callers happen to pass.
 	yearValue, ok := recordData["year"]
 	if !ok {
 		return fmt.Errorf("%w: recordData missing required 'year' field", errRejectedRecord)

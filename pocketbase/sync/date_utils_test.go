@@ -1,7 +1,9 @@
 package sync
 
 import (
+	"errors"
 	"testing"
+	"time"
 )
 
 // TestParseDate_SharedFunction tests the shared ParseDate function that consolidates
@@ -184,5 +186,81 @@ func TestParseDate_ConsistentOutputFormat(t *testing.T) {
 		if len(got) != 20 { // "2006-01-02 15:04:05Z" is 20 chars
 			t.Errorf("ParseDate(%q) = %q, output should be 20 chars (got %d)", input, got, len(got))
 		}
+	}
+}
+
+// TestParseCampMinderInstant pins the Mountain-time reading of CampMinder's "Z"
+// timestamps (campership design §6.2) across both 2026 DST transitions. America/Denver:
+// MST (UTC-7) until 2026-03-08 02:00, MDT (UTC-6) until 2026-11-01 02:00.
+//
+// Named ParseCampMinderInstant, not the brief's literal ParseCampMinderTimestamp:
+// sync/lodging_session_attribution.go already declares a ParseCampMinderTimestamp
+// with a different signature ((s string) (time.Time, bool), for custom_values'
+// last_updated column) and a TestParseCampMinderTimestamp of its own. Both names
+// collide in this package. See preflight.md's a3 row for the rename note left for
+// Task 5.
+func TestParseCampMinderInstant(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input any
+		want  string
+	}{
+		{"winter is MST, +7h", "2026-01-15T12:00:00Z", "2026-01-15 19:00:00Z"},
+		{"summer is MDT, +6h, fraction dropped", "2026-07-01T12:00:00.363Z", "2026-07-01 18:00:00Z"},
+		{"last second before spring forward", "2026-03-08T01:59:59Z", "2026-03-08 08:59:59Z"},
+		{"first second after spring forward", "2026-03-08T03:00:00Z", "2026-03-08 09:00:00Z"},
+		{"last second before the repeated hour", "2026-11-01T00:59:59Z", "2026-11-01 06:59:59Z"},
+		// Review Focus 2: 01:30 happens twice. Go resolves it to the first (MDT) instant.
+		{"ambiguous fall-back hour resolves to the earlier instant", "2026-11-01T01:30:00Z", "2026-11-01 07:30:00Z"},
+		{"after fall back is MST again", "2026-11-01T02:00:00Z", "2026-11-01 09:00:00Z"},
+		{"evening posting crosses the UTC date and year", "2025-12-31T20:00:00Z", "2026-01-01 03:00:00Z"},
+		{"+00:00 is CampMinder's other zero-offset spelling", "2026-01-15T12:00:00+00:00", "2026-01-15 19:00:00Z"},
+		{"no zone at all is Mountain too", "2026-01-15T12:00:00", "2026-01-15 19:00:00Z"},
+		// Review Focus 3: a real, non-zero offset is honored as written.
+		{"explicit -05:00 is honored", "2026-01-15T12:00:00-05:00", "2026-01-15 17:00:00Z"},
+		{"explicit -06:00 in summer is honored", "2026-07-01T12:00:00-06:00", "2026-07-01 18:00:00Z"},
+		{"empty", "", ""},
+		{"nil", nil, ""},
+		{"not a string", 12345.0, ""},
+		{"garbage", "not-a-date", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ParseCampMinderInstant(tt.input); got != tt.want {
+				t.Errorf("ParseCampMinderInstant(%v) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoadCampMinderLocationFallsBackOnLoadFailure pins the fix-round-1 ruling: a
+// zoneinfo load failure must never crash the server (the sync package is imported by
+// main.go, so a package-level panic in campMinderLocation's initializer would take down
+// the whole PocketBase process at startup), and the fallback must be fixed MST
+// (UTC-7), not UTC -- off by at most one hour during DST, against 6-7 hours for UTC.
+func TestLoadCampMinderLocationFallsBackOnLoadFailure(t *testing.T) {
+	t.Parallel()
+	failing := func(string) (*time.Location, error) {
+		return nil, errors.New("no zoneinfo")
+	}
+
+	var loc *time.Location
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("loadCampMinderLocation panicked: %v", r)
+			}
+		}()
+		loc = loadCampMinderLocation(failing)
+	}()
+
+	if loc == nil {
+		t.Fatal("loadCampMinderLocation returned a nil location")
+	}
+	july := time.Date(2026, 7, 1, 12, 0, 0, 0, loc)
+	if _, offset := july.Zone(); offset != -7*60*60 {
+		t.Errorf("July offset = %ds, want %ds (fixed MST, -7h even in what would be MDT)", offset, -7*60*60)
 	}
 }

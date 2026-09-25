@@ -96,14 +96,15 @@ permanently unexportable), and deliberately does not pin the reverse.
 **The five global definition tables are ordinary rows now.** `person_tag_defs`,
 `custom_field_defs`, `staff_lookups`, `financial_lookups` and `divisions` are rows in
 `syncJobMeta` like any other job as of Stage 3 — they no longer come from a hand-written list.
-Each carries only `Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute` and nothing
-else: no `TriggerFullRun` (a historical replay must not re-sync current-year-client global data
-against a past season), no `TriggerPhaseRun` (`PhaseGlobal` is a classification the crons and
-`GetAllPhases()` use to group these rows, not something `Run Phase` can target — see the
-`PhaseGlobal` doc comment in `orchestrator.go`), and no `Gate` (neither `IS_DOCKER` nor
-`google.IsEnabled` has ever gated a global). `GetWeeklySyncJobs()` is now
-`jobsWithCadence(CadenceWeeklyGlobal)` over this same table rather than its own hand-written
-list.
+Four of the five carry only `Cadences: CadenceWeeklyGlobal, Triggers: TriggerIndividualRoute`
+and nothing else: no `TriggerFullRun` (a historical replay must not re-sync current-year-client
+global data against a past season), no `TriggerPhaseRun` (`PhaseGlobal` is a classification the
+crons and `GetAllPhases()` use to group these rows, not something `Run Phase` can target — see
+the `PhaseGlobal` doc comment in `orchestrator.go`), and no `Gate` (neither `IS_DOCKER` nor
+`google.IsEnabled` has ever gated a global). `financial_lookups` is the exception: it also
+carries `CadenceDaily` (campership SP1) and runs first in the daily queue. `GetWeeklySyncJobs()`
+is now `jobsWithCadence(CadenceWeeklyGlobal)` over this same table rather than its own
+hand-written list.
 
 **Exception — a SCOPED VARIANT skips several steps below.** A scoped variant (`Base` + `Scope`
 set, e.g. `person_custom_values_family_camp`) is a narrower-cohort instance of an existing
@@ -343,12 +344,91 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests \
 | Category           | Services                                                                                                                 | Notes                                                      |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
 | **Source Data**    | session_groups → sessions → attendees → persons → bunks → bunk_plans → bunk_assignments → staff → financial_transactions | Fetched from CampMinder API                                |
-| **Custom Values**  | person_custom_values → household_custom_values                                                                           | Expensive (1 API call per entity), run weekly or on-demand |
+| **Custom Values**  | person_custom_values → household_custom_values                                                                           | Expensive (1 API call per entity), run weekly or on-demand; plus a bounded daily pass (`*_family_camp` ids): persons are family-camp and adult-program attendees, households are family-camp only, and both add the financial-aid cohort (`aid_cohort.go`) |
 | **Derived Tables** | family_camp_derived, lodging_assignments, staff_skills, …                                                                | Computed from synced source data + custom values           |
 | **Processing**     | bunk_requests → process_requests                                                                                         | CSV import and AI processing                               |
+
+If the financial-aid cohort fails to load, the daily pass still runs for the family-camp cohort
+and logs an ERROR, but the run is **not** marked failed, so the admin card shows success — check
+the logs.
 
 **Key ordering rules:**
 
 1. **Source → Derived**: All derived tables (`family_camp_derived`, `lodging_assignments`, …) run AFTER source data syncs
 2. **Custom values → Derived**: When `IncludeCustomValues=true` (historical sync), custom values run BEFORE derived tables
 3. **Sequential custom values**: Custom values syncs run sequentially (not parallel) to prevent context deadline issues from concurrent API rate limiting
+
+### Financial transactions: rolling seasons and the one-off backfill
+
+The daily cron's `financial_transactions` re-syncs seasons **N−1, N and N+1** around
+`CAMPMINDER_SEASON_ID`, one `transactiondetails` call per season with no post-date bounds
+(campership design §6.1). `year` is CampMinder's per-row season. A season whose response is
+empty or far shorter than what is stored is **not swept**. The run fails with
+"orphan sweep refused" instead. A historical replay and the `?year=` route sync one season only.
+
+> **Owner note:** FA answers sync only for the configured season, `CAMPMINDER_SEASON_ID`.
+> Every custom-values fetch sends that season to CampMinder, and the daily pass, the weekly
+> full pass and the FA transform all run for it alone. So **next season's FA answers are not
+> synced at all** until the setting is switched to it. Switch it by the time FA applications
+> open (around mid-November). Switching it moves **every** season-scoped sync to the new
+> season, not just FA.
+
+**Backfill 2017–2026 (once, after the SP1 migrations deploy).** Use the existing route,
+**one season at a time**. The route runs the season in a background goroutine that is not
+registered as running, so parallel calls are not refused and would race each other. Avoid
+02:30–04:30 in the container's time zone (`TZ`, `America/Los_Angeles` by default), when the
+daily cron's rolling run touches N−1.
+
+The route requires `bunking.manage`, read from an app **user** (`is_admin` or
+`cached_permissions`). A `_superusers` token is refused: `RequirePermission` checks the
+user record's fields, which a superuser does not have. Take an admin user's token from a
+logged-in browser session (the `pocketbase_auth` entry in local storage), then:
+
+```bash
+TOKEN='<admin user token>'
+BASE='http://127.0.0.1:8090'          # inside the host that runs kindred-pocketbase
+# The loop runs in a subshell, so its `exit 1` stops the backfill without closing a pasted shell.
+(
+for y in $(seq 2017 2026); do
+  # Capture the start time before the request, so a retry of a failed season (within the
+  # same 10-minute window) can't match the PREVIOUS attempt's completed/failed line.
+  START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  if ! curl -fsS -X POST "$BASE/api/custom/sync/financial-transactions?year=$y" -H "Authorization: $TOKEN"; then
+    echo "Season $y: the request itself failed (token or year?). Stopping the backfill." >&2
+    exit 1
+  fi
+  echo
+  # Wait for this season's completion OR failure line, logged after $START. A failure
+  # stops the whole loop — re-run that season on its own before continuing. So does a
+  # season that logs neither within 60 minutes: it may never have started.
+  status=""
+  waited=0
+  while [ -z "$status" ]; do
+    if [ "$waited" -ge 3600 ]; then
+      echo "Season $y logged no completed/failed line within 60 minutes — it may never have started (e.g. \"baseClient is nil\"). Check the kindred-pocketbase logs since $START." >&2
+      exit 1
+    fi
+    sleep 15
+    waited=$((waited + 15))
+    line=$(docker logs --since "$START" kindred-pocketbase 2>&1 \
+        | grep -E "Financial transactions historical sync (completed|failed).*year=$y([[:space:]]|\$)" | tail -1)
+    if [ -n "$line" ]; then
+      case "$line" in
+        *failed*) status="failed" ;;
+        *completed*) status="completed" ;;
+      esac
+    fi
+  done
+  if [ "$status" = "failed" ]; then
+    echo "Season $y failed — stopping the backfill. Re-run year=$y on its own, then resume from $((y + 1))." >&2
+    exit 1
+  fi
+done
+)
+```
+
+`docker logs --since` accepts this RFC3339 form. The `year=$y([[:space:]]|$)` anchor stops
+`year=201` from matching `year=2017` — `year` is always followed by a space (another `key=value`
+field) or end of line in both log lines (`api.go`'s `slog.Error`/`slog.Info` calls). The route
+accepts seasons up to `max(calendar year, CAMPMINDER_SEASON_ID) + 1`, so N+1 is still accepted
+after the season is switched ahead of the calendar in November; later seasons are refused.
