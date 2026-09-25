@@ -32,6 +32,11 @@ jobs:
             [ "$state" != "UNKNOWN" ] && break
             sleep 10
           done
+          # A conflict is not the race: retrying cannot fix it, so say so at once.
+          if [ "$state" = "CONFLICTING" ]; then
+            echo "::error::PR has merge conflicts; resolve them (e.g. comment '@dependabot rebase'), then enable auto-merge"
+            exit 1
+          fi
           for attempt in 1 2 3; do
             gh pr merge --auto --squash "$PR_URL" && exit 0
             echo "::warning::enabling auto-merge failed (attempt ${attempt}/3); retrying"

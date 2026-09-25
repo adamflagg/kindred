@@ -26,7 +26,7 @@ def _merge_step() -> dict[str, Any]:
     return next(s for s in steps if "gh pr merge" in s.get("run", ""))
 
 
-def _run(tmp_path: Path, mergeable: list[str], merge_results: list[int]) -> tuple[int, list[str]]:
+def _run(tmp_path: Path, mergeable: list[str], merge_results: list[int]) -> tuple[int, list[str], str]:
     """Run the step with `gh` answering `mergeable` states then `merge_results` exit codes in order."""
     log = tmp_path / "calls.log"
     (tmp_path / "mergeable").write_text("\n".join(mergeable) + "\n")
@@ -54,11 +54,11 @@ esac
     }
     proc = subprocess.run(["bash", "-c", _merge_step()["run"]], env=env, capture_output=True, text=True)
     calls = log.read_text().splitlines() if log.exists() else []
-    return proc.returncode, calls
+    return proc.returncode, calls, proc.stdout + proc.stderr
 
 
 def test_waits_for_mergeability_before_enabling_auto_merge(tmp_path):
-    code, calls = _run(tmp_path, ["UNKNOWN", "UNKNOWN", "MERGEABLE"], [0])
+    code, calls, _ = _run(tmp_path, ["UNKNOWN", "UNKNOWN", "MERGEABLE"], [0])
     assert code == 0
     merges = [i for i, c in enumerate(calls) if c.startswith("gh pr merge")]
     views = [i for i, c in enumerate(calls) if c.startswith("gh pr view")]
@@ -68,22 +68,32 @@ def test_waits_for_mergeability_before_enabling_auto_merge(tmp_path):
 
 
 def test_retries_a_refused_enable(tmp_path):
-    code, calls = _run(tmp_path, ["MERGEABLE"], [1, 0])
+    code, calls, _ = _run(tmp_path, ["MERGEABLE"], [1, 0])
     assert code == 0
     assert sum(c.startswith("gh pr merge") for c in calls) == 2
     assert all("--auto --squash" in c for c in calls if c.startswith("gh pr merge"))
 
 
-def test_gives_up_loudly_after_bounded_retries(tmp_path):
-    code, calls = _run(tmp_path, ["MERGEABLE"], [1])
+def test_gives_up_loudly_after_three_attempts(tmp_path):
+    code, calls, out = _run(tmp_path, ["MERGEABLE"], [1])
     assert code != 0
-    assert 2 <= sum(c.startswith("gh pr merge") for c in calls) <= 5
+    assert sum(c.startswith("gh pr merge") for c in calls) == 3
+    assert "::error::could not enable auto-merge after 3 attempts" in out
+
+
+def test_conflicting_pr_fails_fast_without_merge_attempts(tmp_path):
+    """A conflict is not a race: retrying cannot help, and "merge once CI is green" is the wrong advice."""
+    code, calls, out = _run(tmp_path, ["CONFLICTING"], [0])
+    assert code != 0
+    assert not any(c.startswith("gh pr merge") for c in calls), calls
+    assert "::error::" in out
+    assert "conflict" in out.lower()
 
 
 def test_mergeability_wait_is_bounded(tmp_path):
-    code, calls = _run(tmp_path, ["UNKNOWN"], [0])
+    code, calls, _ = _run(tmp_path, ["UNKNOWN"], [0])
     views = sum(c.startswith("gh pr view") for c in calls)
-    assert views <= 20
+    assert views == 12
     # Still attempts the enable after the wait expires, rather than failing silently.
     assert any(c.startswith("gh pr merge") for c in calls)
     assert code == 0
