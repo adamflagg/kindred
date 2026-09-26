@@ -8,6 +8,7 @@ import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -46,7 +47,10 @@ def test_writes_one_row_to_aid_change_log() -> None:
     pb = MagicMock()
     _call(pb)
     assert COLLECTION == "aid_change_log"
-    assert _body(pb) == {
+    body = _body(pb)
+    # A lone change is an operation of one (sub-project 4a).
+    assert re.fullmatch(r"[a-z0-9]{15}", str(body.pop("operation_id")))
+    assert body == {
         "entity": "aid_decisions",
         "entity_id": "2027:1000001:1000002",
         "year": 2027,
@@ -55,6 +59,7 @@ def test_writes_one_row_to_aid_change_log() -> None:
         "after": {"round": 1, "amount": "1250.50"},
         "actor": "finance-lead@example.com",
         "reason": "Round 1 batch",
+        "persona": "",
     }
 
 
@@ -81,6 +86,14 @@ def test_dates_are_stored_as_iso_strings() -> None:
     stamp = datetime(2027, 3, 1, 17, 30, tzinfo=UTC)
     _call(pb, after={"decided_on": date(2027, 3, 1), "posted_at": stamp})
     assert _body(pb)["after"] == {"decided_on": "2027-03-01", "posted_at": "2027-03-01T17:30:00+00:00"}
+
+
+def test_a_nested_read_only_mapping_is_stored_as_an_object() -> None:
+    """Snapshots are typed Mapping at every depth; a nested non-dict Mapping
+    passes the key check, so it must encode rather than be refused."""
+    pb = MagicMock()
+    _call(pb, after={"tiers": MappingProxyType({"3": MappingProxyType({"round1_pct": Decimal(72)})})})
+    assert _body(pb)["after"] == {"tiers": {"3": {"round1_pct": "72"}}}
 
 
 def test_nan_is_refused_not_stored() -> None:
@@ -207,10 +220,11 @@ def test_a_failed_write_is_not_swallowed() -> None:
 def test_every_key_written_is_a_field_of_the_migration() -> None:
     """PocketBase drops an unknown key from a create body without an error, so
     a renamed field would silently lose history. Pin the helper's keys to the
-    migration that creates the collection (located by suffix: renumber-safe)."""
-    files = sorted(MIGRATIONS.glob("*_aid_change_log.js"))
-    assert len(files) == 1, files
-    declared = set(re.findall(r'name:\s*"([a-z_]+)"', files[0].read_text()))
+    migrations that create and extend the collection (located by name: renumber-safe)."""
+    files = sorted(MIGRATIONS.glob("*_aid_change_log*.js"))
+    # 1500000187 creates the collection; 1500000194 adds operation_id and persona.
+    assert len(files) >= 2, files
+    declared = {name for f in files for name in re.findall(r'name:\s*"([a-z_]+)"', f.read_text())}
     pb = MagicMock()
     _call(pb)
     missing = sorted(set(_body(pb)) - declared)

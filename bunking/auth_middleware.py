@@ -51,6 +51,11 @@ class AuthUser:
         self.groups = groups
         self.is_admin = is_admin
         self.permissions: set[str] = set()
+        # The admin "view as" persona applied to this request: its sorted
+        # permission codenames joined by commas, "none" for the empty persona,
+        # or None when no persona applied. email stays the real person, so a
+        # write under a persona records both (campership spec §14.4).
+        self.view_as: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert user to dictionary for JSON serialization."""
@@ -413,6 +418,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if decision.applied:
                 user.is_admin = decision.is_admin
                 user.permissions = set(decision.permissions)
+                user.view_as = ",".join(sorted(decision.permissions)) or "none"
 
         # Check if user is authenticated
         if not user:
