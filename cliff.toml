@@ -44,20 +44,27 @@ commit_parsers = [
     # `Revert "..."` is what GitHub's Revert button writes.
     { message = "^[Rr]evert", group = "<!-- 10 -->Reverts" },
 
+    # Security is a scope, not a type: `fix(pb,security)`, `build(deps,security)`.
+    # The type still says what changed (and drives the bump); the scope routes
+    # it here. Placed before the skips so CI and harness hardening appear too.
+    { field = "scope", pattern = "(^|,)security(,|$)", group = "<!-- 03 -->Security" },
+
     # All conventional commits by type
     { message = "^feat", group = "<!-- 00 -->Features" },
-    { message = "^fix", group = "<!-- 01 -->Bug Fixes" },
-    { message = "^perf", group = "<!-- 02 -->Performance" },
-    { message = "^refactor", group = "<!-- 03 -->Refactoring" },
-    { message = "^build", group = "<!-- 04 -->Build" },
-    { message = "^docs", group = "<!-- 05 -->Documentation" },
-    { message = "^style", group = "<!-- 06 -->Styling" },
-    { message = "^test", group = "<!-- 07 -->Testing" },
+    { message = "^improve", group = "<!-- 01 -->Improvements" },
+    { message = "^fix", group = "<!-- 02 -->Bug Fixes" },
+    { message = "^perf", group = "<!-- 04 -->Performance" },
+    { message = "^build", group = "<!-- 05 -->Dependencies & Build" },
+    # Includes dark groundwork: the early phases of a feature staff cannot use yet.
+    { message = "^refactor", group = "<!-- 06 -->Internal" },
 
-    # Always skip these. A release window holding only these has nothing to
-    # release: git-cliff bumps nothing, and release.yml says so.
+    # Never reach an image, so never reach the release notes. A release window
+    # holding only these has nothing to release: git-cliff bumps nothing, and
+    # release.yml says so.
     { message = "^chore", skip = true },
     { message = "^ci", skip = true },
+    { message = "^docs", skip = true },
+    { message = "^test", skip = true },
 
     # Catch-all for non-conventional commits (safety net so they appear under "Other"
     # instead of being silently dropped from changelog)

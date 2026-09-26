@@ -64,17 +64,18 @@ module.exports = {
     // Allowed types. cliff.toml must give each one a parser of its own, and
     // tests/unit/scripts/test_commit_type_config.py checks that it does.
     'type-enum': [2, 'always', [
-      'feat',     // New features → cliff: Features
-      'fix',      // Bug fixes → cliff: Bug Fixes
-      'perf',     // Performance → cliff: Performance
-      'refactor', // Refactoring → cliff: Refactoring
-      'docs',     // Documentation → cliff: Documentation
-      'style',    // Styling → cliff: Styling
-      'test',     // Testing → cliff: Testing
-      'build',    // Build system → cliff: Build
-      'chore',    // Maintenance → cliff: skipped
-      'ci',       // CI/CD → cliff: skipped
-      'revert',   // Reverting commits → cliff: Reverts
+      // Which one: docs/reference/commit-conventions.md.
+      'feat',     // Staff can do something new → Features (minor)
+      'improve',  // Something existing works or reads better → Improvements
+      'fix',      // The deployed app was wrong → Bug Fixes
+      'perf',     // Deployed app faster, same output → Performance
+      'build',    // Shipped deps, Dockerfiles, toolchain → Dependencies & Build
+      'refactor', // Nothing anyone can reach changes → Internal
+      'revert',   // Undoes a merged PR → Reverts
+      'docs',     // Documentation → skipped
+      'test',     // Tests only → skipped
+      'chore',    // Agent/dev tooling, dev-only deps → skipped
+      'ci',       // CI and release machinery → skipped
     ]],
 
     // Enforce lowercase for type and scope
