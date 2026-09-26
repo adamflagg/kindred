@@ -14,7 +14,7 @@ from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from bunking.financial_aid.rules.schema import Money
+from bunking.financial_aid.rules.schema import IncomeFigure, Money
 
 AnswerValue = str | int | Decimal | bool | None
 
@@ -44,8 +44,8 @@ class ApplicationInputs(_Input):
     calculator returns needs_input rather than pricing it (spec principle 5). A
     reported 0 is a real answer and is priced.
 
-    Expenses, savings and dependents left as None DO count as 0: a blank there means
-    the family has none, so 0 is the honest reading, not a guess.
+    Expenses, savings, dependents and `figures` left as None DO count as 0: a blank
+    there means the family has none, so 0 is the honest reading, not a guess.
     """
 
     household_cm_id: int | None = None
@@ -57,6 +57,8 @@ class ApplicationInputs(_Input):
     education_expenses: Decimal | None = None
     savings: Decimal | None = None
     dependents: int | None = Field(default=None, ge=0)
+    # Other synced figures, read only by the season's `income.extra_terms`.
+    figures: dict[IncomeFigure, Decimal | None] = Field(default_factory=dict)
     # Household-level equity answers, keyed by the criterion's `field` (e.g. "unemployment").
     answers: dict[str, AnswerValue] = Field(default_factory=dict)
     income_override: IncomeOverride | None = None
@@ -126,3 +128,5 @@ class RequestInputs(_Input):
     decision_type: str | None = None
     discretionary_amount: Money = Decimal(0)
     r1_decided_at: AwareDatetime | None = None
+    # When Round 2 (the appeal) was decided; None while it is still open.
+    r2_decided_at: AwareDatetime | None = None

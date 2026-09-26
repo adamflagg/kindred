@@ -210,16 +210,21 @@ async def test_only_an_approved_section_locks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_new_version_copies_the_document_and_keeps_approvals_unlocked() -> None:
+async def test_a_new_version_copies_the_document_and_keeps_approvals_and_locks() -> None:
+    # Changed specification (staff call 2026-09-25): a mid-season version keeps every lock
+    # it is not told to lift, so re-setting Round 2 never re-opens Round 1.
     service = _service()
     await service.create_version(fictional_rules(), actor=FINANCE)
-    await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
-    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    for section in ("income", "tiers"):
+        await service.approve_section(2031, 1, section, actor=FINANCE, note=None)
+        await service.lock_section(2031, 1, section, actor=FINANCE)
     created = await service.new_version(2031, 1, actor=FINANCE)
     assert (created.version, created.parent_year, created.parent_version) == (2, 2031, 1)
     assert created.document == fictional_rules()
-    assert created.section_status["income"].state == "approved"
-    assert created.section_status["tiers"].state == "draft"
+    assert created.section_status["income"].state == "locked"
+    assert created.section_status["equity"].state == "draft"
+    unlocked = await service.new_version(2031, 2, actor=FINANCE, unlock=["income"])
+    assert (unlocked.section_status["income"].state, unlocked.section_status["tiers"].state) == ("approved", "locked")
 
 
 @pytest.mark.asyncio

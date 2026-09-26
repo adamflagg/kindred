@@ -17,8 +17,11 @@ from bunking.financial_aid.rules.schema import (
     EquitySection,
     IncomeSection,
     ProgramProfile,
+    QualityCheck,
+    R1Percent,
+    Round2Table,
     StageDef,
-    TierPercents,
+    TotalPercent,
 )
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever
 
@@ -70,10 +73,18 @@ def test_an_income_weight_above_one_is_rejected() -> None:
         IncomeSection.model_validate({**_INCOME, "weights": {"prior_year": "1.2", "current_year": "0"}})
 
 
-@pytest.mark.parametrize(("r1", "total"), [("101", "100"), ("50", "100.5"), ("-1", "10")])
-def test_percentages_stay_between_0_and_100(r1: str, total: str) -> None:
+@pytest.mark.parametrize("pct", ["101", "100.5", "-1"])
+def test_percentages_stay_between_0_and_100(pct: str) -> None:
     with pytest.raises(ValidationError):
-        TierPercents.model_validate({"r1_pct": r1, "total_pct": total})
+        R1Percent.model_validate({"r1_pct": pct})
+    with pytest.raises(ValidationError):
+        TotalPercent.model_validate({"total_pct": pct})
+
+
+def test_a_round_1_table_carries_no_round_2_percentage() -> None:
+    # The total (appeal cap) % is a Round 2 lever and lives in round2.tables (spec 7.1).
+    with pytest.raises(ValidationError, match="total_pct"):
+        AwardTable.model_validate({"tiers": {"1": {"r1_pct": "50", "total_pct": "60"}}})
 
 
 def test_a_negative_equity_weight_is_rejected() -> None:
@@ -121,14 +132,15 @@ def test_stage_round_is_bounded_1_to_3() -> None:
 
 
 def test_a_table_either_lists_tiers_or_inherits_and_overrides() -> None:
-    row = {"r1_pct": "50", "total_pct": "60"}
+    row = {"r1_pct": "50"}
     with pytest.raises(ValidationError, match="overrides"):
         AwardTable.model_validate({"tiers": {"1": row}, "overrides": {"1": {"r1_pct": "40"}}})
     with pytest.raises(ValidationError, match="tiers"):
         AwardTable.model_validate({"inherits": "camp", "tiers": {"1": row}})
     inheriting = AwardTable.model_validate({"inherits": "camp", "overrides": {"2": {"r1_pct": "40"}}})
     assert inheriting.overrides[2].r1_pct == Decimal(40)
-    assert inheriting.overrides[2].total_pct is None
+    with pytest.raises(ValidationError, match="tiers"):
+        Round2Table.model_validate({"inherits": "camp", "tiers": {"1": {"total_pct": "60"}}})
 
 
 def test_program_tables_may_be_null_meaning_no_table() -> None:
@@ -136,7 +148,6 @@ def test_program_tables_may_be_null_meaning_no_table() -> None:
         {
             "label": "Adult weekend",
             "r1_table": None,
-            "r2_table": "family",
             "equity_class": "family",
             "budget_pool": "weekend_pool",
             "cost_source": "catalog",
@@ -150,7 +161,7 @@ def test_program_tables_may_be_null_meaning_no_table() -> None:
 def test_a_program_must_say_which_tables_it_uses() -> None:
     with pytest.raises(ValidationError, match="r1_table"):
         ProgramProfile.model_validate(
-            {"label": "Summer", "r2_table": "camp", "equity_class": None, "budget_pool": None, "cost_source": "catalog"}
+            {"label": "Summer", "equity_class": None, "budget_pool": None, "cost_source": "catalog"}
         )
 
 
@@ -220,8 +231,21 @@ _SCHEMA_TYPE_CHECKS: list[tuple[str, Any, Any]] = [
     ("awards.decision_types.appeal_top_up.kind", "gift", "top_up"),
     ("awards.decision_types.appeal_top_up.amount", None, "125"),
     ("awards.decision_types.full_cost_program.extra_amount", "-1", "20"),
-    ("quality_checks.checks.income_above.severity", "fatal", "block"),
+    ("quality_checks.checks.income_above.severity", "block", "hold"),
+    ("awards.decision_types.appeal_top_up.counts_toward_budget", "maybe", False),
 ]
+
+
+def test_a_quality_check_holds_unless_the_season_says_warn() -> None:
+    # Owner ruling 2026-09-25: every check holds by default and may be made a warning.
+    assert QualityCheck().severity == "hold"
+
+
+def test_a_decision_type_counts_toward_the_budget_and_is_stopped_by_the_ceiling_by_default() -> None:
+    decision = DecisionType.model_validate(
+        {"label": "Top-up", "kind": "top_up", "round": 3, "amount": "10", "budget_line": "t"}
+    )
+    assert (decision.counts_toward_budget, decision.ceiling_exempt) == (True, False)
 
 
 @pytest.mark.parametrize(("path", "bad", "good"), _SCHEMA_TYPE_CHECKS)

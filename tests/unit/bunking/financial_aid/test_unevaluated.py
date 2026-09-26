@@ -100,7 +100,7 @@ def test_after_a_round_1_rules_error_no_round_blames_the_cost() -> None:
         fictional_rules(),
         {
             "programs.summer.r1_table": "no_such_table",
-            "awards.total_cap": {"pct_of_cost": "100", "include_grants": True},
+            "round2.total_cap": {"pct_of_cost": "100", "include_grants": True},
             "round3.max_total_pct_of_cost": "100",
         },
     )

@@ -53,6 +53,16 @@ def test_the_late_grant_policy(policy: str, counted: str, codes: list[str]) -> N
     assert [i.code for i in issues] == codes
 
 
+def test_the_late_grant_flag_is_information_only() -> None:
+    # A late grant never reduces an award already offered (spec section 2 item 17), so the
+    # flag must not invite finance to recalculate one.
+    request = req(r1_decided_at=DECIDED, grants_applicable=[_grant("600", recorded_at=LATE)])
+    (issue,) = grants_offset(request, fictional_rules())[1]
+    assert (issue.code, issue.severity) == ("late_grant", "warn")
+    assert "recalculate" not in issue.message
+    assert "stands" in issue.message
+
+
 def test_nothing_is_late_before_round_1_is_decided_or_without_a_date() -> None:
     rules = with_lever(fictional_rules(), "grants.late_grant_policy", "ignore")
     assert grants_offset(req(grants_applicable=[_grant("600", recorded_at=LATE)]), rules)[0] == Decimal(600)

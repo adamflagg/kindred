@@ -26,6 +26,7 @@ def test_application_inputs_are_household_level() -> None:
         "education_expenses",
         "savings",
         "dependents",
+        "figures",
         "answers",
         "income_override",
     } == set(ApplicationInputs.model_fields)
@@ -49,6 +50,7 @@ def test_request_inputs_are_per_request() -> None:
         "decision_type",
         "discretionary_amount",
         "r1_decided_at",
+        "r2_decided_at",
     } == set(RequestInputs.model_fields)
 
 

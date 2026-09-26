@@ -27,7 +27,6 @@ def _program(
     label: str,
     sessions: list[int],
     r1: str | None,
-    r2: str | None,
     equity: str | None,
     pool: str | None,
     cost_source: str,
@@ -40,7 +39,6 @@ def _program(
         "session_cm_ids": sessions,
         "session_types": session_types or [],
         "r1_table": r1,
-        "r2_table": r2,
         "equity_class": equity,
         "budget_pool": pool,
         "cost_source": cost_source,
@@ -133,12 +131,12 @@ def fictional_rules_json() -> dict[str, Any]:
         "award_tables": {
             "camp": {
                 "tiers": {
-                    "1": {"r1_pct": "90", "total_pct": "97"},
-                    "2": {"r1_pct": "75", "total_pct": "90"},
-                    "3": {"r1_pct": "55", "total_pct": "75"},
-                    "4": {"r1_pct": "35", "total_pct": "55"},
-                    "5": {"r1_pct": "15", "total_pct": "30"},
-                    "6": {"r1_pct": "2", "total_pct": "12"},
+                    "1": {"r1_pct": "90"},
+                    "2": {"r1_pct": "75"},
+                    "3": {"r1_pct": "55"},
+                    "4": {"r1_pct": "35"},
+                    "5": {"r1_pct": "15"},
+                    "6": {"r1_pct": "2"},
                 }
             },
             "family": {"inherits": "camp"},
@@ -146,15 +144,15 @@ def fictional_rules_json() -> dict[str, Any]:
         },
         "programs": {
             "summer": _program(
-                "Summer", [1000101, 1000102], "camp", "camp", "camp", "camp_pool", "catalog", session_types=["main"]
+                "Summer", [1000101, 1000102], "camp", "camp", "camp_pool", "catalog", session_types=["main"]
             ),
-            "quest": _program("Quest", [1000103], "camp", "camp", "camp", "camp_pool", "catalog"),
-            "teen": _program("Teen", [1000104], "teen", "teen", "teen", "camp_pool", "catalog"),
-            "bmitzvah": _program("B'mitzvah", [1000301], "camp", "camp", "camp", "bmitzvah_pool", "catalog"),
-            "family_camp": _program("Family camp", [1000201], "family", "family", None, "weekend_pool", "per_person"),
-            "adult_weekend": _program("Adult weekend", [1000401], None, "family", "family", "weekend_pool", "catalog"),
-            "family_school": _program("Family school", [1000501], None, None, None, "weekend_pool", "typed"),
-            "other": _program("Other", [], None, None, None, None, "catalog", open_to_aid=False),
+            "quest": _program("Quest", [1000103], "camp", "camp", "camp_pool", "catalog"),
+            "teen": _program("Teen", [1000104], "teen", "teen", "camp_pool", "catalog"),
+            "bmitzvah": _program("B'mitzvah", [1000301], "camp", "camp", "bmitzvah_pool", "catalog"),
+            "family_camp": _program("Family camp", [1000201], "family", None, "weekend_pool", "per_person"),
+            "adult_weekend": _program("Adult weekend", [1000401], None, "family", "weekend_pool", "catalog"),
+            "family_school": _program("Family school", [1000501], None, None, "weekend_pool", "typed"),
+            "other": _program("Other", [], None, None, None, "catalog", open_to_aid=False),
         },
         "cost": {
             "tuition": {
@@ -179,6 +177,7 @@ def fictional_rules_json() -> dict[str, Any]:
             "offset_programs": ["summer", "quest"],
             "offset_mode": "dollar",
             "minimum_after_grants": True,
+            "minimum_when_fully_covered": True,
             "count_when": "committed",
             "late_grant_policy": "flag",
             "incentives": {"new_family": {"mode": "ignore"}},
@@ -189,7 +188,6 @@ def fictional_rules_json() -> dict[str, Any]:
             "minimum_without_table": True,
             "rounding": "half_up",
             "ask_cap": True,
-            "total_cap": None,
             "decision_types": {
                 "full_cost_program": {
                     "label": "Full-cost program",
@@ -214,7 +212,35 @@ def fictional_rules_json() -> dict[str, Any]:
                 },
             },
         },
-        "round2": {"cap_subtracts_grants": False, "cap_by_original_ask": False},
+        "round2": {
+            "cap_subtracts_grants": False,
+            "cap_by_original_ask": False,
+            "tables": {
+                "camp": {
+                    "tiers": {
+                        "1": {"total_pct": "97"},
+                        "2": {"total_pct": "90"},
+                        "3": {"total_pct": "75"},
+                        "4": {"total_pct": "55"},
+                        "5": {"total_pct": "30"},
+                        "6": {"total_pct": "12"},
+                    }
+                },
+                "family": {"inherits": "camp"},
+                "teen": {"inherits": "camp", "overrides": {"2": {"total_pct": "90"}}},
+            },
+            "program_tables": {
+                "summer": "camp",
+                "quest": "camp",
+                "teen": "teen",
+                "bmitzvah": "camp",
+                "family_camp": "family",
+                "adult_weekend": "family",
+                "family_school": None,
+                "other": None,
+            },
+            "total_cap": None,
+        },
         "round3": {
             "require_round2": True,
             "require_statement_of_need": True,
@@ -259,11 +285,11 @@ def fictional_rules_json() -> dict[str, Any]:
                 "income_above": {"severity": "warn", "threshold": "400000"},
                 "expense_above": {"severity": "warn", "threshold": "30000"},
                 "multiple_grants": {"severity": "warn"},
-                "placeholder_income": {"severity": "block", "threshold": "1000"},
-                "award_above_cost": {"severity": "warn"},
+                "placeholder_income": {"severity": "hold", "threshold": "1000"},
+                "award_above_cost": {"severity": "hold"},
                 "appeal_above_ask": {"severity": "warn"},
                 "implausible_dependents": {"severity": "warn", "threshold": "12"},
-                "family_cost_missing": {"severity": "block"},
+                "family_cost_missing": {"severity": "hold"},
             }
         },
         "milestones": {

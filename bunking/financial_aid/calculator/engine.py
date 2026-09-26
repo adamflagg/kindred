@@ -21,11 +21,12 @@ issue on the result, never a silent 0.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
 from bunking.financial_aid.calculator.cost import CostResolution, resolve_cost
-from bunking.financial_aid.calculator.grants import grants_offset, incentive_adjustments
+from bunking.financial_aid.calculator.grants import grants_offset, grants_since_round1, incentive_adjustments
 from bunking.financial_aid.calculator.income import describe_missing, household_income, nothing_reported
 from bunking.financial_aid.calculator.inputs import ApplicationInputs, RequestInputs
 from bunking.financial_aid.calculator.quality import run_quality_checks
@@ -40,7 +41,14 @@ from bunking.financial_aid.calculator.result import (
 from bunking.financial_aid.calculator.tiers import UnknownEquityClassError, equity_shift, final_tier, income_tier
 from bunking.financial_aid.money import HUNDRED, ZERO, floor_dollars, pct_of, round_dollars
 from bunking.financial_aid.rules.lookup import resolved_table
-from bunking.financial_aid.rules.schema import AidRules, DecisionType, ProgramProfile, TierPercents
+from bunking.financial_aid.rules.schema import (
+    AidRules,
+    DecisionType,
+    ProgramProfile,
+    R1Percent,
+    TierTable,
+    TotalPercent,
+)
 
 
 @dataclass
@@ -55,6 +63,8 @@ class _Work:
     final_tier: int | None = None
     cost: Decimal | None = None
     grants_offset: Decimal | None = None
+    # Grants Round 1 left out as late that count in the appeal and after it (owner ruling S5).
+    grants_since_round1: Decimal = ZERO
     r1_potential: Decimal | None = None
     r1: Decimal | None = None
     r1_bound: str | None = None
@@ -202,14 +212,16 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     work.issues.extend(grant_issues)
     work.trace.append(grant_step)
     work.grants_offset = grants
+    work.grants_since_round1 = grants_since_round1(request, rules)
 
     ceiling = rules.tiers.income_ceiling
     above_ceiling = ceiling is not None and adjusted_income > ceiling
     _round1(work, request, rules, program, decision, cost, final, reduce_award, above_ceiling=above_ceiling)
-    _round2(work, request, rules, program, decision, final, above_ceiling=above_ceiling)
+    _round2(work, request, rules, decision, final, above_ceiling=above_ceiling)
     _round3(work, request, rules, decision, above_ceiling=above_ceiling)
     _total_cap(work, rules)
-    _top_up(work, decision)
+    _top_up(work, decision, above_ceiling=above_ceiling)
+    _discretionary(work, decision, above_ceiling=above_ceiling)
     _total(work)
     work.issues.extend(
         run_quality_checks(
@@ -222,7 +234,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
             cost=work.cost,
             total=work.total,
             r1=work.r1,
-            grants=work.grants_offset,
+            later_rounds=(work.r2 or ZERO) + (work.r3 or ZERO),
             extra_amount=decision.extra_amount if decision is not None else ZERO,
         )
     )
@@ -243,23 +255,25 @@ def _decision_type(work: _Work, request: RequestInputs, rules: AidRules) -> Deci
     return decision
 
 
-def _tier_percents(work: _Work, rules: AidRules, table: str, tier: int, step: str) -> TierPercents | None:
-    """Table `table`'s percentages for `tier`, or None with a rules_error issue.
+def _tier_value[V: (R1Percent, TotalPercent)](
+    work: _Work, tables: Mapping[str, TierTable[V]], kind: str, table: str, tier: int, step: str
+) -> V | None:
+    """Table `table`'s value for `tier` (`kind` names the table for staff), or None with a rules_error issue.
 
     Scenarios run the engine against rules DRAFTS, which may name a table that is
     not there, lack a tier, or inherit too deeply. Only those lookup failures
     (KeyError, ValueError) become an issue; anything else is a bug and propagates.
     """
     try:
-        return resolved_table(rules, table)[tier]
+        return resolved_table(tables, table)[tier]
     except KeyError as exc:
         missing = exc.args[0] if exc.args else None
         if isinstance(missing, int):
-            message = f"Award table '{table}' (with what it inherits) has no tier {missing}; final tier is {tier}"
+            message = f"{kind} '{table}' (with what it inherits) has no tier {missing}; final tier is {tier}"
         else:
-            message = f"Award table '{missing}' does not exist (needed to resolve table '{table}')"
+            message = f"{kind} '{missing}' does not exist (needed to resolve table '{table}')"
     except ValueError as exc:
-        message = f"Award table '{table}' cannot be resolved: {exc}"
+        message = f"{kind} '{table}' cannot be resolved: {exc}"
     work.issue("rules_error", "error", message, step)
     return None
 
@@ -287,17 +301,22 @@ def _round1(
         pct, source = HUNDRED, "full_cost"
     elif program.r1_table is None:
         if not awards.minimum_without_table:
-            work.r1_potential, work.r1, work.r1_bound = ZERO, ZERO, "no_table"
-            work.step(
-                "r1", "Round 1 award", ZERO, bound="no_table", note="No Round 1 table, and no minimum without one"
+            # Holds until finance names a table (owner ruling 2026-09-25), never a silent $0.
+            work.r1_bound = "no_table"
+            work.issue(
+                "no_round1_table",
+                "needs_input",
+                f"Program '{request.program_key}' has no Round 1 table and the minimum does not apply without "
+                "one; the request holds until finance names a table",
+                "r1",
             )
             return
         pct, source = ZERO, "no_table"
     else:
-        percents = _tier_percents(work, rules, program.r1_table, tier, "r1_pct")
-        if percents is None:
+        row = _tier_value(work, rules.award_tables, "Award table", program.r1_table, tier, "r1_pct")
+        if row is None:
             return
-        pct, source = percents.r1_pct, "table"
+        pct, source = row.r1_pct, "table"
     work.step("r1_pct", "Round 1 percentage", pct, inputs={"table": program.r1_table, "tier": tier, "source": source})
 
     grants = work.grants_offset or ZERO  # set by the grants step, which always runs before Round 1
@@ -316,7 +335,10 @@ def _round1(
             before_minimum = base - grants
         else:
             before_minimum = pct_of(pct, max(work.cost - grants, ZERO))
-        if rules.grants.minimum_after_grants:
+        fully_covered = grants > 0 and grants >= work.cost
+        if fully_covered and not rules.grants.minimum_when_fully_covered:
+            potential = max(before_minimum, ZERO)
+        elif rules.grants.minimum_after_grants:
             potential = max(before_minimum, awards.minimum)
         else:
             potential = max(before_minimum, awards.minimum - grants, ZERO)
@@ -357,7 +379,6 @@ def _round2(
     work: _Work,
     request: RequestInputs,
     rules: AidRules,
-    program: ProgramProfile,
     decision: DecisionType | None,
     tier: int,
     *,
@@ -380,7 +401,16 @@ def _round2(
         work.r2, work.r2_bound = ZERO, "not_allowed"
         work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="not_allowed")
         return
-    if program.r2_table is None:
+    if request.program_key not in rules.round2.program_tables:
+        work.issue(
+            "rules_error",
+            "error",
+            f"Program '{request.program_key}' does not say which Round 2 table it uses in the {rules.year} rules",
+            "r2_cap",
+        )
+        return
+    r2_table = rules.round2.program_tables[request.program_key]
+    if r2_table is None:
         work.r2, work.r2_bound = ZERO, "no_table"
         work.step("r2", "Round 2 award", ZERO, inputs={"appeal": appeal}, bound="no_table", note="No Round 2 table")
         return
@@ -393,13 +423,13 @@ def _round2(
         # built on it, so it is not computed either -- without blaming the cost.
         work.r2_bound = "r1_unknown"
         return
-    percents = _tier_percents(work, rules, program.r2_table, tier, "r2_cap")
-    if percents is None:
+    row = _tier_value(work, rules.round2.tables, "Round 2 table", r2_table, tier, "r2_cap")
+    if row is None:
         return
-    total_pct = percents.total_pct
+    total_pct = row.total_pct
     cap = pct_of(total_pct, work.cost) - work.r1
     if rules.round2.cap_subtracts_grants:
-        cap -= work.grants_offset or ZERO
+        cap -= (work.grants_offset or ZERO) + work.grants_since_round1
     cap_bound = "cap"
     if rules.round2.cap_by_original_ask:
         if request.ask is None:
@@ -423,6 +453,7 @@ def _round2(
             "cost": work.cost,
             "r1": work.r1,
             "grants_subtracted": rules.round2.cap_subtracts_grants,
+            "grants_since_round1": work.grants_since_round1,
         },
         bound=cap_bound,
     )
@@ -494,7 +525,7 @@ def _round3(
 
 def _total_cap(work: _Work, rules: AidRules) -> None:
     """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut."""
-    cap = rules.awards.total_cap
+    cap = rules.round2.total_cap
     if cap is None or (work.r2 is None and work.r3 is None):
         return
     if work.cost is None:
@@ -502,7 +533,7 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
         return
     if work.r1 is None:
         return  # Round 1 already said why; there is nothing to cap against
-    grants = work.grants_offset or ZERO
+    grants = (work.grants_offset or ZERO) + work.grants_since_round1
     limit = pct_of(cap.pct_of_cost, work.cost) - (grants if cap.include_grants else ZERO)
     r2_before, r3_before = work.r2, work.r3
     room = max(limit - work.r1, ZERO)
@@ -528,9 +559,20 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
     )
 
 
-def _top_up(work: _Work, decision: DecisionType | None) -> None:
+def _top_up(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) -> None:
     if decision is None or decision.kind == "discretionary":
         work.top_up = ZERO  # evaluated: this request has no named top-up
+        return
+    if above_ceiling and not decision.ceiling_exempt:
+        work.top_up = ZERO
+        work.step(
+            "top_up",
+            f"Top-up: {decision.label}",
+            ZERO,
+            inputs={"kind": decision.kind},
+            bound="income_ceiling",
+            note="Adjusted income is above the income ceiling",
+        )
         return
     note = None
     if decision.kind == "top_up":
@@ -550,8 +592,23 @@ def _top_up(work: _Work, decision: DecisionType | None) -> None:
     work.step("top_up", f"Top-up: {decision.label}", amount, inputs={"kind": decision.kind}, note=note)
 
 
+def _discretionary(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) -> None:
+    """Withholds a typed discretionary amount above the income ceiling, and says so."""
+    typed = work.discretionary
+    if typed == 0 or not above_ceiling or (decision is not None and decision.ceiling_exempt):
+        return
+    work.discretionary = ZERO
+    work.issue(
+        "above_income_ceiling",
+        "warn",
+        "Adjusted income is above the income ceiling, so the typed discretionary amount was withheld",
+        "discretionary",
+    )
+    work.step("discretionary", "Discretionary amount", ZERO, inputs={"withheld": typed}, bound="income_ceiling")
+
+
 def _total(work: _Work) -> None:
-    # A rules_error already blanks r1 by returning before it is set (see _tier_percents).
+    # A rules_error already blanks r1 by returning before it is set (see _tier_value).
     # A Round 2/3 rules_error or a cost_unknown needs_input can strike after r1 is already
     # computed, so the total needs its own guard: neither an error nor an unresolved
     # needs_input ever produces a total, only r1/r2/r3 taken individually do.

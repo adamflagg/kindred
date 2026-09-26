@@ -104,12 +104,54 @@ def test_a_locked_section_cannot_be_re_approved() -> None:
         approve(status, "income", by="f@example.com", at=AT, note=None, report=validate_rules(fictional_rules()))
 
 
-def test_a_new_version_keeps_approvals_but_unlocks() -> None:
-    status = carry_forward(_lock(_approved(), "income"))
+def test_a_new_version_keeps_every_lock_it_is_not_told_to_lift() -> None:
+    # A changed specification, not a test bent to fit code: staff set Round 2 after Round 1
+    # results while Round 1 keeps rolling (staff call 2026-09-25), so a mid-season version
+    # must not re-open Round 1. carry_forward used to lift every lock.
+    locked = _lock(_approved(), "income")
+    status = carry_forward(locked)
+    assert status["income"] == locked["income"]
+    assert status["tiers"].state == "draft"
+
+
+def test_a_new_version_lifts_only_the_locks_it_names_and_keeps_their_approvals() -> None:
+    status = carry_forward(_lock(_approved(), "income"), unlock=["income"])
     assert status["income"].state == "approved"
     assert status["income"].approved_by == "finance@example.com"
     assert status["income"].locked_at is None
-    assert status["tiers"].state == "draft"
+
+
+# The sections a Round 1 decision reads. Round 2's levers (its total-% tables, which table
+# each program's appeals use, the total-aid cap) live in `round2`, apart from all of them.
+_ROUND1_SECTIONS: tuple[SectionName, ...] = (
+    "income",
+    "tiers",
+    "equity",
+    "award_tables",
+    "programs",
+    "cost",
+    "grants",
+    "awards",
+)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("round2.tables.camp.tiers.2", {"total_pct": "95"}),
+        ("round2.total_cap", {"pct_of_cost": "100", "include_grants": True}),
+        ("round2.program_tables.teen", "camp"),
+    ],
+)
+def test_round2_levers_stay_editable_after_every_round1_section_locks(path: str, value: object) -> None:
+    rules = fictional_rules()
+    report = validate_rules(rules)
+    status = initial_status()
+    for section in _ROUND1_SECTIONS:
+        status = approve(status, section, by="finance@example.com", at=AT, note=None, report=report)
+        status = lock(status, section, at=AT, report=report)
+    outcome = _edit(rules, with_lever(rules, path, value), status)
+    assert all(outcome[section].state == "locked" for section in _ROUND1_SECTIONS)
 
 
 def test_status_json_round_trips() -> None:

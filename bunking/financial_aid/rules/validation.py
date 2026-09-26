@@ -13,13 +13,21 @@ listing NO sessions (a season nothing has synced yet) warns instead of passing.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.money import pct_of
 from bunking.financial_aid.rules.lookup import is_dependents_criterion, resolve_program, resolved_table
-from bunking.financial_aid.rules.schema import AidRules, QualityCheckKey, SectionName
+from bunking.financial_aid.rules.schema import (
+    AidRules,
+    QualityCheckKey,
+    R1Percent,
+    SectionName,
+    TierTable,
+    TotalPercent,
+)
 
 Severity = Literal["error", "warning"]
 
@@ -89,6 +97,7 @@ def validate_rules(rules: AidRules, context: ValidationContext | None = None) ->
     _check_tiers(rules, issues)
     _check_equity(rules, issues)
     _check_award_tables(rules, issues)
+    _check_round2(rules, issues)
     _check_programs(rules, context, issues)
     _check_cost(rules, issues)
     _check_grants(rules, issues)
@@ -182,46 +191,112 @@ def _check_equity(rules: AidRules, issues: _Issues) -> None:
 
 
 def _check_award_tables(rules: AidRules, issues: _Issues) -> None:
+    for name in _valid_tables(rules, "award_tables", rules.award_tables, "award_tables", issues):
+        previous = None
+        for tier, row in sorted(resolved_table(rules.award_tables, name).items()):
+            if previous is not None and row.r1_pct > previous:
+                issues.error(
+                    "award_tables",
+                    "r1_increases_with_tier",
+                    f"award_tables.{name}.tiers.{tier}",
+                    f"Tier {tier}: R1 % rises",
+                )
+            previous = row.r1_pct
+        _warn_values_that_cannot_bind(rules, name, issues)
+
+
+def _check_round2(rules: AidRules, issues: _Issues) -> None:
+    tables = rules.round2.tables
+    for name in _valid_tables(rules, "round2", tables, "round2.tables", issues):
+        previous = None
+        for tier, row in sorted(resolved_table(tables, name).items()):
+            if previous is not None and row.total_pct > previous:
+                issues.error(
+                    "round2",
+                    "total_increases_with_tier",
+                    f"round2.tables.{name}.tiers.{tier}",
+                    f"Tier {tier}: total % rises",
+                )
+            previous = row.total_pct
+    routing = rules.round2.program_tables
+    for key, table in routing.items():
+        path = f"round2.program_tables.{key}"
+        if key not in rules.programs:
+            issues.error("round2", "unknown_program", path, f"No program '{key}'")
+        if table is not None and table not in tables:
+            issues.error("round2", "unknown_table", path, f"No Round 2 table '{table}'")
+    for key, program in rules.programs.items():
+        if program.open_to_aid and key not in routing:
+            issues.error(
+                "round2",
+                "missing_round2_table",
+                f"round2.program_tables.{key}",
+                f"Program '{key}' is open to aid but does not say which Round 2 table it uses (null means none)",
+            )
+    _check_r1_within_total(rules, issues)
+
+
+def _check_r1_within_total(rules: AidRules, issues: _Issues) -> None:
+    """R1 % never above total % for any program's pair of tables. The error belongs to
+    Round 2, the lever set later, so a locked Round 1 is never blamed for it."""
+    pairs: set[tuple[str, str]] = set()
+    for key, program in rules.programs.items():
+        r2_name = rules.round2.program_tables.get(key)
+        if program.open_to_aid and program.r1_table is not None and r2_name is not None:
+            pairs.add((program.r1_table, r2_name))
+    for r1_name, r2_name in sorted(pairs):
+        try:
+            r1 = resolved_table(rules.award_tables, r1_name)
+            total = resolved_table(rules.round2.tables, r2_name)
+        except KeyError, ValueError:
+            continue  # reported where the table is defined or named
+        for tier in sorted(r1.keys() & total.keys()):
+            if r1[tier].r1_pct > total[tier].total_pct:
+                issues.error(
+                    "round2",
+                    "r1_above_total",
+                    f"round2.tables.{r2_name}.tiers.{tier}",
+                    f"Tier {tier}: Round 1 table '{r1_name}' is above Round 2 table '{r2_name}'",
+                )
+
+
+def _valid_tables[V: (R1Percent, TotalPercent)](
+    rules: AidRules,
+    section: SectionName,
+    tables: Mapping[str, TierTable[V]],
+    prefix: str,
+    issues: _Issues,
+) -> list[str]:
+    """The names of the tables that resolve, after reporting the ones that do not."""
     band_count = len(rules.tiers.bands)
-    for name, table in rules.award_tables.items():
-        path = f"award_tables.{name}"
+    valid: list[str] = []
+    for name, table in tables.items():
+        path = f"{prefix}.{name}"
         if table.inherits is not None:
-            parent = rules.award_tables.get(table.inherits)
+            parent = tables.get(table.inherits)
             if parent is None:
-                issues.error("award_tables", "unknown_parent_table", f"{path}.inherits", f"No table '{table.inherits}'")
+                issues.error(section, "unknown_parent_table", f"{path}.inherits", f"No table '{table.inherits}'")
                 continue
             if parent.inherits is not None:
-                issues.error("award_tables", "nested_inheritance", f"{path}.inherits", "One level of inheritance only")
+                issues.error(section, "nested_inheritance", f"{path}.inherits", "One level of inheritance only")
                 continue
             for tier in table.overrides:
                 if not 1 <= tier <= band_count:
-                    issues.error(
-                        "award_tables", "override_tier_out_of_range", f"{path}.overrides.{tier}", "No such tier"
-                    )
+                    issues.error(section, "override_tier_out_of_range", f"{path}.overrides.{tier}", "No such tier")
         elif set(table.tiers) != set(range(1, band_count + 1)):
             issues.error(
-                "award_tables",
+                section,
                 "tiers_do_not_match_bands",
                 f"{path}.tiers",
                 f"The table must list tiers 1 to {band_count}, one per income band",
             )
             continue
         try:
-            resolved = resolved_table(rules, name)
+            resolved_table(tables, name)
         except KeyError, ValueError:
             continue
-        previous = None
-        for tier in sorted(resolved):
-            row = resolved[tier]
-            tier_path = f"{path}.tiers.{tier}"
-            if row.r1_pct > row.total_pct:
-                issues.error("award_tables", "r1_above_total", tier_path, f"Tier {tier}: R1 % is above total %")
-            if previous is not None and row.r1_pct > previous.r1_pct:
-                issues.error("award_tables", "r1_increases_with_tier", tier_path, f"Tier {tier}: R1 % rises")
-            if previous is not None and row.total_pct > previous.total_pct:
-                issues.error("award_tables", "total_increases_with_tier", tier_path, f"Tier {tier}: total % rises")
-            previous = row
-        _warn_values_that_cannot_bind(rules, name, issues)
+        valid.append(name)
+    return valid
 
 
 def _warn_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -> None:
@@ -236,7 +311,7 @@ def _warn_values_that_cannot_bind(rules: AidRules, name: str, issues: _Issues) -
         return
     top = max(prices)
     minimum = rules.awards.minimum
-    for tier, row in resolved_table(rules, name).items():
+    for tier, row in resolved_table(rules.award_tables, name).items():
         if pct_of(row.r1_pct, top) < minimum:
             issues.warn(
                 "award_tables",
@@ -252,9 +327,8 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
     types: dict[str, str] = {}
     for key, program in rules.programs.items():
         path = f"programs.{key}"
-        for field, table in (("r1_table", program.r1_table), ("r2_table", program.r2_table)):
-            if table is not None and table not in rules.award_tables:
-                issues.error("programs", "unknown_table", f"{path}.{field}", f"No award table '{table}'")
+        if program.r1_table is not None and program.r1_table not in rules.award_tables:
+            issues.error("programs", "unknown_table", f"{path}.r1_table", f"No award table '{program.r1_table}'")
         if program.equity_class is not None and program.equity_class not in rules.equity.weights:
             issues.error(
                 "programs", "unknown_equity_class", f"{path}.equity_class", f"No equity class '{program.equity_class}'"
@@ -268,7 +342,9 @@ def _check_programs(rules: AidRules, context: ValidationContext | None, issues: 
                 "programs",
                 "no_round1_table",
                 f"{path}.r1_table",
-                "No Round 1 table: only the minimum award can apply in Round 1",
+                "No Round 1 table: only the minimum award can apply in Round 1"
+                if rules.awards.minimum_without_table
+                else "No Round 1 table: every request in this program holds until finance names one",
             )
         for session in program.session_cm_ids:
             if session in ids and ids[session] != key:
@@ -399,6 +475,14 @@ _THRESHOLD_CHECKS: tuple[QualityCheckKey, ...] = (
 
 
 def _check_quality_checks(rules: AidRules, issues: _Issues) -> None:
+    above_cost = rules.quality_checks.checks.get("award_above_cost")
+    if above_cost is not None and (not above_cost.enabled or above_cost.severity != "hold"):
+        issues.error(
+            "quality_checks",
+            "award_above_cost_must_hold",
+            "quality_checks.checks.award_above_cost",
+            "The above-cost check always holds: it cannot be switched off or made a warning",
+        )
     for key in _THRESHOLD_CHECKS:
         check = rules.quality_checks.checks.get(key)
         if check is not None and check.enabled and check.threshold is None:

@@ -151,11 +151,11 @@ def _files(
         "label": "No session match",
         "session_cm_ids": [],
         "r1_table": None,
-        "r2_table": None,
         "equity_class": None,
         "budget_pool": None,
         "cost_source": "catalog",
     }
+    rules["round2"]["program_tables"]["no_match"] = None
     for key, value in (rules_changes or {}).items():
         rules[key] = value
     (tmp_path / "rules.json").write_text(json.dumps(rules))

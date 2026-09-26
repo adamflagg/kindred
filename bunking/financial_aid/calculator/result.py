@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TraceValue = Decimal | int | str | bool | None
-IssueSeverity = Literal["error", "needs_input", "block", "warn"]
+IssueSeverity = Literal["error", "needs_input", "hold", "warn"]
 CalcStatus = Literal["ok", "needs_input", "error"]
 
 
@@ -29,7 +29,7 @@ class TraceStep(BaseModel):
 
 
 class CalcIssue(BaseModel):
-    """error / needs_input set the result's status; block / warn come from quality checks."""
+    """error / needs_input set the result's status; hold / warn come from quality checks."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -48,8 +48,8 @@ class CalcResult(BaseModel):
 
     `status` says whether the award could be computed: "error", "needs_input" or
     "ok". It does not summarise the data-quality checks. An "ok" result can still
-    carry a `block` issue, which means "do not finalize until staff look" -- so a
-    caller must check `issues` for severity "block" as well as `status`.
+    carry a `hold` issue, which means "do not finalize until staff look" -- so a
+    caller must check `issues` for severity "hold" as well as `status`.
     """
 
     model_config = ConfigDict(frozen=True)

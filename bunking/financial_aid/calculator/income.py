@@ -1,7 +1,7 @@
 """Adjusted household income (catalogue section 2.1, chain items 1-3).
 
     weighted  = prior-year weight x PY + current-year weight x CY   (or an override)
-    base      = weighted - medical excess - education excess + savings excess
+    base      = weighted - medical excess - education excess + savings excess +/- extra terms
     adjusted  = base - dependents x per-dependent reduction          (income mode only)
     result    = floor if round(tested) <= floor else round(adjusted)
 
@@ -45,6 +45,8 @@ class IncomeResult(BaseModel):
     medical_excess: Decimal
     education_excess: Decimal
     savings_excess: Decimal
+    # The net of income.extra_terms: negative when the terms deduct more than they add.
+    extra_terms: Decimal
     dependent_reduction: Decimal
     adjusted_income: Decimal | None
     income_missing: bool
@@ -80,9 +82,10 @@ def household_income(application: ApplicationInputs, rules: AidRules) -> IncomeR
     medical = _excess(application.medical_expenses, income.medical_threshold, income.medical_rate)
     education = _excess(application.education_expenses, income.education_threshold, income.education_rate)
     savings = _excess(application.savings, income.savings_threshold, income.savings_inclusion_rate)
+    extra = _extra_terms(application, income)
     dependents = application.dependents or 0
     reduction = income.per_dependent_reduction * dependents if income.dependents_mode == "income_reduction" else ZERO
-    adjustments = savings - medical - education
+    adjustments = savings - medical - education + extra
     base: Decimal | None = None
     adjusted: Decimal | None = None
     result: Decimal | None = None
@@ -118,6 +121,7 @@ def household_income(application: ApplicationInputs, rules: AidRules) -> IncomeR
                 "medical_excess": medical,
                 "education_excess": education,
                 "savings_excess": savings,
+                "extra_terms": extra,
                 "dependent_reduction": reduction,
             },
         ),
@@ -135,6 +139,7 @@ def household_income(application: ApplicationInputs, rules: AidRules) -> IncomeR
         medical_excess=medical,
         education_excess=education,
         savings_excess=savings,
+        extra_terms=extra,
         dependent_reduction=reduction,
         adjusted_income=result,
         income_missing=bool(missing),
@@ -169,6 +174,14 @@ def _excess(amount: Decimal | None, threshold: Decimal, rate: Decimal) -> Decima
     # A blank expense or savings figure means the family has none: 0 is right here.
     value = zero_if_blank(amount)
     return (value - threshold) * rate if value > threshold else ZERO
+
+
+def _extra_terms(application: ApplicationInputs, income: IncomeSection) -> Decimal:
+    total = ZERO
+    for term in income.extra_terms:
+        amount = _excess(application.figures.get(term.figure), term.threshold, term.rate)
+        total += amount if term.direction == "add" else -amount
+    return total
 
 
 def _prior_year(application: ApplicationInputs, basis: str) -> _Prior:
