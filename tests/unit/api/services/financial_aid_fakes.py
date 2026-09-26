@@ -222,6 +222,39 @@ class FakeAidStore:
         await self._read(year)
         return {p: self.birthdates[p] for p in person_cm_ids if p in self.birthdates}
 
+    async def fetch_application(self, year: int, household_cm_id: int) -> ApplicationRecord | None:
+        found = [a for a in self.applications.values() if a.year == year and a.household_cm_id == household_cm_id]
+        return found[0] if found else None
+
+    async def fetch_request(self, record_id: str) -> RequestRecord | None:
+        return self.requests.get(record_id)
+
+    async def find_active_request(
+        self, year: int, household_cm_id: int, person_cm_id: int, session_cm_id: int
+    ) -> RequestRecord | None:
+        for r in self.requests.values():
+            same_subject = (
+                r.person_cm_id == person_cm_id
+                if person_cm_id
+                else (r.household_cm_id == household_cm_id and r.person_cm_id == 0)
+            )
+            if r.year == year and same_subject and r.session_cm_id == session_cm_id and r.status == "active":
+                return r
+        return None
+
+    async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]:
+        return [
+            c
+            for c in self.corrections
+            if c.year == year and (application_id is None or c.application_id == application_id)
+        ]
+
+    async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None:
+        return self.capacity.get((year, session_cm_id))
+
+    async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]:
+        return {p: self.equity[p] for p in person_cm_ids if p in self.equity}
+
     async def load_intake_rules(self, year: int) -> AidRules | None:
         """`rules` stands for the newest version with programs and cost approved; None = none yet."""
         await self._read(year)
