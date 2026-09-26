@@ -314,16 +314,33 @@ def test_the_groups_read_features_then_improvements_then_fixes() -> None:
         "fix(pb,security): close an unauthenticated read",
         "build(deps,security): bump starlette for a CVE",
         "feat(security): add a login audit view",
-        "ci(security): block runner egress",
-        "chore(harness,security): stop the agent reading .env",
+        "improve(frontend,security): mask the phone column",
     ],
 )
-def test_a_security_scope_lands_in_security_whatever_the_type(message: str) -> None:
-    """Security is a scope, not a type: the type still says what changed.
-
-    Routed ahead of the skips so CI and harness hardening appear too.
-    """
+def test_a_security_scope_on_a_released_type_lands_in_security(message: str) -> None:
+    """Security is a scope, not a type: the type still says what changed."""
     assert _group_of(message) == "Security"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "ci(security): block runner egress",
+        "chore(harness,security): stop the agent reading .env",
+        "docs(security): document the RBAC model",
+        "test(security): cover the unauthenticated read",
+    ],
+)
+def test_a_security_scope_does_not_release_what_never_ships(message: str) -> None:
+    """Owner ruling 2026-09-26: a security scope does not rescue a skipped type.
+
+    Routing these to Security made git-cliff cut a patch release (v1.0.0 ->
+    v1.0.1 on 2.14.2) for a CI-only change, promoting an unchanged image and
+    putting CI plumbing in notes staff read. They stay skipped like any other
+    ci/chore/docs/test change, so the release workflow's "Nothing to release"
+    guard still fires.
+    """
+    assert _group_of(message) == "SKIPPED"
 
 
 @pytest.mark.parametrize("message", ["revert(security): undo the egress block", 'Revert "fix(pb,security): x"'])

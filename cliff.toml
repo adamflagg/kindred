@@ -44,9 +44,19 @@ commit_parsers = [
     # `Revert "..."` is what GitHub's Revert button writes.
     { message = "^[Rr]evert", group = "<!-- 10 -->Reverts" },
 
+    # Never reach an image, so never reach the release notes -- even with a
+    # `security` scope, which is why these come BEFORE the Security parser
+    # (owner ruling 2026-09-26: routing `ci(security)` there cut a release of an
+    # unchanged image). A release window holding only these has nothing to
+    # release: git-cliff bumps nothing, and release.yml says so.
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^docs", skip = true },
+    { message = "^test", skip = true },
+
     # Security is a scope, not a type: `fix(pb,security)`, `build(deps,security)`.
-    # The type still says what changed (and drives the bump); the scope routes
-    # it here. Placed before the skips so CI and harness hardening appear too.
+    # The type still says what changed and drives the bump; the scope routes a
+    # released type here.
     { field = "scope", pattern = "(^|,)security(,|$)", group = "<!-- 03 -->Security" },
 
     # All conventional commits by type
@@ -57,14 +67,6 @@ commit_parsers = [
     { message = "^build", group = "<!-- 05 -->Dependencies & Build" },
     # Includes dark groundwork: the early phases of a feature staff cannot use yet.
     { message = "^refactor", group = "<!-- 06 -->Internal" },
-
-    # Never reach an image, so never reach the release notes. A release window
-    # holding only these has nothing to release: git-cliff bumps nothing, and
-    # release.yml says so.
-    { message = "^chore", skip = true },
-    { message = "^ci", skip = true },
-    { message = "^docs", skip = true },
-    { message = "^test", skip = true },
 
     # Catch-all for non-conventional commits (safety net so they appear under "Other"
     # instead of being silently dropped from changelog)

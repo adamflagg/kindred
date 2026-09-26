@@ -28,8 +28,10 @@ overstates a change inflates Features, and one that understates it hides work.
 | `revert` | Reverts | patch |
 | `chore`, `ci`, `docs`, `test` | skipped | none |
 
-Any type with a `security` scope lands in **Security** instead, bumping by its
-type. A revert is the exception: every revert stays in Reverts. A release
+A released type with a `security` scope lands in **Security** instead, bumping
+by its type. The skipped types stay skipped even with it: `ci(security)` is
+still CI work, and does not cut a release of an unchanged image. A revert
+also stays in Reverts. A release
 window holding only skipped types has nothing to release, and the Release
 workflow says so. `tests/unit/scripts/test_commit_type_config.py`
 holds this table to `cliff.toml`.
@@ -122,7 +124,9 @@ most of it has no surface to name. Use a scope when one fits (`ci(deps)`,
 a type name, so `fix(ci)`, `docs(docs)` and `chore(ci)` all fail the title check.
 
 **Security is a scope, not a type.** Keep the type that says what changed and
-add the scope: `fix(pb,security)`, `build(deps,security)`, `ci(security)`.
+add the scope: `fix(pb,security)`, `build(deps,security)`. On a skipped type
+(`ci(security)`, `chore(harness,security)`) the scope is still worth writing,
+but it puts nothing in the release notes.
 
 ## Dependency bumps
 
