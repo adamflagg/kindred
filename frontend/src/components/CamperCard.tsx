@@ -247,7 +247,10 @@ function CamperCard({
       {...(isDraggable ? attributes : {})}
       {...(isDraggable ? listeners : {})}
       onClick={handleClick}
-      onContextMenu={handleContextMenu}
+      // With slots, the corner sits OUTSIDE this button (a sibling), so the
+      // handler moves to the wrapper div below — a right-click there still
+      // reaches it by bubbling, once, so it isn't bound here too.
+      onContextMenu={hasNoteSlots ? undefined : handleContextMenu}
     >
       <span className="flex flex-col gap-0.5">
         {/* Line 1: Name (left) and Status icons (right) */}
@@ -344,7 +347,12 @@ function CamperCard({
   return (
     <>
       {hasNoteSlots ? (
-        <div ref={setNodeRef} style={style} className="group relative">
+        <div
+          ref={setNodeRef}
+          style={style}
+          className="group relative"
+          onContextMenu={handleContextMenu}
+        >
           {cardButton}
           {noteSlots.corner}
         </div>

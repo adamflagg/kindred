@@ -15,7 +15,10 @@ const setNodeRef = vi.hoisted(() => vi.fn())
 const dragStart = vi.hoisted(() => vi.fn())
 const SORTABLE = vi.hoisted(() => ({
   attributes: {},
-  listeners: { onPointerDown: (...a: unknown[]) => dragStart(...a) },
+  listeners: {
+    onMouseDown: (...a: unknown[]) => dragStart(...a),
+    onTouchStart: (...a: unknown[]) => dragStart(...a),
+  },
   setNodeRef: (element: HTMLElement | null) => setNodeRef(element),
   transform: null,
   transition: undefined,
@@ -93,9 +96,11 @@ describe('CamperCard — the note corner (wrapper variant)', () => {
 
   it('pressing the corner never starts a drag; pressing the card still does', () => {
     renderWithCorner()
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Note' }))
+    const corner = screen.getByRole('button', { name: 'Note' })
+    fireEvent.mouseDown(corner)
+    fireEvent.touchStart(corner)
     expect(dragStart).not.toHaveBeenCalled()
-    fireEvent.pointerDown(document.querySelector('[data-camper-card]') as HTMLElement)
+    fireEvent.mouseDown(document.querySelector('[data-camper-card]') as HTMLElement)
     expect(dragStart).toHaveBeenCalledTimes(1)
   })
 
@@ -104,6 +109,12 @@ describe('CamperCard — the note corner (wrapper variant)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Note' }))
     expect(onClick).not.toHaveBeenCalled()
     expect(value.openEditor).toHaveBeenCalled()
+  })
+
+  it('right-clicking the corner opens the card’s own menu, not the browser’s', async () => {
+    renderWithCorner()
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Note' }))
+    expect(await screen.findByText('View Details')).toBeInTheDocument()
   })
 })
 
