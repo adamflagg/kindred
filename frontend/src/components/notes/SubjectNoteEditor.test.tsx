@@ -118,7 +118,7 @@ describe('SubjectNoteEditor — inside a scenario', () => {
     expect(screen.getByText('Draft A')).toBeInTheDocument()
   })
 
-  it('"Keep on all plans" promotes (flushing typed text) and closes', async () => {
+  it('"Move scenario note to CM" promotes (flushing typed text) and closes', async () => {
     const scope = renderEditor(
       [noteRow(HOUSEHOLD, 'Try Pine', 'scnA')],
       target({ scenarioId: 'scnA' })
@@ -127,7 +127,7 @@ describe('SubjectNoteEditor — inside a scenario', () => {
       target: { value: 'Try Pine, not Oak' },
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep on all plans' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Move scenario note to CM' }))
     })
     expect(scope.promote).toHaveBeenCalledWith(HOUSEHOLD, { plan: 'Try Pine, not Oak' }, 'scnA')
     expect(scope.closeEditor).toHaveBeenCalled()
@@ -239,7 +239,7 @@ describe('SubjectNoteEditor — concurrent writes', () => {
       target: { value: 'Try Pine, not Oak' },
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep on all plans' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Move scenario note to CM' }))
     })
     await act(async () => {
       fireEvent.keyDown(screen.getByRole('textbox', { name: 'Note just for this plan' }), {

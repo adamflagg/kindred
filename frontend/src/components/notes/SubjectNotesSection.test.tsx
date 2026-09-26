@@ -162,7 +162,7 @@ describe('SubjectNotesSection — editing', () => {
     expect(screen.getByRole('textbox', { name: 'Note just for this plan' })).toHaveValue('Plan B')
   })
 
-  it('a save attempted while "Keep on all plans" is in flight is refused without unsettling the editor, so the unmount flush does not write again', async () => {
+  it('a save attempted while "Move scenario note to CM" is in flight is refused without unsettling the editor, so the unmount flush does not write again', async () => {
     const target: EditorTarget = {
       subject: HOUSEHOLD,
       label: 'Johnson',
@@ -185,7 +185,7 @@ describe('SubjectNotesSection — editing', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Note just for this plan' }), {
       target: { value: 'Plan A, revised' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Keep on all plans' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move scenario note to CM' }))
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Note' }), {
       key: 'Enter',
       ctrlKey: true,
@@ -272,7 +272,7 @@ describe('SubjectNotesSection — editing', () => {
     const { unmount } = render(<Panel value={value} />)
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep on all plans' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Move scenario note to CM' }))
     })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Note just for this plan' }), {

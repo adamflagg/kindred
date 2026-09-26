@@ -141,7 +141,7 @@ export function SubjectNoteEditor({
                   }}
                   className="border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground self-start rounded-full border px-2 py-0.5 text-xs font-medium"
                 >
-                  Keep on all plans
+                  Move scenario note to CM
                 </button>
               )}
             </div>
