@@ -106,3 +106,17 @@ describe('CamperCard — the note corner (wrapper variant)', () => {
     expect(value.openEditor).toHaveBeenCalled()
   })
 })
+
+describe('CamperCard — the note item in the right-click menu', () => {
+  it('sits directly under View Details', async () => {
+    render(
+      <CamperCard
+        camper={EMMA}
+        noteSlots={{ menuItem: <button type="button">Add note…</button> }}
+      />
+    )
+    fireEvent.contextMenu(document.querySelector('[data-camper-card]') as HTMLElement)
+    const view = await screen.findByText('View Details')
+    expect(view.closest('button')?.nextElementSibling).toHaveTextContent('Add note…')
+  })
+})

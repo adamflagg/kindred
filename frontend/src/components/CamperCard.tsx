@@ -403,6 +403,7 @@ function CamperCard({
                 <Eye className="h-4 w-4" />
                 View Details
               </button>
+              {noteSlots?.menuItem}
 
               {/* Unassign - only for assigned campers in draft mode */}
               {isDraftMode && camper.assigned_bunk_cm_id && onUnassign && (
