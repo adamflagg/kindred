@@ -46,4 +46,7 @@ jobs:
         # A title is attacker-controlled text: it reaches the shell through the
         # environment, never through expression interpolation inside `run:`.
         PR_TITLE: ${{ github.event.pull_request.title }}
+        # Lets commitlint.config.js skip its bot-bump ignore for everyone else.
+        # Derived from the author's account type, not from anything they typed.
+        PR_AUTHOR_IS_BOT: ${{ github.event.pull_request.user.type == 'Bot' }}
       run: printf '%s\n' "$PR_TITLE" | npx --no-install commitlint --verbose

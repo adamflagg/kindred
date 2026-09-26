@@ -8,7 +8,12 @@ module.exports = {
     (message) => message.startsWith('Revert '),
     // Dependabot/Renovate bump messages have unpredictable length (package
     // names, dirs, groups). Types follow .github/dependabot.yml and renovate.json.
-    (message) => /^(build|chore|ci)\(deps\): (bump|update) .+ to .+/.test(message),
+    // Granted only when the title check says a bot opened the PR: a bump-shaped
+    // title is text anyone can type, and this skips the length and full-stop
+    // rules on the only commit message that reaches main.
+    ...(process.env.PR_AUTHOR_IS_BOT === 'true'
+      ? [(message) => /^(build|chore|ci)\(deps\): (bump|update) .+ to .+/.test(message)]
+      : []),
   ],
   plugins: [
     {

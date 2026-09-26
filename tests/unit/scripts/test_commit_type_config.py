@@ -29,6 +29,7 @@ import functools
 import json
 import os
 import re
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path, PurePosixPath
@@ -303,6 +304,49 @@ def test_title_check_runs_commitlint_rather_than_a_copied_list() -> None:
         "the title check must run commitlint.config.js, not keep its own type/scope list"
     )
     assert any("commitlint" in str(s.get("run", "")) for s in steps)
+
+
+BOT_AUTHOR_ENV = "PR_AUTHOR_IS_BOT"
+_LONG_BUMP_TITLE = "build(deps): bump foo from 1.0.0 to 1.1.0 " + "and also rewrite the release pipeline " * 3 + "."
+
+
+def _commitlint_ignores(title: str, env: dict[str, str]) -> bool:
+    """Whether commitlint.config.js's `ignores` skip `title`, under `env`.
+
+    Loading the config needs only node, not node_modules: `extends` is a string.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = "const c = require(process.argv[1]); console.log(c.ignores.some((f) => f(process.argv[2])))"
+    out = subprocess.run(
+        [node, "-e", script, str(COMMITLINT), title],
+        env={k: v for k, v in os.environ.items() if k != BOT_AUTHOR_ENV} | env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return out == "true"
+
+
+def test_bot_bump_ignore_is_granted_by_the_author_not_the_title_text() -> None:
+    """The title check is the only gate on what reaches main, and a bump-shaped
+    title is text anyone can type: unconditional, the ignore let a human's
+    `build(deps): bump x to y ...` skip the 120-character and full-stop rules.
+    """
+    assert len(_LONG_BUMP_TITLE) > 120
+    assert not _commitlint_ignores(_LONG_BUMP_TITLE, {}), "a human's bump-shaped title skipped commitlint"
+    assert not _commitlint_ignores(_LONG_BUMP_TITLE, {BOT_AUTHOR_ENV: "false"})
+    assert _commitlint_ignores(_LONG_BUMP_TITLE, {BOT_AUTHOR_ENV: "true"}), "a bot's bump title is still linted"
+
+
+def test_title_check_tells_commitlint_whether_a_bot_opened_the_pr() -> None:
+    """The flag is derived from the PR author's account type, never from anything the author typed."""
+    step = next(s for s in _title_job()["steps"] if "commitlint" in str(s.get("run", "")))
+    value = str((step.get("env") or {}).get(BOT_AUTHOR_ENV, ""))
+    assert re.fullmatch(r"\$\{\{\s*github\.event\.pull_request\.user\.type\s*==\s*'Bot'\s*\}\}", value), (
+        f"the lint step's {BOT_AUTHOR_ENV} is {value!r}"
+    )
 
 
 def test_title_reaches_the_shell_through_env_not_interpolation() -> None:
