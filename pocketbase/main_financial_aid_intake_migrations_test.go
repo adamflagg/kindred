@@ -134,3 +134,22 @@ func TestAidRequestsHaveNoSplitPayerExemption(t *testing.T) {
 		}
 	}
 }
+
+func TestReportedIncomeColumnIsAddedToTheMirror(t *testing.T) {
+	up := readAidMigrationUp(t, "pb_migrations/1500000205_financial_aid_applications_reported_income.js")
+	for _, want := range []string{
+		`app.findCollectionByNameOrId("financial_aid_applications")`,
+		`type: "json"`,
+		`name: "reported_income_fields"`,
+		"new Field(",
+	} {
+		if !strings.Contains(up, want) {
+			t.Errorf("migration must contain %q", want)
+		}
+	}
+	for _, forbidden := range []string{"Rule =", "Rule:", "options:"} {
+		if strings.Contains(up, forbidden) {
+			t.Errorf("migration must not contain %q: it adds one column and leaves SP2's rules alone", forbidden)
+		}
+	}
+}

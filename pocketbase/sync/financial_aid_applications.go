@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,16 @@ const (
 	// Boolean string parsing constants (shared with other sync files)
 	boolYes = "yes"
 )
+
+// faReportedIncomeColumns maps the four income answers whose BLANK must stay
+// distinguishable from a reported 0 (design §2 item 22) to their mirror columns.
+// Every other number keeps "blank counts as 0" (the calculator's contract).
+var faReportedIncomeColumns = map[string]string{
+	"FA-Total Gross Pre-Tax Income":  "total_gross_income",
+	"FA-Expected Gross Pre-Tax Inco": "expected_gross_income",
+	"FA-Total Adjusted Gross Income": "total_adjusted_income",
+	"FA-confirmpretax income":        "income_confirmed",
+}
 
 // FinancialAidApplicationsSync computes derived financial aid applications from custom values.
 // This service reads from person_custom_values (FA- and CA- prefixed fields)
@@ -194,6 +205,10 @@ type faApplicationData struct {
 	// carryoverUpdated maps a non-seasonal ("carry-over") CampMinder field name to the
 	// date part of its person_custom_values.last_updated. See stampCarryover.
 	carryoverUpdated map[string]string
+
+	// reportedIncome holds the mirror columns in faReportedIncomeColumns whose
+	// CampMinder answer was non-blank and numeric, 0 included.
+	reportedIncome map[string]bool
 }
 
 // Sync executes the financial aid applications computation
@@ -503,6 +518,7 @@ func (s *FinancialAidApplicationsSync) processApplications(
 
 		app := appMap[v.personPBID]
 		s.mapFieldToApplication(app, v.fieldName, v.value)
+		app.noteReportedIncome(v.fieldName, v.value)
 
 		if !v.seasonal {
 			app.stampCarryover(v.fieldName, v.lastUpdated)
@@ -892,6 +908,42 @@ func (app *faApplicationData) carryoverJSON() string {
 	return string(b)
 }
 
+// noteReportedIncome records that an income answer was given, when fieldName is
+// one of faReportedIncomeColumns and value is a number (a "$" and "," are allowed,
+// as parseNumberValue allows them). An unparseable answer is not a reported number.
+func (app *faApplicationData) noteReportedIncome(fieldName, value string) {
+	column, tracked := faReportedIncomeColumns[fieldName]
+	if !tracked {
+		return
+	}
+	clean := strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(value), "$", ""), ",", "")
+	if clean == "" {
+		return
+	}
+	if _, err := strconv.ParseFloat(clean, 64); err != nil {
+		return
+	}
+	if app.reportedIncome == nil {
+		app.reportedIncome = map[string]bool{}
+	}
+	app.reportedIncome[column] = true
+}
+
+// reportedIncomeJSON renders the reported columns as a sorted JSON list, so an
+// unchanged row compares equal and a second run rewrites nothing.
+func (app *faApplicationData) reportedIncomeJSON() string {
+	columns := make([]string, 0, len(app.reportedIncome))
+	for column := range app.reportedIncome {
+		columns = append(columns, column)
+	}
+	sort.Strings(columns)
+	b, err := json.Marshal(columns)
+	if err != nil {
+		return "[]" // unreachable: a []string always marshals
+	}
+	return string(b)
+}
+
 // hasInterestExpressed checks if the value indicates interest was expressed
 func hasInterestExpressed(value string) bool {
 	if value == "" {
@@ -1139,6 +1191,7 @@ func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[stri
 		"amount_confirmed":       record.GetBool("amount_confirmed"),
 		"is_applicant":           record.GetBool("is_applicant"),
 		"carryover_last_updated": record.GetString("carryover_last_updated"),
+		"reported_income_fields": record.GetString("reported_income_fields"),
 	}
 }
 
@@ -1297,6 +1350,7 @@ func (app *faApplicationData) toRecordData(year int) map[string]any {
 		"amount_confirmed":       app.amountConfirmed,
 		"is_applicant":           app.isApplicant,
 		"carryover_last_updated": app.carryoverJSON(),
+		"reported_income_fields": app.reportedIncomeJSON(),
 	}
 }
 

@@ -929,7 +929,10 @@ export type FamilyCampRegistrationsRecord = {
   year: number
 }
 
-export type FinancialAidApplicationsRecord<Tcarryover_last_updated = unknown> = {
+export type FinancialAidApplicationsRecord<
+  Tcarryover_last_updated = unknown,
+  Treported_income_fields = unknown,
+> = {
   affiliated_jcc?: boolean
   amount_confirmed?: boolean
   applicant_signature?: string
@@ -986,6 +989,7 @@ export type FinancialAidApplicationsRecord<Tcarryover_last_updated = unknown> = 
   person: RecordIdString
   person_id: number
   registration_request_amount?: number
+  reported_income_fields?: null | Treported_income_fields
   retirement_accounts?: number
   russian_speaking?: boolean
   single_parent?: boolean
@@ -2204,8 +2208,10 @@ export type FamilyCampRegistrationsResponse<Texpand = unknown> =
   Required<FamilyCampRegistrationsRecord> & BaseSystemFields<Texpand>
 export type FinancialAidApplicationsResponse<
   Tcarryover_last_updated = unknown,
+  Treported_income_fields = unknown,
   Texpand = unknown,
-> = Required<FinancialAidApplicationsRecord<Tcarryover_last_updated>> & BaseSystemFields<Texpand>
+> = Required<FinancialAidApplicationsRecord<Tcarryover_last_updated, Treported_income_fields>> &
+  BaseSystemFields<Texpand>
 export type FinancialCategoriesResponse<Texpand = unknown> = Required<FinancialCategoriesRecord> &
   BaseSystemFields<Texpand>
 export type FinancialTransactionsResponse<Texpand = unknown> =
