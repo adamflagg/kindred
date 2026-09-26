@@ -63,7 +63,7 @@ def _commitlint_enum(rule: str) -> list[str]:
     value.
     """
     text = COMMITLINT.read_text()
-    m = re.search(rf"'{rule}':\s*\[\s*2,\s*'always',\s*\[(.*?)\]\s*\]", text, re.S)
+    m = re.search(rf"'{rule}':\s*\[\s*2,\s*'always',\s*\[(.*?)\]\s*\]", text, re.DOTALL)
     assert m, f"commitlint.config.js has no `{rule}` rule in the form [2, 'always', [...]]"
     values = re.findall(r"'([a-z][a-z-]*)'", re.sub(r"//[^\n]*", "", m.group(1)))
     assert values, f"`{rule}` parsed to an empty list"
@@ -282,7 +282,8 @@ def test_commitlint_ignores_bot_bump_titles_in_their_new_types() -> None:
 # ─── The title check runs commitlint, and nothing else ──────────────────────
 
 
-def _title_workflow() -> dict[str, Any]:
+def _title_workflow() -> dict[Any, Any]:
+    """Keys are `Any`: PyYAML reads a bare `on:` key as the boolean True."""
     wf = yaml.safe_load(TITLE_WORKFLOW.read_text())
     assert isinstance(wf, dict)
     return wf
@@ -291,7 +292,9 @@ def _title_workflow() -> dict[str, Any]:
 def _title_job() -> dict[str, Any]:
     jobs = [j for j in _title_workflow()["jobs"].values() if j.get("name") == REQUIRED_TITLE_CHECK]
     assert len(jobs) == 1, f"exactly one job must be named {REQUIRED_TITLE_CHECK!r}; the ruleset requires it"
-    return jobs[0]
+    job = jobs[0]
+    assert isinstance(job, dict)
+    return job
 
 
 def test_title_check_runs_commitlint_rather_than_a_copied_list() -> None:
@@ -310,7 +313,9 @@ def test_title_reaches_the_shell_through_env_not_interpolation() -> None:
 
 def test_title_check_still_runs_on_every_event_that_can_change_or_hide_it() -> None:
     """`edited` re-checks a retitled PR; `synchronize` puts the check on each new head."""
-    on = _title_workflow().get("on") or _title_workflow().get(True)  # PyYAML reads `on:` as True
+    wf = _title_workflow()
+    on = wf.get("on") or wf.get(True)
+    assert isinstance(on, dict), "semantic-pr.yml has no `on:` mapping"
     assert set(on["pull_request"]["types"]) >= {"opened", "edited", "synchronize", "reopened"}
 
 
