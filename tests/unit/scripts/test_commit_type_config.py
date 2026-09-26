@@ -346,8 +346,11 @@ def _run_version_step(tmp_path: Path, bumped: str) -> subprocess.CompletedProces
     script = next(s for s in _release_steps() if s.get("id") == "version")["run"]
     repo = tmp_path / "repo"
     repo.mkdir()
+    # Every GIT_* stripped first: a git hook exports GIT_DIR/GIT_INDEX_FILE,
+    # which `git` prefers over `cwd=`, so under pre-push these commands would
+    # otherwise commit onto the branch being pushed.
     env = {
-        **os.environ,
+        **{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
         "GIT_AUTHOR_NAME": "t",
         "GIT_AUTHOR_EMAIL": "t@example.invalid",
         "GIT_COMMITTER_NAME": "t",
@@ -380,6 +383,33 @@ def _run_version_step(tmp_path: Path, bumped: str) -> subprocess.CompletedProces
         capture_output=True,
         text=True,
     )
+
+
+def test_release_scratch_repo_ignores_a_hook_git_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A git hook exports GIT_DIR, and `git` prefers it over `cwd=`.
+
+    Under lefthook's pre-push, the scratch repo's `git commit` landed two empty
+    "init" commits on the branch being pushed. Same trap, and same fix, as
+    `test_worktree_cleanup.py`'s `_clean_env`. A decoy stands in for the victim.
+    """
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_GLOBAL": "/dev/null"}
+    ident = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run(["git", "init", "-q"], cwd=decoy, env=env, check=True)
+    subprocess.run(["git", *ident, "commit", "-q", "--allow-empty", "-m", "decoy"], cwd=decoy, env=env, check=True)
+
+    def head() -> str:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=decoy, env=env, capture_output=True, text=True, check=True
+        ).stdout
+
+    before = head()
+    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(decoy / ".git/index"))
+    (tmp_path / "run").mkdir()
+    _run_version_step(tmp_path / "run", "v1.1.0")
+    assert head() == before, "the scratch repo's commits landed in the repository GIT_DIR names"
 
 
 def test_release_explains_a_window_with_nothing_releasable(tmp_path: Path) -> None:
