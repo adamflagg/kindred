@@ -61,8 +61,10 @@ export function SubjectNotesScope({
   // the editor stamped to the OLD board for that one commit -- see the
   // baseline-freeze comment on useSubjectNoteEditor.ts's `scenarioMatches`
   // for the hazard that lag causes downstream. A panel editor flushes on
-  // unmount into the scenario it was OPENED in (EditorTarget).
-  const boardKey = `${String(sessionCmId)}|${scenarioId}`
+  // unmount into the scenario it was OPENED in (EditorTarget). The year is
+  // part of the board: CampMinder reuses session ids across years, so on the
+  // live view a year switch changes neither the session id nor the scenario.
+  const boardKey = `${String(year)}|${String(sessionCmId)}|${scenarioId}`
   const [prevBoardKey, setPrevBoardKey] = useState(boardKey)
   const [editor, setEditor] = useState<EditorTarget | null>(null)
   if (boardKey !== prevBoardKey) {

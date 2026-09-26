@@ -216,6 +216,27 @@ describe('SubjectNotesScope', () => {
     expect(result.current?.editor).toBeNull()
   })
 
+  it('also closes the open editor when the board YEAR changes, same session id and live view', () => {
+    // CampMinder reuses session ids across years, so a year switch on the
+    // live view (scenario '') leaves the session id and scenario unchanged.
+    let year = 2026
+    const { result, rerender } = renderHook(() => useSubjectNotesScope(), {
+      wrapper: ({ children }) => scope({ year, scenarioId: '' })({ children }),
+    })
+    act(() =>
+      result.current!.openEditor({
+        subject: PERSON,
+        label: 'Emma Johnson',
+        surface: 'panel',
+        anchorEl: null,
+      })
+    )
+    expect(result.current?.editor).not.toBeNull()
+    year = 2025
+    rerender()
+    expect(result.current?.editor).toBeNull()
+  })
+
   it('closeEditor(target) ignores a target that is no longer open', () => {
     const { result } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
     act(() =>
