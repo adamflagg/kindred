@@ -28,9 +28,11 @@ from api.schemas.subject_notes import (
 )
 from api.utils.pb_error import pb_error_to_http
 from api.utils.pb_filters import pb_escape
+from api.utils.session_metrics import get_session_from_expand
 from pocketbase import PocketBase
 
-from ..constants.collections import SUBJECT_NOTES
+from ..constants.collections import SAVED_SCENARIOS, SUBJECT_NOTES
+from .session_context import build_session_context
 
 # get_full_list pages with LIMIT/OFFSET; without a stable ORDER BY a row can be
 # skipped or duplicated across pages (see api/routers/scenarios.py STABLE_SORT).
@@ -155,8 +157,45 @@ class SubjectNoteService:
         self._store = store if store is not None else SubjectNoteStore(pb)
 
     async def validate_scope(self, *, session_cm_id: int, year: int, scenario: str) -> list[int]:
-        """Task 1.4 replaces this stub. Returns the session family to read."""
-        return [session_cm_id]
+        """Refuse a note or a read whose scenario does not belong to its session.
+
+        Returns `session_cm_id`'s session family (summer main + its AG
+        sessions; any other session is a family of one) -- what a board read
+        covers. `build_session_context` raises 404 for a session that does not
+        exist in `year`.
+
+        With a scenario: `saved_scenarios.session` is a PocketBase relation
+        (there is no session_cm_id column), so the scenario's own session is
+        expanded, its year must match, and `session_cm_id` must be in THAT
+        session's family. This refuses a scenario selected for a different
+        session -- the case `weekendScenario.ts` says nothing else on the
+        server catches -- and an AG camper's note inside its main session's
+        scenario passes, because AG is in main's family.
+        """
+        ctx = await build_session_context(session_cm_id, year, self._pb)
+        if scenario:
+            family = await self._scenario_family(scenario, year)
+            if session_cm_id not in family:
+                raise SubjectNoteScopeError(f"Scenario {scenario} belongs to a different session than {session_cm_id}")
+        return list(ctx.related_session_ids)
+
+    async def _scenario_family(self, scenario: str, year: int) -> list[int]:
+        try:
+            record = await asyncio.to_thread(
+                self._pb.collection(SAVED_SCENARIOS).get_one, scenario, {"expand": "session"}
+            )
+        except ClientResponseError as exc:
+            if exc.status == 404:
+                raise ScenarioNotFoundError(f"Scenario {scenario} was not found") from exc
+            raise
+        session = get_session_from_expand(record)
+        session_cm_id = int(getattr(session, "cm_id", 0) or 0) if session is not None else 0
+        if session_cm_id <= 0:
+            raise SubjectNoteScopeError(f"Scenario {scenario} names a session that no longer resolves")
+        if int(getattr(record, "year", 0) or 0) != year:
+            raise SubjectNoteScopeError(f"Scenario {scenario} is not a {year} scenario")
+        ctx = await build_session_context(session_cm_id, year, self._pb)
+        return list(ctx.related_session_ids)
 
     async def list_for_board(self, *, session_cm_id: int, year: int, scenario: str) -> list[SubjectNoteOut]:
         related = await self.validate_scope(session_cm_id=session_cm_id, year=year, scenario=scenario)

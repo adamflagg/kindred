@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import ValidationError
 
@@ -23,6 +24,8 @@ from api.services.subject_note_service import (
     NoteKey,
     NothingToPromoteError,
     PromotedNoteTooLongError,
+    ScenarioNotFoundError,
+    SubjectNoteScopeError,
     SubjectNoteService,
     SubjectNoteStore,
     board_filter,
@@ -380,3 +383,101 @@ class TestCopyPlanNotes:
         assert copied == 1
         by_scenario = {r.scenario: r.body for r in store.rows.values()}
         assert by_scenario == {"": "Standard", "scnA": "Only in A", "scnB": "Only in B", "scnC": "Only in A"}
+
+
+# ---------------------------------------------------------------------------
+# Scope validation (ruling R1)
+# ---------------------------------------------------------------------------
+
+# A summer main session's family includes its AG child; every other session
+# (AG itself, a weekend) is a family of one -- get_related_session_ids' rule.
+_FAMILIES = {MAIN: [MAIN, AG], AG: [AG], FC5: [FC5], FC6: [FC6]}
+
+
+async def _ctx(session_cm_id: int, year: int, _pb: Any) -> SimpleNamespace:
+    if year != YEAR or session_cm_id not in _FAMILIES:
+        raise HTTPException(status_code=404, detail="no such session")
+    return SimpleNamespace(session_cm_id=session_cm_id, related_session_ids=_FAMILIES[session_cm_id])
+
+
+def _pb_with_scenarios(scenarios: dict[str, tuple[int, int]]) -> MagicMock:
+    """saved_scenarios.get_one(id, {"expand": "session"}) for {id: (session_cm_id, year)}."""
+    pb = MagicMock()
+
+    def get_one(scenario_id: str, _params: Any = None) -> Any:
+        if scenario_id not in scenarios:
+            raise _pb_error(404)
+        session_cm_id, year = scenarios[scenario_id]
+        return SimpleNamespace(id=scenario_id, year=year, expand={"session": SimpleNamespace(cm_id=session_cm_id)})
+
+    pb.collection.return_value.get_one.side_effect = get_one
+    return pb
+
+
+@pytest.fixture
+def scoped(monkeypatch: pytest.MonkeyPatch, store: FakeStore) -> SubjectNoteService:
+    monkeypatch.setattr("api.services.subject_note_service.build_session_context", _ctx)
+    pb = _pb_with_scenarios({"scnMain": (MAIN, YEAR), "scnFC5": (FC5, YEAR), "scnOld": (FC5, 2025)})
+    return SubjectNoteService(pb, store=store)  # type: ignore[arg-type]
+
+
+class TestScope:
+    @pytest.mark.asyncio
+    async def test_summer_board_read_covers_main_and_ag(self, scoped: SubjectNoteService) -> None:
+        await scoped.save(_write("On the main session"), updated_by="Test Staff")
+        await scoped.save(_write("An AG camper", subject_cm_id=1000102, session_cm_id=AG), updated_by="Test Staff")
+
+        notes = await scoped.list_for_board(session_cm_id=MAIN, year=YEAR, scenario="")
+
+        assert sorted(n.session_cm_id for n in notes) == [MAIN, AG]
+
+    @pytest.mark.asyncio
+    async def test_ag_note_inside_a_main_session_scenario_is_allowed(self, scoped: SubjectNoteService) -> None:
+        result = await scoped.save(
+            _write("Plan-only", subject_cm_id=1000102, session_cm_id=AG, scenario="scnMain"), updated_by="Test Staff"
+        )
+        assert result.note is not None
+        assert result.note.session_cm_id == AG
+
+    @pytest.mark.asyncio
+    async def test_scenario_from_another_session_is_422(self, scoped: SubjectNoteService) -> None:
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.save(_write("x", session_cm_id=FC6, scenario="scnFC5"), updated_by="Test Staff")
+
+    @pytest.mark.asyncio
+    async def test_a_board_read_with_another_sessions_scenario_is_422(self, scoped: SubjectNoteService) -> None:
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.list_for_board(session_cm_id=FC6, year=YEAR, scenario="scnFC5")
+
+    @pytest.mark.asyncio
+    async def test_a_session_outside_the_scenarios_family_is_422(self, scoped: SubjectNoteService) -> None:
+        # MAIN is not in FC5's family.
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.save(_write("x", session_cm_id=MAIN, scenario="scnFC5"), updated_by="Test Staff")
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_from_another_year_is_422(self, scoped: SubjectNoteService) -> None:
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.save(_write("x", session_cm_id=FC5, scenario="scnOld"), updated_by="Test Staff")
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_scenario_is_404(self, scoped: SubjectNoteService) -> None:
+        with pytest.raises(ScenarioNotFoundError):
+            await scoped.save(_write("x", session_cm_id=FC5, scenario="scnGone"), updated_by="Test Staff")
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_session_is_404(self, scoped: SubjectNoteService) -> None:
+        with pytest.raises(HTTPException) as exc:
+            await scoped.save(_write("x", session_cm_id=1000099), updated_by="Test Staff")
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_the_live_view_reads_standard_notes_only(self, scoped: SubjectNoteService) -> None:
+        await scoped.save(_write("Standard", session_cm_id=FC5), updated_by="Test Staff")
+        await scoped.save(_write("Plan", session_cm_id=FC5, scenario="scnFC5"), updated_by="Test Staff")
+
+        live = await scoped.list_for_board(session_cm_id=FC5, year=YEAR, scenario="")
+        plan = await scoped.list_for_board(session_cm_id=FC5, year=YEAR, scenario="scnFC5")
+
+        assert [n.body for n in live] == ["Standard"]
+        assert sorted(n.body for n in plan) == ["Plan", "Standard"]
