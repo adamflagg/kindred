@@ -32,6 +32,14 @@ from api.schemas.financial_aid_intake import (
     PayerShareOut,
     RequestOut,
 )
+from api.services.financial_aid_calc_inputs import (
+    CalculatorInputs,
+    awaiting_approved_rules,
+    request_issues,
+    rules_program_key,
+    to_application_inputs,
+    to_request_inputs,
+)
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
     REQUEST_CORRECTABLE,
@@ -71,6 +79,7 @@ from api.services.financial_aid_payer_shares import (
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.rules.schema import AidRules
 
 
 class CaseworkNotFoundError(LookupError):
@@ -631,3 +640,38 @@ class FinancialAidCaseworkService:
         if should_write:
             await self._store.commit([write], actor=actor, reason=note.strip())
         return CapacityOut(year=year, session_cm_id=session_cm_id, capacity=capacity, note=note.strip(), actor=actor)
+
+    async def calculator_inputs_for(self, year: int, household_cm_id: int, rules: AidRules) -> list[CalculatorInputs]:
+        """Every live request (active or unmatched) on the family's application, converted under
+        `rules`, the version the caller prices with. Nothing is dropped: a request that cannot be
+        priced comes back with request=None and the reason in `blocked`."""
+        if rules.year != year:
+            raise CaseworkValidationError(f"the rules are for {rules.year}, not {year}")
+        application = await self._require_application(year, household_cm_id)
+        live = (STATUS_ACTIVE, STATUS_UNMATCHED)
+        requests = [r for r in await self._store.fetch_requests(year, application.id) if r.status in live]
+        corrections = await self._store.fetch_corrections(year, application.id)
+        answers = effective_values(application.answers, APPLICATION_CORRECTABLE, corrections)
+        sessions = {s.cm_id: s for s in await self._store.fetch_sessions(year)}
+        shares = await self._store.fetch_payer_shares(year, [r.id for r in requests])
+        equity = await self._store.fetch_equity_answers(year, [r.person_cm_id for r in requests if r.person_cm_id])
+        app_inputs = to_application_inputs(household_cm_id, answers)
+        results: list[CalculatorInputs] = []
+        for request in requests:
+            issues = tuple(request_issues(request, application.flags, answers, shares, rules))
+            program_key = rules_program_key(request, sessions, rules)
+            if awaiting_approved_rules(request):
+                reason = "waiting for approved rules: the next intake run after finance approves them resolves it"
+                results.append(CalculatorInputs(request.id, app_inputs, None, issues, reason))
+                continue
+            if request.session_cm_id <= 0:
+                results.append(CalculatorInputs(request.id, app_inputs, None, issues, "the session is unmatched"))
+                continue
+            if program_key is None:
+                reason = f"no program in the {rules.year} rules claims session {request.session_cm_id}"
+                results.append(CalculatorInputs(request.id, app_inputs, None, issues, reason))
+                continue
+            ask = effective_values({"ask": request.ask or None}, REQUEST_CORRECTABLE, corrections, request.id)["ask"]
+            converted = to_request_inputs(request, ask, equity.get(request.person_cm_id), program_key)
+            results.append(CalculatorInputs(request.id, app_inputs, converted, issues))
+        return results

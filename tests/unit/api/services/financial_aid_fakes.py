@@ -112,6 +112,7 @@ def intake_rules() -> AidRules:
         {
             "year": YEAR,
             "programs.summer.session_types": ["main", "embedded", "ag"],
+            "programs.quest.session_types": ["quest"],
             "programs.family_camp.session_cm_ids": [1000201, 1000202],
             "quality_checks.checks.household_income_conflict": {"severity": "hold"},
             "quality_checks.checks.unmatched_session": {"severity": "hold"},
