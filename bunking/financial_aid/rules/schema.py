@@ -4,7 +4,8 @@ Every lever in the 2026 lever catalogue is a field here, the ones the sheet
 hard-coded included, and so are the "quirk" switches that reproduce 2026 as it
 actually behaved: ``income.floor_applies_after``, ``grants.minimum_after_grants``,
 ``round2.cap_subtracts_grants``, and a program's Round 1 table (``r1_table``) or
-Round 2 table (``round2.program_tables``) that may be ``None`` (no table). The board fixes a quirk by changing a setting, never code.
+Round 2 table (``round2.program_tables``) that may be ``None`` (no table). The board
+fixes a quirk by changing a setting, never code.
 
 Structure only. Cross-field policy checks (tables that increase with tier, pools
 that do not sum to 100%, a session no program claims) live in ``validation.py``
@@ -144,9 +145,9 @@ class TierBand(RulesModel):
 
 class TiersSection(RulesModel):
     bands: list[TierBand] = Field(min_length=1)
-    # Adjusted income above this gets none of the camp's own money: Rounds 1-3, named top-ups
-    # and discretionary amounts, unless a decision type is `ceiling_exempt`. Outside grants
-    # are unaffected (the engine never pays them; they only offset). None: no ceiling.
+    # Adjusted income above this gets none of the camp's own money: Rounds 1-3 always, and
+    # named top-ups and discretionary amounts unless the decision type is `ceiling_exempt`.
+    # Outside grants are unaffected (the engine never pays them; they only offset). None: no ceiling.
     income_ceiling: Money | None = None
     # The lowest final tier: final tier = max(floor_tier, income tier - equity shift).
     floor_tier: int = Field(default=1, ge=1)
@@ -332,7 +333,8 @@ class DecisionType(RulesModel):
 
     `counts_toward_budget` says whether this type's money is the camp's own budget money; a
     decision counts only when its stage's `counts_toward_budget` says so too.
-    `ceiling_exempt` lets this type pay above `tiers.income_ceiling`.
+    `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
+    `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
     """
 
     label: str = Field(min_length=1)
