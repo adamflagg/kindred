@@ -126,7 +126,7 @@ export function ViewAsSwitcher() {
         // reachable however many roles exist or however short the window is.
         <div
           data-testid="view-as-menu"
-          className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 flex max-h-[calc(100vh-5rem)] w-72 flex-col p-2"
+          className="card-lodge shadow-lodge-lg animate-scale-in text-foreground absolute top-full right-0 z-50 mt-2 flex max-h-[calc(100vh-5rem)] w-72 flex-col p-2"
         >
           <p className={sectionClass}>View as</p>
           <button
@@ -201,6 +201,7 @@ export function ViewAsSwitcher() {
                     <label key={perm} className="flex cursor-pointer items-center gap-1.5">
                       <input
                         type="checkbox"
+                        className="accent-primary"
                         checked={customPerms.includes(perm)}
                         onChange={() => toggleCustomPerm(perm)}
                       />

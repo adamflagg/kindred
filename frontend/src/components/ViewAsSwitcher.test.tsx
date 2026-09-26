@@ -186,6 +186,14 @@ describe('ViewAsSwitcher', () => {
     expect(menu?.className).toContain('max-h-[calc(100vh-5rem)]')
   })
 
+  it("sets its own text colour, so nothing inherits the header nav's white", () => {
+    renderAs({ isAdmin: true })
+    openMenu()
+    fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+    expect(screen.getByTestId('view-as-menu').className).toContain('text-foreground')
+    expect(screen.getByLabelText('sheets.export').className).toContain('accent-primary')
+  })
+
   it('closes on Escape', () => {
     renderAs({ isAdmin: true })
     openMenu()
