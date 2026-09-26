@@ -14,6 +14,7 @@ import pytest
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import ValidationError
 
+from api.constants.collections import SUBJECT_NOTES
 from api.schemas.subject_notes import (
     SubjectNotePromoteRequest,
     SubjectNoteWriteRequest,
@@ -121,6 +122,38 @@ class TestStore:
         await SubjectNoteStore(pb).list_plan_notes("scnA")
         params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
         assert params == {"filter": 'scenario = "scnA"', "sort": "id"}
+
+    @pytest.mark.asyncio
+    async def test_create_passes_the_row_through_to_pocketbase(self) -> None:
+        pb = MagicMock()
+        pb.collection.return_value.create.return_value = SimpleNamespace(id="note0")
+        data = {**_key().row(), "body": "Hi", "updated_by": "Test Staff"}
+
+        result = await SubjectNoteStore(pb).create(data)
+
+        pb.collection.assert_called_with(SUBJECT_NOTES)
+        pb.collection.return_value.create.assert_called_with(data)
+        assert result.id == "note0"
+
+    @pytest.mark.asyncio
+    async def test_update_passes_the_record_id_and_row_through(self) -> None:
+        pb = MagicMock()
+        pb.collection.return_value.update.return_value = SimpleNamespace(id="note0", body="Updated")
+
+        result = await SubjectNoteStore(pb).update("note0", {"body": "Updated"})
+
+        pb.collection.assert_called_with(SUBJECT_NOTES)
+        pb.collection.return_value.update.assert_called_with("note0", {"body": "Updated"})
+        assert result.body == "Updated"
+
+    @pytest.mark.asyncio
+    async def test_delete_passes_the_record_id_through(self) -> None:
+        pb = MagicMock()
+
+        await SubjectNoteStore(pb).delete("note0")
+
+        pb.collection.assert_called_with(SUBJECT_NOTES)
+        pb.collection.return_value.delete.assert_called_with("note0")
 
 
 class TestToOut:
