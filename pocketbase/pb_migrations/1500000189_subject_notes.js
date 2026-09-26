@@ -69,7 +69,7 @@ migrate(
           { type: 'select', name: 'subject_kind', required: true, presentable: false, maxSelect: 1, values: ['person', 'household'] },
           { type: 'number', name: 'subject_cm_id', required: true, presentable: false, min: 1, max: null, onlyInt: true },
           { type: 'number', name: 'session_cm_id', required: true, presentable: false, min: 1, max: null, onlyInt: true },
-          { type: 'number', name: 'year', required: true, presentable: false, min: 2010, max: 2100, onlyInt: true },
+          { type: 'number', name: 'year', required: true, presentable: false, min: 2000, max: 2100, onlyInt: true },
           {
             type: 'relation', name: 'scenario', required: false, presentable: false,
             collectionId: scenarios.id, cascadeDelete: true, minSelect: null, maxSelect: 1,

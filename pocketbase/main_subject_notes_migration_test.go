@@ -25,6 +25,9 @@ var subjectNotesIndexStatement = regexp.MustCompile("CREATE (?:UNIQUE )?INDEX `[
 // The scenario field's object literal inside the up path.
 var subjectNotesScenarioField = regexp.MustCompile(`\{[^{}]*name: 'scenario'[^{}]*\}`)
 
+// The year field's object literal inside the up path.
+var subjectNotesYearField = regexp.MustCompile(`\{[^{}]*name: 'year'[^{}]*\}`)
+
 func TestSubjectNotesMigrationShape(t *testing.T) {
 	body := readMigration(t, subjectNotesMigration)
 	up, down := migrationHalves(t, body)
@@ -55,6 +58,19 @@ func TestSubjectNotesMigrationShape(t *testing.T) {
 		if !strings.Contains(field, want) {
 			t.Errorf("scenario field must carry %q, got %s", want, field)
 		}
+	}
+	// The migration's year floor must match SubjectNoteKey.year's ge=2000 in
+	// api/schemas/subject_notes.py. A tighter PB floor lets a 2000-2009 year
+	// pass Pydantic validation and then fail the PocketBase create with a raw
+	// 400 -- which _write's race-recovery path (api/services/subject_note_service.py)
+	// mistakes for a lost unique-index race, finds nothing, and re-raises --
+	// instead of the intended 422.
+	yearField := subjectNotesYearField.FindString(up)
+	if yearField == "" {
+		t.Fatalf("%s declares no year field", subjectNotesMigration)
+	}
+	if !strings.Contains(yearField, "min: 2000") {
+		t.Errorf("%s: year field must carry min: 2000 to match the API schema, got %s", subjectNotesMigration, yearField)
 	}
 	if !strings.Contains(down, "app.delete(") {
 		t.Errorf("%s's down path must delete the collection", subjectNotesMigration)
