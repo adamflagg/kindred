@@ -478,3 +478,12 @@ def test_every_log_key_the_batch_path_writes_is_a_field_of_the_migrations() -> N
     pb = FakePocketBase()
     commit_aid_writes(pb, [_create()], actor=ACTOR, persona="none")  # type: ignore[arg-type]
     assert sorted(set(_log_rows(pb)[0]) - declared) == []
+
+
+def test_partial_commit_is_not_a_refusal() -> None:
+    # FinancialAidError means "understood and refused": routers map it to a 4xx. A half-committed
+    # operation is not a refusal, so it must reach the global 500 handler with its message intact.
+    from bunking.financial_aid.errors import FinancialAidError
+
+    assert not issubclass(AidOperationPartiallyCommittedError, FinancialAidError)
+    assert issubclass(AidOperationPartiallyCommittedError, RuntimeError)

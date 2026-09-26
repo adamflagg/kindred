@@ -48,7 +48,6 @@ from decimal import Decimal
 from typing import Any
 
 from bunking.financial_aid.change_diff import changed_fields
-from bunking.financial_aid.errors import FinancialAidError
 from bunking.pocketbase_batch import (
     MAX_BATCH_REQUESTS,
     BatchLimitError,
@@ -281,8 +280,12 @@ class AidOperationResult:
     batches: int
 
 
-class AidOperationPartiallyCommittedError(FinancialAidError):
+class AidOperationPartiallyCommittedError(RuntimeError):
     """A chunked operation failed after its earlier chunks committed.
+
+    Deliberately not a ``FinancialAidError``: that means "understood and
+    refused", which routers answer with a 4xx. Some of this operation is saved,
+    so it reaches the global 500 handler with its message intact.
 
     ``committed`` of ``total`` writes (the first ``committed``, in order) are in
     the database with their log rows, all under ``operation_id``. ``in_doubt``
