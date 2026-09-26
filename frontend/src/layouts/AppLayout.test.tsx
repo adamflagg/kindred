@@ -115,6 +115,10 @@ vi.mock('../components/FeedbackModal', () => ({
     isOpen ? <div data-testid="feedback-modal">Feedback Modal</div> : null,
 }))
 
+vi.mock('../components/ViewAsSwitcher', () => ({
+  ViewAsSwitcher: () => <div data-testid="view-as-switcher" />,
+}))
+
 const toastError = vi.fn()
 const toastSuccess = vi.fn()
 const toastPlain = vi.fn()
@@ -168,6 +172,17 @@ describe('Program Switcher', () => {
     fireEvent.click(programButton)
 
     expect(screen.getByText('Switch Programs')).toBeInTheDocument()
+  })
+
+  it('mounts the View as switcher in the header, left of the user menu', () => {
+    renderAppLayout()
+    const switcher = screen.getByTestId('view-as-switcher')
+    const userName = screen.getByText('Jane Smith')
+    expect(switcher.closest('nav')).not.toBeNull()
+    // DOCUMENT_POSITION_FOLLOWING: the user menu comes after the switcher.
+    expect(
+      switcher.compareDocumentPosition(userName) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 })
 

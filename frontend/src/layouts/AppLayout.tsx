@@ -44,6 +44,7 @@ import { MANAGE_TABS, canSeeTab } from '../config/manageTabs'
 import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
+import { ViewAsSwitcher } from '../components/ViewAsSwitcher'
 import type { SyncStatus, SyncStatusResponse } from '../hooks/useSyncStatusAPI'
 
 function buildSyncTooltip(kind: string, status: SyncStatus): string {
@@ -428,6 +429,8 @@ export const AppLayout = () => {
 
             {/* Right side items */}
             <div className="flex items-center gap-2">
+              {/* Admin "View as" persona preview; renders only for a real admin */}
+              <ViewAsSwitcher />
               {/* User Menu Dropdown */}
               {isAuthenticated && user && (
                 <div className="relative" ref={userMenuRef}>
