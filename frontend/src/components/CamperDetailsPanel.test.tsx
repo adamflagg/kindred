@@ -2916,3 +2916,22 @@ describe('CamperDetailsPanel — pixel identity without a note slot (board notes
     expect(normalizeIds(baseElement.innerHTML)).toMatchSnapshot()
   })
 })
+
+describe('CamperDetailsPanel — the Note section comes first (board notes)', () => {
+  it('renders the slot first in the body, above Alerts and every section', async () => {
+    setupDeclinedRequestMocks()
+    render(
+      <CamperDetailsPanel
+        camperId="100"
+        onClose={vi.fn()}
+        notesSlot={<section data-testid="notes-slot" />}
+      />
+    )
+    const slot = await screen.findByTestId('notes-slot')
+    expect(slot.previousElementSibling).toBeNull()
+    expect(slot.parentElement?.previousElementSibling).toHaveAttribute(
+      'data-testid',
+      'quick-stats-bar'
+    )
+  })
+})

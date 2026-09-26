@@ -166,6 +166,12 @@ interface CamperDetailsPanelProps {
    * today's full list.
    */
   openedFromSessionCmId?: number
+  /**
+   * The board-note section (board notes, 2026-09-25). Rendered FIRST in the
+   * body, above Alerts; staying absent until a note exists is the section's
+   * own job. Only the bunking board passes it.
+   */
+  notesSlot?: React.ReactNode
 }
 
 // Interface for current-year enrollment (one per attendee record)
@@ -298,6 +304,7 @@ export default function CamperDetailsPanel({
   assignedBunkCmId,
   getBunkForPerson,
   openedFromSessionCmId,
+  notesSlot,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -1023,6 +1030,8 @@ export default function CamperDetailsPanel({
       </div>
 
       <div className="space-y-3 px-4">
+        {notesSlot}
+
         {/* ── Alerts (mirrored from bunking-board camper card) ────────────── */}
         {camperAlerts.length > 0 && (
           <CamperAlertSection
