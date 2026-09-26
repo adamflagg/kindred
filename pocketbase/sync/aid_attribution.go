@@ -127,8 +127,17 @@ func (c *aidAttributionContext) attribute(p aidPostingInput) aidAttribution {
 
 func (c *aidAttributionContext) fromOverride(o aidOverride) aidAttribution {
 	family := o.Family
-	if family == "" && o.SessionCMID > 0 {
+	switch {
+	case family == "" && o.SessionCMID > 0:
 		family = c.SessionFamily[o.SessionCMID]
+	case family == "" && o.PersonCMID > 0:
+		// The override names a person but neither a session nor a family.
+		// Take the program family from that person's own active (status_id =
+		// 2) enrollments in this attribution context when they all agree --
+		// Python's program_bucket otherwise reports a real placement as
+		// "ambiguous" for no reason but a data gap (final review item 4).
+		// Enrolled across two families leaves it exactly as it was: empty.
+		family = aidSingleFamily(aidActiveEnrollments(c.EnrollmentsByPerson[o.PersonCMID]))
 	}
 	method := aidMethodOverrideStaff
 	if o.Source == aidOverrideSourceSheet {
@@ -336,6 +345,17 @@ func aidSingleFamily(es []aidEnrollment) string {
 		return families[0]
 	}
 	return ""
+}
+
+// aidActiveEnrollments filters to status_id = 2 (aidActiveStatusID) rows only.
+func aidActiveEnrollments(es []aidEnrollment) []aidEnrollment {
+	var out []aidEnrollment
+	for _, e := range es {
+		if e.StatusID == aidActiveStatusID {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func aidEnrollmentsInFamilies(es []aidEnrollment, families []string) []aidEnrollment {

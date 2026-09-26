@@ -48,6 +48,10 @@ func TestParseAidSourcesConfigRejectsBadInput(t *testing.T) {
 		"unknown key": entry(ok + `, "shade": "blue"`),
 		// Owner ruling 2026-09-25: only the camp's own aid counts toward the budget.
 		"outside grant counted toward the budget": entry(ok + `, "counts_toward_budget": true`),
+		// Item 5 (final review, ruling): counting toward the budget while not
+		// even counting as aid is incoherent, whatever the source family.
+		"counts toward the budget but not as aid": entry(`"description": "X Aid", "source_name": "X", ` +
+			`"source_family": "camp_fa", "funder_type": "camp", "counts_toward_budget": true`),
 		"camp aid marked full coverage": entry(`"description": "X Aid", "source_name": "X", "source_family": "camp_fa", ` +
 			`"funder_type": "camp", "full_coverage": true`),
 		"unknown family":      entry(strings.Replace(ok, "other_outside", "mystery", 1)),

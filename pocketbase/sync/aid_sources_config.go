@@ -93,6 +93,10 @@ func parseAidSourcesConfig(data []byte) (map[string]aidSourceClass, error) {
 			// Owner ruling 2026-09-25: every outside grant and fund is external to the
 			// camp's budget; only the camp's own aid counts.
 			return nil, fmt.Errorf("%s (%q): only camp_fa may count toward the budget", where, e.Description)
+		case e.CountsTowardBudget && !e.CountsAsAid:
+			// Item 5 ruling (final review): counting toward the budget while not
+			// even counting as aid is incoherent.
+			return nil, fmt.Errorf("%s (%q): counts_toward_budget requires counts_as_aid", where, e.Description)
 		case e.FullCoverage && e.FunderType == "camp":
 			return nil, fmt.Errorf("%s (%q): full_coverage marks an outside full-ride source, not the camp's own aid",
 				where, e.Description)

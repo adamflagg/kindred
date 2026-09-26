@@ -49,7 +49,7 @@ func (f *fakeAidDecision) MatchDecision(aidPostingInput) (aidAttribution, bool) 
 
 func TestAidAttributionRules(t *testing.T) {
 	t.Parallel()
-	const enrolled, waitlisted, cancelled = 2, 8, 32
+	const enrolled, waitlisted, cancelled, withdrawn = 2, 8, 32, 256
 	siblings := map[int][]int{100: {1001, 1002}}
 	three := map[int][]int{100: {1001, 1002, 1003}}
 	household := aidPostingInput{TransactionCMID: 9001, HouseholdCMID: 100}
@@ -113,12 +113,53 @@ func TestAidAttributionRules(t *testing.T) {
 				PersonCMID: 1001, SessionCMID: 11, Family: programFamilySummer},
 		},
 		{
+			// Item 4 (final review, controller ruling): a placing override that
+			// names a person but no session and no family used to get an empty
+			// family, which the Python program_bucket reports as "ambiguous"
+			// even though the named person's own enrollments settle it.
+			name:    "an override naming only a person with no active enrollment leaves the family empty",
+			members: siblings, in: household,
+			setup: func(c *aidAttributionContext) {
+				c.Overrides[9001] = aidOverride{PersonCMID: 1001, Source: aidOverrideSourceStaff}
+			},
+			want: aidAttribution{Level: aidLevelOverride, Method: aidMethodOverrideStaff, PersonCMID: 1001},
+		},
+		{
+			name:    "an override naming only a person takes that person's single-family enrollment",
+			members: siblings,
+			enrs:    []aidTestEnr{{1001, 11, enrolled}},
+			setup: func(c *aidAttributionContext) {
+				c.Overrides[9001] = aidOverride{PersonCMID: 1001, Source: aidOverrideSourceStaff}
+			},
+			in: household,
+			want: aidAttribution{Level: aidLevelOverride, Method: aidMethodOverrideStaff, PersonCMID: 1001,
+				Family: programFamilySummer},
+		},
+		{
+			name:    "an override naming only a person leaves the family empty across two families",
+			members: siblings,
+			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1001, 31, enrolled}},
+			setup: func(c *aidAttributionContext) {
+				c.Overrides[9001] = aidOverride{PersonCMID: 1001, Source: aidOverrideSourceStaff}
+			},
+			in:   household,
+			want: aidAttribution{Level: aidLevelOverride, Method: aidMethodOverrideStaff, PersonCMID: 1001},
+		},
+		{
 			name: "rule 3: no enrollment at all", members: siblings, in: household,
 			want: aidAttribution{Level: aidLevelNone, Method: aidMethodNoEnrollment},
 		},
 		{
 			name: "rule 3: a cancelled enrollment marks the candidate", members: siblings,
 			enrs: []aidTestEnr{{1001, 11, cancelled}}, in: household,
+			want: aidAttribution{Level: aidLevelNone, Method: aidMethodNoEnrollment, CandidateCancelled: true},
+		},
+		{
+			// Item 9 (final review, tests only): 256 (withdrawn) is the other
+			// aidCancelledStatusIDs member beside 32 (cancelled) -- both mark
+			// CandidateCancelled the same way.
+			name: "rule 3: a withdrawn enrollment marks the candidate", members: siblings,
+			enrs: []aidTestEnr{{1001, 11, withdrawn}}, in: household,
 			want: aidAttribution{Level: aidLevelNone, Method: aidMethodNoEnrollment, CandidateCancelled: true},
 		},
 		{

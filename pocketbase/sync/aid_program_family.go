@@ -56,9 +56,15 @@ func isAidProgramFamily(v string) bool {
 	return slices.Contains(aidProgramFamilies, v)
 }
 
+// aidWhitespaceClass matches everything Python's Unicode-aware `\s` matches:
+// RE2's own `\s` is ASCII-only ([\t\n\f\r ], and does not even include \v),
+// while \p{Z} adds the Unicode separator categories (Zs/Zl/Zp -- U+00A0,
+// U+2009, U+202F, U+3000 among them). \v fills the one gap \p{Z} leaves.
+const aidWhitespaceClass = `[\s\p{Z}\v]`
+
 var (
-	aidLabelWhitespace = regexp.MustCompile(`\s+`)
-	aidLabelHyphen     = regexp.MustCompile(`\s*-\s*`)
+	aidLabelWhitespace = regexp.MustCompile(aidWhitespaceClass + `+`)
+	aidLabelHyphen     = regexp.MustCompile(aidWhitespaceClass + `*-` + aidWhitespaceClass + `*`)
 	aidLabelDashes     = strings.NewReplacer("–", "-", "—", "-", "−", "-")
 )
 
@@ -66,7 +72,10 @@ var (
 // matching an FA application's program answer to a camp_sessions name.
 // CampMinder spells one grantor several ways ("X- Region", "X-Region",
 // "X – Region"), so the key trims, lower-cases, unifies dashes, collapses
-// whitespace and puts exactly one space either side of every hyphen.
+// whitespace and puts exactly one space either side of every hyphen. The
+// whitespace classes match Python's Unicode-aware `\s` twin exactly
+// (normalize_aid_label, financial_aid_ledger_service.py) -- see
+// TestNormalizeAidLabel and test_normalize_aid_label_is_the_go_twin.
 func normalizeAidLabel(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = aidLabelDashes.Replace(s)

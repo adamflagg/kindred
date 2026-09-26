@@ -431,6 +431,57 @@ func TestAidPostingsSyncDailyRunCoversTheSeasonWindow(t *testing.T) {
 	}
 }
 
+// Review Focus (item 2): a sweep-guard refusal on one season in the N-1..N+1
+// window must not stop the others -- SP1's financial_transactions.go pattern
+// (log, continue, join the errors) is what aid_postings.go must copy.
+func TestAidPostingsSyncASeasonGuardRefusalDoesNotStopTheOthers(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t) // its service() pins Season 2026, the window's middle year
+
+	// Season 2025 (N-1): one aid posting exists from an earlier run.
+	f.household(1100, 2025)
+	f.txn(9101, 2025, -100, aidCategoryFinancialAssistance, aidTestLegacy, 1100, 0, 0, false)
+	f.run("", 2025)
+	if got := len(f.rows(colAidPostings, 2025)); got != 1 {
+		t.Fatalf("setup: expected one 2025 posting, got %d", got)
+	}
+
+	// Staff reclassify its source as not aid, so a rerun computes zero drafts
+	// for 2025 while financial_transactions for 2025 still has rows -- exactly
+	// the collapse OrphanSweepGuard exists to refuse.
+	rec, err := f.app.FindFirstRecordByFilter(colAidSources, "description_key = {:k}",
+		dbx.Params{"k": normalizeAidLabel(aidTestLegacy)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Set("counts_as_aid", false)
+	rec.Set("classified_by", aidClassifiedStaff)
+	if err = f.app.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	// Season 2026 (N, live): an ordinary aid posting.
+	f.household(1200, 2026)
+	f.txn(9102, 2026, -200, aidCategoryFinancialAssistance, aidTestCampAid, 1200, 0, 0, false)
+
+	s := f.service()
+	s.Year = 0
+	err = s.Sync(f.t.Context())
+	if err == nil {
+		t.Fatal("expected Sync to return the joined refusal error")
+	}
+	if !strings.Contains(err.Error(), "2025") {
+		t.Errorf("error should name the refused season: %v", err)
+	}
+
+	if got := len(f.rows(colAidPostings, 2026)); got != 1 {
+		t.Errorf("season 2026 (the live season) must still be written despite 2025's refusal, got %d postings", got)
+	}
+	if got := len(f.rows(colAidPostings, 2025)); got != 1 {
+		t.Errorf("season 2025's stale posting must be left alone (a refused sweep deletes nothing), got %d", got)
+	}
+}
+
 func TestAidPostingsSyncFlagsAidAboveTheBilledFee(t *testing.T) {
 	t.Parallel()
 	f := newAidFixture(t)

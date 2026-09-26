@@ -63,6 +63,9 @@ func TestNormalizeAidLabel(t *testing.T) {
 		"Session 3 (All-Gender Cabin)":      "session 3 (all - gender cabin)",
 		"":                                  "",
 		"   ":                               "",
+		"Grant North":                       "grant north",
+		"A\vB":                              "a b", // vertical tab: RE2's \s alone omits it
+		"A B":                               "a b", // U+202F narrow no-break space: outside RE2's \s
 	}
 	for in, want := range cases {
 		if got := normalizeAidLabel(in); got != want {

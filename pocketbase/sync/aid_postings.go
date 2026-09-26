@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -115,17 +116,23 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 			return err
 		}
 	}
-	var runErr error
+	// A failed season is logged and the next one still runs; the returned error
+	// joins every failure. Matches financial_transactions.go's syncSeasons: a
+	// sweep-guard refusal on one season (order N-1, N, N+1) must not stop the
+	// live season that follows it.
+	var errs []error
 	for _, year := range years {
 		if err := ctx.Err(); err != nil {
-			runErr = err
+			errs = append(errs, err)
 			break
 		}
 		if err := s.syncYear(ctx, year, sources); err != nil {
-			runErr = fmt.Errorf("aid_postings %d: %w", year, err)
-			break
+			slog.Error("Aid postings season failed; continuing with the next",
+				"year", year, "error", err)
+			errs = append(errs, fmt.Errorf("aid_postings %d: %w", year, err))
 		}
 	}
+	runErr := errors.Join(errs...)
 	if !s.DryRun && (s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0) {
 		if _, err := s.App.DB().NewQuery("PRAGMA wal_checkpoint(FULL)").Execute(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
