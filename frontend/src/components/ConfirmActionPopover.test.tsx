@@ -311,3 +311,48 @@ describe('ConfirmActionPopover — over a ui/Modal (kindred#2205)', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('ConfirmActionPopover — fixes carried by the useAnchoredOverlay move (board notes)', () => {
+  const props = {
+    isOpen: true,
+    action: 'approve' as const,
+    onConfirm: vi.fn(),
+    onCancel: vi.fn(),
+  }
+
+  it('flips above using its MEASURED height, not a hard-coded 90', () => {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get: () => 150,
+    })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 })
+    try {
+      render(
+        <ConfirmActionPopover
+          {...props}
+          anchorRect={{ top: 700, left: 300, width: 40, height: 40 }}
+        />
+      )
+      // 700 - 150 - 8; the old estimate would have given 602px.
+      expect(screen.getByRole('dialog').style.top).toBe('542px')
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original)
+    }
+  })
+
+  it('does not dismiss on a scroll INSIDE itself', () => {
+    const onCancel = vi.fn()
+    render(
+      <ConfirmActionPopover
+        {...props}
+        onCancel={onCancel}
+        anchorRect={{ top: 100, left: 300, width: 40, height: 40 }}
+      />
+    )
+    fireEvent.scroll(screen.getByRole('dialog'))
+    expect(onCancel).not.toHaveBeenCalled()
+    fireEvent.scroll(document)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+})
