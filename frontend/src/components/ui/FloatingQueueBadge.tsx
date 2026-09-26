@@ -241,9 +241,10 @@ export function FloatingQueueBadge<T>({
         <button
           onClick={onToggle}
           // An open note popover's outside-press handler (SubjectNotePopover)
-          // exempts exactly this attribute (owner request O5) -- pressing the
-          // queue's own toggle never saves/closes an open note, unlike a
-          // press anywhere else in the badge.
+          // exempts exactly this attribute -- pressing the queue's own
+          // toggle never saves/closes an open note, unlike a press anywhere
+          // else in the badge. The expanded state's own close button
+          // (`data-queue-close`, below) is exempt the same way.
           data-queue-toggle
           className={clsx(
             'shadow-lodge-lg relative flex h-14 w-14 items-center justify-center rounded-full transition-all',
@@ -295,6 +296,9 @@ export function FloatingQueueBadge<T>({
             </div>
             <button
               onClick={onClose}
+              // Exempt the same way the toggle button above is: closing the
+              // queue must not also close an open note popover.
+              data-queue-close
               className="hover:bg-muted rounded-lg p-1.5 transition-colors"
               title="Close"
             >

@@ -242,6 +242,32 @@ describe('SubjectNotePopover', () => {
     }
   })
 
+  it('a press on the expanded queue’s own close button keeps the popover open, no save', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for FloatingQueueBadge's own expanded-state close ✕ --
+    // marked with the same `data-queue-close` attribute, elsewhere in the
+    // document.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const close = document.createElement('button')
+    close.setAttribute('data-queue-close', '')
+    badge.appendChild(close)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(close)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+    } finally {
+      badge.remove()
+    }
+  })
+
   it('a press elsewhere in the queue badge (not its toggle) still saves the open note first', async () => {
     render(<Board />)
     openPopover()

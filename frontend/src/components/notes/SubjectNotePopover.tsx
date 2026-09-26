@@ -14,10 +14,11 @@
  *   the queue under a click inside the popover.
  * - `role="dialog"` also keeps `shouldKeepPanelsOpen` from treating a click
  *   inside it as dead space.
- * - A press on the queue's own toggle button (`[data-queue-toggle]`,
- *   `FloatingQueueBadge`) is exempt the same way the corner is (owner
- *   request O5): staff can open/close the queue without closing an open
- *   note. Any OTHER press inside the queue still saves it first.
+ * - A press on the queue's own toggle button (`[data-queue-toggle]`) or its
+ *   expanded state's close button (`[data-queue-close]`), both
+ *   `FloatingQueueBadge`, is exempt the same way the corner is: staff can
+ *   open or close the queue without closing an open note. Any OTHER press
+ *   inside the queue still saves it first.
  */
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
@@ -116,14 +117,15 @@ function useOutsidePointer(
       const target = event.target as Element | null
       if (!target || containerRef.current?.contains(target)) return
       if (isScrollbarGutterPress(event, target)) return
-      // The queue's own open/close toggle (owner request O5): a press here
-      // should not close an open note, so staff can work the queue and a
-      // note at once -- but it is NOT a reason to keep the note open the way
-      // the corner that opened it is (no eater; the toggle's own onClick
-      // still needs to fire normally). Deliberately scoped to the toggle
-      // button itself, not the whole `[data-floating-badge]`: a press on
-      // ANOTHER queue card's corner must still save the open note first.
-      if (target.closest('[data-queue-toggle]')) return
+      // The queue's own toggle and its expanded state's close button --
+      // two separate controls, each exempt: a press on either should not
+      // close an open note, so staff can work the queue and a note at once
+      // -- but it is NOT a reason to keep the note open the way the corner
+      // that opened it is (no eater; the button's own onClick still needs
+      // to fire normally). Deliberately scoped to these two buttons, not the
+      // whole `[data-floating-badge]`: a press on ANOTHER queue card's
+      // corner must still save the open note first.
+      if (target.closest('[data-queue-toggle], [data-queue-close]')) return
       if (target.closest(`[data-note-corner-for="${cornerKey}"]`)) {
         swallowNextClick(event)
         return
