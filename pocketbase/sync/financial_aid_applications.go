@@ -59,6 +59,10 @@ type FinancialAidApplicationsSync struct {
 	Debug          bool // Enable verbose debug logging
 	Stats          Stats
 	SyncSuccessful bool
+
+	// IntakeTrigger rebuilds campership intake after a successful non-dry-run
+	// write (sub-project 5). Production sets TriggerFinancialAidIntake; nil skips.
+	IntakeTrigger func(ctx context.Context, year int) error
 }
 
 // NewFinancialAidApplicationsSync creates a new financial aid applications sync service
@@ -297,6 +301,8 @@ func (s *FinancialAidApplicationsSync) Sync(ctx context.Context) error {
 	if sweepErr != nil {
 		return wrapOrphanSweepError(sweepErr)
 	}
+
+	s.runIntakeTrigger(ctx, year)
 
 	slog.Info("Financial aid applications computation completed",
 		"year", year,

@@ -2346,6 +2346,7 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	service := NewFinancialAidApplicationsSync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
+	service.IntakeTrigger = TriggerFinancialAidIntake
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()

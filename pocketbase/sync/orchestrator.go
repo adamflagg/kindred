@@ -2453,6 +2453,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Financial aid applications (derived from person_custom_values FA- fields)
 		faApplicationsSync := NewFinancialAidApplicationsSync(o.app)
 		faApplicationsSync.Year = opts.Year
+		faApplicationsSync.IntakeTrigger = TriggerFinancialAidIntake
 		o.RegisterService("financial_aid_applications", faApplicationsSync)
 
 		// Household demographics (computed from HH- fields + household custom values)
@@ -3058,7 +3059,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("staff_skills", NewStaffSkillsSync(o.app))
 
 	// Financial aid applications (derived from person_custom_values FA- fields)
-	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(o.app))
+	faApplicationsDefaultSync := NewFinancialAidApplicationsSync(o.app)
+	faApplicationsDefaultSync.IntakeTrigger = TriggerFinancialAidIntake
+	o.RegisterService("financial_aid_applications", faApplicationsDefaultSync)
 
 	// Household demographics (computes from HH- fields + household custom values - on-demand)
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))
