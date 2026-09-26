@@ -1286,3 +1286,24 @@ describe('FamilyDetailsPanel — an adult guest’s sections (kindred#2759)', ()
     expect(screen.queryByRole('heading', { name: 'Bunking request (Jotform)' })).toBeNull()
   })
 })
+
+describe('FamilyDetailsPanel — pixel identity without a note slot (board notes)', () => {
+  it('renders exactly what main renders', () => {
+    const { baseElement } = render(
+      <FamilyDetailsPanel party={party()} unit={unit()} year={2026} onClose={vi.fn()} />,
+      { wrapper }
+    )
+    // `normalizeIds` (Task 2.10) lives only in `FamilyCard.notes.test.tsx`,
+    // unexported, and is NOT imported here: importing any symbol from a
+    // `*.test.tsx` file executes that file's top-level `describe`/`vi.mock`
+    // calls as a side effect of module resolution, which re-registered
+    // FamilyCard's whole suite (and its `usePermissions` mock) inside THIS
+    // file's run and broke an unrelated admin-gated test (verified by hand
+    // before writing this). No shared, non-test helper exports it either.
+    // Confirmed empirically that this panel's default render contains no
+    // React `useId`-style token (`«r0»`/`:r0:`) for `normalizeIds` to strip,
+    // so snapshotting the raw markup is safe here; see the task report for
+    // the full write-up.
+    expect(baseElement.innerHTML).toMatchSnapshot()
+  })
+})
