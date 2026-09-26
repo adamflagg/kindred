@@ -48,6 +48,15 @@ export function ViewAsSwitcher() {
   )
   const menuRef = useRef<HTMLDivElement>(null)
 
+  const toggleMenu = () => {
+    // Re-opening discards a Custom selection that was never applied.
+    if (!isOpen) {
+      setIsCustomOpen(viewAs?.source === 'custom')
+      setCustomPerms(viewAs?.source === 'custom' ? viewAs.permissions : [])
+    }
+    setIsOpen(!isOpen)
+  }
+
   useEffect(() => {
     if (!isOpen) return
     const handleClickOutside = (event: MouseEvent) => {
@@ -86,7 +95,7 @@ export function ViewAsSwitcher() {
     <div className="relative flex items-center" ref={menuRef}>
       {label === null ? (
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggleMenu}
           className="flex items-center gap-2 rounded-xl border border-white/25 px-3 py-2 text-sm font-semibold text-white/85 transition-all hover:bg-white/10"
         >
           <Eye className="h-4 w-4" />
@@ -96,7 +105,7 @@ export function ViewAsSwitcher() {
       ) : (
         <div className="text-forest-900 flex items-center overflow-hidden rounded-xl border border-amber-600 bg-amber-500 text-sm font-bold">
           <button
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={toggleMenu}
             className="flex items-center gap-2 px-3 py-2 hover:bg-amber-400"
           >
             <Eye className="h-4 w-4" />
@@ -138,12 +147,13 @@ export function ViewAsSwitcher() {
                 switchTo({
                   label: role.name,
                   source: 'role',
+                  roleId: role.id,
                   permissions: [...role.permissions].sort(byName),
                 })
               }
               className={itemClass}
             >
-              <CheckSlot on={viewAs?.source === 'role' && viewAs.label === role.name} />
+              <CheckSlot on={viewAs?.source === 'role' && viewAs.roleId === role.id} />
               <span>
                 <span className="font-semibold">{role.name}</span>
                 <span className="text-muted-foreground block text-xs">

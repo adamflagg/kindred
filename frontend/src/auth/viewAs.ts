@@ -15,6 +15,8 @@ const STORAGE_KEY = 'kindred.viewAs'
 export interface ViewAsPersona {
   label: string
   source: 'role' | 'none' | 'custom'
+  /** The role's record id when source is 'role', so the picker can mark it even if renamed. */
+  roleId?: string
   permissions: string[]
 }
 
@@ -24,6 +26,7 @@ function isPersona(value: unknown): value is ViewAsPersona {
   return (
     typeof p['label'] === 'string' &&
     (p['source'] === 'role' || p['source'] === 'none' || p['source'] === 'custom') &&
+    (p['roleId'] === undefined || typeof p['roleId'] === 'string') &&
     Array.isArray(p['permissions']) &&
     p['permissions'].every((perm) => typeof perm === 'string')
   )

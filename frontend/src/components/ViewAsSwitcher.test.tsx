@@ -58,9 +58,35 @@ describe('ViewAsSwitcher', () => {
     expect(readViewAs()).toEqual({
       label: 'Registrar',
       source: 'role',
+      roleId: 'r2',
       permissions: ['metrics.geo', 'registration.manage'],
     })
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('checks the previewed role by id, so a rename mid-preview keeps the checkmark', () => {
+    writeViewAs({
+      label: 'Old Registrar Name',
+      source: 'role',
+      roleId: 'r2',
+      permissions: ['metrics.geo'],
+    })
+    renderAs({ isAdmin: true })
+    fireEvent.click(screen.getByRole('button', { name: /Old Registrar Name/ }))
+    const registrarItem = screen.getByRole('button', { name: /^Registrar/ })
+    const bunkingItem = screen.getByRole('button', { name: /^Bunking Staff/ })
+    expect(registrarItem.querySelector('svg')).not.toBeNull()
+    expect(bunkingItem.querySelector('svg')).toBeNull()
+  })
+
+  it('collapses an un-applied Custom section when the menu closes', () => {
+    renderAs({ isAdmin: true })
+    openMenu()
+    fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+    expect(screen.getByLabelText('sheets.export')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    openMenu()
+    expect(screen.queryByLabelText('sheets.export')).toBeNull()
   })
 
   it('picking No role stores an empty persona', () => {

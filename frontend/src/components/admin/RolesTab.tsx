@@ -6,10 +6,11 @@
  * CRUD for admin users.
  */
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Shield, Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { pb } from '../../lib/pocketbase'
-import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { queryKeys } from '../../utils/queryKeys'
+import { useRoles } from '../../hooks/useRoles'
 import { usePermissions } from '../../hooks/usePermissions'
 import { ALL_PERMISSIONS } from '../../constants/permissions'
 import type { Role } from '../../types/rbac'
@@ -33,21 +34,7 @@ export function RolesTab() {
     permissions: [],
   })
 
-  const {
-    data: roles = [],
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: queryKeys.roles(),
-    queryFn: async () => {
-      const records = await pb.collection('roles').getFullList<Role>({
-        sort: 'name',
-        requestKey: null,
-      })
-      return records
-    },
-    ...userDataOptions,
-  })
+  const { data: roles = [], isLoading, error } = useRoles()
 
   const createMutation = useMutation({
     mutationFn: async (data: RoleFormData) => {

@@ -173,6 +173,14 @@ describe('Program Switcher', () => {
 
     expect(screen.getByText('Switch Programs')).toBeInTheDocument()
   })
+})
+
+describe('View as switcher', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    syncStatusSpy.mockImplementation(() => ({ data: null }))
+  })
 
   it('mounts the View as switcher in the header, left of the user menu', () => {
     renderAppLayout()

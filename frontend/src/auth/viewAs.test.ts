@@ -46,6 +46,11 @@ describe('viewAs persona storage', () => {
       JSON.stringify({ label: 'X', source: 'role', permissions: [1] })
     )
     expect(readViewAs()).toBeNull()
+    window.sessionStorage.setItem(
+      'kindred.viewAs',
+      JSON.stringify({ label: 'X', source: 'role', roleId: 7, permissions: [] })
+    )
+    expect(readViewAs()).toBeNull()
   })
 
   it('treats blocked storage as not previewing, and never throws', () => {
