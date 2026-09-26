@@ -17,10 +17,23 @@ import { FamilyCard } from './FamilyCard'
 // objects per call would defeat FamilyCardInner's memo in the render-count
 // test below. The snapshot is recorded under this same mock, so before and
 // after are compared like for like.
+//
+// `onMouseDown`/`onTouchStart`, not `onPointerDown`: both boards register
+// dnd-kit's `MouseSensor` and `TouchSensor` (LodgingBoard.tsx,
+// BunkingBoardByArea.tsx), whose activators are exactly those two DOM event
+// types (@dnd-kit/core's own `MouseSensor`/`TouchSensor` classes) — dnd-kit
+// never wires `onPointerDown` for either. An earlier version of this mock
+// used `onPointerDown`, which made the "pressing the corner never starts a
+// drag" test below pass for the wrong reason: `SubjectNoteCorner` only
+// stopped `pointerdown`, so a real board would still start a drag from the
+// corner on `mousedown`/`touchstart`.
 const dragStart = vi.hoisted(() => vi.fn())
 const DRAG = vi.hoisted(() => ({
   attributes: {},
-  listeners: { onPointerDown: (...a: unknown[]) => dragStart(...a) },
+  listeners: {
+    onMouseDown: (...a: unknown[]) => dragStart(...a),
+    onTouchStart: (...a: unknown[]) => dragStart(...a),
+  },
   setNodeRef: () => undefined,
   isDragging: false,
 }))
@@ -123,9 +136,10 @@ describe('FamilyCard — the note corner slot', () => {
   it('pressing the corner never starts a drag; pressing the card still does', () => {
     const { container } = renderWithCorner()
     dragStart.mockReset()
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Note' }))
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Note' }))
+    fireEvent.touchStart(screen.getByRole('button', { name: 'Note' }))
     expect(dragStart).not.toHaveBeenCalled()
-    fireEvent.pointerDown(container.querySelector('[data-family-card]') as HTMLElement)
+    fireEvent.mouseDown(container.querySelector('[data-family-card]') as HTMLElement)
     expect(dragStart).toHaveBeenCalledTimes(1)
   })
 

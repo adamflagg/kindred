@@ -8,8 +8,16 @@
  * hover or focus-within only.
  *
  * It sits BESIDE the card's open control, never inside it, so it can be a
- * real button and use the real `ui/Tooltip` preview. pointerdown stops here:
- * pressing the corner is never a drag start and never opens the panel.
+ * real button and use the real `ui/Tooltip` preview. `pointerdown`,
+ * `mousedown` and `touchstart` all stop here, not `pointerdown` alone: both
+ * boards register dnd-kit's `MouseSensor` and `TouchSensor`
+ * (`LodgingBoard.tsx`, `BunkingBoardByArea.tsx`), whose activators are
+ * exactly those two DOM event types -- dnd-kit never wires a `pointerdown`
+ * listener for either sensor. Stopping only `pointerdown` left a real
+ * mousedown/touchstart free to bubble to the card's drag listeners, so
+ * pressing the corner still started a drag. Whichever of the three the
+ * pointing device actually fires, pressing the corner is never a drag start
+ * and never opens the panel.
  *
  * While a board drag is in progress (`[data-dragging]` on the board root) the
  * ghost disappears and no corner takes the pointer -- a CSS rule in
@@ -150,6 +158,12 @@ export function SubjectNoteCorner({ subject, label, containing }: SubjectNoteCor
       className={`absolute z-[5] ${mode === 'ghost' ? GHOST : ''}`}
       style={{ top: offset, right: offset, width: HIT, height: HIT }}
       onPointerDown={(event) => {
+        event.stopPropagation()
+      }}
+      onMouseDown={(event) => {
+        event.stopPropagation()
+      }}
+      onTouchStart={(event) => {
         event.stopPropagation()
       }}
     >

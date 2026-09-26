@@ -10,6 +10,11 @@ function renderCorner(
   overrides = {}
 ) {
   const value = scopeValue(rows, overrides)
+  // ONE handler for all three: dnd-kit's `MouseSensor`/`TouchSensor` (the
+  // sensors both real boards register) key off `mousedown`/`touchstart`,
+  // never `pointerdown` -- pinning all three here is what would have caught
+  // the corner stopping only `pointerdown` and still leaking a real
+  // mousedown/touchstart drag start to the card.
   const onCardPointerDown = vi.fn()
   const view = render(
     <NotesScopeFixture value={value}>
@@ -19,6 +24,8 @@ function renderCorner(
         className="group relative"
         style={{ borderTopRightRadius: '12px', borderTopWidth: '2px', borderStyle: 'solid' }}
         onPointerDown={onCardPointerDown}
+        onMouseDown={onCardPointerDown}
+        onTouchStart={onCardPointerDown}
       >
         <SubjectNoteCorner subject={HOUSEHOLD} label="Johnson" containing="padding" />
       </div>
@@ -87,9 +94,12 @@ describe('SubjectNoteCorner', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(`${'a'.repeat(118)} b…`)
   })
 
-  it('pointerdown on the corner does not reach the card (never a drag start)', () => {
+  it('pointerdown, mousedown and touchstart on the corner do not reach the card (never a drag start)', () => {
     const { onCardPointerDown } = renderCorner()
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Note' }))
+    const note = screen.getByRole('button', { name: 'Note' })
+    fireEvent.pointerDown(note)
+    fireEvent.mouseDown(note)
+    fireEvent.touchStart(note)
     expect(onCardPointerDown).not.toHaveBeenCalled()
   })
 
