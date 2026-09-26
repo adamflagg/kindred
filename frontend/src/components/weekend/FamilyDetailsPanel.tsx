@@ -22,6 +22,7 @@
  * slide-in overlay — there is no second implementation to keep in sync.
  */
 import { Baby, Clock, Home, Repeat, Star, Users } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -76,6 +77,11 @@ export interface FamilyDetailsPanelProps {
    * — never the party's grain — to draw the adult guest's Jotform section.
    */
   sessionType?: string | undefined
+  /**
+   * The board-note section (board notes, 2026-09-25). Rendered FIRST in the
+   * body; staying absent until a note exists is the section's own job.
+   */
+  notesSlot?: ReactNode
 }
 
 export function FamilyDetailsPanel({
@@ -86,6 +92,7 @@ export function FamilyDetailsPanel({
   onClose,
   backdropInteractive = false,
   sessionType,
+  notesSlot,
 }: FamilyDetailsPanelProps) {
   // A blank `family_camp_adults` slot is not an attending adult -- rendering
   // it left an empty <li> in the Party list (kindred#2084 scan finding).
@@ -132,6 +139,7 @@ export function FamilyDetailsPanel({
 
   const body = (
     <div className="flex flex-col gap-4 p-4">
+      {notesSlot}
       <Section title="Placement">
         <div className="flex flex-wrap items-center gap-2">
           <Home className="text-muted-foreground h-4 w-4 flex-shrink-0" />

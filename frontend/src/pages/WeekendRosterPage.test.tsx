@@ -138,6 +138,19 @@ vi.mock('../hooks/useUnitMerge', () => ({
   }),
 }))
 
+// Board notes mount a scope around the board. Its data layer has its own
+// suite (hooks/useSubjectNotes.test.tsx); these page tests render without a
+// QueryClientProvider, so it is stubbed like every other hook here.
+const subjectNotesSpy = vi.fn()
+vi.mock('../hooks/useSubjectNotes', () => ({
+  useSubjectNotes: (args: unknown) => {
+    subjectNotesSpy(args)
+    return { data: { notes: [] } }
+  },
+  useSaveSubjectNote: () => ({ mutateAsync: vi.fn() }),
+  usePromoteSubjectNote: () => ({ mutateAsync: vi.fn() }),
+}))
+
 // The page reads the global ScenarioContext to resolve which plan the roster
 // is being read in (#1967). These tests are about layout and navigation, so
 // the mock stays in production mode throughout — the picker's own behaviour

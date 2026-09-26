@@ -1350,3 +1350,16 @@
   animation: sparkle-anim 1.6s ease-in-out infinite;
   transform-origin: center center;
 }
+
+/* Board notes (components/notes/SubjectNoteCorner.tsx). While a board drag is
+   in progress the board root carries [data-dragging]: the empty-card ghost
+   corner disappears and no corner takes the pointer, so a drag can never land
+   on a note affordance. CSS rather than state, so memo'd cards never
+   re-render for it. */
+[data-dragging] [data-note-corner='ghost'] {
+  display: none;
+}
+
+[data-dragging] [data-note-corner] {
+  pointer-events: none;
+}
