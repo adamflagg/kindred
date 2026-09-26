@@ -118,7 +118,7 @@ describe('the note mutations', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.subjectNotesPrefix() })
   })
 
-  it('a failed save toasts the server detail', async () => {
+  it('a failed promote toasts the server detail', async () => {
     fetchSpy.mockImplementation(() =>
       Promise.resolve(
         new Response(
