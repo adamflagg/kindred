@@ -253,7 +253,7 @@ func RegisterHooks(app core.App) {
 		return guardConfigWrite(e, false)
 	})
 
-	// Admin "view as" persona: downgrade e.Auth per request (view_as.go).
+	// Admin "view as" persona: point e.Auth at the persona stand-in (view_as.go).
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.Bind(viewAsMiddleware())
 		return se.Next() //nolint:wrapcheck // standard PocketBase hook pattern

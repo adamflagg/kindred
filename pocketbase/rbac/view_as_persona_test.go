@@ -1,6 +1,7 @@
 package rbac
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -90,5 +91,43 @@ func TestEnsureViewAsPersona(t *testing.T) {
 	}
 	if len(ids) != 2 || !slices.Contains(ids, viewAsPersonaID([]string{})) {
 		t.Errorf("persona users = %v, want the Registrar and No-role stand-ins", ids)
+	}
+}
+
+// TestEnsureViewAsPersonaRejectsSquatter pins the squatting hole: a real
+// account (e.g. a first-time OAuth2 sign-up, which forwards client createData
+// -- including a chosen id and email -- into the record create) can land at a
+// persona's deterministic id/email before any admin ever previews it.
+// ensureViewAsPersona must fail closed rather than silently treat that row as
+// the stand-in and run every future preview of this persona as the squatter's
+// real account.
+func TestEnsureViewAsPersonaRejectsSquatter(t *testing.T) {
+	app := newAuthTestApp(t, testAdminGroup)
+	perms := []string{"metrics.geo", "registration.manage"}
+	id := viewAsPersonaID(perms)
+
+	// A real account at the persona's id, with the persona's own real email
+	// domain -- not the view-as.invalid stand-in marker.
+	createUserWithID(t, app, id, "squatter@example.com", false, perms)
+
+	if _, err := ensureViewAsPersona(app, perms); err == nil {
+		t.Fatal("ensureViewAsPersona accepted a non-stand-in row squatting the persona id")
+	}
+}
+
+// TestViewAsPersonaNameCapsLength pins a permanent-500 trap: the users.name
+// field has a 255-char cap, and an uncapped "View as: " + joined permissions
+// name can exceed it once an admin's persona carries enough permissions.
+func TestViewAsPersonaNameCapsLength(t *testing.T) {
+	perms := make([]string, 0, 40)
+	for i := range 40 {
+		perms = append(perms, fmt.Sprintf("some.very.long.permission.codename.number.%02d", i))
+	}
+	got := viewAsPersonaName(perms)
+	if n := len([]rune(got)); n > 255 {
+		t.Fatalf("persona name is %d runes, exceeds the users.name 255-char cap: %q", n, got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("a truncated persona name should end with an ellipsis, got %q", got)
 	}
 }

@@ -1,12 +1,15 @@
 package rbac
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"github.com/pocketbase/pocketbase/tools/auth"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
@@ -63,6 +66,8 @@ func TestViewAsMiddleware(t *testing.T) {
 	const listProbe = "/api/collections/probe_bunking/records"
 	const listSolverRuns = "/api/collections/solver_runs/records"
 	regBody := `{"key":"reg_dates","metadata":{"business_category":"registration"}}`
+	squattedID := viewAsPersonaID([]string{"metrics.geo", "registration.manage"})
+	squattedEmail := squattedID + "@" + viewAsPersonaEmailDomain
 
 	scenarios := []tests.ApiScenario{
 		{
@@ -174,6 +179,69 @@ func TestViewAsMiddleware(t *testing.T) {
 			URL: "/api/collections/config/records", Body: strings.NewReader(regBody),
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, ""), Headers: headers,
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"key":"reg_dates"`},
+		},
+		{
+			// The squatting hole: OAuth2 first sign-up forwards client createData
+			// -- including a chosen id and email -- into the record create
+			// (apis/record_auth_with_oauth2.go). Without the namespace reservation
+			// in registerUsersWriteGuard (users_guard.go), a squatter could plant a
+			// real account at a persona's exact deterministic id/email, and every
+			// future admin preview of that persona would silently run as the
+			// squatter's real account instead of a stand-in.
+			Name:   "OAuth2 first sign-up cannot squat the view-as persona namespace",
+			Method: http.MethodPost,
+			URL:    "/api/collections/users/auth-with-oauth2",
+			Body: strings.NewReader(`{
+				"provider": "` + testOAuth2Provider + `",
+				"code": "123",
+				"redirectURL": "https://example.com",
+				"createData": {"id": "` + squattedID + `", "email": "` + squattedEmail + `"}
+			}`),
+			TestAppFactory: factory,
+			BeforeTestFunc: func(t testing.TB, _ *tests.TestApp, _ *core.ServeEvent) {
+				useMockIDP(t, &auth.AuthUser{
+					Id: "idp-squatter", Email: "squatter@example.com", Name: "Alex Squatter",
+					RawUser: map[string]any{"groups": []any{}},
+				})
+			},
+			ExpectedStatus:  http.StatusBadRequest,
+			ExpectedContent: []string{"This id/email is reserved"},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				assertNoUser(t, app, "squatter@example.com")
+				if _, err := app.FindRecordById("users", squattedID); err == nil {
+					t.Error("a row was created at the reserved persona id despite the refusal")
+				}
+			},
+		},
+		{
+			// The fail-closed branch (view_as.go: ensureViewAsPersona error ->
+			// apis.NewInternalServerError) is only real if the request truly
+			// aborts: a bug that logged the error and fell through to e.Next()
+			// would run the request as the real, undowngraded admin and leak
+			// bunking data straight past the preview.
+			Name: "stand-in creation failure fails closed", Method: http.MethodGet, URL: listProbe,
+			TestAppFactory: factory,
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, ev *core.ServeEvent) {
+				app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
+					if strings.HasPrefix(e.Record.Id, "va") {
+						return errors.New("simulated persona creation failure")
+					}
+					return e.Next() //nolint:wrapcheck // test-only hook
+				})
+				asUser(true, nil, "registration.manage,metrics.geo")(t, app, ev)
+			},
+			Headers:         headers,
+			ExpectedStatus:  http.StatusInternalServerError,
+			ExpectedContent: []string{"View-as persona unavailable"},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+				body, err := io.ReadAll(res.Body)
+				if err != nil {
+					t.Fatalf("read response body: %v", err)
+				}
+				if strings.Contains(string(body), `"totalItems":1`) {
+					t.Errorf("probe data leaked despite the failed-closed persona: %s", body)
+				}
+			},
 		},
 	}
 	for _, s := range scenarios {

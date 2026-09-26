@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -82,6 +83,11 @@ const viewAsMiddlewareID = "kindredViewAs"
 // isViewAsPersonaUser (frontend/src/auth/viewAs.ts) filters on the same string.
 const viewAsPersonaEmailDomain = "view-as.invalid"
 
+// viewAsPersonaIDPattern is the shape viewAsPersonaID always produces.
+// registerUsersWriteGuard (users_guard.go) uses this to reserve the namespace
+// against a client-chosen id at create time.
+var viewAsPersonaIDPattern = regexp.MustCompile(`^va[0-9a-f]{13}$`)
+
 // viewAsPersonaID derives a stand-in's record id from its permission set, so a
 // persona always maps to the same row: "va" + 13 hex chars = the 15 [a-z0-9]
 // chars PocketBase ids require. perms must already be sorted (parseViewAs does).
@@ -90,12 +96,52 @@ func viewAsPersonaID(perms []string) string {
 	return "va" + hex.EncodeToString(sum[:])[:13]
 }
 
-// viewAsPersonaName is the stand-in's display name.
+// viewAsPersonaMaxNameRunes keeps the stand-in's display name under the users
+// collection's name field cap (255 chars). Truncating at 200 plus the
+// ellipsis leaves headroom and never touches the short "No role" form.
+const viewAsPersonaMaxNameRunes = 200
+
+// viewAsPersonaName is the stand-in's display name. An admin previewing
+// enough permissions could otherwise produce a name over the users.name
+// field's 255-char cap, which would turn every future preview of that exact
+// persona into a permanent 500 (the create/find would keep failing validation).
 func viewAsPersonaName(perms []string) string {
 	if len(perms) == 0 {
 		return "View as: No role"
 	}
-	return "View as: " + strings.Join(perms, " · ")
+	name := "View as: " + strings.Join(perms, " · ")
+	if runes := []rune(name); len(runes) > viewAsPersonaMaxNameRunes {
+		name = string(runes[:viewAsPersonaMaxNameRunes]) + "…"
+	}
+	return name
+}
+
+// verifyViewAsPersona confirms a users row found at a persona's deterministic
+// id is actually the stand-in it claims to be, not a real account that
+// squatted the id/email. registerUsersWriteGuard reserves the namespace going
+// forward, but this is what protects a preview against a row that squatted it
+// before that guard existed, or one a superuser created directly (the guard's
+// namespace check only runs on the non-superuser path). Fails closed:
+// ensureViewAsPersona never silently repairs or reuses a row that fails this.
+func verifyViewAsPersona(app core.App, row *core.Record, perms []string) error {
+	wantEmail := row.Id + "@" + viewAsPersonaEmailDomain
+	if !strings.EqualFold(row.Email(), wantEmail) {
+		return fmt.Errorf("view-as persona %s: email %q is not the stand-in's, want %q", row.Id, row.Email(), wantEmail)
+	}
+	if row.GetBool(fieldIsAdmin) {
+		return fmt.Errorf("view-as persona %s: is_admin is true, not a stand-in", row.Id)
+	}
+	if !slices.Equal(row.GetStringSlice(fieldCachedPermissions), perms) {
+		return fmt.Errorf("view-as persona %s: cached_permissions do not match the persona", row.Id)
+	}
+	externalAuths, err := app.FindAllExternalAuthsByRecord(row)
+	if err != nil {
+		return fmt.Errorf("view-as persona %s: check external auths: %w", row.Id, err)
+	}
+	if len(externalAuths) > 0 {
+		return fmt.Errorf("view-as persona %s: has external auth links, not a stand-in", row.Id)
+	}
+	return nil
 }
 
 // ensureViewAsPersona returns the users row that stands in for a persona,
@@ -106,9 +152,15 @@ func viewAsPersonaName(perms []string) string {
 // A stand-in cannot be signed into (password auth on users is off, it has no
 // OAuth link, and its password is random), has no user_roles so nothing
 // recomputes it, and is shared by every admin who previews the same persona.
+// Every row found at the deterministic id -- whether already there or raced
+// into existence by a concurrent request -- is verified before being reused;
+// see verifyViewAsPersona.
 func ensureViewAsPersona(app core.App, perms []string) (*core.Record, error) {
 	id := viewAsPersonaID(perms)
 	if existing, err := app.FindRecordById("users", id); err == nil {
+		if verifyErr := verifyViewAsPersona(app, existing, perms); verifyErr != nil {
+			return nil, verifyErr
+		}
 		return existing, nil
 	}
 	users, err := app.FindCollectionByNameOrId("users")
@@ -126,6 +178,9 @@ func ensureViewAsPersona(app core.App, perms []string) (*core.Record, error) {
 	if err := app.Save(stand); err != nil {
 		// A concurrent request for the same persona may have created it first.
 		if existing, findErr := app.FindRecordById("users", id); findErr == nil {
+			if verifyErr := verifyViewAsPersona(app, existing, perms); verifyErr != nil {
+				return nil, verifyErr
+			}
 			return existing, nil
 		}
 		return nil, fmt.Errorf("create view-as persona %s: %w", id, err)
