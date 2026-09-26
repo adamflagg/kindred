@@ -8,17 +8,29 @@ import { SubjectNotesScope } from './SubjectNotesScope'
 import { useNoteSlots } from './useNoteSlots'
 
 const notesSpy = vi.fn()
-let notesData: { notes: Array<ReturnType<typeof noteRow>> } = { notes: [] }
+let notesData: { notes: Array<ReturnType<typeof noteRow>> } | undefined = { notes: [] }
+let notesIsError = false
+let notesError: unknown = null
 const saveNote = vi.fn()
 const promoteNote = vi.fn()
 vi.mock('../../hooks/useSubjectNotes', () => ({
+  // Mirrors the real helper's shape (hooks/useSubjectNotes.ts) closely enough
+  // for these tests, without pulling the real query hooks into a mocked module.
+  errorText: (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback,
   useSubjectNotes: (args: unknown) => {
     notesSpy(args)
-    return { data: notesData }
+    return { data: notesData, isError: notesIsError, error: notesError }
   },
   useSaveSubjectNote: () => ({ mutateAsync: (...a: unknown[]) => saveNote(...a) }),
   usePromoteSubjectNote: () => ({ mutateAsync: (...a: unknown[]) => promoteNote(...a) }),
 }))
+
+const toastError = vi.fn()
+vi.mock('react-hot-toast', () => {
+  const stub = { success: vi.fn(), error: (...a: unknown[]) => toastError(...a) }
+  return { default: stub, toast: stub }
+})
 
 function scope(props: Partial<Parameters<typeof SubjectNotesScope>[0]> = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -42,6 +54,9 @@ beforeEach(() => {
   saveNote.mockReset().mockResolvedValue({ note: null, deleted: false })
   promoteNote.mockReset().mockResolvedValue({ note: null, deleted: false })
   notesData = { notes: [] }
+  notesIsError = false
+  notesError = null
+  toastError.mockReset()
 })
 
 describe('SubjectNotesScope', () => {
@@ -51,6 +66,22 @@ describe('SubjectNotesScope', () => {
     })
     expect(result.current).toBeNull()
     expect(notesSpy).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }))
+  })
+
+  it('exposes nothing (corners, menu items, panel section) while the read is pending (final review, I1)', () => {
+    notesData = undefined
+    const { result } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
+    expect(result.current).toBeNull()
+  })
+
+  it('toasts once on a read error, and still exposes nothing (final review, I1)', () => {
+    notesData = undefined
+    notesIsError = true
+    notesError = new Error('the board could not be reached')
+    const { result } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
+    expect(result.current).toBeNull()
+    expect(toastError).toHaveBeenCalledTimes(1)
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining('could not be reached'))
   })
 
   it('keeps its children mounted when the permission arrives (no remount)', () => {

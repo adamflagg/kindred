@@ -6,8 +6,10 @@
  * root element when the permission resolves would remount the whole board.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import toast from 'react-hot-toast'
 
 import {
+  errorText,
   usePromoteSubjectNote,
   useSaveSubjectNote,
   useSubjectNotes,
@@ -60,6 +62,14 @@ export function SubjectNotesScope({
     setEditor(null)
   }, [sessionCmId, scenarioId])
 
+  // Final review, I1: a hard read failure is silent otherwise -- toast once
+  // per error so staff learn the board couldn't be read, rather than reading
+  // a card's missing corner as "no notes".
+  useEffect(() => {
+    if (!notesQuery.isError) return
+    toast.error(errorText(notesQuery.error, 'Failed to load notes'))
+  }, [notesQuery.isError, notesQuery.error])
+
   const index = useMemo(() => indexNotes(notesQuery.data?.notes ?? []), [notesQuery.data])
   const notesFor = useCallback(
     (subject: NoteSubject) => index.get(subjectKey(subject)) ?? NO_LAYERS,
@@ -103,11 +113,20 @@ export function SubjectNotesScope({
     [scenarioId, scenarioName, notesFor, save, promote, editor, openEditor, closeEditor]
   )
 
+  // Final review, I1: `notesFor` above falls back to NO_LAYERS whenever
+  // `data` is undefined (pending, retrying, or errored) -- exposing the
+  // scope in that state let every card's corner, its "+ Note" menu items and
+  // the panel section all read as "no notes yet", and a save from there
+  // upserted OVER a standard note staff simply hadn't been shown yet. Only
+  // the VALUE below is gated; both providers still always render so the
+  // board never remounts when the read settles.
+  const ready = canManage && notesQuery.data !== undefined
+
   return (
     <NotesEnabledContext.Provider value={canManage}>
-      <SubjectNotesContext.Provider value={canManage ? value : null}>
+      <SubjectNotesContext.Provider value={ready ? value : null}>
         {children}
-        {canManage && editor?.surface === 'popover' && (
+        {ready && editor?.surface === 'popover' && (
           <SubjectNotePopover
             key={`${subjectKey(editor.subject)}|${editor.scenarioId}`}
             scope={value}
