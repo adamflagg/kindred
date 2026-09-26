@@ -94,6 +94,72 @@ describe('useSubjectNotes', () => {
   })
 })
 
+describe('while a new read is in flight (owner ruling 2026-09-26)', () => {
+  const standardRow = {
+    subject_kind: 'household' as const,
+    subject_cm_id: 2000001,
+    session_cm_id: 1000001,
+    scenario: '',
+    body: 'Grandma comes Saturday.',
+    updated_by: 'Test Staff',
+    updated: '2026-09-25T12:00:00Z',
+  }
+  const planRowA = { ...standardRow, scenario: 'scnA', body: 'Try Pine' }
+
+  it('keeps the standard rows and drops the old scenario’s plan rows while only the scenario changed', async () => {
+    fetchSpy.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ notes: [standardRow, planRowA] }), { status: 200 })
+      )
+    )
+    const { result, rerender } = renderHook(
+      ({ scenario }) =>
+        useSubjectNotes({ year: 2026, sessionCmId: 1000001, scenario, enabled: true }),
+      { wrapper, initialProps: { scenario: 'scnA' } }
+    )
+    await waitFor(() => expect(result.current.data).toEqual({ notes: [standardRow, planRowA] }))
+
+    let resolveB: ((response: Response) => void) | undefined
+    fetchSpy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveB = resolve
+        })
+    )
+    rerender({ scenario: 'scnB' })
+
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true))
+    expect(result.current.data).toEqual({ notes: [standardRow] })
+
+    resolveB?.(new Response(JSON.stringify({ notes: [standardRow] }), { status: 200 }))
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false))
+  })
+
+  it('blanks (no placeholder) when the SESSION changes mid-scenario', async () => {
+    fetchSpy.mockImplementationOnce(() =>
+      Promise.resolve(new Response(JSON.stringify({ notes: [standardRow] }), { status: 200 }))
+    )
+    const { result, rerender } = renderHook(
+      ({ sessionCmId }) =>
+        useSubjectNotes({ year: 2026, sessionCmId, scenario: 'scnA', enabled: true }),
+      { wrapper, initialProps: { sessionCmId: 1000001 } }
+    )
+    await waitFor(() => expect(result.current.data).toEqual({ notes: [standardRow] }))
+
+    fetchSpy.mockImplementationOnce(
+      () =>
+        new Promise(() => {
+          // Deliberately never resolves -- we only assert the state WHILE pending.
+        })
+    )
+    rerender({ sessionCmId: 1000002 })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.isPlaceholderData).toBe(false)
+  })
+})
+
 describe('the note mutations', () => {
   it('save sends the JWT and invalidates every subject-notes read', async () => {
     fetchSpy.mockImplementation(() =>

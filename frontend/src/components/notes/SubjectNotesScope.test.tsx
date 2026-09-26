@@ -11,6 +11,7 @@ const notesSpy = vi.fn()
 let notesData: { notes: Array<ReturnType<typeof noteRow>> } | undefined = { notes: [] }
 let notesIsError = false
 let notesError: unknown = null
+let notesIsPlaceholderData = false
 const saveNote = vi.fn()
 const promoteNote = vi.fn()
 vi.mock('../../hooks/useSubjectNotes', () => ({
@@ -20,7 +21,12 @@ vi.mock('../../hooks/useSubjectNotes', () => ({
     error instanceof Error && error.message ? error.message : fallback,
   useSubjectNotes: (args: unknown) => {
     notesSpy(args)
-    return { data: notesData, isError: notesIsError, error: notesError }
+    return {
+      data: notesData,
+      isError: notesIsError,
+      error: notesError,
+      isPlaceholderData: notesIsPlaceholderData,
+    }
   },
   useSaveSubjectNote: () => ({ mutateAsync: (...a: unknown[]) => saveNote(...a) }),
   usePromoteSubjectNote: () => ({ mutateAsync: (...a: unknown[]) => promoteNote(...a) }),
@@ -56,6 +62,7 @@ beforeEach(() => {
   notesData = { notes: [] }
   notesIsError = false
   notesError = null
+  notesIsPlaceholderData = false
   toastError.mockReset()
 })
 
@@ -258,6 +265,32 @@ describe('SubjectNotesScope', () => {
     )
     act(() => result.current!.closeEditor(stale))
     expect(result.current?.editor?.subject).toEqual(HOUSEHOLD)
+  })
+
+  it('blocks opening an editor while the read is a placeholder (a scenario switch not yet landed), and allows it once the real read lands', () => {
+    notesIsPlaceholderData = true
+    const { result, rerender } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
+    act(() =>
+      result.current!.openEditor({
+        subject: PERSON,
+        label: 'Emma Johnson',
+        surface: 'panel',
+        anchorEl: null,
+      })
+    )
+    expect(result.current?.editor).toBeNull()
+
+    notesIsPlaceholderData = false
+    rerender()
+    act(() =>
+      result.current!.openEditor({
+        subject: PERSON,
+        label: 'Emma Johnson',
+        surface: 'panel',
+        anchorEl: null,
+      })
+    )
+    expect(result.current?.editor).not.toBeNull()
   })
 })
 

@@ -115,9 +115,16 @@ export function SubjectNotesScope({
 
   const openEditor = useCallback(
     (request: EditorRequest) => {
+      // A placeholder read is the PREVIOUS scenario's standard rows, shown
+      // while this scenario's own read is still in flight (owner ruling
+      // 2026-09-26) -- opening an editor against it would seed the plan box
+      // from data that belongs to a different scenario. No-op until the real
+      // read lands; the corner, its preview and the panel's read view stay
+      // visible throughout, only the editor waits.
+      if (notesQuery.isPlaceholderData) return
       setEditor({ ...request, scenarioId })
     },
-    [scenarioId]
+    [scenarioId, notesQuery.isPlaceholderData]
   )
   const closeEditor = useCallback((target?: EditorTarget) => {
     setEditor((current) => (target === undefined || current === target ? null : current))

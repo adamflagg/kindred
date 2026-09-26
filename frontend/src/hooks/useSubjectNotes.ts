@@ -5,6 +5,9 @@
  * as the weekend board's primary read path does. Long staleTime is only safe
  * with invalidation on EVERY write, which is why both mutations invalidate the
  * `subject-notes` PREFIX (a writer never knows which boards are cached).
+ *
+ * `placeholderData` below keeps the read's standard rows on screen across a
+ * scenario switch -- see its own comment for why.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -37,6 +40,22 @@ export function useSubjectNotes({
     queryKey: queryKeys.subjectNotes(sessionCmId, year, scenario),
     enabled: enabled && year > 0 && sessionCmId > 0,
     queryFn: () => fetchSubjectNotes(fetchWithAuth, { year, sessionCmId, scenario }),
+    // Standard notes are the same across every scenario of one session, so a
+    // scenario-only switch keeps the previous read's STANDARD rows on screen
+    // (owner ruling 2026-09-26) rather than blanking every corner and the
+    // panel section until the new scenario's read lands. Its PLAN rows
+    // belonged to the old scenario and are dropped -- they'd otherwise show
+    // as this subject's plan-only note under the wrong scenario. A session or
+    // year change returns undefined, so it still blanks like a first load.
+    // `queryKeys.subjectNotes` orders the key `[prefix, sessionCmId, year,
+    // scenarioId]`.
+    placeholderData: (previousData, previousQuery) => {
+      const prevKey = previousQuery?.queryKey as
+        readonly [string, number, number, string] | undefined
+      const samePeriod = prevKey?.[1] === sessionCmId && prevKey[2] === year
+      if (!previousData || !samePeriod) return undefined
+      return { notes: previousData.notes.filter((note) => note.scenario === '') }
+    },
   })
 }
 
