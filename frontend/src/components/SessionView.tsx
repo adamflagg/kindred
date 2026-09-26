@@ -368,6 +368,12 @@ export default function SessionView() {
 
   const selectedSessionCmId = parseInt(selectedSession ?? '', 10)
 
+  // Board notes: the same scoped selection rule as the weekend board -- a
+  // scenario selected for another session reads as CampMinder live, never
+  // passed through (`scenarioForWeekend`). Computed once so the id passed to
+  // `SubjectNotesScope` and the name gate below it can never disagree.
+  const notesScenarioId = scenarioForWeekend(currentScenario, session.cm_id || null)
+
   return (
     <div>
       {/* Header */}
@@ -437,16 +443,14 @@ export default function SessionView() {
               sessionCmId={session.cm_id || 0}
               camperPersonIds={campers.map((c) => c.person_cm_id)}
             >
-              {/* Board notes: the same scoped selection rule as the weekend
-                  board -- a scenario selected for another session reads as
-                  CampMinder live, never passed through. Notes are editable
-                  on the live view even though summer placement is not
-                  (a note is not a placement). */}
+              {/* Board notes: notesScenarioId above. Notes are editable on
+                  the live view even though summer placement is not (a note
+                  is not a placement). */}
               <SubjectNotesScope
                 year={currentYear}
                 sessionCmId={session.cm_id || 0}
-                scenarioId={scenarioForWeekend(currentScenario, session.cm_id || null)}
-                scenarioName={currentScenario?.name ?? ''}
+                scenarioId={notesScenarioId}
+                scenarioName={notesScenarioId === '' ? '' : (currentScenario?.name ?? '')}
                 canManage={canManage}
               >
                 <BunkingBoardByArea
