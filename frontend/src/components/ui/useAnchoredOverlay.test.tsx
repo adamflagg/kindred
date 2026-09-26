@@ -117,4 +117,39 @@ describe('useAnchoredOverlay', () => {
     fireEvent.scroll(window)
     expect(screen.getByTestId('overlay').style.top).toBe('248px')
   })
+
+  it('clears position on close, and does not resurrect a stale position on reopen before the anchor remounts', () => {
+    function TogglableProbe({ open, anchor }: { open: boolean; anchor: AnchorRect | null }) {
+      const { ref, position } = useAnchoredOverlay<HTMLDivElement>({
+        open,
+        getAnchorRect: () => anchor,
+        placement: 'below',
+      })
+      return (
+        <div
+          ref={ref}
+          data-testid="togglable-overlay"
+          data-position={position === null ? 'null' : `${position.top},${position.left}`}
+        >
+          overlay
+        </div>
+      )
+    }
+
+    const { rerender } = render(
+      <TogglableProbe open={true} anchor={{ top: 700, left: 400, width: 40, height: 40 }} />
+    )
+    expect(screen.getByTestId('togglable-overlay').dataset['position']).not.toBe('null')
+
+    rerender(<TogglableProbe open={false} anchor={null} />)
+    expect(screen.getByTestId('togglable-overlay').dataset['position']).toBe('null')
+
+    // Reopen while the thing this overlay anchors to hasn't remounted yet
+    // (e.g. a card note corner scrolled back into a virtualized list) --
+    // `getAnchorRect()` returns null on this first placement pass. A
+    // consumer that trusts `position !== null` to decide whether to render
+    // must not see the stale pre-close coordinates.
+    rerender(<TogglableProbe open={true} anchor={null} />)
+    expect(screen.getByTestId('togglable-overlay').dataset['position']).toBe('null')
+  })
 })

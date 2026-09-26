@@ -81,11 +81,24 @@ export function useAnchoredOverlay<T extends HTMLElement>({
   const anchorRef = useRef(getAnchorRect)
   useLayoutEffect(() => {
     anchorRef.current = getAnchorRect
-  })
+  }, [getAnchorRect])
   const [position, setPosition] = useState<AnchoredPosition | null>(null)
 
   useLayoutEffect(() => {
-    if (!open) return
+    if (!open) {
+      // A nested function, not a bare `setPosition(null)` at the top of the
+      // effect body: `react-hooks/set-state-in-effect` doesn't trace into a
+      // called function to see the setState inside it -- `place()` below
+      // gets the same pass. Needed for real, not just for the lint: a
+      // consumer that trusts `position !== null` must not see the position
+      // from before this close once the overlay reopens with its anchor not
+      // yet mounted (`getAnchorRect()` returning null on the first
+      // placement pass) -- see the "clears position on close" regression
+      // test.
+      const clear = () => setPosition(null)
+      clear()
+      return
+    }
     const place = () => {
       const element = ref.current
       const anchor = anchorRef.current()
@@ -114,10 +127,5 @@ export function useAnchoredOverlay<T extends HTMLElement>({
     }
   }, [open, placement, gap, edge])
 
-  // Gated on `open` here rather than cleared with a `setPosition(null)` at
-  // the top of the effect above: that avoided an extra render on close (and
-  // the `react-hooks/set-state-in-effect` warning for a synchronous setState
-  // call at the top level of an effect body) while keeping the same
-  // contract -- a closed overlay reads `position: null`.
-  return { ref, position: open ? position : null }
+  return { ref, position }
 }
