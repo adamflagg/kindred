@@ -194,6 +194,24 @@ describe('ViewAsSwitcher', () => {
     expect(screen.getByLabelText('sheets.export').className).toContain('accent-primary')
   })
 
+  it('custom: ticking a permission family selects all of it, and Apply stores them', () => {
+    renderAs({ isAdmin: true })
+    openMenu()
+    fireEvent.click(screen.getByRole('button', { name: /Custom/ }))
+    fireEvent.click(screen.getByLabelText('financial_aid'))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(readViewAs()).toEqual({
+      label: 'Custom',
+      source: 'custom',
+      permissions: [
+        'financial_aid.casework',
+        'financial_aid.rules',
+        'financial_aid.summary',
+        'financial_aid.view',
+      ],
+    })
+  })
+
   it('closes on Escape', () => {
     renderAs({ isAdmin: true })
     openMenu()

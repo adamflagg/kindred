@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
 import { useRoles } from '../hooks/useRoles'
 import { ALL_PERMISSIONS } from '../constants/permissions'
+import { ViewAsPermissionPicker } from './ViewAsPermissionPicker'
 import { clearViewAs, viewAsLabel, writeViewAs, type ViewAsPersona } from '../auth/viewAs'
 
 function switchTo(persona: ViewAsPersona | null) {
@@ -78,11 +79,6 @@ export function ViewAsSwitcher() {
   if (!canSwitch) return null
 
   const label = viewAs === null ? null : viewAsLabel(viewAs)
-
-  const toggleCustomPerm = (perm: string) =>
-    setCustomPerms((prev) =>
-      prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm].sort(byName)
-    )
 
   const chevron = (
     <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -195,20 +191,12 @@ export function ViewAsSwitcher() {
               <span className="font-semibold">Custom…</span>
             </button>
             {isCustomOpen && (
-              <div className="px-3 pb-2 pl-10">
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                  {ALL_PERMISSIONS.map((perm) => (
-                    <label key={perm} className="flex cursor-pointer items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        className="accent-primary"
-                        checked={customPerms.includes(perm)}
-                        onChange={() => toggleCustomPerm(perm)}
-                      />
-                      {perm}
-                    </label>
-                  ))}
-                </div>
+              <div className="px-3 pb-2 pl-9">
+                <ViewAsPermissionPicker
+                  all={ALL_PERMISSIONS}
+                  selected={customPerms}
+                  onChange={setCustomPerms}
+                />
                 <button
                   onClick={() =>
                     switchTo({ label: 'Custom', source: 'custom', permissions: customPerms })
