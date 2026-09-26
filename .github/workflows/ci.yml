@@ -9,11 +9,13 @@ on:
       - main
     tags-ignore:
       - '**'  # Skip CI on tag pushes (already tested on branch)
-  # Run on pull requests targeting main (covers all feature branch pushes)
+  # Run on every pull request, whatever it targets. A stacked PR's base is
+  # another feature branch, and the old `branches: [main]` filter left it with
+  # no CI at all until it was retargeted, so a broken stack surfaced late. Only
+  # main's ruleset requires CI Gate, so this adds early signal, not a gate.
   # Note: No paths-ignore here - we need CI Gate to always report for branch protection
   # The detect-changes job handles optimization by skipping jobs when only docs change
   pull_request:
-    branches: [main]
 
 # Permissions needed for Dependabot PRs (paths-filter needs to read commits)
 permissions:

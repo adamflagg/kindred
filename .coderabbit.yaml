@@ -91,7 +91,7 @@ reviews:
     # Dependabot alone runs ~4.4 PRs/week against a ~32/week ceiling.
     #
     # Nothing gets less safe: CodeRabbit is not in the ruleset (only "CI
-    # Summary" is required), so dependabot-auto-merge.yml already merges these
+    # Gate" and "Validate PR title" are required), so dependabot-auto-merge.yml already merges these
     # on green CI whether or not a review landed. This removes a cost, not a gate.
     #
     # There is no head-branch filter in the schema -- `base_branches` matches
