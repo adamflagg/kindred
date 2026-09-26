@@ -16,7 +16,17 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
-from api.schemas.subject_notes import SubjectNoteKey, SubjectNoteOut
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
+from api.schemas.subject_notes import (
+    NOTE_BODY_MAX,
+    SubjectNoteKey,
+    SubjectNoteOut,
+    SubjectNotePromoteRequest,
+    SubjectNoteWriteRequest,
+    SubjectNoteWriteResponse,
+)
+from api.utils.pb_error import pb_error_to_http
 from api.utils.pb_filters import pb_escape
 from pocketbase import PocketBase
 
@@ -121,3 +131,115 @@ class SubjectNoteStore:
 
     async def delete(self, record_id: str) -> None:
         await asyncio.to_thread(self._collection().delete, record_id)
+
+
+class SubjectNoteScopeError(ValueError):
+    """The scenario does not belong to the note's session (HTTP 422)."""
+
+
+class ScenarioNotFoundError(LookupError):
+    """The named scenario does not exist (HTTP 404)."""
+
+
+class NothingToPromoteError(LookupError):
+    """There is no plan-only note to keep on all plans (HTTP 404)."""
+
+
+class PromotedNoteTooLongError(ValueError):
+    """Appending the plan-only note would pass the 2000-character cap (HTTP 422)."""
+
+
+class SubjectNoteService:
+    def __init__(self, pb: PocketBase, store: SubjectNoteStore | None = None) -> None:
+        self._pb = pb
+        self._store = store if store is not None else SubjectNoteStore(pb)
+
+    async def validate_scope(self, *, session_cm_id: int, year: int, scenario: str) -> list[int]:
+        """Task 1.4 replaces this stub. Returns the session family to read."""
+        return [session_cm_id]
+
+    async def list_for_board(self, *, session_cm_id: int, year: int, scenario: str) -> list[SubjectNoteOut]:
+        related = await self.validate_scope(session_cm_id=session_cm_id, year=year, scenario=scenario)
+        rows = await self._store.list_for(session_cm_ids=related, year=year, scenario=scenario)
+        return [to_out(row) for row in rows]
+
+    async def save(self, request: SubjectNoteWriteRequest, *, updated_by: str) -> SubjectNoteWriteResponse:
+        await self.validate_scope(session_cm_id=request.session_cm_id, year=request.year, scenario=request.scenario)
+        return await self._write(NoteKey.of(request), request.body.strip(), updated_by)
+
+    async def promote(self, request: SubjectNotePromoteRequest, *, updated_by: str) -> SubjectNoteWriteResponse:
+        """ "Keep on all plans": APPEND the plan-only note to the standard note.
+
+        The standard note is written BEFORE the plan-only row is deleted, so a
+        failure between the two leaves the text in both places, never in
+        neither.
+        """
+        await self.validate_scope(session_cm_id=request.session_cm_id, year=request.year, scenario=request.scenario)
+        plan_key = NoteKey.of(request)
+        plan = await self._store.find(plan_key)
+        if plan is None:
+            raise NothingToPromoteError(f"No plan-only note in scenario {request.scenario} to keep on all plans")
+        moved = str(getattr(plan, "body", "") or "").strip()
+        standard_key = plan_key.standard()
+        standard = await self._store.find(standard_key)
+        current = str(getattr(standard, "body", "") or "").strip() if standard is not None else ""
+        merged = f"{current}\n\n{moved}" if current else moved
+        if len(merged) > NOTE_BODY_MAX:
+            raise PromotedNoteTooLongError(
+                f"Keeping this on all plans would make the note {len(merged)} characters "
+                f"(the limit is {NOTE_BODY_MAX}); shorten one of them first"
+            )
+        result = await self._write(standard_key, merged, updated_by)
+        await self._delete_quietly(plan)
+        return result
+
+    async def copy_plan_notes(self, source_scenario: str, target_scenario: str) -> int:
+        """Copy one scenario's plan-only notes onto a new scenario. Standard notes
+        already show in every scenario, so they are never copied."""
+        rows = await self._store.list_plan_notes(source_scenario)
+        for row in rows:
+            await self._store.create(
+                {
+                    "subject_kind": str(row.subject_kind),
+                    "subject_cm_id": int(row.subject_cm_id),
+                    "session_cm_id": int(row.session_cm_id),
+                    "year": int(row.year),
+                    "scenario": target_scenario,
+                    "body": str(row.body),
+                    "updated_by": str(getattr(row, "updated_by", "") or ""),
+                }
+            )
+        return len(rows)
+
+    async def _write(self, key: NoteKey, body: str, updated_by: str) -> SubjectNoteWriteResponse:
+        existing = await self._store.find(key)
+        if not body:
+            if existing is not None:
+                await self._delete_quietly(existing)
+            return SubjectNoteWriteResponse(note=None, deleted=True)
+        data = {**key.row(), "body": body, "updated_by": updated_by[:200]}
+        if existing is not None:
+            return SubjectNoteWriteResponse(
+                note=to_out(await self._store.update(str(existing.id), data)), deleted=False
+            )
+        try:
+            created = await self._store.create(data)
+        except ClientResponseError as exc:
+            # Two saves of the same key race: both find nothing, both create,
+            # and the unique index refuses the loser with a 400. The loser
+            # adopts the winner's row, which by construction is this key.
+            if exc.status != 400:
+                raise
+            winner = await self._store.find(key)
+            if winner is None:
+                raise
+            created = await self._store.update(str(winner.id), data)
+        return SubjectNoteWriteResponse(note=to_out(created), deleted=False)
+
+    async def _delete_quietly(self, record: Any) -> None:
+        """Only "already gone" is swallowed; any other refusal keeps its status."""
+        try:
+            await self._store.delete(str(record.id))
+        except ClientResponseError as exc:
+            if exc.status != 404:
+                raise pb_error_to_http(exc) from exc

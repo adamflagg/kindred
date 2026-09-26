@@ -8,9 +8,10 @@ asserted as mock calls. Fictional data throughout.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import ValidationError
 
 from api.schemas.subject_notes import (
@@ -19,6 +20,9 @@ from api.schemas.subject_notes import (
 )
 from api.services.subject_note_service import (
     NoteKey,
+    NothingToPromoteError,
+    PromotedNoteTooLongError,
+    SubjectNoteService,
     SubjectNoteStore,
     board_filter,
     key_filter,
@@ -133,3 +137,213 @@ class TestToOut:
         out = to_out(rec)
         assert out.updated == "2026-09-25T12:00:00+00:00"
         assert out.subject_kind == "household"
+
+
+# ---------------------------------------------------------------------------
+# The service, against an in-memory store
+# ---------------------------------------------------------------------------
+
+
+def _pb_error(status: int) -> ClientResponseError:
+    return ClientResponseError("pb", status=status, data={}, url="", is_abort=False, original_error=None)
+
+
+class FakeStore:
+    """subject_notes in memory, enforcing the unique key the migration declares."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, SimpleNamespace] = {}
+        self._next = 0
+
+    @staticmethod
+    def _tuple(row: Any) -> tuple[Any, ...]:
+        return (row.subject_kind, row.subject_cm_id, row.session_cm_id, row.year, row.scenario)
+
+    async def find(self, key: NoteKey) -> Any | None:
+        want = (key.subject_kind, key.subject_cm_id, key.session_cm_id, key.year, key.scenario)
+        return next((r for r in self.rows.values() if self._tuple(r) == want), None)
+
+    async def list_for(self, *, session_cm_ids: list[int], year: int, scenario: str) -> list[Any]:
+        return [
+            r
+            for r in self.rows.values()
+            if r.year == year and r.session_cm_id in session_cm_ids and r.scenario in ("", scenario)
+        ]
+
+    async def list_plan_notes(self, scenario: str) -> list[Any]:
+        return [r for r in self.rows.values() if r.scenario == scenario]
+
+    async def create(self, data: dict[str, Any]) -> Any:
+        rec = SimpleNamespace(id=f"note{self._next}", updated="2026-09-25 12:00:00.000Z", **data)
+        if any(self._tuple(r) == self._tuple(rec) for r in self.rows.values()):
+            raise _pb_error(400)
+        self._next += 1
+        self.rows[rec.id] = rec
+        return rec
+
+    async def update(self, record_id: str, data: dict[str, Any]) -> Any:
+        rec = self.rows[record_id]
+        for name, value in data.items():
+            setattr(rec, name, value)
+        return rec
+
+    async def delete(self, record_id: str) -> None:
+        if record_id not in self.rows:
+            raise _pb_error(404)
+        del self.rows[record_id]
+
+    def bodies(self) -> dict[tuple[Any, ...], str]:
+        return {self._tuple(r): r.body for r in self.rows.values()}
+
+
+@pytest.fixture
+def store() -> FakeStore:
+    return FakeStore()
+
+
+@pytest.fixture
+def service(store: FakeStore) -> SubjectNoteService:
+    svc = SubjectNoteService(MagicMock(), store=store)  # type: ignore[arg-type]
+    # Scope validation is Task 1.4's subject; here every session is its own family.
+    svc.validate_scope = AsyncMock(side_effect=lambda *, session_cm_id, year, scenario: [session_cm_id])  # type: ignore[method-assign]
+    return svc
+
+
+def _write(body: str, **overrides: Any) -> SubjectNoteWriteRequest:
+    fields: dict[str, Any] = {
+        "subject_kind": "person",
+        "subject_cm_id": PERSON,
+        "session_cm_id": MAIN,
+        "year": YEAR,
+        "scenario": "",
+        "body": body,
+    }
+    fields.update(overrides)
+    return SubjectNoteWriteRequest(**fields)
+
+
+def _promote(**overrides: Any) -> SubjectNotePromoteRequest:
+    fields: dict[str, Any] = {
+        "subject_kind": "person",
+        "subject_cm_id": PERSON,
+        "session_cm_id": MAIN,
+        "year": YEAR,
+        "scenario": "scnA",
+    }
+    fields.update(overrides)
+    return SubjectNotePromoteRequest(**fields)
+
+
+class TestSave:
+    @pytest.mark.asyncio
+    async def test_creates_then_updates_one_row(self, service: SubjectNoteService, store: FakeStore) -> None:
+        first = await service.save(_write("Prefers a bottom bunk."), updated_by="Test Staff")
+        second = await service.save(_write("  Prefers a bottom bunk; arriving late.  "), updated_by="Test Staff")
+
+        assert first.deleted is False
+        assert first.note is not None
+        assert second.note is not None
+        assert second.note.body == "Prefers a bottom bunk; arriving late."
+        assert len(store.rows) == 1
+        assert next(iter(store.rows.values())).updated_by == "Test Staff"
+
+    @pytest.mark.asyncio
+    async def test_an_empty_body_deletes_the_row(self, service: SubjectNoteService, store: FakeStore) -> None:
+        await service.save(_write("Prefers a bottom bunk."), updated_by="Test Staff")
+        result = await service.save(_write("   \n "), updated_by="Test Staff")
+        assert result.deleted is True
+        assert result.note is None
+        assert store.rows == {}
+
+    @pytest.mark.asyncio
+    async def test_deleting_a_note_that_is_not_there_is_a_quiet_success(self, service: SubjectNoteService) -> None:
+        result = await service.save(_write(""), updated_by="Test Staff")
+        assert result.deleted is True
+
+    @pytest.mark.asyncio
+    async def test_a_lost_create_race_updates_the_winner(self, service: SubjectNoteService, store: FakeStore) -> None:
+        # Another save creates the row between this save's find and its create.
+        await store.create({**_key().row(), "body": "The other writer", "updated_by": "Other"})
+        store.find = AsyncMock(side_effect=[None, next(iter(store.rows.values()))])  # type: ignore[method-assign]
+
+        result = await service.save(_write("Mine"), updated_by="Test Staff")
+
+        assert result.note is not None
+        assert result.note.body == "Mine"
+        assert len(store.rows) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_plan_note_sits_beside_the_standard_note(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        await service.save(_write("Standard"), updated_by="Test Staff")
+        await service.save(_write("Only in Draft A", scenario="scnA"), updated_by="Test Staff")
+        assert len(store.rows) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_family_on_two_weekends_keeps_two_notes(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        household = {"subject_kind": "household", "subject_cm_id": HOUSEHOLD}
+        await service.save(_write("Grandma comes Saturday.", session_cm_id=FC5, **household), updated_by="Test Staff")
+        await service.save(_write("Just the kids this time.", session_cm_id=FC6, **household), updated_by="Test Staff")
+
+        fc5 = await service.list_for_board(session_cm_id=FC5, year=YEAR, scenario="")
+        fc6 = await service.list_for_board(session_cm_id=FC6, year=YEAR, scenario="")
+        assert [n.body for n in fc5] == ["Grandma comes Saturday."]
+        assert [n.body for n in fc6] == ["Just the kids this time."]
+
+
+class TestPromote:
+    @pytest.mark.asyncio
+    async def test_promote_with_no_standard_note_moves_the_text(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        await service.save(_write("Try Pine instead of Oak", scenario="scnA"), updated_by="Test Staff")
+        result = await service.promote(_promote(), updated_by="Test Staff")
+
+        assert result.note is not None
+        assert result.note.scenario == ""
+        assert result.note.body == "Try Pine instead of Oak"
+        assert len(store.rows) == 1
+
+    @pytest.mark.asyncio
+    async def test_promote_appends_after_a_blank_line(self, service: SubjectNoteService, store: FakeStore) -> None:
+        await service.save(_write("Arriving late Friday."), updated_by="Test Staff")
+        await service.save(_write("Try Pine instead of Oak", scenario="scnA"), updated_by="Test Staff")
+
+        result = await service.promote(_promote(), updated_by="Test Staff")
+
+        assert result.note is not None
+        assert result.note.body == "Arriving late Friday.\n\nTry Pine instead of Oak"
+        assert [r.scenario for r in store.rows.values()] == [""]
+
+    @pytest.mark.asyncio
+    async def test_promote_refuses_a_merge_over_the_cap(self, service: SubjectNoteService, store: FakeStore) -> None:
+        await service.save(_write("a" * 1500), updated_by="Test Staff")
+        await service.save(_write("b" * 600, scenario="scnA"), updated_by="Test Staff")
+
+        with pytest.raises(PromotedNoteTooLongError):
+            await service.promote(_promote(), updated_by="Test Staff")
+        assert sorted(len(b) for b in store.bodies().values()) == [600, 1500]
+
+    @pytest.mark.asyncio
+    async def test_promote_with_no_plan_note_is_an_error(self, service: SubjectNoteService) -> None:
+        with pytest.raises(NothingToPromoteError):
+            await service.promote(_promote(), updated_by="Test Staff")
+
+
+class TestCopyPlanNotes:
+    @pytest.mark.asyncio
+    async def test_copies_only_the_source_scenarios_plan_notes(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        await service.save(_write("Standard"), updated_by="Test Staff")
+        await service.save(_write("Only in A", scenario="scnA"), updated_by="Test Staff")
+        await service.save(_write("Only in B", scenario="scnB"), updated_by="Test Staff")
+
+        copied = await service.copy_plan_notes("scnA", "scnC")
+
+        assert copied == 1
+        by_scenario = {r.scenario: r.body for r in store.rows.values()}
+        assert by_scenario == {"": "Standard", "scnA": "Only in A", "scnB": "Only in B", "scnC": "Only in A"}
