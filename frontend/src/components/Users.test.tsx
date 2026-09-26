@@ -51,6 +51,14 @@ const mockUsers = [
     created: '2026-01-03',
     last_login: '2026-03-17 12:00:00.000Z',
   },
+  {
+    id: 'va0123456789abc',
+    name: 'View as: No role',
+    email: 'va0123456789abc@view-as.invalid',
+    is_admin: false,
+    created: '2026-01-04',
+    last_login: '',
+  },
 ]
 
 vi.mock('../lib/pocketbase', () => ({
@@ -118,6 +126,12 @@ describe('Users page access control', () => {
     expect(await screen.findByText(name)).toBeTruthy()
     const row = screen.getByText(name).closest('[class*="flex items-center gap"]')
     expect(row?.className).not.toContain('cursor-pointer')
+  })
+
+  it('never lists view-as persona stand-ins', async () => {
+    renderUsers()
+    expect(await screen.findByText('Emma Johnson')).toBeTruthy()
+    expect(screen.queryByText('View as: No role')).toBeNull()
   })
 })
 
