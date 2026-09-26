@@ -38,6 +38,7 @@ from .dependencies import (
 from .routers import (
     campers,
     debug,
+    financial_aid,
     geo,
     internal,
     jotform,
@@ -177,6 +178,7 @@ def create_app() -> FastAPI:
     app.include_router(lodging_friend_groups.router)
     app.include_router(subject_notes.router)
     app.include_router(jotform.router)
+    app.include_router(financial_aid.router)
     app.include_router(campers.router)
     app.include_router(geo.router)
     app.include_router(internal.router)
