@@ -4,6 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
 import { Network, Download, ArrowLeftRight, Lock, LockOpen } from 'lucide-react'
 import type { BunkWithCampers, Camper } from '../types/app-types'
+import type { CardNoteSlots } from '../types/noteSlots'
 import CamperCard from './CamperCard'
 import { useBunkRequestsFromContext } from '../hooks'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
@@ -32,6 +33,8 @@ interface BunkCardProps {
   isLocked?: boolean
   /** Called when the lock/unlock button is clicked (only renders when provided) */
   onToggleLock?: () => void
+  /** Board-note slots per camper; a STABLE function returning cached objects (`useNoteSlots`). */
+  camperNoteSlots?: ((camper: Camper) => CardNoteSlots | undefined) | undefined
 }
 
 function BunkCard({
@@ -47,6 +50,7 @@ function BunkCard({
   activeDragCamper = null,
   isLocked = false,
   onToggleLock,
+  camperNoteSlots,
 }: BunkCardProps) {
   const viewingYear = useYear()
 
@@ -424,6 +428,7 @@ function BunkCard({
                     isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined
                   }
                   isDraftMode={isDraftMode}
+                  noteSlots={camperNoteSlots?.(camper)}
                 />
               ))}
         </SortableContext>
