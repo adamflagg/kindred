@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CamperCard from './CamperCard'
 import { mockCamper } from '../test/mockData'
 import { emptyCamperSatisfaction } from '../types/satisfaction'
+import { NotesScopeFixture, PERSON, noteRow, scopeValue } from '../test/notesScope'
+import { SubjectNoteCorner } from './notes/SubjectNoteCorner'
 
 const setNodeRef = vi.hoisted(() => vi.fn())
 const dragStart = vi.hoisted(() => vi.fn())
@@ -57,5 +59,50 @@ describe('CamperCard — pixel identity without note slots', () => {
   it('renders exactly what main renders', () => {
     const { container } = render(<CamperCard camper={EMMA} />)
     expect(normalizeIds(container.innerHTML)).toMatchSnapshot()
+  })
+})
+
+function renderWithCorner(onClick = vi.fn()) {
+  const slots = {
+    corner: <SubjectNoteCorner subject={PERSON} label="Emma Johnson" containing="border" />,
+  }
+  const value = scopeValue([noteRow(PERSON, 'Mom called: lower bunk please.')])
+  const view = render(
+    <NotesScopeFixture value={value}>
+      <CamperCard camper={EMMA} onClick={onClick} noteSlots={slots} />
+    </NotesScopeFixture>
+  )
+  return { ...view, value, onClick }
+}
+
+describe('CamperCard — the note corner (wrapper variant)', () => {
+  it('without slots, the button itself is the sortable node', () => {
+    render(<CamperCard camper={EMMA} />)
+    expect(setNodeRef).toHaveBeenLastCalledWith(document.querySelector('[data-camper-card]'))
+  })
+
+  it('with slots, a group/relative wrapper is the sortable node and the corner is the button’s sibling', () => {
+    renderWithCorner()
+    const button = document.querySelector('[data-camper-card]') as HTMLElement
+    const wrapper = setNodeRef.mock.lastCall?.[0] as HTMLElement
+    expect(wrapper.tagName).toBe('DIV')
+    expect(wrapper.className.split(' ')).toEqual(expect.arrayContaining(['group', 'relative']))
+    expect(button.parentElement).toBe(wrapper)
+    expect(button.nextElementSibling).toHaveAttribute('data-note-corner', 'standard')
+  })
+
+  it('pressing the corner never starts a drag; pressing the card still does', () => {
+    renderWithCorner()
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Note' }))
+    expect(dragStart).not.toHaveBeenCalled()
+    fireEvent.pointerDown(document.querySelector('[data-camper-card]') as HTMLElement)
+    expect(dragStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking the corner opens the note, never the camper panel', () => {
+    const { onClick, value } = renderWithCorner()
+    fireEvent.click(screen.getByRole('button', { name: 'Note' }))
+    expect(onClick).not.toHaveBeenCalled()
+    expect(value.openEditor).toHaveBeenCalled()
   })
 })

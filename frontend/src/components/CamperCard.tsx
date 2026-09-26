@@ -19,6 +19,7 @@ import { useBunkRequestContext, useCamperHistoryContext } from '../hooks'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { emptyCamperSatisfaction } from '../types/satisfaction'
+import type { CardNoteSlots } from '../types/noteSlots'
 
 interface CamperCardProps {
   camper: Camper
@@ -32,6 +33,15 @@ interface CamperCardProps {
   lockGroupColor?: string | undefined // Color of the lock group
   isDraftMode?: boolean // True when viewing a draft scenario (enables lock features)
   isProductionMode?: boolean // True when no scenario is selected (read-only)
+  /**
+   * Board-note slots (board notes, 2026-09-25). When set, the card is wrapped
+   * in a `group relative` div that takes the sortable ref and transform, so
+   * the `corner` -- a SIBLING of the button, because a button may not contain
+   * a button -- moves with the card. `attributes`/`listeners` stay on the
+   * button, which is still the drag activator. Without slots the markup is
+   * byte-identical to before. Pass a STABLE object (`useNoteSlots`).
+   */
+  noteSlots?: CardNoteSlots | undefined
 }
 
 function CamperCard({
@@ -46,6 +56,7 @@ function CamperCard({
   lockGroupColor,
   isDraftMode = false,
   isProductionMode = false,
+  noteSlots,
 }: CamperCardProps) {
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [contextMenuPosition, setContextMenuPosition] = useState({
@@ -209,113 +220,113 @@ function CamperCard({
     ? `${sessionName(lastYearHistory.sessionName, lastYearHistory.sessionType, 'tiny')} ${lastYearHistory.bunkName}`
     : ''
 
-  return (
-    <>
-      <button
-        type="button"
-        data-camper-card
-        ref={setNodeRef}
-        title={isProductionMode ? 'Switch to a scenario to edit' : undefined}
-        style={
-          {
-            ...style,
-            ...(lockState === 'pending'
-              ? { animationDelay: `${getPendingAnimationDelay(camper.id)}ms` }
-              : {}),
-          } satisfies CSSProperties
-        }
-        className={clsx(
-          'relative block w-full overflow-hidden rounded-xl border-2 p-2.5 text-left transition-all select-none',
-          genderColorClass,
-          isDraggable && 'hover:shadow-lodge cursor-move',
-          !isDraggable && 'cursor-default',
-          (isSortableDragging || isDragging) && 'opacity-50',
-          // Pending lock group selection - synchronized glow animation
-          lockState === 'pending' && 'pending-lock-glow border-amber-400 dark:border-amber-500'
-        )}
-        {...(isDraggable ? attributes : {})}
-        {...(isDraggable ? listeners : {})}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-      >
-        <span className="flex flex-col gap-0.5">
-          {/* Line 1: Name (left) and Status icons (right) */}
-          <span className="flex items-center justify-between gap-1.5">
-            <span
-              className="block min-w-0 flex-1 truncate text-sm font-medium dark:text-gray-100"
-              style={
-                isInLockedGroup && lockGroupColor
-                  ? {
-                      textShadow: `0 0 8px ${lockGroupColor}, 0 0 12px ${lockGroupColor}80`,
-                    }
-                  : undefined
-              }
-            >
-              {camper.name}
-            </span>
-            <span className="flex flex-shrink-0 items-center gap-1">
-              {/* Parent-paramount: material parent request unsatisfied (>=1 request, 0 satisfied). */}
-              {satisfiedInfo.flags.parent_min_one_violation && (
-                <span
-                  className="text-orange-500 dark:text-orange-400"
-                  title={`${satisfiedInfo.counted_totals.material_parent.total} parent request${satisfiedInfo.counted_totals.material_parent.total > 1 ? 's' : ''}, none satisfied`}
-                >
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      fillRule="evenodd"
-                      d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </span>
-              )}
-              {/* Staff requests unsatisfied. Always shown when staff_unsatisfied_alert is true,
+  const hasNoteSlots = noteSlots !== undefined
+  const cardButton = (
+    <button
+      type="button"
+      data-camper-card
+      ref={hasNoteSlots ? undefined : setNodeRef}
+      title={isProductionMode ? 'Switch to a scenario to edit' : undefined}
+      style={
+        {
+          ...(hasNoteSlots ? {} : style),
+          ...(lockState === 'pending'
+            ? { animationDelay: `${getPendingAnimationDelay(camper.id)}ms` }
+            : {}),
+        } satisfies CSSProperties
+      }
+      className={clsx(
+        'relative block w-full overflow-hidden rounded-xl border-2 p-2.5 text-left transition-all select-none',
+        genderColorClass,
+        isDraggable && 'hover:shadow-lodge cursor-move',
+        !isDraggable && 'cursor-default',
+        (isSortableDragging || isDragging) && 'opacity-50',
+        // Pending lock group selection - synchronized glow animation
+        lockState === 'pending' && 'pending-lock-glow border-amber-400 dark:border-amber-500'
+      )}
+      {...(isDraggable ? attributes : {})}
+      {...(isDraggable ? listeners : {})}
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+    >
+      <span className="flex flex-col gap-0.5">
+        {/* Line 1: Name (left) and Status icons (right) */}
+        <span className="flex items-center justify-between gap-1.5">
+          <span
+            className="block min-w-0 flex-1 truncate text-sm font-medium dark:text-gray-100"
+            style={
+              isInLockedGroup && lockGroupColor
+                ? {
+                    textShadow: `0 0 8px ${lockGroupColor}, 0 0 12px ${lockGroupColor}80`,
+                  }
+                : undefined
+            }
+          >
+            {camper.name}
+          </span>
+          <span className="flex flex-shrink-0 items-center gap-1">
+            {/* Parent-paramount: material parent request unsatisfied (>=1 request, 0 satisfied). */}
+            {satisfiedInfo.flags.parent_min_one_violation && (
+              <span
+                className="text-orange-500 dark:text-orange-400"
+                title={`${satisfiedInfo.counted_totals.material_parent.total} parent request${satisfiedInfo.counted_totals.material_parent.total > 1 ? 's' : ''}, none satisfied`}
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </span>
+            )}
+            {/* Staff requests unsatisfied. Always shown when staff_unsatisfied_alert is true,
                   independent of parent state — user wants the complete "what didn't land" picture
                   for staff input even when parent is met. */}
-              {satisfiedInfo.flags.staff_unsatisfied_alert && (
-                <span
-                  className="text-amber-500 dark:text-amber-400"
-                  title={`${satisfiedInfo.counted_totals.staff.total} staff request${satisfiedInfo.counted_totals.staff.total > 1 ? 's' : ''}, ${satisfiedInfo.counted_totals.staff.total - satisfiedInfo.counted_totals.staff.satisfied} unsatisfied`}
-                >
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                    <circle cx="10" cy="10" r="7" />
-                  </svg>
-                </span>
-              )}
-              {/* Lock: in friend group with member count */}
-              {isInLockedGroup && (
-                <span
-                  className="inline-flex items-center gap-0.5"
-                  style={{ color: lockGroupColor ?? '#eab308' }}
-                  title={`Friend group (${groupSize} members)`}
-                >
-                  {groupSize > 1 && (
-                    <span className="text-xs leading-none font-semibold">{groupSize}</span>
-                  )}
-                  <Lock className="h-4 w-4" />
-                </span>
-              )}
-            </span>
-          </span>
-
-          {/* Line 2: Age/Grade (left) and History (right) */}
-          <span className="flex items-center justify-between gap-2">
-            <span className="block text-xs text-gray-600 dark:text-gray-400">
-              Age{' '}
-              {displayCampMinderAge(
-                getDisplayAgeForYear(camper, viewingYear, camper.expand?.session?.start_date) ?? 0
-              )}{' '}
-              • {formatGradeOrdinal(camper.grade)}
-            </span>
-            {historyDisplay && (
-              <span className="text-muted-foreground block text-xs whitespace-nowrap">
-                {historyDisplay}
+            {satisfiedInfo.flags.staff_unsatisfied_alert && (
+              <span
+                className="text-amber-500 dark:text-amber-400"
+                title={`${satisfiedInfo.counted_totals.staff.total} staff request${satisfiedInfo.counted_totals.staff.total > 1 ? 's' : ''}, ${satisfiedInfo.counted_totals.staff.total - satisfiedInfo.counted_totals.staff.satisfied} unsatisfied`}
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="10" cy="10" r="7" />
+                </svg>
+              </span>
+            )}
+            {/* Lock: in friend group with member count */}
+            {isInLockedGroup && (
+              <span
+                className="inline-flex items-center gap-0.5"
+                style={{ color: lockGroupColor ?? '#eab308' }}
+                title={`Friend group (${groupSize} members)`}
+              >
+                {groupSize > 1 && (
+                  <span className="text-xs leading-none font-semibold">{groupSize}</span>
+                )}
+                <Lock className="h-4 w-4" />
               </span>
             )}
           </span>
         </span>
 
-        {/* Bottom gradient overlay for locked groups - temporarily disabled
+        {/* Line 2: Age/Grade (left) and History (right) */}
+        <span className="flex items-center justify-between gap-2">
+          <span className="block text-xs text-gray-600 dark:text-gray-400">
+            Age{' '}
+            {displayCampMinderAge(
+              getDisplayAgeForYear(camper, viewingYear, camper.expand?.session?.start_date) ?? 0
+            )}{' '}
+            • {formatGradeOrdinal(camper.grade)}
+          </span>
+          {historyDisplay && (
+            <span className="text-muted-foreground block text-xs whitespace-nowrap">
+              {historyDisplay}
+            </span>
+          )}
+        </span>
+      </span>
+
+      {/* Bottom gradient overlay for locked groups - temporarily disabled
         {isInLockedGroup && lockGroupColor && (
           <div
             className="absolute bottom-0 left-0 right-0 h-4 pointer-events-none"
@@ -327,7 +338,19 @@ function CamperCard({
           />
         )}
         */}
-      </button>
+    </button>
+  )
+
+  return (
+    <>
+      {hasNoteSlots ? (
+        <div ref={setNodeRef} style={style} className="group relative">
+          {cardButton}
+          {noteSlots.corner}
+        </div>
+      ) : (
+        cardButton
+      )}
 
       {/* Context Menu - rendered via Portal to escape stacking context issues */}
       {showContextMenu &&
