@@ -470,6 +470,13 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleFinancialAidApplicationsSync(e, scheduler)
 		}))
 
+	// Campership ledger (sub-project 4): recompute aid_postings for one season.
+	// Accepts required ?year=YYYY parameter. Returns no ledger data, so it is gated
+	// like every other sync route rather than on a financial_aid permission.
+	e.Router.POST("/api/custom/sync/aid-postings", requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+		return handleAidPostingsSync(e, scheduler)
+	}))
+
 	// Household demographics sync
 	// Computes demographics from HH- custom values + household custom values
 	// Accepts required ?year=YYYY parameter
@@ -2707,6 +2714,43 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 		"status":   "started",
 		"syncType": syncType,
 		"year":     year,
+	})
+}
+
+// handleAidPostingsSync runs the campership ledger transform for one season.
+// Accepts required ?year=YYYY parameter.
+func handleAidPostingsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := "aid_postings"
+
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": errMissingYearParam})
+	}
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || !ValidSyncYear(year) {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.", syncYearMin, syncYearMax),
+		})
+	}
+
+	// Request-scoped instance -- never the shared registered singleton (#1881).
+	service := NewAidPostingsSync(e.App)
+	service.Year = year
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error": "Aid ledger sync already in progress", "status": "running", "syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting aid_postings sync", "year", year)
+	return e.JSON(http.StatusOK, map[string]any{
+		"message": "Aid ledger sync started", "status": "started", "syncType": syncType, "year": year,
 	})
 }
 

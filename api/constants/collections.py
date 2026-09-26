@@ -147,3 +147,12 @@ JOTFORM_ANSWERS = "jotform_answers"
 # FastAPI's superuser client, behind the financial_aid.* permissions, is the only
 # reader and writer.
 AID_RULES = "aid_rules"
+
+# Campership ledger (sub-project 4).
+FINANCIAL_TRANSACTIONS = "financial_transactions"
+FINANCIAL_AID_APPLICATIONS = "financial_aid_applications"
+AID_SOURCES = "aid_sources"
+AID_POSTINGS = "aid_postings"
+AID_HOUSEHOLD_LINKS = "aid_household_links"
+AID_ATTRIBUTION_OVERRIDES = "aid_attribution_overrides"
+AID_FLAG_DISPOSITIONS = "aid_flag_dispositions"
