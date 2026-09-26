@@ -394,7 +394,7 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 
 		err := s.rateLimiter.ExecuteWithRetry(ctx, func() error {
 			var fetchErr error
-			values, hasMore, fetchErr = s.Client.GetPersonCustomFieldValuesPage(personCMID, page, pageSize)
+			values, hasMore, fetchErr = s.Client.GetPersonCustomFieldValuesPage(ctx, personCMID, page, pageSize)
 			return fetchErr
 		})
 		if err != nil {

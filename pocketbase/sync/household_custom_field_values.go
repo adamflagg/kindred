@@ -383,7 +383,7 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 
 		err := s.rateLimiter.ExecuteWithRetry(ctx, func() error {
 			var fetchErr error
-			values, hasMore, fetchErr = s.Client.GetHouseholdCustomFieldValuesPage(householdCMID, page, pageSize)
+			values, hasMore, fetchErr = s.Client.GetHouseholdCustomFieldValuesPage(ctx, householdCMID, page, pageSize)
 			return fetchErr
 		})
 		if err != nil {

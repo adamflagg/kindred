@@ -3,6 +3,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -63,15 +64,25 @@ func (r *RateLimiter) Wait(ctx context.Context) error {
 	return nil
 }
 
-// HandleError processes an error and returns whether to retry and how long to wait
+// retryAfterer is a rate-limit error that carries the server's own wait (campminder's
+// RateLimitError). The error's producer bounds the value; MaxAttempts bounds the retries.
+type retryAfterer interface {
+	RetryAfter() time.Duration
+}
+
+// HandleError processes an error and returns whether to retry and how long to wait. A
+// rate-limit error carrying a server hint waits at least that long: the hint floors this one
+// wait but does not become the limiter's pacing, which stays backoff-driven.
 func (r *RateLimiter) HandleError(err error) (shouldRetry bool, waitTime time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	errStr := strings.ToLower(err.Error())
+	var hinted retryAfterer
+	isHinted := errors.As(err, &hinted)
 
 	// Check if it's a rate limit error
-	if strings.Contains(errStr, "429") || strings.Contains(errStr, "rate limit") {
+	if isHinted || strings.Contains(errStr, "429") || strings.Contains(errStr, "rate limit") {
 		r.consecutiveErrors++
 
 		// Calculate exponential backoff
@@ -89,6 +100,9 @@ func (r *RateLimiter) HandleError(err error) (shouldRetry bool, waitTime time.Du
 			r.limiter.SetLimit(rate.Limit(rps))
 		}
 
+		if isHinted {
+			waitTime = max(waitTime, hinted.RetryAfter())
+		}
 		return r.consecutiveErrors < r.config.MaxAttempts, waitTime
 	}
 
