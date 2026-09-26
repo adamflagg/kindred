@@ -1,7 +1,7 @@
 /**
  * Regression test for #1881: SyncTab's generic sync card computed its Run button's `disabled`
  * state from a hand-maintained list — `isRunning || isPending || runIndividualSync.isPending ||
- * runOnDemandSync.isPending` — that never referenced any of the ten type-specific mutation
+ * runOnDemandSync.isPending` — that never referenced any of the eleven type-specific mutation
  * hooks (family_camp_derived, lodging_assignments, staff_skills,
  * financial_aid_applications, aid_postings, household_demographics, camper_dietary,
  * camper_transportation, quest_registrations, staff_applications, staff_vehicle_info). A
