@@ -454,7 +454,9 @@ class QualityCheck(RulesModel):
     """One data-quality check. "hold": do not finalize until staff look. "warn": inform only.
 
     `award_above_cost` always holds: validation refuses a warning or a disabled one, and
-    the calculator runs it whether or not the season lists it.
+    the calculator runs it whether or not the season lists it. `household_income_conflict`
+    also always holds: validation refuses a warning or a disabled one here too, and
+    sub-project 5 raises it at `hold` whatever the season lists.
     """
 
     enabled: bool = True

@@ -474,15 +474,23 @@ _THRESHOLD_CHECKS: tuple[QualityCheckKey, ...] = (
 )
 
 
+# Checks that always hold (owner rulings 2026-09-25): never above cost, and an income
+# conflict across a family's applications. Neither can be switched off or made a warning.
+_HOLD_ONLY_CHECKS: tuple[tuple[QualityCheckKey, str], ...] = (
+    ("award_above_cost", "The above-cost check always holds: it cannot be switched off or made a warning"),
+    (
+        "household_income_conflict",
+        "The income-conflict check always holds (staff call the family and choose the figure): "
+        "it cannot be switched off or made a warning",
+    ),
+)
+
+
 def _check_quality_checks(rules: AidRules, issues: _Issues) -> None:
-    above_cost = rules.quality_checks.checks.get("award_above_cost")
-    if above_cost is not None and (not above_cost.enabled or above_cost.severity != "hold"):
-        issues.error(
-            "quality_checks",
-            "award_above_cost_must_hold",
-            "quality_checks.checks.award_above_cost",
-            "The above-cost check always holds: it cannot be switched off or made a warning",
-        )
+    for key, message in _HOLD_ONLY_CHECKS:
+        check = rules.quality_checks.checks.get(key)
+        if check is not None and (not check.enabled or check.severity != "hold"):
+            issues.error("quality_checks", f"{key}_must_hold", f"quality_checks.checks.{key}", message)
     for key in _THRESHOLD_CHECKS:
         check = rules.quality_checks.checks.get(key)
         if check is not None and check.enabled and check.threshold is None:

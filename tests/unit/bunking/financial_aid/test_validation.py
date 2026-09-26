@@ -368,3 +368,17 @@ def test_the_above_cost_check_cannot_be_made_a_warning_or_switched_off(path: str
     # Owner ruling 2026-09-25: never above cost before the offer; the check always holds.
     report = validate_rules(with_lever(fictional_rules(), path, value))
     assert "award_above_cost_must_hold" in {i.code for i in report.errors_in("quality_checks")}
+
+
+@pytest.mark.parametrize("check", [{"severity": "warn"}, {"enabled": False}, {"enabled": False, "severity": "hold"}])
+def test_the_income_conflict_check_cannot_be_made_a_warning_or_switched_off(check: dict[str, object]) -> None:
+    # Owner ruling 2026-09-25: an income conflict always holds; staff call the family and choose the figure.
+    rules = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", check)
+    report = validate_rules(rules)
+    assert "household_income_conflict_must_hold" in {i.code for i in report.errors_in("quality_checks")}
+
+
+def test_an_income_conflict_check_that_holds_or_is_not_listed_is_fine() -> None:
+    held = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", {"severity": "hold"})
+    assert "household_income_conflict_must_hold" not in validate_rules(held).codes()
+    assert "household_income_conflict_must_hold" not in validate_rules(fictional_rules()).codes()  # unlisted
