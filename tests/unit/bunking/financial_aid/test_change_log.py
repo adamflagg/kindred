@@ -59,7 +59,6 @@ def test_writes_one_row_to_aid_change_log() -> None:
         "after": {"round": 1, "amount": "1250.50"},
         "actor": "finance-lead@example.com",
         "reason": "Round 1 batch",
-        "persona": "",
     }
 
 
@@ -222,7 +221,7 @@ def test_every_key_written_is_a_field_of_the_migration() -> None:
     a renamed field would silently lose history. Pin the helper's keys to the
     migrations that create and extend the collection (located by name: renumber-safe)."""
     files = sorted(MIGRATIONS.glob("*_aid_change_log*.js"))
-    # 1500000187 creates the collection; 1500000194 adds operation_id and persona.
+    # 1500000187 creates the collection; 1500000194 adds operation_id.
     assert len(files) >= 2, files
     declared = {name for f in files for name in re.findall(r'name:\s*"([a-z_]+)"', f.read_text())}
     pb = MagicMock()

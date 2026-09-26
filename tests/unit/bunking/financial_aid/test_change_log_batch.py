@@ -155,7 +155,6 @@ def test_a_create_and_its_log_row_go_in_one_batch_and_the_row_names_the_new_id()
         "actor": ACTOR,
         "reason": "",
         "operation_id": result.operation_id,
-        "persona": "",
     }
     assert result.record_ids == (record_id,)
     assert result.records[0] is not None
@@ -252,15 +251,6 @@ def test_a_malformed_operation_id_is_refused() -> None:
     with pytest.raises(ValueError, match="operation_id"):
         commit_aid_writes(pb, [_create()], actor=ACTOR, operation_id="Round 1")  # type: ignore[arg-type]
     assert pb.batches == []
-
-
-def test_the_persona_is_recorded_beside_the_real_actor() -> None:
-    """Spec §14.4: during "view as", both the real person and the persona are recorded."""
-    pb = FakePocketBase()
-    commit_aid_writes(pb, [_create()], actor=ACTOR, persona="financial_aid.casework,financial_aid.view")  # type: ignore[arg-type]
-    row = _log_rows(pb)[0]
-    assert row["actor"] == ACTOR
-    assert row["persona"] == "financial_aid.casework,financial_aid.view"
 
 
 def test_a_writes_own_reason_overrides_the_operations() -> None:
@@ -434,7 +424,7 @@ def test_max_requests_must_hold_a_whole_pair() -> None:
 # --- the single-row path shares the builder ---------------------------------------
 
 
-def test_record_change_stores_operation_and_persona() -> None:
+def test_record_change_stores_operation_id() -> None:
     pb = MagicMock()
     record_change(
         pb,
@@ -447,11 +437,9 @@ def test_record_change_stores_operation_and_persona() -> None:
         actor=ACTOR,
         reason="Board minute 4",
         operation_id="rulesapprove001",
-        persona="financial_aid.rules",
     )
     body = pb.collection.return_value.create.call_args.args[0]
     assert body["operation_id"] == "rulesapprove001"
-    assert body["persona"] == "financial_aid.rules"
 
 
 def test_record_change_honours_require_reason() -> None:
@@ -476,7 +464,7 @@ def test_every_log_key_the_batch_path_writes_is_a_field_of_the_migrations() -> N
     files = sorted(MIGRATIONS.glob("*_aid_change_log*.js"))
     declared = {name for f in files for name in re.findall(r'name:\s*"([a-z_]+)"', f.read_text())}
     pb = FakePocketBase()
-    commit_aid_writes(pb, [_create()], actor=ACTOR, persona="none")  # type: ignore[arg-type]
+    commit_aid_writes(pb, [_create()], actor=ACTOR)  # type: ignore[arg-type]
     assert sorted(set(_log_rows(pb)[0]) - declared) == []
 
 

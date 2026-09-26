@@ -1,11 +1,11 @@
 """Append-only change history for financial aid (campership spec §14.4).
 
 Every staff write to an ``aid_*`` collection records one ``aid_change_log``
-row: who (``actor``, the real signed-in person, plus ``persona`` during an admin
-"view as"), when, what (``entity``, ``entity_id``, ``action``), from what and to
-what (``before``/``after``, holding only the changed fields), why (``reason``),
-and which staff action it belongs to (``operation_id``). A business record,
-not an access log.
+row: who (``actor``, the real signed-in person -- an admin's "view as" preview
+is not recorded, owner ruling 2026-09-26), when, what (``entity``,
+``entity_id``, ``action``), from what and to what (``before``/``after``,
+holding only the changed fields), why (``reason``), and which staff action it
+belongs to (``operation_id``). A business record, not an access log.
 
 **Writes go through ``commit_aid_writes``** (sub-project 4a). It sends each
 record write and its log row in ONE PocketBase batch (``bunking.pocketbase_batch``),
@@ -146,7 +146,6 @@ def change_row(
     actor: str,
     reason: str | None,
     operation_id: str,
-    persona: str | None = None,
     require_reason: bool = False,
 ) -> dict[str, Any]:
     """Validate one change and return its ``aid_change_log`` body.
@@ -189,7 +188,6 @@ def change_row(
         "actor": _required_text(actor, "actor"),
         "reason": reason_text,
         "operation_id": _operation_id(operation_id),
-        "persona": (persona or "").strip(),
     }
 
 
@@ -205,7 +203,6 @@ def record_change(
     actor: str,
     reason: str | None,
     operation_id: str | None = None,
-    persona: str | None = None,
     require_reason: bool = False,
 ) -> None:
     """Append one row to ``aid_change_log``, outside any batch.
@@ -216,9 +213,8 @@ def record_change(
     ``entity`` names the collection or concept changed (for example
     ``"aid_decisions"``); ``entity_id`` its key as text; ``year`` the season;
     ``action`` a short verb (``"create"``, ``"update"``, ``"delete"``,
-    ``"approve"``...); ``actor`` the staff user's email; ``persona`` the "view
-    as" persona, if one applied. ``operation_id`` defaults to a new operation
-    of one. Snapshot rules: see ``change_row``.
+    ``"approve"``...); ``actor`` the staff user's email. ``operation_id``
+    defaults to a new operation of one. Snapshot rules: see ``change_row``.
     """
     body = change_row(
         entity=entity,
@@ -230,7 +226,6 @@ def record_change(
         actor=actor,
         reason=reason,
         operation_id=_operation_id(operation_id),
-        persona=persona,
         require_reason=require_reason,
     )
     pb.collection(COLLECTION).create(body)
@@ -321,7 +316,7 @@ def _write_body(data: Mapping[str, Any], label: str) -> dict[str, Any]:
 
 
 def _pair(
-    write: AidWrite, *, actor: str, persona: str | None, operation_id: str, reason: str | None, require_reason: bool
+    write: AidWrite, *, actor: str, operation_id: str, reason: str | None, require_reason: bool
 ) -> tuple[str, BatchRequest, BatchRequest]:
     """Validate one write and build (record_id, write request, log request)."""
     collection = _check_collection(write.collection)
@@ -370,7 +365,6 @@ def _pair(
         actor=actor,
         reason=write.reason if write.reason is not None else reason,
         operation_id=operation_id,
-        persona=persona,
         require_reason=require_reason,
     )
     return record_id, request, BatchRequest.create(COLLECTION, row)
@@ -381,7 +375,6 @@ def commit_aid_writes(
     writes: Sequence[AidWrite],
     *,
     actor: str,
-    persona: str | None = None,
     operation_id: str | None = None,
     reason: str | None = None,
     require_reason: bool = False,
@@ -396,10 +389,11 @@ def commit_aid_writes(
     transaction, so a failure anywhere rolls back every write and row
     (``BatchRequestFailedError`` names the sub-request and why).
 
-    ``actor`` is the real signed-in person (``AuthUser.email``); ``persona`` the
-    "view as" persona (``AuthUser.view_as``), recorded beside it. ``reason`` is
-    the operation's default reason; ``require_reason`` refuses any write left
-    without one.
+    ``actor`` is the real signed-in person (``AuthUser.email``). An admin's
+    "view as" preview is not recorded (owner ruling 2026-09-26): FastAPI keeps
+    ``actor`` as the real signed-in person regardless, so there is nothing else
+    to log. ``reason`` is the operation's default reason; ``require_reason``
+    refuses any write left without one.
 
     **Size.** An operation of N writes is 2N sub-requests. Up to
     ``max_requests`` (default: the server's limit, 2000, so about 1000 writes)
@@ -418,10 +412,7 @@ def commit_aid_writes(
         raise ValueError("an operation needs at least one write; there are no writes")
     actor = _required_text(actor, "actor")
     op_id = _operation_id(operation_id)
-    pairs = [
-        _pair(w, actor=actor, persona=persona, operation_id=op_id, reason=reason, require_reason=require_reason)
-        for w in writes
-    ]
+    pairs = [_pair(w, actor=actor, operation_id=op_id, reason=reason, require_reason=require_reason) for w in writes]
 
     per_batch = max_requests // 2
     if len(pairs) > per_batch and not allow_chunking:

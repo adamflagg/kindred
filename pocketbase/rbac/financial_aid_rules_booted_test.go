@@ -129,9 +129,9 @@ func TestBootedAidChangeLogShape(t *testing.T) {
 		"reason":    {"text", false},
 		"created":   {"autodate", false},
 		// Sub-project 4a (1500000194): the rows of one staff action share an
-		// operation_id; persona is the "view as" persona a write was made under.
+		// operation_id. No persona is recorded (owner ruling 2026-09-26): only
+		// the real signed-in person is recorded as actor.
 		"operation_id": {"text", true},
-		"persona":      {"text", false},
 	}
 	got := make(map[string]bootedField, len(fields))
 	for _, f := range fields {

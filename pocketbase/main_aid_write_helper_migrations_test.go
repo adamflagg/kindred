@@ -42,12 +42,6 @@ func TestAidChangeLogOperationMigration(t *testing.T) {
 			t.Errorf("operation_id must carry %s, got %s", want, op)
 		}
 	}
-	persona := fieldLiteral(t, up, "persona")
-	for _, want := range []string{`type: "text"`, "required: false", "min: 0", "max: 2000"} {
-		if !strings.Contains(persona, want) {
-			t.Errorf("persona must carry %s, got %s", want, persona)
-		}
-	}
 	index := "CREATE INDEX `idx_aid_change_log_operation` ON `aid_change_log` (`operation_id`, `created`)"
 	if !strings.Contains(up, index) {
 		t.Errorf("up path must add %s", index)
@@ -58,12 +52,13 @@ func TestAidChangeLogOperationMigration(t *testing.T) {
 		t.Error("up path must backfill existing rows' operation_id with their own id")
 	}
 	if strings.Contains(up, "app.delete(") || strings.Contains(strings.ToUpper(up), "DELETE FROM") {
-		t.Error("up path must not delete anything: it adds two fields to a table that may hold history")
+		t.Error("up path must not delete anything: it adds a field to a table that may hold history")
 	}
-	for _, name := range []string{"operation_id", "persona"} {
-		if !strings.Contains(down, `removeByName("`+name+`")`) {
-			t.Errorf("down path must remove %s", name)
-		}
+	if !strings.Contains(down, `removeByName("operation_id")`) {
+		t.Error("down path must remove operation_id")
+	}
+	if strings.Contains(down, `removeByName("persona")`) {
+		t.Error("down path must not remove a persona field: this migration no longer adds one (owner ruling 2026-09-26)")
 	}
 	if !strings.Contains(down, "idx_aid_change_log_operation") {
 		t.Error("down path must drop the operation index")
