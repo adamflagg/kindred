@@ -142,6 +142,67 @@ func TestEnsureViewAsPersonaRejectsSquatter(t *testing.T) {
 	}
 }
 
+// TestEnsureViewAsPersonaLosesCreateRace simulates two requests materializing
+// the same persona at once: another writer inserts the row between
+// ensureViewAsPersona's lookup and its Save. The loser's Save then fails on the
+// unique id, and it must fall back to the winner's row -- but only after
+// verifying it, so a squatter cannot win the race either.
+func TestEnsureViewAsPersonaLosesCreateRace(t *testing.T) {
+	perms := []string{"metrics.geo", "registration.manage"}
+	id := viewAsPersonaID(perms)
+
+	for _, tc := range []struct {
+		name        string
+		winnerEmail string
+		wantErr     bool
+	}{
+		{name: "genuine stand-in wins", winnerEmail: id + "@" + viewAsPersonaEmailDomain},
+		{name: "squatter wins", winnerEmail: "squatter@example.com", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newAuthTestApp(t, testAdminGroup)
+			raced := false
+			app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
+				if raced || e.Record.Id != id {
+					return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+				}
+				raced = true
+				winner := core.NewRecord(e.Record.Collection())
+				winner.Id = id
+				winner.SetEmail(tc.winnerEmail)
+				winner.SetEmailVisibility(true)
+				winner.SetRandomPassword()
+				winner.Set(fieldIsAdmin, false)
+				winner.Set(fieldCachedPermissions, perms)
+				if err := e.App.Save(winner); err != nil {
+					t.Fatalf("save the racing winner: %v", err)
+				}
+				return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+			})
+
+			got, err := ensureViewAsPersona(app, perms)
+			if !raced {
+				t.Fatal("the race was never simulated -- the hook did not fire")
+			}
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ensureViewAsPersona accepted a squatter that won the race (%s)", got.Email())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ensureViewAsPersona after losing the race: %v", err)
+			}
+			if got.Id != id {
+				t.Errorf("returned %q, want the winner's row %q", got.Id, id)
+			}
+			if n := len(personaUsers(t, app)); n != 1 {
+				t.Errorf("persona rows after the race = %d, want 1", n)
+			}
+		})
+	}
+}
+
 // TestViewAsPersonaNameCapsLength pins a permanent-500 trap: the users.name
 // field has a 255-char cap, and an uncapped "View as: " + joined permissions
 // name can exceed it once an admin's persona carries enough permissions.

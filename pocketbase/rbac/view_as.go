@@ -84,8 +84,9 @@ const viewAsMiddlewareID = "kindredViewAs"
 const viewAsPersonaEmailDomain = "view-as.invalid"
 
 // viewAsPersonaIDPattern is the shape viewAsPersonaID always produces.
-// registerUsersWriteGuard (users_guard.go) uses this to reserve the namespace
-// against a client-chosen id at create time.
+// registerUsersWriteGuard (users_guard.go) uses it to reserve the namespace
+// against a client-chosen id at create time, and registerViewAsRoleGuard uses
+// it to refuse assigning roles to a stand-in.
 var viewAsPersonaIDPattern = regexp.MustCompile(`^va[0-9a-f]{13}$`)
 
 // viewAsPersonaID derives a stand-in's record id from its permission set, so a
