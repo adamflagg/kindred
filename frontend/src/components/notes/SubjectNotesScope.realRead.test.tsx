@@ -2,11 +2,11 @@
  * Board notes: `SubjectNotesScope` driven with the REAL `useSubjectNotes`
  * hook, not the hand-mocked module `SubjectNotesScope.test.tsx` uses.
  *
- * M1 (PR3 follow-ups, test-only): a scenario switch A -> B shows A's standard
- * rows as a placeholder while B's own read is in flight (owner ruling
- * 2026-09-26). If B's read then FAILS, that placeholder must not linger --
- * everything hides (the scope value goes `null`) and the "Failed to load
- * notes" toast fires, exactly as a first-load failure would.
+ * A scenario switch A -> B shows A's standard rows as a placeholder while
+ * B's own read is in flight (owner, 2026-09-26). If B's read then FAILS,
+ * that placeholder must not linger -- everything hides (the scope value
+ * goes `null`) and the "Failed to load notes" toast fires, exactly as a
+ * first-load failure would.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'

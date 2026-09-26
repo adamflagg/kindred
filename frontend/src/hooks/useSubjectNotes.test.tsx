@@ -133,10 +133,10 @@ describe('while a new read is in flight (owner ruling 2026-09-26)', () => {
     expect(result.current.data).toEqual({ notes: [standardRow] })
 
     // B's real payload deliberately differs from the placeholder (its own
-    // plan row, `planRowB`, never `planRowA`'s) -- M3 (PR3 follow-ups):
-    // proving `data` equals B's real payload, not only that the placeholder
-    // flag flipped off, which would pass even if `data` had silently kept
-    // showing the placeholder value.
+    // plan row, `planRowB`, never `planRowA`'s), proving `data` equals B's
+    // real payload, not only that the placeholder flag flipped off -- which
+    // would pass even if `data` had silently kept showing the placeholder
+    // value.
     resolveB?.(new Response(JSON.stringify({ notes: [standardRow, planRowB] }), { status: 200 }))
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false))
     expect(result.current.data).toEqual({ notes: [standardRow, planRowB] })
