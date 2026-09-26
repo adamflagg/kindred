@@ -100,18 +100,45 @@ func TestEnsureViewAsPersona(t *testing.T) {
 // persona's deterministic id/email before any admin ever previews it.
 // ensureViewAsPersona must fail closed rather than silently treat that row as
 // the stand-in and run every future preview of this persona as the squatter's
-// real account.
+// real account. One row per branch verifyViewAsPersona checks: every row
+// starts identical to a genuine stand-in and deviates in exactly the one way
+// named, so each subtest pins that check alone.
 func TestEnsureViewAsPersonaRejectsSquatter(t *testing.T) {
-	app := newAuthTestApp(t, testAdminGroup)
 	perms := []string{"metrics.geo", "registration.manage"}
 	id := viewAsPersonaID(perms)
+	wantEmail := id + "@" + viewAsPersonaEmailDomain
 
-	// A real account at the persona's id, with the persona's own real email
-	// domain -- not the view-as.invalid stand-in marker.
-	createUserWithID(t, app, id, "squatter@example.com", false, perms)
+	cases := []struct {
+		name    string
+		email   string
+		isAdmin bool
+		perms   []string
+		extAuth bool
+	}{
+		{name: "wrong email", email: "squatter@example.com", isAdmin: false, perms: perms},
+		{name: "is_admin true", email: wantEmail, isAdmin: true, perms: perms},
+		{name: "cached_permissions mismatch", email: wantEmail, isAdmin: false, perms: []string{"other.permission"}},
+		{name: "has external auth", email: wantEmail, isAdmin: false, perms: perms, extAuth: true},
+	}
 
-	if _, err := ensureViewAsPersona(app, perms); err == nil {
-		t.Fatal("ensureViewAsPersona accepted a non-stand-in row squatting the persona id")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newAuthTestApp(t, testAdminGroup)
+			u := createUserWithID(t, app, id, tc.email, tc.isAdmin, tc.perms)
+
+			if tc.extAuth {
+				link := core.NewExternalAuth(app)
+				link.SetCollectionRef(u.Collection().Id)
+				link.SetRecordRef(u.Id)
+				link.SetProvider(testOAuth2Provider)
+				link.SetProviderId("idp-squatter")
+				mustSave(t, app, link)
+			}
+
+			if _, err := ensureViewAsPersona(app, perms); err == nil {
+				t.Fatalf("ensureViewAsPersona accepted a row failing check %q", tc.name)
+			}
+		})
 	}
 }
 

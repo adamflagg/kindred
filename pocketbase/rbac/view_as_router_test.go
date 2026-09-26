@@ -20,8 +20,9 @@ const bunkingManageRule = `@request.auth.is_admin = true || @request.auth.cached
 const viewAsEmail = "riley@example.com"
 
 // newViewAsTestApp is newAuthTestApp plus three things to observe the persona
-// through: a bunking.manage-gated list with one row, a row in the admin-only
-// solver_runs list, and a config collection so guardConfigWrite runs.
+// through: a bunking.manage-gated list (and create) with one row, a row in
+// the admin-only solver_runs list, and a config collection so
+// guardConfigWrite runs.
 func newViewAsTestApp(t testing.TB) *tests.TestApp {
 	t.Helper()
 	app := newAuthTestApp(t, testAdminGroup)
@@ -29,6 +30,7 @@ func newViewAsTestApp(t testing.TB) *tests.TestApp {
 	probe := core.NewBaseCollection("probe_bunking")
 	probe.Fields.Add(&core.TextField{Name: "label"})
 	probe.ListRule = types.Pointer(bunkingManageRule)
+	probe.CreateRule = types.Pointer(bunkingManageRule)
 	mustSave(t, app, probe)
 	mustSave(t, app, core.NewRecord(probe))
 
@@ -68,6 +70,8 @@ func TestViewAsMiddleware(t *testing.T) {
 	regBody := `{"key":"reg_dates","metadata":{"business_category":"registration"}}`
 	squattedID := viewAsPersonaID([]string{"metrics.geo", "registration.manage"})
 	squattedEmail := squattedID + "@" + viewAsPersonaEmailDomain
+	standInID := viewAsPersonaID([]string{"bunking.manage"})
+	const roleAssignRoleID = "roleforvatest01"
 
 	scenarios := []tests.ApiScenario{
 		{
@@ -97,6 +101,46 @@ func TestViewAsMiddleware(t *testing.T) {
 			Name: "admin previewing No role loses bunking data", Method: http.MethodGet, URL: listProbe,
 			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "none"), Headers: headers,
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"totalItems":0`},
+		},
+		{
+			// Write rules, not just List, must see the persona (spec §7): a
+			// CreateRule gated on bunking.manage must refuse a preview that
+			// lacks it, exactly as the ListRule does above.
+			Name: "admin previewing Registrar is refused creating bunking data", Method: http.MethodPost, URL: listProbe,
+			Body:           strings.NewReader(`{"label":"planted"}`),
+			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "registration.manage,metrics.geo"), Headers: headers,
+			// A failed CreateRule answers 400 ("Failed to create record."),
+			// unlike a failed List/View/Update rule, which filters an
+			// existing record out and answers 404 -- there is no record yet
+			// for a create to be filtered from. Verified by running this
+			// scenario, not assumed.
+			ExpectedStatus:  http.StatusBadRequest,
+			ExpectedContent: []string{"Failed to create record."},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				rows, err := app.FindAllRecords("probe_bunking")
+				if err != nil {
+					t.Fatalf("find probe_bunking: %v", err)
+				}
+				if len(rows) != 1 {
+					t.Errorf("probe_bunking rows = %d, want 1 (the refused create must not have landed)", len(rows))
+				}
+			},
+		},
+		{
+			Name: "admin previewing bunking.manage may create bunking data", Method: http.MethodPost, URL: listProbe,
+			Body:           strings.NewReader(`{"label":"planted"}`),
+			TestAppFactory: factory, BeforeTestFunc: asUser(true, nil, "bunking.manage"), Headers: headers,
+			ExpectedStatus:  http.StatusOK,
+			ExpectedContent: []string{`"label":"planted"`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				rows, err := app.FindAllRecords("probe_bunking")
+				if err != nil {
+					t.Fatalf("find probe_bunking: %v", err)
+				}
+				if len(rows) != 2 {
+					t.Errorf("probe_bunking rows = %d, want 2 (the allowed create must have landed)", len(rows))
+				}
+			},
 		},
 		{
 			Name: "a persona drops is_admin: the admin-only list goes empty", Method: http.MethodGet, URL: listSolverRuns,
@@ -240,6 +284,48 @@ func TestViewAsMiddleware(t *testing.T) {
 				}
 				if strings.Contains(string(body), `"totalItems":1`) {
 					t.Errorf("probe data leaked despite the failed-closed persona: %s", body)
+				}
+			},
+		},
+		{
+			// A users.manage holder could otherwise POST a user_roles row naming
+			// a stand-in as the target user. recomputeUserPermissions (hooks.go)
+			// would then overwrite the stand-in's cached_permissions, and
+			// verifyViewAsPersona (view_as.go) would fail every later preview of
+			// that persona closed with a 500.
+			Name:   "assigning a role to a view-as persona stand-in is refused",
+			Method: http.MethodPost,
+			URL:    "/api/collections/user_roles/records",
+			Body:   strings.NewReader(`{"user":"` + standInID + `","role":"` + roleAssignRoleID + `"}`),
+			TestAppFactory: func(t testing.TB) *tests.TestApp {
+				clear(headers)
+				app := newViewAsTestApp(t)
+				setRule(t, app, "user_roles", func(c *core.Collection) { c.CreateRule = types.Pointer(authedRule) })
+				return app
+			},
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, ev *core.ServeEvent) {
+				if _, err := ensureViewAsPersona(app, []string{"bunking.manage"}); err != nil {
+					t.Fatalf("create stand-in: %v", err)
+				}
+				rolesCol, err := app.FindCollectionByNameOrId("roles")
+				if err != nil {
+					t.Fatalf("find roles: %v", err)
+				}
+				role := core.NewRecord(rolesCol)
+				role.Id = roleAssignRoleID
+				mustSave(t, app, role)
+				asUser(true, nil, "")(t, app, ev)
+			},
+			Headers:         headers,
+			ExpectedStatus:  http.StatusBadRequest,
+			ExpectedContent: []string{"Cannot assign roles to a view-as persona stand-in"},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				rows, err := app.FindAllRecords("user_roles")
+				if err != nil {
+					t.Fatalf("find user_roles: %v", err)
+				}
+				if len(rows) != 0 {
+					t.Errorf("a user_roles row was created for a view-as persona stand-in (%d rows)", len(rows))
 				}
 			},
 		},

@@ -266,6 +266,9 @@ func RegisterHooks(app core.App) {
 	// users. Reads ADMIN_GROUP_NAME for the same reason RegisterOIDCHooks does.
 	registerUsersWriteGuard(app, os.Getenv("ADMIN_GROUP_NAME"))
 
+	// Refuse assigning a role to a view-as persona stand-in (view_as.go).
+	registerViewAsRoleGuard(app)
+
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)
 
