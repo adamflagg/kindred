@@ -11,6 +11,7 @@ edits are fields intake treats as staff-owned (financial_aid_intake_plan).
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
 from decimal import Decimal
@@ -25,12 +26,16 @@ from api.constants.collections import (
 )
 from api.schemas.financial_aid_intake import (
     AnswerOut,
+    ApplicationDetailResponse,
+    ApplicationListResponse,
+    ApplicationSummaryOut,
     CapacityOut,
     CorrectionOut,
     FlagOut,
     IssueOut,
     PayerShareOut,
     RequestOut,
+    RequestQueueResponse,
 )
 from api.services.financial_aid_calc_inputs import (
     CalculatorInputs,
@@ -43,11 +48,13 @@ from api.services.financial_aid_calc_inputs import (
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
     REQUEST_CORRECTABLE,
+    REVERT,
     CorrectionError,
     EffectiveValue,
     effective_values,
     parse_new_value,
 )
+from api.services.financial_aid_household import TEXT_FIELDS
 from api.services.financial_aid_intake_plan import request_fields, share_entity_id
 from api.services.financial_aid_intake_types import (
     PROGRAM_FAMILY_CAMP,
@@ -156,6 +163,30 @@ def answer_out(value: EffectiveValue) -> AnswerOut:
         changed_since_correction=value.changed_since_correction,
         history=[correction_out(c) for c in value.history],
     )
+
+
+_CONFLICT_CODES = frozenset({"income_conflict", "household_answer_conflict"})
+
+
+def _live_correction_count(corrections: Sequence[CorrectionRecord]) -> int:
+    latest: dict[tuple[str, str], CorrectionRecord] = {}
+    for c in sorted(corrections, key=lambda c: (c.created, c.id)):
+        latest[(c.request_id, c.field)] = c
+    return sum(1 for c in latest.values() if c.new_value != REVERT)
+
+
+def _application_flags(flags: Sequence[Mapping[str, Any]], answers: Mapping[str, EffectiveValue]) -> list[FlagOut]:
+    out: list[FlagOut] = []
+    for flag in flags:
+        code = str(flag.get("code", ""))
+        detail = dict(flag.get("detail", {}))
+        if code in _CONFLICT_CODES:
+            fields = dict(detail.get("fields", {}))
+            detail["resolved_by_correction"] = bool(fields) and all(
+                answers[name].corrected for name in fields if name in answers
+            )
+        out.append(FlagOut(code=code, detail=detail))
+    return out
 
 
 def payer_share_out(share: PayerShareRecord, amount: Decimal | None = None) -> PayerShareOut:
@@ -675,3 +706,71 @@ class FinancialAidCaseworkService:
             converted = to_request_inputs(request, ask, equity.get(request.person_cm_id), program_key)
             results.append(CalculatorInputs(request.id, app_inputs, converted, issues))
         return results
+
+    async def list_applications(self, year: int) -> ApplicationListResponse:
+        applications = await self._store.fetch_applications(year)
+        requests = await self._store.fetch_requests(year)
+        corrections = await self._store.fetch_corrections(year, None)
+        requests_by_app: dict[str, list[RequestRecord]] = defaultdict(list)
+        for request in requests:
+            requests_by_app[request.application_id].append(request)
+        corrections_by_app: dict[str, list[CorrectionRecord]] = defaultdict(list)
+        for c in corrections:
+            corrections_by_app[c.application_id].append(c)
+        rows: list[ApplicationSummaryOut] = []
+        for application in sorted(applications, key=lambda a: a.household_cm_id):
+            own = requests_by_app[application.id]
+            codes = {str(f.get("code", "")) for f in application.flags}
+            codes.update(str(f.get("code", "")) for r in own for f in r.flags)
+            rows.append(
+                ApplicationSummaryOut(
+                    household_cm_id=application.household_cm_id,
+                    status=application.status,
+                    member_person_cm_ids=list(application.member_person_cm_ids),
+                    requests_by_status=dict(Counter(r.status for r in own)),
+                    flag_codes=sorted(codes - {""}),
+                    corrected_fields=_live_correction_count(corrections_by_app[application.id]),
+                )
+            )
+        return ApplicationListResponse(year=year, applications=rows)
+
+    async def application_detail(self, year: int, household_cm_id: int) -> ApplicationDetailResponse:
+        application = await self._require_application(year, household_cm_id)
+        requests = sorted(await self._store.fetch_requests(year, application.id), key=lambda r: r.id)
+        corrections = await self._store.fetch_corrections(year, application.id)
+        answers = effective_values(application.answers, APPLICATION_CORRECTABLE, corrections)
+        shares = await self._store.fetch_payer_shares(year, [r.id for r in requests])
+
+        def issues_of(request: RequestRecord) -> list[IssueOut]:
+            # No rules: every issue here is a fixed or default hold, never read from a draft.
+            found = request_issues(request, application.flags, answers, shares, None)
+            return [IssueOut(code=i.code, severity=i.severity, message=i.message) for i in found]
+
+        return ApplicationDetailResponse(
+            year=year,
+            household_cm_id=household_cm_id,
+            status=application.status,
+            member_person_cm_ids=list(application.member_person_cm_ids),
+            answers=[answer_out(v) for v in answers.values()],
+            notes={name: str(application.answers.get(name) or "") for name in TEXT_FIELDS},
+            # Dollars per share are read-only, from the current award (none until sub-project 10).
+            requests=[request_out(r, corrections, shares, issues_of(r), await self._award(r)) for r in requests],
+            flags=_application_flags(application.flags, answers),
+        )
+
+    async def list_requests(self, year: int, status: str, flag: str | None = None) -> RequestQueueResponse:
+        requests = sorted(
+            (
+                r
+                for r in await self._store.fetch_requests(year)
+                if r.status == status and (flag is None or any(f.get("code") == flag for f in r.flags))
+            ),
+            key=lambda r: (r.household_cm_id, r.id),
+        )
+        corrections = await self._store.fetch_corrections(year, None)
+        shares = await self._store.fetch_payer_shares(year)
+        return RequestQueueResponse(
+            year=year,
+            status=status,
+            requests=[request_out(r, corrections, shares, award=await self._award(r)) for r in requests],
+        )
