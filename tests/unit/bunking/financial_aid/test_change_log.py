@@ -46,7 +46,10 @@ def test_writes_one_row_to_aid_change_log() -> None:
     pb = MagicMock()
     _call(pb)
     assert COLLECTION == "aid_change_log"
-    assert _body(pb) == {
+    body = _body(pb)
+    # A lone change is an operation of one (sub-project 4a).
+    assert re.fullmatch(r"[a-z0-9]{15}", str(body.pop("operation_id")))
+    assert body == {
         "entity": "aid_decisions",
         "entity_id": "2027:1000001:1000002",
         "year": 2027,
@@ -55,6 +58,7 @@ def test_writes_one_row_to_aid_change_log() -> None:
         "after": {"round": 1, "amount": "1250.50"},
         "actor": "finance-lead@example.com",
         "reason": "Round 1 batch",
+        "persona": "",
     }
 
 
@@ -207,10 +211,11 @@ def test_a_failed_write_is_not_swallowed() -> None:
 def test_every_key_written_is_a_field_of_the_migration() -> None:
     """PocketBase drops an unknown key from a create body without an error, so
     a renamed field would silently lose history. Pin the helper's keys to the
-    migration that creates the collection (located by suffix: renumber-safe)."""
-    files = sorted(MIGRATIONS.glob("*_aid_change_log.js"))
-    assert len(files) == 1, files
-    declared = set(re.findall(r'name:\s*"([a-z_]+)"', files[0].read_text()))
+    migrations that create and extend the collection (located by name: renumber-safe)."""
+    files = sorted(MIGRATIONS.glob("*_aid_change_log*.js"))
+    # 1500000187 creates the collection; 1500000194 adds operation_id and persona.
+    assert len(files) >= 2, files
+    declared = {name for f in files for name in re.findall(r'name:\s*"([a-z_]+)"', f.read_text())}
     pb = MagicMock()
     _call(pb)
     missing = sorted(set(_body(pb)) - declared)

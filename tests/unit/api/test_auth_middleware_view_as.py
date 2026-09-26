@@ -104,3 +104,33 @@ async def test_previewing_admin_is_refused_admin_routes(production_middleware: A
     with pytest.raises(HTTPException) as exc:
         require_permission("metrics.financial")(user)
     assert exc.value.status_code == 403
+
+
+# The persona is recorded beside the real person on every financial-aid write
+# (campership spec §14.4), so the user object must say which persona applied.
+# The email stays the real signed-in person's.
+
+
+@pytest.mark.asyncio
+async def test_an_applied_persona_is_named_on_the_user(production_middleware: AuthMiddleware) -> None:
+    _seed_real_access(production_middleware, is_admin=True, permissions=[])
+    user = await _dispatch(production_middleware, {"X-Kindred-View-As": " financial_aid.view, financial_aid.casework "})
+    assert user.email == EMAIL
+    assert user.view_as == "financial_aid.casework,financial_aid.view"
+
+
+@pytest.mark.asyncio
+async def test_the_empty_persona_is_named_none(production_middleware: AuthMiddleware) -> None:
+    _seed_real_access(production_middleware, is_admin=True, permissions=[])
+    user = await _dispatch(production_middleware, {"X-Kindred-View-As": "none"})
+    assert user.view_as == "none"
+
+
+@pytest.mark.asyncio
+async def test_no_persona_applied_is_none(production_middleware: AuthMiddleware) -> None:
+    _seed_real_access(production_middleware, is_admin=False, permissions=["bunking.manage"])
+    ignored = await _dispatch(production_middleware, {"X-Kindred-View-As": "users.manage"})
+    assert ignored.view_as is None
+    _seed_real_access(production_middleware, is_admin=True, permissions=[])
+    plain = await _dispatch(production_middleware, {})
+    assert plain.view_as is None
