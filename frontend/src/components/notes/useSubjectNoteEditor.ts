@@ -51,14 +51,11 @@ export function useSubjectNoteEditor(
   // is showing the scenario this editor was opened in; if the scope has moved
   // on (still loading another plan, or one already cached) it freezes at the
   // last value that matched, rather than diffing typed text against a
-  // different plan's notes -- a hazard the panel (Task 2.9) hits by flushing
-  // `save()` from a render exactly one commit behind the scope (see the
-  // scope's own "closes any open editor" effect in SubjectNotesScope.tsx).
+  // different plan's notes -- a hazard the panel hits by flushing `save()`
+  // from a render exactly one commit behind the scope (see the scope's own
+  // board-key render-time reset in SubjectNotesScope.tsx).
   const scenarioMatches = scope.scenarioId === target.scenarioId
   const [baseline, setBaseline] = useState<SubjectLayers>(() => layers)
-  if (scenarioMatches && baseline !== layers) {
-    setBaseline(layers)
-  }
 
   const [standardText, setStandardText] = useState(() => layers.standard?.body ?? '')
   const [planText, setPlanText] = useState(() => layers.plan?.body ?? '')
@@ -68,6 +65,30 @@ export function useSubjectNoteEditor(
   const [focus, setFocus] = useState<'standard' | 'plan'>(() =>
     inScenario && target.want === 'plan' ? 'plan' : 'standard'
   )
+
+  // Final review, C1: the boxes above are seeded from `layers` only ONCE at
+  // mount, but only `baseline` above tracked a later move -- so a refetch
+  // landing after mount left an untouched box showing stale text while the
+  // baseline it diffs against had already moved on. That read as dirty
+  // (typed text vs. the NEW baseline) and the next flush (Save, outside
+  // click, or the panel's unmount flush) wrote the stale text back over
+  // whatever had just arrived. Whenever the baseline moves, also refresh any
+  // box the user has NOT typed into (its text still equals the OLD
+  // baseline) -- a box that already differs is the user's own draft and is
+  // never touched here.
+  if (scenarioMatches && baseline !== layers) {
+    if (standardText === (baseline.standard?.body ?? '')) {
+      setStandardText(layers.standard?.body ?? '')
+    }
+    if (planText === (baseline.plan?.body ?? '')) {
+      setPlanText(layers.plan?.body ?? '')
+      // A plan layer that just appeared must be visible, not hidden behind
+      // the collapsed "+ Note just for..." link -- the same rule the initial
+      // `planExpanded` seed above applies at mount.
+      if (layers.plan !== undefined && !planExpanded) setPlanExpanded(true)
+    }
+    setBaseline(layers)
+  }
   const [busy, setBusy] = useState(false)
   // Guards save()/promote() against a second call landing mid-round-trip
   // (Ctrl+Enter twice, or the panel's outside-click save racing a promote) --

@@ -252,6 +252,79 @@ describe('SubjectNoteEditor — concurrent writes (fix round 1)', () => {
   })
 })
 
+describe('SubjectNoteEditor — a baseline refresh in the SAME scenario (final review, C1)', () => {
+  it('refreshes an untouched box to the new baseline text, and does not save the stale one', async () => {
+    const t = target({ scenarioId: 'scnA' })
+    const scopeA = scopeValue([noteRow(HOUSEHOLD, 'old text')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    const { rerender } = render(<Harness scope={scopeA} editorTarget={t} />)
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('old text')
+
+    // A refetch lands while nobody has typed into the box: the same scenario,
+    // a new row.
+    const scopeA2 = scopeValue([noteRow(HOUSEHOLD, 'new text')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    rerender(<Harness scope={scopeA2} editorTarget={t} />)
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('new text')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+    // Nothing is dirty against the REFRESHED baseline, so a flush (Save, or
+    // the panel's unmount flush) must write nothing -- and, in particular,
+    // never the stale 'old text' the box would otherwise still be holding.
+    expect(scopeA2.save).not.toHaveBeenCalled()
+    expect(scopeA2.closeEditor).toHaveBeenCalled()
+  })
+
+  it('does NOT clobber text the user has already typed when the baseline moves', async () => {
+    const t = target({ scenarioId: 'scnA' })
+    const scopeA = scopeValue([noteRow(HOUSEHOLD, 'old text')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    const { rerender } = render(<Harness scope={scopeA} editorTarget={t} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'my draft' },
+    })
+
+    const scopeA2 = scopeValue([noteRow(HOUSEHOLD, 'new text')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    rerender(<Harness scope={scopeA2} editorTarget={t} />)
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('my draft')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+    expect(scopeA2.save).toHaveBeenCalledWith(HOUSEHOLD, { standard: 'my draft' }, 'scnA')
+  })
+
+  it('expands the plan box when a plan layer appears on an untouched refresh', () => {
+    const t = target({ scenarioId: 'scnA' })
+    const scopeA = scopeValue([noteRow(HOUSEHOLD, 'Standard')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    const { rerender } = render(<Harness scope={scopeA} editorTarget={t} />)
+    expect(
+      screen.queryByRole('textbox', { name: 'Note just for this plan' })
+    ).not.toBeInTheDocument()
+
+    const scopeA2 = scopeValue(
+      [noteRow(HOUSEHOLD, 'Standard'), noteRow(HOUSEHOLD, 'Try Pine', 'scnA')],
+      { scenarioId: 'scnA', scenarioName: 'Draft A' }
+    )
+    rerender(<Harness scope={scopeA2} editorTarget={t} />)
+    expect(screen.getByRole('textbox', { name: 'Note just for this plan' })).toHaveValue('Try Pine')
+  })
+})
+
 describe('SubjectNoteEditor — save failure and empty notes (fix round 1)', () => {
   it('keeps the typed text and re-enables Save after a failed save', async () => {
     const scope = renderEditor([], target(), { save: vi.fn().mockRejectedValue(new Error('422')) })
