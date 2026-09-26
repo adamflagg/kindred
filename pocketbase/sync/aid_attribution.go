@@ -313,7 +313,12 @@ func (c *aidAttributionContext) byFAApplication(working []aidEnrollment) (aidAtt
 	}
 	if familySafe {
 		a := aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodFAApplication, Family: family}
-		if len(familyPersons) == 1 {
+		// Item 10 follow-up (controller ruling): a person is only credited when
+		// EVERY candidate answered -- net totals group by attributed_person_cm_id
+		// (financial_aid_ledger_service.py's net_totals), so naming a person here
+		// while a sibling stayed silent would still pin that sibling's award on
+		// the one who answered, the exact thing the ruling removes.
+		if len(familyPersons) == 1 && len(silent) == 0 {
 			for person := range familyPersons {
 				a.PersonCMID = person
 			}

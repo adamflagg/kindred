@@ -269,17 +269,19 @@ func TestAidAttributionRules(t *testing.T) {
 				CandidateFamilies: []string{programFamilySummer, programFamilyTeen}},
 		},
 		{
-			// Item 10 (final review, controller ruling): the applicant's answer names
+			// Item 10 follow-up (controller ruling): the applicant's answer names
 			// their own session, but the sibling never answered at all -- a sibling
-			// with no resolving answer blocks rule 7's session branch; see the SP4
-			// rule-7 sibling ruling. Only the family is placed.
+			// with no resolving answer blocks rule 7's session branch AND its
+			// person credit at the family level, since net totals group by
+			// attributed_person_cm_id and a person here would still pin the
+			// silent sibling's award on the answering child. See the SP4 rule-7
+			// sibling ruling. Only the family is placed, no person.
 			name:    "rule 7: own-session answer, but a silent sibling means only the family is placed",
 			members: siblings,
 			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1002, 12, enrolled}},
 			setup:   func(c *aidAttributionContext) { c.FAAnswersByPerson[1001] = []string{"Session 2"} },
 			in:      household,
-			want: aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodFAApplication,
-				PersonCMID: 1001, Family: programFamilySummer},
+			want:    aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodFAApplication, Family: programFamilySummer},
 		},
 		{
 			// Item 10 (final review, controller ruling): the applicant's answer
@@ -364,20 +366,23 @@ func TestAidAttributionRules(t *testing.T) {
 				Family: programFamilySummer},
 		},
 		{
-			// Item 10 (final review, controller ruling): the silent sibling is
-			// enrolled in a DIFFERENT session of the SAME family the answer
-			// named (moved on from Mitzvah Year 1 to Mitzvah Year 2, never
-			// applied themselves). Unlike the same-session case above, the
-			// silent sibling is not a competing claimant for the exact named
-			// session, so rule 7's own family branch may still credit the
-			// applicant.
-			name:    "rule 7: a silent sibling in a different same-family session still lets the family place the applicant",
+			// Item 10 (final review, controller ruling; person credit narrowed by
+			// follow-up): the silent sibling is enrolled in a DIFFERENT session of
+			// the SAME family the answer named (moved on from Mitzvah Year 1 to
+			// Mitzvah Year 2, never applied themselves). Unlike the same-session
+			// case above, the silent sibling is not a competing claimant for the
+			// exact named session, so rule 7's own family branch still fires --
+			// but it may not credit a person while ANY candidate stayed silent:
+			// net totals group by attributed_person_cm_id, so naming the
+			// applicant here would still pin the silent sibling's award on them.
+			// See the SP4 rule-7 sibling ruling.
+			name:    "rule 7: a silent sibling in a different same-family session still places the family, not the person",
 			members: siblings,
 			enrs:    []aidTestEnr{{1001, 31, enrolled}, {1002, 32, enrolled}},
 			setup:   func(c *aidAttributionContext) { c.FAAnswersByPerson[1001] = []string{"Mitzvah Year 1"} },
 			in:      household,
 			want: aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodFAApplication,
-				PersonCMID: 1001, Family: programFamilyBMitzvah},
+				Family: programFamilyBMitzvah},
 		},
 		{
 			// Item 10 (final review, controller ruling): the applicant's answer
