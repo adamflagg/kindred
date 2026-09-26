@@ -1,5 +1,5 @@
 import { act, render, renderHook, screen } from '@testing-library/react'
-import { useEffect, type ReactNode } from 'react'
+import { StrictMode, useEffect, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { HOUSEHOLD, PERSON, noteRow } from '../../test/notesScope'
@@ -68,20 +68,40 @@ describe('SubjectNotesScope', () => {
     expect(notesSpy).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }))
   })
 
-  it('exposes nothing (corners, menu items, panel section) while the read is pending (final review, I1)', () => {
+  it('exposes nothing (corners, menu items, panel section) while the read is pending', () => {
     notesData = undefined
     const { result } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
     expect(result.current).toBeNull()
   })
 
-  it('toasts once on a read error, and still exposes nothing (final review, I1)', () => {
+  it('toasts once on a read error, and still exposes nothing', () => {
     notesData = undefined
     notesIsError = true
     notesError = new Error('the board could not be reached')
     const { result } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
     expect(result.current).toBeNull()
     expect(toastError).toHaveBeenCalledTimes(1)
-    expect(toastError).toHaveBeenCalledWith(expect.stringContaining('could not be reached'))
+    expect(toastError).toHaveBeenCalledWith(
+      expect.stringContaining('could not be reached'),
+      expect.objectContaining({ id: 'subject-notes-read' })
+    )
+  })
+
+  it('passes a fixed id, so a StrictMode double effect run cannot double the toast', () => {
+    notesData = undefined
+    notesIsError = true
+    notesError = new Error('the board could not be reached')
+    const Wrapper = scope()
+    render(
+      <StrictMode>
+        <Wrapper>
+          <div />
+        </Wrapper>
+      </StrictMode>
+    )
+    expect(toastError).toHaveBeenCalled()
+    const ids = toastError.mock.calls.map((call) => (call[1] as { id?: string } | undefined)?.id)
+    expect(new Set(ids)).toEqual(new Set(['subject-notes-read']))
   })
 
   it('keeps its children mounted when the permission arrives (no remount)', () => {

@@ -56,12 +56,12 @@ export function SubjectNotesScope({
 
   // A different board or plan: nothing open survives it. Adjusted during
   // RENDER (React's "you changed a prop, reset derived state" pattern --
-  // ProcessRequestOptions.tsx:43-57 is the other example in this codebase),
-  // not an effect: an effect fires a whole commit late, leaving the editor
-  // stamped to the OLD board for that one commit -- see the baseline-freeze
-  // comment on useSubjectNoteEditor.ts's `scenarioMatches` for the hazard
-  // that lag causes downstream. A panel editor flushes on unmount into the
-  // scenario it was OPENED in (EditorTarget).
+  // `ProcessRequestOptions`'s modal-reset is the other example in this
+  // codebase), not an effect: an effect fires a whole commit late, leaving
+  // the editor stamped to the OLD board for that one commit -- see the
+  // baseline-freeze comment on useSubjectNoteEditor.ts's `scenarioMatches`
+  // for the hazard that lag causes downstream. A panel editor flushes on
+  // unmount into the scenario it was OPENED in (EditorTarget).
   const boardKey = `${String(sessionCmId)}|${scenarioId}`
   const [prevBoardKey, setPrevBoardKey] = useState(boardKey)
   const [editor, setEditor] = useState<EditorTarget | null>(null)
@@ -70,12 +70,17 @@ export function SubjectNotesScope({
     setEditor(null)
   }
 
-  // Final review, I1: a hard read failure is silent otherwise -- toast once
-  // per error so staff learn the board couldn't be read, rather than reading
-  // a card's missing corner as "no notes".
+  // A hard read failure is silent otherwise -- toast once per error so
+  // staff learn the board couldn't be read, rather than reading a card's
+  // missing corner as "no notes". A fixed `id`: this effect has no cleanup,
+  // so StrictMode's dev double-invoke would otherwise fire it twice on
+  // mount -- react-hot-toast treats a second call with the same `id` as an
+  // update to the existing toast, not a second one.
   useEffect(() => {
     if (!notesQuery.isError) return
-    toast.error(errorText(notesQuery.error, 'Failed to load notes'))
+    toast.error(errorText(notesQuery.error, 'Failed to load notes'), {
+      id: 'subject-notes-read',
+    })
   }, [notesQuery.isError, notesQuery.error])
 
   const index = useMemo(() => indexNotes(notesQuery.data?.notes ?? []), [notesQuery.data])
@@ -121,13 +126,13 @@ export function SubjectNotesScope({
     [scenarioId, scenarioName, notesFor, save, promote, editor, openEditor, closeEditor]
   )
 
-  // Final review, I1: `notesFor` above falls back to NO_LAYERS whenever
-  // `data` is undefined (pending, retrying, or errored) -- exposing the
-  // scope in that state let every card's corner, its "+ Note" menu items and
-  // the panel section all read as "no notes yet", and a save from there
-  // upserted OVER a standard note staff simply hadn't been shown yet. Only
-  // the VALUE below is gated; both providers still always render so the
-  // board never remounts when the read settles.
+  // `notesFor` above falls back to NO_LAYERS whenever `data` is undefined
+  // (pending, retrying, or errored) -- exposing the scope in that state
+  // would let every card's corner, its "+ Note" menu items and the panel
+  // section all read as "no notes yet", and a save from there would upsert
+  // OVER a standard note staff simply hadn't been shown yet. Only the VALUE
+  // below is gated; both providers still always render so the board never
+  // remounts when the read settles.
   const ready = canManage && notesQuery.data !== undefined
 
   return (

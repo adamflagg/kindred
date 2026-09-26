@@ -142,17 +142,34 @@ export function SubjectNotePopover({
   })
   useOverlayEscape(true, model.discard)
   useOutsidePointer(model, ref, subjectKey(target.subject))
-  // Focus restore (F5, frontend/CLAUDE.md): the anchor corner's own button,
-  // not whatever was focused before opening -- a click that opened this
-  // popover does not reliably leave focus on the corner across browsers, so
-  // this is more reliable than ConfirmActionPopover's plain
-  // capture-and-restore, and is simpler here since the anchor is already at
-  // hand.
+  // Focus restore (frontend/CLAUDE.md): the anchor corner's own button, not
+  // whatever was focused before opening -- a click that opened this popover
+  // does not reliably leave focus on the corner across browsers, so this is
+  // more reliable than ConfirmActionPopover's plain capture-and-restore, and
+  // is simpler here since the anchor is already at hand.
+  //
+  // Only when nothing else already claimed it: a DIRTY popover unmounts only
+  // once `save()` resolves -- a network round trip after whatever click
+  // started it -- so by the time this cleanup runs, that same click may
+  // already have moved focus somewhere real (the "Elsewhere" button, an
+  // input on the page). Reclaiming it there would yank focus away from what
+  // the user is doing, and a programmatic focus on the corner also reopens
+  // its Tooltip preview (it hits Tooltip's `onFocus`) as an unwanted side
+  // effect. So this only fires when focus is either nowhere in particular
+  // (`document.body`, e.g. Escape/Cancel closing synchronously) or still
+  // somewhere inside this popover's own subtree (captured once at mount,
+  // since `ref.current` is not reliably still attached to the tree by the
+  // time an unmounting component's own cleanup runs -- `Node.contains` works
+  // on a detached subtree exactly as it does on an attached one).
   useEffect(() => {
+    const container = ref.current
     return () => {
-      target.anchorEl?.querySelector<HTMLElement>('button')?.focus()
+      const active = document.activeElement
+      if (active === document.body || (container?.contains(active) ?? false)) {
+        target.anchorEl?.querySelector<HTMLElement>('button')?.focus()
+      }
     }
-  }, [target.anchorEl])
+  }, [target.anchorEl, ref])
 
   return createPortal(
     <div

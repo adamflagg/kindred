@@ -43,7 +43,7 @@ function PanelEditor({ scope, target }: { scope: SubjectNotesScopeValue; target:
   /** Save, Cancel, Escape or promote ended the edit on purpose. */
   const settled = useRef(false)
   const mounted = useRef(false)
-  // Focus restore (F5, frontend/CLAUDE.md): mirrors ConfirmActionPopover's
+  // Focus restore (frontend/CLAUDE.md): mirrors ConfirmActionPopover's
   // capture-on-open, restore-on-close -- there is no anchor element to focus
   // instead here, unlike the popover's corner button. A LAYOUT effect, not a
   // passive one: `SubjectNoteEditor`'s own autofocus (below, in its child)
@@ -51,10 +51,31 @@ function PanelEditor({ scope, target }: { scope: SubjectNotesScopeValue; target:
   // before ANY passive one -- a passive effect here would already see the
   // textarea it just focused, not whatever was focused before this editor
   // opened.
+  //
+  // The real open gesture (a click on the ReadView's own note button) removes
+  // that button in the SAME commit that mounts this editor, so by the time
+  // this effect runs the capture is already `document.body` -- restoring to
+  // it would be a no-op anyway, but the guard makes that explicit rather than
+  // relying on `<body>.focus()` happening to do nothing. And as in the
+  // popover: only restore where nothing else has since claimed focus --
+  // either nothing in particular (`document.body`) or still somewhere in
+  // this section (captured once at mount, for the same reason `ref.current`
+  // is captured once for the popover).
   useLayoutEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null
+    const section = document.querySelector('[data-notes-section]')
     return () => {
-      previouslyFocused?.focus()
+      if (
+        !previouslyFocused ||
+        !previouslyFocused.isConnected ||
+        previouslyFocused === document.body
+      ) {
+        return
+      }
+      const active = document.activeElement
+      if (active === document.body || (section?.contains(active) ?? false)) {
+        previouslyFocused.focus()
+      }
     }
   }, [])
   useEffect(() => {

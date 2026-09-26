@@ -332,34 +332,68 @@ describe('SubjectNotesSection — editing', () => {
     expect(value.save).toHaveBeenCalledWith(HOUSEHOLD, { standard: 'Standard, and more' }, '')
   })
 
-  it('restores focus to what was focused before the panel editor opened, once it closes', () => {
-    function Harness({
-      showEditor,
-      value,
-    }: {
-      showEditor: boolean
-      value: SubjectNotesScopeValue
-    }) {
+  it('steals nothing and does not throw after the real open gesture (the read-view button is already gone by the time it mounts)', () => {
+    function Harness({ editor }: { editor: EditorTarget | null }) {
+      return (
+        <NotesScopeFixture value={scopeValue([noteRow(HOUSEHOLD, 'Standard')], { editor })}>
+          <SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />
+        </NotesScopeFixture>
+      )
+    }
+    const { rerender } = render(<Harness editor={null} />)
+    const noteButton = screen.getByText('Standard').closest('button') as HTMLElement
+    noteButton.focus()
+
+    // The real gesture: a click on this SAME button both opens the editor
+    // and removes this button, in one commit -- a rerender is the fixture's
+    // way of landing both at once, exactly as a real state update would.
+    expect(() => {
+      rerender(<Harness editor={panelTarget} />)
+    }).not.toThrow()
+    // The editor's own textarea autofocuses -- unrelated to our restore
+    // effect, whose captured element is already `document.body` by now.
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveFocus()
+
+    expect(() => {
+      rerender(<Harness editor={null} />)
+    }).not.toThrow()
+    // Nothing was ever captured to restore, so nothing is stolen -- focus is
+    // simply wherever the textarea's own removal left it.
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('leaves focus where it is when closing, if the user has since moved it elsewhere', () => {
+    function Harness({ showEditor }: { showEditor: boolean }) {
       return (
         <>
-          <button type="button">Elsewhere</button>
-          <NotesScopeFixture value={{ ...value, editor: showEditor ? panelTarget : null }}>
+          <button type="button">Elsewhere 1</button>
+          <button type="button">Elsewhere 2</button>
+          <NotesScopeFixture
+            value={scopeValue([noteRow(HOUSEHOLD, 'Standard')], {
+              editor: showEditor ? panelTarget : null,
+            })}
+          >
             <SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />
           </NotesScopeFixture>
         </>
       )
     }
-    const value = scopeValue([noteRow(HOUSEHOLD, 'Standard')])
-    const { rerender } = render(<Harness showEditor={false} value={value} />)
-    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' })
-    elsewhere.focus()
-    expect(document.activeElement).toBe(elsewhere)
+    const { rerender } = render(<Harness showEditor={false} />)
+    const elsewhere1 = screen.getByRole('button', { name: 'Elsewhere 1' })
+    const elsewhere2 = screen.getByRole('button', { name: 'Elsewhere 2' })
+    elsewhere1.focus()
 
-    rerender(<Harness showEditor value={value} />)
-    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveFocus()
+    // The editor opens while `elsewhere1` (a real, unrelated control) holds
+    // focus -- captured as this instance's `previouslyFocused`.
+    rerender(<Harness showEditor />)
+    // The user clicks away to something else entirely WHILE the editor is
+    // still open, before it closes.
+    elsewhere2.focus()
 
-    rerender(<Harness showEditor={false} value={value} />)
-    expect(document.activeElement).toBe(elsewhere)
+    rerender(<Harness showEditor={false} />)
+    // Not restored to `elsewhere1`: focus is neither on `document.body` nor
+    // inside this section by the time it closes.
+    expect(document.activeElement).toBe(elsewhere2)
   })
 
   it('closes a clean editor when the panel closes, so it does not reopen stale', async () => {
