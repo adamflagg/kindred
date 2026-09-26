@@ -396,11 +396,23 @@ function CamperCard({
               }}
             />
             <div
+              data-context-menu
               className="card-lodge shadow-lodge-lg animate-scale-in fixed z-[9999] p-1"
               style={{
                 left: `${Math.min(contextMenuPosition.x, window.innerWidth - 200)}px`,
                 top: `${Math.min(contextMenuPosition.y, window.innerHeight - 120)}px`,
                 minWidth: '180px',
+              }}
+              // Portaled to `document.body`, outside `[data-camper-card]` --
+              // without this, a mousedown on any item here (View Details, the
+              // note item, …) bubbles to `document` before its own `click`
+              // fires, and the unplaced/unassigned queue's own document
+              // mousedown listener (`ui/FloatingQueueBadge.tsx`) reads it as
+              // an outside click and collapses the queue, unmounting this
+              // menu before the click lands. Same mechanism as
+              // `SubjectNotePopover`'s stop for the same queue.
+              onMouseDown={(e) => {
+                e.stopPropagation()
               }}
             >
               {/* View Details - always available */}
