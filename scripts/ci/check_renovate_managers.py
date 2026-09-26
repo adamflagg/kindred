@@ -30,6 +30,7 @@ EXPECTED_DEPS = {
     "rhysd/actionlint",
     "hadolint/hadolint",
     "aquasecurity/trivy",
+    "orhun/git-cliff",
 }
 
 VERSION_SHAPE = re.compile(r"^v?\d+\.\d+")

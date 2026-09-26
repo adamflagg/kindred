@@ -365,7 +365,7 @@ Exceptional baseline: Chainguard/Wolfi + distroless final images, `COPY --link` 
 - `uv` + PEP 735 `[dependency-groups]` ✓
 - mypy `strict = true` ✓
 - Ruff as single linter (no black/autopep8 conflict) ✓
-- commitlint enforced on PRs ✓
+- commitlint enforced on PR titles (`Validate PR title`) ✓
 - git-cliff changelog in release workflow ✓
 - Gitleaks secret scanning in CI ✓
 

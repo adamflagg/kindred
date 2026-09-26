@@ -68,9 +68,9 @@ Full reference: `/docs/reference/cli-commands.md`. Per-surface test invocations 
 
 ### Commit Conventions
 
-Format: `type(scope): description` — breaking changes: `feat(api)!: description`
+Format: `type(scope): description`. **The PR title is the commit on `main`**: squash merge uses it verbatim, so it picks the changelog group and the version bump, and the required `Validate PR title` check lints it with commitlint. Never write `!` or a `BREAKING CHANGE:` footer — there is no external consumer, `cliff.toml` strips both, and majors are cut by hand.
 
-Scope is **required** and enforced by commitlint, which rejects the commit if you get it wrong. `commitlint.config.js` is the source of truth — read its `scope-enum` and `type-enum` rather than trusting a copy here, which is how this file previously drifted five scopes out of date. Which `type` to use: `docs/reference/commit-conventions.md`
+Scope is **required** (only `ci` may omit it) and enforced by commitlint, which rejects the title if you get it wrong. `commitlint.config.js` is the source of truth — read its `scope-enum` and `type-enum` rather than trusting a copy here, which is how this file previously drifted five scopes out of date. Which `type` to use: `docs/reference/commit-conventions.md`
 
 Commit at logical checkpoints, not micro-commits. Never sweep others' changes into your commits — check `git status` first.
 
@@ -220,6 +220,6 @@ Write failing tests first, verify they fail, then implement. **Tests are the spe
 **CI** runs on every push (~2-3 min): linting, type checking, unit tests.
 **CD** runs on merge to main (~10-15 min): Docker builds, Trivy scanning, integration tests, images tagged `latest` and `sha-<commit>`.
 
-`main` is protected by a GitHub Ruleset: required "CI Gate" status check, required linear history (squash only), and no direct pushes. The one bypass actor is the Admin role in `pull_request` mode — the owner can merge a PR past a red or missing check as a deliberate emergency override. **Agents never use it:** every change needs a PR with green CI.
+`main` is protected by a GitHub Ruleset: required "CI Gate" and "Validate PR title" status checks, required linear history (squash only), and no direct pushes. The one bypass actor is the Admin role in `pull_request` mode — the owner can merge a PR past a red or missing check as a deliberate emergency override. **Agents never use it:** every change needs a PR with green CI.
 
 Release process: `docs/reference/git-workflow.md`

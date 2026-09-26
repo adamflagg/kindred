@@ -180,6 +180,10 @@ jobs:
     - run: |
         # renovate: datasource=pypi depName=zizmor
         ZIZMOR_VERSION="1.30.1"
+    - uses: kenji-miyake/setup-git-cliff@v2
+      with:
+        # renovate: datasource=github-releases depName=orhun/git-cliff
+        version: 2.14.2
 """
 
 

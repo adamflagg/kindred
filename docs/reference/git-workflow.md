@@ -134,7 +134,9 @@ fix directly.
 - Tags created by the Release workflow, not manually
 
 ### Release Workflow
-Release via GitHub Actions: **Actions → Release → Run workflow**. Leave version empty for auto-bump (git-cliff), or enter a version to override. The workflow waits for CI and CD to pass, promotes the existing `sha-<commit>` Docker images to version tags (e.g., `3.2.0`, `3.2`), then creates the git tag and GitHub release.
+Release via GitHub Actions: **Actions → Release → Run workflow**, or `gh workflow run release.yml` (add `-f version=X.Y.Z` to override). Leave version empty for auto-bump (git-cliff), or enter a version to override.
+
+**How the auto-bump decides.** git-cliff reads the squash commits on `main`, which are the PR titles. Any `feat` since the last tag → minor; any other released type → patch; a window holding only `chore`/`ci` → nothing to release, and the workflow fails saying so. `!` and `BREAKING CHANGE:` are stripped in `cliff.toml`, so a major only happens through the version override. Type table: `docs/reference/commit-conventions.md`. The workflow waits for CI and CD to pass, promotes the existing `sha-<commit>` Docker images to version tags (e.g., `3.2.0`, `3.2`), then creates the git tag and GitHub release.
 
 Requires `RELEASE_TOKEN` repo secret (fine-grained PAT with `contents: write`).
 

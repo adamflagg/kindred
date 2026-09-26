@@ -212,7 +212,7 @@ Score each row by these axes; lower total = easier:
 
 - One row per PR by default.
 - Bundle two rows only if both are <10 callsites *and* touch the same file(s).
-- Title: conventional commit (`refactor(sync):`, `fix(sync):`, etc., per CLAUDE.md scopes).
+- Title: conventional commit (`refactor(sync):`, `fix(sync):`, etc., per `commitlint.config.js` scopes and `docs/reference/commit-conventions.md`).
 - Body: link the backlog row by `#` and quote the "what it does" + "why" lines from the brief.
 - For codemods (e.g. `interface{}` → `any`), include the exact `gofmt -r` / `sed` / autofix command in the PR body so the change is reproducible.
 

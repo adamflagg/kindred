@@ -8,14 +8,20 @@
   "timezone": "America/New_York",
   "prConcurrentLimit": 5,
   "semanticCommits": "enabled",
-  "semanticCommitType": "chore",
-  "semanticCommitScope": "ci",
+  "semanticCommitType": "ci",
+  "semanticCommitScope": "deps",
   "labels": ["dependencies", "ci"],
   "platformAutomerge": true,
   "packageRules": [
     {
       "description": "Linters break CI by design when a release adds checks. Own PR, never automerge.",
       "matchDepNames": ["golangci/golangci-lint", "rhysd/actionlint", "gitleaks/gitleaks", "zizmor"],
+      "automerge": false,
+      "addLabels": ["needs-review"]
+    },
+    {
+      "description": "Release tooling. A git-cliff release can change how the next version is bumped. Own PR, never automerge.",
+      "matchDepNames": ["orhun/git-cliff"],
       "automerge": false,
       "addLabels": ["needs-review"]
     },
@@ -31,6 +37,11 @@
       "matchManagers": ["nvm", "pyenv"],
       "dependencyDashboardApproval": true,
       "automerge": false
+    },
+    {
+      "description": "A runtime pin is toolchain, not CI: build(deps), like Dependabot's shipped bumps.",
+      "matchManagers": ["nvm", "pyenv"],
+      "semanticCommitType": "build"
     }
   ],
   "customManagers": [
