@@ -14,9 +14,14 @@ on:
       - edited
       - synchronize
       - reopened
+      # The `type-override` label waives the type-vs-files step; adding or
+      # removing it must re-run the check.
+      - labeled
+      - unlabeled
 
 permissions:
   contents: read
+  pull-requests: read  # the type-vs-files step lists the PR's changed files
 
 jobs:
   lint-title:
@@ -50,3 +55,19 @@ jobs:
         # Derived from the author's account type, not from anything they typed.
         PR_AUTHOR_IS_BOT: ${{ github.event.pull_request.user.type == 'Bot' }}
       run: printf '%s\n' "$PR_TITLE" | npx --no-install commitlint --verbose
+
+    - name: Hold the type to the changed files
+      # When every changed file is CI machinery, agent tooling or tests, the type
+      # must say so (scripts/ci/check_title_type.py). Anything else is left to
+      # judgment. The `type-override` label waives it.
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+      # Explicit `shell: bash` is what turns on pipefail. Without it, a failed
+      # `gh api` feeds the checker an empty list, which decides nothing: a pass.
+      shell: bash
+      run: |
+        gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' \
+          | python3 scripts/ci/check_title_type.py

@@ -136,6 +136,10 @@ jobs:
             - 'renovate.json'
             - '.github/workflows/semantic-pr.yml'
             - '.github/workflows/release.yml'
+            # The label the title check's override reads, and the humans' copy
+            # of the type table, which must match cliff.toml.
+            - '.github/workflows/setup-labels.yml'
+            - 'docs/reference/commit-conventions.md'
           # python-lint's inputs, which are a superset of the Python sources.
           # It used to gate on `backend`, a filter meant for another job: that
           # has no 'tests/**', so none of the 507 tracked test files could

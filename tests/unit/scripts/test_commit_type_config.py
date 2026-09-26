@@ -46,6 +46,8 @@ RENOVATE = REPO_ROOT / "renovate.json"
 TITLE_WORKFLOW = REPO_ROOT / ".github/workflows/semantic-pr.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github/workflows/release.yml"
 CI_WORKFLOW = REPO_ROOT / ".github/workflows/ci.yml"
+LABELS_WORKFLOW = REPO_ROOT / ".github/workflows/setup-labels.yml"
+CONVENTIONS_DOC = REPO_ROOT / "docs/reference/commit-conventions.md"
 
 # The ruleset requires a status check with exactly this name. Renaming the job
 # does not fail anything -- it leaves every PR waiting on a check that never
@@ -96,15 +98,29 @@ def _is_catch_all(parser: dict[str, Any]) -> bool:
 
 
 def _first_parser(message: str) -> dict[str, Any]:
-    """The parser git-cliff applies: the first whose `message` regex matches.
+    """The parser git-cliff applies: the first that matches, in file order.
 
-    The patterns are plain anchored prefixes, which Rust's regex crate and
-    Python's `re` read identically.
+    A parser matches on `message` (a regex over the whole message) or on
+    `field = "scope"` (a regex over the conventional scope, e.g. `pb,security`;
+    a commit with no scope never matches one). The patterns are anchored and
+    simple, which Rust's regex crate and Python's `re` read identically.
     """
+    title = TITLE.match(message)
+    scope = (title.group("scope") or "") if title else ""
     for parser in _parsers():
         if "message" in parser and re.search(parser["message"], message):
             return parser
+        if parser.get("field") == "scope" and scope and re.search(parser["pattern"], scope):
+            return parser
     raise AssertionError(f"no cliff.toml parser matches {message!r}")
+
+
+def _group_of(message: str) -> str:
+    """The changelog group a message lands in, sort key stripped, or SKIPPED."""
+    parser = _first_parser(message)
+    if parser.get("skip"):
+        return "SKIPPED"
+    return re.sub(r"^<!-- \d+ -->", "", parser["group"])
 
 
 def _preprocess(message: str) -> str:
@@ -165,6 +181,7 @@ def test_no_changelog_parser_serves_a_type_the_gate_rejects() -> None:
     """A parser no allowed title can reach is dead config that reads as live."""
     reachable = {id(_first_parser(f"{t}(api): subject")) for t in _types()}
     reachable.add(id(_first_parser('Revert "feat(api): subject"')))
+    reachable.add(id(_first_parser("fix(pb,security): subject")))
     reachable.add(id(_first_parser("Merge pull request #1 from x/y")))
     dead = [p for p in _parsers() if id(p) not in reachable and not _is_catch_all(p)]
     assert not dead, f"cliff.toml parsers no allowed title reaches: {dead}"
@@ -234,6 +251,125 @@ def test_changelog_groups_carry_a_sort_key_that_sorts_as_intended() -> None:
         assert re.match(r"^<!-- \d\d -->\S", g), f"group {g!r} has no two-digit `<!-- NN -->` sort key"
     assert min(groups).endswith("Features"), f"first group is {min(groups)!r}"
     assert "striptags" in _cliff()["changelog"]["body"]
+
+
+# ─── What the changelog shows: improve, security as a scope, no internals ───
+
+# The released types and the group each lands in. docs/reference/commit-conventions.md
+# carries the same table for humans; test_the_conventions_doc_table_matches_cliff
+# holds the two together.
+RELEASED_GROUPS = {
+    "feat": "Features",
+    "improve": "Improvements",
+    "fix": "Bug Fixes",
+    "perf": "Performance",
+    "build": "Dependencies & Build",
+    "refactor": "Internal",
+    "revert": "Reverts",
+}
+NEVER_SHIPPED = ("chore", "ci", "docs", "test")
+
+
+def test_improve_is_an_allowed_type() -> None:
+    """Work that makes an existing capability better without it having been broken.
+
+    The 2026-09 audit found 284 of 1,526 PRs in this shape, 205 of them titled
+    `feat` -- the main reason Features read as twice its real size.
+    """
+    assert "improve" in _types()
+
+
+@pytest.mark.parametrize(("commit_type", "group"), sorted(RELEASED_GROUPS.items()))
+def test_each_released_type_lands_in_its_group(commit_type: str, group: str) -> None:
+    assert _group_of(f"{commit_type}(api): subject") == group
+
+
+@pytest.mark.parametrize("commit_type", NEVER_SHIPPED)
+def test_types_that_change_nothing_deployed_are_skipped(commit_type: str) -> None:
+    """Tests, docs, CI and agent tooling never reach an image, so never reach release notes."""
+    assert _group_of(f"{commit_type}(api): subject") == "SKIPPED"
+
+
+def test_every_allowed_type_is_either_released_or_skipped() -> None:
+    assert set(_types()) == set(RELEASED_GROUPS) | set(NEVER_SHIPPED)
+
+
+def test_style_and_config_are_retired() -> None:
+    """`style` had 3 uses in 1,526 PRs, one a visual redesign; `config` had 0.
+
+    Formatting is `chore`; a visible restyle is `improve`.
+    """
+    assert not {"style", "config"} & set(_types())
+
+
+def test_the_groups_read_features_then_improvements_then_fixes() -> None:
+    groups = sorted({p["group"] for p in _parsers() if "group" in p})
+    names = [re.sub(r"^<!-- \d+ -->", "", g) for g in groups]
+    assert names[:3] == ["Features", "Improvements", "Bug Fixes"], names
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "fix(pb,security): close an unauthenticated read",
+        "build(deps,security): bump starlette for a CVE",
+        "feat(security): add a login audit view",
+        "improve(frontend,security): mask the phone column",
+    ],
+)
+def test_a_security_scope_on_a_released_type_lands_in_security(message: str) -> None:
+    """Security is a scope, not a type: the type still says what changed."""
+    assert _group_of(message) == "Security"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "ci(security): block runner egress",
+        "chore(harness,security): stop the agent reading .env",
+        "docs(security): document the RBAC model",
+        "test(security): cover the unauthenticated read",
+    ],
+)
+def test_a_security_scope_does_not_release_what_never_ships(message: str) -> None:
+    """Owner ruling 2026-09-26: a security scope does not rescue a skipped type.
+
+    Routing these to Security made git-cliff cut a patch release (v1.0.0 ->
+    v1.0.1 on 2.14.2) for a CI-only change, promoting an unchanged image and
+    putting CI plumbing in notes staff read. They stay skipped like any other
+    ci/chore/docs/test change, so the release workflow's "Nothing to release"
+    guard still fires.
+    """
+    assert _group_of(message) == "SKIPPED"
+
+
+@pytest.mark.parametrize("message", ["revert(security): undo the egress block", 'Revert "fix(pb,security): x"'])
+def test_a_revert_stays_in_reverts_even_with_a_security_scope(message: str) -> None:
+    """The one exception to the rule above, and the doc says so.
+
+    GitHub's Revert button writes `Revert "fix(pb,security): ..."`, which has no
+    conventional scope to route on, so it can only reach Reverts. Routing the
+    `revert(security):` spelling to Security instead would split one kind of
+    change across two groups by how the title happened to be typed.
+    """
+    assert _group_of(message) == "Reverts"
+
+
+@pytest.mark.parametrize("message", ["fix(api): add security headers", "fix(api): x"])
+def test_security_routing_reads_the_scope_not_the_subject(message: str) -> None:
+    assert _group_of(message) == "Bug Fixes"
+
+
+def test_the_conventions_doc_table_matches_cliff() -> None:
+    """The humans' copy of the type table cannot drift from cliff.toml's."""
+    doc = CONVENTIONS_DOC.read_text()
+    section = re.search(r"^## What a type does to a release\n(.*?)^## ", doc, re.MULTILINE | re.DOTALL)
+    assert section, "commit-conventions.md lost its `## What a type does to a release` section"
+    doc = section.group(1)
+    rows = dict(re.findall(r"^\| `([a-z]+)` \| ([^|]+?) \|", doc, re.MULTILINE))
+    assert rows == RELEASED_GROUPS, rows
+    for commit_type in NEVER_SHIPPED:
+        assert f"`{commit_type}`" in doc
 
 
 # ─── Bots write titles the gate accepts, typed by what the bump is ──────────
@@ -486,6 +622,48 @@ def test_tests_python_gate_covers_every_file_this_module_polices() -> None:
     wf = yaml.safe_load(CI_WORKFLOW.read_text())
     filters = yaml.safe_load(wf["jobs"]["detect-changes"]["steps"][1]["with"]["filters"])
     patterns = filters["python"]
-    for path in (COMMITLINT, CLIFF, DEPENDABOT, RENOVATE, TITLE_WORKFLOW, RELEASE_WORKFLOW):
+    for path in (
+        COMMITLINT,
+        CLIFF,
+        DEPENDABOT,
+        RENOVATE,
+        TITLE_WORKFLOW,
+        RELEASE_WORKFLOW,
+        LABELS_WORKFLOW,
+        CONVENTIONS_DOC,
+    ):
         rel = PurePosixPath(path.relative_to(REPO_ROOT).as_posix())
         assert any(rel.full_match(p) for p in patterns), f"`python` filter cannot fire on {rel}"
+
+
+# ─── The title check also holds the type to the files ────────────────────────
+
+
+def test_title_check_re_runs_when_the_override_label_changes() -> None:
+    wf = _title_workflow()
+    on = wf.get("on") or wf.get(True)
+    assert isinstance(on, dict)
+    assert {"labeled", "unlabeled"} <= set(on["pull_request"]["types"])
+
+
+def test_title_check_holds_the_type_to_the_changed_files() -> None:
+    steps = _title_job()["steps"]
+    assert any("scripts/ci/check_title_type.py" in str(s.get("run", "")) for s in steps)
+
+
+def test_title_check_can_read_the_pr_file_list() -> None:
+    perms = _title_workflow().get("permissions") or {}
+    assert perms.get("pull-requests") == "read", perms
+
+
+def test_the_override_label_is_a_managed_label() -> None:
+    text = LABELS_WORKFLOW.read_text()
+    assert "name: 'type-override'" in text
+
+
+def test_the_files_step_fails_closed_when_the_file_list_cannot_be_read() -> None:
+    """GitHub's default step shell has no pipefail: a failed `gh api` would feed
+    the checker an empty list, which decides nothing -- a silent pass."""
+    step = next(s for s in _title_job()["steps"] if "check_title_type.py" in str(s.get("run", "")))
+    assert step.get("shell") == "bash", step
+    assert "github.event.pull_request.title" not in str(step.get("run", ""))
