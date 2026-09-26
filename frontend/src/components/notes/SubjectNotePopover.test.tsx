@@ -217,6 +217,59 @@ describe('SubjectNotePopover', () => {
     expect(document.activeElement).toBe(elsewhere)
   })
 
+  it('a press on the queue’s own toggle button (owner request O5) keeps the popover open, no save', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for FloatingQueueBadge's own toggle button -- marked with
+    // the same `data-queue-toggle` attribute, elsewhere in the document.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const toggle = document.createElement('button')
+    toggle.setAttribute('data-queue-toggle', '')
+    badge.appendChild(toggle)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(toggle)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press elsewhere in the queue badge (not its toggle) still saves the open note first', async () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // Deliberately NOT the whole `[data-floating-badge]`: a press on another
+    // queue card's corner must still save the open note first.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const row = document.createElement('div')
+    badge.appendChild(row)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(row)
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+      )
+      expect(saveNote).toHaveBeenCalledWith(
+        expect.objectContaining({ scenario: '', body: 'Arriving late Friday.' })
+      )
+    } finally {
+      badge.remove()
+    }
+  })
+
   it('removes the pending click-eater when the popover unmounts', () => {
     // A press on the corner installs a capture-phase document click-eater
     // (swallowing the click that follows the same physical press). Left

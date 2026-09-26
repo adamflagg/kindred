@@ -303,6 +303,19 @@ describe('FloatingQueueBadge — footer', () => {
   })
 })
 
+describe('FloatingQueueBadge — the toggle button', () => {
+  // An open note popover's outside-press handler exempts `[data-queue-toggle]`
+  // (owner request O5) so pressing the queue open/close button never closes
+  // an open note. Both boards share this one component, so marking it here
+  // covers FloatingUnplacedBadge and FloatingUnassignedBadge alike.
+  it('marks the collapsed toggle button, so an open note popover can exempt it', () => {
+    render(<Harness />)
+    expect(screen.getByRole('button', { name: /3 unplaced families/i })).toHaveAttribute(
+      'data-queue-toggle'
+    )
+  })
+})
+
 describe('FloatingQueueBadge — placement', () => {
   it('shifts out from under an open details panel', () => {
     const { container } = render(<Harness isPanelOpen={true} />)
