@@ -178,6 +178,7 @@ export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   entity: string
   entity_id: string
   id: string
+  operation_id: string
   reason?: string
   year: number
 }

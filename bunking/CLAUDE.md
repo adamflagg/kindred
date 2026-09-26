@@ -17,6 +17,8 @@ Core Python package: solver, data processing, satisfaction policy, social graphs
 | `models_v2.py` | `DirectSolver*` dataclasses — solver I/O contract |
 | `bunking_validator.py` | Analyzes assignments; consumed by `api/routers/validation.py` |
 | `auth_middleware.py` / `jwt_auth.py` | PocketBase JWT verification for FastAPI |
+| `pocketbase_batch.py` | `send_batch`: several PocketBase writes in ONE transaction via `/api/batch`. Use it, not the SDK's `create_batch()`, which is broken against our server (#2865) |
+| `financial_aid/change_log.py` | `commit_aid_writes`: every `aid_*` write commits with its `aid_change_log` row in one batch |
 
 ## Where business logic lives
 
