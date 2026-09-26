@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from api.schemas.financial_aid import (
     AidSourceUpdate,
@@ -596,3 +597,64 @@ async def test_deleting_a_disposition_reopens_the_flag_and_is_logged() -> None:
     assert spy.kwargs["reason"] == "Recorded against the wrong posting"
     [log] = spy.log_rows()
     assert (log["action"], log["after"]) == ("delete", None)
+
+
+# --- blank note / reason handling (fix round 1) -------------------------------
+#
+# A whitespace-only note is not a note. Without stripping at the schema, it is
+# truthy, so it overrides the operation's required reason; 4a's change_row then
+# strips it to "" and raises ValueError (an unhandled 500), and a dry run -
+# which never reaches change_row - reports success right before the real run
+# fails on the same file. Stripping at the schema (api/schemas/financial_aid.py)
+# makes a blank override row note fall back to the load's reason before
+# anything is sent, and makes a blank required note/reason a 422 at the door
+# in dry run and real run alike.
+
+
+@pytest.mark.asyncio
+async def test_a_whitespace_only_override_note_falls_back_to_the_loads_reason() -> None:
+    service, spy = _service(_override_repo())
+    rows = [OverrideRow(transaction_cm_id=9001, program_family="summer", note="   ")]
+
+    # The row's note is stripped to "" at the schema, not left as whitespace.
+    assert rows[0].note == ""
+
+    dry = await service.load_overrides(
+        OverrideBulkLoad(year=2026, source="staff", reason="Reviewed 2026 attribution", dry_run=True, rows=rows),
+        ACTOR,
+    )
+    real = await service.load_overrides(
+        OverrideBulkLoad(year=2026, source="staff", reason="Reviewed 2026 attribution", dry_run=False, rows=rows),
+        ACTOR,
+    )
+
+    assert (dry.created, dry.rejected) == (1, [])
+    assert (real.created, real.rejected) == (1, [])  # dry run and real run agree
+    [write] = spy.writes
+    assert write.reason is None  # nothing of its own to log
+    assert spy.kwargs["reason"] == "Reviewed 2026 attribution"
+    [log] = spy.log_rows()
+    assert log["reason"] == "Reviewed 2026 attribution"
+
+
+@pytest.mark.parametrize("note", ["   ", "\t\n"])
+def test_a_blank_disposition_note_is_refused_at_the_schema(note: str) -> None:
+    with pytest.raises(ValidationError):
+        DispositionRow(transaction_cm_id=9001, flag="aid_exceeds_fee", disposition="accepted_let_stand", note=note)
+
+
+def test_a_blank_source_classification_note_is_refused_at_the_schema() -> None:
+    with pytest.raises(ValidationError):
+        _classification(note="   ")
+
+
+def test_a_blank_household_link_note_is_refused_at_the_schema() -> None:
+    with pytest.raises(ValidationError):
+        HouseholdLinkCreate(year=2026, household_cm_id=600, family_key="hh-100", note="   ")
+
+
+def test_a_blank_override_load_reason_is_still_refused_at_the_schema() -> None:
+    with pytest.raises(ValidationError):
+        OverrideBulkLoad(
+            year=2026, source="staff", reason="   ", rows=[OverrideRow(transaction_cm_id=9001, program_family="summer")]
+        )

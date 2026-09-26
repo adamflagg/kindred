@@ -304,7 +304,7 @@ class AidSourceUpdate(BaseModel):
     counts_toward_budget: bool
     full_coverage: bool = False
     implied_program_families: list[ProgramFamily] = Field(default_factory=list)
-    note: str = Field(min_length=1, max_length=2000)
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
     @model_validator(mode="after")
     def _budget_and_full_coverage(self) -> AidSourceUpdate:
@@ -320,7 +320,7 @@ class HouseholdLinkCreate(BaseModel):
     household_cm_id: int = Field(gt=0)
     family_key: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     excluded: bool = False
-    note: str = Field(min_length=1, max_length=2000)
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
 class HouseholdLinkRow(BaseModel):
@@ -345,7 +345,7 @@ class OverrideRow(BaseModel):
     attributed_session_cm_id: int | None = Field(default=None, gt=0)
     program_family: ProgramFamily | None = None
     source_key_override: str | None = Field(default=None, min_length=1, max_length=500)
-    note: str = Field(default="", max_length=2000)
+    note: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
 
     @model_validator(mode="after")
     def _places_or_reclassifies(self) -> OverrideRow:
@@ -378,7 +378,7 @@ class DispositionRow(BaseModel):
     transaction_cm_id: int = Field(gt=0)
     flag: FlagName
     disposition: DispositionKind
-    note: str = Field(min_length=1, max_length=2000)
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
 class DispositionBulkLoad(BaseModel):
