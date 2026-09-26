@@ -349,13 +349,22 @@ describe('SubjectNoteEditor — save failure and empty notes', () => {
   })
 })
 
-describe('SubjectNoteEditor — the panel opens at the end of a long note (owner request O6)', () => {
+describe('SubjectNoteEditor — the panel opens at the end of a long note', () => {
   // jsdom has no layout engine: `scrollHeight` is a getter with no setter, so
   // it must be stubbed on the prototype BEFORE the textarea mounts (the
   // autofocus effect reads it during the harness's own render), and restored
   // afterwards so it cannot leak into an unrelated test in this file.
-  it('scrolls the textarea to its bottom and brings it into view, unframed (the panel)', () => {
-    Element.prototype.scrollIntoView = vi.fn()
+  //
+  // `Element.prototype.scrollIntoView` is stubbed once for every element (not
+  // per-instance, since the elements it's called on don't exist until the
+  // harness renders) and records `this` on each call, so the assertions below
+  // can tell WHICH element -- the editor's own root, not just any element --
+  // actually received the call.
+  it('brings the whole editor -- Save/Cancel row included -- into view, not just the textarea, unframed (the panel)', () => {
+    const scrolledElements: Element[] = []
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolledElements.push(this)
+    })
     Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
       configurable: true,
       value: 731,
@@ -364,16 +373,21 @@ describe('SubjectNoteEditor — the panel opens at the end of a long note (owner
       const scope = scopeValue([noteRow(HOUSEHOLD, 'x'.repeat(500))])
       render(<Harness scope={scope} editorTarget={target()} framed={false} />)
       const box = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note' })
+      const root = document.querySelector('[data-note-editor]') as HTMLElement
       expect(box.selectionStart).toBe(box.value.length)
       expect(box.scrollTop).toBe(731)
-      expect(box.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+      expect(scrolledElements).toEqual([root])
+      expect(root.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
     } finally {
       Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
     }
   })
 
   it('leaves the popover’s own landing-at-the-end behaviour unchanged (framed)', () => {
-    Element.prototype.scrollIntoView = vi.fn()
+    const scrolledElements: Element[] = []
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolledElements.push(this)
+    })
     Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
       configurable: true,
       value: 731,
@@ -384,7 +398,7 @@ describe('SubjectNoteEditor — the panel opens at the end of a long note (owner
       const box = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note' })
       expect(box.selectionStart).toBe(box.value.length)
       expect(box.scrollTop).toBe(0)
-      expect(box.scrollIntoView).not.toHaveBeenCalled()
+      expect(scrolledElements).toEqual([])
     } finally {
       Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
     }

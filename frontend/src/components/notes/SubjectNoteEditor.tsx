@@ -68,12 +68,14 @@ export function SubjectNoteEditor({
       // section sits inside the much longer scrollable body of a slide-in
       // panel (frontend/CLAUDE.md), so opening on a long note left the caret
       // at the end while the textarea's own content -- and the panel's
-      // scroll position -- both stayed at the top (owner request O6,
-      // 2026-09-26). Scoped to the panel (`!framed`) so the popover's
-      // behaviour is unchanged.
+      // scroll position -- both stayed at the top (owner, 2026-09-26).
+      // Scoped to the panel (`!framed`) so the popover's behaviour is
+      // unchanged. `scrollIntoView` targets the editor's own ROOT, not the
+      // textarea: the owner asked to land at the bottom of the SECTION, so
+      // the Save/Cancel row comes into view too, not just the box.
       if (!framed) {
         box.scrollTop = box.scrollHeight
-        box.scrollIntoView({ block: 'nearest' })
+        rootRef.current?.scrollIntoView({ block: 'nearest' })
       }
     }
   }, [model.focus, model.planExpanded, framed])
