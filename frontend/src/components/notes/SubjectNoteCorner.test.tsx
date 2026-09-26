@@ -122,4 +122,30 @@ describe('SubjectNoteCorner', () => {
     const { holder } = renderCorner()
     expect(holder).toHaveAttribute('data-note-corner-for', subjectKey(HOUSEHOLD))
   })
+
+  it('shows the Draft pill beside "Note" in the preview for a plan-only note', () => {
+    renderCorner([noteRow(HOUSEHOLD, 'Try Pine', 'scnA')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
+    expect(within(screen.getByRole('tooltip')).getByText('Draft A')).toBeInTheDocument()
+  })
+
+  it('shows no pill in the preview for a standard-only note', () => {
+    renderCorner()
+    fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
+    expect(within(screen.getByRole('tooltip')).queryByText('Draft A')).toBeNull()
+  })
+
+  it('shows no pill in the preview when both kinds of note exist (the "+1 more" line still does)', () => {
+    renderCorner([noteRow(HOUSEHOLD, 'Standard'), noteRow(HOUSEHOLD, 'Plan', 'scnA')], {
+      scenarioId: 'scnA',
+      scenarioName: 'Draft A',
+    })
+    fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
+    const tooltip = screen.getByRole('tooltip')
+    expect(within(tooltip).queryByText('Draft A')).toBeNull()
+    expect(within(tooltip).getByText('+1 more')).toBeInTheDocument()
+  })
 })

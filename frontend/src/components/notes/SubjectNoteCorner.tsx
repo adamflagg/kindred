@@ -30,9 +30,11 @@ import { useLayoutEffect, useRef, useState } from 'react'
 
 import type { NoteSubject } from '../../types/subjectNotes'
 import { Tooltip } from '../ui/Tooltip'
+import { PlanNotePill } from './PlanNotePill'
 import { useSubjectNotesScope } from './subjectNotesContext'
 import {
   cornerState,
+  displayScenarioName,
   extraLayerCount,
   NOTE_LABEL,
   previewText,
@@ -130,7 +132,10 @@ export function SubjectNoteCorner({ subject, label, containing }: SubjectNoteCor
   const preview =
     lead && !openHere ? (
       <div className="flex flex-col gap-0.5">
-        <div className="font-semibold">{NOTE_LABEL}</div>
+        <div className="flex items-center gap-1">
+          <div className="font-semibold">{NOTE_LABEL}</div>
+          {mode === 'plan' && <PlanNotePill name={displayScenarioName(scope.scenarioName)} small />}
+        </div>
         <div className="whitespace-pre-wrap">{previewText(lead.body)}</div>
         {more > 0 && <div className="text-muted-foreground">+{more} more</div>}
       </div>
