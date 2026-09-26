@@ -77,12 +77,16 @@ describe('SubjectNoteCorner', () => {
     expect(edge).toHaveAttribute('stroke-dasharray', '2 1.5')
   })
 
-  it('adds a dot when both kinds of note exist, and says "+1 more" in the preview', () => {
+  it('shows the standard solid fill with a dashed inner edge (not a dot) when both kinds of note exist, and says "+1 more" in the preview', () => {
     const { holder } = renderCorner([
       noteRow(HOUSEHOLD, 'Standard'),
       noteRow(HOUSEHOLD, 'Plan', 'scnA'),
     ])
-    expect(holder?.querySelector('[data-note-dot]')).not.toBeNull()
+    expect(holder).toHaveAttribute('data-note-corner', 'standard')
+    const [fill, edge] = Array.from(holder?.querySelectorAll('path') ?? [])
+    expect(fill).toHaveAttribute('fill', '#fef08a')
+    expect(edge).toHaveAttribute('stroke-dasharray', '2 1.5')
+    expect(holder?.querySelector('[data-note-dot]')).toBeNull()
     fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
     expect(within(screen.getByRole('tooltip')).getByText('+1 more')).toBeInTheDocument()
   })

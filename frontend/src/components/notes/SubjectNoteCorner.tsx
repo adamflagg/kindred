@@ -3,9 +3,12 @@
  * top-right corner, filled sticky-pad yellow, 16px. Its outer edge IS the
  * card's rounded border corner -- radius and border width are read off the
  * rendered card -- and its inner edge is a quarter circle centred on that
- * corner. A plan-only note is paler with a dashed edge; a card holding both
- * shows a dot beside the corner; an empty card shows a faint dashed ghost on
- * hover or focus-within only.
+ * corner. A dashed inner edge is the ONE marker for "this card carries a
+ * scenario-specific (plan-only) note" (owner ruling 2026-09-26): a plan-only
+ * note is paler and dashed, and a card holding both a standard and a plan
+ * note keeps the standard's solid fill but dashes that same edge -- there is
+ * no separate dot. An empty card shows a faint dashed ghost on hover or
+ * focus-within only.
  *
  * It sits BESIDE the card's open control, never inside it, so it can be a
  * real button and use the real `ui/Tooltip` preview. `pointerdown`,
@@ -44,15 +47,18 @@ const HIT = 20
 /** Locked: yellow-200 fill, yellow-500 edge; plan-only is yellow-50. */
 const FILL: Record<CornerMode, string> = { standard: '#fef08a', plan: '#fefce8', ghost: 'none' }
 const EDGE = '#eab308'
-const DOT = 'oklch(42% 0.14 168)'
 
-function CornerCap({ radius, mode }: { radius: number; mode: CornerMode }) {
+function CornerCap({ radius, mode, both }: { radius: number; mode: CornerMode; both: boolean }) {
   const R = Math.min(radius, SIZE)
   // Card's outer top-right corner at (SIZE, 0): the outer edge traces the arc
   // the card's own border draws there; the inner edge is a quarter circle of
   // radius SIZE centred on that corner.
   const outer = `M 0 0 H ${String(SIZE - R)} A ${String(R)} ${String(R)} 0 0 1 ${String(SIZE)} ${String(R)} V ${String(SIZE)}`
   const inner = `A ${String(SIZE)} ${String(SIZE)} 0 0 1 0 0`
+  // Dashed whenever this card carries a scenario-specific note: a plan-only
+  // corner (mode !== 'standard') or a standard corner that ALSO has one
+  // (`both`) -- the owner's ruling is that the dash is the marker, not mode.
+  const dashed = mode !== 'standard' || both
   return (
     <svg
       width={SIZE}
@@ -70,7 +76,7 @@ function CornerCap({ radius, mode }: { radius: number; mode: CornerMode }) {
         fill="none"
         stroke={EDGE}
         strokeWidth={1}
-        {...(mode === 'standard' ? {} : { strokeDasharray: '2 1.5' })}
+        {...(dashed ? { strokeDasharray: '2 1.5' } : {})}
       />
     </svg>
   )
@@ -131,24 +137,7 @@ export function SubjectNoteCorner({ subject, label, containing }: SubjectNoteCor
     ) : null
 
   const offset = containing === 'padding' ? -frame.border : 0
-  const cap = (
-    <>
-      <CornerCap radius={frame.radius} mode={mode} />
-      {both && (
-        <span
-          data-note-dot
-          className="absolute block rounded-full"
-          style={{
-            width: 5,
-            height: 5,
-            background: DOT,
-            top: Math.round(SIZE * 0.6),
-            right: SIZE + 1,
-          }}
-        />
-      )}
-    </>
-  )
+  const cap = <CornerCap radius={frame.radius} mode={mode} both={both} />
 
   return (
     <span
