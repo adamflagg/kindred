@@ -34,55 +34,6 @@ interface BunkCardProps {
   onToggleLock?: () => void
 }
 
-/**
- * Extracts grade range from a name string.
- * Mirrors the Go logic in pocketbase/sync/bunk_plans.go:extractGradeRange()
- *
- * @returns [minGrade, maxGrade] or [0, 0] if no grade found
- */
-function extractGradeRange(name: string): [number, number] {
-  if (!name) return [0, 0]
-
-  // Pattern 1: "X/Y" format (e.g., "9/10", "7/8")
-  const slashMatch = name.match(/(\d+)\/(\d+)/)
-  if (slashMatch?.[1] && slashMatch[2]) {
-    const g1 = parseInt(slashMatch[1], 10)
-    const g2 = parseInt(slashMatch[2], 10)
-    return [Math.min(g1, g2), Math.max(g1, g2)]
-  }
-
-  // Pattern 2: "Xth - Yth" format (e.g., "7th - 9th", "7th & 8th")
-  const rangeMatch = name.match(/(\d+)(?:st|nd|rd|th)?\s*[-–&]\s*(\d+)(?:st|nd|rd|th)?/)
-  if (rangeMatch?.[1] && rangeMatch[2]) {
-    const g1 = parseInt(rangeMatch[1], 10)
-    const g2 = parseInt(rangeMatch[2], 10)
-    return [Math.min(g1, g2), Math.max(g1, g2)]
-  }
-
-  // Pattern 3: Single number after "AG-" (e.g., "AG-8" → 8, 8)
-  const singleMatch = name.match(/AG[-\s](\d+)/i)
-  if (singleMatch?.[1]) {
-    const grade = parseInt(singleMatch[1], 10)
-    return [grade, grade]
-  }
-
-  return [0, 0]
-}
-
-/**
- * Checks if a grade is within a range (inclusive)
- */
-function gradeInRange(grade: number, min: number, max: number): boolean {
-  return grade >= min && grade <= max
-}
-
-/**
- * Checks if two grade ranges have any overlap
- */
-function gradesOverlap(min1: number, max1: number, min2: number, max2: number): boolean {
-  return !(max1 < min2 || min1 > max2)
-}
-
 function BunkCard({
   bunk,
   onCamperClick,
@@ -109,33 +60,14 @@ function BunkCard({
       : false
 
     if (isFromAGSession) {
-      // AG campers can only go to Mixed (AG) bunks
-      if (bunkGender !== 'mixed') {
-        return false
-      }
-
-      // Check if bunk grade is compatible with session grade range
-      // Logic mirrors pocketbase/sync/bunk_plans.go lines 329-360
-      const sessionName = activeDragCamper.expand?.session?.name ?? ''
-      const [sessionGradeMin, sessionGradeMax] = extractGradeRange(sessionName)
-      const [bunkGradeMin, bunkGradeMax] = extractGradeRange(bunk.name || '')
-
-      // If we can extract grades from both, check compatibility
-      if (bunkGradeMin > 0 && sessionGradeMin > 0) {
-        if (bunkGradeMin === bunkGradeMax) {
-          // Single grade bunk (e.g., "AG-8") - must be within session range
-          if (!gradeInRange(bunkGradeMin, sessionGradeMin, sessionGradeMax)) {
-            return false
-          }
-        } else {
-          // Range bunk - check for any overlap with session range
-          if (!gradesOverlap(bunkGradeMin, bunkGradeMax, sessionGradeMin, sessionGradeMax)) {
-            return false
-          }
-        }
-      }
-
-      return true
+      // AG campers can go to any Mixed (AG) bunk. The cabin number in an AG
+      // bunk's name (e.g. "AG-6") is a physical location, not a grade — #1800
+      // made that authoritative on the sync side by pairing AG bunks to AG
+      // sessions via bunk_plans instead of parsing the cabin number. This
+      // used to also require the cabin number to fall inside the session's
+      // grade range, which broke Session 2 (AG-6, "7th & 8th grades") and
+      // only "worked" for Sessions 3-4 by coincidence.
+      return bunkGender === 'mixed'
     }
 
     // Non-AG campers go to gendered bunks based on their gender
