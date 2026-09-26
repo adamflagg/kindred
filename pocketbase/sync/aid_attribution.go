@@ -245,6 +245,19 @@ func (c *aidAttributionContext) enrollmentsOf(persons []int) (active []aidEnroll
 // byFAApplication is rule 7. An FA application's program answers (summer,
 // family camp, B*Mitzvah fields) name sessions; they are matched to the year's
 // camp_sessions by normalized name.
+//
+// Controller ruling (final review, item 10): a sibling who submitted no FA
+// answer at all is not ruled out as the true subject of this posting just
+// because they stayed silent -- a household's aid can land on either camper,
+// and silence carries no information about which. So neither branch below
+// may treat a silent sibling as settled: the session winner requires every
+// candidate to have answered (fix round 1's existing family-count guard
+// still stands beside it, for siblings who DID answer but pointed elsewhere).
+// The family conclusion tolerates a silent sibling only when their own
+// working enrollments stay inside that one family AND don't also occupy the
+// exact session an answer named -- sharing that literal session means the
+// two campers are indistinguishable, so rule 7 steps back entirely and lets
+// rule 8/9 decide, same as if no FA answer existed at all.
 func (c *aidAttributionContext) byFAApplication(working []aidEnrollment) (aidAttribution, bool) {
 	byPerson := map[int][]aidEnrollment{}
 	for _, e := range working {
@@ -253,10 +266,16 @@ func (c *aidAttributionContext) byFAApplication(working []aidEnrollment) (aidAtt
 	var sessionWinners []aidEnrollment
 	familyHits := map[string]bool{}
 	familyPersons := map[int]bool{}
+	namedSessions := map[int]bool{}
+	var silent []int
 	for _, person := range aidDistinctPersons(working) {
 		resolved := c.resolvedSessions(person)
 		if len(resolved) == 0 {
+			silent = append(silent, person)
 			continue
+		}
+		for session := range resolved {
+			namedSessions[session] = true
 		}
 		var hits []aidEnrollment
 		for _, e := range byPerson[person] {
@@ -277,16 +296,23 @@ func (c *aidAttributionContext) byFAApplication(working []aidEnrollment) (aidAtt
 	}
 	// A single-session winner is only trustworthy when no other candidate's
 	// resolved answer points at a second family they are actually enrolled in
-	// (fix round 1, task review): otherwise the household has two real signals
-	// pointing two different ways, and picking one camper would be a guess.
-	if len(sessionWinners) == 1 && len(familyHits) <= 1 {
+	// (fix round 1, task review) and no candidate stayed silent (item 10):
+	// either way, the household has (or may have) a second real claimant, and
+	// picking one camper would be a guess.
+	if len(sessionWinners) == 1 && len(familyHits) <= 1 && len(silent) == 0 {
 		return aidSessionAttribution(sessionWinners[0], aidMethodFAApplication), true
 	}
-	if len(familyHits) == 1 {
-		a := aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodFAApplication}
-		for family := range familyHits {
-			a.Family = family
+	family := aidSoleFamily(familyHits)
+	familySafe := family != ""
+	for _, person := range silent {
+		for _, e := range byPerson[person] {
+			if e.Family != family || namedSessions[e.SessionCMID] {
+				familySafe = false
+			}
 		}
+	}
+	if familySafe {
+		a := aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodFAApplication, Family: family}
 		if len(familyPersons) == 1 {
 			for person := range familyPersons {
 				a.PersonCMID = person
@@ -295,6 +321,18 @@ func (c *aidAttributionContext) byFAApplication(working []aidEnrollment) (aidAtt
 		return a, true
 	}
 	return aidAttribution{}, false
+}
+
+// aidSoleFamily returns the one family in a hit-set, or "" when there are
+// zero or several.
+func aidSoleFamily(hits map[string]bool) string {
+	if len(hits) != 1 {
+		return ""
+	}
+	for family := range hits {
+		return family
+	}
+	return ""
 }
 
 func (c *aidAttributionContext) resolvedSessions(person int) map[int]bool {
