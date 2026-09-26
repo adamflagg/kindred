@@ -221,6 +221,7 @@ function CamperCard({
     : ''
 
   const hasNoteSlots = noteSlots !== undefined
+  const dragging = isSortableDragging || isDragging
   const cardButton = (
     <button
       type="button"
@@ -240,7 +241,10 @@ function CamperCard({
         genderColorClass,
         isDraggable && 'hover:shadow-lodge cursor-move',
         !isDraggable && 'cursor-default',
-        (isSortableDragging || isDragging) && 'opacity-50',
+        // With slots, the fade moves to the wrapper below so the corner
+        // (the button's sibling) fades with it, rather than the corner
+        // staying opaque while only the button dims.
+        !hasNoteSlots && dragging && 'opacity-50',
         // Pending lock group selection - synchronized glow animation
         lockState === 'pending' && 'pending-lock-glow border-amber-400 dark:border-amber-500'
       )}
@@ -350,7 +354,7 @@ function CamperCard({
         <div
           ref={setNodeRef}
           style={style}
-          className="group relative"
+          className={clsx('group relative', dragging && 'opacity-50')}
           onContextMenu={handleContextMenu}
         >
           {cardButton}

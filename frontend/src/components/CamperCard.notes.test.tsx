@@ -116,6 +116,22 @@ describe('CamperCard — the note corner (wrapper variant)', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Note' }))
     expect(await screen.findByText('View Details')).toBeInTheDocument()
   })
+
+  it('mid-drag, the wrapper fades and the button does not double-fade', () => {
+    const slots = {
+      corner: <SubjectNoteCorner subject={PERSON} label="Emma Johnson" containing="border" />,
+    }
+    const value = scopeValue([])
+    render(
+      <NotesScopeFixture value={value}>
+        <CamperCard camper={EMMA} noteSlots={slots} isDragging={true} />
+      </NotesScopeFixture>
+    )
+    const button = document.querySelector('[data-camper-card]') as HTMLElement
+    const wrapper = button.parentElement as HTMLElement
+    expect(wrapper.className.split(' ')).toContain('opacity-50')
+    expect(button.className.split(' ')).not.toContain('opacity-50')
+  })
 })
 
 describe('CamperCard — the note item in the right-click menu', () => {
