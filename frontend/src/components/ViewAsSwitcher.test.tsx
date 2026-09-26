@@ -5,18 +5,26 @@ import { AuthContext } from '../contexts/AuthContext'
 import { createMockAuthContext, createMockUser } from '../test/test-helpers'
 import { readViewAs, writeViewAs } from '../auth/viewAs'
 
+const defaultRoles = [
+  { id: 'r1', name: 'Bunking Staff', slug: 'bunking-staff', permissions: ['bunking.manage'] },
+  {
+    id: 'r2',
+    name: 'Registrar',
+    slug: 'registrar',
+    permissions: ['registration.manage', 'metrics.geo'],
+  },
+]
+let mockRolesQuery: {
+  data: typeof defaultRoles | undefined
+  isLoading: boolean
+  error: Error | null
+} = {
+  data: defaultRoles,
+  isLoading: false,
+  error: null,
+}
 vi.mock('../hooks/useRoles', () => ({
-  useRoles: () => ({
-    data: [
-      { id: 'r1', name: 'Bunking Staff', slug: 'bunking-staff', permissions: ['bunking.manage'] },
-      {
-        id: 'r2',
-        name: 'Registrar',
-        slug: 'registrar',
-        permissions: ['registration.manage', 'metrics.geo'],
-      },
-    ],
-  }),
+  useRoles: () => mockRolesQuery,
 }))
 
 import { ViewAsSwitcher } from './ViewAsSwitcher'
@@ -24,6 +32,7 @@ import { ViewAsSwitcher } from './ViewAsSwitcher'
 const reload = vi.fn()
 
 beforeEach(() => {
+  mockRolesQuery = { data: defaultRoles, isLoading: false, error: null }
   window.sessionStorage.clear()
   reload.mockClear()
   Object.defineProperty(window, 'location', {
@@ -139,6 +148,22 @@ describe('ViewAsSwitcher', () => {
     writeViewAs({ label: 'Custom', source: 'custom', permissions: [] })
     renderAs({ isAdmin: true })
     expect(screen.getByRole('button', { name: /Custom \(0\)/ })).toBeTruthy()
+  })
+
+  it('says roles are loading instead of looking empty, and keeps No role usable', () => {
+    mockRolesQuery = { data: undefined, isLoading: true, error: null }
+    renderAs({ isAdmin: true })
+    openMenu()
+    expect(screen.getByText('Loading roles…')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /No role/ })).toBeTruthy()
+  })
+
+  it('says roles could not load instead of looking empty, and keeps Custom usable', () => {
+    mockRolesQuery = { data: undefined, isLoading: false, error: new Error('boom') }
+    renderAs({ isAdmin: true })
+    openMenu()
+    expect(screen.getByText("Couldn't load roles")).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Custom/ })).toBeTruthy()
   })
 
   it('closes on Escape', () => {

@@ -3,6 +3,7 @@ import {
   clearViewAs,
   isViewAsPersonaUser,
   readViewAs,
+  viewAsLabel,
   viewAsHeaders,
   writeViewAs,
   VIEW_AS_HEADER,
@@ -101,5 +102,20 @@ describe('isViewAsPersonaUser', () => {
 
   it('matches case-insensitively, like the Go check', () => {
     expect(isViewAsPersonaUser({ email: 'VA0123456789ABC@VIEW-AS.INVALID' })).toBe(true)
+  })
+})
+
+describe('viewAsLabel', () => {
+  it('names a role or No role by its label', () => {
+    expect(viewAsLabel({ label: 'Registrar', source: 'role', permissions: ['metrics.geo'] })).toBe(
+      'Registrar'
+    )
+    expect(viewAsLabel({ label: 'No role', source: 'none', permissions: [] })).toBe('No role')
+  })
+
+  it('names a custom persona by its permission count', () => {
+    expect(
+      viewAsLabel({ label: 'Custom', source: 'custom', permissions: ['a.b', 'c.d', 'e.f'] })
+    ).toBe('Custom (3)')
   })
 })

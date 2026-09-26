@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
 import { useRoles } from '../hooks/useRoles'
 import { ALL_PERMISSIONS } from '../constants/permissions'
-import { clearViewAs, writeViewAs, type ViewAsPersona } from '../auth/viewAs'
+import { clearViewAs, viewAsLabel, writeViewAs, type ViewAsPersona } from '../auth/viewAs'
 
 function switchTo(persona: ViewAsPersona | null) {
   if (persona === null) clearViewAs()
@@ -40,7 +40,11 @@ export function ViewAsSwitcher() {
   const { isBypassMode } = useAuth()
   const { realIsAdmin, viewAs } = usePermissions()
   const canSwitch = realIsAdmin && !isBypassMode
-  const { data: roles = [] } = useRoles({ enabled: canSwitch })
+  const {
+    data: roles = [],
+    isLoading: rolesLoading,
+    error: rolesError,
+  } = useRoles({ enabled: canSwitch })
   const [isOpen, setIsOpen] = useState(false)
   const [isCustomOpen, setIsCustomOpen] = useState(viewAs?.source === 'custom')
   const [customPerms, setCustomPerms] = useState<string[]>(
@@ -75,12 +79,7 @@ export function ViewAsSwitcher() {
 
   if (!canSwitch) return null
 
-  const label =
-    viewAs === null
-      ? null
-      : viewAs.source === 'custom'
-        ? `Custom (${viewAs.permissions.length})`
-        : viewAs.label
+  const label = viewAs === null ? null : viewAsLabel(viewAs)
 
   const toggleCustomPerm = (perm: string) =>
     setCustomPerms((prev) =>
@@ -140,6 +139,13 @@ export function ViewAsSwitcher() {
 
           <div className="bg-border my-2 h-px" />
           <p className={sectionClass}>Roles</p>
+          {/* No role and Custom below stay usable whether or not roles loaded. */}
+          {rolesLoading && (
+            <p className="text-muted-foreground px-3 py-2 text-xs">Loading roles…</p>
+          )}
+          {rolesError && (
+            <p className="text-muted-foreground px-3 py-2 text-xs">Couldn&apos;t load roles</p>
+          )}
           {roles.map((role) => (
             <button
               key={role.id}

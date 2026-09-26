@@ -73,6 +73,11 @@ export function isViewAsPersonaUser(user: { email?: unknown }): boolean {
   )
 }
 
+/** How a persona is named on screen: the switcher chip and the popout note say the same thing. */
+export function viewAsLabel(persona: ViewAsPersona): string {
+  return persona.source === 'custom' ? `Custom (${persona.permissions.length})` : persona.label
+}
+
 /** Headers for the current tab's persona; empty when not previewing. */
 export function viewAsHeaders(): Record<string, string> {
   const persona = readViewAs()

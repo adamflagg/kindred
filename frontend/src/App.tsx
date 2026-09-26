@@ -9,6 +9,7 @@ import { ScenarioProvider } from './contexts/ScenarioContext'
 import { LockGroupProvider } from './contexts/LockGroupContext'
 import { ProgramProvider, useProgram } from './contexts/ProgramContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { ViewAsPreviewNote } from './components/ViewAsPreviewNote'
 import { queryClient } from './utils/queryClient'
 import { getProgramHomeUrl } from './utils/programUrls'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -649,6 +650,7 @@ function App() {
                             path="/session/:sessionId/post-check"
                             element={
                               <ErrorBoundary>
+                                <ViewAsPreviewNote />
                                 <Suspense fallback={<PageSkeleton />}>
                                   <PostCheckPopout />
                                 </Suspense>
@@ -664,6 +666,7 @@ function App() {
                             path="/camper/:camperId/popout"
                             element={
                               <ErrorBoundary>
+                                <ViewAsPreviewNote />
                                 <Suspense fallback={<PageSkeleton />}>
                                   <CamperPopout />
                                 </Suspense>
