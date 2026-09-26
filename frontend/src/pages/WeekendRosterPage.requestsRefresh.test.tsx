@@ -335,7 +335,10 @@ beforeEach(() => {
 // The page, the board and the Requests view all load lazily, and pre-push runs
 // this suite beside pytest: under that load the first render can take longer
 // than the default 1s async timeout (scan of #2839 saw it flake). A wider
-// timeout for this file only; the assertions are unchanged.
+// timeout for this file only; the assertions are unchanged. The test below
+// also gets a 15s test timeout (as WeekendRosterPage.codeSplitting's does):
+// with a 5s wait and vitest's 5s default test budget, one slow render under
+// load used up the whole test.
 const defaultAsyncTimeout = getConfig().asyncUtilTimeout
 beforeAll(() => {
   configure({ asyncUtilTimeout: 5000 })
@@ -386,7 +389,7 @@ describe('WeekendRosterPage — a board write-in reaches the Requests tab', () =
         }).textContent
       ).toBe('Mimi · Cedar 1')
     })
-  })
+  }, 15000)
 
   it('shows the write-in on a Requests tab first opened after the write', async () => {
     const user = userEvent.setup()
