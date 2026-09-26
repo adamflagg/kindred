@@ -132,14 +132,14 @@ R2_DECIDED = "2031-05-01T12:00:00Z"
 AFTER = "2031-06-01T12:00:00Z"
 
 
-def _appeal_with_grant(rules: AidRules, recorded_at: str, **request: Any) -> CalcResult:
+def _appeal_with_grant(rules: AidRules, recorded_at: str, amount: str = "300", **request: Any) -> CalcResult:
     # Tier 2 at 4,000: Round 1 is 3,000 and the Round 2 cap 90% x 4,000 - 3,000 = 600. The
     # grant arrives after the Round 1 decision, so Round 1 (already offered) leaves it out.
     fields = {
         "appeal_amount": "2000",
         "r1_decided_at": R1_DECIDED,
         "r2_decided_at": R2_DECIDED,
-        "grants_applicable": [{"amount": "300", "state": "committed", "recorded_at": recorded_at}],
+        "grants_applicable": [{"amount": amount, "state": "committed", "recorded_at": recorded_at}],
         **request,
     }
     return _calc(rules, **fields)
@@ -186,6 +186,25 @@ def test_the_above_cost_check_counts_a_grant_known_before_the_appeal_offer() -> 
     assert before.total == Decimal(4000)
     assert "award_above_cost" in before.issue_codes()
     assert "award_above_cost" not in _appeal_with_grant(rules, AFTER, appeal_amount="1000").issue_codes()
+
+
+def test_an_appeal_that_adds_nothing_does_not_move_the_offer_for_the_above_cost_check() -> None:
+    # Round 1 (3,000) was offered, then a 1,500 grant arrived: above cost, but after the offer,
+    # which is accepted. An appeal decided later that pays nothing is not a new offer, so the
+    # grant must not hold the award. Only an appeal that adds money moves the offer date.
+    result = _appeal_with_grant(fictional_rules(), BETWEEN, amount="1500", appeal_amount="0")
+    assert result.r2 == Decimal(0)
+    assert "award_above_cost" not in result.issue_codes()
+
+
+def test_a_barred_full_cost_appeal_keeps_the_round_1_offer_and_its_award() -> None:
+    # A full-cost decision takes no appeal. A grant after the Round 1 offer neither holds the
+    # award nor shrinks the full-cost top-up already offered (no clawback).
+    rules = with_lever(fictional_rules(), "grants.late_grant_policy", "ignore")
+    offered = _calc(rules, ask="5000", decision_type="full_cost_program")
+    result = _appeal_with_grant(rules, BETWEEN, ask="5000", decision_type="full_cost_program", appeal_amount="500")
+    assert (result.r2_bound, result.total) == ("not_allowed", offered.total)
+    assert "award_above_cost" not in result.issue_codes()
 
 
 # --- the total-aid cap ----------------------------------------------------------------

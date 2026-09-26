@@ -33,6 +33,7 @@ def run_quality_checks(
     cost: Decimal | None,
     total: Decimal | None,
     r1: Decimal | None,
+    later_rounds: Decimal,
     extra_amount: Decimal,
 ) -> list[CalcIssue]:
     checks = rules.quality_checks.checks
@@ -75,7 +76,11 @@ def run_quality_checks(
     # Always on and always a hold, whatever the season lists. A full_cost decision type's named
     # extra_amount is a deliberate lever (Round 1 = cost - grants + extra, by design), so it
     # raises the bar rather than tripping the check itself.
-    if cost is not None and total is not None and total + grants_known_at_offer(request) > cost + extra_amount:
+    if (
+        cost is not None
+        and total is not None
+        and total + grants_known_at_offer(request, appeal_paid=later_rounds > 0) > cost + extra_amount
+    ):
         issues.append(
             CalcIssue(
                 code="award_above_cost",

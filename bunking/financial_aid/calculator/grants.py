@@ -80,15 +80,17 @@ def grants_since_round1(request: RequestInputs, rules: AidRules) -> Decimal:
     )
 
 
-def grants_known_at_offer(request: RequestInputs) -> Decimal:
+def grants_known_at_offer(request: RequestInputs, *, appeal_paid: bool) -> Decimal:
     """Every grant the family had when the camp made its latest offer: any program, committed
-    or received. The offer is the appeal decision when there is an appeal, else Round 1's.
+    or received. The offer is the appeal decision when the appeal (or Round 3) paid something,
+    else Round 1's: an appeal that adds nothing offers nothing new, and a grant that arrived
+    after the Round 1 offer is accepted.
 
     The never-above-cost check (spec section 2 item 19) counts these whether or not they
     offset this program's award. Only a grant recorded after that decision is left out,
     because a family may end above cost that way.
     """
-    offered_at = request.r2_decided_at if request.appeal_amount is not None else request.r1_decided_at
+    offered_at = request.r2_decided_at if appeal_paid else request.r1_decided_at
     return sum((g.amount for g in request.grants_applicable if not _recorded_after(g, offered_at)), start=ZERO)
 
 

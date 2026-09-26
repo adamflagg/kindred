@@ -234,6 +234,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
             cost=work.cost,
             total=work.total,
             r1=work.r1,
+            later_rounds=(work.r2 or ZERO) + (work.r3 or ZERO),
             extra_amount=decision.extra_amount if decision is not None else ZERO,
         )
     )
