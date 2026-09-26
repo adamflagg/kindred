@@ -60,6 +60,7 @@ The user base is **three people**, on laptops and desktop monitors, with a mouse
 - **`useAuth().isLoading` first.** Always check `isLoading` before making authenticated API calls.
 - **PB JWT lives in `localStorage`, not cookies.** Calling `fetch` with `credentials: 'include'` silently 401s on protected endpoints. Obtain `fetchWithAuth` from the `useApiWithAuth()` hook (`hooks/useApiWithAuth.ts`) and pass it into service functions — services take it as a parameter, they don't export it.
 - **Bypass-auth mode** grants admin via `usePermissions().isAdmin`, NOT `useAuth().user.is_admin`.
+- **Gate on `usePermissions()`'s `isAdmin` / `hasPermission`, never on `realIsAdmin` / `viewAs`.** Those two exist only for the View-as switcher (`components/ViewAsSwitcher.tsx`); anything else reading them makes an admin's persona preview lie.
 
 ## React Query keys
 
