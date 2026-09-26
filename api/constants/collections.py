@@ -114,6 +114,11 @@ LODGING_SESSION_STATUS = "lodging_session_status"
 LODGING_FRIEND_GROUPS = "lodging_friend_groups"
 LODGING_FRIEND_GROUP_MEMBERS = "lodging_friend_group_members"
 
+# Board notes (1500000189): one staff Note per subject per session registration.
+# `scenario` is an OPTIONAL relation -- '' is the standard note CampMinder live
+# and every scenario show; an id is that scenario's plan-only note.
+SUBJECT_NOTES = "subject_notes"
+
 # One row per finished sync job (1500000152). Written solely by the Go
 # orchestrator's `recordSyncRun`, which also prunes it to a retention window;
 # nothing on this side writes it. Read here for ONE fact -- when a service's
