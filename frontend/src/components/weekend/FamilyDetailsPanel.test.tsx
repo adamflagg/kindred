@@ -15,6 +15,8 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { HOUSEHOLD, NotesScopeFixture, noteRow, scopeValue } from '../../test/notesScope'
+import { SubjectNotesSection } from '../notes/SubjectNotesSection'
 import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../ui/modalStack'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { partyAttention } from './rosterAttention'
@@ -1305,5 +1307,62 @@ describe('FamilyDetailsPanel — pixel identity without a note slot (board notes
     // so snapshotting the raw markup is safe here; see the task report for
     // the full write-up.
     expect(baseElement.innerHTML).toMatchSnapshot()
+  })
+})
+
+describe('FamilyDetailsPanel — the Note section comes first (board notes)', () => {
+  function bodyOf(): Element | null | undefined {
+    return screen.getByText('Placement').closest('section')?.parentElement
+  }
+
+  it('renders the slot as the body’s first child, before Placement', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party()}
+        unit={unit()}
+        year={2026}
+        onClose={vi.fn()}
+        notesSlot={<section data-testid="notes-slot" />}
+      />,
+      { wrapper }
+    )
+    expect(bodyOf()?.firstElementChild).toBe(screen.getByTestId('notes-slot'))
+  })
+
+  it('shows no Note section at all while the family has no note', () => {
+    // REGRESSION PIN: this passes before the `notesSlot` prop exists too --
+    // an unwired panel shows no note section either. It is written now
+    // alongside the others so the whole describe block is asserted together.
+    render(
+      <NotesScopeFixture value={scopeValue()}>
+        <FamilyDetailsPanel
+          party={party()}
+          unit={unit()}
+          year={2026}
+          onClose={vi.fn()}
+          notesSlot={<SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />}
+        />
+      </NotesScopeFixture>,
+      { wrapper }
+    )
+    expect(document.querySelector('[data-notes-section]')).toBeNull()
+    expect(bodyOf()?.firstElementChild?.textContent).toMatch(/^Placement/)
+  })
+
+  it('shows the note first once there is one', () => {
+    render(
+      <NotesScopeFixture value={scopeValue([noteRow(HOUSEHOLD, 'Grandma comes Saturday.')])}>
+        <FamilyDetailsPanel
+          party={party()}
+          unit={unit()}
+          year={2026}
+          onClose={vi.fn()}
+          notesSlot={<SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />}
+        />
+      </NotesScopeFixture>,
+      { wrapper }
+    )
+    expect(bodyOf()?.firstElementChild).toHaveAttribute('data-notes-section')
+    expect(screen.getByText('Grandma comes Saturday.')).toBeInTheDocument()
   })
 })
