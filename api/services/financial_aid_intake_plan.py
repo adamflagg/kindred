@@ -281,3 +281,10 @@ def plan_intake(
         if payload["status"] in _NEEDS_A_SHARE:
             plan.share_creates.append(ref)
     return plan
+
+
+def share_entity_id(request_id: str, household_cm_id: int) -> str:
+    """The aid_change_log entity_id of one payer share: "<request id>:<household_cm_id>".
+    It names the request, so a request's History finds its shares, deleted ones
+    included, and the household, since an update logs only the fields it changed."""
+    return f"{request_id}:{household_cm_id}"

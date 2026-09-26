@@ -7,13 +7,16 @@ They are only accessible on the Docker internal network. Caddy blocks external a
 
 import asyncio
 import logging
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.constants.geo import GeoCategory
+from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from bunking.geo_normalizer.normalizer import normalize_values
 from bunking.logging_config import TRACE, get_logger
 from bunking.sync.bunk_request_processor.data.repositories import SessionRepository
@@ -24,6 +27,8 @@ from bunking.sync.bunk_request_processor.process_requests import (
 )
 from bunking.sync.bunk_request_processor.shared.constants import validate_source_fields
 from pocketbase import PocketBase
+
+from ..dependencies import pb
 
 logger = get_logger(__name__)
 
@@ -212,3 +217,23 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
                 "already_processed": 0,
             },
         )
+
+
+# --- Financial-aid intake (campership sub-project 5) ---
+
+
+class FinancialAidIntakeRun(BaseModel):
+    year: int = Field(ge=2017, le=2100)
+
+
+@router.post("/financial-aid/intake")
+async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int | str]:
+    """Rebuild aid_applications / aid_requests for one season from the FA mirror.
+
+    Called by the Go FinancialAidApplicationsSync after every non-dry-run write,
+    so intake is as fresh as the mirror. Idempotent: an unchanged season writes
+    nothing. Every write is logged in aid_change_log under one operation_id,
+    which the report returns (sub-project 4a).
+    """
+    service = FinancialAidIntakeService(FinancialAidIntakeRepository(pb))
+    return asdict(await service.build(body.year))
