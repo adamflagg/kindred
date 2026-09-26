@@ -24,6 +24,7 @@ import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync'
 import { useLodgingAssignmentsSync } from '../../hooks/useLodgingAssignmentsSync'
 import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync'
 import { useFinancialAidApplicationsSync } from '../../hooks/useFinancialAidApplicationsSync'
+import { useAidPostingsSync } from '../../hooks/useAidPostingsSync'
 import { useHouseholdDemographicsSync } from '../../hooks/useHouseholdDemographicsSync'
 import { useCamperDietarySync } from '../../hooks/useCamperDietarySync'
 import { useCamperTransportationSync } from '../../hooks/useCamperTransportationSync'
@@ -95,6 +96,7 @@ export function SyncTab() {
   const lodgingAssignmentsSync = useLodgingAssignmentsSync()
   const staffSkillsSync = useStaffSkillsSync()
   const faApplicationsSync = useFinancialAidApplicationsSync()
+  const aidPostingsSync = useAidPostingsSync()
   const householdDemographicsSync = useHouseholdDemographicsSync()
   const camperDietarySync = useCamperDietarySync()
   const camperTransportationSync = useCamperTransportationSync()
@@ -143,6 +145,7 @@ export function SyncTab() {
     lodging_assignments: lodgingAssignmentsSync.isPending,
     staff_skills: staffSkillsSync.isPending,
     financial_aid_applications: faApplicationsSync.isPending,
+    aid_postings: aidPostingsSync.isPending,
     household_demographics: householdDemographicsSync.isPending,
     camper_dietary: camperDietarySync.isPending,
     camper_transportation: camperTransportationSync.isPending,
@@ -274,6 +277,9 @@ export function SyncTab() {
           break
         case 'financial_aid_applications':
           faApplicationsSync.mutate(syncYear)
+          break
+        case 'aid_postings':
+          aidPostingsSync.mutate(syncYear)
           break
         case 'household_demographics':
           householdDemographicsSync.mutate(syncYear)

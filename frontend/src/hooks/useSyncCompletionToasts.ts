@@ -43,6 +43,7 @@ export const SYNC_DISPLAY_NAMES: Record<string, string> = {
   lodging_assignments: 'Lodging Assignments',
   staff_skills: 'Staff Skills',
   financial_aid_applications: 'FA Applications',
+  aid_postings: 'Aid Ledger',
   household_demographics: 'Demographics',
   camper_dietary: 'Dietary',
   camper_transportation: 'Transportation',

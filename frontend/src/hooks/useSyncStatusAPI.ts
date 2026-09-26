@@ -143,6 +143,7 @@ export interface SyncStatusResponse {
   lodging_assignments: SyncStatus
   staff_skills: SyncStatus
   financial_aid_applications: SyncStatus
+  aid_postings: SyncStatus
   household_demographics: SyncStatus
   camper_dietary: SyncStatus
   camper_transportation: SyncStatus
