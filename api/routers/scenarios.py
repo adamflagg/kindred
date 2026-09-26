@@ -223,7 +223,12 @@ async def create_scenario(
             # from-production creations copy nothing: standard notes already
             # show in every scenario. Gated like summer's _copy_locked_groups.
             if request.copy_from_scenario:
-                await SubjectNoteService(pb).copy_plan_notes(request.copy_from_scenario, scenario.id)
+                await SubjectNoteService(pb).copy_plan_notes(
+                    request.copy_from_scenario,
+                    scenario.id,
+                    session_cm_ids=list(ctx.related_session_ids),
+                    year=int(ctx.year),
+                )
         except Exception:
             # This scenario row was JUST created by this call, empty or
             # partially seeded -- no one else has ever seen it, so there is

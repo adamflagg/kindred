@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from api.schemas.subject_notes import SubjectNoteOut, SubjectNotesResponse, SubjectNoteWriteResponse
 from api.services.subject_note_service import (
@@ -44,6 +45,10 @@ NOTE = SubjectNoteOut(
     updated_by="Test Bunking Staff",
     updated="2026-09-25T12:00:00+00:00",
 )
+
+
+def _pb_error(status: int) -> ClientResponseError:
+    return ClientResponseError("pb", status=status, data={}, url="", is_abort=False, original_error=None)
 
 
 def _user(*, manage: bool) -> AuthUser:
@@ -125,6 +130,32 @@ class TestContract:
         response = _client(service).post("/api/subject-notes/promote", json=PROMOTE)
         assert response.status_code == status
         assert response.json()["detail"] == str(error)
+
+    @pytest.mark.parametrize(
+        ("method", "verb", "path", "body"),
+        [("list_for_board", *ENDPOINTS[0]), ("save", *ENDPOINTS[1]), ("promote", *ENDPOINTS[2])],
+    )
+    @pytest.mark.parametrize(
+        ("error", "status"),
+        [
+            (SubjectNoteScopeError("wrong session"), 422),
+            (ScenarioNotFoundError("gone"), 404),
+            (_pb_error(500), 502),
+        ],
+    )
+    def test_every_endpoint_maps_errors_the_same_way(
+        self,
+        service: MagicMock,
+        method: str,
+        verb: str,
+        path: str,
+        body: dict[str, Any] | None,
+        error: Exception,
+        status: int,
+    ) -> None:
+        setattr(service, method, AsyncMock(side_effect=error))
+        response = _client(service).request(verb, path, json=body)
+        assert response.status_code == status, f"{verb} {path}"
 
     def test_a_scenario_with_filter_syntax_never_reaches_the_service(self, service: MagicMock) -> None:
         response = _client(service).get('/api/subject-notes?session_cm_id=1000001&year=2026&scenario=a"b')

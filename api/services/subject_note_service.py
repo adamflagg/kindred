@@ -26,7 +26,6 @@ from api.schemas.subject_notes import (
     SubjectNoteWriteRequest,
     SubjectNoteWriteResponse,
 )
-from api.utils.pb_error import pb_error_to_http
 from api.utils.pb_filters import pb_escape
 from api.utils.session_metrics import get_session_from_expand
 from pocketbase import PocketBase
@@ -72,16 +71,23 @@ class NoteKey:
 
 def key_filter(key: NoteKey) -> str:
     return (
-        f'subject_kind = "{key.subject_kind}" && subject_cm_id = {int(key.subject_cm_id)} '
+        f'subject_kind = "{pb_escape(key.subject_kind)}" && subject_cm_id = {int(key.subject_cm_id)} '
         f"&& session_cm_id = {int(key.session_cm_id)} && year = {int(key.year)} "
         f'&& scenario = "{pb_escape(key.scenario)}"'
     )
 
 
+def _sessions_clause(session_cm_ids: list[int]) -> str:
+    return " || ".join(f"session_cm_id = {int(s)}" for s in session_cm_ids)
+
+
 def board_filter(session_cm_ids: list[int], year: int, scenario: str) -> str:
-    sessions = " || ".join(f"session_cm_id = {int(s)}" for s in session_cm_ids)
     layers = 'scenario = ""' if not scenario else f'scenario = "" || scenario = "{pb_escape(scenario)}"'
-    return f"year = {int(year)} && ({sessions}) && ({layers})"
+    return f"year = {int(year)} && ({_sessions_clause(session_cm_ids)}) && ({layers})"
+
+
+def plan_filter(scenario: str, session_cm_ids: list[int], year: int) -> str:
+    return f'scenario = "{pb_escape(scenario)}" && year = {int(year)} && ({_sessions_clause(session_cm_ids)})'
 
 
 def to_out(record: Any) -> SubjectNoteOut:
@@ -122,8 +128,10 @@ class SubjectNoteStore:
             return []
         return await self._list(board_filter(session_cm_ids, year, scenario))
 
-    async def list_plan_notes(self, scenario: str) -> list[Any]:
-        return await self._list(f'scenario = "{pb_escape(scenario)}"')
+    async def list_plan_notes(self, scenario: str, *, session_cm_ids: list[int], year: int) -> list[Any]:
+        if not session_cm_ids:
+            return []
+        return await self._list(plan_filter(scenario, session_cm_ids, year))
 
     async def create(self, data: dict[str, Any]) -> Any:
         return await asyncio.to_thread(self._collection().create, data)
@@ -174,12 +182,19 @@ class SubjectNoteService:
         """
         ctx = await build_session_context(session_cm_id, year, self._pb)
         if scenario:
-            family = await self._scenario_family(scenario, year)
-            if session_cm_id not in family:
-                raise SubjectNoteScopeError(f"Scenario {scenario} belongs to a different session than {session_cm_id}")
+            scenario_session = await self._scenario_session(scenario, year)
+            # A session is always in its own family, so the scenario's session
+            # context (several more PocketBase reads) is only built when the
+            # two differ -- an AG note in a main-session scenario, or a refusal.
+            if scenario_session != session_cm_id:
+                family = (await build_session_context(scenario_session, year, self._pb)).related_session_ids
+                if session_cm_id not in family:
+                    raise SubjectNoteScopeError(
+                        f"Scenario {scenario} belongs to a different session than {session_cm_id}"
+                    )
         return list(ctx.related_session_ids)
 
-    async def _scenario_family(self, scenario: str, year: int) -> list[int]:
+    async def _scenario_session(self, scenario: str, year: int) -> int:
         try:
             record = await asyncio.to_thread(
                 self._pb.collection(SAVED_SCENARIOS).get_one, scenario, {"expand": "session"}
@@ -194,8 +209,7 @@ class SubjectNoteService:
             raise SubjectNoteScopeError(f"Scenario {scenario} names a session that no longer resolves")
         if int(getattr(record, "year", 0) or 0) != year:
             raise SubjectNoteScopeError(f"Scenario {scenario} is not a {year} scenario")
-        ctx = await build_session_context(session_cm_id, year, self._pb)
-        return list(ctx.related_session_ids)
+        return session_cm_id
 
     async def list_for_board(self, *, session_cm_id: int, year: int, scenario: str) -> list[SubjectNoteOut]:
         related = await self.validate_scope(session_cm_id=session_cm_id, year=year, scenario=scenario)
@@ -211,7 +225,9 @@ class SubjectNoteService:
 
         The standard note is written BEFORE the plan-only row is deleted, so a
         failure between the two leaves the text in both places, never in
-        neither.
+        neither. A retry after such a failure finds the text already at the
+        end of the standard note and only deletes the plan-only row, rather
+        than appending it a second time.
         """
         await self.validate_scope(session_cm_id=request.session_cm_id, year=request.year, scenario=request.scenario)
         plan_key = NoteKey.of(request)
@@ -222,7 +238,10 @@ class SubjectNoteService:
         standard_key = plan_key.standard()
         standard = await self._store.find(standard_key)
         current = str(getattr(standard, "body", "") or "").strip() if standard is not None else ""
-        merged = f"{current}\n\n{moved}" if current else moved
+        if current == moved or current.endswith(f"\n\n{moved}"):
+            merged = current
+        else:
+            merged = f"{current}\n\n{moved}" if current else moved
         if len(merged) > NOTE_BODY_MAX:
             raise PromotedNoteTooLongError(
                 f"Keeping this on all plans would make the note {len(merged)} characters "
@@ -232,10 +251,17 @@ class SubjectNoteService:
         await self._delete_quietly(plan)
         return result
 
-    async def copy_plan_notes(self, source_scenario: str, target_scenario: str) -> int:
+    async def copy_plan_notes(
+        self, source_scenario: str, target_scenario: str, *, session_cm_ids: list[int], year: int
+    ) -> int:
         """Copy one scenario's plan-only notes onto a new scenario. Standard notes
-        already show in every scenario, so they are never copied."""
-        rows = await self._store.list_plan_notes(source_scenario)
+        already show in every scenario, so they are never copied.
+
+        Scoped to the NEW scenario's session family and year, as the draft
+        copies beside it are: create_scenario only checks that the source
+        exists, and a note from another session or year would be one this
+        scenario's own scope check refuses to read or edit."""
+        rows = await self._store.list_plan_notes(source_scenario, session_cm_ids=session_cm_ids, year=year)
         for row in rows:
             await self._store.create(
                 {
@@ -276,9 +302,10 @@ class SubjectNoteService:
         return SubjectNoteWriteResponse(note=to_out(created), deleted=False)
 
     async def _delete_quietly(self, record: Any) -> None:
-        """Only "already gone" is swallowed; any other refusal keeps its status."""
+        """Only "already gone" is swallowed; any other refusal propagates for the
+        router's one error mapping (`_map_domain_errors`)."""
         try:
             await self._store.delete(str(record.id))
         except ClientResponseError as exc:
             if exc.status != 404:
-                raise pb_error_to_http(exc) from exc
+                raise

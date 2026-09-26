@@ -82,7 +82,8 @@ def test_copy_from_scenario_copies_plan_notes_to_the_new_scenario(session_type: 
     notes = _notes(return_value=2)
     response, _ = _create({"copy_from_scenario": "scn_source"}, session_type=session_type, notes=notes)
     assert response.status_code == 200, response.text
-    notes.copy_plan_notes.assert_awaited_once_with("scn_source", "scn_new")
+    # Scoped to the NEW scenario's session family and year, like the draft copies.
+    notes.copy_plan_notes.assert_awaited_once_with("scn_source", "scn_new", session_cm_ids=[1000001], year=2026)
 
 
 @pytest.mark.parametrize("body", [{"copy_from_production": False}, {"copy_from_production": True}, {}])
@@ -100,10 +101,11 @@ def test_a_failed_note_copy_deletes_the_new_scenario() -> None:
     pb.collection.return_value.delete.assert_called_once_with("scn_new")
 
 
-def test_a_seeding_failure_never_reaches_the_note_copy() -> None:
+@pytest.mark.parametrize("session_type", ["main", "family"])
+def test_a_seeding_failure_never_reaches_the_note_copy(session_type: str) -> None:
     notes = _notes(return_value=0)
     response, pb = _create(
-        {"copy_from_scenario": "scn_source"}, session_type="main", notes=notes, seed_error=RuntimeError("seed")
+        {"copy_from_scenario": "scn_source"}, session_type=session_type, notes=notes, seed_error=RuntimeError("seed")
     )
     assert response.status_code == 500
     notes.copy_plan_notes.assert_not_awaited()

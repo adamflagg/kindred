@@ -95,6 +95,9 @@ class TestFilters:
             f'&& year = {YEAR} && scenario = "scnA"'
         )
 
+    def test_key_filter_escapes_the_subject_kind(self) -> None:
+        assert key_filter(_key(subject_kind='a"b')).startswith('subject_kind = "a\\"b" && ')
+
     def test_key_filter_for_the_standard_note_matches_the_empty_relation(self) -> None:
         assert key_filter(_key()).endswith('scenario = ""')
 
@@ -122,9 +125,18 @@ class TestStore:
     async def test_list_plan_notes_filters_on_the_scenario(self) -> None:
         pb = MagicMock()
         pb.collection.return_value.get_full_list.return_value = []
-        await SubjectNoteStore(pb).list_plan_notes("scnA")
+        await SubjectNoteStore(pb).list_plan_notes("scnA", session_cm_ids=[MAIN, AG], year=YEAR)
         params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
-        assert params == {"filter": 'scenario = "scnA"', "sort": "id"}
+        assert params == {
+            "filter": f'scenario = "scnA" && year = {YEAR} && (session_cm_id = {MAIN} || session_cm_id = {AG})',
+            "sort": "id",
+        }
+
+    @pytest.mark.asyncio
+    async def test_list_plan_notes_with_no_sessions_reads_nothing(self) -> None:
+        pb = MagicMock()
+        assert await SubjectNoteStore(pb).list_plan_notes("scnA", session_cm_ids=[], year=YEAR) == []
+        pb.collection.return_value.get_full_list.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_create_passes_the_row_through_to_pocketbase(self) -> None:
@@ -206,8 +218,12 @@ class FakeStore:
             if r.year == year and r.session_cm_id in session_cm_ids and r.scenario in ("", scenario)
         ]
 
-    async def list_plan_notes(self, scenario: str) -> list[Any]:
-        return [r for r in self.rows.values() if r.scenario == scenario]
+    async def list_plan_notes(self, scenario: str, *, session_cm_ids: list[int], year: int) -> list[Any]:
+        return [
+            r
+            for r in self.rows.values()
+            if r.scenario == scenario and r.year == year and r.session_cm_id in session_cm_ids
+        ]
 
     async def create(self, data: dict[str, Any]) -> Any:
         rec = SimpleNamespace(id=f"note{self._next}", updated="2026-09-25 12:00:00.000Z", **data)
@@ -297,6 +313,18 @@ class TestSave:
         assert result.deleted is True
 
     @pytest.mark.asyncio
+    async def test_a_refused_delete_keeps_the_pocketbase_error(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        # Only "already gone" is swallowed; the router maps anything else.
+        await service.save(_write("Prefers a bottom bunk."), updated_by="Test Staff")
+        store.delete = AsyncMock(side_effect=_pb_error(500))  # type: ignore[method-assign]
+
+        with pytest.raises(ClientResponseError) as exc:
+            await service.save(_write(""), updated_by="Test Staff")
+        assert exc.value.status == 500
+
+    @pytest.mark.asyncio
     async def test_a_lost_create_race_updates_the_winner(self, service: SubjectNoteService, store: FakeStore) -> None:
         # Another save creates the row between this save's find and its create.
         await store.create({**_key().row(), "body": "The other writer", "updated_by": "Other"})
@@ -355,6 +383,21 @@ class TestPromote:
         assert [r.scenario for r in store.rows.values()] == [""]
 
     @pytest.mark.asyncio
+    async def test_a_retried_promote_does_not_append_the_text_twice(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        # A first promote wrote the standard note, then its plan-row delete
+        # failed; the client retries with the plan row still there.
+        await service.save(_write("Arriving late Friday.\n\nTry Pine instead of Oak"), updated_by="Test Staff")
+        await service.save(_write("Try Pine instead of Oak", scenario="scnA"), updated_by="Test Staff")
+
+        result = await service.promote(_promote(), updated_by="Test Staff")
+
+        assert result.note is not None
+        assert result.note.body == "Arriving late Friday.\n\nTry Pine instead of Oak"
+        assert [r.scenario for r in store.rows.values()] == [""]
+
+    @pytest.mark.asyncio
     async def test_promote_refuses_a_merge_over_the_cap(self, service: SubjectNoteService, store: FakeStore) -> None:
         await service.save(_write("a" * 1500), updated_by="Test Staff")
         await service.save(_write("b" * 600, scenario="scnA"), updated_by="Test Staff")
@@ -378,11 +421,29 @@ class TestCopyPlanNotes:
         await service.save(_write("Only in A", scenario="scnA"), updated_by="Test Staff")
         await service.save(_write("Only in B", scenario="scnB"), updated_by="Test Staff")
 
-        copied = await service.copy_plan_notes("scnA", "scnC")
+        copied = await service.copy_plan_notes("scnA", "scnC", session_cm_ids=[MAIN, AG], year=YEAR)
 
         assert copied == 1
         by_scenario = {r.scenario: r.body for r in store.rows.values()}
         assert by_scenario == {"": "Standard", "scnA": "Only in A", "scnB": "Only in B", "scnC": "Only in A"}
+
+    @pytest.mark.asyncio
+    async def test_copies_nothing_outside_the_new_scenarios_session_family_and_year(
+        self, service: SubjectNoteService, store: FakeStore
+    ) -> None:
+        # create_scenario checks only that the source exists, so a source from
+        # another session or year must not seed notes the new scenario's own
+        # scope check would refuse.
+        await service.save(_write("Another session", session_cm_id=FC5, scenario="scnA"), updated_by="Test Staff")
+        await service.save(_write("Last year", year=YEAR - 1, scenario="scnA"), updated_by="Test Staff")
+        await service.save(
+            _write("An AG camper", subject_cm_id=1000102, session_cm_id=AG, scenario="scnA"), updated_by="Test Staff"
+        )
+
+        copied = await service.copy_plan_notes("scnA", "scnC", session_cm_ids=[MAIN, AG], year=YEAR)
+
+        assert copied == 1
+        assert [r.body for r in store.rows.values() if r.scenario == "scnC"] == ["An AG camper"]
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +478,9 @@ def _pb_with_scenarios(scenarios: dict[str, tuple[int, int]]) -> MagicMock:
 @pytest.fixture
 def scoped(monkeypatch: pytest.MonkeyPatch, store: FakeStore) -> SubjectNoteService:
     monkeypatch.setattr("api.services.subject_note_service.build_session_context", _ctx)
-    pb = _pb_with_scenarios({"scnMain": (MAIN, YEAR), "scnFC5": (FC5, YEAR), "scnOld": (FC5, 2025)})
+    pb = _pb_with_scenarios(
+        {"scnMain": (MAIN, YEAR), "scnFC5": (FC5, YEAR), "scnOld": (FC5, 2025), "scnOrphan": (0, YEAR)}
+    )
     return SubjectNoteService(pb, store=store)  # type: ignore[arg-type]
 
 
@@ -481,3 +544,52 @@ class TestScope:
 
         assert [n.body for n in live] == ["Standard"]
         assert sorted(n.body for n in plan) == ["Plan", "Standard"]
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_note_inside_a_summer_scenario_is_422(self, scoped: SubjectNoteService) -> None:
+        # FC5 is outside a MAIN scenario's family (the other family tests use a family of one).
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.save(_write("x", session_cm_id=FC5, scenario="scnMain"), updated_by="Test Staff")
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_whose_session_no_longer_resolves_is_422(self, scoped: SubjectNoteService) -> None:
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.save(_write("x", scenario="scnOrphan"), updated_by="Test Staff")
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_lookup_failure_other_than_404_propagates(self, store: FakeStore) -> None:
+        pb = MagicMock()
+        pb.collection.return_value.get_one.side_effect = _pb_error(500)
+        service = SubjectNoteService(pb, store=store)  # type: ignore[arg-type]
+        with pytest.raises(ClientResponseError) as exc:
+            await service.validate_scope(session_cm_id=MAIN, year=YEAR, scenario="scnMain")
+        assert exc.value.status == 500
+
+    @pytest.mark.asyncio
+    async def test_promote_refuses_a_scenario_from_another_session(
+        self, scoped: SubjectNoteService, store: FakeStore
+    ) -> None:
+        await store.create({**_key(session_cm_id=FC6, scenario="scnFC5").row(), "body": "x", "updated_by": "T"})
+        with pytest.raises(SubjectNoteScopeError):
+            await scoped.promote(_promote(session_cm_id=FC6, scenario="scnFC5"), updated_by="Test Staff")
+        assert len(store.rows) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_of_the_notes_own_session_resolves_the_session_once(
+        self, monkeypatch: pytest.MonkeyPatch, scoped: SubjectNoteService
+    ) -> None:
+        # The note's session is always in its own family, so the scenario's
+        # session context is only built when the two sessions differ.
+        calls: list[int] = []
+
+        async def counting(session_cm_id: int, year: int, pb: Any) -> SimpleNamespace:
+            calls.append(session_cm_id)
+            return await _ctx(session_cm_id, year, pb)
+
+        monkeypatch.setattr("api.services.subject_note_service.build_session_context", counting)
+        await scoped.validate_scope(session_cm_id=FC5, year=YEAR, scenario="scnFC5")
+        assert calls == [FC5]
+
+        calls.clear()
+        await scoped.validate_scope(session_cm_id=AG, year=YEAR, scenario="scnMain")
+        assert calls == [AG, MAIN]
