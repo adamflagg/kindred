@@ -820,6 +820,14 @@ const FamilyCardInner = memo(function FamilyCardInner({
   setNodeRef,
   isDragging,
 }: FamilyCardProps & FamilyDnd) {
+  // Extracted rather than inlined in the template literal below:
+  // `prettier-plugin-tailwindcss` silently strips this string's leading
+  // space when it sits inline in a className ternary (verified locally --
+  // reformats `' relative'` to `'relative'` on every commit, joining it onto
+  // CARD_FRAME's last class), which the pixel snapshot would then catch as
+  // a spurious diff. A plain local `const` sits outside the plugin's
+  // className-detection and is left alone.
+  const relativeClass = noteSlots === undefined ? '' : ' relative'
   return (
     // NOT a `<button>` (kindred#2222) — a `<div>` frame, so the chip row
     // below can host a real interactive trigger (kindred#2250) as a SIBLING
@@ -840,7 +848,7 @@ const FamilyCardInner = memo(function FamilyCardInner({
       data-family-card
       ref={setNodeRef}
       {...(isDraggable ? listeners : {})}
-      className={`${CARD_FRAME}${noteSlots === undefined ? '' : 'relative'} hover:border-primary/50 transition-colors ${
+      className={`${CARD_FRAME}${relativeClass} hover:border-primary/50 transition-colors ${
         inQueue ? 'bg-card' : 'bg-background'
       } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
         // The card stays mounted and dimmed rather than being removed: the
