@@ -57,7 +57,7 @@ describe('pb.beforeSend view-as header', () => {
     writeViewAs(registrar)
     const result = await send({ headers: { Authorization: 'token-1' } })
     expect(result).toBeDefined()
-    expect(result?.options.headers).toEqual({
+    expect(result.options.headers).toEqual({
       Authorization: 'token-1',
       [VIEW_AS_HEADER]: 'metrics.geo',
     })
@@ -65,7 +65,7 @@ describe('pb.beforeSend view-as header', () => {
 
   it('adds nothing when not previewing', async () => {
     const result = await send({ headers: { Authorization: 'token-1' } })
-    expect(result?.options.headers).toEqual({ Authorization: 'token-1' })
+    expect(result.options.headers).toEqual({ Authorization: 'token-1' })
   })
 })
 

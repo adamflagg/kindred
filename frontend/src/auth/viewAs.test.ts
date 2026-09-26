@@ -93,4 +93,8 @@ describe('isViewAsPersonaUser', () => {
     expect(isViewAsPersonaUser({ email: 'someone@view-as.invalid.example.com' })).toBe(false)
     expect(isViewAsPersonaUser({})).toBe(false)
   })
+
+  it('matches case-insensitively, like the Go check', () => {
+    expect(isViewAsPersonaUser({ email: 'VA0123456789ABC@VIEW-AS.INVALID' })).toBe(true)
+  })
 })

@@ -64,7 +64,10 @@ export function clearViewAs(): void {
 export const VIEW_AS_PERSONA_EMAIL_DOMAIN = 'view-as.invalid'
 
 export function isViewAsPersonaUser(user: { email?: unknown }): boolean {
-  return typeof user.email === 'string' && user.email.endsWith(`@${VIEW_AS_PERSONA_EMAIL_DOMAIN}`)
+  return (
+    typeof user.email === 'string' &&
+    user.email.toLowerCase().endsWith(`@${VIEW_AS_PERSONA_EMAIL_DOMAIN}`)
+  )
 }
 
 /** Headers for the current tab's persona; empty when not previewing. */

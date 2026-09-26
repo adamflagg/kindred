@@ -201,6 +201,7 @@ export function ViewAsSwitcher() {
           )}
           <p className="text-muted-foreground px-3 pt-2 pb-1 text-xs">
             Switching reloads the page. Only this tab previews — other tabs keep your real access.
+            Changes you make while previewing are real.
           </p>
         </div>
       )}
