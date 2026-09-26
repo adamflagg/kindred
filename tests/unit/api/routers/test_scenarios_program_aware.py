@@ -642,6 +642,7 @@ class TestSummerCopyFromScenarioCarriesLockedGroups:
             [],  # bunk_assignments_draft (copy_from_scenario source, empty for this test)
             [source_group],  # locked_groups
             [source_member],  # locked_group_members
+            [],  # subject_notes: the source scenario's plan-only notes (none)
         ]
 
         app = _build_app()
@@ -719,6 +720,7 @@ class TestSummerCopyFromScenarioCarriesLockedGroups:
         mock_pb.collection.return_value.get_full_list.side_effect = [
             [],  # bunk_assignments_draft
             [],  # locked_groups
+            [],  # subject_notes: the source scenario's plan-only notes (none)
         ]
         malicious = 'x" || year > 0 || scenario = "'
 

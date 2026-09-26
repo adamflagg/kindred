@@ -50,6 +50,7 @@ from .routers import (
     session_availability,
     social_graph,
     solver,
+    subject_notes,
     validation,
 )
 from .services.lodging_cache_warm import start_lodging_cache_refresher
@@ -174,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(session_availability.router)
     app.include_router(lodging.router)
     app.include_router(lodging_friend_groups.router)
+    app.include_router(subject_notes.router)
     app.include_router(jotform.router)
     app.include_router(campers.router)
     app.include_router(geo.router)

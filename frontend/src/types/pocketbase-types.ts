@@ -84,6 +84,7 @@ export const Collections = {
   StaffProgramAreas: 'staff_program_areas',
   StaffSkills: 'staff_skills',
   StaffVehicleInfo: 'staff_vehicle_info',
+  SubjectNotes: 'subject_notes',
   SyncRuns: 'sync_runs',
   UserRoles: 'user_roles',
   Users: 'users',
@@ -1849,6 +1850,25 @@ export type StaffVehicleInfoRecord = {
   year: number
 }
 
+export const SubjectNotesSubjectKindOptions = {
+  person: 'person',
+  household: 'household',
+} as const
+export type SubjectNotesSubjectKindOptions =
+  (typeof SubjectNotesSubjectKindOptions)[keyof typeof SubjectNotesSubjectKindOptions]
+export type SubjectNotesRecord = {
+  body: string
+  created: IsoAutoDateString
+  id: string
+  scenario?: RecordIdString
+  session_cm_id: number
+  subject_cm_id: number
+  subject_kind: SubjectNotesSubjectKindOptions
+  updated: IsoAutoDateString
+  updated_by?: string
+  year: number
+}
+
 export const SyncRunsStatusOptions = {
   success: 'success',
   failed: 'failed',
@@ -2136,6 +2156,8 @@ export type StaffSkillsResponse<Texpand = unknown> = Required<StaffSkillsRecord>
   BaseSystemFields<Texpand>
 export type StaffVehicleInfoResponse<Texpand = unknown> = Required<StaffVehicleInfoRecord> &
   BaseSystemFields<Texpand>
+export type SubjectNotesResponse<Texpand = unknown> = Required<SubjectNotesRecord> &
+  BaseSystemFields<Texpand>
 export type SyncRunsResponse<Tsub_stats = unknown, Texpand = unknown> = Required<
   SyncRunsRecord<Tsub_stats>
 > &
@@ -2228,6 +2250,7 @@ export type CollectionRecords = {
   staff_program_areas: StaffProgramAreasRecord
   staff_skills: StaffSkillsRecord
   staff_vehicle_info: StaffVehicleInfoRecord
+  subject_notes: SubjectNotesRecord
   sync_runs: SyncRunsRecord
   user_roles: UserRolesRecord
   users: UsersRecord
@@ -2312,6 +2335,7 @@ export type CollectionResponses = {
   staff_program_areas: StaffProgramAreasResponse
   staff_skills: StaffSkillsResponse
   staff_vehicle_info: StaffVehicleInfoResponse
+  subject_notes: SubjectNotesResponse
   sync_runs: SyncRunsResponse
   user_roles: UserRolesResponse
   users: UsersResponse

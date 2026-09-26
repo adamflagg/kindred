@@ -20,6 +20,7 @@ from api.schemas.lodging import PlacementCopyRequest
 from api.services.lodging_repository import WEEKEND_SESSION_TYPES, LodgingRepository
 from api.services.lodging_roster_service import SessionNotFoundError as LodgingSessionNotFoundError
 from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
+from api.services.subject_note_service import SubjectNoteService
 from api.services.summer_scenario_write_service import SummerScenarioWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.logging_config import get_logger
@@ -213,6 +214,21 @@ async def create_scenario(
                 # was never actually tracked.
                 summer_writes = SummerScenarioWriteService(pb)
                 await summer_writes.seed_summer_scenario(request, ctx, scenario.id)
+
+            # Board notes (spec §4): a scenario copied FROM ANOTHER SCENARIO
+            # carries the source's plan-only notes. Once, after both program
+            # branches converge, inside this try -- so a failed copy deletes
+            # the new scenario below and PocketBase cascades any note already
+            # written (subject_notes.scenario is cascadeDelete). Blank and
+            # from-production creations copy nothing: standard notes already
+            # show in every scenario. Gated like summer's _copy_locked_groups.
+            if request.copy_from_scenario:
+                await SubjectNoteService(pb).copy_plan_notes(
+                    request.copy_from_scenario,
+                    scenario.id,
+                    session_cm_ids=list(ctx.related_session_ids),
+                    year=int(ctx.year),
+                )
         except Exception:
             # This scenario row was JUST created by this call, empty or
             # partially seeded -- no one else has ever seen it, so there is
