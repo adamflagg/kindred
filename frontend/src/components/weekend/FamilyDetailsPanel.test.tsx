@@ -1304,8 +1304,7 @@ describe('FamilyDetailsPanel — pixel identity without a note slot (board notes
     // before writing this). No shared, non-test helper exports it either.
     // Confirmed empirically that this panel's default render contains no
     // React `useId`-style token (`«r0»`/`:r0:`) for `normalizeIds` to strip,
-    // so snapshotting the raw markup is safe here; see the task report for
-    // the full write-up.
+    // so snapshotting the raw markup is safe here.
     expect(baseElement.innerHTML).toMatchSnapshot()
   })
 })
