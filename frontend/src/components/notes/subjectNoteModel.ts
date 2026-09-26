@@ -48,8 +48,13 @@ export function cornerState(layers: SubjectLayers): { mode: CornerMode; both: bo
   return { mode: 'ghost', both: false }
 }
 
+/** Cuts by CODE POINT, never a UTF-16 unit -- slicing on `.length`/`.slice` can land inside an
+ * astral character's surrogate pair (e.g. an emoji) and emit a lone surrogate. */
 export function previewText(body: string): string {
-  return body.length > PREVIEW_CHARS ? `${body.slice(0, PREVIEW_CHARS).trimEnd()}…` : body
+  const chars = Array.from(body)
+  return chars.length > PREVIEW_CHARS
+    ? `${chars.slice(0, PREVIEW_CHARS).join('').trimEnd()}…`
+    : body
 }
 
 /** "+N more" under the preview: the plan-only note when a standard note leads. */

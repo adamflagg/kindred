@@ -71,6 +71,16 @@ describe('previewText', () => {
     expect(previewText('short')).toBe('short')
   })
 
+  it('cuts by code point, never inside a surrogate pair', () => {
+    const body = `${'a'.repeat(119)}😀tail`
+    expect(previewText(body)).toBe(`${'a'.repeat(119)}😀…`)
+  })
+
+  it('does not cut a body whose code-point length is exactly 120, even with an emoji', () => {
+    const body = `${'a'.repeat(119)}😀`
+    expect(previewText(body)).toBe(body)
+  })
+
   it('counts one more layer only when both exist', () => {
     expect(extraLayerCount({ standard: row() })).toBe(0)
     expect(extraLayerCount({ standard: row(), plan: row({ scenario: 'scnA' }) })).toBe(1)
