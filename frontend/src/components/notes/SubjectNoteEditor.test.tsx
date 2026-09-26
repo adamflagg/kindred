@@ -252,7 +252,7 @@ describe('SubjectNoteEditor — concurrent writes', () => {
   })
 })
 
-describe('SubjectNoteEditor — a baseline refresh in the SAME scenario (final review, C1)', () => {
+describe('SubjectNoteEditor — a baseline refresh in the SAME scenario', () => {
   it('refreshes an untouched box to the new baseline text, and does not save the stale one', async () => {
     const t = target({ scenarioId: 'scnA' })
     const scopeA = scopeValue([noteRow(HOUSEHOLD, 'old text')], {

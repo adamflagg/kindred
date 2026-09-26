@@ -66,16 +66,12 @@ export function useSubjectNoteEditor(
     inScenario && target.want === 'plan' ? 'plan' : 'standard'
   )
 
-  // Final review, C1: the boxes above are seeded from `layers` only ONCE at
-  // mount, but only `baseline` above tracked a later move -- so a refetch
-  // landing after mount left an untouched box showing stale text while the
-  // baseline it diffs against had already moved on. That read as dirty
-  // (typed text vs. the NEW baseline) and the next flush (Save, outside
-  // click, or the panel's unmount flush) wrote the stale text back over
-  // whatever had just arrived. Whenever the baseline moves, also refresh any
-  // box the user has NOT typed into (its text still equals the OLD
-  // baseline) -- a box that already differs is the user's own draft and is
-  // never touched here.
+  // An untouched box follows its saved text: whenever the baseline moves (a
+  // refetch lands, or another surface finishes a write) while this editor is
+  // still open on the SAME scenario, refresh any box the user has NOT typed
+  // into (its text still equals the OLD baseline) to the new baseline text.
+  // A box that already differs from its old baseline is the user's own
+  // draft, and is never touched here.
   if (scenarioMatches && baseline !== layers) {
     if (standardText === (baseline.standard?.body ?? '')) {
       setStandardText(layers.standard?.body ?? '')
