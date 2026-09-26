@@ -109,6 +109,33 @@ async def test_a_separated_parents_second_request_for_the_same_camper_can_be_mar
 
 
 @pytest.mark.asyncio
+async def test_marking_a_duplicate_refuses_a_different_session() -> None:
+    store, _, casework = await built()
+    survivor = store.request_for(person=1000011, program="summer")  # active, session 1000101
+    extra = store.request_for(person=1000015, program="summer")  # same camper, wrong session
+    store.requests[extra.id] = replace(extra, person_cm_id=1000011, session_cm_id=1000105)
+    with pytest.raises(CaseworkValidationError):
+        await casework.mark_duplicate(extra.id, survivor.id, "r", ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_same_session_duplicate_pending_request_from_another_household_can_be_marked_a_duplicate() -> None:
+    store, _, casework = await built()
+    survivor = store.request_for(person=1000011, program="summer")  # active, session 1000101
+    extra = store.request_for(person=1000015, program="summer")
+    store.requests[extra.id] = replace(
+        extra,
+        person_cm_id=1000011,
+        household_cm_id=1000009,  # the other parent
+        session_cm_id=survivor.session_cm_id,
+        status="duplicate_pending",
+        duplicate_of=survivor.id,
+    )
+    out = await casework.mark_duplicate(extra.id, survivor.id, "Second parent's application.", ACTOR)
+    assert (out.status, out.duplicate_of) == ("duplicate", survivor.id)
+
+
+@pytest.mark.asyncio
 async def test_a_duplicate_must_be_the_same_camper_and_the_survivor_active() -> None:
     store, _, casework = await built()
     mine = store.request_for(person=1000011, program="summer")
@@ -153,3 +180,27 @@ async def test_capacity_is_created_then_updated_and_logged_with_before_and_after
     assert len({r["entity_id"] for r in rows(store)}) == 1  # one aid_session_capacity record
     with pytest.raises(CaseworkNotFoundError):
         await casework.set_capacity(YEAR, 1000999, 10, "", "finance@example.com")
+
+
+@pytest.mark.asyncio
+async def test_set_capacity_by_a_different_actor_with_the_same_figure_writes_nothing() -> None:
+    store, _, casework = await built()
+    first = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "finance@example.com")
+    second = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "other-staff@example.com")
+    assert (first.capacity, second.capacity) == (120, 120)
+    assert len(store.operations) == 1  # a different actor re-entering the same figure writes nothing
+
+
+@pytest.mark.asyncio
+async def test_resolving_again_with_remember_alias_writes_nothing_and_does_not_rebuild() -> None:
+    store, rebuild, casework = await built()
+    request = store.request_for(person=1000015, program="summer")
+    await casework.resolve_session(request.id, 1000103, "All-gender option.", True, ACTOR)
+    store.operations.clear()
+    store.change_log.clear()
+    rebuild.reset_mock()
+    resolved = store.request_for(person=1000015, program="summer")
+    out = await casework.resolve_session(resolved.id, 1000103, "Repeat.", True, ACTOR)
+    assert (out.session_cm_id, out.status) == (1000103, "active")
+    assert (store.operations, store.change_log) == ([], [])
+    rebuild.assert_not_awaited()

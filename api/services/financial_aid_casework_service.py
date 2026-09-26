@@ -350,8 +350,8 @@ class FinancialAidCaseworkService:
             )
         if writes:  # the resolution and its alias: one staff action, one operation, one batch
             await self._store.commit(writes, actor=actor, reason=reason.strip(), require_reason=True)
-        if remember and self._rebuild is not None:
-            await self._rebuild(request.year)  # intake's own system:intake operation (Task 7)
+            if remember and self._rebuild is not None:
+                await self._rebuild(request.year)  # intake's own system:intake operation (Task 7)
         return await self._request_out(replace(request, **changes))
 
     async def mark_duplicate(self, request_id: str, duplicate_of: str, reason: str, actor: str) -> RequestOut:
@@ -369,6 +369,10 @@ class FinancialAidCaseworkService:
         )
         if request.year != survivor.year or not same_subject:
             raise CaseworkValidationError("the two requests are not for the same camper or family")
+        # Spec 2 item 9: a duplicate is the same camper AND the same session. 0 keeps "this
+        # unmatched request is really that one" resolvable once it names a real session.
+        if request.program_key != survivor.program_key or request.session_cm_id not in (0, survivor.session_cm_id):
+            raise CaseworkValidationError("the two requests are not for the same program and session")
         if survivor.status != STATUS_ACTIVE:
             raise CaseworkValidationError("the request kept must be active")
         if request.status in _CLOSED:
@@ -431,6 +435,7 @@ class FinancialAidCaseworkService:
             write = AidWrite(
                 collection=AID_SESSION_CAPACITY, action="create", year=year, data=data, log_action="set_capacity"
             )
+            should_write = True
         else:
             before = {
                 "year": current.year,
@@ -440,6 +445,9 @@ class FinancialAidCaseworkService:
                 "actor": current.actor,
             }
             changes = _changed(before, data)
+            # A different staff member re-entering the same figure is not a change (the brief):
+            # `actor` alone never triggers a write, though it IS written when something real did.
+            should_write = any(key != "actor" for key in changes)
             write = AidWrite(
                 collection=AID_SESSION_CAPACITY,
                 action="update",
@@ -449,6 +457,6 @@ class FinancialAidCaseworkService:
                 data=changes,
                 log_action="set_capacity",
             )
-        if current is None or write.data:  # the same figure again changes nothing and writes nothing
+        if should_write:
             await self._store.commit([write], actor=actor, reason=note.strip())
         return CapacityOut(year=year, session_cm_id=session_cm_id, capacity=capacity, note=note.strip(), actor=actor)
