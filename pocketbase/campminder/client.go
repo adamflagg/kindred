@@ -758,7 +758,8 @@ func (c *Client) CloneWithYear(year int) *Client {
 // RetryAfter is how long to wait before trying again: CampMinder's "Try again in N seconds"
 // hint plus a 5s buffer, clamped at rateLimitMaxHintedWait, or rateLimitBaseBackoff when the
 // body carries no hint -- the same first wait makeRequest's own retry would use. The message
-// keeps "429" and "rate limit" for callers that match on text.
+// keeps "429" and "rate limit" for readability in logs; ratelimit.HandleError no longer matches
+// on that text -- it recognises this error only by its typed RetryAfter() hint (errors.As).
 type RateLimitError struct {
 	Endpoint string
 	Wait     time.Duration

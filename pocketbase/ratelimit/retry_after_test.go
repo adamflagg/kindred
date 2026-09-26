@@ -46,7 +46,7 @@ func TestHandleError_HonoursRetryAfterHint(t *testing.T) {
 func TestHandleError_BackoffWinsOverShorterHint(t *testing.T) {
 	rl := NewRateLimiter(fastConfig(5))
 	for range 3 {
-		rl.HandleError(errors.New("429 rate limit"))
+		rl.HandleError(hintedErr{0})
 	}
 	_, wait := rl.HandleError(hintedErr{time.Millisecond})
 	if wait != 100*time.Millisecond {

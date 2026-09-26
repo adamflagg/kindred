@@ -9,6 +9,16 @@ import (
 	"github.com/camp/kindred/pocketbase/ratelimit"
 )
 
+// rateLimitedErr is a minimal typed rate-limit error for these tests, mirroring the shape
+// ratelimit.HandleError looks for via errors.As: campminder.RateLimitError satisfies the same
+// interface in production. Since ratelimit.HandleError (kindred#2863 follow-up) no longer
+// matches on "429"/"rate limit" text, an untyped errors.New no longer registers as retryable
+// here -- these tests need a typed stand-in instead.
+type rateLimitedErr struct{ wait time.Duration }
+
+func (e rateLimitedErr) Error() string             { return "rate limit exceeded (429)" }
+func (e rateLimitedErr) RetryAfter() time.Duration { return e.wait }
+
 // TestPersonCustomFieldValuesSync_HasRateLimiter verifies that the sync service
 // initializes with a rate limiter for API calls
 func TestPersonCustomFieldValuesSync_HasRateLimiter(t *testing.T) {
@@ -69,7 +79,7 @@ func TestRateLimiterRetryOn429(t *testing.T) {
 		callCount++
 		if callCount < 3 {
 			// Simulate CampMinder 429 response
-			return errors.New("rate limit exceeded (429)")
+			return rateLimitedErr{}
 		}
 		return nil // Success on third attempt
 	}
@@ -101,7 +111,7 @@ func TestRateLimiterMaxAttemptsExceeded(t *testing.T) {
 	fn := func() error {
 		callCount++
 		// Always return rate limit error
-		return errors.New("rate limit exceeded (429)")
+		return rateLimitedErr{}
 	}
 
 	err := rl.ExecuteWithRetry(ctx, fn)
@@ -132,7 +142,7 @@ func TestRateLimiterSuccessfulRecovery(t *testing.T) {
 	err := rl.ExecuteWithRetry(ctx, func() error {
 		batch1Calls++
 		if batch1Calls < 3 {
-			return errors.New("rate limit exceeded (429)")
+			return rateLimitedErr{}
 		}
 		return nil
 	})
@@ -146,7 +156,7 @@ func TestRateLimiterSuccessfulRecovery(t *testing.T) {
 	err = rl.ExecuteWithRetry(ctx, func() error {
 		batch2Calls++
 		if batch2Calls < 3 {
-			return errors.New("rate limit exceeded (429)")
+			return rateLimitedErr{}
 		}
 		return nil
 	})
@@ -209,7 +219,7 @@ func TestRateLimiterContextCancellation(t *testing.T) {
 		if callCount >= 2 {
 			cancel() // Cancel after 2nd attempt
 		}
-		return errors.New("rate limit exceeded (429)")
+		return rateLimitedErr{}
 	}
 
 	err := rl.ExecuteWithRetry(ctx, fn)
@@ -239,7 +249,7 @@ func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(
 		if m.errorMessage != "" {
 			return nil, false, errors.New(m.errorMessage)
 		}
-		return nil, false, errors.New("rate limit exceeded (429)")
+		return nil, false, rateLimitedErr{}
 	}
 	return m.values, false, nil
 }
@@ -365,7 +375,7 @@ func (m *MockHouseholdCustomFieldFetcher) GetHouseholdCustomFieldValuesPage(
 		if m.errorMessage != "" {
 			return nil, false, errors.New(m.errorMessage)
 		}
-		return nil, false, errors.New("rate limit exceeded (429)")
+		return nil, false, rateLimitedErr{}
 	}
 	return m.values, false, nil
 }
