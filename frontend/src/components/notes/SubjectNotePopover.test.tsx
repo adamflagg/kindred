@@ -295,6 +295,51 @@ describe('SubjectNotePopover', () => {
   })
 })
 
+describe('SubjectNotePopover — Escape acts on whatever has focus', () => {
+  it('does nothing when focus is on a control outside it, leaving that control to handle Escape itself', () => {
+    const outsideKeyDown = vi.fn()
+    render(
+      <SubjectNotesScope year={2026} sessionCmId={1000005} scenarioId="" scenarioName="" canManage>
+        <div data-family-card className="group relative">
+          <SubjectNoteCorner subject={HOUSEHOLD} label="Johnson" containing="padding" />
+        </div>
+        <input aria-label="Queue search" onKeyDown={outsideKeyDown} />
+      </SubjectNotesScope>
+    )
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    const outside = screen.getByRole('textbox', { name: 'Queue search' })
+    outside.focus()
+    fireEvent.keyDown(outside, { key: 'Escape' })
+
+    expect(outsideKeyDown).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('typed')
+    expect(saveNote).not.toHaveBeenCalled()
+  })
+
+  it('still discards when focus is inside the popover', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Note' }))
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
+  })
+
+  it('still discards when focus has moved to the body', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
+  })
+})
+
 describe('cardFor', () => {
   it('finds a family card around the corner, or a camper card beside it', () => {
     const family = document.createElement('div')

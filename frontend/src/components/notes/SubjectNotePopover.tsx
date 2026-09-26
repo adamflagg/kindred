@@ -2,8 +2,9 @@
  * The card-level note editor, as locked (owner, 2026-09-25): an anchored
  * popover beside the card, portaled. No modal, no inline expansion.
  *
- * - Escape discards through `useOverlayEscape`. Its token is acquired after
- *   any panel beneath, so it closes first.
+ * - Escape discards through `useOverlayEscape`, but only when Escape's focus
+ *   is actually ours (inside the popover, or nowhere in particular). Its
+ *   token is acquired after any panel beneath, so it closes first.
  * - A click outside with unsaved text SAVES (sticky-note behaviour); with
  *   nothing typed it closes. A second press on the corner that opened it
  *   keeps it open.
@@ -152,7 +153,16 @@ export function SubjectNotePopover({
     getAnchorRect: () => cardFor(target.anchorEl)?.getBoundingClientRect() ?? null,
     placement: 'beside',
   })
-  useOverlayEscape(true, model.discard)
+  // Discard only when Escape's focus is actually ours: inside the popover,
+  // or nowhere in particular (`document.body`). A dirty popover can stay
+  // open while some OTHER control on the page holds focus -- the expanded
+  // queue's own search input, focused by its own rAF right after a press on
+  // the exempted toggle/close buttons below -- and Escape there belongs to
+  // that control, not to a note it never touched.
+  useOverlayEscape(true, model.discard, () => {
+    const active = document.activeElement
+    return active === document.body || (ref.current?.contains(active) ?? false)
+  })
   useOutsidePointer(model, ref, subjectKey(target.subject))
   // Focus restore (frontend/CLAUDE.md): the anchor corner's own button, not
   // whatever was focused before opening -- a click that opened this popover
