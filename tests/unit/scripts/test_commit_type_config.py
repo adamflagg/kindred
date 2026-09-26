@@ -326,6 +326,18 @@ def test_a_security_scope_lands_in_security_whatever_the_type(message: str) -> N
     assert _group_of(message) == "Security"
 
 
+@pytest.mark.parametrize("message", ["revert(security): undo the egress block", 'Revert "fix(pb,security): x"'])
+def test_a_revert_stays_in_reverts_even_with_a_security_scope(message: str) -> None:
+    """The one exception to the rule above, and the doc says so.
+
+    GitHub's Revert button writes `Revert "fix(pb,security): ..."`, which has no
+    conventional scope to route on, so it can only reach Reverts. Routing the
+    `revert(security):` spelling to Security instead would split one kind of
+    change across two groups by how the title happened to be typed.
+    """
+    assert _group_of(message) == "Reverts"
+
+
 @pytest.mark.parametrize("message", ["fix(api): add security headers", "fix(api): x"])
 def test_security_routing_reads_the_scope_not_the_subject(message: str) -> None:
     assert _group_of(message) == "Bug Fixes"

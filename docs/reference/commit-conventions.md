@@ -29,8 +29,9 @@ overstates a change inflates Features, and one that understates it hides work.
 | `chore`, `ci`, `docs`, `test` | skipped | none |
 
 Any type with a `security` scope lands in **Security** instead, bumping by its
-type. A release window holding only skipped types has nothing to release, and
-the Release workflow says so. `tests/unit/scripts/test_commit_type_config.py`
+type. A revert is the exception: every revert stays in Reverts. A release
+window holding only skipped types has nothing to release, and the Release
+workflow says so. `tests/unit/scripts/test_commit_type_config.py`
 holds this table to `cliff.toml`.
 
 **Never write `!` or a `BREAKING CHANGE:` footer.** Kindred has no external
@@ -90,9 +91,9 @@ script is `ci`, `chore` or `test`, never `fix`.
 10. Something existing works or reads better → `improve`
 11. Nothing anyone can reach changes → `refactor`
 
-Steps 1–6 are decided by the file list. Steps 7–11 are judgment. When one PR
-mixes them, split it where practical; otherwise `feat` beats `fix`, and `fix`
-beats `improve`.
+Step 1 is a fact about the PR, and steps 2–6 are decided by the file list.
+Steps 7–11 are judgment. When one PR mixes them, split it where practical;
+otherwise `feat` beats `fix`, and `fix` beats `improve`.
 
 The `Validate PR title` check enforces the file-list steps it can decide: when
 every changed file is CI machinery, agent tooling or tests, the title must be
@@ -148,5 +149,7 @@ the subject, and add the `security` scope). Always the `deps` scope.
   prefixes, which are not commit types: pick the type from the diff.
 
 **When unsure between two types**, pick the one whose *primary effect* on the
-deployed app dominates the diff — e.g. a refactor that happens to fix one minor
-bug is still `refactor` if restructuring is the point.
+deployed app dominates the diff — e.g. an `improve` that also tidies the code
+behind it is still `improve`. A restructuring that happens to fix one minor bug
+is `fix`, not `refactor`: its output changed, and `fix` comes first in the
+decision order.
