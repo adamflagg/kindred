@@ -17,6 +17,9 @@ import BunkSwapModal from './BunkSwapModal'
 import FloatingUnassignedBadge from './FloatingUnassignedBadge'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { swapBunks } from '../utils/bunkSwap'
+import { camperSubject } from './notes/subjectNoteModel'
+import { SubjectNotesSection } from './notes/SubjectNotesSection'
+import { useNoteSlots } from './notes/useNoteSlots'
 
 // Lazy load heavy components - only loads when needed
 const BunkSocialGraphModal = lazy(() => import('./BunkSocialGraphModal'))
@@ -98,6 +101,14 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const { hasPermission } = usePermissions()
 
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
+
+  // Board notes (2026-09-25). A camper's subject is its OWN session, so an AG
+  // camper keeps the AG id on its main session's board.
+  const noteSlots = useNoteSlots('camper')
+  const camperNoteSlots = useCallback(
+    (camper: Camper) => noteSlots(camperSubject(camper), camper.name),
+    [noteSlots]
+  )
 
   // Get lock group context for action bar and pending camper management
   const {
@@ -578,6 +589,10 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             friend-groups hub / action bar (#1630). */}
         <div
           data-board-wrapper
+          // Board notes: hides the empty-card ghost corner and makes every
+          // corner inert for the length of a drag (index.css), without
+          // re-rendering a memo'd card.
+          data-dragging={isDragging ? '' : undefined}
           className={getBoardBottomPaddingClass(
             isLockGroupUiActive,
             isLockGroupUiActive && pendingCampers.length > 0
@@ -641,6 +656,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
                   isProductionMode={isProductionMode}
                   defaultCapacity={defaultCapacity}
                   activeDragCamper={activeDragItem?.camper ?? null}
+                  camperNoteSlots={camperNoteSlots}
                 />
               ))}
             </div>
@@ -656,6 +672,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           onClose={() => setIsUnassignedExpanded(false)}
           isPanelOpen={!!selectedCamperId}
           isProductionMode={isProductionMode}
+          camperNoteSlots={camperNoteSlots}
         />
 
         {/* Drag Overlay - Shows group members when dragging locked groups */}
@@ -715,6 +732,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
                   .filter((c) => c.assigned_bunk_cm_id === selected.assigned_bunk_cm_id)
                   .map((c) => ({ cmId: c.person_cm_id, grade: c.grade }))
               : []
+          const notesSubject = selected ? camperSubject(selected) : null
           return (
             <CamperDetailsPanel
               camperId={selectedCamperId}
@@ -724,6 +742,11 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               assignedBunkCmId={selected?.assigned_bunk_cm_id ?? null}
               getBunkForPerson={getBunkForPerson}
               openedFromSessionCmId={sessionCmId}
+              notesSlot={
+                notesSubject && selected ? (
+                  <SubjectNotesSection subject={notesSubject} label={selected.name} look="camper" />
+                ) : undefined
+              }
             />
           )
         })()}
