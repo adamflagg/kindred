@@ -5,7 +5,7 @@
  * corner is gated on bunking.manage.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, act } from '@testing-library/react'
+import { render, screen, within, act, fireEvent } from '@testing-library/react'
 
 // ---------------------------------------------------------------------------
 // Minimal mocks — keep them lean so the board's internal logic can run
@@ -41,16 +41,22 @@ vi.mock('./BunkCard', () => ({
   default: ({
     bunk,
     camperNoteSlots,
+    onCamperClick,
   }: {
     bunk: {
       id: string
       campers: Array<{ id: string; person_cm_id: number; session_cm_id: number; name: string }>
     }
     camperNoteSlots?: (c: unknown) => { corner?: React.ReactNode } | undefined
+    onCamperClick?: (c: { id: string; person_cm_id: number; session_cm_id: number }) => void
   }) => (
     <div data-bunk-card data-testid={`bunk-${bunk.id}`}>
       {bunk.campers.map((c) => (
-        <div key={c.id} data-testid={`camper-${String(c.person_cm_id)}`}>
+        <div
+          key={c.id}
+          data-testid={`camper-${String(c.person_cm_id)}`}
+          onClick={() => onCamperClick?.(c)}
+        >
           {c.name}
           {camperNoteSlots?.(c)?.corner}
         </div>
@@ -201,5 +207,12 @@ describe('BunkingBoardByArea — board notes', () => {
     expect(document.querySelector('[data-board-wrapper]')).toHaveAttribute('data-dragging')
     act(() => onDragCancel?.())
     expect(document.querySelector('[data-board-wrapper]')).not.toHaveAttribute('data-dragging')
+  })
+
+  it('opens the clicked camper’s own Note section in the panel (an AG camper, keyed to its own session)', () => {
+    renderSummer()
+    fireEvent.click(screen.getByTestId('camper-100'))
+    const panel = screen.getByTestId('camper-panel')
+    expect(within(panel).getByText('Mom called: lower bunk please.')).toBeInTheDocument()
   })
 })

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import type { Camper } from '../types/app-types'
+import type { BunkWithCampers, Camper } from '../types/app-types'
 
 vi.mock('@dnd-kit/core', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
@@ -49,11 +49,9 @@ vi.mock('./CamperCard', () => ({
   ),
 }))
 
-// A past-year board: the board year is 2025, today is in 2026.
 vi.mock('../hooks/useCurrentYear', () => ({ useYear: () => 2025 }))
 
 import BunkCard from './BunkCard'
-import type { BunkWithCampers } from '../types/app-types'
 
 const camper = (name: string, personCmId: number, sessionCmId: number) =>
   ({

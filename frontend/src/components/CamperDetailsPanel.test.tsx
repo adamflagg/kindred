@@ -2909,7 +2909,7 @@ describe('CamperDetailsPanel', () => {
 })
 
 describe('CamperDetailsPanel — pixel identity without a note slot (board notes)', () => {
-  it('renders exactly what main renders once loaded', async () => {
+  it('renders exactly what main renders, body host included', async () => {
     setupDeclinedRequestMocks()
     const { baseElement } = render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} />)
     await screen.findByTestId('quick-stats-bar')
