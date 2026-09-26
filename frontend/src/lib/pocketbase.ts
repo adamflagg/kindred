@@ -1,5 +1,6 @@
 import PocketBase, { type RecordModel } from 'pocketbase'
 import type { TypedPocketBase } from '../types/pocketbase-types'
+import { clearViewAs, viewAsHeaders } from '../auth/viewAs'
 
 // Allow disabling auth for Playwright testing (set VITE_DISABLE_AUTH=true in .env)
 const DISABLE_AUTH = import.meta.env['VITE_DISABLE_AUTH'] === 'true'
@@ -127,12 +128,19 @@ export function handlePocketBaseError(error: unknown): string {
   return pbError?.message ?? 'An error occurred'
 }
 
-// Add global error handling for 401 responses
+// Every PocketBase request carries this tab's view-as persona, if any. The
+// server honours it only for a real admin (pocketbase/rbac/view_as.go).
+// 401s are handled by afterSend below.
 pb.beforeSend = function (url, options) {
-  // Just pass through - let the server validate tokens
-  // The afterSend hook will handle any 401 responses
+  options.headers = { ...options.headers, ...viewAsHeaders() }
   return { url, options }
 }
+
+// Any sign-out -- the menu, or a 401 clearing the store -- ends the preview,
+// so signing back in never quietly resumes one.
+pb.authStore.onChange((token) => {
+  if (!token) clearViewAs()
+})
 
 // Add afterSend hook to handle 401 responses globally (skip when auth is disabled)
 pb.afterSend = function (response, data) {
