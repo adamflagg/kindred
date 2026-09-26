@@ -82,6 +82,38 @@ func TestAidLedgerMigrationsDeclareTheirGrain(t *testing.T) {
 	}
 }
 
+// aidMigrationFieldLine returns the single line declaring `field` (this
+// migration's fields are each written as one JS object literal per line), so a
+// substring check on it cannot cross into a neighboring field's properties.
+func aidMigrationFieldLine(t *testing.T, body, field string) string {
+	t.Helper()
+	for _, line := range strings.Split(body, "\n") {
+		if strings.Contains(line, `name: "`+field+`"`) {
+			return line
+		}
+	}
+	t.Fatalf("field %q not declared", field)
+	return ""
+}
+
+// Item 6 (final review, ruling): a long CampMinder description must not fail
+// aid_postings.go's ensureUnclassifiedSource. financial_transactions.description
+// declares no max, which PocketBase v0.23+ defaults to 5000
+// (docs/reference/pocketbase-migrations.md); aid_sources's two description
+// fields match that instead of capping at 500.
+func TestAidSourcesDescriptionFieldsMatchFinancialTransactionsLength(t *testing.T) {
+	body := readAidMigration(t, aidLedgerMigrations["aid_sources"])
+	for _, field := range []string{"description_key", "description"} {
+		line := aidMigrationFieldLine(t, body, field)
+		if strings.Contains(line, "max: 500,") {
+			t.Errorf("%s: still capped at 500; must match financial_transactions.description (5000)", field)
+		}
+		if !strings.Contains(line, "max: 5000,") {
+			t.Errorf("%s: must declare max: 5000, got: %s", field, line)
+		}
+	}
+}
+
 // Each select value and field name is checked as its own quoted token, so a
 // formatter that wraps a long values array cannot break the test. The Go side
 // pins the aid_postings values it writes separately (TestAidVocabularyMatchesMigration).

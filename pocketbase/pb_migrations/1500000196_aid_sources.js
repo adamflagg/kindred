@@ -40,8 +40,8 @@ migrate((app) => {
     updateRule: null,
     deleteRule: null,
     fields: [
-      { type: "text", name: "description_key", required: true, presentable: true, min: 1, max: 500, pattern: "" },
-      { type: "text", name: "description", required: false, presentable: false, min: 0, max: 500, pattern: "" },
+      { type: "text", name: "description_key", required: true, presentable: true, min: 1, max: 5000, pattern: "" },
+      { type: "text", name: "description", required: false, presentable: false, min: 0, max: 5000, pattern: "" },
       { type: "text", name: "source_name", required: false, presentable: false, min: 0, max: 200, pattern: "" },
       {
         type: "select",
