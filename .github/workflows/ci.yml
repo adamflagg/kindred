@@ -124,6 +124,16 @@ jobs:
             # this file ran none of the assertions that police it. #2671 escaped that
             # only because it also touched 'tests/**'. kindred#2663.
             - '.golangci.yml'
+            # And the commit-type config: `test_commit_type_config.py` polices
+            # that commitlint, cliff.toml, both bots' commit prefixes, the PR
+            # title check and the release version step agree. A PR editing only
+            # one of them is exactly the drift it exists to catch.
+            - 'commitlint.config.js'
+            - 'cliff.toml'
+            - '.github/dependabot.yml'
+            - 'renovate.json'
+            - '.github/workflows/semantic-pr.yml'
+            - '.github/workflows/release.yml'
           # python-lint's inputs, which are a superset of the Python sources.
           # It used to gate on `backend`, a filter meant for another job: that
           # has no 'tests/**', so none of the 507 tracked test files could

@@ -16,36 +16,56 @@ repo = "kindred"
 [git]
 conventional_commits = true
 filter_unconventional = false
-# Parser order matters - first match wins.
-# Include all conventional commits - works for squash merge, rebase merge, and direct commits.
+# Rewrites applied to every message BEFORE parsing, grouping and the bump.
+commit_preprocessors = [
+    # Majors are cut by hand (`gh workflow run release.yml -f version=X`), never
+    # by a marker. Kindred has no external consumer for a breaking change to
+    # break, and all five majors to date (v2-v6) came from a `!`. Dropping the
+    # marker here, before git-cliff reads it, is what stops the bump: verified
+    # on git-cliff 2.14.2, `feat(api)!:` bumps v1.0.0 -> v1.1.0, not v2.0.0.
+    { pattern = '^([a-z]+)(\([^)]*\))?!:', replace = "${1}${2}:" },
+    { pattern = '(?m)^BREAKING[ -]CHANGE:', replace = "Breaking-note:" },
+    # "(Phase 2 of 3)" orients the PR's reviewer; it means nothing in release notes.
+    { pattern = '\s*\((?:[Pp]hase|[Pp]art|[Ss]tage) \d+[^)]*\)', replace = "" },
+]
+# Parser order matters - first match wins. Every type in commitlint.config.js's
+# type-enum needs its own parser here (tests/unit/scripts/test_commit_type_config.py).
+#
+# Group names carry a zero-padded `<!-- NN -->` sort key, which the template's
+# `striptags` removes: git-cliff orders groups by name, so without it Features
+# sorted after Bug Fixes. Two digits, because "<!-- 10 -->" sorts before
+# "<!-- 9 -->" as a string.
 commit_parsers = [
     # Skip merge commits (both "Merge pull request" and "Merge branch" styles)
     { message = "^Merge", skip = true },
 
-    # Reverts - catch these before the type they reference
-    { message = "^Revert", group = "Reverts" },
+    # Reverts - catch these before the type they reference. Both spellings:
+    # `revert(scope):` is the conventional form the title check accepts, and
+    # `Revert "..."` is what GitHub's Revert button writes.
+    { message = "^[Rr]evert", group = "<!-- 10 -->Reverts" },
 
     # All conventional commits by type
-    { message = "^feat", group = "Features" },
-    { message = "^fix", group = "Bug Fixes" },
-    { message = "^perf", group = "Performance" },
-    { message = "^refactor", group = "Refactoring" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^style", group = "Styling" },
-    { message = "^test", group = "Testing" },
-    { message = "^build", group = "Build" },
-    { message = "^config", group = "Configuration" },
+    { message = "^feat", group = "<!-- 00 -->Features" },
+    { message = "^fix", group = "<!-- 01 -->Bug Fixes" },
+    { message = "^perf", group = "<!-- 02 -->Performance" },
+    { message = "^refactor", group = "<!-- 03 -->Refactoring" },
+    { message = "^build", group = "<!-- 04 -->Build" },
+    { message = "^docs", group = "<!-- 05 -->Documentation" },
+    { message = "^style", group = "<!-- 06 -->Styling" },
+    { message = "^test", group = "<!-- 07 -->Testing" },
 
-    # Always skip these
+    # Always skip these. A release window holding only these has nothing to
+    # release: git-cliff bumps nothing, and release.yml says so.
     { message = "^chore", skip = true },
     { message = "^ci", skip = true },
 
     # Catch-all for non-conventional commits (safety net so they appear under "Other"
     # instead of being silently dropped from changelog)
-    { message = ".*", group = "Other" },
+    { message = ".*", group = "<!-- 99 -->Other" },
 ]
 tag_pattern = "v[0-9].*"
 
-[bump]
-breaking_always_bump_major = false
-features_always_bump_minor = true
+# No [bump] section. Its two flags (features_always_bump_minor,
+# breaking_always_bump_major) only change anything below 1.0.0. At v1+ the rule
+# is fixed: any `feat` -> minor, anything else released -> patch, and the
+# preprocessors above remove breaking markers before they can force a major.

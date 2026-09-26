@@ -1,5 +1,12 @@
 name: Semantic PR Title
 
+# The PR title becomes the squash commit on main, so it is the commit message
+# that picks the changelog group and the version bump. This check lints it with
+# commitlint.config.js -- the same config the local commit-msg hook uses -- so
+# there is one list of types and scopes, not a copy here that drifts. The old
+# check kept its own list and never applied commitlint's length or full-stop
+# rules to a title at all.
+
 on:
   pull_request:
     types:
@@ -9,57 +16,34 @@ on:
       - reopened
 
 permissions:
-  pull-requests: read
-  statuses: write
+  contents: read
 
 jobs:
   lint-title:
+    # The ruleset requires a status check with exactly this name. Renaming the
+    # job does not fail anything -- it leaves every PR waiting on a check that
+    # never reports.
     name: Validate PR title
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            perf
-            refactor
-            docs
-            style
-            test
-            build
-            config
-            chore
-            ci
-            revert
-          scopes: |
-            frontend
-            api
-            sync
-            pb
-            solver
-            docker
-            ci
-            auth
-            google
-            security
-            logging
-            release
-            config
-            deps
-            deps-dev
-            tests
-            scripts
-            docs
-            metrics
-            graph
-            data
-            rbac
-          requireScope: true
-          subjectPattern: ^[A-Za-z].+$
-          subjectPatternError: |
-            The subject "{subject}" must start with an uppercase or lowercase
-            letter and contain at least two characters.
-          validateSingleCommit: false
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install commitlint
+      run: npm ci --ignore-scripts --no-audit --no-fund
+
+    - name: Lint the PR title
+      env:
+        # A title is attacker-controlled text: it reaches the shell through the
+        # environment, never through expression interpolation inside `run:`.
+        PR_TITLE: ${{ github.event.pull_request.title }}
+      run: printf '%s\n' "$PR_TITLE" | npx --no-install commitlint --verbose

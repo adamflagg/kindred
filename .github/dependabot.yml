@@ -4,6 +4,13 @@
 # Security: cooldown delays updates by 3 days after publication, giving the
 # community time to catch compromised releases before auto-merge picks them up.
 
+# Commit-message prefixes type a bump by what it changes, never as `fix`: a
+# bump is not a bug fix, and typing them `fix` put 18 of v6.3.0's 50 "Bug
+# Fixes" here. `build(deps)` for what ships in an image (a patch release,
+# "Build" in the changelog), `chore(deps)` for dev-only tooling (skipped from
+# the changelog), `ci(deps)` for Actions. Always the `deps` scope, whatever the
+# ecosystem. tests/unit/scripts/test_commit_type_config.py holds this.
+
 version: 2
 updates:
   # Python dependencies.
@@ -26,7 +33,7 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     commit-message:
-      prefix: "fix(deps)"
+      prefix: "build(deps)"
       prefix-development: "chore(deps)"
     labels:
       - "dependencies"
@@ -75,8 +82,8 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     commit-message:
-      prefix: "fix(pb)"
-      prefix-development: "chore(pb)"
+      prefix: "build(deps)"
+      prefix-development: "chore(deps)"
     labels:
       - "dependencies"
       - "go"
@@ -100,8 +107,10 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     commit-message:
-      prefix: "fix(pb)"
-      prefix-development: "chore(pb)"
+      # pocketbase/package.json holds devDependencies only (eslint); nothing
+      # here reaches the image, so a bump is dev tooling either way.
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps)"
     labels:
       - "dependencies"
       - "javascript"
@@ -132,8 +141,8 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     commit-message:
-      prefix: "fix(frontend)"
-      prefix-development: "chore(frontend)"
+      prefix: "build(deps)"
+      prefix-development: "chore(deps)"
     labels:
       - "dependencies"
       - "javascript"
@@ -211,7 +220,7 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     commit-message:
-      prefix: "fix(docker)"
+      prefix: "build(deps)"
     labels:
       - "dependencies"
       - "docker"
@@ -235,7 +244,7 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     commit-message:
-      prefix: "chore(ci)"
+      prefix: "ci(deps)"
     labels:
       - "dependencies"
       - "ci"
