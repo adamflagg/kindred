@@ -7904,6 +7904,136 @@ export type SplitSourceConfig = {
 }
 
 /**
+ * SubjectNoteOut
+ */
+export type SubjectNoteOut = {
+  /**
+   * Subject Kind
+   */
+  subject_kind: 'person' | 'household'
+  /**
+   * Subject Cm Id
+   */
+  subject_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   */
+  scenario: string
+  /**
+   * Body
+   */
+  body: string
+  /**
+   * Updated By
+   */
+  updated_by: string
+  /**
+   * Updated
+   */
+  updated: string
+}
+
+/**
+ * SubjectNotePromoteRequest
+ *
+ * "Keep on all plans": move this scenario's plan-only note into the standard note.
+ */
+export type SubjectNotePromoteRequest = {
+  /**
+   * Subject Kind
+   */
+  subject_kind: 'person' | 'household'
+  /**
+   * Subject Cm Id
+   *
+   * persons.cm_id, or the household cm id
+   */
+  subject_cm_id: number
+  /**
+   * Session Cm Id
+   *
+   * The subject's OWN registration session
+   */
+  session_cm_id: number
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Scenario
+   */
+  scenario: string
+}
+
+/**
+ * SubjectNoteWriteRequest
+ *
+ * Upsert one note. An empty or whitespace-only body deletes it.
+ */
+export type SubjectNoteWriteRequest = {
+  /**
+   * Subject Kind
+   */
+  subject_kind: 'person' | 'household'
+  /**
+   * Subject Cm Id
+   *
+   * persons.cm_id, or the household cm id
+   */
+  subject_cm_id: number
+  /**
+   * Session Cm Id
+   *
+   * The subject's OWN registration session
+   */
+  session_cm_id: number
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Scenario
+   *
+   * '' is the standard note
+   */
+  scenario?: string
+  /**
+   * Body
+   */
+  body: string
+}
+
+/**
+ * SubjectNoteWriteResponse
+ *
+ * One shape for PUT and promote. Both fields required, so the generated
+ * TypeScript type has no optional members to `??` around.
+ */
+export type SubjectNoteWriteResponse = {
+  note: SubjectNoteOut | null
+  /**
+   * Deleted
+   */
+  deleted: boolean
+}
+
+/**
+ * SubjectNotesResponse
+ *
+ * The board read: standard notes plus the viewed scenario's plan-only notes.
+ */
+export type SubjectNotesResponse = {
+  /**
+   * Notes
+   */
+  notes: Array<SubjectNoteOut>
+}
+
+/**
  * SummerYearsBreakdown
  *
  * Breakdown by actual summer enrollment years.
@@ -12611,6 +12741,102 @@ export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses = {
 
 export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponse =
   UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses[keyof UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses]
+
+export type ListSubjectNotesApiSubjectNotesGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Session Cm Id
+     *
+     * The BOARD's session CampMinder id
+     */
+    session_cm_id: number
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Scenario
+     */
+    scenario?: string
+  }
+  url: '/api/subject-notes'
+}
+
+export type ListSubjectNotesApiSubjectNotesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListSubjectNotesApiSubjectNotesGetError =
+  ListSubjectNotesApiSubjectNotesGetErrors[keyof ListSubjectNotesApiSubjectNotesGetErrors]
+
+export type ListSubjectNotesApiSubjectNotesGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: SubjectNotesResponse
+}
+
+export type ListSubjectNotesApiSubjectNotesGetResponse =
+  ListSubjectNotesApiSubjectNotesGetResponses[keyof ListSubjectNotesApiSubjectNotesGetResponses]
+
+export type SaveSubjectNoteApiSubjectNotesPutData = {
+  body: SubjectNoteWriteRequest
+  path?: never
+  query?: never
+  url: '/api/subject-notes'
+}
+
+export type SaveSubjectNoteApiSubjectNotesPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveSubjectNoteApiSubjectNotesPutError =
+  SaveSubjectNoteApiSubjectNotesPutErrors[keyof SaveSubjectNoteApiSubjectNotesPutErrors]
+
+export type SaveSubjectNoteApiSubjectNotesPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: SubjectNoteWriteResponse
+}
+
+export type SaveSubjectNoteApiSubjectNotesPutResponse =
+  SaveSubjectNoteApiSubjectNotesPutResponses[keyof SaveSubjectNoteApiSubjectNotesPutResponses]
+
+export type PromoteSubjectNoteApiSubjectNotesPromotePostData = {
+  body: SubjectNotePromoteRequest
+  path?: never
+  query?: never
+  url: '/api/subject-notes/promote'
+}
+
+export type PromoteSubjectNoteApiSubjectNotesPromotePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PromoteSubjectNoteApiSubjectNotesPromotePostError =
+  PromoteSubjectNoteApiSubjectNotesPromotePostErrors[keyof PromoteSubjectNoteApiSubjectNotesPromotePostErrors]
+
+export type PromoteSubjectNoteApiSubjectNotesPromotePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: SubjectNoteWriteResponse
+}
+
+export type PromoteSubjectNoteApiSubjectNotesPromotePostResponse =
+  PromoteSubjectNoteApiSubjectNotesPromotePostResponses[keyof PromoteSubjectNoteApiSubjectNotesPromotePostResponses]
 
 export type ListFormsApiJotformFormsGetData = {
   body?: never
