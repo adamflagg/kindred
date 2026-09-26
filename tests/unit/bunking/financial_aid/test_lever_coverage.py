@@ -27,7 +27,6 @@ _NOT_LEVERS = {"schema_version", "year"}
 # changeable, like a schema version number), each WILL become a normal lever once
 # something reads it: the sub-project that wires one must delete its entry here and add
 # a behavioural test, the same as any other lever.
-_SP5 = "sub-project 5 (applications and requests) reads it; the calculator does not"
 _SP9 = "sub-project 9 (scenarios, budget and targeting) reads it; the calculator does not"
 _SP10 = "sub-project 10 (decisions, stages and rounds) reads it; the calculator does not"
 _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
@@ -56,7 +55,6 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     "budget.commit_on": _SP9,
     "awards.decision_types.*.budget_line": _SP9,
     "awards.decision_types.*.counts_toward_budget": _SP9,
-    "cost.infant_age_cutoff_months": _SP5 + " (it pre-fills family-camp headcounts)",
     "awards.rounding": (
         "no sub-project yet: it allows one value, and the calculator always rounds half up "
         "(money.round_dollars); whoever adds a second value must read it"

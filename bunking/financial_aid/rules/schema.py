@@ -288,7 +288,9 @@ class CostSection(RulesModel):
     # CampMinder session cm_id -> this season's tuition.
     tuition: dict[int, Money] = Field(default_factory=dict)
     family_rates: list[FamilyRate] = Field(default_factory=list)
-    # Used by intake to pre-fill headcounts (sub-project 5); the calculator does not read it.
+    # A person under this many months on the SESSION'S FIRST DAY is an infant (spec 2 item 22).
+    # Intake (sub-project 5) reads it through bunking/financial_aid/headcount.py to pre-fill and
+    # cross-check family-camp headcounts; the calculator does not read it.
     infant_age_cutoff_months: int | None = Field(default=None, ge=0)
     override_reasons: list[Key] = Field(default_factory=_default_override_reasons)
 
