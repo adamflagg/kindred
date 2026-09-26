@@ -33,7 +33,7 @@ export interface FloatingUnplacedBadgeProps {
   canPlace?: boolean
   /** The weekend's `session_type`, forwarded to each card (kindred#2759). */
   sessionType?: string | undefined
-  /** Board-note slots per queued party (board notes; ruling R5). */
+  /** Board-note slots per queued party (board notes). */
   partyNoteSlots?: ((party: RosterPartyRow) => CardNoteSlots | undefined) | undefined
 }
 

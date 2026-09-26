@@ -10,7 +10,7 @@
  * - Scrolling never closes it: `useAnchoredOverlay` re-places it instead.
  * - `mousedown` stops here, so the unplaced queue's click-outside
  *   (`FloatingQueueBadge`, a bubble-phase document listener) never collapses
- *   the queue under a click inside the popover (ruling R5).
+ *   the queue under a click inside the popover.
  * - `role="dialog"` also keeps `shouldKeepPanelsOpen` from treating a click
  *   inside it as dead space.
  */
@@ -34,7 +34,7 @@ import { useSubjectNoteEditor, type SubjectNoteEditorModel } from './useSubjectN
  * document listener beneath it.
  *
  * Held in a ref, not a bare `document.addEventListener(..., { once: true })`
- * plus an untracked `setTimeout` (b1): unremoved, that pairing outlives
+ * plus an untracked `setTimeout`: unremoved, that pairing outlives
  * this popover and eats a click meant for something else entirely -- in
  * tests, the NEXT TEST's corner click within the same file (Vitest isolates
  * *files*, not tests, so a leak reaches across `it` blocks but not across
@@ -54,7 +54,7 @@ interface PendingEater {
  * reads as an outside click and closes the popover on a scrollbar drag inside
  * the unplaced queue (`FloatingQueueBadge.tsx`), `SlideInPanel.tsx`, or
  * `CamperDetailsPanel.tsx` -- breaking the locked "scrolling never closes it"
- * rule (i1). `event.offsetX`/`offsetY` are target-relative, so a press past
+ * rule. `event.offsetX`/`offsetY` are target-relative, so a press past
  * `clientWidth`/`clientHeight` landed in the gutter the scrollbar itself
  * occupies. Gated on the element actually HAVING a gutter
  * (`offsetWidth > clientWidth` or `offsetHeight > clientHeight`): an element

@@ -77,7 +77,7 @@ function PanelEditor({ scope, target }: { scope: SubjectNotesScopeValue; target:
     ...model,
     save: async () => {
       // A call landing while an earlier save OR promote is still in flight
-      // must not touch `settled` at all (fix round 1, I1): the hook's own
+      // must not touch `settled` at all: the hook's own
       // `inFlight` guard already refuses it and resolves false, and if we let
       // that refusal flip `settled` back to false, a settle from the FIRST
       // (still in-flight) call arrives later and leaves `settled` wrong --

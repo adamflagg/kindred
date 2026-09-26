@@ -1295,7 +1295,7 @@ describe('FamilyDetailsPanel — pixel identity without a note slot (board notes
       <FamilyDetailsPanel party={party()} unit={unit()} year={2026} onClose={vi.fn()} />,
       { wrapper }
     )
-    // `normalizeIds` (Task 2.10) lives only in `FamilyCard.notes.test.tsx`,
+    // `normalizeIds` lives only in `FamilyCard.notes.test.tsx`,
     // unexported, and is NOT imported here: importing any symbol from a
     // `*.test.tsx` file executes that file's top-level `describe`/`vi.mock`
     // calls as a side effect of module resolution, which re-registered

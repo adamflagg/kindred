@@ -86,7 +86,7 @@ describe('SubjectNotePopover', () => {
     expect(saveNote).not.toHaveBeenCalled()
   })
 
-  it('a press in an outside scroll container’s scrollbar gutter does not close it (I1)', async () => {
+  it('a press in an outside scroll container’s scrollbar gutter does not close it', async () => {
     render(<Board />)
     openPopover()
     fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
@@ -139,7 +139,7 @@ describe('SubjectNotePopover', () => {
     expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
   })
 
-  it('the eater actually eats the click that follows a second corner press (m3)', () => {
+  it('the eater actually eats the click that follows a second corner press', () => {
     render(<Board />)
     openPopover()
     const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
@@ -191,7 +191,7 @@ describe('SubjectNotePopover', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('restores focus to the corner button when Escape closes it (F5)', () => {
+  it('restores focus to the corner button when Escape closes it', () => {
     render(<Board />)
     openPopover()
     const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
@@ -213,7 +213,7 @@ describe('SubjectNotePopover', () => {
     expect(document.activeElement).toBe(cornerButton)
   })
 
-  it('removes the pending click-eater when the popover unmounts (b1)', () => {
+  it('removes the pending click-eater when the popover unmounts', () => {
     // A press on the corner installs a capture-phase document click-eater
     // (swallowing the click that follows the same physical press). Left
     // untracked, that guard outlives the popover and eats a LATER click meant

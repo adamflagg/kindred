@@ -336,7 +336,7 @@ export function LodgingBoard({
 
   // Board notes (2026-09-25). One stable function; `useNoteSlots` caches a
   // slots object per family, so memo'd cards never re-render for a note. The
-  // subject is keyed by the party's grain on THIS weekend (ruling R9).
+  // subject is keyed by the party's grain on THIS weekend.
   const noteSlots = useNoteSlots('family')
   const partyNoteSlots = useCallback(
     (party: RosterPartyRow) =>
@@ -771,7 +771,7 @@ export function LodgingBoard({
         className="flex flex-col gap-3"
         // Board notes: hides the empty-card ghost corner and makes every corner
         // inert for the length of ANY drag (index.css), without re-rendering a
-        // memo'd card (ruling R6).
+        // memo'd card.
         data-dragging={dragging !== null || draggingMergeUnit !== null ? '' : undefined}
       >
         <div className="card-lodge overflow-hidden">

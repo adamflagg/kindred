@@ -99,7 +99,7 @@ export function SubjectNotesScope({
 
   const promote = useCallback(
     async (subject: NoteSubject, drafts: NoteDrafts, inScenario: string) => {
-      // Ruling R4: flush what is typed, then let the server append.
+      // Flush what is typed, then let the server append.
       await save(subject, drafts, inScenario)
       await promoteNote({ subject, year, scenario: inScenario })
     },

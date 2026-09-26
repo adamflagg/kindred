@@ -24,7 +24,7 @@ const SUBJECT = { kind: 'person' as const, cmId: 1000101, sessionCmId: 1000001 }
 let client: QueryClient
 let fetchSpy: MockInstance<typeof fetch>
 
-/** See the "sets no cache options of its own" test below (F7). */
+/** See the "sets no cache options of its own" test below. */
 interface StaleTimeOptions {
   staleTime?: number
 }
@@ -88,7 +88,7 @@ describe('useSubjectNotes', () => {
     // `staleTime` -- that lives on the observer-level `QueryObserverOptions`
     // the query was actually constructed from. The cast (through `unknown`,
     // never `any`) reads the SAME runtime object through a narrower local
-    // type just to name the field tsc otherwise won't let us reach (F7).
+    // type just to name the field tsc otherwise won't let us reach.
     const resolved = query?.options as unknown as StaleTimeOptions | undefined
     expect(resolved?.staleTime).toBeUndefined()
   })

@@ -36,7 +36,7 @@ describe('trapTab', () => {
     expect(trapTab(new KeyboardEvent('keydown', { key: 'Enter' }), root)).toBe(false)
   })
 
-  it('skips a tabindex="-1" element -- a programmatic focus target, not a Tab stop (F2)', () => {
+  it('skips a tabindex="-1" element -- a programmatic focus target, not a Tab stop', () => {
     const root = document.createElement('div')
     root.innerHTML =
       '<button>One</button><button tabindex="-1">Skip</button><textarea aria-label="Body"></textarea>'

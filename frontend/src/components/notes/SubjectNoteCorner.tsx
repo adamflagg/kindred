@@ -21,7 +21,7 @@
  *
  * While a board drag is in progress (`[data-dragging]` on the board root) the
  * ghost disappears and no corner takes the pointer -- a CSS rule in
- * index.css, so memo'd cards never re-render for it (ruling R6).
+ * index.css, so memo'd cards never re-render for it.
  */
 import { useLayoutEffect, useRef, useState } from 'react'
 

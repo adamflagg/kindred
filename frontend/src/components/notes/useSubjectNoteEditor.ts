@@ -33,9 +33,9 @@ export interface SubjectNoteEditorModel {
   /**
    * Resolves true once promoted and closed; false when the write failed or an
    * in-flight call already owns it (the editor stays open). Mirrors `save`
-   * (fix round 1, I2) so a caller can tell a real failure from a refusal --
-   * without it, a wrapper can never distinguish a rejected promote from a
-   * successful one, and so can never safely re-arm itself after one fails.
+   * so a caller can tell a real failure from a refusal -- without it, a
+   * wrapper can never distinguish a rejected promote from a successful one,
+   * and so can never safely re-arm itself after one fails.
    */
   promote: () => Promise<boolean>
 }

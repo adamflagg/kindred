@@ -382,7 +382,7 @@ describe('FloatingUnplacedBadge — the weekend type reaches its cards (kindred#
   })
 })
 
-describe('FloatingUnplacedBadge — board note slots (ruling R5)', () => {
+describe('FloatingUnplacedBadge — board note slots', () => {
   it('gives queue cards their corner', async () => {
     const partyNoteSlots = vi.fn(() => ({ corner: <span data-testid="queue-corner" /> }))
     render(

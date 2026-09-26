@@ -143,7 +143,7 @@ describe('SubjectNoteEditor — inside a scenario', () => {
   })
 })
 
-describe('SubjectNoteEditor — the scope moves scenarios mid-render (fix round 1)', () => {
+describe('SubjectNoteEditor — the scope moves scenarios mid-render', () => {
   it('freezes the baseline: save writes nothing once the scope has moved to another scenario, if the note is unchanged', async () => {
     const t = target({ scenarioId: 'scnA' })
     const scopeA = scopeValue([noteRow(HOUSEHOLD, 'Try Pine')], {
@@ -197,7 +197,7 @@ describe('SubjectNoteEditor — the scope moves scenarios mid-render (fix round 
   })
 })
 
-describe('SubjectNoteEditor — concurrent writes (fix round 1)', () => {
+describe('SubjectNoteEditor — concurrent writes', () => {
   it('a second save while one is in flight does not double-write', async () => {
     let resolveSave: () => void = () => {}
     const pending = new Promise<void>((resolve) => {
@@ -325,7 +325,7 @@ describe('SubjectNoteEditor — a baseline refresh in the SAME scenario (final r
   })
 })
 
-describe('SubjectNoteEditor — save failure and empty notes (fix round 1)', () => {
+describe('SubjectNoteEditor — save failure and empty notes', () => {
   it('keeps the typed text and re-enables Save after a failed save', async () => {
     const scope = renderEditor([], target(), { save: vi.fn().mockRejectedValue(new Error('422')) })
     fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'x' } })

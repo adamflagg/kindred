@@ -143,7 +143,7 @@ describe('editedLine', () => {
 })
 
 describe('displayScenarioName', () => {
-  it('falls back to "Untitled Scenario" for an empty name, matching ModeBadge (fix round 1, m4)', () => {
+  it('falls back to "Untitled Scenario" for an empty name, matching ModeBadge', () => {
     expect(displayScenarioName('')).toBe('Untitled Scenario')
     expect(displayScenarioName('Draft A')).toBe('Draft A')
   })

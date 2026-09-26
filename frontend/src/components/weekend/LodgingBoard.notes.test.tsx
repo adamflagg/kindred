@@ -182,9 +182,9 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 const SCENARIO = 'scn7x2k9qw3mnbv'
 
 // The real panel mounts journey and medical hooks this harness does not mock,
-// and its own slot placement is Task 2.11's test. Here the question is only
-// whether the BOARD hands the panel a Note section, so the panel is a stub
-// that renders its slot.
+// and its own slot placement has its own test elsewhere. Here the question
+// is only whether the BOARD hands the panel a Note section, so the panel is
+// a stub that renders its slot.
 vi.mock('./FamilyDetailsPanel', () => ({
   FamilyDetailsPanel: ({ notesSlot }: { notesSlot?: ReactNode }) => (
     <div data-testid="panel-stub">{notesSlot}</div>

@@ -177,7 +177,7 @@ describe('SubjectNotesScope', () => {
     expect(result.current?.editor).toBeNull()
   })
 
-  it('also closes the open editor when the board SESSION changes, same scenario (F7)', () => {
+  it('also closes the open editor when the board SESSION changes, same scenario', () => {
     let sessionCmId = 1000005
     const { result, rerender } = renderHook(() => useSubjectNotesScope(), {
       wrapper: ({ children }) => scope({ sessionCmId })({ children }),

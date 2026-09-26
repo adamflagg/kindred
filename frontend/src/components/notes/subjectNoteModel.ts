@@ -1,7 +1,6 @@
 /**
- * Board notes -- the rules, as pure functions (ported from the lab's
- * noteModel.ts, trimmed to the locked design: one session's note, layered
- * plans, no scope knobs).
+ * Board notes -- the rules, as pure functions: one session's note, layered
+ * plans.
  */
 import type { NoteSubject, SubjectNoteRow } from '../../types/subjectNotes'
 import type { PartyIdentity } from '../weekend/partyKey'
@@ -21,7 +20,7 @@ export const UNTITLED_SCENARIO = 'Untitled Scenario'
  * even before the scenario's own name has loaded (hosts pass
  * `currentScenario?.name ?? ''`, so a bare empty string is a real transient
  * state, not a bug upstream). One place, so both `SubjectNoteEditor` and
- * `SubjectNotesSection` render the same fallback (fix round 1, m4).
+ * `SubjectNotesSection` render the same fallback.
  */
 export function displayScenarioName(name: string): string {
   return name === '' ? UNTITLED_SCENARIO : name
@@ -77,7 +76,7 @@ export function extraLayerCount(layers: SubjectLayers): number {
 }
 
 /**
- * A weekend party's subject, keyed by its GRAIN (ruling R9). `RosterParty`
+ * A weekend party's subject, keyed by its GRAIN. `RosterParty`
  * serialises the unused grain's id as 0, so a 0 means "no subject" -- never a
  * note keyed to id 0 (see partyKey.ts on why `??` is wrong for these ids).
  */

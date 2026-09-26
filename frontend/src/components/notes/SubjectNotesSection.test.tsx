@@ -8,7 +8,7 @@ import type { EditorTarget, SubjectNotesScopeValue } from './subjectNotesContext
 import { SubjectNotesSection } from './SubjectNotesSection'
 
 /** A promise this test can resolve on its own schedule, to pin the "second
- * call while one is still in flight" races (fix round 1, I1/I2). */
+ * call while one is still in flight" races. */
 function deferred<T = void>(): {
   promise: Promise<T>
   resolve: (value: T) => void
@@ -120,7 +120,7 @@ describe('SubjectNotesSection — reading', () => {
 })
 
 describe('SubjectNotesSection — editing', () => {
-  it('remounts the panel editor when the same subject reopens in a different scenario, flushing the stale draft into the OLD scenario (ruling 1, corrected m3)', async () => {
+  it('remounts the panel editor when the same subject reopens in a different scenario, flushing the stale draft into the OLD scenario', async () => {
     const scnA: EditorTarget = {
       subject: HOUSEHOLD,
       label: 'Johnson',
@@ -162,7 +162,7 @@ describe('SubjectNotesSection — editing', () => {
     expect(screen.getByRole('textbox', { name: 'Note just for this plan' })).toHaveValue('Plan B')
   })
 
-  it('a save attempted while "Keep on all plans" is in flight is refused without unsettling the editor, so the unmount flush does not write again (fix round 1, I1)', async () => {
+  it('a save attempted while "Keep on all plans" is in flight is refused without unsettling the editor, so the unmount flush does not write again', async () => {
     const target: EditorTarget = {
       subject: HOUSEHOLD,
       label: 'Johnson',
@@ -207,7 +207,7 @@ describe('SubjectNotesSection — editing', () => {
     expect(value.save).not.toHaveBeenCalled()
   })
 
-  it('a second save (Ctrl+Enter) attempted while the first Save is in flight is refused, so the unmount flush does not write twice (fix round 1, I1)', async () => {
+  it('a second save (Ctrl+Enter) attempted while the first Save is in flight is refused, so the unmount flush does not write twice', async () => {
     // The Save BUTTON is `disabled={model.busy}`, so jsdom (matching real
     // browsers) drops a second literal button click outright -- that would
     // never reach the race this pins. Ctrl+Enter goes through the editor's
@@ -252,7 +252,7 @@ describe('SubjectNotesSection — editing', () => {
     expect(value.save).toHaveBeenCalledTimes(1)
   })
 
-  it('resets the editor after a failed promote, so a later edit still flushes on unmount instead of being dropped (fix round 1, I2)', async () => {
+  it('resets the editor after a failed promote, so a later edit still flushes on unmount instead of being dropped', async () => {
     const target: EditorTarget = {
       subject: HOUSEHOLD,
       label: 'Johnson',
@@ -291,7 +291,7 @@ describe('SubjectNotesSection — editing', () => {
     )
   })
 
-  it('tolerates StrictMode double-invoke without flushing a live edit (fix round 1, m5)', async () => {
+  it('tolerates StrictMode double-invoke without flushing a live edit', async () => {
     const value = scopeValue([noteRow(HOUSEHOLD, 'Standard')], { editor: panelTarget })
     render(
       <StrictMode>
@@ -332,7 +332,7 @@ describe('SubjectNotesSection — editing', () => {
     expect(value.save).toHaveBeenCalledWith(HOUSEHOLD, { standard: 'Standard, and more' }, '')
   })
 
-  it('restores focus to what was focused before the panel editor opened, once it closes (F5)', () => {
+  it('restores focus to what was focused before the panel editor opened, once it closes', () => {
     function Harness({
       showEditor,
       value,
