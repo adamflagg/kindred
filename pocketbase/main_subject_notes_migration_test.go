@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestSubjectNotesMigrationShape(t *testing.T) {
 // subjectNotesApp builds saved_scenarios and a subject_notes shaped like the
 // migration's, carrying the index statements the migration FILE declares and
 // the scenario cascade flag the file declares.
-func subjectNotesApp(t *testing.T) (*tests.TestApp, *core.Collection, *core.Collection) {
+func subjectNotesApp(t *testing.T) (app *tests.TestApp, scenarios, notes *core.Collection) {
 	t.Helper()
 	body := readMigration(t, subjectNotesMigration)
 	up, _ := migrationHalves(t, body)
@@ -79,12 +80,12 @@ func subjectNotesApp(t *testing.T) (*tests.TestApp, *core.Collection, *core.Coll
 	}
 	t.Cleanup(app.Cleanup)
 
-	scenarios := core.NewBaseCollection("saved_scenarios")
+	scenarios = core.NewBaseCollection("saved_scenarios")
 	scenarios.Fields.Add(&core.TextField{Name: "name"})
 	if err := app.Save(scenarios); err != nil {
 		t.Fatalf("save saved_scenarios: %v", err)
 	}
-	notes := core.NewBaseCollection("subject_notes")
+	notes = core.NewBaseCollection("subject_notes")
 	notes.Fields.Add(
 		&core.TextField{Name: "subject_kind"},
 		&core.NumberField{Name: "subject_cm_id"},
@@ -100,7 +101,9 @@ func subjectNotesApp(t *testing.T) (*tests.TestApp, *core.Collection, *core.Coll
 	return app, scenarios, notes
 }
 
-func saveNote(app *tests.TestApp, notes *core.Collection, kind string, cmID int, scenario string) (*core.Record, error) {
+func saveNote(
+	app *tests.TestApp, notes *core.Collection, kind string, cmID int, scenario string,
+) (*core.Record, error) {
 	rec := core.NewRecord(notes)
 	rec.Set("subject_kind", kind)
 	rec.Set("subject_cm_id", cmID)
@@ -108,7 +111,10 @@ func saveNote(app *tests.TestApp, notes *core.Collection, kind string, cmID int,
 	rec.Set("year", 2026)
 	rec.Set("scenario", scenario)
 	rec.Set("body", "Arriving late Friday.")
-	return rec, app.Save(rec)
+	if err := app.Save(rec); err != nil {
+		return nil, fmt.Errorf("save subject note: %w", err)
+	}
+	return rec, nil
 }
 
 func saveScenario(t *testing.T, app *tests.TestApp, scenarios *core.Collection) *core.Record {
