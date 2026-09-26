@@ -13,6 +13,7 @@ import {
   useSubjectNotes,
 } from '../../hooks/useSubjectNotes'
 import type { NoteSubject } from '../../types/subjectNotes'
+import { SubjectNotePopover } from './SubjectNotePopover'
 import {
   NotesEnabledContext,
   SubjectNotesContext,
@@ -106,6 +107,13 @@ export function SubjectNotesScope({
     <NotesEnabledContext.Provider value={canManage}>
       <SubjectNotesContext.Provider value={canManage ? value : null}>
         {children}
+        {canManage && editor?.surface === 'popover' && (
+          <SubjectNotePopover
+            key={`${subjectKey(editor.subject)}|${editor.scenarioId}`}
+            scope={value}
+            target={editor}
+          />
+        )}
       </SubjectNotesContext.Provider>
     </NotesEnabledContext.Provider>
   )
