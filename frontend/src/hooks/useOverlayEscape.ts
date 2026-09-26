@@ -53,10 +53,10 @@ import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../compo
  *
  * ## `shouldHandle`, the opt-in focus guard
  *
- * Topmost is not always enough: a popover can hold the top token while a
- * DESCENDANT of some other overlay (e.g. an expanded queue's own search
- * input) has actual keyboard focus, and Escape should go to whatever has
- * focus, not to the topmost token holder. `shouldHandle` lets a caller add
+ * Topmost is not always enough: a popover can hold the top token while some
+ * OTHER focused control (e.g. an expanded queue's own search input, which
+ * holds no token at all) has actual keyboard focus, and Escape should go to
+ * whatever has focus, not to the topmost token holder. `shouldHandle` lets a caller add
  * that check without every OTHER adopter paying for it — omitted, it
  * defaults to always handling, so existing callers are unaffected. When it
  * declines, this hook does nothing at all: no `stopPropagation()`, no
