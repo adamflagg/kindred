@@ -388,28 +388,36 @@ def _run_version_step(tmp_path: Path, bumped: str) -> subprocess.CompletedProces
 def test_release_scratch_repo_ignores_a_hook_git_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A git hook exports GIT_DIR, and `git` prefers it over `cwd=`.
 
-    Under lefthook's pre-push, the scratch repo's `git commit` landed two empty
-    "init" commits on the branch being pushed. Same trap, and same fix, as
-    `test_worktree_cleanup.py`'s `_clean_env`. A decoy stands in for the victim.
+    Under lefthook's pre-push, the scratch repo's `git init` and `git commit`
+    ran against the real repository: two empty "init" commits landed on the
+    branch being pushed, and `git init` wrote `core.bare = true` into the shared
+    config -- a worktree's GIT_DIR (`.git/worktrees/<name>`) is not named
+    `.git`, so git guesses it is bare. That broke every checkout of the repo
+    until it was reverted by hand. Same trap, and same fix, as
+    `test_worktree_cleanup.py`'s `_clean_env`.
+
+    The decoy's git dir is deliberately not named `.git`, like a worktree's.
     """
     decoy = tmp_path / "decoy"
-    decoy.mkdir()
+    store = tmp_path / "decoy-gitdir"
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_GLOBAL": "/dev/null"}
     ident = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"]
-    subprocess.run(["git", "init", "-q"], cwd=decoy, env=env, check=True)
+    subprocess.run(["git", "init", "-q", f"--separate-git-dir={store}", str(decoy)], env=env, check=True)
     subprocess.run(["git", *ident, "commit", "-q", "--allow-empty", "-m", "decoy"], cwd=decoy, env=env, check=True)
 
-    def head() -> str:
+    def git(*args: str) -> str:
         return subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=decoy, env=env, capture_output=True, text=True, check=True
-        ).stdout
+            ["git", f"--git-dir={store}", *args], env=env, capture_output=True, text=True, check=True
+        ).stdout.strip()
 
-    before = head()
-    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
-    monkeypatch.setenv("GIT_INDEX_FILE", str(decoy / ".git/index"))
+    before = git("rev-parse", "HEAD")
+    assert git("config", "core.bare") == "false"
+    monkeypatch.setenv("GIT_DIR", str(store))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(store / "index"))
     (tmp_path / "run").mkdir()
     _run_version_step(tmp_path / "run", "v1.1.0")
-    assert head() == before, "the scratch repo's commits landed in the repository GIT_DIR names"
+    assert git("rev-parse", "HEAD") == before, "the scratch repo's commits landed in the repository GIT_DIR names"
+    assert git("config", "core.bare") == "false", "`git init` flipped core.bare on the repository GIT_DIR names"
 
 
 def test_release_explains_a_window_with_nothing_releasable(tmp_path: Path) -> None:
