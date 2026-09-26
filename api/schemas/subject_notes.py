@@ -37,7 +37,7 @@ class SubjectNoteWriteRequest(SubjectNoteKey):
 
 
 class SubjectNotePromoteRequest(SubjectNoteKey):
-    """ "Keep on all plans": move this scenario's plan-only note into the standard note."""
+    """ "Move scenario note to CM": move this scenario's plan-only note into the standard note."""
 
     scenario: str = Field(..., min_length=1, max_length=32, pattern=_SCENARIO_ID)
 
