@@ -11,8 +11,14 @@ export const Collections = {
   Mfas: '_mfas',
   Otps: '_otps',
   Superusers: '_superusers',
+  AidApplicationCorrections: 'aid_application_corrections',
+  AidApplications: 'aid_applications',
   AidChangeLog: 'aid_change_log',
+  AidPayerShares: 'aid_payer_shares',
+  AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
+  AidSessionAliases: 'aid_session_aliases',
+  AidSessionCapacity: 'aid_session_capacity',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
   BunkAssignments: 'bunk_assignments',
@@ -169,6 +175,41 @@ export type SuperusersRecord = {
   verified?: boolean
 }
 
+export type AidApplicationCorrectionsRecord = {
+  actor: string
+  application: RecordIdString
+  created: IsoAutoDateString
+  field: string
+  id: string
+  new_value?: string
+  original_value?: string
+  reason: string
+  request?: RecordIdString
+  year: number
+}
+
+export const AidApplicationsStatusOptions = {
+  active: 'active',
+  withdrawn: 'withdrawn',
+} as const
+export type AidApplicationsStatusOptions =
+  (typeof AidApplicationsStatusOptions)[keyof typeof AidApplicationsStatusOptions]
+export type AidApplicationsRecord<
+  Tanswers = unknown,
+  Tflags = unknown,
+  Tmember_person_cm_ids = unknown,
+> = {
+  answers?: null | Tanswers
+  created: IsoAutoDateString
+  flags?: null | Tflags
+  household_cm_id: number
+  id: string
+  member_person_cm_ids?: null | Tmember_person_cm_ids
+  status: AidApplicationsStatusOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
 export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   action: string
   actor: string
@@ -183,6 +224,84 @@ export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   year: number
 }
 
+export const AidPayerSharesSourceOptions = {
+  intake_default: 'intake_default',
+  staff: 'staff',
+} as const
+export type AidPayerSharesSourceOptions =
+  (typeof AidPayerSharesSourceOptions)[keyof typeof AidPayerSharesSourceOptions]
+export type AidPayerSharesRecord = {
+  actor: string
+  created: IsoAutoDateString
+  household_cm_id: number
+  id: string
+  note?: string
+  request: RecordIdString
+  share_pct: number
+  source: AidPayerSharesSourceOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const AidRequestsProgramKeyOptions = {
+  summer: 'summer',
+  family_camp: 'family_camp',
+  bmitzvah: 'bmitzvah',
+  adult_weekend: 'adult_weekend',
+} as const
+export type AidRequestsProgramKeyOptions =
+  (typeof AidRequestsProgramKeyOptions)[keyof typeof AidRequestsProgramKeyOptions]
+
+export const AidRequestsSessionResolutionOptions = {
+  alias: 'alias',
+  exact: 'exact',
+  contains: 'contains',
+  enrollment: 'enrollment',
+  staff: 'staff',
+  unmatched: 'unmatched',
+} as const
+export type AidRequestsSessionResolutionOptions =
+  (typeof AidRequestsSessionResolutionOptions)[keyof typeof AidRequestsSessionResolutionOptions]
+
+export const AidRequestsHeadcountSourceOptions = {
+  declared: 'declared',
+  billed: 'billed',
+  override: 'override',
+} as const
+export type AidRequestsHeadcountSourceOptions =
+  (typeof AidRequestsHeadcountSourceOptions)[keyof typeof AidRequestsHeadcountSourceOptions]
+
+export const AidRequestsStatusOptions = {
+  active: 'active',
+  unmatched_session: 'unmatched_session',
+  duplicate_pending: 'duplicate_pending',
+  duplicate: 'duplicate',
+  withdrawn: 'withdrawn',
+} as const
+export type AidRequestsStatusOptions =
+  (typeof AidRequestsStatusOptions)[keyof typeof AidRequestsStatusOptions]
+export type AidRequestsRecord<Tflags = unknown> = {
+  application: RecordIdString
+  ask?: number
+  created: IsoAutoDateString
+  duplicate_of?: string
+  flags?: null | Tflags
+  headcount_infant?: number
+  headcount_non_infant?: number
+  headcount_source?: AidRequestsHeadcountSourceOptions
+  household_cm_id: number
+  id: string
+  person_cm_id?: number
+  program_key: AidRequestsProgramKeyOptions
+  program_option_key?: string
+  program_option_text?: string
+  session_cm_id?: number
+  session_resolution: AidRequestsSessionResolutionOptions
+  status: AidRequestsStatusOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
 export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   created: IsoAutoDateString
   document?: null | Tdocument
@@ -192,6 +311,38 @@ export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   section_status?: null | Tsection_status
   updated: IsoAutoDateString
   version: number
+  year: number
+}
+
+export const AidSessionAliasesProgramKeyOptions = {
+  summer: 'summer',
+  family_camp: 'family_camp',
+  bmitzvah: 'bmitzvah',
+  adult_weekend: 'adult_weekend',
+} as const
+export type AidSessionAliasesProgramKeyOptions =
+  (typeof AidSessionAliasesProgramKeyOptions)[keyof typeof AidSessionAliasesProgramKeyOptions]
+export type AidSessionAliasesRecord = {
+  actor: string
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  option_key: string
+  option_text?: string
+  program_key: AidSessionAliasesProgramKeyOptions
+  session_cm_id: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type AidSessionCapacityRecord = {
+  actor: string
+  capacity?: number
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  session_cm_id: number
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -1947,8 +2098,23 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AidApplicationCorrectionsResponse<Texpand = unknown> =
+  Required<AidApplicationCorrectionsRecord> & BaseSystemFields<Texpand>
+export type AidApplicationsResponse<
+  Tanswers = unknown,
+  Tflags = unknown,
+  Tmember_person_cm_ids = unknown,
+  Texpand = unknown,
+> = Required<AidApplicationsRecord<Tanswers, Tflags, Tmember_person_cm_ids>> &
+  BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
   AidChangeLogRecord<Tafter, Tbefore>
+> &
+  BaseSystemFields<Texpand>
+export type AidPayerSharesResponse<Texpand = unknown> = Required<AidPayerSharesRecord> &
+  BaseSystemFields<Texpand>
+export type AidRequestsResponse<Tflags = unknown, Texpand = unknown> = Required<
+  AidRequestsRecord<Tflags>
 > &
   BaseSystemFields<Texpand>
 export type AidRulesResponse<
@@ -1956,6 +2122,10 @@ export type AidRulesResponse<
   Tsection_status = unknown,
   Texpand = unknown,
 > = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
+export type AidSessionAliasesResponse<Texpand = unknown> = Required<AidSessionAliasesRecord> &
+  BaseSystemFields<Texpand>
+export type AidSessionCapacityResponse<Texpand = unknown> = Required<AidSessionCapacityRecord> &
+  BaseSystemFields<Texpand>
 export type AttendeeStatusHistoryResponse<Texpand = unknown> =
   Required<AttendeeStatusHistoryRecord> & BaseSystemFields<Texpand>
 export type AttendeesResponse<Texpand = unknown> = Required<AttendeesRecord> &
@@ -2178,8 +2348,14 @@ export type CollectionRecords = {
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  aid_application_corrections: AidApplicationCorrectionsRecord
+  aid_applications: AidApplicationsRecord
   aid_change_log: AidChangeLogRecord
+  aid_payer_shares: AidPayerSharesRecord
+  aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
+  aid_session_aliases: AidSessionAliasesRecord
+  aid_session_capacity: AidSessionCapacityRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
   bunk_assignments: BunkAssignmentsRecord
@@ -2263,8 +2439,14 @@ export type CollectionResponses = {
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  aid_application_corrections: AidApplicationCorrectionsResponse
+  aid_applications: AidApplicationsResponse
   aid_change_log: AidChangeLogResponse
+  aid_payer_shares: AidPayerSharesResponse
+  aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse
+  aid_session_aliases: AidSessionAliasesResponse
+  aid_session_capacity: AidSessionCapacityResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse
   bunk_assignments: BunkAssignmentsResponse
