@@ -8,7 +8,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { HOUSEHOLD, NotesScopeFixture, noteRow, scopeValue } from '../../test/notesScope'
 import type { RosterPartyRow } from '../../types/lodging'
+import { SubjectNoteCorner } from '../notes/SubjectNoteCorner'
 import { FamilyCard } from './FamilyCard'
 
 // ONE stable drag result for every render: fresh `attributes`/`listeners`
@@ -85,5 +87,66 @@ describe('FamilyCard — pixel identity without note slots', () => {
   it('renders exactly what main renders', () => {
     const { container } = render(<FamilyCard party={PARTY} isDraggable onOpen={vi.fn()} />)
     expect(normalizeIds(container.innerHTML)).toMatchSnapshot()
+  })
+})
+
+function renderWithCorner(onOpen = vi.fn()) {
+  const slots = {
+    corner: <SubjectNoteCorner subject={HOUSEHOLD} label="Johnson" containing="padding" />,
+  }
+  const value = scopeValue([noteRow(HOUSEHOLD, 'Grandma comes Saturday.')])
+  const view = render(
+    <NotesScopeFixture value={value}>
+      <FamilyCard party={PARTY} isDraggable onOpen={onOpen} noteSlots={slots} />
+    </NotesScopeFixture>
+  )
+  return { ...view, slots, value, onOpen }
+}
+
+describe('FamilyCard — the note corner slot', () => {
+  it('renders an explicit `noteSlots={undefined}` identically to no prop', () => {
+    const bare = render(<FamilyCard party={PARTY} isDraggable onOpen={vi.fn()} />).container
+      .innerHTML
+    const explicit = render(
+      <FamilyCard party={PARTY} isDraggable onOpen={vi.fn()} noteSlots={undefined} />
+    ).container.innerHTML
+    expect(normalizeIds(explicit)).toBe(normalizeIds(bare))
+  })
+
+  it('puts the corner last in the frame, and makes the frame its containing block', () => {
+    const { container } = renderWithCorner()
+    const frame = container.querySelector('[data-family-card]')
+    expect(frame?.lastElementChild).toHaveAttribute('data-note-corner', 'standard')
+    expect(frame?.className.split(' ')).toContain('relative')
+  })
+
+  it('pressing the corner never starts a drag; pressing the card still does', () => {
+    const { container } = renderWithCorner()
+    dragStart.mockReset()
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Note' }))
+    expect(dragStart).not.toHaveBeenCalled()
+    fireEvent.pointerDown(container.querySelector('[data-family-card]') as HTMLElement)
+    expect(dragStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking the corner never opens the details panel', () => {
+    const { onOpen, value } = renderWithCorner()
+    fireEvent.click(screen.getByRole('button', { name: 'Note' }))
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(value.openEditor).toHaveBeenCalled()
+  })
+
+  it('a stable slots object keeps the memo’d body from re-rendering', () => {
+    // Same party, same onOpen, same slots, same drag result: the only thing a
+    // re-render could change is the slots object, and it must not.
+    const onOpen = vi.fn()
+    const { rerender, slots, value } = renderWithCorner(onOpen)
+    const before = bodyRenders.count
+    rerender(
+      <NotesScopeFixture value={value}>
+        <FamilyCard party={PARTY} isDraggable onOpen={onOpen} noteSlots={slots} />
+      </NotesScopeFixture>
+    )
+    expect(bodyRenders.count).toBe(before)
   })
 })

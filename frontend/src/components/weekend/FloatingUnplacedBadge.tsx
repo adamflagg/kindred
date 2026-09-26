@@ -12,6 +12,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { useCallback, useMemo, useState } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
+import type { CardNoteSlots } from '../../types/noteSlots'
 import { FloatingQueueBadge } from '../ui'
 import { UNPLACED_DROPPABLE_ID } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
@@ -32,6 +33,8 @@ export interface FloatingUnplacedBadgeProps {
   canPlace?: boolean
   /** The weekend's `session_type`, forwarded to each card (kindred#2759). */
   sessionType?: string | undefined
+  /** Board-note slots per queued party (board notes; ruling R5). */
+  partyNoteSlots?: ((party: RosterPartyRow) => CardNoteSlots | undefined) | undefined
 }
 
 // Module-level so their identity is stable across renders: the shell memoises
@@ -58,6 +61,7 @@ export function FloatingUnplacedBadge({
   isPanelOpen = false,
   canPlace = false,
   sessionType,
+  partyNoteSlots,
 }: FloatingUnplacedBadgeProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Single-select by ruling (kindred#2480): `null` or exactly one group, so a
@@ -115,6 +119,7 @@ export function FloatingUnplacedBadge({
               inQueue={true}
               isDraggable={canPlace}
               sessionType={sessionType}
+              noteSlots={partyNoteSlots?.(party)}
               onOpen={onOpenParty}
             />
           ))}

@@ -104,6 +104,7 @@ import { Baby, Repeat, Star, User, Users } from 'lucide-react'
 import { Fragment, memo } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
+import type { CardNoteSlots } from '../../types/noteSlots'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
 import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Tooltip } from '../ui/Tooltip'
@@ -155,6 +156,14 @@ export interface FamilyCardProps {
    * adult guest's Jotform marks on an adult weekend.
    */
   sessionType?: string | undefined
+  /**
+   * Board-note slots (board notes, 2026-09-25). `corner` renders as the
+   * frame's LAST child -- a sibling of the open control, never given
+   * `attributes` -- and the frame gains `relative` only when slots are
+   * passed, so a card without them is byte-identical. Pass a STABLE object
+   * (`useNoteSlots`) or the memo below re-renders every card.
+   */
+  noteSlots?: CardNoteSlots | undefined
   onOpen: (party: RosterPartyRow) => void
 }
 
@@ -804,6 +813,7 @@ const FamilyCardInner = memo(function FamilyCardInner({
   inQueue = false,
   isDraggable = false,
   sessionType,
+  noteSlots,
   onOpen,
   attributes,
   listeners,
@@ -830,7 +840,7 @@ const FamilyCardInner = memo(function FamilyCardInner({
       data-family-card
       ref={setNodeRef}
       {...(isDraggable ? listeners : {})}
-      className={`${CARD_FRAME} hover:border-primary/50 transition-colors ${
+      className={`${CARD_FRAME}${noteSlots === undefined ? '' : 'relative'} hover:border-primary/50 transition-colors ${
         inQueue ? 'bg-card' : 'bg-background'
       } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
         // The card stays mounted and dimmed rather than being removed: the
@@ -863,6 +873,7 @@ const FamilyCardInner = memo(function FamilyCardInner({
         sharedSlot={sharedSlot}
         sessionType={sessionType}
       />
+      {noteSlots?.corner}
     </div>
   )
 })

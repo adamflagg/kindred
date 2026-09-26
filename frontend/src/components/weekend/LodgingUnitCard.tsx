@@ -35,6 +35,7 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { CardNoteSlots } from '../../types/noteSlots'
 import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { Tooltip } from '../ui/Tooltip'
 import { guestsAndBeds, occupancyClaim } from './adultCapacity'
@@ -386,6 +387,12 @@ export interface LodgingUnitCardProps {
    */
   jotformFilings?: readonly JotformFilingChoice[] | undefined
   onOpenWriteIn?: ((entry: WriteInEntry) => void) | undefined
+  /**
+   * Board-note slots per party (board notes). Must be a STABLE function
+   * returning cached objects (`useNoteSlots`), or this memo'd card and every
+   * FamilyCard in it re-render.
+   */
+  partyNoteSlots?: ((party: RosterPartyRow) => CardNoteSlots | undefined) | undefined
 }
 
 /**
@@ -443,6 +450,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
   sessionType = '',
   jotformFilings,
   onOpenWriteIn,
+  partyNoteSlots,
 }: LodgingUnitCardProps & DndBridge) {
   const { unit, parties, consent } = slot
   const isAdult = isAdultSessionType(sessionType)
@@ -1877,6 +1885,7 @@ const LodgingUnitCardInner = memo(function LodgingUnitCardInner({
             sharedSlot={overlappingKeys.has(partyKey(party))}
             isDraggable={canPlace}
             sessionType={sessionType}
+            noteSlots={partyNoteSlots?.(party)}
             onOpen={onOpenParty}
           />
         ))}
