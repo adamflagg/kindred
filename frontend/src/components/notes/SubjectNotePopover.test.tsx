@@ -86,12 +86,78 @@ describe('SubjectNotePopover', () => {
     expect(saveNote).not.toHaveBeenCalled()
   })
 
+  it('a press in an outside scroll container’s scrollbar gutter does not close it (I1)', async () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in scroll container (the unplaced queue, a SlideInPanel, a
+    // CamperDetailsPanel list): offsetWidth > clientWidth is what "has a
+    // scrollbar gutter" means; jsdom never lays these out, so both are
+    // stubbed. offsetX derives from clientX (jsdom has no layout engine, so
+    // offsetX/offsetY fall back to pageX/pageY, which fall back to
+    // clientX/clientY) -- passing `clientX` to `fireEvent` is what actually
+    // reaches `event.offsetX`, since jsdom's PointerEvent does not accept
+    // `offsetX` directly through the init dict (it is a getter with no
+    // setter on MouseEvent's prototype).
+    const scrollArea = document.createElement('div')
+    Object.defineProperty(scrollArea, 'clientWidth', { value: 100, configurable: true })
+    Object.defineProperty(scrollArea, 'offsetWidth', { value: 115, configurable: true })
+    // No VERTICAL gutter: pinned equal, so a default offsetY of 0 doesn't
+    // coincidentally satisfy `offsetY >= clientHeight` against jsdom's
+    // unstubbed 0/0 default and false-flag the second, genuinely-outside press.
+    Object.defineProperty(scrollArea, 'clientHeight', { value: 50, configurable: true })
+    Object.defineProperty(scrollArea, 'offsetHeight', { value: 50, configurable: true })
+    document.body.appendChild(scrollArea)
+
+    try {
+      // Past clientWidth (100) but within offsetWidth (115): the gutter itself.
+      fireEvent.pointerDown(scrollArea, { clientX: 105 })
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+
+      // The SAME element's own content area is still a genuine outside press.
+      fireEvent.pointerDown(scrollArea, { clientX: 50 })
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+      )
+      expect(saveNote).toHaveBeenCalledWith(
+        expect.objectContaining({ scenario: '', body: 'Arriving late Friday.' })
+      )
+    } finally {
+      scrollArea.remove()
+    }
+  })
+
   it('a second press on the same corner keeps it open', () => {
     render(<Board />)
     openPopover()
     // The corner's own trigger -- the dialog now has a "Close note" button too.
     fireEvent.pointerDown(document.querySelector('[data-note-corner] button') as HTMLElement)
     expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+  })
+
+  it('the eater actually eats the click that follows a second corner press (m3)', () => {
+    render(<Board />)
+    openPopover()
+    const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    // Attached directly to the corner button, not the document: the eater's
+    // capture-phase `stopPropagation()` at `document` halts the event before
+    // it descends anywhere near this node, so a listener planted here proves
+    // the click never reaches the corner at all -- which is what stops its
+    // own `onClick` (`openEditor`) from re-running.
+    const cornerClick = vi.fn()
+    cornerButton.addEventListener('click', cornerClick)
+    try {
+      fireEvent.pointerDown(cornerButton)
+      fireEvent.click(cornerButton)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(cornerClick).not.toHaveBeenCalled()
+    } finally {
+      cornerButton.removeEventListener('click', cornerClick)
+    }
   })
 
   it('scrolling — inside its textarea or the page — never closes it', () => {

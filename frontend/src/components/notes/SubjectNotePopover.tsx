@@ -35,15 +35,39 @@ import { useSubjectNoteEditor, type SubjectNoteEditorModel } from './useSubjectN
  *
  * Held in a ref, not a bare `document.addEventListener(..., { once: true })`
  * plus an untracked `setTimeout` (b1): unremoved, that pairing outlives
- * this popover and eats a click meant for something else entirely -- in tests,
- * the NEXT file's first corner click, if this file runs before it; in the
- * app, a corner press, a drag off it, then a click elsewhere within 400ms.
- * Removed on the next pointerdown this hook sees and in its own effect
- * cleanup, so the guard can never outlive the popover that installed it.
+ * this popover and eats a click meant for something else entirely -- in
+ * tests, the NEXT TEST's corner click within the same file (Vitest isolates
+ * *files*, not tests, so a leak reaches across `it` blocks but not across
+ * files); in the app, a corner press, a drag off it, then a click elsewhere
+ * within 400ms. Removed on the next pointerdown this hook sees and in its own
+ * effect cleanup, so the guard can never outlive the popover that installed
+ * it.
  */
 interface PendingEater {
   eat: (event: MouseEvent) => void
   timer: ReturnType<typeof setTimeout>
+}
+
+/**
+ * Chrome and Firefox dispatch `pointerdown` to a SCROLL CONTAINER when its own
+ * scrollbar is pressed, not just when its content is. Left untested, that
+ * reads as an outside click and closes the popover on a scrollbar drag inside
+ * the unplaced queue (`FloatingQueueBadge.tsx`), `SlideInPanel.tsx`, or
+ * `CamperDetailsPanel.tsx` -- breaking the locked "scrolling never closes it"
+ * rule (i1). `event.offsetX`/`offsetY` are target-relative, so a press past
+ * `clientWidth`/`clientHeight` landed in the gutter the scrollbar itself
+ * occupies. Gated on the element actually HAVING a gutter
+ * (`offsetWidth > clientWidth` or `offsetHeight > clientHeight`): an element
+ * with `clientWidth === 0` (an inline element, or anything unmeasured under
+ * jsdom) would otherwise satisfy `offsetX >= clientWidth` for every press and
+ * swallow every genuine outside click.
+ */
+function isScrollbarGutterPress(event: PointerEvent, target: Element): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const hasGutter =
+    target.offsetWidth > target.clientWidth || target.offsetHeight > target.clientHeight
+  if (!hasGutter) return false
+  return event.offsetX >= target.clientWidth || event.offsetY >= target.clientHeight
 }
 
 function useOutsidePointer(
@@ -86,6 +110,7 @@ function useOutsidePointer(
       clearPendingEater()
       const target = event.target as Element | null
       if (!target || containerRef.current?.contains(target)) return
+      if (isScrollbarGutterPress(event, target)) return
       if (target.closest(`[data-note-corner-for="${cornerKey}"]`)) {
         swallowNextClick(event)
         return
