@@ -236,13 +236,14 @@ func isAuthRoute(path string) bool {
 	return strings.HasPrefix(path, "/api/collections/") && strings.Contains(path, "/auth-")
 }
 
-// registerViewAsRoleGuard refuses a non-superuser create on user_roles that
-// targets a view-as persona stand-in. A users.manage holder could otherwise
-// assign a role to a stand-in's id; recomputeUserPermissions (hooks.go) would
-// then overwrite its cached_permissions, and verifyViewAsPersona would fail
-// every later preview of that persona closed with a 500.
+// registerViewAsRoleGuard refuses a non-superuser create or update on
+// user_roles that targets a view-as persona stand-in. A users.manage holder
+// could otherwise assign a role to a stand-in's id, or retarget an existing
+// assignment at one; recomputeUserPermissions (hooks.go) would then overwrite
+// its cached_permissions, and verifyViewAsPersona would fail every later
+// preview of that persona closed with a 500.
 func registerViewAsRoleGuard(app core.App) {
-	app.OnRecordCreateRequest("user_roles").BindFunc(func(e *core.RecordRequestEvent) error {
+	guard := func(e *core.RecordRequestEvent) error {
 		if e.HasSuperuserAuth() {
 			return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
 		}
@@ -250,5 +251,7 @@ func registerViewAsRoleGuard(app core.App) {
 			return apis.NewBadRequestError("Cannot assign roles to a view-as persona stand-in", nil)
 		}
 		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
-	})
+	}
+	app.OnRecordCreateRequest("user_roles").BindFunc(guard)
+	app.OnRecordUpdateRequest("user_roles").BindFunc(guard)
 }

@@ -72,6 +72,7 @@ func TestViewAsMiddleware(t *testing.T) {
 	squattedEmail := squattedID + "@" + viewAsPersonaEmailDomain
 	standInID := viewAsPersonaID([]string{"bunking.manage"})
 	const roleAssignRoleID = "roleforvatest01"
+	const roleAssignRowID = "userroleva00001"
 
 	scenarios := []tests.ApiScenario{
 		{
@@ -326,6 +327,57 @@ func TestViewAsMiddleware(t *testing.T) {
 				}
 				if len(rows) != 0 {
 					t.Errorf("a user_roles row was created for a view-as persona stand-in (%d rows)", len(rows))
+				}
+			},
+		},
+		{
+			// The same hole through the update path: user_roles' real updateRule
+			// admits users.manage, so a PATCH could retarget an existing
+			// assignment at a stand-in. The next role edit would then recompute
+			// the stand-in (hooks.go) and break its persona just as a create would.
+			Name:   "retargeting a role assignment at a view-as persona stand-in is refused",
+			Method: http.MethodPatch,
+			URL:    "/api/collections/user_roles/records/" + roleAssignRowID,
+			Body:   strings.NewReader(`{"user":"` + standInID + `"}`),
+			TestAppFactory: func(t testing.TB) *tests.TestApp {
+				clear(headers)
+				app := newViewAsTestApp(t)
+				setRule(t, app, "user_roles", func(c *core.Collection) { c.UpdateRule = types.Pointer(authedRule) })
+				return app
+			},
+			BeforeTestFunc: func(t testing.TB, app *tests.TestApp, ev *core.ServeEvent) {
+				if _, err := ensureViewAsPersona(app, []string{"bunking.manage"}); err != nil {
+					t.Fatalf("create stand-in: %v", err)
+				}
+				rolesCol, err := app.FindCollectionByNameOrId("roles")
+				if err != nil {
+					t.Fatalf("find roles: %v", err)
+				}
+				role := core.NewRecord(rolesCol)
+				role.Id = roleAssignRoleID
+				mustSave(t, app, role)
+				target := createUser(t, app, "casey@example.com", false, nil)
+				urCol, err := app.FindCollectionByNameOrId("user_roles")
+				if err != nil {
+					t.Fatalf("find user_roles: %v", err)
+				}
+				ur := core.NewRecord(urCol)
+				ur.Id = roleAssignRowID
+				ur.Set("user", target.Id)
+				ur.Set("role", role.Id)
+				mustSave(t, app, ur)
+				asUser(true, nil, "")(t, app, ev)
+			},
+			Headers:         headers,
+			ExpectedStatus:  http.StatusBadRequest,
+			ExpectedContent: []string{"Cannot assign roles to a view-as persona stand-in"},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				row, err := app.FindRecordById("user_roles", roleAssignRowID)
+				if err != nil {
+					t.Fatalf("find user_roles row: %v", err)
+				}
+				if row.GetString("user") == standInID {
+					t.Error("a user_roles row was retargeted at a view-as persona stand-in")
 				}
 			},
 		},
