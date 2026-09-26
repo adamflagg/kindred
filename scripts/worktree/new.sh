@@ -281,6 +281,8 @@ if [ -d "$LOCAL_REPO" ]; then
     # rather than copied so a worktree tracks kindred-local as the registry
     # grows. See docs/reference/lodging-registry.md.
     ln -sfr "$LOCAL_REPO/config/lodging_registry.json" "$WORKTREE_DIR/config/lodging_registry.json"
+    # Campership aid-source classifications, read by the aid_postings sync.
+    ln -sfr "$LOCAL_REPO/config/aid_sources.local.json" "$WORKTREE_DIR/config/aid_sources.local.json"
     ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$WORKTREE_DIR/frontend/vite.config.local.ts"
     ln -sfr "$LOCAL_REPO/scripts/vault.config" "$WORKTREE_DIR/scripts/vault.config"
     rm -rf "$WORKTREE_DIR/docs/camp"
