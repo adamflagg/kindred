@@ -16,7 +16,8 @@ import (
 // pb_migrations/), and the index statements the file declares are installed
 // on a collection shaped like subject_notes to prove what SQLite does with
 // them. The load-bearing fact: PocketBase stores an EMPTY single relation as
-// '' (NOT NULL), so the unique index covers the standard note (scenario = '').
+// an empty string (not NULL), so the unique index covers the standard note
+// (scenario = empty string).
 const subjectNotesMigration = "pb_migrations/1500000189_subject_notes.js"
 
 var subjectNotesIndexStatement = regexp.MustCompile("CREATE (?:UNIQUE )?INDEX `[a-z_]+` ON `subject_notes` \\([^)]*\\)")
