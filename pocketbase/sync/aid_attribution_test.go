@@ -17,6 +17,7 @@ var aidTestSessions = map[int]struct{ name, family string }{
 	14: {"Teen Leadership", programFamilyTeen},
 	21: {"Family Weekend 1", programFamilyFamilyCamp},
 	31: {"Mitzvah Year 1", programFamilyBMitzvah},
+	32: {"Mitzvah Year 2", programFamilyBMitzvah},
 	41: {"Adult Weekend", programFamilyAdultWeekend},
 }
 
@@ -257,6 +258,39 @@ func TestAidAttributionRules(t *testing.T) {
 			enrs:  []aidTestEnr{{1001, 11, enrolled}, {1002, 31, enrolled}},
 			setup: func(c *aidAttributionContext) { c.FAAnswersByPerson[1001] = []string{"Session 9"} },
 			in:    household,
+			want: aidAttribution{Level: aidLevelAmbiguous, Method: aidMethodAmbiguous,
+				CandidateFamilies: []string{programFamilyBMitzvah, programFamilySummer}},
+		},
+		{
+			// Fix round 1 (task review): a sibling's answer that resolves to a family they
+			// have zero enrollments in is noise, same as an answer naming no known session at
+			// all -- it must not block the single-session winner.
+			name:    "rule 7: a sibling's answer naming a family they are not enrolled in does not block the winner",
+			members: siblings,
+			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1002, 21, enrolled}},
+			setup: func(c *aidAttributionContext) {
+				c.FAAnswersByPerson[1001] = []string{"Session 2"}
+				c.FAAnswersByPerson[1002] = []string{"Mitzvah Year 1"}
+			},
+			in: household,
+			want: aidAttribution{Level: aidLevelSession, Method: aidMethodFAApplication,
+				PersonCMID: 1001, SessionCMID: 11, Family: programFamilySummer},
+		},
+		{
+			// Fix round 1 (task review + controller ruling): a sibling's answer names a
+			// session in the SAME family they are actually enrolled in, just a different
+			// session of it (moved from Mitzvah Year 1 to Mitzvah Year 2). That is a real
+			// second family in play, so the single-session winner must not be picked; falls
+			// through the family branch (two families, not one) and rule 8 (families differ)
+			// to rule 9, ambiguous.
+			name:    "rule 7: a sibling's answer naming a session they moved from, in the same family, blocks the winner",
+			members: siblings,
+			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1002, 32, enrolled}},
+			setup: func(c *aidAttributionContext) {
+				c.FAAnswersByPerson[1001] = []string{"Session 2"}
+				c.FAAnswersByPerson[1002] = []string{"Mitzvah Year 1"}
+			},
+			in: household,
 			want: aidAttribution{Level: aidLevelAmbiguous, Method: aidMethodAmbiguous,
 				CandidateFamilies: []string{programFamilyBMitzvah, programFamilySummer}},
 		},

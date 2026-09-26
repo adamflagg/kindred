@@ -266,7 +266,11 @@ func (c *aidAttributionContext) byFAApplication(working []aidEnrollment) (aidAtt
 			}
 		}
 	}
-	if len(sessionWinners) == 1 {
+	// A single-session winner is only trustworthy when no other candidate's
+	// resolved answer points at a second family they are actually enrolled in
+	// (fix round 1, task review): otherwise the household has two real signals
+	// pointing two different ways, and picking one camper would be a guess.
+	if len(sessionWinners) == 1 && len(familyHits) <= 1 {
 		return aidSessionAttribution(sessionWinners[0], aidMethodFAApplication), true
 	}
 	if len(familyHits) == 1 {
