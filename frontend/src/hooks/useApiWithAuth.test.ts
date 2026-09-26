@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import { writeViewAs, VIEW_AS_HEADER } from '../auth/viewAs'
 
 // Mock pocketbase module
 const mockClear = vi.fn()
@@ -96,5 +97,37 @@ describe('isAuthLoading', () => {
     const { useApiWithAuth } = await import('./useApiWithAuth')
     const { result } = renderHook(() => useApiWithAuth())
     expect(result.current.isAuthLoading).toBe(true)
+  })
+})
+
+describe('fetchWithAuth view-as header', () => {
+  beforeEach(() => window.sessionStorage.clear())
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('attaches the persona header when previewing', async () => {
+    writeViewAs({ label: 'Registrar', source: 'role', permissions: ['metrics.geo'] })
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    globalThis.fetch = fetchMock
+    const { useApiWithAuth } = await import('./useApiWithAuth')
+    const { result } = renderHook(() => useApiWithAuth())
+
+    await result.current.fetchWithAuth('/api/probe')
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(new Headers(init.headers).get(VIEW_AS_HEADER)).toBe('metrics.geo')
+  })
+
+  it('omits the header when not previewing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    globalThis.fetch = fetchMock
+    const { useApiWithAuth } = await import('./useApiWithAuth')
+    const { result } = renderHook(() => useApiWithAuth())
+
+    await result.current.fetchWithAuth('/api/probe')
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
+    expect(new Headers(init.headers).has(VIEW_AS_HEADER)).toBe(false)
   })
 })

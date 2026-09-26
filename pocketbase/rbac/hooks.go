@@ -253,12 +253,21 @@ func RegisterHooks(app core.App) {
 		return guardConfigWrite(e, false)
 	})
 
+	// Admin "view as" persona: point e.Auth at the persona stand-in (view_as.go).
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		se.Router.Bind(viewAsMiddleware())
+		return se.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+	})
+
 	// Invalidate FastAPI metrics cache when metrics-read config changes
 	registerConfigHooks(app)
 
 	// Keep is_admin and cached_permissions server-owned on every API write to
 	// users. Reads ADMIN_GROUP_NAME for the same reason RegisterOIDCHooks does.
 	registerUsersWriteGuard(app, os.Getenv("ADMIN_GROUP_NAME"))
+
+	// Refuse assigning a role to a view-as persona stand-in (view_as.go).
+	registerViewAsRoleGuard(app)
 
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)

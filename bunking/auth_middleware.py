@@ -19,6 +19,7 @@ from api.settings import _allow_auth_bypass
 from bunking.logging_config import get_logger
 
 from .jwt_auth import JWTValidator, PocketBaseTokenValidator, extract_bearer_token
+from .rbac.view_as import VIEW_AS_HEADER, decide_view_as
 
 logger = get_logger(__name__)
 
@@ -406,6 +407,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # In bypass mode, is_admin=True already grants full access
         if user and self.auth_mode == "production":
             await self._populate_user_permissions(user)
+            # Admin "view as" persona (bunking/rbac/view_as.py). After the
+            # populate, so the 60 s cache above only ever holds real access.
+            decision = decide_view_as(user.is_admin, user.permissions, request.headers.get(VIEW_AS_HEADER))
+            if decision.applied:
+                user.is_admin = decision.is_admin
+                user.permissions = set(decision.permissions)
 
         # Check if user is authenticated
         if not user:

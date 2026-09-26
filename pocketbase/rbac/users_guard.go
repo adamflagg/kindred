@@ -2,7 +2,9 @@ package rbac
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -31,6 +33,19 @@ func registerUsersWriteGuard(app core.App, adminGroup string) {
 	app.OnRecordCreateRequest("users").BindFunc(func(e *core.RecordRequestEvent) error {
 		if e.HasSuperuserAuth() {
 			return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+		}
+
+		// Reserve the view-as persona namespace. OAuth2 sign-up forwards client
+		// createData -- including a chosen id and email -- into this very create
+		// request (apis/record_auth_with_oauth2.go), so without this a client
+		// could squat a persona's deterministic id/email before any admin ever
+		// previews it; every future preview of that persona would then run as
+		// the squatter's real account. ensureViewAsPersona (view_as.go) verifies
+		// a found row before reusing it, but reserving the namespace here means
+		// there is never a squatted row to find in the first place.
+		if viewAsPersonaIDPattern.MatchString(e.Record.Id) ||
+			strings.HasSuffix(strings.ToLower(e.Record.Email()), "@"+viewAsPersonaEmailDomain) {
+			return apis.NewBadRequestError("This id/email is reserved", nil)
 		}
 
 		// Access comes only from roles (user_roles -> recomputeUserPermissions).

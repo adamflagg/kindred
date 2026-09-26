@@ -5,6 +5,8 @@ import { Users as UsersIcon, Mail, Calendar, Shield, ShieldCheck, LogIn } from '
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
+import { useRoles } from '../hooks/useRoles'
+import { isViewAsPersonaUser } from '../auth/viewAs'
 import { Permission } from '../constants/permissions'
 import { formatDistanceToNow } from 'date-fns'
 import { RolesTab } from './admin/RolesTab'
@@ -62,21 +64,16 @@ export default function Users() {
         sort: 'name',
         requestKey: null,
       })
-      return result.items
+      // PocketBase serves admin previews as stand-in users; they are not people.
+      // `RecordModel`'s index signature doesn't satisfy `{ email?: unknown }`'s
+      // weak-type check as a direct argument (TS2559), so read the field via
+      // bracket access, matching this file's existing RecordModel convention.
+      return result.items.filter((u) => !isViewAsPersonaUser({ email: u['email'] }))
     },
     ...userDataOptions,
   })
 
-  const { data: roles = [] } = useQuery({
-    queryKey: queryKeys.roles(),
-    queryFn: async () => {
-      return pb.collection('roles').getFullList<Role>({
-        sort: 'name',
-        requestKey: null,
-      })
-    },
-    ...userDataOptions,
-  })
+  const { data: roles = [] } = useRoles()
 
   const { data: allUserRoles = [] } = useQuery({
     queryKey: queryKeys.userRoles(),

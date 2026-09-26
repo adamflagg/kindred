@@ -10,8 +10,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Loader2, Shield } from 'lucide-react'
 import { pb } from '../../lib/pocketbase'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { useRoles } from '../../hooks/useRoles'
 import type { RecordModel } from 'pocketbase'
-import type { Role, UserRole } from '../../types/rbac'
+import type { UserRole } from '../../types/rbac'
 
 interface UserRolesPanelProps {
   user: RecordModel
@@ -21,16 +22,7 @@ interface UserRolesPanelProps {
 export function UserRolesPanel({ user, onClose }: UserRolesPanelProps) {
   const queryClient = useQueryClient()
 
-  const { data: roles = [], isLoading: rolesLoading } = useQuery({
-    queryKey: queryKeys.roles(),
-    queryFn: async () => {
-      return pb.collection('roles').getFullList<Role>({
-        sort: 'name',
-        requestKey: null,
-      })
-    },
-    ...userDataOptions,
-  })
+  const { data: roles = [], isLoading: rolesLoading } = useRoles()
 
   const { data: userRoles = [], isLoading: userRolesLoading } = useQuery({
     queryKey: queryKeys.userRolesForUser(user.id),

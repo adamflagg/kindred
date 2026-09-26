@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { pb } from '../lib/pocketbase'
+import { viewAsHeaders } from '../auth/viewAs'
 
 export interface FetchOptions extends RequestInit {
   skipAuth?: boolean
@@ -19,6 +20,11 @@ export function useApiWithAuth() {
     // Note: pb.authStore.token is read at call time, not dependency time
     if (!skipAuth && pb.authStore.token) {
       headers.set('Authorization', `Bearer ${pb.authStore.token}`)
+    }
+
+    // This tab's view-as persona; FastAPI honours it only for a real admin.
+    for (const [name, value] of Object.entries(viewAsHeaders())) {
+      headers.set(name, value)
     }
 
     // Always include credentials for cookie-based auth fallback

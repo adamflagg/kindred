@@ -12,6 +12,8 @@ Go service: SQLite DB, auth, CampMinder sync. Entry: `main.go`. Module: `github.
 | `pb_hooks/` | JS hooks executed by PocketBase v0.23 runtime |
 | `pb_migrations/` | Schema source of truth — JS migrations |
 
+**Admin "view as" previews act as a stand-in user.** When a real admin's request carries `X-Kindred-View-As`, `rbac/view_as.go` points `e.Auth` at a `users` row standing in for that permission set (email `<id>@view-as.invalid`, `is_admin` false). A clone would not work: PocketBase resolves custom `@request.auth.*` fields in rules by joining `users` on `e.Auth.Id`. So during a preview, rules and writes see the stand-in's id, not the admin's. Never edit a stand-in or assign it roles — delete the row and the next preview recreates it.
+
 ## Migrations — read before writing any
 
 **MANDATORY:** `docs/reference/pocketbase-migrations.md`. PocketBase v0.23 changed field property syntax; the old `options: {}` wrapper is **silently ignored** — fields fall back to PB defaults (text→5000 chars, json→1 MB) instead of your declared values, and over-cap writes are rejected (not truncated).

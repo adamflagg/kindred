@@ -240,6 +240,7 @@ tmp/
 !tests/fixtures/jotform_filer_match_cases.json
 !tests/unit/bunking/satisfaction/baselines/*.json
 !bunking/satisfaction/test_fixtures/*.json
+!pocketbase/rbac/testdata/*.json
 !bunking/geo_normalizer/data/us_cities.json
 !bunking/geo_normalizer/data/schools.json
 !bunking/geo_normalizer/data/congregations.json
