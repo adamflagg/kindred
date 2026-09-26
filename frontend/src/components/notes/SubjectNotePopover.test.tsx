@@ -191,6 +191,28 @@ describe('SubjectNotePopover', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
+  it('restores focus to the corner button when Escape closes it (F5)', () => {
+    render(<Board />)
+    openPopover()
+    const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
+    expect(document.activeElement).toBe(cornerButton)
+  })
+
+  it('restores focus to the corner button after a click-outside save', async () => {
+    render(<Board />)
+    openPopover()
+    const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Elsewhere' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    )
+    expect(document.activeElement).toBe(cornerButton)
+  })
+
   it('removes the pending click-eater when the popover unmounts (b1)', () => {
     // A press on the corner installs a capture-phase document click-eater
     // (swallowing the click that follows the same physical press). Left

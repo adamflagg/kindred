@@ -43,6 +43,20 @@ function PanelEditor({ scope, target }: { scope: SubjectNotesScopeValue; target:
   /** Save, Cancel, Escape or promote ended the edit on purpose. */
   const settled = useRef(false)
   const mounted = useRef(false)
+  // Focus restore (F5, frontend/CLAUDE.md): mirrors ConfirmActionPopover's
+  // capture-on-open, restore-on-close -- there is no anchor element to focus
+  // instead here, unlike the popover's corner button. A LAYOUT effect, not a
+  // passive one: `SubjectNoteEditor`'s own autofocus (below, in its child)
+  // runs in a passive effect too, and EVERY layout effect in the tree fires
+  // before ANY passive one -- a passive effect here would already see the
+  // textarea it just focused, not whatever was focused before this editor
+  // opened.
+  useLayoutEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    return () => {
+      previouslyFocused?.focus()
+    }
+  }, [])
   useEffect(() => {
     mounted.current = true
     return () => {

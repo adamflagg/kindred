@@ -332,6 +332,36 @@ describe('SubjectNotesSection — editing', () => {
     expect(value.save).toHaveBeenCalledWith(HOUSEHOLD, { standard: 'Standard, and more' }, '')
   })
 
+  it('restores focus to what was focused before the panel editor opened, once it closes (F5)', () => {
+    function Harness({
+      showEditor,
+      value,
+    }: {
+      showEditor: boolean
+      value: SubjectNotesScopeValue
+    }) {
+      return (
+        <>
+          <button type="button">Elsewhere</button>
+          <NotesScopeFixture value={{ ...value, editor: showEditor ? panelTarget : null }}>
+            <SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />
+          </NotesScopeFixture>
+        </>
+      )
+    }
+    const value = scopeValue([noteRow(HOUSEHOLD, 'Standard')])
+    const { rerender } = render(<Harness showEditor={false} value={value} />)
+    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' })
+    elsewhere.focus()
+    expect(document.activeElement).toBe(elsewhere)
+
+    rerender(<Harness showEditor value={value} />)
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveFocus()
+
+    rerender(<Harness showEditor={false} value={value} />)
+    expect(document.activeElement).toBe(elsewhere)
+  })
+
   it('closes a clean editor when the panel closes, so it does not reopen stale', async () => {
     const value = scopeValue([noteRow(HOUSEHOLD, 'Standard')], { editor: panelTarget })
     const { unmount } = render(<Panel value={value} />)

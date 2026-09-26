@@ -35,4 +35,14 @@ describe('trapTab', () => {
     const root = build()
     expect(trapTab(new KeyboardEvent('keydown', { key: 'Enter' }), root)).toBe(false)
   })
+
+  it('skips a tabindex="-1" element -- a programmatic focus target, not a Tab stop (F2)', () => {
+    const root = document.createElement('div')
+    root.innerHTML =
+      '<button>One</button><button tabindex="-1">Skip</button><textarea aria-label="Body"></textarea>'
+    document.body.appendChild(root)
+    root.querySelector('button')?.focus()
+    trapTab(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true }), root)
+    expect(document.activeElement?.tagName).toBe('TEXTAREA')
+  })
 })

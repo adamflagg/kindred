@@ -142,6 +142,17 @@ export function SubjectNotePopover({
   })
   useOverlayEscape(true, model.discard)
   useOutsidePointer(model, ref, subjectKey(target.subject))
+  // Focus restore (F5, frontend/CLAUDE.md): the anchor corner's own button,
+  // not whatever was focused before opening -- a click that opened this
+  // popover does not reliably leave focus on the corner across browsers, so
+  // this is more reliable than ConfirmActionPopover's plain
+  // capture-and-restore, and is simpler here since the anchor is already at
+  // hand.
+  useEffect(() => {
+    return () => {
+      target.anchorEl?.querySelector<HTMLElement>('button')?.focus()
+    }
+  }, [target.anchorEl])
 
   return createPortal(
     <div
