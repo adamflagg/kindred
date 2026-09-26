@@ -410,7 +410,7 @@ function CamperCard({
               // Portaled to `document.body`, outside `[data-camper-card]` --
               // without this, a mousedown on any item here (View Details, the
               // note item, …) bubbles to `document` before its own `click`
-              // fires, and the unplaced/unassigned queue's own document
+              // fires, and the unassigned queue's own document
               // mousedown listener (`ui/FloatingQueueBadge.tsx`) reads it as
               // an outside click and collapses the queue, unmounting this
               // menu before the click lands. Same mechanism as

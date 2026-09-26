@@ -1,5 +1,5 @@
 /**
- * I1: pressing a context-menu item on a queue card must not collapse the
+ * Pressing a context-menu item on a queue card must not collapse the
  * unassigned queue. The menu is portaled to `document.body`, outside
  * `[data-camper-card]` -- so its `mousedown` bubbles all the way to
  * FloatingQueueBadge's own click-outside listener before the menu item's

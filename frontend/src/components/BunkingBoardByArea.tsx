@@ -596,9 +596,10 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               friend-groups hub / action bar (#1630). */}
           <div
             data-board-wrapper
-            // Board notes: hides the empty-card ghost corner and makes every
-            // corner inert for the length of a drag (index.css), without
-            // re-rendering a memo'd card.
+            // Board notes: mirrors the outer `contents` wrapper above, which
+            // is what actually reaches every corner (the queue's included).
+            // Kept here too so the board wrapper itself still reports the
+            // drag state to anything that reads it.
             data-dragging={isDragging ? '' : undefined}
             className={getBoardBottomPaddingClass(
               isLockGroupUiActive,

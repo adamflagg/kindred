@@ -1,5 +1,5 @@
 /**
- * I2: the unassigned queue's note corners must be drag-inert too. index.css's
+ * The unassigned queue's note corners must be drag-inert too. index.css's
  * `[data-dragging] [data-note-corner…]` rule only reaches a corner that has
  * `[data-dragging]` somewhere ABOVE it in the DOM, and `data-board-wrapper`
  * (where that attribute lives) does not contain FloatingUnassignedBadge --
