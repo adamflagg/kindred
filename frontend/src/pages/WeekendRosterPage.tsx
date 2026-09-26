@@ -31,6 +31,7 @@ import { useNavigate, useParams } from 'react-router'
 
 import { WeekendLegendButton } from '../components/BunkingLegend'
 import { ErrorBoundary } from '../components/ErrorBoundary'
+import { SubjectNotesScope } from '../components/notes/SubjectNotesScope'
 import { QueryGuard } from '../components/QueryGuard'
 import { TitleSwitcher } from '../components/ui'
 import { Permission } from '../constants/permissions'
@@ -618,17 +619,28 @@ export default function WeekendRosterPage() {
                 {openedViews.has('housing') && (
                   <Activity mode={view === 'housing' ? 'visible' : 'hidden'}>
                     <ErrorBoundary>
-                      <Suspense fallback={<TabLoadingFallback />}>
-                        <LodgingBoard
-                          parties={parties}
-                          units={units}
-                          year={currentYear}
-                          scenario={scenario}
-                          sessionCmId={selectedCmId ?? 0}
-                          canManage={canManageLodging}
-                          sessionType={sessionType}
-                        />
-                      </Suspense>
+                      {/* Board notes: one read per board, in the SAME
+                          scoped scenario the roster reads (never another
+                          weekend's -- scenarioForWeekend above). */}
+                      <SubjectNotesScope
+                        year={currentYear}
+                        sessionCmId={selectedCmId ?? 0}
+                        scenarioId={scenario}
+                        scenarioName={scenario === '' ? '' : (currentScenario?.name ?? '')}
+                        canManage={canManageLodging}
+                      >
+                        <Suspense fallback={<TabLoadingFallback />}>
+                          <LodgingBoard
+                            parties={parties}
+                            units={units}
+                            year={currentYear}
+                            scenario={scenario}
+                            sessionCmId={selectedCmId ?? 0}
+                            canManage={canManageLodging}
+                            sessionType={sessionType}
+                          />
+                        </Suspense>
+                      </SubjectNotesScope>
                     </ErrorBoundary>
                   </Activity>
                 )}

@@ -15,6 +15,8 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { HOUSEHOLD, NotesScopeFixture, noteRow, scopeValue } from '../../test/notesScope'
+import { SubjectNotesSection } from '../notes/SubjectNotesSection'
 import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../ui/modalStack'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { partyAttention } from './rosterAttention'
@@ -1284,5 +1286,82 @@ describe('FamilyDetailsPanel — an adult guest’s sections (kindred#2759)', ()
   it('keeps the family sections without the weekend type', () => {
     render(<FamilyDetailsPanel party={guest()} year={2026} onClose={vi.fn()} />, { wrapper })
     expect(screen.queryByRole('heading', { name: 'Bunking request (Jotform)' })).toBeNull()
+  })
+})
+
+describe('FamilyDetailsPanel — pixel identity without a note slot (board notes)', () => {
+  it('renders exactly what main renders', () => {
+    const { baseElement } = render(
+      <FamilyDetailsPanel party={party()} unit={unit()} year={2026} onClose={vi.fn()} />,
+      { wrapper }
+    )
+    // `normalizeIds` lives only in `FamilyCard.notes.test.tsx`,
+    // unexported, and is NOT imported here: importing any symbol from a
+    // `*.test.tsx` file executes that file's top-level `describe`/`vi.mock`
+    // calls as a side effect of module resolution, which re-registered
+    // FamilyCard's whole suite (and its `usePermissions` mock) inside THIS
+    // file's run and broke an unrelated admin-gated test (verified by hand
+    // before writing this). No shared, non-test helper exports it either.
+    // Confirmed empirically that this panel's default render contains no
+    // React `useId`-style token (`«r0»`/`:r0:`) for `normalizeIds` to strip,
+    // so snapshotting the raw markup is safe here.
+    expect(baseElement.innerHTML).toMatchSnapshot()
+  })
+})
+
+describe('FamilyDetailsPanel — the Note section comes first (board notes)', () => {
+  function bodyOf(): Element | null | undefined {
+    return screen.getByText('Placement').closest('section')?.parentElement
+  }
+
+  it('renders the slot as the body’s first child, before Placement', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party()}
+        unit={unit()}
+        year={2026}
+        onClose={vi.fn()}
+        notesSlot={<section data-testid="notes-slot" />}
+      />,
+      { wrapper }
+    )
+    expect(bodyOf()?.firstElementChild).toBe(screen.getByTestId('notes-slot'))
+  })
+
+  it('shows no Note section at all while the family has no note', () => {
+    // REGRESSION PIN: this passes before the `notesSlot` prop exists too --
+    // an unwired panel shows no note section either. It is written now
+    // alongside the others so the whole describe block is asserted together.
+    render(
+      <NotesScopeFixture value={scopeValue()}>
+        <FamilyDetailsPanel
+          party={party()}
+          unit={unit()}
+          year={2026}
+          onClose={vi.fn()}
+          notesSlot={<SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />}
+        />
+      </NotesScopeFixture>,
+      { wrapper }
+    )
+    expect(document.querySelector('[data-notes-section]')).toBeNull()
+    expect(bodyOf()?.firstElementChild?.textContent).toMatch(/^Placement/)
+  })
+
+  it('shows the note first once there is one', () => {
+    render(
+      <NotesScopeFixture value={scopeValue([noteRow(HOUSEHOLD, 'Grandma comes Saturday.')])}>
+        <FamilyDetailsPanel
+          party={party()}
+          unit={unit()}
+          year={2026}
+          onClose={vi.fn()}
+          notesSlot={<SubjectNotesSection subject={HOUSEHOLD} label="Johnson" look="family" />}
+        />
+      </NotesScopeFixture>,
+      { wrapper }
+    )
+    expect(bodyOf()?.firstElementChild).toHaveAttribute('data-notes-section')
+    expect(screen.getByText('Grandma comes Saturday.')).toBeInTheDocument()
   })
 })

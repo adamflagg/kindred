@@ -381,3 +381,21 @@ describe('FloatingUnplacedBadge — the weekend type reaches its cards (kindred#
     ).toBeInTheDocument()
   })
 })
+
+describe('FloatingUnplacedBadge — board note slots', () => {
+  it('gives queue cards their corner', async () => {
+    const partyNoteSlots = vi.fn(() => ({ corner: <span data-testid="queue-corner" /> }))
+    render(
+      <FloatingUnplacedBadge
+        parties={[party()]}
+        onOpenParty={vi.fn()}
+        partyNoteSlots={partyNoteSlots}
+      />,
+      {
+        wrapper,
+      }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
+    expect(screen.getByTestId('queue-corner').closest('[data-family-card]')).not.toBeNull()
+  })
+})

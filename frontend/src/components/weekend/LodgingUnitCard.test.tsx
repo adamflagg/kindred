@@ -4439,3 +4439,20 @@ describe('the map popover and the card agree on an adult weekend (kindred#2765)'
     expect([cardOver, mapOver]).toEqual([isOver, isOver])
   })
 })
+
+describe('LodgingUnitCard — board note slots pass through to each family card', () => {
+  it('hands each party its own slots', () => {
+    const partyNoteSlots = vi.fn((p: RosterPartyRow) => ({
+      corner: <span data-testid={`corner-${String(p.household_cm_id)}`} />,
+    }))
+    render(
+      <LodgingUnitCard
+        slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
+        onOpenParty={vi.fn()}
+        partyNoteSlots={partyNoteSlots}
+      />
+    )
+    expect(screen.getByTestId('corner-101').closest('[data-family-card]')).not.toBeNull()
+    expect(screen.getByTestId('corner-102').closest('[data-family-card]')).not.toBeNull()
+  })
+})
