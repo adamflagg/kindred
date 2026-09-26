@@ -123,35 +123,27 @@ func TestRateLimiter_HandleError_RateLimitError(t *testing.T) {
 		MaxAttempts:       3,
 	}
 
-	rl := NewRateLimiter(cfg)
-
 	testCases := []struct {
 		name        string
-		errMsg      string
+		err         error
 		shouldRetry bool
 		minWaitTime time.Duration
 	}{
 		{
-			name:        "429 error",
-			errMsg:      "status 429: Too Many Requests",
-			shouldRetry: true,
-			minWaitTime: 100 * time.Millisecond,
-		},
-		{
-			name:        "rate limit text",
-			errMsg:      "rate limit exceeded",
+			name:        "typed rate-limit error",
+			err:         hintedErr{0},
 			shouldRetry: true,
 			minWaitTime: 100 * time.Millisecond,
 		},
 		{
 			name:        "not a rate limit error",
-			errMsg:      "connection refused",
+			err:         errors.New("connection refused"),
 			shouldRetry: false,
 			minWaitTime: 0,
 		},
 		{
 			name:        "generic 500 error",
-			errMsg:      "internal server error 500",
+			err:         errors.New("internal server error 500"),
 			shouldRetry: false,
 			minWaitTime: 0,
 		},
@@ -159,22 +151,52 @@ func TestRateLimiter_HandleError_RateLimitError(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset the rate limiter for each test
-			rl = NewRateLimiter(cfg)
+			// Fresh rate limiter for each test
+			rl := NewRateLimiter(cfg)
 
-			err := errors.New(tc.errMsg)
-			shouldRetry, waitTime := rl.HandleError(err)
+			shouldRetry, waitTime := rl.HandleError(tc.err)
 
 			if shouldRetry != tc.shouldRetry {
-				t.Errorf("HandleError(%q).shouldRetry = %v, want %v", tc.errMsg, shouldRetry, tc.shouldRetry)
+				t.Errorf("HandleError(%v).shouldRetry = %v, want %v", tc.err, shouldRetry, tc.shouldRetry)
 			}
 
 			if tc.shouldRetry && waitTime < tc.minWaitTime {
-				t.Errorf("HandleError(%q).waitTime = %v, want >= %v", tc.errMsg, waitTime, tc.minWaitTime)
+				t.Errorf("HandleError(%v).waitTime = %v, want >= %v", tc.err, waitTime, tc.minWaitTime)
 			}
 
 			if !tc.shouldRetry && waitTime != 0 {
-				t.Errorf("HandleError(%q).waitTime = %v, want 0 for non-retryable error", tc.errMsg, waitTime)
+				t.Errorf("HandleError(%v).waitTime = %v, want 0 for non-retryable error", tc.err, waitTime)
+			}
+		})
+	}
+}
+
+// TestRateLimiter_HandleError_UntypedRateLimitTextNotRetried proves that dropping the
+// substring match was real: an error whose text says "429" or "rate limit" but does not
+// implement retryAfterer is not treated as a rate-limit error at all. Only campminder's typed
+// *RateLimitError (or anything else satisfying retryAfterer via errors.As) qualifies now.
+func TestRateLimiter_HandleError_UntypedRateLimitTextNotRetried(t *testing.T) {
+	cfg := &Config{
+		APIDelay:          100 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+		MaxDelay:          1 * time.Second,
+		MaxAttempts:       3,
+	}
+
+	for _, errMsg := range []string{
+		"status 429: Too Many Requests",
+		"rate limit exceeded",
+		"429 rate limit",
+	} {
+		t.Run(errMsg, func(t *testing.T) {
+			rl := NewRateLimiter(cfg)
+			shouldRetry, waitTime := rl.HandleError(errors.New(errMsg))
+
+			if shouldRetry {
+				t.Errorf("HandleError(%q).shouldRetry = true, want false (untyped text must not retry)", errMsg)
+			}
+			if waitTime != 0 {
+				t.Errorf("HandleError(%q).waitTime = %v, want 0", errMsg, waitTime)
 			}
 		})
 	}
@@ -189,7 +211,7 @@ func TestRateLimiter_HandleError_ExponentialBackoff(t *testing.T) {
 	}
 
 	rl := NewRateLimiter(cfg)
-	rateLimitErr := errors.New("429 rate limit")
+	rateLimitErr := hintedErr{0}
 
 	// First error: should return initial delay
 	shouldRetry, waitTime1 := rl.HandleError(rateLimitErr)
@@ -227,7 +249,7 @@ func TestRateLimiter_HandleError_MaxAttempts(t *testing.T) {
 	}
 
 	rl := NewRateLimiter(cfg)
-	rateLimitErr := errors.New("429 rate limit")
+	rateLimitErr := hintedErr{0}
 
 	// First 2 errors should be retryable
 	for i := range 2 {
@@ -253,7 +275,7 @@ func TestRateLimiter_HandleError_MaxDelay(t *testing.T) {
 	}
 
 	rl := NewRateLimiter(cfg)
-	rateLimitErr := errors.New("429 rate limit")
+	rateLimitErr := hintedErr{0}
 
 	// Multiple errors to trigger backoff beyond MaxDelay
 	var lastWaitTime time.Duration
@@ -277,7 +299,7 @@ func TestRateLimiter_Success(t *testing.T) {
 	}
 
 	rl := NewRateLimiter(cfg)
-	rateLimitErr := errors.New("429 rate limit")
+	rateLimitErr := hintedErr{0}
 
 	// Trigger some errors to increase consecutive error count
 	for range 3 {
@@ -354,7 +376,7 @@ func TestRateLimiter_ExecuteWithRetry_Success(t *testing.T) {
 		err := rl.ExecuteWithRetry(context.Background(), func() error {
 			callCount++
 			if callCount < 3 {
-				return errors.New("429 rate limit")
+				return hintedErr{0}
 			}
 			return nil
 		})
@@ -395,7 +417,7 @@ func TestRateLimiter_ExecuteWithRetry_Failure(t *testing.T) {
 		callCount := 0
 		err := rl.ExecuteWithRetry(context.Background(), func() error {
 			callCount++
-			return errors.New("429 rate limit")
+			return hintedErr{0}
 		})
 		if err == nil {
 			t.Error("ExecuteWithRetry() should return error when max retries exceeded")
@@ -423,7 +445,7 @@ func TestRateLimiter_ExecuteWithRetry_ContextCancellation(t *testing.T) {
 		if callCount == 2 {
 			cancel() // Cancel after second call
 		}
-		return errors.New("429 rate limit")
+		return hintedErr{0}
 	}
 
 	err := rl.ExecuteWithRetry(ctx, fn)
@@ -454,7 +476,7 @@ func TestRateLimiter_ConcurrentAccess(_ *testing.T) {
 		go func() {
 			ctx := context.Background()
 			_ = rl.Wait(ctx)
-			rl.HandleError(errors.New("429 rate limit"))
+			rl.HandleError(hintedErr{0})
 			rl.Success()
 			done <- true
 		}()

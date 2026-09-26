@@ -948,7 +948,8 @@ func TestMakeRequest_UnhintedBackoffDoublesAndIsCapped(t *testing.T) {
 		t.Fatal("makeRequest returned nil error on a persistent 429")
 	}
 	if !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "rate limit") {
-		t.Errorf("error %q must keep \"429\" and \"rate limit\" -- ratelimit.HandleError matches on them", err)
+		t.Errorf("error %q must keep \"429\" and \"rate limit\" for a readable log/error message "+
+			"(ratelimit.HandleError no longer matches on this text; it requires the typed *RateLimitError)", err)
 	}
 	if got := int(calls.Load()); got != maxRequestRetries+1 {
 		t.Errorf("calls = %d, want %d (1 + maxRequestRetries)", got, maxRequestRetries+1)

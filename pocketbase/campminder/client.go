@@ -23,7 +23,8 @@ const (
 
 	// maxRequestRetries caps retries on HTTP 429 responses for regular requests
 	// (makeRequestWithURLRetry), auth requests (authenticateAtURL), and every
-	// makeRequest/makeRequestWithTimeout call (doRequest).
+	// makeRequest/makeRequestWithTimeout call (doRequest). makeRequestNoRetry does not
+	// retry at all -- its callers own the retry.
 	maxRequestRetries = 10
 
 	// rateLimitBaseBackoff is makeRequest's first wait after a 429 whose body carries no
@@ -339,7 +340,17 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 
 // makeRequest makes an authenticated API request with the client's default timeout.
 func (c *Client) makeRequest(method, endpoint string, params map[string]string) ([]byte, error) {
-	return c.doRequest(c.httpClient, method, endpoint, params)
+	return c.doRequest(context.Background(), c.httpClient, method, endpoint, params, true)
+}
+
+// makeRequestNoRetry is makeRequest for a caller that owns the 429 retry itself: one attempt,
+// bound to ctx, and a 429 comes back at once as a *RateLimitError carrying the wait instead
+// of being retried here. Only the custom-field-values fetches use it -- their syncs wrap each
+// fetch in ratelimit.ExecuteWithRetry, and a retry here too would nest the two loops.
+func (c *Client) makeRequestNoRetry(
+	ctx context.Context, method, endpoint string, params map[string]string,
+) ([]byte, error) {
+	return c.doRequest(ctx, c.httpClient, method, endpoint, params, false)
 }
 
 // makeRequestWithTimeout is makeRequest with its own deadline for this one call. The shallow
@@ -350,14 +361,14 @@ func (c *Client) makeRequestWithTimeout(
 ) ([]byte, error) {
 	hc := *c.httpClient
 	hc.Timeout = timeout
-	return c.doRequest(&hc, method, endpoint, params)
+	return c.doRequest(context.Background(), &hc, method, endpoint, params, true)
 }
 
-// doRequest sends one API request, retrying on HTTP 429 up to maxRequestRetries times
-// (rateLimitWait sets each wait). The exhausted-cap error keeps "429" and "rate limit",
-// which ratelimit.RateLimiter.HandleError matches, so the custom-values syncs' outer retry
-// still recognizes it.
-func (c *Client) doRequest(hc *http.Client, method, endpoint string, params map[string]string) ([]byte, error) {
+// doRequest sends one API request. With retry429 it retries HTTP 429 up to maxRequestRetries
+// times (rateLimitWait sets each wait); without it, the first 429 returns a *RateLimitError.
+func (c *Client) doRequest(
+	ctx context.Context, hc *http.Client, method, endpoint string, params map[string]string, retry429 bool,
+) ([]byte, error) {
 	base := baseURL
 	if c.apiBaseURL != "" {
 		base = c.apiBaseURL
@@ -375,7 +386,7 @@ func (c *Client) doRequest(hc *http.Client, method, endpoint string, params map[
 		if err := c.ensureAuthenticated(); err != nil {
 			return nil, fmt.Errorf("authentication failed: %w", err)
 		}
-		req, err := c.newAPIRequest(method, fullURL, params)
+		req, err := c.newAPIRequest(ctx, method, fullURL, params)
 		if err != nil {
 			return nil, err
 		}
@@ -390,6 +401,11 @@ func (c *Client) doRequest(hc *http.Client, method, endpoint string, params map[
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
+			if !retry429 {
+				rle := &RateLimitError{Endpoint: endpoint, Wait: rateLimitWait(string(body), 0)}
+				slog.Warn("CampMinder rate limited", "endpoint", endpoint, "wait", rle.Wait, "retry", "caller")
+				return nil, rle
+			}
 			if attempt >= maxRequestRetries {
 				return nil, fmt.Errorf("rate limit exceeded (429) after %d retries", maxRequestRetries)
 			}
@@ -408,14 +424,16 @@ func (c *Client) doRequest(hc *http.Client, method, endpoint string, params map[
 
 // newAPIRequest builds one attempt's request. A POST/PUT body is rebuilt on every attempt
 // because a sent body has been consumed.
-func (c *Client) newAPIRequest(method, fullURL string, params map[string]string) (*http.Request, error) {
+func (c *Client) newAPIRequest(
+	ctx context.Context, method, fullURL string, params map[string]string,
+) (*http.Request, error) {
 	var req *http.Request
 	var err error
 	if method == "GET" {
-		req, err = http.NewRequestWithContext(context.Background(), method, fullURL, http.NoBody)
+		req, err = http.NewRequestWithContext(ctx, method, fullURL, http.NoBody)
 	} else {
 		jsonBody, _ := json.Marshal(params)
-		req, err = http.NewRequestWithContext(context.Background(), method, fullURL, bytes.NewBuffer(jsonBody))
+		req, err = http.NewRequestWithContext(ctx, method, fullURL, bytes.NewBuffer(jsonBody))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -736,6 +754,25 @@ func (c *Client) CloneWithYear(year int) *Client {
 	return newClient
 }
 
+// RateLimitError is an HTTP 429 that makeRequestNoRetry hands back instead of retrying.
+// RetryAfter is how long to wait before trying again: CampMinder's "Try again in N seconds"
+// hint plus a 5s buffer, clamped at rateLimitMaxHintedWait, or rateLimitBaseBackoff when the
+// body carries no hint -- the same first wait makeRequest's own retry would use. The message
+// keeps "429" and "rate limit" for readability in logs; ratelimit.HandleError no longer matches
+// on that text -- it recognizes this error only by its typed RetryAfter() hint (errors.As).
+type RateLimitError struct {
+	Endpoint string
+	Wait     time.Duration
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("rate limit exceeded (429) on %s; retry after %s", e.Endpoint, e.Wait)
+}
+
+// RetryAfter satisfies the hint interface ratelimit.RateLimiter.HandleError looks for, so
+// the caller's ExecuteWithRetry waits at least this long.
+func (e *RateLimitError) RetryAfter() time.Duration { return e.Wait }
+
 // parseRateLimitHint extracts N from CampMinder's "Rate limit is exceeded. Try again in N
 // seconds." 429 body, sent either plain or as {"message": "..."}.
 func parseRateLimitHint(body string) (int, bool) {
@@ -880,10 +917,12 @@ func (c *Client) GetCustomFieldDefinitionsPage(
 // Endpoint: GET /persons/{id}/custom-fields
 // Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
 // Note: Requires 1 API call per person - use sparingly
+// Does NOT retry a 429: it returns a *RateLimitError at once, and the caller's
+// ratelimit.ExecuteWithRetry is the only retry layer (see makeRequestNoRetry). ctx bounds the request.
 //
 //nolint:dupl // Similar pattern to GetHouseholdCustomFieldValuesPage, intentional for person variant
 func (c *Client) GetPersonCustomFieldValuesPage(
-	personID, page, pageSize int,
+	ctx context.Context, personID, page, pageSize int,
 ) (results []map[string]any, hasMore bool, err error) {
 	endpoint := fmt.Sprintf("persons/%d/custom-fields", personID)
 	params := map[string]string{
@@ -893,7 +932,7 @@ func (c *Client) GetPersonCustomFieldValuesPage(
 		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
-	body, err := c.makeRequest("GET", endpoint, params)
+	body, err := c.makeRequestNoRetry(ctx, "GET", endpoint, params)
 	if err != nil {
 		return nil, false, err
 	}
@@ -917,10 +956,12 @@ func (c *Client) GetPersonCustomFieldValuesPage(
 // Endpoint: GET /persons/households/{id}/custom-fields
 // Returns: array of custom field values with id, clientId, seasonId, value, lastUpdated (camelCase)
 // Note: Requires 1 API call per household - use sparingly
+// Does NOT retry a 429: it returns a *RateLimitError at once, and the caller's
+// ratelimit.ExecuteWithRetry is the only retry layer (see makeRequestNoRetry). ctx bounds the request.
 //
 //nolint:dupl // Similar pattern to GetPersonCustomFieldValuesPage, intentional for household variant
 func (c *Client) GetHouseholdCustomFieldValuesPage(
-	householdID, page, pageSize int,
+	ctx context.Context, householdID, page, pageSize int,
 ) (results []map[string]any, hasMore bool, err error) {
 	// Verified via API testing: custom-fields (with hyphen) is the correct format
 	endpoint := fmt.Sprintf("persons/households/%d/custom-fields", householdID)
@@ -931,7 +972,7 @@ func (c *Client) GetHouseholdCustomFieldValuesPage(
 		paramPageSize:   strconv.Itoa(pageSize),
 	}
 
-	body, err := c.makeRequest("GET", endpoint, params)
+	body, err := c.makeRequestNoRetry(ctx, "GET", endpoint, params)
 	if err != nil {
 		return nil, false, err
 	}

@@ -3,9 +3,9 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -63,37 +63,45 @@ func (r *RateLimiter) Wait(ctx context.Context) error {
 	return nil
 }
 
-// HandleError processes an error and returns whether to retry and how long to wait
+// retryAfterer is a rate-limit error that carries the server's own wait (campminder's
+// RateLimitError). The error's producer bounds the value; MaxAttempts bounds the retries.
+type retryAfterer interface {
+	RetryAfter() time.Duration
+}
+
+// HandleError processes an error and returns whether to retry and how long to wait. Only a
+// typed rate-limit error is treated as one: anything satisfying retryAfterer via errors.As
+// (campminder.RateLimitError is the sole producer). A hint floors this one wait but does not
+// become the limiter's pacing, which stays backoff-driven. Text alone ("429", "rate limit")
+// no longer qualifies -- an untyped error, however it reads, is not retried here.
 func (r *RateLimiter) HandleError(err error) (shouldRetry bool, waitTime time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	errStr := strings.ToLower(err.Error())
-
-	// Check if it's a rate limit error
-	if strings.Contains(errStr, "429") || strings.Contains(errStr, "rate limit") {
-		r.consecutiveErrors++
-
-		// Calculate exponential backoff
-		waitTime = time.Duration(min(
-			float64(r.currentDelay)*math.Pow(r.config.BackoffMultiplier, float64(r.consecutiveErrors-1)),
-			float64(r.config.MaxDelay),
-		))
-
-		// Update rate limiter to slow down
-		newDelay := waitTime
-		if newDelay > r.currentDelay {
-			r.currentDelay = newDelay
-			// Update rate limiter with new delay
-			rps := float64(time.Second) / float64(newDelay)
-			r.limiter.SetLimit(rate.Limit(rps))
-		}
-
-		return r.consecutiveErrors < r.config.MaxAttempts, waitTime
+	var hinted retryAfterer
+	if !errors.As(err, &hinted) {
+		return false, 0
 	}
 
-	// Not a rate limit error
-	return false, 0
+	r.consecutiveErrors++
+
+	// Calculate exponential backoff
+	waitTime = time.Duration(min(
+		float64(r.currentDelay)*math.Pow(r.config.BackoffMultiplier, float64(r.consecutiveErrors-1)),
+		float64(r.config.MaxDelay),
+	))
+
+	// Update rate limiter to slow down
+	newDelay := waitTime
+	if newDelay > r.currentDelay {
+		r.currentDelay = newDelay
+		// Update rate limiter with new delay
+		rps := float64(time.Second) / float64(newDelay)
+		r.limiter.SetLimit(rate.Limit(rps))
+	}
+
+	waitTime = max(waitTime, hinted.RetryAfter())
+	return r.consecutiveErrors < r.config.MaxAttempts, waitTime
 }
 
 // Success resets the error counter
