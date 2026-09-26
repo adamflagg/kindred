@@ -13,6 +13,20 @@ export const PREVIEW_CHARS = 120
 /** subject_notes.body's cap. */
 export const NOTE_MAX = 2000
 
+/** Matches `ModeBadge.tsx`'s fallback for an unnamed scenario. */
+export const UNTITLED_SCENARIO = 'Untitled Scenario'
+
+/**
+ * The plan pill and the "+ Note just for …" link both need a name to show
+ * even before the scenario's own name has loaded (hosts pass
+ * `currentScenario?.name ?? ''`, so a bare empty string is a real transient
+ * state, not a bug upstream). One place, so both `SubjectNoteEditor` and
+ * `SubjectNotesSection` render the same fallback (fix round 1, m4).
+ */
+export function displayScenarioName(name: string): string {
+  return name === '' ? UNTITLED_SCENARIO : name
+}
+
 export interface SubjectLayers {
   standard?: SubjectNoteRow | undefined
   plan?: SubjectNoteRow | undefined

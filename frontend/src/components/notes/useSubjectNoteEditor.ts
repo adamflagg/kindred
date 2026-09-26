@@ -30,7 +30,14 @@ export interface SubjectNoteEditorModel {
   /** Resolves true once saved and closed; false when the write failed (the editor stays open). */
   save: () => Promise<boolean>
   discard: () => void
-  promote: () => Promise<void>
+  /**
+   * Resolves true once promoted and closed; false when the write failed or an
+   * in-flight call already owns it (the editor stays open). Mirrors `save`
+   * (fix round 1, I2) so a caller can tell a real failure from a refusal --
+   * without it, a wrapper can never distinguish a rejected promote from a
+   * successful one, and so can never safely re-arm itself after one fails.
+   */
+  promote: () => Promise<boolean>
 }
 
 export function useSubjectNoteEditor(
@@ -99,15 +106,17 @@ export function useSubjectNoteEditor(
     }
   }
 
-  const promote = async () => {
-    if (inFlight.current) return
+  const promote = async (): Promise<boolean> => {
+    if (inFlight.current) return false
     inFlight.current = true
     setBusy(true)
     try {
       await scope.promote(target.subject, drafts, target.scenarioId)
       scope.closeEditor(target)
+      return true
     } catch {
       // Toasted by the mutation (e.g. the 2000-character refusal); stay open.
+      return false
     } finally {
       inFlight.current = false
       setBusy(false)

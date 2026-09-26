@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 
 import type { SubjectNoteRow } from '../../types/subjectNotes'
 import { PlanNotePill } from './PlanNotePill'
-import { editedLine, NOTE_LABEL, NOTE_MAX } from './subjectNoteModel'
+import { displayScenarioName, editedLine, NOTE_LABEL, NOTE_MAX } from './subjectNoteModel'
 import type { SubjectNoteEditorModel } from './useSubjectNoteEditor'
 
 function NoteBox({
@@ -110,7 +110,7 @@ export function SubjectNoteEditor({
           (model.planExpanded ? (
             <div className="flex flex-col gap-1">
               <div>
-                <PlanNotePill name={model.scenarioName} />
+                <PlanNotePill name={displayScenarioName(model.scenarioName)} />
               </div>
               <NoteBox
                 layer="plan"
@@ -137,7 +137,7 @@ export function SubjectNoteEditor({
               onClick={model.expandPlan}
               className="text-forest-700 self-start text-xs font-medium hover:underline"
             >
-              + Note just for {model.scenarioName}
+              + Note just for {displayScenarioName(model.scenarioName)}
             </button>
           ))}
       </div>

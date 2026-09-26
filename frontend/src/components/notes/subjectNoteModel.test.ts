@@ -5,6 +5,7 @@ import {
   camperSubject,
   changedDrafts,
   cornerState,
+  displayScenarioName,
   editedLine,
   extraLayerCount,
   indexNotes,
@@ -138,5 +139,12 @@ describe('editedLine', () => {
   it('says nothing is saved yet, or when and who', () => {
     expect(editedLine(undefined)).toBe('Nothing saved yet')
     expect(editedLine(row())).toBe('edited Sep 25 · Test Staff')
+  })
+})
+
+describe('displayScenarioName', () => {
+  it('falls back to "Untitled Scenario" for an empty name, matching ModeBadge (fix round 1, m4)', () => {
+    expect(displayScenarioName('')).toBe('Untitled Scenario')
+    expect(displayScenarioName('Draft A')).toBe('Draft A')
   })
 })

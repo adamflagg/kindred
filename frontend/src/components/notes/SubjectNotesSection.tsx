@@ -24,7 +24,13 @@ import {
   type EditorTarget,
   type SubjectNotesScopeValue,
 } from './subjectNotesContext'
-import { editedLine, NOTE_LABEL, subjectKey, type SubjectLayers } from './subjectNoteModel'
+import {
+  displayScenarioName,
+  editedLine,
+  NOTE_LABEL,
+  subjectKey,
+  type SubjectLayers,
+} from './subjectNoteModel'
 import { SubjectNoteEditor } from './SubjectNoteEditor'
 import { useSubjectNoteEditor, type SubjectNoteEditorModel } from './useSubjectNoteEditor'
 
@@ -56,6 +62,16 @@ function PanelEditor({ scope, target }: { scope: SubjectNotesScopeValue; target:
   const wrapped: SubjectNoteEditorModel = {
     ...model,
     save: async () => {
+      // A call landing while an earlier save OR promote is still in flight
+      // must not touch `settled` at all (fix round 1, I1): the hook's own
+      // `inFlight` guard already refuses it and resolves false, and if we let
+      // that refusal flip `settled` back to false, a settle from the FIRST
+      // (still in-flight) call arrives later and leaves `settled` wrong --
+      // the unmount flush then fires again and writes a duplicate. `busy` is
+      // read straight off `model` (not a ref): `wrapped` is rebuilt every
+      // render, and `setBusy` commits before any later, separate user event
+      // can reach this closure, so it is never stale here.
+      if (model.busy) return false
       settled.current = true
       const saved = await model.save()
       if (!saved) settled.current = false
@@ -66,8 +82,11 @@ function PanelEditor({ scope, target }: { scope: SubjectNotesScopeValue; target:
       model.discard()
     },
     promote: async () => {
+      if (model.busy) return false
       settled.current = true
-      await model.promote()
+      const ok = await model.promote()
+      if (!ok) settled.current = false
+      return ok
     },
   }
   useOverlayEscape(true, wrapped.discard)
@@ -109,7 +128,7 @@ function ReadView({
           className="flex w-full flex-col gap-0.5 rounded-lg border border-dashed border-yellow-400 bg-yellow-50 px-2 py-1.5 text-left hover:bg-yellow-100"
         >
           <span className="flex">
-            <PlanNotePill name={scenarioName} small />
+            <PlanNotePill name={displayScenarioName(scenarioName)} small />
           </span>
           <span className="text-sm whitespace-pre-wrap text-stone-900">{layers.plan.body}</span>
           <span className="text-[11px] text-stone-600">{editedLine(layers.plan)}</span>
@@ -134,7 +153,7 @@ function ReadView({
             onEdit('plan')
           }}
         >
-          + Note just for {scenarioName}
+          + Note just for {displayScenarioName(scenarioName)}
         </button>
       )}
     </>
