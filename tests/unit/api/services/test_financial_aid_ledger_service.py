@@ -15,6 +15,7 @@ from api.services.financial_aid_ledger_service import (
     FinancialAidNotFoundError,
     as_of_cutoff,
     family_household_set,
+    live_at,
     money,
     normalize_aid_label,
     program_bucket,
@@ -178,6 +179,9 @@ def test_family_household_set_returns_empty_for_a_non_positive_household() -> No
         ("  REGIONAL   grant  -   north  ", "regional grant - north"),
         ("Session 3 (All-Gender Cabin)", "session 3 (all - gender cabin)"),
         ("   ", ""),
+        ("Grant North", "grant north"),
+        ("A\vB", "a b"),  # vertical tab -- the Go twin's RE2 \s alone omits it
+        ("A B", "a b"),  # U+202F narrow no-break space -- outside RE2's \s
     ],
 )
 def test_normalize_aid_label_is_the_go_twin(raw: str, want: str) -> None:
@@ -187,6 +191,37 @@ def test_normalize_aid_label_is_the_go_twin(raw: str, want: str) -> None:
 def test_as_of_cutoff_is_the_end_of_the_day_in_camp_time() -> None:
     assert as_of_cutoff(date(2026, 3, 10)) == datetime(2026, 3, 11, 7, 0, tzinfo=UTC)  # PDT
     assert as_of_cutoff(date(2026, 1, 10)) == datetime(2026, 1, 11, 8, 0, tzinfo=UTC)  # PST
+
+
+def test_live_at_counts_a_reversal_exactly_on_the_cutoff_instant() -> None:
+    # Item 9 (final review, tests only): a posting reversed AT the as-of
+    # cutoff instant has not yet been reversed as of that day's end, so it
+    # still counts for that day.
+    cutoff = as_of_cutoff(date(2026, 3, 10))  # 2026-03-11T07:00:00Z (PDT)
+    posting = _posting(
+        9001,
+        100,
+        -500.0,
+        post_date="2026-03-02 17:00:00.000Z",
+        is_reversed=True,
+        reversal_date="2026-03-11 07:00:00.000Z",
+    )
+    assert live_at(posting, cutoff) is True
+
+
+def test_live_at_does_not_count_a_reversal_at_23_59_59_camp_time_on_the_day() -> None:
+    # 23:59:59 camp time on day D is one second before D's cutoff, so a
+    # reversal there has already happened as of D's end and must not count.
+    cutoff = as_of_cutoff(date(2026, 3, 10))  # 2026-03-11T07:00:00Z (PDT)
+    posting = _posting(
+        9002,
+        200,
+        -300.0,
+        post_date="2026-03-02 17:00:00.000Z",
+        is_reversed=True,
+        reversal_date="2026-03-11 06:59:59.000Z",  # 23:59:59 PDT on Mar 10
+    )
+    assert live_at(posting, cutoff) is False
 
 
 # --- ledger -------------------------------------------------------------------
@@ -497,13 +532,20 @@ async def test_data_quality_surfaces_dangling_overrides_dispositions_and_stale_s
             _link(600, "hh-100", source="staff", id="keep"),  # joins a live family
             _link(700, "hh-999", source="staff", id="stale"),  # its key no longer exists
             _link(800, "hh-100", source="staff", excluded=True, id="excl"),
+            # Item 7 (final review, ruling): an excluded staff row whose family_key
+            # no longer exists among the AUTO links -- a re-keyed family made the
+            # exclusion stop applying, and that must be surfaced too.
+            _link(900, "hh-404", source="staff", excluded=True, id="excl-rekeyed"),
         ],
     )
     got = await FinancialAidLedgerService(repo).data_quality(2026)
 
     assert got.dangling_overrides == [9055]  # 9002 was reversed, but its history row still exists
     assert [(d.transaction_cm_id, d.flag) for d in got.dangling_dispositions] == [(9066, "aid_exceeds_fee")]
-    assert [(s.id, s.household_cm_id, s.family_key) for s in got.stale_staff_links] == [("stale", 700, "hh-999")]
+    assert [(s.id, s.household_cm_id, s.family_key) for s in got.stale_staff_links] == [
+        ("stale", 700, "hh-999"),
+        ("excl-rekeyed", 900, "hh-404"),
+    ]
 
 
 @pytest.mark.asyncio

@@ -561,6 +561,10 @@ class FinancialAidLedgerService:
         known = {int(p.transaction_cm_id) for p in every}
         active = [lk for lk in links if not lk.excluded]
         members_by_key: Counter[str] = Counter(str(lk.family_key) for lk in active)
+        # An excluded staff row blocks an auto merge into its family_key. If that
+        # key no longer exists among the auto links -- a re-keyed family -- the
+        # exclusion is a no-op nobody is watching (item 7, final review ruling).
+        auto_keys = {str(lk.family_key) for lk in links if lk.source == "auto"}
         cross, unknown = await self._off_season_sessions(year)
         return DataQualityResponse(
             year=year,
@@ -588,8 +592,12 @@ class FinancialAidLedgerService:
             ],
             stale_staff_links=[
                 StaleStaffLink(id=str(lk.id), household_cm_id=int(lk.household_cm_id), family_key=str(lk.family_key))
-                for lk in active
-                if lk.source == "staff" and members_by_key[str(lk.family_key)] < 2
+                for lk in links
+                if lk.source == "staff"
+                and (
+                    (not lk.excluded and members_by_key[str(lk.family_key)] < 2)
+                    or (lk.excluded and str(lk.family_key) not in auto_keys)
+                )
             ],
             cross_season_sessions=cross,
             unknown_sessions=unknown,

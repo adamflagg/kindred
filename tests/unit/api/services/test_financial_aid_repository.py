@@ -76,15 +76,60 @@ async def test_off_season_rows_exclude_the_seasons_own_sessions() -> None:
 
 @pytest.mark.asyncio
 async def test_aid_like_read_looks_outside_the_two_aid_categories() -> None:
+    # Item 1 fix (kindred SP4 final review): the generic aid-word terms and the
+    # per-description equality terms are now separate PocketBase queries (the
+    # equality terms are chunked so aid_sources's global, ever-growing
+    # description list can never build a single filter over PocketBase's
+    # ~3500-char limit). This pins the NEW query shape -- the old expectation
+    # that both live in calls[0] was the bug (a single one-filter-per-call
+    # shape does not scale), not something to preserve.
     pb, calls = _pb()
     await FinancialAidRepository(pb).fetch_aid_like_outside(2026, ["Regional Fund's Grant"])
-    flt = str(calls[0]["filter"])
-    assert "financial_category_cm_id != 3840" in flt
-    assert "financial_category_cm_id != 19616" in flt
-    assert "description ~ 'financial assistance'" in flt
-    assert "description ~ 'grant'" in flt
-    assert "description = 'Regional Fund\\'s Grant'" in flt
-    assert "is_reversed = false" in flt
+    assert len(calls) == 2  # the generic aid-word query, then one equality-term chunk
+    word_filter, equality_filter = (str(c["filter"]) for c in calls)
+    assert "financial_category_cm_id != 3840" in word_filter
+    assert "financial_category_cm_id != 19616" in word_filter
+    assert "description ~ 'financial assistance'" in word_filter
+    assert "description ~ 'grant'" in word_filter
+    assert "is_reversed = false" in word_filter
+    assert "description = 'Regional Fund\\'s Grant'" in equality_filter
+    assert "is_reversed = false" in equality_filter
+
+
+@pytest.mark.asyncio
+async def test_aid_like_outside_chunks_the_equality_filter_and_merges_results() -> None:
+    # aid_sources is global, so once staff classify roughly 60 descriptions as
+    # aid, one filter holding a `description = '...'` term for every one of
+    # them crossed PocketBase v0.40.4's ~3500-char filter limit
+    # (tools/search/provider.go:31) and /data-quality 500'd. 100 fictional
+    # descriptions here is comfortably past that point.
+    descriptions = [f"Example Camp Regional Grant Program Number {i:03d}" for i in range(100)]
+
+    calls: list[dict[str, object]] = []
+    pb = MagicMock()
+
+    def get_full_list(batch: int, query_params: dict[str, object]) -> list[object]:
+        calls.append(query_params)
+        flt = str(query_params["filter"])
+        rows: list[object] = []
+        for i, d in enumerate(descriptions):
+            if f"description = '{d}'" in flt:
+                rows.append(SimpleNamespace(cm_id=9000 + i, financial_category_cm_id=3839, description=d, amount=-10))
+        if "description ~ 'grant'" in flt:
+            # A keyword-matched row every filter's word clause also matches --
+            # exercises cross-query dedup by cm_id.
+            rows.append(
+                SimpleNamespace(cm_id=9000, financial_category_cm_id=3839, description=descriptions[0], amount=-10)
+            )
+        return rows
+
+    pb.collection.return_value.get_full_list.side_effect = get_full_list
+
+    rows = await FinancialAidRepository(pb).fetch_aid_like_outside(2026, descriptions)
+
+    assert len(calls) > 1  # actually chunked, not one giant filter
+    assert all(len(str(c["filter"])) <= 3500 for c in calls)
+    assert {int(r.cm_id) for r in rows} == {9000 + i for i in range(100)}  # every description's row, exactly once
 
 
 @pytest.mark.asyncio
@@ -165,6 +210,15 @@ def test_only_the_camps_own_aid_counts_toward_the_budget() -> None:
         AidSourceUpdate(**base, source_family="jfam_incentive", funder_type="incentive", counts_toward_budget=True)
     with pytest.raises(ValidationError):
         AidSourceUpdate(**base, source_family="named_fund", funder_type="outside", counts_toward_budget=True)
+
+
+def test_counts_toward_budget_requires_counts_as_aid() -> None:
+    # Item 5 (final review, ruling): counting toward the budget while not even
+    # counting as aid is incoherent, whatever the source family.
+    base = {"source_name": "X", "note": "n", "source_family": "camp_fa", "funder_type": "camp"}
+    assert AidSourceUpdate(**base, counts_as_aid=True, counts_toward_budget=True)
+    with pytest.raises(ValidationError):
+        AidSourceUpdate(**base, counts_as_aid=False, counts_toward_budget=True)
 
 
 def test_full_coverage_is_an_outside_source_attribute() -> None:

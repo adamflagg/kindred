@@ -310,6 +310,8 @@ class AidSourceUpdate(BaseModel):
     def _budget_and_full_coverage(self) -> AidSourceUpdate:
         if self.counts_toward_budget and self.source_family != "camp_fa":
             raise ValueError("only the camp's own aid (camp_fa) may count toward the budget")
+        if self.counts_toward_budget and not self.counts_as_aid:
+            raise ValueError("counts_toward_budget requires counts_as_aid")
         if self.full_coverage and self.funder_type == "camp":
             raise ValueError("full_coverage marks an outside full-ride source, not the camp's own aid")
         return self

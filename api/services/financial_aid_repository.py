@@ -36,6 +36,11 @@ from api.utils.pb_filters import pb_escape
 
 PAGE_SIZE = 1000
 ID_CHUNK = 100
+# PocketBase v0.40.4 refuses any filter over 3500 characters
+# (tools/search/provider.go:31); keep a margin below it and a cap on term count
+# per chunk so one emitted filter never approaches the hard limit.
+AID_LIKE_FILTER_BUDGET = 3000
+AID_LIKE_CHUNK_MAX_TERMS = 25
 # The two aid categories. 3839 (Adjustments) is mostly staff discounts and work
 # exchange; it holds aid only where aid_sources classifies a description so.
 AID_CATEGORY_IDS = (3840, 19616)
@@ -59,6 +64,33 @@ def _any_of(field: str, ids: Sequence[int]) -> str:
 
 def _positive_unique(ids: Collection[int]) -> list[int]:
     return sorted({int(i) for i in ids if int(i) > 0})
+
+
+def _chunk_filter_terms(
+    base_len: int,
+    terms: Sequence[str],
+    budget: int = AID_LIKE_FILTER_BUDGET,
+    max_terms: int = AID_LIKE_CHUNK_MAX_TERMS,
+) -> list[list[str]]:
+    """Groups already-escaped filter clauses so that a filter of `base_len`
+    characters plus ` && (term || term || ...)` never crosses `budget`
+    characters, and no group holds more than `max_terms` clauses."""
+    wrapper_len = len(" && (") + len(")")
+    separator_len = len(" || ")
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+    for term in terms:
+        added = len(term) if not current else separator_len + len(term)
+        if current and (base_len + wrapper_len + current_len + added > budget or len(current) >= max_terms):
+            chunks.append(current)
+            current, current_len = [], 0
+            added = len(term)
+        current.append(term)
+        current_len += added
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 class FinancialAidRepository:
@@ -210,17 +242,38 @@ class FinancialAidRepository:
             },
         )
 
-    async def fetch_aid_like_outside(self, year: int, aid_descriptions: Sequence[str]) -> list[Any]:
-        """Live rows outside the two aid categories whose description has an aid
-        word, or equals a description aid_sources classifies as aid."""
-        outside = " && ".join(f"financial_category_cm_id != {c}" for c in AID_CATEGORY_IDS)
-        matches = [f"description ~ '{pb_escape(w)}'" for w in AID_LIKE_WORDS]
-        matches += [f"description = '{pb_escape(d)}'" for d in aid_descriptions if d]
+    async def _fetch_by_match_terms(self, year: int, outside: str, terms: Sequence[str]) -> list[Any]:
         return await self._page(
             FINANCIAL_TRANSACTIONS,
             {
-                "filter": f"year = {int(year)} && is_reversed = false && {outside} && ({' || '.join(matches)})",
+                "filter": f"year = {int(year)} && is_reversed = false && {outside} && ({' || '.join(terms)})",
                 "fields": "cm_id,financial_category_cm_id,description,amount",
                 "sort": STABLE_SORT,
             },
         )
+
+    async def fetch_aid_like_outside(self, year: int, aid_descriptions: Sequence[str]) -> list[Any]:
+        """Live rows outside the two aid categories whose description has an aid
+        word, or equals a description aid_sources classifies as aid.
+
+        aid_sources is global, so as staff classify more descriptions this
+        method's equality terms grow without bound; PocketBase v0.40.4 refuses
+        any filter over ~3500 characters (tools/search/provider.go:31). The
+        generic aid-word terms (always few) run as one query; the per-
+        description equality terms are chunked to stay under that limit and
+        the results are merged by transaction cm_id (a transaction's cm_id is
+        unique within a season, and a row can legitimately match more than one
+        query -- e.g. an aid word AND a chunked equality term).
+        """
+        outside = " && ".join(f"financial_category_cm_id != {c}" for c in AID_CATEGORY_IDS)
+        word_terms = [f"description ~ '{pb_escape(w)}'" for w in AID_LIKE_WORDS]
+        equality_terms = [f"description = '{pb_escape(d)}'" for d in aid_descriptions if d]
+
+        merged: dict[int, Any] = {}
+        for r in await self._fetch_by_match_terms(year, outside, word_terms):
+            merged[int(r.cm_id)] = r
+        base_len = len(f"year = {int(year)} && is_reversed = false && {outside}")
+        for chunk in _chunk_filter_terms(base_len, equality_terms):
+            for r in await self._fetch_by_match_terms(year, outside, chunk):
+                merged[int(r.cm_id)] = r
+        return list(merged.values())
