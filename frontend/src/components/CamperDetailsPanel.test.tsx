@@ -15,6 +15,10 @@ import { sessionName } from '../utils/sessionName'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 import type { HistoricalRecord, JourneyCounts } from '../hooks/camper/types'
 
+function normalizeIds(html: string): string {
+  return html.replace(/[«:_]r[0-9a-z]+[»:_]/g, 'ID')
+}
+
 // Configurable per-collection mock factories
 const mockGetFullListPersons = vi.fn()
 const mockGetFullListAttendees = vi.fn()
@@ -2901,5 +2905,14 @@ describe('CamperDetailsPanel', () => {
 
       expect(screen.queryByLabelText('First pick')).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('CamperDetailsPanel — pixel identity without a note slot (board notes)', () => {
+  it('renders exactly what main renders once loaded', async () => {
+    setupDeclinedRequestMocks()
+    const { baseElement } = render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} />)
+    await screen.findByTestId('quick-stats-bar')
+    expect(normalizeIds(baseElement.innerHTML)).toMatchSnapshot()
   })
 })
