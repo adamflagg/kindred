@@ -166,6 +166,26 @@ describe('ViewAsSwitcher', () => {
     expect(screen.getByRole('button', { name: /Custom/ })).toBeTruthy()
   })
 
+  it('keeps each role to one line, with its permissions on hover', () => {
+    renderAs({ isAdmin: true })
+    openMenu()
+    const registrar = screen.getByRole('button', { name: /^Registrar/ })
+    expect(registrar.getAttribute('title')).toBe('registration.manage · metrics.geo')
+    expect(screen.queryByText('registration.manage · metrics.geo')).toBeNull()
+  })
+
+  it('scrolls only the role list, so No role and Custom stay reachable in a short window', () => {
+    renderAs({ isAdmin: true })
+    openMenu()
+    const roleList = screen.getByTestId('view-as-roles')
+    expect(roleList.className).toContain('overflow-y-auto')
+    expect(roleList.contains(screen.getByRole('button', { name: /^Registrar/ }))).toBe(true)
+    expect(roleList.contains(screen.getByRole('button', { name: /No role/ }))).toBe(false)
+    expect(roleList.contains(screen.getByRole('button', { name: /Custom/ }))).toBe(false)
+    const menu = roleList.closest('[data-testid="view-as-menu"]')
+    expect(menu?.className).toContain('max-h-[calc(100vh-5rem)]')
+  })
+
   it('closes on Escape', () => {
     renderAs({ isAdmin: true })
     openMenu()
