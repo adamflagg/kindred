@@ -107,6 +107,9 @@ DROP_LIST_TABLES: tuple[str, ...] = (
     "jotform_forms",
     "jotform_submissions",
     "jotform_answers",
+    # Board notes (1500000189): staff free text about real people. Plan-only
+    # rows would also dangle, since saved_scenarios is emptied above.
+    "subject_notes",
 )
 
 # PB ``_``-prefixed auth/system tables that must hold zero rows in the artifact (no

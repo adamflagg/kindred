@@ -225,3 +225,10 @@ def test_build_empties_aid_tables(build_mod):
     is caught here, not by the build-time scan aborting on someone's laptop."""
     source = Path(build_mod.__file__).read_text()
     assert "_empty_tables(conn, _aid_tables(conn))" in source
+
+
+def test_subject_notes_are_emptied_from_the_synthetic_seed(scan_leaks_mod):
+    """Board notes are staff free text about real campers and families. The
+    builder empties every DROP_LIST_TABLES table and the leak gate fails if a
+    row survives, so the table belongs on that list (board notes, 1500000189)."""
+    assert "subject_notes" in scan_leaks_mod.DROP_LIST_TABLES
