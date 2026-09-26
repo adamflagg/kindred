@@ -177,6 +177,25 @@ describe('SubjectNotesScope', () => {
     expect(result.current?.editor).toBeNull()
   })
 
+  it('also closes the open editor when the board SESSION changes, same scenario (F7)', () => {
+    let sessionCmId = 1000005
+    const { result, rerender } = renderHook(() => useSubjectNotesScope(), {
+      wrapper: ({ children }) => scope({ sessionCmId })({ children }),
+    })
+    act(() =>
+      result.current!.openEditor({
+        subject: PERSON,
+        label: 'Emma Johnson',
+        surface: 'panel',
+        anchorEl: null,
+      })
+    )
+    expect(result.current?.editor).not.toBeNull()
+    sessionCmId = 1000006
+    rerender()
+    expect(result.current?.editor).toBeNull()
+  })
+
   it('closeEditor(target) ignores a target that is no longer open', () => {
     const { result } = renderHook(() => useSubjectNotesScope(), { wrapper: scope() })
     act(() =>

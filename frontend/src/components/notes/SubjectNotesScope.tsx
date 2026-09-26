@@ -53,14 +53,22 @@ export function SubjectNotesScope({
   })
   const { mutateAsync: saveNote } = useSaveSubjectNote()
   const { mutateAsync: promoteNote } = usePromoteSubjectNote()
-  const [editor, setEditor] = useState<EditorTarget | null>(null)
 
-  // A different board or plan: nothing open survives it. A panel editor
-  // flushes on unmount into the scenario it was OPENED in (EditorTarget).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: closes any open editor when the board's session or scenario changes (R15); there is no prop to derive this from during render.
+  // A different board or plan: nothing open survives it. Adjusted during
+  // RENDER (React's "you changed a prop, reset derived state" pattern --
+  // ProcessRequestOptions.tsx:43-57 is the other example in this codebase),
+  // not an effect: an effect fires a whole commit late, leaving the editor
+  // stamped to the OLD board for that one commit -- see the baseline-freeze
+  // comment on useSubjectNoteEditor.ts's `scenarioMatches` for the hazard
+  // that lag causes downstream. A panel editor flushes on unmount into the
+  // scenario it was OPENED in (EditorTarget).
+  const boardKey = `${String(sessionCmId)}|${scenarioId}`
+  const [prevBoardKey, setPrevBoardKey] = useState(boardKey)
+  const [editor, setEditor] = useState<EditorTarget | null>(null)
+  if (boardKey !== prevBoardKey) {
+    setPrevBoardKey(boardKey)
     setEditor(null)
-  }, [sessionCmId, scenarioId])
+  }
 
   // Final review, I1: a hard read failure is silent otherwise -- toast once
   // per error so staff learn the board couldn't be read, rather than reading
