@@ -340,6 +340,10 @@ func TestAidPostingsSyncHouseholdLinks(t *testing.T) {
 	f.txn(9001, 2026, -500, aidCategoryFinancialAssistance, aidTestCampAid, 200, 0, 0, false) // other parent's home
 	f.txn(9002, 2026, -300, aidCategoryFinancialAssistance, aidTestCampAid, 300, 0, 0, false) // the adult guest
 	f.txn(9003, 2026, -100, aidCategoryFinancialAssistance, aidTestCampAid, 600, 0, 0, false) // staff-merged home
+	// Fix round 1 probe: a posting on the parents' own household 400, with no
+	// person, must reach sibling camper 1006 (summer session 11) and never the
+	// adult guest 1005, even though 1005's childhood household is also 400.
+	f.txn(9004, 2026, -200, aidCategoryFinancialAssistance, aidTestCampAid, 400, 0, 0, false)
 
 	f.run("", 2026)
 
@@ -367,6 +371,11 @@ func TestAidPostingsSyncHouseholdLinks(t *testing.T) {
 	}
 	if p := f.posting(9003); p.GetInt("attributed_person_cm_id") != 1001 {
 		t.Errorf("a staff link must join household 600 to the family: %v", p.FieldsData())
+	}
+	if p := f.posting(9004); p.GetInt("attributed_person_cm_id") != 1006 ||
+		p.GetString("attribution_level") != aidLevelSession || p.GetString("program_family") != programFamilySummer {
+		t.Errorf("a posting on the parents' household must reach the sibling camper, "+
+			"not the adult guest whose childhood home is the same household: %v", p.FieldsData())
 	}
 }
 

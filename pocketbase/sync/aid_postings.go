@@ -420,14 +420,9 @@ func (s *AidPostingsSync) buildAttributionContext(year int) (*aidAttributionCont
 		}
 	}
 
-	personHouseholds, err := s.loadPersonHouseholds(year)
+	personHouseholds, ownHouseholds, err := s.loadPersonHouseholds(year)
 	if err != nil {
 		return nil, nil, err
-	}
-	for person, households := range personHouseholds {
-		for _, h := range households {
-			c.PersonsByHousehold[h] = append(c.PersonsByHousehold[h], person)
-		}
 	}
 
 	attendees, err := findAllRecords(s.App, "attendees", "year = {:year}", params)
@@ -437,6 +432,14 @@ func (s *AidPostingsSync) buildAttributionContext(year int) (*aidAttributionCont
 	statuses := map[aidPersonSession]int{}
 	var linkGroups [][]int
 	grouped := map[int]bool{}
+	// hasActiveNonAdult and hasActive drive the PersonsByHousehold build below
+	// (fix round 1, task review): a guest whose active (status_id = 2)
+	// enrollments this season are ALL in adult sessions is indexed only under
+	// their own household, never their childhood households, so a posting on
+	// the parents' home cannot land on them. Reuses the same session-type test
+	// the link-group exclusion below already applies.
+	hasActive := map[int]bool{}
+	hasActiveNonAdult := map[int]bool{}
 	for _, a := range attendees {
 		person := a.GetInt("person_id")
 		session, ok := sessionCM[a.GetString("session")]
@@ -450,11 +453,25 @@ func (s *AidPostingsSync) buildAttributionContext(year int) (*aidAttributionCont
 		if prev, seen := statuses[key]; !seen || prev != aidActiveStatusID {
 			statuses[key] = status
 		}
+		if status == aidActiveStatusID {
+			hasActive[person] = true
+			if sessionType[session] != sessionTypeAdult {
+				hasActiveNonAdult[person] = true
+			}
+		}
 		// An adult guest's childhood household is their parents' home, not a
 		// second home of the guest's own family (Review Focus 2).
 		if sessionType[session] != sessionTypeAdult && !grouped[person] {
 			grouped[person] = true
 			linkGroups = append(linkGroups, personHouseholds[person])
+		}
+	}
+	for person, households := range personHouseholds {
+		if hasActive[person] && !hasActiveNonAdult[person] {
+			households = ownHouseholds[person]
+		}
+		for _, h := range households {
+			c.PersonsByHousehold[h] = append(c.PersonsByHousehold[h], person)
 		}
 	}
 
@@ -474,12 +491,14 @@ func (s *AidPostingsSync) buildAttributionContext(year int) (*aidAttributionCont
 }
 
 // loadPersonHouseholds maps each person to their own household plus their
-// primary and alternate childhood households, as CampMinder ids.
-func (s *AidPostingsSync) loadPersonHouseholds(year int) (map[int][]int, error) {
+// primary and alternate childhood households, as CampMinder ids (all), and
+// separately to just their own household (own) -- what an adult-only guest is
+// indexed under instead (fix round 1, task review).
+func (s *AidPostingsSync) loadPersonHouseholds(year int) (all, own map[int][]int, err error) {
 	params := dbx.Params{"year": year}
 	households, err := findAllRecords(s.App, "households", "year = {:year}", params)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	householdCM := make(map[string]int, len(households))
 	for _, h := range households {
@@ -487,18 +506,21 @@ func (s *AidPostingsSync) loadPersonHouseholds(year int) (map[int][]int, error) 
 	}
 	persons, err := findAllRecords(s.App, "persons", "year = {:year}", params)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	out := make(map[int][]int, len(persons))
+	all = make(map[int][]int, len(persons))
+	own = make(map[int][]int, len(persons))
 	for _, p := range persons {
-		out[p.GetInt("cm_id")] = positiveUnique([]int{
+		cm := p.GetInt("cm_id")
+		own[cm] = positiveUnique([]int{p.GetInt("household_id"), householdCM[p.GetString("household")]})
+		all[cm] = positiveUnique([]int{
 			p.GetInt("household_id"),
 			householdCM[p.GetString("household")],
 			householdCM[p.GetString("primary_childhood_household")],
 			householdCM[p.GetString("alternate_childhood_household")],
 		})
 	}
-	return out, nil
+	return all, own, nil
 }
 
 // syncHouseholdLinks writes missing auto rows, sweeps stale auto rows, and
