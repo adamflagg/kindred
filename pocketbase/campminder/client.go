@@ -759,7 +759,7 @@ func (c *Client) CloneWithYear(year int) *Client {
 // hint plus a 5s buffer, clamped at rateLimitMaxHintedWait, or rateLimitBaseBackoff when the
 // body carries no hint -- the same first wait makeRequest's own retry would use. The message
 // keeps "429" and "rate limit" for readability in logs; ratelimit.HandleError no longer matches
-// on that text -- it recognises this error only by its typed RetryAfter() hint (errors.As).
+// on that text -- it recognizes this error only by its typed RetryAfter() hint (errors.As).
 type RateLimitError struct {
 	Endpoint string
 	Wait     time.Duration
