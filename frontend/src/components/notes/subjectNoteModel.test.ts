@@ -152,6 +152,18 @@ describe('editedLine', () => {
       'edited Sep 26 · Test Staff'
     )
   })
+
+  it('reads a real ±hh:mm offset (not just Z), formatted in the viewer’s time zone', () => {
+    expect(editedLine(row({ updated: '2026-09-26T19:31:20-07:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
+
+  it('accepts a `+00:00` offset the same way, without double-treating it as naive UTC', () => {
+    expect(editedLine(row({ updated: '2026-09-26T19:31:20+00:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
 })
 
 describe('displayScenarioName', () => {

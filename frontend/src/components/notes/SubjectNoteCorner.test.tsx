@@ -151,3 +151,52 @@ describe('SubjectNoteCorner', () => {
     expect(within(tooltip).getByText('+1 more')).toBeInTheDocument()
   })
 })
+
+describe('SubjectNoteCorner — containing="border" (CamperCard’s own path, summer parity)', () => {
+  // Every other test here uses `containing="padding"` (FamilyCard's path):
+  // the holder measures its own PARENT. CamperCard passes `containing="border"`
+  // instead -- the holder is a SIBLING of the card, not nested inside it
+  // (`useNoteSlots.tsx`), so the measurement instead queries a sibling
+  // `[data-camper-card]`. The fill/dash/no-dot rendering itself (`CornerCap`)
+  // never reads `containing`, so it does not need re-proving here -- only the
+  // measurement path that camper cards actually exercise.
+  function renderCamperCorner(rows = [noteRow(HOUSEHOLD, 'Grandma is coming Saturday only.')]) {
+    const value = scopeValue(rows)
+    const view = render(
+      <NotesScopeFixture value={value}>
+        <div className="group relative">
+          <button
+            type="button"
+            data-camper-card
+            style={{ borderTopRightRadius: '10px', borderTopWidth: '3px', borderStyle: 'solid' }}
+          >
+            Emma Johnson
+          </button>
+          <SubjectNoteCorner subject={HOUSEHOLD} label="Emma Johnson" containing="border" />
+        </div>
+      </NotesScopeFixture>
+    )
+    return { ...view, holder: view.container.querySelector<HTMLElement>('[data-note-corner]') }
+  }
+
+  it('measures the sibling camper card’s own corner, not the holder’s parent', () => {
+    const { holder } = renderCamperCorner()
+    // `containing="border"` never applies the padding path's negative
+    // outward offset (`offset = containing === 'padding' ? -frame.border : 0`).
+    expect(holder?.style.top).toBe('0px')
+    expect(holder?.style.right).toBe('0px')
+    expect(holder?.querySelector('path')?.getAttribute('d')).toContain('A 10 10 0 0 1 16 10')
+  })
+
+  it('still shows the standard solid fill with a dashed edge and no dot for a camper with both note kinds', () => {
+    const { holder } = renderCamperCorner([
+      noteRow(HOUSEHOLD, 'Standard'),
+      noteRow(HOUSEHOLD, 'Plan', 'scnA'),
+    ])
+    expect(holder).toHaveAttribute('data-note-corner', 'standard')
+    const [fill, edge] = Array.from(holder?.querySelectorAll('path') ?? [])
+    expect(fill).toHaveAttribute('fill', '#fef08a')
+    expect(edge).toHaveAttribute('stroke-dasharray', '2 1.5')
+    expect(holder?.querySelector('[data-note-dot]')).toBeNull()
+  })
+})
