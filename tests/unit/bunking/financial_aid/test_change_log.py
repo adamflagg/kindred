@@ -8,6 +8,7 @@ import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -85,6 +86,14 @@ def test_dates_are_stored_as_iso_strings() -> None:
     stamp = datetime(2027, 3, 1, 17, 30, tzinfo=UTC)
     _call(pb, after={"decided_on": date(2027, 3, 1), "posted_at": stamp})
     assert _body(pb)["after"] == {"decided_on": "2027-03-01", "posted_at": "2027-03-01T17:30:00+00:00"}
+
+
+def test_a_nested_read_only_mapping_is_stored_as_an_object() -> None:
+    """Snapshots are typed Mapping at every depth; a nested non-dict Mapping
+    passes the key check, so it must encode rather than be refused."""
+    pb = MagicMock()
+    _call(pb, after={"tiers": MappingProxyType({"3": MappingProxyType({"round1_pct": Decimal(72)})})})
+    assert _body(pb)["after"] == {"tiers": {"3": {"round1_pct": "72"}}}
 
 
 def test_nan_is_refused_not_stored() -> None:

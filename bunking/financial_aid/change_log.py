@@ -10,9 +10,12 @@ not an access log.
 **Writes go through ``commit_aid_writes``** (sub-project 4a). It sends each
 record write and its log row in ONE PocketBase batch (``bunking.pocketbase_batch``),
 so they commit together or not at all, and every row of the operation shares
-one ``operation_id``: "make Round 1 offers" is one operation of hundreds of
-rows; a single appeal is an operation of one. A create's record id is generated
-here (``new_record_id``) so its log row can name it inside the same batch.
+one ``operation_id``. The whole operation is one batch too, unless the caller
+passes ``allow_chunking=True``: then each chunk is atomic but the operation is
+not (``AidOperationPartiallyCommittedError``). "Make Round 1 offers" is one
+operation of hundreds of rows; a single appeal is an operation of one. A
+create's record id is generated here (``new_record_id``) so its log row can
+name it inside the same batch.
 
 ``record_change`` writes a lone row outside a batch. It exists for a change
 with no accompanying ``aid_*`` record write; a write and its row must go
@@ -51,6 +54,7 @@ from bunking.pocketbase_batch import (
     BatchLimitError,
     BatchRequest,
     BatchRequestFailedError,
+    BatchTransportError,
     send_batch,
 )
 from pocketbase import PocketBase
@@ -83,7 +87,9 @@ def new_operation_id() -> str:
     return _new_id()
 
 
-def _json_default(value: object) -> str:
+def _json_default(value: object) -> str | dict[str, Any]:
+    if isinstance(value, Mapping):  # a nested non-dict Mapping; its keys were checked
+        return dict(value)
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise ValueError(f"aid_change_log cannot store a non-finite Decimal ({value!s}); refuse the write")
@@ -279,17 +285,25 @@ class AidOperationPartiallyCommittedError(FinancialAidError):
     """A chunked operation failed after its earlier chunks committed.
 
     ``committed`` of ``total`` writes (the first ``committed``, in order) are in
-    the database with their log rows, all under ``operation_id``; nothing from
-    the failing chunk onward is. The cause is the chunk's ``BatchError``.
+    the database with their log rows, all under ``operation_id``. ``in_doubt``
+    writes after them (the failing chunk, when its outcome is unknown: see
+    ``BatchTransportError``) may or may not be; it is 0 when the chunk rolled
+    back. Nothing after those is. The cause is the chunk's ``BatchError``.
     """
 
-    def __init__(self, *, operation_id: str, committed: int, total: int, detail: str) -> None:
+    def __init__(self, *, operation_id: str, committed: int, total: int, detail: str, in_doubt: int = 0) -> None:
         self.operation_id = operation_id
         self.committed = committed
+        self.in_doubt = in_doubt
         self.total = total
+        doubt = (
+            f"; the next {in_doubt} may or may not have committed -- check operation {operation_id} before re-running"
+            if in_doubt
+            else ""
+        )
         super().__init__(
             f"operation {operation_id}: {committed} of {total} writes committed before a later chunk failed "
-            f"({detail}); the committed writes and their log rows stand"
+            f"({detail}); the committed writes and their log rows stand{doubt}"
         )
 
 
@@ -390,8 +404,9 @@ def commit_aid_writes(
     ``BatchLimitError`` unless ``allow_chunking=True``: then it is sent as
     consecutive batches that never split a write from its log row. Each chunk is
     atomic; the operation as a whole is not. If a later chunk fails,
-    ``AidOperationPartiallyCommittedError`` reports how many writes committed,
-    and the ``operation_id`` ties the committed chunks together. Allow chunking
+    ``AidOperationPartiallyCommittedError`` reports how many writes committed
+    (and how many are in doubt, when the connection was lost mid-chunk), and
+    the ``operation_id`` ties the committed chunks together. Allow chunking
     only for an operation that is safe to leave part-done and re-run.
     """
     if not 2 <= max_requests <= MAX_BATCH_REQUESTS:
@@ -434,7 +449,11 @@ def commit_aid_writes(
             if start == 0:
                 raise
             raise AidOperationPartiallyCommittedError(
-                operation_id=op_id, committed=start, total=len(pairs), detail=str(exc)
+                operation_id=op_id,
+                committed=start,
+                total=len(pairs),
+                detail=str(exc),
+                in_doubt=len(chunk) if isinstance(exc, BatchTransportError) else 0,
             ) from exc
         batches += 1
         record_ids.extend(record_id for record_id, _, _ in chunk)

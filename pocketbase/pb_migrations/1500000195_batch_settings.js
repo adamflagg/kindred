@@ -9,7 +9,18 @@
  * ships with batch OFF (and /api/batch answering 403).
  *
  * Enabling it grants no access: every sub-request still passes its
- * collection's API rules, exactly as the same request sent alone would.
+ * collection's API rules and fires the same OnRecord*Request hooks, exactly as
+ * the same request sent alone would (apis/batch.go and apis/record_crud.go,
+ * v0.40.4). Sub-requests share the batch's auth, including a view-as persona
+ * applied once to the batch request; a sub-request's own Authorization header
+ * is ignored.
+ *
+ * Router middleware does NOT run per sub-request, and neither do Caddy's path
+ * gates (the _superusers IP allowlist in docker/Caddyfile): both see only
+ * /api/batch. Caddy does not route /api/batch to PocketBase (it is not in the
+ * @pocketbase matcher, so it falls through to FastAPI), so only Kindred's
+ * services on the internal network reach it. Keep it that way;
+ * tests/unit/bunking/test_pocketbase_batch.py pins it.
  *
  * Limits:
  * - maxRequests 2000: the largest known operation, "make Round 1 offers", is

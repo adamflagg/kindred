@@ -25,7 +25,7 @@ from bunking.financial_aid.change_log import (
     new_record_id,
     record_change,
 )
-from bunking.pocketbase_batch import MAX_BATCH_REQUESTS, BatchLimitError, BatchRequestFailedError
+from bunking.pocketbase_batch import MAX_BATCH_REQUESTS, BatchLimitError, BatchRequestFailedError, BatchTransportError
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MIGRATIONS = REPO_ROOT / "pocketbase" / "pb_migrations"
@@ -385,6 +385,39 @@ def test_a_failed_chunk_reports_what_already_committed() -> None:
     # The failing sub-request is named in the operation's numbering, not the chunk's.
     assert "write 4 of 5" in str(err)
     assert "2 of 5 writes committed" in str(err)
+
+
+def test_a_lost_connection_on_a_later_chunk_reports_that_chunk_as_in_doubt() -> None:
+    """A connection lost mid-chunk leaves that chunk's outcome unknown: the error
+    must not claim it was rolled back."""
+    calls = {"n": 0}
+    pb = FakePocketBase()
+    answer = pb.http_client._transport.handle_request
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise httpx.ReadTimeout("timed out")
+        response: httpx.Response = answer(request)
+        return response
+
+    pb.http_client = httpx.Client(base_url=pb.base_url, transport=httpx.MockTransport(flaky))
+    writes = [_create() for _ in range(5)]
+    with pytest.raises(AidOperationPartiallyCommittedError) as caught:
+        commit_aid_writes(pb, writes, actor=ACTOR, allow_chunking=True, max_requests=4)  # type: ignore[arg-type]
+    err = caught.value
+    assert err.committed == 2
+    assert err.in_doubt == 2  # the second chunk's two writes
+    assert err.total == 5
+    assert isinstance(err.__cause__, BatchTransportError)
+    assert "may or may not" in str(err)
+
+
+def test_a_rolled_back_chunk_is_not_in_doubt() -> None:
+    pb = FakePocketBase(fail_batch=1, fail_index=3)
+    with pytest.raises(AidOperationPartiallyCommittedError) as caught:
+        commit_aid_writes(pb, [_create() for _ in range(5)], actor=ACTOR, allow_chunking=True, max_requests=4)  # type: ignore[arg-type]
+    assert caught.value.in_doubt == 0
 
 
 def test_a_failed_first_chunk_is_the_plain_batch_error() -> None:

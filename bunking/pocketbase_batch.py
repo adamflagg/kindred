@@ -112,7 +112,11 @@ class BatchLimitError(BatchError, ValueError):
 
 
 class BatchTransportError(BatchError):
-    """The connection failed mid-batch: the batch MAY OR MAY NOT have committed."""
+    """The outcome is unknown: the batch MAY OR MAY NOT have committed.
+
+    The connection failed mid-batch, or PocketBase answered success (sent only
+    after the transaction commits) with a body that could not be read.
+    """
 
 
 class BatchRequestFailedError(BatchError):
@@ -214,9 +218,9 @@ def send_batch(
     for a body JSON cannot hold (convert Decimal and dates first; NaN is refused).
     Raises after sending: ``BatchRequestFailedError`` naming the sub-request that
     failed and why; ``BatchError`` for a refusal of the whole batch (batch
-    disabled, auth, malformed); ``BatchTransportError`` when the connection
-    failed and the outcome is unknown. In every ``BatchError`` case except the
-    last, nothing was committed.
+    disabled, auth, malformed); ``BatchTransportError`` when the outcome is
+    unknown (the connection failed, or a success answer could not be read). In
+    every ``BatchError`` case except the last, nothing was committed.
 
     An empty sequence sends nothing and returns ``[]``.
     """
@@ -245,11 +249,16 @@ def send_batch(
         ) from exc
     if response.status_code >= 400:
         _raise_for_failure(response, requests)
-    results = response.json()
+    try:
+        results: Any = response.json()
+    except ValueError:
+        results = response.text[:200]
     if not isinstance(results, list) or len(results) != len(requests):
         count = len(results) if isinstance(results, list) else "no list of"
-        raise BatchError(
-            f"PocketBase answered {count} results for {len(requests)} requests",
+        # A success status is sent only after the commit: this is not "nothing was committed".
+        raise BatchTransportError(
+            f"PocketBase answered {response.status_code} with {count} results for {len(requests)} requests; "
+            "the batch most likely committed -- check before retrying",
             status=response.status_code,
             response=results,
         )

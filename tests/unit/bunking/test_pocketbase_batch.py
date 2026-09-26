@@ -168,6 +168,24 @@ def test_a_response_count_mismatch_is_an_error() -> None:
         )
 
 
+def test_a_success_whose_body_cannot_be_read_says_the_batch_committed() -> None:
+    """PocketBase answers 2xx only after the transaction commits, so an unreadable
+    success is NOT "nothing was committed": it is the unknown-outcome error."""
+
+    def not_json(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>not json</html>")
+
+    def short(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[{"status": 200, "body": {}}])
+
+    for handler in (not_json, short):
+        with pytest.raises(BatchTransportError, match="committed"):
+            send_batch(
+                FakePocketBase(handler),  # type: ignore[arg-type]
+                [BatchRequest.create("aid_decisions", {}), BatchRequest.create("aid_decisions", {})],
+            )
+
+
 # --- send_batch: refusing before sending --------------------------------------
 
 
@@ -300,3 +318,16 @@ def test_batch_timeout_is_the_migrations_timeout() -> None:
     match = re.search(r"settings\.batch\.timeout = (\d+);", _migration_up())
     assert match, "1500000195 no longer sets settings.batch.timeout"
     assert int(match.group(1)) == BATCH_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize("caddyfile", ["docker/Caddyfile", "frontend/Caddyfile"])
+def test_caddy_does_not_route_the_batch_api_to_pocketbase(caddyfile: str) -> None:
+    """A batch's sub-requests pass PocketBase's rules but not Caddy's path gates
+    (the _superusers IP allowlist sees only /api/batch). Only Kindred's services,
+    on the internal network, may reach it (migration 1500000195)."""
+    text = (REPO_ROOT / caddyfile).read_text()
+    matchers = [line for line in text.splitlines() if line.strip().startswith("@pocketbase ")]
+    assert matchers, f"{caddyfile} has no @pocketbase matcher to check"
+    for line in matchers:
+        assert "/api/batch" not in line, line
+        assert "/api/*" not in line.split("path", 1)[1], line
