@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useOverlayEscape } from '../../hooks/useOverlayEscape'
-import { HOUSEHOLD, noteRow } from '../../test/notesScope'
+import { HOUSEHOLD, noteRow, PERSON } from '../../test/notesScope'
 import { cardFor } from './cardFor'
 import { SubjectNoteCorner } from './SubjectNoteCorner'
 import { SubjectNotesScope } from './SubjectNotesScope'
@@ -303,6 +303,38 @@ describe('SubjectNotePopover', () => {
     } finally {
       badge.remove()
     }
+  })
+
+  it('a press on ANOTHER card’s real corner (not the queue) still saves the open note first', async () => {
+    render(
+      <SubjectNotesScope year={2026} sessionCmId={1000005} scenarioId="" scenarioName="" canManage>
+        <div data-family-card className="group relative">
+          <SubjectNoteCorner subject={HOUSEHOLD} label="Johnson" containing="padding" />
+        </div>
+        <div data-family-card className="group relative">
+          <SubjectNoteCorner subject={PERSON} label="Chen" containing="padding" />
+        </div>
+      </SubjectNotesScope>
+    )
+    // Both corners read "Add note" (neither has an existing note), so grab
+    // them by their own `data-note-corner-for` key rather than by role name.
+    const corners = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-note-corner-for] button')
+    )
+    expect(corners).toHaveLength(2)
+    const [firstCorner, secondCorner] = corners as [HTMLButtonElement, HTMLButtonElement]
+    fireEvent.click(firstCorner)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    fireEvent.pointerDown(secondCorner)
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    )
+    expect(saveNote).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: HOUSEHOLD, scenario: '', body: 'Arriving late Friday.' })
+    )
   })
 
   it('removes the pending click-eater when the popover unmounts', () => {
