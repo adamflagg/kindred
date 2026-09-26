@@ -38,6 +38,7 @@ from .dependencies import (
 from .routers import (
     campers,
     debug,
+    financial_aid,
     geo,
     internal,
     jotform,
@@ -180,6 +181,7 @@ def create_app() -> FastAPI:
     app.include_router(campers.router)
     app.include_router(geo.router)
     app.include_router(internal.router)
+    app.include_router(financial_aid.router)
 
     # Core endpoints (not in a router)
     @app.get("/health")
