@@ -63,8 +63,20 @@ export function SubjectNoteEditor({
     if (box) {
       box.focus()
       box.setSelectionRange(box.value.length, box.value.length)
+      // The popover already lands at the end: it is a small, freshly
+      // portaled overlay with no scrollable ancestor of its own. The panel
+      // section sits inside the much longer scrollable body of a slide-in
+      // panel (frontend/CLAUDE.md), so opening on a long note left the caret
+      // at the end while the textarea's own content -- and the panel's
+      // scroll position -- both stayed at the top (owner request O6,
+      // 2026-09-26). Scoped to the panel (`!framed`) so the popover's
+      // behaviour is unchanged.
+      if (!framed) {
+        box.scrollTop = box.scrollHeight
+        box.scrollIntoView({ block: 'nearest' })
+      }
     }
-  }, [model.focus, model.planExpanded])
+  }, [model.focus, model.planExpanded, framed])
 
   return (
     <div

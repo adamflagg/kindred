@@ -20,12 +20,14 @@ function target(overrides: Partial<EditorTarget> = {}): EditorTarget {
 function Harness({
   scope,
   editorTarget,
+  framed = true,
 }: {
   scope: SubjectNotesScopeValue
   editorTarget: EditorTarget
+  framed?: boolean
 }) {
   const model = useSubjectNoteEditor(scope, editorTarget)
-  return <SubjectNoteEditor model={model} framed />
+  return <SubjectNoteEditor model={model} framed={framed} />
 }
 
 function renderEditor(
@@ -344,5 +346,47 @@ describe('SubjectNoteEditor — save failure and empty notes', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     })
     expect(scope.save).toHaveBeenCalledWith(HOUSEHOLD, { standard: '' }, '')
+  })
+})
+
+describe('SubjectNoteEditor — the panel opens at the end of a long note (owner request O6)', () => {
+  // jsdom has no layout engine: `scrollHeight` is a getter with no setter, so
+  // it must be stubbed on the prototype BEFORE the textarea mounts (the
+  // autofocus effect reads it during the harness's own render), and restored
+  // afterwards so it cannot leak into an unrelated test in this file.
+  it('scrolls the textarea to its bottom and brings it into view, unframed (the panel)', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      value: 731,
+    })
+    try {
+      const scope = scopeValue([noteRow(HOUSEHOLD, 'x'.repeat(500))])
+      render(<Harness scope={scope} editorTarget={target()} framed={false} />)
+      const box = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note' })
+      expect(box.selectionStart).toBe(box.value.length)
+      expect(box.scrollTop).toBe(731)
+      expect(box.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    } finally {
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+    }
+  })
+
+  it('leaves the popover’s own landing-at-the-end behaviour unchanged (framed)', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      value: 731,
+    })
+    try {
+      const scope = scopeValue([noteRow(HOUSEHOLD, 'x'.repeat(500))])
+      render(<Harness scope={scope} editorTarget={target()} framed />)
+      const box = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note' })
+      expect(box.selectionStart).toBe(box.value.length)
+      expect(box.scrollTop).toBe(0)
+      expect(box.scrollIntoView).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+    }
   })
 })
