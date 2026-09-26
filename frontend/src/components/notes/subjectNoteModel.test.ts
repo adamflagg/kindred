@@ -54,7 +54,7 @@ describe('subjectKey / indexNotes', () => {
 })
 
 describe('cornerState', () => {
-  it('is a ghost with no note, standard with one, plan with only a plan note, and dotted with both', () => {
+  it('is a ghost with no note, standard with one, plan with only a plan note, and standard flagged `both` with both', () => {
     expect(cornerState({})).toEqual({ mode: 'ghost', both: false })
     expect(cornerState({ standard: row() })).toEqual({ mode: 'standard', both: false })
     expect(cornerState({ plan: row({ scenario: 'scnA' }) })).toEqual({ mode: 'plan', both: false })

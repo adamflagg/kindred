@@ -133,7 +133,9 @@ describe('SubjectNoteCorner', () => {
   })
 
   it('shows no pill in the preview for a standard-only note', () => {
-    renderCorner()
+    // A named scenario is open, so a pill wrongly shown here would read
+    // 'Draft A' -- without it this assertion could never fail.
+    renderCorner(undefined, { scenarioId: 'scnA', scenarioName: 'Draft A' })
     fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
     expect(within(screen.getByRole('tooltip')).queryByText('Draft A')).toBeNull()
   })
