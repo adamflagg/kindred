@@ -96,6 +96,20 @@ vi.mock('../hooks/useUnitMerge', () => ({
   useUnitMerge: () => ({ setCombined: vi.fn(() => Promise.resolve()), pendingUnitId: null }),
 }))
 
+// Board notes mount a scope around the board. Its data layer has its own
+// suite (hooks/useSubjectNotes.test.tsx); this file keeps the real React
+// Query path for everything else, but the notes read is stubbed like every
+// other hook here — its own network is not what this file is about.
+const subjectNotesSpy = vi.fn()
+vi.mock('../hooks/useSubjectNotes', () => ({
+  useSubjectNotes: (args: unknown) => {
+    subjectNotesSpy(args)
+    return { data: { notes: [] } }
+  },
+  useSaveSubjectNote: () => ({ mutateAsync: vi.fn() }),
+  usePromoteSubjectNote: () => ({ mutateAsync: vi.fn() }),
+}))
+
 const fetchWithAuth = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>()
 vi.mock('../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({

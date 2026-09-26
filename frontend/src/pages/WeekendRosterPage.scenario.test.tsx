@@ -199,6 +199,19 @@ vi.mock('../hooks/useUnitMerge', () => ({
   }),
 }))
 
+// Board notes mount a scope around the board. Its data layer has its own
+// suite (hooks/useSubjectNotes.test.tsx); these page tests render without a
+// QueryClientProvider, so it is stubbed like every other hook here.
+const subjectNotesSpy = vi.fn()
+vi.mock('../hooks/useSubjectNotes', () => ({
+  useSubjectNotes: (args: unknown) => {
+    subjectNotesSpy(args)
+    return { data: { notes: [] } }
+  },
+  useSaveSubjectNote: () => ({ mutateAsync: vi.fn() }),
+  usePromoteSubjectNote: () => ({ mutateAsync: vi.fn() }),
+}))
+
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 
@@ -330,6 +343,28 @@ describe('what the roster is asked for', () => {
     currentScenario = { ...OPTION_A, session_cm_id: 1000002 }
     renderPage()
     expect(useWeekendRosterSpy).toHaveBeenCalledWith(2026, 1000001, '')
+  })
+
+  it('reads notes in the same scoped scenario as the roster — never another weekend’s', () => {
+    currentScenario = { ...OPTION_A, session_cm_id: 1000002 }
+    renderPage()
+    expect(subjectNotesSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ year: 2026, sessionCmId: 1000001, scenario: '', enabled: true })
+    )
+  })
+
+  it('reads notes in the draft once one is selected', () => {
+    currentScenario = OPTION_A
+    renderPage()
+    expect(subjectNotesSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ scenario: 'scn7x2k9qw3mnbv' })
+    )
+  })
+
+  it('reads no notes for a viewer without bunking.manage', () => {
+    permissions = new Set()
+    renderPage()
+    expect(subjectNotesSpy).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
   })
 })
 
