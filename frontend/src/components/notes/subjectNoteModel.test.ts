@@ -138,7 +138,19 @@ describe('changedDrafts', () => {
 describe('editedLine', () => {
   it('says nothing is saved yet, or when and who', () => {
     expect(editedLine(undefined)).toBe('Nothing saved yet')
-    expect(editedLine(row())).toBe('edited Sep 25 · Test Staff')
+    expect(editedLine(row(), 'UTC')).toBe('edited Sep 25 · Test Staff')
+  })
+
+  it('treats a naive server timestamp (no offset) as UTC, formatted in the viewer’s time zone -- an evening Pacific edit is not off by a day', () => {
+    expect(editedLine(row({ updated: '2026-09-26T19:31:20' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
+
+  it('leaves a timestamp that already carries an offset alone', () => {
+    expect(editedLine(row({ updated: '2026-09-26T19:31:20Z' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
   })
 })
 

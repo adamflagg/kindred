@@ -116,11 +116,26 @@ export function changedDrafts(
   return drafts
 }
 
-export function editedLine(row: SubjectNoteRow | undefined): string {
+/**
+ * The server sends `updated` as a NAIVE timestamp -- UTC, but with no `Z` or
+ * `±hh:mm` -- so `new Date(...)` would otherwise parse it as local time. An
+ * evening Pacific edit would then read back a day ahead: parsed as local
+ * 19:31 PDT is 02:31 UTC the NEXT day, and formatting that instant anywhere
+ * east of it shows the wrong date. Appending `Z` when there's no offset
+ * already fixes the instant; `timeZone` (the viewer's own, when omitted --
+ * an explicit value is for tests only) then formats it correctly instead of
+ * hardcoding UTC.
+ */
+function asUtcIso(timestamp: string): string {
+  const iso = timestamp.replace(' ', 'T')
+  return /(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`
+}
+
+export function editedLine(row: SubjectNoteRow | undefined, timeZone?: string): string {
   if (!row) return 'Nothing saved yet'
-  const when = new Date(row.updated.replace(' ', 'T'))
+  const when = new Date(asUtcIso(row.updated))
   const date = Number.isNaN(when.getTime())
     ? ''
-    : when.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    : when.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone })
   return [date ? `edited ${date}` : '', row.updated_by].filter(Boolean).join(' · ')
 }
