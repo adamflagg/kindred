@@ -837,3 +837,17 @@ def test_go_minor_fails_loudly_on_an_unparseable_go_line(tmp_path):
     code, written = _run_go_minor_step(tmp_path, "go banana")
     assert code != 0
     assert written == ""
+
+
+def test_ci_runs_on_pull_requests_whatever_they_target() -> None:
+    """A stacked PR targets another feature branch, not main.
+
+    `pull_request: branches: [main]` (there since the initial commit, never a
+    recorded decision) meant a stacked PR ran no CI at all -- only the title
+    check -- until it was retargeted, so a broken stack surfaced late. #2870
+    sat with no CI Gate for exactly this reason.
+    """
+    raw: Any = yaml.safe_load(CI_WORKFLOW.read_text())
+    on = raw.get("on", raw.get(True))  # PyYAML reads a bare `on:` key as True
+    trigger = on["pull_request"]
+    assert not (isinstance(trigger, dict) and ("branches" in trigger or "branches-ignore" in trigger)), trigger
