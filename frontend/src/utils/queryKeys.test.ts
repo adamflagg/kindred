@@ -314,3 +314,11 @@ describe('queryKeys.weekendRoster scenario dimension', () => {
     expect(key).toEqual(['weekend-roster', 2026, 1000001, 'scn7x2k9qw3mnbv'])
   })
 })
+
+describe('subjectNotes keys (board notes)', () => {
+  it('scopes the board read by session, year and scenario, under the invalidation prefix', () => {
+    const key = queryKeys.subjectNotes(1000005, 2026, 'scnA')
+    expect(key).toEqual(['subject-notes', 1000005, 2026, 'scnA'])
+    expect(key.slice(0, 1)).toEqual([...queryKeys.subjectNotesPrefix()])
+  })
+})
