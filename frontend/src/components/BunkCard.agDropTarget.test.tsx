@@ -69,6 +69,17 @@ const AG_SESSION_2 = {
   name: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
 } as unknown as CampSessionsResponse
 
+// 9th & 10th grades — pairs with AG-10 the way Session 3 actually does, so
+// the "grade range happened to overlap before" case below is a real overlap
+// under the old (deleted) rule, not just a different combination that also
+// happens to pass under the new one.
+const AG_SESSION_3 = {
+  cm_id: 1344559,
+  parent_id: 1235405,
+  session_type: 'ag',
+  name: 'All-Gender Cabin-Session 3 (9th & 10th grades)',
+} as unknown as CampSessionsResponse
+
 const NON_AG_SESSION = {
   cm_id: 1235404,
   parent_id: 0,
@@ -76,18 +87,18 @@ const NON_AG_SESSION = {
   name: 'Session 2',
 } as unknown as CampSessionsResponse
 
-const agCamper = (name: string, gender: 'M' | 'F' | 'NB' = 'M') =>
+const agCamper = (name: string, gender: 'M' | 'F' | 'NB' = 'M', session = AG_SESSION_2) =>
   ({
-    id: `${name}:1378704`,
+    id: `${name}:${session.cm_id}`,
     name,
     age: 13,
     grade: 7,
     gender,
-    session_cm_id: 1378704,
+    session_cm_id: session.cm_id,
     person_cm_id: name.length,
     created: '',
     updated: '',
-    expand: { session: AG_SESSION_2 },
+    expand: { session },
   }) as unknown as Camper
 
 const nonAgMaleCamper = (name: string) =>
@@ -158,7 +169,7 @@ describe('BunkCard AG drop eligibility — cabin number is a location, not a gra
         bunk={ag10Bunk}
         defaultCapacity={12}
         isProductionMode={false}
-        activeDragCamper={agCamper('Jordan Lee')}
+        activeDragCamper={agCamper('Jordan Lee', 'M', AG_SESSION_3)}
       />
     )
     expect(useDroppableMock).toHaveBeenCalledWith(
