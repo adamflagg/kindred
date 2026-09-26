@@ -156,14 +156,23 @@ export function SubjectNotePopover({
     placement: 'beside',
   })
   // Discard only when Escape's focus is actually ours: inside the popover,
-  // or nowhere in particular (`document.body`). A dirty popover can stay
-  // open while some OTHER control on the page holds focus -- the expanded
-  // queue's own search input, focused by its own rAF right after a press on
-  // the exempted toggle/close buttons below -- and Escape there belongs to
-  // that control, not to a note it never touched.
+  // on its own anchor corner, or nowhere in particular (`document.body`). A
+  // dirty popover can stay open while some OTHER control on the page holds
+  // focus -- the expanded queue's own search input, focused by its own rAF
+  // right after a press on the exempted toggle/close buttons below -- and
+  // Escape there belongs to that control, not to a note it never touched.
+  // The corner check exists because a second press on the SAME corner is
+  // owner-locked to keep the popover open (`swallowNextClick` below), and on
+  // some browsers `preventDefault()`'d pointerdown still leaves focus on the
+  // corner's own button -- outside the popover, and not body -- so without
+  // this Escape would do nothing until the user clicked back into the note.
   useOverlayEscape(true, model.discard, () => {
     const active = document.activeElement
-    return active === document.body || (ref.current?.contains(active) ?? false)
+    return (
+      active === document.body ||
+      (ref.current?.contains(active) ?? false) ||
+      (target.anchorEl?.contains(active) ?? false)
+    )
   })
   useOutsidePointer(model, ref, subjectKey(target.subject))
   // Focus restore (frontend/CLAUDE.md): the anchor corner's own button, not

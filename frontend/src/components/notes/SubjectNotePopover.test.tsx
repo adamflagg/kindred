@@ -373,6 +373,18 @@ describe('SubjectNotePopover — Escape acts on whatever has focus', () => {
     expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
     expect(saveNote).not.toHaveBeenCalled()
   })
+
+  it('still discards when focus has landed on the note’s own corner (a second press on it can leave focus there, on some browsers)', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    cornerButton.focus()
+    expect(document.activeElement).toBe(cornerButton)
+    fireEvent.keyDown(cornerButton, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
+  })
 })
 
 describe('cardFor', () => {
