@@ -18,6 +18,7 @@ from typing import Any, Protocol
 
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
+    AID_PAYER_SHARES,
     AID_REQUESTS,
     AID_SESSION_ALIASES,
     AID_SESSION_CAPACITY,
@@ -39,13 +40,15 @@ from api.services.financial_aid_corrections import (
     effective_values,
     parse_new_value,
 )
-from api.services.financial_aid_intake_plan import request_fields
+from api.services.financial_aid_intake_plan import request_fields, share_entity_id
 from api.services.financial_aid_intake_types import (
     PROGRAM_FAMILY_CAMP,
     RESOLUTION_STAFF,
+    SHARE_SOURCE_STAFF,
     STAFF_HEADCOUNT_SOURCES,
     STATUS_ACTIVE,
     STATUS_DUPLICATE,
+    STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
     AliasRow,
     ApplicationRecord,
@@ -55,6 +58,15 @@ from api.services.financial_aid_intake_types import (
     PayerShareRecord,
     RequestRecord,
     SessionRow,
+)
+from api.services.financial_aid_payer_shares import (
+    PayerShareError,
+    ShareSpec,
+    fill_remainder,
+    pct_from_dollars,
+    share_status,
+    split_award,
+    validate_shares,
 )
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
@@ -149,14 +161,27 @@ def payer_share_out(share: PayerShareRecord, amount: Decimal | None = None) -> P
     )
 
 
+class AwardSource(Protocol):
+    """A request's current priced amount: its decided award, or a calculator result.
+    Sub-project 10 supplies it. Until then there is none, so only a % can be entered and
+    no dollars are shown."""
+
+    async def __call__(self, request: RequestRecord) -> Decimal | None: ...
+
+
 def request_out(
     record: RequestRecord,
     corrections: Sequence[CorrectionRecord],
     shares: Sequence[PayerShareRecord] = (),
     issues: Sequence[IssueOut] = (),
+    award: Decimal | None = None,
 ) -> RequestOut:
     # The mirror stores a blank ask as 0; a 0 ask is unknown (Task 11), so it shows blank.
     ask = effective_values({"ask": record.ask or None}, REQUEST_CORRECTABLE, corrections, record.id)["ask"]
+    own = [s for s in shares if s.request_id == record.id]
+    status = share_status(own) if record.status in (STATUS_ACTIVE, STATUS_UNMATCHED) else ""
+    # Dollars are read-only: computed from the current award, never stored (owner ruling 2026-09-25).
+    amounts = split_award(award, own, record.household_cm_id) if award is not None and status == "complete" else {}
     return RequestOut(
         id=record.id,
         household_cm_id=record.household_cm_id,
@@ -172,9 +197,27 @@ def request_out(
         headcount_infant=record.headcount_infant,
         headcount_source=record.headcount_source,
         flags=[FlagOut(code=str(f.get("code", "")), detail=dict(f.get("detail", {}))) for f in record.flags],
-        payer_shares=[payer_share_out(s) for s in shares if s.request_id == record.id],
+        payer_shares=[payer_share_out(s, amounts.get(s.household_cm_id)) for s in own],
+        payer_share_status=status,
         issues=list(issues),
     )
+
+
+def _pct_text(pct: Decimal) -> str:
+    return f"{pct.normalize():f}"
+
+
+def _share_fields(share: PayerShareRecord) -> dict[str, Any]:
+    """A stored share as its log `before` (4a keeps only what changed)."""
+    return {
+        "year": share.year,
+        "request": share.request_id,
+        "household_cm_id": share.household_cm_id,
+        "share_pct": _pct_text(share.share_pct),
+        "source": share.source,
+        "actor": share.actor,
+        "note": share.note,
+    }
 
 
 class FinancialAidCaseworkService:
@@ -182,9 +225,11 @@ class FinancialAidCaseworkService:
         self,
         store: CaseworkStore,
         rebuild: Callable[[int], Awaitable[object]] | None = None,
+        award_source: AwardSource | None = None,
     ) -> None:
         self._store = store
         self._rebuild = rebuild
+        self._award_source = award_source
 
     async def _require_application(self, year: int, household_cm_id: int) -> ApplicationRecord:
         application = await self._store.fetch_application(year, household_cm_id)
@@ -260,9 +305,135 @@ class FinancialAidCaseworkService:
             raise CaseworkNotFoundError("no such request")
         return request
 
+    async def _award(self, request: RequestRecord) -> Decimal | None:
+        return None if self._award_source is None else await self._award_source(request)
+
     async def _request_out(self, record: RequestRecord) -> RequestOut:
         corrections = await self._store.fetch_corrections(record.year, record.application_id)
-        return request_out(record, corrections, await self._store.fetch_payer_shares(record.year, [record.id]))
+        shares = await self._store.fetch_payer_shares(record.year, [record.id])
+        return request_out(record, corrections, shares, award=await self._award(record))
+
+    async def _live_request(self, request_id: str, reason: str) -> RequestRecord:
+        request = await self._require_request(request_id)
+        if request.status in _CLOSED:
+            raise CaseworkValidationError(f"a {request.status} request has no payers to set")
+        if not reason.strip():
+            raise CaseworkValidationError("a reason is required")
+        return request
+
+    async def _replace_shares(
+        self,
+        request: RequestRecord,
+        shares: Sequence[ShareSpec],
+        *,
+        reason: str,
+        actor: str,
+        action: str,
+        entered: Mapping[str, Any] | None = None,
+    ) -> RequestOut:
+        """Replace the request's shares with `shares` as ONE operation: every create, update
+        and delete, each with its log row, in one batch (sub-project 4a). All or nothing."""
+        try:
+            validate_shares(shares)
+        except PayerShareError as exc:
+            raise CaseworkValidationError(str(exc)) from exc
+        existing = await self._store.fetch_payer_shares(request.year, [request.id])
+        by_household = {s.household_cm_id: s for s in existing}
+        wanted = {s.household_cm_id: s for s in shares}
+        entered_household = None if entered is None else entered["household_cm_id"]
+        writes: list[AidWrite] = []
+        for household_cm_id, old in sorted(by_household.items()):
+            if household_cm_id not in wanted:
+                writes.append(
+                    AidWrite(
+                        collection=AID_PAYER_SHARES,
+                        action="delete",
+                        year=request.year,
+                        record_id=old.id,
+                        before=_share_fields(old),
+                        log_action=action,
+                        entity_id=share_entity_id(request.id, household_cm_id),
+                    )
+                )
+        for household_cm_id, new in sorted(wanted.items()):
+            # "60", never Decimal's "6E+1": the log shows what staff typed (PocketBase parses the text).
+            fields: dict[str, Any] = {
+                "share_pct": _pct_text(new.share_pct),
+                "source": SHARE_SOURCE_STAFF,
+                "actor": actor,
+                "note": reason.strip(),
+            }
+            extra = {"entered": dict(entered)} if entered is not None and household_cm_id == entered_household else {}
+            current = by_household.get(household_cm_id)
+            if current is None:
+                data = {"year": request.year, "request": request.id, "household_cm_id": household_cm_id, **fields}
+                writes.append(
+                    AidWrite(
+                        collection=AID_PAYER_SHARES,
+                        action="create",
+                        year=request.year,
+                        data=data,
+                        after={**data, **extra},
+                        log_action=action,
+                        entity_id=share_entity_id(request.id, household_cm_id),
+                    )
+                )
+            elif (current.share_pct, current.source) != (new.share_pct, SHARE_SOURCE_STAFF):
+                before = _share_fields(current)
+                writes.append(
+                    AidWrite(
+                        collection=AID_PAYER_SHARES,
+                        action="update",
+                        year=request.year,
+                        record_id=current.id,
+                        before=before,
+                        data=fields,
+                        after={**before, **fields, **extra},
+                        log_action=action,
+                        entity_id=share_entity_id(request.id, household_cm_id),
+                    )
+                )
+        if writes:  # the whole set, including a two-way split's remainder: one operation, one batch
+            await self._store.commit(writes, actor=actor, reason=reason.strip(), require_reason=True)
+        return await self._request_out(request)
+
+    async def set_payer_shares(
+        self, request_id: str, shares: Sequence[ShareSpec], reason: str, actor: str
+    ) -> RequestOut:
+        request = await self._live_request(request_id, reason)
+        return await self._replace_shares(request, shares, reason=reason, actor=actor, action="set_payer_shares")
+
+    async def set_household_share(
+        self,
+        request_id: str,
+        household_cm_id: int,
+        *,
+        share_pct: Decimal | None,
+        amount: Decimal | None,
+        reason: str,
+        actor: str,
+    ) -> RequestOut:
+        request = await self._live_request(request_id, reason)
+        entered: dict[str, Any] = {"household_cm_id": household_cm_id}
+        try:
+            if amount is not None and share_pct is None:
+                award = await self._award(request)
+                if award is None:
+                    raise CaseworkValidationError("this request has no priced amount yet: enter a percentage")
+                pct = pct_from_dollars(amount, award)
+                entered.update({"amount": f"{amount:.2f}", "award": f"{award:.2f}"})
+            elif share_pct is not None and amount is None:
+                pct = share_pct
+            else:
+                raise CaseworkValidationError("enter a percentage or a dollar amount, exactly one")
+            entered["share_pct"] = _pct_text(pct)
+            existing = await self._store.fetch_payer_shares(request.year, [request.id])
+            shares = fill_remainder(existing, household_cm_id, pct)
+        except PayerShareError as exc:
+            raise CaseworkValidationError(str(exc)) from exc
+        return await self._replace_shares(
+            request, shares, reason=reason, actor=actor, action="set_household_share", entered=entered
+        )
 
     def _request_update(self, request: RequestRecord, changes: Mapping[str, Any], log_action: str) -> AidWrite:
         return AidWrite(

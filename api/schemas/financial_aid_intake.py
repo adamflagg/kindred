@@ -153,3 +153,24 @@ class CapacityOut(BaseModel):
     capacity: int
     note: str
     actor: str
+
+
+class PayerShareIn(BaseModel):
+    household_cm_id: int = Field(gt=0)
+    share_pct: Decimal = Field(gt=0, le=100, decimal_places=4)
+
+
+class PayerSharesSet(BaseModel):
+    """The whole set of a request's shares, as percentages (they should add to 100%)."""
+
+    shares: list[PayerShareIn] = Field(min_length=1, max_length=10)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class HouseholdShareSet(BaseModel):
+    """One household's share, as a % or (once the request has a priced amount) as dollars,
+    exactly one. The other share of a two-way split gets the remainder."""
+
+    share_pct: Decimal | None = Field(default=None, gt=0, le=100, decimal_places=4)
+    amount: Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    reason: str = Field(min_length=1, max_length=2000)
