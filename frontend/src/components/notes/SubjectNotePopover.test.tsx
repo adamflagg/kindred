@@ -217,7 +217,7 @@ describe('SubjectNotePopover', () => {
     expect(document.activeElement).toBe(elsewhere)
   })
 
-  it('a press on the queue’s own toggle button (owner request O5) keeps the popover open, no save', () => {
+  it('a press on the queue’s own toggle button keeps the popover open, no save, and the toggle’s own click still fires', () => {
     render(<Board />)
     openPopover()
     fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
@@ -230,11 +230,20 @@ describe('SubjectNotePopover', () => {
     badge.setAttribute('data-floating-badge', '')
     const toggle = document.createElement('button')
     toggle.setAttribute('data-queue-toggle', '')
+    const toggleClick = vi.fn()
+    toggle.addEventListener('click', toggleClick)
     badge.appendChild(toggle)
     document.body.appendChild(badge)
 
     try {
       fireEvent.pointerDown(toggle)
+      // The exemption only proves itself if the click that follows the same
+      // physical press still reaches the toggle's own handler -- a
+      // regression that installed the corner's click-eater on the toggle
+      // path too would still pass a pointerDown-only assertion, since
+      // nothing here would ever fire the eaten click to notice.
+      fireEvent.click(toggle)
+      expect(toggleClick).toHaveBeenCalledTimes(1)
       expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
       expect(saveNote).not.toHaveBeenCalled()
     } finally {

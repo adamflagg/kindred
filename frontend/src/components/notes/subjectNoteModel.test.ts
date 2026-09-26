@@ -164,6 +164,19 @@ describe('editedLine', () => {
       'edited Sep 26 · Test Staff'
     )
   })
+
+  it('honours an offset that moves the calendar date, not just the clock time -- values chosen so stripping the offset would land on the WRONG day', () => {
+    // Naively treating either of these local clock times as already-UTC
+    // (the bug: discarding a real offset instead of reading it) puts both on
+    // Sep 26 -- so a real offset must actually be applied for either
+    // assertion below to pass.
+    expect(editedLine(row({ updated: '2026-09-27T01:00:00-07:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 27 · Test Staff'
+    )
+    expect(editedLine(row({ updated: '2026-09-27T08:00:00+14:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
 })
 
 describe('displayScenarioName', () => {
