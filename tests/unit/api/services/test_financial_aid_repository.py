@@ -168,6 +168,16 @@ def test_override_row_must_place_or_reclassify() -> None:
     assert OverrideRow(transaction_cm_id=9001, source_key_override="outside program award").program_family is None
 
 
+def test_override_row_source_key_override_is_bounded_at_5000() -> None:
+    """Matches aid_sources.description_key (migration 1500000196), the row a
+    reclassification targets -- not the 500-char cap early drafts of
+    1500000199 used. Before first deploy, so raising it here needs no
+    follow-up migration."""
+    assert OverrideRow(transaction_cm_id=9001, source_key_override="x" * 5000).source_key_override == "x" * 5000
+    with pytest.raises(ValidationError):
+        OverrideRow(transaction_cm_id=9001, source_key_override="x" * 5001)
+
+
 def test_bulk_load_rejects_a_transaction_listed_twice() -> None:
     with pytest.raises(ValidationError, match="once per load"):
         OverrideBulkLoad(

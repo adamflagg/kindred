@@ -46,7 +46,7 @@ migrate((app) => {
       { type: "number", name: "attributed_person_cm_id", required: false, presentable: false, min: null, max: null, onlyInt: true },
       { type: "number", name: "attributed_session_cm_id", required: false, presentable: false, min: null, max: null, onlyInt: true },
       { type: "select", name: "program_family", required: false, presentable: false, values: ["summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend", "family_school", "other"], maxSelect: 1 },
-      { type: "text", name: "source_key_override", required: false, presentable: false, min: 0, max: 500, pattern: "" },
+      { type: "text", name: "source_key_override", required: false, presentable: false, min: 0, max: 5000, pattern: "" },
       { type: "select", name: "source", required: true, presentable: false, values: ["sheet_2026_match", "staff"], maxSelect: 1 },
       { type: "text", name: "note", required: false, presentable: false, min: 0, max: 2000, pattern: "" },
       { type: "text", name: "actor", required: false, presentable: false, min: 0, max: 200, pattern: "" },

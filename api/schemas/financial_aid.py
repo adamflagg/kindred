@@ -346,7 +346,7 @@ class OverrideRow(BaseModel):
     attributed_person_cm_id: int | None = Field(default=None, gt=0)
     attributed_session_cm_id: int | None = Field(default=None, gt=0)
     program_family: ProgramFamily | None = None
-    source_key_override: str | None = Field(default=None, min_length=1, max_length=500)
+    source_key_override: str | None = Field(default=None, min_length=1, max_length=5000)
     note: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
 
     @model_validator(mode="after")

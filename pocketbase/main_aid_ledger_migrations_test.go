@@ -114,6 +114,34 @@ func TestAidSourcesDescriptionFieldsMatchFinancialTransactionsLength(t *testing.
 	}
 }
 
+// Before first deploy: aid_postings.source_key / effective_source_key and
+// aid_attribution_overrides.source_key_override are normalized description
+// keys, the same value aid_sources.description_key stores at 5000 (see
+// TestAidSourcesDescriptionFieldsMatchFinancialTransactionsLength above). A
+// 500 cap on these would silently reject a write for a description longer
+// than that -- these migrations are not applied anywhere real yet, so
+// widening them in place is correct rather than a follow-up migration.
+func TestAidPostingsAndOverridesSourceKeyFieldsMatch5000(t *testing.T) {
+	cases := []struct {
+		collection string
+		field      string
+	}{
+		{"aid_postings", "source_key"},
+		{"aid_postings", "effective_source_key"},
+		{"aid_attribution_overrides", "source_key_override"},
+	}
+	for _, c := range cases {
+		body := readAidMigration(t, aidLedgerMigrations[c.collection])
+		line := aidMigrationFieldLine(t, body, c.field)
+		if strings.Contains(line, "max: 500,") {
+			t.Errorf("%s.%s: still capped at 500; must match aid_sources.description_key (5000)", c.collection, c.field)
+		}
+		if !strings.Contains(line, "max: 5000,") {
+			t.Errorf("%s.%s: must declare max: 5000, got: %s", c.collection, c.field, line)
+		}
+	}
+}
+
 // Each select value and field name is checked as its own quoted token, so a
 // formatter that wraps a long values array cannot break the test. The Go side
 // pins the aid_postings values it writes separately (TestAidVocabularyMatchesMigration).

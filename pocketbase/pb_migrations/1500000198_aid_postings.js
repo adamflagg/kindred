@@ -55,8 +55,8 @@ migrate((app) => {
       { type: "date", name: "effective_date", required: false, presentable: false, min: "", max: "" },
       { type: "date", name: "reversal_date", required: false, presentable: false, min: "", max: "" },
       { type: "text", name: "transaction_note", required: false, presentable: false, min: 0, max: 5000, pattern: "" },
-      { type: "text", name: "source_key", required: true, presentable: false, min: 1, max: 500, pattern: "" },
-      { type: "text", name: "effective_source_key", required: true, presentable: false, min: 1, max: 500, pattern: "" },
+      { type: "text", name: "source_key", required: true, presentable: false, min: 1, max: 5000, pattern: "" },
+      { type: "text", name: "effective_source_key", required: true, presentable: false, min: 1, max: 5000, pattern: "" },
       {
         type: "select",
         name: "source_family",
