@@ -265,3 +265,28 @@ def test_the_repository_has_no_write_path_but_commit() -> None:
     # here would be a second path that writes without its aid_change_log row.
     direct = [n for n in vars(FinancialAidIntakeRepository) if n.startswith(("create", "update", "delete", "upsert"))]
     assert direct == []
+
+
+@pytest.mark.asyncio
+async def test_an_empty_application_id_reads_nothing_rather_than_the_whole_season() -> None:
+    handle = MagicMock()
+    handle.get_full_list.return_value = []
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    repository = FinancialAidIntakeRepository(pb)
+    assert await repository.fetch_requests(2027, "") == []
+    assert await repository.fetch_corrections(2027, "") == []
+    handle.get_full_list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_named_application_scopes_the_request_and_correction_reads() -> None:
+    handle = MagicMock()
+    handle.get_full_list.return_value = []
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    repository = FinancialAidIntakeRepository(pb)
+    await repository.fetch_requests(2027, "app000000000001")
+    await repository.fetch_corrections(2027, "app000000000001")
+    filters = [c.kwargs["query_params"]["filter"] for c in handle.get_full_list.call_args_list]
+    assert filters == ["year = 2027 && application = 'app000000000001'"] * 2

@@ -49,6 +49,7 @@ async def test_detail_shows_synced_and_effective_values_and_marks_a_decided_conf
     conflict = next(f for f in before.flags if f.code == "income_conflict")
     assert conflict.detail.get("resolved_by_correction") is not True
 
+    assert len(before.requests) == 3  # two campers' summer requests and the family-camp one
     assert all(
         ("household_income_conflict", "hold") in [(i.code, i.severity) for i in r.issues] for r in before.requests
     )
@@ -112,6 +113,8 @@ async def test_requests_waiting_for_approved_rules_have_their_own_queue_and_a_vi
     assert len(waiting.requests) == 3
     assert (await casework.list_requests(YEAR, "active", "no_program_for_session")).requests == []
     detail = await casework.application_detail(YEAR, 1000001)
+    assert len(detail.requests) == 2
     assert all(("awaiting_approved_rules", "hold") in [(i.code, i.severity) for i in r.issues] for r in detail.requests)
     listing = await casework.list_applications(YEAR)
+    assert len(listing.applications) == 2
     assert all("awaiting_approved_rules" in a.flag_codes for a in listing.applications)

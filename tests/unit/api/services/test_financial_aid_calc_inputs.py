@@ -196,6 +196,7 @@ async def test_calculator_inputs_for_covers_live_requests_with_their_equity_and_
     assert sorted(
         (r.request.program_key, r.request.equity_answers.get("bipoc")) for r in results if r.request is not None
     ) == [("family_camp", None), ("summer", "No")]
+    assert len(results) == 2
     assert all(r.application.household_cm_id == 1000001 and r.issues == () and r.blocked == "" for r in results)
 
 
@@ -205,10 +206,12 @@ async def test_an_income_conflict_holds_until_staff_choose_a_figure() -> None:
     store.fa_rows[1] = fa_row(1000012, 1000001, fc="Family Camp 6", fc_ask=900.0, total_gross_income=95000.0)
     store, casework = await built(store)
     before = await casework.calculator_inputs_for(YEAR, 1000001, intake_rules())
+    assert len(before) == 2  # the summer and family-camp requests: all() below must not pass on nothing
     assert all(("household_income_conflict", "hold") in [(i.code, i.severity) for i in r.issues] for r in before)
     assert all(r.application.prior_year_gross is None for r in before)  # never picked
     await casework.add_correction(YEAR, 1000001, "total_gross_income", "90000", "Called the family.", ACTOR)
     after = await casework.calculator_inputs_for(YEAR, 1000001, intake_rules())
+    assert len(after) == 2
     assert all(r.issues == () and r.application.prior_year_gross == Decimal("90000.00") for r in after)
 
 
@@ -220,6 +223,7 @@ async def test_an_income_conflict_holds_whatever_the_rules_say(check: dict[str, 
     store, casework = await built(store)
     lax = with_lever(intake_rules(), "quality_checks.checks.household_income_conflict", check)
     results = await casework.calculator_inputs_for(YEAR, 1000001, lax)
+    assert len(results) == 2
     assert all(("household_income_conflict", "hold") in [(i.code, i.severity) for i in r.issues] for r in results)
 
 

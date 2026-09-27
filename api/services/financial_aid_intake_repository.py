@@ -417,7 +417,11 @@ class FinancialAidIntakeRepository:
         return [_application(r) for r in rows]
 
     async def fetch_requests(self, year: int, application_id: str | None = None) -> list[RequestRecord]:
-        scope = f" && application = '{pb_escape(application_id)}'" if application_id else ""
+        """The season's requests, or one application's. An empty id names no application,
+        so it reads nothing rather than widening to the whole season."""
+        if application_id == "":
+            return []
+        scope = f" && application = '{pb_escape(application_id)}'" if application_id is not None else ""
         rows = await self._page(AID_REQUESTS, {"filter": f"year = {year}{scope}", "sort": STABLE_SORT})
         return [_request(r) for r in rows]
 
@@ -451,7 +455,10 @@ class FinancialAidIntakeRepository:
         return _request(rows[0]) if rows else None
 
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]:
-        scope = f" && application = '{pb_escape(application_id)}'" if application_id else ""
+        """See fetch_requests: an empty id reads nothing."""
+        if application_id == "":
+            return []
+        scope = f" && application = '{pb_escape(application_id)}'" if application_id is not None else ""
         rows = await self._page(
             AID_APPLICATION_CORRECTIONS, {"filter": f"year = {year}{scope}", "sort": f"created,{STABLE_SORT}"}
         )
