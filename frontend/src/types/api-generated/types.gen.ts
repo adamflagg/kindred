@@ -103,6 +103,274 @@ export type AccessibilityFlagSummary = {
 }
 
 /**
+ * AidLikeOutside
+ */
+export type AidLikeOutside = {
+  /**
+   * Category Cm Id
+   */
+  category_cm_id: number
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Transactions
+   */
+  transactions: number
+  /**
+   * Net Posted
+   */
+  net_posted: number
+}
+
+/**
+ * AidPostingLine
+ *
+ * One aid_postings row. source_key is the posting's own description;
+ * effective_source_key, source_family, funder_type and counts_toward_budget are
+ * after any per-posting reclassification. A reversed row is history: is_reversed
+ * with its reversal_date. open_flags are the flags no disposition has accepted;
+ * accepted_flags maps each accepted flag to its disposition.
+ */
+export type AidPostingLine = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Source Key
+   */
+  source_key: string
+  /**
+   * Effective Source Key
+   */
+  effective_source_key: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Funder Type
+   */
+  funder_type: string
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Post Date
+   */
+  post_date: string
+  /**
+   * Is Reversed
+   */
+  is_reversed: boolean
+  /**
+   * Reversal Date
+   */
+  reversal_date: string
+  /**
+   * Transaction Note
+   */
+  transaction_note: string
+  /**
+   * Attribution Level
+   */
+  attribution_level: string
+  /**
+   * Attribution Method
+   */
+  attribution_method: string
+  /**
+   * Program Family
+   */
+  program_family: string
+  /**
+   * Attributed Person Cm Id
+   */
+  attributed_person_cm_id: number
+  /**
+   * Attributed Session Cm Id
+   */
+  attributed_session_cm_id: number
+  /**
+   * Candidate Program Families
+   */
+  candidate_program_families: Array<string>
+  /**
+   * Open Flags
+   */
+  open_flags: Array<string>
+  /**
+   * Accepted Flags
+   */
+  accepted_flags: {
+    [key: string]: string
+  }
+}
+
+/**
+ * AidSourceRow
+ */
+export type AidSourceRow = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Description Key
+   */
+  description_key: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Source Name
+   */
+  source_name: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Funder Type
+   */
+  funder_type: string
+  /**
+   * Counts As Aid
+   */
+  counts_as_aid: boolean
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Full Coverage
+   */
+  full_coverage: boolean
+  /**
+   * Implied Program Families
+   */
+  implied_program_families: Array<string>
+  /**
+   * Classified By
+   */
+  classified_by: string
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * AidSourceTotal
+ */
+export type AidSourceTotal = {
+  /**
+   * Source Key
+   */
+  source_key: string
+  /**
+   * Source Name
+   */
+  source_name: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Postings
+   */
+  postings: number
+}
+
+/**
+ * AidSourceUpdate
+ *
+ * A staff classification. Only the camp's own aid (camp_fa) may count toward
+ * the budget: every outside grant and fund is external to it. full_coverage
+ * marks an outside full-ride source (it pays a family's whole session).
+ */
+export type AidSourceUpdate = {
+  /**
+   * Source Name
+   */
+  source_name: string
+  /**
+   * Source Family
+   */
+  source_family:
+    | 'camp_fa'
+    | 'one_happy_camper'
+    | 'synagogue_federation'
+    | 'new_israeli'
+    | 'pj'
+    | 'jfcs'
+    | 'jfam_incentive'
+    | 'named_fund'
+    | 'other_outside'
+    | 'application_marker'
+    | 'placeholder'
+  /**
+   * Funder Type
+   */
+  funder_type: 'camp' | 'outside' | 'incentive'
+  /**
+   * Counts As Aid
+   */
+  counts_as_aid: boolean
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Full Coverage
+   */
+  full_coverage?: boolean
+  /**
+   * Implied Program Families
+   */
+  implied_program_families?: Array<
+    | 'summer'
+    | 'quest'
+    | 'teen'
+    | 'bmitzvah'
+    | 'family_camp'
+    | 'adult_weekend'
+    | 'family_school'
+    | 'other'
+  >
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * AidSourcesResponse
+ */
+export type AidSourcesResponse = {
+  /**
+   * Sources
+   */
+  sources: Array<AidSourceRow>
+}
+
+/**
  * AnswerOut
  */
 export type AnswerOut = {
@@ -438,6 +706,43 @@ export type BucketCount = {
    * Total
    */
   total: number
+}
+
+/**
+ * BulkLoadResult
+ *
+ * operation_id is the aid_change_log operation holding every row this load
+ * wrote; None for a dry run or a load that changed nothing.
+ */
+export type BulkLoadResult = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Dry Run
+   */
+  dry_run: boolean
+  /**
+   * Created
+   */
+  created?: number
+  /**
+   * Updated
+   */
+  updated?: number
+  /**
+   * Unchanged
+   */
+  unchanged?: number
+  /**
+   * Rejected
+   */
+  rejected?: Array<LoadRejection>
+  /**
+   * Operation Id
+   */
+  operation_id?: string | null
 }
 
 /**
@@ -1525,6 +1830,82 @@ export type DailyDataPoint = {
 }
 
 /**
+ * DanglingDisposition
+ */
+export type DanglingDisposition = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Flag
+   */
+  flag: string
+}
+
+/**
+ * DataQualityResponse
+ */
+export type DataQualityResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Unclassified Sources
+   */
+  unclassified_sources: Array<UnclassifiedSource>
+  /**
+   * Orphan Reversal Legs
+   */
+  orphan_reversal_legs: Array<OrphanReversal>
+  /**
+   * Flag Counts
+   */
+  flag_counts: {
+    [key: string]: number
+  }
+  /**
+   * Accepted Flag Counts
+   */
+  accepted_flag_counts: {
+    [key: string]: number
+  }
+  /**
+   * Flagged Postings
+   */
+  flagged_postings: Array<AidPostingLine>
+  /**
+   * No Enrollment Postings
+   */
+  no_enrollment_postings: number
+  /**
+   * Dangling Overrides
+   */
+  dangling_overrides: Array<number>
+  /**
+   * Dangling Dispositions
+   */
+  dangling_dispositions: Array<DanglingDisposition>
+  /**
+   * Stale Staff Links
+   */
+  stale_staff_links: Array<StaleStaffLink>
+  /**
+   * Cross Season Sessions
+   */
+  cross_season_sessions: Array<SessionMismatch>
+  /**
+   * Unknown Sessions
+   */
+  unknown_sessions: Array<SessionMismatch>
+  /**
+   * Aid Like Outside Categories
+   */
+  aid_like_outside_categories: Array<AidLikeOutside>
+}
+
+/**
  * Day1Category
  */
 export type Day1Category = {
@@ -1639,6 +2020,98 @@ export type Day1YearData = {
    * Tiers
    */
   tiers: Array<Day1TierData>
+}
+
+/**
+ * DispositionBulkLoad
+ */
+export type DispositionBulkLoad = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Dry Run
+   */
+  dry_run?: boolean
+  /**
+   * Rows
+   */
+  rows: Array<DispositionRow>
+}
+
+/**
+ * DispositionOut
+ */
+export type DispositionOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Flag
+   */
+  flag: string
+  /**
+   * Disposition
+   */
+  disposition: string
+  /**
+   * Note
+   */
+  note: string
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * Updated
+   */
+  updated: string
+}
+
+/**
+ * DispositionRow
+ */
+export type DispositionRow = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Flag
+   */
+  flag: string
+  /**
+   * Disposition
+   */
+  disposition: 'accepted_let_stand' | 'accepted_late_grant' | 'accepted_other'
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * DispositionsResponse
+ */
+export type DispositionsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Dispositions
+   */
+  dispositions: Array<DispositionOut>
 }
 
 /**
@@ -1856,6 +2329,24 @@ export type DuplicateMark = {
    * Reason
    */
   reason: string
+}
+
+/**
+ * FaRequested
+ */
+export type FaRequested = {
+  /**
+   * Summer
+   */
+  summer?: number
+  /**
+   * Family Camp
+   */
+  family_camp?: number
+  /**
+   * Bmitzvah
+   */
+  bmitzvah?: number
 }
 
 /**
@@ -2633,6 +3124,74 @@ export type HistoricalTrendsResponse = {
 }
 
 /**
+ * HouseholdDetailResponse
+ *
+ * The family's posting history: live rows and reversed rows, oldest first.
+ * total_aid counts live rows only.
+ */
+export type HouseholdDetailResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Display Name
+   */
+  display_name: string
+  /**
+   * Family Households
+   */
+  family_households: Array<number>
+  /**
+   * Total Aid
+   */
+  total_aid: number
+  /**
+   * Postings
+   */
+  postings: Array<AidPostingLine>
+  /**
+   * Enrollments
+   */
+  enrollments: Array<HouseholdEnrollment>
+  fa_requested: FaRequested
+}
+
+/**
+ * HouseholdEnrollment
+ */
+export type HouseholdEnrollment = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Session Type
+   */
+  session_type: string
+  /**
+   * Status
+   */
+  status: string
+}
+
+/**
  * HouseholdJourneyResponse
  *
  * A household's year-over-year family-camp record, newest year first.
@@ -2771,6 +3330,70 @@ export type HouseholdJourneyYear = {
    * Weekend Cabins
    */
   weekend_cabins?: Array<HouseholdJourneyWeekendCabin>
+}
+
+/**
+ * HouseholdLinkCreate
+ */
+export type HouseholdLinkCreate = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Key
+   */
+  family_key: string
+  /**
+   * Excluded
+   */
+  excluded?: boolean
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * HouseholdLinkRow
+ */
+export type HouseholdLinkRow = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Key
+   */
+  family_key: string
+  /**
+   * Source
+   */
+  source: string
+  /**
+   * Excluded
+   */
+  excluded: boolean
+  /**
+   * Note
+   */
+  note: string
+  /**
+   * Actor
+   */
+  actor: string
 }
 
 /**
@@ -3444,6 +4067,107 @@ export type JotformWriteInOption = {
 }
 
 /**
+ * LedgerCamper
+ */
+export type LedgerCamper = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Name
+   */
+  name: string
+}
+
+/**
+ * LedgerHouseholdRow
+ */
+export type LedgerHouseholdRow = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Display Name
+   */
+  display_name: string
+  /**
+   * Family Households
+   */
+  family_households: Array<number>
+  /**
+   * Campers
+   */
+  campers: Array<LedgerCamper>
+  /**
+   * Total Aid
+   */
+  total_aid: number
+  /**
+   * By Source
+   */
+  by_source: Array<AidSourceTotal>
+  /**
+   * By Program
+   */
+  by_program: {
+    [key: string]: number
+  }
+  /**
+   * Levels
+   */
+  levels: {
+    [key: string]: number
+  }
+  fa_requested: FaRequested
+  /**
+   * Open Flags
+   */
+  open_flags: Array<string>
+  /**
+   * Accepted Flags
+   */
+  accepted_flags: Array<string>
+}
+
+/**
+ * LedgerResponse
+ */
+export type LedgerResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Total Aid
+   */
+  total_aid: number
+  /**
+   * Rows
+   */
+  rows: Array<LedgerHouseholdRow>
+}
+
+/**
+ * LoadRejection
+ */
+export type LoadRejection = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Flag
+   */
+  flag?: string
+  /**
+   * Reason
+   */
+  reason: string
+}
+
+/**
  * LodgingCopyResponse
  *
  * What the seed actually wrote.
@@ -3769,6 +4493,106 @@ export type MultiSessionSolverRequest = {
 }
 
 /**
+ * NetAidTotal
+ *
+ * Net aid dollars for one group of postings, for sub-project 11's
+ * reconciliation and for as-of reads. posting_household_cm_id is the household
+ * the postings were posted to (a payer share is checked against its own
+ * household); family_id is the smallest household id in that household's
+ * family set (aid_household_links), and family_households the whole set.
+ */
+export type NetAidTotal = {
+  /**
+   * Posting Household Cm Id
+   */
+  posting_household_cm_id: number
+  /**
+   * Family Id
+   */
+  family_id: number
+  /**
+   * Family Households
+   */
+  family_households: Array<number>
+  /**
+   * Effective Source Key
+   */
+  effective_source_key: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Funder Type
+   */
+  funder_type: string
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Program
+   */
+  program: string
+  /**
+   * Attributed Person Cm Id
+   */
+  attributed_person_cm_id: number
+  /**
+   * Attributed Session Cm Id
+   */
+  attributed_session_cm_id: number
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Postings
+   */
+  postings: number
+  /**
+   * Levels
+   */
+  levels: {
+    [key: string]: number
+  }
+  /**
+   * Last Post Date
+   */
+  last_post_date: string
+}
+
+/**
+ * NetTotalsResponse
+ */
+export type NetTotalsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of: string | null
+  /**
+   * Basis
+   */
+  basis?: 'posted'
+  /**
+   * Total Aid
+   */
+  total_aid: number
+  /**
+   * Undated Postings
+   */
+  undated_postings?: number
+  /**
+   * Rows
+   */
+  rows: Array<NetAidTotal>
+}
+
+/**
  * NewVsReturning
  *
  * New vs returning camper breakdown.
@@ -3947,6 +4771,54 @@ export type OriginalRequestsWithParseResponse = {
 }
 
 /**
+ * OrphanReversal
+ */
+export type OrphanReversal = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Net Posted
+   */
+  net_posted: number
+}
+
+/**
+ * OverrideBulkLoad
+ *
+ * One reviewed load: one aid_change_log operation. reason is required
+ * (spec §14.4: overrides need a reason) and is logged on every row that has
+ * no note of its own.
+ */
+export type OverrideBulkLoad = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Source
+   */
+  source: 'sheet_2026_match' | 'staff'
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Dry Run
+   */
+  dry_run?: boolean
+  /**
+   * Rows
+   */
+  rows: Array<OverrideRow>
+}
+
+/**
  * OverrideCreate
  *
  * Request body for creating a geo override.
@@ -4108,6 +4980,50 @@ export type OverrideResponse = {
    * Nominatim lookup status: resolved, no_result, ambiguous
    */
   nominatim_status?: string | null
+}
+
+/**
+ * OverrideRow
+ *
+ * Places a posting, reclassifies its source, or both. source_key_override is
+ * an aid_sources description_key. It exists for outside money booked under the
+ * camp's own aid description: the target is a private-config source classed
+ * outside and not counted toward the budget.
+ */
+export type OverrideRow = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Attributed Person Cm Id
+   */
+  attributed_person_cm_id?: number | null
+  /**
+   * Attributed Session Cm Id
+   */
+  attributed_session_cm_id?: number | null
+  /**
+   * Program Family
+   */
+  program_family?:
+    | 'summer'
+    | 'quest'
+    | 'teen'
+    | 'bmitzvah'
+    | 'family_camp'
+    | 'adult_weekend'
+    | 'family_school'
+    | 'other'
+    | null
+  /**
+   * Source Key Override
+   */
+  source_key_override?: string | null
+  /**
+   * Note
+   */
+  note?: string
 }
 
 /**
@@ -7920,6 +8836,32 @@ export type SessionLengthBySessionBreakdown = {
 }
 
 /**
+ * SessionMismatch
+ *
+ * Live transactions of the season carrying a session the season's
+ * camp_sessions do not hold: cross-season when another season holds it (spec
+ * §6.1 hands these to SP4), unknown when no season does.
+ */
+export type SessionMismatch = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Transactions
+   */
+  transactions: number
+  /**
+   * Net Posted
+   */
+  net_posted: number
+  /**
+   * Other Seasons
+   */
+  other_seasons: Array<number>
+}
+
+/**
  * SessionResolve
  */
 export type SessionResolve = {
@@ -8394,6 +9336,24 @@ export type SplitSourceConfig = {
 }
 
 /**
+ * StaleStaffLink
+ */
+export type StaleStaffLink = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Key
+   */
+  family_key: string
+}
+
+/**
  * SubjectNoteOut
  */
 export type SubjectNoteOut = {
@@ -8430,7 +9390,7 @@ export type SubjectNoteOut = {
 /**
  * SubjectNotePromoteRequest
  *
- * "Keep on all plans": move this scenario's plan-only note into the standard note.
+ * "Move scenario note to CM": move this scenario's plan-only note into the standard note.
  */
 export type SubjectNotePromoteRequest = {
   /**
@@ -8521,6 +9481,76 @@ export type SubjectNotesResponse = {
    * Notes
    */
   notes: Array<SubjectNoteOut>
+}
+
+/**
+ * SummaryCell
+ */
+export type SummaryCell = {
+  /**
+   * Program
+   */
+  program: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Postings
+   */
+  postings: number
+  /**
+   * Households
+   */
+  households: number
+}
+
+/**
+ * SummaryResponse
+ *
+ * Unsuppressed, finance-facing. as_of None means live now; otherwise money
+ * live at the end of that day in camp time. undated_postings were left out of
+ * an as-of figure because they carry no post date.
+ */
+export type SummaryResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of: string | null
+  /**
+   * Basis
+   */
+  basis?: 'posted'
+  /**
+   * Total Aid
+   */
+  total_aid: number
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: number
+  /**
+   * By Level
+   */
+  by_level: {
+    [key: string]: number
+  }
+  /**
+   * Cells
+   */
+  cells: Array<SummaryCell>
+  /**
+   * Undated Postings
+   */
+  undated_postings?: number
 }
 
 /**
@@ -8745,6 +9775,28 @@ export type TimeBucket = {
    * Percentage of total
    */
   percentage: number
+}
+
+/**
+ * UnclassifiedSource
+ */
+export type UnclassifiedSource = {
+  /**
+   * Source Key
+   */
+  source_key: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Postings
+   */
+  postings: number
+  /**
+   * Amount
+   */
+  amount: number
 }
 
 /**
@@ -13585,6 +14637,806 @@ export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostR
 export type LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponse =
   LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses[keyof LinkSubmissionToWriteInApiJotformSubmissionsSubmissionIdWriteInPostResponses]
 
+export type ListAidApplicationsApiFinancialAidApplicationsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/financial-aid/applications'
+}
+
+export type ListAidApplicationsApiFinancialAidApplicationsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListAidApplicationsApiFinancialAidApplicationsGetError =
+  ListAidApplicationsApiFinancialAidApplicationsGetErrors[keyof ListAidApplicationsApiFinancialAidApplicationsGetErrors]
+
+export type ListAidApplicationsApiFinancialAidApplicationsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ApplicationListResponse
+}
+
+export type ListAidApplicationsApiFinancialAidApplicationsGetResponse =
+  ListAidApplicationsApiFinancialAidApplicationsGetResponses[keyof ListAidApplicationsApiFinancialAidApplicationsGetResponses]
+
+export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/applications/{year}/{household_cm_id}'
+}
+
+export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetError =
+  GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetErrors[keyof GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetErrors]
+
+export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ApplicationDetailResponse
+}
+
+export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponse =
+  GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponses[keyof GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponses]
+
+export type ListAidRequestsApiFinancialAidRequestsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Status
+     */
+    status: 'active' | 'unmatched_session' | 'duplicate_pending' | 'duplicate' | 'withdrawn'
+    /**
+     * Flag
+     */
+    flag?: 'awaiting_approved_rules' | 'no_program_for_session' | null
+  }
+  url: '/api/financial-aid/requests'
+}
+
+export type ListAidRequestsApiFinancialAidRequestsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListAidRequestsApiFinancialAidRequestsGetError =
+  ListAidRequestsApiFinancialAidRequestsGetErrors[keyof ListAidRequestsApiFinancialAidRequestsGetErrors]
+
+export type ListAidRequestsApiFinancialAidRequestsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RequestQueueResponse
+}
+
+export type ListAidRequestsApiFinancialAidRequestsGetResponse =
+  ListAidRequestsApiFinancialAidRequestsGetResponses[keyof ListAidRequestsApiFinancialAidRequestsGetResponses]
+
+export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostData = {
+  body: CorrectionCreate
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/applications/{year}/{household_cm_id}/corrections'
+}
+
+export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostError =
+  AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostErrors[keyof AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostErrors]
+
+export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: CorrectionOut
+}
+
+export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponse =
+  AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses[keyof AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses]
+
+export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostData = {
+  body: SessionResolve
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/session'
+}
+
+export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostError =
+  ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostErrors[keyof ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostErrors]
+
+export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RequestOut
+}
+
+export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponse =
+  ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponses[keyof ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponses]
+
+export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostData = {
+  body: DuplicateMark
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/duplicate'
+}
+
+export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostError =
+  MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostErrors[keyof MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostErrors]
+
+export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RequestOut
+}
+
+export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponse =
+  MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponses[keyof MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponses]
+
+export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutData = {
+  body: HeadcountSet
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/headcount'
+}
+
+export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutError =
+  SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutErrors[keyof SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutErrors]
+
+export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: RequestOut
+}
+
+export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponse =
+  SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponses[keyof SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponses]
+
+export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutData = {
+  body: PayerSharesSet
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/payer-shares'
+}
+
+export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutError =
+  SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutErrors[keyof SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutErrors]
+
+export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: RequestOut
+}
+
+export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponse =
+  SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponses[keyof SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponses]
+
+export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutData =
+  {
+    body: HouseholdShareSet
+    path: {
+      /**
+       * Request Id
+       */
+      request_id: string
+      /**
+       * Household Cm Id
+       */
+      household_cm_id: number
+    }
+    query?: never
+    url: '/api/financial-aid/requests/{request_id}/payer-shares/{household_cm_id}'
+  }
+
+export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutError =
+  SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutErrors[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutErrors]
+
+export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: RequestOut
+  }
+
+export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponse =
+  SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses]
+
+export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutData = {
+  body: CapacitySet
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Session Cm Id
+     */
+    session_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/capacity/{year}/{session_cm_id}'
+}
+
+export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutError =
+  SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors]
+
+export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: CapacityOut
+}
+
+export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponse =
+  SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses]
+
+export type GetLedgerApiFinancialAidLedgerGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Program Family
+     */
+    program_family?:
+      | 'summer'
+      | 'quest'
+      | 'teen'
+      | 'bmitzvah'
+      | 'family_camp'
+      | 'adult_weekend'
+      | 'family_school'
+      | 'other'
+      | 'ambiguous'
+      | 'unattributed'
+      | null
+    /**
+     * Source Family
+     */
+    source_family?:
+      | 'camp_fa'
+      | 'one_happy_camper'
+      | 'synagogue_federation'
+      | 'new_israeli'
+      | 'pj'
+      | 'jfcs'
+      | 'jfam_incentive'
+      | 'named_fund'
+      | 'other_outside'
+      | 'application_marker'
+      | 'placeholder'
+      | 'unclassified'
+      | null
+    /**
+     * Level
+     */
+    level?:
+      | 'override'
+      | 'decision'
+      | 'session'
+      | 'person'
+      | 'program_family'
+      | 'ambiguous'
+      | 'none'
+      | null
+  }
+  url: '/api/financial-aid/ledger'
+}
+
+export type GetLedgerApiFinancialAidLedgerGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetLedgerApiFinancialAidLedgerGetError =
+  GetLedgerApiFinancialAidLedgerGetErrors[keyof GetLedgerApiFinancialAidLedgerGetErrors]
+
+export type GetLedgerApiFinancialAidLedgerGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: LedgerResponse
+}
+
+export type GetLedgerApiFinancialAidLedgerGetResponse =
+  GetLedgerApiFinancialAidLedgerGetResponses[keyof GetLedgerApiFinancialAidLedgerGetResponses]
+
+export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetData = {
+  body?: never
+  path: {
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/financial-aid/households/{household_cm_id}'
+}
+
+export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetError =
+  GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetErrors[keyof GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetErrors]
+
+export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdDetailResponse
+}
+
+export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetResponse =
+  GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetResponses[keyof GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetResponses]
+
+export type GetSummaryApiFinancialAidSummaryGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
+  url: '/api/financial-aid/summary'
+}
+
+export type GetSummaryApiFinancialAidSummaryGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetSummaryApiFinancialAidSummaryGetError =
+  GetSummaryApiFinancialAidSummaryGetErrors[keyof GetSummaryApiFinancialAidSummaryGetErrors]
+
+export type GetSummaryApiFinancialAidSummaryGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: SummaryResponse
+}
+
+export type GetSummaryApiFinancialAidSummaryGetResponse =
+  GetSummaryApiFinancialAidSummaryGetResponses[keyof GetSummaryApiFinancialAidSummaryGetResponses]
+
+export type GetNetTotalsApiFinancialAidNetTotalsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
+  url: '/api/financial-aid/net-totals'
+}
+
+export type GetNetTotalsApiFinancialAidNetTotalsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetNetTotalsApiFinancialAidNetTotalsGetError =
+  GetNetTotalsApiFinancialAidNetTotalsGetErrors[keyof GetNetTotalsApiFinancialAidNetTotalsGetErrors]
+
+export type GetNetTotalsApiFinancialAidNetTotalsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: NetTotalsResponse
+}
+
+export type GetNetTotalsApiFinancialAidNetTotalsGetResponse =
+  GetNetTotalsApiFinancialAidNetTotalsGetResponses[keyof GetNetTotalsApiFinancialAidNetTotalsGetResponses]
+
+export type GetDataQualityApiFinancialAidDataQualityGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/financial-aid/data-quality'
+}
+
+export type GetDataQualityApiFinancialAidDataQualityGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetDataQualityApiFinancialAidDataQualityGetError =
+  GetDataQualityApiFinancialAidDataQualityGetErrors[keyof GetDataQualityApiFinancialAidDataQualityGetErrors]
+
+export type GetDataQualityApiFinancialAidDataQualityGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: DataQualityResponse
+}
+
+export type GetDataQualityApiFinancialAidDataQualityGetResponse =
+  GetDataQualityApiFinancialAidDataQualityGetResponses[keyof GetDataQualityApiFinancialAidDataQualityGetResponses]
+
+export type ListSourcesApiFinancialAidSourcesGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/financial-aid/sources'
+}
+
+export type ListSourcesApiFinancialAidSourcesGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AidSourcesResponse
+}
+
+export type ListSourcesApiFinancialAidSourcesGetResponse =
+  ListSourcesApiFinancialAidSourcesGetResponses[keyof ListSourcesApiFinancialAidSourcesGetResponses]
+
+export type ClassifySourceApiFinancialAidSourcesSourceIdPatchData = {
+  body: AidSourceUpdate
+  path: {
+    /**
+     * Source Id
+     */
+    source_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/sources/{source_id}'
+}
+
+export type ClassifySourceApiFinancialAidSourcesSourceIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ClassifySourceApiFinancialAidSourcesSourceIdPatchError =
+  ClassifySourceApiFinancialAidSourcesSourceIdPatchErrors[keyof ClassifySourceApiFinancialAidSourcesSourceIdPatchErrors]
+
+export type ClassifySourceApiFinancialAidSourcesSourceIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: AidSourceRow
+}
+
+export type ClassifySourceApiFinancialAidSourcesSourceIdPatchResponse =
+  ClassifySourceApiFinancialAidSourcesSourceIdPatchResponses[keyof ClassifySourceApiFinancialAidSourcesSourceIdPatchResponses]
+
+export type CreateHouseholdLinkApiFinancialAidHouseholdLinksPostData = {
+  body: HouseholdLinkCreate
+  path?: never
+  query?: never
+  url: '/api/financial-aid/household-links'
+}
+
+export type CreateHouseholdLinkApiFinancialAidHouseholdLinksPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateHouseholdLinkApiFinancialAidHouseholdLinksPostError =
+  CreateHouseholdLinkApiFinancialAidHouseholdLinksPostErrors[keyof CreateHouseholdLinkApiFinancialAidHouseholdLinksPostErrors]
+
+export type CreateHouseholdLinkApiFinancialAidHouseholdLinksPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: HouseholdLinkRow
+}
+
+export type CreateHouseholdLinkApiFinancialAidHouseholdLinksPostResponse =
+  CreateHouseholdLinkApiFinancialAidHouseholdLinksPostResponses[keyof CreateHouseholdLinkApiFinancialAidHouseholdLinksPostResponses]
+
+export type DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Link Id
+     */
+    link_id: string
+  }
+  query: {
+    /**
+     * Reason
+     */
+    reason: string
+  }
+  url: '/api/financial-aid/household-links/{link_id}'
+}
+
+export type DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteError =
+  DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteErrors[keyof DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteErrors]
+
+export type DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteResponse =
+  DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteResponses[keyof DeleteHouseholdLinkApiFinancialAidHouseholdLinksLinkIdDeleteResponses]
+
+export type LoadOverridesApiFinancialAidOverridesBulkPostData = {
+  body: OverrideBulkLoad
+  path?: never
+  query?: never
+  url: '/api/financial-aid/overrides/bulk'
+}
+
+export type LoadOverridesApiFinancialAidOverridesBulkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LoadOverridesApiFinancialAidOverridesBulkPostError =
+  LoadOverridesApiFinancialAidOverridesBulkPostErrors[keyof LoadOverridesApiFinancialAidOverridesBulkPostErrors]
+
+export type LoadOverridesApiFinancialAidOverridesBulkPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: BulkLoadResult
+}
+
+export type LoadOverridesApiFinancialAidOverridesBulkPostResponse =
+  LoadOverridesApiFinancialAidOverridesBulkPostResponses[keyof LoadOverridesApiFinancialAidOverridesBulkPostResponses]
+
+export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  url: '/api/financial-aid/flag-dispositions'
+}
+
+export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetError =
+  ListFlagDispositionsApiFinancialAidFlagDispositionsGetErrors[keyof ListFlagDispositionsApiFinancialAidFlagDispositionsGetErrors]
+
+export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: DispositionsResponse
+}
+
+export type ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponse =
+  ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponses[keyof ListFlagDispositionsApiFinancialAidFlagDispositionsGetResponses]
+
+export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostData = {
+  body: DispositionBulkLoad
+  path?: never
+  query?: never
+  url: '/api/financial-aid/flag-dispositions/bulk'
+}
+
+export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostError =
+  LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostErrors[keyof LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostErrors]
+
+export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: BulkLoadResult
+}
+
+export type LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponse =
+  LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponses[keyof LoadFlagDispositionsApiFinancialAidFlagDispositionsBulkPostResponses]
+
+export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Disposition Id
+     */
+    disposition_id: string
+  }
+  query: {
+    /**
+     * Reason
+     */
+    reason: string
+  }
+  url: '/api/financial-aid/flag-dispositions/{disposition_id}'
+}
+
+export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteError =
+  DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteErrors[keyof DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteErrors]
+
+export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponse =
+  DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses[keyof DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses]
+
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
   path: {
@@ -14188,353 +16040,6 @@ export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses = {
 
 export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponse =
   RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses[keyof RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses]
-
-export type ListAidApplicationsApiFinancialAidApplicationsGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Year
-     */
-    year: number
-  }
-  url: '/api/financial-aid/applications'
-}
-
-export type ListAidApplicationsApiFinancialAidApplicationsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ListAidApplicationsApiFinancialAidApplicationsGetError =
-  ListAidApplicationsApiFinancialAidApplicationsGetErrors[keyof ListAidApplicationsApiFinancialAidApplicationsGetErrors]
-
-export type ListAidApplicationsApiFinancialAidApplicationsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: ApplicationListResponse
-}
-
-export type ListAidApplicationsApiFinancialAidApplicationsGetResponse =
-  ListAidApplicationsApiFinancialAidApplicationsGetResponses[keyof ListAidApplicationsApiFinancialAidApplicationsGetResponses]
-
-export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetData = {
-  body?: never
-  path: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Household Cm Id
-     */
-    household_cm_id: number
-  }
-  query?: never
-  url: '/api/financial-aid/applications/{year}/{household_cm_id}'
-}
-
-export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetError =
-  GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetErrors[keyof GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetErrors]
-
-export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: ApplicationDetailResponse
-}
-
-export type GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponse =
-  GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponses[keyof GetAidApplicationApiFinancialAidApplicationsYearHouseholdCmIdGetResponses]
-
-export type ListAidRequestsApiFinancialAidRequestsGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Status
-     */
-    status: 'active' | 'unmatched_session' | 'duplicate_pending' | 'duplicate' | 'withdrawn'
-    /**
-     * Flag
-     */
-    flag?: 'awaiting_approved_rules' | 'no_program_for_session' | null
-  }
-  url: '/api/financial-aid/requests'
-}
-
-export type ListAidRequestsApiFinancialAidRequestsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ListAidRequestsApiFinancialAidRequestsGetError =
-  ListAidRequestsApiFinancialAidRequestsGetErrors[keyof ListAidRequestsApiFinancialAidRequestsGetErrors]
-
-export type ListAidRequestsApiFinancialAidRequestsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: RequestQueueResponse
-}
-
-export type ListAidRequestsApiFinancialAidRequestsGetResponse =
-  ListAidRequestsApiFinancialAidRequestsGetResponses[keyof ListAidRequestsApiFinancialAidRequestsGetResponses]
-
-export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostData = {
-  body: CorrectionCreate
-  path: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Household Cm Id
-     */
-    household_cm_id: number
-  }
-  query?: never
-  url: '/api/financial-aid/applications/{year}/{household_cm_id}/corrections'
-}
-
-export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostError =
-  AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostErrors[keyof AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostErrors]
-
-export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses = {
-  /**
-   * Successful Response
-   */
-  201: CorrectionOut
-}
-
-export type AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponse =
-  AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses[keyof AddAidCorrectionApiFinancialAidApplicationsYearHouseholdCmIdCorrectionsPostResponses]
-
-export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostData = {
-  body: SessionResolve
-  path: {
-    /**
-     * Request Id
-     */
-    request_id: string
-  }
-  query?: never
-  url: '/api/financial-aid/requests/{request_id}/session'
-}
-
-export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostError =
-  ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostErrors[keyof ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostErrors]
-
-export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: RequestOut
-}
-
-export type ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponse =
-  ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponses[keyof ResolveAidRequestSessionApiFinancialAidRequestsRequestIdSessionPostResponses]
-
-export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostData = {
-  body: DuplicateMark
-  path: {
-    /**
-     * Request Id
-     */
-    request_id: string
-  }
-  query?: never
-  url: '/api/financial-aid/requests/{request_id}/duplicate'
-}
-
-export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostError =
-  MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostErrors[keyof MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostErrors]
-
-export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: RequestOut
-}
-
-export type MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponse =
-  MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponses[keyof MarkAidRequestDuplicateApiFinancialAidRequestsRequestIdDuplicatePostResponses]
-
-export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutData = {
-  body: HeadcountSet
-  path: {
-    /**
-     * Request Id
-     */
-    request_id: string
-  }
-  query?: never
-  url: '/api/financial-aid/requests/{request_id}/headcount'
-}
-
-export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutError =
-  SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutErrors[keyof SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutErrors]
-
-export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponses = {
-  /**
-   * Successful Response
-   */
-  200: RequestOut
-}
-
-export type SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponse =
-  SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponses[keyof SetAidRequestHeadcountApiFinancialAidRequestsRequestIdHeadcountPutResponses]
-
-export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutData = {
-  body: PayerSharesSet
-  path: {
-    /**
-     * Request Id
-     */
-    request_id: string
-  }
-  query?: never
-  url: '/api/financial-aid/requests/{request_id}/payer-shares'
-}
-
-export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutError =
-  SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutErrors[keyof SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutErrors]
-
-export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponses = {
-  /**
-   * Successful Response
-   */
-  200: RequestOut
-}
-
-export type SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponse =
-  SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponses[keyof SetAidRequestPayerSharesApiFinancialAidRequestsRequestIdPayerSharesPutResponses]
-
-export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutData =
-  {
-    body: HouseholdShareSet
-    path: {
-      /**
-       * Request Id
-       */
-      request_id: string
-      /**
-       * Household Cm Id
-       */
-      household_cm_id: number
-    }
-    query?: never
-    url: '/api/financial-aid/requests/{request_id}/payer-shares/{household_cm_id}'
-  }
-
-export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutErrors =
-  {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError
-  }
-
-export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutError =
-  SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutErrors[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutErrors]
-
-export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses =
-  {
-    /**
-     * Successful Response
-     */
-    200: RequestOut
-  }
-
-export type SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponse =
-  SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses[keyof SetAidRequestHouseholdShareApiFinancialAidRequestsRequestIdPayerSharesHouseholdCmIdPutResponses]
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutData = {
-  body: CapacitySet
-  path: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Session Cm Id
-     */
-    session_cm_id: number
-  }
-  query?: never
-  url: '/api/financial-aid/capacity/{year}/{session_cm_id}'
-}
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutError =
-  SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutErrors]
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses = {
-  /**
-   * Successful Response
-   */
-  200: CapacityOut
-}
-
-export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponse =
-  SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses]
 
 export type HealthCheckHealthGetData = {
   body?: never

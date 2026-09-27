@@ -159,3 +159,10 @@ AID_REQUESTS = "aid_requests"
 AID_APPLICATION_CORRECTIONS = "aid_application_corrections"
 AID_SESSION_CAPACITY = "aid_session_capacity"
 AID_PAYER_SHARES = "aid_payer_shares"
+
+# Campership ledger (sub-project 4).
+AID_SOURCES = "aid_sources"
+AID_POSTINGS = "aid_postings"
+AID_HOUSEHOLD_LINKS = "aid_household_links"
+AID_ATTRIBUTION_OVERRIDES = "aid_attribution_overrides"
+AID_FLAG_DISPOSITIONS = "aid_flag_dispositions"

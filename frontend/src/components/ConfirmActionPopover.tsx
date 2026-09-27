@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+import { trapTab } from './ui/focusTrap'
 import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from './ui/modalStack'
+import { useAnchoredOverlay } from './ui/useAnchoredOverlay'
 
 export interface ConfirmActionPopoverProps {
   isOpen: boolean
@@ -18,7 +20,13 @@ export function ConfirmActionPopover({
   onConfirm,
   onCancel,
 }: ConfirmActionPopoverProps) {
-  const popoverRef = useRef<HTMLDivElement>(null)
+  const { ref: popoverRef, position } = useAnchoredOverlay<HTMLDivElement>({
+    open: isOpen,
+    getAnchorRect: () => anchorRect,
+    placement: 'below',
+    // The old arithmetic's padding, kept so placement does not move.
+    edge: 10,
+  })
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -36,18 +44,8 @@ export function ConfirmActionPopover({
       if (e.key === 'Escape') {
         if (!isTopOverlay(token)) return
         onCancel()
-      } else if (e.key === 'Tab') {
-        const buttons = popoverRef.current
-          ? Array.from(popoverRef.current.querySelectorAll<HTMLElement>('button'))
-          : []
-        if (buttons.length === 0) return
-        e.preventDefault()
-        const idx = buttons.indexOf(document.activeElement as HTMLElement)
-        if (e.shiftKey) {
-          buttons[idx <= 0 ? buttons.length - 1 : idx - 1]?.focus()
-        } else {
-          buttons[idx >= buttons.length - 1 ? 0 : idx + 1]?.focus()
-        }
+      } else {
+        trapTab(e, popoverRef.current)
       }
     }
 
@@ -58,11 +56,12 @@ export function ConfirmActionPopover({
       }
     }
 
-    // The popover is positioned using a rect captured at click-time, so any
-    // scroll desyncs it from its anchor button. Dismissing on scroll avoids
-    // a floating, orphaned popover. capture:true catches scrolls on any
-    // scrollable ancestor (e.g. modal body), which don't bubble.
-    function handleScroll() {
+    // The anchor rect is a click-time snapshot, so a scroll OUTSIDE the
+    // popover still dismisses it rather than leave it floating orphaned. A
+    // scroll INSIDE it (a scrollable body) is the popover's own and must not.
+    function handleScroll(e: Event) {
+      if (popoverRef.current && e.target instanceof Node && popoverRef.current.contains(e.target))
+        return
       onCancel()
     }
 
@@ -77,33 +76,9 @@ export function ConfirmActionPopover({
       releaseOverlayToken(token)
       previouslyFocused?.focus()
     }
-  }, [isOpen, onCancel])
+  }, [isOpen, onCancel, popoverRef])
 
   if (!isOpen) return null
-
-  const popoverWidth = 220
-  // Estimated: ~2 lines of text + padding; update if layout changes
-  const popoverHeight = 90
-  const padding = 10
-
-  // Position below the anchor by default
-  let top = anchorRect.top + anchorRect.height + 8
-  let left = anchorRect.left + anchorRect.width / 2 - popoverWidth / 2
-
-  // Flip above anchor if clipped at bottom
-  if (top + popoverHeight > window.innerHeight - padding) {
-    top = Math.max(padding, anchorRect.top - popoverHeight - 8)
-  }
-
-  // Shift left if clipped at right
-  if (left + popoverWidth > window.innerWidth - padding) {
-    left = Math.max(padding, window.innerWidth - popoverWidth - padding)
-  }
-
-  // Ensure not off-screen left
-  if (left < padding) {
-    left = padding
-  }
 
   const isApprove = action === 'approve'
   const displayMessage = isApprove ? 'Approve this request?' : 'Decline this request?'
@@ -116,9 +91,9 @@ export function ConfirmActionPopover({
       aria-label={displayMessage}
       className="bg-popover fixed z-[200] rounded-lg border p-3 shadow-lg"
       style={{
-        top: `${top}px`,
-        left: `${left}px`,
-        width: `${popoverWidth}px`,
+        top: `${String(position?.top ?? -9999)}px`,
+        left: `${String(position?.left ?? -9999)}px`,
+        width: '220px',
       }}
     >
       <p className="text-foreground mb-3 text-sm font-medium">{displayMessage}</p>

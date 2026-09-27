@@ -408,7 +408,9 @@ class TestPromote:
 
     @pytest.mark.asyncio
     async def test_promote_with_no_plan_note_is_an_error(self, service: SubjectNoteService) -> None:
-        with pytest.raises(NothingToPromoteError):
+        # Wording ruling (owner): the button reads "Move scenario note to CM",
+        # not "Keep on all plans" -- this message can reach staff as a toast.
+        with pytest.raises(NothingToPromoteError, match="No scenario note in scenario scnA to move to CM"):
             await service.promote(_promote(), updated_by="Test Staff")
 
 

@@ -105,6 +105,19 @@ vi.mock('../hooks/useUnitMerge', () => ({
   }),
 }))
 
+// Board notes mount a scope around the board. Its data layer has its own
+// suite (hooks/useSubjectNotes.test.tsx); these page tests render without a
+// QueryClientProvider, so it is stubbed like every other hook here.
+const subjectNotesSpy = vi.fn()
+vi.mock('../hooks/useSubjectNotes', () => ({
+  useSubjectNotes: (args: unknown) => {
+    subjectNotesSpy(args)
+    return { data: { notes: [] } }
+  },
+  useSaveSubjectNote: () => ({ mutateAsync: vi.fn() }),
+  usePromoteSubjectNote: () => ({ mutateAsync: vi.fn() }),
+}))
+
 // The "Push write-ins" badge became a real React Query hook when it stopped
 // counting the board's own write-ins and started reading the server's report
 // of what a push would actually write (owner ruling 2026-08-28). Same reason

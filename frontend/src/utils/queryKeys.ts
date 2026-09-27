@@ -573,6 +573,13 @@ export const queryKeys = {
   // The invalidation prefix, added by kindred#2332. `invalidateLodgingRegistryQueries`
   // knows no household at all, and the real key carries one.
   householdJourneyPrefix: () => ['household-journey'] as const,
+  // Board notes (subject_notes). The board's ONE read: standard notes on the
+  // board session's family plus the viewed scenario's plan-only notes. It
+  // inherits the app defaults; every note write invalidates the PREFIX below,
+  // and this UI is the table's only writer.
+  subjectNotes: (sessionCmId: number, year: number, scenarioId: string) =>
+    ['subject-notes', sessionCmId, year, scenarioId] as const,
+  subjectNotesPrefix: () => ['subject-notes'] as const,
   /** The medical narrative. Only ever fetched behind a `bunking.manage` check. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,

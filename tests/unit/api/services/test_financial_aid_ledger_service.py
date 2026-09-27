@@ -1,0 +1,585 @@
+"""Campership ledger read service (sub-project 4). Fictional data only."""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from api.services.financial_aid_ledger_service import (
+    FinancialAidLedgerService,
+    FinancialAidNotFoundError,
+    as_of_cutoff,
+    family_household_set,
+    live_at,
+    money,
+    normalize_aid_label,
+    program_bucket,
+)
+from api.services.financial_aid_repository import FaRequestRow
+
+CAMP = "example camp financial assistance"
+GRANT = "regional grant - north"
+OUTSIDE = "outside program award (reclassified)"
+
+
+def _posting(txn: int, household: int, amount: float, **kw: Any) -> SimpleNamespace:
+    base: dict[str, Any] = {
+        "year": 2026,
+        "transaction_cm_id": txn,
+        "household_cm_id": household,
+        "amount": amount,
+        "source_key": CAMP,
+        "effective_source_key": CAMP,
+        "source_family": "camp_fa",
+        "funder_type": "camp",
+        "counts_toward_budget": True,
+        "is_reversed": False,
+        "reversal_date": "",
+        "transaction_note": "",
+        "attribution_level": "session",
+        "attribution_method": "household_single_camper",
+        "program_family": "summer",
+        "person_cm_id": 0,
+        "attributed_person_cm_id": 1001,
+        "attributed_session_cm_id": 11,
+        "candidate_program_families": [],
+        "flags": [],
+        "post_date": "2026-03-02 00:00:00.000Z",
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def _grant(txn: int, household: int, amount: float, **kw: Any) -> SimpleNamespace:
+    kw = {
+        "source_key": GRANT,
+        "effective_source_key": GRANT,
+        "source_family": "other_outside",
+        "funder_type": "outside",
+        "counts_toward_budget": False,
+        **kw,
+    }
+    return _posting(txn, household, amount, **kw)
+
+
+def _source(
+    key: str, family: str, *, budget: bool, classified_by: str = "config_file", aid: bool = True, description: str = ""
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=f"src-{family}",
+        description_key=key,
+        description=description or key.title(),
+        source_name=family.replace("_", " "),
+        source_family=family,
+        funder_type="camp" if family == "camp_fa" else "outside",
+        counts_as_aid=aid,
+        counts_toward_budget=budget,
+        full_coverage=False,
+        implied_program_families=[],
+        classified_by=classified_by,
+        note="",
+    )
+
+
+def _link(h: int, key: str, *, source: str = "auto", excluded: bool = False, id: str = "") -> SimpleNamespace:
+    return SimpleNamespace(id=id or f"l{h}{key}", household_cm_id=h, family_key=key, source=source, excluded=excluded)
+
+
+def _disposition(txn: int, flag: str, kind: str = "accepted_let_stand") -> SimpleNamespace:
+    return SimpleNamespace(
+        id=f"d{txn}{flag}",
+        year=2026,
+        transaction_cm_id=txn,
+        flag=flag,
+        disposition=kind,
+        note="Finance let it stand",
+        actor="finance@example.com",
+        updated="2026-09-26 17:00:00.000Z",
+    )
+
+
+_DEFAULTS: dict[str, Any] = {"fetch_session_ids": set(), "fetch_session_seasons": {}}
+
+
+def _repo(**values: Any) -> MagicMock:
+    repo = MagicMock()
+    for name in (
+        "fetch_postings",
+        "fetch_sources",
+        "fetch_links",
+        "fetch_overrides",
+        "fetch_dispositions",
+        "fetch_households",
+        "fetch_persons",
+        "fetch_household_persons",
+        "fetch_enrollments",
+        "fetch_fa_requests",
+        "fetch_reversed_aid",
+        "fetch_session_ids",
+        "fetch_session_seasons",
+        "fetch_off_season_session_rows",
+        "fetch_aid_like_outside",
+    ):
+        setattr(repo, name, AsyncMock(return_value=values.get(name, _DEFAULTS.get(name, []))))
+    return repo
+
+
+# --- pure helpers ------------------------------------------------------------
+
+
+def test_money_rounds_half_up_to_cents() -> None:
+    assert money(Decimal("10.005")) == 10.01
+    assert money(Decimal("-0.005")) == -0.01
+
+
+@pytest.mark.parametrize(
+    ("family", "level", "want"),
+    [
+        ("summer", "session", "summer"),
+        ("", "ambiguous", "ambiguous"),
+        ("", "person", "ambiguous"),
+        ("", "none", "unattributed"),
+        ("", "override", "ambiguous"),
+    ],
+)
+def test_program_bucket(family: str, level: str, want: str) -> None:
+    assert program_bucket(_posting(1, 100, -1, program_family=family, attribution_level=level)) == want
+
+
+def test_family_household_set_matches_the_go_closure() -> None:
+    links = [
+        _link(100, "hh-100"),
+        _link(200, "hh-100"),
+        _link(200, "staff-merge", source="staff"),
+        _link(700, "staff-merge", source="staff"),
+        _link(400, "hh-100", source="staff", excluded=True),
+    ]
+    assert family_household_set(links, 100) == [100, 200, 700]
+    assert family_household_set(links, 400) == [400]
+    assert family_household_set(links, 900) == [900]
+
+
+def test_family_household_set_returns_empty_for_a_non_positive_household() -> None:
+    # Python twin of Go's aidFamilyIndex.HouseholdSet, which returns nothing for household <= 0.
+    links = [_link(100, "hh-100"), _link(200, "hh-100")]
+    assert family_household_set(links, 0) == []
+
+
+@pytest.mark.parametrize(
+    ("raw", "want"),
+    [
+        ("Regional Grant - North", "regional grant - north"),
+        ("Regional Grant- North", "regional grant - north"),
+        ("Regional Grant – North", "regional grant - north"),
+        ("  REGIONAL   grant  -   north  ", "regional grant - north"),
+        ("Session 3 (All-Gender Cabin)", "session 3 (all - gender cabin)"),
+        ("   ", ""),
+        ("Grant North", "grant north"),
+        ("A\vB", "a b"),  # vertical tab -- the Go twin's RE2 \s alone omits it
+        ("A B", "a b"),  # U+202F narrow no-break space -- outside RE2's \s
+    ],
+)
+def test_normalize_aid_label_is_the_go_twin(raw: str, want: str) -> None:
+    assert normalize_aid_label(raw) == want
+
+
+def test_as_of_cutoff_is_the_end_of_the_day_in_camp_time() -> None:
+    assert as_of_cutoff(date(2026, 3, 10)) == datetime(2026, 3, 11, 7, 0, tzinfo=UTC)  # PDT
+    assert as_of_cutoff(date(2026, 1, 10)) == datetime(2026, 1, 11, 8, 0, tzinfo=UTC)  # PST
+
+
+def test_live_at_counts_a_reversal_exactly_on_the_cutoff_instant() -> None:
+    # Item 9 (final review, tests only): a posting reversed AT the as-of
+    # cutoff instant has not yet been reversed as of that day's end, so it
+    # still counts for that day.
+    cutoff = as_of_cutoff(date(2026, 3, 10))  # 2026-03-11T07:00:00Z (PDT)
+    posting = _posting(
+        9001,
+        100,
+        -500.0,
+        post_date="2026-03-02 17:00:00.000Z",
+        is_reversed=True,
+        reversal_date="2026-03-11 07:00:00.000Z",
+    )
+    assert live_at(posting, cutoff) is True
+
+
+def test_live_at_does_not_count_a_reversal_at_23_59_59_camp_time_on_the_day() -> None:
+    # 23:59:59 camp time on day D is one second before D's cutoff, so a
+    # reversal there has already happened as of D's end and must not count.
+    cutoff = as_of_cutoff(date(2026, 3, 10))  # 2026-03-11T07:00:00Z (PDT)
+    posting = _posting(
+        9002,
+        200,
+        -300.0,
+        post_date="2026-03-02 17:00:00.000Z",
+        is_reversed=True,
+        reversal_date="2026-03-11 06:59:59.000Z",  # 23:59:59 PDT on Mar 10
+    )
+    assert live_at(posting, cutoff) is False
+
+
+# --- ledger -------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ledger_groups_a_household_and_presents_positive_aid_dollars() -> None:
+    repo = _repo(
+        fetch_postings=[
+            _posting(9001, 100, -750.0, flags=["fee_unknown", "several_live_postings"]),
+            _grant(
+                9002,
+                100,
+                -250.5,
+                attribution_level="ambiguous",
+                program_family="",
+                attributed_person_cm_id=0,
+                attributed_session_cm_id=0,
+                candidate_program_families=["family_camp", "summer"],
+            ),
+            _posting(9003, 100, -300.0, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"),
+        ],
+        fetch_sources=[_source(CAMP, "camp_fa", budget=True), _source(GRANT, "other_outside", budget=False)],
+        fetch_dispositions=[_disposition(9001, "several_live_postings")],
+        fetch_households=[SimpleNamespace(cm_id=100, mailing_title="The Test Household", greeting="")],
+        fetch_persons=[SimpleNamespace(cm_id=1001, first_name="Emma", last_name="Johnson", preferred_name="")],
+        fetch_links=[_link(100, "hh-100"), _link(200, "hh-100")],
+        fetch_fa_requests=[FaRequestRow(100, 1200.0, 0.0, 0.0), FaRequestRow(200, 1500.0, 300.0, 0.0)],
+    )
+    got = await FinancialAidLedgerService(repo).ledger(2026)
+
+    assert got.total_aid == 1000.5  # the reversed 300 is history, not live aid
+    (row,) = got.rows
+    assert (row.household_cm_id, row.display_name, row.family_households) == (100, "The Test Household", [100, 200])
+    assert [(c.person_cm_id, c.name) for c in row.campers] == [(1001, "Emma Johnson")]
+    assert [(s.source_family, s.amount) for s in row.by_source] == [("camp_fa", 750.0), ("other_outside", 250.5)]
+    assert row.by_program == {"summer": 750.0, "ambiguous": 250.5}
+    assert row.levels == {"session": 1, "ambiguous": 1}
+    assert (row.fa_requested.summer, row.fa_requested.family_camp) == (1500.0, 300.0)
+    assert (row.open_flags, row.accepted_flags) == (["fee_unknown"], ["several_live_postings"])
+
+
+@pytest.mark.asyncio
+async def test_ledger_filters_by_bucket_effective_source_family_and_level() -> None:
+    postings = [
+        _posting(9001, 100, -750.0),
+        _grant(9002, 200, -300.0, attribution_level="ambiguous", program_family=""),
+        # Reclassified by an override: its own description is camp aid, its class is outside.
+        _posting(
+            9003,
+            300,
+            -400.0,
+            effective_source_key=OUTSIDE,
+            source_family="other_outside",
+            funder_type="outside",
+            counts_toward_budget=False,
+        ),
+    ]
+    service = FinancialAidLedgerService(
+        _repo(fetch_postings=postings, fetch_sources=[_source(CAMP, "camp_fa", budget=True)])
+    )
+    assert [r.household_cm_id for r in (await service.ledger(2026, program_family="ambiguous")).rows] == [200]
+    assert [r.household_cm_id for r in (await service.ledger(2026, source_family="camp_fa")).rows] == [100]
+    assert [r.household_cm_id for r in (await service.ledger(2026, source_family="other_outside")).rows] == [300, 200]
+    assert [r.household_cm_id for r in (await service.ledger(2026, level="session")).rows] == [100, 300]
+
+
+# --- household detail ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_household_detail_shows_the_familys_posting_history() -> None:
+    session = SimpleNamespace(cm_id=11, name="Session 2", session_type="main")
+    repo = _repo(
+        fetch_links=[_link(100, "hh-100"), _link(200, "hh-100")],
+        fetch_postings=[
+            _posting(9002, 200, -900.0, post_date="2026-03-25 00:00:00.000Z"),
+            _posting(
+                9001,
+                100,
+                -500.0,
+                is_reversed=True,
+                reversal_date="2026-03-20 00:00:00.000Z",
+                transaction_note="Reversed by a fictional staff user",
+            ),
+        ],
+        fetch_household_persons=[
+            SimpleNamespace(cm_id=1001, first_name="Emma", last_name="Johnson", preferred_name="")
+        ],
+        fetch_enrollments=[SimpleNamespace(person_id=1001, status="enrolled", expand={"session": session})],
+        fetch_households=[SimpleNamespace(cm_id=100, mailing_title="", greeting="Test Family")],
+        fetch_dispositions=[],
+    )
+    got = await FinancialAidLedgerService(repo).household(2026, 100)
+
+    repo.fetch_postings.assert_awaited_once_with(2026, [100, 200], include_reversed=True)
+    assert got.family_households == [100, 200]
+    assert got.display_name == "Test Family"
+    assert [(p.transaction_cm_id, p.is_reversed) for p in got.postings] == [(9001, True), (9002, False)]
+    assert got.postings[0].transaction_note == "Reversed by a fictional staff user"
+    assert got.total_aid == 900.0
+    assert [(e.person_cm_id, e.session_cm_id, e.status) for e in got.enrollments] == [(1001, 11, "enrolled")]
+
+
+@pytest.mark.asyncio
+async def test_household_detail_is_404_without_ledger_rows() -> None:
+    with pytest.raises(FinancialAidNotFoundError):
+        await FinancialAidLedgerService(_repo()).household(2026, 100)
+
+
+# --- summary and as-of ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_summary_cells_levels_and_the_budget_honour_the_posting_classification() -> None:
+    repo = _repo(
+        fetch_postings=[
+            _posting(9001, 100, -700.0),
+            _posting(9002, 200, -300.0, attribution_level="ambiguous", program_family=""),
+            _grant(9003, 300, -50.0, attribution_level="none", program_family=""),
+            _posting(
+                9004,
+                300,
+                -25.0,
+                source_key="unknown grant",
+                effective_source_key="unknown grant",
+                source_family="unclassified",
+                funder_type="unknown",
+                counts_toward_budget=False,
+                attribution_level="none",
+                program_family="",
+            ),
+            _posting(
+                9005,
+                400,
+                -600.0,
+                effective_source_key=OUTSIDE,
+                source_family="other_outside",
+                funder_type="outside",
+                counts_toward_budget=False,
+            ),  # reclassified outside by an override
+        ],
+    )
+    got = await FinancialAidLedgerService(repo).summary(2026)
+
+    assert (got.total_aid, got.counts_toward_budget, got.as_of, got.basis) == (1675.0, 1000.0, None, "posted")
+    assert got.by_level == {"session": 1300.0, "ambiguous": 300.0, "none": 75.0}
+    assert [(c.program, c.source_family, c.amount, c.households) for c in got.cells] == [
+        ("ambiguous", "camp_fa", 300.0, 1),
+        ("summer", "camp_fa", 700.0, 1),
+        ("summer", "other_outside", 600.0, 1),
+        ("unattributed", "other_outside", 50.0, 1),
+        ("unattributed", "unclassified", 25.0, 1),
+    ]
+
+
+# Review Focus 6.
+@pytest.mark.asyncio
+async def test_summary_as_of_counts_what_was_live_on_that_date() -> None:
+    postings = [
+        _posting(9001, 100, -500.0, post_date="2026-03-02 17:00:00.000Z"),
+        _posting(
+            9002,
+            200,
+            -300.0,
+            post_date="2026-03-02 17:00:00.000Z",
+            is_reversed=True,
+            reversal_date="2026-03-20 17:00:00.000Z",
+        ),
+        _posting(9003, 300, -200.0, post_date="2026-04-10 17:00:00.000Z"),
+        _posting(9004, 400, -40.0, post_date="2026-03-11 06:59:00.000Z"),  # 23:59 on Mar 10, camp time
+        _posting(9005, 500, -60.0, post_date="2026-03-11 07:00:00.000Z"),  # 00:00 on Mar 11, camp time
+        _posting(9006, 600, -10.0, post_date=""),
+    ]
+    repo = _repo(fetch_postings=postings)
+    service = FinancialAidLedgerService(repo)
+
+    on_mar_10 = await service.summary(2026, as_of=date(2026, 3, 10))
+    repo.fetch_postings.assert_awaited_with(2026, include_reversed=True)
+    assert (on_mar_10.total_aid, on_mar_10.as_of, on_mar_10.undated_postings) == (840.0, "2026-03-10", 1)
+    assert (await service.summary(2026, as_of=date(2026, 3, 25))).total_aid == 600.0
+    assert (await service.summary(2026)).total_aid == 810.0  # live now: 9001, 9003, 9004, 9005, 9006
+
+
+# --- net totals (the sub-project 11 seam) --------------------------------------
+
+
+# Review Focus 8.
+@pytest.mark.asyncio
+async def test_net_totals_do_not_depend_on_the_posting_habit() -> None:
+    postings = [
+        _posting(9001, 100, -900.0, attributed_person_cm_id=1001),  # posted once
+        _posting(
+            9002, 200, -600.0, attributed_person_cm_id=1002, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"
+        ),  # reversed ...
+        _posting(9003, 200, -900.0, attributed_person_cm_id=1002, post_date="2026-03-20 00:00:00.000Z"),  # ... reposted
+        _posting(9004, 300, -600.0, attributed_person_cm_id=1003),  # first line ...
+        _posting(
+            9005, 300, -300.0, attributed_person_cm_id=1003, post_date="2026-03-20 00:00:00.000Z"
+        ),  # ... added line
+    ]
+    got = await FinancialAidLedgerService(_repo(fetch_postings=postings)).net_totals(2026)
+    assert {(r.posting_household_cm_id, r.attributed_person_cm_id): r.amount for r in got.rows} == {
+        (100, 1001): 900.0,
+        (200, 1002): 900.0,
+        (300, 1003): 900.0,
+    }
+    assert got.total_aid == 2700.0
+    assert got.basis == "posted"
+
+
+@pytest.mark.asyncio
+async def test_net_totals_keep_each_posting_household_and_name_the_family() -> None:
+    # Separated parents (fictional): each household posts its share for one child.
+    postings = [
+        _posting(9001, 300, -400.0, attributed_person_cm_id=1005),
+        _posting(9002, 400, -600.0, attributed_person_cm_id=1005),
+        _grant(9003, 400, -100.0, attributed_person_cm_id=1005),
+    ]
+    links = [_link(300, "hh-300"), _link(400, "hh-300")]
+    got = await FinancialAidLedgerService(_repo(fetch_postings=postings, fetch_links=links)).net_totals(2026)
+    assert [
+        (r.posting_household_cm_id, r.family_id, r.family_households, r.source_family, r.amount) for r in got.rows
+    ] == [
+        (300, 300, [300, 400], "camp_fa", 400.0),
+        (400, 300, [300, 400], "camp_fa", 600.0),
+        (400, 300, [300, 400], "other_outside", 100.0),
+    ]
+
+
+# --- dispositions ----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dispositions_list_the_season() -> None:
+    got = await FinancialAidLedgerService(
+        _repo(fetch_dispositions=[_disposition(9001, "aid_exceeds_fee", "accepted_late_grant")])
+    ).dispositions(2026)
+    assert [(d.transaction_cm_id, d.flag, d.disposition) for d in got.dispositions] == [
+        (9001, "aid_exceeds_fee", "accepted_late_grant")
+    ]
+
+
+# --- data quality -------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_data_quality_lists_unclassified_orphans_and_open_versus_accepted_flags() -> None:
+    unclassified = _source("mystery grant", "unclassified", budget=False, classified_by="unclassified")
+    repo = _repo(
+        fetch_postings=[
+            _posting(
+                9001,
+                100,
+                -100.0,
+                source_key="mystery grant",
+                effective_source_key="mystery grant",
+                source_family="unclassified",
+                flags=["unclassified_source"],
+            ),
+            _posting(
+                9002,
+                100,
+                -200.0,
+                attribution_level="none",
+                program_family="",
+                flags=["live_aid_on_cancelled_enrollment"],
+            ),
+            _posting(9003, 200, -900.0, flags=["aid_exceeds_fee"]),
+            _posting(9004, 200, -50.0, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"),
+        ],
+        fetch_sources=[unclassified, _source(CAMP, "camp_fa", budget=True)],
+        fetch_dispositions=[_disposition(9003, "aid_exceeds_fee", "accepted_late_grant")],
+        fetch_reversed_aid=[
+            SimpleNamespace(cm_id=9100, household_cm_id=100, amount=-300.0),
+            SimpleNamespace(cm_id=9100, household_cm_id=100, amount=300.0),  # a complete pair
+            SimpleNamespace(cm_id=9101, household_cm_id=200, amount=450.0),  # an orphan leg
+        ],
+    )
+    got = await FinancialAidLedgerService(repo).data_quality(2026)
+
+    assert [(u.source_key, u.postings, u.amount) for u in got.unclassified_sources] == [("mystery grant", 1, 100.0)]
+    assert [(o.transaction_cm_id, o.net_posted) for o in got.orphan_reversal_legs] == [(9101, 450.0)]
+    assert got.flag_counts == {"unclassified_source": 1, "live_aid_on_cancelled_enrollment": 1}
+    assert got.accepted_flag_counts == {"aid_exceeds_fee": 1}
+    assert [p.transaction_cm_id for p in got.flagged_postings] == [9001, 9002]
+    assert got.no_enrollment_postings == 1
+
+
+# Review Focus 5.
+@pytest.mark.asyncio
+async def test_data_quality_surfaces_dangling_overrides_dispositions_and_stale_staff_links() -> None:
+    repo = _repo(
+        fetch_postings=[
+            _posting(9001, 100, -100.0),
+            _posting(9002, 100, -80.0, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"),
+        ],
+        fetch_sources=[_source(CAMP, "camp_fa", budget=True)],
+        fetch_overrides=[
+            SimpleNamespace(transaction_cm_id=9001),
+            SimpleNamespace(transaction_cm_id=9002),
+            SimpleNamespace(transaction_cm_id=9055),
+        ],
+        fetch_dispositions=[_disposition(9002, "fee_unknown"), _disposition(9066, "aid_exceeds_fee")],
+        fetch_links=[
+            _link(100, "hh-100"),
+            _link(200, "hh-100"),
+            _link(600, "hh-100", source="staff", id="keep"),  # joins a live family
+            _link(700, "hh-999", source="staff", id="stale"),  # its key no longer exists
+            _link(800, "hh-100", source="staff", excluded=True, id="excl"),
+            # Item 7 (final review, ruling): an excluded staff row whose family_key
+            # no longer exists among the AUTO links -- a re-keyed family made the
+            # exclusion stop applying, and that must be surfaced too.
+            _link(900, "hh-404", source="staff", excluded=True, id="excl-rekeyed"),
+        ],
+    )
+    got = await FinancialAidLedgerService(repo).data_quality(2026)
+
+    assert got.dangling_overrides == [9055]  # 9002 was reversed, but its history row still exists
+    assert [(d.transaction_cm_id, d.flag) for d in got.dangling_dispositions] == [(9066, "aid_exceeds_fee")]
+    assert [(s.id, s.household_cm_id, s.family_key) for s in got.stale_staff_links] == [
+        ("stale", 700, "hh-999"),
+        ("excl-rekeyed", 900, "hh-404"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_data_quality_lists_off_season_sessions_and_aid_like_rows_outside_the_categories() -> None:
+    repo = _repo(
+        fetch_postings=[_posting(9001, 100, -100.0)],
+        fetch_sources=[
+            _source(CAMP, "camp_fa", budget=True, description="Example Camp Financial Assistance"),
+            _source("staff discount grant", "placeholder", budget=False, classified_by="staff", aid=False),
+        ],
+        fetch_session_ids={11, 12},
+        fetch_off_season_session_rows=[
+            SimpleNamespace(cm_id=9201, session_cm_id=31, amount=1200.0),
+            SimpleNamespace(cm_id=9202, session_cm_id=31, amount=300.0),
+            SimpleNamespace(cm_id=9203, session_cm_id=99, amount=50.0),
+        ],
+        fetch_session_seasons={31: {2025}},
+        fetch_aid_like_outside=[
+            SimpleNamespace(cm_id=9301, financial_category_cm_id=5000, description="Summer Grant", amount=-250.0),
+            SimpleNamespace(
+                cm_id=9302, financial_category_cm_id=3839, description="Staff Discount Grant", amount=-80.0
+            ),
+            SimpleNamespace(cm_id=9303, financial_category_cm_id=5000, description="Summer Grant", amount=-50.0),
+        ],
+    )
+    got = await FinancialAidLedgerService(repo).data_quality(2026)
+
+    repo.fetch_off_season_session_rows.assert_awaited_once_with(2026, {11, 12})
+    repo.fetch_aid_like_outside.assert_awaited_once_with(2026, ["Example Camp Financial Assistance"])
+    assert [(s.session_cm_id, s.transactions, s.net_posted, s.other_seasons) for s in got.cross_season_sessions] == [
+        (31, 2, 1500.0, [2025])
+    ]
+    assert [(s.session_cm_id, s.transactions) for s in got.unknown_sessions] == [(99, 1)]
+    # The staff-classified "not aid" description is a decision already made, so it is not re-raised.
+    assert [
+        (a.category_cm_id, a.description, a.transactions, a.net_posted) for a in got.aid_like_outside_categories
+    ] == [(5000, "Summer Grant", 2, -300.0)]

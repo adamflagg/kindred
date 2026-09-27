@@ -51,6 +51,9 @@ import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { isAdultSessionType } from '../../utils/sessionTypePredicates'
+import { partySubject } from '../notes/subjectNoteModel'
+import { SubjectNotesSection } from '../notes/SubjectNotesSection'
+import { useNoteSlots } from '../notes/useNoteSlots'
 import type { JotformFilingChoice } from './AssignFamilyModal'
 import { areaTokens, buildBoard } from './boardLayout'
 import { setBoardMorphHint } from './boardMorph'
@@ -66,6 +69,7 @@ import {
 import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
+import { partyIdentityLabel } from './householdIdentity'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
@@ -329,6 +333,17 @@ export function LodgingBoard({
     },
     [openPartyPanel]
   )
+
+  // Board notes (2026-09-25). One stable function; `useNoteSlots` caches a
+  // slots object per family, so memo'd cards never re-render for a note. The
+  // subject is keyed by the party's grain on THIS weekend.
+  const noteSlots = useNoteSlots('family')
+  const partyNoteSlots = useCallback(
+    (party: RosterPartyRow) =>
+      noteSlots(partySubject(party, sessionCmId), partyIdentityLabel(party)),
+    [noteSlots, sessionCmId]
+  )
+  const panelSubject = panelParty === null ? null : partySubject(panelParty, sessionCmId)
   const openWriteIn = useCallback(
     (entry: WriteInEntry) => {
       closePanel()
@@ -752,7 +767,13 @@ export function LodgingBoard({
           cards for a container (or back) and plays the merge/split morph.
           See its doc for why siblinghood is equivalent to wrapping. */}
       <BoardMorphBoundary slotCodes={slotCodes} unitsByCode={unitsByCode} />
-      <div className="flex flex-col gap-3">
+      <div
+        className="flex flex-col gap-3"
+        // Board notes: hides the empty-card ghost corner and makes every corner
+        // inert for the length of ANY drag (index.css), without re-rendering a
+        // memo'd card.
+        data-dragging={dragging !== null || draggingMergeUnit !== null ? '' : undefined}
+      >
         <div className="card-lodge overflow-hidden">
           <div className="flex flex-col gap-5 p-3">
             {board.areas.length === 0 ? (
@@ -890,6 +911,7 @@ export function LodgingBoard({
                             onOpenParty={openParty}
                             jotformFilings={jotformFilings}
                             onOpenWriteIn={openWriteIn}
+                            partyNoteSlots={partyNoteSlots}
                           />
                         ))}
                       </div>
@@ -935,6 +957,7 @@ export function LodgingBoard({
                       unit={resolvePartyUnit(party, unitsByCode)}
                       isDraggable={canPlace}
                       sessionType={sessionType}
+                      noteSlots={partyNoteSlots(party)}
                       onOpen={openParty}
                     />
                   ))}
@@ -950,6 +973,7 @@ export function LodgingBoard({
           isPanelOpen={panelParty !== null}
           canPlace={canPlace}
           sessionType={sessionType}
+          partyNoteSlots={partyNoteSlots}
         />
 
         {panelWriteIn !== null && (
@@ -972,6 +996,15 @@ export function LodgingBoard({
             requestClose={requestClose}
             onClose={closePanel}
             sessionType={sessionType}
+            notesSlot={
+              panelSubject === null ? undefined : (
+                <SubjectNotesSection
+                  subject={panelSubject}
+                  label={partyIdentityLabel(panelParty)}
+                  look="family"
+                />
+              )
+            }
           />
         )}
 

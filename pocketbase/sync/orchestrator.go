@@ -245,6 +245,15 @@ var syncJobMeta = []JobMeta{
 	{ID: "financial_aid_applications", Phase: PhaseTransform,
 		Description: "Extract FA applications from person_custom_values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
+	// Campership ledger (sub-project 4). Reads financial_transactions, camp_sessions,
+	// attendees, persons, households and financial_aid_applications, so its row sits
+	// after all of them. Besides aid_postings it writes aid_sources (auto-created
+	// unclassified rows and the private config file's classifications) and the auto
+	// rows of aid_household_links. On the daily cron (Year 0) it covers seasons
+	// N-1..N+1, the same window the transaction sync re-fetches.
+	{ID: "aid_postings", Phase: PhaseTransform,
+		Description: "Materialize the aid ledger from financial-aid transactions (live, plus reversed history)",
+		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
 	{ID: "household_demographics", Phase: PhaseTransform,
 		Description: "Compute household demographics from custom values",
 		Cadences:    CadenceDaily, Triggers: TriggerIndividualRoute | TriggerPhaseRun | TriggerFullRun},
@@ -2456,6 +2465,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		faApplicationsSync.IntakeTrigger = TriggerFinancialAidIntake
 		o.RegisterService("financial_aid_applications", faApplicationsSync)
 
+		// Campership ledger for the replayed season only
+		aidPostingsSync := NewAidPostingsSync(o.app)
+		aidPostingsSync.Year = opts.Year
+		o.RegisterService("aid_postings", aidPostingsSync)
+
 		// Household demographics (computed from HH- fields + household custom values)
 		householdDemographicsSync := NewHouseholdDemographicsSync(o.app)
 		householdDemographicsSync.Year = opts.Year
@@ -3062,6 +3076,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	faApplicationsDefaultSync := NewFinancialAidApplicationsSync(o.app)
 	faApplicationsDefaultSync.IntakeTrigger = TriggerFinancialAidIntake
 	o.RegisterService("financial_aid_applications", faApplicationsDefaultSync)
+
+	// Campership ledger (aid_postings, plus aid_sources and auto aid_household_links)
+	o.RegisterService("aid_postings", NewAidPostingsSync(o.app))
 
 	// Household demographics (computes from HH- fields + household custom values - on-demand)
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))

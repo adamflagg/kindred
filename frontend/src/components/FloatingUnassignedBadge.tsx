@@ -12,6 +12,7 @@ import { CircleCheck } from 'lucide-react'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { useBunkRequestsFromContext } from '../hooks'
 import type { Camper } from '../types/app-types'
+import type { CardNoteSlots } from '../types/noteSlots'
 import CamperCard from './CamperCard'
 import { FloatingQueueBadge } from './ui'
 
@@ -23,6 +24,8 @@ interface FloatingUnassignedBadgeProps {
   onClose: () => void
   isPanelOpen?: boolean
   isProductionMode?: boolean
+  /** Board-note slots per camper; a STABLE function returning cached objects (`useNoteSlots`). */
+  camperNoteSlots?: ((camper: Camper) => CardNoteSlots | undefined) | undefined
 }
 
 // Module-level so their identity is stable: they are memo dependencies inside
@@ -61,6 +64,7 @@ export default function FloatingUnassignedBadge({
   onClose,
   isPanelOpen = false,
   isProductionMode = false,
+  camperNoteSlots,
 }: FloatingUnassignedBadgeProps) {
   const { setNodeRef, isOver } = useDroppable({ id: 'unassigned', disabled: isProductionMode })
 
@@ -91,6 +95,7 @@ export default function FloatingUnassignedBadge({
                   isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined
                 }
                 isDraftMode={isDraftMode}
+                noteSlots={camperNoteSlots?.(camper)}
               />
             ))}
           </SortableContext>
