@@ -444,6 +444,49 @@ func TestAidPostingsSyncDailyRunCoversTheSeasonWindow(t *testing.T) {
 	}
 }
 
+// TestDailyQueueRunsAidPostingsOverTheSeasonWindow drives aid_postings through
+// runSyncAndWait, the path every current-season queue (the 3am daily, a current-year
+// full run) takes. runSyncAndWait resets a YearSetter to the live season before Sync,
+// and for aid_postings that is not neutral: a non-zero Year pins ONE season, while 0
+// is the N-1..N+1 window the design gives the daily run. Pinned, the ledger stopped
+// refreshing N-1 and N+1 even though financial_transactions still re-syncs them daily,
+// which matters most right after the season switch, when N-1 is the season whose tail
+// staff still work.
+//
+// Registered in serialGroups: CAMPMINDER_SEASON_ID is t.Setenv.
+func TestDailyQueueRunsAidPostingsOverTheSeasonWindow(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "2026")
+	f := newAidFixture(t)
+	for _, y := range []int{2025, 2026, 2027} {
+		f.household(100+y, y)
+		f.txn(9000+y, y, -100, aidCategoryFinancialAssistance, aidTestCampAid, 100+y, 0, 0, false)
+	}
+	o := NewOrchestrator(nil)
+	o.RegisterService("aid_postings", f.service())
+
+	origin := newBatch(triggerDaily)
+	o.registerBatch(origin.batchID)
+	if err := o.runSyncAndWait(t.Context(), "aid_postings", origin); err != nil {
+		t.Fatalf("runSyncAndWait: %v", err)
+	}
+	for _, y := range []int{2025, 2026, 2027} {
+		if got := len(f.rows(colAidPostings, y)); got != 1 {
+			t.Errorf("season %d: %d postings, want 1 (the daily run covers N-1..N+1)", y, got)
+		}
+	}
+
+	// A named season still pins: a historical replay or an explicit ?year= run covers
+	// that season alone.
+	historical := newBatch(triggerHistorical).forYear(2027)
+	o.registerBatch(historical.batchID)
+	if err := o.runSyncAndWait(t.Context(), "aid_postings", historical); err != nil {
+		t.Fatalf("runSyncAndWait (historical): %v", err)
+	}
+	if got := o.GetService("aid_postings").(*AidPostingsSync).Year; got != 2027 {
+		t.Errorf("a historical origin must pin the season: Year = %d, want 2027", got)
+	}
+}
+
 // Review Focus (item 2): a sweep-guard refusal on one season in the N-1..N+1
 // window must not stop the others -- SP1's financial_transactions.go pattern
 // (log, continue, join the errors) is what aid_postings.go must copy.

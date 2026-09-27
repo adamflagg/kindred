@@ -320,6 +320,7 @@ var serialGroups = []struct {
 		tests: []string{
 			"TestRunSyncAndWaitSetsYearFromOrigin",
 			"TestRunSyncAndWaitLeavesYearUnsetRatherThanAbortingTheBatch",
+			"TestDailyQueueRunsAidPostingsOverTheSeasonWindow",
 		},
 	},
 	{
