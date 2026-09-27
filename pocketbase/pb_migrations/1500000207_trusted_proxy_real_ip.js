@@ -6,11 +6,15 @@
  * otherwise returns the TCP peer -- in production that is always the Caddy
  * container, so every audit entry, PocketBase log line and rate-limit bucket
  * would carry Caddy's address. docker/Caddyfile and frontend/Caddyfile now set
- * `header_up X-Real-IP {client_ip}` on every PocketBase route: {client_ip} is
- * Caddy's own resolution (CF-Connecting-IP first, then X-Forwarded-For through
- * trusted private-range proxies, kindred#2835), the same value its IP gates
- * use, and header_up REPLACES any X-Real-IP a client sent, so it cannot be
- * forged through Caddy.
+ * `header_up X-Real-IP {client_ip}` on every PocketBase proxy route --
+ * `handle @pocketbase`, the oauth2-redirect rewrite, and `handle /_/*` alike,
+ * not just the first: {client_ip} is Caddy's own resolution (CF-Connecting-IP
+ * first, then X-Forwarded-For through trusted private-range proxies,
+ * kindred#2835), the same value its IP gates use, and header_up REPLACES any
+ * X-Real-IP a client sent, so it cannot be forged through Caddy on any of
+ * them. pocketbase/main_admin_audit_log_test.go's
+ * TestCaddyPassesTheRealClientIPToPocketBase pins every such block, not just
+ * one.
  *
  * PocketBase is reachable only through Caddy and the internal Docker network;
  * a request that reaches it directly (FastAPI, init) carries no X-Real-IP and

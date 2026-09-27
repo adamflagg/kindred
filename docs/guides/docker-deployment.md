@@ -124,8 +124,10 @@ person's account. People sign in to the PocketBase admin (`/_/`) with their own 
 Sign in to Kindred, open Manage > Audit Log, turn on the Sign-ins chip, and hover the time on your
 own sign-in row: the IP must be your external address, not a private/Docker address (`172.x`,
 `10.x`, `192.168.x`). If it is private, `X-Real-IP` is not reaching PocketBase — check both
-Caddyfiles' `header_up X-Real-IP {client_ip}` on the `handle @pocketbase` block, and that migration
-1500000207 applied (PocketBase admin > Settings > trusted proxy headers shows `X-Real-IP`).
+Caddyfiles' `header_up X-Real-IP {client_ip}` on every reverse_proxy block that targets PocketBase
+(`handle @pocketbase`, the oauth2-redirect rewrite, and `handle /_/*` all carry one), and that
+migration 1500000207 applied (PocketBase admin > Settings > trusted proxy headers shows
+`X-Real-IP`).
 
 ### 2. Configuration Files
 

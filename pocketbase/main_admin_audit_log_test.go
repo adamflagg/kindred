@@ -68,30 +68,79 @@ func TestTrustedProxyMigration(t *testing.T) {
 	}
 }
 
-// TestCaddyPassesTheRealClientIPToPocketBase: 1500000207 trusts X-Real-IP only
-// because both Caddyfiles overwrite it with Caddy's resolved client address on
-// every PocketBase route.
+// pocketbaseUpstream is the literal `reverse_proxy <upstream> {` string each
+// Caddyfile uses for its PocketBase target: docker/Caddyfile addresses it by
+// compose service name, frontend/Caddyfile by loopback + a port var.
+var pocketbaseUpstream = map[string]string{
+	"../docker/Caddyfile":   "reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {",
+	"../frontend/Caddyfile": "reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {",
+}
+
+// TestCaddyPassesTheRealClientIPToPocketBase: migration 1500000207 makes
+// PocketBase trust X-Real-IP on EVERY request it receives, not only ones
+// through @pocketbase's own handler -- so EVERY reverse_proxy block that
+// targets PocketBase (the oauth2-redirect rewrite and the /_/* admin-UI gate,
+// as well as @pocketbase itself) must overwrite the header with Caddy's own
+// resolved client address, or a client could forge it on the routes this test
+// doesn't check. Brace-matched (not a naive "\n\t}\n" search) because the
+// oauth2-redirect block nests its own handle_response blocks.
 func TestCaddyPassesTheRealClientIPToPocketBase(t *testing.T) {
 	for _, path := range []string{"../docker/Caddyfile", "../frontend/Caddyfile"} {
+		upstream := pocketbaseUpstream[path]
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		src := string(raw)
-		at := strings.Index(src, "handle @pocketbase {")
-		if at < 0 {
-			t.Fatalf("%s has no handle @pocketbase block", path)
+		blocks := pocketbaseReverseProxyBlocks(t, path, src, upstream)
+		// Today's file has 3: @pocketbase, /api/oauth2-redirect, /_/*. Asserting
+		// a floor (not just non-empty) means a future edit that deletes a block
+		// can't make this test pass by having nothing left to check.
+		if len(blocks) < 3 {
+			t.Fatalf("%s: found %d PocketBase reverse_proxy block(s) for %q, want >= 3 -- upstream string stale?",
+				path, len(blocks), upstream)
 		}
-		block := src[at:]
-		end := strings.Index(block, "\n\t}\n")
-		if end < 0 {
-			t.Fatalf("%s: handle @pocketbase block never closes", path)
-		}
-		block = block[:end]
-		if !strings.Contains(block, "header_up X-Real-IP {client_ip}") {
-			t.Errorf("%s: handle @pocketbase must set header_up X-Real-IP {client_ip}", path)
+		for i, block := range blocks {
+			if !strings.Contains(block, "header_up X-Real-IP {client_ip}") {
+				t.Errorf("%s: reverse_proxy block #%d targeting PocketBase must set header_up X-Real-IP {client_ip}:\n%s",
+					path, i+1, block)
+			}
 		}
 	}
+}
+
+// pocketbaseReverseProxyBlocks returns the body of every `<upstream> ... }`
+// block in src, brace-matched from the "{" upstream already ends with so a
+// nested block (like oauth2-redirect's handle_response) doesn't truncate the
+// search at its own inner "}".
+func pocketbaseReverseProxyBlocks(t *testing.T, path, src, upstream string) []string {
+	t.Helper()
+	var blocks []string
+	searchFrom := 0
+	for {
+		rel := strings.Index(src[searchFrom:], upstream)
+		if rel < 0 {
+			break
+		}
+		at := searchFrom + rel
+		start := at + len(upstream) // just past the opening "{" upstream ends with
+		depth := 1
+		i := start
+		for ; i < len(src) && depth > 0; i++ {
+			switch src[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+		}
+		if depth != 0 {
+			t.Fatalf("%s: reverse_proxy block starting at byte %d never closes (unbalanced braces)", path, at)
+		}
+		blocks = append(blocks, src[start:i])
+		searchFrom = i
+	}
+	return blocks
 }
 
 // TestMainRegistersTheAdminAuditLog: main() is not callable from a test, so the
