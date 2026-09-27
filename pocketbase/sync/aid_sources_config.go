@@ -134,10 +134,15 @@ func aidSourcesConfigCandidates(roots []string, base string) []string {
 // explicit pins one file (an error if missing); otherwise roots, then base's
 // config/ and ../config/, are searched. No file on any candidate path is not an
 // error: descriptions then stay unclassified and the data-quality view lists them.
+//
+// candidates is always the full list this call searched, in order, whether or not
+// a file was found -- so a caller whose search comes up empty (F1: prod ran for a
+// season with the file simply absent from the mount, and nothing logged it) can
+// name every path it looked at rather than just shrugging.
 func loadAidSourcesConfig(
 	explicit string, roots []string, base string,
-) (classes map[string]aidSourceClass, path string, err error) {
-	candidates := aidSourcesConfigCandidates(roots, base)
+) (classes map[string]aidSourceClass, path string, candidates []string, err error) {
+	candidates = aidSourcesConfigCandidates(roots, base)
 	if explicit != "" {
 		candidates = []string{explicit}
 	}
@@ -147,13 +152,13 @@ func loadAidSourcesConfig(
 			continue
 		}
 		if readErr != nil {
-			return nil, "", fmt.Errorf("reading %s: %w", candidate, readErr)
+			return nil, "", candidates, fmt.Errorf("reading %s: %w", candidate, readErr)
 		}
 		parsed, parseErr := parseAidSourcesConfig(data)
 		if parseErr != nil {
-			return nil, "", fmt.Errorf("%s: %w", candidate, parseErr)
+			return nil, "", candidates, fmt.Errorf("%s: %w", candidate, parseErr)
 		}
-		return parsed, candidate, nil
+		return parsed, candidate, candidates, nil
 	}
-	return nil, "", nil
+	return nil, "", candidates, nil
 }

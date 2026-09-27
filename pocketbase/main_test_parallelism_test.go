@@ -214,6 +214,9 @@ var serialGroups = []struct {
 			"TestStaffApplicationsSyncLogsStaffGateDropsOnce",
 			"TestStaffVehicleInfoSyncLogsStaffGateDropsOnce",
 			"TestStrandedAssignmentCleanupDryRunLodgingLogReportsSimulatedSweep",
+			"TestAidPostingsSyncLogsMissingClassificationFileWithSearchedPaths",
+			"TestAidPostingsSyncWarnsWhenTransactionsLastRunFailed",
+			"TestStrandedAssignmentCleanup_ProdAuditLogCapsTheRecordSample",
 		},
 	},
 	{

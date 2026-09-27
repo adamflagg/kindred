@@ -65,8 +65,13 @@ func aidCents(v float64) int64 {
 
 // computeAidFlags sets Flags on every draft. fees is the billed fee per
 // (person, session); statuses is the attendee status per (person, session),
-// holding 2 when any row for that pair is enrolled.
-func computeAidFlags(drafts []*aidPostingDraft, fees map[aidPersonSession]float64, statuses map[aidPersonSession]int) {
+// holding 2 when any row for that pair is enrolled. householdEnrollment is the
+// count of distinct enrolled (status 2) campers per household CampMinder id,
+// used only to size the sibling-duplicate exception below (F3).
+func computeAidFlags(
+	drafts []*aidPostingDraft, fees map[aidPersonSession]float64, statuses map[aidPersonSession]int,
+	householdEnrollment map[int]int,
+) {
 	flags := make([]map[string]bool, len(drafts))
 	add := func(i int, f string) {
 		if flags[i] == nil {
@@ -113,7 +118,17 @@ func computeAidFlags(drafts []*aidPostingDraft, fees map[aidPersonSession]float6
 				campPlaced[key] = append(campPlaced[key], i)
 			}
 		}
-		dup := fmt.Sprintf("%d|%s|%d|%d|%d", d.HouseholdCMID, d.SourceKey, aidCents(d.Amount), a.PersonCMID, a.SessionCMID)
+		// The RAW posted person (d.PersonCMID), not the attributed one (a.PersonCMID): a
+		// household-grain posting attributes to a synthesized person per sibling
+		// (e.g. household_single_camper), which used to give each sibling's identical
+		// grant a distinct key and defeat this exact check. Grouping on the raw person
+		// (0 when CampMinder posted no person at all) is what lets the household-grain
+		// branch below compare row count against the household's enrollment instead.
+		rawPerson := 0
+		if d.PersonCMID > 0 {
+			rawPerson = d.PersonCMID
+		}
+		dup := fmt.Sprintf("%d|%s|%d|%d|%d", d.HouseholdCMID, d.SourceKey, aidCents(d.Amount), rawPerson, a.SessionCMID)
 		if dupTxns[dup] == nil {
 			dupTxns[dup] = map[int]bool{}
 		}
@@ -128,8 +143,24 @@ func computeAidFlags(drafts []*aidPostingDraft, fees map[aidPersonSession]float6
 		}
 	}
 	for dup, txns := range dupTxns {
-		if len(txns) > 1 {
-			for _, i := range dupMembers[dup] {
+		members := dupMembers[dup]
+		if len(members) == 0 {
+			continue
+		}
+		// A real posted person: unchanged rule, >1 distinct transaction sharing the key.
+		// No posted person (household-grain): one grant per enrolled sibling is expected,
+		// so the group is a duplicate only once it has MORE rows than enrolled campers
+		// (F3) -- not merely >1 distinct transaction, which every sibling pair already is.
+		var flagged bool
+		if drafts[members[0]].PersonCMID > 0 {
+			flagged = len(txns) > 1
+		} else {
+			// len(members) > 1 first: a lone posting is never a duplicate no matter how the
+			// household's enrollment count reads (0 enrolled is a data gap, not evidence).
+			flagged = len(members) > 1 && len(members) > householdEnrollment[drafts[members[0]].HouseholdCMID]
+		}
+		if flagged {
+			for _, i := range members {
 				add(i, aidFlagDuplicatePosting)
 			}
 		}

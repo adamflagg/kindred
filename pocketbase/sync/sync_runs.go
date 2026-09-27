@@ -118,6 +118,7 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 	rec.Set("already_processed_count", stats.AlreadyProcessed)
 	rec.Set("prod_audit_warnings_count", stats.ProdAuditWarnings)
 	rec.Set("lodging_prod_audit_warnings_count", stats.LodgingProdAuditWarnings)
+	rec.Set("aid_ledger_warnings_count", stats.AidLedgerWarnings)
 	rec.Set("duration", stats.Duration)
 	rec.Set("started", completed.StartTime)
 	if completed.EndTime != nil {
@@ -297,6 +298,7 @@ type syncRunRow struct {
 	AlreadyProcessed         int    `db:"already_processed_count"`
 	ProdAuditWarnings        int    `db:"prod_audit_warnings_count"`
 	LodgingProdAuditWarnings int    `db:"lodging_prod_audit_warnings_count"`
+	AidLedgerWarnings        int    `db:"aid_ledger_warnings_count"`
 	Duration                 int    `db:"duration"`
 	SubStats                 string `db:"sub_stats"`
 }
@@ -359,7 +361,7 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 		       COALESCE(session, '') AS session,
 		       created_count, updated_count, deleted_count, skipped_count, errors_count,
 		       rejected_count, expanded_count, already_processed_count,
-		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, duration,
+		       prod_audit_warnings_count, lodging_prod_audit_warnings_count, aid_ledger_warnings_count, duration,
 		       -- COALESCE because the column is NULL on every run whose SubStats was
 		       -- empty, which is most of them: recordSyncRun sets it only when non-empty.
 		       -- Scanning NULL into a string fails the WHOLE query, and this function
@@ -403,6 +405,7 @@ func (o *Orchestrator) LastRecordedRuns() map[string]*Status {
 				AlreadyProcessed:         row.AlreadyProcessed,
 				ProdAuditWarnings:        row.ProdAuditWarnings,
 				LodgingProdAuditWarnings: row.LodgingProdAuditWarnings,
+				AidLedgerWarnings:        row.AidLedgerWarnings,
 				Duration:                 row.Duration,
 			},
 		}

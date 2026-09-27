@@ -2281,6 +2281,7 @@ export const SyncRunsTriggerOptions = {
 export type SyncRunsTriggerOptions =
   (typeof SyncRunsTriggerOptions)[keyof typeof SyncRunsTriggerOptions]
 export type SyncRunsRecord<Tsub_stats = unknown> = {
+  aid_ledger_warnings_count?: number
   already_processed_count?: number
   batch_id: string
   created: IsoAutoDateString

@@ -21,13 +21,18 @@ func TestComputeAidFlags(t *testing.T) {
 	}
 	reversed := func(d *aidPostingDraft) *aidPostingDraft { d.IsReversed = true; return d }
 	implied := func(d *aidPostingDraft, families ...string) *aidPostingDraft { d.ImpliedFamilies = families; return d }
+	// withPerson sets the RAW posted person (the top-level field a real financial_transactions
+	// row carries), distinct from Attribution.PersonCMID -- the attributed person computeAidFlags
+	// used exclusively before the sibling-duplicate fix (kindred aid-ledger hardening).
+	withPerson := func(d *aidPostingDraft, p int) *aidPostingDraft { d.PersonCMID = p; return d }
 
 	tests := []struct {
-		name     string
-		drafts   []*aidPostingDraft
-		fees     map[aidPersonSession]float64
-		statuses map[aidPersonSession]int
-		want     [][]string
+		name       string
+		drafts     []*aidPostingDraft
+		fees       map[aidPersonSession]float64
+		statuses   map[aidPersonSession]int
+		enrollment map[int]int
+		want       [][]string
 	}{
 		{
 			name:     "a session posting under the fee is clean",
@@ -136,10 +141,45 @@ func TestComputeAidFlags(t *testing.T) {
 				aidAttribution{Level: aidLevelOverride, Family: programFamilySummer}), programFamilyFamilyCamp)},
 			want: [][]string{{}},
 		},
+		{
+			// F3 fix: a household-grain grant posted once per enrolled sibling must not be
+			// flagged. Both rows carry no raw person (household-grain), so the group is sized
+			// against the household's enrolled campers rather than distinct transaction count.
+			name: "siblings: 2 enrolled children, 2 identical household rows is not a duplicate",
+			drafts: []*aidPostingDraft{
+				draft(9001, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
+				draft(9002, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
+			},
+			enrollment: map[int]int{100: 2},
+			want:       [][]string{{}, {}},
+		},
+		{
+			// The real-duplicate case: only 1 enrolled camper in the household, so 2 identical
+			// rows is more rows than enrolled campers and must still be flagged.
+			name: "1 enrolled child, 2 identical household rows is a real duplicate",
+			drafts: []*aidPostingDraft{
+				draft(9001, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
+				draft(9002, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
+			},
+			enrollment: map[int]int{100: 1},
+			want:       [][]string{{aidFlagDuplicatePosting}, {aidFlagDuplicatePosting}},
+		},
+		{
+			// A real posted person (raw, not just attributed) still uses the distinct-transaction
+			// rule, unaffected by household enrollment (deliberately generous here at 5).
+			name: "person-level duplicates are still flagged regardless of household enrollment",
+			drafts: []*aidPostingDraft{
+				withPerson(draft(9001, -500, "camp aid", session(1001, 11)), 1001),
+				withPerson(draft(9002, -500, "camp aid", session(1001, 11)), 1001),
+			},
+			fees:       map[aidPersonSession]float64{ps(1001, 11): 5000},
+			enrollment: map[int]int{100: 5},
+			want:       [][]string{{aidFlagDuplicatePosting}, {aidFlagDuplicatePosting}},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			computeAidFlags(tc.drafts, tc.fees, tc.statuses)
+			computeAidFlags(tc.drafts, tc.fees, tc.statuses, tc.enrollment)
 			for i, d := range tc.drafts {
 				if d.Flags == nil {
 					t.Fatalf("draft %d: Flags must never be nil (it is written as a JSON array)", i)

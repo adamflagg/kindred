@@ -1239,9 +1239,16 @@ func (c *Client) GetPaymentMethods() ([]map[string]any, error) {
 }
 
 // transactionDetailsTimeout is GetTransactionDetails' own deadline. One season is a single
-// ~19 MB response that took ~20 s when measured (2026-09-24), which the client's 30 s
-// default leaves too little room for. A var so a test can shorten it.
-var transactionDetailsTimeout = 120 * time.Second
+// ~19 MB response that took ~20 s when first measured (2026-09-24), which the client's 30 s
+// default leaves too little room for -- that measurement is what originally set this to 120 s.
+// It was not enough: the endpoint is slow and variable, not just slow, and two days later one
+// season alone took 2.5 min (150 s), then the very next night both seasons timed out
+// outright ("Client.Timeout exceeded while awaiting headers"), so financial_transactions ran
+// from stale data with no warning (F2 of the 2026-09-27 prod diagnosis; see aid_postings.go's
+// stale-input check for the other half of that fix). 5 minutes leaves real margin above the
+// worst case actually observed rather than the ~6x margin the original 20s->120s jump
+// intended but variance ate into. A var so a test can shorten it.
+var transactionDetailsTimeout = 5 * time.Minute
 
 // GetTransactionDetails retrieves every transaction CampMinder files under one season.
 // Endpoint: GET /financials/transactionreporting/transactiondetails. The response is a bare,

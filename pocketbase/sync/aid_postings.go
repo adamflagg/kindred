@@ -106,7 +106,7 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 	if base == "" {
 		base = "."
 	}
-	classes, path, err := loadAidSourcesConfig(s.ConfigPath, roots, base)
+	classes, path, candidates, err := loadAidSourcesConfig(s.ConfigPath, roots, base)
 	if err != nil {
 		return err
 	}
@@ -119,6 +119,24 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 		if err := s.applySourceClasses(sources, classes); err != nil {
 			return err
 		}
+	} else {
+		// F1: prod ran a whole season with the file simply absent from the config mount and
+		// nothing said so -- every source stayed unclassified and the budget/level-share view
+		// went empty with a clean "success". AidLedgerWarnings is non-fatal but reaches
+		// sync_runs (recordSyncRun), unlike Stats.Rejected, which rejection_sites_test.go pins
+		// to per-record transform rejections and which also suppresses the collection's orphan
+		// sweep -- neither fits a config problem.
+		slog.Warn("No aid_sources classification file found; every source stays unclassified",
+			"searched", candidates)
+		s.Stats.AidLedgerWarnings++
+	}
+	if stale, asOf := s.staleInputAsOf(); stale {
+		// F2: financial_transactions failed last night for both seasons and aid_postings ran
+		// anyway, from the previous day's rows, reporting clean success. It still should run
+		// (yesterday's data beats none), but the run must say so.
+		slog.Warn("aid_postings input may be stale: financial_transactions' last run did not succeed",
+			"last_successful_transactions_sync", asOf)
+		s.Stats.AidLedgerWarnings++
 	}
 	// A failed season is logged and the next one still runs; the returned error
 	// joins every failure. Matches financial_transactions.go's syncSeasons: a
@@ -358,6 +376,10 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 	if err != nil {
 		return err
 	}
+	householdEnrollment, err := s.loadHouseholdEnrollment(year)
+	if err != nil {
+		return err
+	}
 
 	drafts := make([]*aidPostingDraft, 0, len(txns))
 	for _, t := range txns {
@@ -391,7 +413,8 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 			Attribution: actx.attribute(in),
 		})
 	}
-	computeAidFlags(drafts, fees, statuses)
+	computeAidFlags(drafts, fees, statuses, householdEnrollment)
+	s.warnIfMostlyUnclassified(year, drafts)
 
 	if s.DryRun {
 		s.Stats.Created += len(drafts)
@@ -405,6 +428,50 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 		return err
 	}
 	return s.sweepPostings(ctx, year, drafts, existing)
+}
+
+// staleInputAsOf reports whether financial_transactions' most recent recorded run did not
+// succeed and, if so, the as-of time (sync_runs.ended) of its last successful run (empty if
+// none is on record) -- F2's stale-input guard. Reads sync_runs directly rather than coupling
+// to the orchestrator's in-memory state, so this works the same for a manual run and the
+// nightly cron. A missing table or empty history is swallowed to "nothing to warn about",
+// matching loadAidSourcesConfig's own posture: this check must never fail a run over its own
+// telemetry query.
+func (s *AidPostingsSync) staleInputAsOf() (stale bool, asOf string) {
+	latest, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc}", "-started", 1, 0,
+		dbx.Params{"svc": serviceNameFinancialTransactions})
+	if err != nil || len(latest) == 0 || latest[0].GetString("status") == statusSuccess {
+		return false, ""
+	}
+	lastGood, err := s.App.FindRecordsByFilter(syncRunsCollection, "service = {:svc} && status = {:success}",
+		"-started", 1, 0, dbx.Params{"svc": serviceNameFinancialTransactions, "success": statusSuccess})
+	if err != nil || len(lastGood) == 0 {
+		return true, ""
+	}
+	return true, lastGood[0].GetString("ended")
+}
+
+// warnIfMostlyUnclassified logs and counts a warning when more than half of a season's LIVE
+// aid postings carry SourceUnclassified (F1): the budget/level-share view goes quietly empty
+// well before every source is unclassified, so a strict majority is the loud-enough signal,
+// not "any at all" (a single always-unclassified description is normal and not a warning).
+func (s *AidPostingsSync) warnIfMostlyUnclassified(year int, drafts []*aidPostingDraft) {
+	live, unclassified := 0, 0
+	for _, d := range drafts {
+		if d.IsReversed {
+			continue
+		}
+		live++
+		if d.SourceUnclassified {
+			unclassified++
+		}
+	}
+	if live == 0 || unclassified*2 <= live {
+		return
+	}
+	slog.Warn("More than half of this season's live aid postings are unclassified_source",
+		"year", year, "unclassified", unclassified, "live", live)
+	s.Stats.AidLedgerWarnings++
 }
 
 // ------------------------------------------------------------ context build
@@ -664,6 +731,34 @@ func (s *AidPostingsSync) loadSessionFees(year int) (map[aidPersonSession]float6
 	out := make(map[aidPersonSession]float64, len(rows))
 	for _, r := range rows {
 		out[aidPersonSession{Person: r.Person, Session: r.Session}] = r.Total
+	}
+	return out, nil
+}
+
+// loadHouseholdEnrollment counts, per household CampMinder id, the distinct
+// campers (persons.cm_id) with at least one active (status 2) enrollment this
+// season -- the raw household_id a person's own row carries, not the
+// attribution context's childhood-household remapping (aid_attribution.go),
+// since that answers a different question ("whose aid is this") than the one
+// this count exists for ("how many enrolled kids actually live here", F3).
+func (s *AidPostingsSync) loadHouseholdEnrollment(year int) (map[int]int, error) {
+	type row struct {
+		Household int `db:"household"`
+		Enrolled  int `db:"enrolled"`
+	}
+	var rows []row
+	err := s.App.DB().NewQuery(
+		"SELECT p.household_id AS household, COUNT(DISTINCT p.cm_id) AS enrolled " +
+			"FROM persons p JOIN attendees a ON a.person_id = p.cm_id AND a.year = p.year " +
+			"WHERE p.year = {:year} AND a.status_id = {:active} AND p.household_id > 0 " +
+			"GROUP BY p.household_id",
+	).Bind(dbx.Params{"year": year, "active": aidActiveStatusID}).All(&rows)
+	if err != nil {
+		return nil, fmt.Errorf("loading household enrollment: %w", err)
+	}
+	out := make(map[int]int, len(rows))
+	for _, r := range rows {
+		out[r.Household] = r.Enrolled
 	}
 	return out, nil
 }

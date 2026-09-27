@@ -22,6 +22,13 @@ const msgOrphanProd = "stranded_assignment_cleanup: orphaned production assignme
 const msgOrphanLodgingProd = "stranded_assignment_cleanup: orphaned production lodging_assignments detected " +
 	"(party no longer enrolled) — not deleted (lodging_assignments_sync owns prod cleanup)"
 
+// orphanLogSampleSize caps how many record triplets either WARN line above prints. F8: prod
+// hit 262 orphaned production bunk_assignments in one run and the log dumped all 262 into a
+// single ~30 KB line. The true count is always in the "count" field regardless; this only
+// bounds the sample, matching the precedent financial_transactions.go's logCrossSeason set for
+// an unbounded per-run list.
+const orphanLogSampleSize = 10
+
 // strandedCandidate is the minimal projection of an assignment row needed for
 // orphan-detection — decoupled from *core.Record so the detection logic is
 // unit-testable without a database. BunkID drives bunk-stranding (the bunk lost
@@ -393,8 +400,9 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun b
 		flaggedProd := dedupeByRecordID(strandedProd, orphanProd)
 		stats.ProdAuditWarnings = len(flaggedProd)
 		if len(flaggedProd) > 0 {
-			recs := make([]string, len(flaggedProd))
-			for i, c := range flaggedProd {
+			sample := flaggedProd[:min(len(flaggedProd), orphanLogSampleSize)]
+			recs := make([]string, len(sample))
+			for i, c := range sample {
 				recs[i] = fmt.Sprintf("%s(session=%s,bunk=%s,person=%s)", c.RecordID, c.SessionID, c.BunkID, c.PersonID)
 			}
 			slog.Warn(msgOrphanProd, "year", year,
@@ -501,8 +509,9 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 		orphanProd := findLodgingEnrollmentOrphans(householdIndex, personIndex, prodCandidates)
 		stats.LodgingProdAuditWarnings = len(orphanProd)
 		if len(orphanProd) > 0 {
-			recs := make([]string, len(orphanProd))
-			for i, c := range orphanProd {
+			sample := orphanProd[:min(len(orphanProd), orphanLogSampleSize)]
+			recs := make([]string, len(sample))
+			for i, c := range sample {
 				recs[i] = fmt.Sprintf("%s(session_cm_id=%d,household_cm_id=%d,person_cm_id=%d)",
 					c.RecordID, c.SessionCMID, c.HouseholdCMID, c.PersonCMID)
 			}

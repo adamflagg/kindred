@@ -1742,6 +1742,32 @@ func newDryRunTestApp(t *testing.T) *pbtests.TestApp {
 	return app
 }
 
+// TestRunSyncWithOptionsCurrentYearRecordsManualTrigger: F8/P7 -- the owner's manual full sync
+// from the UI recorded sync_runs.trigger = "daily". RunSyncWithOptions has exactly one caller,
+// handleUnifiedSync (api.go), reached only by an operator's HTTP request (immediate or
+// dequeued); the real 3am cron never calls it -- it has its own RunDailySync, which mints its
+// own triggerDaily batch independently. So the current-year branch here must record "manual",
+// not "daily".
+func TestRunSyncWithOptionsCurrentYearRecordsManualTrigger(t *testing.T) {
+	t.Parallel()
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+
+	probe := &dryRunAwareService{name: "probe"}
+	o.RegisterService("probe", probe)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := o.RunSyncWithOptions(ctx, Options{Year: 0, Services: []string{"probe"}}); err != nil {
+		t.Fatalf("RunSyncWithOptions: %v", err)
+	}
+
+	if got := o.GetStatus("probe").Trigger; got != triggerManual {
+		t.Errorf("current-year RunSyncWithOptions trigger = %q, want %q", got, triggerManual)
+	}
+}
+
 // TestRunSyncWithOptionsHonorsDryRun is the immediate-path mechanism test: DryRun=true must
 // reach the service via SetDryRun before Sync runs, and Sync must not "write". DryRun=false is
 // exercised as a control in the same test so a no-op SetDryRun implementation can't pass by

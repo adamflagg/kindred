@@ -66,7 +66,7 @@ func newSyncRunsApp(t *testing.T) *tests.TestApp {
 	for _, name := range []string{
 		"created_count", "updated_count", "deleted_count", "skipped_count",
 		"errors_count", "rejected_count", "expanded_count", "already_processed_count",
-		"prod_audit_warnings_count", "lodging_prod_audit_warnings_count", "duration",
+		"prod_audit_warnings_count", "lodging_prod_audit_warnings_count", "aid_ledger_warnings_count", "duration",
 	} {
 		col.Fields.Add(&core.NumberField{Name: name, OnlyInt: true, Min: types.Pointer(0.0)})
 	}
