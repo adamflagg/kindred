@@ -26,7 +26,7 @@
  * ghost disappears and no corner takes the pointer -- a CSS rule in
  * index.css, so memo'd cards never re-render for it.
  */
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 
 import type { NoteSubject } from '../../types/subjectNotes'
 import { Tooltip } from '../ui/Tooltip'
@@ -123,8 +123,19 @@ export function SubjectNoteCorner({ subject, label, containing }: SubjectNoteCor
   const key = subjectKey(subject)
   const openHere = scope.editor?.surface === 'popover' && subjectKey(scope.editor.subject) === key
   const name = mode === 'ghost' ? `Add ${NOTE_LABEL.toLowerCase()}` : NOTE_LABEL
-  const open = () => {
-    scope.openEditor({ subject, label, surface: 'popover', anchorEl: holderRef.current })
+  // `event.detail === 0` is a keyboard (Enter/Space) activation, matching the
+  // browser's own native distinction -- a real pointer click's `detail` is
+  // the click count (>= 1). Read from either path (the plain button's own
+  // `onClick`, or Tooltip's `onActivate` once a preview exists) so the
+  // corner's keyboard-vs-pointer signal doesn't depend on which one rendered.
+  const open = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    scope.openEditor({
+      subject,
+      label,
+      surface: 'popover',
+      anchorEl: holderRef.current,
+      openedViaKeyboard: event.detail === 0,
+    })
   }
 
   const lead = layers.standard ?? layers.plan

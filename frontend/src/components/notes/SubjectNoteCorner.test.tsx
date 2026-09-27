@@ -109,12 +109,29 @@ describe('SubjectNoteCorner', () => {
 
   it('a click opens the popover editor anchored to this corner', () => {
     const { value, holder } = renderCorner()
+    // `detail: 1` -- a real mouse click; native `detail` is the click count
+    // (>= 1) for a pointer click, 0 for a keyboard (Enter/Space) activation.
+    fireEvent.click(screen.getByRole('button', { name: 'Note' }), { detail: 1 })
+    expect(value.openEditor).toHaveBeenCalledWith({
+      subject: HOUSEHOLD,
+      label: 'Johnson',
+      surface: 'popover',
+      anchorEl: holder,
+      openedViaKeyboard: false,
+    })
+  })
+
+  it('flags a keyboard (Enter/Space) activation for the popover’s own focus-restore rule', () => {
+    const { value, holder } = renderCorner()
+    // No explicit `detail` -- jsdom's own default, 0, matching a native
+    // keyboard-triggered click exactly (see the comment above).
     fireEvent.click(screen.getByRole('button', { name: 'Note' }))
     expect(value.openEditor).toHaveBeenCalledWith({
       subject: HOUSEHOLD,
       label: 'Johnson',
       surface: 'popover',
       anchorEl: holder,
+      openedViaKeyboard: true,
     })
   })
 

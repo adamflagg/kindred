@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useOverlayEscape } from '../../hooks/useOverlayEscape'
@@ -34,8 +35,15 @@ function Board({ withPanel = false }: { withPanel?: boolean }) {
   )
 }
 
+/**
+ * `detail: 1` -- an explicit real mouse click, matching a native browser's
+ * own default for a single pointer click. Keyboard activation (Enter/Space on
+ * a focused button) natively carries `detail: 0`, which is also jsdom's
+ * default when `detail` is left unset -- so leaving it out here would make
+ * this the KEYBOARD case by accident, not the mouse one.
+ */
 function openPopover() {
-  fireEvent.click(screen.getByRole('button', { name: /note/i }))
+  fireEvent.click(screen.getByRole('button', { name: /note/i }), { detail: 1 })
   return screen.getByRole('dialog', { name: 'Note' })
 }
 
@@ -191,10 +199,29 @@ describe('SubjectNotePopover', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('restores focus to the corner button when Escape closes it', () => {
+  it('does NOT restore focus to the corner after a mouse open -- no ring, no reopened tooltip preview', () => {
+    // A preview to reopen: a plain, note-less corner has no Tooltip at all,
+    // so this would pass vacuously without an existing note. NB the corner's
+    // OWN inner markup swaps (Tooltip <-> plain button) between "popover
+    // open" and "closed", since `openHere` gates its preview -- so this
+    // checks the stable outer `[data-note-corner]` holder for containment,
+    // not a captured button reference, which would go stale across that
+    // swap and pass for the wrong reason.
+    notesData = { notes: [noteRow(HOUSEHOLD, 'Grandma is coming Saturday only.')] }
     render(<Board />)
-    openPopover()
+    openPopover() // a real mouse click (detail: 1) -- see openPopover's own comment.
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
+    const cornerHolder = document.querySelector('[data-note-corner]') as HTMLElement
+    expect(cornerHolder.contains(document.activeElement)).toBe(false)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('restores focus to the corner button after a KEYBOARD open, once Escape closes it', async () => {
+    render(<Board />)
     const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    cornerButton.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
     fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
     expect(document.activeElement).toBe(cornerButton)
   })

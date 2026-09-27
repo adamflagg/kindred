@@ -191,28 +191,38 @@ export function SubjectNotePopover({
   // more reliable than ConfirmActionPopover's plain capture-and-restore, and
   // is simpler here since the anchor is already at hand.
   //
+  // ONLY after a keyboard open (owner-ruled): a programmatic `.focus()` call
+  // hits Tooltip's `onFocus` regardless of how THIS popover was opened, and
+  // reopens the corner's Tooltip preview as a side effect -- restoring focus
+  // after a MOUSE open therefore left the mouse user staring at an unasked-for
+  // focus ring and a reopened preview. A keyboard user, by contrast, is
+  // exactly where a focus ring belongs after closing what they opened.
+  // `target.openedViaKeyboard` is `event.detail === 0` at the corner's own
+  // click/activation (`SubjectNoteCorner.tsx`) -- omitted (falsy) for every
+  // OTHER opener (the right-click menu, the panel), so they get the same
+  // safe "restore nothing" default a mouse open now gets here.
+  //
   // Only when nothing else already claimed it: a DIRTY popover unmounts only
   // once `save()` resolves -- a network round trip after whatever click
   // started it -- so by the time this cleanup runs, that same click may
   // already have moved focus somewhere real (the "Elsewhere" button, an
   // input on the page). Reclaiming it there would yank focus away from what
-  // the user is doing, and a programmatic focus on the corner also reopens
-  // its Tooltip preview (it hits Tooltip's `onFocus`) as an unwanted side
-  // effect. So this only fires when focus is either nowhere in particular
-  // (`document.body`, e.g. Escape/Cancel closing synchronously) or still
-  // somewhere inside this popover's own subtree (captured once at mount,
-  // since `ref.current` is not reliably still attached to the tree by the
-  // time an unmounting component's own cleanup runs -- `Node.contains` works
-  // on a detached subtree exactly as it does on an attached one).
+  // the user is doing. So this only fires when focus is either nowhere in
+  // particular (`document.body`, e.g. Escape/Cancel closing synchronously) or
+  // still somewhere inside this popover's own subtree (captured once at
+  // mount, since `ref.current` is not reliably still attached to the tree by
+  // the time an unmounting component's own cleanup runs -- `Node.contains`
+  // works on a detached subtree exactly as it does on an attached one).
   useEffect(() => {
     const container = ref.current
     return () => {
+      if (!target.openedViaKeyboard) return
       const active = document.activeElement
       if (active === document.body || (container?.contains(active) ?? false)) {
         target.anchorEl?.querySelector<HTMLElement>('button')?.focus()
       }
     }
-  }, [target.anchorEl, ref])
+  }, [target.anchorEl, target.openedViaKeyboard, ref])
 
   return createPortal(
     <div

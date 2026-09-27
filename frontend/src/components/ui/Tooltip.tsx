@@ -72,6 +72,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -103,8 +104,14 @@ export interface TooltipProps {
    * (`MapUnitPopover`'s room cell picks the room). When set, a click runs the
    * action and does not pin — the bubble is already open from the hover or the
    * focus the tap produced.
+   *
+   * Receives the originating click event: `event.detail === 0` is a keyboard
+   * (Enter/Space) activation, matching the browser's own native distinction
+   * (a real pointer click's `detail` is the click count, >= 1) -- callers
+   * that need to tell keyboard from pointer activation (`SubjectNoteCorner`)
+   * read it from there rather than each re-deriving their own signal.
    */
-  onActivate?: () => void
+  onActivate?: (event: ReactMouseEvent<HTMLButtonElement>) => void
   /**
    * Opt a purely informational trigger out of decision 3's tap-pins default.
    *
@@ -323,10 +330,10 @@ export function Tooltip({
           setPinned(false)
           setDismissed(false)
         }}
-        onClick={() => {
+        onClick={(event) => {
           setDismissed(false)
           if (onActivate) {
-            onActivate()
+            onActivate(event)
             return
           }
           if (!pinOnClick) return
