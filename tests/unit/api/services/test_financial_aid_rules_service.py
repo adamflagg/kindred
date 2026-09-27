@@ -568,3 +568,49 @@ def test_every_service_refusal_is_a_financial_aid_error_and_pydantic_is_not() ->
     for error in (NotLatestVersionError, RulesNotFoundError, VersionExistsError, YearMismatchError):
         assert issubclass(error, FinancialAidError), error
     assert not issubclass(ValidationError, FinancialAidError)
+
+
+# --- latest_approved (Task 6: intake reads approved rules only) -------------------------
+
+
+@pytest.mark.asyncio
+async def test_latest_approved_is_none_until_every_named_section_is_approved() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    assert await service.latest_approved(2031, ("programs", "cost")) is None
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Finance approved.")
+    assert await service.latest_approved(2031, ("programs", "cost")) is None  # cost is still a draft
+    await service.approve_section(2031, 1, "cost", actor=FINANCE, note="Finance approved.")
+    found = await service.latest_approved(2031, ("programs", "cost"))
+    assert found is not None
+    assert found.version == 1
+
+
+@pytest.mark.asyncio
+async def test_latest_approved_skips_a_newer_version_whose_section_went_back_to_draft() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    for section in ("programs", "cost"):
+        await service.approve_section(2031, 1, section, actor=FINANCE, note="Approved.")
+    await service.new_version(2031, 1, actor=FINANCE)
+    edited = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
+    await service.save(2031, 2, edited, actor=FINANCE)  # an edit sends programs back to draft
+    found = await service.latest_approved(2031, ("programs", "cost"))
+    assert found is not None
+    assert (found.version, found.document.programs["summer"].label) == (1, "Summer")
+    await service.approve_section(2031, 2, "programs", actor=FINANCE, note="Approved again.")
+    again = await service.latest_approved(2031, ("programs", "cost"))
+    assert again is not None
+    assert again.version == 2
+
+
+@pytest.mark.asyncio
+async def test_a_locked_section_counts_as_approved() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    for section in ("programs", "cost"):
+        await service.approve_section(2031, 1, section, actor=FINANCE, note="Approved.")
+    await service.lock_section(2031, 1, "programs", actor=FINANCE)
+    found = await service.latest_approved(2031, ("programs", "cost"))
+    assert found is not None
+    assert found.section_status["programs"].state == "locked"

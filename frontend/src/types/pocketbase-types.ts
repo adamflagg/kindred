@@ -11,12 +11,17 @@ export const Collections = {
   Mfas: '_mfas',
   Otps: '_otps',
   Superusers: '_superusers',
+  AidApplicationCorrections: 'aid_application_corrections',
+  AidApplications: 'aid_applications',
   AidAttributionOverrides: 'aid_attribution_overrides',
   AidChangeLog: 'aid_change_log',
   AidFlagDispositions: 'aid_flag_dispositions',
   AidHouseholdLinks: 'aid_household_links',
+  AidPayerShares: 'aid_payer_shares',
   AidPostings: 'aid_postings',
+  AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
+  AidSessionCapacity: 'aid_session_capacity',
   AidSources: 'aid_sources',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
@@ -174,6 +179,41 @@ export type SuperusersRecord = {
   verified?: boolean
 }
 
+export type AidApplicationCorrectionsRecord = {
+  actor: string
+  application: RecordIdString
+  created: IsoAutoDateString
+  field: string
+  id: string
+  new_value?: string
+  original_value?: string
+  reason: string
+  request?: RecordIdString
+  year: number
+}
+
+export const AidApplicationsStatusOptions = {
+  active: 'active',
+  withdrawn: 'withdrawn',
+} as const
+export type AidApplicationsStatusOptions =
+  (typeof AidApplicationsStatusOptions)[keyof typeof AidApplicationsStatusOptions]
+export type AidApplicationsRecord<
+  Tanswers = unknown,
+  Tflags = unknown,
+  Tmember_person_cm_ids = unknown,
+> = {
+  answers?: null | Tanswers
+  created: IsoAutoDateString
+  flags?: null | Tflags
+  household_cm_id: number
+  id: string
+  member_person_cm_ids?: null | Tmember_person_cm_ids
+  status: AidApplicationsStatusOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
 export const AidAttributionOverridesProgramFamilyOptions = {
   summer: 'summer',
   quest: 'quest',
@@ -256,6 +296,25 @@ export type AidHouseholdLinksRecord = {
   id: string
   note?: string
   source: AidHouseholdLinksSourceOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const AidPayerSharesSourceOptions = {
+  intake_default: 'intake_default',
+  staff: 'staff',
+} as const
+export type AidPayerSharesSourceOptions =
+  (typeof AidPayerSharesSourceOptions)[keyof typeof AidPayerSharesSourceOptions]
+export type AidPayerSharesRecord = {
+  actor: string
+  created: IsoAutoDateString
+  household_cm_id: number
+  id: string
+  note?: string
+  request: RecordIdString
+  share_pct: number
+  source: AidPayerSharesSourceOptions
   updated: IsoAutoDateString
   year: number
 }
@@ -356,6 +415,63 @@ export type AidPostingsRecord<Tcandidate_program_families = unknown, Tflags = un
   year: number
 }
 
+export const AidRequestsProgramKeyOptions = {
+  summer: 'summer',
+  family_camp: 'family_camp',
+  bmitzvah: 'bmitzvah',
+  adult_weekend: 'adult_weekend',
+} as const
+export type AidRequestsProgramKeyOptions =
+  (typeof AidRequestsProgramKeyOptions)[keyof typeof AidRequestsProgramKeyOptions]
+
+export const AidRequestsSessionResolutionOptions = {
+  enrollment: 'enrollment',
+  enrollment_text: 'enrollment_text',
+  staff: 'staff',
+  unmatched: 'unmatched',
+} as const
+export type AidRequestsSessionResolutionOptions =
+  (typeof AidRequestsSessionResolutionOptions)[keyof typeof AidRequestsSessionResolutionOptions]
+
+export const AidRequestsHeadcountSourceOptions = {
+  declared: 'declared',
+  billed: 'billed',
+  override: 'override',
+} as const
+export type AidRequestsHeadcountSourceOptions =
+  (typeof AidRequestsHeadcountSourceOptions)[keyof typeof AidRequestsHeadcountSourceOptions]
+
+export const AidRequestsStatusOptions = {
+  active: 'active',
+  unmatched_session: 'unmatched_session',
+  duplicate_pending: 'duplicate_pending',
+  duplicate: 'duplicate',
+  withdrawn: 'withdrawn',
+} as const
+export type AidRequestsStatusOptions =
+  (typeof AidRequestsStatusOptions)[keyof typeof AidRequestsStatusOptions]
+export type AidRequestsRecord<Tflags = unknown> = {
+  application: RecordIdString
+  ask?: number
+  created: IsoAutoDateString
+  duplicate_of?: string
+  flags?: null | Tflags
+  headcount_infant?: number
+  headcount_non_infant?: number
+  headcount_source?: AidRequestsHeadcountSourceOptions
+  household_cm_id: number
+  id: string
+  person_cm_id?: number
+  program_key: AidRequestsProgramKeyOptions
+  program_option_key?: string
+  program_option_text?: string
+  session_cm_id?: number
+  session_resolution: AidRequestsSessionResolutionOptions
+  status: AidRequestsStatusOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
 export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   created: IsoAutoDateString
   document?: null | Tdocument
@@ -365,6 +481,17 @@ export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   section_status?: null | Tsection_status
   updated: IsoAutoDateString
   version: number
+  year: number
+}
+
+export type AidSessionCapacityRecord = {
+  actor: string
+  capacity?: number
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  session_cm_id: number
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -1001,7 +1128,10 @@ export type FamilyCampRegistrationsRecord = {
   year: number
 }
 
-export type FinancialAidApplicationsRecord<Tcarryover_last_updated = unknown> = {
+export type FinancialAidApplicationsRecord<
+  Tcarryover_last_updated = unknown,
+  Treported_income_fields = unknown,
+> = {
   affiliated_jcc?: boolean
   amount_confirmed?: boolean
   applicant_signature?: string
@@ -1058,6 +1188,7 @@ export type FinancialAidApplicationsRecord<Tcarryover_last_updated = unknown> = 
   person: RecordIdString
   person_id: number
   registration_request_amount?: number
+  reported_income_fields?: null | Treported_income_fields
   retirement_accounts?: number
   russian_speaking?: boolean
   single_parent?: boolean
@@ -2170,6 +2301,15 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AidApplicationCorrectionsResponse<Texpand = unknown> =
+  Required<AidApplicationCorrectionsRecord> & BaseSystemFields<Texpand>
+export type AidApplicationsResponse<
+  Tanswers = unknown,
+  Tflags = unknown,
+  Tmember_person_cm_ids = unknown,
+  Texpand = unknown,
+> = Required<AidApplicationsRecord<Tanswers, Tflags, Tmember_person_cm_ids>> &
+  BaseSystemFields<Texpand>
 export type AidAttributionOverridesResponse<Texpand = unknown> =
   Required<AidAttributionOverridesRecord> & BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
@@ -2180,16 +2320,24 @@ export type AidFlagDispositionsResponse<Texpand = unknown> = Required<AidFlagDis
   BaseSystemFields<Texpand>
 export type AidHouseholdLinksResponse<Texpand = unknown> = Required<AidHouseholdLinksRecord> &
   BaseSystemFields<Texpand>
+export type AidPayerSharesResponse<Texpand = unknown> = Required<AidPayerSharesRecord> &
+  BaseSystemFields<Texpand>
 export type AidPostingsResponse<
   Tcandidate_program_families = unknown,
   Tflags = unknown,
   Texpand = unknown,
 > = Required<AidPostingsRecord<Tcandidate_program_families, Tflags>> & BaseSystemFields<Texpand>
+export type AidRequestsResponse<Tflags = unknown, Texpand = unknown> = Required<
+  AidRequestsRecord<Tflags>
+> &
+  BaseSystemFields<Texpand>
 export type AidRulesResponse<
   Tdocument = unknown,
   Tsection_status = unknown,
   Texpand = unknown,
 > = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
+export type AidSessionCapacityResponse<Texpand = unknown> = Required<AidSessionCapacityRecord> &
+  BaseSystemFields<Texpand>
 export type AidSourcesResponse<Timplied_program_families = unknown, Texpand = unknown> = Required<
   AidSourcesRecord<Timplied_program_families>
 > &
@@ -2272,8 +2420,10 @@ export type FamilyCampRegistrationsResponse<Texpand = unknown> =
   Required<FamilyCampRegistrationsRecord> & BaseSystemFields<Texpand>
 export type FinancialAidApplicationsResponse<
   Tcarryover_last_updated = unknown,
+  Treported_income_fields = unknown,
   Texpand = unknown,
-> = Required<FinancialAidApplicationsRecord<Tcarryover_last_updated>> & BaseSystemFields<Texpand>
+> = Required<FinancialAidApplicationsRecord<Tcarryover_last_updated, Treported_income_fields>> &
+  BaseSystemFields<Texpand>
 export type FinancialCategoriesResponse<Texpand = unknown> = Required<FinancialCategoriesRecord> &
   BaseSystemFields<Texpand>
 export type FinancialTransactionsResponse<Texpand = unknown> =
@@ -2416,12 +2566,17 @@ export type CollectionRecords = {
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  aid_application_corrections: AidApplicationCorrectionsRecord
+  aid_applications: AidApplicationsRecord
   aid_attribution_overrides: AidAttributionOverridesRecord
   aid_change_log: AidChangeLogRecord
   aid_flag_dispositions: AidFlagDispositionsRecord
   aid_household_links: AidHouseholdLinksRecord
+  aid_payer_shares: AidPayerSharesRecord
   aid_postings: AidPostingsRecord
+  aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
+  aid_session_capacity: AidSessionCapacityRecord
   aid_sources: AidSourcesRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
@@ -2506,12 +2661,17 @@ export type CollectionResponses = {
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  aid_application_corrections: AidApplicationCorrectionsResponse
+  aid_applications: AidApplicationsResponse
   aid_attribution_overrides: AidAttributionOverridesResponse
   aid_change_log: AidChangeLogResponse
   aid_flag_dispositions: AidFlagDispositionsResponse
   aid_household_links: AidHouseholdLinksResponse
+  aid_payer_shares: AidPayerSharesResponse
   aid_postings: AidPostingsResponse
+  aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse
+  aid_session_capacity: AidSessionCapacityResponse
   aid_sources: AidSourcesResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse

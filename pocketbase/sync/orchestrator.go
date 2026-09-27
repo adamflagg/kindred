@@ -2462,6 +2462,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Financial aid applications (derived from person_custom_values FA- fields)
 		faApplicationsSync := NewFinancialAidApplicationsSync(o.app)
 		faApplicationsSync.Year = opts.Year
+		faApplicationsSync.IntakeTrigger = TriggerFinancialAidIntake
 		o.RegisterService("financial_aid_applications", faApplicationsSync)
 
 		// Campership ledger for the replayed season only
@@ -3072,7 +3073,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("staff_skills", NewStaffSkillsSync(o.app))
 
 	// Financial aid applications (derived from person_custom_values FA- fields)
-	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(o.app))
+	faApplicationsDefaultSync := NewFinancialAidApplicationsSync(o.app)
+	faApplicationsDefaultSync.IntakeTrigger = TriggerFinancialAidIntake
+	o.RegisterService("financial_aid_applications", faApplicationsDefaultSync)
 
 	// Campership ledger (aid_postings, plus aid_sources and auto aid_household_links)
 	o.RegisterService("aid_postings", NewAidPostingsSync(o.app))

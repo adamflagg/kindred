@@ -88,10 +88,10 @@ def fictional_rules_json() -> dict[str, Any]:
                     "values": ["yes"],
                 },
                 {
-                    "key": "single_parent",
-                    "label": "Single parent",
+                    "key": "gov_subsidies",
+                    "label": "Government subsidies",
                     "source": "household",
-                    "field": "single_parent",
+                    "field": "gov_subsidies",
                     "match": "equals_any",
                     "values": ["yes"],
                 },

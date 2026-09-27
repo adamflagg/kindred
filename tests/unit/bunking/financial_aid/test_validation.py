@@ -154,6 +154,91 @@ def test_a_dependents_weight_without_tier_shift_mode_cannot_bind() -> None:
     assert "dependents_weight_cannot_bind" in {w.code for w in validate_rules(rules).warnings}
 
 
+def _with_criterion(**criterion: object) -> list[dict[str, object]]:
+    base = [c.model_dump(mode="json") for c in fictional_rules().equity.criteria]
+    return [*base, {"key": "probe", "label": "Probe", "source": "household", **criterion}]
+
+
+@pytest.mark.parametrize(
+    ("match", "values"),
+    [
+        ("equals_any", ["no"]),
+        ("equals_any", ["yes", "False"]),
+        ("equals_any", ["0"]),
+        ("contains_any", ["o"]),  # a substring of "No" matches it too
+    ],
+)
+def test_a_household_yes_no_criterion_that_matches_no_is_refused(match: str, values: list[str]) -> None:
+    # A blank yes/no answer reaches the calculator as No (the mirror stores it as a bool), so a
+    # criterion matching No would hand its weight to every family that never answered.
+    rules = with_lever(
+        fictional_rules(), "equity.criteria", _with_criterion(field="unemployment", match=match, values=values)
+    )
+    report = validate_rules(rules)
+    (issue,) = [i for i in report.errors_in("equity") if i.code == "yes_no_criterion_matches_no"]
+    assert issue.path == f"equity.criteria.{len(rules.equity.criteria) - 1}.values"
+    assert "unemployment" in issue.message
+    assert "never answered" in issue.message
+
+
+def test_a_yes_no_criterion_matching_no_through_an_also_field_is_refused() -> None:
+    criteria = _with_criterion(
+        field="dependents_note", also_fields=["gov_subsidies"], match="equals_any", values=["no"]
+    )
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "yes_no_criterion_matches_no" in {i.code for i in report.errors}
+
+
+@pytest.mark.parametrize(
+    "criterion",
+    [
+        {"field": "gov_subsidies", "match": "equals_any", "values": ["yes"]},  # the 2026 shape
+        {"field": "special_note", "match": "equals_any", "values": ["no"]},  # not a yes/no answer
+    ],
+)
+def test_a_yes_no_criterion_matching_only_yes_or_a_non_yes_no_field_passes(criterion: dict[str, object]) -> None:
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", _with_criterion(**criterion)))
+    assert "yes_no_criterion_matches_no" not in report.codes()
+
+
+def test_a_camper_answer_matching_no_passes_because_a_blank_camper_answer_stays_unknown() -> None:
+    # Named like the household answer, so only the source tells them apart.
+    criteria = _with_criterion(field="unemployment", match="equals_any", values=["no"])
+    criteria[-1]["source"] = "camper"
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "yes_no_criterion_matches_no" not in report.codes()
+
+
+# --- retired household fields (owner ruling 2026-09-27: live questions only) -----------
+
+
+@pytest.mark.parametrize("field", ["still_unemployed", "single_parent", "owns_home"])
+def test_a_household_criterion_on_a_retired_field_is_refused(field: str) -> None:
+    # These were live through 2025 (or earlier) and are gone from the current CampMinder
+    # form: a criterion built against one would never fire, so validation refuses it
+    # outright rather than leaving a silently-dead criterion in the document.
+    criteria = _with_criterion(field=field, match="equals_any", values=["yes"])
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    (issue,) = [i for i in report.errors if i.code == "retired_household_field"]
+    assert field in issue.message
+
+
+def test_a_household_criterion_on_a_retired_also_field_is_refused() -> None:
+    criteria = _with_criterion(
+        field="unemployment", also_fields=["still_unemployed"], match="equals_any", values=["yes"]
+    )
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "retired_household_field" in {i.code for i in report.errors}
+
+
+def test_a_camper_criterion_on_a_field_named_like_a_retired_one_is_not_refused() -> None:
+    # Guarded by source, the same as the No-matching check.
+    criteria = _with_criterion(field="single_parent", match="equals_any", values=["yes"])
+    criteria[-1]["source"] = "camper"
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "retired_household_field" not in report.codes()
+
+
 # --- income ---------------------------------------------------------------------------
 
 
@@ -368,3 +453,17 @@ def test_the_above_cost_check_cannot_be_made_a_warning_or_switched_off(path: str
     # Owner ruling 2026-09-25: never above cost before the offer; the check always holds.
     report = validate_rules(with_lever(fictional_rules(), path, value))
     assert "award_above_cost_must_hold" in {i.code for i in report.errors_in("quality_checks")}
+
+
+@pytest.mark.parametrize("check", [{"severity": "warn"}, {"enabled": False}, {"enabled": False, "severity": "hold"}])
+def test_the_income_conflict_check_cannot_be_made_a_warning_or_switched_off(check: dict[str, object]) -> None:
+    # Owner ruling 2026-09-25: an income conflict always holds; staff call the family and choose the figure.
+    rules = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", check)
+    report = validate_rules(rules)
+    assert "household_income_conflict_must_hold" in {i.code for i in report.errors_in("quality_checks")}
+
+
+def test_an_income_conflict_check_that_holds_or_is_not_listed_is_fine() -> None:
+    held = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", {"severity": "hold"})
+    assert "household_income_conflict_must_hold" not in validate_rules(held).codes()
+    assert "household_income_conflict_must_hold" not in validate_rules(fictional_rules()).codes()  # unlisted

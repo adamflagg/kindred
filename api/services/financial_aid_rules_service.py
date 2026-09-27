@@ -270,6 +270,17 @@ class FinancialAidRulesService:
             raise RulesNotFoundError(f"No aid rules for {year} version {version}")
         return _to_version(record)
 
+    async def latest_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
+        """The newest version of `year` in which every section in `sections` is approved or
+        locked, or None when no version has them all. A newer version whose section went back to
+        draft is skipped for the one before it: readers that must never act on a draft (intake)
+        use this, not load()."""
+        for row in reversed(await self._store.list_versions(year)):
+            version = _to_version(row)
+            if all(version.section_status[name].state in ("approved", "locked") for name in sections):
+                return version
+        return None
+
     async def validate_document(self, document: AidRules) -> ValidationReport:
         """Validation against the season's synced sessions. A season with none synced
         warns (no_sessions_to_check) rather than passing the coverage check silently."""
