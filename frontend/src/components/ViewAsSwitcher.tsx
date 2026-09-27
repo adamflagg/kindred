@@ -14,9 +14,19 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useRoles } from '../hooks/useRoles'
 import { ALL_PERMISSIONS } from '../constants/permissions'
 import { ViewAsPermissionPicker } from './ViewAsPermissionPicker'
-import { clearViewAs, viewAsLabel, writeViewAs, type ViewAsPersona } from '../auth/viewAs'
+import {
+  clearViewAs,
+  readViewAs,
+  viewAsLabel,
+  writeViewAs,
+  type ViewAsPersona,
+} from '../auth/viewAs'
+import { recordViewAsSwitch } from '../auth/viewAsAudit'
 
 function switchTo(persona: ViewAsPersona | null) {
+  // Every start, persona change and exit goes through here: tell the admin
+  // audit log first, while storage still holds the persona being left.
+  recordViewAsSwitch(readViewAs(), persona)
   if (persona === null) clearViewAs()
   else writeViewAs(persona)
   window.location.reload()
