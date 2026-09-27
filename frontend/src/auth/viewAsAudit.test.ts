@@ -84,4 +84,19 @@ describe('recordViewAsSwitch', () => {
     fetchSpy.mockRejectedValue(new TypeError('offline'))
     expect(() => recordViewAsSwitch(null, registrar)).not.toThrow()
   })
+
+  it('falls back to crypto.getRandomValues, never Math.random, when randomUUID is unavailable', () => {
+    // A non-secure-context browser leaves crypto.randomUUID missing entirely;
+    // simulate that by making the call throw, same as calling an undefined method.
+    const randomUUIDSpy = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => {
+      throw new TypeError('randomUUID is not available in this context')
+    })
+    const mathRandomSpy = vi.spyOn(Math, 'random')
+    recordViewAsSwitch(null, registrar)
+    const start = sent(0)
+    expect(String(start.body['session_id'])).toMatch(/^[A-Za-z0-9-]{8,64}$/)
+    expect(mathRandomSpy).not.toHaveBeenCalled()
+    randomUUIDSpy.mockRestore()
+    mathRandomSpy.mockRestore()
+  })
 })

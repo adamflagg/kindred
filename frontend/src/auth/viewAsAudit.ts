@@ -23,7 +23,12 @@ function newSessionId(): string {
   try {
     return crypto.randomUUID()
   } catch {
-    return `vs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    // crypto.randomUUID needs a secure context; getRandomValues does not, so it
+    // still works over plain http. 16 random bytes hex-encoded is 32 chars,
+    // matching the server's session id validator (pocketbase/audit/actions.go).
+    const bytes = new Uint8Array(16)
+    crypto.getRandomValues(bytes)
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
   }
 }
 
