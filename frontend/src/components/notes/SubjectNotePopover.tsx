@@ -2,8 +2,10 @@
  * The card-level note editor, as locked (owner, 2026-09-25): an anchored
  * popover beside the card, portaled. No modal, no inline expansion.
  *
- * - Escape discards through `useOverlayEscape`. Its token is acquired after
- *   any panel beneath, so it closes first.
+ * - Escape discards through `useOverlayEscape`, but only when Escape's focus
+ *   is actually ours (inside the popover, on its own anchor corner, or
+ *   nowhere in particular). Its token is acquired after any panel beneath,
+ *   so it closes first.
  * - A click outside with unsaved text SAVES (sticky-note behaviour); with
  *   nothing typed it closes. A second press on the corner that opened it
  *   keeps it open.
@@ -13,6 +15,13 @@
  *   the queue under a click inside the popover.
  * - `role="dialog"` also keeps `shouldKeepPanelsOpen` from treating a click
  *   inside it as dead space.
+ * - A press anywhere inside the expanded (or collapsed) queue
+ *   (`[data-floating-badge]`, `FloatingQueueBadge`) is exempt the same way
+ *   the corner is: staff can search, filter, toggle or close the queue
+ *   without closing an open note. A press on a queue CARD
+ *   (`[data-camper-card]`/`[data-family-card]`) or on ANOTHER card's note
+ *   corner (`[data-note-corner-for]`) is the exception -- those still save
+ *   the open note first, the same as a press fully outside the queue.
  */
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
@@ -115,6 +124,23 @@ function useOutsidePointer(
         swallowNextClick(event)
         return
       }
+      // Anywhere else inside the expanded (or collapsed) queue badge is
+      // exempt: staff can search, filter, toggle or close the queue without
+      // closing an open note -- but a queue CARD or ANOTHER card's note
+      // corner must still save it first, exactly as a press outside the
+      // badge would (owner repro: note open, queue open, click back into
+      // the note, then click the queue's search box -- that used to save
+      // and close it). This folds in the old toggle/close-only exemption
+      // (both buttons live inside `[data-floating-badge]`, so the old,
+      // narrower selector was a strict subset of this one) -- no eater
+      // here either; a queue button's own onClick still needs to fire
+      // normally, which is only the corner's concern above.
+      if (
+        target.closest('[data-floating-badge]') &&
+        !target.closest('[data-camper-card], [data-family-card], [data-note-corner-for]')
+      ) {
+        return
+      }
       const current = latest.current
       if (current.dirty) void current.save()
       else current.discard()
@@ -140,7 +166,25 @@ export function SubjectNotePopover({
     getAnchorRect: () => cardFor(target.anchorEl)?.getBoundingClientRect() ?? null,
     placement: 'beside',
   })
-  useOverlayEscape(true, model.discard)
+  // Discard only when Escape's focus is actually ours: inside the popover,
+  // on its own anchor corner, or nowhere in particular (`document.body`). A
+  // dirty popover can stay open while some OTHER control on the page holds
+  // focus -- the expanded queue's own search input, focused by its own rAF
+  // right after a press on the exempted toggle/close buttons below -- and
+  // Escape there belongs to that control, not to a note it never touched.
+  // The corner check exists because a second press on the SAME corner is
+  // owner-locked to keep the popover open (`swallowNextClick` below), and on
+  // some browsers `preventDefault()`'d pointerdown still leaves focus on the
+  // corner's own button -- outside the popover, and not body -- so without
+  // this Escape would do nothing until the user clicked back into the note.
+  useOverlayEscape(true, model.discard, () => {
+    const active = document.activeElement
+    return (
+      active === document.body ||
+      (ref.current?.contains(active) ?? false) ||
+      (target.anchorEl?.contains(active) ?? false)
+    )
+  })
   useOutsidePointer(model, ref, subjectKey(target.subject))
   // Focus restore (frontend/CLAUDE.md): the anchor corner's own button, not
   // whatever was focused before opening -- a click that opened this popover
@@ -148,28 +192,38 @@ export function SubjectNotePopover({
   // more reliable than ConfirmActionPopover's plain capture-and-restore, and
   // is simpler here since the anchor is already at hand.
   //
+  // ONLY after a keyboard open (owner-ruled): a programmatic `.focus()` call
+  // hits Tooltip's `onFocus` regardless of how THIS popover was opened, and
+  // reopens the corner's Tooltip preview as a side effect -- restoring focus
+  // after a MOUSE open therefore left the mouse user staring at an unasked-for
+  // focus ring and a reopened preview. A keyboard user, by contrast, is
+  // exactly where a focus ring belongs after closing what they opened.
+  // `target.openedViaKeyboard` is `event.detail === 0` at the corner's own
+  // click/activation (`SubjectNoteCorner.tsx`) -- omitted (falsy) for every
+  // OTHER opener (the right-click menu, the panel), so they get the same
+  // safe "restore nothing" default a mouse open now gets here.
+  //
   // Only when nothing else already claimed it: a DIRTY popover unmounts only
   // once `save()` resolves -- a network round trip after whatever click
   // started it -- so by the time this cleanup runs, that same click may
   // already have moved focus somewhere real (the "Elsewhere" button, an
   // input on the page). Reclaiming it there would yank focus away from what
-  // the user is doing, and a programmatic focus on the corner also reopens
-  // its Tooltip preview (it hits Tooltip's `onFocus`) as an unwanted side
-  // effect. So this only fires when focus is either nowhere in particular
-  // (`document.body`, e.g. Escape/Cancel closing synchronously) or still
-  // somewhere inside this popover's own subtree (captured once at mount,
-  // since `ref.current` is not reliably still attached to the tree by the
-  // time an unmounting component's own cleanup runs -- `Node.contains` works
-  // on a detached subtree exactly as it does on an attached one).
+  // the user is doing. So this only fires when focus is either nowhere in
+  // particular (`document.body`, e.g. Escape/Cancel closing synchronously) or
+  // still somewhere inside this popover's own subtree (captured once at
+  // mount, since `ref.current` is not reliably still attached to the tree by
+  // the time an unmounting component's own cleanup runs -- `Node.contains`
+  // works on a detached subtree exactly as it does on an attached one).
   useEffect(() => {
     const container = ref.current
     return () => {
+      if (!target.openedViaKeyboard) return
       const active = document.activeElement
       if (active === document.body || (container?.contains(active) ?? false)) {
         target.anchorEl?.querySelector<HTMLElement>('button')?.focus()
       }
     }
-  }, [target.anchorEl, ref])
+  }, [target.anchorEl, target.openedViaKeyboard, ref])
 
   return createPortal(
     <div

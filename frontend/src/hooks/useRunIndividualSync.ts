@@ -29,6 +29,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   lodging_assignments: 'Lodging Assignments', // Derived from the cabin custom fields
   staff_skills: 'Staff Skills', // Derived from person_custom_values Skills- fields
   financial_aid_applications: 'FA Applications', // Derived from person_custom_values FA- fields
+  aid_postings: 'Aid Ledger', // Derived from financial-aid transactions
   household_demographics: 'Household Demographics', // Computed from HH- fields
   camper_transportation: 'Camper Transportation', // Extracted from BUS- custom fields
   camper_dietary: 'Camper Dietary', // Extracted from Family Medical- custom fields

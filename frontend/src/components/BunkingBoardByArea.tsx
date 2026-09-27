@@ -17,6 +17,9 @@ import BunkSwapModal from './BunkSwapModal'
 import FloatingUnassignedBadge from './FloatingUnassignedBadge'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { swapBunks } from '../utils/bunkSwap'
+import { camperSubject } from './notes/subjectNoteModel'
+import { SubjectNotesSection } from './notes/SubjectNotesSection'
+import { useNoteSlots } from './notes/useNoteSlots'
 
 // Lazy load heavy components - only loads when needed
 const BunkSocialGraphModal = lazy(() => import('./BunkSocialGraphModal'))
@@ -98,6 +101,14 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const { hasPermission } = usePermissions()
 
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
+
+  // Board notes (2026-09-25). A camper's subject is its OWN session, so an AG
+  // camper keeps the AG id on its main session's board.
+  const noteSlots = useNoteSlots('camper')
+  const camperNoteSlots = useCallback(
+    (camper: Camper) => noteSlots(camperSubject(camper), camper.name),
+    [noteSlots]
+  )
 
   // Get lock group context for action bar and pending camper management
   const {
@@ -572,91 +583,108 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {/* Main bunks area. The camper-detail panel is a plain right-side slide-in
-            overlay (fixed), so the board never moves when it opens — staff keep the
-            bunk they're working on in place. Only gets bottom padding to clear the
-            friend-groups hub / action bar (#1630). */}
-        <div
-          data-board-wrapper
-          className={getBoardBottomPaddingClass(
-            isLockGroupUiActive,
-            isLockGroupUiActive && pendingCampers.length > 0
-          )}
-        >
-          {/* Lock all / Unlock all — visible only to managers in non-production mode */}
-          {canManage && !isProductionMode && onLockAll && onUnlockAll && (
-            <div className="mb-3 flex items-center gap-2">
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
-                onClick={() => onLockAll(displayedBunks.map((b) => b.cm_id))}
+        {/* Board notes: `FloatingUnassignedBadge` renders as a SIBLING of
+            `data-board-wrapper`, not inside it, so its own `data-dragging`
+            never reached the queue's note corners (index.css's
+            `[data-dragging] [data-note-corner…]` rule needs an ancestor, and
+            the queue had none). This wrapper is the common ancestor both
+            share; `contents` adds no box, so layout is unchanged. */}
+        <div className="contents" data-dragging={isDragging ? '' : undefined}>
+          {/* Main bunks area. The camper-detail panel is a plain right-side slide-in
+              overlay (fixed), so the board never moves when it opens — staff keep the
+              bunk they're working on in place. Only gets bottom padding to clear the
+              friend-groups hub / action bar (#1630). */}
+          <div
+            data-board-wrapper
+            // Board notes: mirrors the outer `contents` wrapper above, which
+            // is what actually reaches every corner (the queue's included).
+            // Kept here too so the board wrapper itself still reports the
+            // drag state to anything that reads it.
+            data-dragging={isDragging ? '' : undefined}
+            className={getBoardBottomPaddingClass(
+              isLockGroupUiActive,
+              isLockGroupUiActive && pendingCampers.length > 0
+            )}
+          >
+            {/* Lock all / Unlock all — visible only to managers in non-production mode */}
+            {canManage && !isProductionMode && onLockAll && onUnlockAll && (
+              <div className="mb-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+                  onClick={() => onLockAll(displayedBunks.map((b) => b.cm_id))}
+                >
+                  Lock all
+                </button>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+                  onClick={() => onUnlockAll()}
+                >
+                  Unlock all
+                </button>
+              </div>
+            )}
+            {/* Bunks Grid - 4 columns, full width */}
+            {displayedBunks.length === 0 ? (
+              <div className="bg-card border-border rounded-xl border p-8 text-center">
+                <Home className="text-muted-foreground/30 mx-auto mb-3 h-12 w-12" />
+                <p className="text-muted-foreground font-medium">No bunks in this area</p>
+              </div>
+            ) : (
+              <div
+                data-bunk-grid
+                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                style={{ contain: 'layout style' }}
+                onClick={handleBoardClick}
               >
-                Lock all
-              </button>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
-                onClick={() => onUnlockAll()}
-              >
-                Unlock all
-              </button>
-            </div>
-          )}
-          {/* Bunks Grid - 4 columns, full width */}
-          {displayedBunks.length === 0 ? (
-            <div className="bg-card border-border rounded-xl border p-8 text-center">
-              <Home className="text-muted-foreground/30 mx-auto mb-3 h-12 w-12" />
-              <p className="text-muted-foreground font-medium">No bunks in this area</p>
-            </div>
-          ) : (
-            <div
-              data-bunk-grid
-              className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-              style={{ contain: 'layout style' }}
-              onClick={handleBoardClick}
-            >
-              {displayedBunks.map((bunk) => (
-                <BunkCard
-                  key={bunk.id}
-                  bunk={bunk}
-                  onCamperClick={handleCamperClick}
-                  onCamperLockToggle={handleCamperLockToggle}
-                  onCamperUnassign={handleCamperUnassign}
-                  onShowSocialGraph={() => {
-                    startTransition(() => {
-                      setSelectedBunkForGraph({
-                        cmId: bunk.cm_id,
-                        name: bunk.name,
+                {displayedBunks.map((bunk) => (
+                  <BunkCard
+                    key={bunk.id}
+                    bunk={bunk}
+                    onCamperClick={handleCamperClick}
+                    onCamperLockToggle={handleCamperLockToggle}
+                    onCamperUnassign={handleCamperUnassign}
+                    onShowSocialGraph={() => {
+                      startTransition(() => {
+                        setSelectedBunkForGraph({
+                          cmId: bunk.cm_id,
+                          name: bunk.name,
+                        })
                       })
-                    })
-                  }}
-                  onSwapClick={
-                    canManage && !isProductionMode ? () => setSelectedBunkForSwap(bunk) : undefined
-                  }
-                  isLocked={lockedBunkCmIds?.has(bunk.cm_id) ?? false}
-                  {...(canManage && !isProductionMode && onToggleBunkLock
-                    ? { onToggleLock: () => onToggleBunkLock(bunk.cm_id) }
-                    : {})}
-                  isDragging={isDragging}
-                  isProductionMode={isProductionMode}
-                  defaultCapacity={defaultCapacity}
-                  activeDragCamper={activeDragItem?.camper ?? null}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+                    }}
+                    onSwapClick={
+                      canManage && !isProductionMode
+                        ? () => setSelectedBunkForSwap(bunk)
+                        : undefined
+                    }
+                    isLocked={lockedBunkCmIds?.has(bunk.cm_id) ?? false}
+                    {...(canManage && !isProductionMode && onToggleBunkLock
+                      ? { onToggleLock: () => onToggleBunkLock(bunk.cm_id) }
+                      : {})}
+                    isDragging={isDragging}
+                    isProductionMode={isProductionMode}
+                    defaultCapacity={defaultCapacity}
+                    activeDragCamper={activeDragItem?.camper ?? null}
+                    camperNoteSlots={camperNoteSlots}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
-        {/* Floating Unassigned Badge */}
-        <FloatingUnassignedBadge
-          campers={unassignedCampers}
-          onCamperClick={handleCamperClick}
-          isExpanded={isUnassignedExpanded}
-          onToggle={() => setIsUnassignedExpanded(!isUnassignedExpanded)}
-          onClose={() => setIsUnassignedExpanded(false)}
-          isPanelOpen={!!selectedCamperId}
-          isProductionMode={isProductionMode}
-        />
+          {/* Floating Unassigned Badge */}
+          <FloatingUnassignedBadge
+            campers={unassignedCampers}
+            onCamperClick={handleCamperClick}
+            isExpanded={isUnassignedExpanded}
+            onToggle={() => setIsUnassignedExpanded(!isUnassignedExpanded)}
+            onClose={() => setIsUnassignedExpanded(false)}
+            isPanelOpen={!!selectedCamperId}
+            isProductionMode={isProductionMode}
+            camperNoteSlots={camperNoteSlots}
+          />
+        </div>
 
         {/* Drag Overlay - Shows group members when dragging locked groups */}
         <DragOverlay>
@@ -715,6 +743,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
                   .filter((c) => c.assigned_bunk_cm_id === selected.assigned_bunk_cm_id)
                   .map((c) => ({ cmId: c.person_cm_id, grade: c.grade }))
               : []
+          const notesSubject = selected ? camperSubject(selected) : null
           return (
             <CamperDetailsPanel
               camperId={selectedCamperId}
@@ -724,6 +753,11 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               assignedBunkCmId={selected?.assigned_bunk_cm_id ?? null}
               getBunkForPerson={getBunkForPerson}
               openedFromSessionCmId={sessionCmId}
+              notesSlot={
+                notesSubject && selected ? (
+                  <SubjectNotesSection subject={notesSubject} label={selected.name} look="camper" />
+                ) : undefined
+              }
             />
           )
         })()}

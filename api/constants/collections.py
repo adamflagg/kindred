@@ -151,3 +151,22 @@ JOTFORM_ANSWERS = "jotform_answers"
 # FastAPI's superuser client, behind the financial_aid.* permissions, is the only
 # reader and writer.
 AID_RULES = "aid_rules"
+
+# Campership (financial aid) intake, sub-project 5. The two synced tables are
+# sub-project 1's; the aid_* tables are Kindred-owned, and ALL FIVE PocketBase
+# rules on each are null (superuser only, spec 14.3) -- FastAPI's superuser
+# client reads and writes them behind require_permission(financial_aid.*).
+FINANCIAL_AID_APPLICATIONS = "financial_aid_applications"
+FINANCIAL_TRANSACTIONS = "financial_transactions"
+AID_APPLICATIONS = "aid_applications"
+AID_REQUESTS = "aid_requests"
+AID_APPLICATION_CORRECTIONS = "aid_application_corrections"
+AID_SESSION_CAPACITY = "aid_session_capacity"
+AID_PAYER_SHARES = "aid_payer_shares"
+
+# Campership ledger (sub-project 4).
+AID_SOURCES = "aid_sources"
+AID_POSTINGS = "aid_postings"
+AID_HOUSEHOLD_LINKS = "aid_household_links"
+AID_ATTRIBUTION_OVERRIDES = "aid_attribution_overrides"
+AID_FLAG_DISPOSITIONS = "aid_flag_dispositions"

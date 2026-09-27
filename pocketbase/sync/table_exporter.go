@@ -74,6 +74,7 @@ var SyncJobToCollections = map[string][]string{
 	},
 	"staff_skills":               {"staff_skills"},
 	"financial_aid_applications": {"financial_aid_applications"},
+	"aid_postings":               {"aid_postings", "aid_sources", "aid_household_links"},
 	"household_demographics":     {"household_demographics"},
 	"camper_dietary":             {"camper_dietary"},
 	"camper_transportation":      {"camper_transportation"},

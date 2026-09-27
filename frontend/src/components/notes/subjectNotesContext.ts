@@ -22,6 +22,17 @@ export interface EditorRequest {
   anchorEl: HTMLElement | null
   /** Open with the plan-only box expanded and focused. */
   want?: 'plan'
+  /**
+   * Did a KEYBOARD activation open this popover, as opposed to a pointer
+   * (mouse/touch)? Only the popover's own focus-restore-to-corner reads
+   * this (`SubjectNotePopover.tsx`): restoring focus after a mouse open
+   * left an unwanted focus ring on the corner and reopened its Tooltip
+   * preview (Tooltip opens on any non-pointer focus). Omitted (or false)
+   * for every opener that isn't the corner's own click/activation --
+   * `SubjectNoteMenuItem`'s right-click-menu opener, the panel's
+   * `surface: 'panel'` opener -- so they get the safe default (no restore).
+   */
+  openedViaKeyboard?: boolean
 }
 
 export interface EditorTarget extends EditorRequest {

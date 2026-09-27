@@ -345,12 +345,20 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests \
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
 | **Source Data**    | session_groups → sessions → attendees → persons → bunks → bunk_plans → bunk_assignments → staff → financial_transactions | Fetched from CampMinder API                                |
 | **Custom Values**  | person_custom_values → household_custom_values                                                                           | Expensive (1 API call per entity), run weekly or on-demand; plus a bounded daily pass (`*_family_camp` ids): persons are family-camp and adult-program attendees, households are family-camp only, and both add the financial-aid cohort (`aid_cohort.go`) |
-| **Derived Tables** | family_camp_derived, lodging_assignments, staff_skills, …                                                                | Computed from synced source data + custom values           |
+| **Derived Tables** | family_camp_derived, lodging_assignments, staff_skills, aid_postings, …                                                  | Computed from synced source data + custom values           |
 | **Processing**     | bunk_requests → process_requests                                                                                         | CSV import and AI processing                               |
 
 If the financial-aid cohort fails to load, the daily pass still runs for the family-camp cohort
 and logs an ERROR, but the run is **not** marked failed, so the admin card shows success — check
 the logs.
+
+**`aid_postings`** (campership ledger) reads `financial_transactions`, `camp_sessions`, `attendees`,
+`persons`, `households`, `financial_aid_applications` and `aid_attribution_overrides`, and also writes
+`aid_sources` and the auto rows of `aid_household_links`. It keeps every live aid row and, as dated
+history, the credit leg of every reversed pair, so as-of totals can be read; a reversal updates a row
+rather than deleting it. On the daily cron it covers seasons N−1, N and N+1. Description
+classifications come from the private `config/aid_sources.local.json` (kindred-local), never from a
+migration, because the camp's own descriptions name the camp.
 
 **Key ordering rules:**
 

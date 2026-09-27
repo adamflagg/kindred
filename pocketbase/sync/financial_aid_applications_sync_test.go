@@ -45,7 +45,7 @@ func newFAApplicationsTestApp(t *testing.T) core.App {
 
 	fa := core.NewBaseCollection("financial_aid_applications")
 	for name, value := range (&faApplicationData{}).toRecordData(faTestYear) {
-		if name == "carryover_last_updated" {
+		if name == "carryover_last_updated" || name == "reported_income_fields" {
 			fa.Fields.Add(&core.JSONField{Name: name, MaxSize: 10000})
 			continue
 		}
@@ -305,5 +305,58 @@ func TestFASync_SecondIdenticalRunUpdatesNothing(t *testing.T) {
 	s := faRun(t, app)
 	if s.Stats.Created != 0 || s.Stats.Updated != 0 || s.Stats.Deleted != 0 {
 		t.Errorf("second run stats = %+v, want nothing created, updated or deleted", s.Stats)
+	}
+}
+
+// Spec 2 item 22 / principle 5: a blank income is unknown, a reported 0 is real.
+// The mirror stores both as 0, so it must record which ones the family answered.
+func TestFASync_RecordsWhichIncomeFiguresWereAnswered(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	gross := faAddDef(t, app, 2, "FA-Total Gross Pre-Tax Income", true)
+	expected := faAddDef(t, app, 9, "FA-Expected Gross Pre-Tax Inco", true)
+	agi := faAddDef(t, app, 10, "FA-Total Adjusted Gross Income", true)
+	medical := faAddDef(t, app, 11, "FA-TotaExpectedMedicalExpenses", true) // sic: CampMinder's spelling
+
+	p := faAddPerson(t, app, 9200091)
+	faAddValue(t, app, p, gross, "$0", faSeasonalAt)         // a reported zero
+	faAddValue(t, app, p, expected, "$42,000", faSeasonalAt) // a figure
+	faAddValue(t, app, p, agi, "unsure", faSeasonalAt)       // unparseable: not a reported number
+	faAddValue(t, app, p, medical, "$900", faSeasonalAt)     // not an income figure: never tracked
+
+	faRun(t, app)
+
+	var reported []string
+	if err := faRow(t, app, p).UnmarshalJSONField("reported_income_fields", &reported); err != nil {
+		t.Fatalf("read reported_income_fields: %v", err)
+	}
+	want := []string{"expected_gross_income", "total_gross_income"}
+	if fmt.Sprint(reported) != fmt.Sprint(want) {
+		t.Errorf("reported_income_fields = %v, want %v", reported, want)
+	}
+	if got := faRow(t, app, p).GetFloat("total_gross_income"); got != 0 {
+		t.Errorf("total_gross_income = %v, want 0 (the mirror's value is unchanged)", got)
+	}
+}
+
+func TestFASync_ARowWithNoIncomeAnswerReportsNone(t *testing.T) {
+	t.Parallel()
+	app := newFAApplicationsTestApp(t)
+	interest := faAddDef(t, app, 1, "CA-FinancialAssistanceInterest", true)
+	p := faAddPerson(t, app, 9200092)
+	faAddValue(t, app, p, interest, "Yes", faSeasonalAt)
+
+	faRun(t, app)
+	s := faRun(t, app) // and a second identical run rewrites nothing
+
+	var reported []string
+	if err := faRow(t, app, p).UnmarshalJSONField("reported_income_fields", &reported); err != nil {
+		t.Fatalf("read reported_income_fields: %v", err)
+	}
+	if len(reported) != 0 {
+		t.Errorf("reported_income_fields = %v, want none", reported)
+	}
+	if s.Stats.Updated != 0 {
+		t.Errorf("second run updated %d rows, want 0", s.Stats.Updated)
 	}
 }

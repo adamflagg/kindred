@@ -45,6 +45,8 @@ import { DEFAULT_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { CamperHistoryProvider } from '../providers/CamperHistoryProvider'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
+import { SubjectNotesScope } from './notes/SubjectNotesScope'
+import { scenarioForWeekend } from './weekend/weekendScenario'
 import { useRetainedDialog } from '../hooks/useRetainedDialog'
 
 export default function SessionView() {
@@ -366,6 +368,12 @@ export default function SessionView() {
 
   const selectedSessionCmId = parseInt(selectedSession ?? '', 10)
 
+  // Board notes: the same scoped selection rule as the weekend board -- a
+  // scenario selected for another session reads as CampMinder live, never
+  // passed through (`scenarioForWeekend`). Computed once so the id passed to
+  // `SubjectNotesScope` and the name gate below it can never disagree.
+  const notesScenarioId = scenarioForWeekend(currentScenario, session.cm_id || null)
+
   return (
     <div>
       {/* Header */}
@@ -435,23 +443,34 @@ export default function SessionView() {
               sessionCmId={session.cm_id || 0}
               camperPersonIds={campers.map((c) => c.person_cm_id)}
             >
-              <BunkingBoardByArea
-                sessionId={sessionId || ''}
+              {/* Board notes: notesScenarioId above. Notes are editable on
+                  the live view even though summer placement is not (a note
+                  is not a placement). */}
+              <SubjectNotesScope
+                year={currentYear}
                 sessionCmId={session.cm_id || 0}
-                bunks={bunks}
-                campers={campers}
-                selectedArea={selectedBunkArea}
-                onAreaChange={setSelectedBunkArea}
-                onCamperMove={async (camperId, bunkId, options) => {
-                  await moveCamper(camperId, bunkId, options)
-                }}
-                isProductionMode={isProductionMode}
-                defaultCapacity={defaultBunkCapacity}
-                lockedBunkCmIds={lockedBunkCmIds}
-                onToggleBunkLock={toggleBunkLock}
-                onLockAll={lockAll}
-                onUnlockAll={unlockAll}
-              />
+                scenarioId={notesScenarioId}
+                scenarioName={notesScenarioId === '' ? '' : (currentScenario?.name ?? '')}
+                canManage={canManage}
+              >
+                <BunkingBoardByArea
+                  sessionId={sessionId || ''}
+                  sessionCmId={session.cm_id || 0}
+                  bunks={bunks}
+                  campers={campers}
+                  selectedArea={selectedBunkArea}
+                  onAreaChange={setSelectedBunkArea}
+                  onCamperMove={async (camperId, bunkId, options) => {
+                    await moveCamper(camperId, bunkId, options)
+                  }}
+                  isProductionMode={isProductionMode}
+                  defaultCapacity={defaultBunkCapacity}
+                  lockedBunkCmIds={lockedBunkCmIds}
+                  onToggleBunkLock={toggleBunkLock}
+                  onLockAll={lockAll}
+                  onUnlockAll={unlockAll}
+                />
+              </SubjectNotesScope>
             </CamperHistoryProvider>
           </BunkRequestProvider>
         </Activity>

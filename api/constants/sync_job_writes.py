@@ -28,6 +28,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from api.constants.collections import (
+    AID_HOUSEHOLD_LINKS,
+    AID_POSTINGS,
+    AID_SOURCES,
     ATTENDEE_STATUS_HISTORY,
     ATTENDEES,
     BUNK_ASSIGNMENTS,
@@ -96,6 +99,10 @@ SYNC_JOB_WRITES: dict[str, frozenset[str]] = {
     ),
     "staff_skills": frozenset({"staff_skills"}),
     "financial_aid_applications": frozenset({"financial_aid_applications"}),
+    # Campership ledger: the derived postings, auto-created and config-classified
+    # sources, and the auto household links. Never aid_attribution_overrides or
+    # aid_flag_dispositions, which only FastAPI writes.
+    "aid_postings": frozenset({AID_POSTINGS, AID_SOURCES, AID_HOUSEHOLD_LINKS}),
     "household_demographics": frozenset({"household_demographics"}),
     "camper_dietary": frozenset({"camper_dietary"}),
     "camper_transportation": frozenset({"camper_transportation"}),

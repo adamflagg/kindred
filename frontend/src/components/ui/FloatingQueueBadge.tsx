@@ -240,6 +240,12 @@ export function FloatingQueueBadge<T>({
       {!isExpanded && (
         <button
           onClick={onToggle}
+          // A marker only -- no production code reads it. An open note
+          // popover's outside-press handler (SubjectNotePopover) exempts the
+          // WHOLE badge (`[data-floating-badge]`, above) apart from queue
+          // cards and note corners, so this toggle and the expanded state's
+          // close button (`data-queue-close`, below) are covered without it.
+          data-queue-toggle
           className={clsx(
             'shadow-lodge-lg relative flex h-14 w-14 items-center justify-center rounded-full transition-all',
             'hover:shadow-lodge-xl hover:scale-105 active:scale-95',
@@ -290,6 +296,10 @@ export function FloatingQueueBadge<T>({
             </div>
             <button
               onClick={onClose}
+              // A marker only, like `data-queue-toggle` above: closing the
+              // queue leaves an open note popover alone because the popover
+              // exempts the whole `[data-floating-badge]`, not this attribute.
+              data-queue-close
               className="hover:bg-muted rounded-lg p-1.5 transition-colors"
               title="Close"
             >

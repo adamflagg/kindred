@@ -21,7 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from bunking.financial_aid.money import pct_of
 from bunking.financial_aid.rules.lookup import is_dependents_criterion, resolve_program, resolved_table
 from bunking.financial_aid.rules.schema import (
+    RETIRED_YES_NO_FIELDS,
+    YES_NO_ANSWER_FIELDS,
     AidRules,
+    EquityCriterion,
     QualityCheckKey,
     R1Percent,
     SectionName,
@@ -188,6 +191,53 @@ def _check_equity(rules: AidRules, issues: _Issues) -> None:
                     path,
                     "A dependents weight only applies when income.dependents_mode is tier_shift",
                 )
+    for i, criterion in enumerate(rules.equity.criteria):
+        field = _yes_no_field_matching_no(criterion)
+        if field is not None:
+            issues.error(
+                "equity",
+                "yes_no_criterion_matches_no",
+                f"equity.criteria.{i}.values",
+                f"Criterion '{criterion.key}' matches No on the yes/no answer '{field}'. A blank answer is "
+                "stored as No, so this would give the weight to every family that never answered; match yes only",
+            )
+        retired = _retired_field_referenced(criterion)
+        if retired is not None:
+            issues.error(
+                "equity",
+                "retired_household_field",
+                f"equity.criteria.{i}",
+                f"Criterion '{criterion.key}' points at '{retired}', a household question retired from the "
+                "aid form: it is never live, so this criterion would never fire. Remove it or point it at a "
+                "live field",
+            )
+
+
+# How a No can reach a criterion: the calculator passes "No", and other spellings of it are
+# refused too, so a rules author cannot mean No by another name.
+_NO_SPELLINGS = frozenset({"no", "n", "false", "f", "0"})
+
+
+def _yes_no_field_matching_no(criterion: EquityCriterion) -> str | None:
+    """The household yes/no field this criterion would meet on a No, or None."""
+    if criterion.source != "household" or criterion.match == "at_least":
+        return None
+    values = [v.lower() for v in criterion.values]
+    matches_no = any(v in _NO_SPELLINGS for v in values) or (
+        criterion.match == "contains_any" and any(v in "no" for v in values)
+    )
+    if not matches_no:
+        return None
+    return next((f for f in (criterion.field, *criterion.also_fields) if f in YES_NO_ANSWER_FIELDS), None)
+
+
+def _retired_field_referenced(criterion: EquityCriterion) -> str | None:
+    """The retired household field this criterion (or one of its also_fields) points at, or
+    None. Guarded by source the same way as the No-matching check: a camper-sourced field
+    happens to share a name with a household one sometimes, and that is not this."""
+    if criterion.source != "household":
+        return None
+    return next((f for f in (criterion.field, *criterion.also_fields) if f in RETIRED_YES_NO_FIELDS), None)
 
 
 def _check_award_tables(rules: AidRules, issues: _Issues) -> None:
@@ -474,15 +524,23 @@ _THRESHOLD_CHECKS: tuple[QualityCheckKey, ...] = (
 )
 
 
+# Checks that always hold (owner rulings 2026-09-25): never above cost, and an income
+# conflict across a family's applications. Neither can be switched off or made a warning.
+_HOLD_ONLY_CHECKS: tuple[tuple[QualityCheckKey, str], ...] = (
+    ("award_above_cost", "The above-cost check always holds: it cannot be switched off or made a warning"),
+    (
+        "household_income_conflict",
+        "The income-conflict check always holds (staff call the family and choose the figure): "
+        "it cannot be switched off or made a warning",
+    ),
+)
+
+
 def _check_quality_checks(rules: AidRules, issues: _Issues) -> None:
-    above_cost = rules.quality_checks.checks.get("award_above_cost")
-    if above_cost is not None and (not above_cost.enabled or above_cost.severity != "hold"):
-        issues.error(
-            "quality_checks",
-            "award_above_cost_must_hold",
-            "quality_checks.checks.award_above_cost",
-            "The above-cost check always holds: it cannot be switched off or made a warning",
-        )
+    for key, message in _HOLD_ONLY_CHECKS:
+        check = rules.quality_checks.checks.get(key)
+        if check is not None and (not check.enabled or check.severity != "hold"):
+            issues.error("quality_checks", f"{key}_must_hold", f"quality_checks.checks.{key}", message)
     for key in _THRESHOLD_CHECKS:
         check = rules.quality_checks.checks.get(key)
         if check is not None and check.enabled and check.threshold is None:
