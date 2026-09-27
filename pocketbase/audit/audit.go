@@ -144,4 +144,5 @@ func Register(app core.App, cfg Config) {
 	app.Store().Set(configStoreKey, cfg)
 	bindAppendOnlyGuards(app)
 	bindRecordRequestHooks(app)
+	bindSchemaAndSettingsHooks(app)
 }
