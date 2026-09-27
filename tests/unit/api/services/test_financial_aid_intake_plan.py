@@ -420,6 +420,29 @@ def test_two_requests_swapping_sessions_both_stay_active() -> None:
     ]
 
 
+def test_a_swapping_request_without_a_share_gets_one_share_not_two() -> None:
+    # The cycle-breaker writes req...1 twice (vacate, then final session). A request that lost
+    # its default share (a chunked build that failed part-way) must still get exactly one share:
+    # a second create for the same request and household breaks the unique index and the batch.
+    enrolled = frozenset({1000101, 1000102})
+    first_now, second_now = (
+        spec(session=1000102, enrolled=enrolled),
+        spec(household=1000002, session=1000101, enrolled=enrolled),
+    )
+    existing = [
+        record(spec(), "req000000000001"),
+        record(spec(household=1000002, session=1000102), "req000000000002"),
+    ]
+    plan = plan_intake(
+        [household(first_now), household(second_now, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000002"}),
+    )
+    assert plan.share_creates == ["req000000000001"]
+
+
 def test_a_three_way_cycle_breaks_on_the_lowest_id_too() -> None:
     # req...1 -> 1000102 -> 1000103 -> 1000101 -> req...1: a longer cycle than a swap, same
     # problem. req...1 (lowest id) gives up its slot first; the rest resolves in dependency

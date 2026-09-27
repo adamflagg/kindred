@@ -440,13 +440,16 @@ def plan_intake(
         ref = f"new:{len(new_targets)}"
         new_targets[ref] = _request_target(None, specs[key], holders, billed, ref, rules_check)
     _heal_stranded_duplicates(targets, new_targets, holders)
+    # A cycle-breaker writes one request twice (vacate, then its final session): give it one share, not two.
+    shared: set[str] = set(requests_with_shares)
     for record, target in _write_order(targets):
         changes = _changed(request_fields(record), target)
         if changes:
             plan.request_updates.append((record.id, changes))
         if "status" in changes:
             plan.status_changes.append(StatusChange(AID_REQUESTS, record.id, record.status, changes["status"]))
-        if changes.get("status", record.status) in _NEEDS_A_SHARE and record.id not in requests_with_shares:
+        if changes.get("status", record.status) in _NEEDS_A_SHARE and record.id not in shared:
+            shared.add(record.id)
             plan.share_creates.append(record.id)
     for key, (ref, target) in zip(sorted(k for k in specs if k not in known), new_targets.items(), strict=True):
         spec = specs[key]
