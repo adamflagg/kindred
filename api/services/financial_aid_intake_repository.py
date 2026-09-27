@@ -39,7 +39,6 @@ from api.constants.collections import (
     AID_APPLICATIONS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
-    AID_SESSION_ALIASES,
     AID_SESSION_CAPACITY,
     ATTENDEES,
     CAMP_SESSIONS,
@@ -54,7 +53,6 @@ from api.services.financial_aid_intake_types import (
     REGISTERED_STATUS_IDS,
     STATUS_ACTIVE,
     UNKNOWN_EQUITY,
-    AliasRow,
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
@@ -405,10 +403,6 @@ class FinancialAidIntakeRepository:
             )
             for r in rows
         ]
-
-    async def fetch_aliases(self, year: int) -> list[AliasRow]:
-        rows = await self._page(AID_SESSION_ALIASES, {"filter": f"year = {year}", "sort": STABLE_SORT})
-        return [AliasRow(_str(r.program_key), _str(r.option_key), _int(r.session_cm_id)) for r in rows]
 
     async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]:
         rows = await self._page(

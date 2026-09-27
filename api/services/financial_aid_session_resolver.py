@@ -1,24 +1,28 @@
 """FA program answer -> CampMinder session (campership sub-project 5, spec 9.1).
 
-The FA form's option text is not the camp_sessions name for 22 of 43 options
-(sheet levers catalogue 2.5): punctuation variants, a dropped possessive
-prefix, a dropped "(w/ kids ...)" suffix, and options that combine or rename
-sessions. The sheet's exact-text join sent two rows to "No Session Match" and
-priced them at $0. Here, the first tier that yields any candidate decides:
+REGISTRATION FIRST (owner ruling 2026-09-27). The program question the family
+answered (summer, family camp or B*Mitzvah) only says WHICH PROGRAM. The
+camper's (or, for family camp, the household's) registration decides the
+session, and only an ENROLLED registration (status_id 2) counts: waitlisted,
+applied, cancelled and the rest never set one. The form's options are
+hand-maintained labels ("Taste of Camp" covers two sessions, one in-training
+option covers two), so their text is not trusted to name a session.
 
-  1. alias    -- a staff-entered aid_session_aliases row for this option.
-  2. exact    -- normalised option text == normalised session name.
-  3. contains -- the option text appears inside the session name on word
-                 boundaries ("Family Camp 3: X" inside "Family Camp 3: X (w/ ...)").
-                 "Session 2" is never inside "Session 2a".
+Among the enrolled sessions of the answer's program:
 
-One candidate resolves. Several are narrowed to the ones this camper or family
-is registered in. If that leaves exactly one, it resolves by "enrollment".
-Otherwise the request is UNMATCHED and lists its candidates. There is never a
-first-match or a default.
+  * exactly one  -> it resolves, method "enrollment";
+  * two or more  -> the option text breaks the tie among THOSE sessions only:
+                    the exact tier (normalised text == normalised name), else
+                    the contains tier (the text inside the name on word
+                    boundaries; "Session 2" is never inside "Session 2a").
+                    Exactly one hit resolves, method "enrollment_text";
+                    otherwise UNMATCHED, listing the enrolled sessions;
+  * none         -> UNMATCHED with no candidates.
 
-Only sessions of the request's own program family are candidates, so a summer
-answer can never land on a family-camp weekend.
+There is never a first-match or a default, and only sessions of the answer's
+own program are candidates, so a summer answer can never land on a
+family-camp weekend. `session_named_by` reports the one session the text
+names on its own, so staff see when registration and answer differ.
 """
 
 from __future__ import annotations
@@ -36,7 +40,6 @@ from api.services.financial_aid_intake_types import (
     PROGRAM_FAMILY_CAMP,
     PROGRAM_SUMMER,
     RESOLUTION_UNMATCHED,
-    AliasRow,
     SessionResolution,
     SessionRow,
 )
@@ -57,8 +60,8 @@ _SPACES: Final = re.compile(r"\s+")
 
 def normalize_option_text(text: str) -> str:
     """The option's key: typographic variants folded. Clipped to the length
-    aid_requests.program_option_key and aid_session_aliases.option_key hold, since NFKC
-    can lengthen text that was clipped to that length already."""
+    aid_requests.program_option_key holds, since NFKC can lengthen text that was
+    clipped to that length already."""
     folded = unicodedata.normalize("NFKC", text).translate(_QUOTES).casefold()
     return _SPACES.sub(" ", folded).strip()[:OPTION_TEXT_MAX_LENGTH]
 
@@ -67,66 +70,54 @@ def _contains(haystack: str, needle: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
 
 
-def _decide(method: str, candidates: tuple[int, ...], registered: frozenset[int]) -> SessionResolution:
-    if len(candidates) == 1:
-        return SessionResolution(candidates[0], method, candidates)
-    narrowed = tuple(c for c in candidates if c in registered)
-    if len(narrowed) == 1:
-        return SessionResolution(narrowed[0], "enrollment", candidates)
-    return SessionResolution(0, RESOLUTION_UNMATCHED, candidates)
+def _in_program(program_key: str, sessions: Sequence[SessionRow]) -> list[SessionRow]:
+    return [s for s in sessions if s.session_type in PROGRAM_SESSION_TYPES[program_key]]
 
 
-def _name_tiers(key: str, program_key: str, sessions: Sequence[SessionRow]) -> tuple[tuple[str, set[int]], ...]:
-    names = {
-        s.cm_id: normalize_option_text(s.name) for s in sessions if s.session_type in PROGRAM_SESSION_TYPES[program_key]
-    }
-    return (
-        ("exact", {cm_id for cm_id, name in names.items() if name == key}),
-        ("contains", {cm_id for cm_id, name in names.items() if _contains(name, key)}),
-    )
-
-
-def sessions_named_by(option_text: str, program_key: str, sessions: Sequence[SessionRow]) -> tuple[int, ...]:
-    """The in-scope sessions the option text itself names (exact tier, else contains),
-    aliases aside. More than one means the text alone cannot pick a session, so an alias
-    for it would send every later camper on the option to one of them regardless of
-    registration: the casework service refuses to remember one."""
+def _named(option_text: str, sessions: Sequence[SessionRow]) -> tuple[int, ...]:
+    """The sessions the option text names: the exact tier, else the contains tier."""
     key = normalize_option_text(option_text)
     if not key:
         return ()
-    for _, found in _name_tiers(key, program_key, sessions):
+    names = {s.cm_id: normalize_option_text(s.name) for s in sessions}
+    for found in (
+        {cm_id for cm_id, name in names.items() if name == key},
+        {cm_id for cm_id, name in names.items() if _contains(name, key)},
+    ):
         if found:
             return tuple(sorted(found))
     return ()
+
+
+def session_named_by(option_text: str, program_key: str, sessions: Sequence[SessionRow]) -> int:
+    """The one in-program session the option text names on its own, or 0 when it names
+    none or several. Information only: registration decides the session."""
+    named = _named(option_text, _in_program(program_key, sessions))
+    return named[0] if len(named) == 1 else 0
 
 
 def resolve_session(
     option_text: str,
     program_key: str,
     sessions: Sequence[SessionRow],
-    aliases: Sequence[AliasRow],
-    registered_session_ids: frozenset[int],
+    enrolled_session_ids: frozenset[int],
 ) -> SessionResolution:
-    key = normalize_option_text(option_text)
-    if not key:
-        return SessionResolution(0, RESOLUTION_UNMATCHED, ())
-    scope_ids = {s.cm_id for s in sessions if s.session_type in PROGRAM_SESSION_TYPES[program_key]}
-    tiers = (
-        ("alias", {a.session_cm_id for a in aliases if a.program_key == program_key and a.option_key == key}),
-        *_name_tiers(key, program_key, sessions),
-    )
-    for method, found in tiers:
-        candidates = tuple(sorted(found & scope_ids))
-        if candidates:
-            return _decide(method, candidates, registered_session_ids)
-    return SessionResolution(0, RESOLUTION_UNMATCHED, ())
+    in_program = [s for s in _in_program(program_key, sessions) if s.cm_id in enrolled_session_ids]
+    candidates = tuple(sorted(s.cm_id for s in in_program))
+    if len(candidates) == 1:
+        return SessionResolution(candidates[0], "enrollment", candidates)
+    named = _named(option_text, in_program)
+    if len(named) == 1:
+        return SessionResolution(named[0], "enrollment_text", candidates)
+    return SessionResolution(0, RESOLUTION_UNMATCHED, candidates)
 
 
-def resolve_adult_session(sessions: Sequence[SessionRow], registered_session_ids: frozenset[int]) -> SessionResolution:
-    """WW-FA names no weekend, so the adult's own registration is the only source."""
-    adult_types = PROGRAM_SESSION_TYPES[PROGRAM_ADULT_WEEKEND]
+def resolve_adult_session(sessions: Sequence[SessionRow], enrolled_session_ids: frozenset[int]) -> SessionResolution:
+    """WW-FA names no weekend, so the adult's own ENROLLED weekend is the only source. The
+    builder still creates the request for an adult who is only waitlisted or applied; it
+    stays unmatched until they enroll."""
     candidates = tuple(
-        sorted(s.cm_id for s in sessions if s.session_type in adult_types and s.cm_id in registered_session_ids)
+        sorted(s.cm_id for s in _in_program(PROGRAM_ADULT_WEEKEND, sessions) if s.cm_id in enrolled_session_ids)
     )
     if len(candidates) == 1:
         return SessionResolution(candidates[0], "enrollment", candidates)

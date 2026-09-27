@@ -17,7 +17,6 @@ export const Collections = {
   AidPayerShares: 'aid_payer_shares',
   AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
-  AidSessionAliases: 'aid_session_aliases',
   AidSessionCapacity: 'aid_session_capacity',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
@@ -253,10 +252,8 @@ export type AidRequestsProgramKeyOptions =
   (typeof AidRequestsProgramKeyOptions)[keyof typeof AidRequestsProgramKeyOptions]
 
 export const AidRequestsSessionResolutionOptions = {
-  alias: 'alias',
-  exact: 'exact',
-  contains: 'contains',
   enrollment: 'enrollment',
+  enrollment_text: 'enrollment_text',
   staff: 'staff',
   unmatched: 'unmatched',
 } as const
@@ -311,27 +308,6 @@ export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   section_status?: null | Tsection_status
   updated: IsoAutoDateString
   version: number
-  year: number
-}
-
-export const AidSessionAliasesProgramKeyOptions = {
-  summer: 'summer',
-  family_camp: 'family_camp',
-  bmitzvah: 'bmitzvah',
-  adult_weekend: 'adult_weekend',
-} as const
-export type AidSessionAliasesProgramKeyOptions =
-  (typeof AidSessionAliasesProgramKeyOptions)[keyof typeof AidSessionAliasesProgramKeyOptions]
-export type AidSessionAliasesRecord = {
-  actor: string
-  created: IsoAutoDateString
-  id: string
-  note?: string
-  option_key: string
-  option_text?: string
-  program_key: AidSessionAliasesProgramKeyOptions
-  session_cm_id: number
-  updated: IsoAutoDateString
   year: number
 }
 
@@ -2126,8 +2102,6 @@ export type AidRulesResponse<
   Tsection_status = unknown,
   Texpand = unknown,
 > = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
-export type AidSessionAliasesResponse<Texpand = unknown> = Required<AidSessionAliasesRecord> &
-  BaseSystemFields<Texpand>
 export type AidSessionCapacityResponse<Texpand = unknown> = Required<AidSessionCapacityRecord> &
   BaseSystemFields<Texpand>
 export type AttendeeStatusHistoryResponse<Texpand = unknown> =
@@ -2360,7 +2334,6 @@ export type CollectionRecords = {
   aid_payer_shares: AidPayerSharesRecord
   aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
-  aid_session_aliases: AidSessionAliasesRecord
   aid_session_capacity: AidSessionCapacityRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
@@ -2451,7 +2424,6 @@ export type CollectionResponses = {
   aid_payer_shares: AidPayerSharesResponse
   aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse
-  aid_session_aliases: AidSessionAliasesResponse
   aid_session_capacity: AidSessionCapacityResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse

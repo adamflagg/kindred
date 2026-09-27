@@ -161,6 +161,7 @@ def test_every_figure_the_calculator_can_read_is_carried() -> None:
 def _attendees() -> list[AttendeeRow]:
     return [
         AttendeeRow(1000011, 1000001, 1000101, 2),
+        AttendeeRow(1000011, 1000001, 1000301, 2),
         AttendeeRow(1000012, 1000001, 1000202, 2),
         AttendeeRow(1000019, 1000001, 1000202, 2),  # a parent with no FA row, same household
         AttendeeRow(1000031, 1000003, 1000401, 2),
@@ -172,14 +173,13 @@ def test_summer_and_bmitzvah_requests_are_per_camper() -> None:
         1000001,
         [fa_row(1000011, summer="Session 2", summer_ask=1500.0, tbm="B*Mitzvah Program Year 1 - North", tbm_ask=400.0)],
         SESSIONS,
-        (),
         _attendees(),
     )
     assert [(s.person_cm_id, s.program_key, s.resolution.session_cm_id, s.ask) for s in specs] == [
         (1000011, "summer", 1000101, 1500.0),
         (1000011, "bmitzvah", 1000301, 400.0),
     ]
-    assert specs[0].enrolled_session_ids == frozenset({1000101})
+    assert specs[0].enrolled_session_ids == frozenset({1000101, 1000301})
 
 
 def test_siblings_family_camp_answers_merge_into_one_household_request() -> None:
@@ -187,7 +187,6 @@ def test_siblings_family_camp_answers_merge_into_one_household_request() -> None
         1000001,
         [fa_row(1000011, fc="Family Camp 6", fc_ask=900.0), fa_row(1000012, fc="family camp 6", fc_ask=900.0)],
         SESSIONS,
-        (),
         _attendees(),
     )
     assert len(specs) == 1
@@ -198,7 +197,7 @@ def test_siblings_family_camp_answers_merge_into_one_household_request() -> None
         1000202,
         900.0,
     )
-    assert spec.enrolled_session_ids == frozenset({1000101, 1000202})
+    assert spec.enrolled_session_ids == frozenset({1000101, 1000202, 1000301})
     assert spec.flags == ()
 
 
@@ -207,7 +206,6 @@ def test_siblings_disagreeing_on_the_family_camp_ask_keep_the_larger_and_flag_it
         1000001,
         [fa_row(1000011, fc="Family Camp 6", fc_ask=900.0), fa_row(1000012, fc="Family Camp 6", fc_ask=1200.0)],
         SESSIONS,
-        (),
         _attendees(),
     )
     assert specs[0].ask == 1200.0
@@ -215,14 +213,14 @@ def test_siblings_disagreeing_on_the_family_camp_ask_keep_the_larger_and_flag_it
 
 
 def test_a_program_answer_with_no_amount_is_flagged_not_zeroed_silently() -> None:
-    specs = build_request_specs(1000001, [fa_row(1000011, summer="Session 2")], SESSIONS, (), _attendees())
+    specs = build_request_specs(1000001, [fa_row(1000011, summer="Session 2")], SESSIONS, _attendees())
     assert specs[0].ask == 0.0
     assert specs[0].flags == (Flag("ask_missing", {}),)
 
 
 def test_an_adult_weekend_request_builds_from_ww_fa_and_the_adults_registration() -> None:
     specs = build_request_specs(
-        1000003, [fa_row(1000031, 1000003, interest=True, registration_ask=600.0)], SESSIONS, (), _attendees()
+        1000003, [fa_row(1000031, 1000003, interest=True, registration_ask=600.0)], SESSIONS, _attendees()
     )
     assert [(s.person_cm_id, s.program_key, s.resolution.session_cm_id, s.ask) for s in specs] == [
         (1000031, "adult_weekend", 1000401, 600.0)
@@ -231,6 +229,54 @@ def test_an_adult_weekend_request_builds_from_ww_fa_and_the_adults_registration(
 
 def test_a_camper_with_only_a_registration_interest_answer_gets_no_request() -> None:
     specs = build_request_specs(
-        1000001, [fa_row(1000011, interest=True, registration_ask=500.0)], SESSIONS, (), _attendees()
+        1000001, [fa_row(1000011, interest=True, registration_ask=500.0)], SESSIONS, _attendees()
     )
     assert specs == ()
+
+
+def test_only_an_enrolled_registration_sets_a_session() -> None:
+    # Registration first (owner ruling 2026-09-27): waitlisted (8), applied (4), cancelled (32)
+    # never decide. With no ENROLLED session in the program the request stays unmatched.
+    rows = [fa_row(1000021, 1000002, summer="Taste of Camp 2", summer_ask=800.0)]
+    for status_id in (4, 8, 32, 256, 512):
+        attendees = [AttendeeRow(1000021, 1000002, 1000105, status_id)]
+        (spec,) = build_request_specs(1000002, rows, SESSIONS, attendees)
+        assert (spec.resolution.session_cm_id, spec.resolution.candidates) == (0, ()), status_id
+
+
+def test_registration_decides_even_when_the_answer_names_another_session() -> None:
+    attendees = [AttendeeRow(1000021, 1000002, 1000102, 2), AttendeeRow(1000021, 1000002, 1000105, 8)]
+    (spec,) = build_request_specs(
+        1000002, [fa_row(1000021, 1000002, summer="Session 2", summer_ask=800.0)], SESSIONS, attendees
+    )
+    assert (spec.resolution.session_cm_id, spec.resolution.method) == (1000102, "enrollment")
+    assert spec.named_session_cm_id == 1000101  # the answer named Session 2: the planner flags the difference
+
+
+def test_an_answer_naming_several_sessions_names_none() -> None:
+    attendees = [AttendeeRow(1000021, 1000002, 1000105, 2)]
+    (spec,) = build_request_specs(
+        1000002, [fa_row(1000021, 1000002, summer="Taste of Camp", summer_ask=800.0)], SESSIONS, attendees
+    )
+    assert (spec.resolution.session_cm_id, spec.named_session_cm_id) == (1000105, 0)
+
+
+def test_family_camp_resolves_from_the_households_enrolled_weekend() -> None:
+    attendees = [AttendeeRow(1000012, 1000001, 1000201, 2), AttendeeRow(1000011, 1000001, 1000202, 8)]
+    (spec,) = build_request_specs(1000001, [fa_row(1000011, fc="Family Camp 6", fc_ask=900.0)], SESSIONS, attendees)
+    assert (spec.resolution.session_cm_id, spec.named_session_cm_id) == (1000201, 1000202)
+
+
+def test_a_waitlisted_adult_gets_a_request_that_stays_unmatched_until_enrolled() -> None:
+    rows = [fa_row(1000031, 1000003, interest=True, registration_ask=600.0)]
+    waitlisted = [AttendeeRow(1000031, 1000003, 1000401, 8)]
+    (spec,) = build_request_specs(1000003, rows, SESSIONS, waitlisted)
+    assert (spec.program_key, spec.resolution.session_cm_id, spec.resolution.candidates) == ("adult_weekend", 0, ())
+    enrolled = [AttendeeRow(1000031, 1000003, 1000401, 2)]
+    (spec,) = build_request_specs(1000003, rows, SESSIONS, enrolled)
+    assert (spec.resolution.session_cm_id, spec.resolution.method) == (1000401, "enrollment")
+
+
+def test_a_cancelled_adult_gets_no_request() -> None:
+    rows = [fa_row(1000031, 1000003, interest=True, registration_ask=600.0)]
+    assert build_request_specs(1000003, rows, SESSIONS, [AttendeeRow(1000031, 1000003, 1000401, 32)]) == ()

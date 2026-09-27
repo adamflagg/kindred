@@ -20,7 +20,7 @@ var aidIntakeMigrations = []struct {
 	{"pb_migrations/1500000200_aid_applications.js", []string{"aid_applications"}},
 	{"pb_migrations/1500000201_aid_requests.js", []string{"aid_requests"}},
 	{"pb_migrations/1500000202_aid_application_corrections.js", []string{"aid_application_corrections"}},
-	{"pb_migrations/1500000203_aid_session_reference.js", []string{"aid_session_capacity", "aid_session_aliases"}},
+	{"pb_migrations/1500000203_aid_session_reference.js", []string{"aid_session_capacity"}},
 	{"pb_migrations/1500000204_aid_payer_shares.js", []string{"aid_payer_shares"}},
 }
 
@@ -79,8 +79,6 @@ func TestAidIntakeMigrationsDeclareTheirUniqueKeys(t *testing.T) {
 		},
 		"pb_migrations/1500000203_aid_session_reference.js": {
 			"CREATE UNIQUE INDEX `idx_aid_session_capacity_year_session` ON `aid_session_capacity` (`year`, `session_cm_id`)",
-			"CREATE UNIQUE INDEX `idx_aid_session_aliases_key` ON `aid_session_aliases` " +
-				"(`year`, `program_key`, `option_key`, `session_cm_id`)",
 		},
 		"pb_migrations/1500000204_aid_payer_shares.js": {
 			"CREATE UNIQUE INDEX `idx_aid_payer_shares_request_household` ON `aid_payer_shares` " +
@@ -151,5 +149,24 @@ func TestReportedIncomeColumnIsAddedToTheMirror(t *testing.T) {
 		if strings.Contains(up, forbidden) {
 			t.Errorf("migration must not contain %q: it adds one column and leaves SP2's rules alone", forbidden)
 		}
+	}
+}
+
+// Owner ruling 2026-09-27: a request's session comes from the camper's registration, never
+// from a staff-entered option-text alias, so there is no alias table and the resolver's
+// methods are the only non-staff values.
+func TestAidSessionComesFromRegistrationNotAliases(t *testing.T) {
+	content, err := os.ReadFile("pb_migrations/1500000203_aid_session_reference.js")
+	if err != nil {
+		t.Fatalf("read 1500000203: %v", err)
+	}
+	if strings.Contains(string(content), "aid_session_aliases") {
+		t.Error("1500000203 must not create (or delete) aid_session_aliases")
+	}
+	up := readAidMigrationUp(t, "pb_migrations/1500000201_aid_requests.js")
+	want := `{ type: "select", name: "session_resolution", required: true, presentable: false, ` +
+		`values: ["enrollment", "enrollment_text", "staff", "unmatched"], maxSelect: 1 }`
+	if !strings.Contains(up, want) {
+		t.Errorf("aid_requests.session_resolution must be exactly:\n  %s", want)
 	}
 }

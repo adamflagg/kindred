@@ -56,7 +56,7 @@ migrate((app) => {
       { type: "select", name: "program_key", required: true, presentable: false, values: ["summer", "family_camp", "bmitzvah", "adult_weekend"], maxSelect: 1 },
       { type: "text", name: "program_option_text", required: false, presentable: false, min: 0, max: 500, pattern: "" },
       { type: "text", name: "program_option_key", required: false, presentable: false, min: 0, max: 500, pattern: "" },
-      { type: "select", name: "session_resolution", required: true, presentable: false, values: ["alias", "exact", "contains", "enrollment", "staff", "unmatched"], maxSelect: 1 },
+      { type: "select", name: "session_resolution", required: true, presentable: false, values: ["enrollment", "enrollment_text", "staff", "unmatched"], maxSelect: 1 },
       { type: "number", name: "ask", required: false, presentable: false, min: 0, max: null, onlyInt: false },
       { type: "number", name: "headcount_non_infant", required: false, presentable: false, min: 0, max: 50, onlyInt: true },
       { type: "number", name: "headcount_infant", required: false, presentable: false, min: 0, max: 20, onlyInt: true },

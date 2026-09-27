@@ -1,7 +1,7 @@
 """Campership intake: rebuild one season's applications and requests
 (sub-project 5; spec 9.1-9.2).
 
-`build(year)` reads the FA mirror, sessions, registrations, aliases, billing,
+`build(year)` reads the FA mirror, sessions, registrations, billing,
 the season's rules (for the infant cutoff) and what aid_* already holds; plans
 (financial_aid_intake_plan); and commits the plan as ONE operation through
 sub-project 4a's commit_aid_writes (spec 14.4): each write and its
@@ -20,9 +20,10 @@ A run over the batch limit (about 1,000 writes: a first build of a whole
 season) is chunked, deliberately: intake derives everything from the mirror,
 so a run left part-done is what the next run finishes.
 
-Called by the Go FA sync after it writes (POST /api/internal/financial-aid/intake),
-and after staff remember a new session alias. One build per season runs at a
-time in this process. The unique indexes on aid_requests are the backstop
+Called by the Go FA sync after it writes (POST /api/internal/financial-aid/intake).
+Every build re-resolves each request's session from registration, so a camper who
+enrolls or switches sessions is picked up on the next run. One build per season runs
+at a time in this process. The unique indexes on aid_requests are the backstop
 across processes.
 """
 
@@ -57,7 +58,6 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE_PENDING,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
-    AliasRow,
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
@@ -97,7 +97,6 @@ class IntakeStore(Protocol):
     async def fetch_fa_rows(self, year: int) -> list[FaRow]: ...
     async def fetch_sessions(self, year: int) -> list[SessionRow]: ...
     async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]: ...
-    async def fetch_aliases(self, year: int) -> list[AliasRow]: ...
     async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]: ...
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]: ...
     async def fetch_requests(self, year: int, application_id: str | None = None) -> list[RequestRecord]: ...
@@ -345,11 +344,10 @@ class FinancialAidIntakeService:
         store = self._store
         # Two gathers, not one: typeshed types asyncio.gather precisely for at most six
         # awaitables; beyond that every result becomes a union and mypy strict fails.
-        fa_rows, sessions, attendees, aliases, billing, rules = await asyncio.gather(
+        fa_rows, sessions, attendees, billing, rules = await asyncio.gather(
             store.fetch_fa_rows(year),
             store.fetch_sessions(year),
             store.fetch_registered_attendees(year),
-            store.fetch_aliases(year),
             store.fetch_family_camp_billing(year),
             store.load_intake_rules(year),
         )
@@ -378,7 +376,7 @@ class FinancialAidIntakeService:
             relevant = {id(a): a for a in attendees_by_household[household_cm_id]}
             for row in rows:
                 relevant.update({id(a): a for a in attendees_by_person[row.person_cm_id]})
-            specs = build_request_specs(household_cm_id, rows, sessions, aliases, list(relevant.values()))
+            specs = build_request_specs(household_cm_id, rows, sessions, list(relevant.values()))
             if not specs:
                 without_request += len(rows)
                 continue

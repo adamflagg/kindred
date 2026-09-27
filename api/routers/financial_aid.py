@@ -36,7 +36,6 @@ from api.services.financial_aid_casework_service import (
 )
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
-from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from api.services.financial_aid_payer_shares import ShareSpec
 from bunking.auth_middleware import AuthUser
 from bunking.rbac.dependencies import require_permission
@@ -51,7 +50,7 @@ def _casework() -> FinancialAidCaseworkService:
     # Every write commits through the repository's one write path, sub-project 4a's
     # commit_aid_writes: the record and its aid_change_log row in one batch.
     repository = FinancialAidIntakeRepository(pb)
-    return FinancialAidCaseworkService(repository, rebuild=FinancialAidIntakeService(repository).build)
+    return FinancialAidCaseworkService(repository)
 
 
 def _raise_http(exc: Exception) -> NoReturn:
@@ -125,9 +124,7 @@ async def resolve_aid_request_session(
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> RequestOut:
     try:
-        return await _casework().resolve_session(
-            request_id, body.session_cm_id, body.reason, body.remember_alias, user.email
-        )
+        return await _casework().resolve_session(request_id, body.session_cm_id, body.reason, user.email)
     except _ERRORS as exc:
         _raise_http(exc)
 

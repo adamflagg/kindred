@@ -7931,10 +7931,6 @@ export type SessionResolve = {
    * Reason
    */
   reason: string
-  /**
-   * Remember Alias
-   */
-  remember_alias?: boolean
 }
 
 /**

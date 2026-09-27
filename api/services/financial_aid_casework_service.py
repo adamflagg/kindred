@@ -17,7 +17,7 @@ read before. Corrections and capacity are not intake's and do not wait.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from decimal import Decimal
@@ -27,7 +27,6 @@ from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
-    AID_SESSION_ALIASES,
     AID_SESSION_CAPACITY,
 )
 from api.schemas.financial_aid_intake import (
@@ -72,7 +71,6 @@ from api.services.financial_aid_intake_types import (
     STATUS_DUPLICATE,
     STATUS_UNMATCHED,
     STATUS_WITHDRAWN,
-    AliasRow,
     ApplicationRecord,
     CapacityRecord,
     CorrectionRecord,
@@ -90,7 +88,7 @@ from api.services.financial_aid_payer_shares import (
     split_award,
     validate_shares,
 )
-from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES, sessions_named_by
+from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 from bunking.financial_aid.change_diff import values_equal
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.rules.schema import AidRules
@@ -121,7 +119,6 @@ class CaseworkStore(Protocol):
         self, year: int, household_cm_id: int, person_cm_id: int, session_cm_id: int
     ) -> RequestRecord | None: ...
     async def fetch_sessions(self, year: int) -> list[SessionRow]: ...
-    async def fetch_aliases(self, year: int) -> list[AliasRow]: ...
     async def fetch_corrections(self, year: int, application_id: str | None) -> list[CorrectionRecord]: ...
     async def fetch_capacity(self, year: int, session_cm_id: int) -> CapacityRecord | None: ...
     async def fetch_payer_shares(
@@ -271,11 +268,9 @@ class FinancialAidCaseworkService:
     def __init__(
         self,
         store: CaseworkStore,
-        rebuild: Callable[[int], Awaitable[object]] | None = None,
         award_source: AwardSource | None = None,
     ) -> None:
         self._store = store
-        self._rebuild = rebuild
         self._award_source = award_source
 
     async def _require_application(self, year: int, household_cm_id: int) -> ApplicationRecord:
@@ -528,7 +523,6 @@ class FinancialAidCaseworkService:
         request_id: str,
         session_cm_id: int,
         reason: str,
-        remember_alias: bool,
         actor: str,
     ) -> RequestOut:
         async with self._locked(request_id) as request:
@@ -540,54 +534,26 @@ class FinancialAidCaseworkService:
             session = next((s for s in sessions if s.cm_id == session_cm_id), None)
             if session is None or session.session_type not in PROGRAM_SESSION_TYPES[request.program_key]:
                 raise CaseworkValidationError("that session is not one this program's requests can name")
-            if (
-                remember_alias
-                and len(sessions_named_by(request.program_option_text, request.program_key, sessions)) > 1
-            ):
-                # One alias wins outright for every later camper on the option, even one
-                # registered in the other session it names: the first-match trap the resolver avoids.
-                raise CaseworkValidationError("this option names several sessions; resolve each camper individually")
             holder = await self._store.find_active_request(
                 request.year, request.household_cm_id, request.person_cm_id, session_cm_id
             )
             if holder is not None and holder.id != request.id:
                 raise DuplicateRequestError(holder.id)
-            changes = _changed(
-                request_fields(request),
+            # A staff resolution is the one session intake's rebuild keeps (registration decides
+            # every other request's session; owner ruling 2026-09-27).
+            resolved = await self._commit_request_change(
+                request,
                 {
                     "session_cm_id": session_cm_id,
                     "session_resolution": RESOLUTION_STAFF,
                     "status": STATUS_ACTIVE,
                     "duplicate_of": "",
                 },
+                "resolve_session",
+                actor=actor,
+                reason=reason,
             )
-            writes = [self._request_update(request, changes, "resolve_session")] if changes else []
-            remember = remember_alias and bool(request.program_option_key)
-            alias = AliasRow(request.program_key, request.program_option_key, session_cm_id)
-            if remember and alias not in await self._store.fetch_aliases(request.year):
-                writes.append(
-                    AidWrite(
-                        collection=AID_SESSION_ALIASES,
-                        action="create",
-                        year=request.year,
-                        data={
-                            "year": request.year,
-                            "program_key": request.program_key,
-                            "option_key": request.program_option_key,
-                            "option_text": request.program_option_text,
-                            "session_cm_id": session_cm_id,
-                            "actor": actor,
-                            "note": reason.strip(),
-                        },
-                        log_action="create_alias",
-                    )
-                )
-            if writes:  # the resolution and its alias: one staff action, one operation, one batch
-                await self._store.commit(writes, actor=actor, reason=reason.strip(), require_reason=True)
-        # After the lock is released: the rebuild takes it, and asyncio.Lock is not reentrant.
-        if writes and remember and self._rebuild is not None:
-            await self._rebuild(request.year)  # intake's own system:intake operation (Task 7)
-        return await self._request_out(replace(request, **changes))
+        return await self._request_out(resolved)
 
     async def mark_duplicate(self, request_id: str, duplicate_of: str, reason: str, actor: str) -> RequestOut:
         async with self._locked(request_id) as request:

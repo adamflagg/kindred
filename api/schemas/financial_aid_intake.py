@@ -127,7 +127,6 @@ class CorrectionCreate(BaseModel):
 class SessionResolve(BaseModel):
     session_cm_id: int = Field(gt=0)
     reason: str = Field(min_length=1, max_length=2000)
-    remember_alias: bool = False
 
 
 class DuplicateMark(BaseModel):

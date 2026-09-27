@@ -10,7 +10,7 @@ import pytest
 
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AliasRow, AttendeeRow, BillingLine, CorrectionRecord
+from api.services.financial_aid_intake_types import AttendeeRow, BillingLine, CorrectionRecord
 from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
 from bunking.financial_aid.rules.schema import AidRules
 from bunking.pocketbase_batch import BatchRequestFailedError
@@ -33,9 +33,10 @@ async def test_a_first_build_creates_one_application_per_family_and_one_request_
         2 + 1,
         "billed",
     )
+    # Waitlisted only: registration first (owner ruling 2026-09-27) sets no session until enrolled.
     taste = store.request_for(person=1000021, program="summer")
-    assert (taste.session_cm_id, taste.session_resolution) == (1000105, "enrollment")
-    assert {"code": "not_enrolled", "detail": {"session_cm_id": 1000105}} in [dict(f) for f in taste.flags]
+    assert (taste.session_cm_id, taste.session_resolution, taste.status) == (0, "unmatched", "unmatched_session")
+    assert {"code": "unmatched_session", "detail": {"candidates": []}} in [dict(f) for f in taste.flags]
     assert (report.households, report.requests_created, report.rows_without_household, report.rows_without_request) == (
         2,
         3,
@@ -202,10 +203,12 @@ async def test_before_the_rules_are_approved_every_request_is_still_recorded_and
     store.rules = None  # mid-November: finance has not approved the programs and cost sections yet
     report = await FinancialAidIntakeService(store).build(YEAR)
     assert sorted(a.household_cm_id for a in store.applications.values()) == [1000001, 1000002]
-    assert (report.requests_created, report.payer_shares_created, report.awaiting_approved_rules) == (3, 3, 3)
+    assert (report.requests_created, report.payer_shares_created, report.awaiting_approved_rules) == (3, 3, 2)
     waiting = {"code": "awaiting_approved_rules", "detail": {"sections": ["programs", "cost"]}}
-    assert all(waiting in [dict(f) for f in r.flags] for r in store.requests.values())
-    assert all(r.status == "active" for r in store.requests.values())  # recorded, holding its slot
+    resolved = [r for r in store.requests.values() if r.session_cm_id]
+    assert len(resolved) == 2  # the third, a waitlisted camper's, is unmatched until they enroll
+    assert all(waiting in [dict(f) for f in r.flags] for r in resolved)
+    assert all(r.status == "active" for r in resolved)  # recorded, holding its slot
 
 
 @pytest.mark.asyncio
@@ -256,8 +259,7 @@ async def test_a_billed_infant_two_or_older_on_the_first_day_counts_as_non_infan
 @pytest.mark.asyncio
 async def test_a_new_request_colliding_with_another_new_one_gets_the_real_holder_id() -> None:
     store = seeded_store()
-    # A second option text that staff had already aliased to the same weekend.
-    store.aliases.append(AliasRow("family_camp", "fc six", 1000202))
+    # A second option text: registration puts it on the same weekend the household is enrolled in.
     store.fa_rows.append(fa_row(1000013, 1000001, fc="FC Six", fc_ask=900.0))
     report = await FinancialAidIntakeService(store).build(YEAR)
     holder = store.request_for(household=1000001, program="family_camp", status="active")
@@ -276,17 +278,17 @@ async def test_a_family_correcting_its_answer_to_the_session_staff_resolved_rebu
     service = FinancialAidIntakeService(store)
     await service.build(YEAR)
     old = store.request_for(household=1000001, program="family_camp")
-    assert old.status == "unmatched_session"
+    assert (old.status, old.session_cm_id) == ("active", 1000202)  # registration decides, whatever the wording
     casework = FinancialAidCaseworkService(store)
-    await casework.resolve_session(old.id, 1000202, "The family means Family Camp 6.", False, "registrar@example.com")
-    assert store.requests[old.id].status == "active"
+    await casework.resolve_session(old.id, 1000202, "The family means Family Camp 6.", "registrar@example.com")
+    assert (store.requests[old.id].status, store.requests[old.id].session_resolution) == ("active", "staff")
     store.fa_rows[1] = fa_row(1000012, 1000001, fc="Family Camp 6", fc_ask=900.0, total_gross_income=85000.0)
 
     await service.build(YEAR)
 
     assert (store.requests[old.id].status, store.requests[old.id].session_resolution) == ("withdrawn", "staff")
     new = store.request_for(household=1000001, program="family_camp", status="active")
-    assert (new.session_cm_id, new.session_resolution) == (1000202, "exact")
+    assert (new.session_cm_id, new.session_resolution) == (1000202, "enrollment")
 
 
 @pytest.mark.asyncio

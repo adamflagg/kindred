@@ -254,6 +254,22 @@ async def test_an_unmatched_or_unclaimed_request_comes_back_blocked_never_droppe
 
 
 @pytest.mark.asyncio
+async def test_a_session_other_than_the_answer_names_is_information_never_a_hold() -> None:
+    # The family answered "Session 2" but is enrolled in Session 2a (owner ruling 2026-09-27).
+    store = seeded_store()
+    store.attendees[0] = replace(store.attendees[0], session_cm_id=1000102)
+    store, casework = await built(store)
+    summer = store.request_for(person=1000011, program="summer")
+    assert summer.session_cm_id == 1000102
+    assert {"code": "session_differs_from_answer", "detail": {"named_session_cm_id": 1000101}} in [
+        dict(f) for f in summer.flags
+    ]
+    results = {r.request_id: r for r in await casework.calculator_inputs_for(YEAR, 1000001, intake_rules())}
+    assert (results[summer.id].issues, results[summer.id].blocked) == ((), "")
+    assert results[summer.id].request is not None
+
+
+@pytest.mark.asyncio
 async def test_rules_for_another_season_are_refused() -> None:
     _, casework = await built()
     with pytest.raises(CaseworkValidationError, match="2031"):

@@ -22,8 +22,9 @@ def spec(
     session: int = 1000101,
     enrolled: frozenset[int] = frozenset({1000101}),
     ask: float = 1500.0,
+    named: int = 0,
 ) -> RequestSpec:
-    method = "exact" if session else "unmatched"
+    method = "enrollment" if session else "unmatched"
     return RequestSpec(
         household,
         person,
@@ -34,6 +35,7 @@ def spec(
         SessionResolution(session, method, (session,) if session else ()),
         enrolled,
         (),
+        named,
     )
 
 
@@ -298,3 +300,142 @@ def test_a_household_with_no_requests_left_withdraws_its_application() -> None:
     plan = plan_intake([], [app()], [], {})
     assert plan.application_updates == [("app000000000001", {"status": "withdrawn"})]
     assert plan.status_changes == [StatusChange("aid_applications", "app000000000001", "active", "withdrawn")]
+
+
+# Registration first (owner ruling 2026-09-27): only a STAFF resolution is kept across rebuilds;
+# every other request takes the fresh resolution, so it follows the camper's registration.
+
+
+def test_a_request_re_resolves_when_the_campers_registration_changes() -> None:
+    before = spec()
+    moved = spec(text="Session 2", session=1000102, enrolled=frozenset({1000102}))
+    plan = plan_intake(
+        [household(moved)], [app()], [record(before, "req000000000001")], {}, frozenset({"req000000000001"})
+    )
+    assert plan.request_updates == [("req000000000001", {"session_cm_id": 1000102})]
+
+
+def test_an_unmatched_request_lands_once_the_camper_enrolls() -> None:
+    early = spec(session=0, enrolled=frozenset())
+    waiting = record(
+        early,
+        "req000000000001",
+        status="unmatched_session",
+        flags=({"code": "unmatched_session", "detail": {"candidates": []}},),
+    )
+    plan = plan_intake([household(spec())], [app()], [waiting], {}, frozenset({"req000000000001"}))
+    assert plan.request_updates == [
+        (
+            "req000000000001",
+            {"session_cm_id": 1000101, "session_resolution": "enrollment", "status": "active", "flags": []},
+        )
+    ]
+
+
+def test_a_request_whose_camper_cancels_goes_back_to_unmatched() -> None:
+    cancelled = spec(session=0, enrolled=frozenset())
+    plan = plan_intake(
+        [household(cancelled)], [app()], [record(spec(), "req000000000001")], {}, frozenset({"req000000000001"})
+    )
+    ((rid, changes),) = plan.request_updates
+    assert (rid, changes["session_cm_id"], changes["status"]) == ("req000000000001", 0, "unmatched_session")
+
+
+def test_a_staff_resolved_request_keeps_its_session_and_gains_not_enrolled_when_registration_moves() -> None:
+    moved = spec(session=1000102, enrolled=frozenset({1000102}))
+    staff = record(spec(), "req000000000001", session_resolution="staff")
+    plan = plan_intake([household(moved)], [app()], [staff], {}, frozenset({"req000000000001"}))
+    assert plan.request_updates == [
+        ("req000000000001", {"flags": [{"code": "not_enrolled", "detail": {"session_cm_id": 1000101}}]})
+    ]
+
+
+def test_a_request_moving_to_a_free_slot_takes_it_and_frees_its_old_one() -> None:
+    mover = spec(session=1000102, enrolled=frozenset({1000101, 1000102}))
+    newcomer = spec(household=1000002, session=1000101, enrolled=frozenset({1000101, 1000102}))
+    existing = [record(spec(), "req000000000001")]
+    plan = plan_intake(
+        [household(mover), household(newcomer, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001"}),
+    )
+    assert plan.request_updates == [("req000000000001", {"session_cm_id": 1000102})]
+    (create,) = plan.request_creates
+    assert (create.payload["session_cm_id"], create.payload["status"], create.duplicate_of_ref) == (
+        1000101,
+        "active",
+        "",
+    )
+
+
+def test_a_request_moving_into_a_held_slot_waits_behind_its_holder() -> None:
+    # req...1 sorts first, but req...2 already holds Session 2a and stays there: it keeps the slot.
+    enrolled = frozenset({1000101, 1000102})
+    mover = spec(session=1000102, enrolled=enrolled)
+    resident = spec(household=1000002, session=1000102, enrolled=enrolled)
+    existing = [record(spec(), "req000000000001"), record(resident, "req000000000002")]
+    plan = plan_intake(
+        [household(mover), household(resident, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001", "req000000000002"}),
+    )
+    assert plan.request_updates == [
+        (
+            "req000000000001",
+            {"session_cm_id": 1000102, "status": "duplicate_pending", "duplicate_of": "req000000000002"},
+        )
+    ]
+
+
+def test_two_requests_swapping_sessions_both_stay_active() -> None:
+    enrolled = frozenset({1000101, 1000102})
+    first_now, second_now = (
+        spec(session=1000102, enrolled=enrolled),
+        spec(household=1000002, session=1000101, enrolled=enrolled),
+    )
+    existing = [
+        record(spec(), "req000000000001"),
+        record(spec(household=1000002, session=1000102), "req000000000002"),
+    ]
+    plan = plan_intake(
+        [household(first_now), household(second_now, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001", "req000000000002"}),
+    )
+    assert sorted(plan.request_updates) == [
+        ("req000000000001", {"session_cm_id": 1000102}),
+        ("req000000000002", {"session_cm_id": 1000101}),
+    ]
+
+
+_DIFFERS = {"code": "session_differs_from_answer", "detail": {"named_session_cm_id": 1000101}}
+
+
+def test_a_session_other_than_the_one_the_answer_names_is_flagged_for_staff() -> None:
+    s = spec(session=1000102, enrolled=frozenset({1000102}), named=1000101)
+    (create,) = plan_intake([household(s)], [], [], {}).request_creates
+    assert (create.payload["status"], create.payload["flags"]) == ("active", [_DIFFERS])
+
+
+def test_no_difference_flag_when_the_answer_names_the_session_or_names_none() -> None:
+    same = spec(named=1000101)
+    none = spec(program="bmitzvah", text="Taste of Camp", session=1000104, enrolled=frozenset({1000104}))
+    unmatched = spec(program="summer", person=1000012, session=0, enrolled=frozenset(), named=1000101)
+    plan = plan_intake([household(same, none, unmatched)], [], [], {})
+    flags = [f["code"] for c in plan.request_creates for f in c.payload["flags"]]
+    assert "session_differs_from_answer" not in flags
+
+
+def test_a_staff_session_other_than_the_one_named_is_flagged_too() -> None:
+    s = spec(named=1000101)
+    staff = record(s, "req000000000001", session_cm_id=1000103, session_resolution="staff")
+    plan = plan_intake([household(s)], [app()], [staff], {}, frozenset({"req000000000001"}))
+    ((_, changes),) = plan.request_updates
+    codes = [f["code"] for f in changes["flags"]]
+    assert codes == ["not_enrolled", "session_differs_from_answer"]

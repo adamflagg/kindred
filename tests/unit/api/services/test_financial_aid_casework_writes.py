@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -15,20 +14,19 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AliasRow, AttendeeRow
-from api.services.financial_aid_session_resolver import normalize_option_text
+from api.services.financial_aid_intake_types import AttendeeRow
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, seeded_store
 
 ACTOR = "registrar@example.com"
 
 
-async def built() -> tuple[FakeAidStore, AsyncMock, FinancialAidCaseworkService]:
-    store, rebuild = seeded_store(), AsyncMock()
+async def built() -> tuple[FakeAidStore, FinancialAidCaseworkService]:
+    store = seeded_store()
     store.fa_rows.append(fa_row(1000015, 1000001, summer="Session 2 (All-Gender Cabin)", summer_ask=700.0))
     await FinancialAidIntakeService(store).build(YEAR)
     store.operations.clear()
     store.change_log.clear()
-    return store, rebuild, FinancialAidCaseworkService(store, rebuild=rebuild)
+    return store, FinancialAidCaseworkService(store)
 
 
 def rows(store: FakeAidStore) -> list[dict[str, Any]]:
@@ -36,54 +34,50 @@ def rows(store: FakeAidStore) -> list[dict[str, Any]]:
 
 
 @pytest.mark.asyncio
-async def test_resolving_an_unmatched_request_activates_it_and_can_remember_the_alias() -> None:
-    store, rebuild, casework = await built()
+async def test_resolving_an_unmatched_request_activates_it_and_remembers_nothing_else() -> None:
+    # Registration first (owner ruling 2026-09-27): a staff pick is this request's alone; no
+    # alias is written for later campers on the same option.
+    store, casework = await built()
     request = store.request_for(person=1000015, program="summer")
     assert request.status == "unmatched_session"
-    out = await casework.resolve_session(request.id, 1000103, "All-gender option.", True, ACTOR)
+    out = await casework.resolve_session(request.id, 1000103, "All-gender option.", ACTOR)
     assert (out.session_cm_id, out.status, out.session_resolution) == (1000103, "active", "staff")
-    assert AliasRow("summer", normalize_option_text("Session 2 (All-Gender Cabin)"), 1000103) in store.aliases
-    resolved, alias = rows(store)
-    assert [(r["entity"], r["action"]) for r in (resolved, alias)] == [
-        ("aid_requests", "resolve_session"),
-        ("aid_session_aliases", "create_alias"),
-    ]
-    assert resolved["operation_id"] == alias["operation_id"]  # one staff action, one operation, one batch
-    assert {(r["actor"], r["reason"]) for r in (resolved, alias)} == {(ACTOR, "All-gender option.")}
+    (resolved,) = rows(store)
+    assert (resolved["entity"], resolved["action"]) == ("aid_requests", "resolve_session")
+    assert (resolved["actor"], resolved["reason"]) == (ACTOR, "All-gender option.")
     assert (resolved["before"]["session_cm_id"], resolved["after"]["session_cm_id"]) == (0, 1000103)
     assert (resolved["before"]["status"], resolved["after"]["status"]) == ("unmatched_session", "active")
     assert len(store.operations) == 1
-    rebuild.assert_awaited_once_with(YEAR)
 
 
 @pytest.mark.asyncio
 async def test_resolving_into_an_occupied_slot_is_refused_with_the_holder() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     request = store.request_for(person=1000015, program="summer")
     holder = store.request_for(person=1000011, program="summer")
     store.requests[request.id] = replace(request, person_cm_id=1000011)
     with pytest.raises(DuplicateRequestError) as caught:
-        await casework.resolve_session(request.id, 1000101, "r", False, ACTOR)
+        await casework.resolve_session(request.id, 1000101, "r", ACTOR)
     assert caught.value.holder_id == holder.id
     assert (store.operations, store.change_log) == ([], [])
 
 
 @pytest.mark.asyncio
 async def test_a_session_outside_the_program_or_a_withdrawn_request_is_refused() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     request = store.request_for(person=1000015, program="summer")
     with pytest.raises(CaseworkValidationError):
-        await casework.resolve_session(request.id, 1000202, "r", False, ACTOR)
+        await casework.resolve_session(request.id, 1000202, "r", ACTOR)
     store.requests[request.id] = replace(request, status="withdrawn")
     with pytest.raises(CaseworkValidationError):
-        await casework.resolve_session(request.id, 1000103, "r", False, ACTOR)
+        await casework.resolve_session(request.id, 1000103, "r", ACTOR)
     with pytest.raises(CaseworkNotFoundError):
-        await casework.resolve_session("nope00000000000", 1000103, "r", False, ACTOR)
+        await casework.resolve_session("nope00000000000", 1000103, "r", ACTOR)
 
 
 @pytest.mark.asyncio
 async def test_marking_a_duplicate_names_the_survivor_and_is_logged() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     survivor = store.request_for(person=1000011, program="summer")
     extra = store.request_for(person=1000015, program="summer")
     store.requests[extra.id] = replace(extra, person_cm_id=1000011)
@@ -100,7 +94,7 @@ async def test_marking_a_duplicate_names_the_survivor_and_is_logged() -> None:
 
 @pytest.mark.asyncio
 async def test_a_separated_parents_second_request_for_the_same_camper_can_be_marked_a_duplicate() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     survivor = store.request_for(person=1000011, program="summer")
     extra = store.request_for(person=1000015, program="summer")
     store.requests[extra.id] = replace(extra, person_cm_id=1000011, household_cm_id=1000009)  # the other parent
@@ -110,7 +104,7 @@ async def test_a_separated_parents_second_request_for_the_same_camper_can_be_mar
 
 @pytest.mark.asyncio
 async def test_marking_a_duplicate_refuses_a_different_session() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     survivor = store.request_for(person=1000011, program="summer")  # active, session 1000101
     extra = store.request_for(person=1000015, program="summer")  # same camper, wrong session
     store.requests[extra.id] = replace(extra, person_cm_id=1000011, session_cm_id=1000105)
@@ -120,7 +114,7 @@ async def test_marking_a_duplicate_refuses_a_different_session() -> None:
 
 @pytest.mark.asyncio
 async def test_a_same_session_duplicate_pending_request_from_another_household_can_be_marked_a_duplicate() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     survivor = store.request_for(person=1000011, program="summer")  # active, session 1000101
     extra = store.request_for(person=1000015, program="summer")
     store.requests[extra.id] = replace(
@@ -137,7 +131,7 @@ async def test_a_same_session_duplicate_pending_request_from_another_household_c
 
 @pytest.mark.asyncio
 async def test_a_duplicate_must_be_the_same_camper_and_the_survivor_active() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     mine = store.request_for(person=1000011, program="summer")
     theirs = store.request_for(person=1000021, program="summer")
     with pytest.raises(CaseworkValidationError):
@@ -153,7 +147,7 @@ async def test_a_duplicate_must_be_the_same_camper_and_the_survivor_active() -> 
 
 @pytest.mark.asyncio
 async def test_a_staff_headcount_is_stored_with_its_source_and_only_on_family_requests() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     family = store.request_for(household=1000001, program="family_camp")
     out = await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR)
     assert (out.headcount_non_infant, out.headcount_infant, out.headcount_source) == (4, 1, "declared")
@@ -171,7 +165,7 @@ async def test_a_staff_headcount_is_stored_with_its_source_and_only_on_family_re
 
 @pytest.mark.asyncio
 async def test_capacity_is_created_then_updated_and_logged_with_before_and_after() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     first = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "finance@example.com")
     second = await casework.set_capacity(YEAR, 1000101, 110, "", "finance@example.com")
     assert (first.capacity, second.capacity) == (120, 110)
@@ -184,7 +178,7 @@ async def test_capacity_is_created_then_updated_and_logged_with_before_and_after
 
 @pytest.mark.asyncio
 async def test_set_capacity_by_a_different_actor_with_the_same_figure_writes_nothing() -> None:
-    store, _, casework = await built()
+    store, casework = await built()
     first = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "finance@example.com")
     second = await casework.set_capacity(YEAR, 1000101, 120, "Board figure.", "other-staff@example.com")
     assert (first.capacity, second.capacity) == (120, 120)
@@ -192,52 +186,49 @@ async def test_set_capacity_by_a_different_actor_with_the_same_figure_writes_not
 
 
 @pytest.mark.asyncio
-async def test_resolving_again_with_remember_alias_writes_nothing_and_does_not_rebuild() -> None:
-    store, rebuild, casework = await built()
+async def test_resolving_again_to_the_same_session_writes_nothing() -> None:
+    store, casework = await built()
     request = store.request_for(person=1000015, program="summer")
-    await casework.resolve_session(request.id, 1000103, "All-gender option.", True, ACTOR)
+    await casework.resolve_session(request.id, 1000103, "All-gender option.", ACTOR)
     store.operations.clear()
     store.change_log.clear()
-    rebuild.reset_mock()
     resolved = store.request_for(person=1000015, program="summer")
-    out = await casework.resolve_session(resolved.id, 1000103, "Repeat.", True, ACTOR)
+    out = await casework.resolve_session(resolved.id, 1000103, "Repeat.", ACTOR)
     assert (out.session_cm_id, out.status) == (1000103, "active")
     assert (store.operations, store.change_log) == ([], [])
-    rebuild.assert_not_awaited()
 
 
-async def in_training_store() -> tuple[FakeAidStore, AsyncMock, FinancialAidCaseworkService]:
-    """One option text names both in-training sessions; the first camper is registered in
+@pytest.mark.asyncio
+async def test_a_staff_resolution_survives_a_rebuild_that_would_resolve_elsewhere() -> None:
+    store, casework = await built()
+    request = store.request_for(person=1000015, program="summer")
+    await casework.resolve_session(request.id, 1000103, "All-gender option.", ACTOR)
+    store.attendees.append(AttendeeRow(1000015, 1000001, 1000102, 2))  # registration now says Session 2a
+    await FinancialAidIntakeService(store).build(YEAR)
+    kept = store.requests[request.id]
+    assert (kept.session_cm_id, kept.session_resolution, kept.status) == (1000103, "staff", "active")
+    assert {"code": "not_enrolled", "detail": {"session_cm_id": 1000103}} in [dict(f) for f in kept.flags]
+
+
+async def in_training_store() -> tuple[FakeAidStore, FinancialAidCaseworkService]:
+    """One option text names both in-training sessions; the first camper is enrolled in
     neither, the second in the Specialist one."""
-    store, rebuild = seeded_store(), AsyncMock()
+    store = seeded_store()
     store.fa_rows.append(fa_row(1000016, 1000001, summer="In-Training", summer_ask=600.0))
     store.fa_rows.append(fa_row(1000017, 1000001, summer="In-Training", summer_ask=600.0))
     store.attendees.append(AttendeeRow(1000017, 1000001, 1000108, 2))
     await FinancialAidIntakeService(store).build(YEAR)
     store.operations.clear()
     store.change_log.clear()
-    return store, rebuild, FinancialAidCaseworkService(store, rebuild=rebuild)
-
-
-@pytest.mark.asyncio
-async def test_an_option_naming_several_sessions_cannot_be_remembered_as_an_alias() -> None:  # Review Focus 2
-    store, rebuild, casework = await in_training_store()
-    request = store.request_for(person=1000016, program="summer")
-    assert request.status == "unmatched_session"
-    with pytest.raises(CaseworkValidationError, match="several sessions"):
-        await casework.resolve_session(request.id, 1000107, "Counselor track.", True, ACTOR)
-    assert (store.operations, store.change_log, store.aliases) == ([], [], [])
-    assert store.requests[request.id].status == "unmatched_session"
-    rebuild.assert_not_awaited()
+    return store, FinancialAidCaseworkService(store)
 
 
 @pytest.mark.asyncio
 async def test_an_option_naming_several_sessions_still_resolves_one_camper_at_a_time() -> None:
-    store, rebuild, casework = await in_training_store()
+    store, casework = await in_training_store()
     request = store.request_for(person=1000016, program="summer")
-    out = await casework.resolve_session(request.id, 1000107, "Counselor track.", False, ACTOR)
+    out = await casework.resolve_session(request.id, 1000107, "Counselor track.", ACTOR)
     assert (out.session_cm_id, out.status, out.session_resolution) == (1000107, "active", "staff")
-    assert store.aliases == []
     await FinancialAidIntakeService(store).build(YEAR)
     # The Specialist-registered camper on the same option is still decided by registration.
     specialist = store.request_for(person=1000017, program="summer")

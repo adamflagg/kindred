@@ -19,8 +19,7 @@ import pytest
 
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AliasRow, RequestRecord
-from api.services.financial_aid_session_resolver import normalize_option_text
+from api.services.financial_aid_intake_types import AttendeeRow, RequestRecord
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, seeded_store
 
 ACTOR = "registrar@example.com"
@@ -68,8 +67,7 @@ def _drop_survivor_answer(store: FakeAidStore) -> None:
 @pytest.mark.asyncio
 async def test_a_family_camp_duplicate_follows_a_reworded_survivor_then_revives_when_it_is_deleted() -> None:
     store = seeded_store()
-    store.aliases.append(AliasRow("family_camp", normalize_option_text("FC Six"), 1000202))
-    store.aliases.append(AliasRow("family_camp", normalize_option_text("Weekend Six"), 1000202))
+    # Every wording lands on Family Camp 6: the household is enrolled there (registration first).
     store.fa_rows.append(fa_row(1000013, 1000001, fc="FC Six", fc_ask=900.0))
     service = FinancialAidIntakeService(store)
     await service.build(YEAR)
@@ -171,6 +169,7 @@ async def test_an_unmatched_duplicate_whose_survivor_is_gone_revives_unmatched_a
     # A duplicate may name no session (mark_duplicate allows it); with no slot to hold, it
     # comes back as unmatched, never active on session 0.
     store = seeded_store()
+    store.attendees.append(AttendeeRow(1000011, 1000001, 1000102, 2))  # enrolled in two: the text must pick
     store.fa_rows.append(fa_row(1000011, 1000002, summer="Some session we never ran", summer_ask=1500.0))
     service = FinancialAidIntakeService(store)
     await service.build(YEAR)
@@ -192,11 +191,13 @@ async def test_an_unmatched_duplicate_of_a_duplicate_follows_the_chain_instead_o
     store = seeded_store()
     store.fa_rows.append(fa_row(1000011, 1000002, summer="Session 2", summer_ask=1500.0))
     store.fa_rows.append(fa_row(1000011, 1000003, summer="Some session we never ran", summer_ask=1500.0))
+    store.attendees.append(AttendeeRow(1000011, 1000001, 1000102, 2))  # enrolled in two: the text must pick
     service = FinancialAidIntakeService(store)
     await service.build(YEAR)
     holder = store.request_for(person=1000011, household=1000001, program="summer")
     middle = store.request_for(person=1000011, household=1000002, program="summer")
     unmatched = store.request_for(person=1000011, household=1000003, program="summer")
+    assert unmatched.session_cm_id == 0
     casework = FinancialAidCaseworkService(store)
     await casework.mark_duplicate(middle.id, holder.id, "Other parent.", ACTOR)
     await casework.mark_duplicate(unmatched.id, holder.id, "Third copy.", ACTOR)

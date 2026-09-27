@@ -8,6 +8,7 @@ import pytest
 
 from api.services.financial_aid_casework_service import CaseworkNotFoundError, FinancialAidCaseworkService
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
+from api.services.financial_aid_intake_types import AttendeeRow
 from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, seeded_store
 
 ACTOR = "registrar@example.com"
@@ -24,7 +25,9 @@ async def casework_with_conflict() -> tuple[object, FinancialAidCaseworkService]
         special_circumstances="Moved in spring.",
         total_rent=1800.0,
     )
-    store.fa_rows.append(fa_row(1000013, 1000001, total_gross_income=95000.0, summer="Session 2a", summer_ask=300.0))
+    # Answered "Session 2" but enrolled in Session 2a: registration decides, and staff see the difference.
+    store.fa_rows.append(fa_row(1000013, 1000001, total_gross_income=95000.0, summer="Session 2", summer_ask=300.0))
+    store.attendees.append(AttendeeRow(1000013, 1000001, 1000102, 2))
     await FinancialAidIntakeService(store).build(YEAR)
     return store, FinancialAidCaseworkService(store)
 
@@ -38,7 +41,7 @@ async def test_the_list_summarises_each_family_without_amounts() -> None:
     first = listing.applications[0]
     assert first.requests_by_status == {"active": 3}
     assert "income_conflict" in first.flag_codes
-    assert "not_enrolled" in first.flag_codes
+    assert "session_differs_from_answer" in first.flag_codes
     assert first.corrected_fields == 1
 
 
@@ -99,8 +102,13 @@ async def test_the_queue_lists_only_the_requested_status() -> None:
     store.fa_rows.append(fa_row(1000015, 1000001, summer="Session 9", summer_ask=100.0))
     await FinancialAidIntakeService(store).build(YEAR)
     queue = await FinancialAidCaseworkService(store).list_requests(YEAR, "unmatched_session")
-    assert [(r.person_cm_id, r.program_option_text) for r in queue.requests] == [(1000015, "Session 9")]
-    assert queue.requests[0].flags[0].code == "unmatched_session"
+    # Session 9 names nothing and its camper is enrolled nowhere; Taste of Camp's camper is only
+    # waitlisted, and registration first (owner ruling 2026-09-27) sets no session until enrolled.
+    assert sorted((r.person_cm_id, r.program_option_text) for r in queue.requests) == [
+        (1000015, "Session 9"),
+        (1000021, "Taste of Camp"),
+    ]
+    assert all(r.flags[0].code == "unmatched_session" for r in queue.requests)
 
 
 @pytest.mark.asyncio
@@ -110,11 +118,12 @@ async def test_requests_waiting_for_approved_rules_have_their_own_queue_and_a_vi
     await FinancialAidIntakeService(store).build(YEAR)
     casework = FinancialAidCaseworkService(store)
     waiting = await casework.list_requests(YEAR, "active", "awaiting_approved_rules")
-    assert len(waiting.requests) == 3
+    assert len(waiting.requests) == 2  # the waitlisted camper's request is unmatched: no session to check
     assert (await casework.list_requests(YEAR, "active", "no_program_for_session")).requests == []
     detail = await casework.application_detail(YEAR, 1000001)
     assert len(detail.requests) == 2
     assert all(("awaiting_approved_rules", "hold") in [(i.code, i.severity) for i in r.issues] for r in detail.requests)
     listing = await casework.list_applications(YEAR)
     assert len(listing.applications) == 2
-    assert all("awaiting_approved_rules" in a.flag_codes for a in listing.applications)
+    # 1000002's only request is its waitlisted camper's, unmatched: nothing there waits on the rules.
+    assert ["awaiting_approved_rules" in a.flag_codes for a in listing.applications] == [True, False]

@@ -32,7 +32,7 @@ async def _built() -> tuple[FakeAidStore, FinancialAidIntakeService, FinancialAi
     intake = FinancialAidIntakeService(store)
     await intake.build(YEAR)
     store.operations.clear()
-    return store, intake, FinancialAidCaseworkService(store, rebuild=intake.build)
+    return store, intake, FinancialAidCaseworkService(store)
 
 
 def _gate_intake_commits(store: FakeAidStore, monkeypatch: pytest.MonkeyPatch) -> tuple[asyncio.Event, asyncio.Event]:
@@ -85,7 +85,7 @@ def _writer(
     unmatched = store.request_for(person=1000015, program="summer")
     family = store.request_for(household=1000001, program="family_camp")
     if name == "resolve_session":
-        return lambda: casework.resolve_session(unmatched.id, 1000103, "All-gender option.", False, ACTOR)
+        return lambda: casework.resolve_session(unmatched.id, 1000103, "All-gender option.", ACTOR)
     if name == "mark_duplicate":
         store.requests[unmatched.id] = replace(unmatched, person_cm_id=1000011, session_cm_id=0)
         return lambda: casework.mark_duplicate(unmatched.id, summer.id, "Same camper.", ACTOR)
@@ -140,22 +140,3 @@ async def test_a_write_waiting_on_a_build_revalidates_what_the_build_left() -> N
     with pytest.raises(CaseworkValidationError, match="withdrawn"):
         await asyncio.wait_for(task, TIMEOUT)
     assert store.operations == []
-
-
-@pytest.mark.asyncio
-async def test_resolving_with_a_remembered_alias_rebuilds_without_deadlocking() -> None:
-    # The rebuild takes the season lock itself; resolve_session must have released it first.
-    store, intake, _ = await _built()
-    rebuilt: list[object] = []
-
-    async def rebuild(year: int) -> object:
-        rebuilt.append(await intake.build(year))
-        return rebuilt[-1]
-
-    casework = FinancialAidCaseworkService(store, rebuild=rebuild)
-    request = store.request_for(person=1000015, program="summer")
-    out = await asyncio.wait_for(
-        casework.resolve_session(request.id, 1000103, "All-gender option.", True, ACTOR), TIMEOUT
-    )
-    assert (out.status, out.session_cm_id) == ("active", 1000103)
-    assert len(rebuilt) == 1  # the rebuild ran to completion

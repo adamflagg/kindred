@@ -225,6 +225,20 @@ def test_one_households_share_can_be_given_in_dollars_and_reaches_the_service_as
     )
 
 
+def test_resolving_a_session_no_longer_remembers_anything() -> None:
+    # Registration first (owner ruling 2026-09-27) removed session aliases. The schema ignores
+    # unknown fields (pydantic's default), so an old client's remember_alias is dropped unread.
+    stub = _stub()
+    user = persona_user(PERSONA_REGISTRAR)
+    with _client(user, stub) as client:
+        response = client.post(
+            f"/api/financial-aid/requests/{RID}/session",
+            json={"session_cm_id": 1000101, "reason": "r", "remember_alias": True},
+        )
+    assert response.status_code == 200
+    stub.resolve_session.assert_awaited_once_with(RID, 1000101, "r", user.email)
+
+
 def test_service_errors_map_to_404_409_and_422() -> None:
     stub = _stub()
     stub.application_detail = AsyncMock(side_effect=CaseworkNotFoundError("no application"))

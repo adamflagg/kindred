@@ -36,10 +36,10 @@ STAFF_HEADCOUNT_SOURCES: Final = frozenset({HEADCOUNT_DECLARED, HEADCOUNT_OVERRI
 RESOLUTION_STAFF: Final = "staff"
 RESOLUTION_UNMATCHED: Final = "unmatched"
 
-# The attendee statuses that count as "registered" when a name matches several
-# sessions: enrolled (2), applied (4), waitlisted (8), incomplete (512). An FA
-# applicant is often waitlisted. Cancelled (32) and withdrawn (256) never
-# decide a session. See pocketbase/sync/attendees.go for the mapping.
+# The attendee statuses that count as "registered" for an adult weekend, so an
+# adult-weekend request is created: enrolled (2), applied (4), waitlisted (8),
+# incomplete (512). An FA applicant is often waitlisted. Only enrolled (2) ever
+# SETS a session (owner ruling 2026-09-27). See pocketbase/sync/attendees.go.
 REGISTERED_STATUS_IDS: Final = frozenset({ACTIVE_ENROLLED_STATUS_ID, 4, 8, 512})
 
 INTAKE_ACTOR: Final = "system:intake"
@@ -62,6 +62,10 @@ INTAKE_RULES_SECTIONS: Final[tuple[SectionName, ...]] = ("programs", "cost")
 FLAG_AWAITING_RULES: Final = "awaiting_approved_rules"
 # The approved rules claim no program for the request's session.
 FLAG_NO_PROGRAM: Final = "no_program_for_session"
+# The answer's option text names exactly one in-program session and the request sits on
+# another (registration decides; owner ruling 2026-09-27). Information for staff, NEVER a
+# hold: financial_aid_calc_inputs.request_issues does not read it.
+FLAG_SESSION_DIFFERS: Final = "session_differs_from_answer"
 # A staff `duplicate` came back to life because the request it duplicated is no longer active
 # and nothing else holds its slot. Sticky across rebuilds, and always a hold: the payer shares
 # and any decision stayed on the withdrawn survivor, named in the detail.
@@ -118,13 +122,6 @@ class AttendeeRow:
 
 
 @dataclass(frozen=True)
-class AliasRow:
-    program_key: str
-    option_key: str
-    session_cm_id: int
-
-
-@dataclass(frozen=True)
 class BillingLine:
     household_cm_id: int
     person_cm_id: int
@@ -140,7 +137,7 @@ class BillingLine:
 @dataclass(frozen=True)
 class SessionResolution:
     session_cm_id: int  # 0 = unmatched
-    method: str  # alias | exact | contains | enrollment | unmatched
+    method: str  # enrollment | enrollment_text | unmatched ("staff" is set by casework only)
     candidates: tuple[int, ...]
 
 

@@ -21,12 +21,10 @@ from api.constants.collections import (
     AID_APPLICATIONS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
-    AID_SESSION_ALIASES,
     AID_SESSION_CAPACITY,
 )
 from api.services.financial_aid_intake_repository import _exact_pct
 from api.services.financial_aid_intake_types import (
-    AliasRow,
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
@@ -125,7 +123,7 @@ def _tupled(changes: Mapping[str, Any]) -> dict[str, Any]:
 
 
 # Everything a batch can change; a failed batch restores all of it.
-_TABLES = ("applications", "requests", "payer_shares", "corrections", "aliases", "capacity", "change_log", "writes")
+_TABLES = ("applications", "requests", "payer_shares", "corrections", "capacity", "change_log", "writes")
 
 
 class _BatchTwin:
@@ -152,7 +150,6 @@ class FakeAidStore:
         self.fa_rows: list[FaRow] = []
         self.sessions: list[SessionRow] = list(SESSIONS)
         self.attendees: list[AttendeeRow] = []
-        self.aliases: list[AliasRow] = []
         self.billing: list[BillingLine] = []
         self.applications: dict[str, ApplicationRecord] = {}
         self.requests: dict[str, RequestRecord] = {}
@@ -191,10 +188,6 @@ class FakeAidStore:
     async def fetch_registered_attendees(self, year: int) -> list[AttendeeRow]:
         await self._read(year)
         return list(self.attendees)
-
-    async def fetch_aliases(self, year: int) -> list[AliasRow]:
-        await self._read(year)
-        return list(self.aliases)
 
     async def fetch_family_camp_billing(self, year: int) -> list[BillingLine]:
         await self._read(year)
@@ -401,8 +394,6 @@ class FakeAidStore:
                 )
             )
             return {**body, "id": rid, "created": created}
-        elif collection == AID_SESSION_ALIASES:
-            self.aliases.append(AliasRow(body["program_key"], body["option_key"], body["session_cm_id"]))
         elif collection == AID_SESSION_CAPACITY and method == "POST":
             if (body["year"], body["session_cm_id"]) in self.capacity:
                 raise ValueError("UNIQUE constraint failed: idx_aid_session_capacity_year_session")
@@ -462,8 +453,6 @@ class FakeAidStore:
             for c in self.corrections:
                 if c.application_id not in self.applications or (c.request_id and c.request_id not in self.requests):
                     raise ValueError("aid_application_corrections names a record that does not exist")
-        elif collection == AID_SESSION_ALIASES:
-            _unique("idx_aid_session_aliases_key", list(self.aliases))
 
     # helpers for assertions
     def request_for(

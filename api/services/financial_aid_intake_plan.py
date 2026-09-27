@@ -10,9 +10,13 @@ What a re-run may and may not change:
   identity. The same FA answer always updates the same row. A family that EDITS
   its answer produces a new key: the old request is withdrawn (never deleted,
   so its corrections and any decision stay attached) and a new one is created.
-* A resolved session is STICKY. Only an unmatched request is re-resolved. When
-  the camper's enrollment moves, the request gains `not_enrolled` for staff and
-  is never re-pointed under a decision.
+* The session follows REGISTRATION (owner ruling 2026-09-27). Every request
+  takes the fresh resolution on every run, so an early applicant lands once they
+  enroll and a camper who switches sessions follows their registration. Only a
+  STAFF resolution (session_resolution "staff") is kept; when that camper's
+  enrollment moves, the request gains `not_enrolled` for staff and is never
+  re-pointed under a decision. A request on a session other than the one its
+  answer names gains `session_differs_from_answer`: information, never a hold.
 * `duplicate` (a staff ruling) is kept. `withdrawn` is reversible when the
   answer returns.
 * A `duplicate` is never left without a live request for its camper (or family)
@@ -22,9 +26,11 @@ What a re-run may and may not change:
   and stays `duplicate`; with the slot free it is revived (active, or unmatched
   when it names no session) with the sticky `duplicate_survivor_withdrawn` hold.
 * ONE active request per camper x session, or household x session for family
-  camp (spec 2 item 9). Existing active rows keep their slot. A later claimant
-  becomes `duplicate_pending` and names its holder: an id, or `new:N` when the
-  holder is created in the same run (the service swaps in the id).
+  camp (spec 2 item 9). An existing active row that STAYS on its session keeps
+  its slot; rows that move claim next (a vacated slot is free to them), then the
+  rest. A later claimant becomes `duplicate_pending` and names its holder: an
+  id, or `new:N` when the holder is created in the same run (the service swaps
+  in the id).
 * A `declared` / `override` headcount is staff's and is never overwritten;
   billing only fills an unknown or `billed` one.
 * answers, ask, option text and flags are the builder's own copy and are
@@ -50,9 +56,11 @@ from api.services.financial_aid_intake_types import (
     APPLICATION_ACTIVE,
     APPLICATION_WITHDRAWN,
     FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
+    FLAG_SESSION_DIFFERS,
     HEADCOUNT_BILLED,
     HEADCOUNT_INFANT_MAX,
     HEADCOUNT_NON_INFANT_MAX,
+    RESOLUTION_STAFF,
     STAFF_HEADCOUNT_SOURCES,
     STATUS_ACTIVE,
     STATUS_DUPLICATE,
@@ -190,6 +198,14 @@ def _headcount_target(
     }
 
 
+def _session_choice(record: RequestRecord | None, spec: RequestSpec) -> tuple[int, str]:
+    """The session a request takes this run: a staff resolution is kept, anything else
+    takes the fresh resolution from registration."""
+    if record is not None and record.session_resolution == RESOLUTION_STAFF and record.session_cm_id > 0:
+        return record.session_cm_id, record.session_resolution
+    return spec.resolution.session_cm_id, spec.resolution.method
+
+
 def _request_target(
     record: RequestRecord | None,
     spec: RequestSpec | None,
@@ -200,14 +216,14 @@ def _request_target(
 ) -> dict[str, Any]:
     if spec is None:
         return {"status": STATUS_WITHDRAWN}
-    kept = record is not None and record.session_cm_id > 0
-    session = record.session_cm_id if record is not None and kept else spec.resolution.session_cm_id
-    method = record.session_resolution if record is not None and kept else spec.resolution.method
+    session, method = _session_choice(record, spec)
     flags = list(spec.flags)
     if session == 0:
         flags.append(Flag("unmatched_session", {"candidates": list(spec.resolution.candidates)}))
     elif session not in spec.enrolled_session_ids:
         flags.append(Flag("not_enrolled", {"session_cm_id": session}))
+    if session != 0 and spec.named_session_cm_id not in (0, session):
+        flags.append(Flag(FLAG_SESSION_DIFFERS, {"named_session_cm_id": spec.named_session_cm_id}))
     if session != 0 and rules_check is not None:
         flags.extend(rules_check(session))
     if record is not None:  # a revival's hold outlives the run that raised it
@@ -331,7 +347,16 @@ def plan_intake(
     # Targets first, writes after: a stranded duplicate can only be judged once every other
     # request's place in this run is known, new ones included.
     targets: list[tuple[RequestRecord, dict[str, Any]]] = []
-    for record in sorted(existing_requests, key=lambda r: (r.status != STATUS_ACTIVE, r.id)):
+
+    def stays(record: RequestRecord) -> bool:
+        spec = specs.get(record.key)
+        return (
+            spec is not None
+            and record.status == STATUS_ACTIVE
+            and _session_choice(record, spec)[0] == record.session_cm_id
+        )
+
+    for record in sorted(existing_requests, key=lambda r: (not stays(r), r.status != STATUS_ACTIVE, r.id)):
         known.add(record.key)
         targets.append(
             (record, _request_target(record, specs.get(record.key), holders, billed, record.id, rules_check))

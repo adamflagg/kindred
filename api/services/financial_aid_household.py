@@ -21,6 +21,12 @@ camp (spec 2 item 9): siblings' family-camp answers for the same option merge
 into one request carrying the larger ask, with `ask_conflict` when they differ.
 An adult-weekend request builds from WW-FA / WW-FA Amount only (spec 9.4): the
 row names no program, and the adult is registered for an adult weekend.
+
+A request's session comes from REGISTRATION (owner ruling 2026-09-27): the
+camper's ENROLLED sessions, or the household's for family camp, resolved by
+financial_aid_session_resolver. The answer's option text only breaks a tie, and
+the one session it names on its own is carried for the planner's
+`session_differs_from_answer` flag.
 """
 
 from __future__ import annotations
@@ -37,7 +43,6 @@ from api.services.financial_aid_intake_types import (
     PROGRAM_FAMILY_CAMP,
     PROGRAM_SUMMER,
     REGISTERED_STATUS_IDS,
-    AliasRow,
     AttendeeRow,
     FaRow,
     Flag,
@@ -49,6 +54,7 @@ from api.services.financial_aid_session_resolver import (
     normalize_option_text,
     resolve_adult_session,
     resolve_session,
+    session_named_by,
 )
 from bunking.financial_aid.rules.schema import YES_NO_ANSWER_FIELDS
 
@@ -156,6 +162,8 @@ class RequestSpec:
     resolution: SessionResolution
     enrolled_session_ids: frozenset[int]
     flags: tuple[Flag, ...]
+    # The one in-program session the option text names on its own; 0 when none or several.
+    named_session_cm_id: int = 0
 
     @property
     def key(self) -> RequestKey:
@@ -181,7 +189,6 @@ def build_request_specs(
     household_cm_id: int,
     rows: Sequence[FaRow],
     sessions: Sequence[SessionRow],
-    aliases: Sequence[AliasRow],
     attendees: Sequence[AttendeeRow],
 ) -> tuple[RequestSpec, ...]:
     def sessions_of(match: Any, statuses: frozenset[int]) -> frozenset[int]:
@@ -200,7 +207,7 @@ def build_request_specs(
                 continue
             filled = True
             ask = _ask(getattr(row, ask_attr))
-            resolution = resolve_session(text, program_key, sessions, aliases, registered)
+            resolution = resolve_session(text, program_key, sessions, enrolled)
             specs.append(
                 RequestSpec(
                     household_cm_id,
@@ -212,6 +219,7 @@ def build_request_specs(
                     resolution,
                     enrolled,
                     tuple(_ask_flags(ask)),
+                    session_named_by(text, program_key, sessions),
                 )
             )
         if row.fc_program.strip():
@@ -220,9 +228,11 @@ def build_request_specs(
             family.setdefault(normalize_option_text(text), []).append(
                 (row.person_cm_id, text, _ask(row.fc_amount_requested))
             )
+        # The request exists once the adult is REGISTERED for an adult weekend (a waitlisted
+        # adult included); its session is set only by an ENROLLED one.
         if not filled and (row.interest_expressed or row.registration_ask > 0):
-            resolution = resolve_adult_session(sessions, registered)
-            if resolution.candidates:
+            if resolve_adult_session(sessions, registered).candidates:
+                resolution = resolve_adult_session(sessions, enrolled)
                 ask = _ask(row.registration_ask)
                 specs.append(
                     RequestSpec(
@@ -237,7 +247,6 @@ def build_request_specs(
                         tuple(_ask_flags(ask)),
                     )
                 )
-    household_registered = sessions_of(lambda a: a.household_cm_id == household_cm_id, REGISTERED_STATUS_IDS)
     household_enrolled = sessions_of(lambda a: a.household_cm_id == household_cm_id, enrolled_only)
     for option_key, entries in sorted(family.items()):
         asks = sorted({ask for _, _, ask in entries if ask > 0})
@@ -246,7 +255,7 @@ def build_request_specs(
         if len(asks) > 1:
             flags.append(Flag("ask_conflict", {"asks": asks, "person_cm_ids": [p for p, _, _ in entries]}))
         text = entries[0][1]
-        resolution = resolve_session(text, PROGRAM_FAMILY_CAMP, sessions, aliases, household_registered)
+        resolution = resolve_session(text, PROGRAM_FAMILY_CAMP, sessions, household_enrolled)
         specs.append(
             RequestSpec(
                 household_cm_id,
@@ -258,6 +267,7 @@ def build_request_specs(
                 resolution,
                 household_enrolled,
                 tuple(flags),
+                session_named_by(text, PROGRAM_FAMILY_CAMP, sessions),
             )
         )
     return tuple(specs)
