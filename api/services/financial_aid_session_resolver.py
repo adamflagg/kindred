@@ -72,6 +72,30 @@ def _decide(method: str, candidates: tuple[int, ...], registered: frozenset[int]
     return SessionResolution(0, RESOLUTION_UNMATCHED, candidates)
 
 
+def _name_tiers(key: str, program_key: str, sessions: Sequence[SessionRow]) -> tuple[tuple[str, set[int]], ...]:
+    names = {
+        s.cm_id: normalize_option_text(s.name) for s in sessions if s.session_type in PROGRAM_SESSION_TYPES[program_key]
+    }
+    return (
+        ("exact", {cm_id for cm_id, name in names.items() if name == key}),
+        ("contains", {cm_id for cm_id, name in names.items() if _contains(name, key)}),
+    )
+
+
+def sessions_named_by(option_text: str, program_key: str, sessions: Sequence[SessionRow]) -> tuple[int, ...]:
+    """The in-scope sessions the option text itself names (exact tier, else contains),
+    aliases aside. More than one means the text alone cannot pick a session, so an alias
+    for it would send every later camper on the option to one of them regardless of
+    registration: the casework service refuses to remember one."""
+    key = normalize_option_text(option_text)
+    if not key:
+        return ()
+    for _, found in _name_tiers(key, program_key, sessions):
+        if found:
+            return tuple(sorted(found))
+    return ()
+
+
 def resolve_session(
     option_text: str,
     program_key: str,
@@ -82,13 +106,10 @@ def resolve_session(
     key = normalize_option_text(option_text)
     if not key:
         return SessionResolution(0, RESOLUTION_UNMATCHED, ())
-    in_scope = [s for s in sessions if s.session_type in PROGRAM_SESSION_TYPES[program_key]]
-    scope_ids = {s.cm_id for s in in_scope}
-    names = {s.cm_id: normalize_option_text(s.name) for s in in_scope}
+    scope_ids = {s.cm_id for s in sessions if s.session_type in PROGRAM_SESSION_TYPES[program_key]}
     tiers = (
         ("alias", {a.session_cm_id for a in aliases if a.program_key == program_key and a.option_key == key}),
-        ("exact", {cm_id for cm_id, name in names.items() if name == key}),
-        ("contains", {cm_id for cm_id, name in names.items() if _contains(name, key)}),
+        *_name_tiers(key, program_key, sessions),
     )
     for method, found in tiers:
         candidates = tuple(sorted(found & scope_ids))

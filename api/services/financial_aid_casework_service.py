@@ -83,7 +83,7 @@ from api.services.financial_aid_payer_shares import (
     split_award,
     validate_shares,
 )
-from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
+from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES, sessions_named_by
 from bunking.financial_aid.change_diff import values_equal
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.rules.schema import AidRules
@@ -524,6 +524,10 @@ class FinancialAidCaseworkService:
         session = next((s for s in sessions if s.cm_id == session_cm_id), None)
         if session is None or session.session_type not in PROGRAM_SESSION_TYPES[request.program_key]:
             raise CaseworkValidationError("that session is not one this program's requests can name")
+        if remember_alias and len(sessions_named_by(request.program_option_text, request.program_key, sessions)) > 1:
+            # One alias wins outright for every later camper on the option, even one
+            # registered in the other session it names: the first-match trap the resolver avoids.
+            raise CaseworkValidationError("this option names several sessions; resolve each camper individually")
         holder = await self._store.find_active_request(
             request.year, request.household_cm_id, request.person_cm_id, session_cm_id
         )

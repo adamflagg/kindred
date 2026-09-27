@@ -15,7 +15,7 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AliasRow
+from api.services.financial_aid_intake_types import AliasRow, AttendeeRow
 from api.services.financial_aid_session_resolver import normalize_option_text
 from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, seeded_store
 
@@ -204,3 +204,41 @@ async def test_resolving_again_with_remember_alias_writes_nothing_and_does_not_r
     assert (out.session_cm_id, out.status) == (1000103, "active")
     assert (store.operations, store.change_log) == ([], [])
     rebuild.assert_not_awaited()
+
+
+async def in_training_store() -> tuple[FakeAidStore, AsyncMock, FinancialAidCaseworkService]:
+    """One option text names both in-training sessions; the first camper is registered in
+    neither, the second in the Specialist one."""
+    store, rebuild = seeded_store(), AsyncMock()
+    store.fa_rows.append(fa_row(1000016, 1000001, summer="In-Training", summer_ask=600.0))
+    store.fa_rows.append(fa_row(1000017, 1000001, summer="In-Training", summer_ask=600.0))
+    store.attendees.append(AttendeeRow(1000017, 1000001, 1000108, 2))
+    await FinancialAidIntakeService(store).build(YEAR)
+    store.operations.clear()
+    store.change_log.clear()
+    return store, rebuild, FinancialAidCaseworkService(store, rebuild=rebuild)
+
+
+@pytest.mark.asyncio
+async def test_an_option_naming_several_sessions_cannot_be_remembered_as_an_alias() -> None:  # Review Focus 2
+    store, rebuild, casework = await in_training_store()
+    request = store.request_for(person=1000016, program="summer")
+    assert request.status == "unmatched_session"
+    with pytest.raises(CaseworkValidationError, match="several sessions"):
+        await casework.resolve_session(request.id, 1000107, "Counselor track.", True, ACTOR)
+    assert (store.operations, store.change_log, store.aliases) == ([], [], [])
+    assert store.requests[request.id].status == "unmatched_session"
+    rebuild.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_option_naming_several_sessions_still_resolves_one_camper_at_a_time() -> None:
+    store, rebuild, casework = await in_training_store()
+    request = store.request_for(person=1000016, program="summer")
+    out = await casework.resolve_session(request.id, 1000107, "Counselor track.", False, ACTOR)
+    assert (out.session_cm_id, out.status, out.session_resolution) == (1000107, "active", "staff")
+    assert store.aliases == []
+    await FinancialAidIntakeService(store).build(YEAR)
+    # The Specialist-registered camper on the same option is still decided by registration.
+    specialist = store.request_for(person=1000017, program="summer")
+    assert (specialist.session_cm_id, specialist.session_resolution) == (1000108, "enrollment")
