@@ -107,12 +107,16 @@ class AdminAuditLogService:
             batch=PAGE_SIZE,
             query_params={"filter": f"action = '{VIEW_AS_STOP}' && ({either})", "sort": "created"},
         )
-        ended: dict[str, str] = {}
+        # Keyed by (session_id, actor_id): a stop from a different actor than the
+        # start must not end it -- one admin cannot end another admin's preview
+        # on screen.
+        ended: dict[tuple[str, str], str] = {}
         for stop in stops:
-            ended.setdefault(stop.session_id, _iso(stop.created))  # the first stop ends the session
+            key = (stop.session_id, getattr(stop, "actor_id", "") or "")
+            ended.setdefault(key, _iso(stop.created))  # the first stop ends the session
         for item in items:
             if item.action == "view_as_start":
-                item.ended = ended.get(item.session_id)
+                item.ended = ended.get((item.session_id, item.actor_id))
 
     async def list_actors(self) -> AuditLogActors:
         rows = await asyncio.to_thread(

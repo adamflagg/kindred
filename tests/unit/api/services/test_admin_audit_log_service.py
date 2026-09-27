@@ -127,6 +127,32 @@ async def test_a_view_as_session_is_one_line_with_its_end() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_stop_from_a_different_actor_does_not_end_the_start() -> None:
+    """One admin must not be able to end another admin's preview on screen: a
+    stop with the same session_id but a different actor_id leaves the start
+    open (matching by session_id alone would let it through)."""
+    start = _row(
+        type="view_as",
+        action="view_as_start",
+        session_id="sess-0003",
+        actor_id="admin-1",
+        detail={"persona": "Registrar"},
+    )
+    stop = _row(
+        type="view_as",
+        action="view_as_stop",
+        session_id="sess-0003",
+        actor_id="admin-2",
+        created=datetime(2026, 9, 25, 16, 34, 0),
+    )
+    collection = FakeCollection([start], stops=[stop])
+    page = await AdminAuditLogService(FakePB(collection)).list_page(
+        types=[], actor=None, q=None, sign_ins=False, page=1, per_page=10
+    )
+    assert page.items[0].ended is None
+
+
+@pytest.mark.asyncio
 async def test_actors_are_distinct_newest_name_first_and_sorted() -> None:
     rows = [
         _row(actor_email="jordan.lee@example.com", actor_name="Jordan Lee"),
