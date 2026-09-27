@@ -62,16 +62,26 @@ async def test_reversed_aid_reads_only_reversed_rows_in_the_two_aid_categories()
 
 @pytest.mark.asyncio
 async def test_off_season_rows_exclude_the_seasons_own_sessions() -> None:
-    pb, calls = _pb()
+    rows: list[object] = [
+        SimpleNamespace(cm_id=c, session_cm_id=s, amount=-1.0) for c, s in ((1, 11), (2, 12), (3, 99))
+    ]
+    pb, calls = _pb(rows)
     repo = FinancialAidRepository(pb)
-    await repo.fetch_off_season_session_rows(2026, {11, 12})
-    flt = str(calls[0]["filter"])
-    assert flt.startswith("year = 2026 && is_reversed = false && session_cm_id > 0")
-    assert "session_cm_id != 11" in flt
-    assert "session_cm_id != 12" in flt
+    got = await repo.fetch_off_season_session_rows(2026, {11, 12})
+    assert [int(r.cm_id) for r in got] == [3]
+    assert str(calls[0]["filter"]) == "year = 2026 && is_reversed = false && session_cm_id > 0"
     calls.clear()
     assert await repo.fetch_off_season_session_rows(2026, set()) == []
     assert calls == []  # a season with no synced sessions reports nothing (SP1's rule)
+
+
+@pytest.mark.asyncio
+async def test_off_season_filter_stays_bounded_however_many_sessions_the_season_holds() -> None:
+    # One `!=` clause per session would cross PocketBase's 3500-character filter
+    # limit at ~120 sessions and turn /data-quality into a 500.
+    pb, calls = _pb()
+    await FinancialAidRepository(pb).fetch_off_season_session_rows(2026, set(range(1_000_000, 1_000_300)))
+    assert len(str(calls[0]["filter"])) < financial_aid_repository.AID_LIKE_FILTER_BUDGET
 
 
 @pytest.mark.asyncio

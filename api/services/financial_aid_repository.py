@@ -229,18 +229,23 @@ class FinancialAidRepository:
 
     async def fetch_off_season_session_rows(self, year: int, season_session_ids: Collection[int]) -> list[Any]:
         """Live rows of the season whose session the season's camp_sessions do not
-        hold. Nothing for a season with no synced sessions (SP1's rule)."""
+        hold. Nothing for a season with no synced sessions (SP1's rule).
+
+        The season's sessions are excluded here, not in the filter: one `!=`
+        clause per session would cross PocketBase's 3500-character filter limit
+        (see AID_LIKE_FILTER_BUDGET) once a season holds ~120 sessions."""
         if not season_session_ids:
             return []
-        excluded = " && ".join(f"session_cm_id != {int(i)}" for i in sorted(season_session_ids))
-        return await self._page(
+        season = {int(i) for i in season_session_ids}
+        rows = await self._page(
             FINANCIAL_TRANSACTIONS,
             {
-                "filter": f"year = {int(year)} && is_reversed = false && session_cm_id > 0 && {excluded}",
+                "filter": f"year = {int(year)} && is_reversed = false && session_cm_id > 0",
                 "fields": "cm_id,session_cm_id,amount",
                 "sort": STABLE_SORT,
             },
         )
+        return [r for r in rows if int(r.session_cm_id) not in season]
 
     async def _fetch_by_match_terms(self, year: int, outside: str, terms: Sequence[str]) -> list[Any]:
         return await self._page(

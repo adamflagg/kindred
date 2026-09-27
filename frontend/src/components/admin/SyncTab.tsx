@@ -136,7 +136,7 @@ export function SyncTab() {
 
   // One derived "is this card's own type-specific mutation pending" lookup, keyed by
   // syncType.id, instead of a hand-maintained list of `.isPending` references in the disabled
-  // condition below. None of these ten hooks had ever been wired into that condition
+  // condition below. None of the ten hooks here at the time had been wired into that condition
   // (#1881), so a double-click on one of their cards could submit a second request before
   // status polling flipped that card to "running". Keying by id means a newly-added per-type
   // mutation hook just needs one entry here, not a new clause at every disabled= call site.
