@@ -145,4 +145,9 @@ func Register(app core.App, cfg Config) {
 	bindAppendOnlyGuards(app)
 	bindRecordRequestHooks(app)
 	bindSchemaAndSettingsHooks(app)
+	bindSignInHooks(app)
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		registerViewAsRoutes(se)
+		return se.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+	})
 }
