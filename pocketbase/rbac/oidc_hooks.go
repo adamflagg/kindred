@@ -127,7 +127,11 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 			return err
 		}
 		if changed && e.Record != nil {
-			if stored, err := e.App.FindRecordById("users", e.Record.Id); err == nil && stored.GetBool("is_admin") == isAdmin {
+			switch stored, err := e.App.FindRecordById("users", e.Record.Id); {
+			case err != nil:
+				slog.Error("admin audit log: could not reload the user after the admin group sync",
+					"user_id", e.Record.Id, "error", err)
+			case stored.GetBool("is_admin") == isAdmin:
 				audit.WriteAdminGroupChange(e.App, e.RequestEvent, stored, isAdmin)
 			}
 		}

@@ -54,7 +54,7 @@ const ViewAsEmailDomain = "view-as.invalid"
 // UnidentifiedPreviewer is the actor name recorded when a view-as stand-in
 // reaches a hook without the real admin in the request store. The middleware
 // always sets it, so this is a tripwire, not a path (rbac's
-// TestViewAsMiddlewareRecordsTheRealAdmin pins that).
+// TestViewAsWritesAreRecordedAgainstTheRealAdmin pins that).
 const UnidentifiedPreviewer = "an admin previewing (unidentified)"
 
 // Entry types, as the screen's filter buttons name them.
@@ -84,6 +84,7 @@ const (
 	ActionSettingsChange = "settings_change"
 	ActionAdminGranted   = "admin_granted"
 	ActionAdminRemoved   = "admin_removed"
+	ActionImpersonate    = "impersonate"
 )
 
 // Actor kinds.

@@ -122,3 +122,24 @@ func TestSchemaAndSettingsChangesArePBAdmin(t *testing.T) {
 		s.Test(t)
 	}
 }
+
+// TestNoOpCollectionUpdateWritesNoRow: a collection PATCH that changes nothing
+// is not an event, matching the record and settings paths (auditRecordRequest,
+// auditSettingsUpdate).
+func TestNoOpCollectionUpdateWritesNoRow(t *testing.T) {
+	headers := map[string]string{}
+	factory := func(t testing.TB) *tests.TestApp {
+		app := newApp(t)
+		authAs(t, headers, createSuperuser(t, app, ownerEmail))
+		return app
+	}
+	s := tests.ApiScenario{
+		Name: "a collection update that changes nothing writes no row", Method: http.MethodPatch,
+		URL:            "/api/collections/lodging_units",
+		Body:           strings.NewReader(`{"name":"lodging_units"}`),
+		TestAppFactory: factory, Headers: headers, ExpectedStatus: 200,
+		ExpectedContent: []string{`"name":"lodging_units"`},
+		AfterTestFunc:   func(t testing.TB, app *tests.TestApp, _ *http.Response) { expectNoRows(t, app) },
+	}
+	s.Test(t)
+}

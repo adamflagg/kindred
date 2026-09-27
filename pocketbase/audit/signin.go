@@ -2,6 +2,7 @@ package audit
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/hook"
@@ -24,7 +25,14 @@ func bindSignInHooks(app core.App) {
 				return err //nolint:wrapcheck // the auth flow's own error
 			}
 			cfg, registered := configFor(e.App)
-			if !registered || !slices.Contains(signInMethods, e.AuthMethod) || cfg.isService(e.Record) {
+			if !registered {
+				return nil
+			}
+			if e.AuthMethod == "" {
+				logImpersonation(e, cfg)
+				return nil
+			}
+			if !slices.Contains(signInMethods, e.AuthMethod) || cfg.isService(e.Record) {
 				return nil
 			}
 			row := Row{
@@ -61,4 +69,27 @@ func bindSignInHooks(app core.App) {
 			return nil
 		},
 	})
+}
+
+// logImpersonation records a superuser impersonating another account through
+// POST /api/collections/{collection}/impersonate/{id} (apis/record_auth_impersonate.go).
+// That route fires OnRecordAuthRequest with an empty AuthMethod, same as a
+// token refresh, so it is told apart by the path: a token refresh never
+// contains "/impersonate/". e.Auth is the superuser making the request (their
+// own token authenticated the call); e.Record is the account impersonated.
+// Fails open, like every sign-in path.
+func logImpersonation(e *core.RecordAuthRequestEvent, cfg Config) {
+	if !strings.Contains(e.Request.URL.Path, "/impersonate/") {
+		return
+	}
+	if e.Auth == nil || !e.Auth.IsSuperuser() || cfg.isService(e.Auth) {
+		return
+	}
+	row := Row{
+		Type: TypePBAdmin, Action: ActionImpersonate, Collection: e.Record.Collection().Name,
+		RecordID: e.Record.Id, IP: e.RealIP(),
+	}
+	row.TargetLabel, _ = targetLabel(e.App, e.Record)
+	actorFromRecord(e.Auth).apply(&row)
+	writeFailOpen(e.App, &row)
 }

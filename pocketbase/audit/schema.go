@@ -102,6 +102,9 @@ func auditCollectionRequest(e *core.CollectionRequestEvent, operation string) er
 		}
 		row.Detail["operation"] = operation
 		row.Before, row.After, row.Fields = changes("", before, after)
+		if operation == ActionUpdate && len(row.Fields) == 0 {
+			return nil // a save that changed nothing is not an event
+		}
 		actor.apply(&row)
 		return writeFailClosed(txApp, &row)
 	})

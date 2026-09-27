@@ -71,6 +71,49 @@ func TestSuccessfulSignInsAreLoggedExceptTheService(t *testing.T) {
 	}
 }
 
+// TestImpersonationIsLoggedExceptTheService: a superuser impersonating another
+// account (POST /api/collections/{collection}/impersonate/{id}) fires
+// OnRecordAuthRequest with an empty AuthMethod, same as a token refresh
+// (apis/record_auth_impersonate.go). Only the impersonate path is logged; the
+// service account's impersonation, and a plain token refresh, stay silent.
+func TestImpersonationIsLoggedExceptTheService(t *testing.T) {
+	headers := map[string]string{}
+	var people map[string]*core.Record
+	factory := func(t testing.TB) *tests.TestApp {
+		clear(headers)
+		app := newApp(t)
+		people = seed(t, app)
+		return app
+	}
+	as := func(who string) func(testing.TB, *tests.TestApp, *core.ServeEvent) {
+		return func(t testing.TB, _ *tests.TestApp, _ *core.ServeEvent) { authAs(t, headers, people[who]) }
+	}
+	scenarios := []tests.ApiScenario{
+		{
+			Name: "a superuser impersonating a user writes one pb_admin row", Method: http.MethodPost,
+			URL: "/api/collections/users/impersonate/" + samID, Body: strings.NewReader(`{}`),
+			BeforeTestFunc: as("owner"), ExpectedStatus: 200, ExpectedContent: []string{`"token"`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				row := onlyRow(t, app, audit.TypePBAdmin)
+				expect(t, row, map[string]string{
+					"action": "impersonate", "actor_kind": "superuser", "actor_email": ownerEmail,
+					"collection": "users", "record_id": samID, "target_label": "Sam Patel",
+				})
+			},
+		},
+		{
+			Name: "the service impersonating writes nothing", Method: http.MethodPost,
+			URL: "/api/collections/users/impersonate/" + samID, Body: strings.NewReader(`{}`),
+			BeforeTestFunc: as("service"), ExpectedStatus: 200, ExpectedContent: []string{`"token"`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) { expectNoRows(t, app) },
+		},
+	}
+	for _, s := range scenarios {
+		s.TestAppFactory, s.Headers = factory, headers
+		s.Test(t)
+	}
+}
+
 func TestViewAsRoutesWriteStartAndStop(t *testing.T) {
 	headers := map[string]string{}
 	var people map[string]*core.Record

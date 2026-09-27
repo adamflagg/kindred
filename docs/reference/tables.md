@@ -760,7 +760,7 @@ import through the API. Only a migration can change the collection.
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | select (required) | `access`, `roles`, `view_as`, `settings`, `pb_admin`, `sign_in`. `access` includes giving or taking a person's role (`user_roles`); `roles` is role definitions only |
-| `action` | text (required) | `create`, `update`, `delete`, `sign_in`, `view_as_start`, `view_as_stop`, `sync_run`, `roll_forward`, `schema_change`, `settings_change`, `admin_granted`, `admin_removed` |
+| `action` | text (required) | `create`, `update`, `delete`, `sign_in`, `view_as_start`, `view_as_stop`, `sync_run`, `roll_forward`, `schema_change`, `settings_change`, `admin_granted`, `admin_removed`, `impersonate` |
 | `actor_kind` | select (required) | `user`, `superuser`, `system` (the Pocket ID admin-group sync) |
 | `actor_id`, `actor_email`, `actor_name` | text | The real person, copied at write time (under "view as", the admin, never the stand-in) |
 | `collection`, `record_id` | text | What was written; empty for sign-ins and actions |
