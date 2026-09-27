@@ -46,6 +46,17 @@ async def test_the_list_summarises_each_family_without_amounts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_income_override_marks_the_income_conflict_decided_as_the_calculator_does() -> None:
+    # unresolved_income_conflict (financial_aid_calc_inputs) lifts the hold once an income
+    # override is set; the detail view must not still call the same conflict undecided.
+    _, casework = await casework_with_conflict()
+    await casework.add_correction(YEAR, 1000001, "income_override", "staff_entered:90000", "Phoned.", ACTOR)
+    detail = await casework.application_detail(YEAR, 1000001)
+    assert all(r.issues == [] for r in detail.requests)
+    assert next(f for f in detail.flags if f.code == "income_conflict").detail["resolved_by_correction"] is True
+
+
+@pytest.mark.asyncio
 async def test_detail_shows_synced_and_effective_values_and_marks_a_decided_conflict() -> None:
     _, casework = await casework_with_conflict()
     before = await casework.application_detail(YEAR, 1000001)

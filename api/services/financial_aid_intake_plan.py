@@ -331,6 +331,52 @@ def _heal_stranded_duplicates(
         target["flags"] = [*kept, revived.to_json()]
 
 
+def _held_slot(household_cm_id: int, person_cm_id: int, session_cm_id: int, status: str) -> _Slot | None:
+    """The slot a row occupies in PocketBase's partial one-active-request indexes, if any."""
+    if status != STATUS_ACTIVE or session_cm_id <= 0:
+        return None
+    return _slot(household_cm_id, person_cm_id, session_cm_id)
+
+
+def _write_order(
+    requests: Sequence[tuple[RequestRecord, dict[str, Any]]],
+) -> list[tuple[RequestRecord, dict[str, Any]]]:
+    """The existing requests in an order PocketBase accepts. It checks the one-active-request
+    indexes on every statement, and a session now moves with registration, so a request may
+    claim a slot only once the row leaving it is written: a withdrawal, a move elsewhere or a
+    step down to pending. Rows that claim nothing new keep their planned order and go first;
+    each claimant follows once its slot is free. A cycle (two requests trading sessions) has
+    no such order and is written as planned, which PocketBase refuses."""
+
+    def before(record: RequestRecord) -> _Slot | None:
+        return _held_slot(record.household_cm_id, record.person_cm_id, record.session_cm_id, record.status)
+
+    def after(record: RequestRecord, target: Mapping[str, Any]) -> _Slot | None:
+        # A withdrawal's target carries only its status.
+        session = int(target.get("session_cm_id", record.session_cm_id))
+        return _held_slot(record.household_cm_id, record.person_cm_id, session, str(target["status"]))
+
+    held = {slot: record.id for record, _ in requests if (slot := before(record)) is not None}
+    ordered: list[tuple[RequestRecord, dict[str, Any]]] = []
+    waiting = list(requests)
+    while waiting:
+        ready = [
+            (record, target)
+            for record, target in waiting
+            if (claim := after(record, target)) is None or held.get(claim, record.id) == record.id
+        ] or waiting
+        for record, target in ready:
+            old, new = before(record), after(record, target)
+            if old is not None and held.get(old) == record.id:
+                del held[old]
+            if new is not None:
+                held[new] = record.id
+        ordered.extend(ready)
+        done = {record.id for record, _ in ready}
+        waiting = [item for item in waiting if item[0].id not in done]
+    return ordered
+
+
 def plan_intake(
     households: Sequence[HouseholdIntake],
     existing_applications: Sequence[ApplicationRecord],
@@ -366,7 +412,7 @@ def plan_intake(
         ref = f"new:{len(new_targets)}"
         new_targets[ref] = _request_target(None, specs[key], holders, billed, ref, rules_check)
     _heal_stranded_duplicates(targets, new_targets, holders)
-    for record, target in targets:
+    for record, target in _write_order(targets):
         changes = _changed(request_fields(record), target)
         if changes:
             plan.request_updates.append((record.id, changes))

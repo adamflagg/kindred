@@ -414,6 +414,30 @@ def test_two_requests_swapping_sessions_both_stay_active() -> None:
     ]
 
 
+def test_a_move_onto_a_slot_is_written_after_the_request_leaving_it() -> None:
+    # One camper, filed for by two households: req...1 moves 101 -> 102 in the run that req...2
+    # moves 102 -> 103. PocketBase checks the one-active-request index on every statement, so
+    # req...2's move must reach it first although req...1 sorts first.
+    enrolled = frozenset({1000101, 1000102, 1000103})
+    first = spec(session=1000102, enrolled=enrolled)
+    second = spec(household=1000002, session=1000103, enrolled=enrolled)
+    existing = [
+        record(spec(), "req000000000001"),
+        record(spec(household=1000002, session=1000102), "req000000000002"),
+    ]
+    plan = plan_intake(
+        [household(first), household(second, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001", "req000000000002"}),
+    )
+    assert plan.request_updates == [
+        ("req000000000002", {"session_cm_id": 1000103}),
+        ("req000000000001", {"session_cm_id": 1000102}),
+    ]
+
+
 _DIFFERS = {"code": "session_differs_from_answer", "detail": {"named_session_cm_id": 1000101}}
 
 

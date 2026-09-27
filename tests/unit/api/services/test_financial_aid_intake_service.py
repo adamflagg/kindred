@@ -313,6 +313,42 @@ async def test_a_pending_duplicate_takes_the_slot_when_its_holder_is_withdrawn()
     assert [s.household_cm_id for s in store.payer_shares.values() if s.request_id == claimant.id] == [1000002]
 
 
+@pytest.mark.asyncio
+async def test_a_request_moving_onto_a_withdrawn_requests_session_commits_whichever_id_sorts_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Record ids are random; hand them out in DESCENDING order so the mover sorts before the
+    # request it replaces: PocketBase checks the one-active-request index on every statement,
+    # so the withdrawal must reach it first regardless of id order.
+    ids = (f"r{n:014d}" for n in range(999, 0, -1))
+    monkeypatch.setattr("api.services.financial_aid_intake_service.new_record_id", lambda: next(ids))
+    store = seeded_store()
+    # Two households file for one camper; the camper is enrolled in two sessions and each
+    # household's option text picks one.
+    store.fa_rows.append(fa_row(1000011, 1000002, summer="Taste of Camp", summer_ask=900.0, total_gross_income=60000.0))
+    store.attendees.append(AttendeeRow(1000011, 1000001, 1000104, 2))
+    service = FinancialAidIntakeService(store)
+    await service.build(YEAR)
+    first = store.request_for(person=1000011, household=1000001, program="summer")
+    second = store.request_for(person=1000011, household=1000002, program="summer")
+    assert (first.session_cm_id, first.status, second.session_cm_id, second.status) == (
+        1000101,
+        "active",
+        1000104,
+        "active",
+    )
+    assert second.id < first.id
+    # The first household drops its answer and the camper cancels Taste of Camp 1: the second
+    # request re-resolves onto Session 2 in the same run that withdraws the first.
+    store.fa_rows[0] = fa_row(1000011, 1000001, total_gross_income=85000.0)
+    store.attendees[-1] = AttendeeRow(1000011, 1000001, 1000104, 32)
+
+    await service.build(YEAR)
+
+    assert store.requests[first.id].status == "withdrawn"
+    assert (store.requests[second.id].session_cm_id, store.requests[second.id].status) == (1000101, "active")
+
+
 # PocketBase refuses a value outside a field's limits (pocketbase/pb_migrations/1500000201),
 # and one refused value would roll back the whole season's batch. Intake keeps every value
 # it writes inside them, and shows the family's figure as the data-quality state it is.

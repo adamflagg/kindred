@@ -154,14 +154,15 @@ def plan_writes(
     new request, all in one operation.
 
     Updates go before creates because PocketBase checks the one-active-request-per-slot
-    index on every statement: an existing request never changes session once resolved, so
-    the only way a run frees a slot is by withdrawing its active holder, and that must land
-    before a new request claims it (a family correcting its answer to the session staff
-    already resolved). Within the updates, the planner lists active rows first, so a
-    withdrawn holder is written before the pending duplicate it promotes or the stranded
-    duplicate it revives. One update may name a request created in this run: a stranded
-    duplicate re-pointed to its survivor's reworded replacement. `duplicate_of` is a text
-    field, not a relation, so the order does not matter there; the new id is swapped in.
+    index on every statement: a run frees a slot by withdrawing its active holder, moving it
+    with registration, or stepping it down, and that must land before a new request claims it
+    (a family correcting its answer to the session staff already resolved). Within the
+    updates, the planner (`_write_order`) writes each row leaving a slot before the one that
+    claims it: a withdrawn or moved holder before the request moving in, the pending
+    duplicate it promotes or the stranded duplicate it revives. One update may name a
+    request created in this run: a stranded duplicate re-pointed to its survivor's reworded
+    replacement. `duplicate_of` is a text field, not a relation, so the order does not
+    matter there; the new id is swapped in.
 
     An update logs the record's fields before it as `before`; the helper keeps only what
     changed. A status move is logged as action "status" (spec 12.1 as-of)."""

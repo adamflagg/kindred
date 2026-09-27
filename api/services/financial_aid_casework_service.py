@@ -52,6 +52,7 @@ from api.services.financial_aid_calc_inputs import (
 )
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
+    INCOME_OVERRIDE_FIELD,
     REQUEST_CORRECTABLE,
     REVERT,
     CorrectionError,
@@ -186,8 +187,11 @@ def _application_flags(flags: Sequence[Mapping[str, Any]], answers: Mapping[str,
         detail = dict(flag.get("detail", {}))
         if code in _CONFLICT_CODES:
             fields = dict(detail.get("fields", {}))
-            detail["resolved_by_correction"] = bool(fields) and all(
-                answers[name].corrected for name in fields if name in answers
+            # An income override settles an income conflict, as unresolved_income_conflict
+            # (financial_aid_calc_inputs) already rules for the hold.
+            overridden = code == "income_conflict" and bool(answers[INCOME_OVERRIDE_FIELD].effective)
+            detail["resolved_by_correction"] = overridden or (
+                bool(fields) and all(answers[name].corrected for name in fields if name in answers)
             )
         out.append(FlagOut(code=code, detail=detail))
     return out
