@@ -14,6 +14,22 @@ Go service: SQLite DB, auth, CampMinder sync. Entry: `main.go`. Module: `github.
 
 **Admin "view as" previews act as a stand-in user.** When a real admin's request carries `X-Kindred-View-As`, `rbac/view_as.go` points `e.Auth` at a `users` row standing in for that permission set (email `<id>@view-as.invalid`, `is_admin` false). A clone would not work: PocketBase resolves custom `@request.auth.*` fields in rules by joining `users` on `e.Auth.Id`. So during a preview, rules and writes see the stand-in's id, not the admin's. Never edit a stand-in or assign it roles — delete the row and the next preview recreates it.
 
+## Admin audit log — every logged write runs in a transaction
+
+`pocketbase/audit` binds record, collection and settings **request** hooks at priority -1000, so
+it runs first and wraps the rest of the chain (rbac and lodging guards, the save itself) in
+`e.App.RunInTransaction`, with `e.App` pointed at the transaction. Two consequences for any hook
+you add:
+
+- **Inside a request or model hook, write through `e.App`, never a captured `app`.** A captured
+  app's write waits on the connection the transaction holds and deadlocks. `OnRecordAfter*Success`
+  hooks are safe: PocketBase defers them until the commit and hands them the parent app.
+- **An error from your hook rolls back the change AND its audit row.** That is the point: a
+  logged change and its row commit together, and a failed audit write refuses the change.
+
+Only Kindred's service superuser (`POCKETBASE_ADMIN_EMAIL`) and bunking/business collections
+written by non-superusers skip the transaction. Package doc: `pocketbase/audit/audit.go`.
+
 ## Migrations — read before writing any
 
 **MANDATORY:** `docs/reference/pocketbase-migrations.md`. PocketBase v0.23 changed field property syntax; the old `options: {}` wrapper is **silently ignored** — fields fall back to PB defaults (text→5000 chars, json→1 MB) instead of your declared values, and over-cap writes are rejected (not truncated).

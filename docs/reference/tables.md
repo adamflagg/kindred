@@ -34,6 +34,7 @@ Kindred uses PocketBase as its database layer. All collections follow these patt
 | `bunk_plans` | Year-Scoped | CampMinder | Bunk-session configurations |
 | `staff` | Year-Scoped | CampMinder | Staff employment records |
 | `financial_transactions` | Year-Scoped | CampMinder | Transaction details |
+| `admin_audit_log` | System | Go hooks (`pocketbase/audit`) | Who changed access, roles, Manage-menu settings or anything behind the app, and when. Append-only, superuser-only; FastAPI reads it for admins |
 | `aid_change_log` | Financial Aid | Manual (FastAPI) | History of staff edits made through Kindred's financial-aid services: who, when, before, after, why. `record_change` only ever creates rows; no API rule allows update or delete |
 | `original_bunk_requests` | Bunking | CampMinder CSV | Raw request data from exports |
 | `bunk_requests` | Bunking | Computed | Parsed and resolved requests |
@@ -746,6 +747,30 @@ PocketBase user authentication collection (`_pb_users_auth_`).
 Modified by migration to allow authenticated users to list all users (for admin panel).
 
 **Note**: OAuth2 configuration is handled by the bootstrap script, not migrations.
+
+### admin_audit_log
+
+The admin audit log (Manage > Audit Log): access, roles, view-as sessions, Manage-menu settings,
+successful sign-ins, and anything a superuser other than Kindred's service does. Written only by
+`pocketbase/audit`, in the same transaction as the change it records; never through the API. All
+five rules `null`. **Append-only in fact, not only by rule**: Go hooks refuse every API create,
+update and delete, every Go save or delete of an existing row, a truncate, and any schema change or
+import through the API. Only a migration can change the collection.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | select (required) | `access`, `roles`, `view_as`, `settings`, `pb_admin`, `sign_in`. `access` includes giving or taking a person's role (`user_roles`); `roles` is role definitions only |
+| `action` | text (required) | `create`, `update`, `delete`, `sign_in`, `view_as_start`, `view_as_stop`, `sync_run`, `roll_forward`, `schema_change`, `settings_change`, `admin_granted`, `admin_removed` |
+| `actor_kind` | select (required) | `user`, `superuser`, `system` (the Pocket ID admin-group sync) |
+| `actor_id`, `actor_email`, `actor_name` | text | The real person, copied at write time (under "view as", the admin, never the stand-in) |
+| `collection`, `record_id` | text | What was written; empty for sign-ins and actions |
+| `target_label` | text | Human label: a person, a role, "Cabin 14", a config key |
+| `before`, `after` | json | Changed fields only; secrets redacted; each capped at 20 KB |
+| `fields` | text | Changed field names, space-joined, for search |
+| `session_id` | text | Pairs a view-as start with its stop |
+| `detail` | json | Action specifics (sync service and year, roll-forward counts, persona) |
+| `ip` | text | `RealIP()`: Caddy's `X-Real-IP` (1500000207) |
+| `created` | autodate | When |
 
 ### debug_parse_results
 

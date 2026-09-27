@@ -72,8 +72,9 @@ AI_MODEL=gpt-4.1-mini
 JOTFORM_API_KEY=your_jotform_api_key_here
 # JOTFORM_API_BASE=https://api.jotform.com  # only for an enterprise account
 
-# PocketBase Admin (first-run setup)
-POCKETBASE_ADMIN_EMAIL=admin@example.com
+# PocketBase Admin (first-run setup): Kindred's SERVICE superuser, see
+# "Service superuser and the admin audit log" below
+POCKETBASE_ADMIN_EMAIL=kindred-service@kindred.invalid
 POCKETBASE_ADMIN_PASSWORD=secure_password_here
 
 # OIDC (OAuth2 auto-discovery) - optional
@@ -89,6 +90,42 @@ DOMAIN_NAME=yourdomain.com
 SUB_BUNKING=bunking
 TZ=America/Los_Angeles
 ```
+
+### Service superuser and the admin audit log
+
+`POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` name **Kindred's service superuser**: the
+account FastAPI, the sync and `kindred-init` use. The admin audit log (Manage > Audit Log) never
+records that account and records everything any other superuser does, so it must not be a
+person's account. People sign in to the PocketBase admin (`/_/`) with their own superuser.
+
+- `docker/init-entrypoint.sh` runs `pocketbase superuser upsert` for the env account on every
+  deploy, so changing the two variables and redeploying creates the new service account. It
+  touches no other superuser.
+- The pocketbase container receives `POCKETBASE_ADMIN_EMAIL` only (never the password), to tell the
+  service apart. If it is blank, nothing is treated as the service, every superuser action is
+  logged, and PocketBase says so at startup.
+- On a fresh database, init creates the service superuser; the owner creates their own personal
+  superuser once, either in the admin UI or with
+  `docker exec kindred-pocketbase /usr/local/bin/pocketbase superuser upsert <email> <password>`.
+  One-time-code MFA can be turned on for it in the admin UI.
+
+**Before the audit log goes live** (one-off, owner):
+
+1. Choose a service email and a long random password — e.g. `kindred-service@kindred.invalid`
+   (needs no mailbox; the view-as stand-ins already use `.invalid`).
+2. Set `POCKETBASE_ADMIN_EMAIL` and `POCKETBASE_ADMIN_PASSWORD` to them in the production stack's
+   `.env` (and in the vault, if kept there), then redeploy.
+3. Done — `docker/init-entrypoint.sh` runs `pocketbase superuser upsert` for the env account on
+   every deploy, so the service superuser is created automatically. It touches no other superuser,
+   so the owner's own named account is kept.
+
+### Verify the real client IP after deploy
+
+Sign in to Kindred, open Manage > Audit Log, turn on the Sign-ins chip, and hover the time on your
+own sign-in row: the IP must be your external address, not a private/Docker address (`172.x`,
+`10.x`, `192.168.x`). If it is private, `X-Real-IP` is not reaching PocketBase — check both
+Caddyfiles' `header_up X-Real-IP {client_ip}` on the `handle @pocketbase` block, and that migration
+1500000207 applied (PocketBase admin > Settings > trusted proxy headers shows `X-Real-IP`).
 
 ### 2. Configuration Files
 
