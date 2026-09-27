@@ -99,8 +99,8 @@ records that account and records everything any other superuser does, so it must
 person's account. People sign in to the PocketBase admin (`/_/`) with their own superuser.
 
 - `docker/init-entrypoint.sh` runs `pocketbase superuser upsert` for the env account on every
-  deploy, so changing the two variables and redeploying creates the new service account. It
-  touches no other superuser.
+  deploy, so changing the two variables and redeploying creates the new service account (step 3
+  below says what that command does and does not touch).
 - The pocketbase container receives `POCKETBASE_ADMIN_EMAIL` only (never the password), to tell the
   service apart. If it is blank, nothing is treated as the service, every superuser action is
   logged, and PocketBase says so at startup.
