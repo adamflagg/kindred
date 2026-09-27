@@ -11,6 +11,7 @@ export const Collections = {
   Mfas: '_mfas',
   Otps: '_otps',
   Superusers: '_superusers',
+  AdminAuditLog: 'admin_audit_log',
   AidChangeLog: 'aid_change_log',
   AidRules: 'aid_rules',
   AttendeeStatusHistory: 'attendee_status_history',
@@ -167,6 +168,44 @@ export type SuperusersRecord = {
   tokenKey: string
   updated: IsoAutoDateString
   verified?: boolean
+}
+
+export const AdminAuditLogTypeOptions = {
+  access: 'access',
+  roles: 'roles',
+  view_as: 'view_as',
+  settings: 'settings',
+  pb_admin: 'pb_admin',
+  sign_in: 'sign_in',
+} as const
+export type AdminAuditLogTypeOptions =
+  (typeof AdminAuditLogTypeOptions)[keyof typeof AdminAuditLogTypeOptions]
+
+export const AdminAuditLogActorKindOptions = {
+  user: 'user',
+  superuser: 'superuser',
+  system: 'system',
+} as const
+export type AdminAuditLogActorKindOptions =
+  (typeof AdminAuditLogActorKindOptions)[keyof typeof AdminAuditLogActorKindOptions]
+export type AdminAuditLogRecord<Tafter = unknown, Tbefore = unknown, Tdetail = unknown> = {
+  action: string
+  actor_email?: string
+  actor_id?: string
+  actor_kind: AdminAuditLogActorKindOptions
+  actor_name?: string
+  after?: null | Tafter
+  before?: null | Tbefore
+  collection?: string
+  created: IsoAutoDateString
+  detail?: null | Tdetail
+  fields?: string
+  id: string
+  ip?: string
+  record_id?: string
+  session_id?: string
+  target_label?: string
+  type: AdminAuditLogTypeOptions
 }
 
 export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
@@ -1947,6 +1986,12 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AdminAuditLogResponse<
+  Tafter = unknown,
+  Tbefore = unknown,
+  Tdetail = unknown,
+  Texpand = unknown,
+> = Required<AdminAuditLogRecord<Tafter, Tbefore, Tdetail>> & BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
   AidChangeLogRecord<Tafter, Tbefore>
 > &
@@ -2178,6 +2223,7 @@ export type CollectionRecords = {
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  admin_audit_log: AdminAuditLogRecord
   aid_change_log: AidChangeLogRecord
   aid_rules: AidRulesRecord
   attendee_status_history: AttendeeStatusHistoryRecord
@@ -2263,6 +2309,7 @@ export type CollectionResponses = {
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  admin_audit_log: AdminAuditLogResponse
   aid_change_log: AidChangeLogResponse
   aid_rules: AidRulesResponse
   attendee_status_history: AttendeeStatusHistoryResponse
