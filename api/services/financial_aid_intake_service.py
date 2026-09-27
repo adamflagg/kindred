@@ -136,10 +136,19 @@ _DEFAULT_SHARE_REASON = "intake default: one share of 100% for the application's
 def plan_writes(
     year: int, plan: IntakePlan, applications: Sequence[ApplicationRecord], requests: Sequence[RequestRecord]
 ) -> list[AidWrite]:
-    """The plan as sub-project 4a writes, in dependency order: applications, requests,
-    then default payer shares. New records get their ids here, so a request names its new
-    application, a pending duplicate its new holder and a share its new request, all in one
-    operation. An update logs the record's fields before it as `before`; the helper keeps
+    """The plan as sub-project 4a writes, in dependency order: applications, request
+    updates, request creates, then default payer shares. New records get their ids here, so
+    a request names its new application, a pending duplicate its new holder and a share its
+    new request, all in one operation.
+
+    Updates go before creates because PocketBase checks the one-active-request-per-slot
+    index on every statement: an existing request never changes session once resolved, so
+    the only way a run frees a slot is by withdrawing its active holder, and that must land
+    before a new request claims it (a family correcting its answer to the session staff
+    already resolved). No update names a request created in this run: the planner settles
+    existing rows before it plans any create, so an update's `duplicate_of` is always an
+    existing id. Within the updates, the planner lists active rows first, so a withdrawn
+    holder is written before the pending duplicate it promotes. An update logs the record's fields before it as `before`; the helper keeps
     only what changed. A status move is logged as action "status" (spec 12.1 as-of)."""
     application_ids = {a.household_cm_id: a.id for a in applications}
     applications_by_id = {a.id: a for a in applications}
@@ -170,17 +179,6 @@ def plan_writes(
                 log_action="status" if record_id in status_moves else None,
             )
         )
-    refs = {create.ref: new_record_id() for create in plan.request_creates}
-    for create in plan.request_creates:
-        request_id = refs[create.ref]
-        household_of[request_id] = create.household_cm_id
-        data = {
-            **create.payload,
-            "duplicate_of": refs.get(create.duplicate_of_ref, create.duplicate_of_ref),
-            "year": year,
-            "application": application_ids[create.household_cm_id],
-        }
-        writes.append(AidWrite(collection=AID_REQUESTS, action="create", year=year, record_id=request_id, data=data))
     for record_id, changes in plan.request_updates:
         writes.append(
             AidWrite(
@@ -193,6 +191,17 @@ def plan_writes(
                 log_action="status" if record_id in status_moves else None,
             )
         )
+    refs = {create.ref: new_record_id() for create in plan.request_creates}
+    for create in plan.request_creates:
+        request_id = refs[create.ref]
+        household_of[request_id] = create.household_cm_id
+        data = {
+            **create.payload,
+            "duplicate_of": refs.get(create.duplicate_of_ref, create.duplicate_of_ref),
+            "year": year,
+            "application": application_ids[create.household_cm_id],
+        }
+        writes.append(AidWrite(collection=AID_REQUESTS, action="create", year=year, record_id=request_id, data=data))
     for ref in plan.share_creates:
         request_id = refs.get(ref, ref)
         household_cm_id = household_of[request_id]

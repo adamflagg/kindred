@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from api.services.financial_aid_casework_service import FinancialAidCaseworkService
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from api.services.financial_aid_intake_types import AliasRow, AttendeeRow, BillingLine, CorrectionRecord
 from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
@@ -261,3 +262,48 @@ async def test_a_new_request_colliding_with_another_new_one_gets_the_real_holder
     pending = store.request_for(household=1000001, program="family_camp", status="duplicate_pending")
     assert pending.duplicate_of == holder.id
     assert report.duplicates_pending == 1
+
+
+@pytest.mark.asyncio
+async def test_a_family_correcting_its_answer_to_the_session_staff_resolved_rebuilds_cleanly() -> None:
+    # The old request still holds the household x session slot when the corrected answer
+    # claims it. PocketBase's partial unique index refuses a second ACTIVE row for the
+    # slot, so the withdrawal must land before the create, or the whole season stops.
+    store = seeded_store()
+    store.fa_rows[1] = fa_row(1000012, 1000001, fc="FC6 weekend", fc_ask=900.0, total_gross_income=85000.0)
+    service = FinancialAidIntakeService(store)
+    await service.build(YEAR)
+    old = store.request_for(household=1000001, program="family_camp")
+    assert old.status == "unmatched_session"
+    casework = FinancialAidCaseworkService(store)
+    await casework.resolve_session(old.id, 1000202, "The family means Family Camp 6.", False, "registrar@example.com")
+    assert store.requests[old.id].status == "active"
+    store.fa_rows[1] = fa_row(1000012, 1000001, fc="Family Camp 6", fc_ask=900.0, total_gross_income=85000.0)
+
+    await service.build(YEAR)
+
+    assert (store.requests[old.id].status, store.requests[old.id].session_resolution) == ("withdrawn", "staff")
+    new = store.request_for(household=1000001, program="family_camp", status="active")
+    assert (new.session_cm_id, new.session_resolution) == (1000202, "exact")
+
+
+@pytest.mark.asyncio
+async def test_a_pending_duplicate_takes_the_slot_when_its_holder_is_withdrawn() -> None:  # Review Focus 7
+    store = seeded_store()
+    # A second household files for the same camper and session: it waits behind the first.
+    store.fa_rows.append(fa_row(1000011, 1000002, summer="Session 2", summer_ask=1500.0, total_gross_income=60000.0))
+    service = FinancialAidIntakeService(store)
+    await service.build(YEAR)
+    holder = store.request_for(person=1000011, household=1000001, program="summer")
+    claimant = store.request_for(person=1000011, household=1000002, program="summer")
+    assert (claimant.status, claimant.duplicate_of) == ("duplicate_pending", holder.id)
+    # The first household drops its summer answer: its request is withdrawn in the same run
+    # that promotes the claimant, and the withdrawal has to reach PocketBase first.
+    store.fa_rows[0] = fa_row(1000011, 1000001, total_gross_income=85000.0)
+
+    report = await service.build(YEAR)
+
+    assert store.requests[holder.id].status == "withdrawn"
+    assert (store.requests[claimant.id].status, store.requests[claimant.id].duplicate_of) == ("active", "")
+    assert report.duplicates_pending == 0
+    assert [s.household_cm_id for s in store.payer_shares.values() if s.request_id == claimant.id] == [1000002]

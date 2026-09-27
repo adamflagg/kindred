@@ -304,6 +304,7 @@ class FakeAidStore:
                 if self.fail_on == (collection, item["method"]):
                     raise ValueError(f"{collection} refused the write")
                 body = self._apply(item["method"], collection, record_id, item.get("body") or {})
+                self._enforce(collection)
             except (KeyError, ValueError) as exc:
                 for name, value in saved.items():
                     setattr(self, name, value)
@@ -397,6 +398,8 @@ class FakeAidStore:
         elif collection == AID_SESSION_ALIASES:
             self.aliases.append(AliasRow(body["program_key"], body["option_key"], body["session_cm_id"]))
         elif collection == AID_SESSION_CAPACITY and method == "POST":
+            if (body["year"], body["session_cm_id"]) in self.capacity:
+                raise ValueError("UNIQUE constraint failed: idx_aid_session_capacity_year_session")
             self.capacity[(body["year"], body["session_cm_id"])] = CapacityRecord(
                 rid, body["year"], body["session_cm_id"], body["capacity"], body["note"], body["actor"]
             )
@@ -406,6 +409,55 @@ class FakeAidStore:
         else:
             raise ValueError(f"the fake has no {method} for {collection}")
         return {**body, "id": rid}
+
+    def _enforce(self, collection: str) -> None:
+        """PocketBase's own refusals, checked after every sub-request the way SQLite checks
+        each statement: the unique indexes (the partial ones on aid_requests only count
+        `active` rows), the relations a create names, and the field limits a value can
+        break (pocketbase/pb_migrations/1500000200-1500000204). Any breach fails the batch."""
+        if collection == AID_APPLICATIONS:
+            _unique(
+                "aid_applications (year, household_cm_id)",
+                [(a.year, a.household_cm_id) for a in self.applications.values()],
+            )
+        elif collection == AID_REQUESTS:
+            requests = list(self.requests.values())
+            _unique(
+                "idx_aid_requests_intake_key",
+                [(r.year, r.household_cm_id, r.person_cm_id, r.program_key, r.program_option_key) for r in requests],
+            )
+            active = [r for r in requests if r.session_cm_id > 0 and r.status == "active"]
+            _unique(
+                "idx_aid_requests_person_session",
+                [(r.year, r.person_cm_id, r.session_cm_id) for r in active if r.person_cm_id > 0],
+            )
+            _unique(
+                "idx_aid_requests_household_session",
+                [(r.year, r.household_cm_id, r.session_cm_id) for r in active if r.person_cm_id == 0],
+            )
+            for r in requests:
+                if r.application_id not in self.applications:
+                    raise ValueError(f"aid_requests.application {r.application_id!r} does not exist")
+                if r.ask < 0:
+                    raise ValueError(f"aid_requests.ask {r.ask} is below its minimum 0")
+                if not (0 <= r.headcount_non_infant <= 50 and 0 <= r.headcount_infant <= 20):
+                    raise ValueError(
+                        f"aid_requests headcount {r.headcount_non_infant}/{r.headcount_infant} is out of range"
+                    )
+                if len(r.program_option_text) > 500 or len(r.program_option_key) > 500:
+                    raise ValueError("aid_requests option text is longer than 500 characters")
+        elif collection == AID_PAYER_SHARES:
+            shares = list(self.payer_shares.values())
+            _unique("idx_aid_payer_shares_request_household", [(s.request_id, s.household_cm_id) for s in shares])
+            for share in shares:
+                if share.request_id not in self.requests:
+                    raise ValueError(f"aid_payer_shares.request {share.request_id!r} does not exist")
+        elif collection == AID_APPLICATION_CORRECTIONS:
+            for c in self.corrections:
+                if c.application_id not in self.applications or (c.request_id and c.request_id not in self.requests):
+                    raise ValueError("aid_application_corrections names a record that does not exist")
+        elif collection == AID_SESSION_ALIASES:
+            _unique("idx_aid_session_aliases_key", list(self.aliases))
 
     # helpers for assertions
     def request_for(
@@ -421,6 +473,11 @@ class FakeAidStore:
         ]
         assert len(found) == 1, found
         return found[0]
+
+
+def _unique(index: str, keys: Sequence[object]) -> None:
+    if len(set(keys)) != len(keys):
+        raise ValueError(f"UNIQUE constraint failed: {index}")
 
 
 def seeded_store() -> FakeAidStore:
