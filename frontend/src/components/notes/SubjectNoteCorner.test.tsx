@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { HOUSEHOLD, NotesScopeFixture, noteRow, scopeValue } from '../../test/notesScope'
 import { SubjectNoteCorner } from './SubjectNoteCorner'
-import { subjectKey } from './subjectNoteModel'
+import { previewText, subjectKey } from './subjectNoteModel'
 
 function renderCorner(
   rows = [noteRow(HOUSEHOLD, 'Grandma is coming Saturday only.')],
@@ -96,6 +96,14 @@ describe('SubjectNoteCorner', () => {
     renderCorner([noteRow(HOUSEHOLD, long)])
     fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
     expect(screen.getByRole('tooltip')).toHaveTextContent(`${'a'.repeat(118)} b…`)
+  })
+
+  it('wraps a long unbroken preview instead of letting it run off the bubble', () => {
+    const longToken = 'a'.repeat(300)
+    renderCorner([noteRow(HOUSEHOLD, longToken)])
+    fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
+    const body = within(screen.getByRole('tooltip')).getByText(previewText(longToken))
+    expect(body).toHaveClass('whitespace-pre-wrap', 'break-words')
   })
 
   it('pointerdown, mousedown and touchstart on the corner do not reach the card (never a drag start)', () => {

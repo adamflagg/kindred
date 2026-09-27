@@ -58,6 +58,26 @@ describe('SubjectNotesSection — reading', () => {
     expect(container.querySelector('[data-notes-section]')).toBeNull()
   })
 
+  it('wraps a long unbroken token in both bodies instead of letting it run off (owner: "it just scrolls off")', () => {
+    // jsdom has no layout engine, so this can only assert the CLASSES that
+    // make wrapping happen, not that it visually wraps.
+    const longToken = 'a'.repeat(300)
+    render(
+      <Panel
+        value={scopeValue([noteRow(HOUSEHOLD, longToken), noteRow(HOUSEHOLD, longToken, 'scnA')], {
+          scenarioId: 'scnA',
+          scenarioName: 'Draft A',
+        })}
+      />
+    )
+    const bodies = screen.getAllByText(longToken)
+    expect(bodies).toHaveLength(2)
+    for (const body of bodies) {
+      expect(body).toHaveClass('whitespace-pre-wrap', 'break-words')
+      expect(body).not.toHaveClass('whitespace-nowrap', 'truncate')
+    }
+  })
+
   it('shows the standard note with no pill, and the plan-only note under its Draft pill', () => {
     render(
       <Panel

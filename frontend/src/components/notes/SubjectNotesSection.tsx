@@ -148,9 +148,11 @@ function ReadView({
           onClick={() => {
             onEdit()
           }}
-          className="flex w-full flex-col gap-0.5 rounded-lg border border-yellow-200 bg-yellow-100 px-2 py-1.5 text-left hover:bg-yellow-200/70"
+          className="flex w-full min-w-0 flex-col gap-0.5 rounded-lg border border-yellow-200 bg-yellow-100 px-2 py-1.5 text-left hover:bg-yellow-200/70"
         >
-          <span className="text-sm whitespace-pre-wrap text-stone-900">{layers.standard.body}</span>
+          <span className="text-sm break-words whitespace-pre-wrap text-stone-900">
+            {layers.standard.body}
+          </span>
           <span className="text-[11px] text-stone-600">{editedLine(layers.standard)}</span>
         </button>
       )}
@@ -160,12 +162,14 @@ function ReadView({
           onClick={() => {
             onEdit('plan')
           }}
-          className="flex w-full flex-col gap-0.5 rounded-lg border border-dashed border-yellow-400 bg-yellow-50 px-2 py-1.5 text-left hover:bg-yellow-100"
+          className="flex w-full min-w-0 flex-col gap-0.5 rounded-lg border border-dashed border-yellow-400 bg-yellow-50 px-2 py-1.5 text-left hover:bg-yellow-100"
         >
           <span className="flex">
             <PlanNotePill name={displayScenarioName(scenarioName)} small />
           </span>
-          <span className="text-sm whitespace-pre-wrap text-stone-900">{layers.plan.body}</span>
+          <span className="text-sm break-words whitespace-pre-wrap text-stone-900">
+            {layers.plan.body}
+          </span>
           <span className="text-[11px] text-stone-600">{editedLine(layers.plan)}</span>
         </button>
       )}

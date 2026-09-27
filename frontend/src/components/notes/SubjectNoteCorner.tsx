@@ -147,7 +147,7 @@ export function SubjectNoteCorner({ subject, label, containing }: SubjectNoteCor
           <div className="font-semibold">{NOTE_LABEL}</div>
           {mode === 'plan' && <PlanNotePill name={displayScenarioName(scope.scenarioName)} small />}
         </div>
-        <div className="whitespace-pre-wrap">{previewText(lead.body)}</div>
+        <div className="break-words whitespace-pre-wrap">{previewText(lead.body)}</div>
         {more > 0 && <div className="text-muted-foreground">+{more} more</div>}
       </div>
     ) : null
