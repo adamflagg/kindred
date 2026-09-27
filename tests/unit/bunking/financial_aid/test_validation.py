@@ -200,7 +200,8 @@ def test_a_yes_no_criterion_matching_only_yes_or_a_non_yes_no_field_passes(crite
 
 
 def test_a_camper_answer_matching_no_passes_because_a_blank_camper_answer_stays_unknown() -> None:
-    criteria = _with_criterion(field="bipoc", match="equals_any", values=["no"])
+    # Named like the household answer, so only the source tells them apart.
+    criteria = _with_criterion(field="single_parent", match="equals_any", values=["no"])
     criteria[-1]["source"] = "camper"
     report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
     assert "yes_no_criterion_matches_no" not in report.codes()
