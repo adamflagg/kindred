@@ -142,4 +142,6 @@ func Register(app core.App, cfg Config) {
 		slog.Info("admin audit log: Kindred's service account is excluded")
 	}
 	app.Store().Set(configStoreKey, cfg)
+	bindAppendOnlyGuards(app)
+	bindRecordRequestHooks(app)
 }
