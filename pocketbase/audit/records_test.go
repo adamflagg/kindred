@@ -18,6 +18,8 @@ const (
 	cfgSolver   = "cfgsolvermaxcab"
 	cabin14     = "unitcabin140001"
 	userRoleSam = "userrolesam0001"
+	financeRole = "rolefinance0001"
+	taylorID    = "usertaylor00001"
 	passphrase  = "a-very-secret-passphrase"
 )
 
@@ -135,6 +137,34 @@ func TestRecordWritesAreAudited(t *testing.T) {
 				expect(t, row, map[string]string{"collection": "user_roles", "action": "delete", "target_label": "Sam Patel"})
 				if before := audittest.JSON(t, row, "before"); before == nil {
 					t.Errorf("before = %v, want the removed assignment", before)
+				}
+			},
+		},
+		{
+			Name:   "a role-assignment UPDATE names the old and new role, and the old and new user",
+			Method: http.MethodPatch,
+			URL:    "/api/collections/user_roles/records/" + userRoleSam,
+			Body:   strings.NewReader(`{"user":"` + taylorID + `","role":"` + financeRole + `"}`),
+			TestAppFactory: func(t testing.TB) *tests.TestApp {
+				app := factory(t)
+				createUser(t, app, taylorID, "taylor.kim@example.com", "Taylor Kim", false, nil)
+				saveRecord(t, app, "roles", financeRole, map[string]any{
+					"name": "Finance", "permissions": []string{"financial_aid.view"},
+				})
+				saveRecord(t, app, "user_roles", userRoleSam, map[string]any{"user": samID, "role": registrar})
+				return app
+			},
+			BeforeTestFunc: as("owner"), Headers: headers,
+			ExpectedStatus: 200, ExpectedContent: []string{`"role":"` + financeRole + `"`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				row := onlyRow(t, app, audit.TypeAccess)
+				expect(t, row, map[string]string{"collection": "user_roles", "action": "update"})
+				detail := audittest.JSON(t, row, "detail")
+				if detail["role"] != "Finance" || detail["role_before"] != "Registrar" {
+					t.Errorf("role detail = %v, want role=Finance role_before=Registrar", detail)
+				}
+				if detail["user"] != "Taylor Kim" || detail["user_before"] != "Sam Patel" {
+					t.Errorf("user detail = %v, want user=Taylor Kim user_before=Sam Patel", detail)
 				}
 			},
 		},

@@ -90,7 +90,7 @@ func auditRecordRequest(e *core.RecordRequestEvent, action string) error {
 			return nil // a save that changed nothing is not an event
 		}
 		actor.apply(&row)
-		row.TargetLabel, row.Detail = targetLabel(txApp, e.Record)
+		row.TargetLabel, row.Detail = targetLabel(txApp, e.Record, before)
 		return writeFailClosed(txApp, &row)
 	})
 }

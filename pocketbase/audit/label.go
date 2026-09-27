@@ -13,7 +13,13 @@ import (
 // sentence needs (a role assignment's role name). Resolved at write time, so a
 // later rename or deletion never changes history. Unknown collections (PB Admin
 // on business tables) get no label: the screen shows the collection and id.
-func targetLabel(app core.App, record *core.Record) (label string, detail map[string]any) {
+//
+// before is the pre-update raw field snapshot (hooks.go's own `before`, taken
+// from record.Original() BEFORE e.Next() runs — reading it any later is
+// unreliable, see bunk_requests/hooks.go's preUpdateCache doc), or nil on a
+// create, delete, or any call outside the record-request hook. Only
+// userRoleLabel reads it.
+func targetLabel(app core.App, record *core.Record, before map[string]any) (label string, detail map[string]any) {
 	switch record.Collection().Name {
 	case usersCollection:
 		return firstNonEmpty(record.GetString("name"), record.Email()), nil
@@ -22,7 +28,7 @@ func targetLabel(app core.App, record *core.Record) (label string, detail map[st
 	case "roles":
 		return record.GetString("name"), nil
 	case "user_roles":
-		return userRoleLabel(app, record)
+		return userRoleLabel(app, record, before)
 	case "config":
 		return joinNonEmpty(".", record.GetString("category"), record.GetString("subcategory"),
 			record.GetString("config_key")), nil
@@ -38,15 +44,38 @@ func targetLabel(app core.App, record *core.Record) (label string, detail map[st
 	return "", nil
 }
 
-// userRoleLabel names the person, and puts the role's name in detail.role.
-func userRoleLabel(app core.App, record *core.Record) (label string, detail map[string]any) {
-	label = record.GetString("user")
-	if user, err := app.FindRecordById(usersCollection, label); err == nil {
+// userRoleLabel names the person, and puts the NEW role's name in detail.role
+// (always — create, update and delete all read this). On an UPDATE where the
+// role or user relation actually changed, it also names the OLD side:
+// detail.role_before, and detail.user_before / detail.user (the frontend's
+// generic Before/After path otherwise prints the raw PocketBase relation ids —
+// kindred#2880 follow-up). Guarded by "changed", not by action: create passes
+// before=nil, and delete's before equals the current record (nothing to
+// diff), so neither ever adds the _before keys.
+func userRoleLabel(app core.App, record *core.Record, before map[string]any) (label string, detail map[string]any) {
+	userID := record.GetString("user")
+	label = userID
+	if user, err := app.FindRecordById(usersCollection, userID); err == nil {
 		label = firstNonEmpty(user.GetString("name"), user.Email())
 	}
 	detail = map[string]any{}
-	if role, err := app.FindRecordById("roles", record.GetString("role")); err == nil {
+	roleID := record.GetString("role")
+	if role, err := app.FindRecordById("roles", roleID); err == nil {
 		detail["role"] = role.GetString("name")
+	}
+	if before == nil {
+		return label, detail
+	}
+	if oldRoleID, _ := before["role"].(string); oldRoleID != "" && oldRoleID != roleID {
+		if oldRole, err := app.FindRecordById("roles", oldRoleID); err == nil {
+			detail["role_before"] = oldRole.GetString("name")
+		}
+	}
+	if oldUserID, _ := before["user"].(string); oldUserID != "" && oldUserID != userID {
+		detail["user"] = label
+		if oldUser, err := app.FindRecordById(usersCollection, oldUserID); err == nil {
+			detail["user_before"] = firstNonEmpty(oldUser.GetString("name"), oldUser.Email())
+		}
 	}
 	return label, detail
 }

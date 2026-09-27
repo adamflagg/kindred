@@ -39,7 +39,7 @@ func WriteAdminGroupChange(app core.App, e *core.RequestEvent, user *core.Record
 	if isAdmin {
 		action = ActionAdminGranted
 	}
-	label, _ := targetLabel(app, user)
+	label, _ := targetLabel(app, user, nil)
 	row := Row{
 		Type: TypeAccess, Action: action, ActorKind: ActorSystem, ActorID: user.Id, ActorEmail: user.Email(),
 		ActorName: user.GetString("name"), Collection: usersCollection, RecordID: user.Id, TargetLabel: label,

@@ -249,11 +249,32 @@ export function formatValue(value: unknown): string | null {
   return null
 }
 
+/** `user_roles` update fields whose raw before/after are relation ids, not
+ * names — and the detail keys the Go writer resolves them into (label.go's
+ * userRoleLabel). `role` is always resolved on both sides; `user` only when
+ * the user relation itself changed (see the fallback below for why that's
+ * safe to read unconditionally anyway). */
+const USER_ROLE_NAME_KEYS: Record<string, { before: string; after: string }> = {
+  role: { before: 'role_before', after: 'role' },
+  user: { before: 'user_before', after: 'user' },
+}
+
+/** `detail[key]` when it resolved to a name, else the raw stored value —
+ * covers rows written before this resolution existed (no `role_before`/
+ * `user`/`user_before`), which fall back to the id they always had. */
+function resolvedOrRaw(detail: Record<string, unknown>, key: string, raw: unknown): string | null {
+  const resolved = str(detail[key])
+  return resolved || formatValue(raw)
+}
+
 /**
  * The changed fields, in the order the server listed them. A `user_roles`
  * create/delete is shown as the role name (there is no `fields` array for a
- * grant/removal); an update falls through to the generic before/after path
- * below it, since it carries real fields (controller ruling).
+ * grant/removal). An update falls through to the generic before/after path,
+ * since it carries real fields (controller ruling) — except that its `role`
+ * and `user` fields store PocketBase relation ids, not names: those two read
+ * the resolved names the Go writer puts in `detail` instead (kindred#2880
+ * follow-up), falling back to the raw id only when a name is missing.
  */
 export function fieldChanges(entry: AuditEntry): FieldChange[] {
   if (entry.collection === 'user_roles' && entry.action !== 'update') {
@@ -266,11 +287,23 @@ export function fieldChanges(entry: AuditEntry): FieldChange[] {
   }
   const before = entry.before ?? {}
   const after = entry.after ?? {}
-  return (entry.fields ?? []).map((field) => ({
-    field,
-    before: formatValue(before[field]),
-    after: formatValue(after[field]),
-  }))
+  const isUserRoleUpdate = entry.collection === 'user_roles' && entry.action === 'update'
+  const detail = detailOf(entry)
+  return (entry.fields ?? []).map((field) => {
+    const nameKeys = isUserRoleUpdate ? USER_ROLE_NAME_KEYS[field] : undefined
+    if (nameKeys) {
+      return {
+        field,
+        before: resolvedOrRaw(detail, nameKeys.before, before[field]),
+        after: resolvedOrRaw(detail, nameKeys.after, after[field]),
+      }
+    }
+    return {
+      field,
+      before: formatValue(before[field]),
+      after: formatValue(after[field]),
+    }
+  })
 }
 
 // ── Long values (kindred#2880) ──────────────────────────────────────────────────

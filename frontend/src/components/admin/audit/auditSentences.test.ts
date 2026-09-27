@@ -458,6 +458,66 @@ describe('fieldChanges', () => {
     ).toEqual([{ field: 'role', before: 'Registrar', after: 'Finance' }])
   })
 
+  // kindred#2880 follow-up: a role UPDATE's raw before/after are PocketBase
+  // relation ids (record ids, not names). The Go writer resolves names into
+  // detail.role / detail.role_before (and .user / .user_before when the user
+  // relation itself changed); the frontend must read THOSE, not the raw ids.
+  it('a role update with resolved names in detail shows role names, not raw ids', () => {
+    expect(
+      fieldChanges(
+        entry({
+          type: 'access',
+          collection: 'user_roles',
+          action: 'update',
+          fields: ['role'],
+          before: { role: 'roleregistrar01' },
+          after: { role: 'rolefinance0001' },
+          detail: { role: 'Finance', role_before: 'Registrar' },
+        })
+      )
+    ).toEqual([{ field: 'role', before: 'Registrar', after: 'Finance' }])
+  })
+
+  it('a role update that also reassigns the user shows both names, not raw ids', () => {
+    expect(
+      fieldChanges(
+        entry({
+          type: 'access',
+          collection: 'user_roles',
+          action: 'update',
+          fields: ['role', 'user'],
+          before: { role: 'roleregistrar01', user: 'sampatel0000001' },
+          after: { role: 'rolefinance0001', user: 'usertaylor00001' },
+          detail: {
+            role: 'Finance',
+            role_before: 'Registrar',
+            user: 'Taylor Kim',
+            user_before: 'Sam Patel',
+          },
+        })
+      )
+    ).toEqual([
+      { field: 'role', before: 'Registrar', after: 'Finance' },
+      { field: 'user', before: 'Sam Patel', after: 'Taylor Kim' },
+    ])
+  })
+
+  it('falls back to the raw id only when a name is missing (an old row with no role_before)', () => {
+    expect(
+      fieldChanges(
+        entry({
+          type: 'access',
+          collection: 'user_roles',
+          action: 'update',
+          fields: ['role'],
+          before: { role: 'roleregistrar01' },
+          after: { role: 'rolefinance0001' },
+          detail: { role: 'Finance' },
+        })
+      )
+    ).toEqual([{ field: 'role', before: 'roleregistrar01', after: 'Finance' }])
+  })
+
   it('formats lists, booleans and redactions', () => {
     expect(formatValue(['financial_aid.view', 'financial_aid.casework'])).toBe(
       'financial_aid.view, financial_aid.casework'

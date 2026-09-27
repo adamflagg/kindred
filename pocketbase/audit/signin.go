@@ -63,7 +63,7 @@ func bindSignInHooks(app core.App) {
 				IP: e.RealIP(), Detail: map[string]any{"via": "first_sign_in"},
 			}
 			row.Before, row.After, row.Fields = changes(usersCollection, nil, snapshot(e.Record))
-			row.TargetLabel, _ = targetLabel(e.App, e.Record)
+			row.TargetLabel, _ = targetLabel(e.App, e.Record, nil)
 			actorFromRecord(e.Record).apply(&row)
 			writeFailOpen(e.App, &row)
 			return nil
@@ -89,7 +89,7 @@ func logImpersonation(e *core.RecordAuthRequestEvent, cfg Config) {
 		Type: TypePBAdmin, Action: ActionImpersonate, Collection: e.Record.Collection().Name,
 		RecordID: e.Record.Id, IP: e.RealIP(),
 	}
-	row.TargetLabel, _ = targetLabel(e.App, e.Record)
+	row.TargetLabel, _ = targetLabel(e.App, e.Record, nil)
 	actorFromRecord(e.Auth).apply(&row)
 	writeFailOpen(e.App, &row)
 }
