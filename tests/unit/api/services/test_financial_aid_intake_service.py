@@ -10,11 +10,20 @@ import pytest
 
 from api.services.financial_aid_casework_service import FinancialAidCaseworkService
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
-from api.services.financial_aid_intake_types import AttendeeRow, BillingLine, CorrectionRecord
+from api.services.financial_aid_intake_types import (
+    INTAKE_ACTOR,
+    SHARE_SOURCE_INTAKE,
+    ApplicationRecord,
+    AttendeeRow,
+    BillingLine,
+    CorrectionRecord,
+    PayerShareRecord,
+    RequestRecord,
+)
 from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
 from bunking.financial_aid.rules.schema import AidRules
 from bunking.pocketbase_batch import BatchRequestFailedError
-from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, intake_rules, seeded_store
+from tests.unit.api.services.financial_aid_fakes import YEAR, FakeAidStore, fa_row, intake_rules, seeded_store
 from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 
@@ -347,6 +356,91 @@ async def test_a_request_moving_onto_a_withdrawn_requests_session_commits_whiche
 
     assert store.requests[first.id].status == "withdrawn"
     assert (store.requests[second.id].session_cm_id, store.requests[second.id].status) == (1000101, "active")
+
+
+@pytest.mark.asyncio
+async def test_two_active_requests_swap_sessions_through_a_real_commit() -> None:
+    # Each household's own answer text is permanently tied to the session it names -- household
+    # 1000001's "Session 2" always means 1000101, household 1000002's "Session 2a" always means
+    # 1000102, for as long as the camper stays enrolled in both -- so a same-identity swap
+    # between them can't come from a family editing an answer or from registration alone (that
+    # is exactly why the withdrawal test above changes ids instead). What DOES put two rows out
+    # of step with today's registration is a stale starting state, e.g. the two sessions traded
+    # CampMinder ids after these requests were written. The stored rows below hold each other's
+    # target session on purpose, to prove the correction still commits through PocketBase's real
+    # per-statement index checks.
+    store = FakeAidStore()
+    store.rules = intake_rules()
+    store.attendees = [AttendeeRow(1000011, 1000001, 1000101, 2), AttendeeRow(1000011, 1000001, 1000102, 2)]
+    store.fa_rows = [
+        fa_row(1000011, 1000001, summer="Session 2", summer_ask=1500.0, total_gross_income=85000.0),
+        fa_row(1000011, 1000002, summer="Session 2a", summer_ask=900.0, total_gross_income=60000.0),
+    ]
+    store.applications["app000000000001"] = ApplicationRecord(
+        "app000000000001", YEAR, 1000001, "active", {"total_gross_income": 85000.0}, (1000011,), ()
+    )
+    store.applications["app000000000002"] = ApplicationRecord(
+        "app000000000002", YEAR, 1000002, "active", {"total_gross_income": 60000.0}, (1000011,), ()
+    )
+    store.requests["req000000000001"] = RequestRecord(
+        id="req000000000001",
+        year=YEAR,
+        application_id="app000000000001",
+        household_cm_id=1000001,
+        person_cm_id=1000011,
+        session_cm_id=1000102,  # holds household 1000002's target session
+        program_key="summer",
+        program_option_text="Session 2",
+        program_option_key="session 2",
+        session_resolution="enrollment_text",
+        ask=1500.0,
+        headcount_non_infant=0,
+        headcount_infant=0,
+        headcount_source="",
+        status="active",
+        duplicate_of="",
+        flags=(),
+    )
+    store.requests["req000000000002"] = RequestRecord(
+        id="req000000000002",
+        year=YEAR,
+        application_id="app000000000002",
+        household_cm_id=1000002,
+        person_cm_id=1000011,
+        session_cm_id=1000101,  # holds household 1000001's target session
+        program_key="summer",
+        program_option_text="Session 2a",
+        program_option_key="session 2a",
+        session_resolution="enrollment_text",
+        ask=900.0,
+        headcount_non_infant=0,
+        headcount_infant=0,
+        headcount_source="",
+        status="active",
+        duplicate_of="",
+        flags=(),
+    )
+    store.payer_shares["share00000001"] = PayerShareRecord(
+        "share00000001", YEAR, "req000000000001", 1000001, Decimal(100), SHARE_SOURCE_INTAKE, INTAKE_ACTOR, ""
+    )
+    store.payer_shares["share00000002"] = PayerShareRecord(
+        "share00000002", YEAR, "req000000000002", 1000002, Decimal(100), SHARE_SOURCE_INTAKE, INTAKE_ACTOR, ""
+    )
+
+    report = await FinancialAidIntakeService(store).build(YEAR)
+
+    assert (store.requests["req000000000001"].session_cm_id, store.requests["req000000000001"].status) == (
+        1000101,
+        "active",
+    )
+    assert (store.requests["req000000000002"].session_cm_id, store.requests["req000000000002"].status) == (
+        1000102,
+        "active",
+    )
+    assert report.operation_id != ""
+
+    second = await FinancialAidIntakeService(store).build(YEAR)  # a re-run on the swapped state is a no-op
+    assert second.operation_id == ""
 
 
 # PocketBase refuses a value outside a field's limits (pocketbase/pb_migrations/1500000201),

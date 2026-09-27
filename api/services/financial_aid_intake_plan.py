@@ -30,7 +30,9 @@ What a re-run may and may not change:
   its slot; rows that move claim next (a vacated slot is free to them), then the
   rest. A later claimant becomes `duplicate_pending` and names its holder: an
   id, or `new:N` when the holder is created in the same run (the service swaps
-  in the id).
+  in the id). Two or more requests trading sessions in one run (a cycle) write
+  through a third state instead of straight to their new session; see
+  `_write_order`.
 * A `declared` / `override` headcount is staff's and is never overwritten;
   billing only fills an unknown or `billed` one.
 * answers, ask, option text and flags are the builder's own copy and are
@@ -345,8 +347,18 @@ def _write_order(
     indexes on every statement, and a session now moves with registration, so a request may
     claim a slot only once the row leaving it is written: a withdrawal, a move elsewhere or a
     step down to pending. Rows that claim nothing new keep their planned order and go first;
-    each claimant follows once its slot is free. A cycle (two requests trading sessions) has
-    no such order and is written as planned, which PocketBase refuses."""
+    each claimant follows once its slot is free.
+
+    A cycle -- two or more requests trading sessions, each waiting on the next to move first
+    -- has no such order: nothing in it frees a slot before something else needs one. Breaking
+    it needs a third state. One member of the cycle (the lowest id, for a stable order) is
+    written to `session_cm_id: 0` first: excluded from both partial indexes, which require
+    `session_cm_id > 0` (pocketbase/pb_migrations/1500000201), so it lets go of its slot
+    without yet claiming its real one. The rest of the cycle then writes in dependency order
+    like any chain, and the broken member's own final write lands last, once its target slot
+    is free. Both writes are ordinary entries here, so they carry this run's operation id and
+    reason like everything else: history shows one operation even though the record moved
+    twice."""
 
     def before(record: RequestRecord) -> _Slot | None:
         return _held_slot(record.household_cm_id, record.person_cm_id, record.session_cm_id, record.status)
@@ -364,7 +376,23 @@ def _write_order(
             (record, target)
             for record, target in waiting
             if (claim := after(record, target)) is None or held.get(claim, record.id) == record.id
-        ] or waiting
+        ]
+        if not ready:
+            # Every request left is part of a cycle: each is waiting on another to vacate a
+            # slot, and none of them will on their own. `candidates` are the ones still holding
+            # the slot they came in with (a record already broken this way holds nothing, so it
+            # can never be picked twice); a cycle always has at least one.
+            candidates = [
+                (record, slot)
+                for record, _ in waiting
+                if (slot := before(record)) is not None and held.get(slot) == record.id
+            ]
+            if not candidates:
+                raise AssertionError("_write_order: a request is blocked on a slot nothing left in this run holds")
+            record, slot = min(candidates, key=lambda item: item[0].id)
+            del held[slot]
+            ordered.append((record, {"session_cm_id": 0}))
+            continue
         for record, target in ready:
             old, new = before(record), after(record, target)
             if old is not None and held.get(old) == record.id:

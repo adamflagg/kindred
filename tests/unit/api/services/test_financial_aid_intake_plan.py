@@ -392,6 +392,11 @@ def test_a_request_moving_into_a_held_slot_waits_behind_its_holder() -> None:
 
 
 def test_two_requests_swapping_sessions_both_stay_active() -> None:
+    # A cycle: req...1 moves onto req...2's session while req...2 moves onto req...1's.
+    # Neither can be written straight to its new session first -- PocketBase's partial index
+    # would refuse whichever one it is -- so the lower id gives up its slot through
+    # `session_cm_id: 0` before the rest of the cycle writes, and takes its own final session
+    # last.
     enrolled = frozenset({1000101, 1000102})
     first_now, second_now = (
         spec(session=1000102, enrolled=enrolled),
@@ -408,9 +413,45 @@ def test_two_requests_swapping_sessions_both_stay_active() -> None:
         {},
         frozenset({"req000000000001", "req000000000002"}),
     )
-    assert sorted(plan.request_updates) == [
-        ("req000000000001", {"session_cm_id": 1000102}),
+    assert plan.request_updates == [
+        ("req000000000001", {"session_cm_id": 0}),
         ("req000000000002", {"session_cm_id": 1000101}),
+        ("req000000000001", {"session_cm_id": 1000102}),
+    ]
+
+
+def test_a_three_way_cycle_breaks_on_the_lowest_id_too() -> None:
+    # req...1 -> 1000102 -> 1000103 -> 1000101 -> req...1: a longer cycle than a swap, same
+    # problem. req...1 (lowest id) gives up its slot first; the rest resolves in dependency
+    # order (req...3 first, since its target frees as soon as req...1 lets go), then req...1
+    # takes its own final session once req...2 has moved off it.
+    enrolled = frozenset({1000101, 1000102, 1000103})
+    first_now, second_now, third_now = (
+        spec(session=1000102, enrolled=enrolled),
+        spec(household=1000002, session=1000103, enrolled=enrolled),
+        spec(household=1000003, session=1000101, enrolled=enrolled),
+    )
+    existing = [
+        record(spec(), "req000000000001"),
+        record(spec(household=1000002, session=1000102), "req000000000002"),
+        record(spec(household=1000003, session=1000103), "req000000000003"),
+    ]
+    plan = plan_intake(
+        [
+            household(first_now),
+            household(second_now, household_cm_id=1000002),
+            household(third_now, household_cm_id=1000003),
+        ],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001", "req000000000002", "req000000000003"}),
+    )
+    assert plan.request_updates == [
+        ("req000000000001", {"session_cm_id": 0}),
+        ("req000000000003", {"session_cm_id": 1000101}),
+        ("req000000000002", {"session_cm_id": 1000103}),
+        ("req000000000001", {"session_cm_id": 1000102}),
     ]
 
 
