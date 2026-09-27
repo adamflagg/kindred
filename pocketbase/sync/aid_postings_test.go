@@ -148,7 +148,13 @@ func TestAidPostingsSyncNeverOverwritesAStaffClassification(t *testing.T) {
 	}
 }
 
-// Review Focus 4.
+// Review Focus 4, extended: a rerun must not just write nothing, it must report every
+// unchanged row -- across all three collections this sync writes (postings, the auto
+// household links, and config-classified sources) -- as Skipped, the same way every
+// comparable job (financial_aid_applications.go, financial_transactions.go,
+// base_sync.go's ProcessSimpleRecord) counts an unchanged upsert. Before this fix the
+// Aid Ledger admin card showed no counts at all on a no-change rerun, while every other
+// sync card shows "N skipped".
 func TestAidPostingsSyncRerunIsANoOp(t *testing.T) {
 	t.Parallel()
 	f := newAidFixture(t)
@@ -160,10 +166,17 @@ func TestAidPostingsSyncRerunIsANoOp(t *testing.T) {
 	f.reversePair(9002, 2026, -400, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1002, "2026-03-20 18:00:00.000Z")
 	f.run(f.writeConfig(aidTestConfig), 2026)
 
+	wantSkipped := len(f.rows(colAidSources, 0)) + len(f.rows(colAidHouseholdLinks, 2026)) +
+		len(f.rows(colAidPostings, 2026))
+	if wantSkipped == 0 {
+		t.Fatal("test setup produced nothing to skip on the rerun")
+	}
+
 	second := f.run(f.writeConfig(aidTestConfig), 2026)
 
-	if st := second.GetStats(); st.Created != 0 || st.Updated != 0 || st.Deleted != 0 || st.Skipped != 2 {
-		t.Fatalf("a re-run with no change must write nothing (one live row, one reversed row), got %+v", st)
+	if st := second.GetStats(); st.Created != 0 || st.Updated != 0 || st.Deleted != 0 || st.Skipped != wantSkipped {
+		t.Fatalf("a re-run with no change must write nothing and report every unchanged row "+
+			"(sources + links + postings = %d) as skipped, got %+v", wantSkipped, st)
 	}
 }
 

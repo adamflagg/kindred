@@ -268,6 +268,7 @@ func (s *AidPostingsSync) applySourceClasses(
 		}
 		isNew := rec.IsNew()
 		if !isNew && !aidRecordNeedsUpdate(rec, data) {
+			s.Stats.Skipped++
 			continue
 		}
 		if s.DryRun {
@@ -567,6 +568,7 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 		}
 		wanted[key] = true
 		if existingAuto[key] != nil {
+			s.Stats.Skipped++
 			continue
 		}
 		rec := core.NewRecord(col)
