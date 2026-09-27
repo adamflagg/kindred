@@ -6,6 +6,8 @@
  * 2. Consistent key structure across components
  * 3. Proper cache sharing between related queries
  */
+import type { AuditQuery } from '../types/auditLog'
+
 export interface SolverRunsFilters {
   sessionId?: number
   sourceKind?: 'production' | 'scenario' | 'all'
@@ -648,6 +650,14 @@ export const queryKeys = {
    */
   sessionAttributionQueue: (year: number) => ['session-attribution-queue', year] as const,
   sessionAttributionQueuePrefix: () => ['session-attribution-queue'] as const,
+  /**
+   * The admin audit log (Manage > Audit Log). Keyed by the whole screen state
+   * (filters, page, rows per page), so each view caches on its own;
+   * `auditLogPrefix` covers every page and the person list.
+   */
+  auditLogPrefix: () => ['audit-log'] as const,
+  auditLog: (query: AuditQuery) => ['audit-log', 'page', query] as const,
+  auditLogActors: () => ['audit-log', 'actors'] as const,
   /**
    * The Jotform admin (kindred#2759). Year-scoped like the registry keys.
    * `jotformPrefix` is what a completed pull (SYNC_DEPENDENT_PREFIXES) and
