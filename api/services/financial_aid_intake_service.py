@@ -79,7 +79,15 @@ logger = get_logger(__name__)
 _LOCKS: dict[tuple[int, int], asyncio.Lock] = {}
 
 
-def _lock_for(year: int) -> asyncio.Lock:
+def season_lock(year: int) -> asyncio.Lock:
+    """The one lock per season that intake's build and the casework writers share: a staff
+    write that lands between a build's read and its commit would be overwritten by it.
+
+    It lives in this process only. That holds today because docker/Dockerfile.api runs a single
+    uvicorn worker; more worker processes would each have their own lock and void it (the unique
+    indexes on aid_requests stay the only backstop across processes). Not reentrant: a holder
+    must release it before it triggers a build.
+    """
     # Keyed by event loop as well as season. An asyncio.Lock binds to the first
     # loop that contends for it, and a test run creates a fresh loop per test.
     return _LOCKS.setdefault((id(asyncio.get_running_loop()), year), asyncio.Lock())
@@ -312,7 +320,7 @@ class FinancialAidIntakeService:
         self._store = store
 
     async def build(self, year: int) -> IntakeReport:
-        async with _lock_for(year):
+        async with season_lock(year):
             return await self._build(year)
 
     async def _age_rule(
