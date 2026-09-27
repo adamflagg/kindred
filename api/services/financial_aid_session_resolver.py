@@ -30,6 +30,7 @@ from types import MappingProxyType
 from typing import Final
 
 from api.services.financial_aid_intake_types import (
+    OPTION_TEXT_MAX_LENGTH,
     PROGRAM_ADULT_WEEKEND,
     PROGRAM_BMITZVAH,
     PROGRAM_FAMILY_CAMP,
@@ -55,8 +56,11 @@ _SPACES: Final = re.compile(r"\s+")
 
 
 def normalize_option_text(text: str) -> str:
+    """The option's key: typographic variants folded. Clipped to the length
+    aid_requests.program_option_key and aid_session_aliases.option_key hold, since NFKC
+    can lengthen text that was clipped to that length already."""
     folded = unicodedata.normalize("NFKC", text).translate(_QUOTES).casefold()
-    return _SPACES.sub(" ", folded).strip()
+    return _SPACES.sub(" ", folded).strip()[:OPTION_TEXT_MAX_LENGTH]
 
 
 def _contains(haystack: str, needle: str) -> bool:

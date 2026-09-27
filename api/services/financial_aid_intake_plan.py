@@ -44,6 +44,8 @@ from api.services.financial_aid_intake_types import (
     APPLICATION_ACTIVE,
     APPLICATION_WITHDRAWN,
     HEADCOUNT_BILLED,
+    HEADCOUNT_INFANT_MAX,
+    HEADCOUNT_NON_INFANT_MAX,
     STAFF_HEADCOUNT_SOURCES,
     STATUS_ACTIVE,
     STATUS_DUPLICATE,
@@ -144,9 +146,21 @@ def _slot(household_cm_id: int, person_cm_id: int, session_cm_id: int) -> _Slot:
     return ("household", household_cm_id, session_cm_id)
 
 
+def _storable(billed: BilledHeadcount | None) -> BilledHeadcount | None:
+    """A billed headcount aid_requests can hold, or None. One beyond the field limits is no
+    billed headcount at all, so the request shows `family_camp_headcount_missing` for staff
+    to declare, instead of PocketBase refusing the season's whole batch."""
+    if billed is None:
+        return None
+    if 0 <= billed.non_infant <= HEADCOUNT_NON_INFANT_MAX and 0 <= billed.infant <= HEADCOUNT_INFANT_MAX:
+        return billed
+    return None
+
+
 def _headcount_target(
     record: RequestRecord | None, billed: BilledHeadcount | None, flags: list[Flag]
 ) -> dict[str, Any]:
+    billed = _storable(billed)
     if billed is not None and billed.reclassified:
         flags.append(Flag("infant_age_reclassified", {"count": billed.reclassified}))
     source = record.headcount_source if record is not None else ""

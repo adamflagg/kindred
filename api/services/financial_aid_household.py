@@ -31,6 +31,7 @@ from typing import Any, Final
 
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.services.financial_aid_intake_types import (
+    OPTION_TEXT_MAX_LENGTH,
     PROGRAM_ADULT_WEEKEND,
     PROGRAM_BMITZVAH,
     PROGRAM_FAMILY_CAMP,
@@ -159,8 +160,19 @@ class RequestSpec:
         return (self.household_cm_id, self.person_cm_id, self.program_key, self.program_option_key)
 
 
+def _ask(value: float) -> float:
+    """The family's ask. A negative figure is no ask at all: it is stored as 0 and flagged
+    `ask_missing` (aid_requests.ask has a minimum of 0, so PocketBase would refuse it)."""
+    return max(float(value or 0), 0.0)
+
+
 def _ask_flags(ask: float) -> list[Flag]:
     return [Flag("ask_missing", {})] if ask <= 0 else []
+
+
+def _option_text(value: str) -> str:
+    """The FA answer's option text, clipped to what aid_requests.program_option_text holds."""
+    return value.strip()[:OPTION_TEXT_MAX_LENGTH]
 
 
 def build_request_specs(
@@ -181,11 +193,11 @@ def build_request_specs(
         enrolled = sessions_of(lambda a, p=row.person_cm_id: a.person_cm_id == p, enrolled_only)
         filled = False
         for program_key, text_attr, ask_attr in _PERSON_PROGRAMS:
-            text = str(getattr(row, text_attr)).strip()
+            text = _option_text(str(getattr(row, text_attr)))
             if not text:
                 continue
             filled = True
-            ask = float(getattr(row, ask_attr) or 0)
+            ask = _ask(getattr(row, ask_attr))
             resolution = resolve_session(text, program_key, sessions, aliases, registered)
             specs.append(
                 RequestSpec(
@@ -202,14 +214,14 @@ def build_request_specs(
             )
         if row.fc_program.strip():
             filled = True
-            text = row.fc_program.strip()
+            text = _option_text(row.fc_program)
             family.setdefault(normalize_option_text(text), []).append(
-                (row.person_cm_id, text, float(row.fc_amount_requested or 0))
+                (row.person_cm_id, text, _ask(row.fc_amount_requested))
             )
         if not filled and (row.interest_expressed or row.registration_ask > 0):
             resolution = resolve_adult_session(sessions, registered)
             if resolution.candidates:
-                ask = float(row.registration_ask or 0)
+                ask = _ask(row.registration_ask)
                 specs.append(
                     RequestSpec(
                         household_cm_id,

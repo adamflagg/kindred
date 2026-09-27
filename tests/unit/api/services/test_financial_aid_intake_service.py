@@ -307,3 +307,58 @@ async def test_a_pending_duplicate_takes_the_slot_when_its_holder_is_withdrawn()
     assert (store.requests[claimant.id].status, store.requests[claimant.id].duplicate_of) == ("active", "")
     assert report.duplicates_pending == 0
     assert [s.household_cm_id for s in store.payer_shares.values() if s.request_id == claimant.id] == [1000002]
+
+
+# PocketBase refuses a value outside a field's limits (pocketbase/pb_migrations/1500000201),
+# and one refused value would roll back the whole season's batch. Intake keeps every value
+# it writes inside them, and shows the family's figure as the data-quality state it is.
+
+
+@pytest.mark.asyncio
+async def test_a_negative_ask_is_recorded_as_a_missing_ask() -> None:
+    store = seeded_store()
+    store.fa_rows[0] = fa_row(1000011, 1000001, summer="Session 2", summer_ask=-500.0, total_gross_income=85000.0)
+    store.fa_rows[4] = fa_row(1000041, 1000004, interest=True, registration_ask=-500.0)
+    store.attendees.append(AttendeeRow(1000041, 1000004, 1000401, 2))
+
+    await FinancialAidIntakeService(store).build(YEAR)
+
+    for request in (
+        store.request_for(person=1000011, program="summer"),
+        store.request_for(person=1000041, program="adult_weekend"),
+    ):
+        assert request.ask == 0.0
+        assert {"code": "ask_missing", "detail": {}} in [dict(f) for f in request.flags]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "line",
+    [
+        BillingLine(1000001, 0, 0, 17006, "Family Camp 6", "Family Camp 6 - Adult", 60, 600.0, False),
+        BillingLine(1000001, 1000013, 0, 17006, "Family Camp 6", "Family Camp 6 - Infant", 21, 0.0, False),
+    ],
+    ids=["non_infant_over_50", "infant_over_20"],
+)
+async def test_a_billed_headcount_beyond_the_field_limit_is_left_missing(line: BillingLine) -> None:
+    store = seeded_store()
+    store.billing.append(line)
+
+    await FinancialAidIntakeService(store).build(YEAR)
+
+    family = store.request_for(household=1000001, program="family_camp")
+    assert (family.headcount_non_infant, family.headcount_infant, family.headcount_source) == (0, 0, "")
+    assert "family_camp_headcount_missing" in [f["code"] for f in family.flags]
+
+
+@pytest.mark.asyncio
+async def test_option_text_longer_than_the_field_is_clipped_to_it() -> None:
+    store = seeded_store()
+    long_text = "Session 2 " + "and a very long note " * 40
+    store.fa_rows[0] = fa_row(1000011, 1000001, summer=long_text, summer_ask=1500.0, total_gross_income=85000.0)
+
+    await FinancialAidIntakeService(store).build(YEAR)
+
+    request = store.request_for(person=1000011, program="summer")
+    assert request.program_option_text == long_text.strip()[:500]
+    assert len(request.program_option_key) <= 500

@@ -44,6 +44,13 @@ REGISTERED_STATUS_IDS: Final = frozenset({ACTIVE_ENROLLED_STATUS_ID, 4, 8, 512})
 
 INTAKE_ACTOR: Final = "system:intake"
 
+# aid_requests field limits (pocketbase/pb_migrations/1500000201). PocketBase refuses a value
+# outside them, and one refusal rolls back the season's whole intake batch, so intake never
+# writes one: option text is clipped, and a headcount beyond them counts as no headcount.
+OPTION_TEXT_MAX_LENGTH: Final = 500
+HEADCOUNT_NON_INFANT_MAX: Final = 50
+HEADCOUNT_INFANT_MAX: Final = 20
+
 SHARE_SOURCE_INTAKE: Final = "intake_default"
 SHARE_SOURCE_STAFF: Final = "staff"
 
