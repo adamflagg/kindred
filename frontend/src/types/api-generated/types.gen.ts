@@ -14186,7 +14186,7 @@ export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses = {
    * Successful Response
    */
   200: {
-    [key: string]: number | string
+    [key: string]: number | string | Array<string>
   }
 }
 

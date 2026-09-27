@@ -154,6 +154,58 @@ def test_a_dependents_weight_without_tier_shift_mode_cannot_bind() -> None:
     assert "dependents_weight_cannot_bind" in {w.code for w in validate_rules(rules).warnings}
 
 
+def _with_criterion(**criterion: object) -> list[dict[str, object]]:
+    base = [c.model_dump(mode="json") for c in fictional_rules().equity.criteria]
+    return [*base, {"key": "probe", "label": "Probe", "source": "household", **criterion}]
+
+
+@pytest.mark.parametrize(
+    ("match", "values"),
+    [
+        ("equals_any", ["no"]),
+        ("equals_any", ["yes", "False"]),
+        ("equals_any", ["0"]),
+        ("contains_any", ["o"]),  # a substring of "No" matches it too
+    ],
+)
+def test_a_household_yes_no_criterion_that_matches_no_is_refused(match: str, values: list[str]) -> None:
+    # A blank yes/no answer reaches the calculator as No (the mirror stores it as a bool), so a
+    # criterion matching No would hand its weight to every family that never answered.
+    rules = with_lever(
+        fictional_rules(), "equity.criteria", _with_criterion(field="single_parent", match=match, values=values)
+    )
+    report = validate_rules(rules)
+    (issue,) = [i for i in report.errors_in("equity") if i.code == "yes_no_criterion_matches_no"]
+    assert issue.path == f"equity.criteria.{len(rules.equity.criteria) - 1}.values"
+    assert "single_parent" in issue.message
+    assert "never answered" in issue.message
+
+
+def test_a_yes_no_criterion_matching_no_through_an_also_field_is_refused() -> None:
+    criteria = _with_criterion(field="dependents_note", also_fields=["owns_home"], match="equals_any", values=["no"])
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "yes_no_criterion_matches_no" in {i.code for i in report.errors}
+
+
+@pytest.mark.parametrize(
+    "criterion",
+    [
+        {"field": "single_parent", "match": "equals_any", "values": ["yes"]},  # the 2026 shape
+        {"field": "special_note", "match": "equals_any", "values": ["no"]},  # not a yes/no answer
+    ],
+)
+def test_a_yes_no_criterion_matching_only_yes_or_a_non_yes_no_field_passes(criterion: dict[str, object]) -> None:
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", _with_criterion(**criterion)))
+    assert "yes_no_criterion_matches_no" not in report.codes()
+
+
+def test_a_camper_answer_matching_no_passes_because_a_blank_camper_answer_stays_unknown() -> None:
+    criteria = _with_criterion(field="bipoc", match="equals_any", values=["no"])
+    criteria[-1]["source"] = "camper"
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "yes_no_criterion_matches_no" not in report.codes()
+
+
 # --- income ---------------------------------------------------------------------------
 
 

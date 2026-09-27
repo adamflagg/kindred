@@ -50,6 +50,7 @@ from api.services.financial_aid_session_resolver import (
     resolve_adult_session,
     resolve_session,
 )
+from bunking.financial_aid.rules.schema import YES_NO_ANSWER_FIELDS
 
 INCOME_FIELDS: Final = ("total_gross_income", "expected_gross_income", "total_adjusted_income", "income_confirmed")
 NUMBER_FIELDS: Final = (
@@ -64,7 +65,8 @@ NUMBER_FIELDS: Final = (
     "other_support_amount",
     "num_children",
 )
-BOOL_FIELDS: Final = ("unemployment", "still_unemployed", "single_parent", "owns_home", "gov_subsidies")
+# One list, owned by the rules schema: validation and the season warning read the same fields.
+BOOL_FIELDS: Final = YES_NO_ANSWER_FIELDS
 TEXT_FIELDS: Final = (
     "special_circumstances",
     "gov_subsidies_detail",

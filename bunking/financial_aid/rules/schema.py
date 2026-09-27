@@ -79,6 +79,18 @@ IncomeFigure = Literal[
     "other_support_amount",
 ]
 
+# The household's yes/no answers a household equity criterion can read. The FA mirror
+# stores each as a PocketBase bool, so a blank answer arrives as False: "No" and "never
+# answered" cannot be told apart. Validation therefore refuses a criterion that matches No
+# on one of them, and intake warns when no applicant in a season answered one yes.
+YES_NO_ANSWER_FIELDS: tuple[str, ...] = (
+    "unemployment",
+    "still_unemployed",
+    "single_parent",
+    "owns_home",
+    "gov_subsidies",
+)
+
 
 class RulesModel(BaseModel):
     """Every rules model: unknown fields are errors, and values are immutable."""

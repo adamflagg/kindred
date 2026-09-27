@@ -227,13 +227,14 @@ class FinancialAidIntakeRun(BaseModel):
 
 
 @router.post("/financial-aid/intake")
-async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int | str]:
+async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int | str | list[str]]:
     """Rebuild aid_applications / aid_requests for one season from the FA mirror.
 
     Called by the Go FinancialAidApplicationsSync after every non-dry-run write,
     so intake is as fresh as the mirror. Idempotent: an unchanged season writes
     nothing. Every write is logged in aid_change_log under one operation_id,
-    which the report returns (sub-project 4a).
+    which the report returns (sub-project 4a). `warnings` lists season-level
+    notes (a weighted yes/no answer no applicant gave); they never hold a request.
     """
     service = FinancialAidIntakeService(FinancialAidIntakeRepository(pb))
     return asdict(await service.build(body.year))

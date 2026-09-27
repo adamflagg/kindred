@@ -70,7 +70,8 @@ from api.services.financial_aid_intake_types import (
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, new_record_id
 from bunking.financial_aid.headcount import is_infant
 from bunking.financial_aid.rules import resolve_program
-from bunking.financial_aid.rules.schema import AidRules
+from bunking.financial_aid.rules.lookup import is_dependents_criterion
+from bunking.financial_aid.rules.schema import YES_NO_ANSWER_FIELDS, AidRules
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -97,6 +98,7 @@ class IntakeStore(Protocol):
     ) -> list[PayerShareRecord]: ...
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
+    async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -126,6 +128,9 @@ class IntakeReport:
     awaiting_approved_rules: int = 0
     # The aid_change_log operation this run's writes share; "" when it wrote nothing.
     operation_id: str = ""
+    # Season-level notes for staff and admins. They never hold a request (spec 10.5): a hold
+    # is per request, and these are about the season's form. See never_true_warnings.
+    warnings: tuple[str, ...] = ()
 
 
 INTAKE_REASON: Final = "intake rebuild"
@@ -267,6 +272,34 @@ def _awaiting(plan: IntakePlan, existing: Sequence[RequestRecord]) -> int:
     )
 
 
+FIELD_NEVER_TRUE: Final = "equity_field_never_true"
+
+
+def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
+    """A yes/no answer the approved equity rules weight that no applicant this season answered
+    yes (spec 18 U-C7: warn when no one answered).
+
+    The mirror stores a blank yes/no as False, so "answered No" and "never asked" look the same
+    on any one row. Across a whole season they do not: a weighted question nobody answered yes
+    was most likely dropped from the form, and its weight silently reaches no family. Staff and
+    finance should look at the form or the weight. Nothing is held."""
+    if rules is None or not fa_rows:
+        return ()
+    weighted = {key for weights in rules.equity.weights.values() for key, weight in weights.items() if weight > 0}
+    fields = dict.fromkeys(
+        field
+        for criterion in rules.equity.criteria
+        if criterion.key in weighted and criterion.source == "household" and not is_dependents_criterion(criterion)
+        for field in (criterion.field, *criterion.also_fields)
+        if field in YES_NO_ANSWER_FIELDS
+    )
+    return tuple(
+        f"{FIELD_NEVER_TRUE}: {field} (0 of {len(fa_rows)} applicants)"
+        for field in fields
+        if not any(bool(row.answers.get(field)) for row in fa_rows)
+    )
+
+
 def _final_statuses(plan: IntakePlan, existing: Sequence[RequestRecord]) -> list[str]:
     changed = {rid: changes.get("status") for rid, changes in plan.request_updates}
     statuses = [str(changed.get(r.id) or r.status) for r in existing]
@@ -311,10 +344,11 @@ class FinancialAidIntakeService:
             store.fetch_family_camp_billing(year),
             store.load_intake_rules(year),
         )
-        applications, requests, shares = await asyncio.gather(
+        applications, requests, shares, equity_rules = await asyncio.gather(
             store.fetch_applications(year),
             store.fetch_requests(year),
             store.fetch_payer_shares(year),
+            store.load_equity_rules(year),
         )
         by_household: dict[int, list[FaRow]] = defaultdict(list)
         without_household = 0
@@ -369,7 +403,10 @@ class FinancialAidIntakeService:
             payer_shares_created=len(plan.share_creates),
             awaiting_approved_rules=_awaiting(plan, requests),
             operation_id=operation_id,
+            warnings=never_true_warnings(equity_rules, fa_rows),
         )
+        for warning in report.warnings:
+            logger.warning("Financial-aid intake season warning year=%s %s", year, warning)
         logger.info(
             "Financial-aid intake built year=%s households=%s created=%s updated=%s unmatched=%s pending=%s "
             "awaiting_approved_rules=%s operation_id=%s",

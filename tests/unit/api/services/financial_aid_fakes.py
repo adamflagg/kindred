@@ -162,6 +162,7 @@ class FakeAidStore:
         self.equity: dict[int, EquityAnswers] = {}
         self.birthdates: dict[int, str] = {}
         self.rules: AidRules | None = None
+        self.equity_rules: AidRules | None = None
         self.years_read: set[int] = set()
         self.writes: list[tuple[str, str]] = []  # every record write that committed (not log rows)
         self.change_log: list[dict[str, Any]] = []  # every aid_change_log row that committed
@@ -260,6 +261,11 @@ class FakeAidStore:
         """`rules` stands for the newest version with programs and cost approved; None = none yet."""
         await self._read(year)
         return self.rules
+
+    async def load_equity_rules(self, year: int) -> AidRules | None:
+        """`equity_rules` stands for the newest version with its equity section approved."""
+        await self._read(year)
+        return self.equity_rules
 
     async def commit(
         self,

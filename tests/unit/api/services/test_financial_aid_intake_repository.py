@@ -155,6 +155,18 @@ async def test_intake_rules_come_from_the_newest_version_with_programs_and_cost_
 
 
 @pytest.mark.asyncio
+async def test_equity_rules_come_only_from_a_version_with_equity_approved() -> None:
+    # The season warning on unanswered yes/no fields reads approved weights, never a draft.
+    assert (
+        await FinancialAidIntakeRepository(_pb_with_rules(_rules_row(1, ("programs", "cost")))).load_equity_rules(2031)
+        is None
+    )
+    rules = await FinancialAidIntakeRepository(_pb_with_rules(_rules_row(1, ("equity",)))).load_equity_rules(2031)
+    assert rules is not None
+    assert rules.year == 2031
+
+
+@pytest.mark.asyncio
 async def test_a_payer_share_reads_its_percentage_as_an_exact_decimal() -> None:
     handle = MagicMock()
     handle.get_full_list.return_value = [

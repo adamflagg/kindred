@@ -12,8 +12,10 @@ from api.services.financial_aid_casework_service import FinancialAidCaseworkServ
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
 from api.services.financial_aid_intake_types import AliasRow, AttendeeRow, BillingLine, CorrectionRecord
 from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
+from bunking.financial_aid.rules.schema import AidRules
 from bunking.pocketbase_batch import BatchRequestFailedError
 from tests.unit.api.services.financial_aid_fakes import YEAR, fa_row, intake_rules, seeded_store
+from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 
 @pytest.mark.asyncio
@@ -362,3 +364,76 @@ async def test_option_text_longer_than_the_field_is_clipped_to_it() -> None:
     request = store.request_for(person=1000011, program="summer")
     assert request.program_option_text == long_text.strip()[:500]
     assert len(request.program_option_key) <= 500
+
+
+# --- a yes/no answer no applicant ever gave (spec 18 U-C7: warn when no one answered) ----
+
+
+def _equity_rules(weights: dict[str, str], **criterion_changes: object) -> AidRules:
+    """intake_rules() with the household yes/no criteria weighted as given (camp class)."""
+    rules = intake_rules()
+    criteria = [c.model_dump(mode="json") for c in rules.equity.criteria]
+    for c in criteria:
+        if c["key"] in criterion_changes:
+            c.update(criterion_changes[c["key"]])  # type: ignore[call-overload]
+    return with_levers(rules, {"equity.criteria": criteria, "equity.weights.camp": {"bipoc": "0.5", **weights}})
+
+
+@pytest.mark.asyncio
+async def test_a_weighted_yes_no_answer_no_applicant_gave_is_a_season_warning() -> None:
+    store = seeded_store()  # five applicant rows, none answering single_parent or unemployment
+    store.equity_rules = _equity_rules({"single_parent": "1"})
+    report = await FinancialAidIntakeService(store).build(YEAR)
+    assert report.warnings == ("equity_field_never_true: single_parent (0 of 5 applicants)",)
+
+
+@pytest.mark.asyncio
+async def test_the_season_warning_holds_nothing() -> None:
+    control = seeded_store()
+    await FinancialAidIntakeService(control).build(YEAR)
+    store = seeded_store()
+    store.equity_rules = _equity_rules({"single_parent": "1"})
+    await FinancialAidIntakeService(store).build(YEAR)
+    shape = sorted(
+        (r.person_cm_id, r.status, tuple(tuple(sorted(f.items())) for f in r.flags)) for r in store.requests.values()
+    )
+    expected = sorted(
+        (r.person_cm_id, r.status, tuple(tuple(sorted(f.items())) for f in r.flags)) for r in control.requests.values()
+    )
+    assert shape == expected
+    assert [a.flags for a in store.applications.values()] == [a.flags for a in control.applications.values()]
+
+
+@pytest.mark.asyncio
+async def test_one_applicant_answering_yes_clears_the_warning() -> None:
+    store = seeded_store()
+    store.fa_rows[2] = replace(store.fa_rows[2], answers={**store.fa_rows[2].answers, "single_parent": True})
+    store.equity_rules = _equity_rules({"single_parent": "1"})
+    assert (await FinancialAidIntakeService(store).build(YEAR)).warnings == ()
+
+
+@pytest.mark.asyncio
+async def test_an_also_field_no_applicant_gave_is_warned_on_its_own() -> None:
+    store = seeded_store()
+    store.fa_rows[0] = replace(store.fa_rows[0], answers={**store.fa_rows[0].answers, "unemployment": True})
+    store.equity_rules = _equity_rules({"unemployment": "0.5"}, unemployment={"also_fields": ["still_unemployed"]})
+    report = await FinancialAidIntakeService(store).build(YEAR)
+    assert report.warnings == ("equity_field_never_true: still_unemployed (0 of 5 applicants)",)
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["unweighted", "zero_weight", "no_equity_approved", "no_applicants"],
+)
+@pytest.mark.asyncio
+async def test_no_season_warning_without_a_weight_approved_rules_or_applicants(case: str) -> None:
+    store = seeded_store()
+    store.equity_rules = {
+        "unweighted": _equity_rules({}),
+        "zero_weight": _equity_rules({"single_parent": "0"}),
+        "no_equity_approved": None,
+        "no_applicants": _equity_rules({"single_parent": "1"}),
+    }[case]
+    if case == "no_applicants":
+        store.fa_rows = []
+    assert (await FinancialAidIntakeService(store).build(YEAR)).warnings == ()

@@ -21,7 +21,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from bunking.financial_aid.money import pct_of
 from bunking.financial_aid.rules.lookup import is_dependents_criterion, resolve_program, resolved_table
 from bunking.financial_aid.rules.schema import (
+    YES_NO_ANSWER_FIELDS,
     AidRules,
+    EquityCriterion,
     QualityCheckKey,
     R1Percent,
     SectionName,
@@ -188,6 +190,34 @@ def _check_equity(rules: AidRules, issues: _Issues) -> None:
                     path,
                     "A dependents weight only applies when income.dependents_mode is tier_shift",
                 )
+    for i, criterion in enumerate(rules.equity.criteria):
+        field = _yes_no_field_matching_no(criterion)
+        if field is not None:
+            issues.error(
+                "equity",
+                "yes_no_criterion_matches_no",
+                f"equity.criteria.{i}.values",
+                f"Criterion '{criterion.key}' matches No on the yes/no answer '{field}'. A blank answer is "
+                "stored as No, so this would give the weight to every family that never answered; match yes only",
+            )
+
+
+# How a No can reach a criterion: the calculator passes "No", and other spellings of it are
+# refused too, so a rules author cannot mean No by another name.
+_NO_SPELLINGS = frozenset({"no", "n", "false", "f", "0"})
+
+
+def _yes_no_field_matching_no(criterion: EquityCriterion) -> str | None:
+    """The household yes/no field this criterion would meet on a No, or None."""
+    if criterion.source != "household" or criterion.match == "at_least":
+        return None
+    values = [v.lower() for v in criterion.values]
+    matches_no = any(v in _NO_SPELLINGS for v in values) or (
+        criterion.match == "contains_any" and any(v in "no" for v in values)
+    )
+    if not matches_no:
+        return None
+    return next((f for f in (criterion.field, *criterion.also_fields) if f in YES_NO_ANSWER_FIELDS), None)
 
 
 def _check_award_tables(rules: AidRules, issues: _Issues) -> None:

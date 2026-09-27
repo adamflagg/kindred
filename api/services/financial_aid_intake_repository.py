@@ -69,7 +69,7 @@ from api.services.financial_aid_intake_types import (
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
-from bunking.financial_aid.rules.schema import AidRules
+from bunking.financial_aid.rules.schema import AidRules, SectionName
 
 PAGE_SIZE: Final = 500
 STABLE_SORT: Final = "id"
@@ -179,6 +179,9 @@ def _exact_pct(value: Any) -> Decimal:
 
 async def _refuse_writes(**_: Any) -> None:
     raise RuntimeError("the intake repository only reads aid_rules")
+
+
+_EQUITY_SECTION: tuple[SectionName, ...] = ("equity",)
 
 
 def _fa_row(record: Any) -> FaRow:
@@ -365,6 +368,13 @@ class FinancialAidIntakeRepository:
         normal before finance approves them, and intake then waits visibly (Task 7)."""
         service = FinancialAidRulesService(AidRulesRepository(self.pb), recorder=_refuse_writes)
         version = await service.latest_approved(year, INTAKE_RULES_SECTIONS)
+        return None if version is None else version.document
+
+    async def load_equity_rules(self, year: int) -> AidRules | None:
+        """The newest version of the season whose `equity` section is approved or locked, or
+        None. Read only for the season warning on unanswered yes/no fields, never a draft."""
+        service = FinancialAidRulesService(AidRulesRepository(self.pb), recorder=_refuse_writes)
+        version = await service.latest_approved(year, _EQUITY_SECTION)
         return None if version is None else version.document
 
     async def fetch_payer_shares(self, year: int, request_ids: Sequence[str] | None = None) -> list[PayerShareRecord]:
