@@ -1,11 +1,12 @@
 /**
  * Regression test for #1881: SyncTab's generic sync card computed its Run button's `disabled`
  * state from a hand-maintained list — `isRunning || isPending || runIndividualSync.isPending ||
- * runOnDemandSync.isPending` — that never referenced any of the ten type-specific mutation
+ * runOnDemandSync.isPending` — that never referenced any of the eleven type-specific mutation
  * hooks (family_camp_derived, lodging_assignments, staff_skills,
- * financial_aid_applications, household_demographics, camper_dietary, camper_transportation,
- * quest_registrations, staff_applications, staff_vehicle_info). A double-click on one of those
- * cards could submit a second request before status polling flipped the card to "running".
+ * financial_aid_applications, aid_postings, household_demographics, camper_dietary,
+ * camper_transportation, quest_registrations, staff_applications, staff_vehicle_info). A
+ * double-click on one of those cards could submit a second request before status polling
+ * flipped the card to "running".
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -49,6 +50,7 @@ vi.mock('../../hooks/useSyncCompletionToasts', () => ({
     lodging_assignments: idleStatus,
     staff_skills: idleStatus,
     financial_aid_applications: idleStatus,
+    aid_postings: idleStatus,
     household_demographics: idleStatus,
     camper_dietary: idleStatus,
     quest_registrations: idleStatus,
@@ -94,6 +96,9 @@ vi.mock('../../hooks/useLodgingAssignmentsSync', () => ({
 vi.mock('../../hooks/useStaffSkillsSync', () => ({ useStaffSkillsSync: () => notPending }))
 vi.mock('../../hooks/useFinancialAidApplicationsSync', () => ({
   useFinancialAidApplicationsSync: () => notPending,
+}))
+vi.mock('../../hooks/useAidPostingsSync', () => ({
+  useAidPostingsSync: () => notPending,
 }))
 vi.mock('../../hooks/useHouseholdDemographicsSync', () => ({
   useHouseholdDemographicsSync: () => notPending,

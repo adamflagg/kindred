@@ -30,6 +30,7 @@ import {
   MapPin,
   Camera,
   RefreshCw,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -248,6 +249,13 @@ export const YEAR_SYNC_TYPES = [
     name: 'FA Applications',
     icon: HandCoins,
     color: 'text-green-600',
+    phase: 'transform' as SyncPhase,
+  },
+  {
+    id: 'aid_postings',
+    name: 'Aid Ledger',
+    icon: Wallet,
+    color: 'text-emerald-600',
     phase: 'transform' as SyncPhase,
   },
   {

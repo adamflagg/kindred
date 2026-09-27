@@ -1954,7 +1954,7 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 // SetDryRun(true) must be covered here" invariant silently false.
 var dryRunCapableRealServices = []string{
 	"camper_dietary", "quest_registrations", "household_demographics",
-	"financial_aid_applications", "lodging_assignments", "camper_transportation",
+	"financial_aid_applications", "aid_postings", "lodging_assignments", "camper_transportation",
 	"staff_vehicle_info", "enrollment_snapshots", "normalize_geographic", "family_camp_derived",
 	"staff_applications", "staff_skills",
 	"session_groups", "sessions", "bunks", "bunk_plans", "bunk_assignments", "staff",
@@ -2018,6 +2018,7 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	o.RegisterService("quest_registrations", NewQuestRegistrationsSync(nil))
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(nil))
 	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(nil))
+	o.RegisterService("aid_postings", NewAidPostingsSync(nil))
 	o.RegisterService("lodging_assignments", NewLodgingAssignmentsSync(nil))
 	o.RegisterService("camper_transportation", NewCamperTransportationSync(nil))
 	o.RegisterService("staff_vehicle_info", NewStaffVehicleInfoSync(nil))
@@ -2146,6 +2147,7 @@ func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 		"quest_registrations":         NewQuestRegistrationsSync(nil),
 		"household_demographics":      NewHouseholdDemographicsSync(nil),
 		"financial_aid_applications":  NewFinancialAidApplicationsSync(nil),
+		"aid_postings":                NewAidPostingsSync(nil),
 		"lodging_assignments":         NewLodgingAssignmentsSync(nil),
 		"camper_transportation":       NewCamperTransportationSync(nil),
 		"staff_vehicle_info":          NewStaffVehicleInfoSync(nil),
@@ -3072,7 +3074,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 			"bunks", "bunk_plans", "bunk_assignments", "staff", "financial_transactions",
 			// Transform phase (same order as RunDailySync)
 			"family_camp_derived", "lodging_assignments", "staff_skills",
-			"financial_aid_applications", "household_demographics",
+			"financial_aid_applications", "aid_postings", "household_demographics",
 			"camper_dietary", "camper_transportation", "quest_registrations",
 			"staff_applications", "staff_vehicle_info", "normalize_geographic",
 			"enrollment_snapshots", "stranded_assignment_cleanup",

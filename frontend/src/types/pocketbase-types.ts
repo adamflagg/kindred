@@ -11,8 +11,13 @@ export const Collections = {
   Mfas: '_mfas',
   Otps: '_otps',
   Superusers: '_superusers',
+  AidAttributionOverrides: 'aid_attribution_overrides',
   AidChangeLog: 'aid_change_log',
+  AidFlagDispositions: 'aid_flag_dispositions',
+  AidHouseholdLinks: 'aid_household_links',
+  AidPostings: 'aid_postings',
   AidRules: 'aid_rules',
+  AidSources: 'aid_sources',
   AttendeeStatusHistory: 'attendee_status_history',
   Attendees: 'attendees',
   BunkAssignments: 'bunk_assignments',
@@ -169,6 +174,40 @@ export type SuperusersRecord = {
   verified?: boolean
 }
 
+export const AidAttributionOverridesProgramFamilyOptions = {
+  summer: 'summer',
+  quest: 'quest',
+  teen: 'teen',
+  bmitzvah: 'bmitzvah',
+  family_camp: 'family_camp',
+  adult_weekend: 'adult_weekend',
+  family_school: 'family_school',
+  other: 'other',
+} as const
+export type AidAttributionOverridesProgramFamilyOptions =
+  (typeof AidAttributionOverridesProgramFamilyOptions)[keyof typeof AidAttributionOverridesProgramFamilyOptions]
+
+export const AidAttributionOverridesSourceOptions = {
+  sheet_2026_match: 'sheet_2026_match',
+  staff: 'staff',
+} as const
+export type AidAttributionOverridesSourceOptions =
+  (typeof AidAttributionOverridesSourceOptions)[keyof typeof AidAttributionOverridesSourceOptions]
+export type AidAttributionOverridesRecord = {
+  actor?: string
+  attributed_person_cm_id?: number
+  attributed_session_cm_id?: number
+  created: IsoAutoDateString
+  id: string
+  note?: string
+  program_family?: AidAttributionOverridesProgramFamilyOptions
+  source: AidAttributionOverridesSourceOptions
+  source_key_override?: string
+  transaction_cm_id: number
+  updated: IsoAutoDateString
+  year: number
+}
+
 export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   action: string
   actor: string
@@ -183,6 +222,140 @@ export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   year: number
 }
 
+export const AidFlagDispositionsDispositionOptions = {
+  accepted_let_stand: 'accepted_let_stand',
+  accepted_late_grant: 'accepted_late_grant',
+  accepted_other: 'accepted_other',
+} as const
+export type AidFlagDispositionsDispositionOptions =
+  (typeof AidFlagDispositionsDispositionOptions)[keyof typeof AidFlagDispositionsDispositionOptions]
+export type AidFlagDispositionsRecord = {
+  actor?: string
+  created: IsoAutoDateString
+  disposition: AidFlagDispositionsDispositionOptions
+  flag: string
+  id: string
+  note: string
+  transaction_cm_id: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const AidHouseholdLinksSourceOptions = {
+  auto: 'auto',
+  staff: 'staff',
+} as const
+export type AidHouseholdLinksSourceOptions =
+  (typeof AidHouseholdLinksSourceOptions)[keyof typeof AidHouseholdLinksSourceOptions]
+export type AidHouseholdLinksRecord = {
+  actor?: string
+  created: IsoAutoDateString
+  excluded?: boolean
+  family_key: string
+  household_cm_id: number
+  id: string
+  note?: string
+  source: AidHouseholdLinksSourceOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const AidPostingsSourceFamilyOptions = {
+  camp_fa: 'camp_fa',
+  one_happy_camper: 'one_happy_camper',
+  synagogue_federation: 'synagogue_federation',
+  new_israeli: 'new_israeli',
+  pj: 'pj',
+  jfcs: 'jfcs',
+  jfam_incentive: 'jfam_incentive',
+  named_fund: 'named_fund',
+  other_outside: 'other_outside',
+  application_marker: 'application_marker',
+  placeholder: 'placeholder',
+  unclassified: 'unclassified',
+} as const
+export type AidPostingsSourceFamilyOptions =
+  (typeof AidPostingsSourceFamilyOptions)[keyof typeof AidPostingsSourceFamilyOptions]
+
+export const AidPostingsFunderTypeOptions = {
+  camp: 'camp',
+  outside: 'outside',
+  incentive: 'incentive',
+  unknown: 'unknown',
+} as const
+export type AidPostingsFunderTypeOptions =
+  (typeof AidPostingsFunderTypeOptions)[keyof typeof AidPostingsFunderTypeOptions]
+
+export const AidPostingsProgramFamilyOptions = {
+  summer: 'summer',
+  quest: 'quest',
+  teen: 'teen',
+  bmitzvah: 'bmitzvah',
+  family_camp: 'family_camp',
+  adult_weekend: 'adult_weekend',
+  family_school: 'family_school',
+  other: 'other',
+} as const
+export type AidPostingsProgramFamilyOptions =
+  (typeof AidPostingsProgramFamilyOptions)[keyof typeof AidPostingsProgramFamilyOptions]
+
+export const AidPostingsAttributionLevelOptions = {
+  override: 'override',
+  decision: 'decision',
+  session: 'session',
+  person: 'person',
+  program_family: 'program_family',
+  ambiguous: 'ambiguous',
+  none: 'none',
+} as const
+export type AidPostingsAttributionLevelOptions =
+  (typeof AidPostingsAttributionLevelOptions)[keyof typeof AidPostingsAttributionLevelOptions]
+
+export const AidPostingsAttributionMethodOptions = {
+  override_sheet_2026_match: 'override_sheet_2026_match',
+  override_staff: 'override_staff',
+  decision: 'decision',
+  posted_person_single_enrollment: 'posted_person_single_enrollment',
+  household_single_camper: 'household_single_camper',
+  single_person_multi_enrollment: 'single_person_multi_enrollment',
+  source_implied: 'source_implied',
+  fa_application_program: 'fa_application_program',
+  household_single_family: 'household_single_family',
+  no_enrollment: 'no_enrollment',
+  ambiguous: 'ambiguous',
+} as const
+export type AidPostingsAttributionMethodOptions =
+  (typeof AidPostingsAttributionMethodOptions)[keyof typeof AidPostingsAttributionMethodOptions]
+export type AidPostingsRecord<Tcandidate_program_families = unknown, Tflags = unknown> = {
+  amount?: number
+  attributed_person_cm_id?: number
+  attributed_session_cm_id?: number
+  attribution_level: AidPostingsAttributionLevelOptions
+  attribution_method: AidPostingsAttributionMethodOptions
+  candidate_program_families?: null | Tcandidate_program_families
+  counts_toward_budget?: boolean
+  created: IsoAutoDateString
+  effective_date?: IsoDateString
+  effective_source_key: string
+  financial_category_cm_id?: number
+  flags?: null | Tflags
+  funder_type: AidPostingsFunderTypeOptions
+  household_cm_id?: number
+  id: string
+  is_reversed?: boolean
+  person_cm_id?: number
+  post_date?: IsoDateString
+  program_family?: AidPostingsProgramFamilyOptions
+  request_id?: string
+  reversal_date?: IsoDateString
+  source_family: AidPostingsSourceFamilyOptions
+  source_key: string
+  transaction_cm_id: number
+  transaction_note?: string
+  updated: IsoAutoDateString
+  year: number
+}
+
 export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   created: IsoAutoDateString
   document?: null | Tdocument
@@ -193,6 +366,56 @@ export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   updated: IsoAutoDateString
   version: number
   year: number
+}
+
+export const AidSourcesSourceFamilyOptions = {
+  camp_fa: 'camp_fa',
+  one_happy_camper: 'one_happy_camper',
+  synagogue_federation: 'synagogue_federation',
+  new_israeli: 'new_israeli',
+  pj: 'pj',
+  jfcs: 'jfcs',
+  jfam_incentive: 'jfam_incentive',
+  named_fund: 'named_fund',
+  other_outside: 'other_outside',
+  application_marker: 'application_marker',
+  placeholder: 'placeholder',
+  unclassified: 'unclassified',
+} as const
+export type AidSourcesSourceFamilyOptions =
+  (typeof AidSourcesSourceFamilyOptions)[keyof typeof AidSourcesSourceFamilyOptions]
+
+export const AidSourcesFunderTypeOptions = {
+  camp: 'camp',
+  outside: 'outside',
+  incentive: 'incentive',
+  unknown: 'unknown',
+} as const
+export type AidSourcesFunderTypeOptions =
+  (typeof AidSourcesFunderTypeOptions)[keyof typeof AidSourcesFunderTypeOptions]
+
+export const AidSourcesClassifiedByOptions = {
+  unclassified: 'unclassified',
+  config_file: 'config_file',
+  staff: 'staff',
+} as const
+export type AidSourcesClassifiedByOptions =
+  (typeof AidSourcesClassifiedByOptions)[keyof typeof AidSourcesClassifiedByOptions]
+export type AidSourcesRecord<Timplied_program_families = unknown> = {
+  classified_by: AidSourcesClassifiedByOptions
+  counts_as_aid?: boolean
+  counts_toward_budget?: boolean
+  created: IsoAutoDateString
+  description?: string
+  description_key: string
+  full_coverage?: boolean
+  funder_type: AidSourcesFunderTypeOptions
+  id: string
+  implied_program_families?: null | Timplied_program_families
+  note?: string
+  source_family: AidSourcesSourceFamilyOptions
+  source_name?: string
+  updated: IsoAutoDateString
 }
 
 export const AttendeeStatusHistoryOldStatusOptions = {
@@ -1947,15 +2170,30 @@ export type MfasResponse<Texpand = unknown> = Required<MfasRecord> & BaseSystemF
 export type OtpsResponse<Texpand = unknown> = Required<OtpsRecord> & BaseSystemFields<Texpand>
 export type SuperusersResponse<Texpand = unknown> = Required<SuperusersRecord> &
   AuthSystemFields<Texpand>
+export type AidAttributionOverridesResponse<Texpand = unknown> =
+  Required<AidAttributionOverridesRecord> & BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
   AidChangeLogRecord<Tafter, Tbefore>
 > &
   BaseSystemFields<Texpand>
+export type AidFlagDispositionsResponse<Texpand = unknown> = Required<AidFlagDispositionsRecord> &
+  BaseSystemFields<Texpand>
+export type AidHouseholdLinksResponse<Texpand = unknown> = Required<AidHouseholdLinksRecord> &
+  BaseSystemFields<Texpand>
+export type AidPostingsResponse<
+  Tcandidate_program_families = unknown,
+  Tflags = unknown,
+  Texpand = unknown,
+> = Required<AidPostingsRecord<Tcandidate_program_families, Tflags>> & BaseSystemFields<Texpand>
 export type AidRulesResponse<
   Tdocument = unknown,
   Tsection_status = unknown,
   Texpand = unknown,
 > = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
+export type AidSourcesResponse<Timplied_program_families = unknown, Texpand = unknown> = Required<
+  AidSourcesRecord<Timplied_program_families>
+> &
+  BaseSystemFields<Texpand>
 export type AttendeeStatusHistoryResponse<Texpand = unknown> =
   Required<AttendeeStatusHistoryRecord> & BaseSystemFields<Texpand>
 export type AttendeesResponse<Texpand = unknown> = Required<AttendeesRecord> &
@@ -2178,8 +2416,13 @@ export type CollectionRecords = {
   _mfas: MfasRecord
   _otps: OtpsRecord
   _superusers: SuperusersRecord
+  aid_attribution_overrides: AidAttributionOverridesRecord
   aid_change_log: AidChangeLogRecord
+  aid_flag_dispositions: AidFlagDispositionsRecord
+  aid_household_links: AidHouseholdLinksRecord
+  aid_postings: AidPostingsRecord
   aid_rules: AidRulesRecord
+  aid_sources: AidSourcesRecord
   attendee_status_history: AttendeeStatusHistoryRecord
   attendees: AttendeesRecord
   bunk_assignments: BunkAssignmentsRecord
@@ -2263,8 +2506,13 @@ export type CollectionResponses = {
   _mfas: MfasResponse
   _otps: OtpsResponse
   _superusers: SuperusersResponse
+  aid_attribution_overrides: AidAttributionOverridesResponse
   aid_change_log: AidChangeLogResponse
+  aid_flag_dispositions: AidFlagDispositionsResponse
+  aid_household_links: AidHouseholdLinksResponse
+  aid_postings: AidPostingsResponse
   aid_rules: AidRulesResponse
+  aid_sources: AidSourcesResponse
   attendee_status_history: AttendeeStatusHistoryResponse
   attendees: AttendeesResponse
   bunk_assignments: BunkAssignmentsResponse

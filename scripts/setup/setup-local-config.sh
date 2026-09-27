@@ -23,6 +23,10 @@ ln -sfr "$LOCAL_REPO/config/nicknames_override.json" "$REPO_ROOT/config/nickname
 # rather than in pb_migrations/; PocketBase loads it on boot and degrades to an
 # empty registry when it is absent. See docs/reference/lodging-registry.md.
 ln -sfr "$LOCAL_REPO/config/lodging_registry.json" "$REPO_ROOT/config/lodging_registry.json"
+# Campership aid-source classifications. The camp's own aid descriptions name
+# the camp, so they live here, not in pb_migrations/; the aid_postings sync
+# reads the file on every run and leaves descriptions unclassified without it.
+ln -sfr "$LOCAL_REPO/config/aid_sources.local.json" "$REPO_ROOT/config/aid_sources.local.json"
 ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$REPO_ROOT/config/sheets_sharing.local.json"
 ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.config.local.ts"
 ln -sfr "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"

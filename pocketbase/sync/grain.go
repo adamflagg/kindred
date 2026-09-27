@@ -414,6 +414,16 @@ var serviceGrainDeclarations = []ServiceGrain{
 			"embed BaseSyncService; keyed by person PB id against loadExistingApplications' map",
 	}}},
 
+	{Service: "aid_postings", Writes: []CollectionGrain{
+		{Collection: "aid_postings",
+			NoGrain: "AidPostingsSync.sweepPostings is hand-rolled (no BaseSyncService); the write and " +
+				"the sweep share one key builder, aidPostingKey"},
+		{Collection: "aid_sources",
+			NoGrain: "create-or-classify only, never swept: a description CampMinder stops sending keeps its classification"},
+		{Collection: "aid_household_links",
+			NoGrain: "sweeps only source=auto rows, in the hand-rolled syncHouseholdLinks; staff rows are never touched"},
+	}},
+
 	{Service: "household_demographics", Writes: []CollectionGrain{{
 		Collection: "household_demographics",
 		NoGrain: "HouseholdDemographicsSync.deleteOrphans is hand-rolled -- one of the " +
