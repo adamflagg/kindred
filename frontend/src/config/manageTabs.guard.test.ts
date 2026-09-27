@@ -31,6 +31,7 @@ const ROUTE_PATH: Record<string, string> = {
   lodging: 'lodging/:section',
   sync: 'sync',
   config: 'config/:category',
+  audit: 'audit',
 }
 
 function manageBlock(): string {
