@@ -36,6 +36,7 @@ from .dependencies import (
     start_pb_token_refresh,
 )
 from .routers import (
+    admin_audit_log,
     campers,
     debug,
     geo,
@@ -180,6 +181,7 @@ def create_app() -> FastAPI:
     app.include_router(campers.router)
     app.include_router(geo.router)
     app.include_router(internal.router)
+    app.include_router(admin_audit_log.router)
 
     # Core endpoints (not in a router)
     @app.get("/health")

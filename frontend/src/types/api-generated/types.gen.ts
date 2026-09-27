@@ -210,6 +210,141 @@ export type AttributionOccupant = {
 }
 
 /**
+ * AuditLogActor
+ */
+export type AuditLogActor = {
+  /**
+   * Email
+   */
+  email: string
+  /**
+   * Name
+   */
+  name?: string
+}
+
+/**
+ * AuditLogActors
+ *
+ * Everyone who appears as an actor, for the person picker.
+ */
+export type AuditLogActors = {
+  /**
+   * Actors
+   */
+  actors: Array<AuditLogActor>
+}
+
+/**
+ * AuditLogEntry
+ *
+ * One line on the screen. A view-as session is ONE entry: its start row,
+ * with `ended` set from the matching stop row (null: no end recorded).
+ */
+export type AuditLogEntry = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Created
+   */
+  created: string
+  /**
+   * Type
+   */
+  type: 'access' | 'roles' | 'view_as' | 'settings' | 'pb_admin' | 'sign_in'
+  /**
+   * Action
+   */
+  action: string
+  /**
+   * Actor Kind
+   */
+  actor_kind: 'user' | 'superuser' | 'system'
+  /**
+   * Actor Id
+   */
+  actor_id?: string
+  /**
+   * Actor Email
+   */
+  actor_email?: string
+  /**
+   * Actor Name
+   */
+  actor_name?: string
+  /**
+   * Collection
+   */
+  collection?: string
+  /**
+   * Record Id
+   */
+  record_id?: string
+  /**
+   * Target Label
+   */
+  target_label?: string
+  /**
+   * Before
+   */
+  before?: {
+    [key: string]: unknown
+  } | null
+  /**
+   * After
+   */
+  after?: {
+    [key: string]: unknown
+  } | null
+  /**
+   * Fields
+   */
+  fields?: Array<string>
+  /**
+   * Session Id
+   */
+  session_id?: string
+  /**
+   * Detail
+   */
+  detail?: {
+    [key: string]: unknown
+  } | null
+  /**
+   * Ip
+   */
+  ip?: string
+  /**
+   * Ended
+   */
+  ended?: string | null
+}
+
+/**
+ * AuditLogPage
+ */
+export type AuditLogPage = {
+  /**
+   * Items
+   */
+  items: Array<AuditLogEntry>
+  /**
+   * Page
+   */
+  page: number
+  /**
+   * Per Page
+   */
+  per_page: number
+  /**
+   * Total
+   */
+  total: number
+}
+
+/**
  * AvailabilityWriteRequest
  *
  * Write somebody into one unit for one weekend, or release one to families.
@@ -13667,6 +13802,75 @@ export type ProcessRequestsApiInternalProcessRequestsPostResponses = {
 
 export type ProcessRequestsApiInternalProcessRequestsPostResponse =
   ProcessRequestsApiInternalProcessRequestsPostResponses[keyof ProcessRequestsApiInternalProcessRequestsPostResponses]
+
+export type ListAuditLogApiAdminAuditLogGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Type
+     */
+    type?: Array<'access' | 'roles' | 'view_as' | 'settings' | 'pb_admin'>
+    /**
+     * Actor
+     */
+    actor?: string | null
+    /**
+     * Q
+     */
+    q?: string | null
+    /**
+     * Sign Ins
+     */
+    sign_ins?: boolean
+    /**
+     * Page
+     */
+    page?: number
+    /**
+     * Per Page
+     */
+    per_page?: number
+  }
+  url: '/api/admin/audit-log'
+}
+
+export type ListAuditLogApiAdminAuditLogGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListAuditLogApiAdminAuditLogGetError =
+  ListAuditLogApiAdminAuditLogGetErrors[keyof ListAuditLogApiAdminAuditLogGetErrors]
+
+export type ListAuditLogApiAdminAuditLogGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AuditLogPage
+}
+
+export type ListAuditLogApiAdminAuditLogGetResponse =
+  ListAuditLogApiAdminAuditLogGetResponses[keyof ListAuditLogApiAdminAuditLogGetResponses]
+
+export type ListAuditLogActorsApiAdminAuditLogActorsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/admin/audit-log/actors'
+}
+
+export type ListAuditLogActorsApiAdminAuditLogActorsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AuditLogActors
+}
+
+export type ListAuditLogActorsApiAdminAuditLogActorsGetResponse =
+  ListAuditLogActorsApiAdminAuditLogActorsGetResponses[keyof ListAuditLogActorsApiAdminAuditLogActorsGetResponses]
 
 export type HealthCheckHealthGetData = {
   body?: never
