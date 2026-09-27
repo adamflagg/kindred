@@ -87,6 +87,10 @@ func (s *AidPostingsSync) SetDryRun(dryRun bool) { s.DryRun = dryRun }
 // SetYear pins one season; 0 means the daily window N-1..N+1.
 func (s *AidPostingsSync) SetYear(year int) { s.Year = year }
 
+// UsesSeasonWindow keeps a current-season queue on the N-1..N+1 window (SeasonWindowed):
+// without it, runSyncAndWait would pin the daily run to season N alone.
+func (s *AidPostingsSync) UsesSeasonWindow() bool { return true }
+
 // Sync applies the private classifications once, then materializes each
 // target season's aid_postings (and the auto household links).
 func (s *AidPostingsSync) Sync(ctx context.Context) error {

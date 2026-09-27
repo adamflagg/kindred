@@ -453,6 +453,22 @@ type YearSetter interface {
 	SetYear(year int)
 }
 
+// SeasonWindowed marks a YearSetter whose year 0 is not "unset" but "the window around the
+// live season" (aid_postings: N-1..N+1). A current-season queue resets such a service to 0
+// instead of pinning it to season N, which would silently shrink the window to one season.
+type SeasonWindowed interface {
+	UsesSeasonWindow() bool
+}
+
+// currentSeasonYear is the year a current-season run (origin.year 0) gives a YearSetter:
+// 0 for a SeasonWindowed service, the configured season for every other one.
+func currentSeasonYear(svc Service) (int, error) {
+	if w, ok := svc.(SeasonWindowed); ok && w.UsesSeasonWindow() {
+		return 0, nil
+	}
+	return ParseSeasonYear()
+}
+
 // ChangedCollectionsAware is an optional interface for services that can skip work for
 // collections a run did not touch. The orchestrator calls it before Sync(), the same way it
 // calls SetDryRun and SetYear -- a Service cannot reach back into the orchestrator itself.
@@ -1407,7 +1423,7 @@ func (o *Orchestrator) RunSyncSequenceWithServices(
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
 	if svc := o.GetService(syncType); svc != nil {
 		if yearSetter, ok := svc.(YearSetter); ok {
-			year, err := ParseSeasonYear()
+			year, err := currentSeasonYear(svc)
 			if err != nil {
 				return fmt.Errorf("resolving current season for %s: %w", syncType, err)
 			}
@@ -2127,7 +2143,7 @@ func (o *Orchestrator) runSyncAndWaitWithService(
 		if yearSetter, ok := svc.(YearSetter); ok {
 			if origin.year != 0 {
 				yearSetter.SetYear(origin.year)
-			} else if resolved, err := ParseSeasonYear(); err == nil {
+			} else if resolved, err := currentSeasonYear(svc); err == nil {
 				yearSetter.SetYear(resolved)
 			} else {
 				slog.Warn("runSyncAndWait: could not resolve current season, leaving year unset",
