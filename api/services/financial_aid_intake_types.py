@@ -62,6 +62,10 @@ INTAKE_RULES_SECTIONS: Final[tuple[SectionName, ...]] = ("programs", "cost")
 FLAG_AWAITING_RULES: Final = "awaiting_approved_rules"
 # The approved rules claim no program for the request's session.
 FLAG_NO_PROGRAM: Final = "no_program_for_session"
+# A staff `duplicate` came back to life because the request it duplicated is no longer active
+# and nothing else holds its slot. Sticky across rebuilds, and always a hold: the payer shares
+# and any decision stayed on the withdrawn survivor, named in the detail.
+FLAG_DUPLICATE_SURVIVOR_WITHDRAWN: Final = "duplicate_survivor_withdrawn"
 
 RequestKey = tuple[int, int, str, str]
 

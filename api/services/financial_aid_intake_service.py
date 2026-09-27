@@ -158,10 +158,11 @@ def plan_writes(
     index on every statement: an existing request never changes session once resolved, so
     the only way a run frees a slot is by withdrawing its active holder, and that must land
     before a new request claims it (a family correcting its answer to the session staff
-    already resolved). No update names a request created in this run: the planner settles
-    existing rows before it plans any create, so an update's `duplicate_of` is always an
-    existing id. Within the updates, the planner lists active rows first, so a withdrawn
-    holder is written before the pending duplicate it promotes.
+    already resolved). Within the updates, the planner lists active rows first, so a
+    withdrawn holder is written before the pending duplicate it promotes or the stranded
+    duplicate it revives. One update may name a request created in this run: a stranded
+    duplicate re-pointed to its survivor's reworded replacement. `duplicate_of` is a text
+    field, not a relation, so the order does not matter there; the new id is swapped in.
 
     An update logs the record's fields before it as `before`; the helper keeps only what
     changed. A status move is logged as action "status" (spec 12.1 as-of)."""
@@ -170,6 +171,7 @@ def plan_writes(
     requests_by_id = {r.id: r for r in requests}
     household_of = {r.id: r.household_cm_id for r in requests}
     status_moves = {change.record_ref for change in plan.status_changes}
+    refs = {create.ref: new_record_id() for create in plan.request_creates}
     writes: list[AidWrite] = []
     for household_cm_id, payload in plan.application_creates:
         application_ids[household_cm_id] = new_record_id()
@@ -202,11 +204,10 @@ def plan_writes(
                 year=year,
                 record_id=record_id,
                 before=request_fields(requests_by_id[record_id]),
-                data=changes,
+                data={k: refs.get(v, v) if k == "duplicate_of" else v for k, v in changes.items()},
                 log_action="status" if record_id in status_moves else None,
             )
         )
-    refs = {create.ref: new_record_id() for create in plan.request_creates}
     for create in plan.request_creates:
         request_id = refs[create.ref]
         household_of[request_id] = create.household_cm_id

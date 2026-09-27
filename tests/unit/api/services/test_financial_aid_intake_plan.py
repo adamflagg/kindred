@@ -102,10 +102,17 @@ def test_an_existing_request_with_no_payer_share_gets_its_default_and_one_with_a
 
 
 def test_a_duplicate_or_withdrawn_request_gets_no_payer_share() -> None:
-    s = spec()
+    s, kept = spec(), spec(household=1000002)  # the other parent's request, kept by staff
+    survivor = record(kept, "req000000000001")
     marked = record(s, "req000000000002", status="duplicate", duplicate_of="req000000000001")
     gone = record(spec(text="Session 2a", session=1000102), "req000000000003", status="withdrawn")
-    plan = plan_intake([household(s)], [app()], [marked, gone], {})
+    plan = plan_intake(
+        [household(s), household(kept, household_cm_id=1000002)],
+        [app()],
+        [survivor, marked, gone],
+        {},
+        frozenset({"req000000000001"}),
+    )
     assert plan.share_creates == []
 
 
@@ -188,10 +195,11 @@ def test_two_new_colliding_family_requests_point_the_second_at_the_first() -> No
 
 
 def test_a_staff_marked_duplicate_stays_a_duplicate() -> None:
-    s = spec()
+    s, kept = spec(), spec(household=1000002)  # the other parent's request, kept by staff
+    survivor = record(kept, "req000000000001")
     marked = record(s, "req000000000002", status="duplicate", duplicate_of="req000000000001")
-    plan = plan_intake([household(s)], [app()], [marked], {})
-    assert all("status" not in changes for _, changes in plan.request_updates)
+    plan = plan_intake([household(s), household(kept, household_cm_id=1000002)], [app()], [survivor, marked], {})
+    assert all("status" not in changes and "duplicate_of" not in changes for _, changes in plan.request_updates)
 
 
 def test_billing_fills_a_family_request_headcount() -> None:

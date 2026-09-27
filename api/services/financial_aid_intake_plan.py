@@ -15,6 +15,12 @@ What a re-run may and may not change:
   is never re-pointed under a decision.
 * `duplicate` (a staff ruling) is kept. `withdrawn` is reversible when the
   answer returns.
+* A `duplicate` is never left without a live request for its camper (or family)
+  and session. After every run, judged by STATE (so a duplicate stranded by an
+  earlier run heals too): one whose survivor is no longer active is re-pointed to
+  the active end of its chain of duplicates, or to whoever holds the slot now,
+  and stays `duplicate`; with the slot free it is revived (active, or unmatched
+  when it names no session) with the sticky `duplicate_survivor_withdrawn` hold.
 * ONE active request per camper x session, or household x session for family
   camp (spec 2 item 9). Existing active rows keep their slot. A later claimant
   becomes `duplicate_pending` and names its holder: an id, or `new:N` when the
@@ -43,6 +49,7 @@ from api.services.financial_aid_household import RequestSpec
 from api.services.financial_aid_intake_types import (
     APPLICATION_ACTIVE,
     APPLICATION_WITHDRAWN,
+    FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
     HEADCOUNT_BILLED,
     HEADCOUNT_INFANT_MAX,
     HEADCOUNT_NON_INFANT_MAX,
@@ -203,6 +210,12 @@ def _request_target(
         flags.append(Flag("not_enrolled", {"session_cm_id": session}))
     if session != 0 and rules_check is not None:
         flags.extend(rules_check(session))
+    if record is not None:  # a revival's hold outlives the run that raised it
+        flags.extend(
+            Flag(str(f["code"]), dict(f.get("detail", {})))
+            for f in record.flags
+            if f.get("code") == FLAG_DUPLICATE_SURVIVOR_WITHDRAWN
+        )
     if record is not None and record.status == STATUS_DUPLICATE:
         status, duplicate_of = STATUS_DUPLICATE, record.duplicate_of
     elif session == 0:
@@ -256,6 +269,52 @@ def _plan_applications(
             plan.status_changes.append(StatusChange(AID_APPLICATIONS, record.id, record.status, APPLICATION_WITHDRAWN))
 
 
+def _active_end(start: str, targets: Mapping[str, Mapping[str, Any]]) -> str | None:
+    """Follow a chain of duplicates from `start` to the request it ends at, if that one is
+    active after this run; None when the chain ends anywhere else (or loops)."""
+    seen: set[str] = set()
+    current = start
+    while current and current not in seen:
+        seen.add(current)
+        target = targets.get(current)
+        if target is None:
+            return None
+        if target["status"] == STATUS_ACTIVE:
+            return current
+        if target["status"] != STATUS_DUPLICATE:
+            return None
+        current = str(target["duplicate_of"])
+    return None
+
+
+def _heal_stranded_duplicates(
+    requests: Sequence[tuple[RequestRecord, dict[str, Any]]],
+    creates: Mapping[str, Mapping[str, Any]],
+    holders: dict[_Slot, str],
+) -> None:
+    """Every `duplicate` whose survivor is no longer active, after this run's other targets
+    are settled: re-point it along its chain or to the slot's holder, or revive it."""
+    targets: dict[str, Mapping[str, Any]] = {record.id: target for record, target in requests}
+    targets.update(creates)
+    for record, target in requests:
+        if target["status"] != STATUS_DUPLICATE:
+            continue
+        survivor = str(target["duplicate_of"])
+        session = int(target["session_cm_id"])
+        slot = _slot(record.household_cm_id, record.person_cm_id, session)
+        found = _active_end(survivor, targets) or (holders.get(slot) if session else None)
+        if found is not None:
+            target["duplicate_of"] = found
+            continue
+        if session:
+            holders[slot] = record.id  # the one revival per slot: a second stranded one re-points to it
+        target["status"] = STATUS_ACTIVE if session else STATUS_UNMATCHED
+        target["duplicate_of"] = ""
+        revived = Flag(FLAG_DUPLICATE_SURVIVOR_WITHDRAWN, {"withdrawn_survivor": survivor})
+        kept = [f for f in target["flags"] if f.get("code") != FLAG_DUPLICATE_SURVIVOR_WITHDRAWN]
+        target["flags"] = [*kept, revived.to_json()]
+
+
 def plan_intake(
     households: Sequence[HouseholdIntake],
     existing_applications: Sequence[ApplicationRecord],
@@ -269,9 +328,20 @@ def plan_intake(
     specs: dict[RequestKey, RequestSpec] = {s.key: s for h in households for s in h.requests}
     holders: dict[_Slot, str] = {}
     known: set[RequestKey] = set()
+    # Targets first, writes after: a stranded duplicate can only be judged once every other
+    # request's place in this run is known, new ones included.
+    targets: list[tuple[RequestRecord, dict[str, Any]]] = []
     for record in sorted(existing_requests, key=lambda r: (r.status != STATUS_ACTIVE, r.id)):
         known.add(record.key)
-        target = _request_target(record, specs.get(record.key), holders, billed, record.id, rules_check)
+        targets.append(
+            (record, _request_target(record, specs.get(record.key), holders, billed, record.id, rules_check))
+        )
+    new_targets: dict[str, dict[str, Any]] = {}
+    for key in sorted(k for k in specs if k not in known):
+        ref = f"new:{len(new_targets)}"
+        new_targets[ref] = _request_target(None, specs[key], holders, billed, ref, rules_check)
+    _heal_stranded_duplicates(targets, new_targets, holders)
+    for record, target in targets:
         changes = _changed(request_fields(record), target)
         if changes:
             plan.request_updates.append((record.id, changes))
@@ -279,10 +349,8 @@ def plan_intake(
             plan.status_changes.append(StatusChange(AID_REQUESTS, record.id, record.status, changes["status"]))
         if changes.get("status", record.status) in _NEEDS_A_SHARE and record.id not in requests_with_shares:
             plan.share_creates.append(record.id)
-    for key in sorted(k for k in specs if k not in known):
+    for key, (ref, target) in zip(sorted(k for k in specs if k not in known), new_targets.items(), strict=True):
         spec = specs[key]
-        ref = f"new:{len(plan.request_creates)}"
-        target = _request_target(None, spec, holders, billed, ref, rules_check)
         duplicate_of_ref = str(target.pop("duplicate_of"))
         payload = {
             "household_cm_id": spec.household_cm_id,

@@ -33,6 +33,7 @@ from api.services.financial_aid_corrections import INCOME_OVERRIDE_FIELD, STAFF_
 from api.services.financial_aid_household import BOOL_FIELDS
 from api.services.financial_aid_intake_types import (
     FLAG_AWAITING_RULES,
+    FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
     UNKNOWN_EQUITY,
@@ -203,6 +204,15 @@ def request_issues(
             _hold(
                 FLAG_AWAITING_RULES,
                 "Waiting for finance to approve this season's programs and cost rules; intake resolves it after",
+            )
+        )
+    if any(flag.get("code") == FLAG_DUPLICATE_SURVIVOR_WITHDRAWN for flag in request.flags):
+        # Always a hold (owner ruling 2026-09-26): the shares and any decision are on the old request.
+        found.append(
+            _hold(
+                FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
+                "The request this one duplicated was withdrawn, so this one is live again: its payer "
+                "shares and any decision stayed on the withdrawn request; check them before awarding",
             )
         )
     if request.session_cm_id <= 0:
