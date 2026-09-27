@@ -182,6 +182,29 @@ describe('AuditLogTab', () => {
     expect(screen.getByRole('button', { name: 'full value' })).toBeTruthy()
   })
 
+  it('a clamped value keeps the display line-clamp needs (no `block`, which overrides -webkit-box)', () => {
+    page = { items: [longValueEntry()], page: 1, per_page: 10, total: 1 }
+    renderTab()
+    const clamped = screen.getByText(LONG_SENTENCE)
+    expect(clamped.className).toContain('line-clamp-3')
+    expect(clamped.className.split(/\s+/)).not.toContain('block')
+  })
+
+  it('a long actor truncates in its column, with the full name on hover', () => {
+    page = {
+      items: [
+        longValueEntry({ actor_name: '', actor_email: 'a.very.long.reviewer.address@example.com' }),
+      ],
+      page: 1,
+      per_page: 10,
+      total: 1,
+    }
+    renderTab()
+    const who = screen.getByText('a.very.long.reviewer.address@example.com')
+    expect(who.className.split(/\s+/)).toContain('truncate')
+    expect(who.getAttribute('title')).toBe('a.very.long.reviewer.address@example.com')
+  })
+
   it('a short value renders with no control', () => {
     page = {
       items: [

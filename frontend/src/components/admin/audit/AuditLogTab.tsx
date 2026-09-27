@@ -112,7 +112,9 @@ function Value({
   if (!isLongValue(value)) return <span className={`${className} ${VALUE_WRAP}`}>{value}</span>
   return (
     <div>
-      <span className={`${className} ${VALUE_WRAP} ${VALUE_CLAMP} block`}>{value}</span>
+      {/* No `block` here: it overrides the display: -webkit-box that line-clamp needs, and the value
+          then renders at full height. */}
+      <span className={`${className} ${VALUE_WRAP} ${VALUE_CLAMP}`}>{value}</span>
       <button type="button" onClick={onShowFull} className={LINK_BUTTON}>
         full value
       </button>
@@ -190,7 +192,11 @@ function AuditRow({
       >
         {whenLabel(entry.created)}
       </td>
-      <td className={TD}>{actorLabel(entry)}</td>
+      <td className={TD}>
+        <span className="block truncate" title={actorLabel(entry)}>
+          {actorLabel(entry)}
+        </span>
+      </td>
       <td className={TD}>
         <span className={TYPE_PILL[entry.type]}>{TYPE_LABEL[entry.type]}</span>
       </td>
