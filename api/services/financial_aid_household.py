@@ -12,8 +12,8 @@ financial field is carried (spec 2 item 22: stored and shown):
   ALSO None, with an `income_conflict` flag listing every variant: Kindred
   never picks a figure itself; staff call the family and correct it (spec 8).
 * any OTHER number takes the value most rows agree on, ties to the lowest
-  person id; 0 means none given; a disagreement raises
-  `household_answer_conflict` for staff. No value is None.
+  person id; 0 means none given, so a field no row answers is None; a
+  disagreement raises `household_answer_conflict` for staff.
 * a yes/no is true if any row says true; text joins the distinct answers.
 
 Requests are per camper for summer and B*Mitzvah, and per HOUSEHOLD for family

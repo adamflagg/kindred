@@ -97,6 +97,14 @@ def test_synced_values_canonicalise_like_corrections() -> None:
     assert canonical_synced(FieldKind.INCOME_OVERRIDE, None) == ""
 
 
+def test_a_huge_family_typed_figure_canonicalises_instead_of_raising() -> None:
+    # The FA mirror stores any finite float a family types (a pasted digit run, "1e30").
+    # Quantizing it at Decimal's default 28-digit precision raised InvalidOperation, a 500
+    # on the application page, and on the season's request queue when it was an ask.
+    assert canonical_synced(FieldKind.MONEY, float("9" * 30)) == "1" + "0" * 30 + ".00"  # the float is 1e30
+    assert canonical_synced(FieldKind.MONEY, 1.5e300).startswith("15" + "0" * 299)
+
+
 def test_a_blank_synced_income_stays_unknown_until_staff_confirm_a_figure() -> None:
     kinds = {"total_gross_income": FieldKind.MONEY}
     blank = effective_values({"total_gross_income": None}, kinds, [])["total_gross_income"]

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Context, Decimal, InvalidOperation
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Final
@@ -77,7 +77,10 @@ def canonical_synced(kind: FieldKind, value: Any) -> str:
         return str(value)
     if kind is FieldKind.COUNT:
         return str(int(float(value)))
-    return f"{Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP)}"
+    amount = Decimal(str(value))
+    # Enough precision for any float a family types: at the default 28 digits a figure
+    # of ~1e26 or more raises InvalidOperation, a 500 on every read that shows it.
+    return f"{amount.quantize(_CENT, rounding=ROUND_HALF_UP, context=Context(prec=max(28, amount.adjusted() + 3)))}"
 
 
 def _money(text: str) -> str:
