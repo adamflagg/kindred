@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useOverlayEscape } from '../../hooks/useOverlayEscape'
-import { HOUSEHOLD, noteRow } from '../../test/notesScope'
+import { HOUSEHOLD, noteRow, PERSON } from '../../test/notesScope'
 import { cardFor } from './cardFor'
 import { SubjectNoteCorner } from './SubjectNoteCorner'
 import { SubjectNotesScope } from './SubjectNotesScope'
@@ -34,8 +35,15 @@ function Board({ withPanel = false }: { withPanel?: boolean }) {
   )
 }
 
+/**
+ * `detail: 1` -- an explicit real mouse click, matching a native browser's
+ * own default for a single pointer click. Keyboard activation (Enter/Space on
+ * a focused button) natively carries `detail: 0`, which is also jsdom's
+ * default when `detail` is left unset -- so leaving it out here would make
+ * this the KEYBOARD case by accident, not the mouse one.
+ */
 function openPopover() {
-  fireEvent.click(screen.getByRole('button', { name: /note/i }))
+  fireEvent.click(screen.getByRole('button', { name: /note/i }), { detail: 1 })
   return screen.getByRole('dialog', { name: 'Note' })
 }
 
@@ -191,10 +199,29 @@ describe('SubjectNotePopover', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('restores focus to the corner button when Escape closes it', () => {
+  it('does NOT restore focus to the corner after a mouse open -- no ring, no reopened tooltip preview', () => {
+    // A preview to reopen: a plain, note-less corner has no Tooltip at all,
+    // so this would pass vacuously without an existing note. NB the corner's
+    // OWN inner markup swaps (Tooltip <-> plain button) between "popover
+    // open" and "closed", since `openHere` gates its preview -- so this
+    // checks the stable outer `[data-note-corner]` holder for containment,
+    // not a captured button reference, which would go stale across that
+    // swap and pass for the wrong reason.
+    notesData = { notes: [noteRow(HOUSEHOLD, 'Grandma is coming Saturday only.')] }
     render(<Board />)
-    openPopover()
+    openPopover() // a real mouse click (detail: 1) -- see openPopover's own comment.
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
+    const cornerHolder = document.querySelector('[data-note-corner]') as HTMLElement
+    expect(cornerHolder.contains(document.activeElement)).toBe(false)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('restores focus to the corner button after a KEYBOARD open, once Escape closes it', async () => {
+    render(<Board />)
     const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    cornerButton.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
     fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
     expect(document.activeElement).toBe(cornerButton)
   })
@@ -215,6 +242,181 @@ describe('SubjectNotePopover', () => {
       expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
     )
     expect(document.activeElement).toBe(elsewhere)
+  })
+
+  it('a press on the queue’s own toggle button keeps the popover open, no save, and the toggle’s own click still fires', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for FloatingQueueBadge's own toggle button -- marked with
+    // the same `data-queue-toggle` attribute, elsewhere in the document.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const toggle = document.createElement('button')
+    toggle.setAttribute('data-queue-toggle', '')
+    const toggleClick = vi.fn()
+    toggle.addEventListener('click', toggleClick)
+    badge.appendChild(toggle)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(toggle)
+      // The exemption only proves itself if the click that follows the same
+      // physical press still reaches the toggle's own handler -- a
+      // regression that installed the corner's click-eater on the toggle
+      // path too would still pass a pointerDown-only assertion, since
+      // nothing here would ever fire the eaten click to notice.
+      fireEvent.click(toggle)
+      expect(toggleClick).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press on the expanded queue’s own close button keeps the popover open, no save', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for FloatingQueueBadge's own expanded-state close ✕ --
+    // marked with the same `data-queue-close` attribute, elsewhere in the
+    // document.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const close = document.createElement('button')
+    close.setAttribute('data-queue-close', '')
+    badge.appendChild(close)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(close)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press anywhere else inside the expanded queue badge (its search box, say) leaves the open note alone (owner repro: note stays open, then closing/queue-search shouldn’t save it)', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for the expanded queue's own search input -- anything inside
+    // `[data-floating-badge]` that is not a queue card or a note corner is
+    // exempt now, the same way the toggle and close buttons already were.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const search = document.createElement('input')
+    badge.appendChild(search)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(search)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press on a queue CARD inside the badge still saves the open note first', async () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for a card rendered inside the expanded queue's own list.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const card = document.createElement('div')
+    card.setAttribute('data-family-card', '')
+    badge.appendChild(card)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(card)
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+      )
+      expect(saveNote).toHaveBeenCalledWith(
+        expect.objectContaining({ scenario: '', body: 'Arriving late Friday.' })
+      )
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press on ANOTHER card’s note corner inside the badge still saves the open note first', async () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for a DIFFERENT card's corner, rendered inside the expanded
+    // queue -- marked with the same `data-note-corner-for` attribute
+    // SubjectNoteCorner uses, but a different key from the open popover's.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const otherCorner = document.createElement('button')
+    otherCorner.setAttribute('data-note-corner-for', 'person:9999999:1000001')
+    badge.appendChild(otherCorner)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(otherCorner)
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+      )
+      expect(saveNote).toHaveBeenCalledWith(
+        expect.objectContaining({ scenario: '', body: 'Arriving late Friday.' })
+      )
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press on ANOTHER card’s real corner (not the queue) still saves the open note first', async () => {
+    render(
+      <SubjectNotesScope year={2026} sessionCmId={1000005} scenarioId="" scenarioName="" canManage>
+        <div data-family-card className="group relative">
+          <SubjectNoteCorner subject={HOUSEHOLD} label="Johnson" containing="padding" />
+        </div>
+        <div data-family-card className="group relative">
+          <SubjectNoteCorner subject={PERSON} label="Chen" containing="padding" />
+        </div>
+      </SubjectNotesScope>
+    )
+    // Both corners read "Add note" (neither has an existing note), so grab
+    // them by their own `data-note-corner-for` key rather than by role name.
+    const corners = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-note-corner-for] button')
+    )
+    expect(corners).toHaveLength(2)
+    const [firstCorner, secondCorner] = corners as [HTMLButtonElement, HTMLButtonElement]
+    fireEvent.click(firstCorner)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    fireEvent.pointerDown(secondCorner)
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    )
+    expect(saveNote).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: HOUSEHOLD, scenario: '', body: 'Arriving late Friday.' })
+    )
   })
 
   it('removes the pending click-eater when the popover unmounts', () => {
@@ -239,6 +441,63 @@ describe('SubjectNotePopover', () => {
     } finally {
       probe.remove()
     }
+  })
+})
+
+describe('SubjectNotePopover — Escape acts on whatever has focus', () => {
+  it('does nothing when focus is on a control outside it, leaving that control to handle Escape itself', () => {
+    const outsideKeyDown = vi.fn()
+    render(
+      <SubjectNotesScope year={2026} sessionCmId={1000005} scenarioId="" scenarioName="" canManage>
+        <div data-family-card className="group relative">
+          <SubjectNoteCorner subject={HOUSEHOLD} label="Johnson" containing="padding" />
+        </div>
+        <input aria-label="Queue search" onKeyDown={outsideKeyDown} />
+      </SubjectNotesScope>
+    )
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    const outside = screen.getByRole('textbox', { name: 'Queue search' })
+    outside.focus()
+    fireEvent.keyDown(outside, { key: 'Escape' })
+
+    expect(outsideKeyDown).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('typed')
+    expect(saveNote).not.toHaveBeenCalled()
+  })
+
+  it('still discards when focus is inside the popover', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Note' }))
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
+  })
+
+  it('still discards when focus has moved to the body', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
+  })
+
+  it('still discards when focus has landed on the note’s own corner (a second press on it can leave focus there, on some browsers)', () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'typed' } })
+    const cornerButton = document.querySelector('[data-note-corner] button') as HTMLElement
+    cornerButton.focus()
+    expect(document.activeElement).toBe(cornerButton)
+    fireEvent.keyDown(cornerButton, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+    expect(saveNote).not.toHaveBeenCalled()
   })
 })
 

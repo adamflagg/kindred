@@ -105,6 +105,7 @@ describe('while a new read is in flight (owner ruling 2026-09-26)', () => {
     updated: '2026-09-25T12:00:00Z',
   }
   const planRowA = { ...standardRow, scenario: 'scnA', body: 'Try Pine' }
+  const planRowB = { ...standardRow, scenario: 'scnB', body: 'Try Cedar' }
 
   it('keeps the standard rows and drops the old scenario’s plan rows while only the scenario changed', async () => {
     fetchSpy.mockImplementationOnce(() =>
@@ -131,8 +132,14 @@ describe('while a new read is in flight (owner ruling 2026-09-26)', () => {
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true))
     expect(result.current.data).toEqual({ notes: [standardRow] })
 
-    resolveB?.(new Response(JSON.stringify({ notes: [standardRow] }), { status: 200 }))
+    // B's real payload deliberately differs from the placeholder (its own
+    // plan row, `planRowB`, never `planRowA`'s), proving `data` equals B's
+    // real payload, not only that the placeholder flag flipped off -- which
+    // would pass even if `data` had silently kept showing the placeholder
+    // value.
+    resolveB?.(new Response(JSON.stringify({ notes: [standardRow, planRowB] }), { status: 200 }))
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false))
+    expect(result.current.data).toEqual({ notes: [standardRow, planRowB] })
   })
 
   it('blanks (no placeholder) when the SESSION changes mid-scenario', async () => {

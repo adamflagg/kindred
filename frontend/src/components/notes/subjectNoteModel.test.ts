@@ -152,6 +152,33 @@ describe('editedLine', () => {
       'edited Sep 26 · Test Staff'
     )
   })
+
+  it('reads a real ±hh:mm offset (not just Z), formatted in the viewer’s time zone', () => {
+    expect(editedLine(row({ updated: '2026-09-26T19:31:20-07:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
+
+  it('accepts a `+00:00` offset the same way, without double-treating it as naive UTC', () => {
+    expect(editedLine(row({ updated: '2026-09-26T19:31:20+00:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
+
+  it('honours an offset that moves the calendar date, not just the clock time -- values chosen so stripping the offset would land on the WRONG day', () => {
+    // Naively treating either of these local clock times as already-UTC (the
+    // bug: discarding a real offset instead of reading it) gets EACH one
+    // wrong in the opposite direction: the first would read Sep 26 (a day
+    // early; the real answer is Sep 27), the second would read Sep 27 (a day
+    // late; the real answer is Sep 26) -- so a real offset must actually be
+    // applied for either assertion below to pass.
+    expect(editedLine(row({ updated: '2026-09-27T01:00:00-07:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 27 · Test Staff'
+    )
+    expect(editedLine(row({ updated: '2026-09-27T08:00:00+14:00' }), 'America/Los_Angeles')).toBe(
+      'edited Sep 26 · Test Staff'
+    )
+  })
 })
 
 describe('displayScenarioName', () => {

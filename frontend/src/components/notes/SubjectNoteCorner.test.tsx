@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { HOUSEHOLD, NotesScopeFixture, noteRow, scopeValue } from '../../test/notesScope'
 import { SubjectNoteCorner } from './SubjectNoteCorner'
-import { subjectKey } from './subjectNoteModel'
+import { previewText, subjectKey } from './subjectNoteModel'
 
 function renderCorner(
   rows = [noteRow(HOUSEHOLD, 'Grandma is coming Saturday only.')],
@@ -98,6 +98,14 @@ describe('SubjectNoteCorner', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(`${'a'.repeat(118)} b…`)
   })
 
+  it('wraps a long unbroken preview instead of letting it run off the bubble', () => {
+    const longToken = 'a'.repeat(300)
+    renderCorner([noteRow(HOUSEHOLD, longToken)])
+    fireEvent.focus(screen.getByRole('button', { name: 'Note' }))
+    const body = within(screen.getByRole('tooltip')).getByText(previewText(longToken))
+    expect(body).toHaveClass('whitespace-pre-wrap', 'break-words')
+  })
+
   it('pointerdown, mousedown and touchstart on the corner do not reach the card (never a drag start)', () => {
     const { onCardPointerDown } = renderCorner()
     const note = screen.getByRole('button', { name: 'Note' })
@@ -109,12 +117,29 @@ describe('SubjectNoteCorner', () => {
 
   it('a click opens the popover editor anchored to this corner', () => {
     const { value, holder } = renderCorner()
+    // `detail: 1` -- a real mouse click; native `detail` is the click count
+    // (>= 1) for a pointer click, 0 for a keyboard (Enter/Space) activation.
+    fireEvent.click(screen.getByRole('button', { name: 'Note' }), { detail: 1 })
+    expect(value.openEditor).toHaveBeenCalledWith({
+      subject: HOUSEHOLD,
+      label: 'Johnson',
+      surface: 'popover',
+      anchorEl: holder,
+      openedViaKeyboard: false,
+    })
+  })
+
+  it('flags a keyboard (Enter/Space) activation for the popover’s own focus-restore rule', () => {
+    const { value, holder } = renderCorner()
+    // No explicit `detail` -- jsdom's own default, 0, matching a native
+    // keyboard-triggered click exactly (see the comment above).
     fireEvent.click(screen.getByRole('button', { name: 'Note' }))
     expect(value.openEditor).toHaveBeenCalledWith({
       subject: HOUSEHOLD,
       label: 'Johnson',
       surface: 'popover',
       anchorEl: holder,
+      openedViaKeyboard: true,
     })
   })
 
@@ -149,5 +174,54 @@ describe('SubjectNoteCorner', () => {
     const tooltip = screen.getByRole('tooltip')
     expect(within(tooltip).queryByText('Draft A')).toBeNull()
     expect(within(tooltip).getByText('+1 more')).toBeInTheDocument()
+  })
+})
+
+describe('SubjectNoteCorner — containing="border" (CamperCard’s own path, summer parity)', () => {
+  // Every other test here uses `containing="padding"` (FamilyCard's path):
+  // the holder measures its own PARENT. CamperCard passes `containing="border"`
+  // instead -- the holder is a SIBLING of the card, not nested inside it
+  // (`useNoteSlots.tsx`), so the measurement instead queries a sibling
+  // `[data-camper-card]`. The fill/dash/no-dot rendering itself (`CornerCap`)
+  // never reads `containing`, so it does not need re-proving here -- only the
+  // measurement path that camper cards actually exercise.
+  function renderCamperCorner(rows = [noteRow(HOUSEHOLD, 'Grandma is coming Saturday only.')]) {
+    const value = scopeValue(rows)
+    const view = render(
+      <NotesScopeFixture value={value}>
+        <div className="group relative">
+          <button
+            type="button"
+            data-camper-card
+            style={{ borderTopRightRadius: '10px', borderTopWidth: '3px', borderStyle: 'solid' }}
+          >
+            Emma Johnson
+          </button>
+          <SubjectNoteCorner subject={HOUSEHOLD} label="Emma Johnson" containing="border" />
+        </div>
+      </NotesScopeFixture>
+    )
+    return { ...view, holder: view.container.querySelector<HTMLElement>('[data-note-corner]') }
+  }
+
+  it('measures the sibling camper card’s own corner, not the holder’s parent', () => {
+    const { holder } = renderCamperCorner()
+    // `containing="border"` never applies the padding path's negative
+    // outward offset (`offset = containing === 'padding' ? -frame.border : 0`).
+    expect(holder?.style.top).toBe('0px')
+    expect(holder?.style.right).toBe('0px')
+    expect(holder?.querySelector('path')?.getAttribute('d')).toContain('A 10 10 0 0 1 16 10')
+  })
+
+  it('still shows the standard solid fill with a dashed edge and no dot for a camper with both note kinds', () => {
+    const { holder } = renderCamperCorner([
+      noteRow(HOUSEHOLD, 'Standard'),
+      noteRow(HOUSEHOLD, 'Plan', 'scnA'),
+    ])
+    expect(holder).toHaveAttribute('data-note-corner', 'standard')
+    const [fill, edge] = Array.from(holder?.querySelectorAll('path') ?? [])
+    expect(fill).toHaveAttribute('fill', '#fef08a')
+    expect(edge).toHaveAttribute('stroke-dasharray', '2 1.5')
+    expect(holder?.querySelector('[data-note-dot]')).toBeNull()
   })
 })

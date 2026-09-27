@@ -9,7 +9,11 @@ import type { ReactNode } from 'react'
  *
  * - `corner` -- absolutely positioned on the card's own top-right border
  *   corner, a SIBLING of the card's open control, never inside a `<button>`.
+ * - `menuItem` -- an entry for the card's own right-click menu (summer
+ *   `CamperCard` only, under "View Details"). It closes the menu itself,
+ *   through the existing `closeAllContextMenus` window event.
  */
 export interface CardNoteSlots {
   corner?: ReactNode
+  menuItem?: ReactNode
 }

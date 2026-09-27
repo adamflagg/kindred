@@ -71,7 +71,7 @@ export async function saveSubjectNote(
   return response.json() as Promise<SubjectNoteWriteResult>
 }
 
-/** "Keep on all plans": append the plan-only note to the standard note (server-side). */
+/** "Move scenario note to CM": append the plan-only note to the standard note (server-side). */
 export async function promoteSubjectNote(
   fetchWithAuth: FetchWithAuth,
   key: SubjectNoteKeyInput

@@ -2,9 +2,9 @@
 
 Layered plans (owner, 2026-09-25): a standard note (scenario '') shows on the
 CampMinder live view and in every scenario of that session; inside a scenario
-an optional plan-only note adds to it and never replaces it. "Keep on all
-plans" (promote) is the only path from a plan to the standard note, and it
-APPENDS. Creating a scenario from another scenario copies the source's
+an optional plan-only note adds to it and never replaces it. "Move scenario
+note to CM" (promote) is the only path from a plan to the standard note, and
+it APPENDS. Creating a scenario from another scenario copies the source's
 plan-only notes; deleting a scenario cascades them away in PocketBase.
 
 `SubjectNoteStore` is the PocketBase I/O and the ONLY place a filter string is
@@ -152,7 +152,7 @@ class ScenarioNotFoundError(LookupError):
 
 
 class NothingToPromoteError(LookupError):
-    """There is no plan-only note to keep on all plans (HTTP 404)."""
+    """There is no plan-only note to move to CM (HTTP 404)."""
 
 
 class PromotedNoteTooLongError(ValueError):
@@ -221,7 +221,7 @@ class SubjectNoteService:
         return await self._write(NoteKey.of(request), request.body.strip(), updated_by)
 
     async def promote(self, request: SubjectNotePromoteRequest, *, updated_by: str) -> SubjectNoteWriteResponse:
-        """ "Keep on all plans": APPEND the plan-only note to the standard note.
+        """ "Move scenario note to CM": APPEND the plan-only note to the standard note.
 
         The standard note is written BEFORE the plan-only row is deleted, so a
         failure between the two leaves the text in both places, never in
@@ -233,7 +233,7 @@ class SubjectNoteService:
         plan_key = NoteKey.of(request)
         plan = await self._store.find(plan_key)
         if plan is None:
-            raise NothingToPromoteError(f"No plan-only note in scenario {request.scenario} to keep on all plans")
+            raise NothingToPromoteError(f"No scenario note in scenario {request.scenario} to move to CM")
         moved = str(getattr(plan, "body", "") or "").strip()
         standard_key = plan_key.standard()
         standard = await self._store.find(standard_key)

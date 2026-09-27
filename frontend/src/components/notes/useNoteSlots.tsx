@@ -14,6 +14,7 @@ import type { NoteSubject } from '../../types/subjectNotes'
 import { useNotesEnabled } from './subjectNotesContext'
 import { subjectKey } from './subjectNoteModel'
 import { SubjectNoteCorner } from './SubjectNoteCorner'
+import { SubjectNoteMenuItem } from './SubjectNoteMenuItem'
 
 export function useNoteSlots(
   card: 'camper' | 'family'
@@ -36,6 +37,9 @@ export function useNoteSlots(
               containing={card === 'camper' ? 'border' : 'padding'}
             />
           ),
+          ...(card === 'camper'
+            ? { menuItem: <SubjectNoteMenuItem subject={subject} label={label} /> }
+            : {}),
         }
         cache.current.set(key, slots)
       }

@@ -8900,7 +8900,7 @@ export type SubjectNoteOut = {
 /**
  * SubjectNotePromoteRequest
  *
- * "Keep on all plans": move this scenario's plan-only note into the standard note.
+ * "Move scenario note to CM": move this scenario's plan-only note into the standard note.
  */
 export type SubjectNotePromoteRequest = {
   /**

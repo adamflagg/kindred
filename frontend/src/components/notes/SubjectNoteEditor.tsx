@@ -63,8 +63,22 @@ export function SubjectNoteEditor({
     if (box) {
       box.focus()
       box.setSelectionRange(box.value.length, box.value.length)
+      // The popover already lands at the end: it is a small, freshly
+      // portaled overlay with no scrollable ancestor of its own. The panel
+      // section sits inside the much longer scrollable body of a slide-in
+      // panel (frontend/CLAUDE.md), so opening on a long note left the caret
+      // at the end while the textarea's own content -- and the panel's
+      // scroll position -- both stayed at the top (owner, 2026-09-26).
+      // Scoped to the panel (`!framed`) so the popover's behaviour is
+      // unchanged. `scrollIntoView` targets the editor's own ROOT, not the
+      // textarea: the owner asked to land at the bottom of the SECTION, so
+      // the Save/Cancel row comes into view too, not just the box.
+      if (!framed) {
+        box.scrollTop = box.scrollHeight
+        rootRef.current?.scrollIntoView({ block: 'nearest' })
+      }
     }
-  }, [model.focus, model.planExpanded])
+  }, [model.focus, model.planExpanded, framed])
 
   return (
     <div
@@ -127,7 +141,7 @@ export function SubjectNoteEditor({
                   }}
                   className="border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground self-start rounded-full border px-2 py-0.5 text-xs font-medium"
                 >
-                  Keep on all plans
+                  Move scenario note to CM
                 </button>
               )}
             </div>

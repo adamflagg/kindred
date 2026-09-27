@@ -93,6 +93,6 @@ async def promote_subject_note(
     request: SubjectNotePromoteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SubjectNoteWriteResponse:
-    """ "Keep on all plans": append this scenario's plan-only note to the standard note."""
+    """ "Move scenario note to CM": append this scenario's plan-only note to the standard note."""
     with _map_domain_errors():
         return await _service().promote(request, updated_by=_author(user))

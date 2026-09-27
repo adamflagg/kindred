@@ -197,6 +197,34 @@ describe('useOverlayEscape', () => {
     expect(second).toHaveBeenCalledTimes(1)
   })
 
+  it('does not act, and lets the key propagate, when an opt-in shouldHandle predicate declines', () => {
+    const onEscape = vi.fn()
+    const below = vi.fn()
+    document.addEventListener('keydown', below)
+    const { unmount } = renderHook(() => useOverlayEscape(true, onEscape, () => false))
+
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    fireEvent.keyDown(target, { key: 'Escape' })
+
+    document.removeEventListener('keydown', below)
+    target.remove()
+    unmount()
+
+    expect(onEscape).not.toHaveBeenCalled()
+    expect(below).toHaveBeenCalledTimes(1)
+  })
+
+  it('acts as usual when an opt-in shouldHandle predicate accepts', () => {
+    const onEscape = vi.fn()
+    const { unmount } = renderHook(() => useOverlayEscape(true, onEscape, () => true))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    unmount()
+  })
+
   it('releases its overlay token when isOpen flips back to false, not only on unmount', () => {
     const { result, rerender, unmount } = renderHook(
       ({ isOpen }: { isOpen: boolean }) => {

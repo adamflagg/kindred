@@ -20,12 +20,14 @@ function target(overrides: Partial<EditorTarget> = {}): EditorTarget {
 function Harness({
   scope,
   editorTarget,
+  framed = true,
 }: {
   scope: SubjectNotesScopeValue
   editorTarget: EditorTarget
+  framed?: boolean
 }) {
   const model = useSubjectNoteEditor(scope, editorTarget)
-  return <SubjectNoteEditor model={model} framed />
+  return <SubjectNoteEditor model={model} framed={framed} />
 }
 
 function renderEditor(
@@ -116,7 +118,7 @@ describe('SubjectNoteEditor — inside a scenario', () => {
     expect(screen.getByText('Draft A')).toBeInTheDocument()
   })
 
-  it('"Keep on all plans" promotes (flushing typed text) and closes', async () => {
+  it('"Move scenario note to CM" promotes (flushing typed text) and closes', async () => {
     const scope = renderEditor(
       [noteRow(HOUSEHOLD, 'Try Pine', 'scnA')],
       target({ scenarioId: 'scnA' })
@@ -125,7 +127,7 @@ describe('SubjectNoteEditor — inside a scenario', () => {
       target: { value: 'Try Pine, not Oak' },
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep on all plans' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Move scenario note to CM' }))
     })
     expect(scope.promote).toHaveBeenCalledWith(HOUSEHOLD, { plan: 'Try Pine, not Oak' }, 'scnA')
     expect(scope.closeEditor).toHaveBeenCalled()
@@ -237,7 +239,7 @@ describe('SubjectNoteEditor — concurrent writes', () => {
       target: { value: 'Try Pine, not Oak' },
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Keep on all plans' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Move scenario note to CM' }))
     })
     await act(async () => {
       fireEvent.keyDown(screen.getByRole('textbox', { name: 'Note just for this plan' }), {
@@ -344,5 +346,61 @@ describe('SubjectNoteEditor — save failure and empty notes', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     })
     expect(scope.save).toHaveBeenCalledWith(HOUSEHOLD, { standard: '' }, '')
+  })
+})
+
+describe('SubjectNoteEditor — the panel opens at the end of a long note', () => {
+  // jsdom has no layout engine: `scrollHeight` is a getter with no setter, so
+  // it must be stubbed on the prototype BEFORE the textarea mounts (the
+  // autofocus effect reads it during the harness's own render), and restored
+  // afterwards so it cannot leak into an unrelated test in this file.
+  //
+  // `Element.prototype.scrollIntoView` is stubbed once for every element (not
+  // per-instance, since the elements it's called on don't exist until the
+  // harness renders) and records `this` on each call, so the assertions below
+  // can tell WHICH element -- the editor's own root, not just any element --
+  // actually received the call.
+  it('brings the whole editor -- Save/Cancel row included -- into view, not just the textarea, unframed (the panel)', () => {
+    const scrolledElements: Element[] = []
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolledElements.push(this)
+    })
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      value: 731,
+    })
+    try {
+      const scope = scopeValue([noteRow(HOUSEHOLD, 'x'.repeat(500))])
+      render(<Harness scope={scope} editorTarget={target()} framed={false} />)
+      const box = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note' })
+      const root = document.querySelector('[data-note-editor]') as HTMLElement
+      expect(box.selectionStart).toBe(box.value.length)
+      expect(box.scrollTop).toBe(731)
+      expect(scrolledElements).toEqual([root])
+      expect(root.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    } finally {
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+    }
+  })
+
+  it('leaves the popover’s own landing-at-the-end behaviour unchanged (framed)', () => {
+    const scrolledElements: Element[] = []
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolledElements.push(this)
+    })
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      value: 731,
+    })
+    try {
+      const scope = scopeValue([noteRow(HOUSEHOLD, 'x'.repeat(500))])
+      render(<Harness scope={scope} editorTarget={target()} framed />)
+      const box = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note' })
+      expect(box.selectionStart).toBe(box.value.length)
+      expect(box.scrollTop).toBe(0)
+      expect(scrolledElements).toEqual([])
+    } finally {
+      Reflect.deleteProperty(HTMLTextAreaElement.prototype, 'scrollHeight')
+    }
   })
 })

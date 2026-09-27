@@ -50,10 +50,29 @@ import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from '../compo
  * republishing it as topmost and stealing Escape from whatever genuinely is
  * on top. The ref keeps the token's lifetime equal to the overlay's while
  * still invoking the latest callback.
+ *
+ * ## `shouldHandle`, the opt-in focus guard
+ *
+ * Topmost is not always enough: a popover can hold the top token while some
+ * OTHER focused control (e.g. an expanded queue's own search input, which
+ * holds no token at all) has actual keyboard focus, and Escape should go to
+ * whatever has focus, not to the topmost token holder. `shouldHandle` lets a caller add
+ * that check without every OTHER adopter paying for it — omitted, it
+ * defaults to always handling, so existing callers are unaffected. When it
+ * declines, this hook does nothing at all: no `stopPropagation()`, no
+ * `onEscape()`, so the key reaches whatever focused control (or an
+ * unconverted listener) would otherwise have received it.
  */
-export function useOverlayEscape(isOpen: boolean, onEscape: () => void): void {
-  const onEscapeRef = useRef(onEscape)
-  onEscapeRef.current = onEscape
+export function useOverlayEscape(
+  isOpen: boolean,
+  onEscape: () => void,
+  shouldHandle?: (e: KeyboardEvent) => boolean
+): void {
+  // One ref, not two: a second `.current = ...` assignment in the render
+  // body would double the (already-accepted) "refs during render" lint
+  // warning this hook carries for `onEscape` alone.
+  const latestRef = useRef({ onEscape, shouldHandle })
+  latestRef.current = { onEscape, shouldHandle }
 
   useEffect(() => {
     if (!isOpen) return
@@ -63,8 +82,10 @@ export function useOverlayEscape(isOpen: boolean, onEscape: () => void): void {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (!isTopOverlay(token)) return
+      const latest = latestRef.current
+      if (latest.shouldHandle && !latest.shouldHandle(e)) return
       e.stopPropagation()
-      onEscapeRef.current()
+      latest.onEscape()
     }
 
     document.addEventListener('keydown', handleKeyDown, true)
