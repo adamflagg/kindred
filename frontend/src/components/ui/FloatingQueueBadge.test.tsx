@@ -304,19 +304,19 @@ describe('FloatingQueueBadge — footer', () => {
 })
 
 describe('FloatingQueueBadge — the toggle and close buttons', () => {
-  // An open note popover's outside-press handler exempts `[data-queue-toggle]`
-  // and `[data-queue-close]` so pressing either the collapsed toggle or the
-  // expanded state's own close button never closes an open note. Both boards
-  // share this one component, so marking them here covers
-  // FloatingUnplacedBadge and FloatingUnassignedBadge alike.
-  it('marks the collapsed toggle button, so an open note popover can exempt it', () => {
+  // Markers only: an open note popover's outside-press handler exempts the
+  // whole `[data-floating-badge]` (apart from queue cards and note corners),
+  // not these attributes -- see SubjectNotePopover.test.tsx for that
+  // behaviour. Both boards share this one component, so marking them here
+  // covers FloatingUnplacedBadge and FloatingUnassignedBadge alike.
+  it('marks the collapsed toggle button', () => {
     render(<Harness />)
     expect(screen.getByRole('button', { name: /3 unplaced families/i })).toHaveAttribute(
       'data-queue-toggle'
     )
   })
 
-  it('marks the expanded close button too, so an open note popover can exempt it', async () => {
+  it('marks the expanded close button too', async () => {
     render(<Harness />)
     await userEvent.click(screen.getByRole('button', { name: /3 unplaced families/i }))
     expect(screen.getByRole('button', { name: 'Close' })).toHaveAttribute('data-queue-close')

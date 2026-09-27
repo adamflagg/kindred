@@ -3,8 +3,9 @@
  * popover beside the card, portaled. No modal, no inline expansion.
  *
  * - Escape discards through `useOverlayEscape`, but only when Escape's focus
- *   is actually ours (inside the popover, or nowhere in particular). Its
- *   token is acquired after any panel beneath, so it closes first.
+ *   is actually ours (inside the popover, on its own anchor corner, or
+ *   nowhere in particular). Its token is acquired after any panel beneath,
+ *   so it closes first.
  * - A click outside with unsaved text SAVES (sticky-note behaviour); with
  *   nothing typed it closes. A second press on the corner that opened it
  *   keeps it open.
