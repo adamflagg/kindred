@@ -47,3 +47,18 @@ export const MONO_NOTE = 'text-muted-foreground font-mono text-xs'
 /** A Before value, and an After value. */
 export const OLD_VALUE = 'rounded bg-red-100 px-1.5 py-px dark:bg-red-900/35'
 export const NEW_VALUE = 'rounded bg-emerald-100 px-1.5 py-px dark:bg-emerald-900/35'
+
+// ── Long Before/After values (kindred#2880 owner report) ───────────────────────
+// A long unbroken value widened the column past its `w-[190px]`; a long value
+// with spaces made the row absurdly tall. Both are fixed the same way: wrap
+// instead of grow, and clamp instead of sprawl.
+
+/** Lets a value wrap anywhere rather than widen its `w-[190px]` column. */
+export const VALUE_WRAP = '[overflow-wrap:anywhere] break-words'
+/** A long value's clamped preview, before the "full value" control reveals the rest. */
+export const VALUE_CLAMP = 'line-clamp-3'
+/** The "full value" control — same look as "show all N". */
+export const LINK_BUTTON = 'text-primary text-xs hover:underline'
+/** The full-value dialog's Before/After panes: same highlight, as a scrollable monospace block. */
+export const OLD_VALUE_BLOCK = `${OLD_VALUE} block max-h-[60vh] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap ${VALUE_WRAP}`
+export const NEW_VALUE_BLOCK = `${NEW_VALUE} block max-h-[60vh] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap ${VALUE_WRAP}`

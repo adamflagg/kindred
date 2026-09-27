@@ -158,6 +158,91 @@ describe('AuditLogTab', () => {
     expect(screen.getByText('Two cabins added')).toBeTruthy()
   })
 
+  // A long sentence (spaces, no single unbroken token) — the "SUPER TALL row" case.
+  const LONG_SENTENCE =
+    'This penalty applies whenever a cabin drops below the configured minimum ' +
+    'occupancy threshold for its session and age group, which the solver checks twice.'
+  // A long unbroken token — the "MASSIVELY wide row" case.
+  const LONG_UNBROKEN = 'x'.repeat(150)
+
+  function longValueEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
+    return entry({
+      collection: 'config',
+      target_label: 'constraint.cabin_minimum_occupancy.penalty',
+      fields: ['value'],
+      before: { value: 'a short before value' },
+      after: { value: LONG_SENTENCE },
+      ...overrides,
+    })
+  }
+
+  it('a long value renders clamped, with a "full value" control', () => {
+    page = { items: [longValueEntry()], page: 1, per_page: 10, total: 1 }
+    renderTab()
+    expect(screen.getByRole('button', { name: 'full value' })).toBeTruthy()
+  })
+
+  it('a short value renders with no control', () => {
+    page = {
+      items: [
+        entry({
+          collection: 'config',
+          target_label: 'solver.max_cabin_size',
+          fields: ['value'],
+          before: { value: 12 },
+          after: { value: 14 },
+        }),
+      ],
+      page: 1,
+      per_page: 10,
+      total: 1,
+    }
+    renderTab()
+    expect(screen.queryByRole('button', { name: 'full value' })).toBeNull()
+  })
+
+  it('clicking the control shows the full text of both before and after', () => {
+    page = { items: [longValueEntry()], page: 1, per_page: 10, total: 1 }
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: 'full value' }))
+    expect(screen.getByTestId('audit-full-before').textContent).toBe('a short before value')
+    expect(screen.getByTestId('audit-full-after').textContent).toBe(LONG_SENTENCE)
+  })
+
+  it('names the field and the row’s sentence in the full-value title', () => {
+    page = { items: [longValueEntry()], page: 1, per_page: 10, total: 1 }
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: 'full value' }))
+    expect(screen.getByRole('heading').textContent).toContain('value')
+    expect(screen.getByRole('heading').textContent).toContain('changed the setting')
+  })
+
+  it('JSON pretty-prints in the full view', () => {
+    const obj = { threshold: 4, note: 'x'.repeat(150) }
+    page = {
+      items: [longValueEntry({ before: { value: null }, after: { value: obj } })],
+      page: 1,
+      per_page: 10,
+      total: 1,
+    }
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: 'full value' }))
+    expect(screen.getByTestId('audit-full-after').textContent).toBe(JSON.stringify(obj, null, 2))
+  })
+
+  it('a long unbroken value gets the wrap-anywhere class', () => {
+    page = {
+      items: [longValueEntry({ after: { value: LONG_UNBROKEN } })],
+      page: 1,
+      per_page: 10,
+      total: 1,
+    }
+    renderTab()
+    const row = screen.getByTestId('audit-row')
+    const valueSpan = within(row).getByText(LONG_UNBROKEN)
+    expect(valueSpan.className).toContain('[overflow-wrap:anywhere]')
+  })
+
   it('says so when nothing matches', () => {
     renderTab('?q=nobody')
     expect(screen.getByText('No events match.')).toBeTruthy()

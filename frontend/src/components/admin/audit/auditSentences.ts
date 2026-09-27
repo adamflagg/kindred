@@ -273,6 +273,35 @@ export function fieldChanges(entry: AuditEntry): FieldChange[] {
   }))
 }
 
+// ── Long values (kindred#2880) ──────────────────────────────────────────────────
+// A seeded config value was long enough to widen the Before/After column past its
+// fixed width, or (with spaces) to wrap into an absurdly tall row. Both get a
+// clamped preview and a "full value" control instead of rendering raw.
+
+const LONG_VALUE_CHARS = 120
+
+/** A value long enough to widen or over-tall its cell — more than ~120 chars, or multi-line. */
+export function isLongValue(value: string | null): boolean {
+  if (!value) return false
+  return value.length > LONG_VALUE_CHARS || value.includes('\n')
+}
+
+/** Pretty-prints a Before/After value when it parses as JSON (object or array); otherwise unchanged. */
+export function prettyPrintValue(value: string): string {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (parsed !== null && typeof parsed === 'object') return JSON.stringify(parsed, null, 2)
+  } catch {
+    // Not JSON — show as-is.
+  }
+  return value
+}
+
+/** A sentence's parts as plain text, styling dropped — for a dialog title or similar. */
+export function sentenceText(parts: SentencePart[]): string {
+  return parts.map((part) => part.text).join('')
+}
+
 // ── Time ──────────────────────────────────────────────────────────────────────
 
 /** "16:20" in the viewer's time zone. */

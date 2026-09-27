@@ -21,15 +21,19 @@ import {
   type AuditQuery,
 } from '../../../types/auditLog'
 import { QueryGuard } from '../../QueryGuard'
+import { Modal } from '../../ui/Modal'
 import { Pagination } from '../../ui/Pagination'
 import {
   CHIP,
   GROUP,
   GROUP_BUTTON_OFF,
   GROUP_BUTTON_ON,
+  LINK_BUTTON,
   MONO_NOTE,
   NEW_VALUE,
+  NEW_VALUE_BLOCK,
   OLD_VALUE,
+  OLD_VALUE_BLOCK,
   PERSON_SELECT,
   ROW,
   SEARCH_INPUT,
@@ -38,6 +42,8 @@ import {
   TH,
   TOOLBAR,
   TYPE_PILL,
+  VALUE_CLAMP,
+  VALUE_WRAP,
 } from './auditStyles'
 import {
   TYPE_LABEL,
@@ -45,8 +51,12 @@ import {
   describeEntry,
   fieldChanges,
   firstText,
+  isLongValue,
+  prettyPrintValue,
+  sentenceText,
   whenLabel,
   whenTitle,
+  type FieldChange,
   type SentencePart,
 } from './auditSentences'
 import { parseAuditQuery, selectType, serializeAuditQuery, updateAuditQuery } from './auditUrlState'
@@ -83,25 +93,47 @@ function Sentence({ parts }: { parts: SentencePart[] }) {
   )
 }
 
-function Value({ value, className }: { value: string | null; className: string }) {
-  return value === null ? (
-    <span className="text-muted-foreground">—</span>
-  ) : (
-    <span className={className}>{value}</span>
+/**
+ * One Before/After value. A LONG value (spec: kindred#2880 owner report — a long
+ * unbroken string widened the column past its `w-[190px]`, a long value with
+ * spaces made the row absurdly tall) clamps to ~3 lines and offers "full value"
+ * instead of rendering raw; every value wraps rather than growing its column.
+ */
+function Value({
+  value,
+  className,
+  onShowFull,
+}: {
+  value: string | null
+  className: string
+  onShowFull: () => void
+}) {
+  if (value === null) return <span className="text-muted-foreground">—</span>
+  if (!isLongValue(value)) return <span className={`${className} ${VALUE_WRAP}`}>{value}</span>
+  return (
+    <div>
+      <span className={`${className} ${VALUE_WRAP} ${VALUE_CLAMP} block`}>{value}</span>
+      <button type="button" onClick={onShowFull} className={LINK_BUTTON}>
+        full value
+      </button>
+    </div>
   )
 }
 
 /** The Before and After cells: up to three fields inline, then "show all N". */
 function BeforeAfterCells({
   entry,
+  changes,
   expanded,
   onExpand,
+  onShowFull,
 }: {
   entry: AuditEntry
+  changes: FieldChange[]
   expanded: boolean
   onExpand: () => void
+  onShowFull: (field: string) => void
 }) {
-  const changes = fieldChanges(entry)
   if (changes.length === 0) {
     return (
       <>
@@ -115,9 +147,15 @@ function BeforeAfterCells({
   const labelled = changes.length > 1 || entry.type === 'pb_admin'
   const side = (which: 'before' | 'after') =>
     shown.map((change) => (
-      <div key={change.field} className="leading-snug">
+      // `max-w-[190px]` belt-and-suspenders alongside the table's own `table-fixed`
+      // column width — a long unbroken value must never widen this column.
+      <div key={change.field} className="max-w-[190px] leading-snug">
         {labelled && <span className={`${MONO_NOTE} mr-1`}>{change.field}</span>}
-        <Value value={change[which]} className={which === 'before' ? OLD_VALUE : NEW_VALUE} />
+        <Value
+          value={change[which]}
+          className={which === 'before' ? OLD_VALUE : NEW_VALUE}
+          onShowFull={() => onShowFull(change.field)}
+        />
       </div>
     ))
   return (
@@ -125,7 +163,7 @@ function BeforeAfterCells({
       <td className={`${TD} text-sm`}>
         {side('before')}
         {!expanded && changes.length > INLINE_FIELDS && (
-          <button type="button" onClick={onExpand} className="text-primary text-xs hover:underline">
+          <button type="button" onClick={onExpand} className={LINK_BUTTON}>
             show all {changes.length}
           </button>
         )}
@@ -135,8 +173,15 @@ function BeforeAfterCells({
   )
 }
 
-function AuditRow({ entry }: { entry: AuditEntry }) {
+function AuditRow({
+  entry,
+  onShowFull,
+}: {
+  entry: AuditEntry
+  onShowFull: (entry: AuditEntry, field: string) => void
+}) {
   const [expanded, setExpanded] = useState(false)
+  const changes = fieldChanges(entry)
   return (
     <tr className={ROW} data-testid="audit-row">
       <td
@@ -157,8 +202,56 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
           </div>
         )}
       </td>
-      <BeforeAfterCells entry={entry} expanded={expanded} onExpand={() => setExpanded(true)} />
+      <BeforeAfterCells
+        entry={entry}
+        changes={changes}
+        expanded={expanded}
+        onExpand={() => setExpanded(true)}
+        onShowFull={(field) => onShowFull(entry, field)}
+      />
     </tr>
+  )
+}
+
+/**
+ * The full Before/After view for one field (kindred#2880): the clamped preview's
+ * "full value" control opens this, stacked at narrow widths, red/green kept, JSON
+ * pretty-printed. One instance shared by every row, driven by `openView`/`view`.
+ */
+function FullValueDialog({
+  view,
+  isOpen,
+  onClose,
+  afterLeave,
+}: {
+  view: { entry: AuditEntry; field: string } | null
+  isOpen: boolean
+  onClose: () => void
+  afterLeave: () => void
+}) {
+  const change = view
+    ? (fieldChanges(view.entry).find((c) => c.field === view.field) ?? null)
+    : null
+  const title = view && change ? `${change.field} — ${sentenceText(describeEntry(view.entry))}` : ''
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} afterLeave={afterLeave} title={title} size="lg">
+      {change && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <div className={MONO_NOTE}>Before</div>
+            <pre data-testid="audit-full-before" className={`${OLD_VALUE_BLOCK} mt-1`}>
+              {change.before === null ? '—' : prettyPrintValue(change.before)}
+            </pre>
+          </div>
+          <div>
+            <div className={MONO_NOTE}>After</div>
+            <pre data-testid="audit-full-after" className={`${NEW_VALUE_BLOCK} mt-1`}>
+              {change.after === null ? '—' : prettyPrintValue(change.after)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }
 
@@ -195,6 +288,18 @@ export function AuditLogTab() {
   const typeButtons: Array<AuditFilterType | 'all'> = ['all', ...AUDIT_FILTER_TYPES]
   const activeType =
     query.types.length === 1 ? query.types[0] : query.types.length === 0 ? 'all' : null
+
+  // One full-value dialog shared by every row (kindred#2880), rather than one
+  // Modal instance per row. `openView` drives `isOpen`; `displayView` is
+  // retained until the leave transition completes (Modal's `afterLeave`) so
+  // the dialog doesn't go blank mid-fade — same pattern as SessionView's
+  // `releaseDiagnostics`.
+  const [openView, setOpenView] = useState<{ entry: AuditEntry; field: string } | null>(null)
+  const [displayView, setDisplayView] = useState<{ entry: AuditEntry; field: string } | null>(null)
+  const showFullValue = (entry: AuditEntry, field: string) => {
+    setDisplayView({ entry, field })
+    setOpenView({ entry, field })
+  }
 
   return (
     <div className="space-y-2">
@@ -265,7 +370,10 @@ export function AuditLogTab() {
                 <div className="text-muted-foreground p-10 text-center">No events match.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  {/* `table-fixed` pins every column to its `w-*`, including Before/After
+                      — otherwise a long unbroken value grows the column instead of wrapping
+                      inside it (kindred#2880). */}
+                  <table className="w-full table-fixed text-sm">
                     <thead className="bg-muted/50">
                       <tr>
                         <th className={`${TH} w-[130px]`}>When</th>
@@ -278,7 +386,7 @@ export function AuditLogTab() {
                     </thead>
                     <tbody>
                       {page.items.map((entry) => (
-                        <AuditRow key={entry.id} entry={entry} />
+                        <AuditRow key={entry.id} entry={entry} onShowFull={showFullValue} />
                       ))}
                     </tbody>
                   </table>
@@ -298,6 +406,12 @@ export function AuditLogTab() {
           </>
         )}
       </QueryGuard>
+      <FullValueDialog
+        view={displayView}
+        isOpen={openView !== null}
+        onClose={() => setOpenView(null)}
+        afterLeave={() => setDisplayView(null)}
+      />
     </div>
   )
 }
