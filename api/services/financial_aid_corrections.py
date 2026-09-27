@@ -116,7 +116,10 @@ def parse_new_value(kind: FieldKind, raw: str | None) -> str:
             return "false"
         raise CorrectionError("expected true or false")
     if kind is FieldKind.COUNT:
-        if not text.isdigit():
+        # isdecimal(), not isdigit(): isdigit() also accepts superscript/subscript digits
+        # ("³") that int() then rejects with a bare ValueError -- not a CorrectionError,
+        # so it would reach the router's exception handling unmapped and surface as a 500.
+        if not text.isdecimal():
             raise CorrectionError("expected a whole number")
         count = int(text)
         if count > COUNT_CEILING:

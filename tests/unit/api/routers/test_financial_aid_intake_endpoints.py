@@ -29,6 +29,7 @@ from api.services.financial_aid_casework_service import (
     CaseworkValidationError,
     DuplicateRequestError,
 )
+from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_payer_shares import ShareSpec
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
@@ -229,6 +230,7 @@ def test_service_errors_map_to_404_409_and_422() -> None:
     stub.application_detail = AsyncMock(side_effect=CaseworkNotFoundError("no application"))
     stub.resolve_session = AsyncMock(side_effect=DuplicateRequestError("req000000000009"))
     stub.mark_duplicate = AsyncMock(side_effect=CaseworkValidationError("not the same camper"))
+    stub.add_correction = AsyncMock(side_effect=CorrectionError("expected a whole number"))
     with _client(persona_user(PERSONA_FINANCE), stub) as client:
         missing = client.get("/api/financial-aid/applications/2027/1000099")
         taken = client.post(
@@ -237,9 +239,14 @@ def test_service_errors_map_to_404_409_and_422() -> None:
         bad = client.post(
             f"/api/financial-aid/requests/{RID}/duplicate", json={"duplicate_of": "req000000000002", "reason": "r"}
         )
+        malformed = client.post(
+            "/api/financial-aid/applications/2027/1000001/corrections",
+            json={"field": "num_children", "new_value": "³", "reason": "r"},
+        )
     assert missing.status_code == 404
     assert (taken.status_code, taken.json()["detail"]["holder_id"]) == (409, "req000000000009")
     assert (bad.status_code, bad.json()["detail"]) == (422, "not the same camper")
+    assert (malformed.status_code, malformed.json()["detail"]) == (422, "expected a whole number")
 
 
 def test_the_queue_can_narrow_to_requests_waiting_for_approved_rules() -> None:

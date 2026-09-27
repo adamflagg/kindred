@@ -75,6 +75,7 @@ def test_new_values_are_stored_canonically(kind: FieldKind, raw: str | None, exp
         (FieldKind.MONEY, "lots"),
         (FieldKind.COUNT, "51"),
         (FieldKind.COUNT, "2.5"),
+        (FieldKind.COUNT, "³"),  # superscript three: str.isdigit() is True but int() raises bare ValueError
         (FieldKind.FLAG, "maybe"),
         (FieldKind.INCOME_OVERRIDE, "staff_entered"),
         (FieldKind.INCOME_OVERRIDE, "prior_year_only:5"),
