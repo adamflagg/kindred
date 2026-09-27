@@ -69,11 +69,11 @@ async def test_detail_shows_every_income_field_the_notes_and_each_requests_payer
     _, casework = await casework_with_conflict()
     detail = await casework.application_detail(YEAR, 1000001)
     fields = {a.field for a in detail.answers}
-    assert {"total_adjusted_income", "total_rent", "still_unemployed", "gov_subsidies", "income_override"} <= fields
+    assert {"total_adjusted_income", "total_rent", "unemployment", "gov_subsidies", "income_override"} <= fields
     assert next(a for a in detail.answers if a.field == "total_rent").effective == "1800.00"
     assert next(a for a in detail.answers if a.field == "total_adjusted_income").synced == ""  # blank: unknown
     assert detail.notes["special_circumstances"] == "Moved in spring."
-    assert "gov_subsidies_detail" in detail.notes
+    assert "other_support_expectations" in detail.notes
     for request in detail.requests:
         assert [(s.household_cm_id, s.share_pct) for s in request.payer_shares] == [(1000001, Decimal(100))]
         assert request.payer_share_status == "complete"

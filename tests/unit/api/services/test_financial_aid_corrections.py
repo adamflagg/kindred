@@ -36,7 +36,7 @@ def test_only_named_fields_are_correctable() -> None:
     assert "total_gross_income" in APPLICATION_CORRECTABLE
     assert "contact_email" not in APPLICATION_CORRECTABLE
     assert APPLICATION_CORRECTABLE["total_rent"] is FieldKind.MONEY
-    assert APPLICATION_CORRECTABLE["still_unemployed"] is FieldKind.FLAG
+    assert APPLICATION_CORRECTABLE["unemployment"] is FieldKind.FLAG
     assert APPLICATION_CORRECTABLE["income_override"] is FieldKind.INCOME_OVERRIDE
     assert "special_circumstances" not in APPLICATION_CORRECTABLE  # free text: shown, never corrected
     assert dict(REQUEST_CORRECTABLE) == {"ask": FieldKind.MONEY}

@@ -71,24 +71,40 @@ QUALITY_CHECK_KEYS: tuple[QualityCheckKey, ...] = get_args(QualityCheckKey)
 # Synced application figures (sub-project 1) an income term may read, beyond the gross,
 # AGI, expense and savings figures the income section already names. Government
 # subsidies are a yes/no answer, so they are an equity criterion, not a term.
+#
+# LIVE QUESTIONS ONLY (owner ruling 2026-09-27): a figure or answer field here must be on
+# the current CampMinder aid forms. The FA mirror still stores retired questions (the Go
+# sync and its migration are unchanged), but no rule may read one: `student_debt`,
+# `retirement_accounts` and `other_support_amount` were 0 in 2025 and 2026 alike and are
+# dropped from here for that reason.
 IncomeFigure = Literal[
     "total_housing_expenses",
     "total_rent",
-    "student_debt",
-    "retirement_accounts",
-    "other_support_amount",
 ]
 
 # The household's yes/no answers a household equity criterion can read. The FA mirror
 # stores each as a PocketBase bool, so a blank answer arrives as False: "No" and "never
 # answered" cannot be told apart. Validation therefore refuses a criterion that matches No
 # on one of them, and intake warns when no applicant in a season answered one yes.
+#
+# LIVE QUESTIONS ONLY (owner ruling 2026-09-27): `still_unemployed` (a retired 2020-21
+# follow-up that a non-seasonal CampMinder field keeps returning under later years),
+# `single_parent` (dropped from the form after 2025) and `owns_home` (0 since 2022) are
+# retired, not live, and are dropped from here. RETIRED_YES_NO_FIELDS below names them so
+# validation.py can refuse a criterion that still points at one.
 YES_NO_ANSWER_FIELDS: tuple[str, ...] = (
     "unemployment",
+    "gov_subsidies",
+)
+
+# Former members of YES_NO_ANSWER_FIELDS the FA mirror still stores but the current
+# CampMinder form no longer asks. A household equity criterion that names one would never
+# fire (intake never carries the answer past the mirror), so validation.py refuses it
+# outright instead of leaving a silently-dead criterion in the document.
+RETIRED_YES_NO_FIELDS: tuple[str, ...] = (
     "still_unemployed",
     "single_parent",
     "owns_home",
-    "gov_subsidies",
 )
 
 

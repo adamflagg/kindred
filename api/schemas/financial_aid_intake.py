@@ -104,8 +104,8 @@ class ApplicationDetailResponse(BaseModel):
     member_person_cm_ids: list[int]
     # Every numeric and yes/no financial answer, synced and effective, plus the income override.
     answers: list[AnswerOut]
-    # The free-text financial answers, keyed by field (special circumstances, subsidies detail,
-    # other support and its expectations). Shown, never corrected.
+    # The free-text financial answers, keyed by field (special circumstances, other support
+    # expectations). Shown, never corrected.
     notes: dict[str, str]
     requests: list[RequestOut]
     flags: list[FlagOut]

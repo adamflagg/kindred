@@ -172,17 +172,19 @@ def test_a_household_yes_no_criterion_that_matches_no_is_refused(match: str, val
     # A blank yes/no answer reaches the calculator as No (the mirror stores it as a bool), so a
     # criterion matching No would hand its weight to every family that never answered.
     rules = with_lever(
-        fictional_rules(), "equity.criteria", _with_criterion(field="single_parent", match=match, values=values)
+        fictional_rules(), "equity.criteria", _with_criterion(field="unemployment", match=match, values=values)
     )
     report = validate_rules(rules)
     (issue,) = [i for i in report.errors_in("equity") if i.code == "yes_no_criterion_matches_no"]
     assert issue.path == f"equity.criteria.{len(rules.equity.criteria) - 1}.values"
-    assert "single_parent" in issue.message
+    assert "unemployment" in issue.message
     assert "never answered" in issue.message
 
 
 def test_a_yes_no_criterion_matching_no_through_an_also_field_is_refused() -> None:
-    criteria = _with_criterion(field="dependents_note", also_fields=["owns_home"], match="equals_any", values=["no"])
+    criteria = _with_criterion(
+        field="dependents_note", also_fields=["gov_subsidies"], match="equals_any", values=["no"]
+    )
     report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
     assert "yes_no_criterion_matches_no" in {i.code for i in report.errors}
 
@@ -190,7 +192,7 @@ def test_a_yes_no_criterion_matching_no_through_an_also_field_is_refused() -> No
 @pytest.mark.parametrize(
     "criterion",
     [
-        {"field": "single_parent", "match": "equals_any", "values": ["yes"]},  # the 2026 shape
+        {"field": "gov_subsidies", "match": "equals_any", "values": ["yes"]},  # the 2026 shape
         {"field": "special_note", "match": "equals_any", "values": ["no"]},  # not a yes/no answer
     ],
 )
@@ -201,10 +203,40 @@ def test_a_yes_no_criterion_matching_only_yes_or_a_non_yes_no_field_passes(crite
 
 def test_a_camper_answer_matching_no_passes_because_a_blank_camper_answer_stays_unknown() -> None:
     # Named like the household answer, so only the source tells them apart.
-    criteria = _with_criterion(field="single_parent", match="equals_any", values=["no"])
+    criteria = _with_criterion(field="unemployment", match="equals_any", values=["no"])
     criteria[-1]["source"] = "camper"
     report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
     assert "yes_no_criterion_matches_no" not in report.codes()
+
+
+# --- retired household fields (owner ruling 2026-09-27: live questions only) -----------
+
+
+@pytest.mark.parametrize("field", ["still_unemployed", "single_parent", "owns_home"])
+def test_a_household_criterion_on_a_retired_field_is_refused(field: str) -> None:
+    # These were live through 2025 (or earlier) and are gone from the current CampMinder
+    # form: a criterion built against one would never fire, so validation refuses it
+    # outright rather than leaving a silently-dead criterion in the document.
+    criteria = _with_criterion(field=field, match="equals_any", values=["yes"])
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    (issue,) = [i for i in report.errors if i.code == "retired_household_field"]
+    assert field in issue.message
+
+
+def test_a_household_criterion_on_a_retired_also_field_is_refused() -> None:
+    criteria = _with_criterion(
+        field="unemployment", also_fields=["still_unemployed"], match="equals_any", values=["yes"]
+    )
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "retired_household_field" in {i.code for i in report.errors}
+
+
+def test_a_camper_criterion_on_a_field_named_like_a_retired_one_is_not_refused() -> None:
+    # Guarded by source, the same as the No-matching check.
+    criteria = _with_criterion(field="single_parent", match="equals_any", values=["yes"])
+    criteria[-1]["source"] = "camper"
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "retired_household_field" not in report.codes()
 
 
 # --- income ---------------------------------------------------------------------------

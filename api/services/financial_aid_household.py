@@ -53,24 +53,24 @@ from api.services.financial_aid_session_resolver import (
 from bunking.financial_aid.rules.schema import YES_NO_ANSWER_FIELDS
 
 INCOME_FIELDS: Final = ("total_gross_income", "expected_gross_income", "total_adjusted_income", "income_confirmed")
+# LIVE QUESTIONS ONLY (owner ruling 2026-09-27): `total_exemptions`, `retirement_accounts`,
+# `student_debt` and `other_support_amount` were 0 in 2025 and 2026 alike -- dropped from
+# the current CampMinder form -- and are never read here even though the FA mirror still
+# stores them.
 NUMBER_FIELDS: Final = (
-    "total_exemptions",
     "total_medical_expenses",
     "total_edu_expenses",
     "total_housing_expenses",
     "total_rent",
     "non_retirement_savings",
-    "retirement_accounts",
-    "student_debt",
-    "other_support_amount",
     "num_children",
 )
 # One list, owned by the rules schema: validation and the season warning read the same fields.
 BOOL_FIELDS: Final = YES_NO_ANSWER_FIELDS
+# `gov_subsidies_detail` (last typed in 2021) and `other_financial_support` (0 in 2025 and
+# 2026) are retired the same way (owner ruling 2026-09-27).
 TEXT_FIELDS: Final = (
     "special_circumstances",
-    "gov_subsidies_detail",
-    "other_financial_support",
     "other_support_expectations",
 )
 HOUSEHOLD_ANSWER_FIELDS: Final = (*INCOME_FIELDS, *NUMBER_FIELDS, *BOOL_FIELDS, *TEXT_FIELDS)

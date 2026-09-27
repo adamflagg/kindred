@@ -381,10 +381,10 @@ def _equity_rules(weights: dict[str, str], **criterion_changes: object) -> AidRu
 
 @pytest.mark.asyncio
 async def test_a_weighted_yes_no_answer_no_applicant_gave_is_a_season_warning() -> None:
-    store = seeded_store()  # five applicant rows, none answering single_parent or unemployment
-    store.equity_rules = _equity_rules({"single_parent": "1"})
+    store = seeded_store()  # five applicant rows, none answering gov_subsidies or unemployment
+    store.equity_rules = _equity_rules({"gov_subsidies": "1"})
     report = await FinancialAidIntakeService(store).build(YEAR)
-    assert report.warnings == ("equity_field_never_true: single_parent (0 of 5 applicants)",)
+    assert report.warnings == ("equity_field_never_true: gov_subsidies (0 of 5 applicants)",)
 
 
 @pytest.mark.asyncio
@@ -392,7 +392,7 @@ async def test_the_season_warning_holds_nothing() -> None:
     control = seeded_store()
     await FinancialAidIntakeService(control).build(YEAR)
     store = seeded_store()
-    store.equity_rules = _equity_rules({"single_parent": "1"})
+    store.equity_rules = _equity_rules({"gov_subsidies": "1"})
     await FinancialAidIntakeService(store).build(YEAR)
     shape = sorted(
         (r.person_cm_id, r.status, tuple(tuple(sorted(f.items())) for f in r.flags)) for r in store.requests.values()
@@ -407,8 +407,8 @@ async def test_the_season_warning_holds_nothing() -> None:
 @pytest.mark.asyncio
 async def test_one_applicant_answering_yes_clears_the_warning() -> None:
     store = seeded_store()
-    store.fa_rows[2] = replace(store.fa_rows[2], answers={**store.fa_rows[2].answers, "single_parent": True})
-    store.equity_rules = _equity_rules({"single_parent": "1"})
+    store.fa_rows[2] = replace(store.fa_rows[2], answers={**store.fa_rows[2].answers, "gov_subsidies": True})
+    store.equity_rules = _equity_rules({"gov_subsidies": "1"})
     assert (await FinancialAidIntakeService(store).build(YEAR)).warnings == ()
 
 
@@ -416,9 +416,9 @@ async def test_one_applicant_answering_yes_clears_the_warning() -> None:
 async def test_an_also_field_no_applicant_gave_is_warned_on_its_own() -> None:
     store = seeded_store()
     store.fa_rows[0] = replace(store.fa_rows[0], answers={**store.fa_rows[0].answers, "unemployment": True})
-    store.equity_rules = _equity_rules({"unemployment": "0.5"}, unemployment={"also_fields": ["still_unemployed"]})
+    store.equity_rules = _equity_rules({"unemployment": "0.5"}, unemployment={"also_fields": ["gov_subsidies"]})
     report = await FinancialAidIntakeService(store).build(YEAR)
-    assert report.warnings == ("equity_field_never_true: still_unemployed (0 of 5 applicants)",)
+    assert report.warnings == ("equity_field_never_true: gov_subsidies (0 of 5 applicants)",)
 
 
 @pytest.mark.parametrize(
@@ -430,9 +430,9 @@ async def test_no_season_warning_without_a_weight_approved_rules_or_applicants(c
     store = seeded_store()
     store.equity_rules = {
         "unweighted": _equity_rules({}),
-        "zero_weight": _equity_rules({"single_parent": "0"}),
+        "zero_weight": _equity_rules({"gov_subsidies": "0"}),
         "no_equity_approved": None,
-        "no_applicants": _equity_rules({"single_parent": "1"}),
+        "no_applicants": _equity_rules({"gov_subsidies": "1"}),
     }[case]
     if case == "no_applicants":
         store.fa_rows = []

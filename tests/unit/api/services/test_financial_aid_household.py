@@ -102,25 +102,55 @@ def test_every_financial_field_is_carried_and_an_unanswered_number_is_none() -> 
                 1000011,
                 total_rent=1800.0,
                 total_housing_expenses=2400.0,
-                student_debt=30000.0,
-                retirement_accounts=5000.0,
-                other_support_amount=1200.0,
-                still_unemployed=True,
+                unemployment=True,
                 gov_subsidies=True,
-                gov_subsidies_detail="Housing voucher.",
+                special_circumstances="Moved in spring.",
             )
         ]
     )
     assert set(answers) == set(HOUSEHOLD_ANSWER_FIELDS)
-    assert (answers["total_rent"], answers["student_debt"], answers["other_support_amount"]) == (
-        1800.0,
-        30000.0,
-        1200.0,
-    )
-    assert answers["still_unemployed"] is True
+    assert (answers["total_rent"], answers["total_housing_expenses"]) == (1800.0, 2400.0)
+    assert answers["unemployment"] is True
     assert answers["gov_subsidies"] is True
-    assert answers["gov_subsidies_detail"] == "Housing voucher."
-    assert answers["total_exemptions"] is None
+    assert answers["special_circumstances"] == "Moved in spring."
+    assert answers["num_children"] is None  # an unanswered number stays unknown, not 0
+
+
+# Former household fields the FA mirror still stores (the Go sync and its migration are
+# unchanged) but the current CampMinder form no longer asks (owner ruling 2026-09-27): the
+# engine must never read them, whatever a row's raw answers happen to hold.
+_RETIRED_HOUSEHOLD_FIELDS = (
+    "student_debt",
+    "retirement_accounts",
+    "other_support_amount",
+    "still_unemployed",
+    "single_parent",
+    "owns_home",
+    "total_exemptions",
+    "gov_subsidies_detail",
+    "other_financial_support",
+)
+
+
+def test_retired_fields_are_never_carried_into_household_answers() -> None:
+    answers, _ = choose_household_answers(
+        [
+            fa_row(
+                1000011,
+                student_debt=30000.0,
+                retirement_accounts=5000.0,
+                other_support_amount=1200.0,
+                still_unemployed=True,
+                single_parent=True,
+                owns_home=False,
+                total_exemptions=2.0,
+                gov_subsidies_detail="Housing voucher.",
+                other_financial_support="Church fund.",
+            )
+        ]
+    )
+    assert not set(_RETIRED_HOUSEHOLD_FIELDS) & set(answers)
+    assert set(answers) == set(HOUSEHOLD_ANSWER_FIELDS)
 
 
 def test_every_figure_the_calculator_can_read_is_carried() -> None:

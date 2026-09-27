@@ -25,7 +25,7 @@ def test_the_trigger_builds_the_named_season_and_returns_the_report() -> None:
 
 def test_the_report_carries_the_season_warnings() -> None:
     report = IntakeReport(
-        2027, 2, 2, 0, 3, 0, 1, 0, 1, 1, warnings=("equity_field_never_true: owns_home (0 of 7 applicants)",)
+        2027, 2, 2, 0, 3, 0, 1, 0, 1, 1, warnings=("equity_field_never_true: unemployment (0 of 7 applicants)",)
     )
     with patch.object(internal, "FinancialAidIntakeService") as service_cls:
         service_cls.return_value.build = AsyncMock(return_value=report)
@@ -33,7 +33,7 @@ def test_the_report_carries_the_season_warnings() -> None:
         app.include_router(internal.router)
         response = TestClient(app).post("/api/internal/financial-aid/intake", json={"year": 2027})
     assert response.status_code == 200
-    assert response.json()["warnings"] == ["equity_field_never_true: owns_home (0 of 7 applicants)"]
+    assert response.json()["warnings"] == ["equity_field_never_true: unemployment (0 of 7 applicants)"]
 
 
 def test_an_out_of_range_year_is_rejected() -> None:

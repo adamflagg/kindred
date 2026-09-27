@@ -46,7 +46,7 @@ def test_the_fa_read_names_its_columns_and_never_contact_fields() -> None:
     columns = FA_READ_FIELDS.split(",")
     assert FA_REGISTRATION_ASK_FIELD == "registration_request_amount"  # SP1's name (migration 1500000184)
     assert {FA_REGISTRATION_ASK_FIELD, "expand.household.cm_id"} <= set(columns)
-    assert {"reported_income_fields", "still_unemployed", "total_rent"} <= set(columns)
+    assert {"reported_income_fields", "unemployment", "total_rent"} <= set(columns)
     assert not [c for c in columns if c.startswith(("contact_", "parent_2_", "applicant_"))]
 
 

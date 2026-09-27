@@ -262,8 +262,8 @@ def test_an_extra_term_deducts_a_named_figure_strictly_above_its_threshold_at_it
 
 
 def test_an_extra_term_can_add_a_figure() -> None:
-    rules = _with_terms({"figure": "retirement_accounts", "direction": "add", "threshold": "500000", "rate": "0.1"})
-    assert _income(rules, figures={"retirement_accounts": "700000"}) == Decimal(80000)
+    rules = _with_terms({"figure": "total_housing_expenses", "direction": "add", "threshold": "500000", "rate": "0.1"})
+    assert _income(rules, figures={"total_housing_expenses": "700000"}) == Decimal(80000)
 
 
 def test_an_unreported_extra_term_figure_counts_as_zero_like_expenses() -> None:
@@ -285,3 +285,14 @@ def test_a_figure_the_formula_does_not_know_is_refused() -> None:
         app(figures={"yacht_upkeep": "1"})
     with pytest.raises(ValidationError):
         _with_terms({"figure": "yacht_upkeep", "direction": "deduct"})
+
+
+@pytest.mark.parametrize("figure", ["student_debt", "retirement_accounts", "other_support_amount"])
+def test_a_retired_figure_is_refused_like_any_unknown_one(figure: str) -> None:
+    # Dropped from IncomeFigure 2026-09-27 (owner ruling: live questions only) -- these
+    # were 0 in 2025 and 2026 alike. A rules author naming one now gets the same refusal
+    # as a figure the formula never knew, not a criterion that quietly never fires.
+    with pytest.raises(ValidationError):
+        app(figures={figure: "1"})
+    with pytest.raises(ValidationError):
+        _with_terms({"figure": figure, "direction": "deduct"})

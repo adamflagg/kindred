@@ -68,9 +68,8 @@ def test_application_inputs_use_corrected_values_as_decimals_and_carry_every_fig
         non_retirement_savings=1000.0,
         num_children=3.0,
         total_rent=1800.0,
-        student_debt=30000.0,
-        single_parent=True,
-        still_unemployed=True,
+        total_housing_expenses=2400.0,
+        gov_subsidies=True,
     )
     inputs = to_application_inputs(1000001, effective(answers, fix("total_gross_income", "90000.00", "85000.00")))
     assert inputs.prior_year_gross == Decimal("90000.00")
@@ -83,17 +82,13 @@ def test_application_inputs_use_corrected_values_as_decimals_and_carry_every_fig
     assert inputs.dependents == 3
     assert inputs.education_expenses is None  # blank: SP3 counts it as 0
     assert set(inputs.figures) == set(get_args(IncomeFigure))
-    assert (inputs.figures["total_rent"], inputs.figures["student_debt"], inputs.figures["retirement_accounts"]) == (
+    assert (inputs.figures["total_rent"], inputs.figures["total_housing_expenses"]) == (
         Decimal("1800.00"),
-        Decimal("30000.00"),
-        None,
+        Decimal("2400.00"),
     )
     assert inputs.answers == {
         "unemployment": "No",
-        "still_unemployed": "Yes",
-        "single_parent": "Yes",
-        "owns_home": "No",
-        "gov_subsidies": "No",
+        "gov_subsidies": "Yes",
     }
     assert inputs.income_override is None
 
