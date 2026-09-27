@@ -3,7 +3,7 @@ import { MANAGE_TABS, canSeeTab } from './manageTabs'
 import { Permission } from '../constants/permissions'
 
 describe('MANAGE_TABS', () => {
-  it('has six entries in the order Geo, Registration, Sheets, Lodging, Sync, Config', () => {
+  it('has seven entries in the order Geo, Registration, Sheets, Lodging, Sync, Config, Audit', () => {
     expect(MANAGE_TABS.map((tab) => tab.id)).toEqual([
       'geo',
       'registration',
@@ -11,6 +11,7 @@ describe('MANAGE_TABS', () => {
       'lodging',
       'sync',
       'config',
+      'audit',
     ])
   })
 
@@ -24,7 +25,7 @@ describe('MANAGE_TABS', () => {
     expect(tab?.access).toEqual({ kind: 'permission', codename })
   })
 
-  it.each(['sync', 'config'])('marks %s as an admin-gated tab', (id) => {
+  it.each(['sync', 'config', 'audit'])('marks %s as an admin-gated tab', (id) => {
     const tab = MANAGE_TABS.find((t) => t.id === id)
     expect(tab?.access).toEqual({ kind: 'admin' })
   })

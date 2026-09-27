@@ -102,6 +102,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/fastapi/
 !pocketbase/google/
 !pocketbase/rbac/
+!pocketbase/audit/
 !pocketbase/feedback/
 !pocketbase/config/
 !pocketbase/bunk_requests/

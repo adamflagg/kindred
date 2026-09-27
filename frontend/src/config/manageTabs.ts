@@ -9,6 +9,7 @@ import {
   Workflow,
   Database,
   Settings2,
+  ScrollText,
 } from 'lucide-react'
 import { Permission } from '../constants/permissions'
 
@@ -35,7 +36,7 @@ export function canSeeTab(
 }
 
 export interface ManageTabConfig {
-  id: 'geo' | 'registration' | 'sheets' | 'lodging' | 'sync' | 'config'
+  id: 'geo' | 'registration' | 'sheets' | 'lodging' | 'sync' | 'config' | 'audit'
   label: string
   path: string
   icon: LucideIcon
@@ -87,6 +88,15 @@ export const MANAGE_TABS: ManageTabConfig[] = [
     label: 'Configuration',
     path: '/manage/config',
     icon: Sliders,
+    access: { kind: 'admin' },
+  },
+  {
+    // Who changed access, roles, settings or anything behind the app. Admin
+    // only; under "view as" an admin is not an admin, so a preview hides it.
+    id: 'audit',
+    label: 'Audit Log',
+    path: '/manage/audit',
+    icon: ScrollText,
     access: { kind: 'admin' },
   },
 ]

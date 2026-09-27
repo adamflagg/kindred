@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/camp/kindred/pocketbase/audit"
 )
 
 // hasGroup checks if a specific group name is present in the OIDC RawUser claims.
@@ -80,6 +82,12 @@ func registerLastLoginHook(app core.App) {
 // registerAdminSyncHook registers a hook that syncs is_admin from OIDC group claims.
 // It only sets fields on the record — Save() is handled by the last-login hook which
 // runs after this one (hooks fire in registration order).
+//
+// When the group grants or removes admin, it records an Access entry in the
+// admin audit log once the sign-in has succeeded (spec 2026-09-26 §4.5): a new
+// account that arrives as an admin is a grant too. The entry is written only if
+// the stored is_admin really changed, since the last-login save only logs its
+// own failure. Fail open, like every sign-in path.
 func registerAdminSyncHook(app core.App, adminGroup string) {
 	app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(e *core.RecordAuthWithOAuth2RequestEvent) error {
 		if e.OAuth2User == nil {
@@ -87,6 +95,7 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 		}
 
 		isAdmin := hasGroup(e.OAuth2User.RawUser, adminGroup)
+		changed := false
 
 		// For new users: set in CreateData so the record is created with is_admin
 		if e.IsNewRecord {
@@ -94,6 +103,7 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 				e.CreateData = map[string]any{}
 			}
 			e.CreateData["is_admin"] = isAdmin
+			changed = isAdmin
 			slog.Info("OIDC new user admin sync",
 				"is_admin", isAdmin,
 			)
@@ -105,6 +115,7 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 			currentAdmin := e.Record.GetBool("is_admin")
 			if currentAdmin != isAdmin {
 				e.Record.Set("is_admin", isAdmin)
+				changed = true
 				slog.Info("OIDC admin sync updated",
 					"user_id", e.Record.Id,
 					"is_admin", isAdmin,
@@ -112,7 +123,19 @@ func registerAdminSyncHook(app core.App, adminGroup string) {
 			}
 		}
 
-		return e.Next()
+		if err := e.Next(); err != nil {
+			return err
+		}
+		if changed && e.Record != nil {
+			switch stored, err := e.App.FindRecordById("users", e.Record.Id); {
+			case err != nil:
+				slog.Error("admin audit log: could not reload the user after the admin group sync",
+					"user_id", e.Record.Id, "error", err)
+			case stored.GetBool("is_admin") == isAdmin:
+				audit.WriteAdminGroupChange(e.App, e.RequestEvent, stored, isAdmin)
+			}
+		}
+		return nil
 	})
 }
 

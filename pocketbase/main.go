@@ -21,6 +21,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/hook"
 
 	// Import our packages
+	"github.com/camp/kindred/pocketbase/audit"
 	bunkrequests "github.com/camp/kindred/pocketbase/bunk_requests"
 	"github.com/camp/kindred/pocketbase/feedback"
 	"github.com/camp/kindred/pocketbase/lodging"
@@ -290,6 +291,12 @@ func main() {
 
 	// Register RBAC hooks for permission cache recomputation
 	rbac.RegisterHooks(app)
+
+	// Admin audit log (pocketbase/audit): access, roles, view-as sessions,
+	// Manage-menu settings, sign-ins and anything a superuser other than
+	// Kindred's service does. POCKETBASE_ADMIN_EMAIL names the service; blank
+	// logs every superuser (and says so at startup).
+	audit.Register(app, audit.ConfigFromEnv())
 
 	// Register bunk_requests reciprocity hook (keeps is_reciprocal accurate
 	// after any write — closes #1059, supports #1069 status flips).

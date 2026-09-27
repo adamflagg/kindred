@@ -136,6 +136,10 @@ DEBUG_PIPELINE_TRACES = "debug_pipeline_traces"
 # Auth
 SUPERUSERS = "_superusers"
 
+# Admin audit log (migration 1500000206). Superuser-only in PocketBase, written
+# only by PocketBase's Go hooks; FastAPI reads it for admins and never writes.
+ADMIN_AUDIT_LOG = "admin_audit_log"
+
 # Adult-weekend Jotform pull (kindred#2759, migration 1500000180). Generic:
 # every answered question, one row per submission per question. All three are
 # `bunking.manage`-only in PocketBase, and every API read of them must re-check it.

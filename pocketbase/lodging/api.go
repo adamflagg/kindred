@@ -8,6 +8,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 
+	"github.com/camp/kindred/pocketbase/audit"
 	"github.com/camp/kindred/pocketbase/sync"
 )
 
@@ -39,7 +40,7 @@ func RegisterRoutes(e *core.ServeEvent) {
 			if err != nil {
 				return re.JSON(http.StatusBadRequest, map[string]string{jsonErrorKey: err.Error()})
 			}
-			plan, err := ApplyRollForward(re.App, from, to)
+			plan, err := applyRollForwardAudited(re, from, to)
 			if err != nil {
 				return re.JSON(http.StatusInternalServerError, map[string]string{jsonErrorKey: err.Error()})
 			}
@@ -140,4 +141,30 @@ func rosterExportStatus(err error) int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// applyRollForwardAudited applies a roll-forward and writes its admin audit log
+// row in ONE transaction (spec §4.6): ApplyRollForward's own transaction joins
+// this one, so if the row cannot be written the whole roll-forward is undone
+// and the handler answers 500. Fail closed, like every logged change.
+func applyRollForwardAudited(re *core.RequestEvent, from, to int) (RollForwardPlan, error) {
+	var plan RollForwardPlan
+	err := re.App.RunInTransaction(func(txApp core.App) error {
+		applied, err := ApplyRollForward(txApp, from, to)
+		if err != nil {
+			return err
+		}
+		plan = applied
+		return audit.WriteAction(txApp, re, audit.ActionRollForward, map[string]any{
+			"from_year":     applied.FromYear,
+			"to_year":       applied.ToYear,
+			"areas_created": applied.AreasToCreate,
+			"units_created": applied.UnitsToCreate,
+			"units_skipped": len(applied.SkippedCodes),
+		})
+	})
+	if err != nil {
+		return newRollForwardPlan(from, to), fmt.Errorf("roll-forward not applied: %w", err)
+	}
+	return plan, nil
 }

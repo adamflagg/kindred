@@ -212,6 +212,20 @@ describe('ViewAsSwitcher', () => {
     })
   })
 
+  it('picking a role tells the audit log a preview started, as the real admin', () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }))
+    renderAs({ isAdmin: true })
+    openMenu()
+    fireEvent.click(screen.getByRole('button', { name: /Registrar/ }))
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/custom/view-as/start')
+    expect(new Headers(init.headers).get('X-Kindred-View-As')).toBeNull()
+    expect(JSON.parse(String(init.body))).toMatchObject({ persona: 'Registrar' })
+    fetchSpy.mockRestore()
+  })
+
   it('closes on Escape', () => {
     renderAs({ isAdmin: true })
     openMenu()

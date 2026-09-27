@@ -18,6 +18,8 @@
 	handle @pocketbase {
 		reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {
 			header_up Host {host}
+			# See docker/Caddyfile: the client address PocketBase's RealIP() trusts.
+			header_up X-Real-IP {client_ip}
 		}
 	}
 
@@ -27,6 +29,8 @@
 	handle /api/oauth2-redirect {
 		reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {
 			header_up Host {host}
+			# See docker/Caddyfile: the client address PocketBase's RealIP() trusts.
+			header_up X-Real-IP {client_ip}
 			# See docker/Caddyfile for why we use header+respond instead of redir.
 			@oauth_success header Location *oauth2-redirect-success*
 			handle_response @oauth_success {
@@ -51,6 +55,8 @@
 		respond @admin_blocked 403
 		reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {
 			header_up Host {host}
+			# See docker/Caddyfile: the client address PocketBase's RealIP() trusts.
+			header_up X-Real-IP {client_ip}
 		}
 	}
 

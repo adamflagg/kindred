@@ -11,6 +11,8 @@ import (
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/hook"
+
+	"github.com/camp/kindred/pocketbase/audit"
 )
 
 // ViewAsHeader carries a real admin's preview persona: comma-separated
@@ -202,6 +204,10 @@ func ensureViewAsPersona(app core.App, perms []string) (*core.Record, error) {
 // auth-* routes are skipped: auth-refresh returns e.Auth as the record the SDK
 // stores, and a stand-in there would replace the admin in the tab, hiding the
 // switcher that is the only way back.
+//
+// The admin audit log is the one exception: before the swap the middleware
+// stores the real admin under audit.RealAuthKey, and the audit hooks record a
+// preview's writes against the admin (spec 2026-09-26 §4.3).
 func viewAsMiddleware() *hook.Handler[*core.RequestEvent] {
 	return &hook.Handler[*core.RequestEvent]{
 		Id:       viewAsMiddlewareID,
@@ -224,6 +230,9 @@ func viewAsMiddleware() *hook.Handler[*core.RequestEvent] {
 					// Fail closed: never let a preview silently run as the real admin.
 					return apis.NewInternalServerError("View-as persona unavailable", err)
 				}
+				// Keep the real admin for the audit log before the swap: its hooks
+				// record a preview's writes against the admin, never the stand-in.
+				e.Set(audit.RealAuthKey, e.Auth)
 				e.Auth = persona
 			}
 			return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern

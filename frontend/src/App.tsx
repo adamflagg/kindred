@@ -50,6 +50,9 @@ const SheetsTab = lazy(() =>
 const GeoDataTab = lazy(() =>
   import('./components/admin/GeoDataTab').then((m) => ({ default: m.GeoDataTab }))
 )
+const AuditLogTab = lazy(() =>
+  import('./components/admin/audit/AuditLogTab').then((m) => ({ default: m.AuditLogTab }))
+)
 const ManageLayout = lazy(() =>
   import('./components/ManageLayout').then((m) => ({ default: m.ManageLayout }))
 )
@@ -310,6 +313,18 @@ function App() {
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <ConfigTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="audit"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <AuditLogTab />
                                       </Suspense>
                                     </ErrorBoundary>
                                   </AdminRoute>

@@ -138,6 +138,10 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 	// Get the scheduler instance
 	scheduler := GetScheduler(app)
 
+	// One Settings row in the admin audit log per manual sync run
+	// (audit_sync_runs.go). Bound here, beside the routes it covers.
+	e.Router.Bind(auditSyncRunMiddleware())
+
 	// Register API endpoints using PocketBase's router
 	// For PocketBase v0.28.4, we use the e.Router directly
 
