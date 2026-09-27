@@ -18,6 +18,8 @@
 	handle @pocketbase {
 		reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {
 			header_up Host {host}
+			# See docker/Caddyfile: the client address PocketBase's RealIP() trusts.
+			header_up X-Real-IP {client_ip}
 		}
 	}
 

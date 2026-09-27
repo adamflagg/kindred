@@ -116,6 +116,11 @@
 		respond @superuser_api_blocked 403
 		reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {
 			header_up Host {host}
+			# The real client address for PocketBase's RealIP() (admin audit log,
+			# logs, rate limits): {client_ip} is the same resolution the IP gates
+			# above use, and header_up replaces any X-Real-IP the client sent.
+			# pb_migrations/1500000207 trusts exactly this header.
+			header_up X-Real-IP {client_ip}
 		}
 	}
 

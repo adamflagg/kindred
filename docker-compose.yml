@@ -29,6 +29,9 @@ services:
       - JOTFORM_API_KEY=${JOTFORM_API_KEY:-}
       - JOTFORM_API_BASE=${JOTFORM_API_BASE:-}
       - ADMIN_GROUP_NAME=${ADMIN_GROUP_NAME:-}
+      # Kindred's service superuser, by EMAIL ONLY: the admin audit log never
+      # records it (pocketbase/audit). Never add the password here.
+      - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL}
       - IS_DOCKER=true
       - API_URL=http://api:8000
       - TZ=${TZ:-America/Los_Angeles}
