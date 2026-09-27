@@ -170,6 +170,8 @@ function pbAdminSentence(entry: AuditEntry): SentencePart[] {
   const d = detailOf(entry)
   const collection = entry.collection ?? ''
   if (entry.action === 'settings_change') return [t('changed the PocketBase settings')]
+  if (entry.action === 'impersonate')
+    return [t('impersonated '), b(firstText(entry.target_label, entry.record_id))]
   if (entry.action === 'schema_change') {
     switch (str(d['operation'])) {
       case 'create':

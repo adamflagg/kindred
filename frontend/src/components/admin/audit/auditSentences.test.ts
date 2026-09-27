@@ -368,6 +368,11 @@ describe('describeEntry', () => {
       { type: 'pb_admin', action: 'settings_change' },
       'changed the PocketBase settings',
     ],
+    [
+      'impersonation',
+      { type: 'pb_admin', action: 'impersonate', collection: 'users', target_label: 'Sam Patel' },
+      'impersonated *Sam Patel*',
+    ],
     // Sign-ins
     [
       'Pocket ID',
