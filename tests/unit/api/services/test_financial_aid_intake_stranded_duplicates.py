@@ -184,3 +184,24 @@ async def test_an_unmatched_duplicate_whose_survivor_is_gone_revives_unmatched_a
     assert (revived.status, revived.duplicate_of, revived.session_cm_id) == ("unmatched_session", "", 0)
     assert REVIVED in _codes(revived)
     assert (REVIVED, "hold") in await _hold_codes(store, 1000002, extra.id)
+
+
+@pytest.mark.asyncio
+async def test_an_unmatched_duplicate_of_a_duplicate_follows_the_chain_instead_of_reviving() -> None:
+    # With no session there is no slot to look up: only the chain leads to the survivor.
+    store = seeded_store()
+    store.fa_rows.append(fa_row(1000011, 1000002, summer="Session 2", summer_ask=1500.0))
+    store.fa_rows.append(fa_row(1000011, 1000003, summer="Some session we never ran", summer_ask=1500.0))
+    service = FinancialAidIntakeService(store)
+    await service.build(YEAR)
+    holder = store.request_for(person=1000011, household=1000001, program="summer")
+    middle = store.request_for(person=1000011, household=1000002, program="summer")
+    unmatched = store.request_for(person=1000011, household=1000003, program="summer")
+    casework = FinancialAidCaseworkService(store)
+    await casework.mark_duplicate(middle.id, holder.id, "Other parent.", ACTOR)
+    await casework.mark_duplicate(unmatched.id, holder.id, "Third copy.", ACTOR)
+    store.requests[unmatched.id] = replace(store.requests[unmatched.id], duplicate_of=middle.id)
+    await service.build(YEAR)
+    after = store.requests[unmatched.id]
+    assert (after.status, after.duplicate_of) == ("duplicate", holder.id)
+    assert REVIVED not in _codes(after)
