@@ -14,11 +14,13 @@
  *   the queue under a click inside the popover.
  * - `role="dialog"` also keeps `shouldKeepPanelsOpen` from treating a click
  *   inside it as dead space.
- * - A press on the queue's own toggle button (`[data-queue-toggle]`) or its
- *   expanded state's close button (`[data-queue-close]`), both
- *   `FloatingQueueBadge`, is exempt the same way the corner is: staff can
- *   open or close the queue without closing an open note. Any OTHER press
- *   inside the queue still saves it first.
+ * - A press anywhere inside the expanded (or collapsed) queue
+ *   (`[data-floating-badge]`, `FloatingQueueBadge`) is exempt the same way
+ *   the corner is: staff can search, filter, toggle or close the queue
+ *   without closing an open note. A press on a queue CARD
+ *   (`[data-camper-card]`/`[data-family-card]`) or on ANOTHER card's note
+ *   corner (`[data-note-corner-for]`) is the exception -- those still save
+ *   the open note first, the same as a press fully outside the queue.
  */
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
@@ -117,17 +119,25 @@ function useOutsidePointer(
       const target = event.target as Element | null
       if (!target || containerRef.current?.contains(target)) return
       if (isScrollbarGutterPress(event, target)) return
-      // The queue's own toggle and its expanded state's close button --
-      // two separate controls, each exempt: a press on either should not
-      // close an open note, so staff can work the queue and a note at once
-      // -- but it is NOT a reason to keep the note open the way the corner
-      // that opened it is (no eater; the button's own onClick still needs
-      // to fire normally). Deliberately scoped to these two buttons, not the
-      // whole `[data-floating-badge]`: a press on ANOTHER queue card's
-      // corner must still save the open note first.
-      if (target.closest('[data-queue-toggle], [data-queue-close]')) return
       if (target.closest(`[data-note-corner-for="${cornerKey}"]`)) {
         swallowNextClick(event)
+        return
+      }
+      // Anywhere else inside the expanded (or collapsed) queue badge is
+      // exempt: staff can search, filter, toggle or close the queue without
+      // closing an open note -- but a queue CARD or ANOTHER card's note
+      // corner must still save it first, exactly as a press outside the
+      // badge would (owner repro: note open, queue open, click back into
+      // the note, then click the queue's search box -- that used to save
+      // and close it). This folds in the old toggle/close-only exemption
+      // (both buttons live inside `[data-floating-badge]`, so the old,
+      // narrower selector was a strict subset of this one) -- no eater
+      // here either; a queue button's own onClick still needs to fire
+      // normally, which is only the corner's concern above.
+      if (
+        target.closest('[data-floating-badge]') &&
+        !target.closest('[data-camper-card], [data-family-card], [data-note-corner-for]')
+      ) {
         return
       }
       const current = latest.current

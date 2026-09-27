@@ -277,23 +277,78 @@ describe('SubjectNotePopover', () => {
     }
   })
 
-  it('a press elsewhere in the queue badge (not its toggle) still saves the open note first', async () => {
+  it('a press anywhere else inside the expanded queue badge (its search box, say) leaves the open note alone (owner repro: note stays open, then closing/queue-search shouldn’t save it)', () => {
     render(<Board />)
     openPopover()
     fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
       target: { value: 'Arriving late Friday.' },
     })
 
-    // Deliberately NOT the whole `[data-floating-badge]`: a press on another
-    // queue card's corner must still save the open note first.
+    // A stand-in for the expanded queue's own search input -- anything inside
+    // `[data-floating-badge]` that is not a queue card or a note corner is
+    // exempt now, the same way the toggle and close buttons already were.
     const badge = document.createElement('div')
     badge.setAttribute('data-floating-badge', '')
-    const row = document.createElement('div')
-    badge.appendChild(row)
+    const search = document.createElement('input')
+    badge.appendChild(search)
     document.body.appendChild(badge)
 
     try {
-      fireEvent.pointerDown(row)
+      fireEvent.pointerDown(search)
+      expect(screen.getByRole('dialog', { name: 'Note' })).toBeInTheDocument()
+      expect(saveNote).not.toHaveBeenCalled()
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press on a queue CARD inside the badge still saves the open note first', async () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for a card rendered inside the expanded queue's own list.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const card = document.createElement('div')
+    card.setAttribute('data-family-card', '')
+    badge.appendChild(card)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(card)
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
+      )
+      expect(saveNote).toHaveBeenCalledWith(
+        expect.objectContaining({ scenario: '', body: 'Arriving late Friday.' })
+      )
+    } finally {
+      badge.remove()
+    }
+  })
+
+  it('a press on ANOTHER card’s note corner inside the badge still saves the open note first', async () => {
+    render(<Board />)
+    openPopover()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Arriving late Friday.' },
+    })
+
+    // A stand-in for a DIFFERENT card's corner, rendered inside the expanded
+    // queue -- marked with the same `data-note-corner-for` attribute
+    // SubjectNoteCorner uses, but a different key from the open popover's.
+    const badge = document.createElement('div')
+    badge.setAttribute('data-floating-badge', '')
+    const otherCorner = document.createElement('button')
+    otherCorner.setAttribute('data-note-corner-for', 'person:9999999:1000001')
+    badge.appendChild(otherCorner)
+    document.body.appendChild(badge)
+
+    try {
+      fireEvent.pointerDown(otherCorner)
       await waitFor(() =>
         expect(screen.queryByRole('dialog', { name: 'Note' })).not.toBeInTheDocument()
       )
