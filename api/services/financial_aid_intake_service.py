@@ -148,8 +148,10 @@ def plan_writes(
     already resolved). No update names a request created in this run: the planner settles
     existing rows before it plans any create, so an update's `duplicate_of` is always an
     existing id. Within the updates, the planner lists active rows first, so a withdrawn
-    holder is written before the pending duplicate it promotes. An update logs the record's fields before it as `before`; the helper keeps
-    only what changed. A status move is logged as action "status" (spec 12.1 as-of)."""
+    holder is written before the pending duplicate it promotes.
+
+    An update logs the record's fields before it as `before`; the helper keeps only what
+    changed. A status move is logged as action "status" (spec 12.1 as-of)."""
     application_ids = {a.household_cm_id: a.id for a in applications}
     applications_by_id = {a.id: a for a in applications}
     requests_by_id = {r.id: r for r in requests}
