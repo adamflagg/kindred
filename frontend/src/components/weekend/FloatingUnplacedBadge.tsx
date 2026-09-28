@@ -117,7 +117,15 @@ export function FloatingUnplacedBadge({
   // party in two groups never needs a tie-break. Local, like `isExpanded` --
   // nothing outside this popout reads it, and the board's URL state is for
   // things worth linking to, not a scratch filter.
-  const [group, setGroup] = useState<UnplacedFilterKey | null>(null)
+  const [pickedGroup, setGroup] = useState<UnplacedFilterKey | null>(null)
+  // Applied only while this weekend still offers it (kindred#2859). A cached
+  // weekend re-renders this badge in place rather than remounting it, so a
+  // pick made on Women's or a family weekend survives the switch to one that
+  // drops the chip, and would go on filtering with no chip left to clear it.
+  const group =
+    pickedGroup !== null && filterGroups.some((spec) => spec.key === pickedGroup)
+      ? pickedGroup
+      : null
 
   // Over ALL unplaced parties, never the name-searched subset: the number is
   // there to answer "is this group worth clicking", and one that moved while

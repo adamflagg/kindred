@@ -551,3 +551,86 @@ describe('FloatingUnplacedBadge — adult weekends (kindred#2859)', () => {
     expect(filters().getByRole('button', { name: /child under 2/i })).toBeInTheDocument()
   })
 })
+
+/**
+ * A chip the weekend no longer offers must not stay applied (kindred#2859 scan).
+ * The board re-renders in place when switching to a cached weekend, so the
+ * local `group` can outlive the chip that set it -- an invisible filter that
+ * empties the queue.
+ */
+describe('FloatingUnplacedBadge — an active chip the weekend drops', () => {
+  const infantGuest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 9301,
+    display_name: 'Ava Rosen',
+    sort_name: 'Rosen',
+    adults: [{ adult_number: 1, display_name: 'Ava Rosen', age: 34.2 }],
+    children: [],
+    party_size: 1,
+    flags: { has_child_under_two: true },
+  })
+  const otherGuest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 9302,
+    display_name: 'Owen Marsh',
+    sort_name: 'Marsh',
+    adults: [{ adult_number: 1, display_name: 'Owen Marsh', age: 51.4 }],
+    children: [],
+    party_size: 1,
+  })
+
+  it('lifts the filter when a male-only weekend drops Child under 2', async () => {
+    const { rerender } = render(
+      <FloatingUnplacedBadge
+        parties={[infantGuest, otherGuest]}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
+    await userEvent.click(
+      within(screen.getByTestId('unplaced-filters')).getByRole('button', { name: /child under 2/i })
+    )
+    expect(screen.getAllByTestId('family-card-name')).toHaveLength(1)
+
+    rerender(
+      <FloatingUnplacedBadge
+        parties={[otherGuest]}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+        maleOnly={true}
+      />
+    )
+    expect(screen.getAllByTestId('family-card-name').map((el) => el.textContent)).toEqual([
+      'Owen Marsh',
+    ])
+  })
+
+  it('lifts Open to sharing when a family weekend gives way to an adult one', async () => {
+    const sharer = party({
+      household_cm_id: 302,
+      sort_name: 'Castillo',
+      share: { preference: 'yes_share' },
+    })
+    const { rerender } = render(
+      <FloatingUnplacedBadge parties={[sharer]} onOpenParty={vi.fn()} sessionType="family" />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
+    await userEvent.click(
+      within(screen.getByTestId('unplaced-filters')).getByRole('button', {
+        name: /open to sharing/i,
+      })
+    )
+
+    rerender(
+      <FloatingUnplacedBadge parties={[otherGuest]} onOpenParty={vi.fn()} sessionType="adult" />
+    )
+    expect(screen.getAllByTestId('family-card-name').map((el) => el.textContent)).toEqual([
+      'Owen Marsh',
+    ])
+  })
+})
