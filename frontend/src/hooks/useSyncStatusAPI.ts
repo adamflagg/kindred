@@ -85,6 +85,7 @@ export interface SyncStatus {
     already_processed?: number // For process_requests: records already processed
     prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded prod assignments (observe-only)
     lodging_prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded lodging prod assignments (observe-only)
+    aid_ledger_warnings?: number // For aid_postings: aid-ledger data-quality warnings (warn-only, never fails the run)
     duration?: number
     sub_stats?: Record<string, SubStats> // For combined syncs (e.g., persons includes households)
   }
