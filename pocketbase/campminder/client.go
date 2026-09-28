@@ -30,8 +30,9 @@ const (
 	// rateLimitBaseBackoff is makeRequest's first wait after a 429 whose body carries no
 	// "Try again in N seconds" hint; each further unhinted 429 doubles it.
 	rateLimitBaseBackoff = 5 * time.Second
-	// rateLimitMaxBackoff caps an unhinted wait. A hinted wait is honored as given, up to
-	// rateLimitMaxHintedWait, the same as authenticateAtURL and makeRequestWithURLRetry do.
+	// rateLimitMaxBackoff caps an unhinted wait in makeRequest. A hinted wait is honored as
+	// given, up to rateLimitMaxHintedWait, in every retry loop (rateLimitWait for makeRequest,
+	// parseRateLimitSeconds for authenticateAtURL and makeRequestWithURLRetry).
 	rateLimitMaxBackoff = 60 * time.Second
 	// rateLimitMaxHintedWait caps a hinted wait so a malformed or absurd CampMinder hint
 	// (e.g. "Try again in 999999 seconds") can't sleep for days. Deliberately larger than
@@ -151,7 +152,7 @@ func (c *Client) authenticateAtURL(ctx context.Context, authURL string) error {
 	primaryKey := c.subscriptionKey
 
 	for attempt := range maxRequestRetries + 1 {
-		req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
+		req, err := http.NewRequestWithContext(ctx, "GET", authURL, http.NoBody)
 		if err != nil {
 			return fmt.Errorf("create auth request: %w", err)
 		}
@@ -179,14 +180,15 @@ func (c *Client) authenticateAtURL(ctx context.Context, authURL string) error {
 					return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 				}
 				waitTime := c.parseRateLimitSeconds(string(body))
-				// parseRateLimitSeconds always returns >= 5 (5s buffer) or fallback 60;
-				// the guard is unnecessary, but we sleep unconditionally for clarity.
 				slog.Warn("CampMinder rate limited during auth",
 					"wait_seconds", waitTime,
 					"attempt", attempt+1,
 					"max_retries", maxRequestRetries,
 				)
-				sleepFn(time.Duration(waitTime) * time.Second)
+				// Context-aware: a caller whose ctx ends must not sit out the wait.
+				if err := sleepCtxFn(ctx, time.Duration(waitTime)*time.Second); err != nil {
+					return fmt.Errorf("auth retry wait interrupted: %w", err)
+				}
 				continue
 			}
 
@@ -274,6 +276,10 @@ func (c *Client) ensureAuthenticated(ctx context.Context) error {
 		if c.tokenRefreshing {
 			// Another goroutine is already refreshing; release and yield.
 			c.tokenMu.Unlock()
+			// A caller whose ctx has ended must not wait on someone else's refresh.
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("waiting for token refresh: %w", err)
+			}
 			// Brief yield so we don't spin-burn CPU; runtime.Gosched() is
 			// sufficient — we are not doing real-time work here.
 			time.Sleep(time.Millisecond)
@@ -804,10 +810,15 @@ func parseRateLimitHint(body string) (int, bool) {
 	return 0, false
 }
 
-// parseRateLimitSeconds returns the hinted wait plus a 5 second buffer, or 60 seconds when
-// the body carries no hint. Used by the auth and pre-built-URL retry loops.
+// parseRateLimitSeconds returns the hinted wait plus a 5 second buffer (clamped at
+// rateLimitMaxHintedWait against a malformed or absurd hint), or 60 seconds when the body
+// carries no hint. Used by the auth and pre-built-URL retry loops.
 func (c *Client) parseRateLimitSeconds(body string) int {
 	if seconds, ok := parseRateLimitHint(body); ok {
+		maxSeconds := int(rateLimitMaxHintedWait / time.Second)
+		if seconds < 0 || seconds > maxSeconds-5 {
+			return maxSeconds
+		}
 		return seconds + 5
 	}
 	return 60

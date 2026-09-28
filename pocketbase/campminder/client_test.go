@@ -253,13 +253,13 @@ func TestGetDivisions_MethodSignature(t *testing.T) {
 // TestAuthenticate_RetryCapOnPersistent429 verifies that authenticate()
 // returns an error after maxRequestRetries attempts rather than recursing
 // indefinitely when CampMinder sustains a 429 storm on the auth endpoint.
-// sleepFn is overridden to a no-op so the test finishes instantly.
+// sleepCtxFn is overridden to a no-op so the test finishes instantly.
 func TestAuthenticate_RetryCapOnPersistent429(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 
-	origSleep := sleepFn
-	sleepFn = func(time.Duration) {}
-	t.Cleanup(func() { sleepFn = origSleep })
+	origSleep := sleepCtxFn
+	sleepCtxFn = func(context.Context, time.Duration) error { return nil }
+	t.Cleanup(func() { sleepCtxFn = origSleep })
 
 	var callCount atomic.Int32
 
@@ -301,10 +301,10 @@ func TestAuthenticate_RetryCapOnPersistent429(t *testing.T) {
 func TestAuthenticate_RetryCapErrorMessage(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 
-	// sleepFn is overridden to a no-op so the test finishes instantly.
-	origSleep := sleepFn
-	sleepFn = func(time.Duration) {}
-	t.Cleanup(func() { sleepFn = origSleep })
+	// sleepCtxFn is overridden to a no-op so the test finishes instantly.
+	origSleep := sleepCtxFn
+	sleepCtxFn = func(context.Context, time.Duration) error { return nil }
+	t.Cleanup(func() { sleepCtxFn = origSleep })
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -338,9 +338,9 @@ func TestAuthenticate_RetryCapExactCallCount(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 
 	// Override sleep so the test finishes instantly.
-	origSleep := sleepFn
-	sleepFn = func(time.Duration) {}
-	t.Cleanup(func() { sleepFn = origSleep })
+	origSleep := sleepCtxFn
+	sleepCtxFn = func(context.Context, time.Duration) error { return nil }
+	t.Cleanup(func() { sleepCtxFn = origSleep })
 
 	var callCount atomic.Int32
 
@@ -375,10 +375,10 @@ func TestAuthenticate_NoRetryOnNon429Error(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 
 	// Track sleep calls — must remain zero.
-	origSleep := sleepFn
+	origSleep := sleepCtxFn
 	var sleepCalled atomic.Int32
-	sleepFn = func(time.Duration) { sleepCalled.Add(1) }
-	t.Cleanup(func() { sleepFn = origSleep })
+	sleepCtxFn = func(context.Context, time.Duration) error { sleepCalled.Add(1); return nil }
+	t.Cleanup(func() { sleepCtxFn = origSleep })
 
 	var callCount atomic.Int32
 
