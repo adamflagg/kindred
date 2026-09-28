@@ -24,11 +24,11 @@ def _make_db(path: Path) -> None:
     c.execute("CREATE TABLE bunks (id TEXT PRIMARY KEY, name TEXT)")
     c.execute("CREATE TABLE divisions (id TEXT PRIMARY KEY, name TEXT)")
     c.execute("CREATE TABLE config (id TEXT PRIMARY KEY, config_key TEXT, value TEXT)")
-    c.execute("INSERT INTO camp_sessions VALUES ('s1', 'Tawonga Mountain Quest', 'Best of Camp Tawonga')")
+    c.execute("INSERT INTO camp_sessions VALUES ('s1', 'Wildwood Mountain Quest', 'Best of Camp Wildwood')")
     c.execute("INSERT INTO camp_sessions VALUES ('s2', 'Sierra Session', '')")
-    c.execute("INSERT INTO bunks VALUES ('b1', 'Eagle Tawonga')")
-    c.execute("INSERT INTO divisions VALUES ('d1', 'Tawonga Juniors')")
-    c.execute("INSERT INTO config VALUES ('c1', 'welcome_text', 'Welcome to Camp Tawonga!')")
+    c.execute("INSERT INTO bunks VALUES ('b1', 'Eagle Wildwood')")
+    c.execute("INSERT INTO divisions VALUES ('d1', 'Wildwood Juniors')")
+    c.execute("INSERT INTO config VALUES ('c1', 'welcome_text', 'Welcome to Camp Wildwood!')")
     conn.commit()
     conn.close()
 
@@ -42,7 +42,7 @@ def test_relabel_makes_names_generic(debrand, tmp_path):
     bunk = conn.execute("SELECT name FROM bunks").fetchone()[0]
     div = conn.execute("SELECT name FROM divisions").fetchone()[0]
     conn.close()
-    assert all("Tawonga" not in n for n in names), names
+    assert all("Wildwood" not in n for n in names), names
     assert names[0].startswith("Session")
     assert bunk.startswith("Cabin")
     assert div.startswith("Division")
@@ -55,18 +55,18 @@ def test_scrub_token_is_case_insensitive(debrand, tmp_path):
     db = tmp_path / "ci.db"
     conn = sqlite3.connect(db)
     conn.execute("CREATE TABLE config (id TEXT PRIMARY KEY, config_key TEXT, value TEXT)")
-    conn.execute("INSERT INTO config VALUES ('c1', 'support_email', 'info@tawonga.org')")
-    conn.execute("INSERT INTO config VALUES ('c2', 'shout', 'WELCOME TO TAWONGA')")
+    conn.execute("INSERT INTO config VALUES ('c1', 'support_email', 'info@wildwood.org')")
+    conn.execute("INSERT INTO config VALUES ('c2', 'shout', 'WELCOME TO WILDWOOD')")
     conn.execute("INSERT INTO config VALUES ('c3', 'unrelated', 'no brand here')")
     conn.commit()
     conn.close()
     # canonical-case replacement list; lowercase/uppercase cells must still be scrubbed
-    changed = debrand.scrub_tokens(str(db), [("Camp Tawonga", "Camp Kindred"), ("Tawonga", "Kindred")])
+    changed = debrand.scrub_tokens(str(db), [("Camp Wildwood", "Camp Kindred"), ("Wildwood", "Kindred")])
     conn = sqlite3.connect(db)
     vals = dict(conn.execute("SELECT config_key, value FROM config"))
     conn.close()
-    assert "tawonga" not in vals["support_email"].casefold(), vals
-    assert "tawonga" not in vals["shout"].casefold(), vals
+    assert "wildwood" not in vals["support_email"].casefold(), vals
+    assert "wildwood" not in vals["shout"].casefold(), vals
     assert vals["unrelated"] == "no brand here"
     # exactly the two brand-bearing cells changed — not the untouched third row
     assert changed == 2, changed
@@ -75,8 +75,8 @@ def test_scrub_token_is_case_insensitive(debrand, tmp_path):
 def test_scrub_token_replaces_brand_everywhere(debrand, tmp_path):
     db = tmp_path / "x.db"
     _make_db(db)
-    # longest-first so "Camp Tawonga" -> "Camp Kindred" before "Tawonga" -> "Kindred"
-    debrand.scrub_tokens(str(db), [("Camp Tawonga", "Camp Kindred"), ("Tawonga", "Kindred")])
+    # longest-first so "Camp Wildwood" -> "Camp Kindred" before "Wildwood" -> "Kindred"
+    debrand.scrub_tokens(str(db), [("Camp Wildwood", "Camp Kindred"), ("Wildwood", "Kindred")])
     conn = sqlite3.connect(db)
     val = conn.execute("SELECT value FROM config WHERE config_key='welcome_text'").fetchone()[0]
     # every text cell across every table must be brand-free
@@ -84,7 +84,7 @@ def test_scrub_token_replaces_brand_everywhere(debrand, tmp_path):
     for (tbl,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
         for row in conn.execute(f"SELECT * FROM [{tbl}]"):
             for v in row:
-                if isinstance(v, str) and "Tawonga" in v:
+                if isinstance(v, str) and "Wildwood" in v:
                     leaked.append((tbl, v))
     conn.close()
     assert val == "Welcome to Camp Kindred!"
