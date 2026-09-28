@@ -193,6 +193,11 @@ class WeekendSessionSummary(BaseModel):
     # deliberately cannot clean up (1500000124), and deep links to it must keep
     # resolving, so neither /sessions nor /summary filters on this.
     status: WeekendSessionStatus = "active"
+    # CampMinder's session GenderID is 1 (Male) -- kindred#2859: Men's Weekend
+    # has no nursing infants, so its Unplaced popout drops "Child under 2".
+    # Only Male is published: GenderID 0 is Female AND the stored default for
+    # an unset number, so a "female" flag could not tell the two apart.
+    male_only: bool = False
 
     # When CampMinder was last read for THIS weekend, RFC3339, or "" when that
     # cannot be answered (kindred#2617).

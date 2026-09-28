@@ -13,14 +13,15 @@ import { useCallback, useMemo, useState } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
 import type { CardNoteSlots } from '../../types/noteSlots'
+import { isAdultSessionType } from '../../utils/sessionTypePredicates'
 import { FloatingQueueBadge } from '../ui'
 import { UNPLACED_DROPPABLE_ID } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyIdentityLabel, partySearchText } from './householdIdentity'
 import { partyKey } from './partyKey'
 import {
-  UNPLACED_FILTER_GROUPS,
   unplacedFilterGroup,
+  unplacedFilterGroupsFor,
   type UnplacedFilterKey,
 } from './unplacedFilters'
 
@@ -35,6 +36,8 @@ export interface FloatingUnplacedBadgeProps {
   sessionType?: string | undefined
   /** Board-note slots per queued party (board notes). */
   partyNoteSlots?: ((party: RosterPartyRow) => CardNoteSlots | undefined) | undefined
+  /** The weekend's session is male-only (Men's), so "Child under 2" is dropped (kindred#2859). */
+  maleOnly?: boolean
 }
 
 // Module-level so their identity is stable across renders: the shell memoises
@@ -49,6 +52,44 @@ const sortKey = (party: RosterPartyRow): string[] => [
   partyIdentityLabel(party),
 ]
 
+/**
+ * An adult weekend sorts by AGE ONLY (kindred#2859, owner 2026-09-27: "we dont
+ * need alpha, esp with typeahead search") -- the name search finds a guest, so
+ * the order is free to answer the placing question. Summer's queue has no
+ * sort control and a household has no single age, so this is adult-only.
+ *
+ * The age is the one the card prints (`adults[0].age`, kindred#2767), under the
+ * card's own `> 0` test: the server sends None for CampMinder's stored 0, and a
+ * 0 that slipped through is no more an age here than it is on the card.
+ *
+ * An unknown age sorts LAST in both directions -- the leading bucket token does
+ * that, so negating the age for Oldest cannot drag the unknowns to the top.
+ * Ties fall back to the name order above.
+ */
+type AgeOrder = 'youngest' | 'oldest'
+
+const AGE_ORDERS: ReadonlyArray<{ key: AgeOrder; label: string }> = [
+  { key: 'youngest', label: 'Youngest' },
+  { key: 'oldest', label: 'Oldest' },
+]
+
+function guestAge(party: RosterPartyRow): number | null {
+  const age = party.adults?.[0]?.age ?? null
+  return age !== null && age > 0 ? age : null
+}
+
+const byAge =
+  (direction: 1 | -1) =>
+  (party: RosterPartyRow): Array<string | number> => {
+    const age = guestAge(party)
+    return [age === null ? 1 : 0, age === null ? 0 : direction * age, ...sortKey(party)]
+  }
+
+const AGE_SORT_KEYS: Record<AgeOrder, (party: RosterPartyRow) => Array<string | number>> = {
+  youngest: byAge(1),
+  oldest: byAge(-1),
+}
+
 const EMPTY_STATE = (
   <div className="flex h-full flex-col items-center justify-center py-8 text-center">
     <p className="text-muted-foreground text-sm italic">Everyone has a cabin.</p>
@@ -62,24 +103,40 @@ export function FloatingUnplacedBadge({
   canPlace = false,
   sessionType,
   partyNoteSlots,
+  maleOnly = false,
 }: FloatingUnplacedBadgeProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const isAdultWeekend = isAdultSessionType(sessionType ?? '')
+  // Oldest first by default (owner pick 2026-09-27). Local for `group`'s reason below.
+  const [ageOrder, setAgeOrder] = useState<AgeOrder>('oldest')
+  const filterGroups = useMemo(
+    () => unplacedFilterGroupsFor(isAdultWeekend, maleOnly),
+    [isAdultWeekend, maleOnly]
+  )
   // Single-select by ruling (kindred#2480): `null` or exactly one group, so a
   // party in two groups never needs a tie-break. Local, like `isExpanded` --
   // nothing outside this popout reads it, and the board's URL state is for
   // things worth linking to, not a scratch filter.
-  const [group, setGroup] = useState<UnplacedFilterKey | null>(null)
+  const [pickedGroup, setGroup] = useState<UnplacedFilterKey | null>(null)
+  // Applied only while this weekend still offers it (kindred#2859). A cached
+  // weekend re-renders this badge in place rather than remounting it, so a
+  // pick made on Women's or a family weekend survives the switch to one that
+  // drops the chip, and would go on filtering with no chip left to clear it.
+  const group =
+    pickedGroup !== null && filterGroups.some((spec) => spec.key === pickedGroup)
+      ? pickedGroup
+      : null
 
   // Over ALL unplaced parties, never the name-searched subset: the number is
   // there to answer "is this group worth clicking", and one that moved while
   // you typed would stop answering it.
   const counts = useMemo(() => {
     const tally = {} as Record<UnplacedFilterKey, number>
-    for (const spec of UNPLACED_FILTER_GROUPS) {
+    for (const spec of filterGroups) {
       tally[spec.key] = parties.filter((party) => spec.matches(party)).length
     }
     return tally
-  }, [parties])
+  }, [parties, filterGroups])
 
   const itemFilter = useMemo(() => {
     if (!group) return undefined
@@ -108,7 +165,7 @@ export function FloatingUnplacedBadge({
   return (
     <FloatingQueueBadge
       items={parties}
-      sortKey={sortKey}
+      sortKey={isAdultWeekend ? AGE_SORT_KEYS[ageOrder] : sortKey}
       getSearchText={partySearchText}
       renderList={(visible) => (
         <div className="flex flex-col gap-1.5">
@@ -127,7 +184,7 @@ export function FloatingUnplacedBadge({
       )}
       filterRow={
         <div data-testid="unplaced-filters" className="flex flex-wrap items-center gap-1">
-          {UNPLACED_FILTER_GROUPS.map((spec) => {
+          {filterGroups.map((spec) => {
             const Icon = spec.Icon
             const isActive = group === spec.key
             const count = counts[spec.key]
@@ -162,6 +219,34 @@ export function FloatingUnplacedBadge({
               </button>
             )
           })}
+          {isAdultWeekend && (
+            // Segmented, worded, right-anchored (owner picks 2026-09-27 from
+            // the kindred#2859 mock). Both states stay visible because there
+            // are only two -- a flip button would hide the one you are not on.
+            <div className="bg-muted ml-auto inline-flex flex-shrink-0 rounded-lg p-0.5">
+              {AGE_ORDERS.map(({ key, label }) => {
+                const isActive = ageOrder === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={isActive}
+                    title={`${label} first`}
+                    onClick={() => {
+                      setAgeOrder(key)
+                    }}
+                    className={`rounded-md px-1.5 py-0.5 text-xs font-medium whitespace-nowrap transition-colors ${
+                      isActive
+                        ? 'bg-card text-foreground shadow-lodge-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       }
       itemFilter={itemFilter}

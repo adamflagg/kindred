@@ -115,3 +115,25 @@ export function unplacedFilterGroup(key: UnplacedFilterKey): UnplacedFilterGroup
   if (!group) throw new Error(`Unknown unplaced filter group: ${key}`)
   return group
 }
+
+/**
+ * The groups a weekend's popout offers -- kindred#2859, owner rulings 2026-09-27.
+ *
+ * A family weekend keeps all four. An adult weekend drops `sharing`: adults
+ * share as a matter of course and the intake never asks, so the chip would
+ * count a question nobody was put. A male-only weekend (CampMinder session
+ * GenderID 1, i.e. Men's) also drops `under_two` -- no nursing infants come.
+ * Women's keeps it. Bathroom and power stay everywhere.
+ *
+ * Dropped, NOT dimmed: the dim-never-hide rule is for a group that happens to
+ * be empty this weekend. These groups cannot apply to the program at all.
+ */
+export function unplacedFilterGroupsFor(
+  isAdultWeekend: boolean,
+  maleOnly: boolean
+): readonly UnplacedFilterGroup[] {
+  if (!isAdultWeekend) return UNPLACED_FILTER_GROUPS
+  return UNPLACED_FILTER_GROUPS.filter(
+    (group) => group.key !== 'sharing' && !(maleOnly && group.key === 'under_two')
+  )
+}

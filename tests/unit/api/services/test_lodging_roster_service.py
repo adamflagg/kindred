@@ -422,6 +422,35 @@ class TestSessionLookup:
         assert [s.session_type for s in result.sessions] == ["family", "adult"]
 
 
+class TestMaleOnlyWeekend:
+    """kindred#2859: the Unplaced popout hides "Child under 2" on a male-only weekend.
+
+    Read from CampMinder's session GenderID (0 Female, 1 Male, 2 coed), never
+    the name. ONLY 1 is trusted: 0 is also the stored default for an unset
+    number, so "female" cannot be told apart from "never set", and nothing
+    here needs it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_gender_id_one_is_male_only(self) -> None:
+        mens = _rec(**{**vars(ADULT_SESSION), "cm_id": 1000003, "name": "Men's Weekend", "gender_id": 1})
+        womens = _rec(**{**vars(ADULT_SESSION), "gender_id": 0})
+        coed = _rec(**{**vars(FAMILY_SESSION), "gender_id": 2})
+        service = LodgingRosterService(_repo(fetch_weekend_sessions=[coed, womens, mens]))
+
+        result = await service.list_sessions(2026)
+
+        assert [s.male_only for s in result.sessions] == [False, False, True]
+
+    @pytest.mark.asyncio
+    async def test_a_row_without_gender_id_is_not_male_only(self) -> None:
+        service = LodgingRosterService(_repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION]))
+
+        result = await service.list_sessions(2026)
+
+        assert [s.male_only for s in result.sessions] == [False, False]
+
+
 class TestWeekendCancellation:
     """kindred#2092: a cancelled weekend is STAFF-OWNED data.
 

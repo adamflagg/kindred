@@ -184,6 +184,8 @@ export interface LodgingMapProps {
    * reason `sessionCmId` is.
    */
   sessionType?: string
+  /** The session is male-only (Men's): the unplaced queue drops "Child under 2" (kindred#2859). */
+  maleOnly?: boolean
 }
 
 export function LodgingMap({
@@ -192,6 +194,7 @@ export function LodgingMap({
   year,
   sessionCmId = 0,
   sessionType = '',
+  maleOnly = false,
 }: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
@@ -1345,6 +1348,7 @@ export function LodgingMap({
         onOpenParty={openParty}
         isPanelOpen={panelParty !== null}
         sessionType={sessionType}
+        maleOnly={maleOnly}
       />
 
       {panelParty !== null && (

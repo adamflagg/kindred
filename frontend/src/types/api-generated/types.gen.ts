@@ -10466,6 +10466,10 @@ export type WeekendSessionSummary = {
    */
   status?: 'active' | 'cancelled'
   /**
+   * Male Only
+   */
+  male_only?: boolean
+  /**
    * Housing Synced At
    */
   housing_synced_at?: string

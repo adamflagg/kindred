@@ -107,6 +107,8 @@ export interface LodgingBoardProps {
    * reason `sessionCmId` is.
    */
   sessionType?: string
+  /** The session is male-only (Men's): the unplaced queue drops "Child under 2" (kindred#2859). */
+  maleOnly?: boolean
 }
 
 /**
@@ -184,6 +186,7 @@ export function LodgingBoard({
   sessionCmId = 0,
   canManage = false,
   sessionType = '',
+  maleOnly = false,
 }: LodgingBoardProps) {
   // ── The swap happens AT the gesture, not at the refetch (owner ruling,
   // kindred#2537: no perceptible delay between the click and the morph).
@@ -973,6 +976,7 @@ export function LodgingBoard({
           isPanelOpen={panelParty !== null}
           canPlace={canPlace}
           sessionType={sessionType}
+          maleOnly={maleOnly}
           partyNoteSlots={partyNoteSlots}
         />
 

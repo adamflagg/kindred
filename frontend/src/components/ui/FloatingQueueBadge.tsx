@@ -39,8 +39,12 @@ function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
 
 export interface FloatingQueueBadgeProps<T> {
   items: T[]
-  /** Comparison tokens, most significant first. Compared with localeCompare in order. */
-  sortKey: (item: T) => string[]
+  /**
+   * Comparison tokens, most significant first. Two numbers at the same position
+   * compare numerically, anything else with localeCompare -- an age compared as
+   * text puts 10 before 9 (kindred#2859).
+   */
+  sortKey: (item: T) => Array<string | number>
   getSearchText: (item: T) => string
   /** Given the sorted-and-filtered items, render the list body. */
   renderList: (visible: T[]) => ReactNode
@@ -151,7 +155,12 @@ export function FloatingQueueBadge<T>({
       const left = sortKey(a)
       const right = sortKey(b)
       for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
-        const compared = (left[i] ?? '').localeCompare(right[i] ?? '')
+        const l = left[i] ?? ''
+        const r = right[i] ?? ''
+        const compared =
+          typeof l === 'number' && typeof r === 'number'
+            ? l - r
+            : String(l).localeCompare(String(r))
         if (compared !== 0) return compared
       }
       return 0

@@ -2371,6 +2371,7 @@ class LodgingRosterService:
             end_date=_s(row, "end_date"),
             sort_order=_i(row, "sort_order"),
             status=cls._weekend_status(statuses.get(session_cm_id, "")),
+            male_only=_i(row, "gender_id") == 1,
             housing_synced_at=cls._housing_synced_at(session_type, session_cm_id, sync_ends or {}),
         )
 
