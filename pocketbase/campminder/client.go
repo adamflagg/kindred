@@ -53,8 +53,8 @@ const (
 	paramValueTrue = "true"
 )
 
-// sleepFn is the sleep function used by retry loops. Override in tests to
-// skip real delays.
+// sleepFn is the sleep function used by the doRequest and makeRequestWithURLRetry retry
+// loops. Override in tests to skip real delays. The auth loop waits via sleepCtxFn instead.
 var sleepFn = time.Sleep
 
 // sleepCtxFn is the context-aware wait used by the auth retry loop: it returns early with
@@ -260,6 +260,7 @@ func (c *Client) authenticateAtURL(ctx context.Context, authURL string) error {
 //   - If the token is valid → fast return (no network).
 //   - If a refresh is already in progress (tokenRefreshing == true) → spin-wait
 //     until the refreshing goroutine clears the flag, then re-check the token.
+//     A waiter whose ctx ends gives up with an error wrapping ctx.Err().
 //   - If no refresh is in progress → set the flag, release the lock, do the
 //     HTTP call, re-acquire the lock to write the result, clear the flag.
 //
@@ -340,7 +341,7 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 	// Handle rate limiting
 	if resp.StatusCode == http.StatusTooManyRequests && retryCount < maxRequestRetries {
 		waitTime := c.parseRateLimitSeconds(string(body))
-		// parseRateLimitSeconds always returns >= 5 (5s buffer) or fallback 60.
+		// parseRateLimitSeconds returns hint+5 (clamped at rateLimitMaxHintedWait) or fallback 60.
 		slog.Warn("CampMinder rate limited",
 			"wait_seconds", waitTime,
 			"retry", retryCount+1,

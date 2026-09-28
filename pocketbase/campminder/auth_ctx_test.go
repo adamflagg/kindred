@@ -115,6 +115,36 @@ func TestParseRateLimitSeconds_ClampsAbsurdHint(t *testing.T) {
 	}
 }
 
+// A caller waiting on another goroutine's in-flight refresh must give up when its own ctx
+// ends, without making a request of its own. The refresh is simulated by setting
+// tokenRefreshing and never clearing it, so without the ctx check the wait never ends.
+func TestEnsureAuthenticated_WaiterStopsWhenContextEnds(t *testing.T) {
+	var calls atomic.Int32
+	srv := serve429(&calls, "x")
+	defer srv.Close()
+
+	c := newAuthCtxClient(srv)
+	c.tokenRefreshing = true
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- c.ensureAuthenticated(ctx) }()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("error %v does not wrap context.DeadlineExceeded", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("waiter did not return after its context ended")
+	}
+	if got := calls.Load(); got != 0 {
+		t.Errorf("auth server hit %d times, want 0 (a waiter must not refresh)", got)
+	}
+}
+
 // The common case: a valid cached token makes no network call.
 func TestEnsureAuthenticated_ValidCachedTokenMakesNoRequest(t *testing.T) {
 	var calls atomic.Int32
