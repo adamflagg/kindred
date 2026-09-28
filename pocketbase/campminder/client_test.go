@@ -2,6 +2,7 @@
 package campminder
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -278,7 +279,7 @@ func TestAuthenticate_RetryCapOnPersistent429(t *testing.T) {
 
 	// authenticateAtURL is the internal helper that accepts a configurable
 	// auth URL. Without it we cannot inject a test server.
-	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	err := client.authenticateAtURL(context.Background(), srv.URL+"/auth/apikey")
 	if err == nil {
 		t.Fatal("expected an error after exhausting retries, got nil")
 	}
@@ -318,7 +319,7 @@ func TestAuthenticate_RetryCapErrorMessage(t *testing.T) {
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
 
-	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	err := client.authenticateAtURL(context.Background(), srv.URL+"/auth/apikey")
 	if err == nil {
 		t.Fatal("expected an error after exhausting retries, got nil")
 	}
@@ -357,7 +358,7 @@ func TestAuthenticate_RetryCapExactCallCount(t *testing.T) {
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
 
-	_ = client.authenticateAtURL(srv.URL + "/auth/apikey")
+	_ = client.authenticateAtURL(context.Background(), srv.URL+"/auth/apikey")
 
 	want := int32(maxRequestRetries + 1) // exactly 11 calls: attempts 0..10
 	got := callCount.Load()
@@ -395,7 +396,7 @@ func TestAuthenticate_NoRetryOnNon429Error(t *testing.T) {
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
 
-	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	err := client.authenticateAtURL(context.Background(), srv.URL+"/auth/apikey")
 	if err == nil {
 		t.Fatal("expected an error on 500 response, got nil")
 	}
@@ -451,7 +452,7 @@ func TestAuthenticate_UsesCachedSubscriptionKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err = client.authenticateAtURL(srv.URL + "/auth/apikey")
+	err = client.authenticateAtURL(context.Background(), srv.URL+"/auth/apikey")
 	if err != nil {
 		t.Fatalf("authenticateAtURL() failed (expected success): %v", err)
 	}
@@ -533,7 +534,7 @@ func TestAuthenticate_SucceedsOnFirstAttempt(t *testing.T) {
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
 
-	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	err := client.authenticateAtURL(context.Background(), srv.URL+"/auth/apikey")
 	if err != nil {
 		t.Fatalf("expected nil error on 200 response, got: %v", err)
 	}
@@ -610,7 +611,7 @@ func TestEnsureAuthenticated_ConcurrentRefresh(t *testing.T) {
 			// ensureAuthenticated calls authenticate() → authenticateAtURL(baseURL),
 			// which we can't redirect without patching the transport. Calling
 			// authenticateAtURL concurrently exercises the same mutex path.
-			errs[idx] = client.authenticateAtURL(srv2.URL + "/auth/apikey")
+			errs[idx] = client.authenticateAtURL(context.Background(), srv2.URL+"/auth/apikey")
 		}(i)
 	}
 	wg.Wait()
@@ -668,7 +669,7 @@ func TestEnsureAuthenticated_NoRedundantRefresh(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = client.ensureAuthenticated()
+			_ = client.ensureAuthenticated(context.Background())
 		}()
 	}
 	wg.Wait()

@@ -56,6 +56,20 @@ const (
 // skip real delays.
 var sleepFn = time.Sleep
 
+// sleepCtxFn is the context-aware wait used by the auth retry loop: it returns early with
+// ctx.Err() when the caller's context ends. Override in tests to skip real delays or record
+// waits.
+var sleepCtxFn = func(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 // Client wraps CampMinder API interactions
 type Client struct {
 	apiKey          string
@@ -118,18 +132,18 @@ func NewClient(cfg *Config) (*Client, error) {
 // authenticate gets a new JWT token from CampMinder.
 // Delegates to authenticateAtURL using the production endpoint (or the
 // test-injected override stored in c.authURL).
-func (c *Client) authenticate() error {
+func (c *Client) authenticate(ctx context.Context) error {
 	target := c.authURL
 	if target == "" {
 		target = fmt.Sprintf("%s/auth/apikey", baseURL)
 	}
-	return c.authenticateAtURL(target)
+	return c.authenticateAtURL(ctx, target)
 }
 
 // authenticateAtURL gets a new JWT token from the given auth URL.
 // Retries on HTTP 429 up to maxRequestRetries times (matching the cap used by
 // makeRequestWithURLRetry). Unbounded recursion on 429 is fixed here (#1078).
-func (c *Client) authenticateAtURL(authURL string) error {
+func (c *Client) authenticateAtURL(ctx context.Context, authURL string) error {
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
 	// Use the subscription key captured at client construction time (#1136).
@@ -249,7 +263,7 @@ func (c *Client) authenticateAtURL(authURL string) error {
 //
 // This prevents redundant concurrent refreshes without holding the mutex across
 // network I/O.
-func (c *Client) ensureAuthenticated() error {
+func (c *Client) ensureAuthenticated(ctx context.Context) error {
 	for {
 		c.tokenMu.Lock()
 		if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-5*time.Minute)) {
@@ -272,7 +286,7 @@ func (c *Client) ensureAuthenticated() error {
 	}
 
 	// Perform the refresh without holding the lock.
-	err := c.authenticate()
+	err := c.authenticate(ctx)
 
 	// Clear the refreshing flag regardless of success/failure so waiters can proceed.
 	c.tokenMu.Lock()
@@ -289,7 +303,7 @@ func (c *Client) makeRequestWithURL(method, fullURL string) ([]byte, error) {
 
 // makeRequestWithURLRetry makes an authenticated API request with retry logic
 func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int) ([]byte, error) {
-	if err := c.ensureAuthenticated(); err != nil {
+	if err := c.ensureAuthenticated(context.Background()); err != nil {
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
@@ -383,7 +397,7 @@ func (c *Client) doRequest(
 	}
 
 	for attempt := 0; ; attempt++ {
-		if err := c.ensureAuthenticated(); err != nil {
+		if err := c.ensureAuthenticated(ctx); err != nil {
 			return nil, fmt.Errorf("authentication failed: %w", err)
 		}
 		req, err := c.newAPIRequest(ctx, method, fullURL, params)
