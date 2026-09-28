@@ -742,8 +742,6 @@ func applyCompletionStatus(completed *Status, stats *Stats, err error) {
 // counted what, and keeps the "did this run pass" decision in one place.
 func totalInfrastructureErrors(stats *Stats) int {
 	total := stats.Errors
-	//nolint:gocritic // hugeParam: Stats grew past 80B with ProdAuditWarnings, and again with
-	// AidLedgerWarnings; signature refactor out of scope for #1439
 	for _, sub := range stats.SubStats {
 		// One level deep: SubStats is populated by combined syncs and is not nested further.
 		total += sub.Errors
