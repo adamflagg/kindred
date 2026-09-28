@@ -71,7 +71,7 @@ dev = [
     "coverage>=7.16.1",
     "playwright>=1.63.0",
     # Linting & formatting
-    "ruff>=0.16.8",
+    "ruff>=0.16.9",
     # Type checking
     "mypy>=2.3.1",
     "types-requests>=2.33.0.20260906",
