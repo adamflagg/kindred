@@ -44,7 +44,7 @@ func TestAidPostingsSyncWritesAPostingAndAnUnclassifiedSource(t *testing.T) {
 		p.GetString("program_family") != programFamilySummer || p.GetFloat("amount") != -750 {
 		t.Errorf("unexpected posting: %v", p.FieldsData())
 	}
-	if got := aidJSON(t, p, "flags"); !slices.Equal(got, []string{aidFlagFeeUnknown, aidFlagUnclassifiedSource}) {
+	if got := aidJSON(t, p, "flags"); !slices.Equal(got, []string{aidFlagUnclassifiedSource}) {
 		t.Errorf("flags = %v", got)
 	}
 	sources := f.rows(colAidSources, 0)
@@ -71,7 +71,6 @@ func TestAidPostingsSyncSkipsReversingLegsZeroAndNonAidRows(t *testing.T) {
 	if got := f.rows(colAidPostings, 2026); len(got) != 1 || got[0].GetInt("transaction_cm_id") != 9001 {
 		t.Fatalf("expected only 9001, got %d postings", len(got))
 	}
-	// Fee now known (3000 > 750): only the unclassified flag remains.
 	if got := aidJSON(t, f.posting(9001), "flags"); !slices.Equal(got, []string{aidFlagUnclassifiedSource}) {
 		t.Errorf("flags = %v", got)
 	}
@@ -538,17 +537,148 @@ func TestAidPostingsSyncASeasonGuardRefusalDoesNotStopTheOthers(t *testing.T) {
 	}
 }
 
-func TestAidPostingsSyncFlagsAidAboveTheBilledFee(t *testing.T) {
+// ---------------------------------------------------------------------------
+// F1/P1: a missing classification file, or a heavily-unclassified season, must
+// be loud (prod ran a whole season silently unclassified and nothing warned).
+// ---------------------------------------------------------------------------
+
+// TestAidPostingsSyncLogsMissingClassificationFileWithSearchedPaths pins the log line itself,
+// not just the counter: F1's failure was specifically that nothing named the searched paths,
+// so an operator had nothing to go check. captureSweepLogs swaps the process-global slog
+// default -- registered in pocketbase/main_test_parallelism_test.go's serial list.
+func TestAidPostingsSyncLogsMissingClassificationFileWithSearchedPaths(t *testing.T) {
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+
+	logs := captureSweepLogs(t)
+	f.run("", 2026)
+
+	for _, want := range []string{
+		filepath.Join(f.configRoots[0], aidSourcesConfigFileName),
+		filepath.Join(f.configBase, "config", aidSourcesConfigFileName),
+		filepath.Join(f.configBase, "..", "config", aidSourcesConfigFileName),
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("log must name the searched path %q; got:\n%s", want, logs.String())
+		}
+	}
+}
+
+// TestAidPostingsSyncCountsAWarningWhenNoClassificationFileIsFound: the run must still
+// succeed (F1 -- this is a warning, never a failure), but must not be silent about it.
+// Stats.AidLedgerWarnings is its own warn-only, non-fatal counter, reaching sync_runs via
+// recordSyncRun -- NOT Stats.Rejected, which rejection_sites_test.go pins to per-record
+// transform rejections and which also suppresses the collection's orphan sweep for the run.
+func TestAidPostingsSyncCountsAWarningWhenNoClassificationFileIsFound(t *testing.T) {
 	t.Parallel()
 	f := newAidFixture(t)
 	seedAidSiblings(f, 2026)
-	f.txn(9020, 2026, 500, aidTestFeeCat, "Session 2 Tuition", 100, 1001, 11, false)
-	f.txn(9021, 2026, 5000, aidTestFeeCat, "Session 2 Tuition", 100, 1001, 11, true) // reversed: not a fee
 	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
 
-	f.run("", 2026)
+	s := f.run("", 2026)
 
-	if got := aidJSON(t, f.posting(9001), "flags"); !slices.Contains(got, aidFlagExceedsFee) {
-		t.Errorf("750 of aid against a 500 fee must flag, got %v", got)
+	if got := s.GetStats().AidLedgerWarnings; got < 1 {
+		t.Errorf("a missing classification file must count as a warning, got AidLedgerWarnings=%d", got)
+	}
+}
+
+// TestAidPostingsSyncNoWarningsOnAHealthyRun: a config file classifying every live source,
+// with none of F1/F2's conditions true, must not warn at all -- the negative space the two
+// tests above need to mean anything.
+func TestAidPostingsSyncNoWarningsOnAHealthyRun(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+
+	s := f.run(f.writeConfig(aidTestConfig), 2026)
+
+	if got := s.GetStats().AidLedgerWarnings; got != 0 {
+		t.Errorf("a healthy run (classified, no stale input) must not warn, got AidLedgerWarnings=%d", got)
+	}
+}
+
+// TestAidPostingsSyncWarnsWhenMoreThanHalfOfLiveAidIsUnclassified: a config file is present
+// (so the missing-file warning above cannot be why this fires) but most of the season's
+// aid descriptions are not in it -- the data-quality signal F1 also asked for.
+func TestAidPostingsSyncWarnsWhenMoreThanHalfOfLiveAidIsUnclassified(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false) // classified
+	f.txn(9002, 2026, -100, aidCategoryFinancialAssistance, "Mystery Grant A", 100, 1002, 0, false)
+	f.txn(9003, 2026, -200, aidCategoryFinancialAssistance, "Mystery Grant B", 100, 1002, 0, false)
+	f.txn(9004, 2026, -300, aidCategoryFinancialAssistance, "Mystery Grant C", 100, 1002, 0, false)
+
+	s := f.run(f.writeConfig(aidTestConfig), 2026)
+
+	if s.GetStats().AidLedgerWarnings < 1 {
+		t.Errorf("3 of 4 live postings unclassified must warn, got AidLedgerWarnings=%d", s.GetStats().AidLedgerWarnings)
+	}
+}
+
+// TestAidPostingsSyncDoesNotWarnAtExactlyHalfUnclassified: the threshold is MORE than half,
+// so an even split must stay quiet.
+func TestAidPostingsSyncDoesNotWarnAtExactlyHalfUnclassified(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false) // classified
+	f.txn(9002, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1002, 0, false) // classified
+	f.txn(9003, 2026, -100, aidCategoryFinancialAssistance, "Mystery Grant A", 100, 1002, 0, false)
+	f.txn(9004, 2026, -200, aidCategoryFinancialAssistance, "Mystery Grant B", 100, 1002, 0, false)
+
+	s := f.run(f.writeConfig(aidTestConfig), 2026)
+
+	if got := s.GetStats().AidLedgerWarnings; got != 0 {
+		t.Errorf("exactly half unclassified must not warn, got AidLedgerWarnings=%d", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// F2/P2(b): financial_transactions failing earlier in the same run must not let
+// aid_postings report clean success off yesterday's data.
+// ---------------------------------------------------------------------------
+
+// TestAidPostingsSyncWarnsWhenTransactionsLastRunFailed: financial_transactions' most recent
+// sync_runs row failed. aid_postings must still run (from the last good data) but must not be
+// silent about it.
+func TestAidPostingsSyncWarnsWhenTransactionsLastRunFailed(t *testing.T) {
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+	f.recordSyncRun(serviceNameFinancialTransactions, statusSuccess,
+		"2026-09-25T10:00:00.000Z", "2026-09-25T10:02:00.000Z")
+	f.recordSyncRun(serviceNameFinancialTransactions, statusFailed,
+		"2026-09-27T10:00:00.000Z", "2026-09-27T10:05:00.000Z")
+
+	logs := captureSweepLogs(t)
+	s := f.run(f.writeConfig(aidTestConfig), 2026)
+
+	if s.GetStats().AidLedgerWarnings < 1 {
+		t.Errorf("financial_transactions' last run failing must count as a warning, got AidLedgerWarnings=%d",
+			s.GetStats().AidLedgerWarnings)
+	}
+	// The as-of time is the last SUCCESSFUL run's end, not the failed run's.
+	if !strings.Contains(logs.String(), "2026-09-25 10:02:00") {
+		t.Errorf("log must name the last successful run's as-of time, got:\n%s", logs.String())
+	}
+}
+
+// TestAidPostingsSyncNoStaleWarningWhenTransactionsLastRunSucceeded: the common case -- last
+// night's transactions sync was clean, so aid_postings must not warn about staleness at all.
+func TestAidPostingsSyncNoStaleWarningWhenTransactionsLastRunSucceeded(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+	f.recordSyncRun(serviceNameFinancialTransactions, statusSuccess,
+		"2026-09-27T10:00:00.000Z", "2026-09-27T10:02:00.000Z")
+
+	s := f.run(f.writeConfig(aidTestConfig), 2026)
+
+	if got := s.GetStats().AidLedgerWarnings; got != 0 {
+		t.Errorf("a successful last transactions run must not warn about staleness, got AidLedgerWarnings=%d", got)
 	}
 }

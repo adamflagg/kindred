@@ -421,6 +421,7 @@ export const AidPostingsAttributionMethodOptions = {
   household_single_family: 'household_single_family',
   no_enrollment: 'no_enrollment',
   ambiguous: 'ambiguous',
+  household_single_session: 'household_single_session',
 } as const
 export type AidPostingsAttributionMethodOptions =
   (typeof AidPostingsAttributionMethodOptions)[keyof typeof AidPostingsAttributionMethodOptions]
@@ -2281,6 +2282,7 @@ export const SyncRunsTriggerOptions = {
 export type SyncRunsTriggerOptions =
   (typeof SyncRunsTriggerOptions)[keyof typeof SyncRunsTriggerOptions]
 export type SyncRunsRecord<Tsub_stats = unknown> = {
+  aid_ledger_warnings_count?: number
   already_processed_count?: number
   batch_id: string
   created: IsoAutoDateString

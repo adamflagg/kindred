@@ -126,6 +126,16 @@ func newAidTestApp(t *testing.T) core.App {
 		overrides.Fields.Add(&core.TextField{Name: f})
 	}
 	saveCollection(t, app, overrides)
+
+	// Minimal sync_runs: only the columns the F2 stale-input check reads
+	// (pocketbase/sync/sync_runs.go's real migration carries many more).
+	runs := core.NewBaseCollection(syncRunsCollection)
+	runs.Fields.Add(&core.TextField{Name: "service"})
+	runs.Fields.Add(&core.TextField{Name: "status"})
+	runs.Fields.Add(&core.DateField{Name: "started"})
+	runs.Fields.Add(&core.DateField{Name: "ended"})
+	saveCollection(t, app, runs)
+
 	return app
 }
 
@@ -224,6 +234,15 @@ func (f *aidFixture) writeConfig(doc string) string {
 		f.t.Fatal(err)
 	}
 	return path
+}
+
+// recordSyncRun seeds a sync_runs row for the F2 stale-input check: aid_postings reads this
+// table directly to learn whether financial_transactions' most recent run succeeded, rather
+// than coupling to the orchestrator. started/ended are RFC3339; PocketBase stores and sorts
+// them as its own DateTime string, so ordering by wall-clock time here matches ordering there.
+func (f *aidFixture) recordSyncRun(service, status, started, ended string) {
+	saveRecord(f.t, f.app, syncRunsCollection,
+		map[string]any{"service": service, "status": status, "started": started, "ended": ended})
 }
 
 // service is a hermetic AidPostingsSync: it can never find a real config file

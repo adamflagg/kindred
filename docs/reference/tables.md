@@ -816,6 +816,7 @@ One row per completed sync run, written by the orchestrator's shared completion 
 | `already_processed_count` | number | Already-processed records (process_requests) |
 | `prod_audit_warnings_count` | number | Stranded bunk_assignments found, not cleared |
 | `lodging_prod_audit_warnings_count` | number | Orphaned lodging_assignments found, not cleared |
+| `aid_ledger_warnings_count` | number | aid_postings data-quality warnings: missing classification file, over half of a season unclassified, stale financial_transactions input |
 | `duration` | number | Run length in seconds |
 | `started` / `ended` | date | Run window |
 | `error` | text | Failure reason, truncated to 20,000 runes |

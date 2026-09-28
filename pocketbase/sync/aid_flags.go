@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"fmt"
 	"math"
 	"slices"
 	"sort"
@@ -17,10 +16,6 @@ const (
 	aidFlagUnclassifiedSource     = "unclassified_source"
 	aidFlagPositiveAmount         = "positive_amount"
 	aidFlagCancelledEnrollment    = "live_aid_on_cancelled_enrollment"
-	aidFlagExceedsFee             = "aid_exceeds_fee"
-	aidFlagFeeUnknown             = "fee_unknown"
-	aidFlagDuplicatePosting       = "duplicate_posting"
-	aidFlagSeveralLivePostings    = "several_live_postings"
 	aidFlagImpliedProgramMismatch = "implied_program_mismatch"
 
 	// aidSourceFamilyCampFA is the camp's own aid (aid_sources.source_family).
@@ -63,10 +58,9 @@ func aidCents(v float64) int64 {
 	return int64(math.Round(v * 100))
 }
 
-// computeAidFlags sets Flags on every draft. fees is the billed fee per
-// (person, session); statuses is the attendee status per (person, session),
-// holding 2 when any row for that pair is enrolled.
-func computeAidFlags(drafts []*aidPostingDraft, fees map[aidPersonSession]float64, statuses map[aidPersonSession]int) {
+// computeAidFlags sets Flags on every draft. statuses is the attendee status
+// per (person, session), holding 2 when any row for that pair is enrolled.
+func computeAidFlags(drafts []*aidPostingDraft, statuses map[aidPersonSession]int) {
 	flags := make([]map[string]bool, len(drafts))
 	add := func(i int, f string) {
 		if flags[i] == nil {
@@ -74,11 +68,6 @@ func computeAidFlags(drafts []*aidPostingDraft, fees map[aidPersonSession]float6
 		}
 		flags[i][f] = true
 	}
-	aidTotals := map[aidPersonSession]int64{}
-	feeMembers := map[aidPersonSession][]int{}
-	dupTxns := map[string]map[int]bool{}
-	dupMembers := map[string][]int{}
-	campPlaced := map[aidPersonSession][]int{}
 
 	for i, d := range drafts {
 		if d.IsReversed {
@@ -102,47 +91,6 @@ func computeAidFlags(drafts []*aidPostingDraft, fees map[aidPersonSession]float6
 			key := aidPersonSession{Person: a.PersonCMID, Session: a.SessionCMID}
 			if status, ok := statuses[key]; ok && aidCancelledStatusIDs[status] {
 				add(i, aidFlagCancelledEnrollment)
-			}
-			if fees[key] <= 0 {
-				add(i, aidFlagFeeUnknown)
-			} else {
-				aidTotals[key] += -aidCents(d.Amount)
-				feeMembers[key] = append(feeMembers[key], i)
-			}
-			if d.SourceFamily == aidSourceFamilyCampFA {
-				campPlaced[key] = append(campPlaced[key], i)
-			}
-		}
-		dup := fmt.Sprintf("%d|%s|%d|%d|%d", d.HouseholdCMID, d.SourceKey, aidCents(d.Amount), a.PersonCMID, a.SessionCMID)
-		if dupTxns[dup] == nil {
-			dupTxns[dup] = map[int]bool{}
-		}
-		dupTxns[dup][d.TransactionCMID] = true
-		dupMembers[dup] = append(dupMembers[dup], i)
-	}
-	for key, total := range aidTotals {
-		if total > aidCents(fees[key]) {
-			for _, i := range feeMembers[key] {
-				add(i, aidFlagExceedsFee)
-			}
-		}
-	}
-	for dup, txns := range dupTxns {
-		if len(txns) > 1 {
-			for _, i := range dupMembers[dup] {
-				add(i, aidFlagDuplicatePosting)
-			}
-		}
-	}
-	for _, members := range campPlaced {
-		txns, amounts := map[int]bool{}, map[int64]bool{}
-		for _, i := range members {
-			txns[drafts[i].TransactionCMID] = true
-			amounts[aidCents(drafts[i].Amount)] = true
-		}
-		if len(txns) > 1 && len(amounts) > 1 {
-			for _, i := range members {
-				add(i, aidFlagSeveralLivePostings)
 			}
 		}
 	}

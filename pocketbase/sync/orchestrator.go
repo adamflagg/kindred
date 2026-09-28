@@ -666,6 +666,16 @@ type Stats struct {
 	// LodgingProdAuditWarnings counts lodging_assignments rows found enrollment-orphaned
 	// but not cleared (observe-only; deletion is LodgingAssignmentsSync's job, #2028).
 	LodgingProdAuditWarnings int `json:"lodging_prod_audit_warnings,omitempty"`
+	// AidLedgerWarnings counts aid_postings data-quality conditions that must not fail the
+	// run but must not be silent either (2026-09 aid-ledger hardening, F1/F2 of the prod
+	// diagnosis that day): no aid_sources classification file found, more than half of a
+	// season's live postings still unclassified_source, or financial_transactions' last
+	// recorded run not succeeding (stale input). One increment per condition raised, not
+	// per record -- deliberately its own counter rather than Stats.Rejected, which
+	// rejection_sites_test.go pins to per-record transform rejections only and which also
+	// suppresses a collection's orphan sweep for the run (base_sync.go), neither of which
+	// applies here.
+	AidLedgerWarnings int `json:"aid_ledger_warnings,omitempty"`
 	// Duration in seconds
 	Duration int `json:"duration"`
 	// SubStats for combined syncs (e.g., persons includes households)
@@ -732,9 +742,9 @@ func applyCompletionStatus(completed *Status, stats *Stats, err error) {
 // counted what, and keeps the "did this run pass" decision in one place.
 func totalInfrastructureErrors(stats *Stats) int {
 	total := stats.Errors
-	for _, sub := range stats.SubStats {
+	for i := range stats.SubStats {
 		// One level deep: SubStats is populated by combined syncs and is not nested further.
-		total += sub.Errors
+		total += stats.SubStats[i].Errors
 	}
 	return total
 }
@@ -2395,7 +2405,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.mu.Unlock()
 		}()
 	} else {
-		batch = newBatch(triggerDaily)
+		// F8: RunSyncWithOptions has exactly one caller, handleUnifiedSync (api.go), reached
+		// only by an operator's HTTP request (immediate or dequeued from pendingUnifiedSyncs).
+		// The real 3am cron never reaches this function -- RunDailySync mints its own
+		// triggerDaily batch independently. triggerDaily here mislabeled every UI-started full
+		// run as the nightly cron.
+		batch = newBatch(triggerManual)
 		if isQueueRun {
 			o.registerBatch(batch.batchID)
 		}

@@ -1079,6 +1079,19 @@ func TestGetTransactionDetails_UsesItsOwnTimeout(t *testing.T) {
 	}
 }
 
+// TestTransactionDetailsTimeout_HasRoomForAnObservedSlowSeason: F2 -- prod's 2026-09-26 run
+// took 2.5 min (150s) for one season and 2026-09-27's run then timed out entirely on both
+// seasons ("Client.Timeout exceeded while awaiting headers"). The 120s value calibrated from
+// an earlier ~20s measurement (2026-09-24) no longer has enough headroom against that
+// variance; this pins a floor with real margin above the worst case actually observed.
+func TestTransactionDetailsTimeout_HasRoomForAnObservedSlowSeason(t *testing.T) {
+	const observedWorstCase = 150 * time.Second
+	if transactionDetailsTimeout <= observedWorstCase {
+		t.Errorf("transactionDetailsTimeout = %v, want more than the observed worst case %v",
+			transactionDetailsTimeout, observedWorstCase)
+	}
+}
+
 // TestParseTransactionResponse_PartialResponseIsAnError: a wrapped response whose TotalCount
 // exceeds the rows it carries is a page, not the season. Returned as if complete, the sync
 // would treat it as the whole season and the orphan sweep could run on it (the count guard

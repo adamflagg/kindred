@@ -2,6 +2,8 @@ package sync
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -527,6 +529,54 @@ func TestStrandedAssignmentCleanup_ProdAuditWarnings(t *testing.T) {
 	}
 	if prods[0].GetString("bunk") != strandedBunk.Id {
 		t.Errorf("prod assignment bunk must not be cleared (observe-only)")
+	}
+}
+
+// TestStrandedAssignmentCleanup_ProdAuditLogCapsTheRecordSample: F8 -- prod hit 262 orphaned
+// production bunk_assignments and the WARN line dumped all 262 record triplets into one
+// ~30 KB log line. The log must still say how many (the true count), but the record sample
+// itself is capped, matching the precedent financial_transactions.go's logCrossSeason already
+// set for an unbounded per-run list. captureSweepLogs swaps the process-global slog default
+// (registered in pocketbase/main_test_parallelism_test.go's serial list).
+func TestStrandedAssignmentCleanup_ProdAuditLogCapsTheRecordSample(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	// otherBunk has a plan → the session IS in plannedSessions (a year with zero bunk_plans
+	// at all is read as "sync may have failed" and the whole reconciler skips).
+	otherBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": otherBunk.Id, "session": sess.Id, "year": 2026})
+	// strandedBunk has no plan for this session → every assignment on it is stranded.
+	strandedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	const seeded = 15 // more than the 10-record sample cap
+	for i := range seeded {
+		person := saveRec(t, app, "persons", map[string]any{"cm_id": 9000 + i})
+		saveRec(t, app, "bunk_assignments", map[string]any{
+			"person": person.Id, "session": sess.Id, "bunk": strandedBunk.Id, "year": 2026,
+		})
+	}
+
+	logs := captureSweepLogs(t)
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if svc.Stats.ProdAuditWarnings != seeded {
+		t.Fatalf("want ProdAuditWarnings=%d, got %d", seeded, svc.Stats.ProdAuditWarnings)
+	}
+	if got := strings.Count(logs.String(), "(session="); got > 10 {
+		t.Errorf("log sample has %d record entries, want at most 10; log:\n%s", got, logs.String())
+	}
+	if !strings.Contains(logs.String(), fmt.Sprintf("count=%d", seeded)) {
+		t.Errorf("log must still carry the true count (%d) even though the sample is capped, got:\n%s",
+			seeded, logs.String())
 	}
 }
 

@@ -95,23 +95,36 @@ func TestLoadAidSourcesConfigSearchesTheCandidates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, aidSourcesConfigFileName), []byte(aidSourcesFixture), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	classes, path, err := loadAidSourcesConfig("", []string{filepath.Join(root, "missing"), root}, t.TempDir())
+	classes, path, _, err := loadAidSourcesConfig("", []string{filepath.Join(root, "missing"), root}, t.TempDir())
 	if err != nil || len(classes) != 3 || path != filepath.Join(root, aidSourcesConfigFileName) {
 		t.Fatalf("got %d classes from %q, err %v", len(classes), path, err)
 	}
 }
 
+// TestLoadAidSourcesConfigAbsentIsNotAnError also pins F1's loud-failure fix: a caller with no
+// file must still learn exactly which paths were searched, so it can log them (aid_postings.go
+// Sync()) instead of the silence prod hit.
 func TestLoadAidSourcesConfigAbsentIsNotAnError(t *testing.T) {
 	t.Parallel()
-	classes, path, err := loadAidSourcesConfig("", []string{filepath.Join(t.TempDir(), "none")}, t.TempDir())
+	root := filepath.Join(t.TempDir(), "none")
+	base := t.TempDir()
+	classes, path, candidates, err := loadAidSourcesConfig("", []string{root}, base)
 	if err != nil || classes != nil || path != "" {
 		t.Fatalf("absent file must be (nil, \"\", nil), got (%v, %q, %v)", classes, path, err)
+	}
+	want := []string{
+		filepath.Join(root, aidSourcesConfigFileName),
+		filepath.Join(base, "config", aidSourcesConfigFileName),
+		filepath.Join(base, "..", "config", aidSourcesConfigFileName),
+	}
+	if !reflect.DeepEqual(candidates, want) {
+		t.Errorf("candidates = %v, want %v", candidates, want)
 	}
 }
 
 func TestLoadAidSourcesConfigExplicitPathMustExist(t *testing.T) {
 	t.Parallel()
-	if _, _, err := loadAidSourcesConfig(filepath.Join(t.TempDir(), "nope.json"), nil, t.TempDir()); err == nil {
+	if _, _, _, err := loadAidSourcesConfig(filepath.Join(t.TempDir(), "nope.json"), nil, t.TempDir()); err == nil {
 		t.Fatal("an explicit path that does not exist must be an error")
 	}
 }
