@@ -2005,6 +2005,27 @@ describe('LodgingMap — the weekend type reaches the popover (kindred#2765)', (
   })
 })
 
+describe('LodgingMap — a male-only weekend reaches the queue (kindred#2859)', () => {
+  it('drops Child under 2 from the queue filters', async () => {
+    const guest = party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 1000007,
+      display_name: 'Noah Weiss',
+      adults: [],
+      children: [],
+      party_size: 1,
+      unit_code: '',
+      unit_name: '',
+    })
+    render(<LodgingMap parties={[guest]} units={UNITS} year={2026} sessionType="adult" maleOnly />)
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
+    const filters = within(screen.getByTestId('unplaced-filters'))
+    expect(filters.queryByRole('button', { name: /child under 2/i })).toBeNull()
+    expect(filters.getByRole('button', { name: /power/i })).toBeInTheDocument()
+  })
+})
+
 describe('LodgingMap — the weekend type reaches every card’s Jotform marks (kindred#2759)', () => {
   const guest = (overrides: Partial<RosterPartyRow>) =>
     party({

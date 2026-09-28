@@ -13,6 +13,7 @@ import { FloatingQueueBadge } from './FloatingQueueBadge'
 interface Row {
   first: string
   last: string
+  age?: number
 }
 
 const ROWS: Row[] = [
@@ -21,17 +22,19 @@ const ROWS: Row[] = [
   { first: 'Liam', last: 'Garcia' },
 ]
 
-const sortKey = (row: Row) => [row.last, row.first]
+const sortKey = (row: Row): Array<string | number> => [row.last, row.first]
 const getSearchText = (row: Row) => `${row.first} ${row.last}`
 
 function Harness({
   items = ROWS,
+  rowSortKey = sortKey,
   isPanelOpen = false,
   isDropTarget = false,
   footer,
   dropRef,
 }: {
   items?: Row[]
+  rowSortKey?: (row: Row) => Array<string | number>
   isPanelOpen?: boolean
   isDropTarget?: boolean
   footer?: ReactNode
@@ -41,7 +44,7 @@ function Harness({
   return (
     <FloatingQueueBadge
       items={items}
-      sortKey={sortKey}
+      sortKey={rowSortKey}
       getSearchText={getSearchText}
       renderList={(visible) => (
         <ul>
@@ -100,6 +103,26 @@ describe('FloatingQueueBadge — expanded', () => {
       'Emma Chen',
       'Liam Garcia',
       'Olivia Johnson',
+    ])
+  })
+
+  it('compares a numeric token as a number, not as text', async () => {
+    // kindred#2859: the adult weekend sorts by age. As text, "10" < "41" < "9".
+    render(
+      <Harness
+        items={[
+          { first: 'Olivia', last: 'Chen', age: 41 },
+          { first: 'Emma', last: 'Garcia', age: 9 },
+          { first: 'Liam', last: 'Johnson', age: 10 },
+        ]}
+        rowSortKey={(row) => [row.age ?? 0, row.last]}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    expect(screen.getAllByTestId('row').map((el) => el.textContent)).toEqual([
+      'Emma Garcia',
+      'Liam Johnson',
+      'Olivia Chen',
     ])
   })
 

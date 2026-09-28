@@ -1104,6 +1104,32 @@ describe('LodgingBoard — the weekend type reaches every card’s Jotform marks
   })
 })
 
+describe('LodgingBoard — a male-only weekend reaches the queue (kindred#2859)', () => {
+  const guest = party({
+    grain: 'person',
+    household_cm_id: 0,
+    person_cm_id: 1000007,
+    display_name: 'Noah Weiss',
+    sort_name: 'Weiss',
+    adults: [],
+    children: [],
+    party_size: 1,
+    unit_code: '',
+    unit_name: '',
+  })
+
+  it('drops Child under 2 from the queue filters', async () => {
+    render(
+      <LodgingBoard parties={[guest]} units={[unit()]} year={2026} sessionType="adult" maleOnly />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
+    const filters = screen.getByTestId('unplaced-filters')
+    expect(filters.querySelector('[aria-label="Child under 2"]')).toBeNull()
+    expect(filters.querySelector('[aria-label="Power"]')).not.toBeNull()
+  })
+})
+
 describe('LodgingBoard — the weekend type reaches the panel (kindred#2759)', () => {
   const guest = party({
     grain: 'person',

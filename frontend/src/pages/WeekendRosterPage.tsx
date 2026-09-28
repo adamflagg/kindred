@@ -223,6 +223,7 @@ export default function WeekendRosterPage() {
   // friend groups. Each reads it through `isAdultSessionType`, never through
   // the parties' grain.
   const sessionType = selectedSession?.session_type ?? ''
+  const maleOnly = selectedSession?.male_only === true
   const showRequests = canManageLodging && isAdultSessionType(sessionType)
   // Whether Requests is offered turns on the weekend's type, which arrives
   // with the sessions list. Until then a `requests` URL is PENDING, not
@@ -638,6 +639,7 @@ export default function WeekendRosterPage() {
                             sessionCmId={selectedCmId ?? 0}
                             canManage={canManageLodging}
                             sessionType={sessionType}
+                            maleOnly={maleOnly}
                           />
                         </Suspense>
                       </SubjectNotesScope>
@@ -718,6 +720,7 @@ export default function WeekendRosterPage() {
                           year={currentYear}
                           sessionCmId={selectedCmId ?? 0}
                           sessionType={sessionType}
+                          maleOnly={maleOnly}
                         />
                       </Suspense>
                     </ErrorBoundary>

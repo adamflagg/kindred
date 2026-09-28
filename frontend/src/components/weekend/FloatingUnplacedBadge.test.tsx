@@ -399,3 +399,155 @@ describe('FloatingUnplacedBadge — board note slots', () => {
     expect(screen.getByTestId('queue-corner').closest('[data-family-card]')).not.toBeNull()
   })
 })
+
+/**
+ * kindred#2859, owner rulings 2026-09-27. An adult weekend's queue sorts by AGE
+ * ONLY ("we dont need alpha, esp with typeahead search"): a Youngest | Oldest
+ * segmented control, Oldest first by default. Its filter row drops "Open to
+ * sharing" (adult sharing is not an intake question), and a male-only weekend
+ * also drops "Child under 2".
+ */
+describe('FloatingUnplacedBadge — adult weekends (kindred#2859)', () => {
+  function guest(personCmId: number, first: string, last: string, age: number | null) {
+    return party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: personCmId,
+      display_name: `${first} ${last}`,
+      sort_name: last,
+      adults: [{ adult_number: 1, display_name: `${first} ${last}`, age }],
+      children: [],
+      party_size: 1,
+    })
+  }
+
+  const young = guest(9201, 'Maya', 'Park', 28.4)
+  const middle = guest(9202, 'Ruth', 'Adler', 47.1)
+  const old = guest(9203, 'Joan', 'Weiss', 76.9)
+  const unknown = guest(9204, 'Dana', 'Brooks', null)
+
+  function open() {
+    return userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
+  }
+  function names() {
+    return screen.getAllByTestId('family-card-name').map((el) => el.textContent)
+  }
+  function filters() {
+    return within(screen.getByTestId('unplaced-filters'))
+  }
+
+  it('sorts oldest first by default', async () => {
+    render(
+      <FloatingUnplacedBadge
+        parties={[middle, young, old]}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />,
+      { wrapper }
+    )
+    await open()
+    expect(names()).toEqual(['Joan Weiss', 'Ruth Adler', 'Maya Park'])
+    expect(filters().getByRole('button', { name: 'Oldest' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(filters().getByRole('button', { name: 'Youngest' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+  })
+
+  it('sorts youngest first once Youngest is picked', async () => {
+    render(
+      <FloatingUnplacedBadge
+        parties={[middle, young, old]}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />,
+      { wrapper }
+    )
+    await open()
+    await userEvent.click(filters().getByRole('button', { name: 'Youngest' }))
+    expect(names()).toEqual(['Maya Park', 'Ruth Adler', 'Joan Weiss'])
+    expect(filters().getByRole('button', { name: 'Youngest' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  })
+
+  it('puts a guest with no age LAST in both directions', async () => {
+    render(
+      <FloatingUnplacedBadge
+        parties={[unknown, middle, young, old]}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+      />,
+      { wrapper }
+    )
+    await open()
+    expect(names().at(-1)).toBe('Dana Brooks')
+    await userEvent.click(filters().getByRole('button', { name: 'Youngest' }))
+    expect(names().at(-1)).toBe('Dana Brooks')
+  })
+
+  it('reads a stored 0 as no age, not as the youngest guest', async () => {
+    const zero = guest(9205, 'Iris', 'Cohen', 0)
+    render(
+      <FloatingUnplacedBadge parties={[zero, young]} onOpenParty={vi.fn()} sessionType="adult" />,
+      { wrapper }
+    )
+    await open()
+    await userEvent.click(filters().getByRole('button', { name: 'Youngest' }))
+    expect(names()).toEqual(['Maya Park', 'Iris Cohen'])
+  })
+
+  it('breaks an age tie on the surname', async () => {
+    const twinA = guest(9206, 'Leah', 'Zeller', 50.2)
+    const twinB = guest(9207, 'Nora', 'Brooks', 50.2)
+    render(
+      <FloatingUnplacedBadge parties={[twinA, twinB]} onOpenParty={vi.fn()} sessionType="adult" />,
+      { wrapper }
+    )
+    await open()
+    expect(names()).toEqual(['Nora Brooks', 'Leah Zeller'])
+  })
+
+  it('drops Open to sharing on every adult weekend, keeping the need chips', async () => {
+    render(<FloatingUnplacedBadge parties={[young]} onOpenParty={vi.fn()} sessionType="adult" />, {
+      wrapper,
+    })
+    await open()
+    expect(filters().queryByRole('button', { name: /open to sharing/i })).toBeNull()
+    expect(filters().getByRole('button', { name: /child under 2/i })).toBeInTheDocument()
+    expect(filters().getByRole('button', { name: /bathroom in unit/i })).toBeInTheDocument()
+    expect(filters().getByRole('button', { name: /power/i })).toBeInTheDocument()
+  })
+
+  it('also drops Child under 2 on a male-only weekend', async () => {
+    render(
+      <FloatingUnplacedBadge
+        parties={[young]}
+        onOpenParty={vi.fn()}
+        sessionType="adult"
+        maleOnly={true}
+      />,
+      { wrapper }
+    )
+    await open()
+    expect(filters().queryByRole('button', { name: /child under 2/i })).toBeNull()
+    expect(filters().queryByRole('button', { name: /open to sharing/i })).toBeNull()
+    expect(filters().getByRole('button', { name: /bathroom in unit/i })).toBeInTheDocument()
+  })
+
+  it('leaves a family weekend on the name sort, with no age control and all four chips', async () => {
+    const first = party({ household_cm_id: 301, sort_name: 'Chen' })
+    render(<FloatingUnplacedBadge parties={[first]} onOpenParty={vi.fn()} sessionType="family" />, {
+      wrapper,
+    })
+    await open()
+    expect(filters().queryByRole('button', { name: 'Oldest' })).toBeNull()
+    expect(filters().queryByRole('button', { name: 'Youngest' })).toBeNull()
+    expect(filters().getByRole('button', { name: /open to sharing/i })).toBeInTheDocument()
+    expect(filters().getByRole('button', { name: /child under 2/i })).toBeInTheDocument()
+  })
+})
