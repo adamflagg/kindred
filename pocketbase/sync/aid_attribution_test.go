@@ -355,15 +355,54 @@ func TestAidAttributionRules(t *testing.T) {
 			// at all. That silence does not rule the silent sibling out -- they
 			// occupy the very session in question just as much as the answering
 			// one -- so rule 7 must not pin a person, and must not even claim
-			// the family branch produced it: it steps back to rule 8's
-			// person-blind, session-blind family conclusion.
-			name:    "rule 7: a silent sibling in the SAME named session blocks both the session and the family branch",
+			// the family branch produced it.
+			//
+			// Superseded by R1a (campership-data rule7-vs-sheet-2026.md §2): every
+			// active candidate here shares the exact same session (11), which R1a
+			// places BEFORE rule 7 gets a chance to look at the FA answer at all --
+			// the session is certain whichever sibling it was for, even though the
+			// person is not. This is the case item 10 was too blunt about: it used
+			// to fall all the way back to rule 8's family conclusion.
+			name:    "R1a: a silent sibling in the SAME session as the answering one places the session, not the family",
 			members: siblings,
 			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1002, 11, enrolled}},
 			setup:   func(c *aidAttributionContext) { c.FAAnswersByPerson[1001] = []string{"Session 2"} },
 			in:      household,
+			want: aidAttribution{Level: aidLevelSession, Method: aidMethodHouseholdSingleSession,
+				SessionCMID: 11, Family: programFamilySummer},
+		},
+		{
+			// R1a's core case, isolated from rule 7's FA-answer machinery entirely
+			// (no FAAnswersByPerson at all): two siblings, no answers, both enrolled
+			// in exactly one shared session. The session is certain; the person is
+			// not, so PersonCMID stays 0.
+			name:    "R1a: two siblings enrolled in exactly one shared session place at that session, no person",
+			members: siblings,
+			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1002, 11, enrolled}},
+			in:      household,
+			want: aidAttribution{Level: aidLevelSession, Method: aidMethodHouseholdSingleSession,
+				SessionCMID: 11, Family: programFamilySummer},
+		},
+		{
+			// R1a must not fire when the shared session is imagined rather than
+			// real: two siblings in two DIFFERENT sessions of the same family, no
+			// FA answers at all. Falls through unchanged to rule 8's family
+			// conclusion, exactly as before R1a existed.
+			name:    "R1a does not fire across two different sessions; rule 8 still applies",
+			members: siblings,
+			enrs:    []aidTestEnr{{1001, 11, enrolled}, {1002, 12, enrolled}},
+			in:      household,
 			want: aidAttribution{Level: aidLevelProgramFamily, Method: aidMethodHouseholdSingleFamily,
 				Family: programFamilySummer},
+		},
+		{
+			// R1a requires at least two distinct persons -- a single candidate must
+			// still resolve at rule 4 (one active enrollment), never reaching R1a
+			// or rule 7 at all.
+			name:    "R1a does not apply to a single candidate; rule 4 still applies",
+			members: siblings, enrs: []aidTestEnr{{1001, 11, enrolled}}, in: household,
+			want: aidAttribution{Level: aidLevelSession, Method: aidMethodHouseholdSingleCamper,
+				PersonCMID: 1001, SessionCMID: 11, Family: programFamilySummer},
 		},
 		{
 			// Item 10 (final review, controller ruling; person credit narrowed by
@@ -432,22 +471,28 @@ func TestNoAidDecisionMatchNeverMatches(t *testing.T) {
 	}
 }
 
-// The select vocabularies in pb_migrations/1500000198_aid_postings.js must hold
-// every value this package writes; a value missing there fails every save.
+// The select vocabularies in pb_migrations/1500000198_aid_postings.js, plus any migration
+// that later extends one of those select fields in place (never by editing 1500000198.js,
+// which is applied), must hold every value this package writes; a value missing there fails
+// every save. household_single_session (R1a) is 1500000209's addition to attribution_method.
 func TestAidVocabularyMatchesMigration(t *testing.T) {
 	t.Parallel()
-	raw, err := os.ReadFile("../pb_migrations/1500000198_aid_postings.js")
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
+	body := ""
+	for _, file := range []string{"1500000198_aid_postings.js", "1500000209_aid_postings_single_session_method.js"} {
+		raw, err := os.ReadFile("../pb_migrations/" + file)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", file, err)
+		}
+		body += string(raw)
 	}
-	body := string(raw)
 	values := append([]string{}, aidProgramFamilies...)
 	values = append(values,
 		aidLevelOverride, aidLevelDecision, aidLevelSession, aidLevelPerson, aidLevelProgramFamily,
 		aidLevelAmbiguous, aidLevelNone,
 		aidMethodOverrideSheet, aidMethodOverrideStaff, aidMethodDecision, aidMethodPostedPersonSingle,
-		aidMethodHouseholdSingleCamper, aidMethodSinglePersonMulti, aidMethodSourceImplied,
-		aidMethodFAApplication, aidMethodHouseholdSingleFamily, aidMethodNoEnrollment, aidMethodAmbiguous)
+		aidMethodHouseholdSingleCamper, aidMethodHouseholdSingleSession, aidMethodSinglePersonMulti,
+		aidMethodSourceImplied, aidMethodFAApplication, aidMethodHouseholdSingleFamily, aidMethodNoEnrollment,
+		aidMethodAmbiguous)
 	for _, v := range values {
 		if !strings.Contains(body, `"`+v+`"`) {
 			t.Errorf("aid_postings migration does not declare %q", v)

@@ -14,17 +14,18 @@ const (
 	aidLevelAmbiguous     = "ambiguous"
 	aidLevelNone          = "none"
 
-	aidMethodOverrideSheet         = "override_sheet_2026_match"
-	aidMethodOverrideStaff         = "override_staff"
-	aidMethodDecision              = "decision"
-	aidMethodPostedPersonSingle    = "posted_person_single_enrollment"
-	aidMethodHouseholdSingleCamper = "household_single_camper"
-	aidMethodSinglePersonMulti     = "single_person_multi_enrollment"
-	aidMethodSourceImplied         = "source_implied"
-	aidMethodFAApplication         = "fa_application_program"
-	aidMethodHouseholdSingleFamily = "household_single_family"
-	aidMethodNoEnrollment          = "no_enrollment"
-	aidMethodAmbiguous             = "ambiguous"
+	aidMethodOverrideSheet          = "override_sheet_2026_match"
+	aidMethodOverrideStaff          = "override_staff"
+	aidMethodDecision               = "decision"
+	aidMethodPostedPersonSingle     = "posted_person_single_enrollment"
+	aidMethodHouseholdSingleCamper  = "household_single_camper"
+	aidMethodHouseholdSingleSession = "household_single_session"
+	aidMethodSinglePersonMulti      = "single_person_multi_enrollment"
+	aidMethodSourceImplied          = "source_implied"
+	aidMethodFAApplication          = "fa_application_program"
+	aidMethodHouseholdSingleFamily  = "household_single_family"
+	aidMethodNoEnrollment           = "no_enrollment"
+	aidMethodAmbiguous              = "ambiguous"
 
 	aidOverrideSourceSheet = "sheet_2026_match"
 	aidOverrideSourceStaff = "staff"
@@ -186,6 +187,9 @@ func (c *aidAttributionContext) infer(p aidPostingInput) aidAttribution {
 		}
 		working = implied
 	}
+	if a, ok := aidSingleSessionAttribution(working); ok { // R1a
+		return a
+	}
 	if a, ok := c.byFAApplication(working); ok { // rule 7
 		return a
 	}
@@ -240,6 +244,30 @@ func (c *aidAttributionContext) enrollmentsOf(persons []int) (active []aidEnroll
 		return active[i].SessionCMID < active[j].SessionCMID
 	})
 	return active, cancelled
+}
+
+// aidSingleSessionAttribution is R1a, placed before rule 7 (byFAApplication): when every
+// active candidate enrollment in the working set sits in exactly the same one session --
+// two or more distinct persons, one session -- the session is certain whichever sibling it
+// was for, even though the person is not. Judged against the 2026 sheet (campership-data
+// rule7-vs-sheet-2026.md §2), item 10's silent-sibling narrowing of rule 7 was right in
+// principle (a household's aid can land on either camper, and silence carries no information
+// about which) but too blunt at this one edge: it was throwing away a session placement the
+// data already settles, before rule 7 ever got a chance to look at FA answers at all.
+//
+// Requires at least two distinct persons -- rule 5 above already returns for exactly one.
+func aidSingleSessionAttribution(working []aidEnrollment) (aidAttribution, bool) {
+	if len(working) == 0 || len(aidDistinctPersons(working)) < 2 {
+		return aidAttribution{}, false
+	}
+	session := working[0].SessionCMID
+	for _, e := range working[1:] {
+		if e.SessionCMID != session {
+			return aidAttribution{}, false
+		}
+	}
+	return aidAttribution{Level: aidLevelSession, Method: aidMethodHouseholdSingleSession,
+		SessionCMID: session, Family: working[0].Family}, true
 }
 
 // byFAApplication is rule 7. An FA application's program answers (summer,

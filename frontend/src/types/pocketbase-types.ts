@@ -421,6 +421,7 @@ export const AidPostingsAttributionMethodOptions = {
   household_single_family: 'household_single_family',
   no_enrollment: 'no_enrollment',
   ambiguous: 'ambiguous',
+  household_single_session: 'household_single_session',
 } as const
 export type AidPostingsAttributionMethodOptions =
   (typeof AidPostingsAttributionMethodOptions)[keyof typeof AidPostingsAttributionMethodOptions]
