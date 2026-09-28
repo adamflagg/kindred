@@ -64,7 +64,6 @@ DispositionKind = Literal["accepted_let_stand", "accepted_late_grant", "accepted
 # A flag name. Free text in PocketBase (aid_flag_dispositions.flag) so a later
 # sub-project's flags need no migration. The flags this ledger computes:
 #   unclassified_source, positive_amount, live_aid_on_cancelled_enrollment,
-#   aid_exceeds_fee, fee_unknown, duplicate_posting, several_live_postings,
 #   implied_program_mismatch
 FlagName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", min_length=1, max_length=100)]
 

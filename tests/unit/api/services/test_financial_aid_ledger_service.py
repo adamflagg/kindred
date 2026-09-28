@@ -231,7 +231,7 @@ def test_live_at_does_not_count_a_reversal_at_23_59_59_camp_time_on_the_day() ->
 async def test_ledger_groups_a_household_and_presents_positive_aid_dollars() -> None:
     repo = _repo(
         fetch_postings=[
-            _posting(9001, 100, -750.0, flags=["fee_unknown", "several_live_postings"]),
+            _posting(9001, 100, -750.0, flags=["unclassified_source", "live_aid_on_cancelled_enrollment"]),
             _grant(
                 9002,
                 100,
@@ -245,7 +245,7 @@ async def test_ledger_groups_a_household_and_presents_positive_aid_dollars() -> 
             _posting(9003, 100, -300.0, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"),
         ],
         fetch_sources=[_source(CAMP, "camp_fa", budget=True), _source(GRANT, "other_outside", budget=False)],
-        fetch_dispositions=[_disposition(9001, "several_live_postings")],
+        fetch_dispositions=[_disposition(9001, "live_aid_on_cancelled_enrollment")],
         fetch_households=[SimpleNamespace(cm_id=100, mailing_title="The Test Household", greeting="")],
         fetch_persons=[SimpleNamespace(cm_id=1001, first_name="Emma", last_name="Johnson", preferred_name="")],
         fetch_links=[_link(100, "hh-100"), _link(200, "hh-100")],
@@ -261,7 +261,7 @@ async def test_ledger_groups_a_household_and_presents_positive_aid_dollars() -> 
     assert row.by_program == {"summer": 750.0, "ambiguous": 250.5}
     assert row.levels == {"session": 1, "ambiguous": 1}
     assert (row.fa_requested.summer, row.fa_requested.family_camp) == (1500.0, 300.0)
-    assert (row.open_flags, row.accepted_flags) == (["fee_unknown"], ["several_live_postings"])
+    assert (row.open_flags, row.accepted_flags) == (["unclassified_source"], ["live_aid_on_cancelled_enrollment"])
 
 
 @pytest.mark.asyncio
@@ -458,10 +458,10 @@ async def test_net_totals_keep_each_posting_household_and_name_the_family() -> N
 @pytest.mark.asyncio
 async def test_dispositions_list_the_season() -> None:
     got = await FinancialAidLedgerService(
-        _repo(fetch_dispositions=[_disposition(9001, "aid_exceeds_fee", "accepted_late_grant")])
+        _repo(fetch_dispositions=[_disposition(9001, "implied_program_mismatch", "accepted_late_grant")])
     ).dispositions(2026)
     assert [(d.transaction_cm_id, d.flag, d.disposition) for d in got.dispositions] == [
-        (9001, "aid_exceeds_fee", "accepted_late_grant")
+        (9001, "implied_program_mismatch", "accepted_late_grant")
     ]
 
 
@@ -490,11 +490,11 @@ async def test_data_quality_lists_unclassified_orphans_and_open_versus_accepted_
                 program_family="",
                 flags=["live_aid_on_cancelled_enrollment"],
             ),
-            _posting(9003, 200, -900.0, flags=["aid_exceeds_fee"]),
+            _posting(9003, 200, -900.0, flags=["implied_program_mismatch"]),
             _posting(9004, 200, -50.0, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"),
         ],
         fetch_sources=[unclassified, _source(CAMP, "camp_fa", budget=True)],
-        fetch_dispositions=[_disposition(9003, "aid_exceeds_fee", "accepted_late_grant")],
+        fetch_dispositions=[_disposition(9003, "implied_program_mismatch", "accepted_late_grant")],
         fetch_reversed_aid=[
             SimpleNamespace(cm_id=9100, household_cm_id=100, amount=-300.0),
             SimpleNamespace(cm_id=9100, household_cm_id=100, amount=300.0),  # a complete pair
@@ -506,7 +506,7 @@ async def test_data_quality_lists_unclassified_orphans_and_open_versus_accepted_
     assert [(u.source_key, u.postings, u.amount) for u in got.unclassified_sources] == [("mystery grant", 1, 100.0)]
     assert [(o.transaction_cm_id, o.net_posted) for o in got.orphan_reversal_legs] == [(9101, 450.0)]
     assert got.flag_counts == {"unclassified_source": 1, "live_aid_on_cancelled_enrollment": 1}
-    assert got.accepted_flag_counts == {"aid_exceeds_fee": 1}
+    assert got.accepted_flag_counts == {"implied_program_mismatch": 1}
     assert [p.transaction_cm_id for p in got.flagged_postings] == [9001, 9002]
     assert got.no_enrollment_postings == 1
 
@@ -525,7 +525,7 @@ async def test_data_quality_surfaces_dangling_overrides_dispositions_and_stale_s
             SimpleNamespace(transaction_cm_id=9002),
             SimpleNamespace(transaction_cm_id=9055),
         ],
-        fetch_dispositions=[_disposition(9002, "fee_unknown"), _disposition(9066, "aid_exceeds_fee")],
+        fetch_dispositions=[_disposition(9002, "unclassified_source"), _disposition(9066, "implied_program_mismatch")],
         fetch_links=[
             _link(100, "hh-100"),
             _link(200, "hh-100"),
@@ -541,7 +541,7 @@ async def test_data_quality_surfaces_dangling_overrides_dispositions_and_stale_s
     got = await FinancialAidLedgerService(repo).data_quality(2026)
 
     assert got.dangling_overrides == [9055]  # 9002 was reversed, but its history row still exists
-    assert [(d.transaction_cm_id, d.flag) for d in got.dangling_dispositions] == [(9066, "aid_exceeds_fee")]
+    assert [(d.transaction_cm_id, d.flag) for d in got.dangling_dispositions] == [(9066, "implied_program_mismatch")]
     assert [(s.id, s.household_cm_id, s.family_key) for s in got.stale_staff_links] == [
         ("stale", 700, "hh-999"),
         ("excl-rekeyed", 900, "hh-404"),

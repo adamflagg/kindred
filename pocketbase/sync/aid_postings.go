@@ -37,7 +37,6 @@ const (
 const (
 	txnPersonCMID    = "person_cm_id"
 	txnHouseholdCMID = "household_cm_id"
-	txnSessionCMID   = "session_cm_id"
 	txnCategoryCMID  = "financial_category_cm_id"
 )
 
@@ -372,14 +371,6 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 	if err != nil {
 		return err
 	}
-	fees, err := s.loadSessionFees(year)
-	if err != nil {
-		return err
-	}
-	householdEnrollment, err := s.loadHouseholdEnrollment(year)
-	if err != nil {
-		return err
-	}
 
 	drafts := make([]*aidPostingDraft, 0, len(txns))
 	for _, t := range txns {
@@ -413,7 +404,7 @@ func (s *AidPostingsSync) syncYear(ctx context.Context, year int, sources map[st
 			Attribution: actx.attribute(in),
 		})
 	}
-	computeAidFlags(drafts, fees, statuses, householdEnrollment)
+	computeAidFlags(drafts, statuses)
 	s.warnIfMostlyUnclassified(year, drafts)
 
 	if s.DryRun {
@@ -704,61 +695,6 @@ func (s *AidPostingsSync) loadOverrides(year int) (map[int]aidOverride, error) {
 		out[r.GetInt("transaction_cm_id")] = aidOverride{PersonCMID: r.GetInt("attributed_person_cm_id"),
 			SessionCMID: r.GetInt("attributed_session_cm_id"), Family: r.GetString("program_family"),
 			Source: r.GetString("source"), SourceKey: r.GetString("source_key_override")}
-	}
-	return out, nil
-}
-
-// loadSessionFees is each camper's billed fee per session: live positive
-// non-aid charges that carry both a person and a session (tuition lines do).
-func (s *AidPostingsSync) loadSessionFees(year int) (map[aidPersonSession]float64, error) {
-	type feeRow struct {
-		Person  int     `db:"person"`
-		Session int     `db:"session"`
-		Total   float64 `db:"total"`
-	}
-	var rows []feeRow
-	err := s.App.DB().NewQuery(
-		"SELECT " + txnPersonCMID + " AS person, " + txnSessionCMID + " AS session, SUM(amount) AS total " +
-			"FROM financial_transactions WHERE year = {:year} AND is_reversed = FALSE AND amount > 0 " +
-			"AND " + txnPersonCMID + " > 0 AND " + txnSessionCMID + " > 0 " +
-			"AND " + txnCategoryCMID + " NOT IN ({:adj}, {:fa}, {:inc}) " +
-			"GROUP BY " + txnPersonCMID + ", " + txnSessionCMID,
-	).Bind(dbx.Params{"year": year, "adj": aidCategoryAdjustments, "fa": aidCategoryFinancialAssistance,
-		"inc": aidCategoryJFAM}).All(&rows)
-	if err != nil {
-		return nil, fmt.Errorf("loading session fees: %w", err)
-	}
-	out := make(map[aidPersonSession]float64, len(rows))
-	for _, r := range rows {
-		out[aidPersonSession{Person: r.Person, Session: r.Session}] = r.Total
-	}
-	return out, nil
-}
-
-// loadHouseholdEnrollment counts, per household CampMinder id, the distinct
-// campers (persons.cm_id) with at least one active (status 2) enrollment this
-// season -- the raw household_id a person's own row carries, not the
-// attribution context's childhood-household remapping (aid_attribution.go),
-// since that answers a different question ("whose aid is this") than the one
-// this count exists for ("how many enrolled kids actually live here", F3).
-func (s *AidPostingsSync) loadHouseholdEnrollment(year int) (map[int]int, error) {
-	type row struct {
-		Household int `db:"household"`
-		Enrolled  int `db:"enrolled"`
-	}
-	var rows []row
-	err := s.App.DB().NewQuery(
-		"SELECT p.household_id AS household, COUNT(DISTINCT p.cm_id) AS enrolled " +
-			"FROM persons p JOIN attendees a ON a.person_id = p.cm_id AND a.year = p.year " +
-			"WHERE p.year = {:year} AND a.status_id = {:active} AND p.household_id > 0 " +
-			"GROUP BY p.household_id",
-	).Bind(dbx.Params{"year": year, "active": aidActiveStatusID}).All(&rows)
-	if err != nil {
-		return nil, fmt.Errorf("loading household enrollment: %w", err)
-	}
-	out := make(map[int]int, len(rows))
-	for _, r := range rows {
-		out[r.Household] = r.Enrolled
 	}
 	return out, nil
 }

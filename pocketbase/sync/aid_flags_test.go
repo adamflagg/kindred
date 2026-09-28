@@ -21,23 +21,16 @@ func TestComputeAidFlags(t *testing.T) {
 	}
 	reversed := func(d *aidPostingDraft) *aidPostingDraft { d.IsReversed = true; return d }
 	implied := func(d *aidPostingDraft, families ...string) *aidPostingDraft { d.ImpliedFamilies = families; return d }
-	// withPerson sets the RAW posted person (the top-level field a real financial_transactions
-	// row carries), distinct from Attribution.PersonCMID -- the attributed person computeAidFlags
-	// used exclusively before the sibling-duplicate fix (kindred aid-ledger hardening).
-	withPerson := func(d *aidPostingDraft, p int) *aidPostingDraft { d.PersonCMID = p; return d }
 
 	tests := []struct {
-		name       string
-		drafts     []*aidPostingDraft
-		fees       map[aidPersonSession]float64
-		statuses   map[aidPersonSession]int
-		enrollment map[int]int
-		want       [][]string
+		name     string
+		drafts   []*aidPostingDraft
+		statuses map[aidPersonSession]int
+		want     [][]string
 	}{
 		{
-			name:     "a session posting under the fee is clean",
+			name:     "a session posting is clean",
 			drafts:   []*aidPostingDraft{draft(9001, -500, "camp aid", session(1001, 11))},
-			fees:     map[aidPersonSession]float64{ps(1001, 11): 2000},
 			statuses: map[aidPersonSession]int{ps(1001, 11): 2},
 			want:     [][]string{{}},
 		},
@@ -57,82 +50,38 @@ func TestComputeAidFlags(t *testing.T) {
 			name: "an override placed on a cancelled enrollment",
 			drafts: []*aidPostingDraft{draft(9001, -500, "camp aid",
 				aidAttribution{Level: aidLevelOverride, PersonCMID: 1001, SessionCMID: 11})},
-			fees:     map[aidPersonSession]float64{ps(1001, 11): 2000},
 			statuses: map[aidPersonSession]int{ps(1001, 11): 32},
 			want:     [][]string{{aidFlagCancelledEnrollment}},
 		},
 		{
-			name: "camp aid plus an outside grant above the fee flags both",
-			drafts: []*aidPostingDraft{
-				draft(9001, -1500, "camp aid", session(1001, 11)),
-				draft(9002, -800, "regional grant - north", session(1001, 11)),
-			},
-			fees: map[aidPersonSession]float64{ps(1001, 11): 2000},
-			want: [][]string{{aidFlagExceedsFee}, {aidFlagExceedsFee}},
-		},
-		{
-			name:   "aid exactly equal to the fee is not above it",
-			drafts: []*aidPostingDraft{draft(9001, -2000, "camp aid", session(1001, 11))},
-			fees:   map[aidPersonSession]float64{ps(1001, 11): 2000},
-			want:   [][]string{{}},
-		},
-		{
-			name:   "no billed fee is unknown, not zero",
-			drafts: []*aidPostingDraft{draft(9001, -500, "camp aid", session(1001, 11))},
-			want:   [][]string{{aidFlagFeeUnknown}},
-		},
-		{
-			name: "the same award posted twice",
-			drafts: []*aidPostingDraft{
-				draft(9001, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
-				draft(9002, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
-			},
-			want: [][]string{{aidFlagDuplicatePosting}, {aidFlagDuplicatePosting}},
-		},
-		{
-			name: "equal awards to two siblings are not duplicates",
+			name: "equal awards to two siblings in different sessions produce no flags",
 			drafts: []*aidPostingDraft{
 				draft(9001, -500, "camp aid", session(1001, 11)),
 				draft(9002, -500, "camp aid", session(1002, 12)),
 			},
-			fees: map[aidPersonSession]float64{ps(1001, 11): 5000, ps(1002, 12): 5000},
 			want: [][]string{{}, {}},
 		},
 		{
-			// Tracker C1's shape, fictional amounts: a stale minimum left live beside a later award.
-			name: "a stale minimum beside a later camp award on one placement",
+			name: "a Family Camp household grant well above one member's own session fee produces no flag",
 			drafts: []*aidPostingDraft{
-				draft(9001, -100, "camp aid", session(1001, 11)),
-				draft(9002, -900, "camp aid", session(1001, 11)),
+				draft(9001, -5000, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilyFamilyCamp}),
 			},
-			fees: map[aidPersonSession]float64{ps(1001, 11): 5000},
-			want: [][]string{{aidFlagSeveralLivePostings}, {aidFlagSeveralLivePostings}},
+			want: [][]string{{}},
 		},
 		{
-			name: "camp aid and an outside grant on one placement are not several camp postings",
+			name: "a reversed history row carries no flags even where a live one would",
 			drafts: []*aidPostingDraft{
-				draft(9001, -100, "camp aid", session(1001, 11)),
-				draft(9002, -900, "regional grant - north", session(1001, 11)),
-			},
-			fees: map[aidPersonSession]float64{ps(1001, 11): 5000},
-			want: [][]string{{}, {}},
-		},
-		{
-			name: "a reversed history row carries no flags and joins no group",
-			drafts: []*aidPostingDraft{
-				reversed(draft(9001, -100, "camp aid", session(1001, 11))),
-				draft(9002, -900, "camp aid", session(1001, 11)),
+				reversed(draft(9001, 100, "camp aid", session(1001, 11))),
+				draft(9002, 100, "camp aid", session(1002, 12)),
 				reversed(draft(9003, 50, "x", aidAttribution{Level: aidLevelNone, CandidateCancelled: true})),
 			},
-			fees: map[aidPersonSession]float64{ps(1001, 11): 800},
-			want: [][]string{{}, {aidFlagExceedsFee}, {}},
+			want: [][]string{{}, {aidFlagPositiveAmount}, {}},
 		},
 		{
 			name: "a source naming family camp placed by inference in summer",
 			drafts: []*aidPostingDraft{
 				implied(draft(9001, -200, "family incentive grant", session(1001, 11)), programFamilyFamilyCamp),
 			},
-			fees: map[aidPersonSession]float64{ps(1001, 11): 5000},
 			want: [][]string{{aidFlagImpliedProgramMismatch}},
 		},
 		{
@@ -141,45 +90,10 @@ func TestComputeAidFlags(t *testing.T) {
 				aidAttribution{Level: aidLevelOverride, Family: programFamilySummer}), programFamilyFamilyCamp)},
 			want: [][]string{{}},
 		},
-		{
-			// F3 fix: a household-grain grant posted once per enrolled sibling must not be
-			// flagged. Both rows carry no raw person (household-grain), so the group is sized
-			// against the household's enrolled campers rather than distinct transaction count.
-			name: "siblings: 2 enrolled children, 2 identical household rows is not a duplicate",
-			drafts: []*aidPostingDraft{
-				draft(9001, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
-				draft(9002, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
-			},
-			enrollment: map[int]int{100: 2},
-			want:       [][]string{{}, {}},
-		},
-		{
-			// The real-duplicate case: only 1 enrolled camper in the household, so 2 identical
-			// rows is more rows than enrolled campers and must still be flagged.
-			name: "1 enrolled child, 2 identical household rows is a real duplicate",
-			drafts: []*aidPostingDraft{
-				draft(9001, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
-				draft(9002, -500, "camp aid", aidAttribution{Level: aidLevelProgramFamily, Family: programFamilySummer}),
-			},
-			enrollment: map[int]int{100: 1},
-			want:       [][]string{{aidFlagDuplicatePosting}, {aidFlagDuplicatePosting}},
-		},
-		{
-			// A real posted person (raw, not just attributed) still uses the distinct-transaction
-			// rule, unaffected by household enrollment (deliberately generous here at 5).
-			name: "person-level duplicates are still flagged regardless of household enrollment",
-			drafts: []*aidPostingDraft{
-				withPerson(draft(9001, -500, "camp aid", session(1001, 11)), 1001),
-				withPerson(draft(9002, -500, "camp aid", session(1001, 11)), 1001),
-			},
-			fees:       map[aidPersonSession]float64{ps(1001, 11): 5000},
-			enrollment: map[int]int{100: 5},
-			want:       [][]string{{aidFlagDuplicatePosting}, {aidFlagDuplicatePosting}},
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			computeAidFlags(tc.drafts, tc.fees, tc.statuses, tc.enrollment)
+			computeAidFlags(tc.drafts, tc.statuses)
 			for i, d := range tc.drafts {
 				if d.Flags == nil {
 					t.Fatalf("draft %d: Flags must never be nil (it is written as a JSON array)", i)

@@ -67,7 +67,7 @@ DISPOSITION_BODY = {
     "rows": [
         {
             "transaction_cm_id": 9001,
-            "flag": "aid_exceeds_fee",
+            "flag": "implied_program_mismatch",
             "disposition": "accepted_late_grant",
             "note": "Grant after the offer",
         }

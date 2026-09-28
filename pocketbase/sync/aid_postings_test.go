@@ -44,7 +44,7 @@ func TestAidPostingsSyncWritesAPostingAndAnUnclassifiedSource(t *testing.T) {
 		p.GetString("program_family") != programFamilySummer || p.GetFloat("amount") != -750 {
 		t.Errorf("unexpected posting: %v", p.FieldsData())
 	}
-	if got := aidJSON(t, p, "flags"); !slices.Equal(got, []string{aidFlagFeeUnknown, aidFlagUnclassifiedSource}) {
+	if got := aidJSON(t, p, "flags"); !slices.Equal(got, []string{aidFlagUnclassifiedSource}) {
 		t.Errorf("flags = %v", got)
 	}
 	sources := f.rows(colAidSources, 0)
@@ -71,7 +71,6 @@ func TestAidPostingsSyncSkipsReversingLegsZeroAndNonAidRows(t *testing.T) {
 	if got := f.rows(colAidPostings, 2026); len(got) != 1 || got[0].GetInt("transaction_cm_id") != 9001 {
 		t.Fatalf("expected only 9001, got %d postings", len(got))
 	}
-	// Fee now known (3000 > 750): only the unclassified flag remains.
 	if got := aidJSON(t, f.posting(9001), "flags"); !slices.Equal(got, []string{aidFlagUnclassifiedSource}) {
 		t.Errorf("flags = %v", got)
 	}
@@ -535,21 +534,6 @@ func TestAidPostingsSyncASeasonGuardRefusalDoesNotStopTheOthers(t *testing.T) {
 	}
 	if got := len(f.rows(colAidPostings, 2025)); got != 1 {
 		t.Errorf("season 2025's stale posting must be left alone (a refused sweep deletes nothing), got %d", got)
-	}
-}
-
-func TestAidPostingsSyncFlagsAidAboveTheBilledFee(t *testing.T) {
-	t.Parallel()
-	f := newAidFixture(t)
-	seedAidSiblings(f, 2026)
-	f.txn(9020, 2026, 500, aidTestFeeCat, "Session 2 Tuition", 100, 1001, 11, false)
-	f.txn(9021, 2026, 5000, aidTestFeeCat, "Session 2 Tuition", 100, 1001, 11, true) // reversed: not a fee
-	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
-
-	f.run("", 2026)
-
-	if got := aidJSON(t, f.posting(9001), "flags"); !slices.Contains(got, aidFlagExceedsFee) {
-		t.Errorf("750 of aid against a 500 fee must flag, got %v", got)
 	}
 }
 

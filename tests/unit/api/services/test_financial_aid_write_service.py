@@ -517,7 +517,7 @@ def _existing_disposition(**kw: Any) -> SimpleNamespace:
         "id": DISPOSITION_ID,
         "year": 2026,
         "transaction_cm_id": 9002,
-        "flag": "aid_exceeds_fee",
+        "flag": "implied_program_mismatch",
         "disposition": "accepted_let_stand",
         "note": "Let stand",
         "actor": "x",
@@ -531,7 +531,7 @@ async def test_load_dispositions_creates_updates_skips_and_rejects_in_one_operat
     repo = _disposition_repo(
         [
             _existing_disposition(),
-            _existing_disposition(id="dsp000000000002", flag="fee_unknown", note="Billed to the household"),
+            _existing_disposition(id="dsp000000000002", flag="unclassified_source", note="Billed to the household"),
         ]
     )
     service, spy = _service(repo)
@@ -540,30 +540,32 @@ async def test_load_dispositions_creates_updates_skips_and_rejects_in_one_operat
         rows=[
             DispositionRow(
                 transaction_cm_id=9001,
-                flag="several_live_postings",
+                flag="live_aid_on_cancelled_enrollment",
                 disposition="accepted_let_stand",
                 note="Staff let it stand",
             ),
             DispositionRow(
                 transaction_cm_id=9002,
-                flag="aid_exceeds_fee",
+                flag="implied_program_mismatch",
                 disposition="accepted_late_grant",
                 note="Grant arrived after the offer",
             ),  # changed
             DispositionRow(
                 transaction_cm_id=9002,
-                flag="fee_unknown",
+                flag="unclassified_source",
                 disposition="accepted_let_stand",
                 note="Billed to the household",
             ),  # same
-            DispositionRow(transaction_cm_id=9077, flag="aid_exceeds_fee", disposition="accepted_other", note="n"),
+            DispositionRow(
+                transaction_cm_id=9077, flag="implied_program_mismatch", disposition="accepted_other", note="n"
+            ),
         ],
     )
 
     got = await service.load_dispositions(body, ACTOR)
 
     assert (got.created, got.updated, got.unchanged) == (1, 1, 1)
-    assert [(r.transaction_cm_id, r.flag) for r in got.rejected] == [(9077, "aid_exceeds_fee")]
+    assert [(r.transaction_cm_id, r.flag) for r in got.rejected] == [(9077, "implied_program_mismatch")]
     spy.commit.assert_called_once()
     assert [(w.collection, w.action, w.record_id, w.reason) for w in spy.writes] == [
         ("aid_flag_dispositions", "create", None, "Staff let it stand"),
@@ -640,7 +642,9 @@ async def test_a_whitespace_only_override_note_falls_back_to_the_loads_reason() 
 @pytest.mark.parametrize("note", ["   ", "\t\n"])
 def test_a_blank_disposition_note_is_refused_at_the_schema(note: str) -> None:
     with pytest.raises(ValidationError):
-        DispositionRow(transaction_cm_id=9001, flag="aid_exceeds_fee", disposition="accepted_let_stand", note=note)
+        DispositionRow(
+            transaction_cm_id=9001, flag="implied_program_mismatch", disposition="accepted_let_stand", note=note
+        )
 
 
 def test_a_blank_source_classification_note_is_refused_at_the_schema() -> None:
