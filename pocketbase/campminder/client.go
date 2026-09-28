@@ -30,8 +30,9 @@ const (
 	// rateLimitBaseBackoff is makeRequest's first wait after a 429 whose body carries no
 	// "Try again in N seconds" hint; each further unhinted 429 doubles it.
 	rateLimitBaseBackoff = 5 * time.Second
-	// rateLimitMaxBackoff caps an unhinted wait. A hinted wait is honored as given, up to
-	// rateLimitMaxHintedWait, the same as authenticateAtURL and makeRequestWithURLRetry do.
+	// rateLimitMaxBackoff caps an unhinted wait in makeRequest. A hinted wait is honored as
+	// given, up to rateLimitMaxHintedWait, in every retry loop (rateLimitWait for makeRequest,
+	// parseRateLimitSeconds for authenticateAtURL and makeRequestWithURLRetry).
 	rateLimitMaxBackoff = 60 * time.Second
 	// rateLimitMaxHintedWait caps a hinted wait so a malformed or absurd CampMinder hint
 	// (e.g. "Try again in 999999 seconds") can't sleep for days. Deliberately larger than
@@ -52,9 +53,23 @@ const (
 	paramValueTrue = "true"
 )
 
-// sleepFn is the sleep function used by retry loops. Override in tests to
-// skip real delays.
+// sleepFn is the sleep function used by the doRequest and makeRequestWithURLRetry retry
+// loops. Override in tests to skip real delays. The auth loop waits via sleepCtxFn instead.
 var sleepFn = time.Sleep
+
+// sleepCtxFn is the context-aware wait used by the auth retry loop: it returns early with
+// ctx.Err() when the caller's context ends. Override in tests to skip real delays or record
+// waits.
+var sleepCtxFn = func(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
 
 // Client wraps CampMinder API interactions
 type Client struct {
@@ -118,18 +133,18 @@ func NewClient(cfg *Config) (*Client, error) {
 // authenticate gets a new JWT token from CampMinder.
 // Delegates to authenticateAtURL using the production endpoint (or the
 // test-injected override stored in c.authURL).
-func (c *Client) authenticate() error {
+func (c *Client) authenticate(ctx context.Context) error {
 	target := c.authURL
 	if target == "" {
 		target = fmt.Sprintf("%s/auth/apikey", baseURL)
 	}
-	return c.authenticateAtURL(target)
+	return c.authenticateAtURL(ctx, target)
 }
 
 // authenticateAtURL gets a new JWT token from the given auth URL.
 // Retries on HTTP 429 up to maxRequestRetries times (matching the cap used by
 // makeRequestWithURLRetry). Unbounded recursion on 429 is fixed here (#1078).
-func (c *Client) authenticateAtURL(authURL string) error {
+func (c *Client) authenticateAtURL(ctx context.Context, authURL string) error {
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
 	// Use the subscription key captured at client construction time (#1136).
@@ -137,7 +152,7 @@ func (c *Client) authenticateAtURL(authURL string) error {
 	primaryKey := c.subscriptionKey
 
 	for attempt := range maxRequestRetries + 1 {
-		req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
+		req, err := http.NewRequestWithContext(ctx, "GET", authURL, http.NoBody)
 		if err != nil {
 			return fmt.Errorf("create auth request: %w", err)
 		}
@@ -165,14 +180,15 @@ func (c *Client) authenticateAtURL(authURL string) error {
 					return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 				}
 				waitTime := c.parseRateLimitSeconds(string(body))
-				// parseRateLimitSeconds always returns >= 5 (5s buffer) or fallback 60;
-				// the guard is unnecessary, but we sleep unconditionally for clarity.
 				slog.Warn("CampMinder rate limited during auth",
 					"wait_seconds", waitTime,
 					"attempt", attempt+1,
 					"max_retries", maxRequestRetries,
 				)
-				sleepFn(time.Duration(waitTime) * time.Second)
+				// Context-aware: a caller whose ctx ends must not sit out the wait.
+				if err := sleepCtxFn(ctx, time.Duration(waitTime)*time.Second); err != nil {
+					return fmt.Errorf("auth retry wait interrupted: %w", err)
+				}
 				continue
 			}
 
@@ -244,12 +260,13 @@ func (c *Client) authenticateAtURL(authURL string) error {
 //   - If the token is valid → fast return (no network).
 //   - If a refresh is already in progress (tokenRefreshing == true) → spin-wait
 //     until the refreshing goroutine clears the flag, then re-check the token.
+//     A waiter whose ctx ends gives up with an error wrapping ctx.Err().
 //   - If no refresh is in progress → set the flag, release the lock, do the
 //     HTTP call, re-acquire the lock to write the result, clear the flag.
 //
 // This prevents redundant concurrent refreshes without holding the mutex across
 // network I/O.
-func (c *Client) ensureAuthenticated() error {
+func (c *Client) ensureAuthenticated(ctx context.Context) error {
 	for {
 		c.tokenMu.Lock()
 		if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-5*time.Minute)) {
@@ -260,6 +277,10 @@ func (c *Client) ensureAuthenticated() error {
 		if c.tokenRefreshing {
 			// Another goroutine is already refreshing; release and yield.
 			c.tokenMu.Unlock()
+			// A caller whose ctx has ended must not wait on someone else's refresh.
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("waiting for token refresh: %w", err)
+			}
 			// Brief yield so we don't spin-burn CPU; runtime.Gosched() is
 			// sufficient — we are not doing real-time work here.
 			time.Sleep(time.Millisecond)
@@ -272,7 +293,7 @@ func (c *Client) ensureAuthenticated() error {
 	}
 
 	// Perform the refresh without holding the lock.
-	err := c.authenticate()
+	err := c.authenticate(ctx)
 
 	// Clear the refreshing flag regardless of success/failure so waiters can proceed.
 	c.tokenMu.Lock()
@@ -289,7 +310,7 @@ func (c *Client) makeRequestWithURL(method, fullURL string) ([]byte, error) {
 
 // makeRequestWithURLRetry makes an authenticated API request with retry logic
 func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int) ([]byte, error) {
-	if err := c.ensureAuthenticated(); err != nil {
+	if err := c.ensureAuthenticated(context.Background()); err != nil {
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
@@ -320,7 +341,7 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 	// Handle rate limiting
 	if resp.StatusCode == http.StatusTooManyRequests && retryCount < maxRequestRetries {
 		waitTime := c.parseRateLimitSeconds(string(body))
-		// parseRateLimitSeconds always returns >= 5 (5s buffer) or fallback 60.
+		// parseRateLimitSeconds returns hint+5 (clamped at rateLimitMaxHintedWait) or fallback 60.
 		slog.Warn("CampMinder rate limited",
 			"wait_seconds", waitTime,
 			"retry", retryCount+1,
@@ -383,7 +404,7 @@ func (c *Client) doRequest(
 	}
 
 	for attempt := 0; ; attempt++ {
-		if err := c.ensureAuthenticated(); err != nil {
+		if err := c.ensureAuthenticated(ctx); err != nil {
 			return nil, fmt.Errorf("authentication failed: %w", err)
 		}
 		req, err := c.newAPIRequest(ctx, method, fullURL, params)
@@ -790,10 +811,15 @@ func parseRateLimitHint(body string) (int, bool) {
 	return 0, false
 }
 
-// parseRateLimitSeconds returns the hinted wait plus a 5 second buffer, or 60 seconds when
-// the body carries no hint. Used by the auth and pre-built-URL retry loops.
+// parseRateLimitSeconds returns the hinted wait plus a 5 second buffer (clamped at
+// rateLimitMaxHintedWait against a malformed or absurd hint), or 60 seconds when the body
+// carries no hint. Used by the auth and pre-built-URL retry loops.
 func (c *Client) parseRateLimitSeconds(body string) int {
 	if seconds, ok := parseRateLimitHint(body); ok {
+		maxSeconds := int(rateLimitMaxHintedWait / time.Second)
+		if seconds < 0 || seconds > maxSeconds-5 {
+			return maxSeconds
+		}
 		return seconds + 5
 	}
 	return 60
