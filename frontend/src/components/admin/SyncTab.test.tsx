@@ -44,13 +44,19 @@ let staffStatus: unknown = idleStatus
 // injectable status to pin the skipped_values badge. Reset in afterEach.
 let camperTransportationStatus: unknown = idleStatus
 
+// kindred#2891: `aid_postings` (the Aid Ledger card) needs its own injectable status to pin the
+// aid⚠ badge. Reset in afterEach.
+let aidPostingsStatus: unknown = idleStatus
+
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
   useSyncCompletionToasts: () => ({
     family_camp_derived: idleStatus,
     lodging_assignments: idleStatus,
     staff_skills: idleStatus,
     financial_aid_applications: idleStatus,
-    aid_postings: idleStatus,
+    get aid_postings() {
+      return aidPostingsStatus
+    },
     household_demographics: idleStatus,
     camper_dietary: idleStatus,
     quest_registrations: idleStatus,
@@ -221,6 +227,47 @@ describe('SyncTab lodging prod audit warnings badge (#2161)', () => {
     if (!card) throw new Error('could not find Stranded Assignment Cleanup card')
 
     expect(within(card as HTMLElement).getByText('3 lodging⚠')).toBeInTheDocument()
+  })
+})
+
+// kindred#2891: Stats.AidLedgerWarnings (pocketbase/sync/orchestrator.go) is warn-only, so a run
+// with aid-ledger data-quality warnings still reads as a clean success unless the Aid Ledger card
+// shows the count. Mirrors the #2161 lodging⚠ badge.
+describe('SyncTab aid ledger warnings badge (#2891)', () => {
+  afterEach(() => {
+    aidPostingsStatus = idleStatus
+  })
+
+  const aidLedgerCard = () => {
+    const heading = screen.getByText('Aid Ledger', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Aid Ledger card')
+    return card as HTMLElement
+  }
+
+  it('renders an aid⚠ badge when aid_ledger_warnings is positive', () => {
+    aidPostingsStatus = {
+      status: 'success',
+      summary: { created: 0, updated: 0, skipped: 0, errors: 0, aid_ledger_warnings: 3 },
+    }
+
+    renderSyncTab()
+
+    expect(within(aidLedgerCard()).getByText('3 aid⚠')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['zero', { aid_ledger_warnings: 0 }],
+    ['absent', {}],
+  ])('renders no aid⚠ badge when aid_ledger_warnings is %s', (_label, extra) => {
+    aidPostingsStatus = {
+      status: 'success',
+      summary: { created: 0, updated: 0, skipped: 0, errors: 0, ...extra },
+    }
+
+    renderSyncTab()
+
+    expect(within(aidLedgerCard()).queryByText(/aid⚠/)).not.toBeInTheDocument()
   })
 })
 

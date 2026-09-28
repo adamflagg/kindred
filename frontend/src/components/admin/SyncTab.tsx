@@ -383,6 +383,11 @@ export function SyncTab() {
                     {status.summary.lodging_prod_audit_warnings} lodging⚠
                   </span>
                 )}
+                {(status.summary.aid_ledger_warnings ?? 0) > 0 && (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {status.summary.aid_ledger_warnings} aid⚠
+                  </span>
+                )}
               </div>
               <div className="text-muted-foreground truncate text-xs sm:text-sm">
                 {status.summary.duration !== undefined && formatDuration(status.summary.duration)}
