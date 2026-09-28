@@ -742,9 +742,9 @@ func applyCompletionStatus(completed *Status, stats *Stats, err error) {
 // counted what, and keeps the "did this run pass" decision in one place.
 func totalInfrastructureErrors(stats *Stats) int {
 	total := stats.Errors
-	for _, sub := range stats.SubStats {
+	for i := range stats.SubStats {
 		// One level deep: SubStats is populated by combined syncs and is not nested further.
-		total += sub.Errors
+		total += stats.SubStats[i].Errors
 	}
 	return total
 }
