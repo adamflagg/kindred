@@ -499,7 +499,13 @@ class GrantsService:
                 for u in attention.unmapped
             ],
             waiting=[
-                WaitingCommitmentOut(grant=row_out(w.row), days_waiting=w.days_waiting) for w in attention.waiting
+                WaitingCommitmentOut(
+                    grant=row_out(w.row),
+                    days_waiting=w.days_waiting,
+                    reason=w.reason,
+                    transaction_cm_id=w.transaction_cm_id,
+                )
+                for w in attention.waiting
             ],
             expected=[
                 ExpectedOut(
@@ -551,6 +557,13 @@ class GrantsService:
                 )
             enrolled = enrollments_by_person.get(p.person_cm_id, [])
             family = _program_family(enrolled, p.session_cm_id)
+            if family == "":
+                # Owner ruling 2026-09-29: a camper active in two programs names no single family,
+                # and "" would spread the grant across every program. The line's own program
+                # wins when the camper is actively enrolled in it.
+                line_family = str(lines[p.transaction_cm_id].program_family or "")
+                if any(e.program_family == line_family and e.status_id == ACTIVE_ENROLLED_STATUS_ID for e in enrolled):
+                    family = line_family
             if family is None:
                 raise FinancialAidValidationError(
                     f"person {p.person_cm_id} has no enrollment in session {p.session_cm_id} in {year} "

@@ -188,19 +188,37 @@ def test_a_line_from_another_grantor_does_not_fulfil_a_commitment() -> None:
     assert {r.kind for r in rows} == {"ledger", "commitment"}
 
 
-def test_a_line_from_an_unmapped_description_fulfils_rather_than_double_counting() -> None:
-    """Decision 4: until finance maps the description, the line on the same camper is taken to be
-    the commitment, so the two never both offset the award."""
+def test_an_unmapped_line_never_fulfils_and_the_commitment_waits_as_a_possible_match() -> None:
+    """Owner ruling 2026-09-29 (item B): pairing a line whose description names no grantor with a
+    commitment is an inference (D16), so it is never decided silently. Both count until finance
+    maps the description -- a double count that shows twice: in Unmapped, and in Waiting with the
+    line as evidence."""
     line = _line(person_cm_id=EMMA, source_key=OTHER)
-    rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
-    assert [r.kind for r in rows] == ["ledger"]
-    assert rows[0].fulfils_commitment_id == "com000000000001"
+    inputs = _inputs(lines=(line,), commitments=(_commitment(),))
+    rows = build_register(inputs)
+    assert {r.kind: r.counts for r in rows} == {"ledger": True, "commitment": True}
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+    attention = needs_attention(rows, inputs, candidates={}, today=TODAY)
+    (waiting,) = attention.waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("possible_match", 9001)
+    assert [u.source_key for u in attention.unmapped] == [OTHER]
 
 
-def test_a_same_grantor_line_is_preferred_over_an_unmapped_one() -> None:
+def test_only_the_same_grantor_line_fulfils() -> None:
     lines = (_line(9001, person_cm_id=EMMA, source_key=OTHER), _line(9002, person_cm_id=EMMA))
     rows = build_register(_inputs(lines=lines, commitments=(_commitment(),)))
     assert {r.transaction_cm_id: r.fulfils_commitment_id for r in rows} == {9001: "", 9002: "com000000000001"}
+
+
+def test_at_go_live_another_grantors_unmapped_line_does_not_swallow_a_commitment() -> None:
+    """Every description is unmapped until the grantor bootstrap runs. A camper's $1,000 grant from
+    one source must not "fulfil" a $500 commitment from another, which would silently drop the $500."""
+    unmapped = {GRANT: "", OTHER: "", CITY: ""}
+    line = _line(amount="1000", person_cm_id=EMMA, source_key=CITY)
+    commitment = _commitment(grantor_key="synagogue_fund")
+    rows = build_register(_inputs(lines=(line,), commitments=(commitment,), grantor_by_source=unmapped))
+    total = sum((g.amount for gs in grant_inputs_by_request(rows).values() for g in gs), Decimal(0))
+    assert total == Decimal(1500)
 
 
 def test_an_unmapped_incentive_line_never_fulfils_an_outside_commitment() -> None:
@@ -233,11 +251,25 @@ def test_a_reversed_line_never_closes_a_commitment() -> None:
     assert _one(rows, kind="commitment").counts is True
 
 
+def test_a_commitment_whose_line_was_reversed_waits_as_posted_then_reversed() -> None:
+    """Owner ruling 2026-09-29 (item A): Ruling 2 stands, and the revived commitment says why it is
+    back -- a grant posted, then pulled, is not "still not in CampMinder" -- so staff know to
+    withdraw it."""
+    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="2031-02-20 17:00:00.000Z")
+    (waiting,) = _attention(lines=(line,), commitments=(_commitment(),)).waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("posted_then_reversed", 9001)
+
+
+def test_a_commitment_with_no_created_time_waits_as_not_posted() -> None:
+    """A reversal can only be placed after a commitment whose own time is known."""
+    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="2031-02-20 17:00:00.000Z")
+    (waiting,) = _attention(lines=(line,), commitments=(_commitment(created=None),)).waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("not_posted", 0)
+
+
 def test_a_reversal_before_the_commitment_was_entered_does_not_swallow_it() -> None:
-    """Controller ruling (fix round 1): a reversed line is a fulfilment candidate only when its
-    reversal is KNOWN to be at or after the commitment's `created` -- otherwise an earlier,
-    unrelated reversal would silently swallow a commitment staff entered later, and the grant
-    would count toward nothing."""
+    """A reversal that predates the commitment is unrelated to it: the commitment is for a new grant
+    not yet posted. It keeps counting and waits as not posted."""
     line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="2031-02-12 17:00:00.000Z")
     commitment = _commitment(
         session_cm_id=S1, committed_on=date(2031, 3, 1), created=datetime(2031, 3, 2, 12, 0, tzinfo=UTC)
@@ -251,16 +283,77 @@ def test_a_reversal_before_the_commitment_was_entered_does_not_swallow_it() -> N
     inputs = grant_inputs_by_request(rows)
     (grant,) = inputs["req-emma-1"]
     assert (grant.amount, grant.state, grant.recorded_at) == (Decimal(500), "committed", commitment.created)
+    (waiting,) = _attention(lines=(line,), commitments=(commitment,)).waiting
+    assert waiting.reason == "not_posted"
 
 
-def test_a_reversed_line_with_no_reversal_date_does_not_close_a_commitment() -> None:
-    """A reversed line that can't be placed in time (no reversal_date) can't confidently close a
-    commitment either."""
-    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="")
-    rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
-    assert {r.kind for r in rows} == {"ledger", "commitment"}
+def test_a_same_grantor_line_on_a_sibling_is_a_possible_match() -> None:
+    """A commitment on Liam and a same-grantor line named on Emma: both count (it may be two
+    grants), and Waiting names the sibling's line so staff can tell."""
+    line = _line(person_cm_id=EMMA)
+    (waiting,) = _attention(lines=(line,), commitments=(_commitment(person_cm_id=LIAM),)).waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("possible_match", 9001)
+
+
+def test_a_line_posted_before_the_commitment_was_committed_never_fulfils_it() -> None:
+    """Owner ruling 2026-09-29 (item D6): a commitment is for a grant not yet posted (D55), so a line
+    posted before its committed_on is a different grant. Emma's earlier $500 line must not absorb a
+    second $300 grant from the same grantor; both count, and Waiting names the earlier line."""
+    line = _line(amount="500", person_cm_id=EMMA, post_date="2031-02-10 17:00:00.000Z")
+    commitment = _commitment(amount="300", committed_on=date(2031, 3, 1))
+    rows = build_register(_inputs(lines=(line,), commitments=(commitment,)))
     assert _one(rows, kind="ledger").fulfils_commitment_id == ""
-    assert _one(rows, kind="commitment").counts is True
+    total = sum((g.amount for gs in grant_inputs_by_request(rows).values() for g in gs), Decimal(0))
+    assert total == Decimal(800)
+    (waiting,) = _attention(lines=(line,), commitments=(commitment,)).waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("possible_match", 9001)
+
+
+def test_a_later_line_never_takes_a_commitment_from_an_earlier_one() -> None:
+    """Owner ruling 2026-09-29 (item D1): the earliest post ranks before an equal amount, so a line
+    arriving later can't re-pair the commitment and flip which grant was known before the offer."""
+    commitment = _commitment(amount="500")
+    early = _line(9001, "450", person_cm_id=EMMA, post_date="2031-03-15 17:00:00.000Z")
+    late = _line(9002, "500", person_cm_id=EMMA, post_date="2031-03-20 17:00:00.000Z")
+    rows = build_register(_inputs(lines=(early, late), commitments=(commitment,)))
+    assert {r.transaction_cm_id: r.fulfils_commitment_id for r in rows} == {9001: "com000000000001", 9002: ""}
+    assert _one(rows, transaction_cm_id=9001).recorded_at == commitment.created
+    assert _one(rows, transaction_cm_id=9002).recorded_at == datetime(2031, 3, 20, 17, 0, tzinfo=UTC)
+
+
+def test_a_line_in_another_session_never_fulfils_a_session_commitment() -> None:
+    line = _line(person_cm_id=0)
+    commitment = _commitment(session_cm_id=S1)
+    rows = build_register(
+        _inputs(lines=(line,), commitments=(commitment,), placements={9001: Placement(9001, EMMA, S2, "summer")})
+    )
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+
+
+def test_the_same_session_line_fulfils_first() -> None:
+    """Owner ruling 2026-09-29 (item D2): an S2 line pairs with the S2 commitment even when the S1
+    commitment is older, so each request carries its own grant and Waiting names the right one."""
+    older_s1 = _commitment("com-s1", session_cm_id=S1)
+    newer_s2 = _commitment("com-s2", session_cm_id=S2, created=datetime(2031, 1, 22, 18, 0, tzinfo=UTC))
+    line = _line(person_cm_id=0)
+    rows = build_register(
+        _inputs(
+            lines=(line,),
+            commitments=(older_s1, newer_s2),
+            placements={9001: Placement(9001, EMMA, S2, "summer")},
+        )
+    )
+    assert _one(rows, kind="ledger").fulfils_commitment_id == "com-s2"
+    assert _one(rows, kind="commitment").commitment_id == "com-s1"
+    shares = {k: sum((g.amount for g in v), Decimal(0)) for k, v in grant_inputs_by_request(rows).items()}
+    assert shares == {"req-emma-1": Decimal(500), "req-emma-2": Decimal(500)}
+
+
+def test_a_fulfilling_line_without_a_session_takes_the_commitments_session() -> None:
+    line = _line(person_cm_id=EMMA, attributed_session_cm_id=0)
+    rows = build_register(_inputs(lines=(line,), commitments=(_commitment(session_cm_id=S1),)))
+    row = _one(rows, kind="ledger")
+    assert (row.session_cm_id, row.requests) == (S1, (RequestShare("req-emma-1", Decimal(500)),))
 
 
 def test_two_commitments_pair_one_to_one_preferring_the_equal_amount() -> None:
@@ -268,6 +361,25 @@ def test_two_commitments_pair_one_to_one_preferring_the_equal_amount() -> None:
     commitments = (_commitment("com-a", "500"), _commitment("com-b", "300"))
     rows = build_register(_inputs(lines=lines, commitments=commitments))
     assert {r.transaction_cm_id: r.fulfils_commitment_id for r in rows} == {9001: "com-b", 9002: "com-a"}
+
+
+def test_a_commitment_on_a_cancelled_camper_stops_counting_and_waits_as_camper_cancelled() -> None:
+    """Owner ruling 2026-09-29 (item D5): cancelled is derived from enrollment, a rule rather than an
+    inference, so the commitment stops counting while every enrollment it covers is cancelled --
+    as CampMinder reverses a posted grant -- and waits for staff to withdraw it."""
+    cancelled = (Enrollment(EMMA, S1, "summer", 32), Enrollment(EMMA, S2, "summer", 32))
+    rows = build_register(_inputs(commitments=(_commitment(),), enrollments=cancelled))
+    row = _one(rows, kind="commitment")
+    assert (row.cancelled, row.counts, row.requests) == (True, False, ())
+    assert grant_inputs_by_request(rows) == {}
+    (waiting,) = _attention(commitments=(_commitment(),), enrollments=cancelled).waiting
+    assert waiting.reason == "camper_cancelled"
+
+
+def test_a_commitment_counts_while_the_camper_still_has_an_active_session() -> None:
+    partly = (Enrollment(EMMA, S1, "summer", 32), Enrollment(EMMA, S2, "summer", 2))
+    row = _one(build_register(_inputs(commitments=(_commitment(),), enrollments=partly)), kind="commitment")
+    assert (row.cancelled, row.counts) == (False, True)
 
 
 def test_a_withdrawn_commitment_is_not_in_the_register() -> None:
@@ -372,6 +484,64 @@ def test_a_grant_is_cancelled_when_its_campers_enrollment_is_cancelled() -> None
     assert _one(rows, transaction_cm_id=9001).cancelled is False  # still enrolled in the family
 
 
+# --- the target follows the program: Family Camp is household-level ------------------------
+
+FC1, FC2 = 1000301, 1000302  # Family Camp weekends
+FC_ENROLLED = (*ENROLLED, Enrollment(1050, FC1, "family_camp", 2), Enrollment(1050, FC2, "family_camp", 2))
+FC_REQUESTS = (
+    *REQUESTS,
+    RequestRef("req-fc-1", HOUSEHOLD, 0, FC1, "active"),
+    RequestRef("req-fc-2", HOUSEHOLD, 0, FC2, "active"),
+)
+
+
+def _fc_line(txn: int = 9101, amount: str = "300", **kw: Any) -> GrantLine:
+    base: dict[str, Any] = {
+        "attribution_method": "program_family",
+        "attributed_person_cm_id": 0,
+        "attributed_session_cm_id": 0,
+        "program_family": "family_camp",
+    }
+    base.update(kw)
+    return _line(txn, amount, **base)
+
+
+def test_a_family_camp_line_needs_no_camper_and_lands_on_the_households_request() -> None:
+    """Owner ruling 2026-09-29: the target follows the program. Family Camp aid requests are the
+    household's (person 0), so a Family Camp grant counts once live and sits on that request; it
+    never waits for a camper."""
+    inputs = _inputs(lines=(_fc_line(attributed_session_cm_id=FC1),), enrollments=FC_ENROLLED, requests=FC_REQUESTS)
+    rows = build_register(inputs)
+    row = _one(rows, transaction_cm_id=9101)
+    assert (row.person_cm_id, row.camper_basis, row.counts) == (0, "household", True)
+    assert (row.session_cm_id, row.requests) == (FC1, (RequestShare("req-fc-1", Decimal(300)),))
+    assert needs_attention(rows, inputs, candidates={}, today=TODAY).needs_camper == ()
+
+
+def test_a_family_camp_line_with_no_session_splits_across_the_households_family_camp_requests() -> None:
+    rows = build_register(_inputs(lines=(_fc_line(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS))
+    assert _one(rows, transaction_cm_id=9101).requests == (
+        RequestShare("req-fc-1", Decimal("150.00")),
+        RequestShare("req-fc-2", Decimal("150.00")),
+    )
+
+
+def test_a_family_camp_line_placed_on_a_person_still_lands_on_the_households_request() -> None:
+    placements = {9101: Placement(9101, 1050, FC2, "family_camp")}
+    rows = build_register(
+        _inputs(lines=(_fc_line(),), placements=placements, enrollments=FC_ENROLLED, requests=FC_REQUESTS)
+    )
+    row = _one(rows, transaction_cm_id=9101)
+    assert (row.person_cm_id, row.counts, row.requests) == (1050, True, (RequestShare("req-fc-2", Decimal(300)),))
+
+
+def test_a_family_camp_incentive_counts_but_never_reaches_the_bridge() -> None:
+    line = _fc_line(funder_type="incentive", source_family="jfam_incentive", attributed_session_cm_id=FC1)
+    rows = build_register(_inputs(lines=(line,), enrollments=FC_ENROLLED, requests=FC_REQUESTS))
+    assert _one(rows, transaction_cm_id=9101).counts is True
+    assert grant_inputs_by_request(rows) == {}
+
+
 # --- the calculator bridge ---------------------------------------------------------------
 
 
@@ -412,6 +582,8 @@ def test_the_python_twin_matches_every_entry_in_the_go_map() -> None:
     families = dict(re.findall(r'(programFamily\w+)\s*=\s*"([a-z_]+)"', go))
     body = go.split("var sessionTypeProgramFamily = map[string]string{", 1)[1].split("}", 1)[0]
     pairs = re.findall(r'^\s*("?[\w]+"?):\s*(programFamily\w+),', body, re.MULTILINE)
+    entries = [ln for ln in body.splitlines() if ln.strip() and not ln.strip().startswith("//")]
+    assert len(pairs) == len(entries), "an entry the pattern can't parse would be skipped silently"
     go_map = {constants.get(k, k.strip('"')): families[v] for k, v in pairs}
     assert go_map == dict(PROGRAM_FAMILY_BY_SESSION_TYPE)
 
@@ -442,6 +614,19 @@ def test_a_commitment_on_the_household_is_the_stronger_suggestion() -> None:
     s = need.suggestion
     assert s is not None
     assert (s.person_cm_id, s.basis, s.commitment_id, s.amount_matches) == (LIAM, "commitment", "com000000000001", True)
+
+
+def test_a_commitment_is_suggested_for_one_line_only() -> None:
+    """Owner ruling 2026-09-29 (item D3): offering one commitment as the suggestion for two lines
+    lets a single grant be confirmed twice. The second line falls back to Go's attribution."""
+    lines = (_line(9001), _line(9002))
+    needs = _attention(lines=lines, commitments=(_commitment(person_cm_id=LIAM),)).needs_camper
+    by_txn = {n.row.transaction_cm_id: n.suggestion for n in needs}
+    first, second = by_txn[9001], by_txn[9002]
+    assert first is not None
+    assert (first.basis, first.person_cm_id) == ("commitment", LIAM)
+    assert second is not None
+    assert (second.basis, second.person_cm_id) == ("attribution", EMMA)
 
 
 def test_a_line_with_no_inference_has_candidates_but_no_suggestion() -> None:
@@ -482,6 +667,7 @@ def test_unmapped_descriptions_group_their_live_lines() -> None:
 def test_an_unfulfilled_commitment_waits_with_its_age() -> None:
     (waiting,) = _attention(commitments=(_commitment(),)).waiting
     assert (waiting.row.commitment_id, waiting.days_waiting) == ("com000000000001", 40)
+    assert (waiting.reason, waiting.transaction_cm_id) == ("not_posted", 0)
 
 
 def test_days_waiting_never_goes_negative_for_a_future_committed_on() -> None:

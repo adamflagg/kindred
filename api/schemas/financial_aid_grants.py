@@ -78,7 +78,8 @@ class GrantorsResponse(BaseModel):
 
 # --- the register read (one aggregate for Grants, D21 / spec §10) -----------------------
 
-CamperBasis = Literal["ledger", "placed", "commitment", "none"]
+CamperBasis = Literal["ledger", "placed", "commitment", "household", "none"]
+WaitingReason = Literal["not_posted", "posted_then_reversed", "possible_match", "camper_cancelled"]
 
 
 class RequestShareOut(BaseModel):
@@ -88,8 +89,11 @@ class RequestShareOut(BaseModel):
 
 class GrantRowOut(BaseModel):
     """One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
-    posted. person_cm_id 0 = needs a camper. counts = it offsets awards (live, camper confirmed,
-    not a fulfilled commitment). requests = the aid requests it sits on; [] = didn't apply."""
+    posted. person_cm_id 0 = needs a camper, except camper_basis "household": a household
+    program's grant (Family Camp), which needs none. counts = a live grant with a confirmed camper
+    (or a household target), or an open commitment whose camper hasn't cancelled; whether it
+    reduces an award is the rules' call (offset_programs, incentive modes). requests = the aid
+    requests it sits on; [] = didn't apply."""
 
     kind: Literal["ledger", "commitment"]
     transaction_cm_id: int
@@ -141,7 +145,8 @@ class NeedsCamperOut(BaseModel):
 
 
 class UnmappedDescriptionOut(BaseModel):
-    """An outside description with live lines this season and no grantor (opens Money › Sources)."""
+    """A grant description (outside or incentive) with live lines this season and no grantor
+    (opens Money › Sources). An incentive description names a grantor too: JFAM is a grant."""
 
     source_id: str
     description_key: str
@@ -151,8 +156,13 @@ class UnmappedDescriptionOut(BaseModel):
 
 
 class WaitingCommitmentOut(BaseModel):
+    """A commitment still counting on its own, and why. transaction_cm_id is the line that shows it
+    (0 when there is none): a reversal of its grant, or a line that may be it."""
+
     grant: GrantRowOut
     days_waiting: int
+    reason: WaitingReason
+    transaction_cm_id: int
 
 
 class ExpectedOut(BaseModel):

@@ -4029,8 +4029,11 @@ export type GradeEnrollment = {
  * GrantRowOut
  *
  * One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
- * posted. person_cm_id 0 = needs a camper. counts = it offsets awards (live, camper confirmed,
- * not a fulfilled commitment). requests = the aid requests it sits on; [] = didn't apply.
+ * posted. person_cm_id 0 = needs a camper, except camper_basis "household": a household
+ * program's grant (Family Camp), which needs none. counts = a live grant with a confirmed camper
+ * (or a household target), or an open commitment whose camper hasn't cancelled; whether it
+ * reduces an award is the rules' call (offset_programs, incentive modes). requests = the aid
+ * requests it sits on; [] = didn't apply.
  */
 export type GrantRowOut = {
   /**
@@ -4064,7 +4067,7 @@ export type GrantRowOut = {
   /**
    * Camper Basis
    */
-  camper_basis: 'ledger' | 'placed' | 'commitment' | 'none'
+  camper_basis: 'ledger' | 'placed' | 'commitment' | 'household' | 'none'
   /**
    * Session Cm Id
    */
@@ -12013,7 +12016,8 @@ export type UnclassifiedSource = {
 /**
  * UnmappedDescriptionOut
  *
- * An outside description with live lines this season and no grantor (opens Money › Sources).
+ * A grant description (outside or incentive) with live lines this season and no grantor
+ * (opens Money › Sources). An incentive description names a grantor too: JFAM is a grant.
  */
 export type UnmappedDescriptionOut = {
   /**
@@ -12308,6 +12312,9 @@ export type VelocityResponse = {
 
 /**
  * WaitingCommitmentOut
+ *
+ * A commitment still counting on its own, and why. transaction_cm_id is the line that shows it
+ * (0 when there is none): a reversal of its grant, or a line that may be it.
  */
 export type WaitingCommitmentOut = {
   grant: GrantRowOut
@@ -12315,6 +12322,14 @@ export type WaitingCommitmentOut = {
    * Days Waiting
    */
   days_waiting: number
+  /**
+   * Reason
+   */
+  reason: 'not_posted' | 'posted_then_reversed' | 'possible_match' | 'camper_cancelled'
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
 }
 
 /**

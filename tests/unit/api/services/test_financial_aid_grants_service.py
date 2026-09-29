@@ -382,6 +382,7 @@ async def test_a_commitment_waits_with_its_days() -> None:
         40,
         "Liam Johnson",
     )
+    assert (waiting.reason, waiting.transaction_cm_id) == ("possible_match", 9001)  # the line on Emma
 
 
 # --- placements -----------------------------------------------------------------------
@@ -559,6 +560,35 @@ async def test_person_only_placement_infers_family_from_active_enrollments_only(
     (write,) = spy.writes
     assert write.data is not None
     assert write.data["program_family"] == "summer"
+
+
+@pytest.mark.asyncio
+async def test_a_person_only_placement_keeps_the_lines_program_when_the_camper_is_in_two() -> None:
+    """Owner ruling 2026-09-29 (report D4): a camper active in Summer and Quest gives no single
+    family, and "" would spread a Quest grant onto the Summer request too. The line's own program
+    wins when the camper is enrolled in it."""
+    repo = _place_repo(postings=[_posting(9001, 900, program_family="quest")])
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_attendee(1001, 1000101), _attendee(1001, 1000201, session_type="quest")]
+    )
+    service, spy = _service(repo)
+    await service.place(2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001}), ACTOR)
+    (write,) = spy.writes
+    assert write.data is not None
+    assert write.data["program_family"] == "quest"
+
+
+@pytest.mark.asyncio
+async def test_a_person_only_placement_stays_ambiguous_when_the_line_names_no_program_of_the_camper() -> None:
+    repo = _place_repo(postings=[_posting(9001, 900, program_family="teen")])
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_attendee(1001, 1000101), _attendee(1001, 1000201, session_type="quest")]
+    )
+    service, spy = _service(repo)
+    await service.place(2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001}), ACTOR)
+    (write,) = spy.writes
+    assert write.data is not None
+    assert write.data["program_family"] == ""
 
 
 @pytest.mark.asyncio

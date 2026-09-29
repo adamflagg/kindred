@@ -8,10 +8,14 @@ DERIVED here at read time, never copied. Kindred stores only what the ledger lac
   placement home (Decision 2). Go's attribution rules only SUGGEST a camper (D16); until a
   person confirms, the line counts toward nothing (Decision 3);
 * a grant committed but not yet posted: an aid_grants commitment (Decision 4). It counts until
-  a LIVE line from the same grantor, confirmed on the same camper, fulfils it; then the line
-  counts instead, never both. A reversed line never fulfils a commitment (controller ruling,
-  fix round 2, item 3): CampMinder corrects a posting by reversing it and reposting a fresh
-  line, so only the repost may close the commitment.
+  a line fulfils it by rule (owner rulings 2026-09-29, see _fulfilments); then the line counts
+  instead, never both. Anything short of the rule -- a reversed line, an unmapped description, a
+  sibling's line -- never closes a commitment on its own: the commitment keeps counting and waits
+  in Needs attention with that line as evidence, for a person to withdraw it or map the
+  description (D16).
+
+The target follows the program (owner ruling 2026-09-29): Family Camp aid requests belong to the
+household (person 0), so a Family Camp grant needs no camper and sits on the household's request.
 
 Expected grants (D56) are never grants: nothing here feeds them to the calculator.
 grant_inputs_by_request() is the calculator bridge SP10 wires in (Decision 5).
@@ -21,13 +25,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
 from typing import Final, Literal
 
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
-from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED
+from api.services.financial_aid_intake_types import PROGRAM_FAMILY_CAMP, STATUS_ACTIVE, STATUS_UNMATCHED
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from bunking.financial_aid.calculator import GrantInput
 
@@ -52,8 +56,11 @@ PROGRAM_FAMILY_BY_SESSION_TYPE: Final[Mapping[str, str]] = {
     "school": "family_school",
 }
 _CENT: Final = Decimal("0.01")
+# Programs whose aid requests are the household's, not a person's (intake: Family Camp is one
+# request per household). A grant for one of these needs no camper.
+HOUSEHOLD_PROGRAM_FAMILIES: Final = frozenset({PROGRAM_FAMILY_CAMP})
 
-CamperBasis = Literal["ledger", "placed", "commitment", "none"]
+CamperBasis = Literal["ledger", "placed", "commitment", "household", "none"]
 
 
 def program_family_for_session_type(session_type: str) -> str:
@@ -203,37 +210,47 @@ def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozens
 
 
 def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int, Commitment]:
-    """Decision 4: each open commitment, oldest first, is fulfilled by at most one line confirmed
-    on its camper, from its grantor or from a description that names no grantor yet (never both
-    counting): its own grantor before an unmapped one, then an equal amount, then the earliest
-    post. Only a LIVE, outside-funded line is a candidate (controller ruling, fix round 2, item 3
-    -- supersedes an earlier timing-based reversal rule): CampMinder corrects a posting by
-    reversing it and reposting a fresh line, so a reversed line must never fulfil a commitment --
-    with two same-grantor commitments on one camper, letting a reversed original close one while
-    the live repost closed the other counted $500 where $1,000 should. An unmapped INCENTIVE
-    (JFAM) line must likewise never fulfil an outside commitment, or the commitment stops counting
-    while the incentive itself is never fed to the calculator, and the grant is lost."""
+    """Decision 4 as the owner ruled it on 2026-09-29. Each open commitment, oldest first, is
+    fulfilled by at most one line that is:
+
+    * live -- a reversed line never fulfils (item A): CampMinder corrects a posting by reversing it
+      and reposting, so only the repost may close the commitment;
+    * outside-funded -- an incentive never reaches the calculator, so letting one close an outside
+      commitment would lose the grant;
+    * confirmed on the commitment's camper;
+    * from a description mapped to the commitment's own grantor -- never an unmapped one (item B);
+    * not in a different session, when both name one (item D2);
+    * posted on or after the commitment's committed_on (item D6): a commitment is for a grant not
+      yet posted (D55), so an earlier line is a different grant.
+
+    Candidates rank the same session first, then the earliest post, then an equal amount (item
+    D1: a later line can never take a commitment from an earlier one), then the transaction id."""
     taken: dict[int, Commitment] = {}
     pending = sorted((c for c in inputs.commitments if c.status == "open"), key=lambda c: (c.committed_on, c.id))
     for commitment in pending:
+        committed_on = commitment.committed_on.isoformat()
         candidates = [
-            line
+            (line, camper)
             for line, camper in zip(inputs.lines, campers, strict=True)
             if line.transaction_cm_id not in taken
             and not line.is_reversed
             and line.funder_type == "outside"
-            and camper.basis != "none"
+            and camper.person_cm_id > 0
             and camper.person_cm_id == commitment.person_cm_id
-            and inputs.grantor_by_source.get(line.source_key, "") in (commitment.grantor_key, "")
+            and inputs.grantor_by_source.get(line.source_key, "") == commitment.grantor_key
+            and not (
+                commitment.session_cm_id and camper.session_cm_id and camper.session_cm_id != commitment.session_cm_id
+            )
+            and line.post_date[:10] >= committed_on
         ]
         if candidates:
-            best = min(
+            best, _ = min(
                 candidates,
-                key=lambda ln: (
-                    inputs.grantor_by_source.get(ln.source_key, "") != commitment.grantor_key,
-                    ln.amount != commitment.amount,
-                    ln.post_date,
-                    ln.transaction_cm_id,
+                key=lambda pair: (
+                    bool(commitment.session_cm_id) and pair[1].session_cm_id != commitment.session_cm_id,
+                    pair[0].post_date,
+                    pair[0].amount != commitment.amount,
+                    pair[0].transaction_cm_id,
                 ),
             )
             taken[best.transaction_cm_id] = commitment
@@ -278,6 +295,26 @@ def _request_shares(
     return split_equally(amount, [r.id for r in sorted(mine, key=lambda r: (r.session_cm_id, r.id))])
 
 
+def _household_shares(
+    household: int,
+    session: int,
+    family: str,
+    amount: Decimal,
+    requests_by_household: Mapping[int, Sequence[RequestRef]],
+    session_families: Mapping[int, str],
+) -> tuple[RequestShare, ...]:
+    """The target follows the program: a household program's grant sits on the household's own
+    requests (person 0) -- that session's, else every one in the program -- split like any grant."""
+    mine = [
+        r
+        for r in requests_by_household.get(household, ())
+        if r.status in LIVE_REQUEST_STATUSES
+        and r.session_cm_id > 0
+        and (r.session_cm_id == session if session else session_families.get(r.session_cm_id) == family)
+    ]
+    return split_equally(amount, [r.id for r in sorted(mine, key=lambda r: (r.session_cm_id, r.id))])
+
+
 def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
     """Every grant line this season (live and reversed), then every open commitment no line has
     fulfilled. A withdrawn commitment is history (the change log), not a register row."""
@@ -285,10 +322,14 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
     for e in inputs.enrollments:
         by_person[e.person_cm_id].append(e)
     families = {(e.person_cm_id, e.session_cm_id): e.program_family for e in inputs.enrollments}
+    session_families = {e.session_cm_id: e.program_family for e in inputs.enrollments}
     requests_by_person: dict[int, list[RequestRef]] = defaultdict(list)
+    requests_by_household: dict[int, list[RequestRef]] = defaultdict(list)
     for r in inputs.requests:
         if r.person_cm_id > 0:
             requests_by_person[r.person_cm_id].append(r)
+        else:
+            requests_by_household[r.household_cm_id].append(r)
     enrolled = frozenset(by_person)
     campers = [_line_camper(ln, inputs.placements.get(ln.transaction_cm_id), enrolled) for ln in inputs.lines]
     fulfilled = _fulfilments(inputs, campers)
@@ -296,8 +337,17 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
     rows: list[RegisterRow] = []
     for line, camper in zip(inputs.lines, campers, strict=True):
         commitment = fulfilled.get(line.transaction_cm_id)
+        if commitment is not None and not camper.session_cm_id and commitment.session_cm_id:
+            # Item D2: the commitment knows the session the line doesn't name.
+            camper = replace(camper, session_cm_id=commitment.session_cm_id, program_family=commitment.program_family)
         family = _family(camper.person_cm_id, camper.session_cm_id, camper.program_family, families)
-        counts = not line.is_reversed and camper.person_cm_id > 0
+        household_target = (family or line.program_family) in HOUSEHOLD_PROGRAM_FAMILIES
+        if household_target:
+            family = family or line.program_family
+            session = camper.session_cm_id or line.attributed_session_cm_id
+            basis: CamperBasis = camper.basis if camper.basis != "none" else "household"
+            camper = replace(camper, session_cm_id=session, basis=basis)
+        counts = not line.is_reversed and (camper.person_cm_id > 0 or household_target)
         recorded_at = parse_pb_datetime(line.post_date)
         if commitment is not None and commitment.created is not None:
             if recorded_at is None or commitment.created < recorded_at:
@@ -325,11 +375,20 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                 counts=counts,
                 fulfils_commitment_id=commitment.id if commitment is not None else "",
                 requests=(
-                    _request_shares(
+                    ()
+                    if not counts
+                    else _household_shares(
+                        line.household_cm_id,
+                        camper.session_cm_id,
+                        family,
+                        line.amount,
+                        requests_by_household,
+                        session_families,
+                    )
+                    if household_target
+                    else _request_shares(
                         camper.person_cm_id, camper.session_cm_id, family, line.amount, requests_by_person, families
                     )
-                    if counts
-                    else ()
                 ),
             )
         )
@@ -338,6 +397,10 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
         if c.status != "open" or c.id in fulfilled_ids:
             continue
         family = _family(c.person_cm_id, c.session_cm_id, c.program_family, families)
+        # Item D5: cancelled is derived from enrollment (a rule, not an inference), so a commitment
+        # stops counting while every enrollment it covers is cancelled, as CampMinder reverses a
+        # posted grant; it waits for staff to withdraw it, and counts again on re-enrolment.
+        cancelled = _cancelled(c.person_cm_id, c.session_cm_id, family, by_person)
         rows.append(
             RegisterRow(
                 kind="commitment",
@@ -357,11 +420,15 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                 recorded_at=c.created,
                 is_reversed=False,
                 reversal_date="",
-                cancelled=_cancelled(c.person_cm_id, c.session_cm_id, family, by_person),
-                counts=True,
+                cancelled=cancelled,
+                counts=not cancelled,
                 fulfils_commitment_id="",
-                requests=_request_shares(
-                    c.person_cm_id, c.session_cm_id, family, c.amount, requests_by_person, families
+                requests=(
+                    ()
+                    if cancelled
+                    else _request_shares(
+                        c.person_cm_id, c.session_cm_id, family, c.amount, requests_by_person, families
+                    )
                 ),
             )
         )
@@ -416,10 +483,18 @@ class UnmappedDescription:
     amount: Decimal
 
 
+WaitingReason = Literal["not_posted", "posted_then_reversed", "possible_match", "camper_cancelled"]
+
+
 @dataclass(frozen=True)
 class WaitingCommitment:
+    """A commitment still counting on its own, with why (owner ruling 2026-09-29, item A): the
+    evidence line is transaction_cm_id (0 when there is none)."""
+
     row: RegisterRow
     days_waiting: int
+    reason: WaitingReason
+    transaction_cm_id: int
 
 
 @dataclass(frozen=True)
@@ -429,24 +504,18 @@ class NeedsAttention:
     waiting: tuple[WaitingCommitment, ...]
 
 
-def _suggest(line: GrantLine, grantor_key: str, open_commitments: Sequence[Commitment]) -> CamperSuggestion | None:
-    """A commitment from the same grantor on the same household is the strongest evidence (an
-    equal amount first); otherwise Go's attribution, when it placed the line on a person."""
-    same = [
-        c
-        for c in open_commitments
-        if grantor_key and c.grantor_key == grantor_key and c.household_cm_id == line.household_cm_id
-    ]
-    if same:
-        best = min(same, key=lambda c: (c.amount != line.amount, c.committed_on, c.id))
+def _suggest(line: GrantLine, commitment: Commitment | None) -> CamperSuggestion | None:
+    """The commitment assigned to this line is the strongest evidence; otherwise Go's attribution,
+    when it placed the line on a person."""
+    if commitment is not None:
         return CamperSuggestion(
-            best.person_cm_id,
-            best.session_cm_id,
-            best.program_family,
+            commitment.person_cm_id,
+            commitment.session_cm_id,
+            commitment.program_family,
             "commitment",
             "",
-            best.id,
-            best.amount == line.amount,
+            commitment.id,
+            commitment.amount == line.amount,
         )
     if line.attributed_person_cm_id > 0:
         return CamperSuggestion(
@@ -459,6 +528,67 @@ def _suggest(line: GrantLine, grantor_key: str, open_commitments: Sequence[Commi
             False,
         )
     return None
+
+
+def _suggested_commitments(
+    rows: Sequence[RegisterRow], lines: Mapping[int, GrantLine], open_commitments: Sequence[Commitment]
+) -> dict[int, Commitment]:
+    """Item D3: each open commitment is offered to one line only -- its best line needing a camper
+    from the same grantor in the same household (an equal amount, then the earliest post) -- so a
+    single grant can't be confirmed twice."""
+    assigned: dict[int, Commitment] = {}
+    for c in sorted(open_commitments, key=lambda c: (c.committed_on, c.id)):
+        same = [
+            lines[r.transaction_cm_id]
+            for r in rows
+            if r.transaction_cm_id not in assigned
+            and r.grantor_key
+            and r.grantor_key == c.grantor_key
+            and r.household_cm_id == c.household_cm_id
+        ]
+        if same:
+            best = min(same, key=lambda ln: (ln.amount != c.amount, ln.post_date, ln.transaction_cm_id))
+            assigned[best.transaction_cm_id] = c
+    return assigned
+
+
+def _waiting_reason(
+    commitment: Commitment, row: RegisterRow, ledger_rows: Sequence[RegisterRow]
+) -> tuple[WaitingReason, int]:
+    """Why a commitment still counts on its own (item A), with the line that shows it."""
+    if row.cancelled:
+        return "camper_cancelled", 0
+    created = commitment.created
+    reversed_after = [
+        r
+        for r in ledger_rows
+        if r.is_reversed
+        and r.person_cm_id == commitment.person_cm_id
+        and r.grantor_key == commitment.grantor_key
+        and created is not None
+        and (reversal := parse_pb_datetime(r.reversal_date)) is not None
+        and reversal >= created
+    ]
+    if reversed_after:
+        return "posted_then_reversed", min(reversed_after, key=lambda r: r.transaction_cm_id).transaction_cm_id
+    possible = [
+        r
+        for r in ledger_rows
+        if not r.is_reversed
+        and r.funder_type == "outside"
+        and not r.fulfils_commitment_id
+        and (
+            (r.person_cm_id == commitment.person_cm_id and r.grantor_key in (commitment.grantor_key, ""))
+            or (
+                r.person_cm_id != commitment.person_cm_id
+                and r.grantor_key == commitment.grantor_key
+                and r.household_cm_id == commitment.household_cm_id
+            )
+        )
+    ]
+    if possible:
+        return "possible_match", min(possible, key=lambda r: (r.recorded_on, r.transaction_cm_id)).transaction_cm_id
+    return "not_posted", 0
 
 
 def needs_attention(
@@ -476,15 +606,21 @@ def needs_attention(
     fulfilled = {r.fulfils_commitment_id for r in rows if r.fulfils_commitment_id}
     open_commitments = [c for c in inputs.commitments if c.status == "open" and c.id not in fulfilled]
 
+    # A household program's line (Family Camp) needs no camper: it sits on the household's request.
+    need_rows = [
+        row
+        for row in rows
+        if row.kind == "ledger" and not row.is_reversed and row.person_cm_id == 0 and row.camper_basis != "household"
+    ]
+    suggested = _suggested_commitments(need_rows, lines, open_commitments)
     needs = [
         NeedsCamper(
             row=row,
             household_applied=row.household_cm_id in applied,
-            suggestion=_suggest(lines[row.transaction_cm_id], row.grantor_key, open_commitments),
+            suggestion=_suggest(lines[row.transaction_cm_id], suggested.get(row.transaction_cm_id)),
             candidates=tuple(candidates.get(row.household_cm_id, ())),
         )
-        for row in rows
-        if row.kind == "ledger" and not row.is_reversed and row.person_cm_id == 0
+        for row in need_rows
     ]
     needs.sort(key=lambda n: (not n.household_applied, -n.row.amount, n.row.transaction_cm_id))
 
@@ -497,10 +633,16 @@ def needs_attention(
         key=lambda u: (-u.amount, u.source_key),
     )
 
+    commitments = {c.id: c for c in inputs.commitments}
+    ledger_rows = [r for r in rows if r.kind == "ledger"]
     waiting = sorted(
         (
             # Ruling (item 5): never negative -- a future committed_on (a pre-dated pledge) waits 0.
-            WaitingCommitment(row, max(0, (today - date.fromisoformat(row.recorded_on)).days))
+            WaitingCommitment(
+                row,
+                max(0, (today - date.fromisoformat(row.recorded_on)).days),
+                *_waiting_reason(commitments[row.commitment_id], row, ledger_rows),
+            )
             for row in rows
             if row.kind == "commitment"
         ),
