@@ -23,7 +23,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
+from typing import Any, Final
 
 from api.schemas.financial_aid import (
     AidLikeOutside,
@@ -59,6 +59,10 @@ _ZERO = Decimal(0)
 _WHITESPACE = re.compile(r"\s+")
 _HYPHEN = re.compile(r"\s*-\s*")
 _DASHES = str.maketrans({"–": "-", "—": "-", "−": "-"})  # en, em, minus
+
+# The funder types whose aid_postings lines are grants (D55): outside grants and funds, and
+# family incentives (JFAM). The camp's own aid is "camp"; an unclassified line is "unknown".
+GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
 
 
 class FinancialAidNotFoundError(FinancialAidError, LookupError):
@@ -235,7 +239,7 @@ def source_row(s: Any) -> AidSourceRow:
         funder_type=str(s.funder_type),
         counts_as_aid=bool(s.counts_as_aid),
         counts_toward_budget=bool(s.counts_toward_budget),
-        full_coverage=bool(s.full_coverage),
+        grantor_key=str(getattr(s, "grantor_key", "") or ""),
         implied_program_families=list(s.implied_program_families or []),
         classified_by=str(s.classified_by),
         note=str(s.note or ""),

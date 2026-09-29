@@ -40,6 +40,7 @@ from api.schemas.financial_aid import (
     OverrideBulkLoad,
     ProgramBucket,
     SourceFamily,
+    SourceGrantorIn,
     SummaryResponse,
 )
 from api.schemas.financial_aid_grants import GrantorCreate, GrantorOut, GrantorSave, GrantorsResponse
@@ -378,6 +379,14 @@ async def list_sources(user: AuthUser = _VIEW) -> AidSourcesResponse:
 async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser = _RULES) -> AidSourceRow:
     try:
         return await _writes().classify_source(source_id, body, user.email)
+    except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
+        raise _http(exc) from exc
+
+
+@router.put("/sources/{source_id}/grantor", response_model=AidSourceRow)
+async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _RULES) -> AidSourceRow:
+    try:
+        return await _writes().map_source_grantor(source_id, body, user.email)
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 

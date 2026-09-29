@@ -243,9 +243,10 @@ def test_counts_toward_budget_requires_counts_as_aid() -> None:
         AidSourceUpdate(**base, counts_as_aid=False, counts_toward_budget=True)
 
 
-def test_full_coverage_is_an_outside_source_attribute() -> None:
+def test_full_coverage_is_not_a_source_attribute() -> None:
+    """Owner ruling 2026-09-28: full_coverage is a grantor fact on aid_grantors now. A client
+    still sending it on a classification is refused, not silently ignored."""
     base = {"source_name": "X", "counts_as_aid": True, "counts_toward_budget": False, "note": "n"}
-    assert AidSourceUpdate(**base, source_family="other_outside", funder_type="outside").full_coverage is False
-    assert AidSourceUpdate(**base, source_family="other_outside", funder_type="outside", full_coverage=True)
+    assert not hasattr(AidSourceUpdate(**base, source_family="other_outside", funder_type="outside"), "full_coverage")
     with pytest.raises(ValidationError):
-        AidSourceUpdate(**base, source_family="camp_fa", funder_type="camp", full_coverage=True)
+        AidSourceUpdate(**base, source_family="other_outside", funder_type="outside", full_coverage=True)  # type: ignore[call-arg]
