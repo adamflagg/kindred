@@ -156,7 +156,7 @@ class RegisterRow:
     transaction_cm_id: int  # 0 for a commitment
     commitment_id: str  # "" for a ledger line
     household_cm_id: int
-    person_cm_id: int  # 0 while a ledger line needs a camper
+    person_cm_id: int  # 0 while a ledger line needs a camper, or when it sits on the household
     camper_basis: CamperBasis
     session_cm_id: int
     program_family: str
@@ -230,12 +230,23 @@ def _fulfilments(
     Candidates rank the same session first, then the earliest post, then an equal amount (item
     D1: a later line can never take a commitment from an earlier one), then the transaction id."""
     taken: dict[int, Commitment] = {}
+    # A household program's line sits on Go's attributed session when no camper names one
+    # (build_register), so that is the session it pairs by.
+    lines = [
+        (
+            line,
+            camper
+            if camper.session_cm_id or line.transaction_cm_id not in household_lines
+            else replace(camper, session_cm_id=line.attributed_session_cm_id),
+        )
+        for line, camper in zip(inputs.lines, campers, strict=True)
+    ]
     pending = sorted((c for c in inputs.commitments if c.status == "open"), key=lambda c: (c.committed_on, c.id))
     for commitment in pending:
         committed_on = commitment.committed_on.isoformat()
         candidates = [
             (line, camper)
-            for line, camper in zip(inputs.lines, campers, strict=True)
+            for line, camper in lines
             if line.transaction_cm_id not in taken
             and not line.is_reversed
             and line.funder_type == "outside"
@@ -552,16 +563,23 @@ def _suggested_commitments(
 ) -> dict[int, Commitment]:
     """Item D3: each open commitment is offered to one line only -- its best line needing a camper
     from the same grantor in the same household (an equal amount, then the earliest post) -- so a
-    single grant can't be confirmed twice."""
+    single grant can't be confirmed twice. It is offered only to a line that, once confirmed, could
+    fulfil it (_fulfilments): an outside line posted on or after committed_on. A household
+    program's commitment is never offered: its lines need no camper."""
     assigned: dict[int, Commitment] = {}
     for c in sorted(open_commitments, key=lambda c: (c.committed_on, c.id)):
+        if c.program_family in HOUSEHOLD_PROGRAM_FAMILIES:
+            continue
+        committed_on = c.committed_on.isoformat()
         same = [
             lines[r.transaction_cm_id]
             for r in rows
             if r.transaction_cm_id not in assigned
+            and r.funder_type == "outside"
             and r.grantor_key
             and r.grantor_key == c.grantor_key
             and r.household_cm_id == c.household_cm_id
+            and r.recorded_on >= committed_on
         ]
         if same:
             best = min(same, key=lambda ln: (ln.amount != c.amount, ln.post_date, ln.transaction_cm_id))
@@ -572,15 +590,26 @@ def _suggested_commitments(
 def _waiting_reason(
     commitment: Commitment, row: RegisterRow, ledger_rows: Sequence[RegisterRow]
 ) -> tuple[WaitingReason, int]:
-    """Why a commitment still counts on its own (item A), with the line that shows it."""
+    """Why a commitment still counts on its own (item A), with the line that shows it. A household
+    program's commitment is matched to the household's lines in that program, which name no
+    camper; any other commitment to its camper's lines."""
     if row.cancelled:
         return "camper_cancelled", 0
+    if row.program_family in HOUSEHOLD_PROGRAM_FAMILIES:
+
+        def on_target(r: RegisterRow) -> bool:
+            return r.household_cm_id == commitment.household_cm_id and r.program_family in HOUSEHOLD_PROGRAM_FAMILIES
+    else:
+
+        def on_target(r: RegisterRow) -> bool:
+            return r.person_cm_id == commitment.person_cm_id
+
     created = commitment.created
     reversed_after = [
         r
         for r in ledger_rows
         if r.is_reversed
-        and r.person_cm_id == commitment.person_cm_id
+        and on_target(r)
         and r.grantor_key == commitment.grantor_key
         and created is not None
         and (reversal := parse_pb_datetime(r.reversal_date)) is not None
@@ -595,9 +624,9 @@ def _waiting_reason(
         and r.funder_type == "outside"
         and not r.fulfils_commitment_id
         and (
-            (r.person_cm_id == commitment.person_cm_id and r.grantor_key in (commitment.grantor_key, ""))
+            (on_target(r) and r.grantor_key in (commitment.grantor_key, ""))
             or (
-                r.person_cm_id != commitment.person_cm_id
+                not on_target(r)
                 and r.grantor_key == commitment.grantor_key
                 and r.household_cm_id == commitment.household_cm_id
             )

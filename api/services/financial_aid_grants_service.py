@@ -219,13 +219,14 @@ def _commitment_out(record_id: str, year: int, fields: dict[str, Any], status: s
 
 
 def _program_family(enrolled: Sequence[Enrollment], session_cm_id: int | None) -> str | None:
-    """The program-family rule place() and _commitment_fields() share exactly (Ruling 1/2): an
+    """The program-family rule place() and _commitment_fields() share (Ruling 1/2): an
     explicit session accepts an enrollment of ANY status -- a grant or commitment may belong to a
     session the camper later cancelled -- and takes that session's family. With no session, only
     ACTIVE enrollments (ACTIVE_ENROLLED_STATUS_ID) count toward the family, and only when they all
     name one: a cancelled enrollment in a different program family must never manufacture an
     ambiguous "". Returns None only when an explicit session names no enrollment at all; the
-    caller raises with its own message (the two callers' wording differs)."""
+    caller raises with its own message (the two callers' wording differs). place() alone then
+    breaks a "" with the line's own program (owner ruling 2026-09-29); a commitment has no line."""
     if session_cm_id is not None:
         match = next((e for e in enrolled if e.session_cm_id == session_cm_id), None)
         return match.program_family if match is not None else None
@@ -532,7 +533,8 @@ class GrantsService:
         (Decision 2). Every placement is checked before anything is written (Decision 11).
 
         Family membership and program-family resolution follow `_family_members` and
-        `_program_family` exactly (Ruling 1/2) -- the same rules `_commitment_fields` uses.
+        `_program_family` (Ruling 1/2) -- the same rules `_commitment_fields` uses -- except that a
+        person-only placement whose camper names no single family keeps the line's own program.
         """
         lines = {int(p.transaction_cm_id): p for p in await self.repo.fetch_grant_postings(year) if not p.is_reversed}
         for p in body.placements:

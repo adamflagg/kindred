@@ -559,6 +559,22 @@ def test_a_household_level_family_camp_line_fulfils_the_households_family_camp_c
     assert rows[0].fulfils_commitment_id == "com-fc"
 
 
+def test_a_family_camp_line_in_another_session_never_fulfils_the_households_commitment() -> None:
+    """Item D2 for a household program: the line's session is Go's attribution (the session it sits
+    on), so a line for the second weekend never closes a commitment for the first."""
+    rows = build_register(
+        _inputs(
+            lines=(_fc_line(attributed_session_cm_id=FC2),),
+            commitments=(_fc_commitment(session_cm_id=FC1),),
+            enrollments=FC_ENROLLED,
+            requests=FC_REQUESTS,
+        )
+    )
+    assert _one(rows, kind="ledger").requests == (RequestShare("req-fc-2", Decimal(300)),)
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+    assert _one(rows, kind="commitment").requests == (RequestShare("req-fc-1", Decimal(500)),)
+
+
 def test_a_family_camp_line_never_fulfils_a_summer_commitment_in_the_household() -> None:
     rows = build_register(
         _inputs(lines=(_fc_line(),), commitments=(_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS)
@@ -658,6 +674,46 @@ def test_a_commitment_is_suggested_for_one_line_only() -> None:
     assert (first.basis, first.person_cm_id) == ("commitment", LIAM)
     assert second is not None
     assert (second.basis, second.person_cm_id) == ("attribution", EMMA)
+
+
+def test_a_family_camp_commitment_is_never_suggested_for_a_line_needing_a_camper() -> None:
+    """A Family Camp commitment pairs only with a household-level Family Camp line, and those never
+    need a camper; offering it to a summer line would place that line as Family Camp."""
+    needs = _attention(
+        lines=(_line(),), commitments=(_fc_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS
+    ).needs_camper
+    (need,) = needs
+    assert need.suggestion is not None
+    assert need.suggestion.basis == "attribution"
+
+
+def test_a_line_posted_before_the_commitment_is_never_its_suggestion() -> None:
+    """Item D6: a line posted before committed_on is a different grant, so confirming it would never
+    close the commitment. The line falls back to Go's attribution."""
+    commitment = _commitment(person_cm_id=LIAM, committed_on=date(2031, 2, 15))
+    (need,) = _attention(lines=(_line(),), commitments=(commitment,)).needs_camper
+    assert need.suggestion is not None
+    assert (need.suggestion.basis, need.suggestion.person_cm_id) == ("attribution", EMMA)
+
+
+def test_a_family_camp_commitment_whose_household_line_was_reversed_waits_as_posted_then_reversed() -> None:
+    """Item A for a household program: the Family Camp line sits on the household (person 0), so the
+    evidence is matched by household, not by the commitment's camper."""
+    line = _fc_line(is_reversed=True, reversal_date="2031-02-20 17:00:00.000Z")
+    (waiting,) = _attention(
+        lines=(line,), commitments=(_fc_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS
+    ).waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("posted_then_reversed", 9101)
+
+
+def test_an_unmapped_family_camp_line_is_a_possible_match_for_the_households_commitment() -> None:
+    """Item B for a household program: an unmapped household-level Family Camp line never fulfils the
+    commitment but is shown beside it, as it would be on the camper for a summer commitment."""
+    line = _fc_line(source_key=OTHER)
+    (waiting,) = _attention(
+        lines=(line,), commitments=(_fc_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS
+    ).waiting
+    assert (waiting.reason, waiting.transaction_cm_id) == ("possible_match", 9101)
 
 
 def test_a_line_with_no_inference_has_candidates_but_no_suggestion() -> None:
