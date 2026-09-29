@@ -39,8 +39,10 @@ from api.schemas.financial_aid import (
     HouseholdLinkRow,
     LoadRejection,
     OverrideBulkLoad,
+    SourceGrantorIn,
 )
 from api.services.financial_aid_ledger_service import (
+    GRANT_FUNDER_TYPES,
     FinancialAidNotFoundError,
     FinancialAidValidationError,
     normalize_aid_label,
@@ -65,7 +67,6 @@ SOURCE_FIELDS = (
     "funder_type",
     "counts_as_aid",
     "counts_toward_budget",
-    "full_coverage",
     "implied_program_families",
     "classified_by",
     "note",
@@ -165,9 +166,15 @@ class FinancialAidWriteService:
         patch = body.model_dump()
         patch["implied_program_families"] = sorted(set(body.implied_program_families))
         patch["classified_by"] = "staff"
+        current_grantor_key = str(getattr(current, "grantor_key", "") or "")
+        # A grantor is named only by an outside grant or incentive description (D58): reclassifying
+        # one as the camp's own aid (or back to unknown) drops its grantor in the same write.
+        if current_grantor_key and body.funder_type not in GRANT_FUNDER_TYPES:
+            patch["grantor_key"] = ""
         before = _snapshot(current, SOURCE_FIELDS)
         # An unset json field reads back as None; [] is the same classification, not a change to log.
         before["implied_program_families"] = list(before["implied_program_families"] or [])
+        before["grantor_key"] = current_grantor_key
         after = {**before, **patch}
         if _unchanged(before, after):
             return source_row(current)  # nothing to write, nothing to log
@@ -188,6 +195,43 @@ class FinancialAidWriteService:
                 id=source_id, description_key=current.description_key, description=current.description, **after
             )
         )
+
+    async def map_source_grantor(self, source_id: str, body: SourceGrantorIn, actor: str) -> AidSourceRow:
+        """Names (or clears) the grantor a CampMinder description belongs to (spec §8.2, D58).
+        Writes only grantor_key: classified_by stays as it was, so a config-file description keeps
+        its classification from the file (Decision 9)."""
+        current = await self.repo.get_source(source_id)
+        if current is None:
+            raise FinancialAidNotFoundError(f"aid source {source_id} not found")
+        key = body.grantor_key or ""
+        if key:
+            if str(current.funder_type) not in GRANT_FUNDER_TYPES:
+                raise FinancialAidValidationError(
+                    "only an outside grant or incentive description names a grantor; classify it first"
+                )
+            if await self.repo.get_grantor(key) is None:
+                raise FinancialAidNotFoundError(f"grantor {key!r} not found")
+        fields = {f: getattr(current, f, None) for f in SOURCE_FIELDS}
+        before = {"grantor_key": str(getattr(current, "grantor_key", "") or "")}
+        row = SimpleNamespace(
+            id=source_id, description_key=current.description_key, description=current.description, **fields
+        )
+        if before["grantor_key"] == key:
+            return source_row(SimpleNamespace(**vars(row), grantor_key=key))  # nothing to write, nothing to log
+        season = await current_season_year(self.repo.pb)
+        write = AidWrite(
+            collection=AID_SOURCES,
+            action="update",
+            year=season,
+            record_id=source_id,
+            before=before,
+            data={"grantor_key": key},
+            log_action="map_grantor",
+        )
+        await asyncio.to_thread(
+            commit_aid_writes, self.repo.pb, [write], actor=actor, reason=body.note, require_reason=True
+        )
+        return source_row(SimpleNamespace(**vars(row), grantor_key=key))
 
     async def create_link(self, body: HouseholdLinkCreate, actor: str) -> HouseholdLinkRow:
         rows = await self.repo.fetch_links(body.year)

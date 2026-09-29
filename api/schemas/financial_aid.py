@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 ProgramFamily = Literal["summer", "quest", "teen", "bmitzvah", "family_camp", "adult_weekend", "family_school", "other"]
 # A posting's reporting bucket: its program family, or "ambiguous" (placed on a
@@ -281,7 +281,7 @@ class AidSourceRow(BaseModel):
     funder_type: str
     counts_as_aid: bool
     counts_toward_budget: bool
-    full_coverage: bool
+    grantor_key: str
     implied_program_families: list[str]
     classified_by: str
     note: str
@@ -292,28 +292,42 @@ class AidSourcesResponse(BaseModel):
 
 
 class AidSourceUpdate(BaseModel):
-    """A staff classification. Only the camp's own aid (camp_fa) may count toward
-    the budget: every outside grant and fund is external to it. full_coverage
-    marks an outside full-ride source (it pays a family's whole session)."""
+    """A staff classification. Only the camp's own aid (camp_fa) may count toward the budget:
+    every outside grant and fund is external to it. full_coverage is NOT here: it is a grantor
+    fact on aid_grantors (owner ruling 2026-09-28), and an unknown field is refused so a stale
+    client can't believe it set one."""
+
+    model_config = ConfigDict(extra="forbid")
 
     source_name: str = Field(min_length=1, max_length=200)
     source_family: ClassifiedSourceFamily
     funder_type: FunderType
     counts_as_aid: bool
     counts_toward_budget: bool
-    full_coverage: bool = False
     implied_program_families: list[ProgramFamily] = Field(default_factory=list)
     note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
     @model_validator(mode="after")
-    def _budget_and_full_coverage(self) -> AidSourceUpdate:
+    def _budget(self) -> AidSourceUpdate:
         if self.counts_toward_budget and self.source_family != "camp_fa":
             raise ValueError("only the camp's own aid (camp_fa) may count toward the budget")
         if self.counts_toward_budget and not self.counts_as_aid:
             raise ValueError("counts_toward_budget requires counts_as_aid")
-        if self.full_coverage and self.funder_type == "camp":
-            raise ValueError("full_coverage marks an outside full-ride source, not the camp's own aid")
         return self
+
+
+class SourceGrantorIn(BaseModel):
+    """Names the description's grantor (D58: descriptions map to grantors through aid_sources, the
+    one registry); None unmaps it. Staff data: the config file never writes or clears it, and
+    naming a grantor doesn't take the description's classification away from the file."""
+
+    grantor_key: (
+        Annotated[
+            str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60, pattern=r"^[a-z][a-z0-9_]*$")
+        ]
+        | None
+    )
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
 class HouseholdLinkCreate(BaseModel):

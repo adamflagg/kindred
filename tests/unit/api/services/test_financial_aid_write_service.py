@@ -21,6 +21,7 @@ from api.schemas.financial_aid import (
     HouseholdLinkCreate,
     OverrideBulkLoad,
     OverrideRow,
+    SourceGrantorIn,
 )
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from api.services.financial_aid_write_service import FinancialAidWriteService
@@ -45,7 +46,7 @@ def _source(**kw: Any) -> SimpleNamespace:
         "funder_type": "unknown",
         "counts_as_aid": False,
         "counts_toward_budget": False,
-        "full_coverage": False,
+        "grantor_key": "",
         "implied_program_families": [],
         "classified_by": "unclassified",
         "note": "",
@@ -178,9 +179,8 @@ async def test_the_write_and_its_log_row_go_in_one_batch_with_only_the_changed_f
     assert len(log["operation_id"]) == 15
     assert log["before"]["classified_by"] == "unclassified"
     assert log["after"]["classified_by"] == "staff"
-    # counts_toward_budget and full_coverage stayed False: not logged.
+    # counts_toward_budget stayed False: not logged.
     assert "counts_toward_budget" not in log["after"]
-    assert "full_coverage" not in log["after"]
 
 
 @pytest.mark.asyncio
@@ -662,3 +662,91 @@ def test_a_blank_override_load_reason_is_still_refused_at_the_schema() -> None:
         OverrideBulkLoad(
             year=2026, source="staff", reason="   ", rows=[OverrideRow(transaction_cm_id=9001, program_family="summer")]
         )
+
+
+# --- a description names its grantor (sub-project 6-core) ------------------------
+
+
+def _mapping(key: str | None = "regional_fund", note: str = "Grantor list, finance") -> SourceGrantorIn:
+    return SourceGrantorIn(grantor_key=key, note=note)
+
+
+def _mapping_repo(source: SimpleNamespace, grantor: SimpleNamespace | None = None) -> MagicMock:
+    repo = MagicMock()
+    repo.get_source = AsyncMock(return_value=source)
+    repo.get_grantor = AsyncMock(return_value=grantor)
+    return repo
+
+
+_GRANTOR = SimpleNamespace(id="gra000000000001", key="regional_fund", name="Regional Fund")
+
+
+@pytest.mark.asyncio
+async def test_mapping_a_description_to_a_grantor_writes_only_grantor_key() -> None:
+    source = _source(
+        source_family="other_outside", funder_type="outside", counts_as_aid=True, classified_by="config_file"
+    )
+    service, spy = _service(_mapping_repo(source, _GRANTOR))
+    out = await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert out.grantor_key == "regional_fund"
+    assert out.classified_by == "config_file"  # the file keeps managing it
+    (write,) = spy.writes
+    assert write.collection == "aid_sources"
+    assert write.data == {"grantor_key": "regional_fund"}
+    assert write.log_action == "map_grantor"
+    assert spy.kwargs["reason"] == "Grantor list, finance"
+    assert spy.kwargs["require_reason"] is True
+
+
+@pytest.mark.asyncio
+async def test_unmapping_a_description_clears_its_grantor() -> None:
+    source = _source(funder_type="outside", counts_as_aid=True, grantor_key="regional_fund")
+    service, spy = _service(_mapping_repo(source))
+    out = await service.map_source_grantor(SOURCE_ID, _mapping(None), ACTOR)
+    assert out.grantor_key == ""
+    assert spy.writes[0].data == {"grantor_key": ""}
+
+
+@pytest.mark.asyncio
+async def test_mapping_to_the_grantor_it_already_names_writes_nothing() -> None:
+    source = _source(funder_type="outside", counts_as_aid=True, grantor_key="regional_fund")
+    service, spy = _service(_mapping_repo(source, _GRANTOR))
+    await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert not spy.commit.called
+
+
+@pytest.mark.asyncio
+async def test_mapping_to_an_unknown_grantor_is_not_found() -> None:
+    service, spy = _service(_mapping_repo(_source(funder_type="outside"), None))
+    with pytest.raises(FinancialAidNotFoundError, match="grantor"):
+        await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert not spy.commit.called
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("funder", ["camp", "unknown"])
+async def test_only_an_outside_or_incentive_description_names_a_grantor(funder: str) -> None:
+    service, spy = _service(_mapping_repo(_source(funder_type=funder), _GRANTOR))
+    with pytest.raises(FinancialAidValidationError, match="outside grant or incentive"):
+        await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert not spy.commit.called
+
+
+@pytest.mark.asyncio
+async def test_reclassifying_a_mapped_description_as_camp_aid_clears_its_grantor() -> None:
+    source = _source(
+        source_family="other_outside", funder_type="outside", counts_as_aid=True, grantor_key="regional_fund"
+    )
+    service, spy = _service(_mapping_repo(source))
+    body = AidSourceUpdate(
+        source_name="Camp aid",
+        source_family="camp_fa",
+        funder_type="camp",
+        counts_as_aid=True,
+        counts_toward_budget=True,
+        note="It was the camp's own aid",
+    )
+    out = await service.classify_source(SOURCE_ID, body, ACTOR)
+    assert out.grantor_key == ""
+    assert spy.writes[0].data is not None
+    assert spy.writes[0].data["grantor_key"] == ""

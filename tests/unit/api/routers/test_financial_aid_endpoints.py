@@ -1,5 +1,5 @@
 """Campership ledger endpoints (sub-project 4): the permission matrix for all
-thirteen routes over SP2's five personas, and the service-error mapping.
+fourteen routes over SP2's five personas, and the service-error mapping.
 Builds a bare FastAPI app (SP2's persona_client) rather than importing api.main,
 which poisons auth for xdist."""
 
@@ -39,7 +39,7 @@ SOURCE = AidSourceRow(
     funder_type="outside",
     counts_as_aid=True,
     counts_toward_budget=False,
-    full_coverage=False,
+    grantor_key="",
     implied_program_families=[],
     classified_by="staff",
     note="n",
@@ -89,6 +89,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("GET", "/api/financial-aid/flag-dispositions?year=2026", None, VIEW, 200),
     ("POST", "/api/financial-aid/flag-dispositions/bulk", DISPOSITION_BODY, RULES, 200),
     ("DELETE", "/api/financial-aid/flag-dispositions/d1?reason=wrong%20posting", None, RULES, 204),
+    ("PUT", "/api/financial-aid/sources/src1/grantor", {"grantor_key": "regional_fund", "note": "n"}, RULES, 200),
 ]
 
 
@@ -142,6 +143,7 @@ def _stub_services() -> tuple[Any, Any]:
     ledger.return_value.dispositions = AsyncMock(return_value=DispositionsResponse(year=2026, dispositions=[]))
     writes = patch("api.routers.financial_aid.FinancialAidWriteService").start()
     writes.return_value.classify_source = AsyncMock(return_value=SOURCE)
+    writes.return_value.map_source_grantor = AsyncMock(return_value=SOURCE)
     writes.return_value.create_link = AsyncMock(return_value=LINK)
     writes.return_value.delete_link = AsyncMock(return_value=None)
     writes.return_value.load_overrides = AsyncMock(return_value=BulkLoadResult(year=2026, dry_run=False))

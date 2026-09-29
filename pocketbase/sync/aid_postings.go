@@ -278,10 +278,11 @@ func (s *AidPostingsSync) applySourceClasses(
 		if view != nil && view.Record != nil {
 			rec = view.Record
 		}
+		// grantor_key is staff data (FastAPI's PUT /sources/{id}/grantor), never in this
+		// map, so re-applying the file never clears a description's grantor.
 		data := map[string]any{
 			"description_key": key, "source_name": c.SourceName, "source_family": c.SourceFamily,
 			"funder_type": c.FunderType, "counts_as_aid": c.CountsAsAid, "counts_toward_budget": c.CountsTowardBudget,
-			"full_coverage":            c.FullCoverage,
 			"implied_program_families": c.ImpliedFamilies, "classified_by": aidClassifiedConfigFile,
 		}
 		if rec.GetString("description") == "" {

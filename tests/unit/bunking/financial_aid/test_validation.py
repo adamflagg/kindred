@@ -329,6 +329,15 @@ def test_grants_may_offset_only_known_programs() -> None:
     assert "unknown_program" in validate_rules(rules).codes()
 
 
+def test_count_when_received_is_an_error_while_receipts_are_parked() -> None:
+    """Spec §13 / D55: no grant is ever recorded as received, so "received" would drop every grant."""
+    rules = fictional_rules()
+    received = rules.model_copy(update={"grants": rules.grants.model_copy(update={"count_when": "received"})})
+    report = validate_rules(received)
+    assert "grants_count_when_received" in {i.code for i in report.errors}
+    assert "grants_count_when_received" not in validate_rules(rules).codes()
+
+
 # --- cost -----------------------------------------------------------------------------
 
 

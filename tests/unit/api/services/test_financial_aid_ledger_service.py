@@ -79,7 +79,7 @@ def _source(
         funder_type="camp" if family == "camp_fa" else "outside",
         counts_as_aid=aid,
         counts_toward_budget=budget,
-        full_coverage=False,
+        grantor_key="",
         implied_program_families=[],
         classified_by=classified_by,
         note="",

@@ -15,7 +15,7 @@ const aidSourcesFixture = `{"sources": [
    "funder_type": "incentive", "counts_as_aid": true, "counts_toward_budget": false,
    "implied_program_families": ["family_camp"]},
   {"description": "Regional Grant- North", "source_name": "Regional grant (north)", "source_family": "other_outside",
-   "funder_type": "outside", "counts_as_aid": true, "counts_toward_budget": false, "full_coverage": true,
+   "funder_type": "outside", "counts_as_aid": true, "counts_toward_budget": false,
    "implied_program_families": ["teen", "summer"]}
 ]}`
 
@@ -31,7 +31,7 @@ func TestParseAidSourcesConfig(t *testing.T) {
 	}
 	want := aidSourceClass{Key: "regional grant - north", Description: "Regional Grant- North",
 		SourceName: "Regional grant (north)", SourceFamily: "other_outside", FunderType: "outside",
-		CountsAsAid: true, FullCoverage: true, ImpliedFamilies: []string{"summer", "teen"}}
+		CountsAsAid: true, ImpliedFamilies: []string{"summer", "teen"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
@@ -52,15 +52,16 @@ func TestParseAidSourcesConfigRejectsBadInput(t *testing.T) {
 		// even counting as aid is incoherent, whatever the source family.
 		"counts toward the budget but not as aid": entry(`"description": "X Aid", "source_name": "X", ` +
 			`"source_family": "camp_fa", "funder_type": "camp", "counts_toward_budget": true`),
-		"camp aid marked full coverage": entry(`"description": "X Aid", "source_name": "X", "source_family": "camp_fa", ` +
-			`"funder_type": "camp", "full_coverage": true`),
-		"unknown family":      entry(strings.Replace(ok, "other_outside", "mystery", 1)),
-		"unclassified family": entry(strings.Replace(ok, "other_outside", "unclassified", 1)),
-		"unknown funder":      entry(strings.Replace(ok, `"outside"`, `"alien"`, 1)),
-		"unknown implied":     entry(ok + `, "implied_program_families": ["space_camp"]`),
-		"empty description":   entry(strings.Replace(ok, "X Grant", "  ", 1)),
-		"empty source name":   entry(strings.Replace(ok, `"source_name": "X"`, `"source_name": ""`, 1)),
-		"not json":            `{"sources": [`,
+		// SP6-core (owner, 2026-09-28): full_coverage is a grantor fact on aid_grantors now,
+		// so a file that still sets it is refused rather than silently ignored.
+		"full_coverage on a source": entry(ok + `, "full_coverage": true`),
+		"unknown family":            entry(strings.Replace(ok, "other_outside", "mystery", 1)),
+		"unclassified family":       entry(strings.Replace(ok, "other_outside", "unclassified", 1)),
+		"unknown funder":            entry(strings.Replace(ok, `"outside"`, `"alien"`, 1)),
+		"unknown implied":           entry(ok + `, "implied_program_families": ["space_camp"]`),
+		"empty description":         entry(strings.Replace(ok, "X Grant", "  ", 1)),
+		"empty source name":         entry(strings.Replace(ok, `"source_name": "X"`, `"source_name": ""`, 1)),
+		"not json":                  `{"sources": [`,
 	}
 	for name, doc := range cases {
 		if _, err := parseAidSourcesConfig([]byte(doc)); err == nil {

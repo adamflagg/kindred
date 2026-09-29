@@ -40,7 +40,20 @@ from api.schemas.financial_aid import (
     OverrideBulkLoad,
     ProgramBucket,
     SourceFamily,
+    SourceGrantorIn,
     SummaryResponse,
+)
+from api.schemas.financial_aid_grants import (
+    CommitmentIn,
+    CommitmentOut,
+    GrantorCreate,
+    GrantorOut,
+    GrantorSave,
+    GrantorsResponse,
+    GrantsResponse,
+    PlaceGrantsIn,
+    PlaceGrantsOut,
+    WithdrawIn,
 )
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
@@ -67,6 +80,8 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_corrections import CorrectionError
+from api.services.financial_aid_grants_repository import GrantsRepository
+from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_ledger_service import (
     FinancialAidLedgerService,
@@ -166,6 +181,20 @@ def _rules_out(version: RulesVersion, report: ValidationReport) -> RulesVersionO
         report=report,
     )
 
+
+def _grants() -> GrantsService:
+    return GrantsService(GrantsRepository(pb))
+
+
+def _grants_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, FinancialAidNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, GrantorKeyTakenError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_GrantorKeyPath = Annotated[str, Path(min_length=1, max_length=60, pattern=r"^[a-z][a-z0-9_]*$")]
 
 _Year = Annotated[int, Path(ge=2017, le=2100)]
 _Version = Annotated[int, Path(ge=1)]
@@ -365,6 +394,14 @@ async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser 
         raise _http(exc) from exc
 
 
+@router.put("/sources/{source_id}/grantor", response_model=AidSourceRow)
+async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _RULES) -> AidSourceRow:
+    try:
+        return await _writes().map_source_grantor(source_id, body, user.email)
+    except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
+        raise _http(exc) from exc
+
+
 @router.post("/household-links", response_model=HouseholdLinkRow, status_code=201)
 async def create_household_link(body: HouseholdLinkCreate, user: AuthUser = _CASEWORK) -> HouseholdLinkRow:
     try:
@@ -488,3 +525,74 @@ async def approve_aid_rules_sections(
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
     return _rules_out(approved, report)
+
+
+# --- grants (sub-project 6-core) ----------------------------------------------------
+
+
+@router.get("/grantors", response_model=GrantorsResponse)
+async def list_grantors(user: AuthUser = _VIEW) -> GrantorsResponse:
+    # D57: everyone with view access sees the directory, contacts included; edits are finance's.
+    return await _grants().list_grantors()
+
+
+@router.post("/grantors", response_model=GrantorOut, status_code=201)
+async def create_grantor(body: GrantorCreate, user: AuthUser = _RULES) -> GrantorOut:
+    try:
+        return await _grants().create_grantor(body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.put("/grantors/{key}", response_model=GrantorOut)
+async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser = _RULES) -> GrantorOut:
+    try:
+        return await _grants().save_grantor(key, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.get("/grants/{year}", response_model=GrantsResponse)
+async def get_grants(year: _Year, user: AuthUser = _VIEW) -> GrantsResponse:
+    # D57: family level for everyone with view, contacts included; development gets aggregates
+    # from Reports, never this read.
+    return await _grants().read(year)
+
+
+@router.post("/grants/{year}/placements", response_model=PlaceGrantsOut)
+async def place_grants(year: _Year, body: PlaceGrantsIn, user: AuthUser = _CASEWORK) -> PlaceGrantsOut:
+    try:
+        return await _grants().place(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+_CommitmentId = Annotated[str, Path(min_length=15, max_length=15, pattern=r"^[a-z0-9]+$")]
+
+
+@router.post("/grants/{year}/commitments", response_model=CommitmentOut, status_code=201)
+async def create_grant_commitment(year: _Year, body: CommitmentIn, user: AuthUser = _CASEWORK) -> CommitmentOut:
+    try:
+        return await _grants().create_commitment(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.put("/grants/{year}/commitments/{commitment_id}", response_model=CommitmentOut)
+async def save_grant_commitment(
+    year: _Year, commitment_id: _CommitmentId, body: CommitmentIn, user: AuthUser = _CASEWORK
+) -> CommitmentOut:
+    try:
+        return await _grants().save_commitment(year, commitment_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.post("/grants/{year}/commitments/{commitment_id}/withdraw", response_model=CommitmentOut)
+async def withdraw_grant_commitment(
+    year: _Year, commitment_id: _CommitmentId, body: WithdrawIn, user: AuthUser = _CASEWORK
+) -> CommitmentOut:
+    try:
+        return await _grants().withdraw_commitment(year, commitment_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
