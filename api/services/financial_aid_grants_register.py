@@ -209,7 +209,9 @@ def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozens
     return _Camper(0, 0, "", "none")
 
 
-def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int, Commitment]:
+def _fulfilments(
+    inputs: RegisterInputs, campers: Sequence[_Camper], household_lines: frozenset[int]
+) -> dict[int, Commitment]:
     """Decision 4 as the owner ruled it on 2026-09-29. Each open commitment, oldest first, is
     fulfilled by at most one line that is:
 
@@ -217,7 +219,9 @@ def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int
       and reposting, so only the repost may close the commitment;
     * outside-funded -- an incentive never reaches the calculator, so letting one close an outside
       commitment would lose the grant;
-    * confirmed on the commitment's camper;
+    * confirmed on the commitment's camper -- or, for a household program (Family Camp), where the
+      target is the household, a household-program line in the commitment's household; a line and a
+      commitment on opposite sides of that divide never pair;
     * from a description mapped to the commitment's own grantor -- never an unmapped one (item B);
     * not in a different session, when both name one (item D2);
     * posted on or after the commitment's committed_on (item D6): a commitment is for a grant not
@@ -235,8 +239,11 @@ def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int
             if line.transaction_cm_id not in taken
             and not line.is_reversed
             and line.funder_type == "outside"
-            and camper.person_cm_id > 0
-            and camper.person_cm_id == commitment.person_cm_id
+            and (line.transaction_cm_id in household_lines) == (commitment.program_family in HOUSEHOLD_PROGRAM_FAMILIES)
+            and (
+                (camper.person_cm_id > 0 and camper.person_cm_id == commitment.person_cm_id)
+                or (line.transaction_cm_id in household_lines and line.household_cm_id == commitment.household_cm_id)
+            )
             and inputs.grantor_by_source.get(line.source_key, "") == commitment.grantor_key
             and not (
                 commitment.session_cm_id and camper.session_cm_id and camper.session_cm_id != commitment.session_cm_id
@@ -332,7 +339,13 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
             requests_by_household[r.household_cm_id].append(r)
     enrolled = frozenset(by_person)
     campers = [_line_camper(ln, inputs.placements.get(ln.transaction_cm_id), enrolled) for ln in inputs.lines]
-    fulfilled = _fulfilments(inputs, campers)
+    household_lines = frozenset(
+        line.transaction_cm_id
+        for line, camper in zip(inputs.lines, campers, strict=True)
+        if (_family(camper.person_cm_id, camper.session_cm_id, camper.program_family, families) or line.program_family)
+        in HOUSEHOLD_PROGRAM_FAMILIES
+    )
+    fulfilled = _fulfilments(inputs, campers, household_lines)
 
     rows: list[RegisterRow] = []
     for line, camper in zip(inputs.lines, campers, strict=True):
@@ -426,6 +439,10 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                 requests=(
                     ()
                     if cancelled
+                    else _household_shares(
+                        c.household_cm_id, c.session_cm_id, family, c.amount, requests_by_household, session_families
+                    )
+                    if family in HOUSEHOLD_PROGRAM_FAMILIES
                     else _request_shares(
                         c.person_cm_id, c.session_cm_id, family, c.amount, requests_by_person, families
                     )

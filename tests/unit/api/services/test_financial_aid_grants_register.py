@@ -535,6 +535,37 @@ def test_a_family_camp_line_placed_on_a_person_still_lands_on_the_households_req
     assert (row.person_cm_id, row.counts, row.requests) == (1050, True, (RequestShare("req-fc-2", Decimal(300)),))
 
 
+def _fc_commitment(**kw: Any) -> Commitment:
+    return _commitment("com-fc", person_cm_id=1050, program_family="family_camp", **kw)
+
+
+def test_a_family_camp_commitment_sits_on_the_households_request() -> None:
+    """The target follows the program for a commitment too: its camper names the family, but the
+    Family Camp request it offsets is the household's."""
+    rows = build_register(_inputs(commitments=(_fc_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS))
+    assert _one(rows, kind="commitment").requests == (
+        RequestShare("req-fc-1", Decimal("250.00")),
+        RequestShare("req-fc-2", Decimal("250.00")),
+    )
+
+
+def test_a_household_level_family_camp_line_fulfils_the_households_family_camp_commitment() -> None:
+    """A Family Camp line needs no camper, so it pairs with a Family Camp commitment in the same
+    household by every other rule (grantor, session, date), never both counting."""
+    rows = build_register(
+        _inputs(lines=(_fc_line(),), commitments=(_fc_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS)
+    )
+    assert [r.kind for r in rows] == ["ledger"]
+    assert rows[0].fulfils_commitment_id == "com-fc"
+
+
+def test_a_family_camp_line_never_fulfils_a_summer_commitment_in_the_household() -> None:
+    rows = build_register(
+        _inputs(lines=(_fc_line(),), commitments=(_commitment(),), enrollments=FC_ENROLLED, requests=FC_REQUESTS)
+    )
+    assert {r.kind for r in rows} == {"ledger", "commitment"}
+
+
 def test_a_family_camp_incentive_counts_but_never_reaches_the_bridge() -> None:
     line = _fc_line(funder_type="incentive", source_family="jfam_incentive", attributed_session_cm_id=FC1)
     rows = build_register(_inputs(lines=(line,), enrollments=FC_ENROLLED, requests=FC_REQUESTS))
