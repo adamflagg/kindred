@@ -42,6 +42,7 @@ from api.schemas.financial_aid import (
     SourceFamily,
     SummaryResponse,
 )
+from api.schemas.financial_aid_grants import GrantorCreate, GrantorOut, GrantorSave, GrantorsResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
@@ -67,6 +68,8 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_corrections import CorrectionError
+from api.services.financial_aid_grants_repository import GrantsRepository
+from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_ledger_service import (
     FinancialAidLedgerService,
@@ -166,6 +169,20 @@ def _rules_out(version: RulesVersion, report: ValidationReport) -> RulesVersionO
         report=report,
     )
 
+
+def _grants() -> GrantsService:
+    return GrantsService(GrantsRepository(pb))
+
+
+def _grants_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, FinancialAidNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, GrantorKeyTakenError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_GrantorKeyPath = Annotated[str, Path(min_length=1, max_length=60, pattern=r"^[a-z][a-z0-9_]*$")]
 
 _Year = Annotated[int, Path(ge=2017, le=2100)]
 _Version = Annotated[int, Path(ge=1)]
@@ -488,3 +505,28 @@ async def approve_aid_rules_sections(
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
     return _rules_out(approved, report)
+
+
+# --- grants (sub-project 6-core) ----------------------------------------------------
+
+
+@router.get("/grantors", response_model=GrantorsResponse)
+async def list_grantors(user: AuthUser = _VIEW) -> GrantorsResponse:
+    # D57: everyone with view access sees the directory, contacts included; edits are finance's.
+    return await _grants().list_grantors()
+
+
+@router.post("/grantors", response_model=GrantorOut, status_code=201)
+async def create_grantor(body: GrantorCreate, user: AuthUser = _RULES) -> GrantorOut:
+    try:
+        return await _grants().create_grantor(body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.put("/grantors/{key}", response_model=GrantorOut)
+async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser = _RULES) -> GrantorOut:
+    try:
+        return await _grants().save_grantor(key, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc

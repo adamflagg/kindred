@@ -21,6 +21,7 @@ from typing import Any
 from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
     AID_FLAG_DISPOSITIONS,
+    AID_GRANTORS,
     AID_HOUSEHOLD_LINKS,
     AID_POSTINGS,
     AID_SOURCES,
@@ -140,6 +141,13 @@ class FinancialAidRepository:
 
     async def get_source(self, source_id: str) -> Any | None:
         return await self._one(AID_SOURCES, source_id)
+
+    async def fetch_grantors(self) -> list[Any]:
+        return await self._page(AID_GRANTORS, {"sort": f"name,{STABLE_SORT}"})
+
+    async def get_grantor(self, key: str) -> Any | None:
+        rows = await self._page(AID_GRANTORS, {"filter": f"key = '{pb_escape(key)}'", "sort": STABLE_SORT})
+        return rows[0] if rows else None
 
     async def fetch_links(self, year: int) -> list[Any]:
         return await self._page(AID_HOUSEHOLD_LINKS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
