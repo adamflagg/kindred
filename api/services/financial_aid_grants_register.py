@@ -1,0 +1,372 @@
+"""The grants register (sub-project 6-core) as pure functions over records the service read.
+
+D55: every outside-grant line in the CampMinder ledger IS a grant. aid_postings holds them
+already (funder type outside or incentive, classified through aid_sources), so the register is
+DERIVED here at read time, never copied. Kindred stores only what the ledger lacks:
+
+* the camper for a household-level line: an aid_attribution_overrides placement, the one
+  placement home (Decision 2). Go's attribution rules only SUGGEST a camper (D16); until a
+  person confirms, the line counts toward nothing (Decision 3);
+* a grant committed but not yet posted: an aid_grants commitment (Decision 4). It counts until
+  a line from the same grantor, confirmed on the same camper, fulfils it; then the line counts
+  instead, never both.
+
+Expected grants (D56) are never grants: nothing here feeds them to the calculator.
+grant_inputs_by_request() is the calculator bridge SP10 wires in (Decision 5).
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import ROUND_DOWN, Decimal
+from typing import Final, Literal
+
+from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
+from api.services.financial_aid_intake_types import STATUS_ACTIVE, STATUS_UNMATCHED
+from api.services.financial_aid_ledger_service import parse_pb_datetime
+from bunking.financial_aid.calculator import GrantInput
+
+# Go's aidCancelledStatusIDs (pocketbase/sync/aid_attribution.go): 32 cancelled, 256 withdrawn.
+CANCELLED_STATUS_IDS: Final = frozenset({32, 256})
+# The aid requests a grant can sit on: intake's live statuses (a duplicate or withdrawn one can't).
+LIVE_REQUEST_STATUSES: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+# Python twin of Go's sessionTypeProgramFamily (pocketbase/sync/aid_program_family.go); the
+# register's tests parse the Go literal and fail on any drift.
+PROGRAM_FAMILY_BY_SESSION_TYPE: Final[Mapping[str, str]] = {
+    "main": "summer",
+    "embedded": "summer",
+    "ag": "summer",
+    "quest": "quest",
+    "scit": "teen",
+    "tli": "teen",
+    "teen": "teen",
+    "bmitzvah": "bmitzvah",
+    "hebrew": "bmitzvah",
+    "family": "family_camp",
+    "adult": "adult_weekend",
+    "school": "family_school",
+}
+_CENT: Final = Decimal("0.01")
+
+CamperBasis = Literal["ledger", "placed", "commitment", "none"]
+
+
+def program_family_for_session_type(session_type: str) -> str:
+    return PROGRAM_FAMILY_BY_SESSION_TYPE.get(session_type.strip().lower(), "other")
+
+
+# --- inputs -------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GrantLine:
+    """One aid_postings row whose (effective) funder type is outside or incentive."""
+
+    transaction_cm_id: int
+    household_cm_id: int
+    person_cm_id: int  # CampMinder's posted person; 0 when posted to the household
+    amount: Decimal  # aid dollars, positive
+    source_key: str  # the EFFECTIVE description key, after any reclassification
+    source_family: str
+    funder_type: str
+    post_date: str
+    is_reversed: bool
+    reversal_date: str
+    attribution_method: str  # Go's inference, shown as the suggestion's evidence
+    attributed_person_cm_id: int
+    attributed_session_cm_id: int
+    program_family: str
+
+
+@dataclass(frozen=True)
+class Placement:
+    """An aid_attribution_overrides row that names a person: a confirmed camper."""
+
+    transaction_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+
+
+@dataclass(frozen=True)
+class Commitment:
+    id: str
+    grantor_key: str
+    household_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+    amount: Decimal
+    committed_on: date
+    created: datetime | None  # when Kindred recorded it
+    status: str  # open | withdrawn
+
+
+@dataclass(frozen=True)
+class Enrollment:
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+    status_id: int
+
+
+@dataclass(frozen=True)
+class RequestRef:
+    id: str
+    household_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    status: str
+
+
+@dataclass(frozen=True)
+class RegisterInputs:
+    lines: Sequence[GrantLine]
+    placements: Mapping[int, Placement]  # by transaction id; only overrides that name a person
+    commitments: Sequence[Commitment]
+    grantor_by_source: Mapping[str, str]  # description_key -> grantor key ("" = unmapped)
+    enrollments: Sequence[Enrollment]
+    requests: Sequence[RequestRef]
+
+
+# --- outputs ------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RequestShare:
+    request_id: str
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class RegisterRow:
+    kind: Literal["ledger", "commitment"]
+    transaction_cm_id: int  # 0 for a commitment
+    commitment_id: str  # "" for a ledger line
+    household_cm_id: int
+    person_cm_id: int  # 0 while a ledger line needs a camper
+    camper_basis: CamperBasis
+    session_cm_id: int
+    program_family: str
+    grantor_key: str  # "" = the description names no grantor yet
+    source_key: str  # "" for a commitment
+    source_family: str  # "" for a commitment
+    funder_type: str
+    amount: Decimal
+    recorded_on: str  # YYYY-MM-DD: the post date, or the commitment's committed_on
+    recorded_at: datetime | None  # when the grant became known (Decision 5)
+    is_reversed: bool
+    reversal_date: str
+    cancelled: bool
+    counts: bool
+    fulfils_commitment_id: str
+    requests: tuple[RequestShare, ...]  # the aid requests it sits on; () = didn't apply
+
+
+@dataclass(frozen=True)
+class _Camper:
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+    basis: CamperBasis
+
+
+def split_equally(amount: Decimal, request_ids: Sequence[str]) -> tuple[RequestShare, ...]:
+    """Main spec §2 item 18: equal shares in whole cents; the remainder cent goes to the first."""
+    if not request_ids:
+        return ()
+    each = (amount / len(request_ids)).quantize(_CENT, rounding=ROUND_DOWN)
+    first = amount - each * (len(request_ids) - 1)
+    return tuple(RequestShare(rid, first if i == 0 else each) for i, rid in enumerate(request_ids))
+
+
+def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozenset[int]) -> _Camper:
+    """Decision 3: a placement (staff, or the owner-approved 2026 sheet load) wins; otherwise the
+    line names its camper when CampMinder posted it to a person enrolled this season. Anything
+    Go inferred is only a suggestion."""
+    if placement is not None:
+        return _Camper(placement.person_cm_id, placement.session_cm_id, placement.program_family, "placed")
+    if line.person_cm_id > 0 and line.person_cm_id in enrolled:
+        on_person = line.attributed_person_cm_id == line.person_cm_id
+        return _Camper(
+            line.person_cm_id,
+            line.attributed_session_cm_id if on_person else 0,
+            line.program_family if on_person else "",
+            "ledger",
+        )
+    return _Camper(0, 0, "", "none")
+
+
+def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int, Commitment]:
+    """Decision 4: each open commitment, oldest first, is fulfilled by at most one line confirmed
+    on its camper, from its grantor or from a description that names no grantor yet (never both
+    counting): a live line before a reversed one, then its own grantor before an unmapped one,
+    then an equal amount, then the earliest post. A reversed line still closes it (the grant
+    posted, then was undone)."""
+    taken: dict[int, Commitment] = {}
+    pending = sorted((c for c in inputs.commitments if c.status == "open"), key=lambda c: (c.committed_on, c.id))
+    for commitment in pending:
+        candidates = [
+            line
+            for line, camper in zip(inputs.lines, campers, strict=True)
+            if line.transaction_cm_id not in taken
+            and camper.basis != "none"
+            and camper.person_cm_id == commitment.person_cm_id
+            and inputs.grantor_by_source.get(line.source_key, "") in (commitment.grantor_key, "")
+        ]
+        if candidates:
+            best = min(
+                candidates,
+                key=lambda ln: (
+                    ln.is_reversed,
+                    inputs.grantor_by_source.get(ln.source_key, "") != commitment.grantor_key,
+                    ln.amount != commitment.amount,
+                    ln.post_date,
+                    ln.transaction_cm_id,
+                ),
+            )
+            taken[best.transaction_cm_id] = commitment
+    return taken
+
+
+def _family(person: int, session: int, fallback: str, families: Mapping[tuple[int, int], str]) -> str:
+    return families.get((person, session), fallback) if person and session else fallback
+
+
+def _cancelled(person: int, session: int, family: str, by_person: Mapping[int, Sequence[Enrollment]]) -> bool:
+    """Derived from enrollment, never typed (main spec §5): the enrollments this grant covers (its
+    session; else its program family; else all) include a cancelled one and no active one."""
+    if person <= 0:
+        return False
+    mine = [
+        e
+        for e in by_person.get(person, ())
+        if (e.session_cm_id == session if session else (not family or e.program_family == family))
+    ]
+    return any(e.status_id in CANCELLED_STATUS_IDS for e in mine) and not any(
+        e.status_id == ACTIVE_ENROLLED_STATUS_ID for e in mine
+    )
+
+
+def _request_shares(
+    person: int,
+    session: int,
+    family: str,
+    amount: Decimal,
+    requests_by_person: Mapping[int, Sequence[RequestRef]],
+    families: Mapping[tuple[int, int], str],
+) -> tuple[RequestShare, ...]:
+    mine = [r for r in requests_by_person.get(person, ()) if r.status in LIVE_REQUEST_STATUSES]
+    if session:
+        mine = [r for r in mine if r.session_cm_id == session]
+    elif family:
+        mine = [r for r in mine if families.get((person, r.session_cm_id)) == family]
+    return split_equally(amount, [r.id for r in sorted(mine, key=lambda r: (r.session_cm_id, r.id))])
+
+
+def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
+    """Every grant line this season (live and reversed), then every open commitment no line has
+    fulfilled. A withdrawn commitment is history (the change log), not a register row."""
+    by_person: dict[int, list[Enrollment]] = defaultdict(list)
+    for e in inputs.enrollments:
+        by_person[e.person_cm_id].append(e)
+    families = {(e.person_cm_id, e.session_cm_id): e.program_family for e in inputs.enrollments}
+    requests_by_person: dict[int, list[RequestRef]] = defaultdict(list)
+    for r in inputs.requests:
+        if r.person_cm_id > 0:
+            requests_by_person[r.person_cm_id].append(r)
+    enrolled = frozenset(by_person)
+    campers = [_line_camper(ln, inputs.placements.get(ln.transaction_cm_id), enrolled) for ln in inputs.lines]
+    fulfilled = _fulfilments(inputs, campers)
+
+    rows: list[RegisterRow] = []
+    for line, camper in zip(inputs.lines, campers, strict=True):
+        commitment = fulfilled.get(line.transaction_cm_id)
+        family = _family(camper.person_cm_id, camper.session_cm_id, camper.program_family, families)
+        counts = not line.is_reversed and camper.person_cm_id > 0
+        recorded_at = parse_pb_datetime(line.post_date)
+        if commitment is not None and commitment.created is not None:
+            if recorded_at is None or commitment.created < recorded_at:
+                recorded_at = commitment.created
+        rows.append(
+            RegisterRow(
+                kind="ledger",
+                transaction_cm_id=line.transaction_cm_id,
+                commitment_id="",
+                household_cm_id=line.household_cm_id,
+                person_cm_id=camper.person_cm_id,
+                camper_basis=camper.basis,
+                session_cm_id=camper.session_cm_id,
+                program_family=family,
+                grantor_key=inputs.grantor_by_source.get(line.source_key, ""),
+                source_key=line.source_key,
+                source_family=line.source_family,
+                funder_type=line.funder_type,
+                amount=line.amount,
+                recorded_on=line.post_date[:10],
+                recorded_at=recorded_at,
+                is_reversed=line.is_reversed,
+                reversal_date=line.reversal_date,
+                cancelled=_cancelled(camper.person_cm_id, camper.session_cm_id, family, by_person),
+                counts=counts,
+                fulfils_commitment_id=commitment.id if commitment is not None else "",
+                requests=(
+                    _request_shares(
+                        camper.person_cm_id, camper.session_cm_id, family, line.amount, requests_by_person, families
+                    )
+                    if counts
+                    else ()
+                ),
+            )
+        )
+    fulfilled_ids = {c.id for c in fulfilled.values()}
+    for c in inputs.commitments:
+        if c.status != "open" or c.id in fulfilled_ids:
+            continue
+        family = _family(c.person_cm_id, c.session_cm_id, c.program_family, families)
+        rows.append(
+            RegisterRow(
+                kind="commitment",
+                transaction_cm_id=0,
+                commitment_id=c.id,
+                household_cm_id=c.household_cm_id,
+                person_cm_id=c.person_cm_id,
+                camper_basis="commitment",
+                session_cm_id=c.session_cm_id,
+                program_family=family,
+                grantor_key=c.grantor_key,
+                source_key="",
+                source_family="",
+                funder_type="outside",
+                amount=c.amount,
+                recorded_on=c.committed_on.isoformat(),
+                recorded_at=c.created,
+                is_reversed=False,
+                reversal_date="",
+                cancelled=_cancelled(c.person_cm_id, c.session_cm_id, family, by_person),
+                counts=True,
+                fulfils_commitment_id="",
+                requests=_request_shares(
+                    c.person_cm_id, c.session_cm_id, family, c.amount, requests_by_person, families
+                ),
+            )
+        )
+    return rows
+
+
+def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[GrantInput]]:
+    """SP10's calculator input: the OUTSIDE grants that count, per request, each at its share
+    (Decision 5). Incentives are left out (the rules meet them through grants.incentives), and so
+    is Expected (D56). state is always "committed": receipts are parked (D55)."""
+    out: dict[str, list[GrantInput]] = defaultdict(list)
+    for row in rows:
+        if not row.counts or row.funder_type != "outside":
+            continue
+        for share in row.requests:
+            out[share.request_id].append(
+                GrantInput(amount=share.amount, state="committed", recorded_at=row.recorded_at)
+            )
+    return dict(out)
