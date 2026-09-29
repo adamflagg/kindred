@@ -441,11 +441,12 @@ async def validate_aid_rules(year: _Year, body: RulesDocumentIn, user: AuthUser 
 
 @router.post("/rules/{year}/versions", response_model=RulesVersionOut, status_code=201)
 async def create_aid_rules_version(year: _Year, body: RulesDocumentIn, user: AuthUser = _RULES) -> RulesVersionOut:
-    """A new version from a whole document, every section draft (loading a season's rules)."""
+    """Version 1 of a season with no rules yet, from a whole document (the one-time load);
+    409 when the season already has rules."""
     _same_year(year, body.document)
     service = _rules()
     try:
-        created = await service.create_version(body.document, actor=user.email)
+        created = await service.bootstrap(body.document, actor=user.email)
         return _rules_out(created, await service.validate_document(created.document))
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc

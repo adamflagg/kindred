@@ -129,6 +129,29 @@ async def test_versions_number_from_one_within_a_year() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bootstrap_creates_version_one_for_an_empty_season() -> None:
+    store = FakeStore()
+    service = _service(store)
+    created = await service.bootstrap(fictional_rules(), actor=FINANCE)
+    assert created.version == 1
+    assert {s.state for s in created.section_status.values()} == {"draft"}
+    [operation] = store.operations
+    assert [r["action"] for r in operation] == ["create"]
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_refuses_a_season_that_already_has_rules() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.bootstrap(fictional_rules(), actor=FINANCE)
+    written = len(store.operations)
+    with pytest.raises(VersionExistsError):
+        await service.bootstrap(fictional_rules(), actor=FINANCE)
+    assert len(store.operations) == written
+    assert (await service.load(2031)).version == 1
+
+
+@pytest.mark.asyncio
 async def test_a_stored_document_comes_back_equal() -> None:
     # (Review Focus) Through JSON the Decimals are strings and tier keys are string keys.
     store = FakeStore()
@@ -257,6 +280,19 @@ async def test_only_an_approved_section_locks() -> None:
     await service.create_version(fictional_rules(), actor=FINANCE)
     with pytest.raises(SectionNotApprovedError):
         await service.lock_section(2031, 1, "income", actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_locking_an_already_locked_section_is_a_no_op() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    written = len(store.operations)
+    relocked = await service.lock_section(2031, 1, "income", actor=FINANCE)
+    assert len(store.operations) == written
+    assert relocked.section_status["income"].state == "locked"
 
 
 @pytest.mark.asyncio
@@ -445,8 +481,10 @@ async def test_commit_sends_the_writes_through_commit_aid_writes() -> None:
 async def test_commit_maps_a_unique_index_collision_to_version_exists_error() -> None:
     failure = _batch_failure({"year": "Value must be unique.", "version": "Value must be unique."})
     with patch("api.services.financial_aid_rules_service.commit_aid_writes", side_effect=failure):
-        with pytest.raises(VersionExistsError):
+        with pytest.raises(VersionExistsError) as exc_info:
             await AidRulesRepository(MagicMock()).commit(_A_CREATE, actor=FINANCE)
+    assert "2031" in str(exc_info.value)
+    assert "version 1" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

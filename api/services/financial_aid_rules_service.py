@@ -177,6 +177,11 @@ class AidRulesRepository:
             return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
         except BatchRequestFailedError as exc:
             if exc.status == 400 and any("unique" in message.lower() for message in exc.field_errors.values()):
+                first_create = next((w for w in writes if w.action == "create" and w.data is not None), None)
+                if first_create is not None and first_create.data is not None:
+                    raise VersionExistsError(
+                        f"aid_rules already has year {first_create.year} version {first_create.data.get('version')}"
+                    ) from exc
                 raise VersionExistsError("aid_rules already has that year and version") from exc
             raise
 
@@ -305,6 +310,14 @@ class FinancialAidRulesService:
         version = await self._next_version(document.year)
         body = _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
         return await self._create(body, log_action="create", actor=actor)
+
+    async def bootstrap(self, document: AidRules, *, actor: str) -> RulesVersion:
+        """Version 1 of a season that has no rules yet, from a whole document (loading 2026 as history).
+        Refused when the season already has rules: a retried load must not make a second version, and
+        every later change is a save over the latest version (owner ruling 2026-09-28)."""
+        if await self._store.list_versions(document.year):
+            raise VersionExistsError(f"{document.year} already has aid rules; save over the latest version instead")
+        return await self.create_version(document, actor=actor)
 
     async def save(
         self, year: int, version: int, document: AidRules, *, actor: str

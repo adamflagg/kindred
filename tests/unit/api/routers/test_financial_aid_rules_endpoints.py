@@ -68,6 +68,7 @@ def _stub() -> Any:
     service.load = AsyncMock(return_value=VERSION)
     service.validate_document = AsyncMock(return_value=WARNED)
     service.create_version = AsyncMock(return_value=VERSION)
+    service.bootstrap = AsyncMock(return_value=VERSION)
     service.start_from_last_year = AsyncMock(return_value=(VERSION, WARNED))
     service.save = AsyncMock(return_value=(VERSION, WARNED))
     service.approve_sections = AsyncMock(return_value=(VERSION, WARNED))
@@ -97,7 +98,7 @@ def test_the_actor_is_the_callers_email() -> None:
     client.put("/api/financial-aid/rules/2031/versions/1", json=DOC_BODY)
     client.post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
     email = persona_user(PERSONA_FINANCE).email
-    for mock in (service.create_version, service.start_from_last_year, service.save, service.approve_sections):
+    for mock in (service.bootstrap, service.start_from_last_year, service.save, service.approve_sections):
         assert mock.await_args.kwargs["actor"] == email
 
 
@@ -128,7 +129,7 @@ def test_a_bad_approval_is_422_and_never_reaches_the_service(body: dict[str, Any
 @pytest.mark.parametrize(
     ("method", "url", "call"),
     [
-        ("POST", "/api/financial-aid/rules/2030/versions", "create_version"),
+        ("POST", "/api/financial-aid/rules/2030/versions", "bootstrap"),
         ("PUT", "/api/financial-aid/rules/2030/versions/1", "save"),
         ("POST", "/api/financial-aid/rules/2030/validate", "validate_document"),
     ],
@@ -165,6 +166,14 @@ def test_service_refusals_map_to_404_409_and_422(error: Exception, status: int) 
     service.approve_sections = AsyncMock(side_effect=error)
     response = _client().post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
     assert (response.status_code, response.json()["detail"]) == (status, str(error))
+
+
+def test_bootstrapping_a_season_that_already_has_rules_is_409() -> None:
+    service = _stub()
+    error = VersionExistsError("2031 already has aid rules; save over the latest version instead")
+    service.bootstrap = AsyncMock(side_effect=error)
+    response = _client().post("/api/financial-aid/rules/2031/versions", json=DOC_BODY)
+    assert (response.status_code, response.json()["detail"]) == (409, str(error))
 
 
 def test_the_validation_report_comes_back_with_the_version() -> None:
