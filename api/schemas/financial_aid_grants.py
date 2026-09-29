@@ -165,19 +165,44 @@ class ExpectedOut(BaseModel):
 
 class GrantsResponse(BaseModel):
     """Grants' one aggregate read: the register, the three needs-attention groups and Expected.
-    Family level, for financial_aid.view (D57); development gets aggregates from Reports.
-
-    `register` is given an explicit `Field(...)` (still required, no default) because the name
-    collides with `ABCMeta.register` that `BaseModel`'s metaclass inherits: without it, pydantic
-    silently treats that bound method as the field's default, so a `GrantsResponse` built without
-    passing `register` would construct successfully with a method object instead of a list
-    (`is_required()` false, excluded from the OpenAPI schema's `required`, and a real `[method]`
-    object as its default) instead of raising. The FIELD NAME still SHADOWS the attribute (mypy /
-    a UserWarning at class-definition time still note that), but validation itself is correct."""
+    Family level, for financial_aid.view (D57); development gets aggregates from Reports."""
 
     year: int
-    register: list[GrantRowOut] = Field(...)
+    grants: list[GrantRowOut]
     needs_camper: list[NeedsCamperOut]
     unmapped: list[UnmappedDescriptionOut]
     waiting: list[WaitingCommitmentOut]
     expected: list[ExpectedOut]
+
+
+# --- placing a camper (casework) --------------------------------------------------------------
+
+
+class PlacementIn(BaseModel):
+    transaction_cm_id: int = Field(gt=0)
+    person_cm_id: int = Field(gt=0)
+    session_cm_id: int | None = Field(default=None, gt=0)
+
+
+class PlaceGrantsIn(BaseModel):
+    """Confirms the camper (and optionally the session) of grant lines: one, or a class in bulk
+    (D16). One logged operation, all or nothing (Decision 11). The note is optional (a
+    confirmation, like a tick; Decision 12). 500 placements is 1,000 batch requests, inside one
+    atomic batch."""
+
+    placements: list[PlacementIn] = Field(min_length=1, max_length=500)
+    note: _Text = ""
+
+    @model_validator(mode="after")
+    def _each_line_once(self) -> PlaceGrantsIn:
+        ids = [p.transaction_cm_id for p in self.placements]
+        if len(ids) != len(set(ids)):
+            raise ValueError("each transaction_cm_id may appear once per placement")
+        return self
+
+
+class PlaceGrantsOut(BaseModel):
+    year: int
+    placed: int
+    unchanged: int
+    operation_id: str | None

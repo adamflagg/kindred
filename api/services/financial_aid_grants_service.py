@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from api.constants.collections import AID_GRANTORS
+from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_GRANTORS
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.schemas.financial_aid_grants import (
     CamperCandidateOut,
@@ -33,12 +33,15 @@ from api.schemas.financial_aid_grants import (
     GrantRowOut,
     GrantsResponse,
     NeedsCamperOut,
+    PlaceGrantsIn,
+    PlaceGrantsOut,
     RequestShareOut,
     UnmappedDescriptionOut,
     WaitingCommitmentOut,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import (
+    CamperSuggestion,
     Commitment,
     Enrollment,
     FormAnswer,
@@ -166,6 +169,30 @@ def _enrollment(a: Any) -> Enrollment | None:
 
 def _is_yes(value: Any) -> bool:
     return str(value or "").strip().lower() == "yes"
+
+
+def _override_snapshot(o: Any) -> dict[str, Any]:
+    return {
+        "transaction_cm_id": int(o.transaction_cm_id),
+        "year": int(o.year),
+        "attributed_person_cm_id": int(o.attributed_person_cm_id or 0),
+        "attributed_session_cm_id": int(o.attributed_session_cm_id or 0),
+        "program_family": str(o.program_family or ""),
+        "source_key_override": str(o.source_key_override or ""),
+        "source": str(o.source or ""),
+        "note": str(o.note or ""),
+    }
+
+
+def _with_suggested_camper(
+    candidates: tuple[int, ...], suggestion: CamperSuggestion | None, active: set[int], people: dict[int, Any]
+) -> tuple[int, ...]:
+    """Ruling 2b: the suggestion's person is always a candidate when they're enrolled this season,
+    even when their own household isn't the line's (fetch_household_members' pool is own-household
+    only, but attribution can name someone linked in only via a childhood household)."""
+    if suggestion is None or suggestion.person_cm_id not in active or suggestion.person_cm_id in candidates:
+        return candidates
+    return tuple(sorted((*candidates, suggestion.person_cm_id), key=lambda cm: (person_display_name(people[cm]), cm)))
 
 
 class GrantsService:
@@ -373,7 +400,7 @@ class GrantsService:
                 requests=[RequestShareOut(request_id=s.request_id, amount=money(s.amount)) for s in row.requests],
             )
 
-        register = sorted(
+        grants = sorted(
             (row_out(r) for r in rows),
             key=lambda r: (
                 r.family_name.lower(),
@@ -385,7 +412,7 @@ class GrantsService:
         )
         return GrantsResponse(
             year=year,
-            register=register,
+            grants=grants,
             needs_camper=[
                 NeedsCamperOut(
                     grant=row_out(n.row),
@@ -404,7 +431,10 @@ class GrantsService:
                         if n.suggestion is not None
                         else None
                     ),
-                    candidates=[CamperCandidateOut(person_cm_id=cm, name=name_of(cm)) for cm in n.candidates],
+                    candidates=[
+                        CamperCandidateOut(person_cm_id=cm, name=name_of(cm))
+                        for cm in _with_suggested_camper(n.candidates, n.suggestion, active, people)
+                    ],
                 )
                 for n in attention.needs_camper
             ],
@@ -434,3 +464,106 @@ class GrantsService:
                 for e in expected
             ],
         )
+
+    # --- placing a camper (casework) ----------------------------------------------
+
+    async def place(self, year: int, body: PlaceGrantsIn, actor: str) -> PlaceGrantsOut:
+        """Confirms campers on grant lines (D16), writing aid_attribution_overrides rows: the one
+        placement home, applied by Go on the next aid_postings run and overlaid by read() at once
+        (Decision 2). Every placement is checked before anything is written (Decision 11).
+
+        Family membership (Ruling 2): Go's attribution treats a person as belonging to a household
+        if it is their own household OR their primary/alternate childhood household, which is
+        exactly the pool fetch_household_persons(year, household_ids) returns — so membership is
+        "the line's family household set, fetched, and is this person in that set of cm_ids", not
+        fetch_household_members + a household_id comparison.
+        """
+        lines = {int(p.transaction_cm_id): p for p in await self.repo.fetch_grant_postings(year) if not p.is_reversed}
+        for p in body.placements:
+            if p.transaction_cm_id not in lines:
+                raise FinancialAidValidationError(
+                    f"transaction {p.transaction_cm_id} is not a live grant line in {year}"
+                )
+        links = await self.repo.fetch_links(year)
+        family_sets: dict[int, frozenset[int]] = {
+            p.transaction_cm_id: frozenset(
+                family_household_set(links, int(lines[p.transaction_cm_id].household_cm_id or 0))
+            )
+            for p in body.placements
+        }
+        unique_families = list(set(family_sets.values()))
+        member_lists = await asyncio.gather(*(self.repo.fetch_household_persons(year, fs) for fs in unique_families))
+        family_members = {
+            fs: {int(m.cm_id) for m in members} for fs, members in zip(unique_families, member_lists, strict=True)
+        }
+        sessions: dict[int, dict[int, str]] = defaultdict(dict)
+        for e in (
+            _enrollment(a) for a in await self.repo.fetch_enrollments(year, {p.person_cm_id for p in body.placements})
+        ):
+            if e is not None:
+                sessions[e.person_cm_id][e.session_cm_id] = e.program_family
+        existing = {int(o.transaction_cm_id): o for o in await self.repo.fetch_overrides(year)}
+
+        writes: list[AidWrite] = []
+        unchanged = 0
+        for p in body.placements:
+            if p.person_cm_id not in family_members[family_sets[p.transaction_cm_id]]:
+                raise FinancialAidValidationError(
+                    f"person {p.person_cm_id} is not in the family of transaction {p.transaction_cm_id}"
+                )
+            enrolled = sessions.get(p.person_cm_id, {})
+            if p.session_cm_id is not None:
+                if p.session_cm_id not in enrolled:
+                    raise FinancialAidValidationError(
+                        f"person {p.person_cm_id} has no enrollment in session {p.session_cm_id} in {year} "
+                        f"(transaction {p.transaction_cm_id})"
+                    )
+                family = enrolled[p.session_cm_id]
+            else:
+                # Go's rule for a person-only override: the family of that person's enrollments
+                # when they all share one (spec §6.3, SP4's narrowing).
+                families = set(enrolled.values())
+                family = families.pop() if len(families) == 1 else ""
+            current = existing.get(p.transaction_cm_id)
+            payload = {
+                "transaction_cm_id": p.transaction_cm_id,
+                "year": year,
+                "attributed_person_cm_id": p.person_cm_id,
+                "attributed_session_cm_id": p.session_cm_id or 0,
+                "program_family": family,
+                "source_key_override": str(getattr(current, "source_key_override", "") or "") if current else "",
+                "source": "staff",
+                "note": body.note,
+            }
+            if current is None:
+                writes.append(
+                    AidWrite(
+                        collection=AID_ATTRIBUTION_OVERRIDES,
+                        action="create",
+                        year=year,
+                        data={**payload, "actor": actor},
+                        after=payload,
+                        log_action="place_grant",
+                    )
+                )
+                continue
+            before = _override_snapshot(current)
+            if changed_fields(before, payload) == ({}, {}):
+                unchanged += 1
+                continue
+            writes.append(
+                AidWrite(
+                    collection=AID_ATTRIBUTION_OVERRIDES,
+                    action="update",
+                    year=year,
+                    record_id=str(current.id),
+                    before=before,
+                    data={**payload, "actor": actor},
+                    after=payload,
+                    log_action="place_grant",
+                )
+            )
+        if not writes:
+            return PlaceGrantsOut(year=year, placed=0, unchanged=unchanged, operation_id=None)
+        result = await self._commit(writes, actor=actor, reason=body.note or None)
+        return PlaceGrantsOut(year=year, placed=len(writes), unchanged=unchanged, operation_id=result.operation_id)

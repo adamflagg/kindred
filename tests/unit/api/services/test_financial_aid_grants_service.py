@@ -3,6 +3,7 @@ and commitments. Fictional data only; every write runs the real 4a helper over a
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -11,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from api.schemas.financial_aid_grants import GrantorCreate, GrantorSave
+from api.schemas.financial_aid_grants import GrantorCreate, GrantorSave, GrantsResponse, PlaceGrantsIn
 from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
-from api.services.financial_aid_ledger_service import FinancialAidNotFoundError
+from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from tests.unit.api.services.aid_commit_spy import AidCommitSpy, spy_on_commits
 
 ACTOR = "finance@example.com"
@@ -181,6 +182,13 @@ def test_a_grantor_key_is_a_lower_snake_slug() -> None:
         _create(key="1st_fund")
 
 
+def test_grants_response_requires_grants() -> None:
+    """Ruling 1: `grants` is required like any other field, now that the name no longer shadows
+    ABCMeta.register (no Field(...) workaround needed)."""
+    with pytest.raises(ValidationError):
+        GrantsResponse(year=2031, needs_camper=[], unmapped=[], waiting=[], expected=[])  # type: ignore[call-arg]
+
+
 # --- the register read ---------------------------------------------------------------
 
 
@@ -245,7 +253,7 @@ def _read_repo(**kw: Any) -> MagicMock:
 async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
     service, _ = _service(_read_repo())
     out = await service.read(2031)
-    (row,) = out.register
+    (row,) = out.grants
     assert (row.transaction_cm_id, row.amount, row.family_name, row.grantor_name) == (
         9001,
         500.0,
@@ -266,6 +274,24 @@ async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
 
 
 @pytest.mark.asyncio
+async def test_needs_camper_candidates_include_an_attributed_person_from_another_household() -> None:
+    """Ruling 2b: the suggestion's person is always a candidate when they're enrolled this season,
+    even when their own household isn't the line's (Go's attribution can name someone
+    fetch_household_members' own-household-only pool wouldn't have returned)."""
+    repo = _read_repo(postings=[_posting(9001, 500, attributed_person_cm_id=1099, attributed_session_cm_id=1000101)])
+    repo.fetch_persons = AsyncMock(return_value=[_person(1099, "Jordan", household=999)])
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_attendee(1001, 1000101), _attendee(1002, 1000101), _attendee(1099, 1000101)]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (need,) = out.needs_camper
+    assert need.suggestion is not None
+    assert need.suggestion.person_cm_id == 1099
+    assert [c.name for c in need.candidates] == ["Alex Rivera", "Jordan Rivera", "Sam Rivera"]
+
+
+@pytest.mark.asyncio
 async def test_read_overlays_a_placement_at_once() -> None:
     placed = SimpleNamespace(
         transaction_cm_id=9001,
@@ -277,7 +303,7 @@ async def test_read_overlays_a_placement_at_once() -> None:
     )
     service, _ = _service(_read_repo(overrides=[placed]))
     out = await service.read(2031)
-    (row,) = out.register
+    (row,) = out.grants
     assert (row.person_cm_id, row.camper_basis, row.camper_name, row.session_name) == (
         1001,
         "placed",
@@ -342,3 +368,135 @@ async def test_a_commitment_waits_with_its_days() -> None:
         40,
         "Alex Rivera",
     )
+
+
+# --- placements -----------------------------------------------------------------------
+
+
+def _place_repo(**kw: Any) -> MagicMock:
+    repo = _repo()
+    repo.fetch_grant_postings = AsyncMock(return_value=kw.get("postings", [_posting(9001, 500), _posting(9002, 300)]))
+    repo.fetch_overrides = AsyncMock(return_value=kw.get("overrides", []))
+    repo.fetch_links = AsyncMock(return_value=[])
+    persons = [_person(1001, "Sam"), _person(1002, "Alex"), _person(1050, "Jo", household=150)]
+
+    async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
+        """Ruling 2a: a stand-in for the real fetch_household_persons, which scopes to the
+        household set actually asked for (own household or a childhood household) — unlike a
+        static AsyncMock, this lets the "not in the family" refusal test mean something."""
+        wanted = set(household_ids)
+        return [p for p in persons if p.household_id in wanted]
+
+    repo.fetch_household_persons = AsyncMock(side_effect=_household_persons)
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_attendee(1001, 1000101), _attendee(1001, 1000102), _attendee(1002, 1000101)]
+    )
+    return repo
+
+
+def _placements(*rows: dict[str, Any], note: str = "") -> PlaceGrantsIn:
+    return PlaceGrantsIn(placements=list(rows), note=note)
+
+
+@pytest.mark.asyncio
+async def test_placing_a_class_is_one_operation_of_staff_overrides() -> None:
+    service, spy = _service(_place_repo())
+    out = await service.place(
+        2031,
+        _placements(
+            {"transaction_cm_id": 9001, "person_cm_id": 1001, "session_cm_id": 1000101},
+            {"transaction_cm_id": 9002, "person_cm_id": 1002},
+        ),
+        ACTOR,
+    )
+    assert (out.placed, out.unchanged) == (2, 0)
+    assert out.operation_id
+    first, second = spy.writes
+    assert first.collection == "aid_attribution_overrides"
+    assert first.log_action == "place_grant"
+    assert first.data is not None
+    assert first.data["attributed_session_cm_id"] == 1000101
+    assert first.data["program_family"] == "summer"
+    assert first.data["source"] == "staff"
+    assert second.data is not None
+    assert second.data["attributed_session_cm_id"] == 0
+    assert second.data["program_family"] == "summer"  # every one of Alex's enrollments is summer
+    assert spy.kwargs["actor"] == ACTOR
+
+
+@pytest.mark.asyncio
+async def test_placing_keeps_an_existing_reclassification() -> None:
+    existing = SimpleNamespace(
+        id="ovr000000000001",
+        year=2031,
+        transaction_cm_id=9001,
+        attributed_person_cm_id=0,
+        attributed_session_cm_id=0,
+        program_family="",
+        source_key_override="outside program award",
+        source="staff",
+        note="Reclassified",
+    )
+    service, spy = _service(_place_repo(overrides=[existing]))
+    await service.place(2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001}), ACTOR)
+    (write,) = spy.writes
+    assert write.action == "update"
+    assert write.record_id == "ovr000000000001"
+    assert write.data is not None
+    assert write.data["source_key_override"] == "outside program award"
+
+
+@pytest.mark.asyncio
+async def test_re_confirming_the_same_camper_writes_nothing() -> None:
+    """Review Focus 4."""
+    existing = SimpleNamespace(
+        id="ovr000000000001",
+        year=2031,
+        transaction_cm_id=9001,
+        attributed_person_cm_id=1001,
+        attributed_session_cm_id=1000101,
+        program_family="summer",
+        source_key_override="",
+        source="staff",
+        note="",
+    )
+    service, spy = _service(_place_repo(overrides=[existing]))
+    out = await service.place(
+        2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001, "session_cm_id": 1000101}), ACTOR
+    )
+    assert (out.placed, out.unchanged, out.operation_id) == (0, 1, None)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        ({"transaction_cm_id": 9999, "person_cm_id": 1001}, "not a live grant line"),
+        ({"transaction_cm_id": 9001, "person_cm_id": 1050}, "not in the family"),
+        ({"transaction_cm_id": 9001, "person_cm_id": 1001, "session_cm_id": 1000199}, "no enrollment"),
+    ],
+)
+async def test_one_bad_placement_refuses_the_whole_batch(row: dict[str, Any], message: str) -> None:
+    """Review Focus 3 / Decision 11: all or nothing, and the refusal names the transaction."""
+    service, spy = _service(_place_repo())
+    good = {"transaction_cm_id": 9002, "person_cm_id": 1002}
+    with pytest.raises(FinancialAidValidationError, match=message):
+        await service.place(2031, _placements(good, row), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_reversed_line_cannot_be_placed() -> None:
+    reversed_line = _posting(9001, 500, is_reversed=True, reversal_date="2031-03-01 17:00:00.000Z")
+    service, spy = _service(_place_repo(postings=[reversed_line]))
+    with pytest.raises(FinancialAidValidationError, match="not a live grant line"):
+        await service.place(2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001}), ACTOR)
+    assert not spy.called
+
+
+def test_a_placement_batch_names_each_transaction_once() -> None:
+    with pytest.raises(ValidationError):
+        _placements(
+            {"transaction_cm_id": 9001, "person_cm_id": 1001}, {"transaction_cm_id": 9001, "person_cm_id": 1002}
+        )
