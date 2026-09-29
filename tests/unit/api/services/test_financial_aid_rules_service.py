@@ -17,6 +17,7 @@ from api.services.financial_aid_rules_service import (
     PAGE_SIZE,
     AidRulesRepository,
     FinancialAidRulesService,
+    NoSectionsNamedError,
     NotLatestVersionError,
     RulesNotFoundError,
     VersionExistsError,
@@ -204,6 +205,50 @@ async def test_approval_validates_against_the_seasons_sessions() -> None:
         AT,
         "Board, Jan 15",
     )
+
+
+@pytest.mark.asyncio
+async def test_approving_several_sections_is_one_operation_naming_the_body() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    approved, _ = await service.approve_sections(
+        2031, 1, ["programs", "cost", "programs"], actor=FINANCE, note="Finance, Oct 7 meeting"
+    )
+    assert (approved.section_status["programs"].state, approved.section_status["cost"].state) == (
+        "approved",
+        "approved",
+    )
+    assert approved.section_status["programs"].note == "Finance, Oct 7 meeting"
+    [operation] = store.operations[1:]
+    assert [r["entity_id"] for r in operation] == ["2031:1:programs", "2031:1:cost"]  # duplicates once, in order
+    assert {r["action"] for r in operation} == {"approve"}
+    assert {r["reason"] for r in operation} == {"Finance, Oct 7 meeting"}
+    assert len({r["operation_id"] for r in operation}) == 1
+    # Each row carries only its own section's change.
+    assert set(operation[1]["after"]["section_status"]) == {"cost"}
+
+
+@pytest.mark.asyncio
+async def test_if_one_section_cannot_be_approved_none_is() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    # Pools summing to other than 100% is a budget error; income is clean.
+    await service.save(2031, 1, with_lever(fictional_rules(), "budget.pools.camp_pool.share_pct", "79"), actor=FINANCE)
+    written = len(store.operations)
+    with pytest.raises(SectionHasErrorsError, match="budget"):
+        await service.approve_sections(2031, 1, ["income", "budget"], actor=FINANCE, note="Finance")
+    assert len(store.operations) == written
+    assert (await service.load(2031, 1)).section_status["income"].state == "draft"
+
+
+@pytest.mark.asyncio
+async def test_approving_no_sections_is_refused() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(NoSectionsNamedError):
+        await service.approve_sections(2031, 1, [], actor=FINANCE, note="Finance")
 
 
 @pytest.mark.asyncio
@@ -565,7 +610,13 @@ async def test_start_from_last_year_clears_prices_and_warns() -> None:
 
 
 def test_every_service_refusal_is_a_financial_aid_error_and_pydantic_is_not() -> None:
-    for error in (NotLatestVersionError, RulesNotFoundError, VersionExistsError, YearMismatchError):
+    for error in (
+        NoSectionsNamedError,
+        NotLatestVersionError,
+        RulesNotFoundError,
+        VersionExistsError,
+        YearMismatchError,
+    ):
         assert issubclass(error, FinancialAidError), error
     assert not issubclass(ValidationError, FinancialAidError)
 

@@ -98,6 +98,10 @@ class NotLatestVersionError(FinancialAidError, ValueError):
     """
 
 
+class NoSectionsNamedError(FinancialAidError, ValueError):
+    """An approval must name at least one section."""
+
+
 class RulesVersion(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -333,14 +337,29 @@ class FinancialAidRulesService:
     async def approve_section(
         self, year: int, version: int, section: SectionName, *, actor: str, note: str | None
     ) -> tuple[RulesVersion, ValidationReport]:
-        """Approve one section. The report comes back so its warnings reach the approver
-        (for example no_sessions_to_check when the season has no synced sessions yet)."""
+        return await self.approve_sections(year, version, [section], actor=actor, note=note)
+
+    async def approve_sections(
+        self, year: int, version: int, sections: Sequence[SectionName], *, actor: str, note: str | None
+    ) -> tuple[RulesVersion, ValidationReport]:
+        """Approve `sections` as ONE operation: a log row per section, the note (naming the
+        approving body, D39) as each row's reason. All or nothing: every approval is checked
+        before anything is sent, so one section that cannot be approved stops them all.
+        The report comes back so its warnings (no_sessions_to_check) reach the approver."""
+        named = list(dict.fromkeys(sections))
+        if not named:
+            raise NoSectionsNamedError("Name at least one section to approve")
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
         report = await self.validate_document(current.document)
-        status = approve(current.section_status, section, by=actor, at=self._clock(), note=note, report=report)
-        write = _status_write(current, current.section_status, status, section, log_action="approve", reason=note)
-        await self._store.commit([write], actor=actor, reason=note)
+        at = self._clock()
+        status = current.section_status
+        writes: list[AidWrite] = []
+        for section in named:
+            updated = approve(status, section, by=actor, at=at, note=note, report=report)
+            writes.append(_status_write(current, status, updated, section, log_action="approve", reason=note))
+            status = updated
+        await self._store.commit(writes, actor=actor, reason=note)
         return await self.load(year, current.version), report
 
     async def lock_section(self, year: int, version: int, section: SectionName, *, actor: str) -> RulesVersion:
