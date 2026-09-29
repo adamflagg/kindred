@@ -124,7 +124,9 @@ func TestAidPostingsSyncAppliesTheConfigFile(t *testing.T) {
 		if s.GetString("classified_by") != aidClassifiedConfigFile {
 			t.Errorf("%s classified_by = %s", s.GetString("description_key"), s.GetString("classified_by"))
 		}
-		if want := map[bool]string{true: "legacy_fund", false: ""}[s.GetString("description_key") == "legacy regional grant"]; s.GetString("grantor_key") != want {
+		isLegacyGrant := s.GetString("description_key") == "legacy regional grant"
+		want := map[bool]string{true: "legacy_fund", false: ""}[isLegacyGrant]
+		if s.GetString("grantor_key") != want {
 			t.Errorf("%s grantor_key = %q, want %q", s.GetString("description_key"), s.GetString("grantor_key"), want)
 		}
 	}
