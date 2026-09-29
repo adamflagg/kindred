@@ -388,6 +388,22 @@ async def test_a_commitment_waits_with_its_days() -> None:
 # --- placements -----------------------------------------------------------------------
 
 
+def _persons_by_household(persons: list[SimpleNamespace]) -> Any:
+    """Ruling 2a: a stand-in for the real fetch_household_persons_by_household, which scopes each
+    household to the people Go's attribution treats as its own -- own household OR a childhood
+    household -- unlike a static AsyncMock. This is what lets both the "not in the family"
+    refusal (Riley) and the childhood-household acceptance (Olivia) mean something: a plain
+    household_id comparison would get Riley right but Olivia wrong."""
+
+    async def _by_household(_year: int, household_ids: Collection[int]) -> dict[int, list[Any]]:
+        return {
+            h: [p for p in persons if h in (p.household_id, getattr(p, "primary_childhood_household", 0))]
+            for h in set(household_ids)
+        }
+
+    return _by_household
+
+
 def _place_repo(**kw: Any) -> MagicMock:
     repo = _repo()
     repo.fetch_grant_postings = AsyncMock(return_value=kw.get("postings", [_posting(9001, 500), _posting(9002, 300)]))
@@ -404,18 +420,7 @@ def _place_repo(**kw: Any) -> MagicMock:
         _person(1060, "Olivia", household=150, primary_childhood_household=100),
     ]
 
-    async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
-        """Ruling 2a: a stand-in for the real fetch_household_persons, which scopes to the
-        household set actually asked for — own household OR a childhood household — unlike a
-        static AsyncMock. This is what lets both the "not in the family" refusal (Riley) and the
-        childhood-household acceptance (Olivia) mean something: a plain household_id comparison
-        would get Riley right but Olivia wrong (and vice versa for a pool with no filtering at all)."""
-        wanted = set(household_ids)
-        return [
-            p for p in persons if p.household_id in wanted or getattr(p, "primary_childhood_household", 0) in wanted
-        ]
-
-    repo.fetch_household_persons = AsyncMock(side_effect=_household_persons)
+    repo.fetch_household_persons_by_household = AsyncMock(side_effect=_persons_by_household(persons))
     repo.fetch_enrollments = AsyncMock(
         return_value=[
             _attendee(1001, 1000101),
@@ -455,6 +460,23 @@ async def test_placing_a_class_is_one_operation_of_staff_overrides() -> None:
     assert second.data["attributed_session_cm_id"] == 0
     assert second.data["program_family"] == "summer"  # every one of Liam's enrollments is summer
     assert spy.kwargs["actor"] == ACTOR
+
+
+@pytest.mark.asyncio
+async def test_placing_a_class_across_households_looks_up_family_members_once() -> None:
+    """SP6-core T7: one repository call for the whole batch, however many households it spans,
+    instead of one query per household (~65 ms each; a 100-household class took ~7 s)."""
+    repo = _place_repo(postings=[_posting(9001, 500), _posting(9003, 200, household_cm_id=150)])
+    service, spy = _service(repo)
+    out = await service.place(
+        2031,
+        _placements(
+            {"transaction_cm_id": 9001, "person_cm_id": 1001}, {"transaction_cm_id": 9003, "person_cm_id": 1050}
+        ),
+        ACTOR,
+    )
+    assert out.placed == 2
+    assert repo.fetch_household_persons_by_household.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -635,16 +657,7 @@ def _commit_repo(**kw: Any) -> MagicMock:
     repo.fetch_links = AsyncMock(return_value=[])
     persons = [_person(1001, "Emma"), _person(1050, "Riley", household=150)]
 
-    async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
-        """Ruling 1: fetch_household_persons is Go's real attribution pool (own household or a
-        primary/alternate childhood household) -- the same filtering stand-in as _place_repo's,
-        not fetch_household_members plus a plain household_id comparison."""
-        wanted = set(household_ids)
-        return [
-            p for p in persons if p.household_id in wanted or getattr(p, "primary_childhood_household", 0) in wanted
-        ]
-
-    repo.fetch_household_persons = AsyncMock(side_effect=_household_persons)
+    repo.fetch_household_persons_by_household = AsyncMock(side_effect=_persons_by_household(persons))
     repo.fetch_enrollments = AsyncMock(return_value=[_attendee(1001, 1000101)])
     repo.get_commitment = AsyncMock(return_value=kw.get("commitment"))
     return repo

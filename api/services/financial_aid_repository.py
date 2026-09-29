@@ -14,6 +14,7 @@ write whose log row could be lost.
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -37,6 +38,11 @@ from api.utils.pb_filters import pb_escape
 
 PAGE_SIZE = 1000
 ID_CHUNK = 100
+# A household's family filter is four terms (~145 characters). Eight households keep one filter near
+# 1,200 characters, well under the 3,500-character limit below; 25 go over it and PocketBase answers
+# 400. One query per household instead cost ~65 ms each (SP6-core T7).
+HOUSEHOLD_CHUNK = 8
+_PERSON_HOUSEHOLD_RELATIONS = ("household", "primary_childhood_household", "alternate_childhood_household")
 # PocketBase v0.40.4 refuses any filter over 3500 characters
 # (tools/search/provider.go:31); keep a margin below it and a cap on term count
 # per chunk so one emitted filter never approaches the hard limit.
@@ -184,6 +190,38 @@ class FinancialAidRepository:
             for p in await self._page(PERSONS, {"filter": flt, "sort": STABLE_SORT}):
                 out[p.id] = p
         return list(out.values())
+
+    async def fetch_household_persons_by_household(
+        self, year: int, household_ids: Collection[int]
+    ) -> dict[int, list[Any]]:
+        """fetch_household_persons' pool for many households at once, split back per household:
+        each person lands under every requested household that is their own or a primary or
+        alternate childhood household. Households with nobody are left out."""
+        wanted = _positive_unique(household_ids)
+        wanted_set = set(wanted)
+        found: dict[int, dict[str, Any]] = defaultdict(dict)
+        for start in range(0, len(wanted), HOUSEHOLD_CHUNK):
+            terms = " || ".join(
+                f"household_id = {h} || primary_childhood_household.cm_id = {h}"
+                f" || alternate_childhood_household.cm_id = {h} || household.cm_id = {h}"
+                for h in wanted[start : start + HOUSEHOLD_CHUNK]
+            )
+            rows = await self._page(
+                PERSONS,
+                {
+                    "filter": f"year = {int(year)} && ({terms})",
+                    "sort": STABLE_SORT,
+                    "expand": ",".join(_PERSON_HOUSEHOLD_RELATIONS),
+                },
+            )
+            for p in rows:
+                expand = getattr(p, "expand", None) or {}
+                households = {int(getattr(p, "household_id", 0) or 0)} | {
+                    int(getattr(expand.get(name), "cm_id", 0) or 0) for name in _PERSON_HOUSEHOLD_RELATIONS
+                }
+                for h in households & wanted_set:
+                    found[h][str(p.id)] = p
+        return {h: list(people.values()) for h, people in found.items()}
 
     async def fetch_enrollments(self, year: int, person_ids: Collection[int]) -> list[Any]:
         return await self._by_ids(ATTENDEES, f"year = {int(year)}", "person_id", person_ids, {"expand": "session"})

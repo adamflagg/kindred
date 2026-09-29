@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -249,15 +249,20 @@ class GrantsService:
             commit_aid_writes, self.repo.pb, writes, actor=actor, reason=reason, require_reason=require_reason
         )
 
-    async def _family_member_cm_ids(self, year: int, links: Any, household_cm_id: int) -> frozenset[int]:
+    async def _family_members(
+        self, year: int, links: Any, household_cm_ids: Collection[int]
+    ) -> dict[int, frozenset[int]]:
         """The family-membership rule place() and _commitment_fields() share exactly (Ruling 1/2):
         Go's attribution treats a person as belonging to a household if it is their own household
-        OR their primary/alternate childhood household -- exactly the pool
-        fetch_household_persons(year, family_household_set(links, household)) returns, never
-        fetch_household_members plus a plain household_id comparison."""
-        family_set = frozenset(family_household_set(links, household_cm_id))
-        members = await self.repo.fetch_household_persons(year, family_set)
-        return frozenset(int(m.cm_id) for m in members)
+        OR their primary/alternate childhood household, across the household's linked family
+        (family_household_set) -- never fetch_household_members plus a plain household_id
+        comparison. One repository call for every household asked (SP6-core T7)."""
+        family_sets = {h: frozenset(family_household_set(links, h)) for h in household_cm_ids}
+        by_household = await self.repo.fetch_household_persons_by_household(year, set().union(*family_sets.values()))
+        return {
+            h: frozenset(int(p.cm_id) for member in hs for p in by_household.get(member, ()))
+            for h, hs in family_sets.items()
+        }
 
     # --- the grantor directory (rules) ------------------------------------------
 
@@ -526,7 +531,7 @@ class GrantsService:
         placement home, applied by Go on the next aid_postings run and overlaid by read() at once
         (Decision 2). Every placement is checked before anything is written (Decision 11).
 
-        Family membership and program-family resolution follow `_family_member_cm_ids` and
+        Family membership and program-family resolution follow `_family_members` and
         `_program_family` exactly (Ruling 1/2) -- the same rules `_commitment_fields` uses.
         """
         lines = {int(p.transaction_cm_id): p for p in await self.repo.fetch_grant_postings(year) if not p.is_reversed}
@@ -537,8 +542,7 @@ class GrantsService:
                 )
         links = await self.repo.fetch_links(year)
         households = {int(lines[p.transaction_cm_id].household_cm_id or 0) for p in body.placements}
-        member_sets = await asyncio.gather(*(self._family_member_cm_ids(year, links, h) for h in households))
-        family_members = dict(zip(households, member_sets, strict=True))
+        family_members = await self._family_members(year, links, households)
         enrollments_by_person: dict[int, list[Enrollment]] = defaultdict(list)
         for e in (
             _enrollment(a) for a in await self.repo.fetch_enrollments(year, {p.person_cm_id for p in body.placements})
@@ -621,7 +625,7 @@ class GrantsService:
     async def _commitment_fields(self, year: int, body: CommitmentIn) -> dict[str, Any]:
         """Checks a commitment against the directory and the season, and resolves its program
         family. Membership and family inference mirror place()'s ruled pattern exactly (Ruling
-        1/2), via the same `_family_member_cm_ids` and `_program_family` helpers."""
+        1/2), via the same `_family_members` and `_program_family` helpers."""
         if await self.repo.get_grantor(body.grantor_key) is None:
             raise FinancialAidNotFoundError(f"grantor {body.grantor_key!r} not found")
         funders = {
@@ -636,7 +640,7 @@ class GrantsService:
                 "a family incentive isn't entered as a commitment; it posts in CampMinder"
             )
         links = await self.repo.fetch_links(year)
-        members = await self._family_member_cm_ids(year, links, body.household_cm_id)
+        members = (await self._family_members(year, links, {body.household_cm_id}))[body.household_cm_id]
         if body.person_cm_id not in members:
             raise FinancialAidValidationError(
                 f"person {body.person_cm_id} is not in household {body.household_cm_id}'s family"

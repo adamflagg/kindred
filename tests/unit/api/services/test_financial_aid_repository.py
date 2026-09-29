@@ -155,6 +155,35 @@ async def test_fa_requests_take_the_household_cm_id_from_the_expanded_relation()
     assert [(r.household_cm_id, r.summer, r.family_camp, r.bmitzvah) for r in got] == [(100, 1200.0, 0.0, 0.0)]
 
 
+def _person_row(pid: str, cm: int, household: int, primary: int = 0, alternate: int = 0) -> SimpleNamespace:
+    expand: dict[str, object] = {"household": SimpleNamespace(cm_id=household)}
+    if primary:
+        expand["primary_childhood_household"] = SimpleNamespace(cm_id=primary)
+    if alternate:
+        expand["alternate_childhood_household"] = SimpleNamespace(cm_id=alternate)
+    return SimpleNamespace(id=pid, cm_id=cm, household_id=household, expand=expand)
+
+
+@pytest.mark.asyncio
+async def test_household_persons_by_household_reads_eight_households_a_query_and_splits_them_back() -> None:
+    """SP6-core T7: one query per household cost about 65 ms (a 100-household class took ~7 s), and
+    PocketBase rejects an OR filter over 25 households' relation joins (400). Eight a query is the
+    measured safe size. Each person lands under every requested household they belong to: their own,
+    or a primary or alternate childhood household."""
+    rows: list[object] = [
+        _person_row("p1", 1001, household=1, primary=2),
+        _person_row("p2", 1002, household=150, alternate=3),
+        _person_row("p3", 1003, household=999),
+    ]
+    pb, calls = _pb(rows)
+    got = await FinancialAidRepository(pb).fetch_household_persons_by_household(2026, list(range(1, 21)))
+    assert len(calls) == 3  # 8 + 8 + 4
+    assert all(str(c["filter"]).startswith("year = 2026 && (") for c in calls)
+    assert all("primary_childhood_household.cm_id = " in str(c["filter"]) for c in calls)
+    assert all(c["expand"] == "household,primary_childhood_household,alternate_childhood_household" for c in calls)
+    assert {h: [int(p.cm_id) for p in people] for h, people in got.items()} == {1: [1001], 2: [1001], 3: [1002]}
+
+
 @pytest.mark.asyncio
 async def test_get_source_escapes_the_id() -> None:
     pb, calls = _pb()
