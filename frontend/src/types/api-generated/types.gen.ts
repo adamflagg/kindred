@@ -337,9 +337,9 @@ export type AidSourceRow = {
    */
   counts_toward_budget: boolean
   /**
-   * Full Coverage
+   * Grantor Key
    */
-  full_coverage: boolean
+  grantor_key: string
   /**
    * Implied Program Families
    */
@@ -383,9 +383,10 @@ export type AidSourceTotal = {
 /**
  * AidSourceUpdate
  *
- * A staff classification. Only the camp's own aid (camp_fa) may count toward
- * the budget: every outside grant and fund is external to it. full_coverage
- * marks an outside full-ride source (it pays a family's whole session).
+ * A staff classification. Only the camp's own aid (camp_fa) may count toward the budget:
+ * every outside grant and fund is external to it. full_coverage is NOT here: it is a grantor
+ * fact on aid_grantors (owner ruling 2026-09-28), and an unknown field is refused so a stale
+ * client can't believe it set one.
  */
 export type AidSourceUpdate = {
   /**
@@ -419,10 +420,6 @@ export type AidSourceUpdate = {
    * Counts Toward Budget
    */
   counts_toward_budget: boolean
-  /**
-   * Full Coverage
-   */
-  full_coverage?: boolean
   /**
    * Implied Program Families
    */
@@ -1363,6 +1360,20 @@ export type BunkingRequestVersion = {
 }
 
 /**
+ * CamperCandidateOut
+ */
+export type CamperCandidateOut = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Name
+   */
+  name: string
+}
+
+/**
  * CamperGroupedRequests
  *
  * Requests grouped by camper with their field parse results.
@@ -1526,6 +1537,44 @@ export type CamperSatisfaction = {
   }
   immaterial: BucketCount
   flags: SatisfactionFlags
+}
+
+/**
+ * CamperSuggestionOut
+ */
+export type CamperSuggestionOut = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Program Family
+   */
+  program_family: string
+  /**
+   * Basis
+   */
+  basis: 'commitment' | 'attribution'
+  /**
+   * Method
+   */
+  method: string
+  /**
+   * Commitment Id
+   */
+  commitment_id: string
+  /**
+   * Amount Matches
+   */
+  amount_matches: boolean
 }
 
 /**
@@ -1910,6 +1959,98 @@ export type ClearScenarioRequest = {
    * Cleared By
    */
   cleared_by?: string | null
+}
+
+/**
+ * CommitmentIn
+ *
+ * A whole commitment (create and save take the same body). The camper is required: the
+ * caseworker enters the commitment because they know who it's for. The session is optional; the
+ * program family comes from the camper's enrollments.
+ */
+export type CommitmentIn = {
+  /**
+   * Grantor Key
+   */
+  grantor_key: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number | null
+  /**
+   * Amount
+   */
+  amount: number | string
+  /**
+   * Committed On
+   */
+  committed_on: string
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
+ * CommitmentOut
+ */
+export type CommitmentOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Grantor Key
+   */
+  grantor_key: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Program Family
+   */
+  program_family: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Committed On
+   */
+  committed_on: string
+  /**
+   * Status
+   */
+  status: 'open' | 'withdrawn'
+  /**
+   * Withdrawn At
+   */
+  withdrawn_at: string
+  /**
+   * Note
+   */
+  note: string
 }
 
 /**
@@ -3077,6 +3218,34 @@ export type EquitySectionOutput = {
 }
 
 /**
+ * ExpectedOut
+ *
+ * D56: never a grant, never counted.
+ */
+export type ExpectedOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Kind
+   */
+  kind: 'one_happy_camper' | 'synagogue'
+  /**
+   * Person Cm Ids
+   */
+  person_cm_ids: Array<number>
+  /**
+   * Camper Names
+   */
+  camper_names: Array<string>
+}
+
+/**
  * FaRequested
  */
 export type FaRequested = {
@@ -3854,6 +4023,291 @@ export type GradeEnrollment = {
    * Number enrolled
    */
   count: number
+}
+
+/**
+ * GrantRowOut
+ *
+ * One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
+ * posted. person_cm_id 0 = needs a camper. counts = it offsets awards (live, camper confirmed,
+ * not a fulfilled commitment). requests = the aid requests it sits on; [] = didn't apply.
+ */
+export type GrantRowOut = {
+  /**
+   * Kind
+   */
+  kind: 'ledger' | 'commitment'
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Commitment Id
+   */
+  commitment_id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name: string
+  /**
+   * Camper Basis
+   */
+  camper_basis: 'ledger' | 'placed' | 'commitment' | 'none'
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Program Family
+   */
+  program_family: string
+  /**
+   * Grantor Key
+   */
+  grantor_key: string
+  /**
+   * Grantor Name
+   */
+  grantor_name: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Funder Type
+   */
+  funder_type: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Recorded On
+   */
+  recorded_on: string
+  /**
+   * Is Reversed
+   */
+  is_reversed: boolean
+  /**
+   * Reversal Date
+   */
+  reversal_date: string
+  /**
+   * Cancelled
+   */
+  cancelled: boolean
+  /**
+   * Counts
+   */
+  counts: boolean
+  /**
+   * Fulfils Commitment Id
+   */
+  fulfils_commitment_id: string
+  /**
+   * Requests
+   */
+  requests: Array<RequestShareOut>
+}
+
+/**
+ * GrantorCreate
+ */
+export type GrantorCreate = {
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Aliases
+   */
+  aliases?: Array<string>
+  /**
+   * Full Coverage
+   */
+  full_coverage?: boolean
+  /**
+   * Covers Canteen
+   */
+  covers_canteen?: 'unknown' | 'yes' | 'no'
+  /**
+   * Eligibility
+   */
+  eligibility?: string
+  /**
+   * Contacts
+   */
+  contacts?: string
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * GrantorDescription
+ *
+ * One CampMinder description mapped to the grantor, read from aid_sources (D58).
+ */
+export type GrantorDescription = {
+  /**
+   * Source Id
+   */
+  source_id: string
+  /**
+   * Description Key
+   */
+  description_key: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Source Family
+   */
+  source_family: string
+}
+
+/**
+ * GrantorOut
+ */
+export type GrantorOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Aliases
+   */
+  aliases: Array<string>
+  /**
+   * Full Coverage
+   */
+  full_coverage: boolean
+  /**
+   * Covers Canteen
+   */
+  covers_canteen: 'unknown' | 'yes' | 'no'
+  /**
+   * Eligibility
+   */
+  eligibility: string
+  /**
+   * Contacts
+   */
+  contacts: string
+  /**
+   * Descriptions
+   */
+  descriptions: Array<GrantorDescription>
+}
+
+/**
+ * GrantorSave
+ *
+ * A whole-record save of an existing grantor; the key never changes.
+ */
+export type GrantorSave = {
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Aliases
+   */
+  aliases?: Array<string>
+  /**
+   * Full Coverage
+   */
+  full_coverage?: boolean
+  /**
+   * Covers Canteen
+   */
+  covers_canteen?: 'unknown' | 'yes' | 'no'
+  /**
+   * Eligibility
+   */
+  eligibility?: string
+  /**
+   * Contacts
+   */
+  contacts?: string
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * GrantorsResponse
+ */
+export type GrantorsResponse = {
+  /**
+   * Grantors
+   */
+  grantors: Array<GrantorOut>
+}
+
+/**
+ * GrantsResponse
+ *
+ * Grants' one aggregate read: the register, the three needs-attention groups and Expected.
+ * Family level, for financial_aid.view (D57); development gets aggregates from Reports.
+ */
+export type GrantsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Grants
+   */
+  grants: Array<GrantRowOut>
+  /**
+   * Needs Camper
+   */
+  needs_camper: Array<NeedsCamperOut>
+  /**
+   * Unmapped
+   */
+  unmapped: Array<UnmappedDescriptionOut>
+  /**
+   * Waiting
+   */
+  waiting: Array<WaitingCommitmentOut>
+  /**
+   * Expected
+   */
+  expected: Array<ExpectedOut>
 }
 
 /**
@@ -5571,6 +6025,22 @@ export type MultiSessionSolverRequest = {
    * Whether to respect locked bunk assignments
    */
   respect_locks?: boolean
+}
+
+/**
+ * NeedsCamperOut
+ */
+export type NeedsCamperOut = {
+  grant: GrantRowOut
+  /**
+   * Household Applied
+   */
+  household_applied: boolean
+  suggestion: CamperSuggestionOut | null
+  /**
+   * Candidates
+   */
+  candidates: Array<CamperCandidateOut>
 }
 
 /**
@@ -7295,6 +7765,47 @@ export type PipelineTracesByCamperResponse = {
 }
 
 /**
+ * PlaceGrantsIn
+ *
+ * Confirms the camper (and optionally the session) of grant lines: one, or a class in bulk
+ * (D16). One logged operation, all or nothing (Decision 11). The note is optional (a
+ * confirmation, like a tick; Decision 12). 500 placements is 1,000 batch requests, inside one
+ * atomic batch.
+ */
+export type PlaceGrantsIn = {
+  /**
+   * Placements
+   */
+  placements: Array<PlacementIn>
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
+ * PlaceGrantsOut
+ */
+export type PlaceGrantsOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Placed
+   */
+  placed: number
+  /**
+   * Unchanged
+   */
+  unchanged: number
+  /**
+   * Operation Id
+   */
+  operation_id: string | null
+}
+
+/**
  * PlacementCopyRequest
  *
  * Seed one weekend's scenario from the CampMinder mirror.
@@ -7358,6 +7869,24 @@ export type PlacementDeleteRequest = {
    * Person Cm Id
    */
   person_cm_id?: number
+}
+
+/**
+ * PlacementIn
+ */
+export type PlacementIn = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number | null
 }
 
 /**
@@ -8369,6 +8898,20 @@ export type RequestQueueResponse = {
    * Requests
    */
   requests: Array<RequestOut>
+}
+
+/**
+ * RequestShareOut
+ */
+export type RequestShareOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Amount
+   */
+  amount: number
 }
 
 /**
@@ -10674,6 +11217,24 @@ export type SolverResponse = {
 }
 
 /**
+ * SourceGrantorIn
+ *
+ * Names the description's grantor (D58: descriptions map to grantors through aid_sources, the
+ * one registry); None unmaps it. Staff data: the config file never writes or clears it, and
+ * naming a grantor doesn't take the description's classification away from the file.
+ */
+export type SourceGrantorIn = {
+  /**
+   * Grantor Key
+   */
+  grantor_key: string | null
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
  * SourceItem
  *
  * A raw value variant that maps to a canonical name.
@@ -11450,6 +12011,34 @@ export type UnclassifiedSource = {
 }
 
 /**
+ * UnmappedDescriptionOut
+ *
+ * An outside description with live lines this season and no grantor (opens Money › Sources).
+ */
+export type UnmappedDescriptionOut = {
+  /**
+   * Source Id
+   */
+  source_id: string
+  /**
+   * Description Key
+   */
+  description_key: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Lines
+   */
+  lines: number
+  /**
+   * Amount
+   */
+  amount: number
+}
+
+/**
  * UnpushResponse
  *
  * What `unpush` actually did (kindred#2477 Task 5).
@@ -11715,6 +12304,17 @@ export type VelocityResponse = {
    * Combined weekly data for delta chart + WoW table
    */
   weekly?: Array<WeeklyDataPoint>
+}
+
+/**
+ * WaitingCommitmentOut
+ */
+export type WaitingCommitmentOut = {
+  grant: GrantRowOut
+  /**
+   * Days Waiting
+   */
+  days_waiting: number
 }
 
 /**
@@ -12187,6 +12787,16 @@ export type WeeklyDataPoint = {
    * 'snapshot', 'reconstructed', or 'mixed'
    */
   data_source: string
+}
+
+/**
+ * WithdrawIn
+ */
+export type WithdrawIn = {
+  /**
+   * Reason
+   */
+  reason: string
 }
 
 /**
@@ -16954,6 +17564,38 @@ export type ClassifySourceApiFinancialAidSourcesSourceIdPatchResponses = {
 export type ClassifySourceApiFinancialAidSourcesSourceIdPatchResponse =
   ClassifySourceApiFinancialAidSourcesSourceIdPatchResponses[keyof ClassifySourceApiFinancialAidSourcesSourceIdPatchResponses]
 
+export type MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutData = {
+  body: SourceGrantorIn
+  path: {
+    /**
+     * Source Id
+     */
+    source_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/sources/{source_id}/grantor'
+}
+
+export type MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutError =
+  MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutErrors[keyof MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutErrors]
+
+export type MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: AidSourceRow
+}
+
+export type MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutResponse =
+  MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutResponses[keyof MapSourceGrantorApiFinancialAidSourcesSourceIdGrantorPutResponses]
+
 export type CreateHouseholdLinkApiFinancialAidHouseholdLinksPostData = {
   body: HouseholdLinkCreate
   path?: never
@@ -17345,6 +17987,253 @@ export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprov
 
 export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponse =
   ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses[keyof ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses]
+
+export type ListGrantorsApiFinancialAidGrantorsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/financial-aid/grantors'
+}
+
+export type ListGrantorsApiFinancialAidGrantorsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantorsResponse
+}
+
+export type ListGrantorsApiFinancialAidGrantorsGetResponse =
+  ListGrantorsApiFinancialAidGrantorsGetResponses[keyof ListGrantorsApiFinancialAidGrantorsGetResponses]
+
+export type CreateGrantorApiFinancialAidGrantorsPostData = {
+  body: GrantorCreate
+  path?: never
+  query?: never
+  url: '/api/financial-aid/grantors'
+}
+
+export type CreateGrantorApiFinancialAidGrantorsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateGrantorApiFinancialAidGrantorsPostError =
+  CreateGrantorApiFinancialAidGrantorsPostErrors[keyof CreateGrantorApiFinancialAidGrantorsPostErrors]
+
+export type CreateGrantorApiFinancialAidGrantorsPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: GrantorOut
+}
+
+export type CreateGrantorApiFinancialAidGrantorsPostResponse =
+  CreateGrantorApiFinancialAidGrantorsPostResponses[keyof CreateGrantorApiFinancialAidGrantorsPostResponses]
+
+export type SaveGrantorApiFinancialAidGrantorsKeyPutData = {
+  body: GrantorSave
+  path: {
+    /**
+     * Key
+     */
+    key: string
+  }
+  query?: never
+  url: '/api/financial-aid/grantors/{key}'
+}
+
+export type SaveGrantorApiFinancialAidGrantorsKeyPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveGrantorApiFinancialAidGrantorsKeyPutError =
+  SaveGrantorApiFinancialAidGrantorsKeyPutErrors[keyof SaveGrantorApiFinancialAidGrantorsKeyPutErrors]
+
+export type SaveGrantorApiFinancialAidGrantorsKeyPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantorOut
+}
+
+export type SaveGrantorApiFinancialAidGrantorsKeyPutResponse =
+  SaveGrantorApiFinancialAidGrantorsKeyPutResponses[keyof SaveGrantorApiFinancialAidGrantorsKeyPutResponses]
+
+export type GetGrantsApiFinancialAidGrantsYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/grants/{year}'
+}
+
+export type GetGrantsApiFinancialAidGrantsYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetGrantsApiFinancialAidGrantsYearGetError =
+  GetGrantsApiFinancialAidGrantsYearGetErrors[keyof GetGrantsApiFinancialAidGrantsYearGetErrors]
+
+export type GetGrantsApiFinancialAidGrantsYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: GrantsResponse
+}
+
+export type GetGrantsApiFinancialAidGrantsYearGetResponse =
+  GetGrantsApiFinancialAidGrantsYearGetResponses[keyof GetGrantsApiFinancialAidGrantsYearGetResponses]
+
+export type PlaceGrantsApiFinancialAidGrantsYearPlacementsPostData = {
+  body: PlaceGrantsIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/grants/{year}/placements'
+}
+
+export type PlaceGrantsApiFinancialAidGrantsYearPlacementsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PlaceGrantsApiFinancialAidGrantsYearPlacementsPostError =
+  PlaceGrantsApiFinancialAidGrantsYearPlacementsPostErrors[keyof PlaceGrantsApiFinancialAidGrantsYearPlacementsPostErrors]
+
+export type PlaceGrantsApiFinancialAidGrantsYearPlacementsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlaceGrantsOut
+}
+
+export type PlaceGrantsApiFinancialAidGrantsYearPlacementsPostResponse =
+  PlaceGrantsApiFinancialAidGrantsYearPlacementsPostResponses[keyof PlaceGrantsApiFinancialAidGrantsYearPlacementsPostResponses]
+
+export type CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostData = {
+  body: CommitmentIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/grants/{year}/commitments'
+}
+
+export type CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostError =
+  CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostErrors[keyof CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostErrors]
+
+export type CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: CommitmentOut
+}
+
+export type CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostResponse =
+  CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostResponses[keyof CreateGrantCommitmentApiFinancialAidGrantsYearCommitmentsPostResponses]
+
+export type SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutData = {
+  body: CommitmentIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Commitment Id
+     */
+    commitment_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/grants/{year}/commitments/{commitment_id}'
+}
+
+export type SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutError =
+  SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutErrors[keyof SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutErrors]
+
+export type SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: CommitmentOut
+}
+
+export type SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutResponse =
+  SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutResponses[keyof SaveGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdPutResponses]
+
+export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostData =
+  {
+    body: WithdrawIn
+    path: {
+      /**
+       * Year
+       */
+      year: number
+      /**
+       * Commitment Id
+       */
+      commitment_id: string
+    }
+    query?: never
+    url: '/api/financial-aid/grants/{year}/commitments/{commitment_id}/withdraw'
+  }
+
+export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostError =
+  WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostErrors[keyof WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostErrors]
+
+export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: CommitmentOut
+  }
+
+export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponse =
+  WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponses[keyof WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
