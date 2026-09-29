@@ -459,6 +459,15 @@ def _check_grants(rules: AidRules, issues: _Issues) -> None:
     for key in rules.grants.offset_programs:
         if key not in rules.programs:
             issues.error("grants", "unknown_program", "grants.offset_programs", f"No program '{key}'")
+    # Spec §13 / D55: grant receipts are parked, so no grant is ever "received"; under that
+    # setting no grant would offset any award. Remove this when receipts are built.
+    if rules.grants.count_when == "received":
+        issues.error(
+            "grants",
+            "grants_count_when_received",
+            "grants.count_when",
+            "Grant receipts aren't recorded yet, so under 'received' no grant would offset any award; keep 'committed'",
+        )
 
 
 def _check_budget(rules: AidRules, issues: _Issues) -> None:
