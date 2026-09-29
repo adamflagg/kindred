@@ -7,6 +7,8 @@ same as the ledger read. Every figure is live: the register has no as-of view in
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
@@ -206,3 +208,39 @@ class PlaceGrantsOut(BaseModel):
     placed: int
     unchanged: int
     operation_id: str | None
+
+
+# --- hand-entered commitments (casework; D55: only for a grant committed but not yet posted) ---
+
+
+class CommitmentIn(BaseModel):
+    """A whole commitment (create and save take the same body). The camper is required: the
+    caseworker enters the commitment because they know who it's for. The session is optional; the
+    program family comes from the camper's enrollments."""
+
+    grantor_key: GrantorKey
+    household_cm_id: int = Field(gt=0)
+    person_cm_id: int = Field(gt=0)
+    session_cm_id: int | None = Field(default=None, gt=0)
+    amount: Decimal = Field(gt=0, max_digits=9, decimal_places=2)
+    committed_on: date
+    note: _Text = ""
+
+
+class WithdrawIn(BaseModel):
+    reason: _Note
+
+
+class CommitmentOut(BaseModel):
+    id: str
+    year: int
+    grantor_key: str
+    household_cm_id: int
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+    amount: float
+    committed_on: str
+    status: Literal["open", "withdrawn"]
+    withdrawn_at: str
+    note: str

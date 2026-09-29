@@ -4,7 +4,7 @@ and commitments. Fictional data only; every write runs the real 4a helper over a
 from __future__ import annotations
 
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,7 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from api.schemas.financial_aid_grants import GrantorCreate, GrantorSave, GrantsResponse, PlaceGrantsIn
+from api.schemas.financial_aid_grants import (
+    CommitmentIn,
+    GrantorCreate,
+    GrantorSave,
+    GrantsResponse,
+    PlaceGrantsIn,
+    WithdrawIn,
+)
 from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from tests.unit.api.services.aid_commit_spy import AidCommitSpy, spy_on_commits
@@ -588,3 +595,173 @@ def test_a_placement_batch_names_each_transaction_once() -> None:
         _placements(
             {"transaction_cm_id": 9001, "person_cm_id": 1001}, {"transaction_cm_id": 9001, "person_cm_id": 1002}
         )
+
+
+# --- commitments ------------------------------------------------------------------------
+
+
+def _commit_repo(**kw: Any) -> MagicMock:
+    repo = _repo(grantor=kw.get("grantor", _grantor()))
+    repo.fetch_links = AsyncMock(return_value=[])
+    persons = [_person(1001, "Sam"), _person(1050, "Jo", household=150)]
+
+    async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
+        """Ruling 1: fetch_household_persons is Go's real attribution pool (own household or a
+        primary/alternate childhood household) -- the same filtering stand-in as _place_repo's,
+        not fetch_household_members plus a plain household_id comparison."""
+        wanted = set(household_ids)
+        return [
+            p for p in persons if p.household_id in wanted or getattr(p, "primary_childhood_household", 0) in wanted
+        ]
+
+    repo.fetch_household_persons = AsyncMock(side_effect=_household_persons)
+    repo.fetch_enrollments = AsyncMock(return_value=[_attendee(1001, 1000101)])
+    repo.get_commitment = AsyncMock(return_value=kw.get("commitment"))
+    return repo
+
+
+def _commitment_in(**kw: Any) -> CommitmentIn:
+    base: dict[str, Any] = {
+        "grantor_key": "regional_fund",
+        "household_cm_id": 100,
+        "person_cm_id": 1001,
+        "amount": "750.00",
+        "committed_on": date(2031, 1, 20),
+    }
+    base.update(kw)
+    return CommitmentIn(**base)
+
+
+def _stored(**kw: Any) -> SimpleNamespace:
+    base: dict[str, Any] = {
+        "id": "com000000000001",
+        "year": 2031,
+        "grantor_key": "regional_fund",
+        "household_cm_id": 100,
+        "person_cm_id": 1001,
+        "session_cm_id": 0,
+        "program_family": "summer",
+        "amount": 750.0,
+        "committed_on": "2031-01-20 00:00:00.000Z",
+        "status": "open",
+        "withdrawn_at": "",
+        "note": "",
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+@pytest.mark.asyncio
+async def test_creating_a_commitment_writes_it_open_with_its_log_row() -> None:
+    service, spy = _service(_commit_repo())
+    out = await service.create_commitment(2031, _commitment_in(), ACTOR)
+    assert (out.status, out.amount, out.program_family, out.committed_on) == ("open", 750.0, "summer", "2031-01-20")
+    (write,) = spy.writes
+    assert write.collection == "aid_grants"
+    assert write.action == "create"
+    assert write.data is not None
+    assert write.data["status"] == "open"
+    assert write.data["actor"] == ACTOR
+    assert out.id == write.record_id  # the id the service generated and wrote
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_needs_a_known_grantor() -> None:
+    service, spy = _service(_commit_repo(grantor=None))
+    with pytest.raises(FinancialAidNotFoundError, match="grantor"):
+        await service.create_commitment(2031, _commitment_in(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_commitments_camper_must_be_in_the_household() -> None:
+    service, spy = _service(_commit_repo())
+    with pytest.raises(FinancialAidValidationError, match="not in household"):
+        await service.create_commitment(2031, _commitment_in(person_cm_id=1050), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_cannot_name_an_incentive_grantor() -> None:
+    repo = _commit_repo()
+    repo.fetch_sources = AsyncMock(
+        return_value=[
+            _source("family incentive grant", "regional_fund", funder_type="incentive", source_family="jfam_incentive")
+        ]
+    )
+    service, spy = _service(repo)
+    with pytest.raises(FinancialAidValidationError, match="incentive"):
+        await service.create_commitment(2031, _commitment_in(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_infers_program_family_from_active_enrollments_only() -> None:
+    """Ruling 2: with no session, only ACTIVE enrollments (ACTIVE_ENROLLED_STATUS_ID) count toward
+    the family -- a cancelled enrollment in a different program family must not turn a single
+    clear family into an ambiguous ""."""
+    repo = _commit_repo()
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[
+            _attendee(1001, 1000101, status=2),  # active, summer
+            _attendee(1001, 1000199, status=3, session_type="quest"),  # cancelled, quest
+        ]
+    )
+    service, _ = _service(repo)
+    out = await service.create_commitment(2031, _commitment_in(), ACTOR)
+    assert out.program_family == "summer"
+
+
+@pytest.mark.asyncio
+async def test_saving_an_unchanged_commitment_writes_nothing() -> None:
+    service, spy = _service(_commit_repo(commitment=_stored()))
+    await service.save_commitment(2031, "com000000000001", _commitment_in(), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_saving_a_changed_amount_logs_the_amount() -> None:
+    service, spy = _service(_commit_repo(commitment=_stored()))
+    out = await service.save_commitment(2031, "com000000000001", _commitment_in(amount="800"), ACTOR)
+    assert out.amount == 800.0
+    (log,) = spy.log_rows()
+    assert log["before"] == {"amount": 750.0}
+    assert log["after"] == {"amount": 800.0}
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_commitment_cannot_be_edited_or_withdrawn_again() -> None:
+    service, spy = _service(_commit_repo(commitment=_stored(status="withdrawn")))
+    with pytest.raises(FinancialAidValidationError, match="withdrawn"):
+        await service.save_commitment(2031, "com000000000001", _commitment_in(amount="800"), ACTOR)
+    with pytest.raises(FinancialAidValidationError, match="already withdrawn"):
+        await service.withdraw_commitment(2031, "com000000000001", WithdrawIn(reason="Duplicate"), ACTOR)
+    assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_withdrawing_records_when_and_why() -> None:
+    service, spy = _service(_commit_repo(commitment=_stored()))
+    service._clock = lambda: datetime(2031, 2, 1, 18, 0, tzinfo=UTC)
+    out = await service.withdraw_commitment(2031, "com000000000001", WithdrawIn(reason="The grantor declined"), ACTOR)
+    assert out.status == "withdrawn"
+    assert out.withdrawn_at.startswith("2031-02-01")
+    (write,) = spy.writes
+    assert write.log_action == "withdraw"
+    assert write.data == {"status": "withdrawn", "withdrawn_at": "2031-02-01 18:00:00.000Z"}
+    assert spy.kwargs["reason"] == "The grantor declined"
+    assert spy.kwargs["require_reason"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_from_another_season_is_not_found() -> None:
+    service, _ = _service(_commit_repo(commitment=_stored(year=2030)))
+    with pytest.raises(FinancialAidNotFoundError):
+        await service.withdraw_commitment(2031, "com000000000001", WithdrawIn(reason="x"), ACTOR)
+
+
+def test_a_commitment_amount_is_positive_whole_cents() -> None:
+    with pytest.raises(ValidationError):
+        _commitment_in(amount="0")
+    with pytest.raises(ValidationError):
+        _commitment_in(amount="10.005")

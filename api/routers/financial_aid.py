@@ -44,6 +44,8 @@ from api.schemas.financial_aid import (
     SummaryResponse,
 )
 from api.schemas.financial_aid_grants import (
+    CommitmentIn,
+    CommitmentOut,
     GrantorCreate,
     GrantorOut,
     GrantorSave,
@@ -51,6 +53,7 @@ from api.schemas.financial_aid_grants import (
     GrantsResponse,
     PlaceGrantsIn,
     PlaceGrantsOut,
+    WithdrawIn,
 )
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
@@ -560,5 +563,36 @@ async def get_grants(year: _Year, user: AuthUser = _VIEW) -> GrantsResponse:
 async def place_grants(year: _Year, body: PlaceGrantsIn, user: AuthUser = _CASEWORK) -> PlaceGrantsOut:
     try:
         return await _grants().place(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+_CommitmentId = Annotated[str, Path(min_length=15, max_length=15, pattern=r"^[a-z0-9]+$")]
+
+
+@router.post("/grants/{year}/commitments", response_model=CommitmentOut, status_code=201)
+async def create_grant_commitment(year: _Year, body: CommitmentIn, user: AuthUser = _CASEWORK) -> CommitmentOut:
+    try:
+        return await _grants().create_commitment(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.put("/grants/{year}/commitments/{commitment_id}", response_model=CommitmentOut)
+async def save_grant_commitment(
+    year: _Year, commitment_id: _CommitmentId, body: CommitmentIn, user: AuthUser = _CASEWORK
+) -> CommitmentOut:
+    try:
+        return await _grants().save_commitment(year, commitment_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.post("/grants/{year}/commitments/{commitment_id}/withdraw", response_model=CommitmentOut)
+async def withdraw_grant_commitment(
+    year: _Year, commitment_id: _CommitmentId, body: WithdrawIn, user: AuthUser = _CASEWORK
+) -> CommitmentOut:
+    try:
+        return await _grants().withdraw_commitment(year, commitment_id, body, user.email)
     except FinancialAidError as exc:
         raise _grants_http(exc) from exc

@@ -19,11 +19,13 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_GRANTORS
+from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_GRANTORS, AID_GRANTS
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.schemas.financial_aid_grants import (
     CamperCandidateOut,
     CamperSuggestionOut,
+    CommitmentIn,
+    CommitmentOut,
     ExpectedOut,
     GrantorCreate,
     GrantorDescription,
@@ -38,6 +40,7 @@ from api.schemas.financial_aid_grants import (
     RequestShareOut,
     UnmappedDescriptionOut,
     WaitingCommitmentOut,
+    WithdrawIn,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import (
@@ -68,7 +71,7 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, new_record_id
 
 GRANTOR_FIELDS = ("name", "aliases", "full_coverage", "covers_canteen", "eligibility", "contacts")
 
@@ -193,6 +196,37 @@ def _with_suggested_camper(
     if suggestion is None or suggestion.person_cm_id not in active or suggestion.person_cm_id in candidates:
         return candidates
     return tuple(sorted((*candidates, suggestion.person_cm_id), key=lambda cm: (person_display_name(people[cm]), cm)))
+
+
+# --- hand-entered commitments (casework) ----------------------------------------------------
+
+COMMITMENT_FIELDS = (
+    "grantor_key",
+    "household_cm_id",
+    "person_cm_id",
+    "session_cm_id",
+    "program_family",
+    "amount",
+    "committed_on",
+    "note",
+)
+
+
+def _commitment_snapshot(c: Any) -> dict[str, Any]:
+    return {
+        "grantor_key": str(c.grantor_key),
+        "household_cm_id": int(c.household_cm_id),
+        "person_cm_id": int(c.person_cm_id),
+        "session_cm_id": int(c.session_cm_id or 0),
+        "program_family": str(c.program_family or ""),
+        "amount": float(c.amount),
+        "committed_on": str(c.committed_on)[:10],
+        "note": str(c.note or ""),
+    }
+
+
+def _commitment_out(record_id: str, year: int, fields: dict[str, Any], status: str, withdrawn_at: str) -> CommitmentOut:
+    return CommitmentOut(id=record_id, year=year, status=status, withdrawn_at=withdrawn_at, **fields)
 
 
 class GrantsService:
@@ -574,3 +608,120 @@ class GrantsService:
             return PlaceGrantsOut(year=year, placed=0, unchanged=unchanged, operation_id=None)
         result = await self._commit(writes, actor=actor, reason=body.note or None)
         return PlaceGrantsOut(year=year, placed=len(writes), unchanged=unchanged, operation_id=result.operation_id)
+
+    # --- hand-entered commitments (casework) --------------------------------------
+
+    async def _commitment_fields(self, year: int, body: CommitmentIn) -> dict[str, Any]:
+        """Checks a commitment against the directory and the season, and resolves its program
+        family. Membership and family inference mirror place()'s ruled pattern exactly (Ruling
+        1/2): fetch_household_persons(year, family_household_set(...)) is Go's real attribution
+        pool (own household or a primary/alternate childhood household), not
+        fetch_household_members + a plain household_id comparison; with no session, only ACTIVE
+        enrollments (ACTIVE_ENROLLED_STATUS_ID) count toward the family."""
+        if await self.repo.get_grantor(body.grantor_key) is None:
+            raise FinancialAidNotFoundError(f"grantor {body.grantor_key!r} not found")
+        funders = {
+            str(s.funder_type)
+            for s in await self.repo.fetch_sources()
+            if getattr(s, "grantor_key", "") == body.grantor_key
+        }
+        if funders == {"incentive"}:
+            # Decision 4: a family incentive posts in CampMinder directly and the rules meet it
+            # through grants.incentives; counted as a commitment it would offset like a grant.
+            raise FinancialAidValidationError(
+                "a family incentive isn't entered as a commitment; it posts in CampMinder"
+            )
+        family_set = frozenset(family_household_set(await self.repo.fetch_links(year), body.household_cm_id))
+        members = {int(m.cm_id) for m in await self.repo.fetch_household_persons(year, family_set)}
+        if body.person_cm_id not in members:
+            raise FinancialAidValidationError(
+                f"person {body.person_cm_id} is not in household {body.household_cm_id}'s family"
+            )
+        enrollments = [
+            e
+            for e in (_enrollment(a) for a in await self.repo.fetch_enrollments(year, {body.person_cm_id}))
+            if e is not None
+        ]
+        if body.session_cm_id is not None:
+            # Any status: a commitment may belong to a session the camper later cancelled.
+            match = next((e for e in enrollments if e.session_cm_id == body.session_cm_id), None)
+            if match is None:
+                raise FinancialAidValidationError(
+                    f"person {body.person_cm_id} has no enrollment in session {body.session_cm_id}"
+                )
+            family = match.program_family
+        else:
+            # Go's fromOverride rule for a person-only commitment: the family of that person's
+            # ACTIVE enrollments only, when they all share one -- a cancelled enrollment in a
+            # different program family must not manufacture an ambiguous "".
+            families = {e.program_family for e in enrollments if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
+            family = families.pop() if len(families) == 1 else ""
+        return {
+            "grantor_key": body.grantor_key,
+            "household_cm_id": body.household_cm_id,
+            "person_cm_id": body.person_cm_id,
+            "session_cm_id": body.session_cm_id or 0,
+            "program_family": family,
+            "amount": float(body.amount),
+            "committed_on": body.committed_on.isoformat(),
+            "note": body.note,
+        }
+
+    async def _open_commitment(self, year: int, commitment_id: str) -> Any:
+        current = await self.repo.get_commitment(commitment_id)
+        if current is None or int(current.year) != year:
+            raise FinancialAidNotFoundError(f"commitment {commitment_id} not found in {year}")
+        return current
+
+    async def create_commitment(self, year: int, body: CommitmentIn, actor: str) -> CommitmentOut:
+        fields = await self._commitment_fields(year, body)
+        record_id = new_record_id()
+        write = AidWrite(
+            collection=AID_GRANTS,
+            action="create",
+            year=year,
+            record_id=record_id,
+            data={"year": year, **fields, "status": "open", "withdrawn_at": "", "actor": actor},
+            after={**fields, "status": "open"},
+        )
+        await self._commit([write], actor=actor, reason=body.note or None)
+        return _commitment_out(record_id, year, fields, "open", "")
+
+    async def save_commitment(self, year: int, commitment_id: str, body: CommitmentIn, actor: str) -> CommitmentOut:
+        current = await self._open_commitment(year, commitment_id)
+        if str(current.status) != "open":
+            raise FinancialAidValidationError("a withdrawn commitment can't be edited")
+        fields = await self._commitment_fields(year, body)
+        before = _commitment_snapshot(current)
+        if changed_fields(before, fields) == ({}, {}):
+            return _commitment_out(commitment_id, year, before, "open", "")  # nothing to write, nothing to log
+        write = AidWrite(
+            collection=AID_GRANTS,
+            action="update",
+            year=year,
+            record_id=commitment_id,
+            before=before,
+            data={**fields, "actor": actor},
+            after=fields,
+        )
+        await self._commit([write], actor=actor, reason=body.note or None)
+        return _commitment_out(commitment_id, year, fields, "open", "")
+
+    async def withdraw_commitment(self, year: int, commitment_id: str, body: WithdrawIn, actor: str) -> CommitmentOut:
+        """A cancel: the reason is required (Decision 12). "Fulfilled" is never stored; a
+        commitment a line has fulfilled simply stops appearing (Decision 4)."""
+        current = await self._open_commitment(year, commitment_id)
+        if str(current.status) == "withdrawn":
+            raise FinancialAidValidationError("this commitment is already withdrawn")
+        withdrawn_at = self._clock().astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.000Z")
+        write = AidWrite(
+            collection=AID_GRANTS,
+            action="update",
+            year=year,
+            record_id=commitment_id,
+            before={"status": "open", "withdrawn_at": ""},
+            data={"status": "withdrawn", "withdrawn_at": withdrawn_at},
+            log_action="withdraw",
+        )
+        await self._commit([write], actor=actor, reason=body.reason, require_reason=True)
+        return _commitment_out(commitment_id, year, _commitment_snapshot(current), "withdrawn", withdrawn_at)

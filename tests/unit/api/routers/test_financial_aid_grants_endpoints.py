@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse, PlaceGrantsOut
+from api.schemas.financial_aid_grants import CommitmentOut, GrantorOut, GrantorsResponse, GrantsResponse, PlaceGrantsOut
 from api.services.financial_aid_grants_service import GrantorKeyTakenError
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from bunking.rbac.permissions import Permission
@@ -39,6 +39,28 @@ GRANTOR_BODY = {"key": "regional_fund", "name": "Regional Fund", "note": "New gr
 SAVE_BODY = {"name": "Regional Fund", "note": "Finance review"}
 PLACE_BODY = {"placements": [{"transaction_cm_id": 9001, "person_cm_id": 1001}]}
 
+COMMITMENT = CommitmentOut(
+    id="com000000000001",
+    year=2031,
+    grantor_key="regional_fund",
+    household_cm_id=100,
+    person_cm_id=1001,
+    session_cm_id=0,
+    program_family="summer",
+    amount=750.0,
+    committed_on="2031-01-20",
+    status="open",
+    withdrawn_at="",
+    note="",
+)
+COMMITMENT_BODY = {
+    "grantor_key": "regional_fund",
+    "household_cm_id": 100,
+    "person_cm_id": 1001,
+    "amount": "750",
+    "committed_on": "2031-01-20",
+}
+
 # (method, url, json body, permission required, success status)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("GET", "/api/financial-aid/grantors", None, VIEW, 200),
@@ -46,6 +68,15 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, RULES, 200),
     ("GET", "/api/financial-aid/grants/2031", None, VIEW, 200),
     ("POST", "/api/financial-aid/grants/2031/placements", PLACE_BODY, CASEWORK, 200),
+    ("POST", "/api/financial-aid/grants/2031/commitments", COMMITMENT_BODY, CASEWORK, 201),
+    ("PUT", "/api/financial-aid/grants/2031/commitments/com000000000001", COMMITMENT_BODY, CASEWORK, 200),
+    (
+        "POST",
+        "/api/financial-aid/grants/2031/commitments/com000000000001/withdraw",
+        {"reason": "Declined"},
+        CASEWORK,
+        200,
+    ),
 ]
 
 
@@ -64,6 +95,9 @@ def _stub() -> Any:
         return_value=GrantsResponse(year=2031, grants=[], needs_camper=[], unmapped=[], waiting=[], expected=[])
     )
     service.place = AsyncMock(return_value=PlaceGrantsOut(year=2031, placed=1, unchanged=0, operation_id="o" * 15))
+    service.create_commitment = AsyncMock(return_value=COMMITMENT)
+    service.save_commitment = AsyncMock(return_value=COMMITMENT)
+    service.withdraw_commitment = AsyncMock(return_value=COMMITMENT)
     return service
 
 
@@ -128,3 +162,9 @@ def test_a_grantor_note_is_required() -> None:
 def test_a_year_out_of_range_is_422() -> None:
     _stub()
     assert _client().get("/api/financial-aid/grants/1999").status_code == 422
+
+
+def test_a_withdrawal_needs_a_reason() -> None:
+    _stub()
+    url = "/api/financial-aid/grants/2031/commitments/com000000000001/withdraw"
+    assert _client().post(url, json={"reason": "  "}).status_code == 422
