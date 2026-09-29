@@ -9,13 +9,17 @@ from typing import Any
 from api.services.financial_aid_grants_register import (
     Commitment,
     Enrollment,
+    ExpectedGrant,
+    FormAnswer,
     GrantLine,
     Placement,
     RegisterInputs,
     RequestRef,
     RequestShare,
     build_register,
+    expected_grants,
     grant_inputs_by_request,
+    needs_attention,
     program_family_for_session_type,
     split_equally,
 )
@@ -352,3 +356,110 @@ def test_the_python_twin_matches_every_entry_in_the_go_map() -> None:
     pairs = re.findall(r'^\s*("?[\w]+"?):\s*(programFamily\w+),', body, re.MULTILINE)
     go_map = {constants.get(k, k.strip('"')): families[v] for k, v in pairs}
     assert go_map == dict(PROGRAM_FAMILY_BY_SESSION_TYPE)
+
+
+# --- needs attention -------------------------------------------------------------------------
+
+TODAY = date(2031, 3, 1)
+
+
+def _attention(**kw: Any) -> Any:
+    inputs = _inputs(**kw)
+    return needs_attention(build_register(inputs), inputs, candidates={HOUSEHOLD: (SAM, ALEX)}, today=TODAY)
+
+
+def test_a_household_level_line_needs_a_camper_with_gos_suggestion_as_evidence() -> None:
+    (need,) = _attention(lines=(_line(),)).needs_camper
+    assert need.row.transaction_cm_id == 9001
+    assert need.household_applied is True
+    assert need.candidates == (SAM, ALEX)
+    s = need.suggestion
+    assert s is not None
+    assert (s.person_cm_id, s.session_cm_id, s.basis, s.method) == (SAM, S1, "attribution", "household_single_camper")
+
+
+def test_a_commitment_on_the_household_is_the_stronger_suggestion() -> None:
+    commitment = _commitment(person_cm_id=ALEX, session_cm_id=S1)
+    (need,) = _attention(lines=(_line(),), commitments=(commitment,)).needs_camper
+    s = need.suggestion
+    assert s is not None
+    assert (s.person_cm_id, s.basis, s.commitment_id, s.amount_matches) == (ALEX, "commitment", "com000000000001", True)
+
+
+def test_a_line_with_no_inference_has_candidates_but_no_suggestion() -> None:
+    line = _line(attributed_person_cm_id=0, attributed_session_cm_id=0, attribution_method="ambiguous")
+    (need,) = _attention(lines=(line,)).needs_camper
+    assert need.suggestion is None
+    assert need.candidates == (SAM, ALEX)
+
+
+def test_applicant_households_sort_first_then_the_largest_amount() -> None:
+    other_household = 150
+    lines = (
+        _line(9001, "100"),
+        _line(9002, "900", household_cm_id=other_household),
+        _line(9003, "300"),
+    )
+    needs = _attention(lines=lines).needs_camper
+    assert [n.row.transaction_cm_id for n in needs] == [9003, 9001, 9002]
+    assert [n.household_applied for n in needs] == [True, True, False]
+
+
+def test_placed_named_and_reversed_lines_never_need_a_camper() -> None:
+    lines = (
+        _line(9001, person_cm_id=SAM),
+        _line(9002),
+        _line(9003, is_reversed=True, reversal_date="2031-02-20 17:00:00.000Z"),
+    )
+    needs = _attention(lines=lines, placements={9002: Placement(9002, ALEX, S1, "summer")}).needs_camper
+    assert needs == ()
+
+
+def test_unmapped_descriptions_group_their_live_lines() -> None:
+    lines = (_line(9001, "200", source_key=OTHER), _line(9002, "300", source_key=OTHER), _line(9003, "50"))
+    (unmapped,) = _attention(lines=lines).unmapped
+    assert (unmapped.source_key, unmapped.lines, unmapped.amount) == (OTHER, 2, Decimal(500))
+
+
+def test_an_unfulfilled_commitment_waits_with_its_age() -> None:
+    (waiting,) = _attention(commitments=(_commitment(),)).waiting
+    assert (waiting.row.commitment_id, waiting.days_waiting) == ("com000000000001", 40)
+
+
+def test_a_fulfilled_commitment_no_longer_waits() -> None:
+    assert _attention(lines=(_line(person_cm_id=SAM),), commitments=(_commitment(),)).waiting == ()
+
+
+# --- Expected (D56) ------------------------------------------------------------------------------
+
+FAMILIES = {"regional_fund": frozenset({"other_outside"}), "happy_fund": frozenset({"one_happy_camper"})}
+
+
+def test_a_yes_answer_with_no_grant_of_that_kind_is_expected() -> None:
+    answers = [FormAnswer(SAM, HOUSEHOLD, True, False), FormAnswer(ALEX, HOUSEHOLD, True, True)]
+    assert expected_grants(answers, [], FAMILIES) == [
+        ExpectedGrant(HOUSEHOLD, "one_happy_camper", (SAM, ALEX)),
+        ExpectedGrant(HOUSEHOLD, "synagogue", (ALEX,)),
+    ]
+
+
+def test_expected_clears_itself_when_a_line_of_that_kind_arrives_even_reversed() -> None:
+    line = _line(source_family="one_happy_camper", is_reversed=True, reversal_date="2031-04-01 17:00:00.000Z")
+    rows = build_register(_inputs(lines=(line,)))
+    assert expected_grants([FormAnswer(SAM, HOUSEHOLD, True, False)], rows, FAMILIES) == []
+
+
+def test_expected_clears_itself_when_a_commitment_from_a_grantor_of_that_kind_is_entered() -> None:
+    rows = build_register(_inputs(commitments=(_commitment(grantor_key="happy_fund"),)))
+    assert expected_grants([FormAnswer(SAM, HOUSEHOLD, True, False)], rows, FAMILIES) == []
+
+
+def test_expected_is_never_a_grant() -> None:
+    """D56: nothing Expected reaches the calculator."""
+    rows = build_register(_inputs())
+    assert expected_grants([FormAnswer(SAM, HOUSEHOLD, True, True)], rows, FAMILIES)
+    assert grant_inputs_by_request(rows) == {}
+
+
+def test_an_answer_with_no_household_is_skipped() -> None:
+    assert expected_grants([FormAnswer(SAM, 0, True, True)], [], FAMILIES) == []

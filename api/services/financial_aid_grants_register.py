@@ -387,3 +387,184 @@ def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[Grant
                 GrantInput(amount=share.amount, state="committed", recorded_at=row.recorded_at)
             )
     return dict(out)
+
+
+# --- needs attention (spec §8.2) -------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CamperSuggestion:
+    """D16: Kindred's suggestion with its evidence; a person confirms (Task 7's placements).
+    method is Go's attribution_method for an attribution suggestion ("" for a commitment); the
+    screen turns it into words (slice 3's copy)."""
+
+    person_cm_id: int
+    session_cm_id: int
+    program_family: str
+    basis: Literal["commitment", "attribution"]
+    method: str
+    commitment_id: str
+    amount_matches: bool
+
+
+@dataclass(frozen=True)
+class NeedsCamper:
+    row: RegisterRow
+    household_applied: bool  # the household has a live aid request (Decision 10)
+    suggestion: CamperSuggestion | None
+    candidates: tuple[int, ...]  # people enrolled this season in the line's family of households
+
+
+@dataclass(frozen=True)
+class UnmappedDescription:
+    source_key: str
+    lines: int
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class WaitingCommitment:
+    row: RegisterRow
+    days_waiting: int
+
+
+@dataclass(frozen=True)
+class NeedsAttention:
+    needs_camper: tuple[NeedsCamper, ...]
+    unmapped: tuple[UnmappedDescription, ...]
+    waiting: tuple[WaitingCommitment, ...]
+
+
+def _suggest(line: GrantLine, grantor_key: str, open_commitments: Sequence[Commitment]) -> CamperSuggestion | None:
+    """A commitment from the same grantor on the same household is the strongest evidence (an
+    equal amount first); otherwise Go's attribution, when it placed the line on a person."""
+    same = [
+        c
+        for c in open_commitments
+        if grantor_key and c.grantor_key == grantor_key and c.household_cm_id == line.household_cm_id
+    ]
+    if same:
+        best = min(same, key=lambda c: (c.amount != line.amount, c.committed_on, c.id))
+        return CamperSuggestion(
+            best.person_cm_id,
+            best.session_cm_id,
+            best.program_family,
+            "commitment",
+            "",
+            best.id,
+            best.amount == line.amount,
+        )
+    if line.attributed_person_cm_id > 0:
+        return CamperSuggestion(
+            line.attributed_person_cm_id,
+            line.attributed_session_cm_id,
+            line.program_family,
+            "attribution",
+            line.attribution_method,
+            "",
+            False,
+        )
+    return None
+
+
+def needs_attention(
+    rows: Sequence[RegisterRow],
+    inputs: RegisterInputs,
+    *,
+    candidates: Mapping[int, Sequence[int]],
+    today: date,
+) -> NeedsAttention:
+    """Grants › Needs attention's three groups (spec §8.2): needs a camper, unmapped description,
+    a commitment still not in CampMinder. The late-grant "contact the family" line is Today's and
+    needs SP10's lock, so it isn't here."""
+    lines = {ln.transaction_cm_id: ln for ln in inputs.lines}
+    applied = {r.household_cm_id for r in inputs.requests if r.status in LIVE_REQUEST_STATUSES}
+    fulfilled = {r.fulfils_commitment_id for r in rows if r.fulfils_commitment_id}
+    open_commitments = [c for c in inputs.commitments if c.status == "open" and c.id not in fulfilled]
+
+    needs = [
+        NeedsCamper(
+            row=row,
+            household_applied=row.household_cm_id in applied,
+            suggestion=_suggest(lines[row.transaction_cm_id], row.grantor_key, open_commitments),
+            candidates=tuple(candidates.get(row.household_cm_id, ())),
+        )
+        for row in rows
+        if row.kind == "ledger" and not row.is_reversed and row.person_cm_id == 0
+    ]
+    needs.sort(key=lambda n: (not n.household_applied, -n.row.amount, n.row.transaction_cm_id))
+
+    unmapped_lines: dict[str, list[Decimal]] = defaultdict(list)
+    for row in rows:
+        if row.kind == "ledger" and not row.is_reversed and not row.grantor_key:
+            unmapped_lines[row.source_key].append(row.amount)
+    unmapped = sorted(
+        (UnmappedDescription(key, len(amounts), sum(amounts, Decimal(0))) for key, amounts in unmapped_lines.items()),
+        key=lambda u: (-u.amount, u.source_key),
+    )
+
+    waiting = sorted(
+        (
+            WaitingCommitment(row, (today - date.fromisoformat(row.recorded_on)).days)
+            for row in rows
+            if row.kind == "commitment"
+        ),
+        key=lambda w: (-w.days_waiting, w.row.commitment_id),
+    )
+    return NeedsAttention(tuple(needs), tuple(unmapped), tuple(waiting))
+
+
+# --- Expected (D56) -----------------------------------------------------------------------------
+
+ExpectedKind = Literal["one_happy_camper", "synagogue"]
+# The aid_sources source family a line of each Expected kind carries.
+_EXPECTED_SOURCE_FAMILY: Final[Mapping[ExpectedKind, str]] = {
+    "one_happy_camper": "one_happy_camper",
+    "synagogue": "synagogue_federation",
+}
+
+
+@dataclass(frozen=True)
+class FormAnswer:
+    """One FA mirror row's grant answers: "applied or planning to apply" (never "received")."""
+
+    person_cm_id: int
+    household_cm_id: int
+    one_happy_camper: bool
+    synagogue: bool
+
+
+@dataclass(frozen=True)
+class ExpectedGrant:
+    household_cm_id: int
+    kind: ExpectedKind
+    person_cm_ids: tuple[int, ...]
+
+
+def expected_grants(
+    answers: Iterable[FormAnswer], rows: Iterable[RegisterRow], grantor_families: Mapping[str, frozenset[str]]
+) -> list[ExpectedGrant]:
+    """D56: the aid form says the family applied, or plans to apply, for One Happy Camper or a
+    synagogue campership, and no grant of that kind is in the household yet: no line of that
+    source family (live or reversed: either way the application was answered), and no open
+    commitment from a grantor with a description of that family. Never a grant: it clears itself
+    when one arrives, and the calculator never reads it."""
+    arrived: set[tuple[int, str]] = set()
+    for row in rows:
+        if row.kind == "ledger":
+            arrived.add((row.household_cm_id, row.source_family))
+        else:
+            arrived.update((row.household_cm_id, f) for f in grantor_families.get(row.grantor_key, frozenset()))
+    people: dict[tuple[int, ExpectedKind], set[int]] = defaultdict(set)
+    for a in answers:
+        if a.household_cm_id <= 0:
+            continue
+        if a.one_happy_camper:
+            people[(a.household_cm_id, "one_happy_camper")].add(a.person_cm_id)
+        if a.synagogue:
+            people[(a.household_cm_id, "synagogue")].add(a.person_cm_id)
+    return [
+        ExpectedGrant(household, kind, tuple(sorted(persons)))
+        for (household, kind), persons in sorted(people.items())
+        if (household, _EXPECTED_SOURCE_FAMILY[kind]) not in arrived
+    ]
