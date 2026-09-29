@@ -201,7 +201,7 @@ def posting_line(posting: Any, accepted: Mapping[tuple[int, str], str]) -> AidPo
     )
 
 
-def _display_name(household: Any | None, cm_id: int) -> str:
+def household_display_name(household: Any | None, cm_id: int) -> str:
     if household is not None:
         for field in ("mailing_title", "greeting"):
             value = str(getattr(household, field, "") or "").strip()
@@ -210,7 +210,7 @@ def _display_name(household: Any | None, cm_id: int) -> str:
     return f"Household {cm_id}"
 
 
-def _person_name(person: Any) -> str:
+def person_display_name(person: Any) -> str:
     first = str(getattr(person, "preferred_name", "") or "").strip() or str(person.first_name or "").strip()
     return f"{first} {str(person.last_name or '').strip()}".strip()
 
@@ -380,10 +380,10 @@ class FinancialAidLedgerService:
         family = family_household_set(links, household)
         return LedgerHouseholdRow(
             household_cm_id=household,
-            display_name=_display_name(households.get(household), household),
+            display_name=household_display_name(households.get(household), household),
             family_households=family,
             campers=sorted(
-                (LedgerCamper(person_cm_id=i, name=_person_name(persons[i])) for i in camper_ids),
+                (LedgerCamper(person_cm_id=i, name=person_display_name(persons[i])) for i in camper_ids),
                 key=lambda c: (c.name, c.person_cm_id),
             ),
             total_aid=money(_total(postings)),
@@ -403,7 +403,7 @@ class FinancialAidLedgerService:
             raise FinancialAidNotFoundError(f"household {household_cm_id} has no aid ledger rows in {year}")
         accepted = _accepted_index(await self.repo.fetch_dispositions(year))
         people = await self.repo.fetch_household_persons(year, family)
-        names = {int(p.cm_id): _person_name(p) for p in people}
+        names = {int(p.cm_id): person_display_name(p) for p in people}
         enrollments = await self.repo.fetch_enrollments(year, sorted(names))
         households = {int(h.cm_id): h for h in await self.repo.fetch_households(year, family)}
         requests = await self.repo.fetch_fa_requests(year)
@@ -411,7 +411,7 @@ class FinancialAidLedgerService:
         return HouseholdDetailResponse(
             year=year,
             household_cm_id=household_cm_id,
-            display_name=_display_name(households.get(household_cm_id), household_cm_id),
+            display_name=household_display_name(households.get(household_cm_id), household_cm_id),
             family_households=family,
             total_aid=money(_total(p for p in postings if not p.is_reversed)),
             postings=[posting_line(p, accepted) for p in history],

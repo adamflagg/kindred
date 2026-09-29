@@ -43,7 +43,7 @@ from api.schemas.financial_aid import (
     SourceGrantorIn,
     SummaryResponse,
 )
-from api.schemas.financial_aid_grants import GrantorCreate, GrantorOut, GrantorSave, GrantorsResponse
+from api.schemas.financial_aid_grants import GrantorCreate, GrantorOut, GrantorSave, GrantorsResponse, GrantsResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
@@ -539,3 +539,10 @@ async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser =
         return await _grants().save_grantor(key, body, user.email)
     except FinancialAidError as exc:
         raise _grants_http(exc) from exc
+
+
+@router.get("/grants/{year}", response_model=GrantsResponse)
+async def get_grants(year: _Year, user: AuthUser = _VIEW) -> GrantsResponse:
+    # D57: family level for everyone with view, contacts included; development gets aggregates
+    # from Reports, never this read.
+    return await _grants().read(year)

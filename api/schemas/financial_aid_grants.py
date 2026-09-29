@@ -72,3 +72,112 @@ class GrantorOut(BaseModel):
 
 class GrantorsResponse(BaseModel):
     grantors: list[GrantorOut]
+
+
+# --- the register read (one aggregate for Grants, D21 / spec §10) -----------------------
+
+CamperBasis = Literal["ledger", "placed", "commitment", "none"]
+
+
+class RequestShareOut(BaseModel):
+    request_id: str
+    amount: float
+
+
+class GrantRowOut(BaseModel):
+    """One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
+    posted. person_cm_id 0 = needs a camper. counts = it offsets awards (live, camper confirmed,
+    not a fulfilled commitment). requests = the aid requests it sits on; [] = didn't apply."""
+
+    kind: Literal["ledger", "commitment"]
+    transaction_cm_id: int
+    commitment_id: str
+    household_cm_id: int
+    family_name: str
+    person_cm_id: int
+    camper_name: str
+    camper_basis: CamperBasis
+    session_cm_id: int
+    session_name: str
+    program_family: str
+    grantor_key: str
+    grantor_name: str
+    description: str
+    source_family: str
+    funder_type: str
+    amount: float
+    recorded_on: str
+    is_reversed: bool
+    reversal_date: str
+    cancelled: bool
+    counts: bool
+    fulfils_commitment_id: str
+    requests: list[RequestShareOut]
+
+
+class CamperSuggestionOut(BaseModel):
+    person_cm_id: int
+    camper_name: str
+    session_cm_id: int
+    program_family: str
+    basis: Literal["commitment", "attribution"]
+    method: str
+    commitment_id: str
+    amount_matches: bool
+
+
+class CamperCandidateOut(BaseModel):
+    person_cm_id: int
+    name: str
+
+
+class NeedsCamperOut(BaseModel):
+    grant: GrantRowOut
+    household_applied: bool
+    suggestion: CamperSuggestionOut | None
+    candidates: list[CamperCandidateOut]
+
+
+class UnmappedDescriptionOut(BaseModel):
+    """An outside description with live lines this season and no grantor (opens Money › Sources)."""
+
+    source_id: str
+    description_key: str
+    description: str
+    lines: int
+    amount: float
+
+
+class WaitingCommitmentOut(BaseModel):
+    grant: GrantRowOut
+    days_waiting: int
+
+
+class ExpectedOut(BaseModel):
+    """D56: never a grant, never counted."""
+
+    household_cm_id: int
+    family_name: str
+    kind: Literal["one_happy_camper", "synagogue"]
+    person_cm_ids: list[int]
+    camper_names: list[str]
+
+
+class GrantsResponse(BaseModel):
+    """Grants' one aggregate read: the register, the three needs-attention groups and Expected.
+    Family level, for financial_aid.view (D57); development gets aggregates from Reports.
+
+    `register` is given an explicit `Field(...)` (still required, no default) because the name
+    collides with `ABCMeta.register` that `BaseModel`'s metaclass inherits: without it, pydantic
+    silently treats that bound method as the field's default, so a `GrantsResponse` built without
+    passing `register` would construct successfully with a method object instead of a list
+    (`is_required()` false, excluded from the OpenAPI schema's `required`, and a real `[method]`
+    object as its default) instead of raising. The FIELD NAME still SHADOWS the attribute (mypy /
+    a UserWarning at class-definition time still note that), but validation itself is correct."""
+
+    year: int
+    register: list[GrantRowOut] = Field(...)
+    needs_camper: list[NeedsCamperOut]
+    unmapped: list[UnmappedDescriptionOut]
+    waiting: list[WaitingCommitmentOut]
+    expected: list[ExpectedOut]

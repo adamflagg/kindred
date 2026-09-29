@@ -3,6 +3,7 @@ and commitments. Fictional data only; every write runs the real 4a helper over a
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -178,3 +179,166 @@ def test_a_grantor_key_is_a_lower_snake_slug() -> None:
         _create(key="Regional Fund")
     with pytest.raises(ValidationError):
         _create(key="1st_fund")
+
+
+# --- the register read ---------------------------------------------------------------
+
+
+def _posting(txn: int, amount: float, **kw: Any) -> SimpleNamespace:
+    base: dict[str, Any] = {
+        "transaction_cm_id": txn,
+        "household_cm_id": 100,
+        "person_cm_id": 0,
+        "amount": -amount,  # CampMinder's sign
+        "effective_source_key": "regional grant - north",
+        "source_key": "regional grant - north",
+        "source_family": "other_outside",
+        "funder_type": "outside",
+        "post_date": "2031-02-10 17:00:00.000Z",
+        "is_reversed": False,
+        "reversal_date": "",
+        "attribution_method": "household_single_camper",
+        "attributed_person_cm_id": 1001,
+        "attributed_session_cm_id": 1000101,
+        "program_family": "summer",
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def _person(cm: int, first: str, household: int = 100) -> SimpleNamespace:
+    return SimpleNamespace(cm_id=cm, first_name=first, preferred_name="", last_name="Rivera", household_id=household)
+
+
+def _attendee(person: int, session: int, status: int = 2) -> SimpleNamespace:
+    session_rec = SimpleNamespace(cm_id=session, session_type="main", name=f"Session {session % 100}")
+    return SimpleNamespace(person_id=person, status_id=status, expand={"session": session_rec})
+
+
+def _read_repo(**kw: Any) -> MagicMock:
+    repo = _repo(
+        grantors=[_grantor()],
+        sources=[_source("regional grant - north", "regional_fund", description="Regional Grant - North")],
+    )
+    repo.fetch_grant_postings = AsyncMock(return_value=kw.get("postings", [_posting(9001, 500)]))
+    repo.fetch_commitments = AsyncMock(return_value=kw.get("commitments", []))
+    repo.fetch_overrides = AsyncMock(return_value=kw.get("overrides", []))
+    repo.fetch_links = AsyncMock(return_value=[])
+    repo.fetch_household_members = AsyncMock(return_value=[_person(1001, "Sam"), _person(1002, "Alex")])
+    repo.fetch_persons = AsyncMock(return_value=[])
+    repo.fetch_households = AsyncMock(
+        return_value=[SimpleNamespace(cm_id=100, mailing_title="The Rivera Family", greeting="")]
+    )
+    repo.fetch_enrollments = AsyncMock(return_value=[_attendee(1001, 1000101), _attendee(1002, 1000101)])
+    repo.fetch_request_refs = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                id="req-sam-1", household_cm_id=100, person_cm_id=1001, session_cm_id=1000101, status="active"
+            )
+        ]
+    )
+    repo.fetch_grant_answers = AsyncMock(return_value=kw.get("answers", []))
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
+    service, _ = _service(_read_repo())
+    out = await service.read(2031)
+    (row,) = out.register
+    assert (row.transaction_cm_id, row.amount, row.family_name, row.grantor_name) == (
+        9001,
+        500.0,
+        "The Rivera Family",
+        "Regional Fund",
+    )
+    assert (row.person_cm_id, row.camper_basis, row.counts, row.description) == (
+        0,
+        "none",
+        False,
+        "Regional Grant - North",
+    )
+    (need,) = out.needs_camper
+    assert need.suggestion is not None
+    assert need.suggestion.camper_name == "Sam Rivera"
+    assert [c.name for c in need.candidates] == ["Alex Rivera", "Sam Rivera"]  # sorted by name
+    assert need.household_applied is True
+
+
+@pytest.mark.asyncio
+async def test_read_overlays_a_placement_at_once() -> None:
+    placed = SimpleNamespace(
+        transaction_cm_id=9001,
+        attributed_person_cm_id=1001,
+        attributed_session_cm_id=1000101,
+        program_family="summer",
+        source_key_override="",
+        source="staff",
+    )
+    service, _ = _service(_read_repo(overrides=[placed]))
+    out = await service.read(2031)
+    (row,) = out.register
+    assert (row.person_cm_id, row.camper_basis, row.camper_name, row.session_name) == (
+        1001,
+        "placed",
+        "Sam Rivera",
+        "Session 1",
+    )
+    assert [(s.request_id, s.amount) for s in row.requests] == [("req-sam-1", 500.0)]
+    assert out.needs_camper == []
+
+
+@pytest.mark.asyncio
+async def test_a_reclassify_only_override_is_not_a_placement() -> None:
+    reclassified = SimpleNamespace(
+        transaction_cm_id=9001,
+        attributed_person_cm_id=0,
+        attributed_session_cm_id=0,
+        program_family="",
+        source_key_override="outside program award",
+        source="staff",
+    )
+    service, _ = _service(_read_repo(overrides=[reclassified]))
+    assert len((await service.read(2031)).needs_camper) == 1
+
+
+@pytest.mark.asyncio
+async def test_read_lists_expected_from_yes_answers() -> None:
+    answer = SimpleNamespace(
+        person_id=1002, one_happy_camper="Yes", synagogue_grant="No", expand={"household": SimpleNamespace(cm_id=100)}
+    )
+    service, _ = _service(_read_repo(answers=[answer]))
+    (expected,) = (await service.read(2031)).expected
+    assert (expected.kind, expected.person_cm_ids, expected.camper_names) == (
+        "one_happy_camper",
+        [1002],
+        ["Alex Rivera"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_waits_with_its_days() -> None:
+    commitment = SimpleNamespace(
+        id="com000000000001",
+        year=2031,
+        grantor_key="regional_fund",
+        household_cm_id=100,
+        person_cm_id=1002,
+        session_cm_id=0,
+        program_family="",
+        amount=250.0,
+        committed_on="2031-01-20 00:00:00.000Z",
+        created="2031-01-21 18:00:00.000Z",
+        status="open",
+        withdrawn_at="",
+        note="",
+    )
+    service, _ = _service(_read_repo(commitments=[commitment]))
+    service._clock = lambda: datetime(2031, 3, 1, 20, 0, tzinfo=UTC)
+    out = await service.read(2031)
+    (waiting,) = out.waiting
+    assert (waiting.grant.commitment_id, waiting.days_waiting, waiting.grant.camper_name) == (
+        "com000000000001",
+        40,
+        "Alex Rivera",
+    )

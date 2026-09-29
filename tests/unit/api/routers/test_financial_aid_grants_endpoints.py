@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse
+from api.schemas.financial_aid_grants import GrantorOut, GrantorsResponse, GrantsResponse
 from api.services.financial_aid_grants_service import GrantorKeyTakenError
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from bunking.rbac.permissions import Permission
@@ -43,6 +43,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("GET", "/api/financial-aid/grantors", None, VIEW, 200),
     ("POST", "/api/financial-aid/grantors", GRANTOR_BODY, RULES, 201),
     ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, RULES, 200),
+    ("GET", "/api/financial-aid/grants/2031", None, VIEW, 200),
 ]
 
 
@@ -57,6 +58,9 @@ def _stub() -> Any:
     service.list_grantors = AsyncMock(return_value=GrantorsResponse(grantors=[GRANTOR]))
     service.create_grantor = AsyncMock(return_value=GRANTOR)
     service.save_grantor = AsyncMock(return_value=GRANTOR)
+    service.read = AsyncMock(
+        return_value=GrantsResponse(year=2031, register=[], needs_camper=[], unmapped=[], waiting=[], expected=[])
+    )
     return service
 
 
@@ -114,3 +118,8 @@ def test_a_grantor_note_is_required() -> None:
     _stub()
     body = {k: v for k, v in GRANTOR_BODY.items() if k != "note"}
     assert _client().post("/api/financial-aid/grantors", json=body).status_code == 422
+
+
+def test_a_year_out_of_range_is_422() -> None:
+    _stub()
+    assert _client().get("/api/financial-aid/grants/1999").status_code == 422
