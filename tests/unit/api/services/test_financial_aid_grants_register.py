@@ -207,6 +207,36 @@ def test_a_reversed_line_still_closes_the_commitment_it_fulfilled() -> None:
     assert rows[0].counts is False
 
 
+def test_a_reversal_before_the_commitment_was_entered_does_not_swallow_it() -> None:
+    """Controller ruling (fix round 1): a reversed line is a fulfilment candidate only when its
+    reversal is KNOWN to be at or after the commitment's `created` -- otherwise an earlier,
+    unrelated reversal would silently swallow a commitment staff entered later, and the grant
+    would count toward nothing."""
+    line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="2031-02-12 17:00:00.000Z")
+    commitment = _commitment(
+        session_cm_id=S1, committed_on=date(2031, 3, 1), created=datetime(2031, 3, 2, 12, 0, tzinfo=UTC)
+    )
+    rows = build_register(_inputs(lines=(line,), commitments=(commitment,)))
+    assert {r.kind for r in rows} == {"ledger", "commitment"}
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+    commitment_row = _one(rows, kind="commitment")
+    assert commitment_row.counts is True
+    assert commitment_row.requests == (RequestShare("req-sam-1", Decimal(500)),)
+    inputs = grant_inputs_by_request(rows)
+    (grant,) = inputs["req-sam-1"]
+    assert (grant.amount, grant.state, grant.recorded_at) == (Decimal(500), "committed", commitment.created)
+
+
+def test_a_reversed_line_with_no_reversal_date_does_not_close_a_commitment() -> None:
+    """A reversed line that can't be placed in time (no reversal_date) can't confidently close a
+    commitment either."""
+    line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="")
+    rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
+    assert {r.kind for r in rows} == {"ledger", "commitment"}
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+    assert _one(rows, kind="commitment").counts is True
+
+
 def test_two_commitments_pair_one_to_one_preferring_the_equal_amount() -> None:
     lines = (_line(9001, "300", person_cm_id=SAM), _line(9002, "500", person_cm_id=SAM))
     commitments = (_commitment("com-a", "500"), _commitment("com-b", "300"))

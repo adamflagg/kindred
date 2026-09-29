@@ -200,12 +200,28 @@ def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozens
     return _Camper(0, 0, "", "none")
 
 
+def _reversal_closes(line: GrantLine, commitment: Commitment) -> bool:
+    """A live line is always a candidate. A reversed line closes a commitment only when the
+    reversal is KNOWN to be at or after the commitment's `created`: both must be present, and the
+    reversal must not precede it. Otherwise an earlier, unrelated reversal would silently swallow
+    a commitment staff entered later, leaving the grant counting toward nothing."""
+    if not line.is_reversed:
+        return True
+    created = commitment.created
+    if created is None:
+        return False
+    reversal = parse_pb_datetime(line.reversal_date)
+    return reversal is not None and reversal >= created
+
+
 def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int, Commitment]:
     """Decision 4: each open commitment, oldest first, is fulfilled by at most one line confirmed
     on its camper, from its grantor or from a description that names no grantor yet (never both
     counting): a live line before a reversed one, then its own grantor before an unmapped one,
-    then an equal amount, then the earliest post. A reversed line still closes it (the grant
-    posted, then was undone)."""
+    then an equal amount, then the earliest post. A reversed line can still close it (the grant
+    posted, then was undone), but only when it qualifies under `_reversal_closes`: its reversal is
+    known to be at or after the commitment's `created`, so a reversal that predates the commitment
+    (unrelated to it) never swallows one staff entered later."""
     taken: dict[int, Commitment] = {}
     pending = sorted((c for c in inputs.commitments if c.status == "open"), key=lambda c: (c.committed_on, c.id))
     for commitment in pending:
@@ -216,6 +232,7 @@ def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int
             and camper.basis != "none"
             and camper.person_cm_id == commitment.person_cm_id
             and inputs.grantor_by_source.get(line.source_key, "") in (commitment.grantor_key, "")
+            and _reversal_closes(line, commitment)
         ]
         if candidates:
             best = min(
