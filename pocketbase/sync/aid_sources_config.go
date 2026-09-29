@@ -49,8 +49,8 @@ type aidSourceEntry struct {
 	FunderType             string   `json:"funder_type"`
 	CountsAsAid            bool     `json:"counts_as_aid"`
 	CountsTowardBudget     bool     `json:"counts_toward_budget"`
-	FullCoverage           bool     `json:"full_coverage"`
 	ImpliedProgramFamilies []string `json:"implied_program_families"`
+	// full_coverage moved to aid_grantors (SP6-core); DisallowUnknownFields refuses a file that still sets it.
 }
 
 type aidSourcesDoc struct {
@@ -65,7 +65,6 @@ type aidSourceClass struct {
 	FunderType         string
 	CountsAsAid        bool
 	CountsTowardBudget bool
-	FullCoverage       bool
 	ImpliedFamilies    []string
 }
 
@@ -97,9 +96,6 @@ func parseAidSourcesConfig(data []byte) (map[string]aidSourceClass, error) {
 			// Item 5 ruling (final review): counting toward the budget while not
 			// even counting as aid is incoherent.
 			return nil, fmt.Errorf("%s (%q): counts_toward_budget requires counts_as_aid", where, e.Description)
-		case e.FullCoverage && e.FunderType == "camp":
-			return nil, fmt.Errorf("%s (%q): full_coverage marks an outside full-ride source, not the camp's own aid",
-				where, e.Description)
 		}
 		for _, f := range e.ImpliedProgramFamilies {
 			if !isAidProgramFamily(f) {
@@ -114,7 +110,7 @@ func parseAidSourcesConfig(data []byte) (map[string]aidSourceClass, error) {
 		sort.Strings(implied)
 		out[key] = aidSourceClass{Key: key, Description: e.Description, SourceName: strings.TrimSpace(e.SourceName),
 			SourceFamily: e.SourceFamily, FunderType: e.FunderType, CountsAsAid: e.CountsAsAid,
-			CountsTowardBudget: e.CountsTowardBudget, FullCoverage: e.FullCoverage, ImpliedFamilies: implied}
+			CountsTowardBudget: e.CountsTowardBudget, ImpliedFamilies: implied}
 	}
 	return out, nil
 }

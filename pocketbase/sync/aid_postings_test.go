@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/core"
 )
 
 const (
@@ -92,7 +93,7 @@ const aidTestConfig = `{"sources": [
   {"description": "Family Incentive Grant", "source_name": "Family incentive", "source_family": "jfam_incentive",
    "funder_type": "incentive", "counts_as_aid": true, "implied_program_families": ["family_camp"]},
   {"description": "Legacy Regional Grant", "source_name": "Legacy grant", "source_family": "other_outside",
-   "funder_type": "outside", "counts_as_aid": true, "full_coverage": true}
+   "funder_type": "outside", "counts_as_aid": true}
 ]}`
 
 func TestAidPostingsSyncAppliesTheConfigFile(t *testing.T) {
@@ -102,15 +103,29 @@ func TestAidPostingsSyncAppliesTheConfigFile(t *testing.T) {
 	f.txn(9010, 2026, -200, aidCategoryJFAM, aidTestIncentive, 100, 0, 0, false)
 	f.txn(9011, 2026, -300, aidCategoryAdjustments, aidTestLegacy, 100, 0, 0, false)
 
+	// grantor_key is staff data (FastAPI's PUT /sources/{id}/grantor): a config run
+	// re-applies the description's classification but never clears its grantor.
+	sourcesCol, err := f.app.FindCollectionByNameOrId(colAidSources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapped := core.NewRecord(sourcesCol)
+	mapped.Load(map[string]any{
+		"description_key": "legacy regional grant", "description": "Legacy Regional Grant",
+		"source_family": "other_outside", "funder_type": "outside", "classified_by": aidClassifiedConfigFile,
+		"grantor_key": "legacy_fund",
+	})
+	if err := f.app.Save(mapped); err != nil {
+		t.Fatal(err)
+	}
 	f.run(f.writeConfig(aidTestConfig), 2026)
 
 	for _, s := range f.rows(colAidSources, 0) {
 		if s.GetString("classified_by") != aidClassifiedConfigFile {
 			t.Errorf("%s classified_by = %s", s.GetString("description_key"), s.GetString("classified_by"))
 		}
-		// Full-ride is a per-source attribute (default false), carried for SP6 and SP11.
-		if want := s.GetString("description_key") == "legacy regional grant"; s.GetBool("full_coverage") != want {
-			t.Errorf("%s full_coverage = %v, want %v", s.GetString("description_key"), s.GetBool("full_coverage"), want)
+		if want := map[bool]string{true: "legacy_fund", false: ""}[s.GetString("description_key") == "legacy regional grant"]; s.GetString("grantor_key") != want {
+			t.Errorf("%s grantor_key = %q, want %q", s.GetString("description_key"), s.GetString("grantor_key"), want)
 		}
 	}
 	inc := f.posting(9010)
@@ -286,16 +301,20 @@ func TestAidPostingsSyncReclassifiesAPostingThroughAnOverride(t *testing.T) {
 func TestAidTestFixtureFieldsAreDeclaredInMigrations(t *testing.T) {
 	t.Parallel()
 	app := newAidTestApp(t)
-	files := map[string]string{
-		colAidSources:        "1500000196_aid_sources.js",
-		colAidHouseholdLinks: "1500000197_aid_household_links.js",
-		colAidPostings:       "1500000198_aid_postings.js",
-		colAidOverrides:      "1500000199_aid_overrides_and_dispositions.js",
+	files := map[string][]string{
+		colAidSources:        {"1500000196_aid_sources.js", "1500000210_aid_grantors_and_grants.js"},
+		colAidHouseholdLinks: {"1500000197_aid_household_links.js"},
+		colAidPostings:       {"1500000198_aid_postings.js"},
+		colAidOverrides:      {"1500000199_aid_overrides_and_dispositions.js"},
 	}
-	for name, file := range files {
-		raw, err := os.ReadFile(filepath.Join("..", "pb_migrations", file))
-		if err != nil {
-			t.Fatalf("read %s: %v", file, err)
+	for name, list := range files {
+		var raw strings.Builder
+		for _, file := range list {
+			b, err := os.ReadFile(filepath.Join("..", "pb_migrations", file))
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			raw.Write(b)
 		}
 		col, err := app.FindCollectionByNameOrId(name)
 		if err != nil {
@@ -305,8 +324,8 @@ func TestAidTestFixtureFieldsAreDeclaredInMigrations(t *testing.T) {
 			if field.GetName() == "id" {
 				continue
 			}
-			if !strings.Contains(string(raw), `name: "`+field.GetName()+`"`) {
-				t.Errorf("fixture field %s.%s is not declared in %s", name, field.GetName(), file)
+			if !strings.Contains(raw.String(), `name: "`+field.GetName()+`"`) {
+				t.Errorf("fixture field %s.%s is not declared in %v", name, field.GetName(), list)
 			}
 		}
 	}

@@ -17,6 +17,8 @@ export const Collections = {
   AidAttributionOverrides: 'aid_attribution_overrides',
   AidChangeLog: 'aid_change_log',
   AidFlagDispositions: 'aid_flag_dispositions',
+  AidGrantors: 'aid_grantors',
+  AidGrants: 'aid_grants',
   AidHouseholdLinks: 'aid_household_links',
   AidPayerShares: 'aid_payer_shares',
   AidPostings: 'aid_postings',
@@ -320,6 +322,64 @@ export type AidFlagDispositionsRecord = {
   year: number
 }
 
+export const AidGrantorsCoversCanteenOptions = {
+  unknown: 'unknown',
+  yes: 'yes',
+  no: 'no',
+} as const
+export type AidGrantorsCoversCanteenOptions =
+  (typeof AidGrantorsCoversCanteenOptions)[keyof typeof AidGrantorsCoversCanteenOptions]
+export type AidGrantorsRecord<Taliases = unknown> = {
+  aliases?: null | Taliases
+  contacts?: string
+  covers_canteen: AidGrantorsCoversCanteenOptions
+  created: IsoAutoDateString
+  eligibility?: string
+  full_coverage?: boolean
+  id: string
+  key: string
+  name: string
+  note?: string
+  updated: IsoAutoDateString
+}
+
+export const AidGrantsProgramFamilyOptions = {
+  summer: 'summer',
+  quest: 'quest',
+  teen: 'teen',
+  bmitzvah: 'bmitzvah',
+  family_camp: 'family_camp',
+  adult_weekend: 'adult_weekend',
+  family_school: 'family_school',
+  other: 'other',
+} as const
+export type AidGrantsProgramFamilyOptions =
+  (typeof AidGrantsProgramFamilyOptions)[keyof typeof AidGrantsProgramFamilyOptions]
+
+export const AidGrantsStatusOptions = {
+  open: 'open',
+  withdrawn: 'withdrawn',
+} as const
+export type AidGrantsStatusOptions =
+  (typeof AidGrantsStatusOptions)[keyof typeof AidGrantsStatusOptions]
+export type AidGrantsRecord = {
+  actor?: string
+  amount: number
+  committed_on: IsoDateString
+  created: IsoAutoDateString
+  grantor_key: string
+  household_cm_id: number
+  id: string
+  note?: string
+  person_cm_id: number
+  program_family?: AidGrantsProgramFamilyOptions
+  session_cm_id?: number
+  status: AidGrantsStatusOptions
+  updated: IsoAutoDateString
+  withdrawn_at?: IsoDateString
+  year: number
+}
+
 export const AidHouseholdLinksSourceOptions = {
   auto: 'auto',
   staff: 'staff',
@@ -575,8 +635,8 @@ export type AidSourcesRecord<Timplied_program_families = unknown> = {
   created: IsoAutoDateString
   description?: string
   description_key: string
-  full_coverage?: boolean
   funder_type: AidSourcesFunderTypeOptions
+  grantor_key?: string
   id: string
   implied_program_families?: null | Timplied_program_families
   note?: string
@@ -2365,6 +2425,12 @@ export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = 
   BaseSystemFields<Texpand>
 export type AidFlagDispositionsResponse<Texpand = unknown> = Required<AidFlagDispositionsRecord> &
   BaseSystemFields<Texpand>
+export type AidGrantorsResponse<Taliases = unknown, Texpand = unknown> = Required<
+  AidGrantorsRecord<Taliases>
+> &
+  BaseSystemFields<Texpand>
+export type AidGrantsResponse<Texpand = unknown> = Required<AidGrantsRecord> &
+  BaseSystemFields<Texpand>
 export type AidHouseholdLinksResponse<Texpand = unknown> = Required<AidHouseholdLinksRecord> &
   BaseSystemFields<Texpand>
 export type AidPayerSharesResponse<Texpand = unknown> = Required<AidPayerSharesRecord> &
@@ -2619,6 +2685,8 @@ export type CollectionRecords = {
   aid_attribution_overrides: AidAttributionOverridesRecord
   aid_change_log: AidChangeLogRecord
   aid_flag_dispositions: AidFlagDispositionsRecord
+  aid_grantors: AidGrantorsRecord
+  aid_grants: AidGrantsRecord
   aid_household_links: AidHouseholdLinksRecord
   aid_payer_shares: AidPayerSharesRecord
   aid_postings: AidPostingsRecord
@@ -2715,6 +2783,8 @@ export type CollectionResponses = {
   aid_attribution_overrides: AidAttributionOverridesResponse
   aid_change_log: AidChangeLogResponse
   aid_flag_dispositions: AidFlagDispositionsResponse
+  aid_grantors: AidGrantorsResponse
+  aid_grants: AidGrantsResponse
   aid_household_links: AidHouseholdLinksResponse
   aid_payer_shares: AidPayerSharesResponse
   aid_postings: AidPostingsResponse
