@@ -226,7 +226,7 @@ def _person(cm: int, first: str, household: int = 100, primary_childhood_househo
         cm_id=cm,
         first_name=first,
         preferred_name="",
-        last_name="Rivera",
+        last_name="Johnson",
         household_id=household,
         primary_childhood_household=primary_childhood_household,
     )
@@ -246,10 +246,10 @@ def _read_repo(**kw: Any) -> MagicMock:
     repo.fetch_commitments = AsyncMock(return_value=kw.get("commitments", []))
     repo.fetch_overrides = AsyncMock(return_value=kw.get("overrides", []))
     repo.fetch_links = AsyncMock(return_value=[])
-    repo.fetch_household_members = AsyncMock(return_value=[_person(1001, "Sam"), _person(1002, "Alex")])
+    repo.fetch_household_members = AsyncMock(return_value=[_person(1001, "Emma"), _person(1002, "Liam")])
     repo.fetch_persons = AsyncMock(return_value=[])
     repo.fetch_households = AsyncMock(
-        return_value=[SimpleNamespace(cm_id=100, mailing_title="The Rivera Family", greeting="")]
+        return_value=[SimpleNamespace(cm_id=100, mailing_title="The Johnson Family", greeting="")]
     )
     repo.fetch_enrollments = AsyncMock(return_value=[_attendee(1001, 1000101), _attendee(1002, 1000101)])
     repo.fetch_request_refs = AsyncMock(
@@ -271,7 +271,7 @@ async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
     assert (row.transaction_cm_id, row.amount, row.family_name, row.grantor_name) == (
         9001,
         500.0,
-        "The Rivera Family",
+        "The Johnson Family",
         "Regional Fund",
     )
     assert (row.person_cm_id, row.camper_basis, row.counts, row.description) == (
@@ -282,8 +282,8 @@ async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
     )
     (need,) = out.needs_camper
     assert need.suggestion is not None
-    assert need.suggestion.camper_name == "Sam Rivera"
-    assert [c.name for c in need.candidates] == ["Alex Rivera", "Sam Rivera"]  # sorted by name
+    assert need.suggestion.camper_name == "Emma Johnson"
+    assert [c.name for c in need.candidates] == ["Emma Johnson", "Liam Johnson"]  # sorted by name
     assert need.household_applied is True
 
 
@@ -302,7 +302,7 @@ async def test_needs_camper_candidates_include_an_attributed_person_from_another
     (need,) = out.needs_camper
     assert need.suggestion is not None
     assert need.suggestion.person_cm_id == 1099
-    assert [c.name for c in need.candidates] == ["Alex Rivera", "Jordan Rivera", "Sam Rivera"]
+    assert [c.name for c in need.candidates] == ["Emma Johnson", "Jordan Johnson", "Liam Johnson"]
 
 
 @pytest.mark.asyncio
@@ -321,7 +321,7 @@ async def test_read_overlays_a_placement_at_once() -> None:
     assert (row.person_cm_id, row.camper_basis, row.camper_name, row.session_name) == (
         1001,
         "placed",
-        "Sam Rivera",
+        "Emma Johnson",
         "Session 1",
     )
     assert [(s.request_id, s.amount) for s in row.requests] == [("req-sam-1", 500.0)]
@@ -352,7 +352,7 @@ async def test_read_lists_expected_from_yes_answers() -> None:
     assert (expected.kind, expected.person_cm_ids, expected.camper_names) == (
         "one_happy_camper",
         [1002],
-        ["Alex Rivera"],
+        ["Liam Johnson"],
     )
 
 
@@ -380,7 +380,7 @@ async def test_a_commitment_waits_with_its_days() -> None:
     assert (waiting.grant.commitment_id, waiting.days_waiting, waiting.grant.camper_name) == (
         "com000000000001",
         40,
-        "Alex Rivera",
+        "Liam Johnson",
     )
 
 
@@ -393,22 +393,22 @@ def _place_repo(**kw: Any) -> MagicMock:
     repo.fetch_overrides = AsyncMock(return_value=kw.get("overrides", []))
     repo.fetch_links = AsyncMock(return_value=[])
     persons = [
-        _person(1001, "Sam"),
-        _person(1002, "Alex"),
-        _person(1050, "Jo", household=150),
-        # Casey's OWN household is 150 (unrelated to the line's 100), but their PRIMARY
+        _person(1001, "Emma"),
+        _person(1002, "Liam"),
+        _person(1050, "Riley", household=150),
+        # Olivia's OWN household is 150 (unrelated to the line's 100), but their PRIMARY
         # CHILDHOOD household is 100 — Ruling 2a: fetch_household_persons' real pool is own OR
-        # childhood household, so Casey belongs to family {100} even though Jo (also household
+        # childhood household, so Olivia belongs to family {100} even though Riley (also household
         # 150, no childhood link) does not.
-        _person(1060, "Casey", household=150, primary_childhood_household=100),
+        _person(1060, "Olivia", household=150, primary_childhood_household=100),
     ]
 
     async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
         """Ruling 2a: a stand-in for the real fetch_household_persons, which scopes to the
         household set actually asked for — own household OR a childhood household — unlike a
-        static AsyncMock. This is what lets both the "not in the family" refusal (Jo) and the
-        childhood-household acceptance (Casey) mean something: a plain household_id comparison
-        would get Jo right but Casey wrong (and vice versa for a pool with no filtering at all)."""
+        static AsyncMock. This is what lets both the "not in the family" refusal (Riley) and the
+        childhood-household acceptance (Olivia) mean something: a plain household_id comparison
+        would get Riley right but Olivia wrong (and vice versa for a pool with no filtering at all)."""
         wanted = set(household_ids)
         return [
             p for p in persons if p.household_id in wanted or getattr(p, "primary_childhood_household", 0) in wanted
@@ -452,7 +452,7 @@ async def test_placing_a_class_is_one_operation_of_staff_overrides() -> None:
     assert first.data["source"] == "staff"
     assert second.data is not None
     assert second.data["attributed_session_cm_id"] == 0
-    assert second.data["program_family"] == "summer"  # every one of Alex's enrollments is summer
+    assert second.data["program_family"] == "summer"  # every one of Liam's enrollments is summer
     assert spy.kwargs["actor"] == ACTOR
 
 
@@ -530,7 +530,7 @@ async def test_one_bad_placement_refuses_the_whole_batch(row: dict[str, Any], me
 async def test_place_accepts_a_person_linked_only_via_a_childhood_household() -> None:
     """Ruling 2a: fetch_household_persons' real pool is own household OR a childhood household,
     not just fetch_household_members' own-household-only pool. Pins this against a regression
-    that reverts place() to a plain household_id comparison: Casey's own household is 150 (not
+    that reverts place() to a plain household_id comparison: Olivia's own household is 150 (not
     the line's 100), but their primary childhood household is 100."""
     service, spy = _service(_place_repo())
     out = await service.place(
@@ -603,7 +603,7 @@ def test_a_placement_batch_names_each_transaction_once() -> None:
 def _commit_repo(**kw: Any) -> MagicMock:
     repo = _repo(grantor=kw.get("grantor", _grantor()))
     repo.fetch_links = AsyncMock(return_value=[])
-    persons = [_person(1001, "Sam"), _person(1050, "Jo", household=150)]
+    persons = [_person(1001, "Emma"), _person(1050, "Riley", household=150)]
 
     async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
         """Ruling 1: fetch_household_persons is Go's real attribution pool (own household or a
@@ -748,7 +748,7 @@ async def test_withdrawing_records_when_and_why() -> None:
     assert out.withdrawn_at.startswith("2031-02-01")
     (write,) = spy.writes
     assert write.log_action == "withdraw"
-    assert write.data == {"status": "withdrawn", "withdrawn_at": "2031-02-01 18:00:00.000Z"}
+    assert write.data == {"status": "withdrawn", "withdrawn_at": "2031-02-01 18:00:00.000Z", "actor": ACTOR}
     assert spy.kwargs["reason"] == "The grantor declined"
     assert spy.kwargs["require_reason"] is True
 

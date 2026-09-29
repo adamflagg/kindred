@@ -25,7 +25,7 @@ _Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 class GrantorFields(BaseModel):
     """The grantor facts, each in one home (owner ruling 2026-09-28). covers_canteen (D86) is
     whether a FULL-COVERAGE grant includes the canteen deposit: "unknown" until staff answer,
-    and recorded only for a full-coverage grantor. Tawonga's own aid never pays canteen."""
+    and recorded only for a full-coverage grantor. The camp's own aid never pays canteen."""
 
     name: _Name
     aliases: list[_Name] = Field(default_factory=list, max_length=50)

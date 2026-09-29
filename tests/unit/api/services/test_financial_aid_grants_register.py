@@ -203,12 +203,34 @@ def test_a_same_grantor_line_is_preferred_over_an_unmapped_one() -> None:
     assert {r.transaction_cm_id: r.fulfils_commitment_id for r in rows} == {9001: "", 9002: "com000000000001"}
 
 
-def test_a_reversed_line_still_closes_the_commitment_it_fulfilled() -> None:
-    """The grant was posted, then reversed (the camper cancelled): the commitment must not come back."""
+def test_an_unmapped_incentive_line_never_fulfils_an_outside_commitment() -> None:
+    """FIX: only an outside-funded line is a fulfilment candidate. An unmapped INCENTIVE (JFAM)
+    line posted to the same camper must not swallow the outside commitment -- that would stop the
+    commitment counting and drop the grant from grant_inputs_by_request entirely."""
+    incentive = _line(9002, "400", person_cm_id=SAM, source_key=OTHER, funder_type="incentive")
+    rows = build_register(_inputs(lines=(incentive,), commitments=(_commitment(session_cm_id=S1),)))
+    assert {r.kind for r in rows} == {"ledger", "commitment"}
+    assert _one(rows, kind="ledger").fulfils_commitment_id == ""
+    commitment_row = _one(rows, kind="commitment")
+    assert commitment_row.counts is True
+    assert commitment_row.requests == (RequestShare("req-sam-1", Decimal(500)),)
+    inputs = grant_inputs_by_request(rows)
+    (grant,) = inputs["req-sam-1"]
+    assert (grant.amount, grant.state) == (Decimal(500), "committed")
+
+
+def test_a_reversed_line_never_closes_a_commitment() -> None:
+    """Controller ruling (fix round 2, item 3 -- supersedes the earlier "a reversed line can still
+    close it" rule): CampMinder corrects a posting by reversing it and reposting a fresh line, so a
+    reversed line is never a fulfilment candidate -- only a live line is. The reversed line still
+    counts toward nothing itself, and the commitment it would have closed stays open and keeps
+    counting."""
     line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="2031-04-01 17:00:00.000Z")
     rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
-    assert [r.kind for r in rows] == ["ledger"]
-    assert rows[0].counts is False
+    assert {r.kind for r in rows} == {"ledger", "commitment"}
+    ledger_row = _one(rows, kind="ledger")
+    assert (ledger_row.counts, ledger_row.fulfils_commitment_id) == (False, "")
+    assert _one(rows, kind="commitment").counts is True
 
 
 def test_a_reversal_before_the_commitment_was_entered_does_not_swallow_it() -> None:
@@ -250,6 +272,26 @@ def test_two_commitments_pair_one_to_one_preferring_the_equal_amount() -> None:
 
 def test_a_withdrawn_commitment_is_not_in_the_register() -> None:
     assert build_register(_inputs(commitments=(_commitment(status="withdrawn"),))) == []
+
+
+def test_a_reverse_and_repost_leaves_the_second_commitment_counting() -> None:
+    """The real bug (item 3): CampMinder corrects a posting by reversing it and reposting a fresh
+    line. With two same-grantor $500 commitments on one camper, the old rule let the live repost
+    fulfil one commitment while the reversed original ALSO closed the other, so only $500 counted
+    where $1,000 should. Only a live line is a fulfilment candidate now: line A is posted then
+    reversed, line B is the live repost -- exactly one commitment is fulfilled (by B), the other
+    keeps counting, and the two requests together see the full $1,000."""
+    line_a = _line(9001, "500", person_cm_id=SAM, is_reversed=True, reversal_date="2031-02-15 17:00:00.000Z")
+    line_b = _line(9002, "500", person_cm_id=SAM, post_date="2031-02-15 18:00:00.000Z")
+    commitments = (_commitment("com-a", "500", session_cm_id=S1), _commitment("com-b", "500", session_cm_id=S2))
+    rows = build_register(_inputs(lines=(line_a, line_b), commitments=commitments))
+    fulfilled = {r.transaction_cm_id: r.fulfils_commitment_id for r in rows if r.kind == "ledger"}
+    assert fulfilled == {9001: "", 9002: "com-a"}
+    remaining = _one(rows, kind="commitment")
+    assert (remaining.commitment_id, remaining.counts) == ("com-b", True)
+    inputs = grant_inputs_by_request(rows)
+    total = sum((g.amount for r in ("req-sam-1", "req-sam-2") for g in inputs.get(r, ())), Decimal(0))
+    assert total == Decimal(1000)
 
 
 # --- requests and the split -------------------------------------------------------------
@@ -297,6 +339,20 @@ def test_a_withdrawn_request_takes_no_share() -> None:
         _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, SAM, 0, "summer")}, requests=requests)
     )
     assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-sam-2", Decimal("1000.00")),)
+
+
+def test_an_unmatched_request_with_no_session_takes_no_share() -> None:
+    """Ruling (item 4): split only across requests with a resolved session (session_cm_id > 0); a
+    request name resolution never matched to a session (session_cm_id 0) takes no share, even when
+    the grant itself has no session and no family to narrow by."""
+    requests = (
+        RequestRef("req-sam-1", HOUSEHOLD, SAM, S1, "active"),
+        RequestRef("req-sam-unmatched", HOUSEHOLD, SAM, 0, "active"),
+    )
+    rows = build_register(
+        _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, SAM, 0, "")}, requests=requests)
+    )
+    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-sam-1", Decimal("1000.00")),)
 
 
 # --- cancelled (derived from enrollment) ---------------------------------------------------
@@ -424,6 +480,13 @@ def test_unmapped_descriptions_group_their_live_lines() -> None:
 def test_an_unfulfilled_commitment_waits_with_its_age() -> None:
     (waiting,) = _attention(commitments=(_commitment(),)).waiting
     assert (waiting.row.commitment_id, waiting.days_waiting) == ("com000000000001", 40)
+
+
+def test_days_waiting_never_goes_negative_for_a_future_committed_on() -> None:
+    """Ruling (item 5): days_waiting is max(0, ...) so a commitment entered with a committed_on
+    after today (e.g. a pre-dated pledge) never reports a negative age."""
+    (waiting,) = _attention(commitments=(_commitment(committed_on=date(2031, 4, 1)),)).waiting
+    assert waiting.days_waiting == 0
 
 
 def test_a_fulfilled_commitment_no_longer_waits() -> None:

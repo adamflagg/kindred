@@ -8,8 +8,10 @@ DERIVED here at read time, never copied. Kindred stores only what the ledger lac
   placement home (Decision 2). Go's attribution rules only SUGGEST a camper (D16); until a
   person confirms, the line counts toward nothing (Decision 3);
 * a grant committed but not yet posted: an aid_grants commitment (Decision 4). It counts until
-  a line from the same grantor, confirmed on the same camper, fulfils it; then the line counts
-  instead, never both.
+  a LIVE line from the same grantor, confirmed on the same camper, fulfils it; then the line
+  counts instead, never both. A reversed line never fulfils a commitment (controller ruling,
+  fix round 2, item 3): CampMinder corrects a posting by reversing it and reposting a fresh
+  line, so only the repost may close the commitment.
 
 Expected grants (D56) are never grants: nothing here feeds them to the calculator.
 grant_inputs_by_request() is the calculator bridge SP10 wires in (Decision 5).
@@ -200,28 +202,17 @@ def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozens
     return _Camper(0, 0, "", "none")
 
 
-def _reversal_closes(line: GrantLine, commitment: Commitment) -> bool:
-    """A live line is always a candidate. A reversed line closes a commitment only when the
-    reversal is KNOWN to be at or after the commitment's `created`: both must be present, and the
-    reversal must not precede it. Otherwise an earlier, unrelated reversal would silently swallow
-    a commitment staff entered later, leaving the grant counting toward nothing."""
-    if not line.is_reversed:
-        return True
-    created = commitment.created
-    if created is None:
-        return False
-    reversal = parse_pb_datetime(line.reversal_date)
-    return reversal is not None and reversal >= created
-
-
 def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int, Commitment]:
     """Decision 4: each open commitment, oldest first, is fulfilled by at most one line confirmed
     on its camper, from its grantor or from a description that names no grantor yet (never both
-    counting): a live line before a reversed one, then its own grantor before an unmapped one,
-    then an equal amount, then the earliest post. A reversed line can still close it (the grant
-    posted, then was undone), but only when it qualifies under `_reversal_closes`: its reversal is
-    known to be at or after the commitment's `created`, so a reversal that predates the commitment
-    (unrelated to it) never swallows one staff entered later."""
+    counting): its own grantor before an unmapped one, then an equal amount, then the earliest
+    post. Only a LIVE, outside-funded line is a candidate (controller ruling, fix round 2, item 3
+    -- supersedes an earlier timing-based reversal rule): CampMinder corrects a posting by
+    reversing it and reposting a fresh line, so a reversed line must never fulfil a commitment --
+    with two same-grantor commitments on one camper, letting a reversed original close one while
+    the live repost closed the other counted $500 where $1,000 should. An unmapped INCENTIVE
+    (JFAM) line must likewise never fulfil an outside commitment, or the commitment stops counting
+    while the incentive itself is never fed to the calculator, and the grant is lost."""
     taken: dict[int, Commitment] = {}
     pending = sorted((c for c in inputs.commitments if c.status == "open"), key=lambda c: (c.committed_on, c.id))
     for commitment in pending:
@@ -229,16 +220,16 @@ def _fulfilments(inputs: RegisterInputs, campers: Sequence[_Camper]) -> dict[int
             line
             for line, camper in zip(inputs.lines, campers, strict=True)
             if line.transaction_cm_id not in taken
+            and not line.is_reversed
+            and line.funder_type == "outside"
             and camper.basis != "none"
             and camper.person_cm_id == commitment.person_cm_id
             and inputs.grantor_by_source.get(line.source_key, "") in (commitment.grantor_key, "")
-            and _reversal_closes(line, commitment)
         ]
         if candidates:
             best = min(
                 candidates,
                 key=lambda ln: (
-                    ln.is_reversed,
                     inputs.grantor_by_source.get(ln.source_key, "") != commitment.grantor_key,
                     ln.amount != commitment.amount,
                     ln.post_date,
@@ -276,7 +267,10 @@ def _request_shares(
     requests_by_person: Mapping[int, Sequence[RequestRef]],
     families: Mapping[tuple[int, int], str],
 ) -> tuple[RequestShare, ...]:
-    mine = [r for r in requests_by_person.get(person, ()) if r.status in LIVE_REQUEST_STATUSES]
+    """Ruling (item 4): split only across requests with a resolved session; an unmatched request
+    (session_cm_id 0 -- name resolution never found it a session) takes no share, even when the
+    grant itself carries no session or family to narrow the split by."""
+    mine = [r for r in requests_by_person.get(person, ()) if r.status in LIVE_REQUEST_STATUSES and r.session_cm_id > 0]
     if session:
         mine = [r for r in mine if r.session_cm_id == session]
     elif family:
@@ -505,7 +499,8 @@ def needs_attention(
 
     waiting = sorted(
         (
-            WaitingCommitment(row, (today - date.fromisoformat(row.recorded_on)).days)
+            # Ruling (item 5): never negative -- a future committed_on (a pre-dated pledge) waits 0.
+            WaitingCommitment(row, max(0, (today - date.fromisoformat(row.recorded_on)).days))
             for row in rows
             if row.kind == "commitment"
         ),

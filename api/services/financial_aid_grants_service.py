@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -200,17 +200,6 @@ def _with_suggested_camper(
 
 # --- hand-entered commitments (casework) ----------------------------------------------------
 
-COMMITMENT_FIELDS = (
-    "grantor_key",
-    "household_cm_id",
-    "person_cm_id",
-    "session_cm_id",
-    "program_family",
-    "amount",
-    "committed_on",
-    "note",
-)
-
 
 def _commitment_snapshot(c: Any) -> dict[str, Any]:
     return {
@@ -229,6 +218,21 @@ def _commitment_out(record_id: str, year: int, fields: dict[str, Any], status: s
     return CommitmentOut(id=record_id, year=year, status=status, withdrawn_at=withdrawn_at, **fields)
 
 
+def _program_family(enrolled: Sequence[Enrollment], session_cm_id: int | None) -> str | None:
+    """The program-family rule place() and _commitment_fields() share exactly (Ruling 1/2): an
+    explicit session accepts an enrollment of ANY status -- a grant or commitment may belong to a
+    session the camper later cancelled -- and takes that session's family. With no session, only
+    ACTIVE enrollments (ACTIVE_ENROLLED_STATUS_ID) count toward the family, and only when they all
+    name one: a cancelled enrollment in a different program family must never manufacture an
+    ambiguous "". Returns None only when an explicit session names no enrollment at all; the
+    caller raises with its own message (the two callers' wording differs)."""
+    if session_cm_id is not None:
+        match = next((e for e in enrolled if e.session_cm_id == session_cm_id), None)
+        return match.program_family if match is not None else None
+    families = {e.program_family for e in enrolled if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
+    return families.pop() if len(families) == 1 else ""
+
+
 class GrantsService:
     def __init__(self, repo: GrantsRepository, *, clock: Callable[[], datetime] | None = None) -> None:
         self.repo = repo
@@ -244,6 +248,16 @@ class GrantsService:
         return await asyncio.to_thread(
             commit_aid_writes, self.repo.pb, writes, actor=actor, reason=reason, require_reason=require_reason
         )
+
+    async def _family_member_cm_ids(self, year: int, links: Any, household_cm_id: int) -> frozenset[int]:
+        """The family-membership rule place() and _commitment_fields() share exactly (Ruling 1/2):
+        Go's attribution treats a person as belonging to a household if it is their own household
+        OR their primary/alternate childhood household -- exactly the pool
+        fetch_household_persons(year, family_household_set(links, household)) returns, never
+        fetch_household_members plus a plain household_id comparison."""
+        family_set = frozenset(family_household_set(links, household_cm_id))
+        members = await self.repo.fetch_household_persons(year, family_set)
+        return frozenset(int(m.cm_id) for m in members)
 
     # --- the grantor directory (rules) ------------------------------------------
 
@@ -506,11 +520,8 @@ class GrantsService:
         placement home, applied by Go on the next aid_postings run and overlaid by read() at once
         (Decision 2). Every placement is checked before anything is written (Decision 11).
 
-        Family membership (Ruling 2): Go's attribution treats a person as belonging to a household
-        if it is their own household OR their primary/alternate childhood household, which is
-        exactly the pool fetch_household_persons(year, household_ids) returns — so membership is
-        "the line's family household set, fetched, and is this person in that set of cm_ids", not
-        fetch_household_members + a household_id comparison.
+        Family membership and program-family resolution follow `_family_member_cm_ids` and
+        `_program_family` exactly (Ruling 1/2) -- the same rules `_commitment_fields` uses.
         """
         lines = {int(p.transaction_cm_id): p for p in await self.repo.fetch_grant_postings(year) if not p.is_reversed}
         for p in body.placements:
@@ -519,17 +530,9 @@ class GrantsService:
                     f"transaction {p.transaction_cm_id} is not a live grant line in {year}"
                 )
         links = await self.repo.fetch_links(year)
-        family_sets: dict[int, frozenset[int]] = {
-            p.transaction_cm_id: frozenset(
-                family_household_set(links, int(lines[p.transaction_cm_id].household_cm_id or 0))
-            )
-            for p in body.placements
-        }
-        unique_families = list(set(family_sets.values()))
-        member_lists = await asyncio.gather(*(self.repo.fetch_household_persons(year, fs) for fs in unique_families))
-        family_members = {
-            fs: {int(m.cm_id) for m in members} for fs, members in zip(unique_families, member_lists, strict=True)
-        }
+        households = {int(lines[p.transaction_cm_id].household_cm_id or 0) for p in body.placements}
+        member_sets = await asyncio.gather(*(self._family_member_cm_ids(year, links, h) for h in households))
+        family_members = dict(zip(households, member_sets, strict=True))
         enrollments_by_person: dict[int, list[Enrollment]] = defaultdict(list)
         for e in (
             _enrollment(a) for a in await self.repo.fetch_enrollments(year, {p.person_cm_id for p in body.placements})
@@ -541,27 +544,18 @@ class GrantsService:
         writes: list[AidWrite] = []
         unchanged = 0
         for p in body.placements:
-            if p.person_cm_id not in family_members[family_sets[p.transaction_cm_id]]:
+            household_cm_id = int(lines[p.transaction_cm_id].household_cm_id or 0)
+            if p.person_cm_id not in family_members[household_cm_id]:
                 raise FinancialAidValidationError(
                     f"person {p.person_cm_id} is not in the family of transaction {p.transaction_cm_id}"
                 )
             enrolled = enrollments_by_person.get(p.person_cm_id, [])
-            if p.session_cm_id is not None:
-                # Any status: a grant may belong to a session the camper later cancelled.
-                match = next((e for e in enrolled if e.session_cm_id == p.session_cm_id), None)
-                if match is None:
-                    raise FinancialAidValidationError(
-                        f"person {p.person_cm_id} has no enrollment in session {p.session_cm_id} in {year} "
-                        f"(transaction {p.transaction_cm_id})"
-                    )
-                family = match.program_family
-            else:
-                # Go's fromOverride rule for a person-only override: the family of that person's
-                # ACTIVE enrollments (ACTIVE_ENROLLED_STATUS_ID) when they all share one (spec
-                # §6.3, SP4's narrowing) — a cancelled enrollment elsewhere must not manufacture
-                # an ambiguous "".
-                families = {e.program_family for e in enrolled if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
-                family = families.pop() if len(families) == 1 else ""
+            family = _program_family(enrolled, p.session_cm_id)
+            if family is None:
+                raise FinancialAidValidationError(
+                    f"person {p.person_cm_id} has no enrollment in session {p.session_cm_id} in {year} "
+                    f"(transaction {p.transaction_cm_id})"
+                )
             current = existing.get(p.transaction_cm_id)
             existing_note = str(getattr(current, "note", "") or "") if current else ""
             payload = {
@@ -614,10 +608,7 @@ class GrantsService:
     async def _commitment_fields(self, year: int, body: CommitmentIn) -> dict[str, Any]:
         """Checks a commitment against the directory and the season, and resolves its program
         family. Membership and family inference mirror place()'s ruled pattern exactly (Ruling
-        1/2): fetch_household_persons(year, family_household_set(...)) is Go's real attribution
-        pool (own household or a primary/alternate childhood household), not
-        fetch_household_members + a plain household_id comparison; with no session, only ACTIVE
-        enrollments (ACTIVE_ENROLLED_STATUS_ID) count toward the family."""
+        1/2), via the same `_family_member_cm_ids` and `_program_family` helpers."""
         if await self.repo.get_grantor(body.grantor_key) is None:
             raise FinancialAidNotFoundError(f"grantor {body.grantor_key!r} not found")
         funders = {
@@ -631,8 +622,8 @@ class GrantsService:
             raise FinancialAidValidationError(
                 "a family incentive isn't entered as a commitment; it posts in CampMinder"
             )
-        family_set = frozenset(family_household_set(await self.repo.fetch_links(year), body.household_cm_id))
-        members = {int(m.cm_id) for m in await self.repo.fetch_household_persons(year, family_set)}
+        links = await self.repo.fetch_links(year)
+        members = await self._family_member_cm_ids(year, links, body.household_cm_id)
         if body.person_cm_id not in members:
             raise FinancialAidValidationError(
                 f"person {body.person_cm_id} is not in household {body.household_cm_id}'s family"
@@ -642,20 +633,11 @@ class GrantsService:
             for e in (_enrollment(a) for a in await self.repo.fetch_enrollments(year, {body.person_cm_id}))
             if e is not None
         ]
-        if body.session_cm_id is not None:
-            # Any status: a commitment may belong to a session the camper later cancelled.
-            match = next((e for e in enrollments if e.session_cm_id == body.session_cm_id), None)
-            if match is None:
-                raise FinancialAidValidationError(
-                    f"person {body.person_cm_id} has no enrollment in session {body.session_cm_id}"
-                )
-            family = match.program_family
-        else:
-            # Go's fromOverride rule for a person-only commitment: the family of that person's
-            # ACTIVE enrollments only, when they all share one -- a cancelled enrollment in a
-            # different program family must not manufacture an ambiguous "".
-            families = {e.program_family for e in enrollments if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
-            family = families.pop() if len(families) == 1 else ""
+        family = _program_family(enrollments, body.session_cm_id)
+        if family is None:
+            raise FinancialAidValidationError(
+                f"person {body.person_cm_id} has no enrollment in session {body.session_cm_id}"
+            )
         return {
             "grantor_key": body.grantor_key,
             "household_cm_id": body.household_cm_id,
@@ -720,7 +702,7 @@ class GrantsService:
             year=year,
             record_id=commitment_id,
             before={"status": "open", "withdrawn_at": ""},
-            data={"status": "withdrawn", "withdrawn_at": withdrawn_at},
+            data={"status": "withdrawn", "withdrawn_at": withdrawn_at, "actor": actor},
             log_action="withdraw",
         )
         await self._commit([write], actor=actor, reason=body.reason, require_reason=True)
