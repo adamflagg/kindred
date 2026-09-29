@@ -1,9 +1,9 @@
 """Financial-aid rules: the versioned per-season documents in `aid_rules` (campership design section 7).
 
 Reads and writes go through FastAPI's superuser client: all five PocketBase rules
-on `aid_rules` are null, so nothing else can reach the table. The router that
-exposes this (a later sub-project) gates every call on `financial_aid.rules`;
-this module does no permission check of its own.
+on `aid_rules` are null, so nothing else can reach the table. The routes in
+api/routers/financial_aid.py gate every call on `financial_aid.rules`; this
+module does no permission check of its own.
 
 A version is (year, version). Each section has its own lifecycle
 (bunking.financial_aid.rules.lifecycle): saving a change to an approved section
@@ -22,11 +22,14 @@ newer one exists. `new_version` is the one write that is allowed to branch from
 an older version on purpose (a "what changed since" comparison, or picking up a
 draft that was not the last one made); its result always becomes the new latest.
 
-Every write calls the required RulesChangeRecorder, passing the PocketBase
-record id of the version written and, for an approval, its note as `reason`.
-The change log belongs to sub-project 2, whose writer is synchronous and takes
-a different signature, so the router that sub-project 12 adds wires it in here
-through a small async adapter that passes `reason` on.
+Every write commits through the store's `commit` (sub-project 4a's
+commit_aid_writes): the aid_rules write and its aid_change_log row in ONE
+PocketBase batch, one operation per call, so a rules change is never saved
+without its log row or logged without being saved (spec 4.11, 14.4). The log's
+entity is aid_rules and its entity_id "year:version", or "year:version:section"
+for an approval or a lock; an approval's note, which names the approving body
+(D39), is its reason. A save that sends approved sections back to draft logs
+that in the same row, as the section_status change.
 
 Every refusal raised here subclasses FinancialAidError, so a router can map
 them with one `except` without catching pydantic's ValidationError.
@@ -36,14 +39,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import BaseModel, ConfigDict
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import (
     AidRules,
@@ -66,6 +69,7 @@ from bunking.financial_aid.rules.lifecycle import (
     status_to_json,
 )
 from bunking.financial_aid.rules.schema import MilestonesSection
+from bunking.pocketbase_batch import BatchRequestFailedError
 
 # Rows per request for every paged read; PocketBase clamps anything above 1000.
 PAGE_SIZE = 1000
@@ -94,6 +98,10 @@ class NotLatestVersionError(FinancialAidError, ValueError):
     """
 
 
+class NoSectionsNamedError(FinancialAidError, ValueError):
+    """An approval must name at least one section."""
+
+
 class RulesVersion(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -106,22 +114,6 @@ class RulesVersion(BaseModel):
     parent_version: int | None
 
 
-class RulesChangeRecorder(Protocol):
-    async def __call__(
-        self,
-        *,
-        action: str,
-        year: int,
-        version: int,
-        section: SectionName | None,
-        record_id: str,
-        actor: str,
-        before: dict[str, Any] | None,
-        after: dict[str, Any] | None,
-        reason: str | None,
-    ) -> None: ...
-
-
 class AidRulesStore(Protocol):
     async def list_versions(self, year: int) -> list[Any]: ...
 
@@ -129,16 +121,18 @@ class AidRulesStore(Protocol):
 
     async def fetch_session_refs(self, year: int) -> list[SessionRef]: ...
 
-    async def create(self, body: dict[str, Any]) -> Any: ...
-
-    async def update(self, record_id: str, body: dict[str, Any]) -> Any: ...
+    async def commit(
+        self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None
+    ) -> AidOperationResult: ...
 
 
 class AidRulesRepository:
     """PocketBase access for aid_rules (and the season's sessions, for validation)."""
 
-    def __init__(self, pb: Any) -> None:
+    def __init__(self, pb: Any, *, read_only: bool = False) -> None:
         self.pb = pb
+        # Intake reads approved rules and must never write them.
+        self._read_only = read_only
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
@@ -169,31 +163,27 @@ class AidRulesRepository:
             for row in rows
         ]
 
-    async def create(self, body: dict[str, Any]) -> Any:
-        try:
-            return await asyncio.to_thread(self.pb.collection(AID_RULES).create, body)
-        except ClientResponseError as exc:
-            # The unique index on (year, version) is one constraint create_version,
-            # new_version and start_from_last_year could hit here, but a 400 also covers
-            # ordinary field validation (document.maxSize, section_status.maxSize, numeric
-            # bounds) -- status alone can't tell those apart. PocketBase nests a
-            # `validation_not_unique` code under `data.data.<field>` on a unique-index
-            # collision, so check for that specifically before mapping to
-            # VersionExistsError; anything else about the body was already validated (a
-            # real AidRules document, a computed version number), same reasoning as
-            # lodging_write_service's REFUSAL_STATUSES split (401/403 are answers, not this).
-            fields = (exc.data or {}).get("data", {}) if isinstance(exc.data, dict) else {}
-            not_unique = any(
-                isinstance(value, dict) and value.get("code") == "validation_not_unique" for value in fields.values()
-            )
-            if exc.status == 400 and not_unique:
-                raise VersionExistsError(
-                    f"aid_rules already has year {body.get('year')} version {body.get('version')}"
-                ) from exc
-            raise
+    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
+        """Each write and its aid_change_log row in ONE PocketBase batch (sub-project 4a, spec 14.4).
 
-    async def update(self, record_id: str, body: dict[str, Any]) -> Any:
-        return await asyncio.to_thread(self.pb.collection(AID_RULES).update, record_id, body)
+        A unique-index collision on (year, version) arrives from the batch as a 400 whose
+        field errors say "Value must be unique."; the batch helper keeps PocketBase's message
+        but not its code, so the message is what is matched. Anything else about the body was
+        already validated (a real AidRules document, a computed version), so it propagates.
+        """
+        if self._read_only:
+            raise RuntimeError("this repository only reads aid_rules")
+        try:
+            return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
+        except BatchRequestFailedError as exc:
+            if exc.status == 400 and any("unique" in message.lower() for message in exc.field_errors.values()):
+                first_create = next((w for w in writes if w.action == "create" and w.data is not None), None)
+                if first_create is not None and first_create.data is not None:
+                    raise VersionExistsError(
+                        f"aid_rules already has year {first_create.year} version {first_create.data.get('version')}"
+                    ) from exc
+                raise VersionExistsError("aid_rules already has that year and version") from exc
+            raise
 
 
 def _json_object(record: Any, field: str) -> dict[str, Any] | None:
@@ -246,17 +236,41 @@ def _body(
     }
 
 
+def _entity_id(year: int, version: int, section: SectionName | None = None) -> str:
+    return f"{year}:{version}" if section is None else f"{year}:{version}:{section}"
+
+
+def _stored(version: RulesVersion) -> dict[str, Any]:
+    """The record's two JSON fields as they are stored: a log row's `before`."""
+    return {"document": _dump(version.document), "section_status": status_to_json(version.section_status)}
+
+
+def _status_write(
+    current: RulesVersion,
+    before: StatusMap,
+    after: StatusMap,
+    section: SectionName,
+    *,
+    log_action: str,
+    reason: str | None,
+) -> AidWrite:
+    return AidWrite(
+        collection=AID_RULES,
+        action="update",
+        year=current.year,
+        record_id=current.record_id,
+        before={"section_status": status_to_json(before)},
+        data={"section_status": status_to_json(after)},
+        log_action=log_action,
+        entity_id=_entity_id(current.year, current.version, section),
+        reason=reason,
+    )
+
+
 class FinancialAidRulesService:
-    def __init__(
-        self,
-        store: AidRulesStore,
-        *,
-        recorder: RulesChangeRecorder,
-        clock: Callable[[], datetime] | None = None,
-    ) -> None:
+    def __init__(self, store: AidRulesStore, *, clock: Callable[[], datetime] | None = None) -> None:
         self._store = store
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
-        self._recorder: RulesChangeRecorder = recorder
 
     async def load(self, year: int, version: int | None = None) -> RulesVersion:
         """One version, or the year's highest version when `version` is None."""
@@ -294,12 +308,16 @@ class FinancialAidRulesService:
 
     async def create_version(self, document: AidRules, *, actor: str) -> RulesVersion:
         version = await self._next_version(document.year)
-        record = await self._store.create(
-            _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
-        )
-        created = _to_version(record)
-        await self._record("create", created, section=None, actor=actor, before=None, after=_dump(created.document))
-        return created
+        body = _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
+        return await self._create(body, log_action="create", actor=actor)
+
+    async def bootstrap(self, document: AidRules, *, actor: str) -> RulesVersion:
+        """Version 1 of a season that has no rules yet, from a whole document (loading 2026 as history).
+        Refused when the season already has rules: a retried load must not make a second version, and
+        every later change is a save over the latest version (owner ruling 2026-09-28)."""
+        if await self._store.list_versions(document.year):
+            raise VersionExistsError(f"{document.year} already has aid rules; save over the latest version instead")
+        return await self.create_version(document, actor=actor)
 
     async def save(
         self, year: int, version: int, document: AidRules, *, actor: str
@@ -312,34 +330,50 @@ class FinancialAidRulesService:
         before = validate_rules(current.document, context)
         report = validate_rules(document, context)
         outcome = apply_edit(current.document, document, current.section_status, before=before, after=report)
-        record = await self._store.update(
-            current.record_id, {"document": _dump(document), "section_status": status_to_json(outcome.status)}
+        stored = _stored(current)
+        data = {"document": _dump(document), "section_status": status_to_json(outcome.status)}
+        if data == stored:
+            return current, report  # nothing changed: nothing to write or log
+        write = AidWrite(
+            collection=AID_RULES,
+            action="update",
+            year=year,
+            record_id=current.record_id,
+            before=stored,
+            data=data,
+            log_action="save",
+            entity_id=_entity_id(year, current.version),
         )
-        saved = _to_version(record)
-        await self._record(
-            "save", saved, section=None, actor=actor, before=_dump(current.document), after=_dump(saved.document)
-        )
-        for name in outcome.reverted:
-            await self._record(
-                "revert_to_draft",
-                saved,
-                section=name,
-                actor=actor,
-                before=current.section_status[name].model_dump(mode="json"),
-                after=saved.section_status[name].model_dump(mode="json"),
-            )
-        return saved, report
+        await self._store.commit([write], actor=actor)
+        return await self.load(year, current.version), report
 
     async def approve_section(
         self, year: int, version: int, section: SectionName, *, actor: str, note: str | None
     ) -> tuple[RulesVersion, ValidationReport]:
-        """Approve one section. The report comes back so its warnings reach the approver
-        (for example no_sessions_to_check when the season has no synced sessions yet)."""
+        return await self.approve_sections(year, version, [section], actor=actor, note=note)
+
+    async def approve_sections(
+        self, year: int, version: int, sections: Sequence[SectionName], *, actor: str, note: str | None
+    ) -> tuple[RulesVersion, ValidationReport]:
+        """Approve `sections` as ONE operation: a log row per section, the note (naming the
+        approving body, D39) as each row's reason. All or nothing: every approval is checked
+        before anything is sent, so one section that cannot be approved stops them all.
+        The report comes back so its warnings (no_sessions_to_check) reach the approver."""
+        named = list(dict.fromkeys(sections))
+        if not named:
+            raise NoSectionsNamedError("Name at least one section to approve")
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
         report = await self.validate_document(current.document)
-        status = approve(current.section_status, section, by=actor, at=self._clock(), note=note, report=report)
-        return await self._write_status("approve", current, status, section, actor, reason=note), report
+        at = self._clock()
+        status = current.section_status
+        writes: list[AidWrite] = []
+        for section in named:
+            updated = approve(status, section, by=actor, at=at, note=note, report=report)
+            writes.append(_status_write(current, status, updated, section, log_action="approve", reason=note))
+            status = updated
+        await self._store.commit(writes, actor=actor, reason=note)
+        return await self.load(year, current.version), report
 
     async def lock_section(self, year: int, version: int, section: SectionName, *, actor: str) -> RulesVersion:
         """Lock an approved section; refused while the document has any validation error."""
@@ -347,7 +381,11 @@ class FinancialAidRulesService:
         await self._assert_latest(year, current.version)
         report = await self.validate_document(current.document)
         status = lock(current.section_status, section, at=self._clock(), report=report)
-        return await self._write_status("lock", current, status, section, actor)
+        if status == current.section_status:
+            return current  # already locked: nothing to write
+        write = _status_write(current, current.section_status, status, section, log_action="lock", reason=None)
+        await self._store.commit([write], actor=actor)
+        return await self.load(year, current.version)
 
     async def new_version(
         self, year: int, from_version: int, *, actor: str, unlock: Collection[SectionName] = ()
@@ -361,21 +399,15 @@ class FinancialAidRulesService:
         """
         source = await self.load(year, from_version)
         version = await self._next_version(year)
-        record = await self._store.create(
-            _body(
-                year,
-                version,
-                source.document,
-                carry_forward(source.section_status, unlock=unlock),
-                parent_year=year,
-                parent_version=from_version,
-            )
+        body = _body(
+            year,
+            version,
+            source.document,
+            carry_forward(source.section_status, unlock=unlock),
+            parent_year=year,
+            parent_version=from_version,
         )
-        created = _to_version(record)
-        await self._record(
-            "new_version", created, section=None, actor=actor, before=None, after=_dump(created.document)
-        )
-        return created
+        return await self._create(body, log_action="new_version", actor=actor)
 
     async def start_from_last_year(self, year: int, *, actor: str) -> tuple[RulesVersion, ValidationReport]:
         """Copy the previous season's latest version into an empty season, every section draft.
@@ -391,13 +423,8 @@ class FinancialAidRulesService:
         prior = await self.load(year - 1)
         cost = prior.document.cost.model_copy(update={"tuition": {}, "family_rates": []})
         document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection(), "cost": cost})
-        record = await self._store.create(
-            _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
-        )
-        created = _to_version(record)
-        await self._record(
-            "start_from_last_year", created, section=None, actor=actor, before=None, after=_dump(created.document)
-        )
+        body = _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
+        created = await self._create(body, log_action="start_from_last_year", actor=actor)
         report = await self.validate_document(created.document)
         cleared = ValidationIssue(
             section="cost",
@@ -410,6 +437,19 @@ class FinancialAidRulesService:
             ),
         )
         return created, ValidationReport(issues=[cleared, *report.issues])
+
+    async def _create(self, body: dict[str, Any], *, log_action: str, actor: str) -> RulesVersion:
+        year, version = int(body["year"]), int(body["version"])
+        write = AidWrite(
+            collection=AID_RULES,
+            action="create",
+            year=year,
+            data=body,
+            log_action=log_action,
+            entity_id=_entity_id(year, version),
+        )
+        await self._store.commit([write], actor=actor)
+        return await self.load(year, version)
 
     async def _latest_version_number(self, year: int) -> int | None:
         rows = await self._store.list_versions(year)
@@ -433,52 +473,6 @@ class FinancialAidRulesService:
     async def _next_version(self, year: int) -> int:
         latest = await self._latest_version_number(year)
         return (latest or 0) + 1
-
-    async def _write_status(
-        self,
-        action: str,
-        current: RulesVersion,
-        status: StatusMap,
-        section: SectionName,
-        actor: str,
-        *,
-        reason: str | None = None,
-    ) -> RulesVersion:
-        record = await self._store.update(current.record_id, {"section_status": status_to_json(status)})
-        updated = _to_version(record)
-        await self._record(
-            action,
-            updated,
-            section=section,
-            actor=actor,
-            before=current.section_status[section].model_dump(mode="json"),
-            after=updated.section_status[section].model_dump(mode="json"),
-            reason=reason,
-        )
-        return updated
-
-    async def _record(
-        self,
-        action: str,
-        version: RulesVersion,
-        *,
-        section: SectionName | None,
-        actor: str,
-        before: dict[str, Any] | None,
-        after: dict[str, Any] | None,
-        reason: str | None = None,
-    ) -> None:
-        await self._recorder(
-            action=action,
-            year=version.year,
-            version=version.version,
-            section=section,
-            record_id=version.record_id,
-            actor=actor,
-            before=before,
-            after=after,
-            reason=reason,
-        )
 
 
 def _dump(document: AidRules) -> dict[str, Any]:

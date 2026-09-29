@@ -219,6 +219,88 @@ export type AidPostingLine = {
 }
 
 /**
+ * AidRules
+ *
+ * One season's rules. The version number and section approvals live on the
+ * `aid_rules` record beside it, not in the document.
+ */
+export type AidRulesInput = {
+  /**
+   * Schema Version
+   */
+  schema_version?: 1
+  /**
+   * Year
+   */
+  year: number
+  income: IncomeSectionInput
+  tiers: TiersSectionInput
+  equity: EquitySectionInput
+  /**
+   * Award Tables
+   */
+  award_tables: {
+    [key: string]: unknown | AwardTableInput
+  }
+  /**
+   * Programs
+   */
+  programs: {
+    [key: string]: unknown | ProgramProfile
+  }
+  cost: CostSectionInput
+  grants: GrantsSection
+  awards: AwardsSectionInput
+  round2: Round2SectionInput
+  round3?: Round3SectionInput
+  budget: BudgetSectionInput
+  stages?: StagesSection
+  quality_checks?: QualityChecksSectionInput
+  milestones?: MilestonesSection
+}
+
+/**
+ * AidRules
+ *
+ * One season's rules. The version number and section approvals live on the
+ * `aid_rules` record beside it, not in the document.
+ */
+export type AidRulesOutput = {
+  /**
+   * Schema Version
+   */
+  schema_version?: 1
+  /**
+   * Year
+   */
+  year: number
+  income: IncomeSectionOutput
+  tiers: TiersSectionOutput
+  equity: EquitySectionOutput
+  /**
+   * Award Tables
+   */
+  award_tables: {
+    [key: string]: unknown | AwardTableOutput
+  }
+  /**
+   * Programs
+   */
+  programs: {
+    [key: string]: unknown | ProgramProfile
+  }
+  cost: CostSectionOutput
+  grants: GrantsSection
+  awards: AwardsSectionOutput
+  round2: Round2SectionOutput
+  round3?: Round3SectionOutput
+  budget: BudgetSectionOutput
+  stages?: StagesSection
+  quality_checks?: QualityChecksSectionOutput
+  milestones?: MilestonesSection
+}
+
+/**
  * AidSourceRow
  */
 export type AidSourceRow = {
@@ -804,6 +886,120 @@ export type AvailabilityWriteRequest = {
 }
 
 /**
+ * AwardTable
+ *
+ * Round 1 % per tier. Round 2's appeal cap % is a separate table in `round2.tables`,
+ * so it stays editable after the Round 1 sections lock (spec section 7.1).
+ */
+export type AwardTableInput = {
+  /**
+   * Inherits
+   */
+  inherits?: string | null
+  /**
+   * Tiers
+   */
+  tiers?: {
+    [key: string]: R1PercentInput
+  }
+  /**
+   * Overrides
+   */
+  overrides?: {
+    [key: string]: R1PercentInput
+  }
+}
+
+/**
+ * AwardTable
+ *
+ * Round 1 % per tier. Round 2's appeal cap % is a separate table in `round2.tables`,
+ * so it stays editable after the Round 1 sections lock (spec section 7.1).
+ */
+export type AwardTableOutput = {
+  /**
+   * Inherits
+   */
+  inherits?: string | null
+  /**
+   * Tiers
+   */
+  tiers?: {
+    [key: string]: R1PercentOutput
+  }
+  /**
+   * Overrides
+   */
+  overrides?: {
+    [key: string]: R1PercentOutput
+  }
+}
+
+/**
+ * AwardsSection
+ */
+export type AwardsSectionInput = {
+  /**
+   * Minimum
+   */
+  minimum: number | string
+  /**
+   * Minimum When Cost Unknown
+   */
+  minimum_when_cost_unknown: boolean
+  /**
+   * Minimum Without Table
+   */
+  minimum_without_table: boolean
+  /**
+   * Rounding
+   */
+  rounding?: 'half_up'
+  /**
+   * Ask Cap
+   */
+  ask_cap?: boolean
+  /**
+   * Decision Types
+   */
+  decision_types?: {
+    [key: string]: unknown | DecisionTypeInput
+  }
+}
+
+/**
+ * AwardsSection
+ */
+export type AwardsSectionOutput = {
+  /**
+   * Minimum
+   */
+  minimum: string
+  /**
+   * Minimum When Cost Unknown
+   */
+  minimum_when_cost_unknown: boolean
+  /**
+   * Minimum Without Table
+   */
+  minimum_without_table: boolean
+  /**
+   * Rounding
+   */
+  rounding?: 'half_up'
+  /**
+   * Ask Cap
+   */
+  ask_cap?: boolean
+  /**
+   * Decision Types
+   */
+  decision_types?: {
+    [key: string]: unknown | DecisionTypeOutput
+  }
+}
+
+/**
  * BatchResolveResponse
  *
  * Response for batch coordinate resolution.
@@ -841,6 +1037,110 @@ export type BucketCount = {
    * Total
    */
   total: number
+}
+
+/**
+ * BudgetPool
+ */
+export type BudgetPoolInput = {
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Share Pct
+   */
+  share_pct?: number | string | null
+  /**
+   * Amount
+   */
+  amount?: number | string | null
+}
+
+/**
+ * BudgetPool
+ */
+export type BudgetPoolOutput = {
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Share Pct
+   */
+  share_pct?: string | null
+  /**
+   * Amount
+   */
+  amount?: string | null
+}
+
+/**
+ * BudgetSection
+ */
+export type BudgetSectionInput = {
+  /**
+   * Total
+   */
+  total: number | string
+  /**
+   * Pools
+   */
+  pools?: {
+    [key: string]: unknown | BudgetPoolInput
+  }
+  /**
+   * Reserves
+   */
+  reserves?: {
+    [key: string]:
+      | unknown
+      | {
+          [key: string]: number | string
+        }
+  }
+  /**
+   * Spillover
+   */
+  spillover?: 'none' | 'shared'
+  /**
+   * Commit On
+   */
+  commit_on?: 'offered' | 'accepted'
+}
+
+/**
+ * BudgetSection
+ */
+export type BudgetSectionOutput = {
+  /**
+   * Total
+   */
+  total: string
+  /**
+   * Pools
+   */
+  pools?: {
+    [key: string]: unknown | BudgetPoolOutput
+  }
+  /**
+   * Reserves
+   */
+  reserves?: {
+    [key: string]:
+      | unknown
+      | {
+          [key: string]: string
+        }
+  }
+  /**
+   * Spillover
+   */
+  spillover?: 'none' | 'shared'
+  /**
+   * Commit On
+   */
+  commit_on?: 'offered' | 'accepted'
 }
 
 /**
@@ -1793,6 +2093,54 @@ export type CorrectionOut = {
 }
 
 /**
+ * CostSection
+ */
+export type CostSectionInput = {
+  /**
+   * Tuition
+   */
+  tuition?: {
+    [key: string]: number | string
+  }
+  /**
+   * Family Rates
+   */
+  family_rates?: Array<FamilyRateInput>
+  /**
+   * Infant Age Cutoff Months
+   */
+  infant_age_cutoff_months?: number | null
+  /**
+   * Override Reasons
+   */
+  override_reasons?: Array<string>
+}
+
+/**
+ * CostSection
+ */
+export type CostSectionOutput = {
+  /**
+   * Tuition
+   */
+  tuition?: {
+    [key: string]: string
+  }
+  /**
+   * Family Rates
+   */
+  family_rates?: Array<FamilyRateOutput>
+  /**
+   * Infant Age Cutoff Months
+   */
+  infant_age_cutoff_months?: number | null
+  /**
+   * Override Reasons
+   */
+  override_reasons?: Array<string>
+}
+
+/**
  * CreateScenarioRequest
  *
  * Request to create a new scenario
@@ -2158,6 +2506,114 @@ export type Day1YearData = {
 }
 
 /**
+ * DecisionType
+ *
+ * A named kind of decision with its own budget line.
+ *
+ * full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
+ * total to cost - grants + extra_amount (a categorical full-funding program).
+ * top_up: a fixed amount added to the award (the appeal top-up).
+ * discretionary: staff type the amount on the request (`discretionary_amount`).
+ *
+ * `counts_toward_budget` says whether this type's money is the camp's own budget money; a
+ * decision counts only when its stage's `counts_toward_budget` says so too.
+ * `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
+ * `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
+ */
+export type DecisionTypeInput = {
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Kind
+   */
+  kind: 'full_cost' | 'top_up' | 'discretionary'
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Amount
+   */
+  amount?: number | string | null
+  /**
+   * Extra Amount
+   */
+  extra_amount?: number | string
+  /**
+   * Allows Appeal
+   */
+  allows_appeal?: boolean
+  /**
+   * Budget Line
+   */
+  budget_line: string
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget?: boolean
+  /**
+   * Ceiling Exempt
+   */
+  ceiling_exempt?: boolean
+}
+
+/**
+ * DecisionType
+ *
+ * A named kind of decision with its own budget line.
+ *
+ * full_cost: Round 1 potential is 100% of cost less grants, and a top-up brings the
+ * total to cost - grants + extra_amount (a categorical full-funding program).
+ * top_up: a fixed amount added to the award (the appeal top-up).
+ * discretionary: staff type the amount on the request (`discretionary_amount`).
+ *
+ * `counts_toward_budget` says whether this type's money is the camp's own budget money; a
+ * decision counts only when its stage's `counts_toward_budget` says so too.
+ * `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
+ * `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
+ */
+export type DecisionTypeOutput = {
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Kind
+   */
+  kind: 'full_cost' | 'top_up' | 'discretionary'
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Amount
+   */
+  amount?: string | null
+  /**
+   * Extra Amount
+   */
+  extra_amount?: string
+  /**
+   * Allows Appeal
+   */
+  allows_appeal?: boolean
+  /**
+   * Budget Line
+   */
+  budget_line: string
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget?: boolean
+  /**
+   * Ceiling Exempt
+   */
+  ceiling_exempt?: boolean
+}
+
+/**
  * DispositionBulkLoad
  */
 export type DispositionBulkLoad = {
@@ -2467,6 +2923,160 @@ export type DuplicateMark = {
 }
 
 /**
+ * EquityCriterion
+ *
+ * One intake answer that can shift a request toward more aid.
+ *
+ * `source` says whose answer it is: the household's (on the application) or this
+ * camper's own (on the request). A household criterion whose `field` is
+ * "dependents" reads the application's dependents count, and it only counts when
+ * ``income.dependents_mode == "tier_shift"``.
+ *
+ * Matching is case-insensitive and does not trim. `contains_any` is substring
+ * matching against each value, which is how a list of spellings replaces the
+ * sheet's regular expression.
+ */
+export type EquityCriterionInput = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Source
+   */
+  source: 'household' | 'camper'
+  /**
+   * Field
+   */
+  field: string
+  /**
+   * Also Fields
+   */
+  also_fields?: Array<string>
+  /**
+   * Match
+   */
+  match: 'equals_any' | 'contains_any' | 'at_least'
+  /**
+   * Values
+   */
+  values?: Array<string>
+  /**
+   * Min Value
+   */
+  min_value?: number | string | null
+}
+
+/**
+ * EquityCriterion
+ *
+ * One intake answer that can shift a request toward more aid.
+ *
+ * `source` says whose answer it is: the household's (on the application) or this
+ * camper's own (on the request). A household criterion whose `field` is
+ * "dependents" reads the application's dependents count, and it only counts when
+ * ``income.dependents_mode == "tier_shift"``.
+ *
+ * Matching is case-insensitive and does not trim. `contains_any` is substring
+ * matching against each value, which is how a list of spellings replaces the
+ * sheet's regular expression.
+ */
+export type EquityCriterionOutput = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Source
+   */
+  source: 'household' | 'camper'
+  /**
+   * Field
+   */
+  field: string
+  /**
+   * Also Fields
+   */
+  also_fields?: Array<string>
+  /**
+   * Match
+   */
+  match: 'equals_any' | 'contains_any' | 'at_least'
+  /**
+   * Values
+   */
+  values?: Array<string>
+  /**
+   * Min Value
+   */
+  min_value?: string | null
+}
+
+/**
+ * EquitySection
+ */
+export type EquitySectionInput = {
+  /**
+   * Criteria
+   */
+  criteria?: Array<EquityCriterionInput>
+  /**
+   * Weights
+   */
+  weights?: {
+    [key: string]:
+      | unknown
+      | {
+          [key: string]: unknown | number | string
+        }
+  }
+  /**
+   * Aggregation
+   */
+  aggregation?: 'ceil' | 'round' | 'floor'
+  /**
+   * Max Shift
+   */
+  max_shift?: number | null
+}
+
+/**
+ * EquitySection
+ */
+export type EquitySectionOutput = {
+  /**
+   * Criteria
+   */
+  criteria?: Array<EquityCriterionOutput>
+  /**
+   * Weights
+   */
+  weights?: {
+    [key: string]:
+      | unknown
+      | {
+          [key: string]: unknown | string
+        }
+  }
+  /**
+   * Aggregation
+   */
+  aggregation?: 'ceil' | 'round' | 'floor'
+  /**
+   * Max Shift
+   */
+  max_shift?: number | null
+}
+
+/**
  * FaRequested
  */
 export type FaRequested = {
@@ -2482,6 +3092,60 @@ export type FaRequested = {
    * Bmitzvah
    */
   bmitzvah?: number
+}
+
+/**
+ * FamilyRate
+ *
+ * Per-person family-camp rates for one session this season.
+ *
+ * `standard` prices every non-infant person (CampMinder bills adults and children
+ * at the same rate). `child`, when set, prices children separately.
+ */
+export type FamilyRateInput = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Standard
+   */
+  standard: number | string
+  /**
+   * Infant
+   */
+  infant: number | string
+  /**
+   * Child
+   */
+  child?: number | string | null
+}
+
+/**
+ * FamilyRate
+ *
+ * Per-person family-camp rates for one session this season.
+ *
+ * `standard` prices every non-infant person (CampMinder bills adults and children
+ * at the same rate). `child`, when set, prices children separately.
+ */
+export type FamilyRateOutput = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Standard
+   */
+  standard: string
+  /**
+   * Infant
+   */
+  infant: string
+  /**
+   * Child
+   */
+  child?: string | null
 }
 
 /**
@@ -3193,6 +3857,42 @@ export type GradeEnrollment = {
 }
 
 /**
+ * GrantsSection
+ */
+export type GrantsSection = {
+  /**
+   * Offset Programs
+   */
+  offset_programs?: Array<string>
+  /**
+   * Offset Mode
+   */
+  offset_mode?: 'dollar' | 'reduce_cost_basis'
+  /**
+   * Minimum After Grants
+   */
+  minimum_after_grants: boolean
+  /**
+   * Minimum When Fully Covered
+   */
+  minimum_when_fully_covered: boolean
+  /**
+   * Count When
+   */
+  count_when?: 'committed' | 'received'
+  /**
+   * Late Grant Policy
+   */
+  late_grant_policy?: 'ignore' | 'flag' | 'recalculate'
+  /**
+   * Incentives
+   */
+  incentives?: {
+    [key: string]: unknown | IncentiveRule
+  }
+}
+
+/**
  * GroupedRequestsResponse
  *
  * Response for grouped original requests endpoint.
@@ -3619,6 +4319,218 @@ export type HouseholdShareSet = {
    * Reason
    */
   reason: string
+}
+
+/**
+ * IncentiveRule
+ *
+ * How a family incentive (for example a new-family discount) meets aid.
+ */
+export type IncentiveRule = {
+  /**
+   * Mode
+   */
+  mode: 'ignore' | 'reduce_cost' | 'reduce_award'
+}
+
+/**
+ * IncomeSection
+ */
+export type IncomeSectionInput = {
+  weights: IncomeWeightsInput
+  /**
+   * Basis
+   */
+  basis?: 'gross' | 'agi' | 'confirmed'
+  /**
+   * Current Year Zero Fallback
+   */
+  current_year_zero_fallback?: 'blend' | 'prior_year_only'
+  /**
+   * Medical Threshold
+   */
+  medical_threshold: number | string
+  /**
+   * Medical Rate
+   */
+  medical_rate?: number | string
+  /**
+   * Education Threshold
+   */
+  education_threshold: number | string
+  /**
+   * Education Rate
+   */
+  education_rate?: number | string
+  /**
+   * Savings Threshold
+   */
+  savings_threshold: number | string
+  /**
+   * Savings Inclusion Rate
+   */
+  savings_inclusion_rate?: number | string
+  /**
+   * Extra Terms
+   */
+  extra_terms?: Array<IncomeTermInput>
+  /**
+   * Dependents Mode
+   */
+  dependents_mode: 'none' | 'income_reduction' | 'tier_shift'
+  /**
+   * Per Dependent Reduction
+   */
+  per_dependent_reduction?: number | string
+  /**
+   * Floor
+   */
+  floor?: number | string
+  /**
+   * Floor Applies After
+   */
+  floor_applies_after: 'deductions' | 'all_reductions'
+}
+
+/**
+ * IncomeSection
+ */
+export type IncomeSectionOutput = {
+  weights: IncomeWeightsOutput
+  /**
+   * Basis
+   */
+  basis?: 'gross' | 'agi' | 'confirmed'
+  /**
+   * Current Year Zero Fallback
+   */
+  current_year_zero_fallback?: 'blend' | 'prior_year_only'
+  /**
+   * Medical Threshold
+   */
+  medical_threshold: string
+  /**
+   * Medical Rate
+   */
+  medical_rate?: string
+  /**
+   * Education Threshold
+   */
+  education_threshold: string
+  /**
+   * Education Rate
+   */
+  education_rate?: string
+  /**
+   * Savings Threshold
+   */
+  savings_threshold: string
+  /**
+   * Savings Inclusion Rate
+   */
+  savings_inclusion_rate?: string
+  /**
+   * Extra Terms
+   */
+  extra_terms?: Array<IncomeTermOutput>
+  /**
+   * Dependents Mode
+   */
+  dependents_mode: 'none' | 'income_reduction' | 'tier_shift'
+  /**
+   * Per Dependent Reduction
+   */
+  per_dependent_reduction?: string
+  /**
+   * Floor
+   */
+  floor?: string
+  /**
+   * Floor Applies After
+   */
+  floor_applies_after: 'deductions' | 'all_reductions'
+}
+
+/**
+ * IncomeTerm
+ *
+ * One optional term over another synced figure: the amount above `threshold`
+ * (strictly), times `rate`, deducted from or added to the income.
+ */
+export type IncomeTermInput = {
+  /**
+   * Figure
+   */
+  figure: 'total_housing_expenses' | 'total_rent'
+  /**
+   * Direction
+   */
+  direction: 'deduct' | 'add'
+  /**
+   * Threshold
+   */
+  threshold?: number | string
+  /**
+   * Rate
+   */
+  rate?: number | string
+}
+
+/**
+ * IncomeTerm
+ *
+ * One optional term over another synced figure: the amount above `threshold`
+ * (strictly), times `rate`, deducted from or added to the income.
+ */
+export type IncomeTermOutput = {
+  /**
+   * Figure
+   */
+  figure: 'total_housing_expenses' | 'total_rent'
+  /**
+   * Direction
+   */
+  direction: 'deduct' | 'add'
+  /**
+   * Threshold
+   */
+  threshold?: string
+  /**
+   * Rate
+   */
+  rate?: string
+}
+
+/**
+ * IncomeWeights
+ *
+ * The prior-year / current-year blend. Independent; validation warns when they do not sum to 1.
+ */
+export type IncomeWeightsInput = {
+  /**
+   * Prior Year
+   */
+  prior_year: number | string
+  /**
+   * Current Year
+   */
+  current_year: number | string
+}
+
+/**
+ * IncomeWeights
+ *
+ * The prior-year / current-year blend. Independent; validation warns when they do not sum to 1.
+ */
+export type IncomeWeightsOutput = {
+  /**
+   * Prior Year
+   */
+  prior_year: string
+  /**
+   * Current Year
+   */
+  current_year: string
 }
 
 /**
@@ -4585,6 +5497,40 @@ export type MergeResponse = {
    * Number of mappings reassigned
    */
   merged_count: number
+}
+
+/**
+ * MilestonesSection
+ */
+export type MilestonesSection = {
+  /**
+   * Application Deadline
+   */
+  application_deadline?: string | null
+  /**
+   * R1 Run
+   */
+  r1_run?: string | null
+  /**
+   * Response Deadline
+   */
+  response_deadline?: string | null
+  /**
+   * R2 Window Start
+   */
+  r2_window_start?: string | null
+  /**
+   * R2 Window End
+   */
+  r2_window_end?: string | null
+  /**
+   * R3 Window Start
+   */
+  r3_window_start?: string | null
+  /**
+   * R3 Window End
+   */
+  r3_window_end?: string | null
 }
 
 /**
@@ -6719,6 +7665,51 @@ export type ProductionRequestsResponse = {
 }
 
 /**
+ * ProgramProfile
+ *
+ * One program's settings. Replaces the sheet's single "award class".
+ *
+ * `r1_table` of None means "no table": the R1 percentage is 0, so only the minimum
+ * award can apply, or the request holds when the minimum does not apply without a
+ * table. That is how 2026 routed four of its adult and family programs. Which Round 2
+ * table a program's appeals use is a Round 2 lever: `round2.program_tables`.
+ */
+export type ProgramProfile = {
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Session Cm Ids
+   */
+  session_cm_ids?: Array<number>
+  /**
+   * Session Types
+   */
+  session_types?: Array<string>
+  /**
+   * R1 Table
+   */
+  r1_table: string | null
+  /**
+   * Equity Class
+   */
+  equity_class: string | null
+  /**
+   * Budget Pool
+   */
+  budget_pool: string | null
+  /**
+   * Cost Source
+   */
+  cost_source: 'catalog' | 'per_person' | 'typed'
+  /**
+   * Open To Aid
+   */
+  open_to_aid?: boolean
+}
+
+/**
  * PromptContentResponse
  *
  * Response for getting prompt content.
@@ -7016,6 +8007,100 @@ export type PushRowPayload = {
    */
   write_in_key?: string
   bunking_request?: BunkingRequestSummary | null
+}
+
+/**
+ * QualityCheck
+ *
+ * One data-quality check. "hold": do not finalize until staff look. "warn": inform only.
+ *
+ * `award_above_cost` always holds: validation refuses a warning or a disabled one, and
+ * the calculator runs it whether or not the season lists it. `household_income_conflict`
+ * also always holds: validation refuses a warning or a disabled one here too, and
+ * sub-project 5 raises it at `hold` whatever the season lists.
+ */
+export type QualityCheckInput = {
+  /**
+   * Enabled
+   */
+  enabled?: boolean
+  /**
+   * Severity
+   */
+  severity?: 'hold' | 'warn'
+  /**
+   * Threshold
+   */
+  threshold?: number | string | null
+}
+
+/**
+ * QualityCheck
+ *
+ * One data-quality check. "hold": do not finalize until staff look. "warn": inform only.
+ *
+ * `award_above_cost` always holds: validation refuses a warning or a disabled one, and
+ * the calculator runs it whether or not the season lists it. `household_income_conflict`
+ * also always holds: validation refuses a warning or a disabled one here too, and
+ * sub-project 5 raises it at `hold` whatever the season lists.
+ */
+export type QualityCheckOutput = {
+  /**
+   * Enabled
+   */
+  enabled?: boolean
+  /**
+   * Severity
+   */
+  severity?: 'hold' | 'warn'
+  /**
+   * Threshold
+   */
+  threshold?: string | null
+}
+
+/**
+ * QualityChecksSection
+ */
+export type QualityChecksSectionInput = {
+  /**
+   * Checks
+   */
+  checks?: {
+    [key: string]: QualityCheckInput
+  }
+}
+
+/**
+ * QualityChecksSection
+ */
+export type QualityChecksSectionOutput = {
+  /**
+   * Checks
+   */
+  checks?: {
+    [key: string]: QualityCheckOutput
+  }
+}
+
+/**
+ * R1Percent
+ */
+export type R1PercentInput = {
+  /**
+   * R1 Pct
+   */
+  r1_pct: number | string
+}
+
+/**
+ * R1Percent
+ */
+export type R1PercentOutput = {
+  /**
+   * R1 Pct
+   */
+  r1_pct: string
 }
 
 /**
@@ -8149,6 +9234,226 @@ export type RosterParty = {
 }
 
 /**
+ * Round2Section
+ *
+ * Every Round 2 lever, apart from the Round 1 sections: staff set Round 2 after Round 1
+ * results, while Round 1 keeps rolling, so these must stay editable once Round 1 locks.
+ */
+export type Round2SectionInput = {
+  /**
+   * Cap Subtracts Grants
+   */
+  cap_subtracts_grants: boolean
+  /**
+   * Cap By Original Ask
+   */
+  cap_by_original_ask: boolean
+  /**
+   * Tables
+   */
+  tables?: {
+    [key: string]: unknown | Round2TableInput
+  }
+  /**
+   * Program Tables
+   */
+  program_tables?: {
+    [key: string]: unknown | string | null
+  }
+  total_cap?: TotalCapInput | null
+}
+
+/**
+ * Round2Section
+ *
+ * Every Round 2 lever, apart from the Round 1 sections: staff set Round 2 after Round 1
+ * results, while Round 1 keeps rolling, so these must stay editable once Round 1 locks.
+ */
+export type Round2SectionOutput = {
+  /**
+   * Cap Subtracts Grants
+   */
+  cap_subtracts_grants: boolean
+  /**
+   * Cap By Original Ask
+   */
+  cap_by_original_ask: boolean
+  /**
+   * Tables
+   */
+  tables?: {
+    [key: string]: unknown | Round2TableOutput
+  }
+  /**
+   * Program Tables
+   */
+  program_tables?: {
+    [key: string]: unknown | string | null
+  }
+  total_cap?: TotalCapOutput | null
+}
+
+/**
+ * Round2Table
+ *
+ * The appeal cap (total %) per tier.
+ */
+export type Round2TableInput = {
+  /**
+   * Inherits
+   */
+  inherits?: string | null
+  /**
+   * Tiers
+   */
+  tiers?: {
+    [key: string]: TotalPercentInput
+  }
+  /**
+   * Overrides
+   */
+  overrides?: {
+    [key: string]: TotalPercentInput
+  }
+}
+
+/**
+ * Round2Table
+ *
+ * The appeal cap (total %) per tier.
+ */
+export type Round2TableOutput = {
+  /**
+   * Inherits
+   */
+  inherits?: string | null
+  /**
+   * Tiers
+   */
+  tiers?: {
+    [key: string]: TotalPercentOutput
+  }
+  /**
+   * Overrides
+   */
+  overrides?: {
+    [key: string]: TotalPercentOutput
+  }
+}
+
+/**
+ * Round3Section
+ */
+export type Round3SectionInput = {
+  /**
+   * Require Round2
+   */
+  require_round2?: boolean
+  /**
+   * Require Statement Of Need
+   */
+  require_statement_of_need?: boolean
+  /**
+   * Max Amount
+   */
+  max_amount?: number | string | null
+  /**
+   * Max Total Pct Of Cost
+   */
+  max_total_pct_of_cost?: number | string | null
+}
+
+/**
+ * Round3Section
+ */
+export type Round3SectionOutput = {
+  /**
+   * Require Round2
+   */
+  require_round2?: boolean
+  /**
+   * Require Statement Of Need
+   */
+  require_statement_of_need?: boolean
+  /**
+   * Max Amount
+   */
+  max_amount?: string | null
+  /**
+   * Max Total Pct Of Cost
+   */
+  max_total_pct_of_cost?: string | null
+}
+
+/**
+ * RulesApproveIn
+ */
+export type RulesApproveIn = {
+  /**
+   * Sections
+   */
+  sections: Array<
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  >
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * RulesDocumentIn
+ */
+export type RulesDocumentIn = {
+  document: AidRulesInput
+}
+
+/**
+ * RulesVersionOut
+ *
+ * One version of a season's rules, each section's status, and the document's validation report.
+ */
+export type RulesVersionOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Version
+   */
+  version: number
+  /**
+   * Parent Year
+   */
+  parent_year: number | null
+  /**
+   * Parent Version
+   */
+  parent_version: number | null
+  document: AidRulesOutput
+  /**
+   * Section Status
+   */
+  section_status: {
+    [key: string]: SectionStatus
+  }
+  report: ValidationReport
+}
+
+/**
  * RunFromPhaseRequest
  *
  * Request to cascade from a specific phase.
@@ -8520,6 +9825,32 @@ export type SchoolEnrollment = {
    * Number of campers
    */
   count: number
+}
+
+/**
+ * SectionStatus
+ */
+export type SectionStatus = {
+  /**
+   * State
+   */
+  state?: 'draft' | 'approved' | 'locked'
+  /**
+   * Approved By
+   */
+  approved_by?: string | null
+  /**
+   * Approved At
+   */
+  approved_at?: string | null
+  /**
+   * Note
+   */
+  note?: string | null
+  /**
+   * Locked At
+   */
+  locked_at?: string | null
 }
 
 /**
@@ -9471,6 +10802,62 @@ export type SplitSourceConfig = {
 }
 
 /**
+ * StageDef
+ */
+export type StageDef = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Round
+   */
+  round?: number | null
+  /**
+   * Is Offer
+   */
+  is_offer?: boolean
+  /**
+   * Is Accepted
+   */
+  is_accepted?: boolean
+  /**
+   * Is Cancel
+   */
+  is_cancel?: boolean
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget?: boolean
+  /**
+   * Include Default
+   */
+  include_default?: boolean
+  /**
+   * Decision Type
+   */
+  decision_type?: string | null
+  /**
+   * Allows Appeal
+   */
+  allows_appeal?: boolean
+}
+
+/**
+ * StagesSection
+ */
+export type StagesSection = {
+  /**
+   * Stages
+   */
+  stages?: Array<StageDef>
+}
+
+/**
  * StaleStaffLink
  */
 export type StaleStaffLink = {
@@ -9887,6 +11274,74 @@ export type TeenSessionAvailability = {
 }
 
 /**
+ * TierBand
+ *
+ * One income band. The tier lookup uses lower bounds only; `upper` is for display.
+ */
+export type TierBandInput = {
+  /**
+   * Lower
+   */
+  lower: number | string
+  /**
+   * Upper
+   */
+  upper?: number | string | null
+}
+
+/**
+ * TierBand
+ *
+ * One income band. The tier lookup uses lower bounds only; `upper` is for display.
+ */
+export type TierBandOutput = {
+  /**
+   * Lower
+   */
+  lower: string
+  /**
+   * Upper
+   */
+  upper?: string | null
+}
+
+/**
+ * TiersSection
+ */
+export type TiersSectionInput = {
+  /**
+   * Bands
+   */
+  bands: Array<TierBandInput>
+  /**
+   * Income Ceiling
+   */
+  income_ceiling?: number | string | null
+  /**
+   * Floor Tier
+   */
+  floor_tier?: number
+}
+
+/**
+ * TiersSection
+ */
+export type TiersSectionOutput = {
+  /**
+   * Bands
+   */
+  bands: Array<TierBandOutput>
+  /**
+   * Income Ceiling
+   */
+  income_ceiling?: string | null
+  /**
+   * Floor Tier
+   */
+  floor_tier?: number
+}
+
+/**
  * TimeBucket
  *
  * A time distribution bucket.
@@ -9910,6 +11365,66 @@ export type TimeBucket = {
    * Percentage of total
    */
   percentage: number
+}
+
+/**
+ * TotalCap
+ *
+ * Caps Round 2 and Round 3 so that R1 + R2 + R3 (+ grants) stays within a % of cost.
+ *
+ * Named top-ups and discretionary amounts are the allowances: they are never cut.
+ */
+export type TotalCapInput = {
+  /**
+   * Pct Of Cost
+   */
+  pct_of_cost: number | string
+  /**
+   * Include Grants
+   */
+  include_grants?: boolean
+}
+
+/**
+ * TotalCap
+ *
+ * Caps Round 2 and Round 3 so that R1 + R2 + R3 (+ grants) stays within a % of cost.
+ *
+ * Named top-ups and discretionary amounts are the allowances: they are never cut.
+ */
+export type TotalCapOutput = {
+  /**
+   * Pct Of Cost
+   */
+  pct_of_cost: string
+  /**
+   * Include Grants
+   */
+  include_grants?: boolean
+}
+
+/**
+ * TotalPercent
+ *
+ * The appeal cap: Round 1 + Round 2 may reach this % of cost.
+ */
+export type TotalPercentInput = {
+  /**
+   * Total Pct
+   */
+  total_pct: number | string
+}
+
+/**
+ * TotalPercent
+ *
+ * The appeal cap: Round 1 + Round 2 may reach this % of cost.
+ */
+export type TotalPercentOutput = {
+  /**
+   * Total Pct
+   */
+  total_pct: string
 }
 
 /**
@@ -10025,6 +11540,56 @@ export type ValidationError = {
   ctx?: {
     [key: string]: unknown
   }
+}
+
+/**
+ * ValidationIssue
+ */
+export type ValidationIssue = {
+  /**
+   * Section
+   */
+  section:
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Severity
+   */
+  severity: 'error' | 'warning'
+  /**
+   * Path
+   */
+  path: string
+  /**
+   * Message
+   */
+  message: string
+}
+
+/**
+ * ValidationReport
+ */
+export type ValidationReport = {
+  /**
+   * Issues
+   */
+  issues?: Array<ValidationIssue>
 }
 
 /**
@@ -15575,6 +17140,211 @@ export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDel
 
 export type DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponse =
   DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses[keyof DeleteFlagDispositionApiFinancialAidFlagDispositionsDispositionIdDeleteResponses]
+
+export type GetAidRulesApiFinancialAidRulesYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Version
+     */
+    version?: number | null
+  }
+  url: '/api/financial-aid/rules/{year}'
+}
+
+export type GetAidRulesApiFinancialAidRulesYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetAidRulesApiFinancialAidRulesYearGetError =
+  GetAidRulesApiFinancialAidRulesYearGetErrors[keyof GetAidRulesApiFinancialAidRulesYearGetErrors]
+
+export type GetAidRulesApiFinancialAidRulesYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesVersionOut
+}
+
+export type GetAidRulesApiFinancialAidRulesYearGetResponse =
+  GetAidRulesApiFinancialAidRulesYearGetResponses[keyof GetAidRulesApiFinancialAidRulesYearGetResponses]
+
+export type ValidateAidRulesApiFinancialAidRulesYearValidatePostData = {
+  body: RulesDocumentIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/validate'
+}
+
+export type ValidateAidRulesApiFinancialAidRulesYearValidatePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ValidateAidRulesApiFinancialAidRulesYearValidatePostError =
+  ValidateAidRulesApiFinancialAidRulesYearValidatePostErrors[keyof ValidateAidRulesApiFinancialAidRulesYearValidatePostErrors]
+
+export type ValidateAidRulesApiFinancialAidRulesYearValidatePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ValidationReport
+}
+
+export type ValidateAidRulesApiFinancialAidRulesYearValidatePostResponse =
+  ValidateAidRulesApiFinancialAidRulesYearValidatePostResponses[keyof ValidateAidRulesApiFinancialAidRulesYearValidatePostResponses]
+
+export type CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostData = {
+  body: RulesDocumentIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/versions'
+}
+
+export type CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostError =
+  CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostErrors[keyof CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostErrors]
+
+export type CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: RulesVersionOut
+}
+
+export type CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponse =
+  CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponses[keyof CreateAidRulesVersionApiFinancialAidRulesYearVersionsPostResponses]
+
+export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/start-from-last-year'
+}
+
+export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostError =
+  StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostErrors[keyof StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostErrors]
+
+export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: RulesVersionOut
+}
+
+export type StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponse =
+  StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponses[keyof StartAidRulesFromLastYearApiFinancialAidRulesYearStartFromLastYearPostResponses]
+
+export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutData = {
+  body: RulesDocumentIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Version
+     */
+    version: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/versions/{version}'
+}
+
+export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutError =
+  SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutErrors[keyof SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutErrors]
+
+export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesVersionOut
+}
+
+export type SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponse =
+  SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponses[keyof SaveAidRulesApiFinancialAidRulesYearVersionsVersionPutResponses]
+
+export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostData = {
+  body: RulesApproveIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Version
+     */
+    version: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/versions/{version}/approve'
+}
+
+export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostError =
+  ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostErrors[keyof ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostErrors]
+
+export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesVersionOut
+}
+
+export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponse =
+  ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses[keyof ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

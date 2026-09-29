@@ -4,10 +4,12 @@ Thin: parse input, call the service, map its errors. Sub-project 4 adds the
 ledger (aid_sources / aid_postings / aid_household_links / overrides /
 dispositions); sub-project 5 adds intake reads (financial_aid.view), casework
 writes including payer shares and the income override (financial_aid.casework),
-and session capacity (financial_aid.rules). Every aid_* collection is
-superuser-only in PocketBase, so these routes are the only way in. Every
-ledger write passes the real signed-in person (user.email); the write service
-records it (spec sec 14.4).
+and session capacity (financial_aid.rules). The rules routes (`/rules/...`, the
+rules loader) read, validate, create, save and approve a season's rules
+document (financial_aid.rules); an approval's note names the approving body
+(D39). Every aid_* collection is superuser-only in PocketBase, so these routes
+are the only way in. Every ledger write passes the real signed-in person
+(user.email); the write service records it (spec sec 14.4).
 
 /summary and /net-totals are finance-facing and unsuppressed (per-family
 derived), so they need financial_aid.view. Development's financial_aid.summary
@@ -57,6 +59,7 @@ from api.schemas.financial_aid_intake import (
     RequestStatus,
     SessionResolve,
 )
+from api.schemas.financial_aid_rules import RulesApproveIn, RulesDocumentIn, RulesVersionOut
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -72,8 +75,18 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_rules_service import (
+    AidRulesRepository,
+    FinancialAidRulesService,
+    NotLatestVersionError,
+    RulesNotFoundError,
+    RulesVersion,
+    VersionExistsError,
+)
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
+from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.rules import AidRules, ValidationReport
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
@@ -123,6 +136,39 @@ def _http(exc: Exception) -> HTTPException:
     if isinstance(exc, FinancialAidNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
+
+
+def _rules() -> FinancialAidRulesService:
+    return FinancialAidRulesService(AidRulesRepository(pb))
+
+
+def _rules_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, RulesNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, (VersionExistsError, NotLatestVersionError)):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+def _same_year(year: int, document: AidRules) -> None:
+    if document.year != year:
+        raise HTTPException(status_code=422, detail=f"The document is for {document.year}, not {year}")
+
+
+def _rules_out(version: RulesVersion, report: ValidationReport) -> RulesVersionOut:
+    return RulesVersionOut(
+        year=version.year,
+        version=version.version,
+        parent_year=version.parent_year,
+        parent_version=version.parent_version,
+        document=version.document,
+        section_status=version.section_status,
+        report=report,
+    )
+
+
+_Year = Annotated[int, Path(ge=2017, le=2100)]
+_Version = Annotated[int, Path(ge=1)]
 
 
 @router.get("/applications", response_model=ApplicationListResponse)
@@ -371,3 +417,74 @@ async def delete_flag_disposition(disposition_id: str, reason: _Reason, user: Au
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
     return Response(status_code=204)
+
+
+@router.get("/rules/{year}", response_model=RulesVersionOut)
+async def get_aid_rules(
+    year: _Year, version: int | None = Query(default=None, ge=1), user: AuthUser = _RULES
+) -> RulesVersionOut:
+    """One version of the season's rules (the latest by default), with its validation report."""
+    service = _rules()
+    try:
+        loaded = await service.load(year, version)
+        return _rules_out(loaded, await service.validate_document(loaded.document))
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.post("/rules/{year}/validate", response_model=ValidationReport)
+async def validate_aid_rules(year: _Year, body: RulesDocumentIn, user: AuthUser = _RULES) -> ValidationReport:
+    """Check a document against the season's synced sessions without saving it."""
+    _same_year(year, body.document)
+    return await _rules().validate_document(body.document)
+
+
+@router.post("/rules/{year}/versions", response_model=RulesVersionOut, status_code=201)
+async def create_aid_rules_version(year: _Year, body: RulesDocumentIn, user: AuthUser = _RULES) -> RulesVersionOut:
+    """Version 1 of a season with no rules yet, from a whole document (the one-time load);
+    409 when the season already has rules."""
+    _same_year(year, body.document)
+    service = _rules()
+    try:
+        created = await service.bootstrap(body.document, actor=user.email)
+        return _rules_out(created, await service.validate_document(created.document))
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.post("/rules/{year}/start-from-last-year", response_model=RulesVersionOut, status_code=201)
+async def start_aid_rules_from_last_year(year: _Year, user: AuthUser = _RULES) -> RulesVersionOut:
+    """Version 1 of an empty season, copied from last season's latest (prices and dates cleared)."""
+    try:
+        created, report = await _rules().start_from_last_year(year, actor=user.email)
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+    return _rules_out(created, report)
+
+
+@router.put("/rules/{year}/versions/{version}", response_model=RulesVersionOut)
+async def save_aid_rules(
+    year: _Year, version: _Version, body: RulesDocumentIn, user: AuthUser = _RULES
+) -> RulesVersionOut:
+    """Save the whole document over the latest version. Changed approved sections go back to draft;
+    a change to a locked section is refused (make a new version)."""
+    _same_year(year, body.document)
+    try:
+        saved, report = await _rules().save(year, version, body.document, actor=user.email)
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+    return _rules_out(saved, report)
+
+
+@router.post("/rules/{year}/versions/{version}/approve", response_model=RulesVersionOut)
+async def approve_aid_rules_sections(
+    year: _Year, version: _Version, body: RulesApproveIn, user: AuthUser = _RULES
+) -> RulesVersionOut:
+    """Approve sections as one logged operation; the note names the approving body (D39)."""
+    try:
+        approved, report = await _rules().approve_sections(
+            year, version, body.sections, actor=user.email, note=body.note
+        )
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+    return _rules_out(approved, report)
