@@ -52,7 +52,10 @@ func TestAidGrantsMigrationDeclaresItsShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, down, _ := strings.Cut(string(raw), "}, (app) => {")
-	for _, want := range []string{`name: "full_coverage"`, `removeByName("grantor_key")`, `"aid_grants"`, `"aid_grantors"`} {
+	downWants := []string{
+		`name: "full_coverage"`, `removeByName("grantor_key")`, `"aid_grants"`, `"aid_grantors"`,
+	}
+	for _, want := range downWants {
 		if !strings.Contains(down, want) {
 			t.Errorf("down must contain %q", want)
 		}
