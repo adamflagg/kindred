@@ -255,7 +255,7 @@ def _read_repo(**kw: Any) -> MagicMock:
     repo.fetch_request_refs = AsyncMock(
         return_value=[
             SimpleNamespace(
-                id="req-sam-1", household_cm_id=100, person_cm_id=1001, session_cm_id=1000101, status="active"
+                id="req-emma-1", household_cm_id=100, person_cm_id=1001, session_cm_id=1000101, status="active"
             )
         ]
     )
@@ -324,7 +324,7 @@ async def test_read_overlays_a_placement_at_once() -> None:
         "Emma Johnson",
         "Session 1",
     )
-    assert [(s.request_id, s.amount) for s in row.requests] == [("req-sam-1", 500.0)]
+    assert [(s.request_id, s.amount) for s in row.requests] == [("req-emma-1", 500.0)]
     assert out.needs_camper == []
 
 

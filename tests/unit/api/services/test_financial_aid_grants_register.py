@@ -27,7 +27,7 @@ from api.services.financial_aid_grants_register import (
 GRANT = "regional grant - north"
 OTHER = "city grant"  # a description that names no grantor yet
 CITY = "city fund award"  # a description mapped to another grantor
-SAM, ALEX = 1001, 1002  # siblings in household 100
+EMMA, LIAM = 1001, 1002  # siblings in household 100
 S1, S2, S3 = 1000101, 1000102, 1000103  # summer sessions
 HOUSEHOLD = 100
 GRANTORS = {GRANT: "regional_fund", OTHER: "", CITY: "city_fund"}
@@ -46,7 +46,7 @@ def _line(txn: int = 9001, amount: str = "500", **kw: Any) -> GrantLine:
         "is_reversed": False,
         "reversal_date": "",
         "attribution_method": "household_single_camper",
-        "attributed_person_cm_id": SAM,
+        "attributed_person_cm_id": EMMA,
         "attributed_session_cm_id": S1,
         "program_family": "summer",
     }
@@ -59,7 +59,7 @@ def _commitment(cid: str = "com000000000001", amount: str = "500", **kw: Any) ->
         "id": cid,
         "grantor_key": "regional_fund",
         "household_cm_id": HOUSEHOLD,
-        "person_cm_id": SAM,
+        "person_cm_id": EMMA,
         "session_cm_id": 0,
         "program_family": "",
         "amount": Decimal(amount),
@@ -72,14 +72,14 @@ def _commitment(cid: str = "com000000000001", amount: str = "500", **kw: Any) ->
 
 
 ENROLLED = (
-    Enrollment(SAM, S1, "summer", 2),
-    Enrollment(SAM, S2, "summer", 2),
-    Enrollment(ALEX, S1, "summer", 2),
+    Enrollment(EMMA, S1, "summer", 2),
+    Enrollment(EMMA, S2, "summer", 2),
+    Enrollment(LIAM, S1, "summer", 2),
 )
 REQUESTS = (
-    RequestRef("req-sam-1", HOUSEHOLD, SAM, S1, "active"),
-    RequestRef("req-sam-2", HOUSEHOLD, SAM, S2, "active"),
-    RequestRef("req-alex-1", HOUSEHOLD, ALEX, S1, "active"),
+    RequestRef("req-emma-1", HOUSEHOLD, EMMA, S1, "active"),
+    RequestRef("req-emma-2", HOUSEHOLD, EMMA, S2, "active"),
+    RequestRef("req-liam-1", HOUSEHOLD, LIAM, S1, "active"),
 )
 
 
@@ -114,9 +114,9 @@ def test_an_inferred_camper_is_a_suggestion_and_counts_toward_nothing() -> None:
 
 
 def test_a_line_posted_to_an_enrolled_person_names_its_camper() -> None:
-    line = _line(person_cm_id=SAM, attribution_method="posted_person_single_enrollment")
+    line = _line(person_cm_id=EMMA, attribution_method="posted_person_single_enrollment")
     row = _one(build_register(_inputs(lines=(line,))), transaction_cm_id=9001)
-    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.counts) == (SAM, "ledger", S1, True)
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.counts) == (EMMA, "ledger", S1, True)
 
 
 def test_a_line_posted_to_a_parent_is_still_household_level() -> None:
@@ -126,15 +126,15 @@ def test_a_line_posted_to_a_parent_is_still_household_level() -> None:
 
 
 def test_a_placement_confirms_the_camper_and_outranks_the_ledger() -> None:
-    line = _line(person_cm_id=SAM)
-    rows = build_register(_inputs(lines=(line,), placements={9001: Placement(9001, ALEX, S1, "summer")}))
+    line = _line(person_cm_id=EMMA)
+    rows = build_register(_inputs(lines=(line,), placements={9001: Placement(9001, LIAM, S1, "summer")}))
     row = _one(rows, transaction_cm_id=9001)
-    assert (row.person_cm_id, row.camper_basis, row.session_cm_id) == (ALEX, "placed", S1)
-    assert row.requests == (RequestShare("req-alex-1", Decimal(500)),)
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id) == (LIAM, "placed", S1)
+    assert row.requests == (RequestShare("req-liam-1", Decimal(500)),)
 
 
 def test_a_reversed_line_stays_one_row_and_counts_toward_nothing() -> None:
-    line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="2031-03-01 17:00:00.000Z")
+    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="2031-03-01 17:00:00.000Z")
     row = _one(build_register(_inputs(lines=(line,))), transaction_cm_id=9001)
     assert (row.is_reversed, row.counts, row.requests) == (True, False, ())
 
@@ -151,13 +151,13 @@ def test_the_grantor_comes_from_the_descriptions_mapping() -> None:
 def test_an_open_commitment_counts_until_its_line_arrives() -> None:
     rows = build_register(_inputs(commitments=(_commitment(session_cm_id=S1),)))
     row = _one(rows, kind="commitment")
-    assert (row.person_cm_id, row.camper_basis, row.counts, row.recorded_on) == (SAM, "commitment", True, "2031-01-20")
-    assert row.requests == (RequestShare("req-sam-1", Decimal(500)),)
+    assert (row.person_cm_id, row.camper_basis, row.counts, row.recorded_on) == (EMMA, "commitment", True, "2031-01-20")
+    assert row.requests == (RequestShare("req-emma-1", Decimal(500)),)
 
 
 def test_a_line_naming_the_camper_fulfils_the_commitment_and_only_the_line_counts() -> None:
     """Review Focus 1: never both. CampMinder's amount wins (Decision 4)."""
-    line = _line(amount="450", person_cm_id=SAM)
+    line = _line(amount="450", person_cm_id=EMMA)
     rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
     assert [r.kind for r in rows] == ["ledger"]
     row = rows[0]
@@ -166,7 +166,7 @@ def test_a_line_naming_the_camper_fulfils_the_commitment_and_only_the_line_count
 
 def test_a_fulfilled_commitment_keeps_its_earlier_recorded_at() -> None:
     """Decision 5: a grant known (hand-entered) before the offer isn't made late by its posting."""
-    line = _line(person_cm_id=SAM, post_date="2031-03-15 17:00:00.000Z")
+    line = _line(person_cm_id=EMMA, post_date="2031-03-15 17:00:00.000Z")
     row = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))[0]
     assert row.recorded_at == datetime(2031, 1, 21, 18, 0, tzinfo=UTC)
 
@@ -176,14 +176,14 @@ def test_a_household_level_line_does_not_fulfil_a_commitment_until_placed() -> N
     assert _one(rows, kind="commitment").counts is True
     assert _one(rows, kind="ledger").counts is False
     placed = build_register(
-        _inputs(lines=(_line(),), commitments=(_commitment(),), placements={9001: Placement(9001, SAM, 0, "")})
+        _inputs(lines=(_line(),), commitments=(_commitment(),), placements={9001: Placement(9001, EMMA, 0, "")})
     )
     assert [r.kind for r in placed] == ["ledger"]
     assert placed[0].fulfils_commitment_id == "com000000000001"
 
 
 def test_a_line_from_another_grantor_does_not_fulfil_a_commitment() -> None:
-    line = _line(person_cm_id=SAM, source_key=CITY)
+    line = _line(person_cm_id=EMMA, source_key=CITY)
     rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
     assert {r.kind for r in rows} == {"ledger", "commitment"}
 
@@ -191,14 +191,14 @@ def test_a_line_from_another_grantor_does_not_fulfil_a_commitment() -> None:
 def test_a_line_from_an_unmapped_description_fulfils_rather_than_double_counting() -> None:
     """Decision 4: until finance maps the description, the line on the same camper is taken to be
     the commitment, so the two never both offset the award."""
-    line = _line(person_cm_id=SAM, source_key=OTHER)
+    line = _line(person_cm_id=EMMA, source_key=OTHER)
     rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
     assert [r.kind for r in rows] == ["ledger"]
     assert rows[0].fulfils_commitment_id == "com000000000001"
 
 
 def test_a_same_grantor_line_is_preferred_over_an_unmapped_one() -> None:
-    lines = (_line(9001, person_cm_id=SAM, source_key=OTHER), _line(9002, person_cm_id=SAM))
+    lines = (_line(9001, person_cm_id=EMMA, source_key=OTHER), _line(9002, person_cm_id=EMMA))
     rows = build_register(_inputs(lines=lines, commitments=(_commitment(),)))
     assert {r.transaction_cm_id: r.fulfils_commitment_id for r in rows} == {9001: "", 9002: "com000000000001"}
 
@@ -207,15 +207,15 @@ def test_an_unmapped_incentive_line_never_fulfils_an_outside_commitment() -> Non
     """FIX: only an outside-funded line is a fulfilment candidate. An unmapped INCENTIVE (JFAM)
     line posted to the same camper must not swallow the outside commitment -- that would stop the
     commitment counting and drop the grant from grant_inputs_by_request entirely."""
-    incentive = _line(9002, "400", person_cm_id=SAM, source_key=OTHER, funder_type="incentive")
+    incentive = _line(9002, "400", person_cm_id=EMMA, source_key=OTHER, funder_type="incentive")
     rows = build_register(_inputs(lines=(incentive,), commitments=(_commitment(session_cm_id=S1),)))
     assert {r.kind for r in rows} == {"ledger", "commitment"}
     assert _one(rows, kind="ledger").fulfils_commitment_id == ""
     commitment_row = _one(rows, kind="commitment")
     assert commitment_row.counts is True
-    assert commitment_row.requests == (RequestShare("req-sam-1", Decimal(500)),)
+    assert commitment_row.requests == (RequestShare("req-emma-1", Decimal(500)),)
     inputs = grant_inputs_by_request(rows)
-    (grant,) = inputs["req-sam-1"]
+    (grant,) = inputs["req-emma-1"]
     assert (grant.amount, grant.state) == (Decimal(500), "committed")
 
 
@@ -225,7 +225,7 @@ def test_a_reversed_line_never_closes_a_commitment() -> None:
     reversed line is never a fulfilment candidate -- only a live line is. The reversed line still
     counts toward nothing itself, and the commitment it would have closed stays open and keeps
     counting."""
-    line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="2031-04-01 17:00:00.000Z")
+    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="2031-04-01 17:00:00.000Z")
     rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
     assert {r.kind for r in rows} == {"ledger", "commitment"}
     ledger_row = _one(rows, kind="ledger")
@@ -238,7 +238,7 @@ def test_a_reversal_before_the_commitment_was_entered_does_not_swallow_it() -> N
     reversal is KNOWN to be at or after the commitment's `created` -- otherwise an earlier,
     unrelated reversal would silently swallow a commitment staff entered later, and the grant
     would count toward nothing."""
-    line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="2031-02-12 17:00:00.000Z")
+    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="2031-02-12 17:00:00.000Z")
     commitment = _commitment(
         session_cm_id=S1, committed_on=date(2031, 3, 1), created=datetime(2031, 3, 2, 12, 0, tzinfo=UTC)
     )
@@ -247,16 +247,16 @@ def test_a_reversal_before_the_commitment_was_entered_does_not_swallow_it() -> N
     assert _one(rows, kind="ledger").fulfils_commitment_id == ""
     commitment_row = _one(rows, kind="commitment")
     assert commitment_row.counts is True
-    assert commitment_row.requests == (RequestShare("req-sam-1", Decimal(500)),)
+    assert commitment_row.requests == (RequestShare("req-emma-1", Decimal(500)),)
     inputs = grant_inputs_by_request(rows)
-    (grant,) = inputs["req-sam-1"]
+    (grant,) = inputs["req-emma-1"]
     assert (grant.amount, grant.state, grant.recorded_at) == (Decimal(500), "committed", commitment.created)
 
 
 def test_a_reversed_line_with_no_reversal_date_does_not_close_a_commitment() -> None:
     """A reversed line that can't be placed in time (no reversal_date) can't confidently close a
     commitment either."""
-    line = _line(person_cm_id=SAM, is_reversed=True, reversal_date="")
+    line = _line(person_cm_id=EMMA, is_reversed=True, reversal_date="")
     rows = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))
     assert {r.kind for r in rows} == {"ledger", "commitment"}
     assert _one(rows, kind="ledger").fulfils_commitment_id == ""
@@ -264,7 +264,7 @@ def test_a_reversed_line_with_no_reversal_date_does_not_close_a_commitment() -> 
 
 
 def test_two_commitments_pair_one_to_one_preferring_the_equal_amount() -> None:
-    lines = (_line(9001, "300", person_cm_id=SAM), _line(9002, "500", person_cm_id=SAM))
+    lines = (_line(9001, "300", person_cm_id=EMMA), _line(9002, "500", person_cm_id=EMMA))
     commitments = (_commitment("com-a", "500"), _commitment("com-b", "300"))
     rows = build_register(_inputs(lines=lines, commitments=commitments))
     assert {r.transaction_cm_id: r.fulfils_commitment_id for r in rows} == {9001: "com-b", 9002: "com-a"}
@@ -281,8 +281,8 @@ def test_a_reverse_and_repost_leaves_the_second_commitment_counting() -> None:
     where $1,000 should. Only a live line is a fulfilment candidate now: line A is posted then
     reversed, line B is the live repost -- exactly one commitment is fulfilled (by B), the other
     keeps counting, and the two requests together see the full $1,000."""
-    line_a = _line(9001, "500", person_cm_id=SAM, is_reversed=True, reversal_date="2031-02-15 17:00:00.000Z")
-    line_b = _line(9002, "500", person_cm_id=SAM, post_date="2031-02-15 18:00:00.000Z")
+    line_a = _line(9001, "500", person_cm_id=EMMA, is_reversed=True, reversal_date="2031-02-15 17:00:00.000Z")
+    line_b = _line(9002, "500", person_cm_id=EMMA, post_date="2031-02-15 18:00:00.000Z")
     commitments = (_commitment("com-a", "500", session_cm_id=S1), _commitment("com-b", "500", session_cm_id=S2))
     rows = build_register(_inputs(lines=(line_a, line_b), commitments=commitments))
     fulfilled = {r.transaction_cm_id: r.fulfils_commitment_id for r in rows if r.kind == "ledger"}
@@ -290,7 +290,7 @@ def test_a_reverse_and_repost_leaves_the_second_commitment_counting() -> None:
     remaining = _one(rows, kind="commitment")
     assert (remaining.commitment_id, remaining.counts) == ("com-b", True)
     inputs = grant_inputs_by_request(rows)
-    total = sum((g.amount for r in ("req-sam-1", "req-sam-2") for g in inputs.get(r, ())), Decimal(0))
+    total = sum((g.amount for r in ("req-emma-1", "req-emma-2") for g in inputs.get(r, ())), Decimal(0))
     assert total == Decimal(1000)
 
 
@@ -312,16 +312,18 @@ def test_split_equally_gives_the_remainder_cent_to_the_first() -> None:
 
 def test_a_grant_with_no_session_splits_equally_across_the_campers_requests_in_its_family() -> None:
     """Review Focus 5; main spec §2 item 18."""
-    rows = build_register(_inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, SAM, 0, "summer")}))
+    rows = build_register(_inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, EMMA, 0, "summer")}))
     assert _one(rows, transaction_cm_id=9001).requests == (
-        RequestShare("req-sam-1", Decimal("500.00")),
-        RequestShare("req-sam-2", Decimal("500.00")),
+        RequestShare("req-emma-1", Decimal("500.00")),
+        RequestShare("req-emma-2", Decimal("500.00")),
     )
 
 
 def test_a_grant_with_a_session_sits_on_that_request_only() -> None:
-    rows = build_register(_inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, SAM, S2, "summer")}))
-    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-sam-2", Decimal(1000)),)
+    rows = build_register(
+        _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, EMMA, S2, "summer")})
+    )
+    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-emma-2", Decimal(1000)),)
 
 
 def test_a_camper_who_never_applied_has_no_requests_behind_the_grant() -> None:
@@ -334,11 +336,11 @@ def test_a_camper_who_never_applied_has_no_requests_behind_the_grant() -> None:
 
 
 def test_a_withdrawn_request_takes_no_share() -> None:
-    requests = (RequestRef("req-sam-1", HOUSEHOLD, SAM, S1, "withdrawn"), REQUESTS[1])
+    requests = (RequestRef("req-emma-1", HOUSEHOLD, EMMA, S1, "withdrawn"), REQUESTS[1])
     rows = build_register(
-        _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, SAM, 0, "summer")}, requests=requests)
+        _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, EMMA, 0, "summer")}, requests=requests)
     )
-    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-sam-2", Decimal("1000.00")),)
+    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-emma-2", Decimal("1000.00")),)
 
 
 def test_an_unmatched_request_with_no_session_takes_no_share() -> None:
@@ -346,26 +348,26 @@ def test_an_unmatched_request_with_no_session_takes_no_share() -> None:
     request name resolution never matched to a session (session_cm_id 0) takes no share, even when
     the grant itself has no session and no family to narrow by."""
     requests = (
-        RequestRef("req-sam-1", HOUSEHOLD, SAM, S1, "active"),
-        RequestRef("req-sam-unmatched", HOUSEHOLD, SAM, 0, "active"),
+        RequestRef("req-emma-1", HOUSEHOLD, EMMA, S1, "active"),
+        RequestRef("req-emma-unmatched", HOUSEHOLD, EMMA, 0, "active"),
     )
     rows = build_register(
-        _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, SAM, 0, "")}, requests=requests)
+        _inputs(lines=(_line(amount="1000"),), placements={9001: Placement(9001, EMMA, 0, "")}, requests=requests)
     )
-    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-sam-1", Decimal("1000.00")),)
+    assert _one(rows, transaction_cm_id=9001).requests == (RequestShare("req-emma-1", Decimal("1000.00")),)
 
 
 # --- cancelled (derived from enrollment) ---------------------------------------------------
 
 
 def test_a_grant_is_cancelled_when_its_campers_enrollment_is_cancelled() -> None:
-    enrolled = (Enrollment(SAM, S1, "summer", 32), Enrollment(SAM, S2, "summer", 2))
+    enrolled = (Enrollment(EMMA, S1, "summer", 32), Enrollment(EMMA, S2, "summer", 2))
     rows = build_register(
-        _inputs(lines=(_line(),), placements={9001: Placement(9001, SAM, S1, "summer")}, enrollments=enrolled)
+        _inputs(lines=(_line(),), placements={9001: Placement(9001, EMMA, S1, "summer")}, enrollments=enrolled)
     )
     assert _one(rows, transaction_cm_id=9001).cancelled is True
     rows = build_register(
-        _inputs(lines=(_line(),), placements={9001: Placement(9001, SAM, 0, "summer")}, enrollments=enrolled)
+        _inputs(lines=(_line(),), placements={9001: Placement(9001, EMMA, 0, "summer")}, enrollments=enrolled)
     )
     assert _one(rows, transaction_cm_id=9001).cancelled is False  # still enrolled in the family
 
@@ -375,11 +377,11 @@ def test_a_grant_is_cancelled_when_its_campers_enrollment_is_cancelled() -> None
 
 def test_grant_inputs_by_request_carries_only_counting_outside_grants() -> None:
     incentive = _line(9002, "200", funder_type="incentive", source_family="jfam_incentive")
-    lines = (_line(9001, "1000", person_cm_id=SAM, attributed_session_cm_id=0, program_family="summer"), incentive)
-    rows = build_register(_inputs(lines=lines, placements={9002: Placement(9002, SAM, S1, "summer")}))
+    lines = (_line(9001, "1000", person_cm_id=EMMA, attributed_session_cm_id=0, program_family="summer"), incentive)
+    rows = build_register(_inputs(lines=lines, placements={9002: Placement(9002, EMMA, S1, "summer")}))
     inputs = grant_inputs_by_request(rows)
-    assert sorted(inputs) == ["req-sam-1", "req-sam-2"]
-    (grant,) = inputs["req-sam-1"]
+    assert sorted(inputs) == ["req-emma-1", "req-emma-2"]
+    (grant,) = inputs["req-emma-1"]
     assert (grant.amount, grant.state) == (Decimal("500.00"), "committed")
     assert grant.recorded_at == datetime(2031, 2, 10, 17, 0, tzinfo=UTC)
 
@@ -421,32 +423,32 @@ TODAY = date(2031, 3, 1)
 
 def _attention(**kw: Any) -> Any:
     inputs = _inputs(**kw)
-    return needs_attention(build_register(inputs), inputs, candidates={HOUSEHOLD: (SAM, ALEX)}, today=TODAY)
+    return needs_attention(build_register(inputs), inputs, candidates={HOUSEHOLD: (EMMA, LIAM)}, today=TODAY)
 
 
 def test_a_household_level_line_needs_a_camper_with_gos_suggestion_as_evidence() -> None:
     (need,) = _attention(lines=(_line(),)).needs_camper
     assert need.row.transaction_cm_id == 9001
     assert need.household_applied is True
-    assert need.candidates == (SAM, ALEX)
+    assert need.candidates == (EMMA, LIAM)
     s = need.suggestion
     assert s is not None
-    assert (s.person_cm_id, s.session_cm_id, s.basis, s.method) == (SAM, S1, "attribution", "household_single_camper")
+    assert (s.person_cm_id, s.session_cm_id, s.basis, s.method) == (EMMA, S1, "attribution", "household_single_camper")
 
 
 def test_a_commitment_on_the_household_is_the_stronger_suggestion() -> None:
-    commitment = _commitment(person_cm_id=ALEX, session_cm_id=S1)
+    commitment = _commitment(person_cm_id=LIAM, session_cm_id=S1)
     (need,) = _attention(lines=(_line(),), commitments=(commitment,)).needs_camper
     s = need.suggestion
     assert s is not None
-    assert (s.person_cm_id, s.basis, s.commitment_id, s.amount_matches) == (ALEX, "commitment", "com000000000001", True)
+    assert (s.person_cm_id, s.basis, s.commitment_id, s.amount_matches) == (LIAM, "commitment", "com000000000001", True)
 
 
 def test_a_line_with_no_inference_has_candidates_but_no_suggestion() -> None:
     line = _line(attributed_person_cm_id=0, attributed_session_cm_id=0, attribution_method="ambiguous")
     (need,) = _attention(lines=(line,)).needs_camper
     assert need.suggestion is None
-    assert need.candidates == (SAM, ALEX)
+    assert need.candidates == (EMMA, LIAM)
 
 
 def test_applicant_households_sort_first_then_the_largest_amount() -> None:
@@ -463,11 +465,11 @@ def test_applicant_households_sort_first_then_the_largest_amount() -> None:
 
 def test_placed_named_and_reversed_lines_never_need_a_camper() -> None:
     lines = (
-        _line(9001, person_cm_id=SAM),
+        _line(9001, person_cm_id=EMMA),
         _line(9002),
         _line(9003, is_reversed=True, reversal_date="2031-02-20 17:00:00.000Z"),
     )
-    needs = _attention(lines=lines, placements={9002: Placement(9002, ALEX, S1, "summer")}).needs_camper
+    needs = _attention(lines=lines, placements={9002: Placement(9002, LIAM, S1, "summer")}).needs_camper
     assert needs == ()
 
 
@@ -490,7 +492,7 @@ def test_days_waiting_never_goes_negative_for_a_future_committed_on() -> None:
 
 
 def test_a_fulfilled_commitment_no_longer_waits() -> None:
-    assert _attention(lines=(_line(person_cm_id=SAM),), commitments=(_commitment(),)).waiting == ()
+    assert _attention(lines=(_line(person_cm_id=EMMA),), commitments=(_commitment(),)).waiting == ()
 
 
 # --- Expected (D56) ------------------------------------------------------------------------------
@@ -499,30 +501,30 @@ FAMILIES = {"regional_fund": frozenset({"other_outside"}), "happy_fund": frozens
 
 
 def test_a_yes_answer_with_no_grant_of_that_kind_is_expected() -> None:
-    answers = [FormAnswer(SAM, HOUSEHOLD, True, False), FormAnswer(ALEX, HOUSEHOLD, True, True)]
+    answers = [FormAnswer(EMMA, HOUSEHOLD, True, False), FormAnswer(LIAM, HOUSEHOLD, True, True)]
     assert expected_grants(answers, [], FAMILIES) == [
-        ExpectedGrant(HOUSEHOLD, "one_happy_camper", (SAM, ALEX)),
-        ExpectedGrant(HOUSEHOLD, "synagogue", (ALEX,)),
+        ExpectedGrant(HOUSEHOLD, "one_happy_camper", (EMMA, LIAM)),
+        ExpectedGrant(HOUSEHOLD, "synagogue", (LIAM,)),
     ]
 
 
 def test_expected_clears_itself_when_a_line_of_that_kind_arrives_even_reversed() -> None:
     line = _line(source_family="one_happy_camper", is_reversed=True, reversal_date="2031-04-01 17:00:00.000Z")
     rows = build_register(_inputs(lines=(line,)))
-    assert expected_grants([FormAnswer(SAM, HOUSEHOLD, True, False)], rows, FAMILIES) == []
+    assert expected_grants([FormAnswer(EMMA, HOUSEHOLD, True, False)], rows, FAMILIES) == []
 
 
 def test_expected_clears_itself_when_a_commitment_from_a_grantor_of_that_kind_is_entered() -> None:
     rows = build_register(_inputs(commitments=(_commitment(grantor_key="happy_fund"),)))
-    assert expected_grants([FormAnswer(SAM, HOUSEHOLD, True, False)], rows, FAMILIES) == []
+    assert expected_grants([FormAnswer(EMMA, HOUSEHOLD, True, False)], rows, FAMILIES) == []
 
 
 def test_expected_is_never_a_grant() -> None:
     """D56: nothing Expected reaches the calculator."""
     rows = build_register(_inputs())
-    assert expected_grants([FormAnswer(SAM, HOUSEHOLD, True, True)], rows, FAMILIES)
+    assert expected_grants([FormAnswer(EMMA, HOUSEHOLD, True, True)], rows, FAMILIES)
     assert grant_inputs_by_request(rows) == {}
 
 
 def test_an_answer_with_no_household_is_skipped() -> None:
-    assert expected_grants([FormAnswer(SAM, 0, True, True)], [], FAMILIES) == []
+    assert expected_grants([FormAnswer(EMMA, 0, True, True)], [], FAMILIES) == []
