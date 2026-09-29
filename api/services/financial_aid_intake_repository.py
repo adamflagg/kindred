@@ -175,10 +175,6 @@ def _exact_pct(value: Any) -> Decimal:
     return Decimal(format(Decimal(str(value)).quantize(PCT).normalize(), "f"))
 
 
-async def _refuse_writes(**_: Any) -> None:
-    raise RuntimeError("the intake repository only reads aid_rules")
-
-
 _EQUITY_SECTION: tuple[SectionName, ...] = ("equity",)
 
 
@@ -364,14 +360,14 @@ class FinancialAidIntakeRepository:
         """The newest version of the season whose `programs` and `cost` sections are both
         approved or locked (owner ruling 2026-09-25: never a draft), or None -- which is
         normal before finance approves them, and intake then waits visibly (Task 7)."""
-        service = FinancialAidRulesService(AidRulesRepository(self.pb), recorder=_refuse_writes)
+        service = FinancialAidRulesService(AidRulesRepository(self.pb, read_only=True))
         version = await service.latest_approved(year, INTAKE_RULES_SECTIONS)
         return None if version is None else version.document
 
     async def load_equity_rules(self, year: int) -> AidRules | None:
         """The newest version of the season whose `equity` section is approved or locked, or
         None. Read only for the season warning on unanswered yes/no fields, never a draft."""
-        service = FinancialAidRulesService(AidRulesRepository(self.pb), recorder=_refuse_writes)
+        service = FinancialAidRulesService(AidRulesRepository(self.pb, read_only=True))
         version = await service.latest_approved(year, _EQUITY_SECTION)
         return None if version is None else version.document
 

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import ValidationError
 
 from api.services.financial_aid_rules_service import (
@@ -22,9 +23,9 @@ from api.services.financial_aid_rules_service import (
     YearMismatchError,
     _to_version,
 )
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, change_row, new_operation_id, new_record_id
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.rules import AidRules, SectionName, SessionRef
+from bunking.financial_aid.rules import AidRules, SessionRef
 from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
     LockedSectionError,
@@ -48,11 +49,17 @@ FINANCE = "finance@example.com"
 
 
 class FakeStore:
-    """aid_rules in memory. Bodies pass through JSON, as they do through PocketBase."""
+    """aid_rules in memory, written only through `commit`, the one write path (4a).
+
+    Each committed operation is kept as the aid_change_log rows commit_aid_writes would write
+    for it, built with the same `change_row`, so a write the real helper would refuse (a
+    change that changes nothing) fails here too. An operation applies whole or not at all.
+    """
 
     def __init__(self, sessions: list[SessionRef] | None = None) -> None:
         self.rows: list[SimpleNamespace] = []
         self.sessions = sessions if sessions is not None else [SessionRef(cm_id=s) for s in FICTIONAL_SESSION_IDS]
+        self.operations: list[list[dict[str, Any]]] = []
 
     async def list_versions(self, year: int) -> list[Any]:
         return sorted((r for r in self.rows if r.year == year), key=lambda r: r.version)
@@ -63,54 +70,50 @@ class FakeStore:
     async def fetch_session_refs(self, year: int) -> list[SessionRef]:
         return list(self.sessions)
 
-    async def create(self, body: dict[str, Any]) -> Any:
-        if any(r.year == body["year"] and r.version == body["version"] for r in self.rows):
-            raise ValueError("unique index (year, version)")
-        row = SimpleNamespace(id=f"rec{len(self.rows) + 1:012d}", **json.loads(json.dumps(body)))
-        self.rows.append(row)
-        return row
-
-    async def update(self, record_id: str, body: dict[str, Any]) -> Any:
-        row = next(r for r in self.rows if r.id == record_id)
-        for key, value in json.loads(json.dumps(body)).items():
-            setattr(row, key, value)
-        return row
-
-
-class Recorder:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    async def __call__(
-        self,
-        *,
-        action: str,
-        year: int,
-        version: int,
-        section: SectionName | None,
-        record_id: str,
-        actor: str,
-        before: dict[str, Any] | None,
-        after: dict[str, Any] | None,
-        reason: str | None,
-    ) -> None:
-        self.calls.append(
-            {
-                "action": action,
-                "year": year,
-                "version": version,
-                "section": section,
-                "record_id": record_id,
-                "actor": actor,
-                "before": before,
-                "after": after,
-                "reason": reason,
-            }
+    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
+        operation_id = new_operation_id()
+        staged = copy.deepcopy(self.rows)
+        log: list[dict[str, Any]] = []
+        ids: list[str] = []
+        for write in writes:
+            data = json.loads(json.dumps(dict(write.data or {})))
+            if write.action == "create":
+                if any(r.year == data["year"] and r.version == data["version"] for r in staged):
+                    raise VersionExistsError("unique index (year, version)")
+                record_id = write.record_id or new_record_id()
+                staged.append(SimpleNamespace(id=record_id, **data))
+                after: dict[str, Any] | None = data
+            else:
+                assert write.record_id is not None
+                assert write.before is not None
+                record_id = write.record_id
+                row = next(r for r in staged if r.id == record_id)
+                for key, value in data.items():
+                    setattr(row, key, value)
+                after = {**write.before, **data}
+            log.append(
+                change_row(
+                    entity=write.collection,
+                    entity_id=write.entity_id or record_id,
+                    year=write.year,
+                    action=write.log_action or write.action,
+                    before=write.before,
+                    after=after,
+                    actor=actor,
+                    reason=write.reason if write.reason is not None else reason,
+                    operation_id=operation_id,
+                )
+            )
+            ids.append(record_id)
+        self.rows = staged
+        self.operations.append(log)
+        return AidOperationResult(
+            operation_id=operation_id, record_ids=tuple(ids), records=tuple(None for _ in ids), batches=1
         )
 
 
-def _service(store: FakeStore | None = None, recorder: Recorder | None = None) -> FinancialAidRulesService:
-    return FinancialAidRulesService(store or FakeStore(), clock=lambda: AT, recorder=recorder or Recorder())
+def _service(store: FakeStore | None = None) -> FinancialAidRulesService:
+    return FinancialAidRulesService(store or FakeStore(), clock=lambda: AT)
 
 
 @pytest.mark.asyncio
@@ -231,8 +234,8 @@ async def test_a_new_version_copies_the_document_and_keeps_approvals_and_locks()
 
 @pytest.mark.asyncio
 async def test_start_from_last_year() -> None:
-    recorder = Recorder()
-    service = _service(recorder=recorder)
+    store = FakeStore()
+    service = _service(store)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
     started, _ = await service.start_from_last_year(2032, actor=FINANCE)
@@ -241,9 +244,9 @@ async def test_start_from_last_year() -> None:
     assert started.document.income == fictional_rules().income
     assert started.document.milestones.r1_run is None  # dates belong to a season
     assert {s.state for s in started.section_status.values()} == {"draft"}  # a new season needs the board again
-    # (Fix round 1, item 1) start_from_last_year is a write too, and needs recording like the rest.
-    assert recorder.calls[-1]["action"] == "start_from_last_year"
-    assert recorder.calls[-1]["record_id"] == started.record_id
+    # start_from_last_year is a write too, and is logged like the rest.
+    [row] = store.operations[-1]
+    assert (row["action"], row["entity_id"]) == ("start_from_last_year", "2032:1")
     with pytest.raises(VersionExistsError):
         await service.start_from_last_year(2032, actor=FINANCE)
     with pytest.raises(RulesNotFoundError):
@@ -251,43 +254,31 @@ async def test_start_from_last_year() -> None:
 
 
 @pytest.mark.asyncio
-async def test_every_write_is_recorded() -> None:
-    recorder = Recorder()
-    service = _service(recorder=recorder)
+async def test_every_write_commits_with_its_log_row() -> None:
+    store = FakeStore()
+    service = _service(store)
     changed = with_lever(fictional_rules(), "income.medical_threshold", "4500")
-    created = await service.create_version(fictional_rules(), actor=FINANCE)
-    saved, _ = await service.save(2031, 1, changed, actor=FINANCE)
-    approved, _ = await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
-    locked = await service.lock_section(2031, 1, "income", actor=FINANCE)
-    new_version = await service.new_version(2031, 1, actor=FINANCE)
-    assert [c["action"] for c in recorder.calls] == ["create", "save", "approve", "lock", "new_version"]
-    assert recorder.calls[2]["section"] == "income"
-    assert {c["actor"] for c in recorder.calls} == {FINANCE}
-    # (Ruling P19) The recorder carries the PocketBase record id of the version written --
-    # the same record for save/approve/lock (all version 1), a new one for new_version.
-    assert [c["record_id"] for c in recorder.calls] == [
-        created.record_id,
-        saved.record_id,
-        approved.record_id,
-        locked.record_id,
-        new_version.record_id,
-    ]
-    assert new_version.record_id != created.record_id
-    # (Fix round 1, item 2) before/after carry meaningful content, not just placeholders.
-    assert recorder.calls[1]["before"] == fictional_rules().model_dump(mode="json")
-    assert recorder.calls[1]["after"] == changed.model_dump(mode="json")
-    approve_before, approve_after = recorder.calls[2]["before"], recorder.calls[2]["after"]
-    assert approve_before["state"] == "draft"
-    assert approve_after["state"] == "approved"
-    assert approve_after["approved_by"] == FINANCE
-
-
-# --- Ruling P1: the recorder is required ------------------------------------------------
-
-
-def test_the_service_requires_a_recorder() -> None:
-    with pytest.raises(TypeError):
-        FinancialAidRulesService(FakeStore(), clock=lambda: AT)  # type: ignore[call-arg]
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.save(2031, 1, changed, actor=FINANCE)
+    await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    await service.new_version(2031, 1, actor=FINANCE)
+    # One operation per write, one log row each, all in aid_rules, all by the signed-in person.
+    assert [len(op) for op in store.operations] == [1, 1, 1, 1, 1]
+    rows = [op[0] for op in store.operations]
+    assert [r["action"] for r in rows] == ["create", "save", "approve", "lock", "new_version"]
+    assert [r["entity_id"] for r in rows] == ["2031:1", "2031:1", "2031:1:income", "2031:1:income", "2031:2"]
+    assert {r["entity"] for r in rows} == {"aid_rules"}
+    assert {r["actor"] for r in rows} == {FINANCE}
+    assert len({r["operation_id"] for r in rows}) == 5
+    # A save logs only what changed: the one lever, not the whole document.
+    assert rows[1]["after"] == {"document": {"income": {"medical_threshold": "4500"}}}
+    assert rows[1]["before"] == {"document": {"income": {"medical_threshold": "4000"}}}
+    # An approval logs the section's status moving from draft to approved, by whom.
+    approved = rows[2]["after"]["section_status"]["income"]
+    assert (rows[2]["before"]["section_status"]["income"]["state"], approved["state"]) == ("draft", "approved")
+    assert approved["approved_by"] == FINANCE
+    assert rows[3]["after"]["section_status"]["income"]["state"] == "locked"
 
 
 # --- Ruling P3: writes to a superseded version are refused ------------------------------
@@ -379,64 +370,6 @@ async def test_session_refs_come_from_the_seasons_camp_sessions() -> None:
         SessionRef(cm_id=1000101, session_type="main", name="Session A"),
         SessionRef(cm_id=1000201, session_type=None, name=None),
     ]
-
-
-@pytest.mark.asyncio
-async def test_create_and_update_go_to_aid_rules() -> None:
-    pb = _pb()
-    repo = AidRulesRepository(pb)
-    await repo.create({"year": 2031})
-    await repo.update("rec1", {"version": 2})
-    assert pb.collection.call_args_list == [call("aid_rules"), call("aid_rules")]
-    pb.collection.return_value.create.assert_called_once_with({"year": 2031})
-    pb.collection.return_value.update.assert_called_once_with("rec1", {"version": 2})
-
-
-# --- Fix round 1, item 4: a unique-index collision on create maps to VersionExistsError ------
-
-
-@pytest.mark.asyncio
-async def test_create_maps_a_unique_index_collision_to_version_exists_error() -> None:
-    pb = _pb()
-    pb.collection.return_value.create.side_effect = ClientResponseError(
-        "validation_not_unique",
-        status=400,
-        data={
-            "status": 400,
-            "message": "Failed to create record.",
-            "data": {"year": {"code": "validation_not_unique", "message": "Value must be unique."}},
-        },
-        url="",
-        is_abort=False,
-        original_error=None,
-    )
-    with pytest.raises(VersionExistsError):
-        await AidRulesRepository(pb).create({"year": 2031, "version": 1})
-
-
-@pytest.mark.asyncio
-async def test_create_reraises_a_400_that_is_not_a_unique_index_collision() -> None:
-    # A 400 can also be a field validation failure (document.maxSize, numeric
-    # bounds, ...) -- status alone can't tell that apart from a (year, version)
-    # collision, so only the nested `validation_not_unique` code should map to
-    # VersionExistsError. Anything else must re-raise the original error.
-    pb = _pb()
-    original = ClientResponseError(
-        "validation_max_size_exceeded",
-        status=400,
-        data={
-            "status": 400,
-            "message": "Failed to create record.",
-            "data": {"document": {"code": "validation_max_size_exceeded", "message": "Value must not exceed 20000."}},
-        },
-        url="",
-        is_abort=False,
-        original_error=None,
-    )
-    pb.collection.return_value.create.side_effect = original
-    with pytest.raises(ClientResponseError) as exc_info:
-        await AidRulesRepository(pb).create({"year": 2031, "version": 1})
-    assert exc_info.value is original
 
 
 def _batch_failure(field_errors: dict[str, str]) -> BatchRequestFailedError:
@@ -536,18 +469,20 @@ def _without_teen_table() -> AidRules:
 
 
 @pytest.mark.asyncio
-async def test_an_approved_section_an_edit_breaks_returns_to_draft_and_is_recorded() -> None:
-    recorder = Recorder()
-    service = _service(recorder=recorder)
+async def test_an_approved_section_an_edit_breaks_returns_to_draft_and_is_logged() -> None:
+    store = FakeStore()
+    service = _service(store)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Board, Jan 15")
     # Renaming a table away: programs.teen.r1_table now names no table (unknown_table).
     saved, report = await service.save(2031, 1, _without_teen_table(), actor=FINANCE)
     assert "unknown_table" in {i.code for i in report.errors_in("programs")}
     assert saved.section_status["programs"].state == "draft"
-    revert = recorder.calls[-1]
-    assert (revert["action"], revert["section"], revert["reason"]) == ("revert_to_draft", "programs", None)
-    assert (revert["before"]["state"], revert["after"]["state"]) == ("approved", "draft")
+    # The revert is in the save's own row (4a pairs every log row with a record write).
+    [row] = store.operations[-1]
+    assert row["action"] == "save"
+    assert row["before"]["section_status"]["programs"]["state"] == "approved"
+    assert row["after"]["section_status"]["programs"]["state"] == "draft"
 
 
 @pytest.mark.asyncio
@@ -586,19 +521,34 @@ async def test_approving_with_no_synced_sessions_warns_instead_of_skipping() -> 
 
 
 @pytest.mark.asyncio
-async def test_the_recorder_carries_the_approval_note_as_its_reason() -> None:
-    recorder = Recorder()
-    service = _service(recorder=recorder)
+async def test_the_approval_note_is_the_log_rows_reason() -> None:
+    store = FakeStore()
+    service = _service(store)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.save(2031, 1, with_lever(fictional_rules(), "income.medical_threshold", "4500"), actor=FINANCE)
     await service.approve_section(2031, 1, "income", actor=FINANCE, note="Board, Jan 15")
     await service.lock_section(2031, 1, "income", actor=FINANCE)
-    assert [(c["action"], c["reason"]) for c in recorder.calls] == [
-        ("create", None),
-        ("save", None),
+    assert [(op[0]["action"], op[0]["reason"]) for op in store.operations] == [
+        ("create", ""),
+        ("save", ""),
         ("approve", "Board, Jan 15"),
-        ("lock", None),
+        ("lock", ""),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_save_that_changes_nothing_writes_nothing() -> None:
+    """Re-running a load PUTs the same document again: that must answer, not 500
+    (change_row refuses a change that changes nothing)."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_section(2031, 1, "income", actor=FINANCE, note="Board, Jan 15")
+    written = len(store.operations)
+    saved, report = await service.save(2031, 1, fictional_rules(), actor=FINANCE)
+    assert len(store.operations) == written
+    assert saved.section_status["income"].state == "approved"
+    assert not report.errors
 
 
 @pytest.mark.asyncio
