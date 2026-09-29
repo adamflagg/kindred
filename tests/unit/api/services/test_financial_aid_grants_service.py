@@ -214,12 +214,19 @@ def _posting(txn: int, amount: float, **kw: Any) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
-def _person(cm: int, first: str, household: int = 100) -> SimpleNamespace:
-    return SimpleNamespace(cm_id=cm, first_name=first, preferred_name="", last_name="Rivera", household_id=household)
+def _person(cm: int, first: str, household: int = 100, primary_childhood_household: int = 0) -> SimpleNamespace:
+    return SimpleNamespace(
+        cm_id=cm,
+        first_name=first,
+        preferred_name="",
+        last_name="Rivera",
+        household_id=household,
+        primary_childhood_household=primary_childhood_household,
+    )
 
 
-def _attendee(person: int, session: int, status: int = 2) -> SimpleNamespace:
-    session_rec = SimpleNamespace(cm_id=session, session_type="main", name=f"Session {session % 100}")
+def _attendee(person: int, session: int, status: int = 2, session_type: str = "main") -> SimpleNamespace:
+    session_rec = SimpleNamespace(cm_id=session, session_type=session_type, name=f"Session {session % 100}")
     return SimpleNamespace(person_id=person, status_id=status, expand={"session": session_rec})
 
 
@@ -279,7 +286,7 @@ async def test_needs_camper_candidates_include_an_attributed_person_from_another
     even when their own household isn't the line's (Go's attribution can name someone
     fetch_household_members' own-household-only pool wouldn't have returned)."""
     repo = _read_repo(postings=[_posting(9001, 500, attributed_person_cm_id=1099, attributed_session_cm_id=1000101)])
-    repo.fetch_persons = AsyncMock(return_value=[_person(1099, "Jordan", household=999)])
+    repo.fetch_persons = AsyncMock(return_value=[_person(1099, "Jordan", household=150)])
     repo.fetch_enrollments = AsyncMock(
         return_value=[_attendee(1001, 1000101), _attendee(1002, 1000101), _attendee(1099, 1000101)]
     )
@@ -378,18 +385,36 @@ def _place_repo(**kw: Any) -> MagicMock:
     repo.fetch_grant_postings = AsyncMock(return_value=kw.get("postings", [_posting(9001, 500), _posting(9002, 300)]))
     repo.fetch_overrides = AsyncMock(return_value=kw.get("overrides", []))
     repo.fetch_links = AsyncMock(return_value=[])
-    persons = [_person(1001, "Sam"), _person(1002, "Alex"), _person(1050, "Jo", household=150)]
+    persons = [
+        _person(1001, "Sam"),
+        _person(1002, "Alex"),
+        _person(1050, "Jo", household=150),
+        # Casey's OWN household is 150 (unrelated to the line's 100), but their PRIMARY
+        # CHILDHOOD household is 100 — Ruling 2a: fetch_household_persons' real pool is own OR
+        # childhood household, so Casey belongs to family {100} even though Jo (also household
+        # 150, no childhood link) does not.
+        _person(1060, "Casey", household=150, primary_childhood_household=100),
+    ]
 
     async def _household_persons(_year: int, household_ids: Collection[int]) -> list[Any]:
         """Ruling 2a: a stand-in for the real fetch_household_persons, which scopes to the
-        household set actually asked for (own household or a childhood household) — unlike a
-        static AsyncMock, this lets the "not in the family" refusal test mean something."""
+        household set actually asked for — own household OR a childhood household — unlike a
+        static AsyncMock. This is what lets both the "not in the family" refusal (Jo) and the
+        childhood-household acceptance (Casey) mean something: a plain household_id comparison
+        would get Jo right but Casey wrong (and vice versa for a pool with no filtering at all)."""
         wanted = set(household_ids)
-        return [p for p in persons if p.household_id in wanted]
+        return [
+            p for p in persons if p.household_id in wanted or getattr(p, "primary_childhood_household", 0) in wanted
+        ]
 
     repo.fetch_household_persons = AsyncMock(side_effect=_household_persons)
     repo.fetch_enrollments = AsyncMock(
-        return_value=[_attendee(1001, 1000101), _attendee(1001, 1000102), _attendee(1002, 1000101)]
+        return_value=[
+            _attendee(1001, 1000101),
+            _attendee(1001, 1000102),
+            _attendee(1002, 1000101),
+            _attendee(1060, 1000101),
+        ]
     )
     return repo
 
@@ -444,6 +469,14 @@ async def test_placing_keeps_an_existing_reclassification() -> None:
     assert write.record_id == "ovr000000000001"
     assert write.data is not None
     assert write.data["source_key_override"] == "outside program award"
+    assert write.data["note"] == "Reclassified"  # ruling: an empty placement note keeps it
+
+    await service.place(
+        2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001}, note="Confirmed by phone"), ACTOR
+    )
+    (write2,) = spy.writes
+    assert write2.data is not None
+    assert write2.data["note"] == "Confirmed by phone"  # a non-empty placement note still replaces it
 
 
 @pytest.mark.asyncio
@@ -484,6 +517,61 @@ async def test_one_bad_placement_refuses_the_whole_batch(row: dict[str, Any], me
     with pytest.raises(FinancialAidValidationError, match=message):
         await service.place(2031, _placements(good, row), ACTOR)
     assert not spy.called
+
+
+@pytest.mark.asyncio
+async def test_place_accepts_a_person_linked_only_via_a_childhood_household() -> None:
+    """Ruling 2a: fetch_household_persons' real pool is own household OR a childhood household,
+    not just fetch_household_members' own-household-only pool. Pins this against a regression
+    that reverts place() to a plain household_id comparison: Casey's own household is 150 (not
+    the line's 100), but their primary childhood household is 100."""
+    service, spy = _service(_place_repo())
+    out = await service.place(
+        2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1060, "session_cm_id": 1000101}), ACTOR
+    )
+    assert out.placed == 1
+    (write,) = spy.writes
+    assert write.data is not None
+    assert write.data["attributed_person_cm_id"] == 1060
+
+
+@pytest.mark.asyncio
+async def test_person_only_placement_infers_family_from_active_enrollments_only() -> None:
+    """Controller ruling (round 1, item 2): matches Go's fromOverride, which considers only
+    ACTIVE enrollments when a placement doesn't name a session — a cancelled enrollment in a
+    different program family must not turn a single clear family into an ambiguous ""."""
+    repo = _place_repo()
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[
+            _attendee(1001, 1000101, status=2),  # active, summer
+            _attendee(1001, 1000199, status=3, session_type="quest"),  # cancelled, quest
+        ]
+    )
+    service, spy = _service(repo)
+    await service.place(2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001}), ACTOR)
+    (write,) = spy.writes
+    assert write.data is not None
+    assert write.data["program_family"] == "summer"
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_session_accepts_a_cancelled_enrollment() -> None:
+    """Controller ruling (round 1, item 2): an explicit session_cm_id accepts an enrollment of
+    any status — a grant may belong to a session the camper later cancelled — and takes that
+    session's family."""
+    repo = _place_repo()
+    repo.fetch_enrollments = AsyncMock(
+        return_value=[_attendee(1001, 1000199, status=3, session_type="quest")]  # cancelled
+    )
+    service, spy = _service(repo)
+    out = await service.place(
+        2031, _placements({"transaction_cm_id": 9001, "person_cm_id": 1001, "session_cm_id": 1000199}), ACTOR
+    )
+    assert out.placed == 1
+    (write,) = spy.writes
+    assert write.data is not None
+    assert write.data["attributed_session_cm_id"] == 1000199
+    assert write.data["program_family"] == "quest"
 
 
 @pytest.mark.asyncio

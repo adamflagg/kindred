@@ -496,12 +496,12 @@ class GrantsService:
         family_members = {
             fs: {int(m.cm_id) for m in members} for fs, members in zip(unique_families, member_lists, strict=True)
         }
-        sessions: dict[int, dict[int, str]] = defaultdict(dict)
+        enrollments_by_person: dict[int, list[Enrollment]] = defaultdict(list)
         for e in (
             _enrollment(a) for a in await self.repo.fetch_enrollments(year, {p.person_cm_id for p in body.placements})
         ):
             if e is not None:
-                sessions[e.person_cm_id][e.session_cm_id] = e.program_family
+                enrollments_by_person[e.person_cm_id].append(e)
         existing = {int(o.transaction_cm_id): o for o in await self.repo.fetch_overrides(year)}
 
         writes: list[AidWrite] = []
@@ -511,20 +511,25 @@ class GrantsService:
                 raise FinancialAidValidationError(
                     f"person {p.person_cm_id} is not in the family of transaction {p.transaction_cm_id}"
                 )
-            enrolled = sessions.get(p.person_cm_id, {})
+            enrolled = enrollments_by_person.get(p.person_cm_id, [])
             if p.session_cm_id is not None:
-                if p.session_cm_id not in enrolled:
+                # Any status: a grant may belong to a session the camper later cancelled.
+                match = next((e for e in enrolled if e.session_cm_id == p.session_cm_id), None)
+                if match is None:
                     raise FinancialAidValidationError(
                         f"person {p.person_cm_id} has no enrollment in session {p.session_cm_id} in {year} "
                         f"(transaction {p.transaction_cm_id})"
                     )
-                family = enrolled[p.session_cm_id]
+                family = match.program_family
             else:
-                # Go's rule for a person-only override: the family of that person's enrollments
-                # when they all share one (spec §6.3, SP4's narrowing).
-                families = set(enrolled.values())
+                # Go's fromOverride rule for a person-only override: the family of that person's
+                # ACTIVE enrollments (ACTIVE_ENROLLED_STATUS_ID) when they all share one (spec
+                # §6.3, SP4's narrowing) — a cancelled enrollment elsewhere must not manufacture
+                # an ambiguous "".
+                families = {e.program_family for e in enrolled if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
                 family = families.pop() if len(families) == 1 else ""
             current = existing.get(p.transaction_cm_id)
+            existing_note = str(getattr(current, "note", "") or "") if current else ""
             payload = {
                 "transaction_cm_id": p.transaction_cm_id,
                 "year": year,
@@ -533,7 +538,9 @@ class GrantsService:
                 "program_family": family,
                 "source_key_override": str(getattr(current, "source_key_override", "") or "") if current else "",
                 "source": "staff",
-                "note": body.note,
+                # Ruling: an empty placement note is a tick, not an erasure — it keeps whatever
+                # note the override already carried; a non-empty one still replaces it.
+                "note": body.note or existing_note,
             }
             if current is None:
                 writes.append(
