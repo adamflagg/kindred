@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -22,6 +22,7 @@ from api.services.financial_aid_rules_service import (
     YearMismatchError,
     _to_version,
 )
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, SessionRef
 from bunking.financial_aid.rules.lifecycle import (
@@ -34,6 +35,7 @@ from bunking.financial_aid.rules.lifecycle import (
     initial_status,
     status_to_json,
 )
+from bunking.pocketbase_batch import BatchRequestFailedError
 from tests.unit.bunking.financial_aid.fixtures import (
     FICTIONAL_SESSION_IDS,
     fictional_rules,
@@ -435,6 +437,54 @@ async def test_create_reraises_a_400_that_is_not_a_unique_index_collision() -> N
     with pytest.raises(ClientResponseError) as exc_info:
         await AidRulesRepository(pb).create({"year": 2031, "version": 1})
     assert exc_info.value is original
+
+
+def _batch_failure(field_errors: dict[str, str]) -> BatchRequestFailedError:
+    return BatchRequestFailedError(
+        index=0,
+        total=2,
+        request=None,
+        status=400,
+        message="Failed to create record.",
+        field_errors=field_errors,
+        response=None,
+    )
+
+
+_A_CREATE = [AidWrite(collection="aid_rules", action="create", year=2031, data={"year": 2031, "version": 1})]
+
+
+@pytest.mark.asyncio
+async def test_commit_sends_the_writes_through_commit_aid_writes() -> None:
+    pb = MagicMock()
+    result = AidOperationResult(operation_id="a" * 15, record_ids=("r" * 15,), records=(None,), batches=1)
+    with patch("api.services.financial_aid_rules_service.commit_aid_writes", return_value=result) as commit:
+        assert await AidRulesRepository(pb).commit(_A_CREATE, actor=FINANCE, reason="Finance, Oct 7") is result
+    commit.assert_called_once_with(pb, _A_CREATE, actor=FINANCE, reason="Finance, Oct 7")
+
+
+@pytest.mark.asyncio
+async def test_commit_maps_a_unique_index_collision_to_version_exists_error() -> None:
+    failure = _batch_failure({"year": "Value must be unique.", "version": "Value must be unique."})
+    with patch("api.services.financial_aid_rules_service.commit_aid_writes", side_effect=failure):
+        with pytest.raises(VersionExistsError):
+            await AidRulesRepository(MagicMock()).commit(_A_CREATE, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_commit_reraises_any_other_batch_failure() -> None:
+    failure = _batch_failure({"document": "Must be no more than 2000000 bytes."})
+    with patch("api.services.financial_aid_rules_service.commit_aid_writes", side_effect=failure):
+        with pytest.raises(BatchRequestFailedError):
+            await AidRulesRepository(MagicMock()).commit(_A_CREATE, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_a_read_only_repository_refuses_to_write() -> None:
+    with patch("api.services.financial_aid_rules_service.commit_aid_writes") as commit:
+        with pytest.raises(RuntimeError, match="only reads aid_rules"):
+            await AidRulesRepository(MagicMock(), read_only=True).commit(_A_CREATE, actor=FINANCE)
+    commit.assert_not_called()
 
 
 # --- Fix round 1, item 5: a document/section_status field may arrive as a JSON string --------

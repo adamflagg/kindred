@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -44,6 +44,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import BaseModel, ConfigDict
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import (
     AidRules,
@@ -66,6 +67,7 @@ from bunking.financial_aid.rules.lifecycle import (
     status_to_json,
 )
 from bunking.financial_aid.rules.schema import MilestonesSection
+from bunking.pocketbase_batch import BatchRequestFailedError
 
 # Rows per request for every paged read; PocketBase clamps anything above 1000.
 PAGE_SIZE = 1000
@@ -137,8 +139,10 @@ class AidRulesStore(Protocol):
 class AidRulesRepository:
     """PocketBase access for aid_rules (and the season's sessions, for validation)."""
 
-    def __init__(self, pb: Any) -> None:
+    def __init__(self, pb: Any, *, read_only: bool = False) -> None:
         self.pb = pb
+        # Intake reads approved rules and must never write them.
+        self._read_only = read_only
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
@@ -194,6 +198,23 @@ class AidRulesRepository:
 
     async def update(self, record_id: str, body: dict[str, Any]) -> Any:
         return await asyncio.to_thread(self.pb.collection(AID_RULES).update, record_id, body)
+
+    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
+        """Each write and its aid_change_log row in ONE PocketBase batch (sub-project 4a, spec 14.4).
+
+        A unique-index collision on (year, version) arrives from the batch as a 400 whose
+        field errors say "Value must be unique."; the batch helper keeps PocketBase's message
+        but not its code, so the message is what is matched. Anything else about the body was
+        already validated (a real AidRules document, a computed version), so it propagates.
+        """
+        if self._read_only:
+            raise RuntimeError("this repository only reads aid_rules")
+        try:
+            return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
+        except BatchRequestFailedError as exc:
+            if exc.status == 400 and any("unique" in message.lower() for message in exc.field_errors.values()):
+                raise VersionExistsError("aid_rules already has that year and version") from exc
+            raise
 
 
 def _json_object(record: Any, field: str) -> dict[str, Any] | None:
