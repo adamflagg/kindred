@@ -67,7 +67,6 @@ def _stub() -> Any:
     service = patch("api.routers.financial_aid.FinancialAidRulesService").start().return_value
     service.load = AsyncMock(return_value=VERSION)
     service.validate_document = AsyncMock(return_value=WARNED)
-    service.create_version = AsyncMock(return_value=VERSION)
     service.bootstrap = AsyncMock(return_value=VERSION)
     service.start_from_last_year = AsyncMock(return_value=(VERSION, WARNED))
     service.save = AsyncMock(return_value=(VERSION, WARNED))
@@ -148,7 +147,7 @@ def test_a_document_that_is_not_a_rules_document_is_422() -> None:
     del broken["income"]
     response = _client().post("/api/financial-aid/rules/2031/versions", json={"document": broken})
     assert response.status_code == 422
-    service.create_version.assert_not_called()
+    service.bootstrap.assert_not_called()
 
 
 @pytest.mark.parametrize(
