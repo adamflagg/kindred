@@ -191,6 +191,7 @@ async def test_the_budget_and_the_remaining_line_count_posted_and_needs_an_offer
     r1 = next(c for c in camp.rounds if c.round == 1)
     assert (r1.allocated, r1.posted, r1.needs_offer, r1.remaining) == (340000.0, 1500.0, 1500.0, 337000.0)
     strip = next(s for s in budget.strip if s.round == 1)
+    assert strip.needs_offer is not None
     assert (strip.needs_offer.requests, strip.posted.requests) == (1, 1)
     remaining = await service.remaining(YEAR)
     assert [(p.pool, p.remaining) for p in remaining.pools] == [

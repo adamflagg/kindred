@@ -181,6 +181,7 @@ async def test_releasing_moves_the_round_from_below_the_line_into_needs_an_offer
     service = _service(store)
     before = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1 = next(c for c in before.rounds if c.round == 1)
+    assert before.below.held is not None
     assert (r1.needs_offer, before.below.held.requests, before.below.held_asked) == (0.0, 1, 4000.0)
     _hold(store, LIAM, "release")
     (row,) = (await service.grid(YEAR)).rows
@@ -188,6 +189,7 @@ async def test_releasing_moves_the_round_from_below_the_line_into_needs_an_offer
     assert decided is not None
     after = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1 = next(c for c in after.rounds if c.round == 1)
+    assert after.below.held is not None
     assert (r1.needs_offer, after.below.held.requests) == (decided, 0)
     assert r1.remaining == pytest.approx(340000.0 - decided)
 
@@ -202,6 +204,7 @@ async def test_a_manual_hold_holds_the_round_with_its_reason() -> None:
     assert row.rounds[0].status == "held"
     assert [(h.code, h.severity, h.message) for h in row.holds] == [(MANUAL_HOLD, "hold", WAITING)]
     camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
+    assert camp.below.held is not None
     assert (next(c for c in camp.rounds if c.round == 1).needs_offer, camp.below.held.requests) == (0.0, 1)
 
 

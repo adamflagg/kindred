@@ -87,6 +87,7 @@ class BelowTheLine:
     held_asked: Decimal
     outside_grants: Decimal
     outside_budget: Decimal
+    outside_budget_posted: Decimal  # the posted part of outside_budget: dated on every read (3c)
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
             add("accepted", locked - outside)
         if outside:
             add("outside_budget", outside)
+            add("outside_budget_posted", outside)
     elif view.status == "needs_offer":
         decided = view.decided or ZERO
         outside = min(outside, decided)
@@ -260,6 +262,7 @@ def _pool_budget(
             held_asked=held.amount,
             outside_grants=grants,
             outside_budget=sum((amount(n, "outside_budget") for n in ROUNDS), ZERO),
+            outside_budget_posted=sum((amount(n, "outside_budget_posted") for n in ROUNDS), ZERO),
         ),
         demand=ForwardDemand(
             round2_asks=asks2.count(), round2_asked=asks2.amount, round2_computed=computed2, round1_unmet=unmet1
@@ -283,16 +286,19 @@ def season_budget(
     asks2: dict[str, _Tally] = defaultdict(_Tally)
     computed2: dict[str, Decimal] = defaultdict(Decimal)
     unmet1: dict[str, Decimal] = defaultdict(Decimal)
+    unrebuilt: set[str] = set()
     for request in priced:
         home = _home_pool(request)
         for view in request.rounds:
             for pool in (view.pool or NO_POOL, TOTAL):
                 _tally_round(tallies, pool, request, view)
+            if view.status == "not_rebuilt":  # a past read's: its status is unknown, but it sits in its pool (3c)
+                unrebuilt.add(view.pool or NO_POOL)
         for pool in (home, TOTAL):
             grants[pool] += outside_grants.get(request.request_id, ZERO)
             if request.live:
                 _tally_demand(request, pool, asks2, computed2, unmet1)
-    seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1)
+    seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1) | unrebuilt
     seen.discard(TOTAL)
     order = [*allocated, *sorted(seen - set(allocated) - {NO_POOL}), *([NO_POOL] if NO_POOL in seen else [])]
 

@@ -1067,19 +1067,23 @@ export type BatchResolveResponse = {
  * BelowTheLineOut
  */
 export type BelowTheLineOut = {
-  held: CountOut
+  held: CountOut | null
   /**
    * Held Asked
    */
-  held_asked: number
+  held_asked: number | null
   /**
    * Outside Grants
    */
-  outside_grants: number
+  outside_grants: number | null
   /**
    * Outside Budget
    */
-  outside_budget: number
+  outside_budget: number | null
+  /**
+   * Outside Budget Posted
+   */
+  outside_budget_posted: number
 }
 
 /**
@@ -1158,7 +1162,19 @@ export type BudgetResponse = {
   /**
    * Outside Grants Off Requests
    */
-  outside_grants_off_requests: number
+  outside_grants_off_requests: number | null
+  /**
+   * As Of
+   */
+  as_of?: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis?: 'recorded' | null
+  /**
+   * Not Rebuilt
+   */
+  not_rebuilt?: Array<NotRebuiltOut>
 }
 
 /**
@@ -1973,11 +1989,11 @@ export type CellOut = {
   /**
    * Needs Offer
    */
-  needs_offer: number
+  needs_offer: number | null
   /**
    * Pending Approval
    */
-  pending_approval: number
+  pending_approval: number | null
   /**
    * Remaining
    */
@@ -3634,19 +3650,19 @@ export type ForecastResponse = {
  * ForwardDemandOut
  */
 export type ForwardDemandOut = {
-  round2_asks: CountOut
+  round2_asks: CountOut | null
   /**
    * Round2 Asked
    */
-  round2_asked: number
+  round2_asked: number | null
   /**
    * Round2 Computed
    */
-  round2_computed: number
+  round2_computed: number | null
   /**
    * Round1 Unmet
    */
-  round1_unmet: number
+  round1_unmet: number | null
 }
 
 /**
@@ -4580,7 +4596,7 @@ export type GridRowOut = {
   /**
    * Request Status
    */
-  request_status: string
+  request_status: string | null
   /**
    * Tier
    */
@@ -4612,7 +4628,7 @@ export type GridRowOut = {
   /**
    * Notes
    */
-  notes: Array<IssueOut>
+  notes: Array<IssueOut> | null
 }
 
 /**
@@ -6480,6 +6496,27 @@ export type NewVsReturning = {
    * Percentage of returning campers
    */
   returning_percentage: number
+}
+
+/**
+ * NotRebuiltOut
+ *
+ * A figure a past-date read leaves empty, and why; `requests` names the requests that cause it
+ * when it is theirs. Never approximated (3c plan Decision 1).
+ */
+export type NotRebuiltOut = {
+  /**
+   * Figure
+   */
+  figure: string
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Requests
+   */
+  requests?: Array<string>
 }
 
 /**
@@ -9225,6 +9262,18 @@ export type RemainingResponse = {
    * Total
    */
   total: number | null
+  /**
+   * As Of
+   */
+  as_of?: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis?: 'recorded' | null
+  /**
+   * Not Rebuilt
+   */
+  not_rebuilt?: Array<NotRebuiltOut>
 }
 
 /**
@@ -9412,6 +9461,18 @@ export type RequestsGridResponse = {
    * Rows
    */
   rows: Array<GridRowOut>
+  /**
+   * As Of
+   */
+  as_of?: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis?: 'recorded' | null
+  /**
+   * Not Rebuilt
+   */
+  not_rebuilt?: Array<NotRebuiltOut>
 }
 
 /**
@@ -10426,11 +10487,11 @@ export type RoundCellOut = {
   /**
    * Needs Offer
    */
-  needs_offer: number
+  needs_offer: number | null
   /**
    * Pending Approval
    */
-  pending_approval: number
+  pending_approval: number | null
   /**
    * Remaining
    */
@@ -10449,11 +10510,11 @@ export type RoundCountsOut = {
    * Round
    */
   round: number
-  needs_offer: CountOut
+  needs_offer: CountOut | null
   posted: CountOut
   accepted: CountOut
-  held: CountOut
-  pending_approval: CountOut
+  held: CountOut | null
+  pending_approval: CountOut | null
 }
 
 /**
@@ -10467,7 +10528,14 @@ export type RoundOut = {
   /**
    * Status
    */
-  status: 'posted' | 'held' | 'pending_approval' | 'refused' | 'not_decided' | 'needs_offer'
+  status:
+    | 'posted'
+    | 'held'
+    | 'pending_approval'
+    | 'refused'
+    | 'not_decided'
+    | 'needs_offer'
+    | 'not_rebuilt'
   /**
    * Ask
    */
@@ -18869,7 +18937,12 @@ export type GetRequestsGridApiFinancialAidDecisionsYearGridGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
   url: '/api/financial-aid/decisions/{year}/grid'
 }
 
@@ -18901,7 +18974,12 @@ export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
   url: '/api/financial-aid/decisions/{year}/budget'
 }
 
@@ -18933,7 +19011,12 @@ export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
   url: '/api/financial-aid/decisions/{year}/remaining'
 }
 

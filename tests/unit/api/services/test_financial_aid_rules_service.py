@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -19,14 +20,16 @@ from api.services.financial_aid_rules_service import (
     FinancialAidRulesService,
     NoSectionsNamedError,
     NotLatestVersionError,
+    RulesHistoryIncompleteError,
     RulesNotFoundError,
     VersionExistsError,
     YearMismatchError,
     _to_version,
 )
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, change_row, new_operation_id, new_record_id
+from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.rules import AidRules, SessionRef
+from bunking.financial_aid.rules import AidRules, SectionName, SessionRef
 from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
     LockedSectionError,
@@ -57,7 +60,9 @@ class FakeStore:
     change that changes nothing) fails here too. An operation applies whole or not at all.
     """
 
-    def __init__(self, sessions: list[SessionRef] | None = None) -> None:
+    def __init__(self, sessions: list[SessionRef] | None = None, clock: Callable[[], datetime] | None = None) -> None:
+        self._now: Callable[[], datetime] = clock or (lambda: AT)
+        self.log_rows: list[LogRow] = []
         self.rows: list[SimpleNamespace] = []
         self.sessions = sessions if sessions is not None else [SessionRef(cm_id=s) for s in FICTIONAL_SESSION_IDS]
         self.operations: list[list[dict[str, Any]]] = []
@@ -70,6 +75,9 @@ class FakeStore:
 
     async def fetch_session_refs(self, year: int) -> list[SessionRef]:
         return list(self.sessions)
+
+    async def fetch_log(self, year: int) -> list[LogRow]:
+        return [r for r in self.log_rows if r.entity_id.startswith(f"{year}:")]
 
     async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
         operation_id = new_operation_id()
@@ -103,6 +111,17 @@ class FakeStore:
                     actor=actor,
                     reason=write.reason if write.reason is not None else reason,
                     operation_id=operation_id,
+                )
+            )
+            logged = log[-1]
+            self.log_rows.append(
+                LogRow(
+                    id=new_record_id(),
+                    entity=logged["entity"],
+                    entity_id=logged["entity_id"],
+                    before=logged["before"],
+                    after=logged["after"],
+                    created=self._now(),
                 )
             )
             ids.append(record_id)
@@ -755,3 +774,159 @@ async def test_a_locked_section_counts_as_approved() -> None:
     found = await service.latest_approved(2031, ("programs", "cost"))
     assert found is not None
     assert found.section_status["programs"].state == "locked"
+
+
+# --- approved_as_of (3c: the rules that priced a past date, replayed from the log) -----------
+
+JAN, FEB, MAR = (datetime(2031, month, 15, 18, 0, tzinfo=UTC) for month in (1, 2, 3))
+_PRICING: tuple[SectionName, ...] = ("programs", "cost")
+DAY = timedelta(days=1)
+
+
+class _Clock:
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+def _label_in_order(store: FakeStore, *, reverse: bool) -> None:
+    """Rows sharing an instant replay in id order, and the fake's ids are random, as PocketBase's are.
+    Label them in commit order, or reversed, so a clash test meets both orders on every run."""
+    last = len(store.log_rows) - 1
+    store.log_rows = [
+        dataclasses.replace(row, id=f"log{(last - n) if reverse else n:012d}") for n, row in enumerate(store.log_rows)
+    ]
+
+
+async def _made_jan_approved_feb() -> tuple[FinancialAidRulesService, FakeStore, _Clock]:
+    clock = _Clock(JAN)
+    store = FakeStore(clock=clock)
+    service = FinancialAidRulesService(store, clock=clock)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    clock.now = FEB
+    for section in _PRICING:
+        await service.approve_section(2031, 1, section, actor=FINANCE, note="Approved.")
+    return service, store, clock
+
+
+@pytest.mark.asyncio
+async def test_the_rules_as_of_a_date_are_the_version_approved_by_then() -> None:
+    service, _, _ = await _made_jan_approved_feb()
+    assert await service.approved_as_of(2031, _PRICING, JAN + DAY) is None  # made, not yet approved
+    found = await service.approved_as_of(2031, _PRICING, FEB + DAY)
+    assert found is not None
+    assert (found.version, found.section_status["programs"].approved_at) == (1, FEB)
+
+
+@pytest.mark.asyncio
+async def test_a_re_approval_after_the_date_does_not_change_what_the_date_shows() -> None:
+    service, _, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
+    found = await service.approved_as_of(2031, _PRICING, FEB + DAY)
+    assert found is not None
+    assert found.section_status["programs"].approved_at == FEB
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_an_edit_after_the_date_does_not_change_the_document_the_date_shows(reverse: bool) -> None:
+    service, store, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    renamed = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
+    await service.save(2031, 1, renamed, actor=FINANCE)
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
+    _label_in_order(store, reverse=reverse)  # the save and the approval share March's instant
+    then = await service.approved_as_of(2031, _PRICING, FEB + DAY)
+    later = await service.approved_as_of(2031, _PRICING, MAR + DAY)
+    assert then is not None
+    assert later is not None
+    assert (then.document.programs["summer"].label, later.document.programs["summer"].label) == (
+        "Summer",
+        "Summer, renamed",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_version_made_after_the_date_never_prices_it() -> None:
+    service, _, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.new_version(2031, 1, actor=FINANCE)  # carries February's approvals
+    before = await service.approved_as_of(2031, _PRICING, MAR - DAY)
+    after = await service.approved_as_of(2031, _PRICING, MAR + DAY)
+    assert before is not None
+    assert after is not None
+    assert (before.version, after.version) == (1, 2)
+
+
+@pytest.mark.asyncio
+async def test_a_version_whose_history_cannot_be_replayed_is_refused_not_skipped() -> None:
+    service, store, _ = await _made_jan_approved_feb()
+    store.log_rows = [r for r in store.log_rows if r.before is not None]  # lose the create
+    with pytest.raises(RulesHistoryIncompleteError):
+        await service.approved_as_of(2031, _PRICING, FEB + DAY)
+
+
+APR = datetime(2031, 4, 15, 18, 0, tzinfo=UTC)
+_PROGRAMS: tuple[SectionName, ...] = ("programs",)
+
+
+@pytest.mark.asyncio
+async def test_a_newer_version_with_no_log_at_all_is_refused_not_skipped() -> None:
+    service, store, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.new_version(2031, 1, actor=FINANCE)
+    store.log_rows = [r for r in store.log_rows if not r.entity_id.startswith("2031:2")]
+    with pytest.raises(RulesHistoryIncompleteError):
+        await service.approved_as_of(2031, _PRICING, MAR + DAY)
+
+
+@pytest.mark.asyncio
+async def test_a_newer_version_whose_create_row_is_lost_is_refused_not_skipped() -> None:
+    service, store, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.new_version(2031, 1, actor=FINANCE)
+    clock.now = APR
+    await service.save(2031, 2, with_lever(fictional_rules(), "programs.summer.label", "Renamed"), actor=FINANCE)
+    store.log_rows = [r for r in store.log_rows if not (r.entity_id == "2031:2" and r.before is None)]
+    for at in (MAR + DAY, APR + DAY):
+        with pytest.raises(RulesHistoryIncompleteError):
+            await service.approved_as_of(2031, _PRICING, at)
+
+
+@pytest.mark.asyncio
+async def test_a_locked_section_counts_as_approved_as_of_the_date() -> None:
+    service, _, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.lock_section(2031, 1, "programs", actor=FINANCE)
+    found = await service.approved_as_of(2031, _PRICING, MAR + DAY)
+    assert found is not None
+    assert found.section_status["programs"].state == "locked"
+    earlier = await service.approved_as_of(2031, _PRICING, FEB + DAY)
+    assert earlier is not None
+    assert earlier.section_status["programs"].state == "approved"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_a_same_instant_clash_is_settled_from_a_later_row_not_from_the_record_now(reverse: bool) -> None:
+    """Approval then edit-to-draft then re-approval, the first two in one instant (a save that sends
+    the section back to draft, then an approval): the later row's `before` says what the clash left."""
+    clock = _Clock(JAN)
+    store = FakeStore(clock=clock)
+    service = FinancialAidRulesService(store, clock=clock)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    day1, day5 = JAN + DAY, JAN + 5 * DAY
+    clock.now = day1
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved.")
+    await service.save(2031, 1, with_lever(fictional_rules(), "programs.summer.label", "Renamed"), actor=FINANCE)
+    clock.now = day5
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
+    _label_in_order(store, reverse=reverse)
+    then = await service.approved_as_of(2031, _PROGRAMS, day1 + timedelta(hours=1))
+    assert then is None  # the save sent programs back to draft within day 1
+    now = await service.approved_as_of(2031, _PROGRAMS, day5 + DAY)
+    assert now is not None
+    assert now.section_status["programs"].approved_at == day5

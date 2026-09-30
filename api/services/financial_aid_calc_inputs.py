@@ -235,6 +235,22 @@ def effective_ask(request: RequestRecord, corrections: Sequence[CorrectionRecord
     return effective_values({"ask": request.ask or None}, REQUEST_CORRECTABLE, corrections, request.id)["ask"]
 
 
+def priced_program(
+    request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules
+) -> tuple[str | None, str]:
+    """The program a live request with an application is priced under, or None and why it has none.
+    The decisions service's past-date read resolves a request's program and pool through it too, so a
+    past date and today place a request alike."""
+    if awaiting_approved_rules(request):
+        return None, "waiting for approved rules: the next intake run after finance approves them resolves it"
+    if request.session_cm_id <= 0:
+        return None, "the session is unmatched"
+    program_key = rules_program_key(request, sessions, rules)
+    if program_key is None:
+        return None, f"no program in the {rules.year} rules claims session {request.session_cm_id}"
+    return program_key, ""
+
+
 def calculator_inputs(
     request: RequestRecord,
     application: ApplicationRecord,
@@ -250,14 +266,8 @@ def calculator_inputs(
     `blocked`. Shared by casework (one family) and the decisions service (the season, sub-project 10a)."""
     issues = tuple(request_issues(request, application.flags, answers, shares, rules))
     app_inputs = to_application_inputs(application.household_cm_id, answers)
-    if awaiting_approved_rules(request):
-        reason = "waiting for approved rules: the next intake run after finance approves them resolves it"
-        return CalculatorInputs(request.id, app_inputs, None, issues, reason)
-    if request.session_cm_id <= 0:
-        return CalculatorInputs(request.id, app_inputs, None, issues, "the session is unmatched")
-    program_key = rules_program_key(request, sessions, rules)
+    program_key, reason = priced_program(request, sessions, rules)
     if program_key is None:
-        reason = f"no program in the {rules.year} rules claims session {request.session_cm_id}"
         return CalculatorInputs(request.id, app_inputs, None, issues, reason)
     ask = effective_ask(request, corrections)
     return CalculatorInputs(request.id, app_inputs, to_request_inputs(request, ask, equity, program_key), issues)

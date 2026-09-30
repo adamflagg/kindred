@@ -527,3 +527,79 @@ def test_a_staff_session_other_than_the_one_named_is_flagged_too() -> None:
     ((_, changes),) = plan.request_updates
     codes = [f["code"] for f in changes["flags"]]
     assert codes == ["not_enrolled", "session_differs_from_answer"]
+
+
+def test_a_session_swap_logged_through_the_commit_replays_to_the_records() -> None:
+    """3c: the cycle-breaker's two same-instant writes to one request replay to the record now."""
+    from collections.abc import Sequence
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import patch
+
+    from api.services.financial_aid_intake_plan import request_fields
+    from api.services.financial_aid_intake_service import plan_writes
+    from bunking.financial_aid.change_log import commit_aid_writes
+    from bunking.financial_aid.change_replay import LogRow, replay
+    from bunking.pocketbase_batch import BatchRequest, BatchResult
+
+    enrolled = frozenset({1000101, 1000102})
+    first_now, second_now = (
+        spec(session=1000102, enrolled=enrolled),
+        spec(household=1000002, session=1000101, enrolled=enrolled),
+    )
+    existing = [
+        record(spec(), "req000000000001"),
+        record(spec(household=1000002, session=1000102), "req000000000002"),
+    ]
+    plan = plan_intake(
+        [household(first_now), household(second_now, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001", "req000000000002"}),
+    )
+    writes = plan_writes(2027, plan, [app()], existing)
+    sent: list[BatchRequest] = []
+
+    def send(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+        sent.extend(requests)
+        return [BatchResult(status=200, body=dict(r.body or {})) for r in requests]
+
+    with patch("bunking.financial_aid.change_log.send_batch", side_effect=send):
+        commit_aid_writes(object(), writes, actor="intake@example.com")  # type: ignore[arg-type]
+
+    created = datetime(2027, 1, 10, 18, 0, tzinfo=UTC)
+    then = datetime(2027, 1, 10, 19, 0, tzinfo=UTC)  # the whole batch shares one instant
+    bodies = [r.body or {} for r in sent if r.url.endswith("/aid_change_log/records")]
+    vacate = next(n for n, b in enumerate(bodies) if (b["after"] or {}).get("session_cm_id") == 0)
+    assert [b["entity_id"] for b in bodies].count("req000000000001") == 2  # vacate, then the final session
+
+    def logged(ids: Sequence[int]) -> list[LogRow]:
+        return [
+            LogRow(f"log{i:012d}", b["entity"], b["entity_id"], b["before"], b["after"], then)
+            for i, b in zip(ids, bodies, strict=True)
+        ]
+
+    # Rows sharing an instant replay in id order. Labelled in reverse, req...1's vacate replays after
+    # its final session, so id order alone would leave it in session 0: only settling the clash
+    # from the record now gives 1000102.
+    forward, backward = logged(range(len(bodies))), logged(range(len(bodies) - 1, -1, -1))
+    mine = [row for row in backward if row.entity_id == "req000000000001"]
+    assert max(mine, key=lambda row: row.id) is backward[vacate]
+    starts = [
+        LogRow(f"crt{n:012d}", "aid_requests", r.id, None, request_fields(r), created) for n, r in enumerate(existing)
+    ]
+    now = {"req000000000001": {"session_cm_id": 1000102}, "req000000000002": {"session_cm_id": 1000101}}
+    for rows in ([*starts, *forward], [*starts, *backward]):
+        replayed = replay(rows, current=now)
+        for rid, session in ((r, s["session_cm_id"]) for r, s in now.items()):
+            assert replayed[rid].complete is True
+            assert replayed[rid].state is not None
+            assert replayed[rid].state["session_cm_id"] == session  # type: ignore[index]
+        # Without the record now nothing settles req...1's clash: it is incomplete, never guessed.
+        assert replay(rows)["req000000000001"].complete is False
+        # Just before the batch, both requests are as they were: the swap hasn't happened.
+        before = replay(rows, as_of=then - timedelta(milliseconds=1))
+        for r in existing:
+            assert (before[r.id].state or {})["session_cm_id"] == r.session_cm_id
+            assert before[r.id].complete is True
+    assert [r.session_cm_id for r in existing] == [1000101, 1000102]

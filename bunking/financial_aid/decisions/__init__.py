@@ -1,5 +1,12 @@
 """Campership decisions (sub-project 10a, follow-up 3b): the aid_decisions and aid_hold_events histories, pricing and the budget. Pure: no I/O."""
 
+from bunking.financial_aid.decisions.as_of import (
+    BUDGET_GAPS,
+    GRID_GAPS,
+    PAST_DATE_GAPS,
+    REMAINING_GAPS,
+    price_as_of,
+)
 from bunking.financial_aid.decisions.budget import (
     NO_POOL,
     TOTAL,
@@ -34,9 +41,12 @@ from bunking.financial_aid.decisions.pricing import (
     RequestToPrice,
     RoundStatus,
     RoundView,
+    extra_locked,
     lock_snapshot,
+    named_decision,
     price_request,
     request_inputs,
+    round_exists,
 )
 from bunking.financial_aid.decisions.rounds import (
     EVENT_KINDS,
@@ -51,12 +61,16 @@ from bunking.financial_aid.decisions.rounds import (
 )
 
 __all__ = [
+    "BUDGET_GAPS",
     "EVENT_KINDS",
+    "GRID_GAPS",
     "HOLD_EVENT_KINDS",
     "MANUAL_HOLD",
     "NEVER_A_HOLD",
     "NO_HOLDS",
     "NO_POOL",
+    "PAST_DATE_GAPS",
+    "REMAINING_GAPS",
     "ROUNDS",
     "TOTAL",
     "UNRELEASABLE",
@@ -83,13 +97,17 @@ __all__ = [
     "allocations",
     "apply_event",
     "apply_hold_event",
+    "extra_locked",
     "fold_holds",
     "fold_rounds",
     "lock_snapshot",
+    "named_decision",
     "needs_finance",
+    "price_as_of",
     "price_request",
     "releasable",
     "request_inputs",
+    "round_exists",
     "season_budget",
     "with_holds",
 ]
