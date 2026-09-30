@@ -15,7 +15,7 @@ import pytest
 
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, RegisterSource
 from api.services.financial_aid_grants_register import RegisterRow
-from api.services.financial_aid_intake_types import CorrectionRecord
+from api.services.financial_aid_intake_types import CorrectionRecord, EquityAnswers
 from api.services.financial_aid_scenario_pricing import (
     SNAPSHOT_FORMAT,
     SeasonSnapshot,
@@ -36,6 +36,7 @@ from tests.unit.api.services.decisions_fakes import (
     grant_row,
     log_seeded,
     seed_line,
+    seed_override,
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
@@ -81,12 +82,16 @@ def _busy_season(store: FakeDecisionsStore) -> None:
     - a staff correction to Emma's family's income;
     - a payer share that no longer adds up (Liam's at 60%: payer_shares_incomplete);
     - a request that simply needs an offer (Samuel);
-    - SP10b-1's ledger: a camp-aid line CampMinder posted for Emma's family, and the last sync."""
+    - SP10b-1's ledger: a camp-aid line CampMinder posted for Emma's family, staff's placement of it, and the last
+      sync;
+    - an equity answer (Emma's)."""
     seed_request(store, RILEY, household=1000003, person=1000031)
     seed_request(store, OLIVIA, household=1000004, person=1000041, income=500.0)
     seed_request(store, SAMUEL, household=1000005, person=1000051)
     seed_line(store, 9001, "1500", posted=T0)
+    seed_override(store, 9001, 1000011, T0, session=1000101, family="summer")
     store.synced_at = T0
+    store.equity[1000011] = EquityAnswers(True, "Non-binary", "They/Them")
     store.hold_events.append(
         HoldEvent(
             id="hld000000000001",
@@ -148,10 +153,14 @@ async def test_a_frozen_season_prices_exactly_as_the_live_season() -> None:
     live = await live_service.season(YEAR)
     priced = await price_document(await _frozen(store, rows), approved().document, approved())
     assert dict(priced.season.priced) == dict(live.priced)  # every request, round, hold, note and result
+    assert priced.season == live  # and the rest of the season read: rules, rounds, register, holds, ledger, shares
     assert (priced.season.ledger, priced.season.reversed_on) == (live.ledger, live.reversed_on)
     assert priced.budget == live_service.budget_of(live)
     statuses = {v.status for p in live.priced.values() for v in p.rounds}
     assert {"posted", "held", "needs_offer"} <= statuses  # the guard really covers them
+    emma = live.priced[EMMA].inputs
+    assert emma is not None
+    assert emma.equity_answers  # and the equity answer reached the calculator
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,9 @@ from decimal import Decimal
 import pytest
 
 from api.constants.collections import AID_REQUESTS, AID_SCENARIO_SNAPSHOTS
+from api.schemas.financial_aid_decisions import CellOut, RoundCellOut
 from api.services import financial_aid_scenarios_repository as repository_module
+from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
 from api.services.financial_aid_rules_service import FinancialAidRulesService
@@ -30,6 +32,7 @@ from api.services.financial_aid_scenarios_service import (
 )
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import RequestSetNote, shift_round1_tables, with_minimum
@@ -694,3 +697,56 @@ async def test_trail_rows_say_whether_their_figures_are_from_an_older_snapshot()
     rows, _ = await world.service.trail(YEAR, page=1, per_page=50)
     assert (rows[0].change, rows[0].stale) == ("Round 1 % +5 pts", False)  # priced on the newest snapshot
     assert [r.stale for r in rows] == [False, True]  # the start row's figures are from the first snapshot
+
+
+# --- parity with the live Rounds & budget read (final review 10a) ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_scenario_on_the_base_rules_shows_the_live_rounds_and_budget_figures() -> None:
+    rows = [grant_row(EMMA, "250")]
+    world = await _world(rows=rows)
+    world.season.events.append(
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=LIAM,
+            round=1,
+            kind="post",
+            created=T0,
+            amount=Decimal(1000),
+            effective_on=date(2027, 3, 9),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+    await world.service.freeze(YEAR, FINANCE)
+    scenario = (await world.service.evaluate(YEAR, approved().document)).results
+
+    async def register(year: int) -> Sequence[RegisterRow]:
+        return rows
+
+    live = await FinancialAidDecisionsService(world.season, FakeRules(approved()), register).budget(YEAR)
+
+    def round1(cell: RoundCellOut | CellOut) -> Decimal:
+        return sum((Decimal(str(v or 0)) for v in (cell.posted, cell.needs_offer, cell.pending_approval)), ZERO)
+
+    def cents(value: float | None) -> Decimal | None:
+        return None if value is None else Decimal(str(value)).quantize(Decimal("0.01"))
+
+    total_round1 = next(cell for cell in live.total.rounds if cell.round == 1)
+    assert scenario.round1 == round1(total_round1) == Decimal(2250)  # Emma 1,500 - 250 grant; Liam posted 1,000
+    assert (scenario.round1_remaining, scenario.remaining) == (
+        cents(total_round1.remaining),
+        cents(live.total.total.remaining),
+    )
+    live_pools = {
+        p.pool: (
+            round1(next(c for c in p.rounds if c.round == 1)),
+            cents(p.rounds[0].remaining),
+            cents(p.total.remaining),
+        )
+        for p in live.pools
+    }
+    scenario_pools = {p.pool: (p.round1, p.round1_remaining, p.remaining) for p in scenario.pools}
+    assert scenario_pools == live_pools

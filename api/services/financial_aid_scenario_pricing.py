@@ -176,6 +176,7 @@ async def capture_season(
     service = FinancialAidDecisionsService(cast(DecisionsStore, recorder), rules, recorded, clock=lambda: frozen_at)
     season = await service.season(year)
     live = frozenset(rid for rid, priced in season.priced.items() if priced.live)
+    # Live requests only, by design: a withdrawn request is never priced, so it never waits for rules (Decision 8).
     awaiting = sum(1 for rid in live if awaiting_approved_rules(season.requests[rid]))
     log = await store.fetch_change_log(year, AID_REQUESTS)  # after the season read: every frozen request is logged
     return SeasonSnapshot(
