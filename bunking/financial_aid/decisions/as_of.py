@@ -136,13 +136,13 @@ def price_as_of(
         for n in ROUNDS
         if round_exists(states[n]) and (states[n].posted or live)
     )
-    manual = hold.manual_issue()
+    manual = hold.manual_issue() if live else None  # live lists a request's holds only while it is live
     return PricedRequest(
         request_id=request_id,
         household_cm_id=household_cm_id,
         live=live,
         program_key=program_key,
-        pool=pool or next((v.pool for v in views if v.pool), None),
+        pool=pool,
         rounds=views,
         holds=(manual,) if manual is not None else (),
         notes=(),

@@ -286,16 +286,19 @@ def season_budget(
     asks2: dict[str, _Tally] = defaultdict(_Tally)
     computed2: dict[str, Decimal] = defaultdict(Decimal)
     unmet1: dict[str, Decimal] = defaultdict(Decimal)
+    unrebuilt: set[str] = set()
     for request in priced:
         home = _home_pool(request)
         for view in request.rounds:
             for pool in (view.pool or NO_POOL, TOTAL):
                 _tally_round(tallies, pool, request, view)
+            if view.status == "not_rebuilt":  # a past read's: its status is unknown, but it sits in its pool (3c)
+                unrebuilt.add(view.pool or NO_POOL)
         for pool in (home, TOTAL):
             grants[pool] += outside_grants.get(request.request_id, ZERO)
             if request.live:
                 _tally_demand(request, pool, asks2, computed2, unmet1)
-    seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1)
+    seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1) | unrebuilt
     seen.discard(TOTAL)
     order = [*allocated, *sorted(seen - set(allocated) - {NO_POOL}), *([NO_POOL] if NO_POOL in seen else [])]
 

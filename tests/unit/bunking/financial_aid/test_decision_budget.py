@@ -262,3 +262,12 @@ def test_posted_money_outside_the_budget_is_shown_as_its_own_posted_figure() -> 
     request = replace(request, rounds=(replace(request.rounds[0], extra=Decimal(3000)),))
     camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
     assert (camp.below.outside_budget, camp.below.outside_budget_posted) == (Decimal(3000), Decimal(3000))
+
+
+def test_a_past_reads_unrebuilt_round_lists_the_pool_it_sits_in() -> None:
+    """3c-1: a not_rebuilt round's status is unknown, so it tallies nothing; but live lists the pool a
+    held round sits in, so the past lists the pool of every round it can't rebuild (all figures 0)."""
+    budget = season_budget([priced("r1", 1, view(1, "not_rebuilt", ask="4000", pool=None))], RULES, outside_grants={})
+    nowhere = pool_of(budget, NO_POOL)
+    assert (nowhere.total.posted, nowhere.total.accepted) == (ZERO, ZERO)
+    assert [p.pool for p in budget.pools][-1] == NO_POOL

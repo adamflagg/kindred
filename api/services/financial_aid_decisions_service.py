@@ -65,8 +65,8 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
     calculator_inputs,
     effective_ask,
+    priced_program,
     request_issues,
-    rules_program_key,
     to_application_inputs,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
@@ -489,11 +489,13 @@ def _requests_as_of(
 def _home(
     request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules | None
 ) -> tuple[str | None, str | None]:
-    """(program key, pool) live pricing gives the request: its program under the rules then, and that
-    program's budget pool."""
-    if rules is None:
+    """(program key, pool) live pricing gives the request (_to_price, then price_request): for a live
+    request only, its program under the rules then (priced_program, shared with live), and that
+    program's budget pool. Live also needs the request's application; the past read reads no answers,
+    so it takes the application intake made with the request as there."""
+    if rules is None or request.status not in _LIVE:
         return None, None
-    key = rules_program_key(request, sessions, rules)
+    key, _ = priced_program(request, sessions, rules)
     program = rules.programs.get(key) if key is not None else None
     return key, program.budget_pool if program is not None else None
 
@@ -724,7 +726,9 @@ class FinancialAidDecisionsService:
                     figure="request_history", reason=PAST_DATE_GAPS["request_history"], requests=sorted(unrebuilt)
                 )
             )
-        homeless = sorted(rid for rid, p in priced.items() if p.pool is None and p.rounds)
+        homeless = sorted(  # in No pool, as the budget places it (budget._home_pool)
+            rid for rid, p in priced.items() if p.rounds and p.pool is None and not any(v.pool for v in p.rounds)
+        )
         if homeless and named_pools:
             out.append(NotRebuiltOut(figure="pool_unknown", reason=PAST_DATE_GAPS["pool_unknown"], requests=homeless))
         return out

@@ -19,7 +19,8 @@ import pytest
 from api.constants.collections import AID_REQUESTS
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, _requests_as_of, as_of_instant
 from api.services.financial_aid_grants_register import RegisterRow
-from api.services.financial_aid_intake_types import CorrectionRecord
+from api.services.financial_aid_intake_plan import request_fields
+from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, CorrectionRecord
 from api.services.financial_aid_rules_service import RulesHistoryIncompleteError
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import (
@@ -38,7 +39,8 @@ from tests.unit.api.services.decisions_fakes import (
     log_update,
     seed_request,
 )
-from tests.unit.api.services.financial_aid_fakes import YEAR
+from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
+from tests.unit.bunking.financial_aid.fixtures import with_lever
 
 EMMA = "reqemma00000001"
 LIAM = "reqliam00000001"
@@ -576,23 +578,102 @@ def _without_gaps(value: Any) -> Any:
     return value
 
 
+OLIVIA, NOAH, AVA, MIA = "reqolivia000001", "reqnoah00000001", "reqava000000001", "reqmia000000001"
+
+
+def _changed(store: FakeDecisionsStore, request_id: str, at: datetime, **fields: Any) -> None:
+    """One request update, made to the record and logged as 4a logs it (changed fields only)."""
+    old = store.requests[request_id]
+    new = replace(old, **fields)
+    store.requests[request_id] = new
+    was, now = request_fields(old), request_fields(new)
+    log_update(store, AID_REQUESTS, request_id, {k: was[k] for k in fields}, {k: now[k] for k in fields}, at)
+
+
+def _live_round_as_past(round_: dict[str, Any]) -> dict[str, Any]:
+    """A live round as 3c-1 shows it: posted as posted, every other state not_rebuilt."""
+    return round_ if round_["status"] == "posted" else {**round_, "status": "not_rebuilt"}
+
+
 @pytest.mark.asyncio
 async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_gaps() -> None:
-    store = _seeded(EMMA, LIAM)
+    """Yesterday recorded everything live shows, so outside the figures a past read names as gaps the
+    two reads agree, field by field: across posted and unposted rounds, a request no longer live, a
+    Round 2 ask, posted money outside the budget, and requests changed before the date."""
+    rules = FakeRules(
+        approved(with_lever(intake_rules(), "awards.decision_types.discretionary.counts_toward_budget", False))
+    )
+    store = _seeded(EMMA, LIAM, OLIVIA, NOAH, AVA, MIA)
     _post_at(store, EMMA, _day(3, 5), on=date(2027, 3, 5))
     _at(store, EMMA, 1, "accept", _day(3, 6))
     _post_at(store, LIAM, _day(3, 7), on=date(2027, 3, 7))
-    service = _service(store)
+    # Withdrawn after its Round 1 posted and a manual hold was placed: live lists neither its program,
+    # its pool nor its hold, only the posted round.
+    _post_at(store, OLIVIA, _day(3, 5), on=date(2027, 3, 5))
+    store.hold_events.append(
+        HoldEvent(
+            id="hev000000000001",
+            request_id=OLIVIA,
+            kind="place",
+            code=MANUAL_HOLD,
+            created=_day(3, 6),
+            note="Waiting on the school letter",
+            actor="registrar@example.com",
+        )
+    )
+    _changed(store, OLIVIA, _day(3, 10), status="withdrawn")
+    # A lowered ask logged before the date, and a Round 2 ask.
+    _changed(store, NOAH, _day(3, 4), ask=3500.0)
+    _at(store, NOAH, 2, "ask", _day(3, 8), amount=Decimal(700), effective_on=date(2027, 3, 8))
+    # Moved to the B'mitzvah session, then a posted Round 3 whose discretionary money sits outside the budget.
+    _changed(store, AVA, _day(3, 9), session_cm_id=1000301)
+    _at(store, AVA, 3, "award", _day(3, 11), amount=Decimal(250), decision_type="discretionary")
+    _at(
+        store,
+        AVA,
+        3,
+        "post",
+        _day(3, 12),
+        amount=Decimal(650),
+        effective_on=date(2027, 3, 12),
+        lock_source="tick",
+        rules_version=1,
+        snapshot={
+            "pool": "bmitzvah_pool",
+            "counts_toward_budget": False,
+            "decision_round": 3,
+            "top_up": "0",
+            "discretionary": "250",
+        },
+    )
+    # Waiting for approved rules: live resolves no program for it.
+    _changed(store, MIA, _day(3, 3), flags=({"code": FLAG_AWAITING_RULES, "detail": {"sections": ["programs"]}},))
+    service = _service(store, rules)
     yesterday = NOW.date() - timedelta(days=1)
     live_grid, past_grid = await service.grid(YEAR), await service.grid(YEAR, as_of=yesterday)
+    assert past_grid.as_of == yesterday
     ignored = {"as_of", "as_of_axis", "not_rebuilt"}
 
     def strip(model: Any) -> Any:
         return _without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored})
 
-    def rows(model: Any) -> Any:
-        return [_without_gaps(row) for row in model.model_dump()["rows"]]
-
-    assert rows(past_grid) == rows(live_grid)
+    past_rows = [_without_gaps(row) for row in past_grid.model_dump()["rows"]]
+    live_rows = [
+        _without_gaps({**row, "rounds": [_live_round_as_past(r) for r in row["rounds"]]})
+        for row in live_grid.model_dump()["rows"]
+    ]
+    assert past_rows == live_rows
+    by_id = {row.request_id: row for row in live_grid.rows}
+    for past in past_grid.rows:  # the past lists only the manual hold, and only where live holds it
+        live_codes = {h.code for h in by_id[past.request_id].holds}
+        assert {h.code for h in past.holds} <= live_codes, past.request_id
+    # The scenario reaches what it names.
+    rows = {row.request_id: row for row in past_grid.rows}
+    assert (rows[OLIVIA].request_status, rows[OLIVIA].program_key, rows[OLIVIA].pool) == ("withdrawn", None, None)
+    assert [r.status for r in rows[NOAH].rounds] == ["not_rebuilt", "not_rebuilt"]
+    assert (rows[NOAH].rounds[0].ask, rows[AVA].pool, rows[MIA].program_key) == (3500.0, "bmitzvah_pool", None)
+    assert by_id[OLIVIA].holds == []
     live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)
     assert strip(past_budget_) == strip(live_budget)
+    assert past_budget_.total.below.outside_budget_posted == 250.0
+    assert past_budget_.total.demand.round2_asked == 700.0
