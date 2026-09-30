@@ -133,7 +133,11 @@ def _standing_backdated_posts(events: Sequence[DecisionEvent], as_of: datetime, 
     recorded, up to now, not only by the cut. A back-dated tick is recorded after the cut, so its undo
     is too; cutting undos at the cut would count every mistaken back-dated tick. A tick a person later
     undid was a mistake, so a back-dated one never counts on the CampMinder axis. (A tick recorded by
-    the cut keeps the recorded fold: it and any undo recorded by the cut apply as they did then.)"""
+    the cut keeps the recorded fold: it and any undo recorded by the cut apply as they did then.)
+
+    Ruling (fix round 1): a standing back-dated tick applied on top of a round already posted by the
+    cut resets Accepted. The new tick supersedes the earlier offer; the family's acceptance of the old
+    amount doesn't carry over (fold_rounds applies it)."""
     last_undo: dict[tuple[str, int], tuple[datetime, str]] = {}
     for e in events:
         if e.kind == "unpost":
@@ -170,7 +174,11 @@ def fold_rounds(
     kept = (e for e in listed if as_of is None or e.created <= as_of or e.id in extra)
     for event in sorted(kept, key=_order):
         rounds = out.setdefault(event.request_id, {})
-        rounds[event.round] = apply_event(rounds.get(event.round, RoundState(round=event.round)), event)
+        state = rounds.get(event.round, RoundState(round=event.round))
+        applied = apply_event(state, event)
+        if event.id in extra and state.posted:  # a re-tick supersedes the accepted offer
+            applied = replace(applied, accepted=False, accepted_at=None)
+        rounds[event.round] = applied
     return out
 
 

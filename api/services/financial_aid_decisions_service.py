@@ -491,6 +491,20 @@ def _requests_as_of(
     return out, frozenset(unrebuilt), frozenset(deleted)
 
 
+def _posted_before_request(
+    rounds: Mapping[str, Mapping[int, RoundState]], known: Collection[str]
+) -> list[NotRebuiltOut]:
+    """Fix round 1: on the campminder axis a back-dated tick can post a round of a request Kindred
+    recorded only after the date. That request isn't shown then, and no row is invented for it, so its
+    posting is named, never silently dropped. A request deleted since is already named request_deleted."""
+    ids = sorted(
+        rid for rid, by_round in rounds.items() if rid not in known and any(r.posted for r in by_round.values())
+    )
+    if not ids:
+        return []
+    return [NotRebuiltOut(figure="posted_before_request", reason=PAST_DATE_GAPS["posted_before_request"], requests=ids)]
+
+
 def _home(
     request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules | None
 ) -> tuple[str | None, str | None]:
@@ -697,6 +711,8 @@ class FinancialAidDecisionsService:
                 program_key=program_key,
             )
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None))
+        if axis == "campminder":
+            gaps = (*gaps, *_posted_before_request(rounds, requests.keys() | deleted))
         return Season(
             year=year,
             rules=rules,

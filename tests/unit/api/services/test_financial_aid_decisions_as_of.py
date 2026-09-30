@@ -757,3 +757,26 @@ async def test_a_live_read_names_no_axis_whichever_is_asked(axis: Any) -> None:
     budget = await service.budget(YEAR, as_of=date(2027, 4, 1), as_of_axis=axis)
     remaining = await service.remaining(YEAR, as_of_axis=axis)
     assert [out.as_of_axis for out in (grid, budget, remaining)] == [None] * 3
+
+
+@pytest.mark.asyncio
+async def test_a_back_dated_tick_on_a_request_recorded_after_the_date_is_named_not_dropped() -> None:
+    """Fix round 1: staff keyed the request March 12 and ticked it that day, CampMinder posted March 5.
+    The request can't be shown on March 9, so its posting is named, never silently dropped (D75: the
+    Remaining line names it without ids)."""
+    store = _seeded(EMMA, LIAM)
+    store.change_log = [replace(r, created=_day(3, 12)) if r.entity_id == LIAM else r for r in store.change_log]
+    _post_at(store, LIAM, _day(3, 12), on=date(2027, 3, 5))
+    service = _service(store)
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    budget = await service.budget(YEAR, as_of=MAR_9)
+    remaining = await service.remaining(YEAR, as_of=MAR_9)
+    assert [row.request_id for row in grid.rows] == [EMMA]  # no invented row
+    for out in (grid, budget):
+        gap = next(g for g in out.not_rebuilt if g.figure == "posted_before_request")
+        assert (gap.requests, gap.reason) == ([LIAM], PAST_DATE_GAPS["posted_before_request"])
+    gap = next(g for g in remaining.not_rebuilt if g.figure == "posted_before_request")
+    assert (gap.requests, gap.reason) == ([], PAST_DATE_GAPS["posted_before_request"])
+    for read in (service.grid, service.budget, service.remaining):
+        recorded = await read(YEAR, as_of=MAR_9, as_of_axis="recorded")
+        assert "posted_before_request" not in [g.figure for g in recorded.not_rebuilt]

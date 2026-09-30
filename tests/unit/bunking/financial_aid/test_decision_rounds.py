@@ -198,3 +198,17 @@ def test_decisions_and_asks_recorded_after_the_cut_stay_out_on_the_campminder_ax
         ev("award", 3, hour=48, amount=Decimal(900), needs_approval=True),
     ]
     assert fold_rounds(events, as_of=CUT, posted_by=D) == {}
+
+
+def test_a_back_dated_re_tick_on_a_posted_round_does_not_inherit_the_old_acceptance() -> None:
+    """Fix round 1: posted and accepted by the cut, then unaccepted, undone and re-ticked back-dated after
+    it. The new tick supersedes the old offer; the family accepted the old amount, not this one."""
+    events = [
+        ev("post", 1, hour=0, amount=Decimal(3000), effective_on=D),
+        ev("accept", 1, hour=1),  # both recorded by the cut (hour 1 is the cut itself)
+        ev("unaccept", 1, hour=48),
+        ev("unpost", 1, hour=49),
+        ev("post", 1, hour=50, amount=Decimal(2500), effective_on=D),
+    ]
+    state = fold_rounds(events, as_of=CUT, posted_by=D)["req-emma"][1]
+    assert (state.posted, state.locked_amount, state.accepted, state.accepted_at) == (True, Decimal(2500), False, None)
