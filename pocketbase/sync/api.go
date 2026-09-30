@@ -2742,6 +2742,7 @@ func handleAidPostingsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Request-scoped instance -- never the shared registered singleton (#1881).
 	service := NewAidPostingsSync(e.App)
 	service.Year = year
+	service.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()

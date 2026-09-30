@@ -67,6 +67,9 @@ type AidPostingsSync struct {
 	Season int
 	// Decisions is sub-project 11's hook. noAidDecisionMatch until then.
 	Decisions aidDecisionMatcher
+	// LedgerTickTrigger runs campership sub-project 10b's automatic Posted tick for each season this
+	// run wrote (TriggerFinancialAidLedgerTicks in production; nil in tests).
+	LedgerTickTrigger func(ctx context.Context, year int) error
 }
 
 // NewAidPostingsSync returns the service with sub-project 11's decision hook
@@ -144,6 +147,7 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 	// sweep-guard refusal on one season (order N-1, N, N+1) must not stop the
 	// live season that follows it.
 	var errs []error
+	var wrote []int
 	for _, year := range years {
 		if err := ctx.Err(); err != nil {
 			errs = append(errs, err)
@@ -153,7 +157,9 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 			slog.Error("Aid postings season failed; continuing with the next",
 				"year", year, "error", err)
 			errs = append(errs, fmt.Errorf("aid_postings %d: %w", year, err))
+			continue
 		}
+		wrote = append(wrote, year)
 	}
 	runErr := errors.Join(errs...)
 	if !s.DryRun && (s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0) {
@@ -161,6 +167,8 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
 	}
+	// The tick runs even when nothing new was written: pricing can change without the ledger.
+	s.runLedgerTickTrigger(ctx, wrote)
 	slog.Info("Aid postings sync finished", "years", years, "created", s.Stats.Created,
 		"updated", s.Stats.Updated, "skipped", s.Stats.Skipped, "deleted", s.Stats.Deleted, "errors", s.Stats.Errors)
 	return runErr

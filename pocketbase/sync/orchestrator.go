@@ -2500,6 +2500,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// Campership ledger for the replayed season only
 		aidPostingsSync := NewAidPostingsSync(o.app)
 		aidPostingsSync.Year = opts.Year
+		aidPostingsSync.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
 		o.RegisterService("aid_postings", aidPostingsSync)
 
 		// Household demographics (computed from HH- fields + household custom values)
@@ -3110,7 +3111,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("financial_aid_applications", faApplicationsDefaultSync)
 
 	// Campership ledger (aid_postings, plus aid_sources and auto aid_household_links)
-	o.RegisterService("aid_postings", NewAidPostingsSync(o.app))
+	aidPostingsDefaultSync := NewAidPostingsSync(o.app)
+	aidPostingsDefaultSync.LedgerTickTrigger = TriggerFinancialAidLedgerTicks
+	o.RegisterService("aid_postings", aidPostingsDefaultSync)
 
 	// Household demographics (computes from HH- fields + household custom values - on-demand)
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(o.app))
