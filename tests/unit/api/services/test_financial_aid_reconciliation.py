@@ -892,3 +892,14 @@ def test_the_campminder_cut_still_applies_to_a_line_recorded_by_the_date() -> No
     future = _stamped(line(1, "1500", posted=JUN10), JUN1)
     (out,) = as_recorded([future], JUN5)
     assert not out.live(JUN5)
+
+
+def test_a_row_last_written_before_its_campminder_reversal_date_cuts_on_the_reversal_date() -> None:
+    """Fix round 1: updated (May 1) earlier than reversal_date (Jun 1). Kindred had the reversal on
+    record by the cut, so the CampMinder cut decides: live on May 15, reversed on Jun 5."""
+    reversed_line = _stamped(line(1, "1500", posted=MAR8, reversed_at=JUN1), MAR9, datetime(2027, 5, 1, tzinfo=UTC))
+    (may15,) = as_recorded([reversed_line], datetime(2027, 5, 15, 18, 0, tzinfo=UTC))
+    assert may15.live(datetime(2027, 5, 15, 18, 0, tzinfo=UTC))
+    (jun5,) = as_recorded([reversed_line], JUN5)
+    assert jun5.reversed_by(JUN5)
+    assert not jun5.live(JUN5)

@@ -935,3 +935,17 @@ async def test_the_repository_reads_recorded_times_only_when_asked() -> None:
     await repo.fetch_camp_lines(YEAR)
     plain = set(pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["fields"].split(","))
     assert stamped - plain == {"created", "updated"}
+
+
+@pytest.mark.asyncio
+async def test_only_a_past_read_asks_for_the_lines_recorded_times() -> None:
+    """Fix round 1: the live read leaves created and updated unread; the past read asks for them."""
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0)
+    service = _past_service(store)
+    await service.grid(YEAR)
+    assert store.camp_line_reads == [False]
+    store.camp_line_reads.clear()
+    await service.grid(YEAR, as_of=date(2027, 6, 5))
+    assert store.camp_line_reads == [True]

@@ -65,6 +65,7 @@ class FakeDecisionsStore:
         self.log: list[dict[str, Any]] = []  # every aid_change_log row that committed
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
         self.camp_lines: list[CampLine] = []
+        self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self._clock = T0
@@ -115,6 +116,7 @@ class FakeDecisionsStore:
 
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """As the repository reads them: without the recorded times unless asked for (a past read)."""
+        self.camp_line_reads.append(recorded_times)
         if recorded_times:
             return list(self.camp_lines)
         return [replace(line, recorded_at=None, updated_at=None) for line in self.camp_lines]
