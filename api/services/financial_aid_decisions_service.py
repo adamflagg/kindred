@@ -3,9 +3,12 @@ record each round's asks and decisions (spec §5.1–§5.3, §6.1, §7.1–§7.3
 
 Reads (financial_aid.view; the Remaining line also financial_aid.summary). Each prices the whole
 season on the server and returns one aggregate (D21): the Requests grid, Rounds & budget, and the
-Remaining line. Each takes an optional as-of date (3c): a past date shows what Kindred had recorded
-by the end of that day (every fold and replay cuts on created), and names every figure it leaves empty
-in not_rebuilt.
+Remaining line. Each takes an optional as-of date (3c): a past date shows the season by the end of
+that day, and names every figure it leaves empty in not_rebuilt. On the default axis, `campminder`
+(owner ruling 2026-09-30), a Posted tick counts from its CampMinder post day, as Money's ledger ?as_of
+does; on `recorded` every fold and replay cuts on created, which is what Kindred showed that day. Facts
+with no CampMinder date (decisions, asks, holds, corrections, the rules, request status, payer shares,
+Accepted) cut on created on both axes.
 
 Holds (follow-up 3b): each request's released check codes and its manual hold come from
 aid_hold_events, folded like the rounds, and reach pricing through with_holds.
@@ -36,6 +39,7 @@ from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_REQUES
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
+    AsOfAxis,
     BelowTheLineOut,
     BudgetResponse,
     CellOut,
@@ -228,8 +232,9 @@ class Season:
     grants: Mapping[str, Sequence[GrantInput]]
     # Each request's released check codes and manual hold (follow-up 3b).
     holds: Mapping[str, HoldState]
-    # None: priced now. A date: the past-date read (3c), as recorded by the end of that day.
+    # None: priced now. A date: the past-date read (3c), by the end of that day on `axis`.
     as_of: date | None = None
+    axis: AsOfAxis | None = None  # the as-of axis a past read cut on; None when live
     gaps: tuple[NotRebuiltOut, ...] = ()  # rebuild gaps: rules or request history, deleted since, pool unknown
     unrebuilt: frozenset[str] = frozenset()  # requests whose history couldn't be replayed
 
@@ -535,7 +540,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
             ],
             "outside_grants_off_requests": None,
             "as_of": season.as_of,
-            "as_of_axis": "recorded",
+            "as_of_axis": season.axis,
             "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *season.gaps],
         }
     )
@@ -644,10 +649,11 @@ class FinancialAidDecisionsService:
         except RulesHistoryIncompleteError:
             return None, tuple(_gaps(["rules_history"]))
 
-    async def past_season(self, year: int, day: date) -> Season:
-        """The season as Kindred had recorded it by the end of `day`, camp time (3c-1): the events and
-        hold events recorded by then, each request replayed from aid_change_log, the corrections made
-        by then, and the rules replayed to then. Nothing is priced (as_of.price_as_of)."""
+    async def past_season(self, year: int, day: date, axis: AsOfAxis = "campminder") -> Season:
+        """The season by the end of `day`, camp time (3c-1): the events and hold events recorded by
+        then, each request replayed from aid_change_log, the corrections made by then, and the rules
+        replayed to then. On the campminder axis the Posted ticks CampMinder posted by `day` count too,
+        however late Kindred recorded them (fold_rounds' posted_by). Nothing is priced (as_of.price_as_of)."""
         at = as_of_instant(day)
         rules_read = asyncio.create_task(self._rules_as_of(year, at))
         try:
@@ -667,7 +673,7 @@ class FinancialAidDecisionsService:
             rules_read.cancel()
             await asyncio.gather(rules_read, return_exceptions=True)  # retrieve its exception, if it had one
         requests, unrebuilt, deleted = _requests_as_of(log, at, today)
-        rounds = fold_rounds(events, as_of=at)
+        rounds = fold_rounds(events, as_of=at, posted_by=day if axis == "campminder" else None)
         holds = fold_holds(hold_events, as_of=at)
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
@@ -702,6 +708,7 @@ class FinancialAidDecisionsService:
             grants={},
             holds=holds,
             as_of=day,
+            axis=axis,
             gaps=gaps,
             unrebuilt=unrebuilt,
         )
@@ -733,9 +740,9 @@ class FinancialAidDecisionsService:
             out.append(NotRebuiltOut(figure="pool_unknown", reason=PAST_DATE_GAPS["pool_unknown"], requests=homeless))
         return out
 
-    async def _season_for(self, year: int, as_of: date | None) -> Season:
+    async def _season_for(self, year: int, as_of: date | None, axis: AsOfAxis) -> Season:
         day = self._past_day(as_of)
-        return await self.season(year) if day is None else await self.past_season(year, day)
+        return await self.season(year) if day is None else await self.past_season(year, day, axis)
 
     def _budget(self, season: Season) -> SeasonBudget:
         by_request = {rid: sum((g.amount for g in grants), ZERO) for rid, grants in season.grants.items()}
@@ -748,12 +755,14 @@ class FinancialAidDecisionsService:
             season.priced.values(), document, outside_grants=by_request, outside_grants_off_requests=off
         )
 
-    async def grid(self, year: int, as_of: date | None = None) -> RequestsGridResponse:
+    async def grid(
+        self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder"
+    ) -> RequestsGridResponse:
         day = self._past_day(as_of)
         if day is None:
             season, (families, campers) = await self._season(year, names=True)
         else:
-            season = await self.past_season(year, day)
+            season = await self.past_season(year, day, as_of_axis)
             families, campers = await self._store.fetch_names(
                 year,
                 {r.household_cm_id for r in season.requests.values()},
@@ -790,18 +799,20 @@ class FinancialAidDecisionsService:
             rules_version=rules_version,
             rows=rows,
             as_of=season.as_of,
-            as_of_axis="recorded" if past else None,
+            as_of_axis=season.axis,
             not_rebuilt=[*_gaps(GRID_GAPS), *season.gaps] if past else [],
         )
 
-    async def budget(self, year: int, as_of: date | None = None) -> BudgetResponse:
-        season = await self._season_for(year, as_of)
+    async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:
+        season = await self._season_for(year, as_of, as_of_axis)
         out = budget_out(year, season.rules, self._budget(season))
         return out if season.as_of is None else past_budget(out, season)
 
-    async def remaining(self, year: int, as_of: date | None = None) -> RemainingResponse:
+    async def remaining(
+        self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder"
+    ) -> RemainingResponse:
         """D48: one figure per pool, summed over Rounds 1–3, and the total. Aggregates only (D75)."""
-        season = await self._season_for(year, as_of)
+        season = await self._season_for(year, as_of, as_of_axis)
         budget = self._budget(season)
         if season.as_of is not None:
             return RemainingResponse(
@@ -813,7 +824,7 @@ class FinancialAidDecisionsService:
                 ],
                 total=None,
                 as_of=season.as_of,
-                as_of_axis="recorded",
+                as_of_axis=season.axis,
                 # Summary-only users read this line (D75): a gap keeps its figure and reason, never the
                 # requests it names.
                 not_rebuilt=[gap.model_copy(update={"requests": []}) for gap in (*_gaps(REMAINING_GAPS), *season.gaps)],

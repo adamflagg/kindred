@@ -53,6 +53,7 @@ from api.schemas.financial_aid import (
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
+    AsOfAxis,
     BudgetResponse,
     DecisionWriteOut,
     HoldReleaseIn,
@@ -650,23 +651,27 @@ _VIEW_OR_SUMMARY = Depends(require_any_permission(Permission.FINANCIAL_AID_VIEW,
 
 
 @router.get("/decisions/{year}/grid", response_model=RequestsGridResponse)
-async def get_requests_grid(year: _Year, as_of: date | None = None, user: AuthUser = _VIEW) -> RequestsGridResponse:
-    """The Requests grid, live or as recorded by the end of a past day, camp time (3c)."""
-    return await _decisions().grid(year, as_of=as_of)
+async def get_requests_grid(
+    year: _Year, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder", user: AuthUser = _VIEW
+) -> RequestsGridResponse:
+    """The Requests grid, live or as of the end of a past day, camp time (3c), on the axis asked."""
+    return await _decisions().grid(year, as_of=as_of, as_of_axis=as_of_axis)
 
 
 @router.get("/decisions/{year}/budget", response_model=BudgetResponse)
-async def get_rounds_budget(year: _Year, as_of: date | None = None, user: AuthUser = _VIEW) -> BudgetResponse:
+async def get_rounds_budget(
+    year: _Year, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder", user: AuthUser = _VIEW
+) -> BudgetResponse:
     """Rounds & budget, live or as of a past day; a past day names what it leaves empty."""
-    return await _decisions().budget(year, as_of=as_of)
+    return await _decisions().budget(year, as_of=as_of, as_of_axis=as_of_axis)
 
 
 @router.get("/decisions/{year}/remaining", response_model=RemainingResponse)
 async def get_remaining_line(
-    year: _Year, as_of: date | None = None, user: AuthUser = _VIEW_OR_SUMMARY
+    year: _Year, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder", user: AuthUser = _VIEW_OR_SUMMARY
 ) -> RemainingResponse:
     """The Remaining line (D48), live or as of a past day."""
-    return await _decisions().remaining(year, as_of=as_of)
+    return await _decisions().remaining(year, as_of=as_of, as_of_axis=as_of_axis)
 
 
 @router.post("/requests/{request_id}/asks", response_model=DecisionWriteOut)

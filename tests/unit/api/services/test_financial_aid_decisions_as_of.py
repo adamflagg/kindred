@@ -107,7 +107,7 @@ async def test_a_past_date_shows_the_ticks_recorded_by_the_end_of_that_day_in_ca
     _post_at(store, EMMA, LATE_ON_MAR_9)
     _at(store, EMMA, 1, "accept", EARLY_ON_MAR_10)
     service = _service(store)
-    out = await service.grid(YEAR, as_of=MAR_9)
+    out = await service.grid(YEAR, as_of=MAR_9, as_of_axis="recorded")
     assert (out.as_of, out.as_of_axis) == (MAR_9, "recorded")
     (row,) = out.rows
     (r1,) = row.rounds
@@ -117,11 +117,12 @@ async def test_a_past_date_shows_the_ticks_recorded_by_the_end_of_that_day_in_ca
 
 
 @pytest.mark.asyncio
-async def test_as_of_cuts_on_when_kindred_recorded_a_tick_not_its_effective_date() -> None:
-    """Decision 6: CampMinder posted it March 5; staff keyed the tick March 12."""
+async def test_the_recorded_axis_cuts_on_when_kindred_recorded_a_tick_not_its_effective_date() -> None:
+    """Decision 6, kept as the recorded axis (owner ruling 2026-09-30): CampMinder posted it March 5;
+    staff keyed the tick March 12."""
     store = _seeded(EMMA)
     _post_at(store, EMMA, _day(3, 12), on=date(2027, 3, 5))
-    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
+    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9, as_of_axis="recorded")).rows
     assert (row.rounds[0].status, row.total_posted) == ("not_rebuilt", None)
 
 
@@ -680,3 +681,79 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
     # Only the request with no resolvable pool is named as pool_unknown; nothing else is swept in.
     pool_gaps = [g for g in past_budget_.not_rebuilt if g.figure == "pool_unknown"]
     assert [g.requests for g in pool_gaps] == [[MIA]]
+
+
+# --- two as-of axes (owner ruling 2026-09-30): the default cuts a Posted tick on CampMinder's post day ---
+
+
+@pytest.mark.asyncio
+async def test_a_tick_keyed_after_the_date_counts_on_the_default_axis_from_its_campminder_post_day() -> None:
+    """CampMinder posted it March 5; staff keyed the tick March 12. Money's ledger ?as_of cuts on the post
+    day, so the default axis does too; the recorded axis still shows what Kindred had that day."""
+    store = _seeded(EMMA)
+    _post_at(store, EMMA, _day(3, 12), on=date(2027, 3, 5))
+    service = _service(store)
+    default = await service.grid(YEAR, as_of=MAR_9)
+    (row,) = default.rows
+    assert (default.as_of_axis, row.rounds[0].status, row.total_posted) == ("campminder", "posted", 1500.0)
+    assert row.rounds[0].posted_on == date(2027, 3, 5)
+    recorded = await service.grid(YEAR, as_of=MAR_9, as_of_axis="recorded")
+    (then,) = recorded.rows
+    assert (recorded.as_of_axis, then.rounds[0].status, then.total_posted) == ("recorded", "not_rebuilt", None)
+
+
+@pytest.mark.asyncio
+async def test_the_budget_counts_a_back_dated_tick_as_posted_on_the_default_axis_only() -> None:
+    store = _seeded(EMMA)
+    _post_at(store, EMMA, _day(3, 12), on=date(2027, 3, 5))
+    service = _service(store)
+
+    def posted(out: Any) -> tuple[float, int]:
+        camp = next(p for p in out.pools if p.pool == "camp_pool")
+        strip = next(s for s in out.strip if s.round == 1)
+        return camp.total.posted, strip.posted.requests
+
+    default = await service.budget(YEAR, as_of=MAR_9)
+    recorded = await service.budget(YEAR, as_of=MAR_9, as_of_axis="recorded")
+    assert (default.as_of_axis, posted(default)) == ("campminder", (1500.0, 1))
+    assert (recorded.as_of_axis, posted(recorded)) == ("recorded", (0.0, 0))
+
+
+@pytest.mark.asyncio
+async def test_a_back_dated_tick_later_undone_does_not_count_on_the_default_axis() -> None:
+    """The ruling: a tick a person later undid was a mistake, so a back-dated one never counts."""
+    store = _seeded(EMMA)
+    _post_at(store, EMMA, _day(3, 12), on=date(2027, 3, 5))
+    _at(store, EMMA, 1, "unpost", _day(3, 14), note="Ticked the wrong family")
+    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
+    assert (row.rounds[0].status, row.total_posted) == ("not_rebuilt", None)
+
+
+@pytest.mark.asyncio
+async def test_an_accept_keyed_after_the_date_stays_off_it_on_the_default_axis() -> None:
+    store = _seeded(EMMA)
+    _post_at(store, EMMA, _day(3, 12), on=date(2027, 3, 5))
+    _at(store, EMMA, 1, "accept", _day(3, 13))
+    out = await _service(store).budget(YEAR, as_of=MAR_9)
+    r1 = next(c for c in next(p for p in out.pools if p.pool == "camp_pool").rounds if c.round == 1)
+    assert (r1.posted, r1.accepted) == (1500.0, 0.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("axis", ["campminder", "recorded"])
+async def test_every_past_read_echoes_the_axis_it_cut_on(axis: Any) -> None:
+    service = _service(_seeded(EMMA))
+    grid = await service.grid(YEAR, as_of=MAR_9, as_of_axis=axis)
+    budget = await service.budget(YEAR, as_of=MAR_9, as_of_axis=axis)
+    remaining = await service.remaining(YEAR, as_of=MAR_9, as_of_axis=axis)
+    assert [out.as_of_axis for out in (grid, budget, remaining)] == [axis] * 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("axis", ["campminder", "recorded"])
+async def test_a_live_read_names_no_axis_whichever_is_asked(axis: Any) -> None:
+    service = _service(_seeded(EMMA))
+    grid = await service.grid(YEAR, as_of_axis=axis)
+    budget = await service.budget(YEAR, as_of=date(2027, 4, 1), as_of_axis=axis)
+    remaining = await service.remaining(YEAR, as_of_axis=axis)
+    assert [out.as_of_axis for out in (grid, budget, remaining)] == [None] * 3

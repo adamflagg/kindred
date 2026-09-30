@@ -133,3 +133,68 @@ def test_the_registrars_limit_is_a_rules_setting() -> None:
     rules = with_lever(fictional_rules(), "round3.registrar_limit", "400")
     assert not needs_finance(Decimal(400), rules)
     assert needs_finance(Decimal(401), rules)
+
+
+# --- the CampMinder axis (owner ruling 2026-09-30): a Posted tick counts from its CampMinder post day ---
+
+CUT = T0 + timedelta(hours=1)  # the recorded cut: the end of D
+D = date(2031, 3, 1)  # the as-of day; T0 falls on it
+
+
+def _backdated_post(hour: int, on: date | None = D) -> DecisionEvent:
+    """A tick keyed after the cut whose CampMinder post day is `on`."""
+    return ev("post", 1, hour=hour, amount=Decimal(3000), effective_on=on)
+
+
+def test_a_tick_recorded_after_the_cut_counts_from_its_campminder_post_day() -> None:
+    events = [_backdated_post(hour=48)]
+    assert fold_rounds(events, as_of=CUT, posted_by=D)["req-emma"][1].posted
+    assert fold_rounds(events, as_of=CUT) == {}  # the recorded axis never sees it
+
+
+def test_a_tick_posted_in_campminder_after_the_day_does_not_count() -> None:
+    events = [_backdated_post(hour=48, on=D + timedelta(days=1))]
+    assert fold_rounds(events, as_of=CUT, posted_by=D) == {}
+
+
+def test_a_tick_with_no_campminder_post_day_keeps_the_recorded_cut() -> None:
+    assert fold_rounds([_backdated_post(hour=48, on=None)], as_of=CUT, posted_by=D) == {}
+
+
+def test_a_back_dated_tick_later_undone_by_a_person_does_not_count() -> None:
+    """The ruling: an undo of a back-dated tick applies whenever it was recorded, up to now. The tick
+    was a mistake, and its undo is necessarily recorded after the cut too."""
+    events = [_backdated_post(hour=48), ev("unpost", 1, hour=72)]
+    assert fold_rounds(events, as_of=CUT, posted_by=D) == {}
+
+
+def test_a_back_dated_tick_undone_then_ticked_again_back_dated_counts_once_as_the_standing_tick() -> None:
+    events = [
+        _backdated_post(hour=48),
+        ev("unpost", 1, hour=50),
+        ev("post", 1, hour=52, amount=Decimal(2500), effective_on=D),
+    ]
+    state = fold_rounds(events, as_of=CUT, posted_by=D)["req-emma"][1]
+    assert (state.posted, state.locked_amount) == (True, Decimal(2500))
+
+
+def test_a_tick_recorded_by_the_cut_and_undone_after_it_still_counts_on_both_axes() -> None:
+    """The CampMinder axis only adds back-dated ticks to the recorded cut; what the recorded axis showed
+    on D stays shown."""
+    events = [ev("post", 1, hour=0, amount=Decimal(3000), effective_on=D), ev("unpost", 1, hour=72)]
+    assert fold_rounds(events, as_of=CUT)["req-emma"][1].posted
+    assert fold_rounds(events, as_of=CUT, posted_by=D)["req-emma"][1].posted
+
+
+def test_an_accept_recorded_after_the_cut_has_no_campminder_day_and_keeps_the_recorded_cut() -> None:
+    events = [_backdated_post(hour=48), ev("accept", 1, hour=50)]
+    state = fold_rounds(events, as_of=CUT, posted_by=D)["req-emma"][1]
+    assert (state.posted, state.accepted) == (True, False)
+
+
+def test_decisions_and_asks_recorded_after_the_cut_stay_out_on_the_campminder_axis() -> None:
+    events = [
+        ev("ask", 2, hour=48, amount=Decimal(500), effective_on=D),
+        ev("award", 3, hour=48, amount=Decimal(900), needs_approval=True),
+    ]
+    assert fold_rounds(events, as_of=CUT, posted_by=D) == {}

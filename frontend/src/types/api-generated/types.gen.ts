@@ -1170,7 +1170,7 @@ export type BudgetResponse = {
   /**
    * As Of Axis
    */
-  as_of_axis?: 'recorded' | null
+  as_of_axis?: 'campminder' | 'recorded' | null
   /**
    * Not Rebuilt
    */
@@ -9269,7 +9269,7 @@ export type RemainingResponse = {
   /**
    * As Of Axis
    */
-  as_of_axis?: 'recorded' | null
+  as_of_axis?: 'campminder' | 'recorded' | null
   /**
    * Not Rebuilt
    */
@@ -9468,7 +9468,7 @@ export type RequestsGridResponse = {
   /**
    * As Of Axis
    */
-  as_of_axis?: 'recorded' | null
+  as_of_axis?: 'campminder' | 'recorded' | null
   /**
    * Not Rebuilt
    */
@@ -18942,6 +18942,10 @@ export type GetRequestsGridApiFinancialAidDecisionsYearGridGetData = {
      * As Of
      */
     as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
   }
   url: '/api/financial-aid/decisions/{year}/grid'
 }
@@ -18979,6 +18983,10 @@ export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetData = {
      * As Of
      */
     as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
   }
   url: '/api/financial-aid/decisions/{year}/budget'
 }
@@ -19016,6 +19024,10 @@ export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetData = {
      * As Of
      */
     as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
   }
   url: '/api/financial-aid/decisions/{year}/remaining'
 }
