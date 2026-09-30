@@ -642,9 +642,12 @@ class FinancialAidScenariosService:
     async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
         """Fit to budget: the largest shift of every Round 1 table cell that keeps Round 1 Remaining, summed over the
         pools, at or above zero, priced on the frozen season (plan Decision 11 (a), RULED 2026-09-30; D119). The
-        tightest pool is named as information only; `budget.spillover` is not read."""
+        tightest pool is named as information only; `budget.spillover` is not read. It refuses a request set (owner
+        ruling): the fit sizes Round 1 for every request, so it never runs on part of the season."""
         self._check_year(year, document)
-        price = await self._pricer(await self._meta(year), await self._request_set(year, request_set))
+        if request_set is not None:
+            raise ScenarioRefusedError("Fit to budget uses every request; turn off the request set.")
+        price = await self._pricer(await self._meta(year))
 
         async def remaining_at(shift: Decimal) -> Decimal:
             return _fit_margin((await price(shift_round1_tables(document, shift))).results)

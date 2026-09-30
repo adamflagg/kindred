@@ -7,6 +7,7 @@ Rules and scenarios live in memory, and every write runs 4a's real helper."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
@@ -22,6 +23,7 @@ from api.services.financial_aid_rules_service import FinancialAidRulesService
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, capture_season
 from api.services.financial_aid_scenarios_service import (
     FinancialAidScenariosService,
+    RequestSetChoice,
     ScenarioConflictError,
     ScenarioNotFoundError,
     ScenarioRefusedError,
@@ -604,9 +606,8 @@ async def test_a_request_set_writes_nothing_and_leaves_kept_figures_alone() -> N
     )
     through = date(2027, 2, 1)
     _, a = (await world.service.compare(YEAR, FINANCE, ["A"], request_set=through)).columns
-    fitted = await world.service.fit(YEAR, with_lever(intake_rules(), "budget.total", "3000"), request_set=through)
     effects = await world.service.sensitivity(YEAR, intake_rules(), request_set=through)
-    assert (a.results.requests, fitted.evaluation.results.requests, effects.results.requests) == (2, 2, 2)
+    assert (a.results.requests, effects.results.requests) == (2, 2)  # fit refuses a request set (final review 5)
     assert a.results.request_set is not None
     kept = (await world.service.workspace(YEAR, FINANCE)).options[0]
     assert (kept.record.results.requests, kept.record.results.request_set) == (3, None)
@@ -647,3 +648,13 @@ async def test_a_family_that_edited_its_answer_after_the_deadline_keeps_its_on_t
     through = await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 2, 1))
     assert through.results.request_set is not None
     assert (through.results.requests, through.results.request_set.left_out) == (3, 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("request_set", [date(2027, 2, 1), "round1_deadline"])
+async def test_fit_to_budget_refuses_while_a_request_set_is_on(request_set: RequestSetChoice) -> None:
+    """Owner ruling: Fit to budget sizes the whole season, so it never runs on part of it."""
+    world = await _late_world(datetime(2027, 2, 10, 18, 0, tzinfo=UTC))
+    refusal = re.escape("Fit to budget uses every request; turn off the request set.")
+    with pytest.raises(ScenarioRefusedError, match=refusal):
+        await world.service.fit(YEAR, intake_rules(), request_set=request_set)

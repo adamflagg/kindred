@@ -502,3 +502,17 @@ def test_the_results_say_how_much_round1_is_in_no_tier() -> None:
     )
     body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()
     assert (body["results"]["by_tier"][0]["round1"], body["results"]["not_in_tiers"]) == (1500.0, 1100.0)
+
+
+def test_fit_to_budget_on_a_request_set_is_422_through_the_real_service() -> None:
+    service, _ = _real_service()
+    patch("api.routers.financial_aid._scenarios", return_value=service).start()
+    client = _client()
+    assert client.post("/api/financial-aid/scenarios/2027/snapshot").status_code == 200
+    body = {**DOC_BODY, "received_through": "2027-02-01"}
+    response = client.post("/api/financial-aid/scenarios/2027/fit-to-budget", json=body)
+    assert (response.status_code, response.json()["detail"]) == (
+        422,
+        "Fit to budget uses every request; turn off the request set.",
+    )
+    assert client.post("/api/financial-aid/scenarios/2027/fit-to-budget", json=DOC_BODY).status_code == 200
