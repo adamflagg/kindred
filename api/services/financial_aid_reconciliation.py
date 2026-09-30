@@ -40,7 +40,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import (
@@ -120,6 +120,38 @@ def placeable(
         program_family=program_family_for_session_type(session.session_type) if session is not None else "",
         status=request.status,
         share_households=frozenset(s.household_cm_id for s in shares if s.request_id == request.id),
+    )
+
+
+@dataclass(frozen=True)
+class LineOverride:
+    """One aid_attribution_overrides record: its id (the key its log rows carry) and what it places."""
+
+    id: str
+    transaction_cm_id: int
+    attributed_person_cm_id: int
+    attributed_session_cm_id: int
+    program_family: str
+
+    def fields(self) -> dict[str, Any]:
+        """The record in the shape its log rows carry (the replay's `current`)."""
+        return {
+            "transaction_cm_id": self.transaction_cm_id,
+            "attributed_person_cm_id": self.attributed_person_cm_id,
+            "attributed_session_cm_id": self.attributed_session_cm_id,
+            "program_family": self.program_family,
+        }
+
+
+def override_placement(fields: Mapping[str, Any]) -> Placement | None:
+    """A placement from an override's fields; None for a reclassify-only override (no person, no session).
+    A Family Camp placement names a session and no person, so a session alone places a line."""
+    person = int(fields.get("attributed_person_cm_id") or 0)
+    session = int(fields.get("attributed_session_cm_id") or 0)
+    if person <= 0 and session <= 0:
+        return None
+    return Placement(
+        int(fields.get("transaction_cm_id") or 0), person, session, str(fields.get("program_family") or "")
     )
 
 
@@ -263,6 +295,7 @@ def build_ledger(
     requests: Iterable[PlaceableRequest],
     synced_at: datetime | None,
     posted_request_ids: frozenset[str] = frozenset(),
+    at: datetime | None = None,
 ) -> SeasonLedger:
     """Every camp-aid line placed on its one request, or left at family level. Only live requests
     (active, unmatched) take a line, as the grants register's split does.
@@ -271,7 +304,10 @@ def build_ledger(
     request (withdrawn, duplicate, duplicate_pending) that holds posted money, named by
     `posted_request_ids`, by the same rules. Those lines go to `by_closed_request` only, so they
     can never tick a request, add to Needs an offer or change demand; they exist so CampMinder
-    reversing a withdrawn request's posted money can claw it back."""
+    reversing a withdrawn request's posted money can claw it back.
+
+    `at` is a past instant (3c-1's as-of reads): family-level money counts only where it was live then,
+    posted by `at` and not yet reversed. The default is the live read."""
     everyone = list(requests)
     by_person, by_household = _index(r for r in everyone if r.status in LIVE_REQUEST_STATUSES)
     closed_person, closed_household = _index(
@@ -291,7 +327,7 @@ def build_ledger(
         closed_outcome = _place(line, placement, closed_person, closed_household) if outcome is _Miss.NONE else outcome
         if isinstance(closed_outcome, str):
             closed[closed_outcome].append(line)
-        elif line.live():
+        elif line.live(at):
             unplaced[line.household_cm_id] += line.amount
     return SeasonLedger(
         by_request={rid: tuple(lns) for rid, lns in placed.items()},

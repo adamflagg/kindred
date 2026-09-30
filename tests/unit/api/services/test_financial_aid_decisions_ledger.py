@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import api.services.financial_aid_decisions_service as decisions_service
+from api.constants.collections import AID_PAYER_SHARES
 from api.schemas.financial_aid_decisions import GridRowOut
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
@@ -26,7 +27,11 @@ from tests.unit.api.services.decisions_fakes import (
     FakeDecisionsStore,
     FakeRules,
     approved,
+    log_delete,
+    log_seeded,
+    log_update,
     seed_line,
+    seed_override,
     seed_request,
     share_row,
 )
@@ -92,7 +97,20 @@ async def test_camp_aid_lines_are_read_live_and_reversed_by_their_funder_type() 
     await FinancialAidDecisionsRepository(pb).fetch_camp_lines(YEAR)
     pb.collection.assert_called_with("aid_postings")
     query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
-    assert query == {"filter": f"year = {YEAR} && funder_type = 'camp'", "sort": "transaction_cm_id,id"}
+    assert query["filter"] == f"year = {YEAR} && funder_type = 'camp'"
+    assert query["sort"] == "transaction_cm_id,id"
+    assert set(query["fields"].split(",")) == {
+        "transaction_cm_id",
+        "household_cm_id",
+        "person_cm_id",
+        "amount",
+        "post_date",
+        "is_reversed",
+        "reversal_date",
+        "attributed_person_cm_id",
+        "attributed_session_cm_id",
+        "program_family",
+    }
 
 
 @pytest.mark.asyncio
@@ -102,14 +120,14 @@ async def test_the_last_ledger_sync_is_the_newest_successful_aid_postings_run() 
         items=[SimpleNamespace(ended="2027-03-10 09:00:00.000Z")]
     )
     repo = FinancialAidDecisionsRepository(pb)
-    assert await repo.fetch_last_ledger_sync() == datetime(2027, 3, 10, 9, 0, tzinfo=UTC)
+    assert await repo.fetch_last_ledger_sync(YEAR) == datetime(2027, 3, 10, 9, 0, tzinfo=UTC)
     pb.collection.assert_called_with("sync_runs")
     call = pb.collection.return_value.get_list.call_args
     assert call.args == (1, 1)
-    assert call.kwargs["query_params"]["filter"] == 'service = "aid_postings" && status = "success"'
+    assert call.kwargs["query_params"]["filter"] == f'service = "aid_postings" && status = "success" && year = {YEAR}'
     assert call.kwargs["query_params"]["sort"] == "-started,-id"
     pb.collection.return_value.get_list.return_value = SimpleNamespace(items=[])
-    assert await repo.fetch_last_ledger_sync() is None
+    assert await repo.fetch_last_ledger_sync(YEAR) is None
 
 
 # --- the reads (Task 5) -----------------------------------------------------------------------------
@@ -248,6 +266,7 @@ async def test_a_past_date_before_the_reversal_still_counts_the_posted_money() -
         pytest.skip("3c (the as-of reads) is not on this branch")
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    log_seeded(store, datetime(2027, 2, 1, 18, 0, tzinfo=UTC))  # the shares are logged, so they replay
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
 
@@ -260,3 +279,196 @@ async def test_a_past_date_before_the_reversal_still_counts_the_posted_money() -
         budget = await service.budget(YEAR, as_of=day)
         camp = next(p for p in budget.pools if p.pool == "camp_pool")
         assert next(c for c in camp.rounds if c.round == 1).posted == posted, day
+
+
+# --- the season's own sync (fix round 1, Important 2) -----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_another_years_ledger_sync_does_not_end_this_seasons_wait() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0)
+    store.synced_other_years[YEAR - 1] = NIGHT_AFTER  # a manual run for last season
+    c = (await _row(store)).confirmation
+    assert c is not None
+    assert c.status == "awaiting_sync"
+
+
+# --- the past read is exact or empty (fix round 1, Important 1) ------------------------------------
+
+SEEDED = datetime(2027, 2, 1, 18, 0, tzinfo=UTC)
+JUL1 = datetime(2027, 7, 1, 18, 0, tzinfo=UTC)
+
+
+def _past_service(store: FakeDecisionsStore) -> FinancialAidDecisionsService:
+    async def no_grants(year: int) -> list[RegisterRow]:
+        return []
+
+    return FinancialAidDecisionsService(store, FakeRules(approved()), no_grants, clock=lambda: JUL1)
+
+
+async def _r1_posted(store: FakeDecisionsStore, day: date) -> float | None:
+    budget = await _past_service(store).budget(YEAR, as_of=day)
+    camp = next(p for p in budget.pools if p.pool == "camp_pool")
+    return next(c for c in camp.rounds if c.round == 1).posted
+
+
+def _emma_posted(store: FakeDecisionsStore) -> None:
+    seed_request(store, EMMA)
+    log_seeded(store, SEEDED)
+    _posted(store, EMMA, 1, "1500")
+
+
+@pytest.mark.asyncio
+async def test_case_a_family_level_money_reposted_after_the_date_does_not_hold_the_clawback() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "1500", person=0, posted=datetime(2027, 6, 15, 18, 0, tzinfo=UTC))
+    assert await _r1_posted(store, date(2027, 6, 5)) == 0.0
+    assert await _r1_posted(store, date(2027, 6, 20)) == 1500.0  # by then the family-level repost is live
+
+
+@pytest.mark.asyncio
+async def test_case_b_family_level_money_live_on_the_date_holds_the_clawback() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "1500", person=0, posted=T0, reversed_at=datetime(2027, 6, 3, 18, 0, tzinfo=UTC))
+    assert await _r1_posted(store, date(2027, 6, 2)) == 1500.0
+    assert await _r1_posted(store, date(2027, 6, 4)) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_payer_shares_are_replayed_to_the_date_not_read_as_they_are_now() -> None:
+    """A co-payer's family-level money holds the clawback while that household held a share; the share
+    was deleted on Jun 10, so today's shares would wrongly release it on Jun 5."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    log_seeded(store, SEEDED)
+    key = f"{EMMA}:1000004"
+    body = {
+        "year": YEAR,
+        "request": EMMA,
+        "household_cm_id": 1000004,
+        "share_pct": "40",
+        "source": "staff",
+        "actor": "registrar@example.com",
+        "note": "",
+    }
+    day10 = datetime(2027, 6, 10, 18, 0, tzinfo=UTC)
+    log_update(store, AID_PAYER_SHARES, f"{EMMA}:1000001", {"share_pct": "60"}, {"share_pct": "100"}, day10)
+    log_delete(store, AID_PAYER_SHARES, key, body, day10)
+    store.shares = [share_row(EMMA, 1000001, "100")]
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "500", household=1000004, person=0, posted=datetime(2027, 3, 20, 18, 0, tzinfo=UTC))
+    assert await _r1_posted(store, date(2027, 6, 5)) == 1500.0
+    assert await _r1_posted(store, date(2027, 6, 12)) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_a_placement_made_after_the_date_does_not_place_the_line_on_it() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", person=0, posted=T0, reversed_at=JUN1)  # the household's: placed by staff later
+    seed_override(store, 9001, 1000011, datetime(2027, 6, 10, 18, 0, tzinfo=UTC))
+    assert await _r1_posted(store, date(2027, 6, 5)) == 1500.0
+    assert await _r1_posted(store, date(2027, 6, 12)) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_shares_that_cannot_be_replayed_leave_that_requests_posted_money_empty() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    log_seeded(store, SEEDED)
+    store.shares.append(share_row(EMMA, 1000004, "0"))  # exists now, never logged
+    _posted(store, EMMA, 1, "1500")
+    _posted(store, LIAM, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0)
+    service = _past_service(store)
+    grid = await service.grid(YEAR, as_of=date(2027, 6, 5))
+    rows = {r.request_id: r for r in grid.rows}
+    assert (rows[EMMA].total_posted, rows[EMMA].rounds[0].posted) == (None, None)
+    assert rows[LIAM].total_posted == 1500.0
+    gap = next(g for g in grid.not_rebuilt if g.figure == "payer_shares_history")
+    assert gap.requests == [EMMA]
+    assert "today" in gap.reason  # names the undated reclassification and attribution
+    budget = await service.budget(YEAR, as_of=date(2027, 6, 5))
+    assert budget.total.total.posted is None
+    assert budget.total.total.accepted is None
+    assert "payer_shares_history" in [g.figure for g in budget.not_rebuilt]
+
+
+@pytest.mark.asyncio
+async def test_placements_that_cannot_be_replayed_are_named_and_empty_only_their_households() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    log_seeded(store, SEEDED)
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged
+    _posted(store, EMMA, 1, "1500")
+    _posted(store, LIAM, 1, "1500")
+    seed_line(store, 9001, "1500", person=0, posted=T0)
+    grid = await _past_service(store).grid(YEAR, as_of=date(2027, 6, 5))
+    rows = {r.request_id: r for r in grid.rows}
+    assert (rows[EMMA].total_posted, rows[LIAM].total_posted) == (None, 1500.0)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "line_placements_history")
+    assert gap.requests == [EMMA]
+    assert "today" in gap.reason
+
+
+@pytest.mark.asyncio
+async def test_a_past_read_with_no_ledger_lines_names_no_ledger_gap() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    grid = await _past_service(store).grid(YEAR, as_of=date(2027, 6, 5))
+    assert {"payer_shares_history", "line_placements_history"}.isdisjoint(g.figure for g in grid.not_rebuilt)
+
+
+# --- service-level ledger paths (fix round 1) -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_requests_posted_money_is_clawed_back_through_its_closed_lines() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    store.synced_at = JUN1 + timedelta(hours=12)
+    row = await _row(store)
+    assert row.confirmation is not None
+    assert (row.confirmation.status, row.confirmation.on) == ("reversed", date(2027, 6, 1))
+    assert (row.total_posted, row.rounds[0].clawed_back) == (None, True)
+
+
+@pytest.mark.asyncio
+async def test_live_family_level_money_on_a_d26_household_blocks_the_clawback() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "1500", person=0, posted=JUN1)  # reposted on the household: may be the appeal
+    store.synced_at = JUN1 + timedelta(hours=12)
+    row = await _row(store)
+    assert (row.total_posted, row.rounds[0].clawed_back) == (1500.0, False)
+    assert row.confirmation is not None
+    assert row.confirmation.status != "reversed"
+    assert row.confirmation.family_unplaced == 1500.0
+
+
+@pytest.mark.asyncio
+async def test_a_payer_share_households_family_level_money_blocks_the_clawback() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "600", household=1000004, person=0, posted=JUN1)
+    store.synced_at = JUN1 + timedelta(hours=12)
+    row = await _row(store)
+    assert (row.total_posted, row.rounds[0].clawed_back) == (1500.0, False)

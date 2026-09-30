@@ -53,7 +53,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "total_decided": _PRICED,
     "holds": "Only the manual hold is listed: the data checks run on the family's answers (3c-2)",
     "notes": _PRICED,
-    "confirmation": "CampMinder's ledger is read as it is now, so confirmation isn't rebuilt",
+    "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
     "needs_offer": _PRICED,
     "held": _PRICED,
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
@@ -70,6 +70,16 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
     "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
     "rules_history": "The rules' change history for this season can't be replayed to that date",
+    "payer_shares_history": (
+        "These requests' payer shares can't be replayed to that date, so whether CampMinder had reversed their "
+        "posted money is unknown and it is left empty. (Also as of today, not that date: a line's "
+        "funder-type reclassification and Go's attribution.)"
+    ),
+    "line_placements_history": (
+        "The staff placements of some CampMinder lines can't be replayed to that date, so whether CampMinder "
+        "had reversed these requests' posted money is unknown and it is left empty. (Also as of today, not "
+        "that date: a line's funder-type reclassification and Go's attribution.)"
+    ),
 }
 GRID_GAPS: Final[tuple[str, ...]] = (
     "decided",

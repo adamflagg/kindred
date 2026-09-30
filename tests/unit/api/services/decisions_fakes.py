@@ -17,6 +17,7 @@ import httpx
 
 from api.constants.collections import (
     AID_APPLICATIONS,
+    AID_ATTRIBUTION_OVERRIDES,
     AID_DECISIONS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
@@ -34,7 +35,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
-from api.services.financial_aid_reconciliation import CampLine
+from api.services.financial_aid_reconciliation import CampLine, LineOverride
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow
@@ -64,7 +65,8 @@ class FakeDecisionsStore:
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
         self.camp_lines: list[CampLine] = []
         self.placements: dict[int, Placement] = {}
-        self.synced_at: datetime | None = None  # the last successful ledger sync; None = never
+        self.synced_at: datetime | None = None  # the last successful ledger sync of YEAR; None = never
+        self.synced_other_years: dict[int, datetime] = {}
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -117,8 +119,16 @@ class FakeDecisionsStore:
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         return dict(self.placements)
 
-    async def fetch_last_ledger_sync(self) -> datetime | None:
-        return self.synced_at
+    async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
+        return [
+            LineOverride(
+                f"ovr{p.transaction_cm_id:012d}", p.transaction_cm_id, p.person_cm_id, p.session_cm_id, p.program_family
+            )
+            for p in self.placements.values()
+        ]
+
+    async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
+        return self.synced_at if year == YEAR else self.synced_other_years.get(year)
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
@@ -397,3 +407,23 @@ def share_row(request_id: str, household: int, pct: str) -> PayerShareRecord:
         source="staff",
         actor=ACTOR,
     )
+
+
+def seed_override(
+    store: FakeDecisionsStore, txn: int, person: int, at: datetime, *, session: int = 0, family: str = ""
+) -> None:
+    """A staff placement of one line, as the write path logs it: created at `at`."""
+    store.placements[txn] = Placement(txn, person, session, family)
+    body = {
+        "transaction_cm_id": txn,
+        "year": YEAR,
+        "attributed_person_cm_id": person,
+        "attributed_session_cm_id": session,
+        "program_family": family,
+    }
+    _log(store, AID_ATTRIBUTION_OVERRIDES, f"ovr{txn:012d}", None, body, at)
+
+
+def log_delete(store: FakeDecisionsStore, entity: str, entity_id: str, before: dict[str, Any], at: datetime) -> None:
+    """One logged delete (its `before` is the whole record)."""
+    _log(store, entity, entity_id, before, None, at)

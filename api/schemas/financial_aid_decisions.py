@@ -151,8 +151,8 @@ class CountOut(BaseModel):
 
 class CellOut(BaseModel):
     allocated: float | None
-    posted: float
-    accepted: float
+    posted: float | None  # None: a past read whose posted money can't be replayed exactly
+    accepted: float | None
     needs_offer: float | None
     pending_approval: float | None
     remaining: float | None
@@ -167,7 +167,7 @@ class BelowTheLineOut(BaseModel):
     held_asked: float | None
     outside_grants: float | None
     outside_budget: float | None
-    outside_budget_posted: float
+    outside_budget_posted: float | None
 
 
 class ForwardDemandOut(BaseModel):
@@ -189,8 +189,8 @@ class PoolBudgetOut(BaseModel):
 class RoundCountsOut(BaseModel):
     round: int
     needs_offer: CountOut | None
-    posted: CountOut
-    accepted: CountOut
+    posted: CountOut | None
+    accepted: CountOut | None
     held: CountOut | None
     pending_approval: CountOut | None
 

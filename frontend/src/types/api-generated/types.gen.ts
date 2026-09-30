@@ -1157,7 +1157,7 @@ export type BelowTheLineOut = {
   /**
    * Outside Budget Posted
    */
-  outside_budget_posted: number
+  outside_budget_posted: number | null
 }
 
 /**
@@ -2055,11 +2055,11 @@ export type CellOut = {
   /**
    * Posted
    */
-  posted: number
+  posted: number | null
   /**
    * Accepted
    */
-  accepted: number
+  accepted: number | null
   /**
    * Needs Offer
    */
@@ -10683,11 +10683,11 @@ export type RoundCellOut = {
   /**
    * Posted
    */
-  posted: number
+  posted: number | null
   /**
    * Accepted
    */
-  accepted: number
+  accepted: number | null
   /**
    * Needs Offer
    */
@@ -10715,8 +10715,8 @@ export type RoundCountsOut = {
    */
   round: number
   needs_offer: CountOut | null
-  posted: CountOut
-  accepted: CountOut
+  posted: CountOut | null
+  accepted: CountOut | null
   held: CountOut | null
   pending_approval: CountOut | null
 }
