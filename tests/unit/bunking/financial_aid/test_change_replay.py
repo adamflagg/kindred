@@ -68,27 +68,32 @@ def test_same_instant_rows_that_change_different_fields_apply_in_either_order() 
         assert replay(rows)["r1"].state == {"a": 2, "b": 2}
 
 
+def _swap(vacate_id: int, final_id: int) -> tuple[LogRow, LogRow]:
+    """Intake's cycle-breaker: vacate (session 0), then the final session (102), in one batch. Both
+    rows' `before` is the original record, so the order inside the instant is unknown. Rows sharing
+    an instant replay in id order, so with the vacate's id the higher one, id order alone leaves
+    session 0: only settling the clash gives 102."""
+    return (
+        _row(vacate_id, "r1", {"session": 101}, {"session": 0}, 1),
+        _row(final_id, "r1", {"session": 101}, {"session": 102}, 1),
+    )
+
+
 def test_a_same_instant_clash_is_settled_by_the_next_row_that_logged_the_field() -> None:
-    """Intake's cycle-breaker: vacate (session 0), then the final session, in one batch. Both rows'
-    `before` is the original record, so the order inside the instant is unknown."""
     create = _row(0, "r1", None, {"session": 101, "status": "active"}, 0)
-    vacate = _row(1, "r1", {"session": 101}, {"session": 0}, 1)
-    final = _row(2, "r1", {"session": 101}, {"session": 102}, 1)
     later = _row(3, "r1", {"session": 102}, {"session": 103}, 5)
-    for pair in ([vacate, final], [final, vacate]):
-        state = replay([create, *pair, later], as_of=T0 + timedelta(hours=2))["r1"]
-        assert (state.state, state.complete) == ({"session": 102, "status": "active"}, True)
+    for ids in ((2, 1), (1, 2)):  # (2, 1): the vacate replays last
+        vacate, final = _swap(*ids)
+        for pair in ([vacate, final], [final, vacate]):
+            state = replay([create, *pair, later], as_of=T0 + timedelta(hours=2))["r1"]
+            assert (state.state, state.complete) == ({"session": 102, "status": "active"}, True), ids
 
 
 def test_a_same_instant_clash_with_nothing_after_is_settled_by_the_record_now() -> None:
     create = _row(0, "r1", None, {"session": 101}, 0)
-    rows = [
-        create,
-        _row(2, "r1", {"session": 101}, {"session": 102}, 1),
-        _row(1, "r1", {"session": 101}, {"session": 0}, 1),
-    ]
-    replayed = replay(rows, current={"r1": {"session": 102}})["r1"]
-    assert (replayed.state, replayed.complete) == ({"session": 102}, True)
+    for ids in ((2, 1), (1, 2)):  # (2, 1): the vacate replays last
+        replayed = replay([create, *_swap(*ids)], current={"r1": {"session": 102}})["r1"]
+        assert (replayed.state, replayed.complete) == ({"session": 102}, True), ids
 
 
 def test_a_same_instant_clash_nothing_settles_is_incomplete() -> None:
@@ -123,8 +128,7 @@ def test_a_clash_followed_by_a_same_instant_pair_settles_from_the_value_no_sibli
     """The next instant holds a chain 102 -> 103 -> 104 written in one batch; the value the clash
     left is the one `before` no sibling's `after` explains (102), whichever row sorts first."""
     create = _row(0, "r1", None, {"session": 101}, 0)
-    vacate = _row(1, "r1", {"session": 101}, {"session": 0}, 1)
-    final = _row(2, "r1", {"session": 101}, {"session": 102}, 1)
+    vacate, final = _swap(2, 1)  # the vacate replays last: only settling gives 102
     step_a = _row(3, "r1", {"session": 102}, {"session": 103}, 3)
     step_b = _row(4, "r1", {"session": 103}, {"session": 104}, 3)
     for pair in ([vacate, final], [final, vacate]):
