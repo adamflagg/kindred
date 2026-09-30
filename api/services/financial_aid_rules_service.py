@@ -35,11 +35,11 @@ for an approval or a lock; an approval's note, which names the approving body
 that in the same row, as the section_status change.
 
 SP9 adds the rules draft: `save_sections` (the section editors' and a promotion's save, which never overwrites an
-approved or locked section in use: see `_protected`; `quality_checks` is the known exception, plan Decision 19), a
+approved or locked section in use: see `_protected`), a
 first lock that reaches an open rules draft (`lock_writes`), the Rules tab's `draft_view`, D76's `approved_view`, and
 `promotion_preview` / `promote` ("Make B2 the rules draft"). The whole-document `save` refuses to touch an approved
-section of the version pricing the season (`PricingVersionInUseError`); it does not guard the version intake
-reads (`save_sections` does).
+section of the version pricing the season, or of programs and cost on the version intake reads
+(`PricingVersionInUseError`).
 
 Every refusal raised here subclasses FinancialAidError, so a router can map
 them with one `except` without catching pydantic's ValidationError.
@@ -113,6 +113,7 @@ PRICING_SECTIONS: Final[tuple[SectionName, ...]] = (
     "round2",
     "round3",
     "budget",
+    "quality_checks",  # pricing reads the hold-check thresholds, so a draft's settings must not hold live requests
 )
 
 
@@ -141,8 +142,9 @@ class NoSectionsNamedError(FinancialAidError, ValueError):
 
 
 class PricingVersionInUseError(FinancialAidError, ValueError):
-    """A whole-document save would change an approved or locked section of the version pricing the season; the section
-    editor branches a new version instead. (Only the pricing version is guarded here, not one only intake reads.)"""
+    """A whole-document save would change an approved or locked section of a version that is read for it (the whole
+    version when it prices the season, programs and cost when only intake reads it); the section editor branches a
+    new version instead."""
 
 
 class ReplacementNotAcknowledgedError(FinancialAidError, ValueError):
@@ -519,7 +521,7 @@ class FinancialAidRulesService:
         plan Decision 5): each PRICING_SECTIONS section from the version pricing the season when there is one
         (the rules that price the registrar's work), and every other section -- or a pricing section while no
         version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
-        [section])`). So editing stages, quality_checks or milestones in a draft never blanks the read.
+        [section])`). So editing stages or milestones in a draft never blanks the read.
         """
         if version is not None:
             chosen = await self.load(year, version)
@@ -624,11 +626,11 @@ class FinancialAidRulesService:
         report = validate_rules(document, context)
         outcome = apply_edit(current.document, document, current.section_status, before=before, after=report)
         touched = [*changed_sections(current.document, document), *outcome.reverted]
-        # Only a version that prices the season is guarded here; an intake-only read is protected in save_sections.
-        in_use = await self._sections_in_use(current, intake=False)
+        # The version that prices the season is guarded whole; one only intake reads, for programs and cost.
+        in_use = await self._sections_in_use(current)
         if any(name in in_use and current.section_status[name].state in ("approved", "locked") for name in touched):
             raise PricingVersionInUseError(
-                f"Version {current.version} of {year} prices the season: a whole-document save would "
+                f"Version {current.version} of {year} is in use: a whole-document save would "
                 "send its approved sections back to draft. Use the section editor, which branches a new version"
             )
         # This save doesn't stamp (plan Decision 4), so a section it touches drops any earlier edit stamp rather than
@@ -658,10 +660,8 @@ class FinancialAidRulesService:
         """Save `candidate` over the rules draft (the latest version), which the editor opened as `base_version`.
 
         This is the section editors' save and a promotion's (SP9, spec §7.5, D39). Unlike the whole-document
-        `save`, it never overwrites an approved or locked section in use. One hole: pricing also reads
-        `quality_checks`, which is not in PRICING_SECTIONS, so a never-approved quality_checks section on the
-        version pricing the season is edited in place and changes live holds at once (plan Decision 19 asks the
-        owner). When a changed section is approved or locked here and `_protected` says the approved copy would
+        `save`, it never overwrites an approved or locked section in use. (`quality_checks` is a pricing
+        section, so a never-approved one does not price the season either.) When a changed section is approved or locked here and `_protected` says the approved copy would
         be lost, the whole candidate becomes a new version (parent = this one): changed approved sections go to
         draft there, and a changed locked section's lock is lifted there only. Otherwise it saves in place,
         lifting any lock that is only a copy of the parent's.

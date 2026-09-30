@@ -313,6 +313,27 @@ async def test_a_branched_version_replays_through_approved_as_of() -> None:
     assert after.document.awards.minimum == Decimal(150)
 
 
+# --- quality_checks prices the season ---------------------------------------------------------------------
+
+
+def test_quality_checks_is_a_pricing_section() -> None:
+    assert "quality_checks" in PRICING_SECTIONS
+
+
+@pytest.mark.asyncio
+async def test_a_draft_quality_checks_section_does_not_change_the_version_pricing_the_season() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    lax = with_lever(fictional_rules(), "quality_checks.checks.household_income_conflict", {"severity": "warn"})
+    saved = await service.save_sections(2031, 1, lax, actor=TREASURER)
+    assert saved.branched_from == 1  # branches rather than editing the version pricing the season
+    assert (await service.latest_approved(2031, PRICING_SECTIONS)).version == 1  # type: ignore[union-attr]
+    assert (await service.load(2031, 1)).document.quality_checks == fictional_rules().quality_checks
+    draft = await service.draft_view(2031)
+    assert draft.approved_version == 1
+    assert {s.section: len(s.changes) for s in draft.sections}["quality_checks"] > 0
+
+
 # --- the whole-document save (save) refuses to overwrite approved rules in use -------------------------
 
 
@@ -353,6 +374,37 @@ async def test_a_whole_document_save_that_only_knocks_back_an_approved_section_i
         await service.save(2031, 1, fictional_rules(), actor=TREASURER)
     assert len(store.operations) == before
     assert (await service.load(2031, 1)).section_status["programs"].state == "approved"
+
+
+async def _intake_only_v2(store: FakeStore) -> FinancialAidRulesService:
+    """v1 prices the season; v2 (awards back to draft) is the newest version with programs and cost approved,
+    so intake reads v2 for them while pricing stays on v1."""
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    assert (await service.latest_approved(2031, PRICING_SECTIONS)).version == 1  # type: ignore[union-attr]
+    return service
+
+
+@pytest.mark.asyncio
+async def test_a_whole_document_save_over_approved_programs_or_cost_that_intake_reads_is_refused() -> None:
+    store = FakeStore()
+    service = await _intake_only_v2(store)
+    before = len(store.operations)
+    for lever, value in (("cost.infant_age_cutoff_months", 30), ("programs.quest.label", "Quest II")):
+        edited = with_lever(_minimum(fictional_rules(), "150"), lever, value)
+        with pytest.raises(PricingVersionInUseError):
+            await service.save(2031, 2, edited, actor=TREASURER)
+    assert len(store.operations) == before
+    status = (await service.load(2031, 2)).section_status
+    assert (status["programs"].state, status["cost"].state) == ("approved", "approved")
+
+
+@pytest.mark.asyncio
+async def test_a_whole_document_save_of_a_draft_section_on_the_intake_version_still_saves() -> None:
+    store = FakeStore()
+    service = await _intake_only_v2(store)
+    saved, _ = await service.save(2031, 2, _minimum(fictional_rules(), "175"), actor=TREASURER)
+    assert saved.document.awards.minimum == Decimal(175)
 
 
 @pytest.mark.asyncio
