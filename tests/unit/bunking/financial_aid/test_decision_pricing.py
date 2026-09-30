@@ -235,3 +235,31 @@ def test_a_held_or_pending_round_reports_no_decided_amount() -> None:
     r3 = price_request(item(rounds=rounds), RULES).view(3)
     assert r3 is not None
     assert (r3.status, r3.decided, r3.pending) == ("pending_approval", None, Decimal(400))
+
+
+def test_extra_is_the_decision_types_own_money_inside_an_unposted_round() -> None:
+    rules = with_lever(RULES, "awards.decision_types.discretionary.round", 2)
+    keyed = RoundState(round=2, ask=Decimal(99999), discretionary=Decimal(250), discretionary_type="discretionary")
+    priced = price_request(item(rounds={1: POSTED_R1, 2: keyed}), rules)
+    r1, r2 = priced.view(1), priced.view(2)
+    assert r1 is not None
+    assert r2 is not None
+    assert (r1.extra, r2.extra, r2.decided) == (Decimal(0), Decimal(250), Decimal(850))
+
+
+def test_extra_of_a_posted_round_is_what_its_lock_snapshot_recorded() -> None:
+    rules = with_lever(RULES, "awards.decision_types.discretionary.round", 2)
+    snapshot = {
+        "pool": "camp_pool",
+        "counts_toward_budget": True,
+        "result": {"top_up": None, "discretionary": "250"},
+    }
+    keyed = RoundState(round=2, ask=Decimal(99999), discretionary=Decimal(250), discretionary_type="discretionary")
+    posted = replace(keyed, posted=True, locked_amount=Decimal(850), locked_at=T0, snapshot=snapshot)
+    r2 = price_request(item(rounds={1: POSTED_R1, 2: posted}), rules).view(2)
+    assert r2 is not None
+    assert r2.extra == Decimal(250)
+    bare = replace(posted, snapshot={"pool": "camp_pool", "counts_toward_budget": True})
+    r2_bare = price_request(item(rounds={1: POSTED_R1, 2: bare}), rules).view(2)
+    assert r2_bare is not None
+    assert r2_bare.extra == Decimal(0)

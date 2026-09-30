@@ -72,7 +72,9 @@ class RequestToPrice:
 class RoundView:
     """One round's figures. `decided` is worked out now (a posted round's is the amount it locked);
     `locked` is the Posted amount (D59), None while not posted; `pending` is Pending approval's
-    keyed amount (D79). A posted round's pool and budget treatment are those recorded at its lock."""
+    keyed amount (D79). A posted round's pool and budget treatment are those recorded at its lock.
+    `extra` is the decision type's own money (top-up + discretionary) inside this round's amount: the
+    part `counts_toward_budget` moves outside the budget (spec §7.2), never the base round."""
 
     round: int
     status: RoundStatus
@@ -84,6 +86,7 @@ class RoundView:
     would_change_by: Decimal | None
     counts_toward_budget: bool
     pool: str | None
+    extra: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,20 @@ def _worked_out(result: CalcResult, decision: DecisionType | None, n: int) -> De
     if base is None:
         return extra if n > 1 else None
     return base + (extra or ZERO)
+
+
+def _extra_now(result: CalcResult | None, decision: DecisionType | None, n: int) -> Decimal:
+    if result is None or decision is None or decision.round != n:
+        return ZERO
+    return (result.top_up or ZERO) + result.discretionary
+
+
+def _extra_locked(snapshot: Mapping[str, Any], decision: DecisionType | None, n: int) -> Decimal:
+    """The decision type's money the lock recorded (its stored result's top_up + discretionary); 0 if none."""
+    stored = snapshot.get("result")
+    if decision is None or decision.round != n or not isinstance(stored, dict):
+        return ZERO
+    return sum((Decimal(str(stored[key])) for key in ("top_up", "discretionary") if stored.get(key) is not None), ZERO)
 
 
 def _exists(state: RoundState) -> bool:
@@ -240,6 +257,7 @@ def _view(
             would_change_by=_would_change(n, state, item, rules, decision),
             counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
             pool=locked_pool if isinstance(locked_pool, str) else None,
+            extra=_extra_locked(snapshot, decision, n),
         )
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
@@ -267,6 +285,7 @@ def _view(
         would_change_by=None,
         counts_toward_budget=counts,
         pool=pool,
+        extra=_extra_now(result, decision, n) if decided is not None else ZERO,
     )
 
 

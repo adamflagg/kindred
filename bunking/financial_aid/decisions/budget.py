@@ -160,16 +160,21 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
     def add(measure: str, amount: Decimal) -> None:
         tallies[(pool, view.round, measure)].add(request, amount)
 
+    outside = ZERO if view.counts_toward_budget else view.extra  # only the decision type's own money leaves (§7.2)
     if view.status == "posted":
         locked = view.locked or ZERO
-        if not view.counts_toward_budget:
-            add("outside_budget", locked)
-            return
-        add("posted", locked)
+        outside = min(outside, locked)
+        add("posted", locked - outside)
         if view.accepted:
-            add("accepted", locked)
+            add("accepted", locked - outside)
+        if outside:
+            add("outside_budget", outside)
     elif view.status == "needs_offer":
-        add("needs_offer" if view.counts_toward_budget else "outside_budget", view.decided or ZERO)
+        decided = view.decided or ZERO
+        outside = min(outside, decided)
+        add("needs_offer", decided - outside)
+        if outside:
+            add("outside_budget", outside)
     elif view.status == "pending_approval":
         add("pending_approval", view.pending or ZERO)
     elif view.status == "held":
@@ -201,7 +206,7 @@ def _tally_demand(
     elif r1.status in ("needs_offer", "posted"):
         amount = r1.locked if r1.status == "posted" else r1.decided
         if amount is not None:
-            unmet1[pool] += r1.ask - amount
+            unmet1[pool] += max(ZERO, r1.ask - amount)  # one family's overage never offsets another's unmet
 
 
 def _tally_of(tallies: _Tallies, pool: str, n: int, measure: str) -> _Tally:
