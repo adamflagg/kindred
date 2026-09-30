@@ -75,7 +75,7 @@ const ledgerRunPage = 100
 // holds a tick back over its own telemetry.
 func (s *AidPostingsSync) seasonInputStale(season int) (stale bool, lastGood string) {
 	runs, err := s.App.FindRecordsByFilter(syncRunsCollection,
-		"service = {:svc} && year >= {:lo} && year <= {:hi}", "-started", ledgerRunPage, 0,
+		"service = {:svc} && year >= {:lo} && year <= {:hi}", "-started,-id", ledgerRunPage, 0,
 		dbx.Params{"svc": serviceNameFinancialTransactions, "lo": season - 1, "hi": season + 1})
 	if err != nil {
 		return false, ""
