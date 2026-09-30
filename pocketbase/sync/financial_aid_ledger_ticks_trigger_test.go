@@ -198,3 +198,22 @@ func TestRunLedgerTickTriggerSkipsACancelledRun(t *testing.T) {
 		t.Errorf("called = %v, warnings = %d; want no tick and no warning", called, s.Stats.AidLedgerWarnings)
 	}
 }
+
+// A run cancelled (or out of time) partway through asks for no further season: each would fail on
+// the dead context and count a warning of its own.
+func TestRunLedgerTickTriggerStopsWhenTheRunIsCancelledMidway(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var asked []int
+	s := &AidPostingsSync{}
+	s.LedgerTickTrigger = func(ctx context.Context, year int) error {
+		asked = append(asked, year)
+		cancel()
+		return ctx.Err()
+	}
+	s.runLedgerTickTrigger(ctx, []int{2026, 2027, 2028})
+	if !slices.Equal(asked, []int{2026}) || s.Stats.AidLedgerWarnings != 1 {
+		t.Errorf("asked = %v, warnings = %d; want [2026] and 1 warning", asked, s.Stats.AidLedgerWarnings)
+	}
+}

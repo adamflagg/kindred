@@ -36,6 +36,9 @@ func (s *AidPostingsSync) runLedgerTickTrigger(ctx context.Context, years []int)
 		return
 	}
 	for _, year := range years {
+		if ctx.Err() != nil {
+			return // cancelled, or out of time, partway: the same holds for every season left
+		}
 		if err := s.LedgerTickTrigger(ctx, year); err != nil {
 			// A warning, not an error: an error marks the ledger run failed, and a failed run doesn't
 			// move "the last successful ledger sync", so every tick would read "awaiting tonight's
