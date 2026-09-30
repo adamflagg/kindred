@@ -218,17 +218,14 @@ func TestRunLedgerTickTriggerStopsWhenTheRunIsCancelledMidway(t *testing.T) {
 	}
 }
 
-// ledgerTickRun runs one 2026 aid_postings sync over a classified ledger, after financial_transactions
-// recorded a successful run and then `latest`, and returns the seasons it asked to tick.
-func ledgerTickRun(t *testing.T, latest string) (s *AidPostingsSync, ticked []int) {
+// ledgerTickRun runs one 2026 aid_postings sync over a classified ledger, after `runs` recorded
+// financial_transactions' history, and returns the seasons it asked to tick.
+func ledgerTickRun(t *testing.T, runs func(f *aidFixture)) (s *AidPostingsSync, ticked []int) {
 	t.Helper()
 	f := newAidFixture(t)
 	seedAidSiblings(f, 2026)
 	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
-	f.recordSyncRun(serviceNameFinancialTransactions, statusSuccess,
-		"2026-09-25T10:00:00.000Z", "2026-09-25T10:02:00.000Z")
-	f.recordSyncRun(serviceNameFinancialTransactions, latest,
-		"2026-09-27T10:00:00.000Z", "2026-09-27T10:05:00.000Z")
+	runs(f)
 	s = f.service()
 	s.Year, s.ConfigPath = 2026, f.writeConfig(aidTestConfig)
 	s.LedgerTickTrigger = func(_ context.Context, year int) error {
@@ -241,12 +238,32 @@ func ledgerTickRun(t *testing.T, latest string) (s *AidPostingsSync, ticked []in
 	return s, ticked
 }
 
+// nightlyThen records a successful nightly window run for 2026, then another ending `latest`.
+func nightlyThen(latest string) func(f *aidFixture) {
+	return func(f *aidFixture) {
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusSuccess, triggerDaily, 2026,
+			"2026-09-25T10:00:00.000Z", "2026-09-25T10:02:00.000Z")
+		f.recordSeasonRun(serviceNameFinancialTransactions, latest, triggerDaily, 2026,
+			"2026-09-27T10:00:00.000Z", "2026-09-27T10:05:00.000Z")
+	}
+}
+
+// skipLine is the log's skipped-tick warning, or "" when there is none.
+func skipLine(logs *strings.Builder) string {
+	for line := range strings.Lines(logs.String()) {
+		if strings.Contains(line, "Skipping the campership ledger tick") {
+			return line
+		}
+	}
+	return ""
+}
+
 // Owner ruling B (2026-09-30): financial_transactions' latest run failed, so aid_postings rebuilt from
 // yesterday's rows. Confirmation reads that night as no sync (Decision 12), so the tick is skipped too,
 // with a warning naming the skip and the last good transactions sync, and the run is not failed.
 func TestAidPostingsSyncSkipsTheLedgerTickOnStaleInput(t *testing.T) {
 	logs := captureSweepLogs(t)
-	s, ticked := ledgerTickRun(t, statusFailed)
+	s, ticked := ledgerTickRun(t, nightlyThen(statusFailed))
 	if len(ticked) != 0 {
 		t.Errorf("stale input ticked %v, want no tick", ticked)
 	}
@@ -254,28 +271,67 @@ func TestAidPostingsSyncSkipsTheLedgerTickOnStaleInput(t *testing.T) {
 	if got := s.GetStats().AidLedgerWarnings; got != 2 {
 		t.Errorf("AidLedgerWarnings = %d, want 2 (stale input + skipped tick)", got)
 	}
-	var skip string
-	for line := range strings.Lines(logs.String()) {
-		if strings.Contains(line, "Skipping the campership ledger tick") {
-			skip = line
-		}
-	}
+	skip := skipLine(logs)
 	if skip == "" {
 		t.Fatalf("log must name the skipped tick, got:\n%s", logs.String())
 	}
-	if !strings.Contains(skip, "level=WARN") ||
+	if !strings.Contains(skip, "level=WARN") || !strings.Contains(skip, "year=2026") ||
 		!strings.Contains(skip, "last_successful_transactions_sync=\"2026-09-25 10:02:00") {
-		t.Errorf("the skip must warn and name the last good transactions sync, got: %s", skip)
+		t.Errorf("the skip must warn and name the season and the last good covering run, got: %s", skip)
 	}
 }
 
 func TestAidPostingsSyncTicksWhenTheTransactionsRunSucceeded(t *testing.T) {
 	t.Parallel()
-	s, ticked := ledgerTickRun(t, statusSuccess)
+	s, ticked := ledgerTickRun(t, nightlyThen(statusSuccess))
 	if !slices.Equal(ticked, []int{2026}) {
 		t.Errorf("ticked %v, want [2026]", ticked)
 	}
 	if got := s.GetStats().AidLedgerWarnings; got != 0 {
 		t.Errorf("AidLedgerWarnings = %d, want 0", got)
+	}
+}
+
+// Fix round 1: staleness is judged per season with confirmation's coverage rule (ledger_run_covers).
+// The nightly run recorded as 2025 covers 2026 (its window is 2024..2026) and failed; the later
+// successful manual run covers only 2027, so 2026's newest covering run still failed.
+func TestAFailedNightlyThenASuccessfulManualRunForAnotherYearStillSkips2026(t *testing.T) {
+	logs := captureSweepLogs(t)
+	s, ticked := ledgerTickRun(t, func(f *aidFixture) {
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusSuccess, triggerDaily, 2026,
+			"2026-09-25T10:00:00.000Z", "2026-09-25T10:02:00.000Z")
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusFailed, triggerDaily, 2025,
+			"2026-09-27T10:00:00.000Z", "2026-09-27T10:05:00.000Z")
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusSuccess, triggerManual, 2027,
+			"2026-09-28T10:00:00.000Z", "2026-09-28T10:02:00.000Z")
+	})
+	if len(ticked) != 0 {
+		t.Errorf("ticked %v, want 2026 skipped", ticked)
+	}
+	// The global stale-input warning keys on the newest run (a success), so only the skip counts.
+	if got := s.GetStats().AidLedgerWarnings; got != 1 {
+		t.Errorf("AidLedgerWarnings = %d, want 1 (the skipped tick)", got)
+	}
+	if skip := skipLine(logs); !strings.Contains(skip, "year=2026") ||
+		!strings.Contains(skip, "last_successful_transactions_sync=\"2026-09-25 10:02:00") {
+		t.Errorf("the skip must name 2026 and its last good covering run, got: %q", skip)
+	}
+}
+
+// A failed manual run for 2025 covers only 2025, so it does not skip the 2026 tick that the
+// successful nightly run covers.
+func TestAFailedManualRunForAnotherYearDoesNotSkipACoveredSeason(t *testing.T) {
+	logs := captureSweepLogs(t)
+	_, ticked := ledgerTickRun(t, func(f *aidFixture) {
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusSuccess, triggerDaily, 2026,
+			"2026-09-27T10:00:00.000Z", "2026-09-27T10:02:00.000Z")
+		f.recordSeasonRun(serviceNameFinancialTransactions, statusFailed, triggerManual, 2025,
+			"2026-09-28T10:00:00.000Z", "2026-09-28T10:05:00.000Z")
+	})
+	if !slices.Equal(ticked, []int{2026}) {
+		t.Errorf("ticked %v, want [2026]", ticked)
+	}
+	if skip := skipLine(logs); skip != "" {
+		t.Errorf("no season was stale, but the log skipped one: %s", skip)
 	}
 }

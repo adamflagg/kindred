@@ -808,8 +808,9 @@ func TestAidPostingsSyncWarnsWhenTransactionsLastRunFailed(t *testing.T) {
 	logs := captureSweepLogs(t)
 	s := f.run(f.writeConfig(aidTestConfig), 2026)
 
-	if s.GetStats().AidLedgerWarnings < 1 {
-		t.Errorf("financial_transactions' last run failing must count as a warning, got AidLedgerWarnings=%d",
+	// Exactly one: the fixture wires no ledger tick trigger, so the skipped-tick warning stays silent.
+	if s.GetStats().AidLedgerWarnings != 1 {
+		t.Errorf("financial_transactions' last run failing must count as one warning, got AidLedgerWarnings=%d",
 			s.GetStats().AidLedgerWarnings)
 	}
 	// The as-of time is the last SUCCESSFUL run's end, not the failed run's.
