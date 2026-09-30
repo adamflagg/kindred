@@ -188,6 +188,13 @@ def test_a_session_placement_matches_the_persons_only_unmatched_request() -> Non
     assert placed([line(1, "1800", person=1000011)], [lost, other], old) == {}  # not their only request
 
 
+def test_a_family_camp_placement_beats_the_persons_lone_unmatched_request() -> None:
+    lost = request("emma", session=0, family="", status="unmatched_session")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    staff = {1: Placement(1, 1000011, 1000201, "family_camp")}
+    assert placed([line(1, "700", person=1000011)], [lost, weekend], staff) == {1: "fam"}
+
+
 # --- small helpers -------------------------------------------------------------------------------
 
 

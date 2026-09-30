@@ -174,19 +174,21 @@ def _place_by_staff(
     by_person: Mapping[int, Sequence[PlaceableRequest]],
     by_household: Mapping[int, Sequence[PlaceableRequest]],
 ) -> str | None:
-    """A staff placement decides: the named person's request it matches (one only); else, for a
-    session placement, that person's only live request when it is unmatched (session 0); else, when
-    the placement names Family Camp, the household's own request it matches (one only)."""
+    """A staff placement decides: the named person's request it matches (one only); else, when
+    the placement names Family Camp, the household's own request it matches (one only); and only when
+    nothing matched there, for a session placement, that person's only live request if unmatched."""
     own = list(by_person.get(placement.person_cm_id, ())) if placement.person_cm_id > 0 else []
     matched = _matching(own, placement)
     if matched:
         return _one(matched)
+    if placement.program_family == FAMILY_CAMP or placement.session_cm_id:
+        household = [r for r in by_household.get(line.household_cm_id, ()) if r.person_cm_id == 0]
+        fallback = _matching(household, placement)
+        if fallback:
+            return _one(fallback)
     if own and placement.session_cm_id and len({r.id for r in own}) == 1 and own[0].session_cm_id == 0:
         return own[0].id
-    if not (placement.program_family == FAMILY_CAMP or placement.session_cm_id):
-        return None
-    household = [r for r in by_household.get(line.household_cm_id, ()) if r.person_cm_id == 0]
-    return _one(_matching(household, placement))
+    return None
 
 
 def _place(
