@@ -514,3 +514,9 @@ class FinancialAidIntakeRepository:
             identity, pronouns = gender.get(person, (UNKNOWN_EQUITY.gender_identity, UNKNOWN_EQUITY.pronouns))
             result[person] = EquityAnswers(bipoc, identity, pronouns)
         return result
+
+
+# Public names for the as-of reads (3c), which parse records rebuilt from aid_change_log.
+request_record = _request
+application_record = _application
+payer_share_record = _payer_share

@@ -15,9 +15,11 @@ from decimal import Decimal
 from typing import Any, Final
 
 from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
+from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
 from api.services.financial_aid_repository import FinancialAidRepository
+from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
 
 # Events that carry no amount: PocketBase stores 0 for an unset number, which must not read as $0.
@@ -88,6 +90,9 @@ _HOLD_SEASON_FIELDS = "id,request,event,code,note,actor,created"
 
 
 class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
+    async def fetch_change_log(self, year: int, entity: str) -> list[LogRow]:
+        return await fetch_change_log(self.pb, year, entity)
+
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]:
         rows = await self._page(AID_DECISIONS, {"filter": f"year = {int(year)}", "sort": "created,id"})
         return [decision_event(row) for row in rows]
