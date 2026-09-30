@@ -39,3 +39,14 @@ def test_a_clawed_back_round_adds_no_forward_demand() -> None:
         Decimal(0),
         Decimal(0),
     )
+
+
+def test_a_clawed_back_round_1_leaves_a_live_unposted_round_2_ask_in_demand() -> None:
+    r1 = replace(view(1, "posted", ask="2000", locked="1450", accepted=True), clawed_back=True)
+    r2 = view(2, "needs_offer", ask="500", decided="400")
+    demand = pool_of(season_budget([priced("emma", 1, r1, r2)], RULES, outside_grants={}), "camp_pool").demand
+    assert (demand.round2_asks, demand.round2_asked, demand.round2_computed) == (
+        Count(1, 1),
+        Decimal(500),
+        Decimal(400),
+    )

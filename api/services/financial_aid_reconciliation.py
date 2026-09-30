@@ -39,6 +39,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import (
@@ -151,20 +152,38 @@ class SeasonLedger:
 FAMILY_CAMP = "family_camp"
 
 
-def _one(candidates: Sequence[PlaceableRequest]) -> str | None:
+class _Miss(Enum):
+    """Why the live pass placed nothing. Only NONE lets the closed-request pass run: several live
+    candidates, or one rejected on attribution, are AMBIGUOUS and stay at family level."""
+
+    NONE = "none"
+    AMBIGUOUS = "ambiguous"
+
+
+def _one(candidates: Sequence[PlaceableRequest]) -> str | _Miss:
     ids = {r.id for r in candidates}
-    return next(iter(ids)) if len(ids) == 1 else None
+    if not ids:
+        return _Miss.NONE
+    return next(iter(ids)) if len(ids) == 1 else _Miss.AMBIGUOUS
 
 
-def _household_request(line: CampLine, by_household: Mapping[int, Sequence[PlaceableRequest]]) -> str | None:
+def _household_request(
+    line: CampLine, by_household: Mapping[int, Sequence[PlaceableRequest]], own_closed: bool
+) -> str | _Miss:
     """The household's own (Family Camp) request, only when it is the household's only live request
-    and Go did not tag the line with another program."""
+    and Go did not tag the line with another program. With none of those (person 0) it is NONE when
+    the household holds nothing live, or holds only a person-level request and the line's person's
+    own request is closed (a sibling's request is not theirs); otherwise other live requests make
+    the line AMBIGUOUS."""
     if line.program_family not in ("", FAMILY_CAMP):
-        return None
+        return _Miss.NONE
     held = by_household.get(line.household_cm_id, ())
+    own = [r for r in held if r.person_cm_id == 0]
+    if not own:
+        return _Miss.NONE if own_closed or not held else _Miss.AMBIGUOUS
     if len({r.id for r in held}) != 1:
-        return None
-    return _one([r for r in held if r.person_cm_id == 0])
+        return _Miss.AMBIGUOUS
+    return _one(own)
 
 
 def _matching(pool: Sequence[PlaceableRequest], placement: Placement) -> list[PlaceableRequest]:
@@ -180,7 +199,7 @@ def _place_by_staff(
     placement: Placement,
     by_person: Mapping[int, Sequence[PlaceableRequest]],
     by_household: Mapping[int, Sequence[PlaceableRequest]],
-) -> str | None:
+) -> str | _Miss:
     """A staff placement decides: the named person's request it matches (one only); else, when
     the placement names Family Camp, the household's own request it matches (one only); and only when
     nothing matched there, for a session placement, that person's only live request if unmatched."""
@@ -195,7 +214,7 @@ def _place_by_staff(
             return _one(fallback)
     if own and placement.session_cm_id and len({r.id for r in own}) == 1 and own[0].session_cm_id == 0:
         return own[0].id
-    return None
+    return _Miss.NONE
 
 
 def _place(
@@ -203,22 +222,23 @@ def _place(
     placement: Placement | None,
     by_person: Mapping[int, Sequence[PlaceableRequest]],
     by_household: Mapping[int, Sequence[PlaceableRequest]],
-) -> str | None:
+    own_closed: bool = False,
+) -> str | _Miss:
     if placement is not None:
         return _place_by_staff(line, placement, by_person, by_household)
     if line.person_cm_id > 0:
         mine = by_person.get(line.person_cm_id, ())
         if not mine:
-            return _household_request(line, by_household)
+            return _household_request(line, by_household, own_closed)
         only = _one(mine)
-        if only is None:
-            return None  # several candidates: never narrowed by Go's attribution
+        if isinstance(only, _Miss):
+            return only  # several candidates: never narrowed by Go's attribution
         request = mine[0]
         named = line.attributed_person_cm_id == line.person_cm_id
         if named and line.program_family and request.program_family and line.program_family != request.program_family:
-            return None
+            return _Miss.AMBIGUOUS
         return only
-    return _household_request(line, by_household)
+    return _household_request(line, by_household, False)
 
 
 def _index(
@@ -232,24 +252,6 @@ def _index(
         for household in r.share_households | {r.household_cm_id}:
             by_household[household].append(r)
     return by_person, by_household
-
-
-def _has_live_candidate(
-    line: CampLine,
-    placement: Placement | None,
-    by_person: Mapping[int, Sequence[PlaceableRequest]],
-    by_household: Mapping[int, Sequence[PlaceableRequest]],
-    closed_person: Mapping[int, Sequence[PlaceableRequest]],
-) -> bool:
-    """Whether the live pass had anyone to choose from: the person holds a live request, or (when the
-    person has no request of their own, live or closed) the household holds one. A person whose own
-    request is closed is not shadowed by a sibling's live request."""
-    person = placement.person_cm_id if placement is not None else line.person_cm_id
-    if person > 0 and by_person.get(person):
-        return True
-    if person > 0 and closed_person.get(person):
-        return False
-    return bool(by_household.get(line.household_cm_id))
 
 
 def build_ledger(
@@ -277,15 +279,15 @@ def build_ledger(
     unplaced: dict[int, Decimal] = defaultdict(Decimal)
     for line in lines:
         placement = placements.get(line.transaction_cm_id)
-        request_id = _place(line, placement, by_person, by_household)
-        if request_id is not None:
-            placed[request_id].append(line)
+        own_closed = line.person_cm_id > 0 and bool(closed_person.get(line.person_cm_id))
+        outcome = _place(line, placement, by_person, by_household, own_closed)
+        if isinstance(outcome, str):
+            placed[outcome].append(line)
             continue
         # The second pass runs on ABSENCE only: several live candidates are ambiguity, and stay at family level.
-        has_live = _has_live_candidate(line, placement, by_person, by_household, closed_person)
-        closed_id = None if has_live else _place(line, placement, closed_person, closed_household)
-        if closed_id is not None:
-            closed[closed_id].append(line)
+        closed_outcome = _place(line, placement, closed_person, closed_household) if outcome is _Miss.NONE else outcome
+        if isinstance(closed_outcome, str):
+            closed[closed_outcome].append(line)
         elif line.live():
             unplaced[line.household_cm_id] += line.amount
     return SeasonLedger(
@@ -341,7 +343,7 @@ def apply_clawback(
     lines: Sequence[CampLine],
     *,
     at: datetime | None = None,
-    family_unplaced: Decimal = ZERO,
+    family_unplaced: Decimal,
 ) -> tuple[PricedRequest, date | None]:
     """The request with every posted round marked clawed back when its money came back, and the
     reversal's day; otherwise the same request and None. All of a request's posted rounds go

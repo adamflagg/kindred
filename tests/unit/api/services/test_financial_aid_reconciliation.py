@@ -235,14 +235,16 @@ R1 = priced("emma", 1000001, view(1, "posted", locked="1800", accepted=True))
 
 
 def test_a_reversal_with_nothing_left_live_claws_the_posted_rounds_back() -> None:
-    out, day = apply_clawback(R1, POSTED_R1, [line(1, "1800", posted=MAR9, reversed_at=JUN1)])
+    out, day = apply_clawback(
+        R1, POSTED_R1, [line(1, "1800", posted=MAR9, reversed_at=JUN1)], family_unplaced=Decimal(0)
+    )
     assert day == date(2027, 6, 1)
     assert [v.clawed_back for v in out.rounds] == [True]
 
 
 def test_an_appeals_reverse_and_repost_is_not_a_clawback() -> None:
     lines = [line(1, "1800", posted=MAR9, reversed_at=JUN1), line(2, "2100", posted=JUN1)]
-    out, day = apply_clawback(R1, POSTED_R1, lines)
+    out, day = apply_clawback(R1, POSTED_R1, lines, family_unplaced=Decimal(0))
     assert day is None
     assert out is R1
 
@@ -250,24 +252,30 @@ def test_an_appeals_reverse_and_repost_is_not_a_clawback() -> None:
 def test_a_line_reversed_before_the_round_was_posted_is_no_clawback() -> None:
     """A typo reversed on Mar 8, before the registrar's Mar 9 tick: that tick reads "not in CampMinder", not reversed."""
     lines = [line(1, "1700", posted=MAR8, reversed_at=datetime(2027, 3, 8, 20, 0, tzinfo=UTC))]
-    assert apply_clawback(R1, POSTED_R1, lines)[1] is None
+    assert apply_clawback(R1, POSTED_R1, lines, family_unplaced=Decimal(0))[1] is None
 
 
 def test_a_request_with_nothing_posted_or_nothing_placed_is_left_alone() -> None:
     needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
-    assert apply_clawback(needs, {}, [line(1, "1800", reversed_at=JUN1)]) == (needs, None)
-    assert apply_clawback(R1, POSTED_R1, []) == (R1, None)
+    assert apply_clawback(needs, {}, [line(1, "1800", reversed_at=JUN1)], family_unplaced=Decimal(0)) == (needs, None)
+    assert apply_clawback(R1, POSTED_R1, [], family_unplaced=Decimal(0)) == (R1, None)
 
 
 def test_as_of_a_day_before_the_reversal_the_money_is_still_posted() -> None:
     lines = [line(1, "1800", posted=MAR9, reversed_at=JUN1)]
-    assert apply_clawback(R1, POSTED_R1, lines, at=datetime(2027, 5, 1, tzinfo=UTC))[1] is None
-    assert apply_clawback(R1, POSTED_R1, lines, at=datetime(2027, 6, 2, tzinfo=UTC))[1] == date(2027, 6, 1)
+    assert (
+        apply_clawback(R1, POSTED_R1, lines, at=datetime(2027, 5, 1, tzinfo=UTC), family_unplaced=Decimal(0))[1] is None
+    )
+    assert apply_clawback(R1, POSTED_R1, lines, at=datetime(2027, 6, 2, tzinfo=UTC), family_unplaced=Decimal(0))[
+        1
+    ] == date(2027, 6, 1)
 
 
 def test_a_ledger_lock_with_no_posted_day_uses_the_day_it_locked() -> None:
     rounds = {1: replace(POSTED_R1[1], posted_on=None)}
-    assert apply_clawback(R1, rounds, [line(1, "1800", posted=MAR9, reversed_at=JUN1)])[1] == date(2027, 6, 1)
+    assert apply_clawback(R1, rounds, [line(1, "1800", posted=MAR9, reversed_at=JUN1)], family_unplaced=Decimal(0))[
+        1
+    ] == date(2027, 6, 1)
 
 
 # --- a closed (withdrawn / duplicate) request that holds posted money (D54 + SP10a Decision 13) ---
@@ -284,7 +292,7 @@ def test_a_withdrawn_requests_posted_money_is_clawed_back_when_campminder_revers
     withdrawn = request("r1", person=1000011, status="withdrawn")
     rev = line(1, "1800", person=1000011, posted=MAR9, reversed_at=JUN1, session=1000101, family="summer")
     ledger = build_ledger([rev], {}, [withdrawn], None, posted_request_ids=frozenset({"r1"}))
-    out, day = apply_clawback(R1, POSTED_R1, ledger.closed_lines("r1"))
+    out, day = apply_clawback(R1, POSTED_R1, ledger.closed_lines("r1"), family_unplaced=Decimal(0))
     assert day == date(2027, 6, 1)
     assert [v.clawed_back for v in out.rounds] == [True]
 
@@ -362,4 +370,34 @@ def test_the_first_posted_day_across_rounds_is_the_earliest() -> None:
     two = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "posted", locked="300"))
     rounds = {1: POSTED_R1[1], 2: replace(POSTED_R1[1], round=2, posted_on=date(2027, 6, 15))}
     between = [line(1, "2100", posted=MAR9, reversed_at=JUN1)]  # after Round 1's day, before Round 2's
-    assert apply_clawback(two, rounds, between)[1] == date(2027, 6, 1)
+    assert apply_clawback(two, rounds, between, family_unplaced=Decimal(0))[1] == date(2027, 6, 1)
+
+
+# --- fix round 2 ---------------------------------------------------------------------------------
+
+
+def test_a_staff_placement_on_a_withdrawn_session_lands_there_though_the_camper_has_a_live_request() -> None:
+    old = request("old", person=1000011, status="withdrawn", session=1000101)
+    live = request("live", person=1000011, session=1000102)
+    pl = {1: Placement(transaction_cm_id=1, person_cm_id=1000011, session_cm_id=1000101, program_family="")}
+    ledger = build_ledger([line(1, "1800", person=1000011)], pl, [old, live], None, frozenset({"old"}))
+    assert list(ledger.by_closed_request) == ["old"]
+    assert ledger.by_request == {}
+
+
+def test_a_staff_family_camp_placement_lands_on_a_withdrawn_family_camp_request_beside_a_childs_live_one() -> None:
+    old = request("old", person=0, status="withdrawn", session=1000201, family="family_camp")
+    child = request("kid", person=1000011)
+    pl = {1: Placement(transaction_cm_id=1, person_cm_id=0, session_cm_id=0, program_family="family_camp")}
+    ledger = build_ledger([line(1, "1800")], pl, [old, child], None, frozenset({"old"}))
+    assert list(ledger.by_closed_request) == ["old"]
+    assert ledger.by_request == {}
+
+
+def test_a_line_on_a_person_whose_own_request_is_withdrawn_stays_at_family_level_beside_two_live_family_camps() -> None:
+    old = request("old", person=1000011, status="withdrawn")
+    fc_a = request("fa", person=0, session=1000201, family="family_camp")
+    fc_b = request("fb", person=0, session=1000202, family="family_camp")
+    ledger = build_ledger([line(1, "1800", person=1000011)], {}, [old, fc_a, fc_b], None, frozenset({"old"}))
+    assert (ledger.by_request, ledger.by_closed_request) == ({}, {})
+    assert ledger.family_unplaced([1000001]) == Decimal(1800)

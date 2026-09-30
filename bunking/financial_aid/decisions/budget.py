@@ -200,17 +200,17 @@ def _tally_demand(
     Round 1 unmet ask, not yet appealed (§5.9): ask − Round 1 on a decided or posted Round 1, or the
     whole ask while Round 1 is held. It knows only the appeals keyed so far (a known gap, D82)."""
     r1, r2 = request.view(1), request.view(2)
-    if any(v is not None and v.clawed_back for v in (r1, r2)):
-        return  # D54: a declined offer is not unmet ask; a clawed-back round counts nowhere
     if r2 is not None and r2.ask is not None:
+        if r2.clawed_back:
+            return  # D54: a clawed-back round counts nowhere (and implies Round 1 was clawed back too)
         asks2[pool].add(request, r2.ask)
         if r2.status == "posted":
             computed2[pool] += r2.locked or ZERO
         elif r2.status == "needs_offer":
             computed2[pool] += r2.decided or ZERO
         return
-    if r1 is None or r1.ask is None:
-        return
+    if r1 is None or r1.ask is None or r1.clawed_back:
+        return  # D54: a declined offer is not unmet ask
     if r1.status == "held":
         unmet1[pool] += r1.ask
     elif r1.status in ("needs_offer", "posted"):
