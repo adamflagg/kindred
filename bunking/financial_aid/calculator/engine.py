@@ -217,9 +217,12 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     ceiling = rules.tiers.income_ceiling
     above_ceiling = ceiling is not None and adjusted_income > ceiling
     _round1(work, request, rules, program, decision, cost, final, reduce_award, above_ceiling=above_ceiling)
+    _lock(work, 1, request.r1_locked)
     _round2(work, request, rules, decision, final, above_ceiling=above_ceiling)
+    _lock(work, 2, request.r2_locked)
     _round3(work, request, rules, decision, above_ceiling=above_ceiling)
-    _total_cap(work, rules)
+    _lock(work, 3, request.r3_locked)
+    _total_cap(work, rules, request)
     _top_up(work, decision, above_ceiling=above_ceiling)
     _discretionary(work, decision, above_ceiling=above_ceiling)
     _total(work)
@@ -523,8 +526,27 @@ def _round3(
     work.step("r3", "Round 3 award", work.r3, inputs={"requested": amount}, bound=bound)
 
 
-def _total_cap(work: _Work, rules: AidRules) -> None:
-    """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut."""
+def _lock(work: _Work, n: int, locked: Decimal | None) -> None:
+    """A posted round keeps the amount it locked at (D43, D52), and later rounds build on it. The
+    amount worked out now stays in the trace, so the receipt shows both."""
+    if locked is None:
+        return
+    worked_out: Decimal | None = getattr(work, f"r{n}")
+    setattr(work, f"r{n}", locked)
+    setattr(work, f"r{n}_bound", "locked")
+    work.step(
+        f"r{n}_locked",
+        f"Round {n} as posted",
+        locked,
+        inputs={"worked_out": worked_out},
+        bound="locked",
+        note="Locked when it was posted; later rounds build on this amount",
+    )
+
+
+def _total_cap(work: _Work, rules: AidRules, request: RequestInputs) -> None:
+    """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut.
+    A locked round is never cut (D43): the cap takes its room from the rounds still open."""
     cap = rules.round2.total_cap
     if cap is None or (work.r2 is None and work.r3 is None):
         return
@@ -537,11 +559,11 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
     limit = pct_of(cap.pct_of_cost, work.cost) - (grants if cap.include_grants else ZERO)
     r2_before, r3_before = work.r2, work.r3
     room = max(limit - work.r1, ZERO)
-    if work.r2 is not None and work.r2 > room:
+    if work.r2 is not None and work.r2 > room and request.r2_locked is None:
         work.r2, work.r2_bound = floor_dollars(room), "total_cap"
         work.retrace("r2", work.r2, "total_cap", before=r2_before)
     room = max(room - (work.r2 or ZERO), ZERO)
-    if work.r3 is not None and work.r3 > room:
+    if work.r3 is not None and work.r3 > room and request.r3_locked is None:
         work.r3, work.r3_bound = floor_dollars(room), "total_cap"
         work.retrace("r3", work.r3, "total_cap", before=r3_before)
     work.step(

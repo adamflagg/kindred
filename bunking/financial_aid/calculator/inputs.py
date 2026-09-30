@@ -130,3 +130,9 @@ class RequestInputs(_Input):
     r1_decided_at: AwareDatetime | None = None
     # When Round 2 (the appeal) was decided; None while it is still open.
     r2_decided_at: AwareDatetime | None = None
+    # The amount each round locked at when it was posted (sub-project 10a; D43, D52). A locked
+    # round keeps it whatever the rules or inputs say now, and every later round builds on it;
+    # the amount worked out now stays in the trace (step "r{n}_locked") for "would change by".
+    r1_locked: Money | None = None
+    r2_locked: Money | None = None
+    r3_locked: Money | None = None

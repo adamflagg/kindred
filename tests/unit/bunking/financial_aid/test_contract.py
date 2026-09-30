@@ -51,6 +51,9 @@ def test_request_inputs_are_per_request() -> None:
         "discretionary_amount",
         "r1_decided_at",
         "r2_decided_at",
+        "r1_locked",
+        "r2_locked",
+        "r3_locked",
     } == set(RequestInputs.model_fields)
 
 
