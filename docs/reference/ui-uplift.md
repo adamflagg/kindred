@@ -84,11 +84,12 @@ Four across is the shortest, keeps every program visible, and takes a fifth prog
 
 **Shipped now:** the glow card on today's three cards, at the mockup's size — fixed 295px cards, 20px gaps, the call to action pinned to each card's bottom edge so the links line up — with the page reading its cards from a list (`PROGRAM_CARDS`).
 
-**When Camperships launches at `/aid`,** the landing card is one entry plus these:
+**When Camperships launches at `/aid`,** it arrives as the first program gated by permission: it opens with `financial_aid.view` **or** `financial_aid.summary`, and every place that lists programs shows only the ones the user can open (Camperships design rulings D5 and D65). The landing card is one `PROGRAM_CARDS` entry, plus the plumbing the Camperships build already plans:
 
-- Add the program to the `Program` union and the stored-selection guard in `contexts/ProgramContext.tsx`.
-- Add it to `utils/programUrls.ts`: `PROGRAM_HOME`, `PROGRAM_PREFIXES`, `isProgramRoute`, `getProgramFromPath`.
-- Add it to the header program menu in `layouts/AppLayout.tsx` — the menu staff actually switch with.
-- Add the `PROGRAM_CARDS` entry. The mockup used a berry colour (`hsl(330 55% 42%)` light, `hsl(330 65% 72%)` dark — needs adding as a theme token), lucide's `HandHeart` icon, and "Financial aid applications and awards" with the features *Application review*, *Award rounds against the budget* and *Grantor ledger*. All proposals, not decisions.
-- Change the grid columns. Cards are a fixed 295px with 20px gaps (the mockup's size), so four across is 1240px — wider than the `lg` breakpoint leaves room for. Use `lg:grid-cols-[repeat(2,295px)]` and `xl:grid-cols-[repeat(4,295px)]`.
-- Decide whether the card shows to users without access to aid.
+- `contexts/ProgramContext.tsx` — add the program to the `Program` union and the stored-selection guard.
+- `config/programButtons.ts` — the header's program menu is built from `PROGRAM_BUTTONS`; add the entry there.
+- `utils/programUrls.ts` — `PROGRAM_HOME`, `PROGRAM_PREFIXES`, `isProgramRoute`, `getProgramFromPath`.
+- `layouts/AppLayout.tsx` — nav links, logo target and the secondary bar.
+- **Filter by permission:** both `PROGRAM_BUTTONS` and `PROGRAM_CARDS` list only the programs the user can open, and `RootRedirect` (`App.tsx`) falls back when a saved program is no longer permitted.
+- **The landing card itself:** the mockup used a berry colour (`hsl(330 55% 42%)` light, `hsl(330 65% 72%)` dark — needs adding as a theme token), lucide's `HandHeart` icon, and "Financial aid applications and awards" with the features *Application review*, *Award rounds against the budget* and *Grantor ledger*. All proposals, not decisions.
+- **The grid:** cards are a fixed 295px with 20px gaps (the mockup's size), so four across is 1240px — wider than the `lg` breakpoint leaves room for. Use `lg:grid-cols-[repeat(2,295px)]` and `xl:grid-cols-[repeat(4,295px)]`. Because cards are filtered by permission, a user who cannot open Camperships still sees three.
