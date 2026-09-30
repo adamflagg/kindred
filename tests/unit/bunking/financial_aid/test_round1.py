@@ -319,3 +319,41 @@ def test_a_table_missing_the_final_tier_is_a_rules_error() -> None:
     message = next(i.message for i in result.issues if i.code == "rules_error")
     assert "camp" in message
     assert "tier 2" in message
+
+
+@pytest.mark.parametrize(
+    ("capped", "grant", "r1", "bound"),
+    [
+        (True, "1950", 50, "minimum"),  # only 50 is left to pay, so the minimum shrinks to it
+        (True, "2500", 0, "grants_cover"),  # a grant past the cost leaves nothing too, never a negative minimum
+        (True, "2000", 0, "grants_cover"),  # nothing left to pay: no minimum, no award above cost
+        (True, "500", 100, "minimum"),  # plenty left: the full minimum, as before
+        (False, "1950", 100, "minimum"),  # 2026 as operated: the minimum is paid on top regardless
+    ],
+)
+def test_the_minimum_can_be_capped_at_what_the_family_still_owes(capped: bool, grant: str, r1: int, bound: str) -> None:
+    # Owner ruling D140 (2026-09-30): the minimum award is the lesser of the minimum and what is
+    # left of the cost after counted grants, so a grant plus the minimum never passes the cost.
+    # Tier 6 at 2,000 (the table gives 40), minimum 100 paid on top of grants.
+    rules = with_lever(fictional_rules(), "grants.minimum_capped_at_share", capped)
+    result = _calc(rules, application=app(**TIER_6), session_cm_id=1000101, grants_applicable=[_grant(grant)])
+    assert (result.r1, result.r1_bound) == (Decimal(r1), bound)
+
+
+def test_the_minimum_is_not_capped_unless_the_season_says_so() -> None:
+    # 2026's document has no such setting; it must keep pricing as the sheet did (494/494 parity).
+    assert fictional_rules().grants.minimum_capped_at_share is False
+
+
+def test_an_appeal_total_cap_ignores_grants_unless_told_otherwise() -> None:
+    # Owner ruling D139 (2026-09-30): an appeal never subtracts outside grants.
+    from bunking.financial_aid.rules.schema import TotalCap
+
+    assert TotalCap(pct_of_cost=Decimal(50)).include_grants is False
+
+
+def test_the_trace_records_the_minimum_that_was_actually_applied() -> None:
+    rules = with_lever(fictional_rules(), "grants.minimum_capped_at_share", True)
+    result = _calc(rules, application=app(**TIER_6), session_cm_id=1000101, grants_applicable=[_grant("1950")])
+    step = result.step("r1_potential")
+    assert (step.inputs["minimum"], step.inputs["minimum_uncapped"]) == (Decimal(50), Decimal(100))
