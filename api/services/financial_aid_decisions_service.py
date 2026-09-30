@@ -455,37 +455,44 @@ _STORED_DEFAULTS: Final[Mapping[str, Any]] = {
 
 def _requests_as_of(
     log: Sequence[LogRow], at: datetime, today: Sequence[RequestRecord]
-) -> tuple[dict[str, RequestRecord], frozenset[str]]:
-    """Each request as it stood at `at`, replayed from its log. One whose history can't be replayed
-    (incomplete, or never logged) keeps today's identity (household, person, session) and is returned
-    in the second set; it is never read as state."""
+) -> tuple[dict[str, RequestRecord], frozenset[str], frozenset[str]]:
+    """Each request as it stood at `at`, replayed from its log, then the requests whose history can't
+    be replayed, never read as state:
+      - one that exists today keeps today's identity (household, person, session) and is returned in
+        the second set: its history is incomplete, or its create row is missing;
+      - one deleted since can't be shown at all, and is returned in the third set."""
     now = {r.id: r for r in today}
     rebuilt = replay(log, as_of=at, current={r.id: request_fields(r) for r in today})
-    logged = {row.entity_id for row in log}
+    made = {row.entity_id for row in log if row.before is None}
     out: dict[str, RequestRecord] = {}
     unrebuilt: set[str] = set()
+    deleted: set[str] = set()
     for request_id, record in rebuilt.items():
-        if record.state is None:
-            continue
         if record.complete:
-            out[request_id] = request_record(SimpleNamespace(id=request_id, **{**_STORED_DEFAULTS, **record.state}))
+            if record.state is not None:
+                out[request_id] = request_record(SimpleNamespace(id=request_id, **{**_STORED_DEFAULTS, **record.state}))
         elif request_id in now:
             out[request_id] = now[request_id]
             unrebuilt.add(request_id)
+        else:
+            deleted.add(request_id)
     for request_id, request in now.items():
-        if request_id not in logged:  # no history at all: nothing to replay from
+        if request_id not in made and request_id not in out:  # rows only after `at`, or none: no create to replay
             out[request_id] = request
             unrebuilt.add(request_id)
-    return out, frozenset(unrebuilt)
+    return out, frozenset(unrebuilt), frozenset(deleted)
 
 
-def _home_pool(request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules | None) -> str | None:
-    """The pool live pricing gives the request: its program's budget pool under the rules then."""
+def _home(
+    request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules | None
+) -> tuple[str | None, str | None]:
+    """(program key, pool) live pricing gives the request: its program under the rules then, and that
+    program's budget pool."""
     if rules is None:
-        return None
+        return None, None
     key = rules_program_key(request, sessions, rules)
     program = rules.programs.get(key) if key is not None else None
-    return program.budget_pool if program is not None else None
+    return key, program.budget_pool if program is not None else None
 
 
 def _past_cell[C: CellOut](cell: C) -> C:
@@ -636,17 +643,22 @@ class FinancialAidDecisionsService:
         hold events recorded by then, each request replayed from aid_change_log, the corrections made
         by then, and the rules replayed to then. Nothing is priced (as_of.price_as_of)."""
         at = as_of_instant(day)
-        log, today, corrections, sessions = await asyncio.gather(
-            self._store.fetch_change_log(year, AID_REQUESTS),
-            self._store.fetch_requests(year),
-            self._store.fetch_corrections(year, None),
-            self._store.fetch_sessions(year),
-        )
-        events, hold_events = await asyncio.gather(
-            self._store.fetch_decision_events(year), self._store.fetch_hold_events(year)
-        )
-        rules, gaps = await self._rules_as_of(year, at)
-        requests, unrebuilt = _requests_as_of(log, at, today)
+        rules_read = asyncio.create_task(self._rules_as_of(year, at))
+        try:
+            # Requests before the log: today's requests settle same-instant clashes in the log, so
+            # they must never run ahead of it (approved_as_of orders its reads the same way).
+            today, log, corrections, sessions, events, hold_events = await asyncio.gather(
+                self._store.fetch_requests(year),
+                self._store.fetch_change_log(year, AID_REQUESTS),
+                self._store.fetch_corrections(year, None),
+                self._store.fetch_sessions(year),
+                self._store.fetch_decision_events(year),
+                self._store.fetch_hold_events(year),
+            )
+            rules, gaps = await rules_read
+        finally:
+            rules_read.cancel()
+        requests, unrebuilt, deleted = _requests_as_of(log, at, today)
         rounds = fold_rounds(events, as_of=at)
         holds = fold_holds(hold_events, as_of=at)
         session_map = {s.cm_id: s for s in sessions}
@@ -658,6 +670,7 @@ class FinancialAidDecisionsService:
         for request_id, request in requests.items():
             ask = effective_ask(request, own.get(request.application_id, []))
             rebuilt = request_id not in unrebuilt
+            program_key, pool = _home(request, session_map, document) if rebuilt else (None, None)
             priced[request_id] = price_as_of(
                 request_id,
                 request.household_cm_id,
@@ -666,9 +679,10 @@ class FinancialAidDecisionsService:
                 live=rebuilt and request.status in _LIVE,
                 r1_ask=Decimal(ask.effective) if rebuilt and ask.effective != "" else None,
                 hold=holds.get(request_id, NO_HOLDS),
-                pool=_home_pool(request, session_map, document),
+                pool=pool,
+                program_key=program_key,
             )
-        gaps = (*gaps, *self._unresolved(priced, unrebuilt))
+        gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None))
         return Season(
             year=year,
             rules=rules,
@@ -685,10 +699,19 @@ class FinancialAidDecisionsService:
         )
 
     @staticmethod
-    def _unresolved(priced: Mapping[str, PricedRequest], unrebuilt: frozenset[str]) -> list[NotRebuiltOut]:
-        """The gaps a past rebuild names: requests whose history can't be replayed, and requests in the
-        budget whose home pool can't be resolved (they sit in No pool)."""
+    def _unresolved(
+        priced: Mapping[str, PricedRequest], unrebuilt: frozenset[str], deleted: frozenset[str], *, named_pools: bool
+    ) -> list[NotRebuiltOut]:
+        """The gaps a past rebuild names: requests whose history can't be replayed, requests deleted
+        since that can't be shown, and requests in the budget whose home pool can't be resolved (they
+        sit in No pool). With no rules by then every pool is unknown, and the rules gap covers it."""
         out: list[NotRebuiltOut] = []
+        if deleted:
+            out.append(
+                NotRebuiltOut(
+                    figure="request_deleted", reason=PAST_DATE_GAPS["request_deleted"], requests=sorted(deleted)
+                )
+            )
         if unrebuilt:
             out.append(
                 NotRebuiltOut(
@@ -696,7 +719,7 @@ class FinancialAidDecisionsService:
                 )
             )
         homeless = sorted(rid for rid, p in priced.items() if p.pool is None and p.rounds)
-        if homeless:
+        if homeless and named_pools:
             out.append(NotRebuiltOut(figure="pool_unknown", reason=PAST_DATE_GAPS["pool_unknown"], requests=homeless))
         return out
 

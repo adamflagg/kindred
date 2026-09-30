@@ -19,6 +19,7 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import CorrectionRecord
 from api.services.financial_aid_rules_service import RulesHistoryIncompleteError
+from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import (
     BUDGET_GAPS,
     GRID_GAPS,
@@ -374,7 +375,7 @@ async def test_a_create_row_without_the_headcount_keys_types_as_zero_zero_and_bl
     ]
     assert all("headcount_source" not in (r.after or {}) for r in store.change_log if r.entity == AID_REQUESTS)
     today = list(store.requests.values())
-    rebuilt, unrebuilt = _requests_as_of(await store.fetch_change_log(YEAR, AID_REQUESTS), NOW, today)
+    rebuilt, unrebuilt, _ = _requests_as_of(await store.fetch_change_log(YEAR, AID_REQUESTS), NOW, today)
     request = rebuilt[EMMA]
     assert unrebuilt == frozenset()
     assert (request.headcount_non_infant, request.headcount_infant, request.headcount_source) == (0, 0, "")
@@ -399,3 +400,144 @@ async def test_the_hold_history_is_folded_to_the_date_for_past_pricing() -> None
     (after,) = (await service.grid(YEAR, as_of=date(2027, 3, 31))).rows
     assert before.holds == []
     assert [h.code for h in after.holds or []] == [MANUAL_HOLD]
+
+
+@pytest.mark.asyncio
+async def test_a_past_rows_program_key_is_the_live_rows() -> None:
+    store = _seeded(EMMA)
+    service = _service(store)
+    (live,) = (await service.grid(YEAR)).rows
+    (past,) = (await service.grid(YEAR, as_of=MAR_9)).rows
+    assert live.program_key == "summer"
+    assert past.program_key == live.program_key
+
+
+GHOST = "reqghost0000001"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("deleted_by_then", [False, True])
+async def test_a_request_deleted_since_whose_history_cannot_be_replayed_is_named_not_dropped(
+    deleted_by_then: bool,
+) -> None:
+    store = _seeded(EMMA)
+    log_update(store, AID_REQUESTS, GHOST, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 1))  # no create row
+    if deleted_by_then:
+        store.change_log.append(
+            LogRow(
+                id="log999999999999",
+                entity=AID_REQUESTS,
+                entity_id=GHOST,
+                before={"ask": 3500.0},
+                after=None,
+                created=_day(3, 2),
+            )
+        )
+    out = await _service(store).grid(YEAR, as_of=MAR_9)
+    assert [row.request_id for row in out.rows] == [EMMA]
+    gap = next(g for g in out.not_rebuilt if g.figure == "request_deleted")
+    assert (gap.requests, gap.reason) == ([GHOST], PAST_DATE_GAPS["request_deleted"])
+    assert "request_history" not in [g.figure for g in out.not_rebuilt]
+
+
+@pytest.mark.asyncio
+async def test_a_request_whose_create_row_is_missing_and_whose_rows_all_follow_the_date_is_unrebuilt() -> None:
+    store = _seeded(EMMA)
+    store.change_log = [r for r in store.change_log if r.entity_id != EMMA]
+    log_update(store, AID_REQUESTS, EMMA, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 20))
+    out = await _service(store).grid(YEAR, as_of=MAR_9)
+    (row,) = out.rows  # not silently "didn't exist then"
+    assert row.request_status is None
+    gap = next(g for g in out.not_rebuilt if g.figure == "request_history")
+    assert gap.requests == [EMMA]
+
+
+@pytest.mark.asyncio
+async def test_an_unrebuilt_request_takes_no_pool_from_todays_session() -> None:
+    store = _seeded(EMMA)
+    store.change_log = [r for r in store.change_log if r.entity_id != EMMA]
+    log_update(store, AID_REQUESTS, EMMA, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 1))  # no create
+    _at(
+        store,
+        EMMA,
+        1,
+        "post",
+        _day(3, 5),
+        amount=Decimal(1500),
+        effective_on=MAR_9,
+        lock_source="tick",
+        rules_version=1,
+        snapshot={},
+    )
+    out = await _service(store).grid(YEAR, as_of=MAR_9)
+    (row,) = out.rows
+    assert (row.rounds[0].status, row.pool) == ("posted", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("history_incomplete", [False, True])
+async def test_no_rules_by_the_date_names_no_pool_unknown(history_incomplete: bool) -> None:
+    store = _seeded(EMMA)
+    rules = FakeRules(approved())
+    rules.as_of_version = RulesHistoryIncompleteError("aid_rules 2027:1") if history_incomplete else None
+    out = await _service(store, rules).budget(YEAR, as_of=MAR_9)
+    figures = [g.figure for g in out.not_rebuilt]
+    assert "pool_unknown" not in figures
+    assert ("rules_history" in figures) is history_incomplete
+
+
+@pytest.mark.asyncio
+async def test_the_requests_are_read_before_the_change_log_they_settle() -> None:
+    store = _seeded(EMMA)
+    order: list[str] = []
+    fetch_requests, fetch_log = store.fetch_requests, store.fetch_change_log
+
+    async def requests(*args: Any, **kwargs: Any) -> Any:
+        order.append("requests")
+        return await fetch_requests(*args, **kwargs)
+
+    async def log(*args: Any, **kwargs: Any) -> Any:
+        order.append("log")
+        return await fetch_log(*args, **kwargs)
+
+    store.fetch_requests = requests  # type: ignore[method-assign]
+    store.fetch_change_log = log  # type: ignore[method-assign]
+    await _service(store).grid(YEAR, as_of=MAR_9)
+    assert order == ["requests", "log"]
+
+
+# held_asked is the money of the `held` gap, and outside_grants_off_requests of `outside_grants`.
+_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS, "held_asked", "outside_grants_off_requests"}
+
+
+def _without_gaps(value: Any) -> Any:
+    """A response dumped with every figure a past read leaves empty removed, at any depth."""
+    if isinstance(value, dict):
+        return {k: _without_gaps(v) for k, v in value.items() if k not in _GAP_KEYS}
+    if isinstance(value, list):
+        return [_without_gaps(v) for v in value]
+    return value
+
+
+@pytest.mark.asyncio
+async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_gaps() -> None:
+    store = _seeded(EMMA, LIAM)
+    _post_at(store, EMMA, _day(3, 5), on=date(2027, 3, 5))
+    _at(store, EMMA, 1, "accept", _day(3, 6))
+    _post_at(store, LIAM, _day(3, 7), on=date(2027, 3, 7))
+    service = _service(store)
+    yesterday = NOW.date() - timedelta(days=1)
+    live_grid, past_grid = await service.grid(YEAR), await service.grid(YEAR, as_of=yesterday)
+    ignored = {"as_of", "as_of_axis", "not_rebuilt"}
+
+    def strip(model: Any) -> Any:
+        return _without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored})
+
+    def rows(model: Any) -> Any:
+        return [
+            _without_gaps({k: v for k, v in row.items() if k != "request_status"}) for row in model.model_dump()["rows"]
+        ]
+
+    assert rows(past_grid) == rows(live_grid)
+    live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)
+    assert strip(past_budget_) == strip(live_budget)

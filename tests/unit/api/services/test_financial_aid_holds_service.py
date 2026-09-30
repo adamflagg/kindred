@@ -157,7 +157,7 @@ async def test_an_unreleased_hold_holds_the_round_and_lists_nothing_released() -
     _held_liam(store)
     (row,) = (await _service(store).grid(YEAR)).rows
     assert row.rounds[0].status == "held"
-    assert "placeholder_income" in {h.code for h in row.holds}  # type: ignore[union-attr]
+    assert "placeholder_income" in {h.code for h in row.holds}
     assert row.released_holds == []
 
 
@@ -181,14 +181,16 @@ async def test_releasing_moves_the_round_from_below_the_line_into_needs_an_offer
     service = _service(store)
     before = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1 = next(c for c in before.rounds if c.round == 1)
-    assert (r1.needs_offer, before.below.held.requests, before.below.held_asked) == (0.0, 1, 4000.0)  # type: ignore[union-attr]
+    assert before.below.held is not None
+    assert (r1.needs_offer, before.below.held.requests, before.below.held_asked) == (0.0, 1, 4000.0)
     _hold(store, LIAM, "release")
     (row,) = (await service.grid(YEAR)).rows
     decided = row.rounds[0].decided
     assert decided is not None
     after = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     r1 = next(c for c in after.rounds if c.round == 1)
-    assert (r1.needs_offer, after.below.held.requests) == (decided, 0)  # type: ignore[union-attr]
+    assert after.below.held is not None
+    assert (r1.needs_offer, after.below.held.requests) == (decided, 0)
     assert r1.remaining == pytest.approx(340000.0 - decided)
 
 
@@ -200,9 +202,10 @@ async def test_a_manual_hold_holds_the_round_with_its_reason() -> None:
     service = _service(store)
     (row,) = (await service.grid(YEAR)).rows
     assert row.rounds[0].status == "held"
-    assert [(h.code, h.severity, h.message) for h in row.holds] == [(MANUAL_HOLD, "hold", WAITING)]  # type: ignore[union-attr]
+    assert [(h.code, h.severity, h.message) for h in row.holds] == [(MANUAL_HOLD, "hold", WAITING)]
     camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
-    assert (next(c for c in camp.rounds if c.round == 1).needs_offer, camp.below.held.requests) == (0.0, 1)  # type: ignore[union-attr]
+    assert camp.below.held is not None
+    assert (next(c for c in camp.rounds if c.round == 1).needs_offer, camp.below.held.requests) == (0.0, 1)
 
 
 @pytest.mark.asyncio
@@ -213,7 +216,7 @@ async def test_a_released_hold_that_clears_only_when_fixed_is_neither_applied_no
     _hold(store, EMMA, "release", "payer_shares_incomplete")  # written directly: the service refuses it
     (row,) = (await _service(store).grid(YEAR)).rows
     assert row.rounds[0].status == "held"
-    assert "payer_shares_incomplete" in {h.code for h in row.holds}  # type: ignore[union-attr]
+    assert "payer_shares_incomplete" in {h.code for h in row.holds}
     assert row.released_holds == []
 
 
@@ -224,7 +227,7 @@ async def test_a_release_written_for_a_needs_input_code_is_neither_applied_nor_l
     store.applications[-1] = replace(store.applications[-1], answers={})  # no income reported: income_missing
     _hold(store, EMMA, "release", "income_missing")  # written directly: a release cannot lift it
     (row,) = (await _service(store).grid(YEAR)).rows
-    assert "income_missing" in {h.code for h in row.holds}  # type: ignore[union-attr]
+    assert "income_missing" in {h.code for h in row.holds}
     assert row.released_holds == []
 
 
@@ -367,11 +370,11 @@ async def test_a_manual_hold_holds_an_offer_until_it_is_lifted() -> None:
     service = _service(store)
     assert (await service.set_manual_hold(EMMA, _manual(), ACTOR)).written == 1
     (row,) = (await service.grid(YEAR)).rows
-    assert (row.rounds[0].status, [(h.code, h.message) for h in row.holds]) == ("held", [(MANUAL_HOLD, WAITING)])  # type: ignore[union-attr]
+    assert (row.rounds[0].status, [(h.code, h.message) for h in row.holds]) == ("held", [(MANUAL_HOLD, WAITING)])
     assert (await service.set_manual_hold(EMMA, _manual(), ACTOR)).written == 0  # the same reason again
     assert (await service.set_manual_hold(EMMA, _manual(note="Waiting on the school letter"), ACTOR)).written == 1
     (row,) = (await service.grid(YEAR)).rows
-    assert [h.message for h in row.holds] == ["Waiting on the school letter"]  # type: ignore[union-attr]
+    assert [h.message for h in row.holds] == ["Waiting on the school letter"]
     assert (await service.set_manual_hold(EMMA, _manual(held=False, note="Letter arrived"), ACTOR)).written == 1
     (row,) = (await service.grid(YEAR)).rows
     assert (row.rounds[0].status, row.holds) == ("needs_offer", [])

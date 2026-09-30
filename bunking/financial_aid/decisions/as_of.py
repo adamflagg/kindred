@@ -55,8 +55,9 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "outside_budget": "It includes decided money not yet posted; the posted part is outside_budget_posted",
     "round2_computed": _PRICED,
     "round1_unmet": _PRICED,
-    "pool_unknown": "A request with no posted round sits in No pool until its session and program are resolved as of that date (3c-2)",
+    "pool_unknown": "The request's session and program couldn't be resolved under the rules as of that date, so it sits in No pool",
     "request_history": "These requests' change history can't be replayed to that date, so only their posted rounds show",
+    "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
     "rules_history": "The rules' change history for this season can't be replayed to that date",
 }
 GRID_GAPS: Final[tuple[str, ...]] = (
@@ -114,12 +115,13 @@ def price_as_of(
     r1_ask: Decimal | None,
     hold: HoldState = NO_HOLDS,
     pool: str | None = None,
+    program_key: str | None = None,
 ) -> PricedRequest:
     """One request as of a past instant, from its rounds and holds folded to it. `live` is its status
     then; `r1_ask` its Round 1 ask then (replayed and corrected); `rules` the version that priced the
     season then (it names the decision type whose money counts outside the budget); `pool` the request's
-    home pool then, resolved by the caller from its session and program (None: unknown, so NO_POOL
-    until 3c-2; see PAST_DATE_GAPS["pool_unknown"]). A posted round keeps its lock's own pool."""
+    home pool then, resolved by the caller from its session and program (None: unknown, so NO_POOL;
+    see PAST_DATE_GAPS["pool_unknown"]); `program_key` the program it resolved to. A posted round keeps its lock's own pool."""
     states = {n: rounds.get(n, RoundState(round=n)) for n in ROUNDS}
     decision = named_decision(rounds, rules) if rules is not None else None
     views = tuple(
@@ -132,7 +134,7 @@ def price_as_of(
         request_id=request_id,
         household_cm_id=household_cm_id,
         live=live,
-        program_key=None,
+        program_key=program_key,
         pool=pool or next((v.pool for v in views if v.pool), None),
         rounds=views,
         holds=(manual,) if manual is not None else (),

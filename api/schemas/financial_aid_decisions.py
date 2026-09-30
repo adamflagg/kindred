@@ -91,7 +91,7 @@ class GridRowOut(BaseModel):
     rounds: list[RoundOut]
     total_decided: float | None
     total_posted: float | None
-    holds: list[IssueOut] | None
+    holds: list[IssueOut]
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
 
