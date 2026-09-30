@@ -217,3 +217,65 @@ func TestRunLedgerTickTriggerStopsWhenTheRunIsCancelledMidway(t *testing.T) {
 		t.Errorf("asked = %v, warnings = %d; want [2026] and 1 warning", asked, s.Stats.AidLedgerWarnings)
 	}
 }
+
+// ledgerTickRun runs one 2026 aid_postings sync over a classified ledger, after financial_transactions
+// recorded a successful run and then `latest`, and returns the seasons it asked to tick.
+func ledgerTickRun(t *testing.T, latest string) (s *AidPostingsSync, ticked []int) {
+	t.Helper()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+	f.recordSyncRun(serviceNameFinancialTransactions, statusSuccess,
+		"2026-09-25T10:00:00.000Z", "2026-09-25T10:02:00.000Z")
+	f.recordSyncRun(serviceNameFinancialTransactions, latest,
+		"2026-09-27T10:00:00.000Z", "2026-09-27T10:05:00.000Z")
+	s = f.service()
+	s.Year, s.ConfigPath = 2026, f.writeConfig(aidTestConfig)
+	s.LedgerTickTrigger = func(_ context.Context, year int) error {
+		ticked = append(ticked, year)
+		return nil
+	}
+	if err := s.Sync(t.Context()); err != nil {
+		t.Fatalf("Sync must not fail over stale input: %v", err)
+	}
+	return s, ticked
+}
+
+// Owner ruling B (2026-09-30): financial_transactions' latest run failed, so aid_postings rebuilt from
+// yesterday's rows. Confirmation reads that night as no sync (Decision 12), so the tick is skipped too,
+// with a warning naming the skip and the last good transactions sync, and the run is not failed.
+func TestAidPostingsSyncSkipsTheLedgerTickOnStaleInput(t *testing.T) {
+	logs := captureSweepLogs(t)
+	s, ticked := ledgerTickRun(t, statusFailed)
+	if len(ticked) != 0 {
+		t.Errorf("stale input ticked %v, want no tick", ticked)
+	}
+	// One warning for the stale input, one for the skipped tick.
+	if got := s.GetStats().AidLedgerWarnings; got != 2 {
+		t.Errorf("AidLedgerWarnings = %d, want 2 (stale input + skipped tick)", got)
+	}
+	var skip string
+	for line := range strings.Lines(logs.String()) {
+		if strings.Contains(line, "Skipping the campership ledger tick") {
+			skip = line
+		}
+	}
+	if skip == "" {
+		t.Fatalf("log must name the skipped tick, got:\n%s", logs.String())
+	}
+	if !strings.Contains(skip, "level=WARN") ||
+		!strings.Contains(skip, "last_successful_transactions_sync=\"2026-09-25 10:02:00") {
+		t.Errorf("the skip must warn and name the last good transactions sync, got: %s", skip)
+	}
+}
+
+func TestAidPostingsSyncTicksWhenTheTransactionsRunSucceeded(t *testing.T) {
+	t.Parallel()
+	s, ticked := ledgerTickRun(t, statusSuccess)
+	if !slices.Equal(ticked, []int{2026}) {
+		t.Errorf("ticked %v, want [2026]", ticked)
+	}
+	if got := s.GetStats().AidLedgerWarnings; got != 0 {
+		t.Errorf("AidLedgerWarnings = %d, want 0", got)
+	}
+}

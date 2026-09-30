@@ -134,7 +134,8 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 			"searched", candidates)
 		s.Stats.AidLedgerWarnings++
 	}
-	if stale, asOf := s.staleInputAsOf(); stale {
+	stale, asOf := s.staleInputAsOf()
+	if stale {
 		// F2: financial_transactions failed last night for both seasons and aid_postings ran
 		// anyway, from the previous day's rows, reporting clean success. It still should run
 		// (yesterday's data beats none), but the run must say so.
@@ -167,8 +168,15 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
 	}
-	// The tick runs even when nothing new was written: pricing can change without the ledger.
-	s.runLedgerTickTrigger(ctx, wrote)
+	// The tick runs even when nothing new was written: pricing can change without the ledger. Not on
+	// stale input (owner ruling 2026-09-30): confirmation reads such a night as no sync (SP10b Decision
+	// 12: the last ledger sync is the older of the two services' last successes), so a tick from
+	// yesterday's rows would disagree with it. The next night with fresh transactions ticks instead.
+	if stale {
+		s.skipStaleLedgerTick(ctx, wrote, asOf)
+	} else {
+		s.runLedgerTickTrigger(ctx, wrote)
+	}
 	slog.Info("Aid postings sync finished", "years", years, "created", s.Stats.Created,
 		"updated", s.Stats.Updated, "skipped", s.Stats.Skipped, "deleted", s.Stats.Deleted, "errors", s.Stats.Errors)
 	return runErr

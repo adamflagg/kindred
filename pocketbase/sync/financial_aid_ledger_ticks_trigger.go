@@ -48,3 +48,15 @@ func (s *AidPostingsSync) runLedgerTickTrigger(ctx context.Context, years []int)
 		}
 	}
 }
+
+// skipStaleLedgerTick stands in for runLedgerTickTrigger when financial_transactions' latest run did
+// not succeed: it asks for nothing, and says so. A warning, never an error, so the run is not red;
+// only when a tick would otherwise have been asked for.
+func (s *AidPostingsSync) skipStaleLedgerTick(ctx context.Context, years []int, lastGood string) {
+	if s.LedgerTickTrigger == nil || s.DryRun || ctx.Err() != nil || len(years) == 0 {
+		return
+	}
+	s.Stats.AidLedgerWarnings++
+	slog.Warn("Skipping the campership ledger tick: aid_postings input may be stale",
+		"years", years, "last_successful_transactions_sync", lastGood)
+}
