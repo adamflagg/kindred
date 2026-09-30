@@ -1,9 +1,11 @@
 package sync
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -96,39 +98,78 @@ const aidTestConfig = `{"sources": [
    "funder_type": "outside", "counts_as_aid": true}
 ]}`
 
-func TestAidPostingsSyncAppliesTheConfigFile(t *testing.T) {
+// aidTestConfigEdited is aidTestConfig after a later file edit: the camp aid renamed and
+// no longer counting toward the budget, the legacy grant renamed and moved to an
+// incentive with an implied family. D105: none of it may reach a row that exists.
+const aidTestConfigEdited = `{"sources": [
+  {"description": "Example Camp Financial Assistance", "source_name": "Camp aid (renamed)",
+   "source_family": "camp_fa", "funder_type": "camp", "counts_as_aid": true, "counts_toward_budget": false},
+  {"description": "Family Incentive Grant", "source_name": "Family incentive", "source_family": "jfam_incentive",
+   "funder_type": "incentive", "counts_as_aid": true, "implied_program_families": ["family_camp"]},
+  {"description": "Legacy Regional Grant", "source_name": "Legacy grant (renamed)", "source_family": "jfam_incentive",
+   "funder_type": "incentive", "counts_as_aid": true, "implied_program_families": ["family_camp"]}
+]}`
+
+// source reads one aid_sources row by its description key.
+func (f *aidFixture) source(key string) *core.Record {
+	f.t.Helper()
+	rec, err := f.app.FindFirstRecordByFilter(colAidSources, "description_key = {:k}", dbx.Params{"k": key})
+	if err != nil {
+		f.t.Fatalf("aid source %q: %v", key, err)
+	}
+	return rec
+}
+
+// aidSourceSnapshot is every aid_sources field the file, the app or the sync can set.
+func aidSourceSnapshot(t *testing.T, rec *core.Record) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, f := range []string{"description", "source_name", "source_family", "funder_type", "classified_by",
+		"note", "grantor_key"} {
+		out[f] = rec.GetString(f)
+	}
+	for _, f := range []string{"counts_as_aid", "counts_toward_budget"} {
+		out[f] = strconv.FormatBool(rec.GetBool(f))
+	}
+	out["implied_program_families"] = strings.Join(aidJSON(t, rec, "implied_program_families"), ",")
+	return out
+}
+
+// D105: the file seeds a description Kindred has no row for yet, with the file's
+// classification, before any season runs -- so a posting under a file-named description
+// is classified in the same run, never flagged unclassified (a fresh database seeds whole).
+func TestAidPostingsSyncSeedsNewDescriptionsFromTheConfigFile(t *testing.T) {
 	t.Parallel()
 	f := newAidFixture(t)
 	seedAidSiblings(f, 2026)
 	f.txn(9010, 2026, -200, aidCategoryJFAM, aidTestIncentive, 100, 0, 0, false)
 	f.txn(9011, 2026, -300, aidCategoryAdjustments, aidTestLegacy, 100, 0, 0, false)
 
-	// grantor_key is staff data (FastAPI's PUT /sources/{id}/grantor): a config run
-	// re-applies the description's classification but never clears its grantor.
-	sourcesCol, err := f.app.FindCollectionByNameOrId(colAidSources)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mapped := core.NewRecord(sourcesCol)
-	mapped.Load(map[string]any{
-		"description_key": "legacy regional grant", "description": "Legacy Regional Grant",
-		"source_family": "other_outside", "funder_type": "outside", "classified_by": aidClassifiedConfigFile,
-		"grantor_key": "legacy_fund",
-	})
-	if err := f.app.Save(mapped); err != nil {
-		t.Fatal(err)
-	}
-	f.run(f.writeConfig(aidTestConfig), 2026)
+	s := f.run(f.writeConfig(aidTestConfig), 2026)
 
-	for _, s := range f.rows(colAidSources, 0) {
-		if s.GetString("classified_by") != aidClassifiedConfigFile {
-			t.Errorf("%s classified_by = %s", s.GetString("description_key"), s.GetString("classified_by"))
+	want := map[string]map[string]string{
+		"example camp financial assistance": {"description": aidTestCampAid, "source_name": "Camp aid",
+			"source_family": "camp_fa", "funder_type": "camp", "classified_by": aidClassifiedConfigFile, "note": "",
+			"grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "true", "implied_program_families": ""},
+		"family incentive grant": {"description": aidTestIncentive, "source_name": "Family incentive",
+			"source_family": "jfam_incentive", "funder_type": "incentive", "classified_by": aidClassifiedConfigFile,
+			"note": "", "grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "false",
+			"implied_program_families": programFamilyFamilyCamp},
+		"legacy regional grant": {"description": aidTestLegacy, "source_name": "Legacy grant",
+			"source_family": "other_outside", "funder_type": "outside", "classified_by": aidClassifiedConfigFile,
+			"note": "", "grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "false",
+			"implied_program_families": ""},
+	}
+	if got := len(f.rows(colAidSources, 0)); got != len(want) {
+		t.Fatalf("expected %d seeded sources, got %d", len(want), got)
+	}
+	for key, w := range want {
+		if got := aidSourceSnapshot(t, f.source(key)); !maps.Equal(got, w) {
+			t.Errorf("%s = %v, want %v", key, got, w)
 		}
-		isLegacyGrant := s.GetString("description_key") == "legacy regional grant"
-		want := map[bool]string{true: "legacy_fund", false: ""}[isLegacyGrant]
-		if s.GetString("grantor_key") != want {
-			t.Errorf("%s grantor_key = %q, want %q", s.GetString("description_key"), s.GetString("grantor_key"), want)
-		}
+	}
+	if st := s.GetStats(); st.Created != len(want)+2 {
+		t.Errorf("three seeded sources and two postings are created, got %+v", st)
 	}
 	inc := f.posting(9010)
 	if inc.GetString("attribution_method") != aidMethodSourceImplied || inc.GetInt("attributed_session_cm_id") != 21 {
@@ -142,6 +183,96 @@ func TestAidPostingsSyncAppliesTheConfigFile(t *testing.T) {
 	}
 	if flags := aidJSON(t, legacy, "flags"); slices.Contains(flags, aidFlagUnclassifiedSource) {
 		t.Errorf("a classified source must not be flagged: %v", flags)
+	}
+}
+
+// D105: once a description has a row, a later edit to the file never reaches it -- the
+// fight between a file edit and an app edit that D105 removes. The grantor mapped in
+// between (FastAPI's PUT /sources/{id}/grantor) survives, and the postings keep the
+// classification the row holds.
+func TestAidPostingsSyncNeverOverwritesASeededRowWhenTheFileChanges(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+	f.txn(9011, 2026, -300, aidCategoryAdjustments, aidTestLegacy, 100, 0, 0, false)
+	f.run(f.writeConfig(aidTestConfig), 2026)
+
+	legacy := f.source(normalizeAidLabel(aidTestLegacy))
+	legacy.Set("grantor_key", "legacy_fund")
+	if err := f.app.Save(legacy); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]map[string]string{}
+	for _, r := range f.rows(colAidSources, 0) {
+		before[r.GetString("description_key")] = aidSourceSnapshot(t, r)
+	}
+
+	s := f.run(f.writeConfig(aidTestConfigEdited), 2026)
+
+	for key, want := range before {
+		if got := aidSourceSnapshot(t, f.source(key)); !maps.Equal(got, want) {
+			t.Errorf("the edited file reached %s: got %v, want %v", key, got, want)
+		}
+	}
+	if p := f.posting(9011); p.GetString("attribution_level") != aidLevelAmbiguous {
+		t.Errorf("9011 must keep its row's classification (ambiguous), got %v", p.FieldsData())
+	}
+	if p := f.posting(9001); !p.GetBool("counts_toward_budget") {
+		t.Errorf("9001 must keep counting toward the budget, got %v", p.FieldsData())
+	}
+	if st := s.GetStats(); st.Created != 0 || st.Updated != 0 || st.Deleted != 0 {
+		t.Errorf("an edited file over existing rows must write nothing, got %+v", st)
+	}
+}
+
+// D105 Decision 2: a description that posted before the file named it already has a row,
+// the sync's own unclassified placeholder. The file never fills it (staff classify it in
+// the app); the file's other, new descriptions are still seeded.
+func TestAidPostingsSyncLeavesAnExistingUnclassifiedRowToTheApp(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9001, 2026, -750, aidCategoryFinancialAssistance, aidTestCampAid, 100, 1001, 0, false)
+	f.run("", 2026)
+	key := normalizeAidLabel(aidTestCampAid)
+	before := aidSourceSnapshot(t, f.source(key))
+
+	f.run(f.writeConfig(aidTestConfig), 2026)
+
+	after := aidSourceSnapshot(t, f.source(key))
+	if after["classified_by"] != aidClassifiedUnclassified || !maps.Equal(before, after) {
+		t.Errorf("the file filled an existing unclassified row: got %v, want %v", after, before)
+	}
+	if flags := aidJSON(t, f.posting(9001), "flags"); !slices.Equal(flags, []string{aidFlagUnclassifiedSource}) {
+		t.Errorf("9001 must stay flagged unclassified until staff classify it, got %v", flags)
+	}
+	for _, k := range []string{normalizeAidLabel(aidTestIncentive), normalizeAidLabel(aidTestLegacy)} {
+		if got := f.source(k).GetString("classified_by"); got != aidClassifiedConfigFile {
+			t.Errorf("%s classified_by = %q, want the file's new description seeded", k, got)
+		}
+	}
+}
+
+// Nothing else changes (D105): a dry run with the file seeds a new description in memory
+// only, so a posting that counts only through the file is still computed, and no row is
+// written.
+func TestAidPostingsSyncDryRunSeedsNoSourceRow(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	seedAidSiblings(f, 2026)
+	f.txn(9011, 2026, -300, aidCategoryAdjustments, aidTestLegacy, 100, 0, 0, false)
+	s := f.service()
+	s.Year, s.DryRun, s.ConfigPath = 2026, true, f.writeConfig(aidTestConfig)
+	if err := s.Sync(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.rows(colAidSources, 0)); n != 0 {
+		t.Fatalf("a dry run wrote %d source rows", n)
+	}
+	// 9011 is category 3839: it is aid only because the in-memory seed says so.
+	if st := s.GetStats(); st.Created != 1 {
+		t.Errorf("a dry run must report the would-be 3839 posting, got %+v", st)
 	}
 }
 
