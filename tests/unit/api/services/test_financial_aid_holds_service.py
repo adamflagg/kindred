@@ -136,7 +136,10 @@ async def test_hold_events_are_read_by_season_in_recorded_order() -> None:
     await FinancialAidDecisionsRepository(pb).fetch_hold_events(YEAR)
     pb.collection.assert_called_with("aid_hold_events")
     query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
-    assert query == {"filter": f"year = {YEAR}", "sort": "created,id"}
+    assert query["filter"] == f"year = {YEAR}"
+    assert query["sort"] == "created,id"
+    assert "fact" not in query["fields"].split(","), "the season read never loads the release facts"
+    assert {"request", "event", "code", "note", "actor", "created"} <= set(query["fields"].split(","))
 
 
 @pytest.mark.asyncio
@@ -405,3 +408,36 @@ async def test_a_request_that_is_not_live_takes_no_hold_change() -> None:
 async def test_an_unknown_request_is_not_found() -> None:
     with pytest.raises(DecisionNotFoundError):
         await _service(FakeDecisionsStore()).set_hold_release(EMMA, _release(), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_round_1_release_also_covers_the_same_check_on_the_round_2_appeal() -> None:
+    """D2: a release is per request and check, not per round, so it stands for the appeal."""
+    store = FakeDecisionsStore()
+    _held_liam(store)
+    _hold(store, LIAM, "release")
+    _posted(store, LIAM, 1, "1500")
+    _event(store, LIAM, 2, "ask", amount=Decimal(400))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert [(r.round, r.status) for r in row.rounds] == [(1, "posted"), (2, "needs_offer")]
+    assert [r.code for r in row.released_holds] == ["placeholder_income"]
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_request_lists_no_released_holds() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, LIAM, household=1000002, person=1000021, income=500.0, status="withdrawn")
+    _hold(store, LIAM, "release")
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.released_holds == []
+
+
+@pytest.mark.asyncio
+async def test_a_request_that_is_not_live_ignores_a_manual_hold() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    _posted(store, EMMA, 1, "1500")
+    _hold(store, EMMA, "place", MANUAL_HOLD, note=WAITING)
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert [(r.round, r.status) for r in row.rounds] == [(1, "posted")]
+    assert row.holds == []

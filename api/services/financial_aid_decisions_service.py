@@ -335,7 +335,7 @@ def grid_row(
         released_holds=[
             ReleasedHoldOut(code=r.code, note=r.note, released_at=r.released_at, released_by=r.released_by)
             for code, r in sorted(hold.released.items())
-            if code in hold.released_codes() and code not in NEVER_A_HOLD
+            if priced.live and code in hold.released_codes() and code not in NEVER_A_HOLD
         ],
         notes=[_issue(i) for i in priced.notes],
     )

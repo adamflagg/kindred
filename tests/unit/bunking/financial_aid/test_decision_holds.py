@@ -174,3 +174,8 @@ def test_which_holds_a_release_can_lift() -> None:
         MANUAL_HOLD,
     ):
         assert not releasable(CalcIssue(code=code, severity="hold", message="x")), code
+
+
+def test_as_of_is_inclusive_of_an_event_recorded_at_that_instant() -> None:
+    events = [ev("release", hour=1)]
+    assert "placeholder_income" in fold_holds(events, as_of=T0 + timedelta(hours=1))["req-emma"].released

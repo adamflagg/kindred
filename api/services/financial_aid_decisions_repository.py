@@ -84,6 +84,9 @@ def hold_event(record: Any) -> HoldEvent:
     )
 
 
+_HOLD_SEASON_FIELDS = "id,request,event,code,note,actor,created"
+
+
 class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]:
         rows = await self._page(AID_DECISIONS, {"filter": f"year = {int(year)}", "sort": "created,id"})
@@ -96,7 +99,11 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         return [decision_event(row) for row in rows]
 
     async def fetch_hold_events(self, year: int) -> list[HoldEvent]:
-        rows = await self._page(AID_HOLD_EVENTS, {"filter": f"year = {int(year)}", "sort": "created,id"})
+        # No `fact`: only the write path reads a release's snapshot, and the season read runs often.
+        rows = await self._page(
+            AID_HOLD_EVENTS,
+            {"filter": f"year = {int(year)}", "fields": _HOLD_SEASON_FIELDS, "sort": "created,id"},
+        )
         return [hold_event(row) for row in rows]
 
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
