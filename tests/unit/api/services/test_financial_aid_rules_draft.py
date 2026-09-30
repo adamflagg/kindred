@@ -25,6 +25,7 @@ from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.lifecycle import LockedSectionInvalidatedError
 from bunking.financial_aid.rules.schema import SECTION_NAMES
+from bunking.financial_aid.rules.validation import ValidationIssue, ValidationReport, validate_rules
 from tests.unit.api.services.rules_fakes import FakeStore
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever, with_levers
 
@@ -242,10 +243,14 @@ def _without_bmitzvah_pool(document: AidRules) -> AidRules:
 @pytest.mark.asyncio
 async def test_an_edit_to_a_draft_section_that_knocks_back_an_approved_one_branches() -> None:
     store = FakeStore()
-    service = await _priced_v1(store)  # v1 prices the season; budget is a draft section, programs approved
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    others = [name for name in SECTION_NAMES if name != "budget"]
+    await service.approve_sections(2031, 1, others, actor=FINANCE, note="Board, Jan 8")  # budget stays draft
     saved = await service.save_sections(2031, 1, _without_bmitzvah_pool(fictional_rules()), actor=TREASURER)
-    # Only `budget` changed, and it is a draft: the branch is decided over the sections the edit touched, which
-    # includes programs, sent back to draft by the pool it can no longer find.
+    # Only `budget` changed, and it is a draft, so it alone would not branch: the branch is decided over the
+    # sections the edit touched, which includes approved programs, sent back to draft by the pool it can no
+    # longer find.
     assert (saved.branched_from, saved.version.version) == (1, 2)
     status = saved.version.section_status
     assert (status["budget"].state, status["programs"].state) == ("draft", "draft")
@@ -322,12 +327,30 @@ async def test_a_whole_document_save_over_approved_pricing_rules_is_refused() ->
 
 
 @pytest.mark.asyncio
-async def test_a_whole_document_save_that_only_knocks_back_an_approved_section_is_refused() -> None:
+async def test_a_whole_document_save_that_only_knocks_back_an_approved_section_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     store = FakeStore()
-    service = await _priced_v1(store)  # budget is a draft: the edit changes only it, and knocks programs back
+    service = await _priced_v1(store)
+    # No real edit reaches this path on a pricing version today (the only draft sections are stages,
+    # quality_checks and milestones, and their validators flag only themselves), so the validator is stubbed:
+    # the save changes nothing, but the candidate gains an error in approved `programs` that the stored
+    # document lacks. That is a knock-back and nothing else.
+    real = validate_rules
+    calls: list[int] = []
+
+    def flagging(document: AidRules, context: object) -> ValidationReport:
+        calls.append(1)
+        report = real(document, context)  # type: ignore[arg-type]
+        if len(calls) < 2:  # the first call validates the stored document, the second the candidate
+            return report
+        issue = ValidationIssue(section="programs", code="stub", severity="error", path="programs", message="stub")
+        return ValidationReport(issues=[*report.issues, issue])
+
+    monkeypatch.setattr("api.services.financial_aid_rules_service.validate_rules", flagging)
     before = len(store.operations)
     with pytest.raises(PricingVersionInUseError):
-        await service.save(2031, 1, _without_bmitzvah_pool(fictional_rules()), actor=TREASURER)
+        await service.save(2031, 1, fictional_rules(), actor=TREASURER)
     assert len(store.operations) == before
     assert (await service.load(2031, 1)).section_status["programs"].state == "approved"
 
