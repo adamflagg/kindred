@@ -2924,26 +2924,6 @@ export type DecisionWriteOut = {
 }
 
 /**
- * DiscretionaryIn
- *
- * Finance's discretionary money, under one of the rules' discretionary decision types.
- */
-export type DiscretionaryIn = {
-  /**
-   * Decision Type
-   */
-  decision_type: string
-  /**
-   * Amount
-   */
-  amount: number | string
-  /**
-   * Note
-   */
-  note: string
-}
-
-/**
  * DispositionBulkLoad
  */
 export type DispositionBulkLoad = {
@@ -18973,38 +18953,6 @@ export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostRespo
 
 export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponse =
   KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponses[keyof KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponses]
-
-export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostData = {
-  body: DiscretionaryIn
-  path: {
-    /**
-     * Request Id
-     */
-    request_id: string
-  }
-  query?: never
-  url: '/api/financial-aid/requests/{request_id}/discretionary'
-}
-
-export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostError =
-  KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostErrors[keyof KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostErrors]
-
-export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: DecisionWriteOut
-}
-
-export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponse =
-  KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponses[keyof KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponses]
 
 export type DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostData = {
   body: Round3ApprovalIn

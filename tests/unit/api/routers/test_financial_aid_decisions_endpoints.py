@@ -75,13 +75,6 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, tuple[str, ...], int]] = [
     ("POST", f"/api/financial-aid/requests/{REQ}/round3-amount", {"amount": "350"}, (CASEWORK,), 200),
     (
         "POST",
-        f"/api/financial-aid/requests/{REQ}/discretionary",
-        {"decision_type": "discretionary", "amount": "250", "note": "Hardship fund"},
-        (RULES,),
-        200,
-    ),
-    (
-        "POST",
         f"/api/financial-aid/requests/{REQ}/round3-approval",
         {"approve": True, "note": "Finance, Jun 2"},
         (RULES,),
@@ -129,7 +122,6 @@ def _stub() -> Any:
     for name in (
         "key_ask",
         "key_round3_amount",
-        "key_discretionary",
         "decide_round3",
         "tick_posted",
         "undo_posted",
@@ -171,9 +163,19 @@ def test_a_summary_only_user_reaches_only_the_remaining_line() -> None:
         assert client.request(method, url, json=body).status_code == expected, url
 
 
+def test_there_is_no_separate_discretionary_write() -> None:
+    """Owner 2026-09-30: no finance discretionary type; Round 3 is the only staff-decided extra money."""
+    _stub()
+    response = _client().post(
+        f"/api/financial-aid/requests/{REQ}/discretionary",
+        json={"decision_type": "discretionary", "amount": "250", "note": "Hardship fund"},
+    )
+    assert response.status_code in (404, 405)
+
+
 def test_the_actor_is_the_callers_email() -> None:
     service = _stub()
-    _client().post("/api/financial-aid/decisions/2031/posted", json=ROUTES[7][2])
+    _client().post("/api/financial-aid/decisions/2031/posted", json=ROUTES[6][2])
     assert service.tick_posted.call_args.args[2] == persona_user(PERSONA_FINANCE).email
 
 
@@ -195,7 +197,7 @@ def test_only_finance_approves_its_own_round_3_amount(persona: str, can_approve:
 def test_service_refusals_map_to_404_409_and_422(error: Exception, status: int) -> None:
     service = _stub()
     service.tick_posted = AsyncMock(side_effect=error)
-    response = _client().post("/api/financial-aid/decisions/2031/posted", json=ROUTES[7][2])
+    response = _client().post("/api/financial-aid/decisions/2031/posted", json=ROUTES[6][2])
     assert response.status_code == status
     if status == 409:
         assert response.json()["detail"]["rows"] == [

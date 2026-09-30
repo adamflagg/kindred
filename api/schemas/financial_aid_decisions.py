@@ -184,14 +184,6 @@ class Round3AmountIn(BaseModel):
     note: _Note = ""
 
 
-class DiscretionaryIn(BaseModel):
-    """Finance's discretionary money, under one of the rules' discretionary decision types."""
-
-    decision_type: _DecisionType
-    amount: _Amount
-    note: _Reason
-
-
 class Round3ApprovalIn(BaseModel):
     approve: bool
     note: _Reason

@@ -19,7 +19,7 @@ aggregate endpoint (sub-project 8) must be named apart from /summary.
 Sub-project 10a adds decisions: the season's Requests grid, Rounds & budget and
 the Remaining line (view; the Remaining line also summary, D75), each round's
 asks and Round 3 amounts and the Posted and Accepted ticks (casework), and
-discretionary money and Round 3 approval (rules).
+Round 3 approval (rules).
 """
 
 from datetime import date
@@ -53,7 +53,6 @@ from api.schemas.financial_aid_decisions import (
     AskIn,
     BudgetResponse,
     DecisionWriteOut,
-    DiscretionaryIn,
     PostedIn,
     RemainingResponse,
     RequestsGridResponse,
@@ -677,16 +676,6 @@ async def key_round3_amount(
     can_approve = user.is_admin or Permission.FINANCIAL_AID_RULES in user.permissions
     try:
         return await _decisions().key_round3_amount(request_id, body, user.email, can_approve=can_approve)
-    except FinancialAidError as exc:
-        raise _decisions_http(exc) from exc
-
-
-@router.post("/requests/{request_id}/discretionary", response_model=DecisionWriteOut)
-async def key_discretionary(
-    request_id: _RequestIdPath, body: DiscretionaryIn, user: AuthUser = _RULES
-) -> DecisionWriteOut:
-    try:
-        return await _decisions().key_discretionary(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 

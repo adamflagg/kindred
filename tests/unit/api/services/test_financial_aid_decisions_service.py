@@ -19,7 +19,6 @@ from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
     ChangedRowOut,
-    DiscretionaryIn,
     PostedIn,
     PostedRow,
     Round3AmountIn,
@@ -435,22 +434,6 @@ async def test_a_refused_round_3_amount_counts_nowhere() -> None:
 
 
 @pytest.mark.asyncio
-async def test_discretionary_money_is_finances_and_names_a_discretionary_decision_type() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    service = _service(store)
-    await service.key_discretionary(
-        EMMA, DiscretionaryIn(decision_type="discretionary", amount=Decimal(250), note="Board hardship fund"), ACTOR
-    )
-    (row,) = (await service.grid(YEAR)).rows
-    assert (row.rounds[-1].round, row.rounds[-1].decided) == (3, 250.0)
-    with pytest.raises(DecisionRefusedError, match="not a discretionary decision type"):
-        await service.key_discretionary(
-            EMMA, DiscretionaryIn(decision_type="appeal_top_up", amount=Decimal(250), note="x"), ACTOR
-        )
-
-
-@pytest.mark.asyncio
 async def test_ticking_posted_locks_the_decided_amount_with_its_receipt_version_and_sections() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
@@ -608,20 +591,6 @@ async def test_resending_the_same_round_3_amount_writes_nothing() -> None:
     assert (len(store.events), len(store.log), len(store.operations)) == (events, logs, ops)
 
 
-@pytest.mark.asyncio
-async def test_resending_the_same_discretionary_amount_writes_nothing() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    service = _service(store)
-    body = DiscretionaryIn(decision_type="discretionary", amount=Decimal(250), note="Board hardship fund")
-    first = await service.key_discretionary(EMMA, body, ACTOR)
-    events, logs, ops = len(store.events), len(store.log), len(store.operations)
-    again = await service.key_discretionary(EMMA, body, ACTOR)
-    assert first.written == 1
-    assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
-    assert (len(store.events), len(store.log), len(store.operations)) == (events, logs, ops)
-
-
 _BAD_ID = "not a valid id'\""
 
 
@@ -633,9 +602,6 @@ async def test_a_write_on_a_malformed_request_id_is_not_found_never_a_500() -> N
     calls = [
         service.key_ask(_BAD_ID, _ask(2, "400"), ACTOR),
         service.key_round3_amount(_BAD_ID, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=True),
-        service.key_discretionary(
-            _BAD_ID, DiscretionaryIn(decision_type="discretionary", amount=Decimal(1), note="x"), ACTOR
-        ),
         service.decide_round3(_BAD_ID, Round3ApprovalIn(approve=True, note="x"), ACTOR),
         service.undo_posted(YEAR, UnpostIn.model_construct(request_id=_BAD_ID, round=1, reason="x"), ACTOR),
     ]
@@ -645,15 +611,22 @@ async def test_a_write_on_a_malformed_request_id_is_not_found_never_a_500() -> N
     assert store.operations == []
 
 
-_DISCRETIONARY = DiscretionaryIn(decision_type="discretionary", amount=Decimal(250), note="Board hardship fund")
+_NO_ROUND_2 = FakeRules(approved(with_lever(intake_rules(), "round3.require_round2", False)))
+
+
+async def _key_round_3(store: FakeDecisionsStore) -> FinancialAidDecisionsService:
+    """A Round 3 amount of 250 with no Round 2 (the rules' Round 2 requirement lifted)."""
+    _event(store, EMMA, 3, "ask", amount=Decimal(500), statement_of_need="A parent lost their job")
+    service = _service(store, _NO_ROUND_2)
+    await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(250)), ACTOR, can_approve=True)
+    return service
 
 
 @pytest.mark.asyncio
 async def test_a_round_3_tick_is_refused_while_an_earlier_round_is_unposted_even_without_a_round_2() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    service = _service(store)
-    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)  # makes a Round 3 view with no Round 2
+    service = await _key_round_3(store)
     ops = len(store.operations)
     with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 3"):
         await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
@@ -667,8 +640,7 @@ async def test_undo_is_refused_while_any_later_round_is_posted_even_without_a_ro
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     _posted(store, EMMA, 1, "1500")
-    service = _service(store)
-    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)
+    service = await _key_round_3(store)
     await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
     ops = len(store.operations)
     with pytest.raises(DecisionRefusedError, match="Round 3 is posted"):
@@ -696,41 +668,12 @@ async def test_an_ask_is_refused_while_a_later_round_is_posted() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     _posted(store, EMMA, 1, "1500")
-    service = _service(store)
-    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)
+    service = await _key_round_3(store)
     await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
     ops = len(store.operations)
     with pytest.raises(DecisionRefusedError, match="Round 3 is posted"):
         await service.key_ask(EMMA, _ask(2, "400"), ACTOR)
     assert len(store.operations) == ops
-
-
-@pytest.mark.asyncio
-async def test_discretionary_money_is_refused_once_it_is_posted_even_after_its_decision_type_moves_rounds() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    _posted(store, EMMA, 1, "1500")
-    service = _service(store)
-    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)
-    await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
-    moved = FakeRules(approved(with_lever(intake_rules(), "awards.decision_types.discretionary.round", 2)))
-    ops = len(store.operations)
-    body = DiscretionaryIn(decision_type="discretionary", amount=Decimal(300), note="More")
-    with pytest.raises(DecisionRefusedError, match="already posted"):
-        await _service(store, moved).key_discretionary(EMMA, body, ACTOR)
-    assert len(store.operations) == ops
-
-
-@pytest.mark.asyncio
-async def test_discretionary_money_can_still_change_after_an_earlier_round_that_does_not_hold_it_is_posted() -> None:
-    store = FakeDecisionsStore()
-    seed_request(store, EMMA)
-    service = _service(store)
-    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)  # its money sits on Round 3
-    await service.tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)  # Round 1's lock records the type, not the money
-    body = DiscretionaryIn(decision_type="discretionary", amount=Decimal(300), note="More")
-    out = await service.key_discretionary(EMMA, body, ACTOR)
-    assert out.written == 1
 
 
 @pytest.mark.asyncio

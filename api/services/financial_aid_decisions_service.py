@@ -35,7 +35,6 @@ from api.schemas.financial_aid_decisions import (
     ChangedRowOut,
     CountOut,
     DecisionWriteOut,
-    DiscretionaryIn,
     ForwardDemandOut,
     GridRowOut,
     PoolBudgetOut,
@@ -597,39 +596,6 @@ class FinancialAidDecisionsService:
         return DecisionWriteOut(
             year=request.year, written=1, unchanged=0, operation_id=result.operation_id, pending_approval=pending
         )
-
-    async def key_discretionary(self, request_id: str, body: DiscretionaryIn, actor: str) -> DecisionWriteOut:
-        """Finance's discretionary money, on the round its decision type names (spec §7.1)."""
-        request, rounds = await self._live(request_id)
-        rules = await self._approved_rules(request.year)
-        decision = rules.document.awards.decision_types.get(body.decision_type)
-        if decision is None or decision.kind != "discretionary":
-            raise DecisionRefusedError(
-                f"'{body.decision_type}' is not a discretionary decision type in the {request.year} rules"
-            )
-        other = next(
-            (s.discretionary_type for s in rounds.values() if s.discretionary_type not in ("", body.decision_type)),
-            None,
-        )
-        if other is not None:
-            raise DecisionRefusedError(f"This request already carries '{other}'")
-        # A lock records the type on every round it posts, but holds the money only on `decision_round`.
-        if any(
-            s.posted and (snap := s.snapshot or {}).get("decision_type") and snap.get("decision_round") == s.round
-            for s in rounds.values()
-        ):
-            raise DecisionRefusedError("This request's discretionary money is already posted; it can't change")
-        n = decision.round
-        state = rounds.get(n, RoundState(round=n))
-        if state.posted:
-            raise DecisionRefusedError(f"Round {n} is posted; its discretionary amount can't change")
-        if state.discretionary_type == body.decision_type and state.discretionary == body.amount:
-            return self._unchanged(request.year)
-        write = self._write(
-            request, n, "award", actor, amount=body.amount, decision_type=body.decision_type, note=body.note
-        )
-        result = await self._store.commit([write], actor=actor, reason=body.note, require_reason=True)
-        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
 
     async def decide_round3(self, request_id: str, body: Round3ApprovalIn, actor: str) -> DecisionWriteOut:
         """Finance's answer to a pending Round 3 amount (D79): approved, it joins Needs an offer;
