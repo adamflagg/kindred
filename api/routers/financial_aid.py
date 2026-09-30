@@ -1198,8 +1198,8 @@ async def compare_scenarios(
 
 @router.post("/scenarios/{year}/fit-to-budget", response_model=FitOut)
 async def fit_scenario_to_budget(year: _Year, body: ViewIn, user: AuthUser = _RULES) -> FitOut:
-    """The tier shift that uses Round 1's allocation summed over the pools (main spec §12.3 method 1; Decision 11 (a),
-    D119), naming the tightest pool as information; nothing is recorded."""
+    """The tier shift that uses Round 1's allocation: the total row's Round 1 Remaining (main spec §12.3 method 1;
+    Decision 11 (a), D119), naming the tightest pool as information; nothing is recorded. 422 on a request set."""
     try:
         fitted = await _scenarios().fit(year, body.document, request_set=_request_set(body))
     except FinancialAidError as exc:
