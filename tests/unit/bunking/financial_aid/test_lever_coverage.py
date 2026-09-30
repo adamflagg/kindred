@@ -39,7 +39,6 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     "stages.stages.counts_toward_budget": _SP10,
     "stages.stages.include_default": _SP10,
     "stages.stages.allows_appeal": _SP10,
-    "awards.decision_types.*.round": _SP10,
     "milestones.application_deadline": _SP10,
     "milestones.r1_run": _SP10,
     "milestones.response_deadline": _SP10,
@@ -47,14 +46,9 @@ _WIRED_BY_LATER_SUBPROJECT: dict[str, str] = {
     "milestones.r2_window_end": _SP10,
     "milestones.r3_window_start": _SP10,
     "milestones.r3_window_end": _SP10,
-    "budget.total": _SP9,
-    "budget.pools.*.share_pct": _SP9,
-    "budget.pools.*.amount": _SP9,
-    "budget.reserves": _SP9,
     "budget.spillover": _SP9,
     "budget.commit_on": _SP9,
     "awards.decision_types.*.budget_line": _SP9,
-    "awards.decision_types.*.counts_toward_budget": _SP9,
     "awards.rounding": (
         "no sub-project yet: it allows one value, and the calculator always rounds half up "
         "(money.round_dollars); whoever adds a second value must read it"

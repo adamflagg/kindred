@@ -16,6 +16,7 @@ export const Collections = {
   AidApplications: 'aid_applications',
   AidAttributionOverrides: 'aid_attribution_overrides',
   AidChangeLog: 'aid_change_log',
+  AidDecisions: 'aid_decisions',
   AidFlagDispositions: 'aid_flag_dispositions',
   AidGrantors: 'aid_grantors',
   AidGrants: 'aid_grants',
@@ -300,6 +301,44 @@ export type AidChangeLogRecord<Tafter = unknown, Tbefore = unknown> = {
   id: string
   operation_id: string
   reason?: string
+  year: number
+}
+
+export const AidDecisionsEventOptions = {
+  ask: 'ask',
+  award: 'award',
+  approve: 'approve',
+  refuse: 'refuse',
+  post: 'post',
+  unpost: 'unpost',
+  accept: 'accept',
+  unaccept: 'unaccept',
+} as const
+export type AidDecisionsEventOptions =
+  (typeof AidDecisionsEventOptions)[keyof typeof AidDecisionsEventOptions]
+
+export const AidDecisionsLockSourceOptions = {
+  tick: 'tick',
+  ledger: 'ledger',
+} as const
+export type AidDecisionsLockSourceOptions =
+  (typeof AidDecisionsLockSourceOptions)[keyof typeof AidDecisionsLockSourceOptions]
+export type AidDecisionsRecord<Tsnapshot = unknown> = {
+  actor: string
+  amount?: number
+  created: IsoAutoDateString
+  decision_type?: string
+  effective_on?: IsoDateString
+  event: AidDecisionsEventOptions
+  id: string
+  lock_source?: AidDecisionsLockSourceOptions
+  needs_approval?: boolean
+  note?: string
+  request: RecordIdString
+  round: number
+  rules_version?: number
+  snapshot?: null | Tsnapshot
+  statement_of_need?: string
   year: number
 }
 
@@ -2423,6 +2462,10 @@ export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = 
   AidChangeLogRecord<Tafter, Tbefore>
 > &
   BaseSystemFields<Texpand>
+export type AidDecisionsResponse<Tsnapshot = unknown, Texpand = unknown> = Required<
+  AidDecisionsRecord<Tsnapshot>
+> &
+  BaseSystemFields<Texpand>
 export type AidFlagDispositionsResponse<Texpand = unknown> = Required<AidFlagDispositionsRecord> &
   BaseSystemFields<Texpand>
 export type AidGrantorsResponse<Taliases = unknown, Texpand = unknown> = Required<
@@ -2684,6 +2727,7 @@ export type CollectionRecords = {
   aid_applications: AidApplicationsRecord
   aid_attribution_overrides: AidAttributionOverridesRecord
   aid_change_log: AidChangeLogRecord
+  aid_decisions: AidDecisionsRecord
   aid_flag_dispositions: AidFlagDispositionsRecord
   aid_grantors: AidGrantorsRecord
   aid_grants: AidGrantsRecord
@@ -2782,6 +2826,7 @@ export type CollectionResponses = {
   aid_applications: AidApplicationsResponse
   aid_attribution_overrides: AidAttributionOverridesResponse
   aid_change_log: AidChangeLogResponse
+  aid_decisions: AidDecisionsResponse
   aid_flag_dispositions: AidFlagDispositionsResponse
   aid_grantors: AidGrantorsResponse
   aid_grants: AidGrantsResponse

@@ -426,6 +426,10 @@ class Round3Section(RulesModel):
     require_statement_of_need: bool = True
     max_amount: Money | None = None
     max_total_pct_of_cost: Percent | None = None
+    # The most staff with casework only (the registrar) may give in Round 3 on their own; a larger
+    # Round 3 amount waits for finance as "Pending approval" (D22, D79; main spec 7.2 "the
+    # registrar's ceiling"). None: the season sets no limit, so every Round 3 amount waits.
+    registrar_limit: Money | None = None
 
 
 # --- budget ---------------------------------------------------------------------------

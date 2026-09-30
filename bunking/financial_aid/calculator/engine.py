@@ -217,11 +217,15 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     ceiling = rules.tiers.income_ceiling
     above_ceiling = ceiling is not None and adjusted_income > ceiling
     _round1(work, request, rules, program, decision, cost, final, reduce_award, above_ceiling=above_ceiling)
+    _lock(work, 1, request.r1_locked)
     _round2(work, request, rules, decision, final, above_ceiling=above_ceiling)
+    _lock(work, 2, request.r2_locked)
     _round3(work, request, rules, decision, above_ceiling=above_ceiling)
-    _total_cap(work, rules)
+    _lock(work, 3, request.r3_locked)
+    _total_cap(work, rules, request)
     _top_up(work, decision, above_ceiling=above_ceiling)
-    _discretionary(work, decision, above_ceiling=above_ceiling)
+    _discretionary(work, request, decision, above_ceiling=above_ceiling)
+    _freeze_locked_extras(work, request)
     _total(work)
     work.issues.extend(
         run_quality_checks(
@@ -523,8 +527,27 @@ def _round3(
     work.step("r3", "Round 3 award", work.r3, inputs={"requested": amount}, bound=bound)
 
 
-def _total_cap(work: _Work, rules: AidRules) -> None:
-    """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut."""
+def _lock(work: _Work, n: int, locked: Decimal | None) -> None:
+    """A posted round keeps the amount it locked at (D43, D52), and later rounds build on it. The
+    amount worked out now stays in the trace, so the receipt shows both."""
+    if locked is None:
+        return
+    worked_out: Decimal | None = getattr(work, f"r{n}")
+    setattr(work, f"r{n}", locked)
+    setattr(work, f"r{n}_bound", "locked")
+    work.step(
+        f"r{n}_locked",
+        f"Round {n} as posted",
+        locked,
+        inputs={"worked_out": worked_out},
+        bound="locked",
+        note="Locked when it was posted; later rounds build on this amount",
+    )
+
+
+def _total_cap(work: _Work, rules: AidRules, request: RequestInputs) -> None:
+    """Caps Round 2 then Round 3. Round 1, top-ups and discretionary money are never cut.
+    A locked round is never cut (D43): the cap takes its room from the rounds still open."""
     cap = rules.round2.total_cap
     if cap is None or (work.r2 is None and work.r3 is None):
         return
@@ -537,11 +560,11 @@ def _total_cap(work: _Work, rules: AidRules) -> None:
     limit = pct_of(cap.pct_of_cost, work.cost) - (grants if cap.include_grants else ZERO)
     r2_before, r3_before = work.r2, work.r3
     room = max(limit - work.r1, ZERO)
-    if work.r2 is not None and work.r2 > room:
+    if work.r2 is not None and work.r2 > room and request.r2_locked is None:
         work.r2, work.r2_bound = floor_dollars(room), "total_cap"
         work.retrace("r2", work.r2, "total_cap", before=r2_before)
     room = max(room - (work.r2 or ZERO), ZERO)
-    if work.r3 is not None and work.r3 > room:
+    if work.r3 is not None and work.r3 > room and request.r3_locked is None:
         work.r3, work.r3_bound = floor_dollars(room), "total_cap"
         work.retrace("r3", work.r3, "total_cap", before=r3_before)
     work.step(
@@ -592,10 +615,13 @@ def _top_up(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) 
     work.step("top_up", f"Top-up: {decision.label}", amount, inputs={"kind": decision.kind}, note=note)
 
 
-def _discretionary(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) -> None:
-    """Withholds a typed discretionary amount above the income ceiling, and says so."""
+def _discretionary(work: _Work, request: RequestInputs, decision: DecisionType | None, *, above_ceiling: bool) -> None:
+    """Withholds a typed discretionary amount above the income ceiling, and says so. Money frozen by
+    a lock is paid whatever the income says now, so it is never withheld or flagged."""
     typed = work.discretionary
     if typed == 0 or not above_ceiling or (decision is not None and decision.ceiling_exempt):
+        return
+    if request.locked_discretionary is not None:
         return
     work.discretionary = ZERO
     work.issue(
@@ -605,6 +631,32 @@ def _discretionary(work: _Work, decision: DecisionType | None, *, above_ceiling:
         "discretionary",
     )
     work.step("discretionary", "Discretionary amount", ZERO, inputs={"withheld": typed}, bound="income_ceiling")
+
+
+def _freeze_locked_extras(work: _Work, request: RequestInputs) -> None:
+    """The decision type's top-up and discretionary money keep the amounts its posted round locked
+    them at (D43), beside the round's locked base and outside the caps, as in 2026. What they work
+    out to now stays in the trace."""
+    if request.locked_top_up is not None:
+        work.step(
+            "top_up_locked",
+            "Top-up as posted",
+            request.locked_top_up,
+            inputs={"worked_out": work.top_up},
+            bound="locked",
+            note="Locked when its round was posted",
+        )
+        work.top_up = request.locked_top_up
+    if request.locked_discretionary is not None:
+        work.step(
+            "discretionary_locked",
+            "Discretionary amount as posted",
+            request.locked_discretionary,
+            inputs={"worked_out": work.discretionary},
+            bound="locked",
+            note="Locked when its round was posted",
+        )
+        work.discretionary = request.locked_discretionary
 
 
 def _total(work: _Work) -> None:

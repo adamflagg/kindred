@@ -12,7 +12,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import httpx
 
@@ -126,11 +126,17 @@ def _tupled(changes: Mapping[str, Any]) -> dict[str, Any]:
 _TABLES = ("applications", "requests", "payer_shares", "corrections", "capacity", "change_log", "writes")
 
 
+class _BatchStore(Protocol):
+    """A store that applies one PocketBase batch (FakeAidStore, and the decisions fake)."""
+
+    def apply_batch(self, requests: list[dict[str, Any]]) -> httpx.Response: ...
+
+
 class _BatchTwin:
     """Just enough of the PocketBase client for bunking.pocketbase_batch.send_batch:
     base_url, auth_store.token and http_client.request. Every batch goes to the store."""
 
-    def __init__(self, store: FakeAidStore) -> None:
+    def __init__(self, store: _BatchStore) -> None:
         self.base_url = "http://pocketbase.test"
         self.auth_store = SimpleNamespace(token="")
         self.http_client = SimpleNamespace(request=self._request)

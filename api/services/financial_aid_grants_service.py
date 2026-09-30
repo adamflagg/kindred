@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Callable, Collection, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -234,6 +235,23 @@ def _program_family(enrolled: Sequence[Enrollment], session_cm_id: int | None) -
     return families.pop() if len(families) == 1 else ""
 
 
+@dataclass(frozen=True)
+class _Loaded:
+    """Everything the register read loads, and the register built from it (register_rows reuses it)."""
+
+    inputs: RegisterInputs
+    rows: list[RegisterRow]
+    sources: list[Any]
+    grantors: list[Any]
+    answers: list[FormAnswer]
+    family_sets: dict[int, list[int]]
+    members: list[Any]
+    people: dict[int, Any]
+    enrollments: list[Enrollment]
+    session_names: dict[int, str]
+    household_rows: list[Any]
+
+
 class GrantsService:
     def __init__(self, repo: GrantsRepository, *, clock: Callable[[], datetime] | None = None) -> None:
         self.repo = repo
@@ -314,9 +332,8 @@ class GrantsService:
 
     # --- the register read (view) ------------------------------------------------
 
-    async def read(self, year: int) -> GrantsResponse:
-        """Grants' one aggregate read (D21): the register, needs attention and Expected, joined
-        and computed here; the browser only filters and sorts."""
+    async def _load(self, year: int) -> _Loaded:
+        """The register read's loads and the register built from them (spec §8.2)."""
         (
             postings,
             commitments_raw,
@@ -397,6 +414,32 @@ class GrantsService:
             requests=requests,
         )
         rows = build_register(inputs)
+        return _Loaded(
+            inputs=inputs,
+            rows=rows,
+            sources=sources,
+            grantors=grantors_raw,
+            answers=answers,
+            family_sets=family_sets,
+            members=members,
+            people=people,
+            enrollments=enrollments,
+            session_names=session_names,
+            household_rows=household_rows,
+        )
+
+    async def register_rows(self, year: int) -> list[RegisterRow]:
+        """The register's rows for sub-project 10a: the calculator's grants bridge
+        (`grant_inputs_by_request`) and the budget's outside grants. The rows read() reports."""
+        return (await self._load(year)).rows
+
+    async def read(self, year: int) -> GrantsResponse:
+        """Grants' one aggregate read (D21): the register, needs attention and Expected, joined
+        and computed here; the browser only filters and sorts."""
+        loaded = await self._load(year)
+        inputs, rows, sources, grantors_raw = loaded.inputs, loaded.rows, loaded.sources, loaded.grantors
+        answers, family_sets, members, people = loaded.answers, loaded.family_sets, loaded.members, loaded.people
+        enrollments, session_names, household_rows = loaded.enrollments, loaded.session_names, loaded.household_rows
 
         active = {e.person_cm_id for e in enrollments if e.status_id == ACTIVE_ENROLLED_STATUS_ID}
         candidates = {

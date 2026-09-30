@@ -1,0 +1,89 @@
+"""aid_decisions reads, and the names the Requests grid shows (campership sub-project 10a).
+
+Extends the intake repository, so the decisions service reads the applications, requests,
+corrections, sessions, payer shares and equity answers casework reads, converted the same way, and
+writes through the same `commit` (sub-project 4a's commit_aid_writes)."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+from collections.abc import Collection
+from datetime import date
+from decimal import Decimal
+from typing import Any, Final
+
+from api.constants.collections import AID_DECISIONS
+from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
+from api.services.financial_aid_repository import FinancialAidRepository
+from bunking.financial_aid.decisions import EVENT_KINDS, DecisionEvent
+
+# Events that carry no amount: PocketBase stores 0 for an unset number, which must not read as $0.
+_NO_AMOUNT: Final = frozenset({"approve", "refuse", "unpost", "accept", "unaccept"})
+_PB_ID: Final = re.compile(r"^[a-z0-9]{15}$")
+
+
+def _date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    return date.fromisoformat(text[:10]) if text else None
+
+
+def _json_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, str):
+        value = json.loads(value) if value.strip() else None
+    return dict(value) if value else None
+
+
+def decision_event(record: Any) -> DecisionEvent:
+    """One aid_decisions record as an event."""
+    kind = str(record.event)
+    if kind not in EVENT_KINDS:
+        raise ValueError(f"aid_decisions {record.id}: unknown event {kind!r}")
+    created = parse_pb_datetime(getattr(record, "created", None))
+    if created is None:
+        raise ValueError(f"aid_decisions {record.id} has no created time")
+    version = int(getattr(record, "rules_version", 0) or 0)
+    return DecisionEvent(
+        id=str(record.id),
+        request_id=str(record.request),
+        round=int(record.round),
+        kind=kind,
+        created=created,
+        amount=None if kind in _NO_AMOUNT else Decimal(str(getattr(record, "amount", 0) or 0)),
+        effective_on=_date(getattr(record, "effective_on", "")),
+        statement_of_need=str(getattr(record, "statement_of_need", "") or ""),
+        decision_type=str(getattr(record, "decision_type", "") or ""),
+        needs_approval=bool(getattr(record, "needs_approval", False)),
+        lock_source=str(getattr(record, "lock_source", "") or ""),
+        rules_version=version or None,
+        snapshot=_json_object(getattr(record, "snapshot", None)),
+        note=str(getattr(record, "note", "") or ""),
+        actor=str(getattr(record, "actor", "") or ""),
+    )
+
+
+class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
+    async def fetch_decision_events(self, year: int) -> list[DecisionEvent]:
+        rows = await self._page(AID_DECISIONS, {"filter": f"year = {int(year)}", "sort": "created,id"})
+        return [decision_event(row) for row in rows]
+
+    async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]:
+        if not _PB_ID.fullmatch(request_id):
+            raise ValueError(f"{request_id!r} is not a record id")
+        rows = await self._page(AID_DECISIONS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
+        return [decision_event(row) for row in rows]
+
+    async def fetch_names(
+        self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
+    ) -> tuple[dict[int, str], dict[int, str]]:
+        """The grid's family and camper names, the way the ledger and grants reads name them."""
+        ledger = FinancialAidRepository(self.pb)
+        households, persons = await asyncio.gather(
+            ledger.fetch_households(year, household_cm_ids), ledger.fetch_persons(year, person_cm_ids)
+        )
+        return (
+            {int(h.cm_id): household_display_name(h, int(h.cm_id)) for h in households},
+            {int(p.cm_id): person_display_name(p) for p in persons},
+        )

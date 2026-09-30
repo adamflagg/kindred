@@ -288,6 +288,18 @@ async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
 
 
 @pytest.mark.asyncio
+async def test_register_rows_are_the_rows_the_read_reports() -> None:
+    """Sub-project 10a prices from these rows (the calculator's grants bridge), so they must be the
+    register the Grants screen shows, built the same way."""
+    service, _ = _service(_read_repo())
+    rows = await service.register_rows(2031)
+    shown = (await service.read(2031)).grants
+    assert [(r.transaction_cm_id, float(r.amount), r.counts) for r in rows] == [
+        (g.transaction_cm_id, g.amount, g.counts) for g in shown
+    ]
+
+
+@pytest.mark.asyncio
 async def test_needs_camper_candidates_include_an_attributed_person_from_another_household() -> None:
     """Ruling 2b: the suggestion's person is always a candidate when they're enrolled this season,
     even when their own household isn't the line's (Go's attribution can name someone
