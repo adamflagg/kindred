@@ -231,6 +231,24 @@ def test_a_posted_non_counting_round_is_wholly_outside_and_not_posted() -> None:
     assert budget.strip[2].posted == Count(0, 0)
 
 
+def test_a_non_counting_round_with_no_extra_is_still_wholly_outside_the_budget() -> None:
+    """The whole round leaves, whatever the top-up: a non-counting type with extra at zero is not a base round."""
+    request = priced("req-p", 13, view(3, "needs_offer", decided="400", counts=False, extra="0"))
+    camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[3].needs_offer, camp.below.outside_budget, camp.rounds[3].remaining) == (
+        ZERO,
+        Decimal(400),
+        Decimal("20000.00"),
+    )
+
+
+def test_a_clawed_back_non_counting_round_counts_nowhere() -> None:
+    clawed = replace(view(2, "posted", locked="850", counts=False, extra="250"), clawed_back=True)
+    request = priced("req-q", 14, clawed)
+    camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[2].posted, camp.below.outside_budget, camp.below.outside_budget_posted) == (ZERO, ZERO, ZERO)
+
+
 def test_pending_approval_is_subtracted_even_with_the_flag_off() -> None:
     request = priced(
         "req-m", 10, view(1, "posted", locked="3000"), view(3, "pending_approval", pending="500", counts=False)
