@@ -53,6 +53,16 @@ class RoundOut(BaseModel):
     rules_version: int | None
 
 
+class ReleasedHoldOut(BaseModel):
+    """A check's hold released with a note (follow-up 3b; main spec §10.5): it no longer stops the
+    award. Listed so the household page can show it and put it back."""
+
+    code: str
+    note: str
+    released_at: datetime
+    released_by: str
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -70,6 +80,7 @@ class GridRowOut(BaseModel):
     total_decided: float | None
     total_posted: float | None
     holds: list[IssueOut]
+    released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut]
 
 

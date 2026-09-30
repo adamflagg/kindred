@@ -6,6 +6,9 @@ season on the server and returns one aggregate (D21): the Requests grid, Rounds 
 Remaining line. They are live only (Decision 12), but every event they read is dated, so as-of can
 follow.
 
+Holds (follow-up 3b): each request's released check codes and its manual hold come from
+aid_hold_events, folded like the rounds, and reach pricing through with_holds.
+
 Writes. Each is one staff action and one operation through sub-project 4a's commit_aid_writes:
 the aid_decisions rows and their aid_change_log rows in ONE PocketBase batch, and a first lock's
 rules-section locks in that same batch (Decision 11). A write that changes nothing writes nothing:
@@ -20,7 +23,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
@@ -39,6 +42,7 @@ from api.schemas.financial_aid_decisions import (
     GridRowOut,
     PoolBudgetOut,
     PostedIn,
+    ReleasedHoldOut,
     RemainingPoolOut,
     RemainingResponse,
     RequestsGridResponse,
@@ -74,21 +78,26 @@ from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions import (
+    NO_HOLDS,
     NO_POOL,
     Cell,
     Count,
     DecisionEvent,
     EventKind,
+    HoldEvent,
+    HoldState,
     PoolBudget,
     PricedRequest,
     RequestToPrice,
     RoundState,
     SeasonBudget,
+    fold_holds,
     fold_rounds,
     lock_snapshot,
     needs_finance,
     price_request,
     season_budget,
+    with_holds,
 )
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
@@ -154,6 +163,8 @@ class DecisionsStore(Protocol):
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]: ...
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
+    async def fetch_hold_events(self, year: int) -> list[HoldEvent]: ...
+    async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
@@ -190,6 +201,12 @@ class Season:
     sessions: Mapping[int, SessionRow]
     # The grants register's calculator input per request, built once for pricing and the budget.
     grants: Mapping[str, Sequence[GrantInput]]
+    # Each request's released check codes and manual hold (follow-up 3b).
+    holds: Mapping[str, HoldState]
+    # The released codes that take effect: a hold-severity issue the request shows now, or would
+    # show unreleased. A release written for anything else (needs_input, error, a code that no
+    # longer fires) changes nothing, so the grid does not list it.
+    effective_releases: Mapping[str, frozenset[str]]
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -270,6 +287,7 @@ def grid_row(
     sessions: Mapping[int, SessionRow],
     families: Mapping[int, str],
     campers: Mapping[int, str],
+    hold: HoldState,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -309,8 +327,20 @@ def grid_row(
         total_decided=money(sum(decided, ZERO)) if decided else None,
         total_posted=money(sum(posted, ZERO)) if posted else None,
         holds=[_issue(i) for i in priced.holds],
+        released_holds=[
+            ReleasedHoldOut(code=r.code, note=r.note, released_at=r.released_at, released_by=r.released_by)
+            for code, r in sorted(hold.released.items())
+            if code in hold.released_codes()
+        ],
         notes=[_issue(i) for i in priced.notes],
     )
+
+
+def _effective_holds(season: Season, request_id: str) -> HoldState:
+    """The request's hold state with only the releases that take effect (see Season)."""
+    state = season.holds.get(request_id, NO_HOLDS)
+    keep = season.effective_releases.get(request_id, frozenset())
+    return replace(state, released={c: r for c, r in state.released.items() if c in keep})
 
 
 def _count(count: Count) -> CountOut:
@@ -401,26 +431,28 @@ class FinancialAidDecisionsService:
 
     async def _rounds_side(
         self, year: int
-    ) -> tuple[list[SessionRow], list[PayerShareRecord], list[DecisionEvent], Sequence[RegisterRow]]:
+    ) -> tuple[list[SessionRow], list[PayerShareRecord], list[DecisionEvent], list[HoldEvent], Sequence[RegisterRow]]:
         return await asyncio.gather(
             self._store.fetch_sessions(year),
             self._store.fetch_payer_shares(year),
             self._store.fetch_decision_events(year),
+            self._store.fetch_hold_events(year),
             self._register(year),
         )
 
     async def season(self, year: int) -> Season:
-        """Every request of the season priced now, with its rounds (D21: the server decides)."""
+        """Every request of the season priced now, with its rounds and its holds (D21: the server decides)."""
         return (await self._season(year, names=False))[0]
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as two concurrent branches: the requests with what hangs off them
         (the names too, when asked), and the sessions, shares, events and grants register."""
-        side, (sessions, shares, events, register) = await asyncio.gather(
+        side, (sessions, shares, events, hold_events, register) = await asyncio.gather(
             self._request_side(year, names=names), self._rounds_side(year)
         )
         rules = side.rules
         rounds = fold_rounds(events)
+        holds = fold_holds(hold_events)
         grants = grant_inputs_by_request(register)
         by_id = {a.id: a for a in side.applications}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
@@ -428,8 +460,8 @@ class FinancialAidDecisionsService:
             own[correction.application_id].append(correction)
         session_map = {s.cm_id: s for s in sessions}
         document = rules.document if rules is not None else None
-        priced = {
-            r.id: price_request(
+        items = {
+            r.id: with_holds(
                 _to_price(
                     r,
                     by_id.get(r.application_id),
@@ -441,9 +473,19 @@ class FinancialAidDecisionsService:
                     tuple(grants.get(r.id, [])),
                     document,
                 ),
-                document,
+                holds.get(r.id, NO_HOLDS),
             )
             for r in side.requests
+        }
+        priced = {r.id: price_request(items[r.id], document) for r in side.requests}
+        effective = {
+            rid: frozenset(
+                i.code
+                for i in price_request(replace(items[rid], released_holds=frozenset()), document).holds
+                if i.severity == "hold" and i.code in state.released_codes()
+            )
+            for rid, state in holds.items()
+            if rid in items and state.released_codes()
         }
         season = Season(
             year=year,
@@ -454,6 +496,8 @@ class FinancialAidDecisionsService:
             register=tuple(register),
             sessions=session_map,
             grants=grants,
+            holds=holds,
+            effective_releases=effective,
         )
         return season, side.names
 
@@ -471,7 +515,15 @@ class FinancialAidDecisionsService:
     async def grid(self, year: int) -> RequestsGridResponse:
         season, (families, campers) = await self._season(year, names=True)
         rows = [
-            grid_row(season.requests[rid], priced, season.rounds.get(rid, {}), season.sessions, families, campers)
+            grid_row(
+                season.requests[rid],
+                priced,
+                season.rounds.get(rid, {}),
+                season.sessions,
+                families,
+                campers,
+                _effective_holds(season, rid),
+            )
             for rid, priced in season.priced.items()
         ]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))

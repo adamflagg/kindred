@@ -1,4 +1,4 @@
-"""aid_decisions reads, and the names the Requests grid shows (campership sub-project 10a).
+"""aid_decisions and aid_hold_events reads, and the names the Requests grid shows (campership sub-project 10a, follow-up 3b).
 
 Extends the intake repository, so the decisions service reads the applications, requests,
 corrections, sessions, payer shares and equity answers casework reads, converted the same way, and
@@ -14,11 +14,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_DECISIONS
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
 from api.services.financial_aid_repository import FinancialAidRepository
-from bunking.financial_aid.decisions import EVENT_KINDS, DecisionEvent
+from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
 
 # Events that carry no amount: PocketBase stores 0 for an unset number, which must not read as $0.
 _NO_AMOUNT: Final = frozenset({"approve", "refuse", "unpost", "accept", "unaccept"})
@@ -64,6 +64,26 @@ def decision_event(record: Any) -> DecisionEvent:
     )
 
 
+def hold_event(record: Any) -> HoldEvent:
+    """One aid_hold_events record as an event (follow-up 3b)."""
+    kind = str(record.event)
+    if kind not in HOLD_EVENT_KINDS:
+        raise ValueError(f"aid_hold_events {record.id}: unknown event {kind!r}")
+    created = parse_pb_datetime(getattr(record, "created", None))
+    if created is None:
+        raise ValueError(f"aid_hold_events {record.id} has no created time")
+    return HoldEvent(
+        id=str(record.id),
+        request_id=str(record.request),
+        kind=kind,
+        code=str(record.code),
+        created=created,
+        note=str(getattr(record, "note", "") or ""),
+        actor=str(getattr(record, "actor", "") or ""),
+        fact=_json_object(getattr(record, "fact", None)),
+    )
+
+
 class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]:
         rows = await self._page(AID_DECISIONS, {"filter": f"year = {int(year)}", "sort": "created,id"})
@@ -74,6 +94,16 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             raise ValueError(f"{request_id!r} is not a record id")
         rows = await self._page(AID_DECISIONS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
         return [decision_event(row) for row in rows]
+
+    async def fetch_hold_events(self, year: int) -> list[HoldEvent]:
+        rows = await self._page(AID_HOLD_EVENTS, {"filter": f"year = {int(year)}", "sort": "created,id"})
+        return [hold_event(row) for row in rows]
+
+    async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
+        if not _PB_ID.fullmatch(request_id):
+            raise ValueError(f"{request_id!r} is not a record id")
+        rows = await self._page(AID_HOLD_EVENTS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
+        return [hold_event(row) for row in rows]
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]

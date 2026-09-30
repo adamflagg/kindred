@@ -15,8 +15,8 @@ from typing import Any, cast
 
 import httpx
 
-from api.constants.collections import AID_DECISIONS, AID_RULES
-from api.services.financial_aid_decisions_repository import decision_event
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_RULES
+from api.services.financial_aid_decisions_repository import decision_event, hold_event
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare
 from api.services.financial_aid_intake_types import (
     ApplicationRecord,
@@ -28,7 +28,7 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
-from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.decisions import DecisionEvent, HoldEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from bunking.financial_aid.rules.schema import SECTION_NAMES, AidRules, SectionName
 from pocketbase import PocketBase
@@ -47,6 +47,7 @@ class FakeDecisionsStore:
         self.shares: list[PayerShareRecord] = []
         self.equity: dict[int, EquityAnswers] = {}
         self.events: list[DecisionEvent] = []
+        self.hold_events: list[HoldEvent] = []
         self.operations: list[list[AidWrite]] = []  # every commit a service attempted
         self.log: list[dict[str, Any]] = []  # every aid_change_log row that committed
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
@@ -87,6 +88,12 @@ class FakeDecisionsStore:
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]:
         return [e for e in self.events if e.request_id == request_id]
 
+    async def fetch_hold_events(self, year: int) -> list[HoldEvent]:
+        return [e for e in self.hold_events if self.requests[e.request_id].year == year]
+
+    async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
+        return [e for e in self.hold_events if e.request_id == request_id]
+
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]:
@@ -123,6 +130,9 @@ class FakeDecisionsStore:
             elif collection == AID_DECISIONS:
                 self._clock += timedelta(seconds=1)
                 self.events.append(decision_event(SimpleNamespace(**body, created=self._clock.isoformat())))
+            elif collection == AID_HOLD_EVENTS:
+                self._clock += timedelta(seconds=1)
+                self.hold_events.append(hold_event(SimpleNamespace(**body, created=self._clock.isoformat())))
             elif collection == AID_RULES:
                 self.rules_writes.append(body)
             else:
