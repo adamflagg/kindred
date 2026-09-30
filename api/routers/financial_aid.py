@@ -21,9 +21,13 @@ Sub-project 10a adds decisions: the season's Requests grid, Rounds & budget and
 the Remaining line (view; the Remaining line also summary, D75), each round's
 asks and Round 3 amounts and the Posted and Accepted ticks (casework), and
 Round 3 approval (rules).
-Sub-project 9b adds the scenario routes (`/scenarios/...`, financial_aid.rules): freeze the season, the per-person draft and its trail, keep, compare, fit to budget, the one-step sensitivity, a request set (requests received through a date), and making a kept option the rules draft.
 Follow-up 3b adds releasing a check's hold and placing a manual hold
 (casework).
+
+Sub-project 9b adds the scenario routes (`/scenarios/...`, financial_aid.rules):
+freeze the season, the per-person draft and its trail, keep, compare, fit to
+budget, the one-step sensitivity, a request set (requests received through a
+date), and making a kept option the rules draft.
 """
 
 from datetime import date
@@ -121,6 +125,7 @@ from api.schemas.financial_aid_scenarios import (
     LeverEffectOut,
     LoadIn,
     MakeRulesDraftIn,
+    OptionCode,
     OptionOut,
     PoolResultOut,
     PromotionPreviewOut,
@@ -938,7 +943,7 @@ def _scenarios_http(exc: FinancialAidError) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ReplacementNotAcknowledgedError):
         return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
-    if isinstance(exc, (ScenarioConflictError, OptionCodeTakenError, NotLatestVersionError)):
+    if isinstance(exc, (ScenarioConflictError, OptionCodeTakenError, NotLatestVersionError, VersionExistsError)):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -1169,7 +1174,7 @@ async def keep_scenario(year: _Year, body: KeepIn, user: AuthUser = _RULES) -> O
 @router.get("/scenarios/{year}/compare", response_model=CompareOut)
 async def compare_scenarios(
     year: _Year,
-    codes: Annotated[list[str], Query(max_length=4)] = [],  # noqa: B006
+    codes: Annotated[list[OptionCode], Query(max_length=4)] = [],  # noqa: B006
     through_round1_deadline: bool = Query(default=False),
     received_through: date | None = Query(default=None),
     user: AuthUser = _RULES,
@@ -1233,7 +1238,7 @@ async def scenario_sensitivity(year: _Year, body: ViewIn, user: AuthUser = _RULE
 @router.get("/scenarios/{year}/trail", response_model=TrailPageOut)
 async def get_scenario_trail(
     year: _Year,
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=10000),
     per_page: int = Query(default=50, ge=1, le=200),
     user: AuthUser = _RULES,
 ) -> TrailPageOut:

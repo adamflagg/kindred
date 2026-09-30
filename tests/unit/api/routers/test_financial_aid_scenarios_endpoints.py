@@ -20,6 +20,7 @@ from api.services.financial_aid_rules_service import (
     ReplacementWarning,
     RulesDraft,
     RulesVersion,
+    VersionExistsError,
 )
 from api.services.financial_aid_scenario_pricing import SnapshotError
 from api.services.financial_aid_scenarios_repository import (
@@ -49,6 +50,7 @@ from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import (
     SIZING_LEVERS,
     FitResult,
+    PoolResult,
     RequestSetNote,
     ScenarioResults,
     SizingError,
@@ -76,7 +78,19 @@ RESULTS = ScenarioResults(
     held=0,
     held_asked=Decimal(0),
     round1_unmet=Decimal(5400),
-    pools=[],
+    pools=[
+        PoolResult(
+            pool="camp_pool",
+            label="Camp pool",
+            round1=Decimal(2600),
+            round2=Decimal(0),
+            round3=Decimal(0),
+            round1_allocated=None,
+            round1_remaining=None,
+            remaining=None,
+            round1_unmet=Decimal(0),
+        )
+    ],
     by_tier=[TierRow(tier=2, requests=1, families=1, round1=Decimal(1500))],
 )
 META = SnapshotMeta(id="snp000000000001", year=2027, requests=2, actor=FINANCE, created=T)
@@ -325,6 +339,7 @@ def test_a_body_that_is_not_a_rules_document_is_422() -> None:
         (ScenarioNotFoundError("2027 has no kept option Q"), 404),
         (ScenarioConflictError("Your draft is the same as A"), 409),
         (OptionCodeTakenError("Someone kept an option at the same moment"), 409),
+        (VersionExistsError("Rules v2 already exists"), 409),
         (ScenarioRefusedError("Freeze 2027's applications first"), 422),
         (SnapshotError("This snapshot predates the season read fetch_x"), 422),
         (SizingError("Bands $50,000 narrower would leave band 1 empty or below $0"), 422),
@@ -385,3 +400,36 @@ def test_an_option_code_must_be_a_code() -> None:
     service = _stub()
     assert _client().get("/api/financial-aid/scenarios/2027/options/a1/rules-draft").status_code == 422
     service.rules_draft_preview.assert_not_called()
+
+
+def test_a_pool_with_no_allocation_reads_as_null_and_a_real_zero_as_zero() -> None:
+    _stub()
+    [pool] = _client().get("/api/financial-aid/scenarios/2027").json()["options"][0]["results"]["pools"]
+    assert (pool["round1_allocated"], pool["round1_unmet"]) == (None, 0.0)
+
+
+@pytest.mark.parametrize("codes", [["a1"], ["ABCDEFGHIJKLM"], ["A", "B", "C", "D", "E"]])
+def test_compare_codes_must_be_codes_and_at_most_four(codes: list[str]) -> None:
+    service = _stub()
+    assert _client().get("/api/financial-aid/scenarios/2027/compare", params={"codes": codes}).status_code == 422
+    service.compare.assert_not_called()
+
+
+def test_inputs_are_bounded() -> None:
+    service = _stub()
+    client = _client()
+    url = "/api/financial-aid/scenarios/2027"
+    token = {"acknowledged": {"award_tables": "x" * 129}, "base_version": 1}
+    assert client.post(f"{url}/options/A1/rules-draft", json=token).status_code == 422
+    assert client.get(f"{url}/trail", params={"page": 10001}).status_code == 422
+    assert client.post(f"{url}/evaluate", json={**DOC_BODY, "tier_shift": "1.234"}).status_code == 422
+    assert client.post(f"{url}/evaluate", json={**DOC_BODY, "band_width_delta": "1000.123"}).status_code == 422
+    service.make_rules_draft.assert_not_called()
+    service.trail.assert_not_called()
+    service.evaluate.assert_not_called()
+
+
+def test_a_load_naming_nothing_is_422_before_the_service() -> None:
+    service = _stub()
+    assert _client().post("/api/financial-aid/scenarios/2027/draft/load", json={}).status_code == 422
+    service.load.assert_not_called()

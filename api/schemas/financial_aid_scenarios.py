@@ -132,8 +132,8 @@ class ViewIn(DocumentIn):
 
 class EvaluateIn(ViewIn):
     # The draft's relative sizing settings, applied to `document` (the one the sliders started from).
-    tier_shift: Decimal = Field(default=Decimal(0), ge=-100, le=100)
-    band_width_delta: Decimal = Field(default=Decimal(0), ge=-1000000, le=1000000)
+    tier_shift: Decimal = Field(default=Decimal(0), ge=-100, le=100, max_digits=9, decimal_places=2)
+    band_width_delta: Decimal = Field(default=Decimal(0), ge=-1000000, le=1000000, max_digits=9, decimal_places=2)
 
 
 class EvaluateOut(BaseModel):
@@ -147,6 +147,12 @@ class LoadIn(BaseModel):
 
     option: OptionCode | None = None
     trail_row: RecordId | None = None
+
+    @model_validator(mode="after")
+    def _one_source(self) -> Self:
+        if self.option is None and self.trail_row is None:
+            raise ValueError("name a kept option or a trail row to load")
+        return self
 
 
 class KeepIn(BaseModel):
@@ -240,4 +246,4 @@ class MakeRulesDraftIn(BaseModel):
 
     base_version: int = Field(ge=1)
     # section -> the token its preview warning carried (SP9a's promote accepts an acknowledgement only with it)
-    acknowledged: dict[SectionName, str] = Field(default_factory=dict)
+    acknowledged: dict[SectionName, Annotated[str, Field(max_length=128)]] = Field(default_factory=dict)
