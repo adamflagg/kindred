@@ -8,21 +8,33 @@ Rules and scenarios live in memory, and every write runs 4a's real helper."""
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
-from api.constants.collections import AID_REQUESTS, AID_SCENARIO_SNAPSHOTS
+from api.constants.collections import AID_REQUESTS, AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS
 from api.schemas.financial_aid_decisions import CellOut, RoundCellOut
 from api.services import financial_aid_scenarios_repository as repository_module
+from api.services import financial_aid_scenarios_service as service_module
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
-from api.services.financial_aid_rules_service import FinancialAidRulesService
-from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, capture_season
+from api.services.financial_aid_rules_service import (
+    FinancialAidRulesService,
+    NotLatestVersionError,
+    ReplacementNotAcknowledgedError,
+    RulesVersion,
+)
+from api.services.financial_aid_scenario_pricing import (
+    PricedSeason,
+    SeasonSnapshot,
+    SnapshotError,
+    capture_season,
+    price_document,
+)
 from api.services.financial_aid_scenarios_service import (
     FinancialAidScenariosService,
     RequestSetChoice,
@@ -33,7 +45,7 @@ from api.services.financial_aid_scenarios_service import (
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.rules import AidRules
+from bunking.financial_aid.rules import AidRules, SectionName
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import RequestSetNote, shift_round1_tables, with_minimum
 from tests.unit.api.services.decisions_fakes import (
@@ -797,3 +809,86 @@ async def test_freezes_and_trail_rows_log_who_made_them() -> None:
         ("aid_scenario_trail", "record", FINANCE),
         ("aid_scenario_trail", "record", FINANCE),
     ]
+
+
+# --- the parked B7 minors -------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_every_sizing_step_moves_round1_when_a_family_sits_on_its_edge() -> None:
+    """Riley's family has 250,000 (tier 6: 2% of 2,000 is 40, so the 100 minimum): +10 on the minimum is +10. Olivia's
+    has 81,500, just into tier 3 (1,100); bands 1,000 wider put it in tier 2 (1,500): +400. Dollar-for-dollar is off
+    in this document, with a 250 grant on Emma: flipping it on takes 1,313 to 1,250, -63. One more point: Emma's
+    1,750 basis +17.50 (rounded, +17), Liam +20, Olivia +20, Riley still the minimum: +57."""
+    world = await _world(rows=[grant_row(EMMA, "250")])
+    seed_request(world.season, RILEY, household=1000003, person=1000031, income=250000.0)
+    seed_request(world.season, "reqoliv00000001", household=1000004, person=1000041, income=81500.0)
+    await world.service.freeze(YEAR, FINANCE)
+    off = with_lever(intake_rules(), "grants.offset_mode", "reduce_cost_basis")
+    sensitivity = await world.service.sensitivity(YEAR, off)
+    assert [(e.lever.key, e.round1_change, e.on) for e in sensitivity.effects] == [
+        ("tier_shift", Decimal(57), None),
+        ("minimum", Decimal(10), None),
+        ("band_width", Decimal(400), None),
+        ("dollar_for_dollar", Decimal(-63), False),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_making_the_rules_draft_hands_off_the_previews_token_for_a_warned_section() -> None:
+    world = await _world()
+    await world.rules.approve_sections(YEAR, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.start_from_rules(YEAR, FINANCE)  # A, from the approved v1
+    a = await _kept_a1(world)
+    # Someone edits Round 1's tables after A was taken: the edit branches v2 (v1 prices the season), unapproved, and
+    # A1 would replace it.
+    edited = _shifted(a, "-3").model_dump(mode="json")["award_tables"]
+    await world.rules.save_section(YEAR, 1, "award_tables", edited, actor=TREASURER)
+    preview = await world.service.rules_draft_preview(YEAR, "A1")
+    [section] = preview.sections
+    assert section.warning is not None
+    assert (preview.base_version, section.section, section.warning.kind, section.warning.by) == (
+        2,
+        "award_tables",
+        "unapproved_edit",
+        TREASURER,
+    )
+    token: dict[SectionName, str] = {"award_tables": section.warning.token}
+    with pytest.raises(ReplacementNotAcknowledgedError):
+        await world.service.make_rules_draft(YEAR, "A1", base_version=2, acknowledged={}, actor=FINANCE)
+    with pytest.raises(NotLatestVersionError):
+        await world.service.make_rules_draft(YEAR, "A1", base_version=1, acknowledged=token, actor=FINANCE)
+    draft, _ = await world.service.make_rules_draft(YEAR, "A1", base_version=2, acknowledged=token, actor=FINANCE)
+    assert (draft.version.version, draft.version.section_status["award_tables"].edited_via) == (2, "A1")
+    assert draft.version.document.award_tables == _shifted(a, "5").award_tables
+
+
+@pytest.mark.asyncio
+async def test_compare_prices_no_reference_for_a_starting_point_from_the_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A starting point from the rules shows no up / down, so its rules are loaded for the changes, never priced."""
+    world = await _started()
+    priced: list[AidRules] = []
+
+    async def counting(
+        snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+    ) -> PricedSeason:
+        priced.append(document)
+        return await price_document(snapshot, document, base, requests=requests)
+
+    monkeypatch.setattr(service_module, "price_document", counting)
+    await world.service.load(YEAR, TREASURER, option="A")  # TREASURER's draft is A, unchanged
+    priced.clear()
+    draft, a = (await world.service.compare(YEAR, TREASURER, ["A"])).columns
+    assert (a.code, a.changes, a.up, a.down) == ("A", (), None, None)
+    assert len(priced) == 1  # the draft only: A's figures are stored, and v1 is never priced as its reference
+
+
+@pytest.mark.asyncio
+async def test_compare_refuses_a_draft_whose_option_is_gone_as_the_draft_does() -> None:
+    world = await _started()
+    world.store.rows[AID_SCENARIO_OPTIONS].clear()
+    with pytest.raises(ScenarioNotFoundError, match="no kept option A"):
+        await world.service.workspace(YEAR, FINANCE)
+    with pytest.raises(ScenarioNotFoundError, match="no kept option A"):
+        await world.service.compare(YEAR, FINANCE, [])

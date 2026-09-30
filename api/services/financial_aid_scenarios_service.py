@@ -630,17 +630,18 @@ class FinancialAidScenariosService:
                 )
             return seen[option.code]
 
-        async def of_rules(version: int) -> tuple[AidRules, Priced]:
-            document = (await self._rules.load(year, version)).document
+        async def of_rules(version: int) -> Priced:
             key = f"rules v{version}"
             if key not in seen:
-                seen[key] = await price(document)
-            return document, seen[key]
+                seen[key] = await price((await self._rules.load(year, version)).document)
+            return seen[key]
 
         columns: list[CompareColumn] = []
         row = await self._store.latest_trail(year, actor)
-        source = options.get(_from(row)) if row is not None else None
-        if row is not None and row.document is not None and source is not None:
+        if row is not None and row.document is not None:
+            source = options.get(_from(row))
+            if source is None:
+                raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")  # as the draft read does
             mine = await price(row.document)
             up, down = up_down((await of_option(source)).round1, mine.round1)
             columns.append(
@@ -657,12 +658,15 @@ class FinancialAidScenariosService:
         for code in wanted:
             option = options[code]
             priced = await of_option(option)
-            if option.starting_point:
-                head = options[option.starting_point]
-                reference, against = head.document, await of_option(head)
-            else:
-                reference, against = await of_rules(option.origin_version)
-            up_or_down = up_down(against.round1, priced.round1) if option.from_code else (None, None)
+            reference = await self._reference(option, options)
+            up_or_down: tuple[int | None, int | None] = (None, None)  # a start from the rules: nothing to be up from
+            if option.from_code:
+                against = (
+                    await of_option(options[option.starting_point])
+                    if option.starting_point
+                    else await of_rules(option.origin_version)
+                )
+                up_or_down = up_down(against.round1, priced.round1)
             columns.append(
                 CompareColumn(
                     code,
