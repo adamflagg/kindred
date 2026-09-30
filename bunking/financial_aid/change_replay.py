@@ -60,7 +60,7 @@ class LogRow:
 
 @dataclass(frozen=True)
 class Replayed:
-    state: dict[str, Any] | None  # None: deleted by then
+    state: dict[str, Any] | None  # None: deleted by then. Never read when `complete` is False
     complete: bool  # the history began with its create, and every same-instant clash was settled
     created: datetime  # the first row's instant
 

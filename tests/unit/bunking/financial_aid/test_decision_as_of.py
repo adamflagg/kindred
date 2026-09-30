@@ -71,6 +71,16 @@ def test_the_manual_hold_as_it_stood_is_listed() -> None:
     assert [(h.code, h.message) for h in priced.holds] == [(MANUAL_HOLD, "Waiting on the tax return")]
 
 
+def test_a_request_not_live_then_lists_no_hold_and_takes_no_pool_from_its_lock() -> None:
+    """As live: holds only while the request is live, and a non-live request's own pool is empty (its
+    posted round keeps its lock's pool)."""
+    hold = HoldState(
+        manual=ManualHold(reason="Waiting on the tax return", placed_at=T0, placed_by="registrar@example.com")
+    )
+    priced = price_as_of("req-emma", 1000001, {1: POSTED}, RULES, live=False, r1_ask=None, hold=hold)
+    assert (priced.holds, priced.pool, priced.rounds[0].pool) == ((), None, "bmitzvah_pool")
+
+
 def test_a_posted_round_with_money_outside_the_budget_counts_as_live_does() -> None:
     """Review focus 4: the same events give the same Posted and outside-budget money, live and past."""
     rules = with_lever(RULES, "awards.decision_types.discretionary.counts_toward_budget", False)

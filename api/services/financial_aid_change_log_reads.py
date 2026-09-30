@@ -1,7 +1,7 @@
 """aid_change_log rows as replay input (campership 3c). Read-only; one season, one collection.
 
 The index `idx_aid_change_log_year (year, created)` serves the read. A season's request log is
-intake's first run plus every change since, which is small (the prod snapshot's first run: 1,369 rows).
+intake's first run plus every change since: one create row per request, then the few writes after.
 """
 
 from __future__ import annotations
@@ -40,7 +40,12 @@ def log_row(record: Any) -> LogRow:
 
 
 async def fetch_change_log(pb: Any, year: int, entity: str) -> list[LogRow]:
-    """Every logged write to `entity` for the season, in recorded order."""
+    """Every logged write to `entity` for the season, in recorded order.
+
+    The season is the log row's own `year`, which is the `AidWrite.year` its writer passed. This read
+    relies on every writer passing the written record's own year: a record's history is whole here
+    only while its log rows carry the record's season, and a write logged under another year would
+    be missing from it."""
     if not _ENTITY.fullmatch(entity):
         raise ValueError(f"{entity!r} is not an aid_* entity")
     rows: list[Any] = await asyncio.to_thread(

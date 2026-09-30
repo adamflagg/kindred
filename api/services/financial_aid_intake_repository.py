@@ -516,7 +516,8 @@ class FinancialAidIntakeRepository:
         return result
 
 
-# Public names for the as-of reads (3c), which parse records rebuilt from aid_change_log.
+# Public names for the as-of reads (3c), which parse records rebuilt from aid_change_log. 3c-1 rebuilds
+# requests only; 3c-2 (pricing from the log) rebuilds applications and payer shares with the other two.
 request_record = _request
 application_record = _application
 payer_share_record = _payer_share
