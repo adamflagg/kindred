@@ -1,0 +1,135 @@
+"""The aid_decisions history folded into per-round state (sub-project 10a). Fictional throughout."""
+
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+
+from bunking.financial_aid.decisions import DecisionEvent, EventKind, RoundState, fold_rounds, needs_finance
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever
+
+T0 = datetime(2031, 3, 1, 17, 0, tzinfo=UTC)
+
+
+def ev(kind: EventKind, round_: int = 1, *, hour: int = 0, request: str = "req-emma", **fields: Any) -> DecisionEvent:
+    return DecisionEvent(
+        id=f"ev{hour:04d}{kind}{round_}",
+        request_id=request,
+        round=round_,
+        kind=kind,
+        created=T0 + timedelta(hours=hour),
+        **fields,
+    )
+
+
+def test_no_events_is_no_rounds() -> None:
+    assert fold_rounds([]) == {}
+
+
+def test_the_latest_ask_wins_and_keeps_its_day() -> None:
+    rounds = fold_rounds(
+        [
+            ev("ask", 2, hour=0, amount=Decimal(500), effective_on=date(2031, 3, 20)),
+            ev("ask", 2, hour=1, amount=Decimal(400), effective_on=date(2031, 3, 22)),
+        ]
+    )
+    state = rounds["req-emma"][2]
+    assert (state.ask, state.asked_on) == (Decimal(400), date(2031, 3, 22))
+
+
+def test_a_post_locks_the_round_with_its_amount_version_and_snapshot() -> None:
+    state = fold_rounds(
+        [
+            ev(
+                "post",
+                1,
+                amount=Decimal(3000),
+                effective_on=date(2031, 3, 9),
+                lock_source="tick",
+                rules_version=2,
+                snapshot={"pool": "camp_pool"},
+            )
+        ]
+    )["req-emma"][1]
+    assert state.posted
+    assert state.locked_amount == Decimal(3000)
+    assert (state.locked_at, state.posted_on, state.rules_version) == (T0, date(2031, 3, 9), 2)
+    assert state.snapshot == {"pool": "camp_pool"}
+
+
+def test_undoing_a_post_clears_the_lock_and_the_accepted_tick() -> None:
+    state = fold_rounds(
+        [
+            ev("post", 1, hour=0, amount=Decimal(3000)),
+            ev("accept", 1, hour=1),
+            ev("unaccept", 1, hour=2),
+            ev("unpost", 1, hour=3),
+        ]
+    )["req-emma"][1]
+    assert state == RoundState(round=1)
+
+
+def test_the_accepted_tick_records_when() -> None:
+    state = fold_rounds([ev("post", 1, hour=0, amount=Decimal(3000)), ev("accept", 1, hour=2)])["req-emma"][1]
+    assert state.accepted
+    assert state.accepted_at == T0 + timedelta(hours=2)
+
+
+def test_as_of_folds_only_what_was_recorded_by_then() -> None:
+    events = [ev("post", 1, hour=0, amount=Decimal(3000)), ev("accept", 1, hour=5)]
+    state = fold_rounds(events, as_of=T0 + timedelta(hours=1))["req-emma"][1]
+    assert state.posted
+    assert not state.accepted
+
+
+def test_events_apply_in_recorded_order_whatever_order_they_arrive_in() -> None:
+    events = [ev("unpost", 1, hour=3), ev("post", 1, hour=0, amount=Decimal(3000))]
+    assert not fold_rounds(events)["req-emma"][1].posted
+
+
+def test_a_round_3_amount_above_the_limit_waits_then_finance_answers() -> None:
+    keyed = ev("award", 3, hour=0, amount=Decimal(900), needs_approval=True)
+    assert fold_rounds([keyed])["req-emma"][3].approval == "pending"
+    assert fold_rounds([keyed, ev("approve", 3, hour=1)])["req-emma"][3].approval == "approved"
+    assert fold_rounds([keyed, ev("refuse", 3, hour=1)])["req-emma"][3].approval == "refused"
+    rekeyed = ev("award", 3, hour=2, amount=Decimal(300), needs_approval=False)
+    state = fold_rounds([keyed, ev("refuse", 3, hour=1), rekeyed])["req-emma"][3]
+    assert (state.award, state.approval) == (Decimal(300), "not_needed")
+
+
+def test_discretionary_money_is_kept_apart_from_the_round_3_amount() -> None:
+    state = fold_rounds(
+        [
+            ev("award", 3, hour=0, amount=Decimal(300)),
+            ev("award", 3, hour=1, amount=Decimal(250), decision_type="discretionary"),
+        ]
+    )["req-emma"][3]
+    assert (state.award, state.discretionary, state.discretionary_type) == (
+        Decimal(300),
+        Decimal(250),
+        "discretionary",
+    )
+
+
+def test_rounds_are_kept_per_request_and_round() -> None:
+    rounds = fold_rounds(
+        [
+            ev("post", 1, amount=Decimal(3000), request="req-emma"),
+            ev("ask", 2, hour=1, amount=Decimal(400), request="req-emma"),
+            ev("post", 1, amount=Decimal(1200), request="req-liam"),
+        ]
+    )
+    assert set(rounds) == {"req-emma", "req-liam"}
+    assert set(rounds["req-emma"]) == {1, 2}
+    assert rounds["req-liam"][1].locked_amount == Decimal(1200)
+
+
+def test_every_round_3_amount_waits_for_finance_when_the_season_sets_no_limit() -> None:
+    rules = fictional_rules()
+    assert rules.round3.registrar_limit is None
+    assert needs_finance(Decimal(1), rules)
+
+
+def test_the_registrars_limit_is_a_rules_setting() -> None:
+    rules = with_lever(fictional_rules(), "round3.registrar_limit", "400")
+    assert not needs_finance(Decimal(400), rules)
+    assert needs_finance(Decimal(401), rules)
