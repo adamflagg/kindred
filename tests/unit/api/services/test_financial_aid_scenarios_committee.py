@@ -190,3 +190,54 @@ async def test_an_option_kept_before_sp9c_is_priced_again_for_its_committee_rows
         ("camp", 2, Decimal(4000)),
         ("camp", 3, Decimal(4000)),
     ]
+
+
+# --- RPT-17 / RPT-32: last season, posted ------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_compare_shows_last_seasons_posted_money_by_tier_with_its_own_rules() -> None:
+    world = await _started()
+    comparison = await world.service.compare(YEAR, FINANCE, ["A"], last_season=True)
+    last = comparison.last_season
+    assert last is not None
+    assert last.view is not None
+    assert (last.year, last.loaded, last.rules_version) == (LAST, True, 1)
+    # Its basis and as-of (spec §9.7, §4.7): 2026 is the one-off reproduction; its newest lock is Mar 9 (T0).
+    assert last.label == "2026, posted as reproduced from the repaired sheet (as of Mar 9, 2027)"
+    assert (last.view.round1, last.view.round2) == (Decimal(2600), Decimal(300))  # Riley was never posted
+    assert [(r.table, r.tier, r.fee_pct, r.round1) for r in last.view.round1_by_tier] == [
+        ("camp", 2, Decimal(80), Decimal(1500)),  # 2026's table: 80% at tier 2
+        ("camp", 3, Decimal(55), Decimal(1100)),
+        (None, 2, None, Decimal(1500)),
+        (None, 3, None, Decimal(1100)),
+    ]
+    [camp, every] = last.view.round2_by_tier
+    assert (camp.table, camp.tier, camp.appeals, camp.asked, camp.max_pct, camp.round2) == (
+        "camp",
+        2,
+        1,
+        Decimal(400),
+        Decimal(90),
+        Decimal(300),
+    )
+    assert (every.table, every.priced_asked, every.pct_of_ask) == (None, Decimal(400), Decimal("75.0"))
+    assert (last.view.not_in_tiers, last.view.round2_not_in_tiers) == (Decimal(0), Decimal(0))
+    assert world.last_season_reads == [LAST]
+
+
+@pytest.mark.asyncio
+async def test_last_season_not_loaded_is_said_not_zeroed() -> None:
+    world = await _started(last_posted=False)
+    last = (await world.service.compare(YEAR, FINANCE, [], last_season=True)).last_season
+    assert last is not None
+    assert (last.loaded, last.view, last.rules_version) == (False, None, None)
+    assert last.label == "2026's decisions are not loaded yet, so there is no last-season column"
+
+
+@pytest.mark.asyncio
+async def test_last_season_is_read_only_when_asked() -> None:
+    world = await _started()
+    comparison = await world.service.compare(YEAR, FINANCE, ["A"])
+    assert comparison.last_season is None
+    assert world.last_season_reads == []

@@ -37,7 +37,7 @@ from typing import Any, Final, Literal, Protocol
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_decisions_service import Season
+from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, Season
 from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
@@ -69,6 +69,7 @@ from bunking.financial_aid.scenarios import (
     fit_margin,
     fit_tier_shift,
     nudge,
+    posted_season,
     request_set_note,
     round1_by_request,
     scenario_results,
@@ -172,9 +173,22 @@ class CompareColumn:
 
 
 @dataclass(frozen=True)
+class LastSeason:
+    """Last season's posted money beside the compare (RPT-17's and RPT-32's last-season columns). `view` is None
+    until last season has posted money, and `label` then says it is not loaded: never zeros, never an estimate."""
+
+    year: int
+    loaded: bool
+    label: str
+    rules_version: int | None  # the version that priced it; None when it has no approved rules
+    view: CommitteeView | None
+
+
+@dataclass(frozen=True)
 class Comparison:
     snapshot: SnapshotMeta
     columns: tuple[CompareColumn, ...]
+    last_season: LastSeason | None = None  # only when asked for
 
 
 @dataclass(frozen=True)
@@ -223,6 +237,16 @@ def _prices(version: RulesVersion) -> bool:
 def _rules_name(version: RulesVersion) -> str:
     """ "rules vN" for approved rules, "rules draft vN" for a version that can't price the season (final review 8)."""
     return f"rules v{version.version}" if _prices(version) else f"rules draft v{version.version}"
+
+
+def _posted_label(year: int, as_of: datetime | None) -> str:
+    """Last season's basis and as-of, printed with its figures (spec §9.7). A season Kindred did not tick is the
+    one-off reproduction of D67 (§4.7: "reproduced from the repaired sheet"); its as-of is its newest lock."""
+    basis = "posted as reproduced from the repaired sheet" if year < FIRST_TICKED_SEASON else "posted"
+    if as_of is None:
+        return f"{year}, {basis}"
+    local = as_of.astimezone(CAMP_TZ)
+    return f"{year}, {basis} (as of {local:%b} {local.day}, {local.year})"
 
 
 def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
@@ -624,11 +648,18 @@ class FinancialAidScenariosService:
     # --- compare, fit, sensitivity ------------------------------------------------------------------
 
     async def compare(
-        self, year: int, actor: str, codes: Sequence[str], *, request_set: RequestSetChoice | None = None
+        self,
+        year: int,
+        actor: str,
+        codes: Sequence[str],
+        *,
+        request_set: RequestSetChoice | None = None,
+        last_season: bool = False,
     ) -> Comparison:
         """`actor`'s draft first, then up to 4 kept options, every one on the current snapshot. Each shows what
         differs from its reference (a variant's starting point; a starting point's origin rules; the draft's
-        option) and how many requests' Round 1 went up or down against it."""
+        option), how many requests' Round 1 went up or down against it, and the committee's tables (RPT-17, RPT-32).
+        `last_season` adds last season's posted money beside them (one live read of last season)."""
         wanted = list(dict.fromkeys(codes))
         if len(wanted) > MAX_COMPARED:
             raise ScenarioRefusedError(f"Compare up to {MAX_COMPARED} kept options beside your draft")
@@ -701,7 +732,24 @@ class FinancialAidScenariosService:
                     committee=committee_view(priced.results, option.document),
                 )
             )
-        return Comparison(meta, tuple(columns))
+        return Comparison(meta, tuple(columns), await self.last_season(year) if last_season else None)
+
+    async def last_season(self, year: int) -> LastSeason:
+        """Last season's posted money by tier, read live (RPT-17's and RPT-32's last-season columns): every round
+        posted, counted toward the budget and not clawed back, at its lock, with the table cells of the rules that
+        priced it, labelled with its basis and as-of. Only posted money counts: until last season has some (the 2026
+        load, January 2027, D67) it is empty and says so, never an estimate."""
+        if self._season_read is None:
+            raise ScenarioRefusedError("Last season can't be read here")
+        season = await self._season_read(year - 1)
+        document = season.rules.document if season.rules is not None else None
+        posted = posted_season(season.priced.values(), season.rounds, document)
+        if not posted.loaded:
+            label = f"{year - 1}'s decisions are not loaded yet, so there is no last-season column"
+            return LastSeason(year - 1, False, label, None, None)
+        version = season.rules.version if season.rules is not None else None
+        label = _posted_label(year - 1, posted.as_of)
+        return LastSeason(year - 1, True, label, version, committee_view(posted, document))
 
     async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
         """Fit to budget: the largest shift of every Round 1 table cell that keeps the total row's Round 1 Remaining
