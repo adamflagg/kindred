@@ -1757,6 +1757,38 @@ export type CamperSuggestionOut = {
 }
 
 /**
+ * CancellationIn
+ *
+ * D101 as amended by D141. cancelled=true records a reason from the fixed list; it cancels the
+ * request in Kindred when CampMinder hasn't cancelled the enrollment. "another_reason" needs a note.
+ * cancelled=false reopens a request cancelled in Kindred and needs a note saying why (main spec §14.4).
+ */
+export type CancellationIn = {
+  /**
+   * Cancelled
+   */
+  cancelled: boolean
+  /**
+   * Reason
+   */
+  reason?:
+    | 'aid_not_enough'
+    | 'medical'
+    | 'schedule'
+    | 'not_ready'
+    | 'did_not_want_to_appeal'
+    | 'not_financially_related'
+    | 'early_cancel'
+    | 'another_reason'
+    | 'not_known'
+    | null
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
  * CancellationMetricsResponse
  *
  * Response model for cancellation analysis endpoint.
@@ -1870,6 +1902,41 @@ export type CancellationMetricsResponse = {
    * Cancellations by gender
    */
   by_gender?: Array<GenderBreakdown>
+}
+
+/**
+ * CancellationOut
+ *
+ * A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
+ * Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet.
+ */
+export type CancellationOut = {
+  /**
+   * By
+   */
+  by: 'campminder' | 'kindred'
+  /**
+   * On
+   */
+  on: string | null
+  /**
+   * Reason
+   */
+  reason:
+    | 'aid_not_enough'
+    | 'medical'
+    | 'schedule'
+    | 'not_ready'
+    | 'did_not_want_to_appeal'
+    | 'not_financially_related'
+    | 'early_cancel'
+    | 'another_reason'
+    | 'not_known'
+    | null
+  /**
+   * Note
+   */
+  note: string
 }
 
 /**
@@ -4976,6 +5043,15 @@ export type GridRowOut = {
    */
   notes: Array<IssueOut> | null
   confirmation?: ConfirmationOut | null
+  cancellation?: CancellationOut | null
+  /**
+   * To Reverse
+   */
+  to_reverse?: boolean | null
+  /**
+   * Todos
+   */
+  todos?: Array<TodoOut> | null
 }
 
 /**
@@ -13507,6 +13583,22 @@ export type TimeBucket = {
 }
 
 /**
+ * TodoOut
+ *
+ * A to-do on the row: neither a hold nor a Note ("Cancelled: give a reason", D101).
+ */
+export type TodoOut = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Message
+   */
+  message: string
+}
+
+/**
  * TotalCap
  *
  * Caps Round 2 and Round 3 so that R1 + R2 + R3 (+ grants) stays within a % of cost.
@@ -20933,6 +21025,38 @@ export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDr
 
 export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponse =
   MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponses[keyof MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponses]
+
+export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostData = {
+  body: CancellationIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/cancellation'
+}
+
+export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostError =
+  SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostErrors[keyof SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostErrors]
+
+export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponse =
+  SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponses[keyof SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
