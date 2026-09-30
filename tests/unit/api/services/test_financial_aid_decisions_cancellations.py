@@ -18,6 +18,7 @@ from api.schemas import financial_aid_decisions as schemas
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
+    AsOfAxis,
     BudgetResponse,
     CancellationIn,
     CancelReasonOut,
@@ -294,6 +295,43 @@ async def test_a_past_read_names_the_cancellation_fields_it_leaves_empty() -> No
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("axis", ["campminder", "recorded"])
+async def test_a_past_read_before_a_kindred_cancellation_still_shows_the_unposted_rounds(axis: AsOfAxis) -> None:
+    """Decision 21: a Kindred cancellation applies from when it was recorded, on both as-of axes."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    log_seeded(store, T0 - timedelta(days=30))
+    _cancel_in_kindred(store)  # recorded Mar 9
+    service = _service(store)
+    before = next(r for r in (await service.grid(YEAR, as_of=date(2027, 3, 8), as_of_axis=axis)).rows)
+    after = next(r for r in (await service.grid(YEAR, as_of=date(2027, 3, 10), as_of_axis=axis)).rows)
+    assert ([r.round for r in before.rounds], after.rounds) == ([1], [])
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_request_whose_household_line_stays_unplaced_is_not_to_reverse() -> None:
+    """Two campers in one family: a household-level line can't tell them apart, so it waits in To place.
+    Cancelling one camper's request neither makes it To reverse nor moves the family's To place amount."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, person=1000012)
+    _posted(store, LIAM, 1, "1500")  # so Liam's row carries its confirmation, and with it the family's To place
+    seed_line(store, 9001, "1500", person=0)
+    store.synced_at = NIGHT_AFTER
+
+    async def liam_to_place() -> float | None:
+        row = next(r for r in (await _service(store).grid(YEAR)).rows if r.request_id == LIAM)
+        return row.confirmation.family_unplaced if row.confirmation is not None else None
+
+    before = await liam_to_place()
+    assert before == 1500.0
+    _cancel_in_kindred(store)
+    row = await _row(store)
+    assert (row.cancellation is not None, row.to_reverse) == (True, False)
+    assert await liam_to_place() == before
+
+
 # --- the write (Task 4) -----------------------------------------------------------------------------
 
 
@@ -560,18 +598,16 @@ async def test_undoing_a_tick_and_unaccepting_stay_open_on_a_kindred_cancelled_r
 @pytest.mark.asyncio
 async def test_a_kindred_cancellation_campminder_has_overtaken_no_longer_says_reopen_it_first() -> None:
     """Cancelled in Kindred, then CampMinder cancels too: the grid says campminder, and reopening is
-    refused, so keying must not tell staff to reopen."""
+    refused, so keying must not tell staff to reopen. The ask is keyed; the Accepted tick gets the
+    ordinary refusal for a round never posted."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     service = _service(store)
     await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
     _enrol(store, 32)
     ask = AskIn(round=3, amount=Decimal(900), asked_on=date(2027, 3, 1), statement_of_need="Job loss")
+    assert (await service.key_ask(EMMA, ask, ACTOR)).written == 1
     acc = AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True)
-    messages: list[str] = []
-    for call in (service.key_ask(EMMA, ask, ACTOR), service.tick_accepted(YEAR, acc, ACTOR)):
-        try:
-            await call
-        except DecisionRefusedError as exc:
-            messages.append(str(exc))
-    assert all("reopen it first" not in m for m in messages)
+    with pytest.raises(DecisionRefusedError) as refused:
+        await service.tick_accepted(YEAR, acc, ACTOR)
+    assert str(refused.value) == f"{EMMA}: Round 1 is not posted"
