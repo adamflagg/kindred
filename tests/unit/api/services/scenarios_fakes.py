@@ -19,6 +19,8 @@ from api.services.financial_aid_scenarios_repository import (
     SnapshotMeta,
     SnapshotMissingError,
     TrailRecord,
+    _literal,
+    _record_id,
     check_snapshot_sizes,
     option_record,
     snapshot_meta,
@@ -56,7 +58,7 @@ class FakeScenarioStore:
         return snapshot_meta(row) if row is not None else None
 
     async def snapshot_inputs(self, record_id: str) -> SeasonSnapshot:
-        row = self._by_id(AID_SCENARIO_SNAPSHOTS, record_id)
+        row = self._by_id(AID_SCENARIO_SNAPSHOTS, _record_id(record_id))
         if row is None:
             raise SnapshotMissingError(record_id)
         return decode_snapshot(row.inputs)
@@ -65,16 +67,17 @@ class FakeScenarioStore:
         return [option_record(r) for r in sorted(self._of(AID_SCENARIO_OPTIONS, year), key=lambda r: (r.created, r.id))]
 
     async def option_round1(self, record_id: str) -> dict[str, Decimal]:
-        row = self._by_id(AID_SCENARIO_OPTIONS, record_id)
+        row = self._by_id(AID_SCENARIO_OPTIONS, _record_id(record_id))
         raw = row.round1_by_request if row is not None else {}
         return {request_id: Decimal(str(amount)) for request_id, amount in (raw or {}).items()}
 
     async def latest_trail(self, year: int, actor: str) -> TrailRecord | None:
+        _literal(actor)
         row = self._newest([r for r in self._of(AID_SCENARIO_TRAIL, year) if r.actor == actor])
         return trail_record(row) if row is not None else None
 
     async def trail_row(self, record_id: str) -> TrailRecord | None:
-        row = self._by_id(AID_SCENARIO_TRAIL, record_id)
+        row = self._by_id(AID_SCENARIO_TRAIL, _record_id(record_id))
         return trail_record(row) if row is not None else None
 
     async def trail_page(self, year: int, page: int, per_page: int) -> tuple[list[TrailRecord], int]:
@@ -86,10 +89,14 @@ class FakeScenarioStore:
     async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
         check_snapshot_sizes(writes)
         self.operations.append(list(writes))
+        batch_codes: set[tuple[int, str]] = set()
         for write in writes:
             if write.collection == AID_SCENARIO_OPTIONS and write.action == "create" and write.data is not None:
-                if any(r.year == write.year and r.code == write.data["code"] for r in self.rows[AID_SCENARIO_OPTIONS]):
+                key = (write.year, write.data["code"])
+                taken = any((r.year, r.code) == key for r in self.rows[AID_SCENARIO_OPTIONS])
+                if taken or key in batch_codes:
                     raise OptionCodeTakenError("unique (year, code)")
+                batch_codes.add(key)
         return commit_aid_writes(cast(PocketBase, _BatchTwin(self)), writes, actor=actor, reason=reason)
 
     def apply_batch(self, requests: list[dict[str, Any]]) -> httpx.Response:

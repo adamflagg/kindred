@@ -24,6 +24,7 @@ from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.scenarios import ScenarioResults
 from bunking.pocketbase_batch import BatchRequestFailedError
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
+from tests.unit.api.services.scenarios_fakes import FakeScenarioStore
 
 CREATED = "2027-01-14 17:40:00.000Z"
 FINANCE = "finance@example.com"
@@ -43,6 +44,11 @@ RESULTS = ScenarioResults(
     pools=[],
     by_tier=[],
 )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_decoded_cache() -> None:
+    repository_module.clear_decoded_cache()
 
 
 def _pb(items: list[Any] | None = None, total: int = 0) -> MagicMock:
@@ -249,3 +255,72 @@ async def test_a_snapshot_under_the_cap_is_committed() -> None:
     with patch("api.services.financial_aid_scenarios_repository.commit_aid_writes") as batch:
         await ScenarioRepository(_pb()).commit([_snapshot_write({"calls": {}})], actor=FINANCE)
     batch.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_snapshot_measuring_exactly_the_cap_commits_and_one_more_byte_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inputs = {"calls": "x" * 10}
+    size = repository_module.snapshot_inputs_size(inputs)
+    monkeypatch.setattr(repository_module, "SNAPSHOT_INPUTS_MAX_BYTES", size)
+    with patch("api.services.financial_aid_scenarios_repository.commit_aid_writes") as batch:
+        await ScenarioRepository(_pb()).commit([_snapshot_write(inputs)], actor=FINANCE)
+    batch.assert_called_once()
+    with pytest.raises(SnapshotError):
+        await ScenarioRepository(_pb()).commit([_snapshot_write({"calls": "x" * 11})], actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_the_cap_counts_utf8_bytes_not_characters(monkeypatch: pytest.MonkeyPatch) -> None:
+    inputs = {"calls": "\u00e9" * 20}  # 20 characters, 40 bytes of text
+    monkeypatch.setattr(repository_module, "SNAPSHOT_INPUTS_MAX_BYTES", len(json.dumps(inputs, ensure_ascii=False)) + 5)
+    assert repository_module.snapshot_inputs_size(inputs) == len(json.dumps(inputs, ensure_ascii=False)) + 20
+    with pytest.raises(SnapshotError):
+        await ScenarioRepository(_pb()).commit([_snapshot_write(inputs)], actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_the_twin_refuses_an_oversized_snapshot_and_records_no_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(repository_module, "SNAPSHOT_INPUTS_MAX_BYTES", 10)
+    store = FakeScenarioStore()
+    with pytest.raises(SnapshotError):
+        await store.commit([_snapshot_write({"calls": "x" * 50})], actor=FINANCE)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_the_twin_refuses_what_the_real_repository_refuses() -> None:
+    store = FakeScenarioStore()
+    for call in (
+        store.snapshot_inputs("bad"),
+        store.option_round1("bad"),
+        store.trail_row("bad"),
+        store.latest_trail(YEAR, 'x" || 1'),
+    ):
+        with pytest.raises(ValueError):
+            await call
+
+
+def _option_create(code: str) -> AidWrite:
+    return AidWrite(collection="aid_scenario_options", action="create", year=YEAR, data={"code": code, "year": YEAR})
+
+
+@pytest.mark.asyncio
+async def test_the_twin_refuses_two_creates_of_one_code_in_a_single_batch() -> None:
+    with pytest.raises(OptionCodeTakenError):
+        await FakeScenarioStore().commit([_option_create("A1"), _option_create("A1")], actor=FINANCE)
+
+
+def test_the_decoded_cache_is_least_recently_used() -> None:
+    def snap(n: int) -> SeasonSnapshot:
+        return SeasonSnapshot(year=YEAR, requests=n, frozen_at=datetime(2027, 1, 12, tzinfo=UTC), calls={}, register=())
+
+    cache = repository_module._DECODED
+    for key in ("a", "b", "c"):
+        repository_module._remember(key, snap(1))
+    repository_module._remember("a", snap(1))  # a touched: b is now the oldest
+    repository_module._remember("d", snap(1))
+    assert list(cache) == ["c", "a", "d"]

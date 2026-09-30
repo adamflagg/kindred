@@ -31,9 +31,9 @@ _SNAPSHOT_FIELDS: Final = "id,year,requests,awaiting_rules,actor,created"
 _OPTION_FIELDS: Final = "id,year,code,starting_point,from_code,origin_version,document,results,snapshot,actor,created"
 _TRAIL_PAGE_FIELDS: Final = "id,year,actor,from_code,change,results,snapshot,kept_code,created"
 # Decoded snapshots by record id. A snapshot never changes once written, so a decoded one never goes stale. Two are
-# kept: the current one, and the one before it while a compare re-prices an option frozen on it.
+# kept: least recently used goes first. Three: the current one plus two older ones a compare re-prices options on.
 _DECODED: OrderedDict[str, SeasonSnapshot] = OrderedDict()
-_DECODED_KEPT: Final = 2
+_DECODED_KEPT: Final = 3
 # aid_scenario_snapshots.inputs is a PocketBase json field with maxSize 20000000 (1500000214_aid_scenarios.js). A larger
 # value comes back from the batch as a 400; check it first so the refusal is ours (422) and names the size.
 SNAPSHOT_INPUTS_MAX_BYTES: Final = 20_000_000
@@ -168,12 +168,21 @@ def _remember(record_id: str, snapshot: SeasonSnapshot) -> None:
         _DECODED.popitem(last=False)
 
 
+def clear_decoded_cache() -> None:
+    _DECODED.clear()
+
+
+def snapshot_inputs_size(inputs: Any) -> int:
+    """UTF-8 bytes of the inputs as PocketBase_batch sends them (default separators, non-ASCII kept as is)."""
+    return len(json.dumps(inputs, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+
+
 def check_snapshot_sizes(writes: Sequence[AidWrite]) -> None:
     """Refuse a snapshot whose encoded inputs would exceed the field's cap, before anything is committed."""
     for write in writes:
         if write.collection != AID_SCENARIO_SNAPSHOTS or write.action != "create" or write.data is None:
             continue
-        size = len(json.dumps(write.data.get("inputs"), separators=(",", ":")).encode())
+        size = snapshot_inputs_size(write.data.get("inputs"))
         if size > SNAPSHOT_INPUTS_MAX_BYTES:
             raise SnapshotError(
                 f"The frozen season is {size:,} bytes, over the cap of {SNAPSHOT_INPUTS_MAX_BYTES:,} "
@@ -205,6 +214,7 @@ class ScenarioRepository:
     async def snapshot_inputs(self, record_id: str) -> SeasonSnapshot:
         cached = _DECODED.get(_record_id(record_id))
         if cached is not None:
+            _DECODED.move_to_end(record_id)
             return cached
         rows = await self._page(AID_SCENARIO_SNAPSHOTS, {"filter": f'id = "{record_id}"', "fields": "id,inputs"})
         if not rows:
