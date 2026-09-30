@@ -366,7 +366,7 @@ def last_seasons_criteria(this_season: AidRules, last_season: AidRules) -> AidRu
 
 def _criteria(document: AidRules) -> dict[str, Any]:
     raw = document.model_dump(mode="json")
-    criteria = {name: raw[name] for name in CRITERIA_SECTIONS}
+    criteria: dict[str, Any] = {name: raw[name] for name in CRITERIA_SECTIONS}
     for name, kept in CRITERIA_BUT.items():
         criteria[name] = {key: value for key, value in raw[name].items() if key != kept}
     return criteria
