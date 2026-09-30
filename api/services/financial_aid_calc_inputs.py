@@ -29,7 +29,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final, get_args
 
-from api.services.financial_aid_corrections import INCOME_OVERRIDE_FIELD, STAFF_ENTERED, EffectiveValue
+from api.services.financial_aid_corrections import (
+    INCOME_OVERRIDE_FIELD,
+    REQUEST_CORRECTABLE,
+    STAFF_ENTERED,
+    EffectiveValue,
+    effective_values,
+)
 from api.services.financial_aid_household import BOOL_FIELDS
 from api.services.financial_aid_intake_types import (
     FLAG_AWAITING_RULES,
@@ -37,6 +43,8 @@ from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
     UNKNOWN_EQUITY,
+    ApplicationRecord,
+    CorrectionRecord,
     EquityAnswers,
     PayerShareRecord,
     RequestRecord,
@@ -220,3 +228,36 @@ def request_issues(
     if request.status in _LIVE and share_status([s for s in shares if s.request_id == request.id]) == "incomplete":
         found.append(_hold("payer_shares_incomplete", "The payer shares do not add up to 100%"))
     return [issue for issue in found if issue is not None]
+
+
+def effective_ask(request: RequestRecord, corrections: Sequence[CorrectionRecord]) -> EffectiveValue:
+    """The request's ask after staff corrections (a blank ask stays blank, never 0)."""
+    return effective_values({"ask": request.ask or None}, REQUEST_CORRECTABLE, corrections, request.id)["ask"]
+
+
+def calculator_inputs(
+    request: RequestRecord,
+    application: ApplicationRecord,
+    answers: Mapping[str, EffectiveValue],
+    corrections: Sequence[CorrectionRecord],
+    sessions: Mapping[int, SessionRow],
+    shares: Sequence[PayerShareRecord],
+    equity: EquityAnswers | None,
+    rules: AidRules,
+) -> CalculatorInputs:
+    """One live request converted under `rules`, the version the caller prices with. Nothing is
+    dropped: a request that can't be priced comes back with request=None and the reason in
+    `blocked`. Shared by casework (one family) and the decisions service (the season, sub-project 10a)."""
+    issues = tuple(request_issues(request, application.flags, answers, shares, rules))
+    app_inputs = to_application_inputs(application.household_cm_id, answers)
+    if awaiting_approved_rules(request):
+        reason = "waiting for approved rules: the next intake run after finance approves them resolves it"
+        return CalculatorInputs(request.id, app_inputs, None, issues, reason)
+    if request.session_cm_id <= 0:
+        return CalculatorInputs(request.id, app_inputs, None, issues, "the session is unmatched")
+    program_key = rules_program_key(request, sessions, rules)
+    if program_key is None:
+        reason = f"no program in the {rules.year} rules claims session {request.session_cm_id}"
+        return CalculatorInputs(request.id, app_inputs, None, issues, reason)
+    ask = effective_ask(request, corrections)
+    return CalculatorInputs(request.id, app_inputs, to_request_inputs(request, ask, equity, program_key), issues)

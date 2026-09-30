@@ -44,11 +44,8 @@ from api.schemas.financial_aid_intake import (
 )
 from api.services.financial_aid_calc_inputs import (
     CalculatorInputs,
-    awaiting_approved_rules,
+    calculator_inputs,
     request_issues,
-    rules_program_key,
-    to_application_inputs,
-    to_request_inputs,
 )
 from api.services.financial_aid_corrections import (
     APPLICATION_CORRECTABLE,
@@ -688,26 +685,12 @@ class FinancialAidCaseworkService:
         sessions = {s.cm_id: s for s in await self._store.fetch_sessions(year)}
         shares = await self._store.fetch_payer_shares(year, [r.id for r in requests])
         equity = await self._store.fetch_equity_answers(year, [r.person_cm_id for r in requests if r.person_cm_id])
-        app_inputs = to_application_inputs(household_cm_id, answers)
-        results: list[CalculatorInputs] = []
-        for request in requests:
-            issues = tuple(request_issues(request, application.flags, answers, shares, rules))
-            program_key = rules_program_key(request, sessions, rules)
-            if awaiting_approved_rules(request):
-                reason = "waiting for approved rules: the next intake run after finance approves them resolves it"
-                results.append(CalculatorInputs(request.id, app_inputs, None, issues, reason))
-                continue
-            if request.session_cm_id <= 0:
-                results.append(CalculatorInputs(request.id, app_inputs, None, issues, "the session is unmatched"))
-                continue
-            if program_key is None:
-                reason = f"no program in the {rules.year} rules claims session {request.session_cm_id}"
-                results.append(CalculatorInputs(request.id, app_inputs, None, issues, reason))
-                continue
-            ask = effective_values({"ask": request.ask or None}, REQUEST_CORRECTABLE, corrections, request.id)["ask"]
-            converted = to_request_inputs(request, ask, equity.get(request.person_cm_id), program_key)
-            results.append(CalculatorInputs(request.id, app_inputs, converted, issues))
-        return results
+        return [
+            calculator_inputs(
+                request, application, answers, corrections, sessions, shares, equity.get(request.person_cm_id), rules
+            )
+            for request in requests
+        ]
 
     async def list_applications(self, year: int) -> ApplicationListResponse:
         applications = await self._store.fetch_applications(year)
