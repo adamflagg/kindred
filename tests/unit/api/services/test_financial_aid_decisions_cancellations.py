@@ -6,18 +6,38 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
-from api.schemas.financial_aid_decisions import BudgetResponse, CancelReasonOut, GridRowOut, RoundCellOut
+from api.schemas import financial_aid_decisions as schemas
+from api.schemas.financial_aid_decisions import (
+    AcceptedIn,
+    AskIn,
+    BudgetResponse,
+    CancellationIn,
+    CancelReasonOut,
+    GridRowOut,
+    PostedIn,
+    PostedRow,
+    Round3AmountIn,
+    RoundCellOut,
+    RoundRef,
+)
 from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     cancel_event,
     enrollment_state,
+)
+from api.services.financial_aid_decisions_service import (
+    DecisionNotFoundError,
+    DecisionRefusedError,
+    FinancialAidDecisionsService,
 )
 from bunking.financial_aid.decisions import PAST_DATE_GAPS
 from tests.unit.api.services.decisions_fakes import (
@@ -30,7 +50,7 @@ from tests.unit.api.services.decisions_fakes import (
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR
-from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _posted, _service
+from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _event, _posted, _service
 
 MAY2 = date(2027, 5, 2)
 NIGHT_AFTER = T0 + timedelta(hours=16)
@@ -270,3 +290,171 @@ async def test_a_past_read_names_the_cancellation_fields_it_leaves_empty() -> No
     assert {f: named[f] for f in ("cancellation", "to_reverse", "todos")} == {
         f: PAST_DATE_GAPS[f] for f in ("cancellation", "to_reverse", "todos")
     }
+
+
+# --- the write (Task 4) -----------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The write bodies refuse a date after today; the fixtures' dates sit in the fictional 2027 season."""
+    monkeypatch.setattr(schemas, "today", lambda: date(2027, 12, 31))
+
+
+async def _figures(service: FinancialAidDecisionsService) -> tuple[float | None, ...]:
+    """The camp pool's Round 1 Needs an offer and Remaining, Round 3 Pending approval, Round 1 unmet
+    ask (forward demand), and the Remaining line."""
+    camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
+    r1, r3 = (next(c for c in camp.rounds if c.round == n) for n in (1, 3))
+    line = next(p for p in (await service.remaining(YEAR)).pools if p.pool == "camp_pool")
+    return r1.needs_offer, r1.remaining, r3.pending_approval, camp.demand.round1_unmet, line.remaining
+
+
+def test_d141s_body_rules() -> None:
+    for reason in CANCEL_REASONS:
+        if reason != "another_reason":
+            CancellationIn(cancelled=True, reason=reason)  # no note needed
+    CancellationIn(cancelled=True, reason="another_reason", note="Moved away")
+    CancellationIn(cancelled=False, note="The family found the money")
+    for bad in (
+        {"cancelled": True},
+        {"cancelled": True, "reason": "another_reason"},
+        {"cancelled": True, "reason": "another_reason", "note": "   "},
+        {"cancelled": False},
+        {"cancelled": False, "reason": "not_known", "note": "x"},
+        {"cancelled": True, "reason": "moved"},
+    ):
+        with pytest.raises(ValidationError):
+            CancellationIn.model_validate(bad)
+
+
+@pytest.mark.asyncio
+async def test_the_registrar_cancels_in_kindred_with_a_reason_and_can_reopen() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    # A Round 3 amount above the registrar's limit, waiting for finance (D79).
+    _event(store, EMMA, 3, "ask", amount=Decimal(900), effective_on=date(2027, 3, 1), statement_of_need="Job loss")
+    _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
+    service = _service(store)
+    before = await _figures(service)
+    assert before == (1500.0, 338500.0, 900.0, 2500.0, 397600.0)
+    out = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="aid_not_enough"), ACTOR)
+    assert (out.written, out.unchanged) == (1, 0)
+    assert store.cancel_events[-1].in_kindred is True
+    assert store.log[-1]["reason"] == "declined: aid not enough / financial constraints"
+    row = await _row(store)
+    assert row.cancellation is not None
+    assert (row.cancellation.by, row.cancellation.on, row.cancellation.reason) == (
+        "kindred",
+        date(2027, 3, 9),
+        "aid_not_enough",
+    )
+    assert (row.todos, row.rounds) == ([], [])  # not live: its decided Round 1 left Needs an offer
+    # Decision 14: Needs an offer 1,500 -> 0 (Round 1's Remaining rises by 1,500), Pending approval 900 -> 0,
+    # forward demand 2,500 -> 0, and the Remaining line rises by both.
+    assert await _figures(service) == (0.0, 340000.0, 0.0, 0.0, 400000.0)
+    again = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="aid_not_enough"), ACTOR)
+    assert (again.written, again.unchanged, len(store.operations)) == (0, 1, 1)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)  # the latest wins
+    row = await _row(store)
+    assert row.cancellation is not None
+    assert (store.log[-1]["reason"], row.cancellation.reason) == ("schedule", "schedule")
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="The family found the money"), ACTOR)
+    row = await _row(store)
+    assert (row.cancellation, row.rounds[0].status) == (None, "needs_offer")
+    assert await _figures(service) == before
+
+
+@pytest.mark.asyncio
+async def test_a_campminder_cancellation_with_a_pending_round3_ask_drops_the_same_figures() -> None:
+    """Controller ruling (Task 3 review): the harness's figures also move when CampMinder, not Kindred,
+    cancels an active request that keeps its session (status 32, no enrolled row)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _event(store, EMMA, 3, "ask", amount=Decimal(900), effective_on=date(2027, 3, 1), statement_of_need="Job loss")
+    _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
+    service = _service(store)
+    assert await _figures(service) == (1500.0, 338500.0, 900.0, 2500.0, 397600.0)
+    _enrol(store, 32)
+    assert await _figures(service) == (0.0, 340000.0, 0.0, 0.0, 400000.0)
+
+
+@pytest.mark.asyncio
+async def test_a_reason_for_a_campminder_cancellation_clears_the_to_do_and_only_campminder_reopens_it() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _enrol(store, 32)
+    service = _service(store)
+    body = CancellationIn(cancelled=True, reason="another_reason", note="Moved away")
+    await service.set_cancellation(EMMA, body, ACTOR)
+    assert store.cancel_events[-1].in_kindred is False
+    assert store.log[-1]["reason"] == "another reason: Moved away"
+    row = await _row(store)
+    assert row.cancellation is not None
+    assert (row.cancellation.by, row.cancellation.reason, row.cancellation.note) == (
+        "campminder",
+        "another_reason",
+        "Moved away",
+    )
+    assert row.todos == []
+    writes = len(store.operations)
+    with pytest.raises(DecisionRefusedError, match="CampMinder"):
+        await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="A mistake"), ACTOR)
+    assert len(store.operations) == writes
+
+
+@pytest.mark.asyncio
+async def test_the_ledger_never_ticks_a_cancelled_request_and_its_live_aid_is_to_reverse() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")  # full cover for the decided 1,500 (D146): it would tick if live
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="not_known"), ACTOR)
+    assert (await service.ledger_ticks(YEAR)).ticked == 0
+    row = await _row(store)
+    assert (row.to_reverse, row.notes) == (True, [])
+
+
+@pytest.mark.asyncio
+async def test_reopening_a_request_that_is_not_cancelled_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    out = await _service(store).set_cancellation(EMMA, CancellationIn(cancelled=False, note="Checking"), ACTOR)
+    assert (out.written, out.unchanged, store.operations) == (0, 1, [])
+
+
+@pytest.mark.asyncio
+async def test_only_a_live_request_can_be_cancelled_and_an_unknown_one_is_not_found() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    service = _service(store)
+    with pytest.raises(DecisionRefusedError, match="withdrawn"):
+        await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="not_known"), ACTOR)
+    with pytest.raises(DecisionNotFoundError):
+        await service.set_cancellation("reqnone00000001", CancellationIn(cancelled=True, reason="not_known"), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_request_cancelled_in_kindred_takes_no_asks_amounts_or_ticks_until_reopened() -> None:
+    """Decision 14 (plan review): reopen it first. Nothing is written on a refusal."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    service = _service(store)
+    for request_id in (EMMA, LIAM):
+        await service.set_cancellation(request_id, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    writes = len(store.operations)
+    tick = PostedIn(rows=[PostedRow(request_id=EMMA, round=1, amount=Decimal(1500))])
+    ask = AskIn(round=3, amount=Decimal(900), asked_on=date(2027, 3, 1), statement_of_need="Job loss")
+    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+        await service.key_ask(EMMA, ask, ACTOR)
+    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+        await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(900)), ACTOR, can_approve=True)
+    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+        await service.tick_posted(YEAR, tick, ACTOR)
+    with pytest.raises(DecisionRefusedError, match="Cancelled in Kindred: reopen it first"):
+        await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=LIAM, round=1)], accepted=True), ACTOR)
+    assert len(store.operations) == writes
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="The family found the money"), ACTOR)
+    assert (await service.tick_posted(YEAR, tick, ACTOR)).written == 1

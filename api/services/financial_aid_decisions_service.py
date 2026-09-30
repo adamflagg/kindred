@@ -38,6 +38,7 @@ from typing import Any, Final, Protocol
 
 from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
+    AID_CANCELLATIONS,
     AID_DECISIONS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
@@ -49,6 +50,7 @@ from api.schemas.financial_aid_decisions import (
     AsOfAxis,
     BelowTheLineOut,
     BudgetResponse,
+    CancellationIn,
     CancellationOut,
     CellOut,
     ChangedRowOut,
@@ -86,12 +88,15 @@ from api.services.financial_aid_calc_inputs import (
     to_application_inputs,
 )
 from api.services.financial_aid_cancellations import (
+    CANCEL_REASON_LABELS,
     TODO_CANCEL_REASON,
     TODO_CANCEL_REASON_TEXT,
     CancelEvent,
     Cancellation,
+    CancelState,
     EnrollmentState,
     cancellations_by_request,
+    enrollment_cancelled,
     fold_cancellations,
     needs_reason,
     withdrawn_on_cancelled_enrollments,
@@ -203,6 +208,9 @@ _WHY_NOT: Final[Mapping[str, str]] = {
     "refused": "was refused by finance",
     "not_decided": "has no amount keyed yet",
 }
+
+# Decision 14 (plan review 2026-09-30): a request the registrar cancelled takes no new decisions.
+CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
 
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
@@ -1375,13 +1383,39 @@ class FinancialAidDecisionsService:
             note=note,
         )
 
+    @staticmethod
+    def _cancel_write(request: RequestRecord, kind: str, actor: str, **fields: Any) -> AidWrite:
+        """One aid_cancellations row and its log line (entity aid_cancellations, id the request's). A
+        field given as None is left out."""
+        data: dict[str, Any] = {
+            "year": request.year,
+            "request": request.id,
+            "event": kind,
+            "actor": actor,
+            **{key: value for key, value in fields.items() if value is not None},
+        }
+        return AidWrite(
+            collection=AID_CANCELLATIONS,
+            action="create",
+            year=request.year,
+            data=data,
+            after=data,
+            log_action=kind,
+            entity_id=request.id,
+        )
+
     async def _live(self, request_id: str) -> tuple[RequestRecord, dict[int, RoundState]]:
         request = await self._store.fetch_request(request_id)
         if request is None:
             raise DecisionNotFoundError("no such request")
         if request.status not in _LIVE:
             raise DecisionRefusedError(f"a {request.status} request takes no new asks or amounts")
-        rounds = fold_rounds(await self._store.fetch_request_events(request.id)).get(request.id, {})
+        events, cancels = await asyncio.gather(
+            self._store.fetch_request_events(request.id), self._store.fetch_request_cancellations(request.id)
+        )
+        if fold_cancellations(cancels).get(request.id, CancelState()).in_kindred:
+            raise DecisionRefusedError(CANCELLED_IN_KINDRED)
+        rounds = fold_rounds(events).get(request.id, {})
         return request, dict(rounds)
 
     async def _approved_rules(self, year: int) -> RulesVersion:
@@ -1484,6 +1518,10 @@ class FinancialAidDecisionsService:
             view = priced.view(n)
             if view is not None and view.status == "posted":
                 unchanged += 1
+                continue
+            cancelled = season.cancellations.get(request_id)
+            if cancelled is not None and cancelled.by == "kindred":
+                problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
                 continue
             if view is None or view.status != "needs_offer" or view.decided is None:
                 why = _WHY_NOT.get(view.status, "cannot be posted") if view is not None else "has nothing decided"
@@ -1616,10 +1654,58 @@ class FinancialAidDecisionsService:
             sections_not_locked=list(not_locked),
         )
 
+    async def set_cancellation(self, request_id: str, body: CancellationIn, actor: str) -> DecisionWriteOut:
+        """D101 as amended by D141: cancel a request with a reason from the fixed list, or reopen one
+        cancelled in Kindred. On a request CampMinder already cancelled, cancelling only records the
+        reason; on an enrolled camper it cancels the request in Kindred (the family declined, or wants
+        no aid). Reopening undoes only a Kindred cancellation: CampMinder's is undone by re-enrolling
+        there. A reason is changed by cancelling again: the latest wins."""
+        request = await self._store.fetch_request(request_id)
+        if request is None:
+            raise DecisionNotFoundError("no such request")
+        if request.status not in _LIVE:
+            raise DecisionRefusedError(f"a {request.status} request can't be cancelled or reopened")
+        events, enrollments, sessions = await asyncio.gather(
+            self._store.fetch_request_cancellations(request.id),
+            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_sessions(request.year),
+        )
+        state = fold_cancellations(events).get(request.id, CancelState())
+        in_campminder, _ = enrollment_cancelled(request, enrollments, {s.cm_id: s.session_type for s in sessions})
+        if body.cancelled:
+            if body.reason is None:  # the model refuses this; narrowed for mypy
+                raise DecisionRefusedError("a cancellation needs its reason")
+            in_kindred = not in_campminder
+            if state.reason is not None and (state.reason, state.note, state.in_kindred) == (
+                body.reason,
+                body.note or "",
+                in_kindred,
+            ):
+                return self._unchanged(request.year)
+            label = CANCEL_REASON_LABELS[body.reason]
+            write = self._cancel_write(
+                request, "cancel", actor, reason=body.reason, in_kindred=in_kindred, note=body.note or None
+            )
+            reason = f"{label}: {body.note}" if body.note else label
+        else:
+            if in_campminder:
+                raise DecisionRefusedError(
+                    "CampMinder cancelled this enrollment: re-enroll the camper there to reopen it "
+                    "(a reason can be changed by cancelling again)"
+                )
+            if not state.in_kindred and state.reason is None:
+                return self._unchanged(request.year)
+            write = self._cancel_write(request, "reopen", actor, note=body.note)
+            reason = body.note
+        result = await self._store.commit([write], actor=actor, reason=reason, require_reason=True)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
     async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
         """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""
         requests = {r.id: r for r in await self._store.fetch_requests(year)}
         rounds = fold_rounds(await self._store.fetch_decision_events(year))
+        states = fold_cancellations(await self._store.fetch_cancellations(year))
+        in_kindred = {rid for rid, state in states.items() if state.in_kindred}
         writes: list[AidWrite] = []
         problems: list[str] = []
         unchanged = 0
@@ -1630,6 +1716,8 @@ class FinancialAidDecisionsService:
             state = rounds.get(request_id, {}).get(n, RoundState(round=n))
             if state.accepted == body.accepted:
                 unchanged += 1
+            elif body.accepted and request_id in in_kindred:
+                problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
             elif not state.posted:
                 problems.append(f"{request_id}: Round {n} is not posted")
             else:
