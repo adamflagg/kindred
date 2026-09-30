@@ -836,8 +836,37 @@ def test_a_never_applied_households_grant_ties_itself_to_its_sole_camper() -> No
 
 
 def test_a_sole_camper_in_two_sessions_is_tied_without_a_session() -> None:
+    # Two sessions leave no single session; the default line is a summer line, so the program is its own
+    # (owner ruling 2026-09-29, as for a staff placement).
     row, _ = _never_applied(Enrollment(OLIVIA, S1, "summer", 2), Enrollment(OLIVIA, Q1, "quest", 2))
-    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.program_family) == (OLIVIA, "sole_camper", 0, "")
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.program_family) == (
+        OLIVIA,
+        "sole_camper",
+        0,
+        "summer",
+    )
+
+
+def test_a_sole_camper_in_two_programs_takes_the_lines_own_program_when_active_in_it() -> None:
+    """Owner ruling 2026-09-29, applied to D142's automatic tie as it already applies to a staff
+    placement: a camper active in two programs names no single family, so the line's own program
+    wins when the camper is actively enrolled in it."""
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2), Enrollment(OLIVIA, Q1, "quest", 2), line={"program_family": "summer"}
+    )
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.program_family) == (
+        OLIVIA,
+        "sole_camper",
+        0,
+        "summer",
+    )
+
+
+def test_a_sole_camper_in_two_programs_keeps_no_program_when_the_lines_program_is_not_one_of_them() -> None:
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2), Enrollment(OLIVIA, Q1, "quest", 2), line={"program_family": "teen"}
+    )
+    assert (row.person_cm_id, row.camper_basis, row.program_family) == (OLIVIA, "sole_camper", "")
 
 
 def test_a_never_applied_household_with_two_eligible_campers_stays_household_level() -> None:

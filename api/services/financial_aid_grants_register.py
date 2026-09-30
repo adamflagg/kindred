@@ -255,10 +255,16 @@ def _sole_camper(
     if len({e.person_cm_id for e in eligible}) != 1:
         return None
     families = {e.program_family for e in eligible}
+    if len(families) == 1:
+        family = families.pop()
+    else:
+        # Owner ruling 2026-09-29, as for a staff placement: a camper active in two programs names no
+        # single family, so the line's own program wins when the camper is actively enrolled in it.
+        family = line.program_family if line.program_family in families else ""
     return _Camper(
         eligible[0].person_cm_id,
         eligible[0].session_cm_id if len(eligible) == 1 else 0,
-        families.pop() if len(families) == 1 else "",
+        family,
         "sole_camper",
     )
 
