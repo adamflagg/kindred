@@ -440,7 +440,8 @@ class GrantsService:
 
     async def register_rows(self, year: int) -> list[RegisterRow]:
         """The register's rows for sub-project 10a: the calculator's grants bridge
-        (`grant_inputs_by_request`) and the budget's outside grants. The rows read() reports."""
+        (`grant_inputs_by_request`) and the budget's outside grants (`outside_grants_by_request`,
+        which keeps a pays-after-camp-aid grant the bridge leaves out, D143). The rows read() reports."""
         return (await self._load(year)).rows
 
     async def read(self, year: int) -> GrantsResponse:
