@@ -25,9 +25,11 @@ interface ProgramCardSpec {
   }
 }
 
-// Camperships joins as a fourth entry when /aid launches. At four, move the
-// grid to lg:grid-cols-4 and widen the max-w-4xl wrapper — the layout was
-// chosen for four across (docs/reference/ui-uplift.md, "Landing page").
+// Cards are a fixed 295px with 20px gaps — the chosen mockup's size — so the
+// row grows by whole cards rather than stretching them. Camperships joins as
+// a fourth entry when /aid launches: four across is 1240px, too wide for the
+// lg breakpoint, so at four use lg:grid-cols-[repeat(2,295px)] and
+// xl:grid-cols-[repeat(4,295px)] (docs/reference/ui-uplift.md, "Landing page").
 const PROGRAM_CARDS: ProgramCardSpec[] = [
   {
     program: 'summer',
@@ -97,7 +99,7 @@ function ProgramCard({
     >
       <div
         data-glow-card=""
-        className={`card-lodge glow-card h-full p-5 text-left lg:p-6 ${tone.glow}`}
+        className={`card-lodge glow-card flex h-full flex-col p-5 text-left lg:p-6 ${tone.glow}`}
       >
         {/* Icon */}
         <div className="relative mb-5 h-14 w-14">
@@ -113,25 +115,29 @@ function ProgramCard({
 
         {/* Content */}
         <h2
-          className={`font-display text-foreground mb-2 text-xl font-bold transition-colors lg:text-2xl ${tone.headingHover}`}
+          className={`font-display text-foreground mb-2 text-xl leading-tight font-bold transition-colors lg:text-2xl lg:leading-tight ${tone.headingHover}`}
         >
           {title}
         </h2>
 
-        <p className="text-muted-foreground mb-5 text-sm leading-relaxed">{description}</p>
+        <p className="text-muted-foreground mb-4.5 text-sm leading-normal">{description}</p>
 
         {/* Features */}
-        <ul className="mb-6 space-y-2">
+        <ul className="mb-5.5 space-y-2">
           {features.map((feature) => (
-            <li key={feature} className="text-muted-foreground flex items-center gap-2.5 text-sm">
+            <li
+              key={feature}
+              className="text-muted-foreground flex items-center gap-2.5 text-sm leading-tight"
+            >
               <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${tone.dot}`} />
               {feature}
             </li>
           ))}
         </ul>
 
-        {/* CTA */}
-        <div className={`flex items-center gap-2 text-sm font-semibold ${tone.text}`}>
+        {/* CTA — pinned to the bottom, so the links line up across the row even
+            when one description wraps */}
+        <div className={`mt-auto flex items-center gap-2 text-sm font-semibold ${tone.text}`}>
           <span>{cta}</span>
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </div>
@@ -187,7 +193,7 @@ export default function ProgramLandingPage() {
 
       {/* Main content */}
       <div className="relative z-10 flex min-h-screen flex-col items-center px-4 pt-12 pb-8 sm:pt-16">
-        <div className="w-full max-w-4xl">
+        <div className="w-full max-w-7xl">
           {/* Logo and Title */}
           <div className="animate-fade-in mb-8 text-center sm:mb-10">
             <div className="mb-5 flex justify-center">
@@ -210,7 +216,7 @@ export default function ProgramLandingPage() {
               neighbours light their nearest edge too (useGlowGroup). */}
           <div
             {...glow}
-            className="mx-auto grid max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6"
+            className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[repeat(3,295px)] lg:justify-center"
           >
             {PROGRAM_CARDS.map((card, i) => (
               <ProgramCard

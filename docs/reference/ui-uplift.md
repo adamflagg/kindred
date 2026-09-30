@@ -82,7 +82,7 @@ Four across is the shortest, keeps every program visible, and takes a fifth prog
 
 **Effect chosen: spotlight plus border glow** — the glow card above. Tilt had the most character on this page, but it can't carry over to working surfaces (rule 6), and the aim was an effect that could become the house style.
 
-**Shipped now:** the glow card on today's three cards, with the page reading its cards from a list (`PROGRAM_CARDS`).
+**Shipped now:** the glow card on today's three cards, at the mockup's size — fixed 295px cards, 20px gaps, the call to action pinned to each card's bottom edge so the links line up — with the page reading its cards from a list (`PROGRAM_CARDS`).
 
 **When Camperships launches at `/aid`,** the landing card is one entry plus these:
 
@@ -90,5 +90,5 @@ Four across is the shortest, keeps every program visible, and takes a fifth prog
 - Add it to `utils/programUrls.ts`: `PROGRAM_HOME`, `PROGRAM_PREFIXES`, `isProgramRoute`, `getProgramFromPath`.
 - Add it to the header program menu in `layouts/AppLayout.tsx` — the menu staff actually switch with.
 - Add the `PROGRAM_CARDS` entry. The mockup used a berry colour (`hsl(330 55% 42%)` light, `hsl(330 65% 72%)` dark — needs adding as a theme token), lucide's `HandHeart` icon, and "Financial aid applications and awards" with the features *Application review*, *Award rounds against the budget* and *Grantor ledger*. All proposals, not decisions.
-- Move the grid to `lg:grid-cols-4` and widen the `max-w-4xl` wrapper — the mockup's row was 1240px.
+- Change the grid columns. Cards are a fixed 295px with 20px gaps (the mockup's size), so four across is 1240px — wider than the `lg` breakpoint leaves room for. Use `lg:grid-cols-[repeat(2,295px)]` and `xl:grid-cols-[repeat(4,295px)]`.
 - Decide whether the card shows to users without access to aid.
