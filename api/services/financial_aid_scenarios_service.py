@@ -6,9 +6,9 @@ One draft per person, kept options and the trail, all over one frozen season:
   (financial_aid_scenario_pricing). Every scenario is priced on the newest snapshot; freezing an unchanged season
   writes nothing.
 - **The draft** is the person's newest trail row. Releasing a setting (`save_draft`) appends a row with its results,
-  who and when; loading an option or any row (`load`) appends one too, so nothing is ever lost and nothing asks
-  "discard?" (D38). `evaluate` prices without writing: the live preview while a slider moves. The draft is "from"
-  its row's kept code, else the row's from code.
+  who and when; loading an option or any row (`load`) appends one too (neither appends when the draft already is
+  that), so nothing is ever lost and nothing asks "discard?" (D38). `evaluate` prices without writing: the live
+  preview while a slider moves. The draft is "from" its row's kept code, else the row's from code.
 - **Keep** locks the draft as an immutable, unnamed option with a spoken code: a variant (A1, B2) under the starting
   point you work from, or a new starting point (B, C). Two levels, never deeper (D36, D38). "Start from the rules"
   makes a starting point from the rules draft (the latest version).

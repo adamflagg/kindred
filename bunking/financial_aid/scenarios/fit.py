@@ -4,8 +4,8 @@ points"). Pure, over an injected pricing call.
 The largest shift, on a half-point grid from FIT_LOW to FIT_HIGH, whose margin (`fit_margin`: the total row's Round 1
 Remaining, money on a program with no pool included) is still >= 0 (plan Decision 11 (a), RULED 2026-09-30, D119). A higher
 percentage never lowers a Round 1 (the minimum and the ask cap only flatten it), so Remaining falls as the shift
-rises and a bisection finds the edge in about ten pricings. When even FIT_LOW is over, or even FIT_HIGH leaves money,
-it says so (§12.3: an infeasible target is explained, never a silent failure).
+rises and a bisection finds the edge in about ten pricings. When even FIT_LOW is over, or even FIT_HIGH stays
+within it, it says so (§12.3: an infeasible target is explained, never a silent failure).
 
 The margin is Round 1's, not the total budget's: Round 2's and Round 3's reserves stay held back. Pools are guidance and
 only the total is hard (D119), so one pool may end below zero while another has money left; `tightest_pool` names the

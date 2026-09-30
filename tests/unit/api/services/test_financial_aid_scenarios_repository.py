@@ -197,9 +197,14 @@ async def test_the_draft_is_the_persons_newest_trail_row() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_actor_that_would_break_the_filter_is_refused() -> None:
-    with pytest.raises(ValueError):
-        await ScenarioRepository(_pb()).latest_trail(YEAR, 'x" || year > 0 || "')
+async def test_an_actor_with_a_quote_is_escaped_into_the_filter_not_refused() -> None:
+    # An email may hold a quote or backslash: escaped as every other PocketBase filter here is (pb_escape), so the
+    # person reaches their draft, and the value can't break out of the string.
+    pb = _pb()
+    assert await ScenarioRepository(pb).latest_trail(YEAR, 'x" || year > 0 || "\\') is None
+    assert pb.collection.return_value.get_list.call_args.args[2]["filter"] == (
+        f'year = {YEAR} && actor = "x\\" || year > 0 || \\"\\\\"'
+    )
 
 
 @pytest.mark.asyncio
@@ -325,10 +330,14 @@ async def test_the_twin_refuses_what_the_real_repository_refuses() -> None:
         store.snapshot_inputs("bad"),
         store.option_round1("bad"),
         store.trail_row("bad"),
-        store.latest_trail(YEAR, 'x" || 1'),
     ):
         with pytest.raises(ValueError):
             await call
+
+
+@pytest.mark.asyncio
+async def test_the_twin_finds_a_draft_for_an_actor_with_a_quote() -> None:
+    assert await FakeScenarioStore().latest_trail(YEAR, 'o"brien@example.com') is None
 
 
 def _option_create(code: str) -> AidWrite:

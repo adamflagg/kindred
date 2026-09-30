@@ -15,7 +15,7 @@ and program, and it was received at the earliest create row among it and them. A
 date. Consequence to know: a camper whose request was withdrawn and who applies again for the same program later
 also counts from the first application. Known limit: a request synced late on deadline day counts by when intake recorded it, not by CampMinder's
 submission time, which no request record carries (the runbook runs intake right after the deadline closes). If intake
-later stores CampMinder's submitted date, `received_dates` prefers it.
+later stores CampMinder's submitted date, `received_dates` should prefer it (not built: it reads only the log).
 """
 
 from __future__ import annotations

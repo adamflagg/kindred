@@ -19,7 +19,6 @@ from api.services.financial_aid_scenarios_repository import (
     SnapshotMeta,
     SnapshotMissingError,
     TrailRecord,
-    _literal,
     _record_id,
     check_snapshot_sizes,
     option_record,
@@ -72,7 +71,6 @@ class FakeScenarioStore:
         return {request_id: Decimal(str(amount)) for request_id, amount in (raw or {}).items()}
 
     async def latest_trail(self, year: int, actor: str) -> TrailRecord | None:
-        _literal(actor)
         row = self._newest([r for r in self._of(AID_SCENARIO_TRAIL, year) if r.actor == actor])
         return trail_record(row) if row is not None else None
 

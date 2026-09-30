@@ -19,6 +19,7 @@ from typing import Any, Final
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, decode_snapshot
+from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules
@@ -110,13 +111,6 @@ def _created(record: Any) -> datetime:
 def _record_id(value: str) -> str:
     if not _PB_ID.fullmatch(value):
         raise ValueError(f"{value!r} is not a record id")
-    return value
-
-
-def _literal(value: str) -> str:
-    """Text safe inside a double-quoted PocketBase filter string."""
-    if '"' in value or "\\" in value:
-        raise ValueError(f"{value!r} can't be used in a filter")
     return value
 
 
@@ -243,7 +237,7 @@ class ScenarioRepository:
     async def latest_trail(self, year: int, actor: str) -> TrailRecord | None:
         record = await self._first(
             AID_SCENARIO_TRAIL,
-            {"filter": f'year = {int(year)} && actor = "{_literal(actor)}"', "sort": "-created,-id"},
+            {"filter": f'year = {int(year)} && actor = "{pb_escape(actor)}"', "sort": "-created,-id"},
         )
         return trail_record(record) if record is not None else None
 
