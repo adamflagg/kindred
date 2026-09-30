@@ -62,3 +62,27 @@ func TestAidCancellationsMigrationDeclaresItsShape(t *testing.T) {
 		t.Error("down must delete aid_cancellations")
 	}
 }
+
+func TestAidCancellationsMigrationPinsItsKeyFields(t *testing.T) {
+	up := readAidMigrationUp(t, aidCancellationsMigration)
+	field := func(name string) string {
+		for _, line := range strings.Split(up, "\n") {
+			if strings.Contains(line, `name: "`+name+`"`) {
+				return line
+			}
+		}
+		t.Fatalf("no %s field", name)
+		return ""
+	}
+	// One request per row, and a request's cancellations are never deleted with it.
+	for _, want := range []string{"required: true", "maxSelect: 1", "cascadeDelete: false"} {
+		if line := field("request"); !strings.Contains(line, want) {
+			t.Errorf("request field must declare %q: %s", want, line)
+		}
+	}
+	for _, name := range []string{"year", "actor"} {
+		if line := field(name); !strings.Contains(line, "required: true") {
+			t.Errorf("%s must be required: %s", name, line)
+		}
+	}
+}
