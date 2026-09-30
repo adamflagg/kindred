@@ -333,6 +333,7 @@ def _round1(
             return
         work.issue("cost_unknown", "warn", f"Cost is unknown ({cost.missing}); the minimum award was used", "r1")
         potential, bound = awards.minimum, "minimum"
+        minimum = awards.minimum
     else:
         base = pct_of(pct, work.cost)
         if rules.grants.offset_mode == "dollar":
@@ -340,10 +341,10 @@ def _round1(
         else:
             before_minimum = pct_of(pct, max(work.cost - grants, ZERO))
         fully_covered = grants > 0 and grants >= work.cost
+        minimum = awards.minimum
         if fully_covered and not rules.grants.minimum_when_fully_covered:
             potential = max(before_minimum, ZERO)
         elif rules.grants.minimum_after_grants:
-            minimum = awards.minimum
             if rules.grants.minimum_capped_at_share:
                 # D140: never more than the family still owes after counted grants.
                 minimum = min(minimum, max(work.cost - grants, ZERO))
@@ -358,7 +359,13 @@ def _round1(
         "r1_potential",
         "Round 1 potential",
         potential,
-        inputs={"pct": pct, "cost": work.cost, "grants": grants, "minimum": awards.minimum},
+        inputs={
+            "pct": pct,
+            "cost": work.cost,
+            "grants": grants,
+            "minimum": minimum,
+            "minimum_uncapped": awards.minimum,
+        },
         bound=bound,
     )
     raw = potential
