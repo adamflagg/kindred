@@ -248,7 +248,8 @@ var syncJobMeta = []JobMeta{
 	// Campership ledger (sub-project 4). Reads financial_transactions, camp_sessions,
 	// attendees, persons, households and financial_aid_applications, so its row sits
 	// after all of them. Besides aid_postings it writes aid_sources (auto-created
-	// unclassified rows and the private config file's classifications) and the auto
+	// unclassified rows, and rows seeded from the private config file for descriptions
+	// with no row yet -- never an update, D105) and the auto
 	// rows of aid_household_links. On the daily cron (Year 0) it covers seasons
 	// N-1..N+1, the same window the transaction sync re-fetches.
 	{ID: "aid_postings", Phase: PhaseTransform,

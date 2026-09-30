@@ -356,9 +356,12 @@ the logs.
 `persons`, `households`, `financial_aid_applications` and `aid_attribution_overrides`, and also writes
 `aid_sources` and the auto rows of `aid_household_links`. It keeps every live aid row and, as dated
 history, the credit leg of every reversed pair, so as-of totals can be read; a reversal updates a row
-rather than deleting it. On the daily cron it covers seasons N−1, N and N+1. Description
-classifications come from the private `config/aid_sources.local.json` (kindred-local), never from a
-migration, because the camp's own descriptions name the camp.
+rather than deleting it. On the daily cron it covers seasons N−1, N and N+1. The private
+`config/aid_sources.local.json` (kindred-local) is **seed-only**: a run adds a description the file names
+that has no `aid_sources` row yet, and never writes to a row that exists. After that, a classification
+changes only through the app's logged source edit (FastAPI `PATCH /sources`). A description CampMinder sends
+before the file names it lands `unclassified`, and the run logs a warning naming it. Classifications never
+come from a migration, because the camp's own descriptions name the camp.
 
 **Key ordering rules:**
 
