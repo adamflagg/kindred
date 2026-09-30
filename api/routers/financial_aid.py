@@ -13,8 +13,10 @@ are the only way in. Every ledger write passes the real signed-in person
 
 /summary and /net-totals are finance-facing and unsuppressed (per-family
 derived), so they need financial_aid.view. Development's financial_aid.summary
-reaches none of these routes; its aggregate endpoint (sub-project 8) must be
-named apart from /summary.
+reaches none of these routes except the decisions Remaining line below; its
+aggregate endpoint (sub-project 8) must be named apart from /summary.
+
+Sub-project 10a adds decisions: the season's Requests grid, Rounds & budget and the Remaining line (view; the Remaining line also summary, D75), each round's asks and Round 3 amounts and the Posted and Accepted ticks (casework), and discretionary money and Round 3 approval (rules).
 """
 
 from datetime import date
@@ -42,6 +44,19 @@ from api.schemas.financial_aid import (
     SourceFamily,
     SourceGrantorIn,
     SummaryResponse,
+)
+from api.schemas.financial_aid_decisions import (
+    AcceptedIn,
+    AskIn,
+    BudgetResponse,
+    DecisionWriteOut,
+    DiscretionaryIn,
+    PostedIn,
+    RemainingResponse,
+    RequestsGridResponse,
+    Round3AmountIn,
+    Round3ApprovalIn,
+    UnpostIn,
 )
 from api.schemas.financial_aid_grants import (
     CommitmentIn,
@@ -80,6 +95,12 @@ from api.services.financial_aid_casework_service import (
     FinancialAidCaseworkService,
 )
 from api.services.financial_aid_corrections import CorrectionError
+from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
+from api.services.financial_aid_decisions_service import (
+    DecisionChangedError,
+    DecisionNotFoundError,
+    FinancialAidDecisionsService,
+)
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
@@ -102,7 +123,7 @@ from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, ValidationReport
-from bunking.rbac.dependencies import require_permission
+from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
@@ -596,3 +617,106 @@ async def withdraw_grant_commitment(
         return await _grants().withdraw_commitment(year, commitment_id, body, user.email)
     except FinancialAidError as exc:
         raise _grants_http(exc) from exc
+
+
+# --- decisions (sub-project 10a) ---------------------------------------------------
+
+
+def _decisions() -> FinancialAidDecisionsService:
+    return FinancialAidDecisionsService(
+        FinancialAidDecisionsRepository(pb), _rules(), GrantsService(GrantsRepository(pb)).register_rows
+    )
+
+
+def _decisions_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, DecisionNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, DecisionChangedError):
+        return HTTPException(
+            status_code=409, detail={"message": str(exc), "rows": [row.model_dump() for row in exc.rows]}
+        )
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_RequestIdPath = Annotated[str, Path(min_length=15, max_length=15, pattern=r"^[a-z0-9]+$")]
+# D48, D75: the Remaining line is for everyone with Camperships, summary-only users included.
+_VIEW_OR_SUMMARY = Depends(require_any_permission(Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_SUMMARY))
+
+
+@router.get("/decisions/{year}/grid", response_model=RequestsGridResponse)
+async def get_requests_grid(year: _Year, user: AuthUser = _VIEW) -> RequestsGridResponse:
+    return await _decisions().grid(year)
+
+
+@router.get("/decisions/{year}/budget", response_model=BudgetResponse)
+async def get_rounds_budget(year: _Year, user: AuthUser = _VIEW) -> BudgetResponse:
+    return await _decisions().budget(year)
+
+
+@router.get("/decisions/{year}/remaining", response_model=RemainingResponse)
+async def get_remaining_line(year: _Year, user: AuthUser = _VIEW_OR_SUMMARY) -> RemainingResponse:
+    return await _decisions().remaining(year)
+
+
+@router.post("/requests/{request_id}/asks", response_model=DecisionWriteOut)
+async def key_aid_ask(request_id: _RequestIdPath, body: AskIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
+    try:
+        return await _decisions().key_ask(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/round3-amount", response_model=DecisionWriteOut)
+async def key_round3_amount(
+    request_id: _RequestIdPath, body: Round3AmountIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    # D22, D79: finance's own Round 3 amount needs no approval; the registrar's above the limit waits.
+    can_approve = user.is_admin or Permission.FINANCIAL_AID_RULES in user.permissions
+    try:
+        return await _decisions().key_round3_amount(request_id, body, user.email, can_approve=can_approve)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/discretionary", response_model=DecisionWriteOut)
+async def key_discretionary(
+    request_id: _RequestIdPath, body: DiscretionaryIn, user: AuthUser = _RULES
+) -> DecisionWriteOut:
+    try:
+        return await _decisions().key_discretionary(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/round3-approval", response_model=DecisionWriteOut)
+async def decide_round3_amount(
+    request_id: _RequestIdPath, body: Round3ApprovalIn, user: AuthUser = _RULES
+) -> DecisionWriteOut:
+    try:
+        return await _decisions().decide_round3(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/decisions/{year}/posted", response_model=DecisionWriteOut)
+async def tick_posted(year: _Year, body: PostedIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
+    try:
+        return await _decisions().tick_posted(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/decisions/{year}/unposted", response_model=DecisionWriteOut)
+async def undo_posted(year: _Year, body: UnpostIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
+    try:
+        return await _decisions().undo_posted(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/decisions/{year}/accepted", response_model=DecisionWriteOut)
+async def tick_accepted(year: _Year, body: AcceptedIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
+    try:
+        return await _decisions().tick_accepted(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
