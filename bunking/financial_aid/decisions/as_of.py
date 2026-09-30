@@ -160,7 +160,7 @@ def price_as_of(
 ) -> PricedRequest:
     """One request as of a past instant, from its rounds and holds folded to it. `live` is its status
     then; `r1_ask` its Round 1 ask then (replayed and corrected); `rules` the version that priced the
-    season then (it names the decision type whose money counts outside the budget); `pool` the request's
+    season then (it names the decision type, whose whole round sits outside the budget when it does not count); `pool` the request's
     home pool then, resolved by the caller from its session and program (None: unknown, so NO_POOL;
     see PAST_DATE_GAPS["pool_unknown"]); `program_key` the program it resolved to. A posted round keeps its lock's own pool."""
     states = {n: rounds.get(n, RoundState(round=n)) for n in ROUNDS}

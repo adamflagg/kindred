@@ -74,8 +74,9 @@ class RoundView:
     """One round's figures. `decided` is worked out now (a posted round's is the amount it locked);
     `locked` is the Posted amount (D59), None while not posted; `pending` is Pending approval's
     keyed amount (D79). A posted round's pool and budget treatment are those recorded at its lock.
-    `extra` is the decision type's own money (top-up + discretionary) inside this round's amount: the
-    part `counts_toward_budget` moves outside the budget (spec §7.2), never the base round.
+    `extra` is the decision type's own money (top-up + discretionary) inside this round's amount. A type
+    that does not `counts_toward_budget` moves the WHOLE round (base and extra) outside the budget (owner
+    ruling 2026-09-30, spec §7.2); `extra` is kept as the part that is the type's own money.
 
     `clawed_back` is sub-project 10b's: a posted round whose money CampMinder has reversed (D54), so
     it counts nowhere."""

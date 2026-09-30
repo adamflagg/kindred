@@ -188,7 +188,11 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
         if outside:
             add("outside_budget", outside)
     elif view.status == "pending_approval":
-        add("pending_approval", view.pending or ZERO)
+        pending = view.pending or ZERO
+        if whole:  # not the camp's money: below the line, never lowering Remaining (D79 binds counting types)
+            add("outside_budget", pending)
+        else:
+            add("pending_approval", pending)
     elif view.status == "held":
         add("held", view.ask or ZERO)
 
@@ -208,6 +212,8 @@ def _tally_demand(
         if r2.clawed_back:
             return  # D54: a clawed-back round counts nowhere (and implies Round 1 was clawed back too)
         asks2[pool].add(request, r2.ask)
+        if not r2.counts_toward_budget:
+            return  # a non-counting round is not the camp's money: no forward demand
         if r2.status == "posted":
             computed2[pool] += r2.locked or ZERO
         elif r2.status == "needs_offer":
@@ -217,6 +223,8 @@ def _tally_demand(
         return  # D54: a declined offer is not unmet ask
     if r1.status == "held":
         unmet1[pool] += r1.ask
+    elif not r1.counts_toward_budget:
+        return  # a non-counting round is not the camp's money: no unmet demand against it
     elif r1.status in ("needs_offer", "posted"):
         amount = r1.locked if r1.status == "posted" else r1.decided
         if amount is not None:

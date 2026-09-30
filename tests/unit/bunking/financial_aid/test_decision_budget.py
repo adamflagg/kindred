@@ -249,12 +249,34 @@ def test_a_clawed_back_non_counting_round_counts_nowhere() -> None:
     assert (camp.rounds[2].posted, camp.below.outside_budget, camp.below.outside_budget_posted) == (ZERO, ZERO, ZERO)
 
 
-def test_pending_approval_is_subtracted_even_with_the_flag_off() -> None:
+def test_a_non_counting_round_pending_approval_sits_below_the_line_and_never_lowers_remaining() -> None:
+    """Designed contract changed by owner ruling 2026-09-30: the whole round of a non-counting type is
+    below the line, pending approval included. D79's subtraction still applies to COUNTING types."""
     request = priced(
         "req-m", 10, view(1, "posted", locked="3000"), view(3, "pending_approval", pending="500", counts=False)
     )
     camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[3].pending_approval, camp.below.outside_budget, camp.below.outside_budget_posted) == (
+        ZERO,
+        Decimal(500),
+        ZERO,
+    )
+    assert camp.rounds[3].remaining == Decimal("20000.00")
+
+
+def test_a_counting_round_pending_approval_is_still_subtracted() -> None:
+    request = priced("req-m2", 15, view(1, "posted", locked="3000"), view(3, "pending_approval", pending="500"))
+    camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
     assert (camp.rounds[3].pending_approval, camp.rounds[3].remaining) == (Decimal(500), Decimal("19500.00"))
+
+
+def test_a_non_counting_round_adds_no_forward_demand() -> None:
+    r2 = priced(
+        "req-d2", 16, view(1, "posted", locked="3000"), view(2, "needs_offer", ask="900", decided="850", counts=False)
+    )
+    r1 = priced("req-d1", 17, view(1, "needs_offer", ask="2000", decided="1500", counts=False))
+    demand = pool_of(season_budget([r2, r1], RULES, outside_grants={}), "camp_pool").demand
+    assert (demand.round2_computed, demand.round1_unmet) == (ZERO, ZERO)
 
 
 def test_round_1_unmet_never_goes_negative() -> None:
