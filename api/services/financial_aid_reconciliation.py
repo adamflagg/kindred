@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -47,6 +47,7 @@ from api.services.financial_aid_grants_register import (
     program_family_for_session_type,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord, SessionRow
+from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.money import ZERO
 
 
@@ -129,12 +130,18 @@ class SeasonLedger:
     (a past date), so nothing is reconciled on it."""
 
     by_request: Mapping[str, tuple[CampLine, ...]] = field(default_factory=dict)
+    by_closed_request: Mapping[str, tuple[CampLine, ...]] = field(default_factory=dict)
     unplaced_by_household: Mapping[int, Decimal] = field(default_factory=dict)
     synced_at: datetime | None = None
     read: bool = False
 
     def lines(self, request_id: str) -> tuple[CampLine, ...]:
         return self.by_request.get(request_id, ())
+
+    def closed_lines(self, request_id: str) -> tuple[CampLine, ...]:
+        """Lines placed on a closed (withdrawn / duplicate) request that holds posted money. They feed
+        the clawback only (D54): never a tick, never Needs an offer, never demand."""
+        return self.by_closed_request.get(request_id, ())
 
     def family_unplaced(self, households: Iterable[int]) -> Decimal:
         """The live camp aid on these households that no single request takes (family level)."""
@@ -214,34 +221,105 @@ def _place(
     return _household_request(line, by_household)
 
 
+def _index(
+    requests: Iterable[PlaceableRequest],
+) -> tuple[dict[int, list[PlaceableRequest]], dict[int, list[PlaceableRequest]]]:
+    by_person: dict[int, list[PlaceableRequest]] = defaultdict(list)
+    by_household: dict[int, list[PlaceableRequest]] = defaultdict(list)
+    for r in requests:
+        if r.person_cm_id > 0:
+            by_person[r.person_cm_id].append(r)
+        for household in r.share_households | {r.household_cm_id}:
+            by_household[household].append(r)
+    return by_person, by_household
+
+
 def build_ledger(
     lines: Iterable[CampLine],
     placements: Mapping[int, Placement],
     requests: Iterable[PlaceableRequest],
     synced_at: datetime | None,
+    posted_request_ids: frozenset[str] = frozenset(),
 ) -> SeasonLedger:
     """Every camp-aid line placed on its one request, or left at family level. Only live requests
-    (active, unmatched) take a line, as the grants register's split does."""
-    by_person: dict[int, list[PlaceableRequest]] = defaultdict(list)
-    by_household: dict[int, list[PlaceableRequest]] = defaultdict(list)
-    for r in requests:
-        if r.status not in LIVE_REQUEST_STATUSES:
-            continue
-        if r.person_cm_id > 0:
-            by_person[r.person_cm_id].append(r)
-        for household in r.share_households | {r.household_cm_id}:
-            by_household[household].append(r)
+    (active, unmatched) take a line, as the grants register's split does.
+
+    A second pass (D54, SP10a Decision 13) places a line the first pass left unplaced on a closed
+    request (withdrawn, duplicate, duplicate_pending) that holds posted money, named by
+    `posted_request_ids`, by the same rules. Those lines go to `by_closed_request` only, so they
+    can never tick a request, add to Needs an offer or change demand; they exist so CampMinder
+    reversing a withdrawn request's posted money can claw it back."""
+    everyone = list(requests)
+    by_person, by_household = _index(r for r in everyone if r.status in LIVE_REQUEST_STATUSES)
+    closed_person, closed_household = _index(
+        r for r in everyone if r.status not in LIVE_REQUEST_STATUSES and r.id in posted_request_ids
+    )
     placed: dict[str, list[CampLine]] = defaultdict(list)
+    closed: dict[str, list[CampLine]] = defaultdict(list)
     unplaced: dict[int, Decimal] = defaultdict(Decimal)
     for line in lines:
-        request_id = _place(line, placements.get(line.transaction_cm_id), by_person, by_household)
+        placement = placements.get(line.transaction_cm_id)
+        request_id = _place(line, placement, by_person, by_household)
         if request_id is not None:
             placed[request_id].append(line)
+            continue
+        closed_id = _place(line, placement, closed_person, closed_household)
+        if closed_id is not None:
+            closed[closed_id].append(line)
         elif line.live():
             unplaced[line.household_cm_id] += line.amount
     return SeasonLedger(
         by_request={rid: tuple(lns) for rid, lns in placed.items()},
+        by_closed_request={rid: tuple(lns) for rid, lns in closed.items()},
         unplaced_by_household=dict(unplaced),
         synced_at=synced_at,
         read=True,
     )
+
+
+# --- clawback (D54) --------------------------------------------------------------------------
+
+
+def _posted_day(state: RoundState | None) -> date:
+    """The day a posted round was posted in CampMinder (its tick's effective_on), else the day it
+    locked; date.min when neither is known, so any reversal counts."""
+    if state is None:
+        return date.min
+    if state.posted_on is not None:
+        return state.posted_on
+    return camp_date(state.locked_at) if state.locked_at is not None else date.min
+
+
+def clawed_back_on(lines: Sequence[CampLine], first_posted_on: date, at: datetime | None = None) -> date | None:
+    """D54: the day CampMinder took back what it held for this request, or None. Nothing placed on it
+    is live, and a placed line was reversed on or after its first posted day. A reversal that leaves
+    money live reads short instead, and an appeal's reverse-and-repost is never one (the repost is
+    live). Derived on every read: a later repost makes the money posted again."""
+    if any(line.live(at) for line in lines):
+        return None
+    days = [
+        camp_date(line.reversal_date)
+        for line in lines
+        if line.reversal_date is not None and line.reversed_by(at) and camp_date(line.reversal_date) >= first_posted_on
+    ]
+    return max(days) if days else None
+
+
+def apply_clawback(
+    priced: PricedRequest,
+    rounds: Mapping[int, RoundState],
+    lines: Sequence[CampLine],
+    *,
+    at: datetime | None = None,
+) -> tuple[PricedRequest, date | None]:
+    """The request with every posted round marked clawed back when its money came back, and the
+    reversal's day; otherwise the same request and None. All of a request's posted rounds go
+    together, because reconciliation is by the request's net total (main spec §11)."""
+    posted = [view for view in priced.rounds if view.status == "posted"]
+    if not posted:
+        return priced, None
+    day = clawed_back_on(lines, min(_posted_day(rounds.get(view.round)) for view in posted), at)
+    if day is None:
+        return priced, None
+    views = tuple(replace(view, clawed_back=True) if view.status == "posted" else view for view in priced.rounds)
+    return replace(priced, rounds=views), day

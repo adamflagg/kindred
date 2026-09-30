@@ -211,3 +211,110 @@ def test_a_line_is_live_now_or_as_of_an_instant() -> None:
 def test_camp_dates_are_pacific_and_dollars_are_exact() -> None:
     assert camp_date(datetime(2027, 3, 9, 5, 0, tzinfo=UTC)) == date(2027, 3, 8)  # 9 pm Pacific, Mar 8
     assert (dollars(Decimal(1800)), dollars(Decimal("1800.50"))) == ("$1,800", "$1,800.50")
+
+
+# --- clawback (Task 2) ---------------------------------------------------------------------------
+
+from dataclasses import replace
+
+from api.services.financial_aid_reconciliation import apply_clawback
+from bunking.financial_aid.decisions import RoundState
+from tests.unit.bunking.financial_aid.test_decision_budget import priced, view
+
+POSTED_R1 = {
+    1: RoundState(
+        round=1,
+        posted=True,
+        locked_amount=Decimal(1800),
+        locked_at=MAR9,
+        posted_on=date(2027, 3, 9),
+        lock_source="tick",
+    )
+}
+R1 = priced("emma", 1000001, view(1, "posted", locked="1800", accepted=True))
+
+
+def test_a_reversal_with_nothing_left_live_claws_the_posted_rounds_back() -> None:
+    out, day = apply_clawback(R1, POSTED_R1, [line(1, "1800", posted=MAR9, reversed_at=JUN1)])
+    assert day == date(2027, 6, 1)
+    assert [v.clawed_back for v in out.rounds] == [True]
+
+
+def test_an_appeals_reverse_and_repost_is_not_a_clawback() -> None:
+    lines = [line(1, "1800", posted=MAR9, reversed_at=JUN1), line(2, "2100", posted=JUN1)]
+    out, day = apply_clawback(R1, POSTED_R1, lines)
+    assert day is None
+    assert out is R1
+
+
+def test_a_line_reversed_before_the_round_was_posted_is_no_clawback() -> None:
+    """A typo reversed on Mar 8, before Ben's Mar 9 tick: that tick reads "not in CampMinder", not reversed."""
+    lines = [line(1, "1700", posted=MAR8, reversed_at=datetime(2027, 3, 8, 20, 0, tzinfo=UTC))]
+    assert apply_clawback(R1, POSTED_R1, lines)[1] is None
+
+
+def test_a_request_with_nothing_posted_or_nothing_placed_is_left_alone() -> None:
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    assert apply_clawback(needs, {}, [line(1, "1800", reversed_at=JUN1)]) == (needs, None)
+    assert apply_clawback(R1, POSTED_R1, []) == (R1, None)
+
+
+def test_as_of_a_day_before_the_reversal_the_money_is_still_posted() -> None:
+    lines = [line(1, "1800", posted=MAR9, reversed_at=JUN1)]
+    assert apply_clawback(R1, POSTED_R1, lines, at=datetime(2027, 5, 1, tzinfo=UTC))[1] is None
+    assert apply_clawback(R1, POSTED_R1, lines, at=datetime(2027, 6, 2, tzinfo=UTC))[1] == date(2027, 6, 1)
+
+
+def test_a_ledger_lock_with_no_posted_day_uses_the_day_it_locked() -> None:
+    rounds = {1: replace(POSTED_R1[1], posted_on=None)}
+    assert apply_clawback(R1, rounds, [line(1, "1800", posted=MAR9, reversed_at=JUN1)])[1] == date(2027, 6, 1)
+
+
+# --- a closed (withdrawn / duplicate) request that holds posted money (D54 + SP10a Decision 13) ---
+
+
+def _closed_lines(
+    lines: Sequence[CampLine], requests: Sequence[PlaceableRequest], posted: frozenset[str]
+) -> tuple[dict[str, tuple[CampLine, ...]], dict[str, tuple[CampLine, ...]]]:
+    ledger = build_ledger(lines, {}, requests, None, posted_request_ids=posted)
+    return dict(ledger.by_request), dict(ledger.by_closed_request)
+
+
+def test_a_withdrawn_requests_posted_money_is_clawed_back_when_campminder_reverses_it() -> None:
+    withdrawn = request("r1", person=1000011, status="withdrawn")
+    rev = line(1, "1800", person=1000011, posted=MAR9, reversed_at=JUN1, session=1000101, family="summer")
+    ledger = build_ledger([rev], {}, [withdrawn], None, posted_request_ids=frozenset({"r1"}))
+    out, day = apply_clawback(R1, POSTED_R1, ledger.closed_lines("r1"))
+    assert day == date(2027, 6, 1)
+    assert [v.clawed_back for v in out.rounds] == [True]
+
+
+def test_a_withdrawn_request_with_nothing_posted_never_takes_a_line() -> None:
+    withdrawn = request("r1", person=1000011, status="withdrawn")
+    rev = line(1, "1800", person=1000011, posted=MAR9, reversed_at=JUN1)
+    assert _closed_lines([rev], [withdrawn], frozenset()) == ({}, {})
+
+
+def test_a_line_that_fits_a_live_and_a_withdrawn_request_goes_to_the_live_one() -> None:
+    live = request("live", person=1000011)
+    withdrawn = request("old", person=1000011, status="withdrawn")
+    by_request, closed = _closed_lines([line(1, "1800", person=1000011)], [live, withdrawn], frozenset({"old"}))
+    assert list(by_request) == ["live"]
+    assert closed == {}
+
+
+def test_a_closed_requests_line_is_never_a_live_placement_and_leaves_no_family_money() -> None:
+    withdrawn = request("r1", person=1000011, status="duplicate")
+    ledger = build_ledger(
+        [line(1, "1800", person=1000011)], {}, [withdrawn], None, posted_request_ids=frozenset({"r1"})
+    )
+    assert ledger.lines("r1") == ()  # what ticks and Needs an offer read
+    assert ledger.by_request == {}
+    assert ledger.family_unplaced([1000001]) == 0
+    assert len(ledger.closed_lines("r1")) == 1
+
+
+def test_two_closed_candidates_stay_unplaced() -> None:
+    a = request("a", person=1000011, status="withdrawn")
+    b = request("b", person=1000011, status="duplicate", session=1000102)
+    assert _closed_lines([line(1, "1800", person=1000011)], [a, b], frozenset({"a", "b"})) == ({}, {})
