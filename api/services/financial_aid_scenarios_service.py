@@ -24,7 +24,7 @@ inputs (plan Decision 15).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Final, Literal, Protocol
@@ -467,8 +467,10 @@ class FinancialAidScenariosService:
         return Workspace(year, rules.version, meta, await self._draft(year, actor), tuple(kept))
 
     async def trail(self, year: int, *, page: int, per_page: int) -> tuple[tuple[TrailRecord, ...], int]:
+        """A page of everyone's trail, newest first; each row says whether its figures are from an older snapshot."""
         rows, total = await self._store.trail_page(year, page, per_page)
-        return tuple(rows), total
+        meta = await self._store.latest_snapshot(year)
+        return tuple(replace(row, stale=meta is None or row.snapshot != meta.id) for row in rows), total
 
     # --- the draft ----------------------------------------------------------------------------------
 

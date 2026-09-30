@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -516,3 +517,10 @@ def test_fit_to_budget_on_a_request_set_is_422_through_the_real_service() -> Non
         "Fit to budget uses every request; turn off the request set.",
     )
     assert client.post("/api/financial-aid/scenarios/2027/fit-to-budget", json=DOC_BODY).status_code == 200
+
+
+def test_a_trail_row_says_whether_its_figures_are_stale() -> None:
+    service = _stub()
+    service.trail = AsyncMock(return_value=((replace(ROW, stale=True), ROW), 2))
+    rows = _client().get("/api/financial-aid/scenarios/2027/trail").json()["rows"]
+    assert [row["stale"] for row in rows] == [True, False]

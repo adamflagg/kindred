@@ -658,3 +658,16 @@ async def test_fit_to_budget_refuses_while_a_request_set_is_on(request_set: Requ
     refusal = re.escape("Fit to budget uses every request; turn off the request set.")
     with pytest.raises(ScenarioRefusedError, match=refusal):
         await world.service.fit(YEAR, intake_rules(), request_set=request_set)
+
+
+@pytest.mark.asyncio
+async def test_trail_rows_say_whether_their_figures_are_from_an_older_snapshot() -> None:
+    world = await _started()
+    [started] = (await world.service.trail(YEAR, page=1, per_page=50))[0]
+    assert started.stale is False
+    _add_riley(world)
+    await world.service.freeze(YEAR, FINANCE)
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=50)
+    assert (rows[0].change, rows[0].stale) == ("Round 1 % +5 pts", False)  # priced on the newest snapshot
+    assert [r.stale for r in rows] == [False, True]  # the start row's figures are from the first snapshot

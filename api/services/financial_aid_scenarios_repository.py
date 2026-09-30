@@ -84,6 +84,9 @@ class TrailRecord:
     snapshot: str
     kept_code: str
     created: datetime
+    # The service's trail read sets it: the row's figures are from an older snapshot than the newest. A record read
+    # straight from the store leaves it False.
+    stale: bool = False
 
 
 def _json(value: Any) -> Any:

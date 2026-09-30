@@ -212,6 +212,7 @@ class TrailRowOut(BaseModel):
     round1: float | None
     round1_remaining: float | None
     at_minimum: int | None
+    stale: bool  # its figures are from an older snapshot than the newest
 
 
 class TrailPageOut(BaseModel):

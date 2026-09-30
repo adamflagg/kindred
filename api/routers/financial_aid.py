@@ -1073,6 +1073,7 @@ def _trail_row_out(row: TrailRecord) -> TrailRowOut:
         round1=_cents(row.results.round1) if row.results is not None else None,
         round1_remaining=_cents(row.results.round1_remaining) if row.results is not None else None,
         at_minimum=row.results.at_minimum if row.results is not None else None,
+        stale=row.stale,
     )
 
 
