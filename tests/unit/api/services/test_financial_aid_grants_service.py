@@ -36,6 +36,7 @@ def _grantor(**kw: Any) -> SimpleNamespace:
         "aliases": ["The Regional"],
         "full_coverage": False,
         "covers_canteen": "unknown",
+        "pays_after_camp_aid": False,
         "eligibility": "",
         "contacts": "",
         "note": "",
@@ -182,6 +183,35 @@ def test_covers_canteen_is_recorded_only_for_a_full_coverage_grantor() -> None:
     assert _save(covers_canteen="unknown").covers_canteen == "unknown"
 
 
+@pytest.mark.asyncio
+async def test_a_grantor_records_that_it_pays_after_camp_aid() -> None:
+    """D143: the pays-after fact round-trips like the other grantor facts: written on create,
+    logged when it changes, and read back from the record."""
+    service, spy = _service(_repo())
+    out = await service.create_grantor(_create(full_coverage=True, pays_after_camp_aid=True), ACTOR)
+    assert out.pays_after_camp_aid is True
+    (write,) = spy.writes
+    assert write.data is not None
+    assert write.data["pays_after_camp_aid"] is True
+
+    service, spy = _service(_repo(grantor=_grantor(full_coverage=True)))
+    await service.save_grantor("regional_fund", _save(full_coverage=True, pays_after_camp_aid=True), ACTOR)
+    (log,) = spy.log_rows()
+    assert set(log["after"]) == {"pays_after_camp_aid"}
+
+    service, _ = _service(_repo(grantors=[_grantor(full_coverage=True, pays_after_camp_aid=True)]))
+    listed = await service.list_grantors()
+    assert [g.pays_after_camp_aid for g in listed.grantors] == [True]
+
+
+def test_a_grantor_that_pays_after_camp_aid_is_full_coverage() -> None:
+    """Paying whatever the camp's award leaves IS covering the full cost (D143 marks a last-dollar funder full-coverage)."""
+    with pytest.raises(ValidationError, match="full-coverage"):
+        _save(pays_after_camp_aid=True)
+    assert _save(full_coverage=True, pays_after_camp_aid=True).pays_after_camp_aid is True
+    assert _save().pays_after_camp_aid is False
+
+
 def test_a_grantor_key_is_a_lower_snake_slug() -> None:
     with pytest.raises(ValidationError):
         _create(key="Regional Fund")
@@ -297,6 +327,19 @@ async def test_register_rows_are_the_rows_the_read_reports() -> None:
     assert [(r.transaction_cm_id, float(r.amount), r.counts) for r in rows] == [
         (g.transaction_cm_id, g.amount, g.counts) for g in shown
     ]
+
+
+@pytest.mark.asyncio
+async def test_register_rows_mark_a_pays_after_camp_aid_grantors_grants() -> None:
+    """D143: the register carries the grantor fact on each row, so the calculator bridge can leave
+    the grant out while the register keeps it."""
+    repo = _read_repo(postings=[_posting(9001, 500, person_cm_id=1001)])
+    repo.fetch_grantors = AsyncMock(return_value=[_grantor(full_coverage=True, pays_after_camp_aid=True)])
+    service, _ = _service(repo)
+    (row,) = await service.register_rows(2031)
+    assert (row.grantor_key, row.pays_after_camp_aid, row.counts) == ("regional_fund", True, True)
+    (plain,) = await _service(_read_repo(postings=[_posting(9001, 500, person_cm_id=1001)]))[0].register_rows(2031)
+    assert plain.pays_after_camp_aid is False
 
 
 @pytest.mark.asyncio

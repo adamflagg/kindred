@@ -380,6 +380,7 @@ export type AidGrantorsRecord<Taliases = unknown> = {
   key: string
   name: string
   note?: string
+  pays_after_camp_aid?: boolean
   updated: IsoAutoDateString
 }
 

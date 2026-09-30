@@ -4551,6 +4551,10 @@ export type GrantorCreate = {
    */
   covers_canteen?: 'unknown' | 'yes' | 'no'
   /**
+   * Pays After Camp Aid
+   */
+  pays_after_camp_aid?: boolean
+  /**
    * Eligibility
    */
   eligibility?: string
@@ -4617,6 +4621,10 @@ export type GrantorOut = {
    */
   covers_canteen: 'unknown' | 'yes' | 'no'
   /**
+   * Pays After Camp Aid
+   */
+  pays_after_camp_aid: boolean
+  /**
    * Eligibility
    */
   eligibility: string
@@ -4652,6 +4660,10 @@ export type GrantorSave = {
    * Covers Canteen
    */
   covers_canteen?: 'unknown' | 'yes' | 'no'
+  /**
+   * Pays After Camp Aid
+   */
+  pays_after_camp_aid?: boolean
   /**
    * Eligibility
    */

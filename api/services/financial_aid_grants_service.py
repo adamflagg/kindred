@@ -74,7 +74,15 @@ from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, new_record_id
 
-GRANTOR_FIELDS = ("name", "aliases", "full_coverage", "covers_canteen", "eligibility", "contacts")
+GRANTOR_FIELDS = (
+    "name",
+    "aliases",
+    "full_coverage",
+    "covers_canteen",
+    "pays_after_camp_aid",
+    "eligibility",
+    "contacts",
+)
 
 
 class GrantorKeyTakenError(FinancialAidValidationError):
@@ -87,6 +95,7 @@ def _grantor_snapshot(record: Any) -> dict[str, Any]:
         "aliases": list(record.aliases or []),
         "full_coverage": bool(record.full_coverage),
         "covers_canteen": str(record.covers_canteen or "unknown"),
+        "pays_after_camp_aid": bool(record.pays_after_camp_aid),
         "eligibility": str(record.eligibility or ""),
         "contacts": str(record.contacts or ""),
     }
@@ -412,6 +421,7 @@ class GrantsService:
             grantor_by_source=grantor_by_source,
             enrollments=enrollments,
             requests=requests,
+            pays_after_grantors=frozenset(str(g.key) for g in grantors_raw if g.pays_after_camp_aid),
         )
         rows = build_register(inputs)
         return _Loaded(

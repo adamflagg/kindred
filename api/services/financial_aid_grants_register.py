@@ -18,7 +18,8 @@ The target follows the program (owner ruling 2026-09-29): Family Camp aid reques
 household (person 0), so a Family Camp grant needs no camper and sits on the household's request.
 
 Expected grants (D56) are never grants: nothing here feeds them to the calculator.
-grant_inputs_by_request() is the calculator bridge SP10 wires in (Decision 5).
+grant_inputs_by_request() is the calculator bridge SP10 wires in (Decision 5). It leaves out a
+grant whose grantor pays after the camp's award (D143, a last-dollar funder); the register still lists it.
 """
 
 from __future__ import annotations
@@ -139,6 +140,9 @@ class RegisterInputs:
     grantor_by_source: Mapping[str, str]  # description_key -> grantor key ("" = unmapped)
     enrollments: Sequence[Enrollment]
     requests: Sequence[RequestRef]
+    # D143: the grantors that pay whatever the camp's award leaves (a last-dollar funder). Their grants
+    # are listed and counted like any other; only the calculator bridge leaves them out.
+    pays_after_grantors: frozenset[str] = frozenset()
 
 
 # --- outputs ------------------------------------------------------------------------------
@@ -173,6 +177,7 @@ class RegisterRow:
     counts: bool
     fulfils_commitment_id: str
     requests: tuple[RequestShare, ...]  # the aid requests it sits on; () = didn't apply
+    pays_after_camp_aid: bool = False  # D143: its grantor pays what the camp's award leaves
 
 
 @dataclass(frozen=True)
@@ -376,6 +381,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
         if commitment is not None and commitment.created is not None:
             if recorded_at is None or commitment.created < recorded_at:
                 recorded_at = commitment.created
+        grantor = inputs.grantor_by_source.get(line.source_key, "")
         rows.append(
             RegisterRow(
                 kind="ledger",
@@ -386,7 +392,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                 camper_basis=camper.basis,
                 session_cm_id=camper.session_cm_id,
                 program_family=family,
-                grantor_key=inputs.grantor_by_source.get(line.source_key, ""),
+                grantor_key=grantor,
                 source_key=line.source_key,
                 source_family=line.source_family,
                 funder_type=line.funder_type,
@@ -414,6 +420,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                         camper.person_cm_id, camper.session_cm_id, family, line.amount, requests_by_person, families
                     )
                 ),
+                pays_after_camp_aid=grantor in inputs.pays_after_grantors,
             )
         )
     fulfilled_ids = {c.id for c in fulfilled.values()}
@@ -458,6 +465,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                         c.person_cm_id, c.session_cm_id, family, c.amount, requests_by_person, families
                     )
                 ),
+                pays_after_camp_aid=c.grantor_key in inputs.pays_after_grantors,
             )
         )
     return rows
@@ -466,15 +474,29 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
 def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[GrantInput]]:
     """SP10's calculator input: the OUTSIDE grants that count, per request, each at its share
     (Decision 5). Incentives are left out (the rules meet them through grants.incentives), and so
-    is Expected (D56). state is always "committed": receipts are parked (D55)."""
+    is Expected (D56). So is a grant from a grantor that pays after the camp's award (D143, a last-dollar funder):
+    it pays whatever the award leaves, and its first line is posted at the full price, so feeding
+    it here would cut the award to $0. state is always "committed": receipts are parked (D55)."""
     out: dict[str, list[GrantInput]] = defaultdict(list)
     for row in rows:
-        if not row.counts or row.funder_type != "outside":
+        if not row.counts or row.funder_type != "outside" or row.pays_after_camp_aid:
             continue
         for share in row.requests:
             out[share.request_id].append(
                 GrantInput(amount=share.amount, state="committed", recorded_at=row.recorded_at)
             )
+    return dict(out)
+
+
+def outside_grants_by_request(rows: Iterable[RegisterRow]) -> dict[str, Decimal]:
+    """The OUTSIDE grants that count, per request, summed: the budget's below-the-line money. Unlike
+    the calculator bridge it keeps a pays-after-camp-aid grant (D143): that is still outside money
+    (D125), it just never lowers the award."""
+    out: dict[str, Decimal] = defaultdict(Decimal)
+    for row in rows:
+        if row.counts and row.funder_type == "outside":
+            for share in row.requests:
+                out[share.request_id] += share.amount
     return dict(out)
 
 

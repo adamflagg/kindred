@@ -20,6 +20,7 @@ from api.services.financial_aid_grants_register import (
     expected_grants,
     grant_inputs_by_request,
     needs_attention,
+    outside_grants_by_request,
     program_family_for_session_type,
     split_equally,
 )
@@ -601,6 +602,59 @@ def test_grant_inputs_by_request_carries_only_counting_outside_grants() -> None:
     (grant,) = inputs["req-emma-1"]
     assert (grant.amount, grant.state) == (Decimal("500.00"), "committed")
     assert grant.recorded_at == datetime(2031, 2, 10, 17, 0, tzinfo=UTC)
+
+
+LAST_DOLLAR = "last dollar award"  # a description mapped to a grantor that pays after the camp's award
+LAST_DOLLAR_FUND = "last_dollar_fund"
+
+
+def _last_dollar_register() -> list[Any]:
+    """Emma: an ordinary outside grant and a pays-after line posted at the full session price;
+    Liam: an open commitment from the pays-after grantor."""
+    lines = (
+        _line(9001, "500", person_cm_id=EMMA),
+        _line(9002, "2000", person_cm_id=EMMA, source_key=LAST_DOLLAR),
+    )
+    commitment = _commitment(grantor_key=LAST_DOLLAR_FUND, person_cm_id=LIAM, session_cm_id=S1, amount="1800")
+    return build_register(
+        _inputs(
+            lines=lines,
+            commitments=(commitment,),
+            grantor_by_source={**GRANTORS, LAST_DOLLAR: LAST_DOLLAR_FUND},
+            pays_after_grantors=frozenset({LAST_DOLLAR_FUND}),
+        )
+    )
+
+
+def test_a_pays_after_camp_aid_grant_never_reaches_the_bridge() -> None:
+    """D143: a last-dollar funder pays whatever the camp's award leaves, so neither its ledger line (posted
+    at the full price first) nor its commitment may lower the award. The ordinary grant still does."""
+    inputs = grant_inputs_by_request(_last_dollar_register())
+    assert sorted(inputs) == ["req-emma-1"]
+    (grant,) = inputs["req-emma-1"]
+    assert grant.amount == Decimal(500)
+
+
+def test_the_register_still_lists_and_counts_a_pays_after_camp_aid_grant() -> None:
+    """Only the calculator bridge leaves it out: the register, its money totals and development's
+    all-money figures keep it, on the camper's request."""
+    rows = _last_dollar_register()
+    line = _one(rows, transaction_cm_id=9002)
+    assert (line.grantor_key, line.pays_after_camp_aid, line.counts) == (LAST_DOLLAR_FUND, True, True)
+    assert line.requests == (RequestShare("req-emma-1", Decimal(2000)),)
+    commitment = _one(rows, kind="commitment")
+    assert (commitment.pays_after_camp_aid, commitment.counts) == (True, True)
+    assert commitment.requests == (RequestShare("req-liam-1", Decimal(1800)),)
+    assert _one(rows, transaction_cm_id=9001).pays_after_camp_aid is False
+
+
+def test_outside_grants_by_request_keeps_pays_after_camp_aid_grants() -> None:
+    """The budget's below-the-line outside grants are money totals, not calculator inputs (D125:
+    a last-dollar funder is outside money, outside the budget), so the pays-after grants stay in them."""
+    assert outside_grants_by_request(_last_dollar_register()) == {
+        "req-emma-1": Decimal(2500),
+        "req-liam-1": Decimal(1800),
+    }
 
 
 def test_program_family_for_session_type_mirrors_the_go_map() -> None:
