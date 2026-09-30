@@ -34,7 +34,7 @@ _TRAIL_PAGE_FIELDS: Final = "id,year,actor,from_code,change,results,snapshot,kep
 # kept: least recently used goes first. Three: the current one plus two older ones a compare re-prices options on.
 _DECODED: OrderedDict[str, SeasonSnapshot] = OrderedDict()
 _DECODED_KEPT: Final = 3
-# aid_scenario_snapshots.inputs is a PocketBase json field with maxSize 20000000 (1500000214_aid_scenarios.js). A larger
+# aid_scenario_snapshots.inputs is a PocketBase json field with maxSize 20000000 (1500000218_aid_scenarios.js). A larger
 # value comes back from the batch as a 400; check it first so the refusal is ours (422) and names the size.
 SNAPSHOT_INPUTS_MAX_BYTES: Final = 20_000_000
 

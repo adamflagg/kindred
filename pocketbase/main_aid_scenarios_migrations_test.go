@@ -10,7 +10,7 @@ import (
 // (readAidMigrationUp and aidRuleLine live in main_financial_aid_intake_migrations_test.go),
 // because tests.NewTestApp() does not run JS migrations. pocketbase/rbac/financial_aid_rules_booted_test.go
 // finds every aid_ collection by prefix and checks the booted rules in CI.
-const aidScenariosMigration = "pb_migrations/1500000214_aid_scenarios.js"
+const aidScenariosMigration = "pb_migrations/1500000218_aid_scenarios.js"
 
 func TestAidScenariosMigrationLocksEveryRule(t *testing.T) {
 	up := readAidMigrationUp(t, aidScenariosMigration)
@@ -30,6 +30,74 @@ func TestAidScenariosMigrationLocksEveryRule(t *testing.T) {
 	}
 	if strings.Contains(up, "options:") {
 		t.Error("uses an options wrapper, which PocketBase v0.23 ignores silently")
+	}
+}
+
+// aidScenarioCollection is the part of the up migration that declares one collection: from its name to its
+// app.save, so a field name shared by the three (year, actor, document) is checked in the right one.
+func aidScenarioCollection(t *testing.T, up, name string) string {
+	t.Helper()
+	_, rest, found := strings.Cut(up, `name: "`+name+`"`)
+	if !found {
+		t.Fatalf("up does not create %s", name)
+	}
+	block, _, found := strings.Cut(rest, "app.save(")
+	if !found {
+		t.Fatalf("%s is never saved", name)
+	}
+	return block
+}
+
+func TestAidScenariosMigrationTypesEveryField(t *testing.T) {
+	up := readAidMigrationUp(t, aidScenariosMigration)
+	// Each field's type and required flag; the JSON fields' caps and the relations' target and cardinality too.
+	want := map[string][]string{
+		"aid_scenario_snapshots": {
+			`{ type: "number", name: "year", required: true,`,
+			`{ type: "json", name: "inputs", required: false, presentable: false, maxSize: 20000000 }`,
+			`{ type: "number", name: "requests", required: false,`,
+			`{ type: "number", name: "awaiting_rules", required: false,`,
+			`{ type: "text", name: "actor", required: true,`,
+			`{ type: "autodate", name: "created", required: false,`,
+		},
+		"aid_scenario_options": {
+			`{ type: "number", name: "year", required: true,`,
+			`{ type: "text", name: "code", required: true,`,
+			`{ type: "text", name: "starting_point", required: false,`,
+			`{ type: "text", name: "from_code", required: false,`,
+			`{ type: "number", name: "origin_version", required: true,`,
+			`{ type: "json", name: "document", required: false, presentable: false, maxSize: 2000000 }`,
+			`{ type: "json", name: "results", required: false, presentable: false, maxSize: 200000 }`,
+			`{ type: "json", name: "round1_by_request", required: false, presentable: false, maxSize: 1000000 }`,
+			`{ type: "relation", name: "snapshot", required: true, presentable: false, collectionId: snapshots.id, ` +
+				`cascadeDelete: false, minSelect: null, maxSelect: 1 }`,
+			`{ type: "text", name: "actor", required: true,`,
+			`{ type: "autodate", name: "created", required: false,`,
+		},
+		"aid_scenario_trail": {
+			`{ type: "number", name: "year", required: true,`,
+			`{ type: "text", name: "actor", required: true,`,
+			`{ type: "text", name: "from_code", required: true,`,
+			`{ type: "json", name: "document", required: false, presentable: false, maxSize: 2000000 }`,
+			`{ type: "text", name: "change", required: true, presentable: false, min: 1, max: 2000,`,
+			`{ type: "json", name: "results", required: false, presentable: false, maxSize: 200000 }`,
+			`{ type: "relation", name: "snapshot", required: true, presentable: false, collectionId: snapshots.id, ` +
+				`cascadeDelete: false, minSelect: null, maxSelect: 1 }`,
+			`{ type: "text", name: "kept_code", required: false,`,
+			`{ type: "autodate", name: "created", required: false,`,
+			`{ type: "autodate", name: "updated", required: false,`,
+		},
+	}
+	for name, fields := range want {
+		block := aidScenarioCollection(t, up, name)
+		for _, field := range fields {
+			if !strings.Contains(block, field) {
+				t.Errorf("%s must declare %q", name, field)
+			}
+		}
+		if got := strings.Count(block, "{ type: "); got != len(fields) {
+			t.Errorf("%s declares %d fields, want %d", name, got, len(fields))
+		}
 	}
 }
 
