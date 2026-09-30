@@ -103,9 +103,11 @@ class HoldState:
         return CalcIssue(code=MANUAL_HOLD, severity="hold", message=self.manual.reason, step="casework")
 
 
-# Codes the calculator only ever raises as needs_input or error (calculator/engine.py; the quality
-# checks and the intake checks are hold or warn only). A request carrying one can't be priced, and
-# no release lifts it, so a release row written for one is not a standing hold release.
+# Codes the calculator never raises as a hold (calculator/engine.py; the quality checks and the intake
+# checks are hold or warn only): each is needs_input or error, except that cost_unknown is a warn
+# when the rules price an unknown cost at the minimum award. As needs_input or error the request
+# can't be priced and no release lifts it; as a warn it is a note, with nothing to release. Either
+# way a release row written for one is not a standing hold release.
 NEVER_A_HOLD: Final[frozenset[str]] = frozenset(
     {
         "income_missing",

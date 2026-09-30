@@ -335,6 +335,17 @@ async def test_a_code_that_is_never_a_hold_cannot_be_released_even_with_an_old_r
 
 
 @pytest.mark.asyncio
+async def test_refusing_a_never_a_hold_code_allows_that_it_may_be_only_a_note() -> None:
+    """cost_unknown is a warn when the rules price an unknown cost at the minimum award
+    (calculator/engine.py), so the refusal must not claim the request can't be priced outright."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    with pytest.raises(DecisionRefusedError, match="only a note"):
+        await _service(store).set_hold_release(EMMA, _release("cost_unknown"), ACTOR)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
 async def test_unreleasing_puts_the_hold_back() -> None:
     store = FakeDecisionsStore()
     _held_liam(store)

@@ -866,7 +866,8 @@ class FinancialAidDecisionsService:
                 raise DecisionRefusedError(f"The '{body.code}' hold can't be released: {why}")
             if body.code in NEVER_A_HOLD:
                 raise DecisionRefusedError(
-                    f"'{body.code}' means the request can't be priced, so it is never a hold: fix that instead"
+                    f"'{body.code}' is never a hold: either the request can't be priced (fix that instead) "
+                    "or it is only a note"
                 )
         if (body.code in state.released) == body.released:
             return self._unchanged(request.year)
