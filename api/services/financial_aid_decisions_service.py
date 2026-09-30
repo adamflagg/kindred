@@ -13,6 +13,8 @@ Writes. Each is one staff action and one operation through sub-project 4a's comm
 the aid_decisions rows and their aid_change_log rows in ONE PocketBase batch, and a first lock's
 rules-section locks in that same batch (Decision 11). A write that changes nothing writes nothing:
 the helper refuses an empty operation, and change_row refuses a no-op, which would be a 500.
+Holds (follow-up 3b): releasing a check's hold, putting it back, and placing or lifting a manual hold
+are each one operation of one aid_hold_events row with a required note.
 
 Pricing uses the season's newest rules version whose pricing sections are all approved or locked
 (PRICING_SECTIONS). With none, every live request is held and nothing is allocated.
