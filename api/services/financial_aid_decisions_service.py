@@ -3,8 +3,9 @@ record each round's asks and decisions (spec §5.1–§5.3, §6.1, §7.1–§7.3
 
 Reads (financial_aid.view; the Remaining line also financial_aid.summary). Each prices the whole
 season on the server and returns one aggregate (D21): the Requests grid, Rounds & budget, and the
-Remaining line. They are live only (Decision 12), but every event they read is dated, so as-of can
-follow.
+Remaining line. Each takes an optional as-of date (3c): a past date shows what Kindred had recorded
+by the end of that day (every fold and replay cuts on created), and names every figure it leaves empty
+in not_rebuilt.
 
 Holds (follow-up 3b): each request's released check codes and its manual hold come from
 aid_hold_events, folded like the rounds, and reach pricing through with_holds.
@@ -26,11 +27,12 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any, Final, Protocol
 
-from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_REQUESTS
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
@@ -44,6 +46,7 @@ from api.schemas.financial_aid_decisions import (
     GridRowOut,
     HoldReleaseIn,
     ManualHoldIn,
+    NotRebuiltOut,
     PoolBudgetOut,
     PostedIn,
     ReleasedHoldOut,
@@ -63,10 +66,13 @@ from api.services.financial_aid_calc_inputs import (
     calculator_inputs,
     effective_ask,
     request_issues,
+    rules_program_key,
     to_application_inputs,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
 from api.services.financial_aid_grants_register import RegisterRow, grant_inputs_by_request
+from api.services.financial_aid_intake_plan import request_fields
+from api.services.financial_aid_intake_repository import request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
@@ -77,15 +83,20 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
-from api.services.financial_aid_ledger_service import money
-from api.services.financial_aid_rules_service import RulesVersion
+from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_rules_service import RulesHistoryIncompleteError, RulesVersion
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.decisions import (
+    BUDGET_GAPS,
+    GRID_GAPS,
     MANUAL_HOLD,
     NEVER_A_HOLD,
     NO_HOLDS,
     NO_POOL,
+    PAST_DATE_GAPS,
+    REMAINING_GAPS,
     UNRELEASABLE,
     Cell,
     Count,
@@ -103,6 +114,7 @@ from bunking.financial_aid.decisions import (
     fold_rounds,
     lock_snapshot,
     needs_finance,
+    price_as_of,
     price_request,
     releasable,
     season_budget,
@@ -173,6 +185,7 @@ class DecisionsStore(Protocol):
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]: ...
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
     async def fetch_hold_events(self, year: int) -> list[HoldEvent]: ...
+    async def fetch_change_log(self, year: int, entity: str) -> list[LogRow]: ...
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
@@ -191,6 +204,9 @@ class DecisionsStore(Protocol):
 
 class PricingRules(Protocol):
     async def latest_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None: ...
+    async def approved_as_of(
+        self, year: int, sections: Collection[SectionName], at: datetime
+    ) -> RulesVersion | None: ...
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
     ) -> tuple[list[AidWrite], list[SectionName]]: ...
@@ -212,6 +228,10 @@ class Season:
     grants: Mapping[str, Sequence[GrantInput]]
     # Each request's released check codes and manual hold (follow-up 3b).
     holds: Mapping[str, HoldState]
+    # None: priced now. A date: the past-date read (3c), as recorded by the end of that day.
+    as_of: date | None = None
+    gaps: tuple[NotRebuiltOut, ...] = ()  # gaps found while rebuilding (rules or request history)
+    unrebuilt: frozenset[str] = frozenset()  # requests whose history couldn't be replayed
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -367,6 +387,7 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             held_asked=money(pool.below.held_asked),
             outside_grants=money(pool.below.outside_grants),
             outside_budget=money(pool.below.outside_budget),
+            outside_budget_posted=money(pool.below.outside_budget_posted),
         ),
         demand=ForwardDemandOut(
             round2_asks=_count(pool.demand.round2_asks),
@@ -395,6 +416,115 @@ def budget_out(year: int, rules: RulesVersion | None, budget: SeasonBudget) -> B
             for n, c in sorted(budget.strip.items())
         ],
         outside_grants_off_requests=money(budget.outside_grants_off_requests),
+    )
+
+
+# Main spec §6.2: an as-of date is the whole of that day in camp time. The ledger's cutoff is the
+# first instant after it; the folds and the replay keep what was recorded at or before theirs.
+_INSTANT: Final = timedelta(microseconds=1)
+
+
+def as_of_instant(day: date) -> datetime:
+    """The last instant of `day` in camp time (Pacific), in UTC."""
+    return as_of_cutoff(day) - _INSTANT
+
+
+def _gaps(figures: Sequence[str]) -> list[NotRebuiltOut]:
+    return [NotRebuiltOut(figure=figure, reason=PAST_DATE_GAPS[figure]) for figure in figures]
+
+
+def _dated_by(corrections: Sequence[CorrectionRecord], at: datetime) -> list[CorrectionRecord]:
+    return [c for c in corrections if (stamp := parse_pb_datetime(c.created)) is not None and stamp <= at]
+
+
+# What PocketBase stores when a create omits the field: real camper-level create rows leave out the
+# headcount fields, so a missing key is that default, never None.
+_STORED_DEFAULTS: Final[Mapping[str, Any]] = {
+    "person_cm_id": 0,
+    "session_cm_id": 0,
+    "program_option_text": "",
+    "program_option_key": "",
+    "ask": 0,
+    "headcount_non_infant": 0,
+    "headcount_infant": 0,
+    "headcount_source": "",
+    "duplicate_of": "",
+    "flags": [],
+}
+
+
+def _requests_as_of(
+    log: Sequence[LogRow], at: datetime, today: Sequence[RequestRecord]
+) -> tuple[dict[str, RequestRecord], frozenset[str]]:
+    """Each request as it stood at `at`, replayed from its log. One whose history can't be replayed
+    (incomplete, or never logged) keeps today's identity (household, person, session) and is returned
+    in the second set; it is never read as state."""
+    now = {r.id: r for r in today}
+    rebuilt = replay(log, as_of=at, current={r.id: request_fields(r) for r in today})
+    logged = {row.entity_id for row in log}
+    out: dict[str, RequestRecord] = {}
+    unrebuilt: set[str] = set()
+    for request_id, record in rebuilt.items():
+        if record.state is None:
+            continue
+        if record.complete:
+            out[request_id] = request_record(SimpleNamespace(id=request_id, **{**_STORED_DEFAULTS, **record.state}))
+        elif request_id in now:
+            out[request_id] = now[request_id]
+            unrebuilt.add(request_id)
+    for request_id, request in now.items():
+        if request_id not in logged:  # no history at all: nothing to replay from
+            out[request_id] = request
+            unrebuilt.add(request_id)
+    return out, frozenset(unrebuilt)
+
+
+def _home_pool(request: RequestRecord, sessions: Mapping[int, SessionRow], rules: AidRules | None) -> str | None:
+    """The pool live pricing gives the request: its program's budget pool under the rules then."""
+    if rules is None:
+        return None
+    key = rules_program_key(request, sessions, rules)
+    program = rules.programs.get(key) if key is not None else None
+    return program.budget_pool if program is not None else None
+
+
+def _past_cell[C: CellOut](cell: C) -> C:
+    return cell.model_copy(update={"needs_offer": None, "pending_approval": None, "remaining": None})
+
+
+def _past_pool(pool: PoolBudgetOut, *, asks: bool) -> PoolBudgetOut:
+    demand = {"round2_computed": None, "round1_unmet": None}
+    if not asks:
+        demand |= {"round2_asks": None, "round2_asked": None}
+    return pool.model_copy(
+        update={
+            "rounds": [_past_cell(cell) for cell in pool.rounds],
+            "total": _past_cell(pool.total),
+            "below": pool.below.model_copy(
+                update={"held": None, "held_asked": None, "outside_grants": None, "outside_budget": None}
+            ),
+            "demand": pool.demand.model_copy(update=demand),
+        }
+    )
+
+
+def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
+    """3c-1's past Rounds & budget: Allocated, Posted, Accepted, posted money outside the budget, the
+    posted and accepted counts, and Round 2 asks so far (unless a request's status is unknown)."""
+    asks = not season.unrebuilt
+    return out.model_copy(
+        update={
+            "pools": [_past_pool(pool, asks=asks) for pool in out.pools],
+            "total": _past_pool(out.total, asks=asks),
+            "strip": [
+                row.model_copy(update={"needs_offer": None, "held": None, "pending_approval": None})
+                for row in out.strip
+            ],
+            "outside_grants_off_requests": None,
+            "as_of": season.as_of,
+            "as_of_axis": "recorded",
+            "not_rebuilt": [*_gaps(BUDGET_GAPS), *season.gaps],
+        }
     )
 
 
@@ -489,6 +619,91 @@ class FinancialAidDecisionsService:
         )
         return season, side.names
 
+    def _past_day(self, as_of: date | None) -> date | None:
+        """The past date a read shows, or None for the live read (no date, or today or later in camp time)."""
+        if as_of is None or as_of >= self._today():
+            return None
+        return as_of
+
+    async def _rules_as_of(self, year: int, at: datetime) -> tuple[RulesVersion | None, tuple[NotRebuiltOut, ...]]:
+        try:
+            return await self._rules.approved_as_of(year, PRICING_SECTIONS, at), ()
+        except RulesHistoryIncompleteError:
+            return None, tuple(_gaps(["rules_history"]))
+
+    async def past_season(self, year: int, day: date) -> Season:
+        """The season as Kindred had recorded it by the end of `day`, camp time (3c-1): the events and
+        hold events recorded by then, each request replayed from aid_change_log, the corrections made
+        by then, and the rules replayed to then. Nothing is priced (as_of.price_as_of)."""
+        at = as_of_instant(day)
+        log, today, corrections, sessions = await asyncio.gather(
+            self._store.fetch_change_log(year, AID_REQUESTS),
+            self._store.fetch_requests(year),
+            self._store.fetch_corrections(year, None),
+            self._store.fetch_sessions(year),
+        )
+        events, hold_events = await asyncio.gather(
+            self._store.fetch_decision_events(year), self._store.fetch_hold_events(year)
+        )
+        rules, gaps = await self._rules_as_of(year, at)
+        requests, unrebuilt = _requests_as_of(log, at, today)
+        rounds = fold_rounds(events, as_of=at)
+        holds = fold_holds(hold_events, as_of=at)
+        session_map = {s.cm_id: s for s in sessions}
+        own: dict[str, list[CorrectionRecord]] = defaultdict(list)
+        for correction in _dated_by(corrections, at):
+            own[correction.application_id].append(correction)
+        document = rules.document if rules is not None else None
+        priced: dict[str, PricedRequest] = {}
+        for request_id, request in requests.items():
+            ask = effective_ask(request, own.get(request.application_id, []))
+            rebuilt = request_id not in unrebuilt
+            priced[request_id] = price_as_of(
+                request_id,
+                request.household_cm_id,
+                rounds.get(request_id, {}),
+                document,
+                live=rebuilt and request.status in _LIVE,
+                r1_ask=Decimal(ask.effective) if rebuilt and ask.effective != "" else None,
+                hold=holds.get(request_id, NO_HOLDS),
+                pool=_home_pool(request, session_map, document),
+            )
+        gaps = (*gaps, *self._unresolved(priced, unrebuilt))
+        return Season(
+            year=year,
+            rules=rules,
+            requests=requests,
+            priced=priced,
+            rounds=rounds,
+            register=(),
+            sessions=session_map,
+            grants={},
+            holds=holds,
+            as_of=day,
+            gaps=gaps,
+            unrebuilt=unrebuilt,
+        )
+
+    @staticmethod
+    def _unresolved(priced: Mapping[str, PricedRequest], unrebuilt: frozenset[str]) -> list[NotRebuiltOut]:
+        """The gaps a past rebuild names: requests whose history can't be replayed, and requests in the
+        budget whose home pool can't be resolved (they sit in No pool)."""
+        out: list[NotRebuiltOut] = []
+        if unrebuilt:
+            out.append(
+                NotRebuiltOut(
+                    figure="request_history", reason=PAST_DATE_GAPS["request_history"], requests=sorted(unrebuilt)
+                )
+            )
+        homeless = sorted(rid for rid, p in priced.items() if p.pool is None and p.rounds)
+        if homeless:
+            out.append(NotRebuiltOut(figure="pool_unknown", reason=PAST_DATE_GAPS["pool_unknown"], requests=homeless))
+        return out
+
+    async def _season_for(self, year: int, as_of: date | None) -> Season:
+        day = self._past_day(as_of)
+        return await self.season(year) if day is None else await self.past_season(year, day)
+
     def _budget(self, season: Season) -> SeasonBudget:
         by_request = {rid: sum((g.amount for g in grants), ZERO) for rid, grants in season.grants.items()}
         off = sum(
@@ -500,8 +715,17 @@ class FinancialAidDecisionsService:
             season.priced.values(), document, outside_grants=by_request, outside_grants_off_requests=off
         )
 
-    async def grid(self, year: int) -> RequestsGridResponse:
-        season, (families, campers) = await self._season(year, names=True)
+    async def grid(self, year: int, as_of: date | None = None) -> RequestsGridResponse:
+        day = self._past_day(as_of)
+        if day is None:
+            season, (families, campers) = await self._season(year, names=True)
+        else:
+            season = await self.past_season(year, day)
+            families, campers = await self._store.fetch_names(
+                year,
+                {r.household_cm_id for r in season.requests.values()},
+                {r.person_cm_id for r in season.requests.values() if r.person_cm_id > 0},
+            )
         rows = [
             grid_row(
                 season.requests[rid],
@@ -514,17 +738,51 @@ class FinancialAidDecisionsService:
             )
             for rid, priced in season.priced.items()
         ]
+        if season.as_of is not None:
+            rows = [
+                row.model_copy(
+                    update={
+                        "notes": None,
+                        "total_decided": None,
+                        "request_status": None if row.request_id in season.unrebuilt else row.request_status,
+                    }
+                )
+                for row in rows
+            ]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))
         rules_version = season.rules.version if season.rules is not None else None
-        return RequestsGridResponse(year=year, rules_version=rules_version, rows=rows)
+        past = season.as_of is not None
+        return RequestsGridResponse(
+            year=year,
+            rules_version=rules_version,
+            rows=rows,
+            as_of=season.as_of,
+            as_of_axis="recorded" if past else None,
+            not_rebuilt=[*_gaps(GRID_GAPS), *season.gaps] if past else [],
+        )
 
-    async def budget(self, year: int) -> BudgetResponse:
-        season = await self.season(year)
-        return budget_out(year, season.rules, self._budget(season))
+    async def budget(self, year: int, as_of: date | None = None) -> BudgetResponse:
+        season = await self._season_for(year, as_of)
+        out = budget_out(year, season.rules, self._budget(season))
+        return out if season.as_of is None else past_budget(out, season)
 
-    async def remaining(self, year: int) -> RemainingResponse:
+    async def remaining(self, year: int, as_of: date | None = None) -> RemainingResponse:
         """D48: one figure per pool, summed over Rounds 1–3, and the total. Aggregates only (D75)."""
-        budget = self._budget(await self.season(year))
+        season = await self._season_for(year, as_of)
+        budget = self._budget(season)
+        if season.as_of is not None:
+            return RemainingResponse(
+                year=year,
+                pools=[
+                    RemainingPoolOut(pool=p.pool, label=p.label, remaining=None)
+                    for p in budget.pools
+                    if p.pool != NO_POOL and p.total.allocated is not None
+                ],
+                total=None,
+                as_of=season.as_of,
+                as_of_axis="recorded",
+                not_rebuilt=[*_gaps(REMAINING_GAPS), *season.gaps],
+            )
         return RemainingResponse(
             year=year,
             pools=[

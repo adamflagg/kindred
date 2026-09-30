@@ -54,7 +54,9 @@ _TOTAL = PoolBudgetOut(
     label="Total",
     rounds=[],
     total=_ZERO_CELL,
-    below=BelowTheLineOut(held=CountOut(families=0, requests=0), held_asked=0, outside_grants=0, outside_budget=0),
+    below=BelowTheLineOut(
+        held=CountOut(families=0, requests=0), held_asked=0, outside_grants=0, outside_budget=0, outside_budget_posted=0
+    ),
     demand=ForwardDemandOut(
         round2_asks=CountOut(families=0, requests=0), round2_asked=0, round2_computed=0, round1_unmet=0
     ),

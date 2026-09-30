@@ -15,9 +15,17 @@ from typing import Any, cast
 
 import httpx
 
-from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_RULES
+from api.constants.collections import (
+    AID_APPLICATIONS,
+    AID_DECISIONS,
+    AID_HOLD_EVENTS,
+    AID_PAYER_SHARES,
+    AID_REQUESTS,
+    AID_RULES,
+)
 from api.services.financial_aid_decisions_repository import decision_event, hold_event
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare
+from api.services.financial_aid_intake_plan import application_fields, request_fields
 from api.services.financial_aid_intake_types import (
     ApplicationRecord,
     CorrectionRecord,
@@ -28,6 +36,7 @@ from api.services.financial_aid_intake_types import (
 )
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent, HoldEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from bunking.financial_aid.rules.schema import SECTION_NAMES, AidRules, SectionName
@@ -48,6 +57,7 @@ class FakeDecisionsStore:
         self.equity: dict[int, EquityAnswers] = {}
         self.events: list[DecisionEvent] = []
         self.hold_events: list[HoldEvent] = []
+        self.change_log: list[LogRow] = []
         self.operations: list[list[AidWrite]] = []  # every commit a service attempted
         self.log: list[dict[str, Any]] = []  # every aid_change_log row that committed
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
@@ -75,6 +85,9 @@ class FakeDecisionsStore:
 
     async def fetch_sessions(self, year: int) -> list[SessionRow]:
         return list(self.sessions)
+
+    async def fetch_change_log(self, year: int, entity: str) -> list[LogRow]:
+        return [r for r in self.change_log if r.entity == entity]
 
     async def fetch_payer_shares(self, year: int, request_ids: Sequence[str] | None = None) -> list[PayerShareRecord]:
         return [s for s in self.shares if s.year == year and (request_ids is None or s.request_id in request_ids)]
@@ -160,11 +173,19 @@ class FakeRules:
 
     def __init__(self, version: RulesVersion | None) -> None:
         self.version = version
+        self.as_of_version: RulesVersion | Exception | None = version
+        self.as_of_calls: list[datetime] = []
         self.not_locked: list[SectionName] = []
         self.lock_calls: list[tuple[int, int, tuple[SectionName, ...]]] = []
 
     async def latest_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
         return self.version
+
+    async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
+        self.as_of_calls.append(at)
+        if isinstance(self.as_of_version, Exception):
+            raise self.as_of_version
+        return self.as_of_version
 
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
@@ -274,3 +295,56 @@ def grant_row(request_id: str, amount: str, *, funder_type: str = "outside", on_
         fulfils_commitment_id="",
         requests=(RequestShare(request_id, value),) if on_request else (),
     )
+
+
+def _log(store: FakeDecisionsStore, entity: str, entity_id: str, before: Any, after: Any, at: datetime) -> None:
+    store.change_log.append(
+        LogRow(
+            id=f"log{len(store.change_log):012d}",
+            entity=entity,
+            entity_id=entity_id,
+            before=before,
+            after=after,
+            created=at,
+        )
+    )
+
+
+def log_seeded(store: FakeDecisionsStore, at: datetime) -> None:
+    """Create rows for every seeded application, request and payer share, as intake logs them."""
+    for application in store.applications:
+        body = {
+            "year": application.year,
+            "household_cm_id": application.household_cm_id,
+            **application_fields(application),
+        }
+        _log(store, AID_APPLICATIONS, application.id, None, body, at)
+    for request in store.requests.values():
+        body = {
+            "year": request.year,
+            "application": request.application_id,
+            "household_cm_id": request.household_cm_id,
+            "person_cm_id": request.person_cm_id,
+            "program_key": request.program_key,
+            "program_option_key": request.program_option_key,
+            **request_fields(request),
+        }
+        _log(store, AID_REQUESTS, request.id, None, body, at)
+    for share in store.shares:
+        body = {
+            "year": share.year,
+            "request": share.request_id,
+            "household_cm_id": share.household_cm_id,
+            "share_pct": str(share.share_pct),
+            "source": share.source,
+            "actor": share.actor,
+            "note": share.note,
+        }
+        _log(store, AID_PAYER_SHARES, f"{share.request_id}:{share.household_cm_id}", None, body, at)
+
+
+def log_update(
+    store: FakeDecisionsStore, entity: str, entity_id: str, before: dict[str, Any], after: dict[str, Any], at: datetime
+) -> None:
+    """One logged update (changed fields only, as 4a trims them)."""
+    _log(store, entity, entity_id, before, after, at)

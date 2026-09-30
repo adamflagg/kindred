@@ -191,7 +191,7 @@ async def test_the_budget_and_the_remaining_line_count_posted_and_needs_an_offer
     r1 = next(c for c in camp.rounds if c.round == 1)
     assert (r1.allocated, r1.posted, r1.needs_offer, r1.remaining) == (340000.0, 1500.0, 1500.0, 337000.0)
     strip = next(s for s in budget.strip if s.round == 1)
-    assert (strip.needs_offer.requests, strip.posted.requests) == (1, 1)
+    assert (strip.needs_offer.requests, strip.posted.requests) == (1, 1)  # type: ignore[union-attr]
     remaining = await service.remaining(YEAR)
     assert [(p.pool, p.remaining) for p in remaining.pools] == [
         ("camp_pool", 397000.0),
@@ -219,7 +219,7 @@ async def test_with_no_approved_rules_every_live_request_is_held_and_nothing_is_
     service = _service(store, FakeRules(None))
     (row,) = (await service.grid(YEAR)).rows
     assert row.rounds[0].status == "held"
-    assert [h.code for h in row.holds] == ["no_approved_rules"]
+    assert [h.code for h in row.holds] == ["no_approved_rules"]  # type: ignore[union-attr]
     remaining = await service.remaining(YEAR)
     assert (remaining.pools, remaining.total) == ([], None)
 
@@ -230,7 +230,7 @@ async def test_a_request_with_an_unmatched_session_is_held_with_intakes_reasons(
     seed_request(store, EMMA, session=0, status="unmatched_session")
     (row,) = (await _service(store).grid(YEAR)).rows
     assert row.rounds[0].status == "held"
-    assert {"unmatched_session", "not_priceable"} <= {h.code for h in row.holds}
+    assert {"unmatched_session", "not_priceable"} <= {h.code for h in row.holds}  # type: ignore[union-attr]
 
 
 @pytest.mark.asyncio
