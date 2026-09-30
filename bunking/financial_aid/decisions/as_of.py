@@ -67,6 +67,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "pool_unknown": "The request's session and program couldn't be resolved under the rules as of that date, so it sits in No pool",
     "request_history": "These requests' change history can't be replayed to that date, so only their posted rounds show",
     "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
+    "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
     "rules_history": "The rules' change history for this season can't be replayed to that date",
 }
 GRID_GAPS: Final[tuple[str, ...]] = (

@@ -7,8 +7,11 @@ decided and posted (D20, D59). No field here is named "awarded", which is financ
 for Posted, or "Total Awards Granted", which is development's all-money figure (§5.6, D80, D87).
 A test pins it.
 
-A past date (?as_of=, 3c) shows what Kindred had recorded by the end of that day: every figure it can't
-rebuild exactly is None and is named in not_rebuilt; as_of is None on the live read.
+A past date (?as_of=, 3c) shows the season by the end of that day: every figure it can't rebuild
+exactly is None and is named in not_rebuilt; as_of is None on the live read. Two axes (owner ruling
+2026-09-30): `campminder`, the default, counts a Posted tick from its CampMinder post day, as Money's
+ledger ?as_of cuts on post date; `recorded` shows what Kindred had recorded by then (the audit view).
+Facts with no CampMinder date cut on when Kindred recorded them on both axes.
 """
 
 from __future__ import annotations
@@ -36,6 +39,11 @@ def _not_future(value: date) -> date:
 
 # A day something happened outside Kindred (the family asked; the registrar posted): never after today.
 _PastDay = Annotated[date, AfterValidator(_not_future)]
+
+
+# The as-of axis (owner ruling 2026-09-30): campminder cuts a Posted tick on its CampMinder post day;
+# recorded cuts every fact on when Kindred recorded it. A response names the axis it used; None is live.
+AsOfAxis = Literal["campminder", "recorded"]
 
 
 RoundStatusOut = Literal["posted", "held", "pending_approval", "refused", "not_decided", "needs_offer", "not_rebuilt"]
@@ -101,7 +109,7 @@ class RequestsGridResponse(BaseModel):
     rules_version: int | None
     rows: list[GridRowOut]
     as_of: date | None = None  # None: live. Else the past date shown (end of that day, camp time).
-    as_of_axis: Literal["recorded"] | None = None  # past reads cut on when Kindred recorded each fact
+    as_of_axis: AsOfAxis | None = None  # the axis a past read cut on; None: live
     not_rebuilt: list[NotRebuiltOut] = Field(default_factory=list)
 
 
@@ -164,7 +172,7 @@ class BudgetResponse(BaseModel):
     strip: list[RoundCountsOut]
     outside_grants_off_requests: float | None
     as_of: date | None = None  # None: live. Else the past date shown (end of that day, camp time).
-    as_of_axis: Literal["recorded"] | None = None  # past reads cut on when Kindred recorded each fact
+    as_of_axis: AsOfAxis | None = None  # the axis a past read cut on; None: live
     not_rebuilt: list[NotRebuiltOut] = Field(default_factory=list)
 
 
@@ -179,7 +187,7 @@ class RemainingResponse(BaseModel):
     pools: list[RemainingPoolOut]
     total: float | None
     as_of: date | None = None  # None: live. Else the past date shown (end of that day, camp time).
-    as_of_axis: Literal["recorded"] | None = None  # past reads cut on when Kindred recorded each fact
+    as_of_axis: AsOfAxis | None = None  # the axis a past read cut on; None: live
     not_rebuilt: list[NotRebuiltOut] = Field(default_factory=list)
 
 

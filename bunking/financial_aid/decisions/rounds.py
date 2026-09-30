@@ -13,7 +13,7 @@ and Round 3 asks are keyed when the family asks, before anything is decided (D91
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
@@ -121,14 +121,64 @@ def apply_event(state: RoundState, event: DecisionEvent) -> RoundState:
     raise ValueError(f"unknown aid_decisions event {kind!r}")
 
 
-def fold_rounds(events: Iterable[DecisionEvent], *, as_of: datetime | None = None) -> dict[str, dict[int, RoundState]]:
+def _order(event: DecisionEvent) -> tuple[datetime, str]:
+    return event.created, event.id
+
+
+def _standing_backdated_posts(events: Sequence[DecisionEvent], as_of: datetime, posted_by: date) -> set[str]:
+    """The ids of the Posted ticks recorded after `as_of` whose CampMinder post day is on or before
+    `posted_by`, and that still stand now: no undo of the same round was recorded after them.
+
+    Ruling (owner batch 2026-09-30) on the undo of a back-dated tick: the undo applies whenever it was
+    recorded, up to now, not only by the cut. A back-dated tick is recorded after the cut, so its undo
+    is too; cutting undos at the cut would count every mistaken back-dated tick. A tick a person later
+    undid was a mistake, so a back-dated one never counts on the CampMinder axis. (A tick recorded by
+    the cut keeps the recorded fold: it and any undo recorded by the cut apply as they did then.)
+
+    Ruling (fix round 1): a standing back-dated tick applied on top of a round already posted by the
+    cut resets Accepted. The new tick supersedes the earlier offer; the family's acceptance of the old
+    amount doesn't carry over (fold_rounds applies it)."""
+    last_undo: dict[tuple[str, int], tuple[datetime, str]] = {}
+    for e in events:
+        if e.kind == "unpost":
+            key = (e.request_id, e.round)
+            last_undo[key] = max(last_undo.get(key, _order(e)), _order(e))
+    out: set[str] = set()
+    for e in events:
+        if e.kind != "post" or e.created <= as_of or e.effective_on is None or e.effective_on > posted_by:
+            continue
+        undo = last_undo.get((e.request_id, e.round))
+        if undo is None or undo < _order(e):
+            out.add(e.id)
+    return out
+
+
+def fold_rounds(
+    events: Iterable[DecisionEvent], *, as_of: datetime | None = None, posted_by: date | None = None
+) -> dict[str, dict[int, RoundState]]:
     """request id -> round -> state, from the events recorded up to `as_of` (every event when None).
-    Events apply in the order they were recorded; the record id breaks a tie in the same instant."""
+    Events apply in the order they were recorded; the record id breaks a tie in the same instant.
+
+    `posted_by` is the CampMinder axis's day (owner ruling 2026-09-30; None: the recorded axis). It adds
+    to the recorded cut each Posted tick recorded after `as_of` that CampMinder posted by that day and
+    that still stands (_standing_backdated_posts). Every other event, the accept and unaccept ticks
+    included, has no CampMinder date and keeps the recorded cut on both axes. A tick's post day is never
+    after the day Kindred recorded it (PostedIn.posted_on refuses a future day, and the row is written
+    that same day), so a tick recorded by the cut was posted by then too: the CampMinder axis only ADDS
+    back-dated ticks to what the recorded axis shows, and never drops one."""
+    listed = list(events)
+    extra = (
+        _standing_backdated_posts(listed, as_of, posted_by) if as_of is not None and posted_by is not None else set()
+    )
     out: dict[str, dict[int, RoundState]] = {}
-    kept = (e for e in events if as_of is None or e.created <= as_of)
-    for event in sorted(kept, key=lambda e: (e.created, e.id)):
+    kept = (e for e in listed if as_of is None or e.created <= as_of or e.id in extra)
+    for event in sorted(kept, key=_order):
         rounds = out.setdefault(event.request_id, {})
-        rounds[event.round] = apply_event(rounds.get(event.round, RoundState(round=event.round)), event)
+        state = rounds.get(event.round, RoundState(round=event.round))
+        applied = apply_event(state, event)
+        if event.id in extra and state.posted:  # a re-tick supersedes the accepted offer
+            applied = replace(applied, accepted=False, accepted_at=None)
+        rounds[event.round] = applied
     return out
 
 

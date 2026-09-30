@@ -252,14 +252,31 @@ def test_a_read_passes_its_as_of_date_to_the_service(read: str) -> None:
     """D15, D48: the as-of date lives in the link, and every read honours it (3c)."""
     service = _stub()
     assert _client().get(f"/api/financial-aid/decisions/2031/{read}?as_of=2031-03-09").status_code == 200
-    getattr(service, read).assert_awaited_once_with(2031, as_of=date(2031, 3, 9))
+    getattr(service, read).assert_awaited_once_with(2031, as_of=date(2031, 3, 9), as_of_axis="campminder")
+
+
+@pytest.mark.parametrize("read", ["grid", "budget", "remaining"])
+def test_a_read_passes_the_recorded_axis_when_asked(read: str) -> None:
+    """Owner ruling 2026-09-30: CampMinder's post day is the default axis; ?as_of_axis=recorded is the audit view."""
+    service = _stub()
+    url = f"/api/financial-aid/decisions/2031/{read}?as_of=2031-03-09&as_of_axis=recorded"
+    assert _client().get(url).status_code == 200
+    getattr(service, read).assert_awaited_once_with(2031, as_of=date(2031, 3, 9), as_of_axis="recorded")
+
+
+@pytest.mark.parametrize("read", ["grid", "budget", "remaining"])
+def test_an_unknown_as_of_axis_is_422(read: str) -> None:
+    service = _stub()
+    url = f"/api/financial-aid/decisions/2031/{read}?as_of=2031-03-09&as_of_axis=posted"
+    assert _client().get(url).status_code == 422
+    getattr(service, read).assert_not_called()
 
 
 @pytest.mark.parametrize("read", ["grid", "budget", "remaining"])
 def test_a_read_with_no_as_of_is_live(read: str) -> None:
     service = _stub()
     assert _client().get(f"/api/financial-aid/decisions/2031/{read}").status_code == 200
-    getattr(service, read).assert_awaited_once_with(2031, as_of=None)
+    getattr(service, read).assert_awaited_once_with(2031, as_of=None, as_of_axis="campminder")
 
 
 def test_an_as_of_that_is_not_a_date_is_422() -> None:
