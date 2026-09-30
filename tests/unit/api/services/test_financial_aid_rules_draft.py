@@ -212,7 +212,7 @@ async def test_a_section_save_that_does_not_parse_is_refused_and_writes_nothing(
     store = FakeStore()
     service = await _approved_v1(store)
     before = len(store.operations)
-    with pytest.raises(SectionInvalidError, match="awards.minimum"):
+    with pytest.raises(SectionInvalidError, match=r"awards\.minimum"):
         await service.save_section(
             2031, 1, "awards", fictional_rules_json()["awards"] | {"minimum": "-5"}, actor=FINANCE
         )
