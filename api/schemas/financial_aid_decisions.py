@@ -167,6 +167,7 @@ _Statement = Annotated[str, StringConstraints(strip_whitespace=True, max_length=
 _Amount = Annotated[Decimal, Field(ge=0, le=1_000_000, decimal_places=2)]
 _RequestId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9]{15}$")]
 _DecisionType = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)]
+_HoldCode = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)]
 
 
 class AskIn(BaseModel):
@@ -218,6 +219,23 @@ class PostedIn(BaseModel):
 
 class UnpostIn(RoundRef):
     reason: _Reason
+
+
+class HoldReleaseIn(BaseModel):
+    """Release a check's hold with a note (released=True), or put it back (released=False) (main spec
+    §10.5; follow-up 3b). The note is required both ways (app spec §4.6; main spec §14.4)."""
+
+    code: _HoldCode
+    released: bool
+    note: _Reason
+
+
+class ManualHoldIn(BaseModel):
+    """Put the request on hold by hand (held=True, "Put on hold…", app spec §6.3), or lift it
+    (held=False). The note is the hold's reason when placing it and why when lifting it; required."""
+
+    held: bool
+    note: _Reason
 
 
 class AcceptedIn(BaseModel):

@@ -28,7 +28,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
 
-from api.constants.collections import AID_DECISIONS
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
@@ -40,6 +40,8 @@ from api.schemas.financial_aid_decisions import (
     DecisionWriteOut,
     ForwardDemandOut,
     GridRowOut,
+    HoldReleaseIn,
+    ManualHoldIn,
     PoolBudgetOut,
     PostedIn,
     ReleasedHoldOut,
@@ -78,14 +80,17 @@ from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions import (
+    MANUAL_HOLD,
     NEVER_A_HOLD,
     NO_HOLDS,
     NO_POOL,
+    UNRELEASABLE,
     Cell,
     Count,
     DecisionEvent,
     EventKind,
     HoldEvent,
+    HoldEventKind,
     HoldState,
     PoolBudget,
     PricedRequest,
@@ -97,6 +102,7 @@ from bunking.financial_aid.decisions import (
     lock_snapshot,
     needs_finance,
     price_request,
+    releasable,
     season_budget,
     with_holds,
 )
@@ -775,3 +781,108 @@ class FinancialAidDecisionsService:
             return self._unchanged(year, unchanged)
         result = await self._store.commit(writes, actor=actor)
         return DecisionWriteOut(year=year, written=len(writes), unchanged=unchanged, operation_id=result.operation_id)
+
+    # --- holds (follow-up 3b) --------------------------------------------------------------
+
+    async def _hold_target(self, request_id: str) -> tuple[RequestRecord, HoldState]:
+        """The live request and its hold state now. A request that is not live has no hold to change."""
+        request = await self._store.fetch_request(request_id)
+        if request is None:
+            raise DecisionNotFoundError("no such request")
+        if request.status not in _LIVE:
+            raise DecisionRefusedError(f"a {request.status} request's holds can't change")
+        events = await self._store.fetch_request_hold_events(request.id)
+        return request, fold_holds(events).get(request.id, NO_HOLDS)
+
+    @staticmethod
+    def _hold_write(
+        request: RequestRecord,
+        kind: HoldEventKind,
+        code: str,
+        note: str,
+        actor: str,
+        fact: Mapping[str, Any] | None = None,
+    ) -> AidWrite:
+        """One aid_hold_events row and its log line: entity aid_hold_events, id "{request}:{code}". The
+        log's `after` leaves out a release's `fact`: the row keeps it, the log keeps what changed."""
+        data: dict[str, Any] = {
+            "year": request.year,
+            "request": request.id,
+            "event": kind,
+            "code": code,
+            "note": note,
+            "actor": actor,
+        }
+        if fact is not None:
+            data["fact"] = dict(fact)
+        return AidWrite(
+            collection=AID_HOLD_EVENTS,
+            action="create",
+            year=request.year,
+            data=data,
+            after={key: value for key, value in data.items() if key != "fact"},
+            log_action=kind,
+            entity_id=f"{request.id}:{code}",
+        )
+
+    async def _commit_hold(self, request: RequestRecord, write: AidWrite, note: str, actor: str) -> DecisionWriteOut:
+        result = await self._store.commit([write], actor=actor, reason=note, require_reason=True)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def _release_fact(self, request: RequestRecord, code: str) -> dict[str, Any]:
+        """A release lifts only a hold the request shows now (Decision 4). Returns what it is released
+        against, stored as the row's `fact` (Decision 3): the check's message and step, and the
+        application figures the checks read. Prices the season, as the Posted tick does."""
+        priced = (await self.season(request.year)).priced.get(request.id)
+        shown = next((h for h in priced.holds if h.code == code), None) if priced is not None else None
+        if priced is None or shown is None:
+            raise DecisionRefusedError(
+                f"This request is not on hold for '{code}': only a hold it shows now can be released"
+            )
+        if not releasable(shown):
+            raise DecisionRefusedError(
+                f"'{code}' means the request can't be priced ({shown.message}): fix that instead"
+            )
+        return {
+            "message": shown.message,
+            "step": shown.step,
+            "application": priced.application.model_dump(mode="json"),
+        }
+
+    async def set_hold_release(self, request_id: str, body: HoldReleaseIn, actor: str) -> DecisionWriteOut:
+        """Release a check's hold with a note, or put it back (main spec §10.5). A release stands until
+        it is put back, and covers every round of the request not yet posted (Decisions 2 and 3). A
+        hold that clears only when fixed, or a code that is never a hold, is refused first, before the
+        no-op guard, so asking to release one is always a 422, even when an old release row exists
+        (Decision 5)."""
+        request, state = await self._hold_target(request_id)
+        if body.code == MANUAL_HOLD:
+            raise DecisionRefusedError("The manual hold is not a check: lift the manual hold instead")
+        if body.released:
+            why = UNRELEASABLE.get(body.code)
+            if why is not None:
+                raise DecisionRefusedError(f"The '{body.code}' hold can't be released: {why}")
+            if body.code in NEVER_A_HOLD:
+                raise DecisionRefusedError(
+                    f"'{body.code}' means the request can't be priced, so it is never a hold: fix that instead"
+                )
+        if (body.code in state.released) == body.released:
+            return self._unchanged(request.year)
+        fact = await self._release_fact(request, body.code) if body.released else None
+        kind: HoldEventKind = "release" if body.released else "unrelease"
+        write = self._hold_write(request, kind, body.code, body.note, actor, fact)
+        return await self._commit_hold(request, write, body.note, actor)
+
+    async def set_manual_hold(self, request_id: str, body: ManualHoldIn, actor: str) -> DecisionWriteOut:
+        """Put the request on hold by hand with a reason ("waiting on something" is a hold, not a stage:
+        main spec §10.2; app spec §6.3), or lift it. Placing it again with a new reason replaces the
+        reason; the same reason again writes nothing (Decision 6)."""
+        request, state = await self._hold_target(request_id)
+        current = state.manual
+        if body.held and current is not None and current.reason == body.note:
+            return self._unchanged(request.year)
+        if not body.held and current is None:
+            return self._unchanged(request.year)
+        kind: HoldEventKind = "place" if body.held else "lift"
+        write = self._hold_write(request, kind, MANUAL_HOLD, body.note, actor)
+        return await self._commit_hold(request, write, body.note, actor)
