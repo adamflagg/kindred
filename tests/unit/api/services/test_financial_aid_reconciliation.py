@@ -637,9 +637,17 @@ def test_the_ledger_ticks_later_rounds_in_order_only_while_the_money_covers_them
         view(2, "needs_offer", decided="300"),
         view(3, "needs_offer", decided="300"),
     )
-    both = ledger_ticks(
+    # Changed from the brief (controller ruling): only the FIRST round may tick on a sliver of excess;
+    # each further round needs the money to fully cover it.
+    sliver = ledger_ticks(
         [priced("emma", 1000001, *rounds)],
         ledger_of("emma", line(1, "1800"), line(2, "400", posted=MAR9)),
+        today=TODAY,
+    )
+    assert [(t.round, t.amount) for t in sliver] == [(2, Decimal(300))]
+    both = ledger_ticks(
+        [priced("emma", 1000001, *rounds)],
+        ledger_of("emma", line(1, "1800"), line(2, "600", posted=MAR9)),
         today=TODAY,
     )
     assert [(t.round, t.amount) for t in both] == [(2, Decimal(300)), (3, Decimal(300))]
@@ -667,3 +675,65 @@ def test_a_line_with_no_post_date_ticks_as_of_today_and_family_level_money_never
     assert tick.posted_on == TODAY
     family = SeasonLedger(unplaced_by_household={1000001: Decimal(1800)}, read=True)
     assert ledger_ticks([needs], family, today=TODAY) == []
+
+
+def test_a_future_dated_line_ticks_as_of_today() -> None:
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    future = datetime(2027, 4, 1, 18, 0, tzinfo=UTC)
+    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1800", posted=future)), today=TODAY)
+    assert tick.posted_on == TODAY
+
+
+def test_the_tick_is_dated_the_latest_of_several_lines() -> None:
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    (tick,) = ledger_ticks(
+        [needs], ledger_of("emma", line(1, "1000", posted=MAR8), line(2, "800", posted=MAR9)), today=TODAY
+    )
+    assert tick.posted_on == date(2027, 3, 9)
+
+
+def test_a_clawed_back_posted_round_is_never_reticked() -> None:
+    clawed = replace(view(1, "posted", locked="1800"), clawed_back=True)
+    rounds = (clawed, view(2, "needs_offer", decided="300"))
+    ticks = ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "500")), today=TODAY)
+    assert 1 not in [t.round for t in ticks]
+
+
+def test_the_walk_stops_at_a_refused_round() -> None:
+    rounds = (view(1, "refused"), view(2, "needs_offer", decided="300"))
+    assert ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "900")), today=TODAY) == []
+
+
+def test_the_walk_stops_at_a_not_decided_round() -> None:
+    rounds = (view(1, "not_decided"), view(2, "needs_offer", decided="300"))
+    assert ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "900")), today=TODAY) == []
+
+
+def test_lines_on_a_closed_request_never_drive_a_tick() -> None:
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    closed = SeasonLedger(by_closed_request={"emma": (line(1, "1800"),)}, read=True)
+    assert ledger_ticks([needs], closed, today=TODAY) == []
+
+
+def test_an_unticked_round_2_still_lets_round_1_tick_and_blocks_round_3() -> None:
+    rounds = (
+        view(1, "needs_offer", decided="1800"),
+        view(2, "needs_offer", decided="300"),
+        view(3, "needs_offer", decided="300"),
+    )
+    ticks = ledger_ticks(
+        [priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "5000")), today=TODAY, undone={("emma", 2)}
+    )
+    assert [t.round for t in ticks] == [1]
+
+
+def test_several_requests_tick_independently_in_one_call() -> None:
+    a = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    b = priced("noah", 1000002, view(1, "needs_offer", decided="900"))
+    ledger = SeasonLedger(
+        by_request={"emma": (line(1, "1800"),), "noah": (line(2, "900", household=1000002),)}, read=True
+    )
+    assert [(t.request_id, t.amount) for t in ledger_ticks([a, b], ledger, today=TODAY)] == [
+        ("emma", Decimal(1800)),
+        ("noah", Decimal(900)),
+    ]

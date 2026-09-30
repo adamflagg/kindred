@@ -537,18 +537,20 @@ def ledger_ticks(
     money still covers more. Stop at the first round that can't be ticked (held, pending approval,
     refused, not decided), so a later round is never ticked before the one before it (SP10a). A
     falling net never ticks. Family-level lines are not placed on any request, so they never tick
-    (D81). A round a person un-ticked (`undone`) is left for a person to tick again."""
+    (D81). A round a person un-ticked (`undone`) is left for a person to tick again. Only the first
+    round ticked in a walk may tick on any excess; each further one needs the money to cover it fully."""
     ticks: list[LedgerTick] = []
     for request in priced:
         if not request.live:
             continue
         live = [line for line in ledger.lines(request.request_id) if line.live()]
-        held = sum((line.amount for line in live), ZERO)
+        in_campminder = sum((line.amount for line in live), ZERO)
         locked = _locked(request)
-        if held <= locked:
+        if in_campminder <= locked:
             continue
         days = [camp_date(line.post_date) for line in live if line.post_date is not None]
-        posted_on = max(days) if days else today
+        posted_on = min(max(days), today) if days else today
+        first = True
         for view in sorted(request.rounds, key=lambda v: v.round):
             if view.status == "posted":
                 continue
@@ -556,9 +558,14 @@ def ledger_ticks(
                 view.status != "needs_offer"
                 or view.decided is None
                 or (request.request_id, view.round) in undone
-                or held <= locked
+                or in_campminder <= locked
             ):
                 break
-            ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, held))
+            # Any excess ticks the first round (a typo still locks the decided amount, D78); a further
+            # round ticks only when the money fully covers it, so a sliver never ticks the next round.
+            if not first and in_campminder < locked + view.decided:
+                break
+            first = False
+            ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
             locked += view.decided
     return ticks
