@@ -11,8 +11,8 @@ Per pool × round, and in total:
   Pending approval  Round 3 amounts above the registrar's limit awaiting finance, at the keyed amount (D79).
   Remaining         Allocated − Posted − Needs an offer − Pending approval (D44, D53, D79).
 
-Posted, Accepted and Needs an offer leave out a decision type's own money (top-up + discretionary)
-when that type does not count toward the budget: that money goes below the line (spec §7.2).
+A round whose decision type does not count toward the budget is left out of Posted, Accepted and
+Needs an offer whole, base and extra alike: its money goes below the line (owner ruling 2026-09-30).
 
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
@@ -165,22 +165,26 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
     def add(measure: str, amount: Decimal) -> None:
         tallies[(pool, view.round, measure)].add(request, amount)
 
-    outside = ZERO if view.counts_toward_budget else view.extra  # only the decision type's own money leaves (§7.2)
+    # A type that does not count toward the budget takes its whole round below the line (owner ruling
+    # 2026-09-30: only grant money is not coming out of the camp's budget), base and extra alike.
+    whole = not view.counts_toward_budget
     if view.status == "posted":
         if view.clawed_back:
             return  # D54: its money came back to Remaining when CampMinder's reversal posted
         locked = view.locked or ZERO
-        outside = min(outside, locked)
-        add("posted", locked - outside)
-        if view.accepted:
-            add("accepted", locked - outside)
+        outside = locked if whole else ZERO
+        if not whole:  # a wholly-outside round is no posted or accepted money, nor a posted request
+            add("posted", locked)
+            if view.accepted:
+                add("accepted", locked)
         if outside:
             add("outside_budget", outside)
             add("outside_budget_posted", outside)
     elif view.status == "needs_offer":
         decided = view.decided or ZERO
-        outside = min(outside, decided)
-        add("needs_offer", decided - outside)
+        outside = decided if whole else ZERO
+        if not whole:
+            add("needs_offer", decided)
         if outside:
             add("outside_budget", outside)
     elif view.status == "pending_approval":

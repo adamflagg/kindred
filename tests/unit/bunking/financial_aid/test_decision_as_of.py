@@ -116,7 +116,7 @@ def test_a_posted_round_with_money_outside_the_budget_counts_as_live_does() -> N
     past = price_as_of("req-emma", 1000001, {3: round3}, rules, live=True, r1_ask=Decimal(4000))
     for priced in (live, past):
         camp = next(p for p in season_budget([priced], rules, outside_grants={}).pools if p.pool == "camp_pool")
-        assert (camp.rounds[3].posted, camp.below.outside_budget_posted) == (Decimal(400), Decimal(250))
+        assert (camp.rounds[3].posted, camp.below.outside_budget_posted) == (Decimal(0), Decimal(650))
 
 
 def test_the_budget_counts_what_was_posted_and_nothing_it_cannot_rebuild() -> None:

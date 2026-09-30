@@ -949,3 +949,38 @@ async def test_only_a_past_read_asks_for_the_lines_recorded_times() -> None:
     store.camp_line_reads.clear()
     await service.grid(YEAR, as_of=date(2027, 6, 5))
     assert store.camp_line_reads == [True]
+
+
+# --- a generic camp-aid ("<camp> FA") line: outside money until reclassified (owner ruling D121) -----------------
+# The ledger reads only funder_type = 'camp' lines (after reclassification), whatever a line's source
+# name says. A generic camp-aid line not yet reclassified is camp aid to this read; a staff
+# reclassification to outside takes it out of the camp ledger and into the grants register.
+
+
+@pytest.mark.asyncio
+async def test_an_unreclassified_generic_camp_aid_line_paying_full_cost_reads_over_the_prompt_to_reclassify() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "2000", posted=T0)  # full cost: 500 beyond the decided 1,500
+    store.synced_at = NIGHT_AFTER
+    c = (await _row(store)).confirmation
+    assert c is not None
+    assert (c.status, c.locked, c.in_campminder, c.gap, c.reconciled) == ("over", 1500.0, 2000.0, 500.0, False)
+
+
+@pytest.mark.asyncio
+async def test_a_line_reclassified_outside_never_counts_toward_posted_or_the_confirmation() -> None:
+    # Reclassified outside (funder_type 'outside'), the line is not among the camp lines the ledger
+    # reads (FinancialAidDecisionsRepository.fetch_camp_lines filters funder_type = 'camp'), so the
+    # request's Posted is its decided money alone and CampMinder holds none of it for the camp ledger.
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    store.camp_lines = []
+    store.synced_at = NIGHT_AFTER
+    row = await _row(store)
+    assert row.confirmation is not None
+    assert (row.confirmation.status, row.confirmation.in_campminder) == ("not_in_campminder", 0.0)
+    assert row.total_posted == 1500.0
+    assert _notes(row) == []

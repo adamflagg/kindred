@@ -360,6 +360,6 @@ def test_moving_a_decision_type_to_another_round_after_posting_moves_no_posted_m
         assert r2 is not None
         return (total.total.posted, total.below.outside_budget, r1.extra, r2.decided)
 
-    assert figures(rules) == (Decimal(3000), Decimal(250), Decimal(250), Decimal(600))
+    assert figures(rules) == (Decimal(0), Decimal(3250), Decimal(250), Decimal(600))
     moved = with_lever(rules, "awards.decision_types.discretionary.round", 2)
     assert figures(moved) == figures(rules)
