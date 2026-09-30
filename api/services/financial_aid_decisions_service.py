@@ -810,7 +810,9 @@ class FinancialAidDecisionsService:
                 total=None,
                 as_of=season.as_of,
                 as_of_axis="recorded",
-                not_rebuilt=[*_gaps(REMAINING_GAPS), *season.gaps],
+                # Summary-only users read this line (D75): a gap keeps its figure and reason, never the
+                # requests it names.
+                not_rebuilt=[gap.model_copy(update={"requests": []}) for gap in (*_gaps(REMAINING_GAPS), *season.gaps)],
             )
         return RemainingResponse(
             year=year,

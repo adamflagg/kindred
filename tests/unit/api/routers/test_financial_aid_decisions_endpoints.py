@@ -272,3 +272,37 @@ def test_a_summary_only_user_reaches_only_the_remaining_line_as_of_a_date() -> N
     client = _client(PERSONA_DEVELOPMENT)
     assert client.get("/api/financial-aid/decisions/2031/remaining?as_of=2031-03-09").status_code == 200
     assert client.get("/api/financial-aid/decisions/2031/budget?as_of=2031-03-09").status_code == 403
+
+
+def test_a_summary_only_user_sees_no_request_id_on_the_past_remaining_line() -> None:
+    """D75: the Remaining line is aggregates only, so a past date's named gaps keep their figure and
+    reason and drop the requests they name (a request whose history can't be replayed, here)."""
+    from datetime import UTC, datetime
+
+    from api.constants.collections import AID_REQUESTS
+    from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+    from tests.unit.api.services.decisions_fakes import (
+        FakeDecisionsStore,
+        FakeRules,
+        approved,
+        log_update,
+        seed_request,
+    )
+
+    store = FakeDecisionsStore()
+    seed_request(store, REQ)
+    log_update(store, AID_REQUESTS, REQ, {"ask": 4000.0}, {"ask": 3500.0}, datetime(2027, 3, 1, 18, tzinfo=UTC))
+
+    async def no_register(year: int) -> list[Any]:
+        return []
+
+    service = FinancialAidDecisionsService(
+        store, FakeRules(approved()), no_register, clock=lambda: datetime(2027, 4, 1, 17, tzinfo=UTC)
+    )
+    with patch("api.routers.financial_aid._decisions", return_value=service):
+        response = _client(PERSONA_DEVELOPMENT).get("/api/financial-aid/decisions/2027/remaining?as_of=2027-03-09")
+    assert response.status_code == 200
+    body = response.json()
+    assert "request_history" in [gap["figure"] for gap in body["not_rebuilt"]]  # the gap is still named
+    assert all(gap["requests"] == [] for gap in body["not_rebuilt"])
+    assert REQ not in response.text
