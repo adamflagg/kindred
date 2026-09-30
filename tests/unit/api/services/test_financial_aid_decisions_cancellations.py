@@ -458,3 +458,74 @@ async def test_a_request_cancelled_in_kindred_takes_no_asks_amounts_or_ticks_unt
     assert len(store.operations) == writes
     await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="The family found the money"), ACTOR)
     assert (await service.tick_posted(YEAR, tick, ACTOR)).written == 1
+
+
+def _refused_by_kindred_cancel() -> str:
+    return "Cancelled in Kindred: reopen it first"
+
+
+@pytest.mark.asyncio
+async def test_each_decision_write_path_refuses_a_kindred_cancelled_request_on_its_own() -> None:
+    def fresh() -> tuple[FakeDecisionsStore, FinancialAidDecisionsService]:
+        store = FakeDecisionsStore()
+        seed_request(store, EMMA)
+        _event(store, EMMA, 3, "ask", amount=Decimal(900), effective_on=date(2027, 3, 1), statement_of_need="x")
+        _event(store, EMMA, 3, "award", amount=Decimal(900), needs_approval=True)
+        _cancel_in_kindred(store)
+        return store, _service(store)
+
+    tick = PostedIn(rows=[PostedRow(request_id=EMMA, round=1, amount=Decimal(1500))])
+    calls = {
+        "key_ask": lambda s: s.key_ask(EMMA, AskIn(round=2, amount=Decimal(900), asked_on=date(2027, 3, 1)), ACTOR),
+        "key_round3_amount": lambda s: s.key_round3_amount(
+            EMMA, Round3AmountIn(amount=Decimal(100)), ACTOR, can_approve=True
+        ),
+        "decide_round3": lambda s: s.decide_round3(EMMA, schemas.Round3ApprovalIn(approve=True, note="ok"), ACTOR),
+        "tick_posted": lambda s: s.tick_posted(YEAR, tick, ACTOR),
+        "tick_accepted": lambda s: s.tick_accepted(
+            YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True), ACTOR
+        ),
+    }
+    for name, call in calls.items():
+        store, service = fresh()
+        if name == "tick_accepted":
+            _posted(store, EMMA, 1, "1500")
+        with pytest.raises(DecisionRefusedError, match=_refused_by_kindred_cancel()):
+            await call(service)
+        assert store.operations == [], name
+
+
+@pytest.mark.asyncio
+async def test_undoing_a_tick_and_unaccepting_stay_open_on_a_kindred_cancelled_request() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    _event(store, LIAM, 1, "accept")
+    service = _service(store)
+    await service.set_cancellation(LIAM, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    out = await service.tick_accepted(
+        YEAR, AcceptedIn(rows=[RoundRef(request_id=LIAM, round=1)], accepted=False), ACTOR
+    )
+    assert out.written == 1
+    out = await service.undo_posted(YEAR, schemas.UnpostIn(request_id=LIAM, round=1, reason="Mistaken tick"), ACTOR)
+    assert out.written == 1
+
+
+@pytest.mark.asyncio
+async def test_a_kindred_cancellation_campminder_has_overtaken_no_longer_says_reopen_it_first() -> None:
+    """Cancelled in Kindred, then CampMinder cancels too: the grid says campminder, and reopening is
+    refused, so keying must not tell staff to reopen."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    _enrol(store, 32)
+    ask = AskIn(round=3, amount=Decimal(900), asked_on=date(2027, 3, 1), statement_of_need="Job loss")
+    acc = AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True)
+    messages: list[str] = []
+    for call in (service.key_ask(EMMA, ask, ACTOR), service.tick_accepted(YEAR, acc, ACTOR)):
+        try:
+            await call
+        except DecisionRefusedError as exc:
+            messages.append(str(exc))
+    assert all("reopen it first" not in m for m in messages)

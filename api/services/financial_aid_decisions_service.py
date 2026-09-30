@@ -1410,10 +1410,16 @@ class FinancialAidDecisionsService:
             raise DecisionNotFoundError("no such request")
         if request.status not in _LIVE:
             raise DecisionRefusedError(f"a {request.status} request takes no new asks or amounts")
-        events, cancels = await asyncio.gather(
-            self._store.fetch_request_events(request.id), self._store.fetch_request_cancellations(request.id)
+        events, cancels, enrollments, sessions = await asyncio.gather(
+            self._store.fetch_request_events(request.id),
+            self._store.fetch_request_cancellations(request.id),
+            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_sessions(request.year),
         )
-        if fold_cancellations(cancels).get(request.id, CancelState()).in_kindred:
+        # "Reopen it first" only while Kindred's cancellation stands: once CampMinder cancels the
+        # enrollment too it wins (as on the grid), and reopening is refused, so refusing here would strand staff.
+        cancelled = cancellations_by_request([request], cancels, enrollments, sessions).get(request.id)
+        if cancelled is not None and cancelled.by == "kindred":
             raise DecisionRefusedError(CANCELLED_IN_KINDRED)
         rounds = fold_rounds(events).get(request.id, {})
         return request, dict(rounds)
@@ -1678,7 +1684,7 @@ class FinancialAidDecisionsService:
             in_kindred = not in_campminder
             if state.reason is not None and (state.reason, state.note, state.in_kindred) == (
                 body.reason,
-                body.note or "",
+                body.note,
                 in_kindred,
             ):
                 return self._unchanged(request.year)
@@ -1704,8 +1710,12 @@ class FinancialAidDecisionsService:
         """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""
         requests = {r.id: r for r in await self._store.fetch_requests(year)}
         rounds = fold_rounds(await self._store.fetch_decision_events(year))
-        states = fold_cancellations(await self._store.fetch_cancellations(year))
-        in_kindred = {rid for rid, state in states.items() if state.in_kindred}
+        cancel_events, sessions = await asyncio.gather(
+            self._store.fetch_cancellations(year), self._store.fetch_sessions(year)
+        )
+        enrollments = await self._store.fetch_enrollment_states(year, *_enrollment_scope(requests.values()))
+        cancelled = cancellations_by_request(requests.values(), cancel_events, enrollments, sessions)
+        in_kindred = {rid for rid, c in cancelled.items() if c.by == "kindred"}
         writes: list[AidWrite] = []
         problems: list[str] = []
         unchanged = 0
