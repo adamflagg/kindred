@@ -763,6 +763,14 @@ def test_a_sliver_over_a_posted_round_never_ticks_a_later_round() -> None:
     assert ledger_ticks([req], ledger_of("emma", line(1, "1800.50")), today=TODAY) == []
 
 
+def test_a_first_walks_sliver_never_ticks_the_next_round() -> None:
+    """Nothing is posted, so Round 1 ticks on any excess (1,850 > 1,800 decided). That tick spends the
+    excess: Round 2 then needs full cover (1,800 + 300 = 2,100 > 1,850) and does not tick."""
+    rounds = (view(1, "needs_offer", decided="1800"), view(2, "needs_offer", decided="300"))
+    ticks = ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "1850")), today=TODAY)
+    assert [t.round for t in ticks] == [1]
+
+
 def test_a_later_round_ticks_once_the_money_fully_covers_it() -> None:
     req = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "needs_offer", decided="300"))
     ticks = ledger_ticks([req], ledger_of("emma", line(1, "1800"), line(2, "300", posted=MAR9)), today=TODAY)
