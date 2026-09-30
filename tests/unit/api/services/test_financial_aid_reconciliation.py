@@ -590,3 +590,80 @@ def test_shares_await_the_sync_while_the_request_awaits_it() -> None:
     assert c is not None
     assert c.status == "awaiting_sync"
     assert [s.status for s in c.shares] == ["awaiting_sync", "awaiting_sync"]
+
+
+# --- the automatic tick (Task 4) ---------------------------------------------------------------------
+
+from api.services.financial_aid_reconciliation import SeasonLedger, ledger_ticks
+
+TODAY = date(2027, 3, 10)
+
+
+def ledger_of(request_id: str, *lines: CampLine) -> SeasonLedger:
+    return SeasonLedger(by_request={request_id: tuple(lines)}, read=True)
+
+
+def test_money_beyond_the_locks_ticks_the_oldest_decided_round_at_its_decided_amount() -> None:
+    """D78: a typo ($1,590 for $1,800) still locks the decided $1,800; the gap is the confirmation's."""
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1590", posted=MAR9)), today=TODAY)
+    assert (tick.request_id, tick.round, tick.amount, tick.posted_on, tick.in_campminder) == (
+        "emma",
+        1,
+        Decimal(1800),
+        date(2027, 3, 9),
+        Decimal(1590),
+    )
+
+
+def test_a_falling_net_a_held_round_or_a_pending_round_3_never_ticks() -> None:
+    appeal = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "needs_offer", decided="300"))
+    assert ledger_ticks([appeal], ledger_of("emma", line(1, "1500")), today=TODAY) == []
+    held = priced("emma", 1000001, view(1, "held", ask="2000"))
+    assert ledger_ticks([held], ledger_of("emma", line(1, "1800")), today=TODAY) == []
+    pending = priced(
+        "emma",
+        1000001,
+        view(1, "posted", locked="1800"),
+        view(2, "posted", locked="300"),
+        view(3, "pending_approval", pending="600"),
+    )
+    assert ledger_ticks([pending], ledger_of("emma", line(1, "2700")), today=TODAY) == []
+
+
+def test_the_ledger_ticks_later_rounds_in_order_only_while_the_money_covers_them() -> None:
+    rounds = (
+        view(1, "posted", locked="1800"),
+        view(2, "needs_offer", decided="300"),
+        view(3, "needs_offer", decided="300"),
+    )
+    both = ledger_ticks(
+        [priced("emma", 1000001, *rounds)],
+        ledger_of("emma", line(1, "1800"), line(2, "400", posted=MAR9)),
+        today=TODAY,
+    )
+    assert [(t.round, t.amount) for t in both] == [(2, Decimal(300)), (3, Decimal(300))]
+    one = ledger_ticks(
+        [priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "1800"), line(2, "200")), today=TODAY
+    )
+    assert [t.round for t in one] == [2]
+
+
+def test_it_never_ticks_past_a_round_it_cannot_tick() -> None:
+    rounds = (view(1, "held", ask="2000"), view(2, "needs_offer", decided="300"))
+    assert ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "2300")), today=TODAY) == []
+
+
+def test_a_request_that_is_not_live_or_a_round_a_person_unticked_is_never_ticked() -> None:
+    gone = priced("emma", 1000001, view(1, "needs_offer", decided="1800"), live=False)
+    assert ledger_ticks([gone], ledger_of("emma", line(1, "1800")), today=TODAY) == []
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    assert ledger_ticks([needs], ledger_of("emma", line(1, "1800")), today=TODAY, undone={("emma", 1)}) == []
+
+
+def test_a_line_with_no_post_date_ticks_as_of_today_and_family_level_money_never_ticks() -> None:
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1800", posted=None)), today=TODAY)
+    assert tick.posted_on == TODAY
+    family = SeasonLedger(unplaced_by_household={1000001: Decimal(1800)}, read=True)
+    assert ledger_ticks([needs], family, today=TODAY) == []

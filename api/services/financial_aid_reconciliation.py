@@ -35,7 +35,7 @@ its own household's lines.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
@@ -509,3 +509,56 @@ def ledger_note(priced: PricedRequest, lines: Sequence[CampLine], family_unplace
         message=f"CampMinder shows {dollars(extra)} for this family; not yet ticked",
         step="ledger",
     )
+
+
+# --- the automatic tick (D78, D81) ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LedgerTick:
+    """One round the ledger ticks: locked at its decided amount (D78), dated the posting's day."""
+
+    request_id: str
+    round: int
+    amount: Decimal
+    posted_on: date
+    in_campminder: Decimal
+
+
+def ledger_ticks(
+    priced: Iterable[PricedRequest],
+    ledger: SeasonLedger,
+    *,
+    today: date,
+    undone: Collection[tuple[str, int]] = frozenset(),
+) -> list[LedgerTick]:
+    """D78: where the live camp aid placed on a live request is more than its posted rounds lock,
+    tick the oldest round that needs an offer, at its decided amount, and go on to the next while the
+    money still covers more. Stop at the first round that can't be ticked (held, pending approval,
+    refused, not decided), so a later round is never ticked before the one before it (SP10a). A
+    falling net never ticks. Family-level lines are not placed on any request, so they never tick
+    (D81). A round a person un-ticked (`undone`) is left for a person to tick again."""
+    ticks: list[LedgerTick] = []
+    for request in priced:
+        if not request.live:
+            continue
+        live = [line for line in ledger.lines(request.request_id) if line.live()]
+        held = sum((line.amount for line in live), ZERO)
+        locked = _locked(request)
+        if held <= locked:
+            continue
+        days = [camp_date(line.post_date) for line in live if line.post_date is not None]
+        posted_on = max(days) if days else today
+        for view in sorted(request.rounds, key=lambda v: v.round):
+            if view.status == "posted":
+                continue
+            if (
+                view.status != "needs_offer"
+                or view.decided is None
+                or (request.request_id, view.round) in undone
+                or held <= locked
+            ):
+                break
+            ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, held))
+            locked += view.decided
+    return ticks
