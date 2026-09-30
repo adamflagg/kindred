@@ -30,7 +30,9 @@ func postFinancialAidLedgerTicks(ctx context.Context, apiURL string, year int) e
 // runLedgerTickTrigger ticks each season the ledger wrote. A failure does not fail the ledger, which
 // did write: it is logged at ERROR and counted in AidLedgerWarnings, which reaches sync_runs.
 func (s *AidPostingsSync) runLedgerTickTrigger(ctx context.Context, years []int) {
-	if s.LedgerTickTrigger == nil || s.DryRun {
+	// A cancelled run asks for nothing: each call would fail on the dead context and count a warning,
+	// and the next night's run re-derives every tick from the ledger anyway.
+	if s.LedgerTickTrigger == nil || s.DryRun || ctx.Err() != nil {
 		return
 	}
 	for _, year := range years {

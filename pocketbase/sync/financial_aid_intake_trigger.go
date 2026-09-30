@@ -29,7 +29,7 @@ func postFinancialAidIntake(ctx context.Context, apiURL string, year int) error 
 	return postFinancialAidSeason(ctx, financialAidIntakeClient, apiURL+financialAidIntakePath, "intake", year)
 }
 
-// maxSeasonErrDetail caps the detail quoted from a refusal, so a warning stays one short line.
+// maxSeasonErrDetail caps the detail quoted from a refusal, in runes, so a warning stays one short line.
 const maxSeasonErrDetail = 200
 
 // postFinancialAidSeason POSTs {"year": year} to one of FastAPI's campership season jobs (intake,
@@ -59,8 +59,8 @@ func postFinancialAidSeason(ctx context.Context, client *http.Client, url, what 
 		detail := ""
 		if json.Unmarshal(raw, &parsed) == nil {
 			if d, ok := parsed.Detail.(string); ok {
-				if len(d) > maxSeasonErrDetail {
-					d = d[:maxSeasonErrDetail] + "..."
+				if clipped := truncateRunes(d, maxSeasonErrDetail); clipped != d {
+					d = clipped + "..."
 				}
 				detail = ": " + d
 			}

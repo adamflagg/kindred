@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestPostFinancialAidLedgerTicksSendsTheYear(t *testing.T) {
@@ -131,5 +132,69 @@ func TestEveryProductionAidPostingsSyncTicksTheLedger(t *testing.T) {
 		if built == 0 || built != wired {
 			t.Errorf("%s builds %d AidPostingsSync and wires the ledger tick on %d", file, built, wired)
 		}
+	}
+}
+
+// seasonErrFrom answers the ledger tick with one status and body and returns the error it gives.
+func seasonErrFrom(t *testing.T, status int, body string) error {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return postFinancialAidLedgerTicks(context.Background(), srv.URL, 2027)
+}
+
+// A service refusal (422) carries a string detail, and the error quotes it.
+func TestPostFinancialAidSeasonQuotesAStringDetail(t *testing.T) {
+	t.Parallel()
+	err := seasonErrFrom(t, http.StatusUnprocessableEntity,
+		`{"detail":"the ledger tick for 2027 may not have been written"}`)
+	want := "financial-aid ledger tick returned 422: the ledger tick for 2027 may not have been written"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
+// FastAPI's own validation 422 carries a list detail, which can echo the request: it is dropped.
+func TestPostFinancialAidSeasonDropsAListDetail(t *testing.T) {
+	t.Parallel()
+	err := seasonErrFrom(t, http.StatusUnprocessableEntity,
+		`{"detail":[{"loc":["body","year"],"msg":"field required","input":{"name":"Emma Johnson"}}]}`)
+	if err == nil || err.Error() != "financial-aid ledger tick returned 422" {
+		t.Fatalf("err = %v, want the bare status", err)
+	}
+}
+
+// The quoted detail is capped at 200 runes, cut on a rune boundary, however long the refusal.
+func TestPostFinancialAidSeasonCapsTheDetailAt200Runes(t *testing.T) {
+	t.Parallel()
+	long := "a" + strings.Repeat("é", 300) // odd, so a byte-wise cut lands inside a character
+	err := seasonErrFrom(t, http.StatusUnprocessableEntity, `{"detail":"`+long+`"}`)
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	quoted := strings.TrimPrefix(err.Error(), "financial-aid ledger tick returned 422: ")
+	if want := "a" + strings.Repeat("é", 199) + "..."; quoted != want {
+		t.Errorf("detail = %d runes (%q...), want 200 runes and an ellipsis", utf8.RuneCountInString(quoted), quoted[:8])
+	}
+	if !utf8.ValidString(err.Error()) {
+		t.Error("the detail was cut inside a character")
+	}
+}
+
+// A cancelled run asks for no tick: the next night's run re-derives every tick anyway.
+func TestRunLedgerTickTriggerSkipsACancelledRun(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	s := &AidPostingsSync{}
+	s.LedgerTickTrigger = func(context.Context, int) error { called = true; return nil }
+	s.runLedgerTickTrigger(ctx, []int{2027})
+	if called || s.Stats.AidLedgerWarnings != 0 {
+		t.Errorf("called = %v, warnings = %d; want no tick and no warning", called, s.Stats.AidLedgerWarnings)
 	}
 }
