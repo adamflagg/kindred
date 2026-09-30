@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Final, Literal, get_args
 
-from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
 from api.services.financial_aid_grants_register import (
     CANCELLED_STATUS_IDS,
     LIVE_REQUEST_STATUSES,
