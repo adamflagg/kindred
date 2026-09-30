@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from api.constants.collections import AID_SCENARIO_OPTIONS
+from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_TRAIL
 from api.services import financial_aid_scenarios_repository as repository_module
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
 from api.services.financial_aid_grants_register import RegisterRow
@@ -282,8 +282,11 @@ async def test_last_seasons_criteria_on_this_seasons_applications() -> None:
 async def test_this_seasons_routing_grants_budget_lines_programs_cost_and_budget_are_kept() -> None:
     world = await _world()
     await world.service.freeze(YEAR, FINANCE)
+    raw_last = last_season_rules().model_dump(mode="json")
+    raw_last["round2"]["program_tables"]["quest"] = "teen"  # a different Round 2 table for one program
+    raw_last["grants"]["offset_programs"] = ["summer"]  # and a different set of offset programs
     last = with_levers(
-        last_season_rules(),
+        AidRules.model_validate(raw_last),
         {
             "budget.total": "400000",
             "cost.tuition.1000101": "1800",
@@ -307,6 +310,9 @@ async def test_this_seasons_routing_grants_budget_lines_programs_cost_and_budget
         this_season.awards.decision_types,
         this_season.round2.program_tables,
     )
+    assert last.round2.program_tables != this_season.round2.program_tables
+    assert last.grants.offset_programs != this_season.grants.offset_programs
+    assert document.grants.offset_programs == this_season.grants.offset_programs
     assert (document.award_tables, document.awards.minimum) == (last.award_tables, Decimal(150))
 
 
@@ -318,6 +324,7 @@ async def test_no_approved_rules_last_season_is_refused() -> None:
     with pytest.raises(ScenarioRefusedError, match="2026 has no approved rules to start from"):
         await world.service.start_from_last_season(YEAR, FINANCE)
     assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
 
 
 @pytest.mark.asyncio
@@ -333,6 +340,7 @@ async def test_last_seasons_rules_that_dont_fit_this_seasons_programs_are_refuse
     ):
         await world.service.start_from_last_season(YEAR, FINANCE)
     assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+    assert world.store.rows[AID_SCENARIO_TRAIL] == []
 
 
 @pytest.mark.asyncio
@@ -356,3 +364,12 @@ async def test_starting_from_last_season_again_loads_the_option_it_made() -> Non
     assert [o.record.code for o in again.options] == ["A"]
     assert again.draft is not None
     assert again.draft.from_code == "A"
+
+
+@pytest.mark.asyncio
+async def test_a_plain_start_from_the_rules_keeps_its_name_when_last_seasons_criteria_match() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world, with_levers(intake_rules(), {"year": LAST}))
+    workspace = await world.service.start_from_rules(YEAR, FINANCE)
+    assert workspace.options[0].label == "rules draft v1 as they were"

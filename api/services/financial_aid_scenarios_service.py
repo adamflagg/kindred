@@ -360,10 +360,11 @@ class FinancialAidScenariosService:
             # "rules vN" only when vN is approved rules and the option is them: one started from a draft that was
             # approved later with edits stays "rules draft vN", as it was.
             origin = await self._rules.load(option.year, option.origin_version)
+            if origin.document == option.document:
+                return f"{_rules_name(origin)} as they were"  # SP9b's name first: exactly the rules
             if last is not None and option.document == last_seasons_criteria(origin.document, last.document):
                 return _last_season_name(last, option.year, origin)
-            name = _rules_name(origin) if origin.document == option.document else f"rules draft v{origin.version}"
-            return f"{name} as they were"
+            return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)
 
     @staticmethod
