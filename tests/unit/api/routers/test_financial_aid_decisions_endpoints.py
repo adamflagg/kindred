@@ -245,3 +245,30 @@ def test_a_posted_day_after_today_is_422() -> None:
     body = {"rows": [{"request_id": REQ, "round": 1, "amount": "1500"}], "posted_on": "2032-01-01"}
     assert _client().post("/api/financial-aid/decisions/2031/posted", json=body).status_code == 422
     service.tick_posted.assert_not_called()
+
+
+@pytest.mark.parametrize("read", ["grid", "budget", "remaining"])
+def test_a_read_passes_its_as_of_date_to_the_service(read: str) -> None:
+    """D15, D48: the as-of date lives in the link, and every read honours it (3c)."""
+    service = _stub()
+    assert _client().get(f"/api/financial-aid/decisions/2031/{read}?as_of=2031-03-09").status_code == 200
+    getattr(service, read).assert_awaited_once_with(2031, as_of=date(2031, 3, 9))
+
+
+@pytest.mark.parametrize("read", ["grid", "budget", "remaining"])
+def test_a_read_with_no_as_of_is_live(read: str) -> None:
+    service = _stub()
+    assert _client().get(f"/api/financial-aid/decisions/2031/{read}").status_code == 200
+    getattr(service, read).assert_awaited_once_with(2031, as_of=None)
+
+
+def test_an_as_of_that_is_not_a_date_is_422() -> None:
+    _stub()
+    assert _client().get("/api/financial-aid/decisions/2031/grid?as_of=March").status_code == 422
+
+
+def test_a_summary_only_user_reaches_only_the_remaining_line_as_of_a_date() -> None:
+    _stub()
+    client = _client(PERSONA_DEVELOPMENT)
+    assert client.get("/api/financial-aid/decisions/2031/remaining?as_of=2031-03-09").status_code == 200
+    assert client.get("/api/financial-aid/decisions/2031/budget?as_of=2031-03-09").status_code == 403

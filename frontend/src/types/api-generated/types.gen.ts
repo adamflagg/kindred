@@ -18937,7 +18937,12 @@ export type GetRequestsGridApiFinancialAidDecisionsYearGridGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
   url: '/api/financial-aid/decisions/{year}/grid'
 }
 
@@ -18969,7 +18974,12 @@ export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
   url: '/api/financial-aid/decisions/{year}/budget'
 }
 
@@ -19001,7 +19011,12 @@ export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+  }
   url: '/api/financial-aid/decisions/{year}/remaining'
 }
 
