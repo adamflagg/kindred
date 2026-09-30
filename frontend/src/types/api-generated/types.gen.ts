@@ -59,6 +59,20 @@ export type AgSessionAvailability = {
 }
 
 /**
+ * AcceptedIn
+ */
+export type AcceptedIn = {
+  /**
+   * Rows
+   */
+  rows: Array<RoundRef>
+  /**
+   * Accepted
+   */
+  accepted: boolean
+}
+
+/**
  * AccessibilityFlagSummary
  *
  * Derived booleans ONLY. No narrative — see the module docstring.
@@ -602,6 +616,35 @@ export type ApproveRequest = {
 }
 
 /**
+ * AskIn
+ *
+ * A family's ask for Round 2 (an appeal) or Round 3, keyed when it arrives (D91, D82). Round 3's
+ * statement of need is required (D22); an appeal's note is optional ("Family emailed (date)").
+ */
+export type AskIn = {
+  /**
+   * Round
+   */
+  round: 2 | 3
+  /**
+   * Amount
+   */
+  amount: number | string
+  /**
+   * Asked On
+   */
+  asked_on: string
+  /**
+   * Statement Of Need
+   */
+  statement_of_need?: string
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
  * AttributionCandidate
  *
  * One candidate weekend's verdict, with the evidence behind it.
@@ -1021,6 +1064,25 @@ export type BatchResolveResponse = {
 }
 
 /**
+ * BelowTheLineOut
+ */
+export type BelowTheLineOut = {
+  held: CountOut
+  /**
+   * Held Asked
+   */
+  held_asked: number
+  /**
+   * Outside Grants
+   */
+  outside_grants: number
+  /**
+   * Outside Budget
+   */
+  outside_budget: number
+}
+
+/**
  * BucketCount
  *
  * Satisfied / total request count for a bucket.
@@ -1070,6 +1132,33 @@ export type BudgetPoolOutput = {
    * Amount
    */
   amount?: string | null
+}
+
+/**
+ * BudgetResponse
+ */
+export type BudgetResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  /**
+   * Pools
+   */
+  pools: Array<PoolBudgetOut>
+  total: PoolBudgetOut
+  /**
+   * Strip
+   */
+  strip: Array<RoundCountsOut>
+  /**
+   * Outside Grants Off Requests
+   */
+  outside_grants_off_requests: number
 }
 
 /**
@@ -1866,6 +1955,36 @@ export type CapacitySet = {
 }
 
 /**
+ * CellOut
+ */
+export type CellOut = {
+  /**
+   * Allocated
+   */
+  allocated: number | null
+  /**
+   * Posted
+   */
+  posted: number
+  /**
+   * Accepted
+   */
+  accepted: number
+  /**
+   * Needs Offer
+   */
+  needs_offer: number
+  /**
+   * Pending Approval
+   */
+  pending_approval: number
+  /**
+   * Remaining
+   */
+  remaining: number | null
+}
+
+/**
  * CityBreakdown
  *
  * Breakdown of metrics by city.
@@ -2279,6 +2398,20 @@ export type CostSectionOutput = {
    * Override Reasons
    */
   override_reasons?: Array<string>
+}
+
+/**
+ * CountOut
+ */
+export type CountOut = {
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Requests
+   */
+  requests: number
 }
 
 /**
@@ -2752,6 +2885,62 @@ export type DecisionTypeOutput = {
    * Ceiling Exempt
    */
   ceiling_exempt?: boolean
+}
+
+/**
+ * DecisionWriteOut
+ *
+ * What a write did. A write that changed nothing wrote nothing: operation_id is then "".
+ */
+export type DecisionWriteOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Written
+   */
+  written: number
+  /**
+   * Unchanged
+   */
+  unchanged: number
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * Total Locked
+   */
+  total_locked?: number | null
+  /**
+   * Pending Approval
+   */
+  pending_approval?: boolean
+  /**
+   * Sections Not Locked
+   */
+  sections_not_locked?: Array<string>
+}
+
+/**
+ * DiscretionaryIn
+ *
+ * Finance's discretionary money, under one of the rules' discretionary decision types.
+ */
+export type DiscretionaryIn = {
+  /**
+   * Decision Type
+   */
+  decision_type: string
+  /**
+   * Amount
+   */
+  amount: number | string
+  /**
+   * Note
+   */
+  note: string
 }
 
 /**
@@ -3459,6 +3648,25 @@ export type ForecastResponse = {
    * Days since registration anchor
    */
   day_offset?: number | null
+}
+
+/**
+ * ForwardDemandOut
+ */
+export type ForwardDemandOut = {
+  round2_asks: CountOut
+  /**
+   * Round2 Asked
+   */
+  round2_asked: number
+  /**
+   * Round2 Computed
+   */
+  round2_computed: number
+  /**
+   * Round1 Unmet
+   */
+  round1_unmet: number
 }
 
 /**
@@ -4347,6 +4555,80 @@ export type GrantsSection = {
   incentives?: {
     [key: string]: unknown | IncentiveRule
   }
+}
+
+/**
+ * GridRowOut
+ */
+export type GridRowOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number
+  /**
+   * Camper Name
+   */
+  camper_name: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Program Key
+   */
+  program_key: string | null
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Request Status
+   */
+  request_status: string
+  /**
+   * Tier
+   */
+  tier: number | null
+  /**
+   * Cost
+   */
+  cost: number | null
+  /**
+   * Rounds
+   */
+  rounds: Array<RoundOut>
+  /**
+   * Total Decided
+   */
+  total_decided: number | null
+  /**
+   * Total Posted
+   */
+  total_posted: number | null
+  /**
+   * Holds
+   */
+  holds: Array<IssueOut>
+  /**
+   * Notes
+   */
+  notes: Array<IssueOut>
 }
 
 /**
@@ -7935,6 +8217,61 @@ export type PlacementWriteRequest = {
 }
 
 /**
+ * PoolBudgetOut
+ */
+export type PoolBudgetOut = {
+  /**
+   * Pool
+   */
+  pool: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Rounds
+   */
+  rounds: Array<RoundCellOut>
+  total: CellOut
+  below: BelowTheLineOut
+  demand: ForwardDemandOut
+}
+
+/**
+ * PostedIn
+ */
+export type PostedIn = {
+  /**
+   * Rows
+   */
+  rows: Array<PostedRow>
+  /**
+   * Posted On
+   */
+  posted_on?: string | null
+}
+
+/**
+ * PostedRow
+ *
+ * `amount` is the decided amount the person confirmed; it must still be the decided amount (Decision 9).
+ */
+export type PostedRow = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: 1 | 2 | 3
+  /**
+   * Amount
+   */
+  amount: number | string
+}
+
+/**
  * PriorYearCancelledSummary
  */
 export type PriorYearCancelledSummary = {
@@ -8808,6 +9145,42 @@ export type RejectResponse = {
 }
 
 /**
+ * RemainingPoolOut
+ */
+export type RemainingPoolOut = {
+  /**
+   * Pool
+   */
+  pool: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Remaining
+   */
+  remaining: number | null
+}
+
+/**
+ * RemainingResponse
+ */
+export type RemainingResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Pools
+   */
+  pools: Array<RemainingPoolOut>
+  /**
+   * Total
+   */
+  total: number | null
+}
+
+/**
  * RequestBucket
  *
  * Reporting bucket — the scorecard grouping a request rolls into.
@@ -8974,6 +9347,24 @@ export type RequestTextEntry = {
    * Contributors
    */
   contributors?: Array<string>
+}
+
+/**
+ * RequestsGridResponse
+ */
+export type RequestsGridResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  /**
+   * Rows
+   */
+  rows: Array<GridRowOut>
 }
 
 /**
@@ -9888,6 +10279,36 @@ export type Round2TableOutput = {
 }
 
 /**
+ * Round3AmountIn
+ *
+ * A Round 3 amount. Above the season's registrar limit, the registrar's waits for finance (D79).
+ */
+export type Round3AmountIn = {
+  /**
+   * Amount
+   */
+  amount: number | string
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
+ * Round3ApprovalIn
+ */
+export type Round3ApprovalIn = {
+  /**
+   * Approve
+   */
+  approve: boolean
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
  * Round3Section
  */
 export type Round3SectionInput = {
@@ -9907,6 +10328,10 @@ export type Round3SectionInput = {
    * Max Total Pct Of Cost
    */
   max_total_pct_of_cost?: number | string | null
+  /**
+   * Registrar Limit
+   */
+  registrar_limit?: number | string | null
 }
 
 /**
@@ -9929,6 +10354,127 @@ export type Round3SectionOutput = {
    * Max Total Pct Of Cost
    */
   max_total_pct_of_cost?: string | null
+  /**
+   * Registrar Limit
+   */
+  registrar_limit?: string | null
+}
+
+/**
+ * RoundCellOut
+ */
+export type RoundCellOut = {
+  /**
+   * Allocated
+   */
+  allocated: number | null
+  /**
+   * Posted
+   */
+  posted: number
+  /**
+   * Accepted
+   */
+  accepted: number
+  /**
+   * Needs Offer
+   */
+  needs_offer: number
+  /**
+   * Pending Approval
+   */
+  pending_approval: number
+  /**
+   * Remaining
+   */
+  remaining: number | null
+  /**
+   * Round
+   */
+  round: number
+}
+
+/**
+ * RoundCountsOut
+ */
+export type RoundCountsOut = {
+  /**
+   * Round
+   */
+  round: number
+  needs_offer: CountOut
+  posted: CountOut
+  accepted: CountOut
+  held: CountOut
+  pending_approval: CountOut
+}
+
+/**
+ * RoundOut
+ */
+export type RoundOut = {
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Status
+   */
+  status: 'posted' | 'held' | 'pending_approval' | 'refused' | 'not_decided' | 'needs_offer'
+  /**
+   * Ask
+   */
+  ask: number | null
+  /**
+   * Asked On
+   */
+  asked_on: string | null
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * Posted On
+   */
+  posted_on: string | null
+  /**
+   * Accepted
+   */
+  accepted: boolean
+  /**
+   * Pending Approval
+   */
+  pending_approval: number | null
+  /**
+   * Would Change By
+   */
+  would_change_by: number | null
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+}
+
+/**
+ * RoundRef
+ */
+export type RoundRef = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: 1 | 2 | 3
 }
 
 /**
@@ -12040,6 +12586,24 @@ export type UnmappedDescriptionOut = {
    * Amount
    */
   amount: number
+}
+
+/**
+ * UnpostIn
+ */
+export type UnpostIn = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: 1 | 2 | 3
+  /**
+   * Reason
+   */
+  reason: string
 }
 
 /**
@@ -18249,6 +18813,326 @@ export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmen
 
 export type WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponse =
   WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponses[keyof WithdrawGrantCommitmentApiFinancialAidGrantsYearCommitmentsCommitmentIdWithdrawPostResponses]
+
+export type GetRequestsGridApiFinancialAidDecisionsYearGridGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/grid'
+}
+
+export type GetRequestsGridApiFinancialAidDecisionsYearGridGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetRequestsGridApiFinancialAidDecisionsYearGridGetError =
+  GetRequestsGridApiFinancialAidDecisionsYearGridGetErrors[keyof GetRequestsGridApiFinancialAidDecisionsYearGridGetErrors]
+
+export type GetRequestsGridApiFinancialAidDecisionsYearGridGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RequestsGridResponse
+}
+
+export type GetRequestsGridApiFinancialAidDecisionsYearGridGetResponse =
+  GetRequestsGridApiFinancialAidDecisionsYearGridGetResponses[keyof GetRequestsGridApiFinancialAidDecisionsYearGridGetResponses]
+
+export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/budget'
+}
+
+export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetError =
+  GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetErrors[keyof GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetErrors]
+
+export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: BudgetResponse
+}
+
+export type GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetResponse =
+  GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetResponses[keyof GetRoundsBudgetApiFinancialAidDecisionsYearBudgetGetResponses]
+
+export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/remaining'
+}
+
+export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetError =
+  GetRemainingLineApiFinancialAidDecisionsYearRemainingGetErrors[keyof GetRemainingLineApiFinancialAidDecisionsYearRemainingGetErrors]
+
+export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RemainingResponse
+}
+
+export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponse =
+  GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponses[keyof GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponses]
+
+export type KeyAidAskApiFinancialAidRequestsRequestIdAsksPostData = {
+  body: AskIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/asks'
+}
+
+export type KeyAidAskApiFinancialAidRequestsRequestIdAsksPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type KeyAidAskApiFinancialAidRequestsRequestIdAsksPostError =
+  KeyAidAskApiFinancialAidRequestsRequestIdAsksPostErrors[keyof KeyAidAskApiFinancialAidRequestsRequestIdAsksPostErrors]
+
+export type KeyAidAskApiFinancialAidRequestsRequestIdAsksPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type KeyAidAskApiFinancialAidRequestsRequestIdAsksPostResponse =
+  KeyAidAskApiFinancialAidRequestsRequestIdAsksPostResponses[keyof KeyAidAskApiFinancialAidRequestsRequestIdAsksPostResponses]
+
+export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostData = {
+  body: Round3AmountIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/round3-amount'
+}
+
+export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostError =
+  KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostErrors[keyof KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostErrors]
+
+export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponse =
+  KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponses[keyof KeyRound3AmountApiFinancialAidRequestsRequestIdRound3AmountPostResponses]
+
+export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostData = {
+  body: DiscretionaryIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/discretionary'
+}
+
+export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostError =
+  KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostErrors[keyof KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostErrors]
+
+export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponse =
+  KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponses[keyof KeyDiscretionaryApiFinancialAidRequestsRequestIdDiscretionaryPostResponses]
+
+export type DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostData = {
+  body: Round3ApprovalIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/round3-approval'
+}
+
+export type DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostError =
+  DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostErrors[keyof DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostErrors]
+
+export type DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostResponse =
+  DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostResponses[keyof DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostResponses]
+
+export type TickPostedApiFinancialAidDecisionsYearPostedPostData = {
+  body: PostedIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/posted'
+}
+
+export type TickPostedApiFinancialAidDecisionsYearPostedPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type TickPostedApiFinancialAidDecisionsYearPostedPostError =
+  TickPostedApiFinancialAidDecisionsYearPostedPostErrors[keyof TickPostedApiFinancialAidDecisionsYearPostedPostErrors]
+
+export type TickPostedApiFinancialAidDecisionsYearPostedPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type TickPostedApiFinancialAidDecisionsYearPostedPostResponse =
+  TickPostedApiFinancialAidDecisionsYearPostedPostResponses[keyof TickPostedApiFinancialAidDecisionsYearPostedPostResponses]
+
+export type UndoPostedApiFinancialAidDecisionsYearUnpostedPostData = {
+  body: UnpostIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/unposted'
+}
+
+export type UndoPostedApiFinancialAidDecisionsYearUnpostedPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UndoPostedApiFinancialAidDecisionsYearUnpostedPostError =
+  UndoPostedApiFinancialAidDecisionsYearUnpostedPostErrors[keyof UndoPostedApiFinancialAidDecisionsYearUnpostedPostErrors]
+
+export type UndoPostedApiFinancialAidDecisionsYearUnpostedPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type UndoPostedApiFinancialAidDecisionsYearUnpostedPostResponse =
+  UndoPostedApiFinancialAidDecisionsYearUnpostedPostResponses[keyof UndoPostedApiFinancialAidDecisionsYearUnpostedPostResponses]
+
+export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostData = {
+  body: AcceptedIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/accepted'
+}
+
+export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostError =
+  TickAcceptedApiFinancialAidDecisionsYearAcceptedPostErrors[keyof TickAcceptedApiFinancialAidDecisionsYearAcceptedPostErrors]
+
+export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponse =
+  TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponses[keyof TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
