@@ -341,6 +341,15 @@ def _family(person: int, session: int, fallback: str, families: Mapping[tuple[in
     return families.get((person, session), fallback) if person and session else fallback
 
 
+def registrations_cancelled(status_ids: Iterable[int]) -> bool:
+    """The ONE definition of "CampMinder cancelled it" (main spec §5; shared with the decisions'
+    cancellations, SP10b-2): the registrations in scope include a cancelled (32) or withdrawn (256) one
+    and no enrolled (2) one. Applied (4) and waitlisted (8) keep nothing on (owner ruling 2026-09-30,
+    from the data: aid is never carried for a waitlisted-only camper). Each caller picks its scope."""
+    statuses = set(status_ids)
+    return bool(statuses & CANCELLED_STATUS_IDS) and ACTIVE_ENROLLED_STATUS_ID not in statuses
+
+
 def _cancelled(person: int, session: int, family: str, by_person: Mapping[int, Sequence[Enrollment]]) -> bool:
     """Derived from enrollment, never typed (main spec §5): the enrollments this grant covers (its
     session; else its program family; else all) include a cancelled one and no active one."""
@@ -351,9 +360,7 @@ def _cancelled(person: int, session: int, family: str, by_person: Mapping[int, S
         for e in by_person.get(person, ())
         if (e.session_cm_id == session if session else (not family or e.program_family == family))
     ]
-    return any(e.status_id in CANCELLED_STATUS_IDS for e in mine) and not any(
-        e.status_id == ACTIVE_ENROLLED_STATUS_ID for e in mine
-    )
+    return registrations_cancelled(e.status_id for e in mine)
 
 
 def _request_shares(
