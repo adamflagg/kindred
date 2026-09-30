@@ -533,3 +533,60 @@ def test_no_note_once_every_round_is_ticked_nothing_is_extra_or_the_request_is_n
     assert ledger_note(appeal, [line(1, "1800")], Decimal(0)) is None  # CampMinder holds only what is locked
     gone = priced("emma", 1000001, view(1, "needs_offer", decided="1800"), live=False)
     assert ledger_note(gone, [line(1, "1800")], Decimal(0)) is None
+
+
+# --- Task 3 fix round 1 -----------------------------------------------------------------------------
+
+
+def test_a_posted_zero_lock_with_nothing_in_campminder_is_a_real_confirmed_zero() -> None:
+    zero = priced("emma", 1000001, view(1, "posted", locked="0"))
+    c = confirmation(zero, POSTED_R1, [], (), 1000001, synced_at=SYNCED)
+    assert c is not None
+    assert (c.status, c.locked, c.reconciled) == ("confirmed", Decimal(0), True)
+
+
+def test_a_zero_dollar_share_beside_a_matching_line_is_confirmed() -> None:
+    one = priced("emma", 1000001, view(1, "posted", locked="1"))
+    c = confirmation(
+        one,
+        POSTED_R1,
+        [line(1, "1", posted=MAR9)],
+        [share(1000001, "60"), share(1000004, "40")],
+        1000001,
+        synced_at=SYNCED,
+    )
+    assert c is not None
+    assert [(s.household_cm_id, s.expected, s.status) for s in c.shares] == [
+        (1000001, Decimal(1), "confirmed"),
+        (1000004, Decimal(0), "confirmed"),
+    ]
+    assert c.reconciled
+
+
+def test_a_lock_with_extra_money_confirms_against_the_lines_summed() -> None:
+    with_extra = priced("emma", 1000001, view(1, "posted", locked="2100", extra="300"))
+    lines = [line(1, "1800", posted=MAR9), line(2, "300", posted=MAR9)]
+    c = confirmation(with_extra, POSTED_R1, lines, (), 1000001, synced_at=SYNCED)
+    assert c is not None
+    assert (c.status, c.locked, c.in_campminder) == ("confirmed", Decimal(2100), Decimal(2100))
+
+
+def test_a_sub_dollar_gap_reads_short() -> None:
+    c = confirm([line(1, "1799.50", posted=MAR9)])
+    assert c is not None
+    assert (c.status, c.gap) == ("short", Decimal("-0.50"))
+
+
+def test_a_share_that_is_short_reads_short_and_holds_the_request_unreconciled() -> None:
+    lines = [line(1, "1080", posted=MAR9), line(2, "500", household=1000004, posted=MAR9)]
+    c = confirm(lines, shares=[share(1000001, "60"), share(1000004, "40")])
+    assert c is not None
+    assert [(s.household_cm_id, s.status) for s in c.shares] == [(1000001, "confirmed"), (1000004, "short")]
+    assert not c.reconciled
+
+
+def test_shares_await_the_sync_while_the_request_awaits_it() -> None:
+    c = confirm([], shares=[share(1000001, "60"), share(1000004, "40")], synced=datetime(2027, 3, 9, 9, 0, tzinfo=UTC))
+    assert c is not None
+    assert c.status == "awaiting_sync"
+    assert [s.status for s in c.shares] == ["awaiting_sync", "awaiting_sync"]

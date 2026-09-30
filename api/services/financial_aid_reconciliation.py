@@ -409,10 +409,10 @@ class Confirmation:
 def _status(awaiting: bool, held: Decimal, due: Decimal) -> ConfirmationStatus:
     if awaiting:
         return "awaiting_sync"
+    if held == due:
+        return "confirmed"  # first: a $0 lock with $0 held is a real, confirmed zero (D74)
     if held == 0:
         return "not_in_campminder"
-    if held == due:
-        return "confirmed"
     return "short" if held < due else "over"
 
 
@@ -467,8 +467,9 @@ def confirmation(
 ) -> Confirmation | None:
     """The request's confirmation state, or None while nothing on it is posted. `lines` are the
     lines placed on this request (a closed request passes `SeasonLedger.closed_lines`), never
-    family-level money. The season gate (no confirmation before the first ticked season) is the
-    caller's."""
+    family-level money. For a clawed-back request `reversed_on` must be the day `apply_clawback`
+    returned; without it the request reads not_in_campminder with a locked total of 0. The season gate (no confirmation before the first ticked
+    season) is the caller's."""
     posted = [view for view in priced.rounds if view.status == "posted"]
     if not posted:
         return None
