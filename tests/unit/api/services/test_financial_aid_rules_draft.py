@@ -4,7 +4,7 @@ FinancialAidRulesService over the in-memory FakeStore; fictional season 2031 onl
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -13,6 +13,7 @@ from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
     FinancialAidRulesService,
     NotLatestVersionError,
+    PricingVersionInUseError,
     SectionInvalidError,
     YearMismatchError,
     parse_section,
@@ -192,3 +193,98 @@ def test_pricing_reads_the_same_sections_the_decisions_service_did() -> None:
     from api.services import financial_aid_decisions_service
 
     assert financial_aid_decisions_service.PRICING_SECTIONS is PRICING_SECTIONS
+
+
+@pytest.mark.asyncio
+async def test_an_edit_that_knocks_back_an_unchanged_approved_section_branches() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Jan 15")
+    v2 = await service.load(2031, 2)
+    broken = v2.document.model_dump(mode="json")
+    del broken["award_tables"]["teen"]
+    saved = await service.save_sections(2031, 2, AidRules.model_validate(broken), actor=TREASURER)
+    assert (saved.branched_from, saved.version.version) == (2, 3)
+    status = saved.version.section_status
+    assert (status["award_tables"].state, status["programs"].state) == ("draft", "draft")
+    assert status["programs"].edited_by == TREASURER  # a reverted section is stamped too
+    assert (await service.load(2031, 2)).section_status["programs"].state == "approved"
+    latest = await service.latest_approved(2031, ["programs"])
+    assert latest is not None
+    assert latest.version == 2
+
+
+@pytest.mark.asyncio
+async def test_a_version_the_intake_reads_is_protected_even_when_it_does_not_price() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    v2 = await service.load(2031, 2)  # awards is draft: v2 does not price, but programs and cost are approved
+    saved = await service.save_sections(2031, 2, _without_teen_table_of(v2.document), actor=TREASURER)
+    assert saved.branched_from == 2
+    assert (await service.load(2031, 2)).section_status["programs"].state == "approved"
+
+
+def _without_teen_table_of(document: AidRules) -> AidRules:
+    body = document.model_dump(mode="json")
+    del body["award_tables"]["teen"]
+    return AidRules.model_validate(body)
+
+
+@pytest.mark.asyncio
+async def test_an_approved_section_on_a_version_not_pricing_and_not_a_copy_branches() -> None:
+    """Decision 2(b): approved on this version itself (its parent holds it as a draft), so this is the newest
+    approved copy, though the version prices nothing and feeds no intake."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Board, Jan 8")
+    await service.save_sections(2031, 1, with_lever(fictional_rules(), "income.floor", "500"), actor=TREASURER)
+    v2 = await service.load(2031, 2)  # branched: income draft on v2
+    await service.approve_sections(2031, 2, ["income"], actor=FINANCE, note="Board, Feb 1")
+    saved = await service.save_sections(2031, 2, with_lever(v2.document, "income.floor", "600"), actor=TREASURER)
+    assert (saved.branched_from, saved.version.version) == (2, 3)
+    assert (await service.load(2031, 2)).section_status["income"].state == "approved"
+
+
+@pytest.mark.asyncio
+async def test_a_branched_version_replays_through_approved_as_of() -> None:
+    clock_now = [AT]
+    store = FakeStore(clock=lambda: clock_now[0])
+    service = FinancialAidRulesService(store, clock=lambda: clock_now[0])
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, list(SECTION_NAMES), actor=FINANCE, note="Board, Jan 8")
+    clock_now[0] = AT + timedelta(days=10)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    clock_now[0] = AT + timedelta(days=20)
+    await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Feb 1")
+    before = await service.approved_as_of(2031, PRICING_SECTIONS, AT + timedelta(days=15))
+    after = await service.approved_as_of(2031, PRICING_SECTIONS, AT + timedelta(days=25))
+    assert before is not None
+    assert after is not None
+    assert (before.version, after.version) == (1, 2)
+    assert after.document.awards.minimum == Decimal(150)
+
+
+# --- the whole-document save (save) refuses to overwrite approved rules in use -------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_whole_document_save_over_approved_pricing_rules_is_refused() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    before = len(store.operations)
+    with pytest.raises(PricingVersionInUseError, match="section editor"):
+        await service.save(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_a_whole_document_save_on_a_version_not_in_use_still_saves() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)  # bootstrap-shaped: nothing approved
+    await service.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Board")
+    saved, _ = await service.save(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    assert saved.document.awards.minimum == Decimal(150)

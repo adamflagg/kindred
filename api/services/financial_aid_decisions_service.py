@@ -91,7 +91,10 @@ from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
-from api.services.financial_aid_rules_service import RulesHistoryIncompleteError, RulesVersion
+from api.services.financial_aid_rules_service import (
+    RulesHistoryIncompleteError,
+    RulesVersion,
+)
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.change_replay import LogRow, replay

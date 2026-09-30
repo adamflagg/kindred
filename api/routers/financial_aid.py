@@ -122,6 +122,7 @@ from api.services.financial_aid_rules_service import (
     AidRulesRepository,
     FinancialAidRulesService,
     NotLatestVersionError,
+    PricingVersionInUseError,
     RulesNotFoundError,
     RulesVersion,
     VersionExistsError,
@@ -188,7 +189,7 @@ def _rules() -> FinancialAidRulesService:
 def _rules_http(exc: FinancialAidError) -> HTTPException:
     if isinstance(exc, RulesNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, (VersionExistsError, NotLatestVersionError)):
+    if isinstance(exc, (VersionExistsError, NotLatestVersionError, PricingVersionInUseError)):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 

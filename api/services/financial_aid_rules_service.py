@@ -31,6 +31,12 @@ for an approval or a lock; an approval's note, which names the approving body
 (D39), is its reason. A save that sends approved sections back to draft logs
 that in the same row, as the section_status change.
 
+SP9 adds the rules draft: `save_sections` (the section editors' and a promotion's save, which never overwrites an
+approved or locked section in use: see `_protected`; `quality_checks` is the known exception, plan Decision 19), a
+first lock that reaches an open rules draft (`lock_writes`), the Rules tab's `draft_view`, D76's `approved_view`, and
+`promotion_preview` / `promote` ("Make B2 the rules draft"). The whole-document `save` refuses to touch an approved
+section of a version in use (`PricingVersionInUseError`).
+
 Every refusal raised here subclasses FinancialAidError, so a router can map
 them with one `except` without catching pydantic's ValidationError.
 """
@@ -48,6 +54,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
+from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
@@ -125,6 +132,11 @@ class NotLatestVersionError(FinancialAidError, ValueError):
 
 class NoSectionsNamedError(FinancialAidError, ValueError):
     """An approval must name at least one section."""
+
+
+class PricingVersionInUseError(FinancialAidError, ValueError):
+    """A whole-document save would change an approved or locked section of the version pricing the season (or
+    feeding intake); the section editor branches a new version instead."""
 
 
 class SectionInvalidError(FinancialAidError, ValueError):
@@ -462,6 +474,14 @@ class FinancialAidRulesService:
         before = validate_rules(current.document, context)
         report = validate_rules(document, context)
         outcome = apply_edit(current.document, document, current.section_status, before=before, after=report)
+        touched = [*changed_sections(current.document, document), *outcome.reverted]
+        # Only a version that prices the season is guarded here; an intake-only read is protected in save_sections.
+        in_use = await self._sections_in_use(current, intake=False)
+        if any(name in in_use and current.section_status[name].state in ("approved", "locked") for name in touched):
+            raise PricingVersionInUseError(
+                f"Version {current.version} of {year} prices the season: a whole-document save would "
+                "send its approved sections back to draft. Use the section editor, which branches a new version"
+            )
         stored = _stored(current)
         data = {"document": _dump(document), "section_status": status_to_json(outcome.status)}
         if data == stored:
@@ -510,10 +530,8 @@ class FinancialAidRulesService:
         if not changed:
             return SectionSaveResult(current, before, None)
         after = validate_rules(candidate, context)
-        pricing = await self.latest_approved(year, PRICING_SECTIONS)
-        in_use = pricing is not None and pricing.version == current.version
+        in_use = await self._sections_in_use(current)
         parent = await self._same_year_parent(current)
-        branch = any(_protected(current, parent, name, in_use=in_use) for name in changed)
         locked = [name for name in changed if current.section_status[name].state == "locked"]
         outcome = apply_edit(
             current.document,
@@ -522,7 +540,11 @@ class FinancialAidRulesService:
             before=before,
             after=after,
         )
-        status = stamp_edits(outcome.status, changed, by=actor, at=self._clock(), via=via)
+        # apply_edit also sends an UNCHANGED approved section back to draft when the edit gives it new
+        # validation errors: that loses its approval as surely as editing it, so it counts toward branching.
+        touched = [name for name in SECTION_NAMES if name in changed or name in outcome.reverted]
+        branch = any(_protected(current, parent, name, in_use=name in in_use) for name in touched)
+        status = stamp_edits(outcome.status, touched, by=actor, at=self._clock(), via=via)
         if branch:
             number = await self._next_version(year)
             body = _body(year, number, candidate, status, parent_year=year, parent_version=current.version)
@@ -548,6 +570,20 @@ class FinancialAidRulesService:
         )
         await self._store.commit([write], actor=actor)
         return SectionSaveResult(await self.load(year, current.version), after, None)
+
+    async def _sections_in_use(self, version: RulesVersion, *, intake: bool = True) -> frozenset[SectionName]:
+        """The sections of `version` a save must not overwrite because a reader takes them from it: every
+        section when it prices the season, and just intake's (programs, cost) when only intake reads it. Editing
+        an unread section of an intake-only version moves nothing, so it may still save in place."""
+        pricing = await self.latest_approved(version.year, PRICING_SECTIONS)
+        if pricing is not None and pricing.version == version.version:
+            return frozenset(SECTION_NAMES)
+        if not intake:
+            return frozenset()
+        read = await self.latest_approved(version.year, INTAKE_RULES_SECTIONS)
+        if read is not None and read.version == version.version:
+            return frozenset(INTAKE_RULES_SECTIONS)
+        return frozenset()
 
     async def _same_year_parent(self, version: RulesVersion) -> RulesVersion | None:
         """The version `version` was copied from in the same season; None for version 1 or "start from last year"."""
