@@ -5,9 +5,11 @@ the Camp pool's Round 1 is allocated 340,000 of a 500,000 budget (see decisions_
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -113,21 +115,52 @@ async def test_camp_aid_lines_are_read_live_and_reversed_by_their_funder_type() 
     }
 
 
-@pytest.mark.asyncio
-async def test_the_last_ledger_sync_is_the_newest_successful_aid_postings_run() -> None:
+def _run(trigger: str, year: int, ended: str) -> SimpleNamespace:
+    return SimpleNamespace(trigger=trigger, year=year, ended=ended)
+
+
+async def _last_sync(runs: list[SimpleNamespace], season: int = YEAR) -> tuple[datetime | None, MagicMock]:
     pb = MagicMock()
-    pb.collection.return_value.get_list.return_value = SimpleNamespace(
-        items=[SimpleNamespace(ended="2027-03-10 09:00:00.000Z")]
-    )
-    repo = FinancialAidDecisionsRepository(pb)
-    assert await repo.fetch_last_ledger_sync(YEAR) == datetime(2027, 3, 10, 9, 0, tzinfo=UTC)
+    pb.collection.return_value.get_list.return_value = SimpleNamespace(items=runs)
+    return await FinancialAidDecisionsRepository(pb).fetch_last_ledger_sync(season), pb
+
+
+@pytest.mark.asyncio
+async def test_the_last_ledger_sync_reads_the_seasons_window_of_successful_aid_postings_runs() -> None:
+    found, pb = await _last_sync([_run("daily", YEAR, "2027-03-10 09:00:00.000Z")])
+    assert found == datetime(2027, 3, 10, 9, 0, tzinfo=UTC)
     pb.collection.assert_called_with("sync_runs")
     call = pb.collection.return_value.get_list.call_args
-    assert call.args == (1, 1)
-    assert call.kwargs["query_params"]["filter"] == f'service = "aid_postings" && status = "success" && year = {YEAR}'
-    assert call.kwargs["query_params"]["sort"] == "-started,-id"
-    pb.collection.return_value.get_list.return_value = SimpleNamespace(items=[])
-    assert await repo.fetch_last_ledger_sync(YEAR) is None
+    assert call.args[:2] == (1, 100)
+    query = call.kwargs["query_params"]
+    assert query["filter"] == (
+        f'service = "aid_postings" && status = "success" && year >= {YEAR - 1} && year <= {YEAR + 1}'
+    )
+    assert query["sort"] == "-started,-id"
+    assert set(query["fields"].split(",")) == {"ended", "trigger", "year"}
+    assert (await _last_sync([]))[0] is None
+
+
+@pytest.mark.asyncio
+async def test_a_scheduled_run_recorded_as_season_n_counts_for_season_n_plus_1() -> None:
+    """Go records the nightly window run (seasons N-1..N+1) with year = the configured season N."""
+    found, _ = await _last_sync([_run("daily", YEAR, "2027-03-10 09:00:00.000Z")], season=YEAR + 1)
+    assert found == datetime(2027, 3, 10, 9, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_manual_run_recorded_as_the_prior_season_does_not_count() -> None:
+    older = _run("daily", YEAR, "2027-03-09 09:00:00.000Z")
+    newest_manual = _run("manual", YEAR - 1, "2027-03-11 09:00:00.000Z")
+    found, _ = await _last_sync([newest_manual, older])
+    assert found == datetime(2027, 3, 9, 9, 0, tzinfo=UTC)  # the manual run is skipped, the scheduled one counts
+    assert (await _last_sync([newest_manual]))[0] is None
+
+
+@pytest.mark.asyncio
+async def test_a_manual_run_recorded_as_the_season_counts_for_it() -> None:
+    found, _ = await _last_sync([_run("manual", YEAR, "2027-03-11 09:00:00.000Z")])
+    assert found == datetime(2027, 3, 11, 9, 0, tzinfo=UTC)
 
 
 # --- the reads (Task 5) -----------------------------------------------------------------------------
@@ -285,15 +318,21 @@ async def test_a_past_date_before_the_reversal_still_counts_the_posted_money() -
 
 
 @pytest.mark.asyncio
-async def test_another_years_ledger_sync_does_not_end_this_seasons_wait() -> None:
+async def test_the_season_read_asks_for_its_own_seasons_ledger_sync() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0)
-    store.synced_other_years[YEAR - 1] = NIGHT_AFTER  # a manual run for last season
-    c = (await _row(store)).confirmation
-    assert c is not None
-    assert c.status == "awaiting_sync"
+    asked: list[int] = []
+    fetch = store.fetch_last_ledger_sync
+
+    async def spy(year: int) -> datetime | None:
+        asked.append(year)
+        return await fetch(year)
+
+    store.fetch_last_ledger_sync = spy  # type: ignore[method-assign]
+    await _row(store)
+    assert asked == [YEAR]
 
 
 # --- the past read is exact or empty (fix round 1, Important 1) ------------------------------------
@@ -472,3 +511,97 @@ async def test_a_payer_share_households_family_level_money_blocks_the_clawback()
     store.synced_at = JUN1 + timedelta(hours=12)
     row = await _row(store)
     assert (row.total_posted, row.rounds[0].clawed_back) == (1500.0, False)
+
+
+@pytest.mark.asyncio
+async def test_a_bad_placements_line_person_and_a_bad_shares_household_empty_the_requests_they_reach() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    seed_request(store, "reqava000000001", household=1000003, person=1000031)
+    store.shares.append(share_row(LIAM, 1000004, "0"))  # Liam's request also has a co-payer household
+    log_seeded(store, SEEDED)
+    store.shares.append(share_row(EMMA, 1000004, "0"))  # exists now, never logged
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged
+    for rid in (EMMA, LIAM, "reqava000000001"):
+        _posted(store, rid, 1, "1500")
+    # the unreplayable placement's line belongs to another home, posted to Ava's camper
+    seed_line(store, 9001, "1500", household=1000009, person=1000031, posted=T0)
+    grid = await _past_service(store).grid(YEAR, as_of=date(2027, 6, 5))
+    rows = {r.request_id: r for r in grid.rows}
+    assert rows["reqava000000001"].total_posted is None  # the line's own person
+    shares_gap = next(g for g in grid.not_rebuilt if g.figure == "payer_shares_history")
+    assert shares_gap.requests == [EMMA, LIAM]  # Liam holds a share of the same unreplayable household
+    assert rows[LIAM].total_posted is None
+
+
+@pytest.mark.asyncio
+async def test_emptied_budget_figures_are_named_only_when_they_are_emptied() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0)
+    clean = await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5))
+    assert {"posted", "accepted", "outside_budget_posted"}.isdisjoint(g.figure for g in clean.not_rebuilt)
+    store.shares.append(share_row(EMMA, 1000004, "0"))  # exists now, never logged
+    emptied = await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5))
+    named = {g.figure: g.reason for g in emptied.not_rebuilt}
+    for figure in ("posted", "accepted", "outside_budget_posted"):
+        assert "history" in named[figure], figure
+    assert emptied.total.below.outside_budget_posted is None
+    assert all(row.posted is None and row.accepted is None for row in emptied.strip)
+
+
+@pytest.mark.asyncio
+async def test_a_clean_past_read_with_ledger_lines_names_that_classification_is_todays() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0)
+    for read in (
+        (await _past_service(store).grid(YEAR, as_of=date(2027, 6, 5))).not_rebuilt,
+        (await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5))).not_rebuilt,
+    ):
+        gap = next(g for g in read if g.figure == "ledger_classification")
+        assert "today" in gap.reason
+    empty = FakeDecisionsStore()
+    _emma_posted(empty)
+    grid = await _past_service(empty).grid(YEAR, as_of=date(2027, 6, 5))
+    assert "ledger_classification" not in [g.figure for g in grid.not_rebuilt]
+
+
+@pytest.mark.asyncio
+async def test_each_current_read_completes_before_its_change_log_read_starts() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0)
+    order: list[str] = []
+    fetch_shares, fetch_overrides, fetch_log = (
+        store.fetch_payer_shares,
+        store.fetch_line_overrides,
+        store.fetch_change_log,
+    )
+
+    async def slow(name: str, fetch: Any, *args: Any) -> Any:
+        order.append(f"{name}-start")
+        for _ in range(5):
+            await asyncio.sleep(0)  # a slow read: a concurrent log read would start meanwhile
+        found = await fetch(*args)
+        order.append(f"{name}-done")
+        return found
+
+    async def shares(*args: Any, **kwargs: Any) -> Any:
+        return await slow("shares", fetch_shares, *args)
+
+    async def overrides(*args: Any, **kwargs: Any) -> Any:
+        return await slow("overrides", fetch_overrides, *args)
+
+    async def log(year: int, entity: str) -> Any:
+        if entity in ("aid_payer_shares", "aid_attribution_overrides"):
+            order.append(f"log-{entity}")
+        return await fetch_log(year, entity)
+
+    store.fetch_payer_shares = shares  # type: ignore[method-assign]
+    store.fetch_line_overrides = overrides  # type: ignore[method-assign]
+    store.fetch_change_log = log  # type: ignore[method-assign]
+    await _past_service(store).grid(YEAR, as_of=date(2027, 6, 5))
+    assert order.index("shares-done") < order.index("log-aid_payer_shares")
+    assert order.index("overrides-done") < order.index("log-aid_attribution_overrides")

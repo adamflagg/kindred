@@ -73,6 +73,14 @@ def decision_event(record: Any) -> DecisionEvent:
     )
 
 
+def ledger_run_covers(trigger: str, recorded_year: int, season: int) -> bool:
+    """Whether a successful aid_postings run counts for `season`: a scheduled (window) run recorded
+    within season-1..season+1, or any other run (manual, pinned) recorded as that season."""
+    if trigger in _SCHEDULED_TRIGGERS:
+        return abs(recorded_year - season) <= 1
+    return recorded_year == season
+
+
 def camp_line(record: Any) -> CampLine:
     """One camp-aid aid_postings record as a line, in aid dollars (CampMinder's sign flipped)."""
     return CampLine(
@@ -131,6 +139,10 @@ _LINE_FIELDS = (
     "transaction_cm_id,household_cm_id,person_cm_id,amount,post_date,is_reversed,reversal_date,"
     "attributed_person_cm_id,attributed_session_cm_id,program_family"
 )
+# sync_runs.trigger values a current-season queue records (sync/orchestrator.go); their aid_postings run
+# spans seasons N-1..N+1 but Go records it with year = the configured season N (UsesSeasonWindow).
+_SCHEDULED_TRIGGERS: Final = frozenset({"hourly", "daily", "weekly"})
+_RUN_PAGE = 100
 _HOLD_SEASON_FIELDS = "id,request,event,code,note,actor,created"
 
 
@@ -197,17 +209,26 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         return [line_override(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year)]
 
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
-        """When the season's aid ledger (aid_postings) last finished a successful run: a tick after it awaits
-        tonight's sync (D59). One row, sorted as sync_runs' other readers sort it."""
+        """When the season's aid ledger (aid_postings) last finished a successful run that covered it: a
+        tick after it awaits tonight's sync (D59). The newest covering run of the newest `_RUN_PAGE`
+        successful runs in the season's window (`ledger_run_covers`).
+
+        This errs toward "awaiting" a little longer after a manual run of the window, which Go records
+        under the one season it named. TODO(owner): exact coverage needs Go to record the seasons a run
+        covered (sync_runs has only `year`)."""
         result = await asyncio.to_thread(
             self.pb.collection(SYNC_RUNS).get_list,
             1,
-            1,
+            _RUN_PAGE,
             query_params={
-                "filter": f'service = "aid_postings" && status = "success" && year = {int(year)}',
+                "filter": (
+                    f'service = "aid_postings" && status = "success" && year >= {int(year) - 1} && year <= {int(year) + 1}'
+                ),
                 "sort": "-started,-id",
-                "fields": "ended",
+                "fields": "ended,trigger,year",
             },
         )
-        items = list(result.items)
-        return parse_pb_datetime(getattr(items[0], "ended", None)) if items else None
+        for run in result.items:
+            if ledger_run_covers(str(getattr(run, "trigger", "")), int(getattr(run, "year", 0) or 0), year):
+                return parse_pb_datetime(getattr(run, "ended", None))
+        return None

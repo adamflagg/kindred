@@ -127,6 +127,7 @@ from bunking.financial_aid.decisions import (
     NO_HOLDS,
     NO_POOL,
     PAST_DATE_GAPS,
+    POSTED_GAPS,
     REMAINING_GAPS,
     UNRELEASABLE,
     Cell,
@@ -388,9 +389,9 @@ def _unreplayable(keys_now: Collection[str], log: Sequence[LogRow], replayed: Ma
 
 def _shares_as_of(
     current: Sequence[PayerShareRecord], log: Sequence[LogRow], at: datetime
-) -> tuple[dict[str, tuple[PayerShareRecord, ...]], frozenset[str]]:
+) -> tuple[dict[str, tuple[PayerShareRecord, ...]], frozenset[str], frozenset[int]]:
     """Each request's payer shares as of `at`, replayed from aid_change_log the way requests are
-    (3c-1), and the requests whose shares can't be replayed exactly."""
+    (3c-1), and the requests, and the households, behind shares that can't be replayed exactly."""
     now = {_share_key(s.request_id, s.household_cm_id): s for s in current}
     replayed = replay(log, as_of=at, current={key: _share_log_fields(s) for key, s in now.items()})
     bad = _unreplayable(now.keys(), log, replayed)
@@ -411,7 +412,11 @@ def _shares_as_of(
                 note=str(state.get("note", "")),
             )
         )
-    return {rid: tuple(rows) for rid, rows in grouped.items()}, frozenset(key.split(":")[0] for key in bad)
+    return (
+        {rid: tuple(rows) for rid, rows in grouped.items()},
+        frozenset(key.split(":")[0] for key in bad),
+        frozenset(int(key.split(":")[1]) for key in bad),
+    )
 
 
 def _placements_as_of(
@@ -741,6 +746,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
     posted and accepted counts, and Round 2 asks so far (unless a request's status is unknown)."""
     asks = not season.unrebuilt
     emptied = [] if asks else _gaps(["round2_asks", "round2_asked"])
+    posted_gaps = _gaps(POSTED_GAPS) if season.posted_unknown else []
     if season.posted_unknown:
         out = _emptied_posted(out)
     return out.model_copy(
@@ -754,7 +760,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
             "outside_grants_off_requests": None,
             "as_of": season.as_of,
             "as_of_axis": season.axis,
-            "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *season.gaps],
+            "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *posted_gaps, *season.gaps],
         }
     )
 
@@ -1002,7 +1008,7 @@ class FinancialAidDecisionsService:
     ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
         """Clawbacks as of `at`, applied to `priced` in place; the gaps and the requests whose posted money
         is left empty (their shares or placements can't be replayed)."""
-        shares_of, bad_shares = _shares_as_of(inputs.shares, inputs.share_log, at)
+        shares_of, bad_shares, bad_share_households = _shares_as_of(inputs.shares, inputs.share_log, at)
         placements, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
         ledger = build_ledger(
             inputs.camp_lines,
@@ -1012,9 +1018,15 @@ class FinancialAidDecisionsService:
             _posted_ids(rounds),
             at,
         )
-        bad_households = {line.household_cm_id for line in inputs.camp_lines if line.transaction_cm_id in bad_txns}
+        behind = [line for line in inputs.camp_lines if line.transaction_cm_id in bad_txns]
+        bad_households = {line.household_cm_id for line in behind}
+        bad_people |= {line.person_cm_id for line in behind if line.person_cm_id > 0}
         posted = _posted_ids(rounds)
-        by_shares = sorted(rid for rid in bad_shares if rid in requests and rid in posted)
+        by_shares = sorted(
+            rid
+            for rid, r in requests.items()
+            if rid in posted and (rid in bad_shares or bad_share_households & request_scope(r, shares_of.get(rid, ())))
+        )
         by_placements = (
             sorted(
                 rid
@@ -1036,9 +1048,12 @@ class FinancialAidDecisionsService:
                 priced[request_id], rounds.get(request_id, {}), lines, at=at, family_unplaced=unplaced
             )
         gaps = [
-            NotRebuiltOut(figure=figure, reason=PAST_DATE_GAPS[figure], requests=ids)
-            for figure, ids in (("payer_shares_history", by_shares), ("line_placements_history", by_placements))
-            if ids
+            NotRebuiltOut(figure="ledger_classification", reason=PAST_DATE_GAPS["ledger_classification"]),
+            *(
+                NotRebuiltOut(figure=figure, reason=PAST_DATE_GAPS[figure], requests=ids)
+                for figure, ids in (("payer_shares_history", by_shares), ("line_placements_history", by_placements))
+                if ids
+            ),
         ]
         return gaps, unknown
 
@@ -1131,7 +1146,9 @@ class FinancialAidDecisionsService:
             rows=rows,
             as_of=season.as_of,
             as_of_axis=season.axis,
-            not_rebuilt=[*_gaps(GRID_GAPS), *season.gaps] if past else [],
+            not_rebuilt=[*_gaps(GRID_GAPS), *(_gaps(["posted"]) if season.posted_unknown else []), *season.gaps]
+            if past
+            else [],
         )
 
     @staticmethod

@@ -65,8 +65,7 @@ class FakeDecisionsStore:
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
         self.camp_lines: list[CampLine] = []
         self.placements: dict[int, Placement] = {}
-        self.synced_at: datetime | None = None  # the last successful ledger sync of YEAR; None = never
-        self.synced_other_years: dict[int, datetime] = {}
+        self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -128,7 +127,7 @@ class FakeDecisionsStore:
         ]
 
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
-        return self.synced_at if year == YEAR else self.synced_other_years.get(year)
+        return self.synced_at
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]

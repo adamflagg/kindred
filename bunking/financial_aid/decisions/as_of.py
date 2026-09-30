@@ -70,6 +70,23 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
     "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
     "rules_history": "The rules' change history for this season can't be replayed to that date",
+    "ledger_classification": (
+        "Which CampMinder lines count as the camp's own aid (a line's funder-type reclassification) and Go's "
+        "session attribution are read as they are today, not as of that date"
+    ),
+    "posted": (
+        "Posted, as a request's round and in the budget's cells and strip counts, is left empty where a "
+        "request's payer shares or line placements can't be replayed (see payer_shares_history and "
+        "line_placements_history)"
+    ),
+    "accepted": (
+        "Accepted, in the budget's cells and strip counts, is left empty with Posted (see payer_shares_history "
+        "and line_placements_history)"
+    ),
+    "outside_budget_posted": (
+        "Posted money outside the budget is left empty with Posted (see payer_shares_history and "
+        "line_placements_history)"
+    ),
     "payer_shares_history": (
         "These requests' payer shares can't be replayed to that date, so whether CampMinder had reversed their "
         "posted money is unknown and it is left empty. (Also as of today, not that date: a line's "
@@ -105,6 +122,8 @@ BUDGET_GAPS: Final[tuple[str, ...]] = (
     "round1_unmet",
 )
 REMAINING_GAPS: Final[tuple[str, ...]] = ("remaining",)
+# Named only when a past read empties them (a request's posted money can't be replayed): not always-on.
+POSTED_GAPS: Final[tuple[str, ...]] = ("posted", "accepted", "outside_budget_posted")
 
 
 def _view(

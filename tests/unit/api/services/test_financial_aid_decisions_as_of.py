@@ -322,7 +322,9 @@ async def test_a_past_read_reads_only_dated_records(monkeypatch: pytest.MonkeyPa
     store = _seeded(EMMA)
 
     async def refuse(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError("3c-1's past read reads no answers, shares or equity")
+        raise AssertionError(
+            "3c-1's past read reads no answers or equity, and no payer shares while the ledger has no lines"
+        )
 
     for name in ("fetch_applications", "fetch_payer_shares", "fetch_equity_answers"):
         monkeypatch.setattr(store, name, refuse)
