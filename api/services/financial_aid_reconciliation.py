@@ -234,6 +234,24 @@ def _index(
     return by_person, by_household
 
 
+def _has_live_candidate(
+    line: CampLine,
+    placement: Placement | None,
+    by_person: Mapping[int, Sequence[PlaceableRequest]],
+    by_household: Mapping[int, Sequence[PlaceableRequest]],
+    closed_person: Mapping[int, Sequence[PlaceableRequest]],
+) -> bool:
+    """Whether the live pass had anyone to choose from: the person holds a live request, or (when the
+    person has no request of their own, live or closed) the household holds one. A person whose own
+    request is closed is not shadowed by a sibling's live request."""
+    person = placement.person_cm_id if placement is not None else line.person_cm_id
+    if person > 0 and by_person.get(person):
+        return True
+    if person > 0 and closed_person.get(person):
+        return False
+    return bool(by_household.get(line.household_cm_id))
+
+
 def build_ledger(
     lines: Iterable[CampLine],
     placements: Mapping[int, Placement],
@@ -263,7 +281,9 @@ def build_ledger(
         if request_id is not None:
             placed[request_id].append(line)
             continue
-        closed_id = _place(line, placement, closed_person, closed_household)
+        # The second pass runs on ABSENCE only: several live candidates are ambiguity, and stay at family level.
+        has_live = _has_live_candidate(line, placement, by_person, by_household, closed_person)
+        closed_id = None if has_live else _place(line, placement, closed_person, closed_household)
         if closed_id is not None:
             closed[closed_id].append(line)
         elif line.live():
@@ -290,12 +310,22 @@ def _posted_day(state: RoundState | None) -> date:
     return camp_date(state.locked_at) if state.locked_at is not None else date.min
 
 
-def clawed_back_on(lines: Sequence[CampLine], first_posted_on: date, at: datetime | None = None) -> date | None:
+def clawed_back_on(
+    lines: Sequence[CampLine],
+    first_posted_on: date,
+    at: datetime | None = None,
+    family_unplaced: Decimal = ZERO,
+) -> date | None:
     """D54: the day CampMinder took back what it held for this request, or None. Nothing placed on it
     is live, and a placed line was reversed on or after its first posted day. A reversal that leaves
     money live reads short instead, and an appeal's reverse-and-repost is never one (the repost is
-    live). Derived on every read: a later repost makes the money posted again."""
-    if any(line.live(at) for line in lines):
+    live). Derived on every read: a later repost makes the money posted again.
+
+    `family_unplaced` is the live camp aid its D26 households hold at family level: an unplaced
+    repost may be the appeal (reversed on the camper, reposted on a parent), so while any is there
+    CampMinder may still hold the money and nothing is clawed back yet (D54). A reversed line with no
+    reversal_date never counts as a reversal; CampMinder data is not expected to carry one."""
+    if family_unplaced > ZERO or any(line.live(at) for line in lines):
         return None
     days = [
         camp_date(line.reversal_date)
@@ -311,6 +341,7 @@ def apply_clawback(
     lines: Sequence[CampLine],
     *,
     at: datetime | None = None,
+    family_unplaced: Decimal = ZERO,
 ) -> tuple[PricedRequest, date | None]:
     """The request with every posted round marked clawed back when its money came back, and the
     reversal's day; otherwise the same request and None. All of a request's posted rounds go
@@ -318,7 +349,7 @@ def apply_clawback(
     posted = [view for view in priced.rounds if view.status == "posted"]
     if not posted:
         return priced, None
-    day = clawed_back_on(lines, min(_posted_day(rounds.get(view.round)) for view in posted), at)
+    day = clawed_back_on(lines, min(_posted_day(rounds.get(view.round)) for view in posted), at, family_unplaced)
     if day is None:
         return priced, None
     views = tuple(replace(view, clawed_back=True) if view.status == "posted" else view for view in priced.rounds)

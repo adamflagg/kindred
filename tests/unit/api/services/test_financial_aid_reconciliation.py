@@ -248,7 +248,7 @@ def test_an_appeals_reverse_and_repost_is_not_a_clawback() -> None:
 
 
 def test_a_line_reversed_before_the_round_was_posted_is_no_clawback() -> None:
-    """A typo reversed on Mar 8, before Ben's Mar 9 tick: that tick reads "not in CampMinder", not reversed."""
+    """A typo reversed on Mar 8, before the registrar's Mar 9 tick: that tick reads "not in CampMinder", not reversed."""
     lines = [line(1, "1700", posted=MAR8, reversed_at=datetime(2027, 3, 8, 20, 0, tzinfo=UTC))]
     assert apply_clawback(R1, POSTED_R1, lines)[1] is None
 
@@ -318,3 +318,48 @@ def test_two_closed_candidates_stay_unplaced() -> None:
     a = request("a", person=1000011, status="withdrawn")
     b = request("b", person=1000011, status="duplicate", session=1000102)
     assert _closed_lines([line(1, "1800", person=1000011)], [a, b], frozenset({"a", "b"})) == ({}, {})
+
+
+# --- fix round 1 ---------------------------------------------------------------------------------
+
+
+def test_several_live_candidates_never_fall_through_to_a_withdrawn_posted_request() -> None:
+    """Probe 1: two live requests are ambiguity, not absence, so the second pass does not run."""
+    live_a = request("a", person=1000011)
+    live_b = request("b", person=1000011, session=1000102)
+    old = request("old", person=1000011, status="withdrawn", session=1000103)
+    ledger = build_ledger([line(1, "1800", person=1000011)], {}, [live_a, live_b, old], None, frozenset({"old"}))
+    assert (ledger.by_request, ledger.by_closed_request) == ({}, {})
+    assert ledger.family_unplaced([1000001]) == Decimal(1800)
+
+
+def test_a_household_line_beside_several_live_requests_never_lands_on_a_withdrawn_family_camp_request() -> None:
+    """Probe 2: the household holds live requests, so its line is ambiguous at family level."""
+    a = request("a", person=1000011)
+    b = request("b", person=1000012, session=1000102)
+    old = request("old", person=0, status="withdrawn", session=1000201, family="family_camp")
+    ledger = build_ledger([line(1, "1800")], {}, [a, b, old], None, frozenset({"old"}))
+    assert (ledger.by_request, ledger.by_closed_request) == ({}, {})
+    assert ledger.family_unplaced([1000001]) == Decimal(1800)
+
+
+def test_a_siblings_live_request_does_not_block_a_withdrawn_campers_own_line() -> None:
+    withdrawn = request("old", person=1000011, status="withdrawn")
+    sibling = request("sib", person=1000012, session=1000102)
+    ledger = build_ledger([line(1, "1800", person=1000011)], {}, [withdrawn, sibling], None, frozenset({"old"}))
+    assert list(ledger.by_closed_request) == ["old"]
+
+
+def test_family_level_money_on_the_request_s_households_holds_a_clawback_back() -> None:
+    """An appeal's repost may sit unplaced on a parent: the money may still be held (D54)."""
+    lines = [line(1, "1800", posted=MAR9, reversed_at=JUN1)]
+    assert apply_clawback(R1, POSTED_R1, lines, family_unplaced=Decimal(2100))[1] is None
+    assert apply_clawback(R1, POSTED_R1, lines, family_unplaced=Decimal(0))[1] == date(2027, 6, 1)
+
+
+def test_the_first_posted_day_across_rounds_is_the_earliest() -> None:
+    """A reversal between two rounds' posted days still follows the first posted day (min)."""
+    two = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "posted", locked="300"))
+    rounds = {1: POSTED_R1[1], 2: replace(POSTED_R1[1], round=2, posted_on=date(2027, 6, 15))}
+    between = [line(1, "2100", posted=MAR9, reversed_at=JUN1)]  # after Round 1's day, before Round 2's
+    assert apply_clawback(two, rounds, between)[1] == date(2027, 6, 1)

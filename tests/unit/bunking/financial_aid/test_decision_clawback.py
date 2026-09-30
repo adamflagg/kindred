@@ -23,3 +23,19 @@ def test_a_clawed_back_discretionary_round_leaves_the_outside_budget_line_too() 
     back = replace(view(1, "posted", locked="1800", counts=False, extra="300"), clawed_back=True)
     budget = season_budget([priced("emma", 1, back)], RULES, outside_grants={})
     assert pool_of(budget, "camp_pool").below.outside_budget == Decimal(0)
+
+
+def test_a_clawed_back_round_adds_no_forward_demand() -> None:
+    """A declined offer is not unmet ask: nothing of a clawed-back request is demand."""
+    r1 = replace(view(1, "posted", ask="2000", locked="1450", accepted=True), clawed_back=True)
+    r2 = replace(view(2, "posted", ask="500", locked="400", accepted=True), clawed_back=True)
+    budget = season_budget(
+        [priced("emma", 1, r1), priced("liam", 2, r1), priced("ava", 3, r1, r2)], RULES, outside_grants={}
+    )
+    demand = pool_of(budget, "camp_pool").demand
+    assert (demand.round1_unmet, demand.round2_asks, demand.round2_asked, demand.round2_computed) == (
+        Decimal(0),
+        Count(),
+        Decimal(0),
+        Decimal(0),
+    )
