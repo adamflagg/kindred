@@ -685,7 +685,7 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
     assert (by_id[EMMA].rounds[0].clawed_back, rows[EMMA].rounds[0].clawed_back) == (False, False)
     live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)
     assert strip(past_budget_) == strip(live_budget)
-    assert past_budget_.total.below.outside_budget_posted == 250.0
+    assert past_budget_.total.below.outside_budget_posted == 650.0
     assert past_budget_.total.demand.round2_asked == 700.0
     # Only the request with no resolvable pool is named as pool_unknown; nothing else is swept in.
     pool_gaps = [g for g in past_budget_.not_rebuilt if g.figure == "pool_unknown"]

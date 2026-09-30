@@ -2922,8 +2922,10 @@ export type Day1YearData = {
  * top_up: a fixed amount added to the award (the appeal top-up).
  * discretionary: staff type the amount on the request (`discretionary_amount`).
  *
- * `counts_toward_budget` says whether this type's money is the camp's own budget money; a
- * decision counts only when its stage's `counts_toward_budget` says so too.
+ * `counts_toward_budget` says whether this type's money is the camp's own budget money. When
+ * false, the type's WHOLE round (base and extra; posted, offered or pending approval) sits below the
+ * line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30); a decision counts
+ * only when its stage's `counts_toward_budget` says so too.
  * `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
  * `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
  */
@@ -2976,8 +2978,10 @@ export type DecisionTypeInput = {
  * top_up: a fixed amount added to the award (the appeal top-up).
  * discretionary: staff type the amount on the request (`discretionary_amount`).
  *
- * `counts_toward_budget` says whether this type's money is the camp's own budget money; a
- * decision counts only when its stage's `counts_toward_budget` says so too.
+ * `counts_toward_budget` says whether this type's money is the camp's own budget money. When
+ * false, the type's WHOLE round (base and extra; posted, offered or pending approval) sits below the
+ * line, never lowers Remaining and adds no forward demand (owner ruling 2026-09-30); a decision counts
+ * only when its stage's `counts_toward_budget` says so too.
  * `ceiling_exempt` lets this type's own money (its top-up or discretionary amount) pay above
  * `tiers.income_ceiling`; Rounds 1-3 stop at the ceiling either way.
  */
