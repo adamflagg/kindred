@@ -243,6 +243,8 @@ def _view(
         )
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
+    if stopped or pending is not None:
+        decided = None  # held: the amount is unknown (D44); pending: it is in `pending`
     status: RoundStatus
     if stopped:
         status = "held"

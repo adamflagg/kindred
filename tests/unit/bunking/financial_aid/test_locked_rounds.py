@@ -45,3 +45,32 @@ def test_the_total_aid_cap_never_cuts_a_locked_round() -> None:
     result = calculate(app(), req(**APPEAL, **ROUND3, r1_locked="3000", r2_locked="600"), rules)
     assert result.r2 == Decimal(600)
     assert result.r3 == Decimal(0)  # the cap's room (3,200 - 3,000 - 600) is gone, so Round 3 is cut
+
+
+def test_a_locked_round_3_is_never_cut_by_the_total_cap() -> None:
+    rules = with_lever(fictional_rules(), "round2.total_cap", {"pct_of_cost": "80", "include_grants": True})
+    result = calculate(app(), req(**APPEAL, **ROUND3, r1_locked="3000", r2_locked="600", r3_locked="400"), rules)
+    assert (result.r3, result.r3_bound) == (Decimal(400), "locked")
+
+
+def test_a_locked_decision_round_already_holds_its_discretionary_money() -> None:
+    # Round 2 posted at its full amount: 600 worked out plus 250 discretionary = 850.
+    rules = with_lever(fictional_rules(), "awards.decision_types.discretionary.round", 2)
+    request = req(**APPEAL, decision_type="discretionary", discretionary_amount="250", r1_locked="3000")
+    before = calculate(app(), request, rules)
+    assert before.total == Decimal(3850)
+    after = calculate(app(), request.model_copy(update={"r2_locked": Decimal(600) + Decimal(250)}), rules)
+    assert after.total == Decimal(3850)
+    assert (after.top_up, after.discretionary) == (Decimal(0), Decimal(0))
+    assert "award_above_cost" not in {i.code for i in after.issues}
+    assert after.step("discretionary_locked").inputs["included_in_locked"] == Decimal(250)
+
+
+def test_a_locked_decision_round_already_holds_its_top_up() -> None:
+    request = req(**APPEAL, decision_type="appeal_top_up", r1_locked="3000")
+    before = calculate(app(), request, fictional_rules())
+    assert before.total == Decimal(3850)
+    after = calculate(app(), request.model_copy(update={"r2_locked": Decimal(850)}), fictional_rules())
+    assert (after.total, after.top_up) == (Decimal(3850), Decimal(0))
+    assert "award_above_cost" not in {i.code for i in after.issues}
+    assert after.step("top_up_locked").inputs["included_in_locked"] == Decimal(250)

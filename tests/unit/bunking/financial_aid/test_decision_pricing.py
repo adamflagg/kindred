@@ -205,3 +205,33 @@ def test_the_lock_snapshot_carries_the_receipt_and_where_it_counts() -> None:
     )
     assert snapshot["counts_toward_budget"] is True
     assert snapshot["result"]["r1"] == "3000"
+
+
+def test_posting_a_round_that_carries_discretionary_money_does_not_count_it_twice() -> None:
+    rules = with_lever(RULES, "awards.decision_types.discretionary.round", 2)
+    keyed = RoundState(round=2, ask=Decimal(99999), discretionary=Decimal(250), discretionary_type="discretionary")
+    before = price_request(item(rounds={1: POSTED_R1, 2: keyed}), rules)
+    r2 = before.view(2)
+    assert r2 is not None
+    assert (r2.status, r2.decided) == ("needs_offer", Decimal(850))
+    assert before.result is not None
+    assert before.result.total == Decimal(3850)
+    posted = replace(keyed, posted=True, locked_amount=Decimal(850), locked_at=T0)
+    after = price_request(item(rounds={1: POSTED_R1, 2: posted}), rules)
+    assert after.result is not None
+    assert after.result.total == Decimal(3850)
+    assert after.holds == ()
+    r2_after = after.view(2)
+    assert r2_after is not None
+    assert (r2_after.decided, r2_after.would_change_by) == (Decimal(850), None)
+
+
+def test_a_held_or_pending_round_reports_no_decided_amount() -> None:
+    hold = CalcIssue(code="placeholder_income", severity="hold", message="Placeholder income")
+    r1 = price_request(item(issues=(hold,)), RULES).view(1)
+    assert r1 is not None
+    assert (r1.status, r1.decided) == ("held", None)
+    rounds: dict[int, RoundState] = {1: POSTED_R1, 2: APPEAL, 3: ROUND3}
+    r3 = price_request(item(rounds=rounds), RULES).view(3)
+    assert r3 is not None
+    assert (r3.status, r3.decided, r3.pending) == ("pending_approval", None, Decimal(400))
