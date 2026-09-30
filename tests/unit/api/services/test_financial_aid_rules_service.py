@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -790,6 +791,15 @@ class _Clock:
         return self.now
 
 
+def _label_in_order(store: FakeStore, *, reverse: bool) -> None:
+    """Rows sharing an instant replay in id order, and the fake's ids are random, as PocketBase's are.
+    Label them in commit order, or reversed, so a clash test meets both orders on every run."""
+    last = len(store.log_rows) - 1
+    store.log_rows = [
+        dataclasses.replace(row, id=f"log{(last - n) if reverse else n:012d}") for n, row in enumerate(store.log_rows)
+    ]
+
+
 async def _made_jan_approved_feb() -> tuple[FinancialAidRulesService, FakeStore, _Clock]:
     clock = _Clock(JAN)
     store = FakeStore(clock=clock)
@@ -821,12 +831,14 @@ async def test_a_re_approval_after_the_date_does_not_change_what_the_date_shows(
 
 
 @pytest.mark.asyncio
-async def test_an_edit_after_the_date_does_not_change_the_document_the_date_shows() -> None:
-    service, _, clock = await _made_jan_approved_feb()
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_an_edit_after_the_date_does_not_change_the_document_the_date_shows(reverse: bool) -> None:
+    service, store, clock = await _made_jan_approved_feb()
     clock.now = MAR
     renamed = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
     await service.save(2031, 1, renamed, actor=FINANCE)
     await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
+    _label_in_order(store, reverse=reverse)  # the save and the approval share March's instant
     then = await service.approved_as_of(2031, _PRICING, FEB + DAY)
     later = await service.approved_as_of(2031, _PRICING, MAR + DAY)
     assert then is not None
@@ -898,7 +910,8 @@ async def test_a_locked_section_counts_as_approved_as_of_the_date() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_same_instant_clash_is_settled_from_a_later_row_not_from_the_record_now() -> None:
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_a_same_instant_clash_is_settled_from_a_later_row_not_from_the_record_now(reverse: bool) -> None:
     """Approval then edit-to-draft then re-approval, the first two in one instant (a save that sends
     the section back to draft, then an approval): the later row's `before` says what the clash left."""
     clock = _Clock(JAN)
@@ -911,6 +924,7 @@ async def test_a_same_instant_clash_is_settled_from_a_later_row_not_from_the_rec
     await service.save(2031, 1, with_lever(fictional_rules(), "programs.summer.label", "Renamed"), actor=FINANCE)
     clock.now = day5
     await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
+    _label_in_order(store, reverse=reverse)
     then = await service.approved_as_of(2031, _PROGRAMS, day1 + timedelta(hours=1))
     assert then is None  # the save sent programs back to draft within day 1
     now = await service.approved_as_of(2031, _PROGRAMS, day5 + DAY)
