@@ -255,7 +255,8 @@ class FinancialAidScenariosService:
         async def price(document: AidRules) -> Priced:
             priced = await price_document(snapshot, document, base, requests=kept)
             requests = list(priced.season.priced.values())
-            return Priced(scenario_results(requests, priced.budget, request_set=note), round1_by_request(requests))
+            results = scenario_results(requests, priced.budget, document=document, request_set=note)
+            return Priced(results, round1_by_request(requests))
 
         return price
 

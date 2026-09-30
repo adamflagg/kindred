@@ -7,9 +7,18 @@ priced season and its budget, exactly as sub-project 10a's Rounds & budget compu
   Round 1 remaining  the total row's Round 1 Remaining: the pools' allocations less every Round 1 dollar (what Fit
                      to budget fits, Decision 11 (a)); Remaining is every round's.
   At the minimum     live requests whose Round 1, not yet posted, is the minimum award (the calculator's r1_bound).
-  By tier            each final tier's live requests, families and Round 1, counted exactly as the budget counts
-                     Round 1 (a posted Round 1 at its lock; a clawed-back round, or one whose decision type is
-                     outside the budget, in no tier). `asked` waits for SP9c (RPT-17).
+  By tier            each final tier's live requests, families, Round 1 and those requests' Round 1 asks, counted
+                     exactly as the budget counts Round 1 (a posted Round 1 at its lock; a clawed-back round, or one
+                     whose decision type is outside the budget, in no tier). SP9c fills `asked` (RPT-17) and `held`:
+                     the tier's live requests whose Round 1 is held (a check's hold has a tier), counted apart so a
+                     tier's apps are never silently short.
+  By table           the same requests split by the award table their program uses under the priced document
+                     ("" for a program with no Round 1 table): RPT-17's per-table rows (SP9c). They sum to By tier.
+  Round 2 by tier    per Round 2 table and final tier: the live requests with a Round 2 ask that is not clawed back
+                     (held ones included: the budget's Round 2 asks so far, _tally_demand), their asks, and the Round
+                     2 money the budget counts on them (RPT-32, SP9c). Round 2 money no appeal row holds (a withdrawn
+                     request's posted Round 2, a request with no tier, a Round 2 with no ask) is `round2_not_in_tiers`:
+                     rows plus it are Round 2.
   Not in tiers       Round 1 money the budget counts on a request with no tier: a withdrawn request's posted round
                      (only live requests are priced into a tier) or a live one priced without a final tier. The tier
                      rows plus this are Round 1 (final review 2).
@@ -26,10 +35,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from bunking.financial_aid.decisions import Cell, PoolBudget, PricedRequest, RoundView, SeasonBudget
 from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.request_set import RequestSetNote
 
 
@@ -45,6 +55,34 @@ class TierRow(_Result):
     # SP9c (RPT-17's by-tier compare) fills it with the tier's Round 1 asks; None until then. Defaulted so kept
     # options stored by SP9b still load.
     asked: Decimal | None = None
+    held: int = 0  # SP9c: the tier's live requests whose Round 1 is held, in none of the figures above
+
+
+class TableTierRow(_Result):
+    """Round 1 by award table and final tier (RPT-17): the requests a tier row counts, split by the award table
+    their program uses under the priced document ("" for a program with no Round 1 table)."""
+
+    table: str
+    tier: int
+    requests: int
+    families: int
+    round1: Decimal
+    asked: Decimal
+    held: int = 0
+
+
+class Round2TierRow(_Result):
+    """Round 2 by Round 2 table and final tier (RPT-32). `appeals` are live requests with a Round 2 ask, held ones
+    included; `priced` are those whose Round 2 the budget counts (Posted, Needs an offer), and `round2` and
+    `priced_asked` are theirs, so "% of Round 2 ask" divides like for like."""
+
+    table: str  # the program's Round 2 table under the priced document; "" when it has none
+    tier: int
+    appeals: int
+    asked: Decimal
+    priced: int
+    priced_asked: Decimal
+    round2: Decimal
 
 
 class PoolResult(_Result):
@@ -80,13 +118,105 @@ class ScenarioResults(_Result):
     # The request set these figures were priced on (D138); None: every frozen request. Kept options and trail rows
     # always store None: a request set is a view setting, applied when a figure is read.
     request_set: RequestSetNote | None = None
+    # SP9c (RPT-17, RPT-32). Every one is defaulted so results stored by SP9b still load; `committee_rows` says the
+    # rows below were computed (SP9b's stored results carry none, so compare prices those options again).
+    by_table: list[TableTierRow] = Field(default_factory=list)
+    round2_by_tier: list[Round2TierRow] = Field(default_factory=list)
+    round2_not_in_tiers: Decimal = ZERO  # Round 2 the budget counts on requests in no tier: rows + this = round2
+    round2_allocated: Decimal | None = None  # "Round 2's allocation": 0 when the rules set no Round 2 reserves
+    round2_remaining: Decimal | None = None
+    committee_rows: bool = False
 
 
 @dataclass
-class _Tier:
+class TierTally:
     requests: set[str] = field(default_factory=set)
     families: set[int] = field(default_factory=set)
     round1: Decimal = ZERO
+    asked: Decimal = ZERO
+    held: set[str] = field(default_factory=set)
+
+    def add(self, priced: PricedRequest, amount: Decimal, ask: Decimal | None) -> None:
+        self.requests.add(priced.request_id)
+        self.families.add(priced.household_cm_id)
+        self.round1 += amount
+        self.asked += ask or ZERO
+
+    def hold(self, priced: PricedRequest) -> None:
+        self.held.add(priced.request_id)
+
+
+@dataclass
+class AppealTally:
+    appeals: set[str] = field(default_factory=set)
+    asked: Decimal = ZERO
+    priced: set[str] = field(default_factory=set)
+    priced_asked: Decimal = ZERO
+    round2: Decimal = ZERO
+
+    def add(self, priced: PricedRequest, ask: Decimal, amount: Decimal | None) -> None:
+        self.appeals.add(priced.request_id)
+        self.asked += ask
+        if amount is not None:
+            self.priced.add(priced.request_id)
+            self.priced_asked += ask
+            self.round2 += amount
+
+
+def appeal_ask(view: RoundView | None) -> Decimal | None:
+    """A Round 2 view's ask when the budget counts it as an appeal (budget._tally_demand, "Round 2 asks so far"):
+    keyed and not clawed back (D54), held or not; else None."""
+    return view.ask if view is not None and not view.clawed_back else None
+
+
+def round1_table(document: AidRules, program_key: str | None) -> str:
+    """The award table a program uses under `document`; "" for a program with no Round 1 table (or no program)."""
+    program = document.programs.get(program_key) if program_key is not None else None
+    return (program.r1_table or "") if program is not None else ""
+
+
+def round2_table(document: AidRules, program_key: str | None) -> str:
+    """The Round 2 table a program's appeals use under `document`; "" when it has none."""
+    return (document.round2.program_tables.get(program_key) or "") if program_key is not None else ""
+
+
+def tier_rows(tiers: Mapping[int, TierTally]) -> list[TierRow]:
+    return [
+        TierRow(
+            tier=n, requests=len(t.requests), families=len(t.families), round1=t.round1, asked=t.asked, held=len(t.held)
+        )
+        for n, t in sorted(tiers.items())
+    ]
+
+
+def table_rows(tables: Mapping[tuple[str, int], TierTally]) -> list[TableTierRow]:
+    return [
+        TableTierRow(
+            table=table,
+            tier=n,
+            requests=len(t.requests),
+            families=len(t.families),
+            round1=t.round1,
+            asked=t.asked,
+            held=len(t.held),
+        )
+        for (table, n), t in sorted(tables.items())
+    ]
+
+
+def round2_rows(appeals: Mapping[tuple[str, int], AppealTally]) -> list[Round2TierRow]:
+    return [
+        Round2TierRow(
+            table=table,
+            tier=n,
+            appeals=len(a.appeals),
+            asked=a.asked,
+            priced=len(a.priced),
+            priced_asked=a.priced_asked,
+            round2=a.round2,
+        )
+        for (table, n), a in sorted(appeals.items())
+    ]
 
 
 def _spent(cell: Cell) -> Decimal:
@@ -130,9 +260,9 @@ def _pool(pool: PoolBudget) -> PoolResult:
     )
 
 
-def _counted_round1(view: RoundView) -> Decimal | None:
-    """A Round 1 view's money exactly as the budget's Round 1 counts it (budget._tally_round): Posted, Needs an offer
-    and Pending approval of a type that counts toward the budget; a clawed-back round counts nowhere (D54)."""
+def counted(view: RoundView) -> Decimal | None:
+    """A round's money exactly as the budget counts it (budget._tally_round): Posted, Needs an offer and Pending
+    approval of a type that counts toward the budget; a clawed-back round counts nowhere (D54)."""
     if not view.counts_toward_budget:
         return None
     if view.status == "posted":
@@ -145,12 +275,21 @@ def _counted_round1(view: RoundView) -> Decimal | None:
 
 
 def scenario_results(
-    priced: Iterable[PricedRequest], budget: SeasonBudget, *, request_set: RequestSetNote | None = None
+    priced: Iterable[PricedRequest],
+    budget: SeasonBudget,
+    *,
+    document: AidRules,
+    request_set: RequestSetNote | None = None,
 ) -> ScenarioResults:
+    """`document` is the rules the season was priced with: it says which award table and Round 2 table each
+    request's program uses (the per-table rows, SP9c)."""
     every = list(priced)
     live = [p for p in every if p.live]
-    tiers: dict[int, _Tier] = defaultdict(_Tier)
+    tiers: dict[int, TierTally] = defaultdict(TierTally)
+    tables: dict[tuple[str, int], TierTally] = defaultdict(TierTally)
+    appeals: dict[tuple[str, int], AppealTally] = defaultdict(AppealTally)
     not_in_tiers = ZERO
+    round2_not_in_tiers = ZERO
     at_minimum = 0
     for p in live:
         view = p.view(1)
@@ -162,17 +301,25 @@ def scenario_results(
         ):
             at_minimum += 1
     for p in every:
+        tier = p.result.final_tier if p.live and p.result is not None else None
         view = p.view(1)
-        amount = _counted_round1(view) if view is not None else None
-        if amount is None:
-            continue
-        if not p.live or p.result is None or p.result.final_tier is None:
-            not_in_tiers += amount
-            continue
-        tier = tiers[p.result.final_tier]
-        tier.requests.add(p.request_id)
-        tier.families.add(p.household_cm_id)
-        tier.round1 += amount
+        amount = counted(view) if view is not None else None
+        if view is not None and amount is not None:
+            if tier is None:
+                not_in_tiers += amount
+            else:
+                tiers[tier].add(p, amount, view.ask)
+                tables[(round1_table(document, p.program_key), tier)].add(p, amount, view.ask)
+        elif view is not None and view.status == "held" and tier is not None:
+            tiers[tier].hold(p)
+            tables[(round1_table(document, p.program_key), tier)].hold(p)
+        appeal = p.view(2)
+        money2 = counted(appeal) if appeal is not None else None
+        asked2 = appeal_ask(appeal)
+        if tier is not None and asked2 is not None:
+            appeals[(round2_table(document, p.program_key), tier)].add(p, asked2, money2)
+        elif money2 is not None:
+            round2_not_in_tiers += money2
     total = budget.total
     return ScenarioResults(
         requests=len(live),
@@ -188,10 +335,13 @@ def scenario_results(
         held_asked=total.below.held_asked,
         round1_unmet=total.demand.round1_unmet,
         pools=[_pool(pool) for pool in budget.pools],
-        by_tier=[
-            TierRow(tier=n, requests=len(t.requests), families=len(t.families), round1=t.round1)
-            for n, t in sorted(tiers.items())
-        ],
+        by_tier=tier_rows(tiers),
         not_in_tiers=not_in_tiers,
         request_set=request_set,
+        by_table=table_rows(tables),
+        round2_by_tier=round2_rows(appeals),
+        round2_not_in_tiers=round2_not_in_tiers,
+        round2_allocated=total.rounds[2].allocated,
+        round2_remaining=total.rounds[2].remaining,
+        committee_rows=True,
     )

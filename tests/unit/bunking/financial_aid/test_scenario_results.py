@@ -9,9 +9,18 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
+from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import PricedRequest, RequestToPrice, RoundState, price_request, season_budget
-from bunking.financial_aid.scenarios import ScenarioResults, TierRow, round1_by_request, scenario_results, up_down
-from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req
+from bunking.financial_aid.scenarios import (
+    Round2TierRow,
+    ScenarioResults,
+    TableTierRow,
+    TierRow,
+    round1_by_request,
+    scenario_results,
+    up_down,
+)
+from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_levers
 
 RULES = fictional_rules()
 
@@ -40,7 +49,7 @@ def _season() -> list[PricedRequest]:
 
 
 def _results(priced: list[PricedRequest]) -> ScenarioResults:
-    return scenario_results(priced, season_budget(priced, RULES, outside_grants={}))
+    return scenario_results(priced, season_budget(priced, RULES, outside_grants={}), document=RULES)
 
 
 def test_round1_and_its_remaining_are_the_budgets_own_figures() -> None:
@@ -64,8 +73,8 @@ def test_the_minimum_the_tiers_and_what_is_held() -> None:
     results = _results(_season())
     assert results.at_minimum == 1
     assert results.by_tier == [
-        TierRow(tier=2, requests=1, families=1, round1=Decimal(3000)),
-        TierRow(tier=6, requests=1, families=1, round1=Decimal(100)),
+        TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000)),
+        TierRow(tier=6, requests=1, families=1, round1=Decimal(100), asked=Decimal(4000)),
     ]
     assert (results.held, results.held_asked) == (1, Decimal(4000))
 
@@ -139,7 +148,7 @@ def test_the_tier_rows_and_what_is_in_no_tier_add_up_to_round1() -> None:
     ]
     results = _results(priced)
     assert results.round1 == Decimal(4200)
-    assert results.by_tier == [TierRow(tier=2, requests=1, families=1, round1=Decimal(3000))]
+    assert results.by_tier == [TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000))]
     assert results.not_in_tiers == Decimal(1200)
     assert sum((t.round1 for t in results.by_tier), Decimal(0)) + results.not_in_tiers == results.round1
 
@@ -148,3 +157,147 @@ def test_results_stored_before_not_in_tiers_still_load() -> None:
     stored = _results(_season()).model_dump(mode="json")
     del stored["not_in_tiers"]
     assert ScenarioResults.model_validate(stored).not_in_tiers == Decimal(0)
+
+
+# --- SP9c: the committee's rows (RPT-17, RPT-32) ---------------------------------------------------------------
+
+
+def _teen(request_id: str, household: int) -> PricedRequest:
+    """A teen request: session 1000104 costs 5,000 and the teen table overrides tier 2 to 70%, so Round 1 is 3,500."""
+    return _priced(request_id, household, 60000, request=req(session_cm_id=1000104, program_key="teen"))
+
+
+def _appeal(ask: str) -> RoundState:
+    return RoundState(round=2, ask=Decimal(ask))
+
+
+def test_tier_rows_carry_the_round1_asks_of_the_requests_they_count() -> None:
+    results = _results(_season())
+    assert [(t.tier, t.asked) for t in results.by_tier] == [(2, Decimal(4000)), (6, Decimal(4000))]
+    assert results.committee_rows is True
+
+
+def test_round1_splits_by_the_award_table_each_program_uses() -> None:
+    results = _results([*_season(), _teen("req-t", 1000004)])
+    assert results.by_table == [
+        TableTierRow(table="camp", tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000)),
+        TableTierRow(table="camp", tier=6, requests=1, families=1, round1=Decimal(100), asked=Decimal(4000)),
+        TableTierRow(table="teen", tier=2, requests=1, families=1, round1=Decimal(3500), asked=Decimal(4000)),
+    ]
+    # All (by_tier) is every table's rows together.
+    assert results.by_tier[0] == TierRow(tier=2, requests=2, families=2, round1=Decimal(6500), asked=Decimal(8000))
+
+
+def test_the_table_is_read_from_the_priced_document() -> None:
+    priced = [_teen("req-t", 1000004)]
+    moved = RULES.model_copy(
+        update={"programs": {**RULES.programs, "teen": RULES.programs["teen"].model_copy(update={"r1_table": "camp"})}}
+    )
+    results = scenario_results(priced, season_budget(priced, RULES, outside_grants={}), document=moved)
+    assert [(row.table, row.tier) for row in results.by_table] == [("camp", 2)]
+
+
+def test_round2_by_tier_counts_appeals_their_asks_and_the_round2_the_budget_counts() -> None:
+    # req-a (tier 2) appeals 1,000: the camp Round 2 cap is 90% of 4,000 = 3,600 less its 3,000 Round 1, so 600.
+    # req-h (tier 2) appeals 500 but is held by a check: an appeal, never priced.
+    held = _priced(
+        "req-h",
+        1000005,
+        60000,
+        rounds={2: _appeal("500")},
+        issues=(CalcIssue(code="placeholder_income", severity="hold", message="Check the income", step="quality"),),
+    )
+    priced = [_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")}), held]
+    results = _results(priced)
+    assert results.by_tier == [
+        TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000), held=1)
+    ]
+    assert results.round2_by_tier == [
+        Round2TierRow(
+            table="camp",
+            tier=2,
+            appeals=2,
+            asked=Decimal(1500),
+            priced=1,
+            priced_asked=Decimal(1000),
+            round2=Decimal(600),
+        )
+    ]
+    assert results.round2 == Decimal(600)
+    assert results.round2_not_in_tiers == Decimal(0)
+    assert (results.round2_allocated, results.round2_remaining) == (Decimal("40000.00"), Decimal("39400.00"))
+
+
+def _held_by_a_check(request_id: str, household: int, **fields: Any) -> PricedRequest:
+    check = CalcIssue(code="placeholder_income", severity="hold", message="Check the income", step="quality")
+    return _priced(request_id, household, 60000, issues=(check,), **fields)
+
+
+def _posted2(round1: str, round2: str, ask: str) -> dict[int, RoundState]:
+    lock = {"pool": "camp_pool", "counts_toward_budget": True}
+    return {
+        1: RoundState(round=1, posted=True, locked_amount=Decimal(round1), snapshot=lock),
+        2: RoundState(round=2, ask=Decimal(ask), posted=True, locked_amount=Decimal(round2), snapshot=lock),
+    }
+
+
+def test_a_request_held_by_a_check_has_a_tier_but_stays_out_of_the_round1_rows_and_their_asks() -> None:
+    results = _results([_priced("req-a", 1000001, 60000), _held_by_a_check("req-h", 1000005)])
+    assert results.by_tier == [
+        TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000), held=1)
+    ]
+    assert results.by_table[0].held == 1
+
+
+def test_round2_rows_and_what_is_in_no_tier_add_up_to_round2() -> None:
+    # req-a appeals live (Round 2 = 600); req-w withdrew after its Round 1 and Round 2 were posted (2,500 and 400).
+    withdrawn = _priced("req-w", 1000006, 60000, live=False, rounds=_posted2("2500", "400", "700"))
+    results = _results([_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")}), withdrawn])
+    assert (results.round2, results.round2_not_in_tiers) == (Decimal(1000), Decimal(400))
+    assert sum((row.round2 for row in results.round2_by_tier), Decimal(0)) + results.round2_not_in_tiers == (
+        results.round2
+    )
+    assert [row.appeals for row in results.round2_by_tier] == [1]  # a withdrawn request's appeal is no appeal
+
+
+def test_a_clawed_back_appeal_is_no_appeal_as_in_the_budget() -> None:
+    clawed = _priced("req-c", 1000007, 60000, rounds=_posted2("3000", "600", "1000"))
+    clawed = replace(clawed, rounds=tuple(replace(view, clawed_back=True) for view in clawed.rounds))
+    priced = [_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")}), clawed]
+    results = _results(priced)
+    budget = season_budget(priced, RULES, outside_grants={})
+    assert sum(row.appeals for row in results.round2_by_tier) == budget.total.demand.round2_asks.requests == 1
+    assert sum((row.asked for row in results.round2_by_tier), Decimal(0)) == budget.total.demand.round2_asked
+
+
+def test_by_table_sums_to_by_tier_in_every_tier() -> None:
+    results = _results([*_season(), _teen("req-t", 1000004), _held_by_a_check("req-h", 1000005)])
+    for tier in results.by_tier:
+        rows = [row for row in results.by_table if row.tier == tier.tier]
+        assert sum(row.requests for row in rows) == tier.requests
+        assert sum(row.held for row in rows) == tier.held
+        assert sum((row.round1 for row in rows), Decimal(0)) == tier.round1
+        assert sum((row.asked for row in rows), Decimal(0)) == tier.asked
+
+
+def test_round2s_allocation_is_zero_when_the_rules_set_no_round2_reserves() -> None:
+    rules = with_levers(RULES, {"budget.reserves": {}})
+    priced = _season()
+    results = scenario_results(priced, season_budget(priced, rules, outside_grants={}), document=rules)
+    assert results.round2_allocated == Decimal(0)
+
+
+def test_a_request_with_no_round2_ask_is_not_an_appeal() -> None:
+    assert _results(_season()).round2_by_tier == []
+
+
+def test_results_stored_by_sp9b_still_load_and_say_they_have_no_committee_rows() -> None:
+    stored = _results(_season()).model_dump(mode="json")
+    for key in ("by_table", "round2_by_tier", "round2_not_in_tiers", "round2_allocated", "round2_remaining"):
+        del stored[key]
+    del stored["committee_rows"]
+    for row in stored["by_tier"]:
+        del row["asked"]
+    loaded = ScenarioResults.model_validate(stored)
+    assert (loaded.committee_rows, loaded.by_table, loaded.round2_by_tier) == (False, [], [])
+    assert loaded.by_tier[0].asked is None

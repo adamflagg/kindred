@@ -20,7 +20,9 @@ from bunking.financial_aid.scenarios.fit import (
 from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetBasis, RequestSetNote, request_set_note
 from bunking.financial_aid.scenarios.results import (
     PoolResult,
+    Round2TierRow,
     ScenarioResults,
+    TableTierRow,
     TierRow,
     round1_amount,
     round1_by_request,
@@ -53,10 +55,12 @@ __all__ = [
     "RequestSet",
     "RequestSetBasis",
     "RequestSetNote",
+    "Round2TierRow",
     "ScenarioResults",
     "SizingError",
     "SizingLever",
     "SizingLeverKey",
+    "TableTierRow",
     "TierRow",
     "apply_sizing",
     "change_phrases",
