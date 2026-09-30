@@ -6,7 +6,8 @@ season on the server and returns one aggregate (D21): the Requests grid, Rounds 
 Remaining line. Each takes an optional as-of date (3c): a past date shows the season by the end of
 that day, and names every figure it leaves empty in not_rebuilt. On the default axis, `campminder`
 (owner ruling 2026-09-30), a Posted tick counts from its CampMinder post day, as Money's ledger ?as_of
-does; on `recorded` every fold and replay cuts on created, which is what Kindred showed that day. Facts
+does; on `recorded` every fold and replay cuts on created, which is what Kindred showed that day, and the
+ledger's lines count only once Kindred had recorded them and their reversals (as_recorded). Facts
 with no CampMinder date (decisions, asks, holds, corrections, the rules, request status, payer shares,
 Accepted) cut on created on both axes.
 
@@ -103,6 +104,7 @@ from api.services.financial_aid_reconciliation import (
     LineOverride,
     SeasonLedger,
     apply_clawback,
+    as_recorded,
     build_ledger,
     confirmation,
     dollars,
@@ -223,7 +225,7 @@ class DecisionsStore(Protocol):
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
-    async def fetch_camp_lines(self, year: int) -> list[CampLine]: ...
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
@@ -516,6 +518,7 @@ def grid_row(
         )
         for v in priced.rounds
     ]
+    # A clawed-back round stays in Decided (a declined offer was still decided) and leaves Posted.
     decided = [v.decided for v in priced.rounds if v.decided is not None]
     posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None and not v.clawed_back]
     return GridRowOut(
@@ -825,7 +828,7 @@ class FinancialAidDecisionsService:
         now, read BEFORE its change log, only as the replay's `current` (3c-1). With no lines there is
         nothing to place or claw back, and none of it is read."""
         camp_lines, overrides = await asyncio.gather(
-            self._store.fetch_camp_lines(year), self._store.fetch_line_overrides(year)
+            self._store.fetch_camp_lines(year, recorded_times=True), self._store.fetch_line_overrides(year)
         )
         if not camp_lines:
             return None
@@ -981,12 +984,13 @@ class FinancialAidDecisionsService:
             )
         # Sub-project 10b: money CampMinder had reversed by then is back in Remaining on that date too
         # (D54), so Posted stays exact. Everything the ledger reads is as of the date: the lines are
-        # dated, and the payer shares and staff placements are replayed from their change logs. A request
+        # dated (on the recorded axis, also by when Kindred recorded them), and the payer shares and
+        # staff placements are replayed from their change logs. A request
         # whose shares or placements can't be replayed keeps its posted money empty, and is named.
         # Undated, still today's: a line's funder-type reclassification and Go's attribution.
         posted_unknown: frozenset[str] = frozenset()
         if ledger_in is not None:
-            ledger_gaps, posted_unknown = self._ledger_as_of(ledger_in, at, requests, session_map, rounds, priced)
+            ledger_gaps, posted_unknown = self._ledger_as_of(ledger_in, at, axis, requests, session_map, rounds, priced)
             gaps = (*gaps, *ledger_gaps)
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None))
         if axis == "campminder":
@@ -1012,24 +1016,28 @@ class FinancialAidDecisionsService:
     def _ledger_as_of(
         inputs: _PastLedgerInputs,
         at: datetime,
+        axis: AsOfAxis,
         requests: Mapping[str, RequestRecord],
         sessions: Mapping[int, SessionRow],
         rounds: Mapping[str, Mapping[int, RoundState]],
         priced: dict[str, PricedRequest],
     ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
         """Clawbacks as of `at`, applied to `priced` in place; the gaps and the requests whose posted money
-        is left empty (their shares or placements can't be replayed)."""
+        is left empty (their shares or placements can't be replayed). On the campminder axis the lines
+        cut on CampMinder's post and reversal dates; on recorded, also on when Kindred had recorded each
+        line and its reversal (as_recorded, ruling C), so everything below reads that set."""
+        camp_lines = inputs.camp_lines if axis == "campminder" else as_recorded(inputs.camp_lines, at)
         shares_of, bad_shares, bad_share_households = _shares_as_of(inputs.shares, inputs.share_log, at)
         placements, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
         ledger = build_ledger(
-            inputs.camp_lines,
+            camp_lines,
             placements,
             [placeable(r, sessions, shares_of.get(r.id, ())) for r in requests.values()],
             None,
             _posted_ids(rounds),
             at,
         )
-        behind = [line for line in inputs.camp_lines if line.transaction_cm_id in bad_txns]
+        behind = [line for line in camp_lines if line.transaction_cm_id in bad_txns]
         bad_households = {line.household_cm_id for line in behind}
         bad_people |= {line.person_cm_id for line in behind if line.person_cm_id > 0}
         posted = _posted_ids(rounds)

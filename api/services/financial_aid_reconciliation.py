@@ -83,6 +83,10 @@ class CampLine:
     attributed_person_cm_id: int = 0
     attributed_session_cm_id: int = 0
     program_family: str = ""
+    # When Kindred recorded the row (aid_postings' created) and last wrote it (updated). Read only by a
+    # past read, for the recorded as-of axis (as_recorded); None on the live read.
+    recorded_at: datetime | None = None
+    updated_at: datetime | None = None
 
     def live(self, at: datetime | None = None) -> bool:
         """Live now (at None), or at `at`: posted by then and not reversed by then. A line with no
@@ -97,6 +101,31 @@ class CampLine:
         if not self.is_reversed:
             return False
         return at is None or (self.reversal_date is not None and self.reversal_date <= at)
+
+
+def as_recorded(lines: Iterable[CampLine], at: datetime) -> list[CampLine]:
+    """The lines as Kindred had recorded them by `at`: the recorded as-of axis (owner ruling
+    2026-09-30, PR Decision 11). The campminder axis, the default, reads the lines as they are, cut
+    only on CampMinder's post_date and reversal_date (CampLine.live). On the recorded axis those cuts
+    still apply, and a line counts only if its aid_postings row existed by `at` too (`recorded_at`, the
+    row's created). A line with no recorded time can't be placed in Kindred's time, so it is left out,
+    as a line with no post date is on any past read.
+
+    Reversal timing (ruling C): aid_postings keeps no time for when Kindred recorded a reversal. A
+    reversal is an update of the same row (aid_postings.go: the reversed credit leg keeps its key), so
+    the best available is the row's last write (`updated_at`, else `recorded_at`). That is an upper
+    bound: any later write to the row (a re-attribution, a changed flag) moves it on too, so this axis
+    can show a reversal later than Kindred had it, never earlier. A reversal not recorded by `at`
+    reads as not reversed, so the line is live then as far as the reversal goes."""
+    out: list[CampLine] = []
+    for line in lines:
+        if line.recorded_at is None or line.recorded_at > at:
+            continue
+        written = line.updated_at or line.recorded_at
+        if line.is_reversed and written > at:
+            line = replace(line, is_reversed=False, reversal_date=None)
+        out.append(line)
+    return out
 
 
 @dataclass(frozen=True)

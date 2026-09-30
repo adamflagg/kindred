@@ -841,3 +841,54 @@ def test_the_family_level_block_is_read_as_of_the_date() -> None:
     repost = [line(2, "1800", person=1000019, posted=datetime(2027, 6, 20, 18, 0, tzinfo=UTC))]
     june10 = datetime(2027, 6, 10, tzinfo=UTC)  # after the reversal, before the repost
     assert apply_clawback(R1, POSTED_R1, reversed_line, at=june10, family_lines=repost)[1] == date(2027, 6, 1)
+
+
+# --- the recorded as-of axis (owner ruling C, 2026-09-30; PR Decision 11) ---------------------------
+
+from api.services.financial_aid_reconciliation import as_recorded
+
+JUN5 = datetime(2027, 6, 5, 18, 0, tzinfo=UTC)
+JUN10 = datetime(2027, 6, 10, 18, 0, tzinfo=UTC)
+
+
+def _stamped(camp_line: CampLine, recorded: datetime | None, updated: datetime | None = None) -> CampLine:
+    return replace(camp_line, recorded_at=recorded, updated_at=updated or recorded)
+
+
+def test_a_line_kindred_first_recorded_after_the_cut_is_left_out_on_the_recorded_axis() -> None:
+    kept = _stamped(line(1, "1500", posted=MAR8), MAR9)
+    late = _stamped(line(2, "1500", posted=JUN1), JUN10)  # CampMinder posted it by the cut; Kindred had not seen it
+    assert as_recorded([kept, late], JUN5) == [kept]
+
+
+def test_a_line_with_no_recorded_time_cannot_be_placed_in_kindreds_time() -> None:
+    assert as_recorded([_stamped(line(1, "1500", posted=MAR8), None)], JUN5) == []
+
+
+def test_a_reversal_kindred_had_recorded_by_the_cut_stays_reversed() -> None:
+    reversed_line = _stamped(line(1, "1500", posted=MAR8, reversed_at=JUN1), MAR9, datetime(2027, 6, 2, tzinfo=UTC))
+    (out,) = as_recorded([reversed_line], JUN5)
+    assert out == reversed_line
+    assert not out.live(JUN5)
+
+
+def test_a_reversal_kindred_recorded_after_the_cut_reads_as_still_live_then() -> None:
+    """aid_postings keeps no time for the reversal itself, so the row's last write stands in for it
+    (an upper bound): the line was live as Kindred had it on the cut."""
+    reversed_line = _stamped(line(1, "1500", posted=MAR8, reversed_at=JUN1), MAR9, JUN10)
+    (out,) = as_recorded([reversed_line], JUN5)
+    assert (out.is_reversed, out.reversal_date, out.transaction_cm_id) == (False, None, 1)
+    assert out.live(JUN5)
+    assert as_recorded([reversed_line], datetime(2027, 6, 12, tzinfo=UTC)) == [reversed_line]
+
+
+def test_a_reversal_with_no_updated_time_falls_back_to_when_the_line_was_recorded() -> None:
+    reversed_line = replace(line(1, "1500", posted=MAR8, reversed_at=JUN1), recorded_at=JUN1, updated_at=None)
+    assert as_recorded([reversed_line], JUN5) == [reversed_line]
+
+
+def test_the_campminder_cut_still_applies_to_a_line_recorded_by_the_date() -> None:
+    """A line Kindred had recorded that CampMinder dates after the cut is still not live then."""
+    future = _stamped(line(1, "1500", posted=JUN10), JUN1)
+    (out,) = as_recorded([future], JUN5)
+    assert not out.live(JUN5)

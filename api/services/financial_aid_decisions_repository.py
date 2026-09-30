@@ -96,6 +96,8 @@ def camp_line(record: Any) -> CampLine:
         attributed_person_cm_id=int(getattr(record, "attributed_person_cm_id", 0) or 0),
         attributed_session_cm_id=int(getattr(record, "attributed_session_cm_id", 0) or 0),
         program_family=str(getattr(record, "program_family", "") or ""),
+        recorded_at=parse_pb_datetime(getattr(record, "created", None)),
+        updated_at=parse_pb_datetime(getattr(record, "updated", None)),
     )
 
 
@@ -193,15 +195,16 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {int(p.cm_id): person_display_name(p) for p in persons},
         )
 
-    async def fetch_camp_lines(self, year: int) -> list[CampLine]:
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """The season's camp-aid lines, live and reversed (spec §5.5: the camp's own aid, after any
-        reclassification, which aid_postings materializes in funder_type)."""
+        reclassification, which aid_postings materializes in funder_type). `recorded_times` also reads
+        when Kindred recorded and last wrote each row, which only a past read needs (as_recorded)."""
         rows = await self._page(
             AID_POSTINGS,
             {
                 "filter": f"year = {int(year)} && funder_type = 'camp'",
                 "sort": "transaction_cm_id,id",
-                "fields": _LINE_FIELDS,
+                "fields": f"{_LINE_FIELDS},created,updated" if recorded_times else _LINE_FIELDS,
             },
         )
         return [camp_line(row) for row in rows]

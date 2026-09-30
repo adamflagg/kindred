@@ -17,7 +17,7 @@ import pytest
 
 import api.services.financial_aid_decisions_service as decisions_service
 from api.constants.collections import AID_PAYER_SHARES
-from api.schemas.financial_aid_decisions import GridRowOut, PostedIn, PostedRow, UnpostIn
+from api.schemas.financial_aid_decisions import AsOfAxis, GridRowOut, PostedIn, PostedRow, UnpostIn
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     camp_line,
@@ -392,8 +392,8 @@ def _past_service(store: FakeDecisionsStore) -> FinancialAidDecisionsService:
     return FinancialAidDecisionsService(store, FakeRules(approved()), no_grants, clock=lambda: JUL1)
 
 
-async def _r1_posted(store: FakeDecisionsStore, day: date) -> float | None:
-    budget = await _past_service(store).budget(YEAR, as_of=day)
+async def _r1_posted(store: FakeDecisionsStore, day: date, axis: AsOfAxis = "campminder") -> float | None:
+    budget = await _past_service(store).budget(YEAR, as_of=day, as_of_axis=axis)
     camp = next(p for p in budget.pools if p.pool == "camp_pool")
     return next(c for c in camp.rounds if c.round == 1).posted
 
@@ -844,3 +844,94 @@ async def test_family_level_money_posted_before_the_reversal_does_not_block_the_
     assert (row.total_posted, row.rounds[0].clawed_back) == (None, True)
     assert row.confirmation is not None
     assert row.confirmation.status == "reversed"
+
+
+# --- owner rulings 2026-09-30 ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_decided_still_counts_a_clawed_back_round_while_posted_and_remaining_drop_it() -> None:
+    """Ruling A: a declined offer was still decided, so Decided keeps a clawed-back round; Posted and
+    Remaining drop it."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    store.synced_at = JUN1 + timedelta(hours=12)
+    row = await _row(store)
+    assert (row.rounds[0].clawed_back, row.total_decided, row.total_posted) == (True, 1500.0, None)
+    assert (await _service(store).remaining(YEAR)).total == 500000.0
+
+
+JUN10 = datetime(2027, 6, 10, 18, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_line_posted_before_the_date_but_first_synced_after_it_counts_on_the_default_axis_only() -> None:
+    """Ruling C: CampMinder posted the family-level repost Jun 1, but Kindred first synced it Jun 10. On
+    Jun 5 the default (campminder) axis counts it, and it holds the clawback (it may be the appeal's
+    repost); the recorded axis had not seen it, so Kindred showed the money clawed back then."""
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "1500", person=0, posted=JUN1, recorded=JUN10)
+    day = date(2027, 6, 5)
+    assert await _r1_posted(store, day) == 1500.0
+    assert await _r1_posted(store, day, "recorded") == 0.0
+    assert await _r1_posted(store, date(2027, 6, 12), "recorded") == 1500.0  # synced by then
+
+
+@pytest.mark.asyncio
+async def test_a_reversal_claws_back_on_the_recorded_axis_only_once_kindred_had_recorded_it() -> None:
+    """Ruling C, reversal timing: CampMinder reversed it Jun 1; the sync that wrote the reversal ran
+    Jun 10. The row's last write stands in for when Kindred recorded the reversal."""
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1, rewritten=JUN10)
+    day = date(2027, 6, 5)
+    assert await _r1_posted(store, day) == 0.0
+    assert await _r1_posted(store, day, "recorded") == 1500.0
+    assert await _r1_posted(store, date(2027, 6, 12), "recorded") == 0.0
+
+
+@pytest.mark.asyncio
+async def test_the_grid_marks_the_clawback_by_the_axis_it_cut_on() -> None:
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1, rewritten=JUN10)
+    service = _past_service(store)
+    cases: tuple[tuple[AsOfAxis, bool, float | None], ...] = (("campminder", True, None), ("recorded", False, 1500.0))
+    for axis, clawed, posted in cases:
+        (row,) = (await service.grid(YEAR, as_of=date(2027, 6, 5), as_of_axis=axis)).rows
+        assert (row.rounds[0].clawed_back, row.total_posted) == (clawed, posted), axis
+
+
+def test_a_line_carries_when_kindred_recorded_and_last_wrote_it() -> None:
+    record = SimpleNamespace(
+        transaction_cm_id=9001,
+        household_cm_id=1000001,
+        person_cm_id=1000011,
+        amount=-1500,
+        post_date="2027-03-09 17:00:00.000Z",
+        is_reversed=False,
+        reversal_date="",
+        created="2027-03-10 09:00:00.000Z",
+        updated="2027-06-10 09:00:00.000Z",
+    )
+    line = camp_line(record)
+    assert (line.recorded_at, line.updated_at) == (
+        datetime(2027, 3, 10, 9, 0, tzinfo=UTC),
+        datetime(2027, 6, 10, 9, 0, tzinfo=UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_repository_reads_recorded_times_only_when_asked() -> None:
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    repo = FinancialAidDecisionsRepository(pb)
+    await repo.fetch_camp_lines(YEAR, recorded_times=True)
+    stamped = set(pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["fields"].split(","))
+    await repo.fetch_camp_lines(YEAR)
+    plain = set(pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["fields"].split(","))
+    assert stamped - plain == {"created", "updated"}

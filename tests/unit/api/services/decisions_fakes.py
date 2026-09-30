@@ -8,6 +8,7 @@ Prices under financial_aid_fakes.intake_rules(): Session 2 (1000101) costs 2,000
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -112,8 +113,11 @@ class FakeDecisionsStore:
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
         return [e for e in self.hold_events if e.request_id == request_id]
 
-    async def fetch_camp_lines(self, year: int) -> list[CampLine]:
-        return list(self.camp_lines)
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
+        """As the repository reads them: without the recorded times unless asked for (a past read)."""
+        if recorded_times:
+            return list(self.camp_lines)
+        return [replace(line, recorded_at=None, updated_at=None) for line in self.camp_lines]
 
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         return dict(self.placements)
@@ -381,8 +385,14 @@ def seed_line(
     person: int = 1000011,
     posted: datetime | None = datetime(2027, 3, 8, 18, 0, tzinfo=UTC),
     reversed_at: datetime | None = None,
+    recorded: datetime | None = None,
+    rewritten: datetime | None = None,
 ) -> CampLine:
-    """One camp-aid line in the ledger: CampMinder posted it to `person` (0 = the household)."""
+    """One camp-aid line in the ledger: CampMinder posted it to `person` (0 = the household). Kindred
+    recorded it (the aid_postings row's created) when it posted unless `recorded` says otherwise, and
+    last wrote it (updated) when it was reversed, never before it recorded it, unless `rewritten` says otherwise."""
+    recorded = recorded or posted
+    written = [t for t in (recorded, reversed_at) if t is not None]
     line = CampLine(
         transaction_cm_id=txn,
         household_cm_id=household,
@@ -391,6 +401,8 @@ def seed_line(
         post_date=posted,
         is_reversed=reversed_at is not None,
         reversal_date=reversed_at,
+        recorded_at=recorded,
+        updated_at=rewritten or (max(written) if written else None),
     )
     store.camp_lines.append(line)
     return line

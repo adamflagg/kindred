@@ -131,6 +131,8 @@ class GridRowOut(BaseModel):
     tier: int | None
     cost: float | None
     rounds: list[RoundOut]
+    # Decided includes a clawed-back round: a declined offer was still decided (owner ruling 2026-09-30).
+    # total_posted, and the budget's Posted and Remaining, drop it (D54).
     total_decided: float | None
     total_posted: float | None
     holds: list[IssueOut]
