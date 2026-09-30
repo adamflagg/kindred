@@ -14,6 +14,11 @@ Protocol declares for that read. Nothing here writes; a replayed season can't lo
 A request intake flagged as waiting for approved programs and cost rules is held by the live read, and so in every
 scenario on that snapshot: `awaiting_rules` counts them, so the screen can say "freeze again once the rules are
 approved" (plan Decision 8). Freezing never refuses for it.
+
+Freezing also records when each frozen request was received (`received`: its create row in aid_change_log, D138, as
+bunking.financial_aid.received defines it) and which requests are live, so a scenario can price only the requests
+received through a date (`price_document`'s `requests`). That log is read after the season read, so every frozen
+request's create row is already there.
 """
 
 from __future__ import annotations
@@ -21,12 +26,13 @@ from __future__ import annotations
 import functools
 import json
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Final, cast, get_type_hints
 
 from pydantic import TypeAdapter
 
+from api.constants.collections import AID_REQUESTS
 from api.services.financial_aid_calc_inputs import awaiting_approved_rules
 from api.services.financial_aid_decisions_service import (
     DecisionsStore,
@@ -40,6 +46,7 @@ from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.decisions import SeasonBudget
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.received import received_dates
 from bunking.financial_aid.rules import AidRules, SectionName
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from bunking.financial_aid.rules.schema import SECTION_NAMES
@@ -60,6 +67,9 @@ class SeasonSnapshot:
     calls: Mapping[str, Any]  # decisions store read -> what it returned
     register: tuple[RegisterRow, ...]
     awaiting_rules: int = 0  # live requests waiting for approved programs and cost rules: held (Decision 8)
+    # request id -> when it was first recorded (its aid_change_log create row); None: no create row (D138)
+    received: Mapping[str, datetime | None] = field(default_factory=dict)
+    live: frozenset[str] = frozenset()  # the live requests' ids: a request set counts what it leaves out over these
 
 
 @dataclass(frozen=True)
@@ -167,6 +177,7 @@ async def capture_season(
     season = await service.season(year)
     live = frozenset(rid for rid, priced in season.priced.items() if priced.live)
     awaiting = sum(1 for rid in live if awaiting_approved_rules(season.requests[rid]))
+    log = await store.fetch_change_log(year, AID_REQUESTS)  # after the season read: every frozen request is logged
     return SeasonSnapshot(
         year=year,
         requests=len(live),
@@ -174,6 +185,8 @@ async def capture_season(
         calls=dict(recorder.calls),
         register=tuple(rows),
         awaiting_rules=awaiting,
+        received=received_dates(season.requests.keys(), log),
+        live=live,
     )
 
 
@@ -186,6 +199,8 @@ def encode_snapshot(snapshot: SeasonSnapshot) -> dict[str, Any]:
         "calls": {name: json.loads(_adapter(name).dump_json(value)) for name, value in sorted(snapshot.calls.items())},
         "register": json.loads(_REGISTER.dump_json(list(snapshot.register))),
         "awaiting_rules": snapshot.awaiting_rules,
+        "received": {rid: at.isoformat() if at is not None else None for rid, at in sorted(snapshot.received.items())},
+        "live": sorted(snapshot.live),
     }
 
 
@@ -200,12 +215,19 @@ def decode_snapshot(raw: Mapping[str, Any]) -> SeasonSnapshot:
         calls=calls,
         register=tuple(_REGISTER.validate_json(json.dumps(raw["register"]))),
         awaiting_rules=int(raw["awaiting_rules"]),
+        received={
+            rid: datetime.fromisoformat(at) if at is not None else None for rid, at in dict(raw["received"]).items()
+        },
+        live=frozenset(str(rid) for rid in raw["live"]),
     )
 
 
-async def price_document(snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion) -> PricedSeason:
+async def price_document(
+    snapshot: SeasonSnapshot, document: AidRules, base: RulesVersion, *, requests: Collection[str] | None = None
+) -> PricedSeason:
     """`document` priced over the frozen season, as if it were the season's approved rules. `base` is any real
-    version of the season (the latest); only its identity fields are kept."""
+    version of the season (the latest); only its identity fields are kept. `requests` narrows the season to those
+    requests before its budget is summed (a request set, D138); None prices every frozen request."""
     if document.year != snapshot.year:
         raise SnapshotError(f"The document is for {document.year}, but this snapshot is {snapshot.year}'s")
     approved = {name: SectionStatus(state="approved") for name in SECTION_NAMES}
@@ -221,4 +243,11 @@ async def price_document(snapshot: SeasonSnapshot, document: AidRules, base: Rul
         clock=lambda: snapshot.frozen_at,  # the replay runs at the frozen moment
     )
     season = await service.season(snapshot.year)
+    if requests is not None:
+        wanted = frozenset(requests)
+        season = replace(
+            season,
+            requests={rid: r for rid, r in season.requests.items() if rid in wanted},
+            priced={rid: p for rid, p in season.priced.items() if rid in wanted},
+        )
     return PricedSeason(season=season, budget=service.budget_of(season))

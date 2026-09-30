@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
+from api.constants.collections import AID_REQUESTS
 from api.services import financial_aid_scenarios_repository as repository_module
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
@@ -25,15 +26,17 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     ScenarioRefusedError,
 )
+from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.rules import AidRules
-from bunking.financial_aid.scenarios import shift_round1_tables, with_minimum
+from bunking.financial_aid.scenarios import RequestSetNote, shift_round1_tables, with_minimum
 from tests.unit.api.services.decisions_fakes import (
     T0,
     FakeDecisionsStore,
     FakeRules,
     approved,
     grant_row,
+    log_seeded,
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
@@ -474,3 +477,114 @@ async def test_an_unknown_option_is_not_found() -> None:
     world = await _started()
     with pytest.raises(ScenarioNotFoundError):
         await world.service.rules_draft_preview(YEAR, "Z9")
+
+
+# --- the request set (D138) ----------------------------------------------------------------------------
+
+JAN20 = datetime(2027, 1, 20, 18, 0, tzinfo=UTC)
+
+
+async def _late_world(riley_received: datetime | None, *, riley_status: str = "active") -> World:
+    """Emma's and Liam's requests were first recorded on Jan 20; Riley's at `riley_received` (None: no create row)."""
+    world = await _world()
+    log_seeded(world.season, JAN20)
+    seed_request(world.season, RILEY, household=1000003, person=1000031, status=riley_status)
+    if riley_received is not None:
+        world.season.change_log.append(
+            LogRow(
+                id="log000000000099",
+                entity=AID_REQUESTS,
+                entity_id=RILEY,
+                before=None,
+                after={"year": YEAR, "household_cm_id": 1000003},
+                created=riley_received,
+            )
+        )
+    await world.service.freeze(YEAR, FINANCE)
+    return world
+
+
+@pytest.mark.asyncio
+async def test_a_request_set_prices_only_requests_received_through_the_date_and_labels_them() -> None:
+    world = await _late_world(datetime(2027, 2, 10, 18, 0, tzinfo=UTC))
+    everyone = await world.service.evaluate(YEAR, intake_rules())
+    assert (everyone.results.requests, everyone.results.round1, everyone.results.request_set) == (
+        3,
+        Decimal(4100),
+        None,
+    )
+    through = await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 2, 1))
+    assert (through.results.requests, through.results.round1) == (2, Decimal(2600))
+    assert through.results.request_set == RequestSetNote(
+        basis="date", through=date(2027, 2, 1), label="requests received through Feb 1, 2027", left_out=1, unknown=0
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_date_is_a_whole_camp_time_day() -> None:
+    world = await _late_world(datetime(2027, 2, 2, 7, 30, tzinfo=UTC))  # 11:30 pm on Feb 1, Pacific
+    assert (await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 2, 1))).results.requests == 3
+    assert (await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 1, 31))).results.requests == 2
+
+
+@pytest.mark.asyncio
+async def test_through_the_round1_deadline_reads_the_approved_application_deadline() -> None:
+    world = await _late_world(datetime(2027, 2, 10, 18, 0, tzinfo=UTC))
+    version = await world.rules.create_version(
+        with_lever(intake_rules(), "milestones.application_deadline", "2027-02-01"), actor=FINANCE
+    )
+    await world.rules.approve_sections(YEAR, version.version, ["milestones"], actor=TREASURER, note="Finance committee")
+    evaluation = await world.service.evaluate(YEAR, intake_rules(), request_set="round1_deadline")
+    assert evaluation.results.request_set is not None
+    assert (evaluation.results.request_set.basis, evaluation.results.request_set.through) == (
+        "round1_deadline",
+        date(2027, 2, 1),
+    )
+    assert evaluation.results.requests == 2
+
+
+@pytest.mark.asyncio
+async def test_the_round1_deadline_is_never_read_from_a_draft() -> None:
+    world = await _late_world(None)
+    await world.rules.create_version(
+        with_lever(intake_rules(), "milestones.application_deadline", "2027-02-01"), actor=FINANCE
+    )  # a draft: milestones not approved anywhere
+    with pytest.raises(ScenarioRefusedError, match="approved rules set no application deadline"):
+        await world.service.evaluate(YEAR, intake_rules(), request_set="round1_deadline")
+
+
+@pytest.mark.asyncio
+async def test_only_live_requests_count_as_left_out() -> None:
+    world = await _late_world(datetime(2027, 2, 10, 18, 0, tzinfo=UTC), riley_status="withdrawn")
+    evaluation = await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 2, 1))
+    assert evaluation.results.request_set is not None
+    assert (evaluation.results.requests, evaluation.results.request_set.left_out) == (2, 0)
+
+
+@pytest.mark.asyncio
+async def test_a_request_with_no_recorded_date_is_left_out_and_counted() -> None:
+    world = await _late_world(None)
+    evaluation = await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 2, 1))
+    assert evaluation.results.request_set is not None
+    assert (evaluation.results.requests, evaluation.results.request_set.unknown) == (2, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_request_set_writes_nothing_and_leaves_kept_figures_alone() -> None:
+    world = await _late_world(datetime(2027, 2, 10, 18, 0, tzinfo=UTC))
+    await world.service.start_from_rules(YEAR, FINANCE)
+    scenario_writes, season_writes, season_log = (
+        len(world.store.operations),
+        len(world.season.operations),
+        list(world.season.change_log),
+    )
+    through = date(2027, 2, 1)
+    _, a = (await world.service.compare(YEAR, FINANCE, ["A"], request_set=through)).columns
+    fitted = await world.service.fit(YEAR, with_lever(intake_rules(), "budget.total", "3000"), request_set=through)
+    effects = await world.service.sensitivity(YEAR, intake_rules(), request_set=through)
+    assert (a.results.requests, fitted.evaluation.results.requests, effects.results.requests) == (2, 2, 2)
+    assert a.results.request_set is not None
+    kept = (await world.service.workspace(YEAR, FINANCE)).options[0]
+    assert (kept.record.results.requests, kept.record.results.request_set) == (3, None)
+    assert (len(world.store.operations), len(world.season.operations)) == (scenario_writes, season_writes)
+    assert world.season.change_log == season_log

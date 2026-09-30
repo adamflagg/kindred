@@ -11,6 +11,7 @@ from bunking.financial_aid.scenarios.fit import (
     fit_tier_shift,
     tightest_pool,
 )
+from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetBasis, RequestSetNote, request_set_note
 from bunking.financial_aid.scenarios.results import (
     PoolResult,
     ScenarioResults,
@@ -42,6 +43,9 @@ __all__ = [
     "FitKind",
     "FitResult",
     "PoolResult",
+    "RequestSet",
+    "RequestSetBasis",
+    "RequestSetNote",
     "ScenarioResults",
     "SizingError",
     "SizingLever",
@@ -54,6 +58,7 @@ __all__ = [
     "fit_margin",
     "fit_tier_shift",
     "nudge",
+    "request_set_note",
     "round1_amount",
     "round1_by_request",
     "scenario_results",

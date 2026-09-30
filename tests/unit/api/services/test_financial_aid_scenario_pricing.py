@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -34,6 +34,7 @@ from tests.unit.api.services.decisions_fakes import (
     FakeRules,
     approved,
     grant_row,
+    log_seeded,
     seed_line,
     seed_request,
 )
@@ -234,3 +235,27 @@ async def test_a_document_for_another_season_is_refused() -> None:
     frozen = await _frozen(_store())
     with pytest.raises(SnapshotError, match="2026"):
         await price_document(frozen, with_lever(intake_rules(), "year", 2026), approved())
+
+
+# --- the request set (D138) ----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_freezing_records_when_each_request_was_first_recorded() -> None:
+    store = _store()
+    log_seeded(store, datetime(2027, 1, 20, 18, 0, tzinfo=UTC))  # intake's create rows for Emma and Liam
+    seed_request(store, RILEY, household=1000003, person=1000031)  # no create row: its received date is unknown
+    frozen = await _frozen(store)
+    assert frozen.received == {
+        EMMA: datetime(2027, 1, 20, 18, 0, tzinfo=UTC),
+        LIAM: datetime(2027, 1, 20, 18, 0, tzinfo=UTC),
+        RILEY: None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_request_set_prices_only_its_requests() -> None:
+    frozen = await _frozen(_store())
+    priced = await price_document(frozen, approved().document, approved(), requests={EMMA})
+    assert set(priced.season.priced) == {EMMA}
+    assert priced.budget.total.rounds[1].needs_offer == Decimal(1500)

@@ -25,12 +25,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Final, Protocol
+from typing import Any, Final, Literal, Protocol
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import FinancialAidRulesService, PromotionPreview, RulesDraft
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
@@ -38,10 +39,13 @@ from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.received import split_by_received
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import (
     SIZING_LEVERS,
     FitResult,
+    RequestSet,
+    RequestSetNote,
     ScenarioResults,
     SizingLever,
     apply_sizing,
@@ -50,6 +54,7 @@ from bunking.financial_aid.scenarios import (
     fit_margin,
     fit_tier_shift,
     nudge,
+    request_set_note,
     round1_by_request,
     scenario_results,
     shift_round1_tables,
@@ -75,6 +80,8 @@ class ScenarioConflictError(FinancialAidError, ValueError):
 
 
 SeasonCapture = Callable[[int], Awaitable[SeasonSnapshot]]
+# A request set (D138): the Round 1 deadline switch, or the received-through date. None: every frozen request.
+RequestSetChoice = Literal["round1_deadline"] | date
 
 
 class ScenarioStore(Protocol):
@@ -210,16 +217,37 @@ class FinancialAidScenariosService:
             raise ScenarioRefusedError(f"Freeze {year}'s applications first: every scenario runs on a frozen snapshot")
         return meta
 
-    async def _pricer(self, meta: SnapshotMeta) -> Pricer:
+    async def _pricer(self, meta: SnapshotMeta, request_set: RequestSet | None = None) -> Pricer:
         snapshot = await self._store.snapshot_inputs(meta.id)
         base = await self._rules.load(meta.year)
+        kept: frozenset[str] | None = None
+        note: RequestSetNote | None = None
+        if request_set is not None:
+            split = split_by_received(snapshot.received, as_of_cutoff(request_set.through), snapshot.live)
+            kept, note = split.kept, request_set_note(request_set, split)
 
         async def price(document: AidRules) -> Priced:
-            priced = await price_document(snapshot, document, base)
+            priced = await price_document(snapshot, document, base, requests=kept)
             requests = list(priced.season.priced.values())
-            return Priced(scenario_results(requests, priced.budget), round1_by_request(requests))
+            return Priced(scenario_results(requests, priced.budget, request_set=note), round1_by_request(requests))
 
         return price
+
+    async def _request_set(self, year: int, choice: RequestSetChoice | None) -> RequestSet | None:
+        """The request set a read asked for (D138): a chosen date, or the Round 1 deadline, which is
+        `milestones.application_deadline` in the newest version where milestones are approved (as D76's approved read
+        takes a section). Never the draft's."""
+        if choice is None:
+            return None
+        if isinstance(choice, date):
+            return RequestSet("date", choice)
+        approved = await self._rules.latest_approved(year, ["milestones"])
+        deadline = approved.document.milestones.application_deadline if approved is not None else None
+        if deadline is None:
+            raise ScenarioRefusedError(
+                f"{year}'s approved rules set no application deadline (milestones): choose a received-through date"
+            )
+        return RequestSet("round1_deadline", deadline)
 
     async def _options(self, year: int) -> dict[str, OptionRecord]:
         return {option.code: option for option in await self._store.options(year)}
@@ -431,12 +459,20 @@ class FinancialAidScenariosService:
     # --- the draft ----------------------------------------------------------------------------------
 
     async def evaluate(
-        self, year: int, document: AidRules, *, tier_shift: Decimal = ZERO, band_width_delta: Decimal = ZERO
+        self,
+        year: int,
+        document: AidRules,
+        *,
+        tier_shift: Decimal = ZERO,
+        band_width_delta: Decimal = ZERO,
+        request_set: RequestSetChoice | None = None,
     ) -> Evaluation:
-        """`document` with the relative sizing settings applied, priced on the frozen season. Writes nothing."""
+        """`document` with the relative sizing settings applied, priced on the frozen season (only the requests
+        received through a date, when `request_set` asks). Writes nothing."""
         self._check_year(year, document)
         moved = apply_sizing(document, tier_shift=tier_shift, band_width_delta=band_width_delta)
-        priced = await (await self._pricer(await self._meta(year)))(moved)
+        chosen = await self._request_set(year, request_set)
+        priced = await (await self._pricer(await self._meta(year), chosen))(moved)
         return Evaluation(moved, priced.results, await self._rules.validate_document(moved))
 
     async def save_draft(self, year: int, document: AidRules, actor: str) -> Draft:
@@ -516,7 +552,9 @@ class FinancialAidScenariosService:
 
     # --- compare, fit, sensitivity ------------------------------------------------------------------
 
-    async def compare(self, year: int, actor: str, codes: Sequence[str]) -> Comparison:
+    async def compare(
+        self, year: int, actor: str, codes: Sequence[str], *, request_set: RequestSetChoice | None = None
+    ) -> Comparison:
         """`actor`'s draft first, then up to 4 kept options, every one on the current snapshot. Each shows what
         differs from its reference (a variant's starting point; a starting point's origin rules; the draft's
         option) and how many requests' Round 1 went up or down against it."""
@@ -528,14 +566,16 @@ class FinancialAidScenariosService:
         if missing:
             raise ScenarioNotFoundError(f"{year} has no kept option {', '.join(missing)}")
         meta = await self._meta(year)
-        price = await self._pricer(meta)
+        chosen = await self._request_set(year, request_set)
+        price = await self._pricer(meta, chosen)
         seen: dict[str, Priced] = {}
 
         async def of_option(option: OptionRecord) -> Priced:
+            # A kept option's stored figures are on every request of its own snapshot: reused only when both hold.
             if option.code not in seen:
                 seen[option.code] = (
                     Priced(option.results, await self._store.option_round1(option.id))
-                    if option.snapshot == meta.id
+                    if option.snapshot == meta.id and chosen is None
                     else await price(option.document)
                 )
             return seen[option.code]
@@ -585,12 +625,12 @@ class FinancialAidScenariosService:
             )
         return Comparison(meta, tuple(columns))
 
-    async def fit(self, year: int, document: AidRules) -> Fitted:
+    async def fit(self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None) -> Fitted:
         """Fit to budget: the largest shift of every Round 1 table cell that keeps Round 1 Remaining, summed over the
         pools, at or above zero, priced on the frozen season (plan Decision 11 (a), RULED 2026-09-30; D119). The
         tightest pool is named as information only; `budget.spillover` is not read."""
         self._check_year(year, document)
-        price = await self._pricer(await self._meta(year))
+        price = await self._pricer(await self._meta(year), await self._request_set(year, request_set))
 
         async def remaining_at(shift: Decimal) -> Decimal:
             return _fit_margin((await price(shift_round1_tables(document, shift))).results)
@@ -602,11 +642,13 @@ class FinancialAidScenariosService:
         tightest = tightest_pool(priced.results)
         return Fitted(found, tightest.pool if tightest is not None else None, evaluation)
 
-    async def sensitivity(self, year: int, document: AidRules) -> Sensitivity:
+    async def sensitivity(
+        self, year: int, document: AidRules, *, request_set: RequestSetChoice | None = None
+    ) -> Sensitivity:
         """What one step of each sizing setting moves Round 1 by (spec §7.4), on the frozen season. The
         dollar-for-dollar switch's one step is flipping it (D137)."""
         self._check_year(year, document)
-        price = await self._pricer(await self._meta(year))
+        price = await self._pricer(await self._meta(year), await self._request_set(year, request_set))
         base = (await price(document)).results
         effects: list[LeverEffect] = []
         for lever in SIZING_LEVERS:

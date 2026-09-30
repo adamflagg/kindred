@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict
 
 from bunking.financial_aid.decisions import Cell, PoolBudget, PricedRequest, SeasonBudget
 from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.scenarios.request_set import RequestSetNote
 
 
 class _Result(BaseModel):
@@ -69,6 +70,9 @@ class ScenarioResults(_Result):
     round1_unmet: Decimal  # below the line: §5.9, the forward signal for Round 2 (Decision 10 (b), RULED 2026-09-30)
     pools: list[PoolResult]
     by_tier: list[TierRow]
+    # The request set these figures were priced on (D138); None: every frozen request. Kept options and trail rows
+    # always store None: a request set is a view setting, applied when a figure is read.
+    request_set: RequestSetNote | None = None
 
 
 @dataclass
@@ -119,7 +123,9 @@ def _pool(pool: PoolBudget) -> PoolResult:
     )
 
 
-def scenario_results(priced: Iterable[PricedRequest], budget: SeasonBudget) -> ScenarioResults:
+def scenario_results(
+    priced: Iterable[PricedRequest], budget: SeasonBudget, *, request_set: RequestSetNote | None = None
+) -> ScenarioResults:
     live = [p for p in priced if p.live]
     tiers: dict[int, _Tier] = defaultdict(_Tier)
     at_minimum = 0
@@ -158,4 +164,5 @@ def scenario_results(priced: Iterable[PricedRequest], budget: SeasonBudget) -> S
             TierRow(tier=n, requests=len(t.requests), families=len(t.families), round1=t.round1)
             for n, t in sorted(tiers.items())
         ],
+        request_set=request_set,
     )
