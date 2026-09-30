@@ -2330,6 +2330,46 @@ export type CommitmentOut = {
 }
 
 /**
+ * CommitteeOut
+ *
+ * What the committee compares for one column (spec §9.7 RPT-17, RPT-32).
+ */
+export type CommitteeOut = {
+  /**
+   * Budget Total
+   */
+  budget_total: number | null
+  /**
+   * Round1
+   */
+  round1: number
+  /**
+   * Round1 Pct Of Budget
+   */
+  round1_pct_of_budget: number | null
+  /**
+   * Round2
+   */
+  round2: number
+  /**
+   * Round1 By Tier
+   */
+  round1_by_tier: Array<TierCompareOut>
+  /**
+   * Round2 By Tier
+   */
+  round2_by_tier: Array<Round2CompareOut>
+  /**
+   * Not In Tiers
+   */
+  not_in_tiers: number
+  /**
+   * Round2 Not In Tiers
+   */
+  round2_not_in_tiers: number
+}
+
+/**
  * CompareColumnOut
  */
 export type CompareColumnOut = {
@@ -2355,6 +2395,7 @@ export type CompareColumnOut = {
    * Down
    */
   down: number | null
+  committee?: CommitteeOut | null
 }
 
 /**
@@ -2370,6 +2411,7 @@ export type CompareOut = {
    * Columns
    */
   columns: Array<CompareColumnOut>
+  last_season?: LastSeasonOut | null
 }
 
 /**
@@ -6304,6 +6346,32 @@ export type KeepIn = {
    * Starting Point
    */
   starting_point?: boolean
+}
+
+/**
+ * LastSeasonOut
+ *
+ * Last season's posted money, at each lock, beside the compare (RPT-17's and RPT-32's last-season columns).
+ * `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate.
+ */
+export type LastSeasonOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Loaded
+   */
+  loaded: boolean
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  view: CommitteeOut | null
 }
 
 /**
@@ -10296,6 +10364,14 @@ export type ResultsOut = {
    */
   not_in_tiers: number
   request_set?: RequestSetOut | null
+  /**
+   * Round2 Allocated
+   */
+  round2_allocated?: number | null
+  /**
+   * Round2 Remaining
+   */
+  round2_remaining?: number | null
 }
 
 /**
@@ -11099,6 +11175,54 @@ export type RosterParty = {
   share?: ShareRequestSummary
   flags?: AccessibilityFlagSummary
   bunking_request?: BunkingRequestSummary | null
+}
+
+/**
+ * Round2CompareOut
+ *
+ * One Round 2 row (RPT-32): a Round 2 table's tier, or All's (`table` None).
+ */
+export type Round2CompareOut = {
+  /**
+   * Table
+   */
+  table: string | null
+  /**
+   * Tier
+   */
+  tier: number
+  /**
+   * Appeals
+   */
+  appeals: number
+  /**
+   * Asked
+   */
+  asked: number
+  /**
+   * Max Pct
+   */
+  max_pct: number | null
+  /**
+   * Priced
+   */
+  priced: number
+  /**
+   * Priced Asked
+   */
+  priced_asked: number
+  /**
+   * Round2
+   */
+  round2: number
+  /**
+   * Average Round2
+   */
+  average_round2: number | null
+  /**
+   * Pct Of Ask
+   */
+  pct_of_ask: number | null
 }
 
 /**
@@ -13492,6 +13616,62 @@ export type TierBandOutput = {
    * Upper
    */
   upper?: string | null
+}
+
+/**
+ * TierCompareOut
+ *
+ * One Round 1 row of what the committee compares (RPT-17): an award table's tier, or All's (`table` None).
+ */
+export type TierCompareOut = {
+  /**
+   * Table
+   */
+  table: string | null
+  /**
+   * Tier
+   */
+  tier: number
+  /**
+   * Requests
+   */
+  requests: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Asked
+   */
+  asked: number
+  /**
+   * Average Ask
+   */
+  average_ask: number | null
+  /**
+   * Fee Pct
+   */
+  fee_pct: number | null
+  /**
+   * Pct Of Ask
+   */
+  pct_of_ask: number | null
+  /**
+   * Round1
+   */
+  round1: number
+  /**
+   * Average Round1
+   */
+  average_round1: number | null
+  /**
+   * Held
+   */
+  held: number
+  /**
+   * No Ask
+   */
+  no_ask: number
 }
 
 /**
@@ -20643,6 +20823,41 @@ export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPos
 export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponse =
   StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponses[keyof StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponses]
 
+export type StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostData =
+  {
+    body?: never
+    path: {
+      /**
+       * Year
+       */
+      year: number
+    }
+    query?: never
+    url: '/api/financial-aid/scenarios/{year}/starting-points/last-season'
+  }
+
+export type StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostError =
+  StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostErrors[keyof StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostErrors]
+
+export type StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: WorkspaceOut
+  }
+
+export type StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostResponse =
+  StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostResponses[keyof StartScenariosFromLastSeasonApiFinancialAidScenariosYearStartingPointsLastSeasonPostResponses]
+
 export type GetScenariosApiFinancialAidScenariosYearGetData = {
   body?: never
   path: {
@@ -20824,6 +21039,10 @@ export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
      * Received Through
      */
     received_through?: string | null
+    /**
+     * Last Season
+     */
+    last_season?: boolean
   }
   url: '/api/financial-aid/scenarios/{year}/compare'
 }
