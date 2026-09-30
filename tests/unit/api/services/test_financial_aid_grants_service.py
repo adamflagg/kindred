@@ -277,6 +277,9 @@ def _read_repo(**kw: Any) -> MagicMock:
     repo.fetch_overrides = AsyncMock(return_value=kw.get("overrides", []))
     repo.fetch_links = AsyncMock(return_value=[])
     repo.fetch_household_members = AsyncMock(return_value=[_person(1001, "Emma"), _person(1002, "Liam")])
+    repo.fetch_household_persons_by_household = AsyncMock(
+        side_effect=_persons_by_household(kw.get("persons", [_person(1001, "Emma"), _person(1002, "Liam")]))
+    )
     repo.fetch_persons = AsyncMock(return_value=[])
     repo.fetch_households = AsyncMock(
         return_value=[SimpleNamespace(cm_id=100, mailing_title="The Johnson Family", greeting="")]
@@ -315,6 +318,90 @@ async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
     assert need.suggestion.camper_name == "Emma Johnson"
     assert [c.name for c in need.candidates] == ["Emma Johnson", "Liam Johnson"]  # sorted by name
     assert need.household_applied is True
+
+
+def _never_applied_repo(**kw: Any) -> MagicMock:
+    """Household 100 with no aid request, one enrolled camper (Emma) and an unenrolled sibling."""
+    repo = _read_repo(**kw)
+    repo.fetch_request_refs = AsyncMock(return_value=[])
+    repo.fetch_enrollments = AsyncMock(return_value=[_attendee(1001, 1000101)])
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_read_ties_a_never_applied_households_grant_to_its_sole_camper() -> None:
+    """D126 + D142: the household never applied, and Emma is the one camper the grant can pay for,
+    so the grant names her by machine and nothing waits for the registrar."""
+    service, _ = _service(_never_applied_repo())
+    out = await service.read(2031)
+    (row,) = out.grants
+    assert (row.person_cm_id, row.camper_name, row.camper_basis, row.counts) == (
+        1001,
+        "Emma Johnson",
+        "sole_camper",
+        True,
+    )
+    assert out.needs_camper == []
+
+
+@pytest.mark.asyncio
+async def test_a_camper_linked_by_a_childhood_household_is_a_second_candidate() -> None:
+    """D142 ties only when the household has exactly one camper, counted by the membership rule
+    Go's attribution and place() use (own OR childhood household): Olivia's own household is 150
+    but her childhood household is 100, so the grant has two campers and stays at household level."""
+    olivia = _person(1060, "Olivia", household=150, primary_childhood_household=100)
+    repo = _never_applied_repo(persons=[_person(1001, "Emma"), _person(1002, "Liam"), olivia])
+    repo.fetch_enrollments = AsyncMock(return_value=[_attendee(1001, 1000101), _attendee(1060, 1000101)])
+    service, _ = _service(repo)
+    (row,) = (await service.read(2031)).grants
+    assert (row.person_cm_id, row.camper_basis) == (0, "none")
+
+
+@pytest.mark.asyncio
+async def test_read_asks_for_the_wider_family_pool_only_where_a_grant_can_tie() -> None:
+    """The own-or-childhood pool is one query per few households; the register read needs it only
+    for a family that never applied (D142), so an applicant-only season never pays for it."""
+    repo = _read_repo()
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    assert repo.fetch_household_persons_by_household.await_count == 0
+    assert [c.name for c in out.needs_camper[0].candidates] == ["Emma Johnson", "Liam Johnson"]
+
+
+@pytest.mark.asyncio
+async def test_a_grant_whose_linked_household_applied_still_needs_a_camper() -> None:
+    """D126 is about families: household 150's own request list is empty, but it is linked to
+    household 100, which applied, so its grant waits for the registrar rather than tying itself."""
+    repo = _never_applied_repo(persons=[_person(1001, "Emma", household=150)])
+    repo.fetch_grant_postings = AsyncMock(return_value=[_posting(9001, 500, household_cm_id=150)])
+    repo.fetch_links = AsyncMock(
+        return_value=[SimpleNamespace(household_cm_id=h, family_key="family-1", excluded=False) for h in (100, 150)]
+    )
+    repo.fetch_request_refs = AsyncMock(
+        return_value=[
+            SimpleNamespace(id="req-1", household_cm_id=100, person_cm_id=1002, session_cm_id=1000101, status="active")
+        ]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (row,) = out.grants
+    assert (row.person_cm_id, row.camper_basis) == (0, "none")
+    assert [n.grant.transaction_cm_id for n in out.needs_camper] == [9001]
+
+
+@pytest.mark.asyncio
+async def test_read_reads_the_sources_reporting_group_before_tying() -> None:
+    """D100: a Quest-only source can't pay for a summer camper, so the grant stays at household
+    level -- and, the household never having applied, off "needs a camper" (D126)."""
+    repo = _never_applied_repo()
+    repo.fetch_sources = AsyncMock(
+        return_value=[_source("regional grant - north", "regional_fund", implied_program_families=["quest"])]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (row,) = out.grants
+    assert (row.person_cm_id, row.camper_basis, row.counts) == (0, "none", False)
+    assert out.needs_camper == []
 
 
 @pytest.mark.asyncio

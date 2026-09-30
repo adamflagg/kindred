@@ -6,7 +6,9 @@ DERIVED here at read time, never copied. Kindred stores only what the ledger lac
 
 * the camper for a household-level line: an aid_attribution_overrides placement, the one
   placement home (Decision 2). Go's attribution rules only SUGGEST a camper (D16); until a
-  person confirms, the line counts toward nothing (Decision 3);
+  person confirms, the line counts toward nothing (Decision 3). A household that never applied
+  is not worked by hand (D126): its line ties itself to the household's one camper the grant can
+  pay for, by rule (D142), and otherwise stays at household level;
 * a grant committed but not yet posted: an aid_grants commitment (Decision 4). It counts until
   a line fulfils it by rule (owner rulings 2026-09-29, see _fulfilments); then the line counts
   instead, never both. Anything short of the rule -- a reversed line, an unmapped description, a
@@ -25,8 +27,8 @@ grant whose grantor pays after the camp's award (D143, a last-dollar funder); th
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
 from typing import Final, Literal
@@ -60,8 +62,13 @@ _CENT: Final = Decimal("0.01")
 # Programs whose aid requests are the household's, not a person's (intake: Family Camp is one
 # request per household). A grant for one of these needs no camper.
 HOUSEHOLD_PROGRAM_FAMILIES: Final = frozenset({PROGRAM_FAMILY_CAMP})
+# The programs an outside grant can pay for (D95): camper programs, never Family Camp or an adult
+# program. A source's reporting group (D100) narrows it further.
+CAMPER_PROGRAM_FAMILIES: Final = frozenset({"summer", "quest", "teen", "bmitzvah"})
 
-CamperBasis = Literal["ledger", "placed", "commitment", "household", "none"]
+# "sole_camper": tied by rule, not by a person (D142) -- a never-applied household's one camper the
+# grant can pay for. "placed" stays a staff (or 2026 sheet) placement.
+CamperBasis = Literal["ledger", "placed", "sole_camper", "commitment", "household", "none"]
 
 
 def program_family_for_session_type(session_type: str) -> str:
@@ -143,6 +150,14 @@ class RegisterInputs:
     # D143: the grantors that pay whatever the camp's award leaves (a last-dollar funder). Their grants
     # are listed and counted like any other; only the calculator bridge leaves them out.
     pays_after_grantors: frozenset[str] = frozenset()
+    # household -> the people in its family of households, own OR childhood household (Go's
+    # attribution rule, the service's _family_members). D142 ties a never-applied line only within it.
+    household_people: Mapping[int, frozenset[int]] = field(default_factory=dict)
+    # description_key -> the source's reporting group as program families (D100); empty = unset.
+    families_by_source: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    # household -> its aid family (aid_household_links, family_household_set). D126 asks whether the
+    # FAMILY applied, as the ledger's "requested aid" does; a household missing here is its own family.
+    family_households: Mapping[int, frozenset[int]] = field(default_factory=dict)
 
 
 # --- outputs ------------------------------------------------------------------------------
@@ -214,6 +229,46 @@ def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozens
     return _Camper(0, 0, "", "none")
 
 
+def applied_households(
+    requests: Iterable[RequestRef], family_households: Mapping[int, Collection[int]]
+) -> frozenset[int]:
+    """The households whose family has a live aid request (Decision 10): the ones worked in the aid
+    part (D126). A household counts when it, or a household linked to it, applied."""
+    live = frozenset(r.household_cm_id for r in requests if r.status in LIVE_REQUEST_STATUSES)
+    return live | frozenset(h for h, family in family_households.items() if live.intersection(family))
+
+
+def _sole_camper(
+    line: GrantLine, inputs: RegisterInputs, by_person: Mapping[int, Sequence[Enrollment]]
+) -> _Camper | None:
+    """D142: the one person in the line's family of households enrolled (status 2) this season in a
+    program the grant can pay for -- a camper program (D95), within the source's reporting group
+    when it names one (D100). None when there are none or several: Kindred never guesses."""
+    group = inputs.families_by_source.get(line.source_key, frozenset())
+    pays_for = group & CAMPER_PROGRAM_FAMILIES if group else CAMPER_PROGRAM_FAMILIES
+    eligible = [
+        e
+        for person in inputs.household_people.get(line.household_cm_id, frozenset())
+        for e in by_person.get(person, ())
+        if e.status_id == ACTIVE_ENROLLED_STATUS_ID and e.program_family in pays_for
+    ]
+    if len({e.person_cm_id for e in eligible}) != 1:
+        return None
+    families = {e.program_family for e in eligible}
+    if len(families) == 1:
+        family = families.pop()
+    else:
+        # Owner ruling 2026-09-29, as for a staff placement: a camper active in two programs names no
+        # single family, so the line's own program wins when the camper is actively enrolled in it.
+        family = line.program_family if line.program_family in families else ""
+    return _Camper(
+        eligible[0].person_cm_id,
+        eligible[0].session_cm_id if len(eligible) == 1 else 0,
+        family,
+        "sole_camper",
+    )
+
+
 def _fulfilments(
     inputs: RegisterInputs, campers: Sequence[_Camper], household_lines: frozenset[int]
 ) -> dict[int, Commitment]:
@@ -224,9 +279,11 @@ def _fulfilments(
       and reposting, so only the repost may close the commitment;
     * outside-funded -- an incentive never reaches the calculator, so letting one close an outside
       commitment would lose the grant;
-    * confirmed on the commitment's camper -- or, for a household program (Family Camp), where the
-      target is the household, a household-program line in the commitment's household; a line and a
-      commitment on opposite sides of that divide never pair;
+    * confirmed on the commitment's camper -- by a placement, by CampMinder naming them, or by
+      D142's sole-camper tie (a never-applied family's line is confirmed no other way) -- or, for a
+      household program (Family Camp), where the target is the household, a household-program line
+      in the commitment's household; a line and a commitment on opposite sides of that divide never
+      pair;
     * from a description mapped to the commitment's own grantor -- never an unmapped one (item B);
     * not in a different session, when both name one (item D2);
     * posted on or after the commitment's committed_on (item D6): a commitment is for a grant not
@@ -355,6 +412,17 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
             requests_by_household[r.household_cm_id].append(r)
     enrolled = frozenset(by_person)
     campers = [_line_camper(ln, inputs.placements.get(ln.transaction_cm_id), enrolled) for ln in inputs.lines]
+    # D142: a never-applied household's line that no one placed ties itself to the household's sole
+    # camper the grant can pay for; a household program's line (Family Camp) needs no camper.
+    applied = applied_households(inputs.requests, inputs.family_households)
+    campers = [
+        (_sole_camper(line, inputs, by_person) or camper)
+        if camper.basis == "none"
+        and line.household_cm_id not in applied
+        and line.program_family not in HOUSEHOLD_PROGRAM_FAMILIES
+        else camper
+        for line, camper in zip(inputs.lines, campers, strict=True)
+    ]
     household_lines = frozenset(
         line.transaction_cm_id
         for line, camper in zip(inputs.lines, campers, strict=True)
@@ -521,7 +589,7 @@ class CamperSuggestion:
 @dataclass(frozen=True)
 class NeedsCamper:
     row: RegisterRow
-    household_applied: bool  # the household has a live aid request (Decision 10)
+    household_applied: bool  # the household has a live aid request (Decision 10); always true since D126
     suggestion: CamperSuggestion | None
     candidates: tuple[int, ...]  # people enrolled this season in the line's family of households
 
@@ -670,15 +738,21 @@ def needs_attention(
     a commitment still not in CampMinder. The late-grant "contact the family" line is Today's and
     needs SP10's lock, so it isn't here."""
     lines = {ln.transaction_cm_id: ln for ln in inputs.lines}
-    applied = {r.household_cm_id for r in inputs.requests if r.status in LIVE_REQUEST_STATUSES}
+    applied = applied_households(inputs.requests, inputs.family_households)
     fulfilled = {r.fulfils_commitment_id for r in rows if r.fulfils_commitment_id}
     open_commitments = [c for c in inputs.commitments if c.status == "open" and c.id not in fulfilled]
 
     # A household program's line (Family Camp) needs no camper: it sits on the household's request.
+    # D126: nor does a line in a household that never applied -- it isn't worked in the aid part, so
+    # it stays at household level unless D142 tied it to a sole camper (build_register).
     need_rows = [
         row
         for row in rows
-        if row.kind == "ledger" and not row.is_reversed and row.person_cm_id == 0 and row.camper_basis != "household"
+        if row.kind == "ledger"
+        and not row.is_reversed
+        and row.person_cm_id == 0
+        and row.camper_basis != "household"
+        and row.household_cm_id in applied
     ]
     suggested = _suggested_commitments(need_rows, lines, open_commitments)
     needs = [
@@ -690,7 +764,7 @@ def needs_attention(
         )
         for row in need_rows
     ]
-    needs.sort(key=lambda n: (not n.household_applied, -n.row.amount, n.row.transaction_cm_id))
+    needs.sort(key=lambda n: (-n.row.amount, n.row.transaction_cm_id))
 
     unmapped_lines: dict[str, list[Decimal]] = defaultdict(list)
     for row in rows:

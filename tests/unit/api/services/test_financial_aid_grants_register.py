@@ -777,16 +777,177 @@ def test_a_line_with_no_inference_has_candidates_but_no_suggestion() -> None:
     assert need.candidates == (EMMA, LIAM)
 
 
-def test_applicant_households_sort_first_then_the_largest_amount() -> None:
+def test_needs_a_camper_lists_applicant_households_only_the_largest_amount_first() -> None:
+    """D126: a household that never applied is not worked in the aid part, so its household-level
+    line leaves "needs a camper" (the registrar does no extra tracking for it). It stays in the
+    register, at household level."""
     other_household = 150
     lines = (
         _line(9001, "100"),
         _line(9002, "900", household_cm_id=other_household),
         _line(9003, "300"),
     )
-    needs = _attention(lines=lines).needs_camper
-    assert [n.row.transaction_cm_id for n in needs] == [9003, 9001, 9002]
-    assert [n.household_applied for n in needs] == [True, True, False]
+    inputs = _inputs(lines=lines)
+    rows = build_register(inputs)
+    needs = needs_attention(rows, inputs, candidates={HOUSEHOLD: (EMMA, LIAM)}, today=TODAY).needs_camper
+    assert [n.row.transaction_cm_id for n in needs] == [9003, 9001]
+    assert [n.household_applied for n in needs] == [True, True]
+    kept = _one(rows, transaction_cm_id=9002)
+    assert (kept.person_cm_id, kept.camper_basis, kept.amount) == (0, "none", Decimal(900))
+
+
+# --- never-applied households (D126, D142) ------------------------------------------------------
+
+NEVER_APPLIED = 200
+OLIVIA, RILEY, PARENT = 2001, 2002, 2003  # a camper, a sibling camper, an adult in household 200
+Q1, T1, AW1 = 1000201, 1000301, 1000401  # a Quest, a teen and an adult weekend session
+
+
+def _never_applied(
+    *enrolled: Enrollment, people: frozenset[int] = frozenset({OLIVIA, RILEY, PARENT}), **kw: Any
+) -> tuple[Any, Any]:
+    """A household-level line in a household with no aid request, whose family of households
+    holds `people`."""
+    line_kw: dict[str, Any] = {"household_cm_id": NEVER_APPLIED, "attributed_person_cm_id": 0}
+    line_kw.update(kw.pop("line", {}))
+    inputs = _inputs(
+        lines=(_line(9201, **line_kw),),
+        enrollments=ENROLLED + enrolled,
+        household_people={HOUSEHOLD: frozenset({EMMA, LIAM}), NEVER_APPLIED: people},
+        **kw,
+    )
+    rows = build_register(inputs)
+    return _one(rows, transaction_cm_id=9201), needs_attention(rows, inputs, candidates={}, today=TODAY)
+
+
+def test_a_never_applied_households_grant_ties_itself_to_its_sole_camper() -> None:
+    """D142: exactly one camper the grant can pay for this season, so Kindred ties it there -- a
+    machine placement ("sole_camper"), not a staff one. The adult's weekend is not a program an
+    outside grant pays for (D95), so the adult is not a second candidate."""
+    row, attention = _never_applied(Enrollment(OLIVIA, S1, "summer", 2), Enrollment(PARENT, AW1, "adult_weekend", 2))
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.program_family) == (
+        OLIVIA,
+        "sole_camper",
+        S1,
+        "summer",
+    )
+    assert (row.counts, row.requests, row.cancelled) == (True, (), False)
+    assert attention.needs_camper == ()
+
+
+def test_a_sole_camper_in_two_sessions_is_tied_without_a_session() -> None:
+    # Two sessions leave no single session; the default line is a summer line, so the program is its own
+    # (owner ruling 2026-09-29, as for a staff placement).
+    row, _ = _never_applied(Enrollment(OLIVIA, S1, "summer", 2), Enrollment(OLIVIA, Q1, "quest", 2))
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.program_family) == (
+        OLIVIA,
+        "sole_camper",
+        0,
+        "summer",
+    )
+
+
+def test_a_sole_camper_in_two_programs_takes_the_lines_own_program_when_active_in_it() -> None:
+    """Owner ruling 2026-09-29, applied to D142's automatic tie as it already applies to a staff
+    placement: a camper active in two programs names no single family, so the line's own program
+    wins when the camper is actively enrolled in it."""
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2), Enrollment(OLIVIA, Q1, "quest", 2), line={"program_family": "summer"}
+    )
+    assert (row.person_cm_id, row.camper_basis, row.session_cm_id, row.program_family) == (
+        OLIVIA,
+        "sole_camper",
+        0,
+        "summer",
+    )
+
+
+def test_a_sole_camper_in_two_programs_keeps_no_program_when_the_lines_program_is_not_one_of_them() -> None:
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2), Enrollment(OLIVIA, Q1, "quest", 2), line={"program_family": "teen"}
+    )
+    assert (row.person_cm_id, row.camper_basis, row.program_family) == (OLIVIA, "sole_camper", "")
+
+
+def test_a_never_applied_household_with_two_eligible_campers_stays_household_level() -> None:
+    """D142: nobody places these by hand, and Kindred never guesses between two campers."""
+    row, attention = _never_applied(Enrollment(OLIVIA, S1, "summer", 2), Enrollment(RILEY, Q1, "quest", 2))
+    assert (row.person_cm_id, row.camper_basis, row.counts) == (0, "none", False)
+    assert attention.needs_camper == ()
+
+
+def test_a_never_applied_household_with_only_an_adult_weekend_stays_household_level() -> None:
+    row, attention = _never_applied(Enrollment(PARENT, AW1, "adult_weekend", 2))
+    assert (row.person_cm_id, row.camper_basis) == (0, "none")
+    assert attention.needs_camper == ()
+
+
+def test_a_cancelled_camper_is_not_a_second_candidate() -> None:
+    row, _ = _never_applied(Enrollment(OLIVIA, S1, "summer", 2), Enrollment(RILEY, S1, "summer", 32))
+    assert (row.person_cm_id, row.camper_basis) == (OLIVIA, "sole_camper")
+
+
+def test_a_camper_outside_the_household_is_never_tied() -> None:
+    """Only people in the grant's family of households are candidates: another household's
+    enrolled camper is not this grant's."""
+    row, _ = _never_applied(Enrollment(OLIVIA, S1, "summer", 2), people=frozenset({RILEY, PARENT}))
+    assert (row.person_cm_id, row.camper_basis) == (0, "none")
+
+
+def test_the_sources_reporting_group_decides_which_campers_it_can_pay_for() -> None:
+    """D100: a source says which programs it funds. A Camp & Quest source can't pay for the teen
+    sibling, so the summer camper is the only one it can pay for."""
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2),
+        Enrollment(RILEY, T1, "teen", 2),
+        families_by_source={GRANT: frozenset({"summer", "quest"})},
+    )
+    assert (row.person_cm_id, row.camper_basis) == (OLIVIA, "sole_camper")
+
+
+def test_a_source_that_funds_no_camper_program_is_never_tied_to_a_camper() -> None:
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2),
+        families_by_source={GRANT: frozenset({"adult_weekend"})},
+        line={"program_family": ""},
+    )
+    assert (row.person_cm_id, row.camper_basis) == (0, "none")
+
+
+def test_a_family_that_applied_through_a_linked_household_is_worked_as_an_applicant() -> None:
+    """D126 is about FAMILIES that never applied. An aid family spans its linked households
+    (aid_household_links, the set the ledger's "requested aid" reads), so a line posted to a
+    household whose linked household applied still needs a camper, and is never tied by rule."""
+    row, attention = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2),
+        family_households={NEVER_APPLIED: frozenset({NEVER_APPLIED, HOUSEHOLD})},
+    )
+    assert (row.person_cm_id, row.camper_basis, row.counts) == (0, "none", False)
+    assert [(n.row.transaction_cm_id, n.household_applied) for n in attention.needs_camper] == [(9201, True)]
+
+
+def test_a_staff_placement_still_wins_in_a_never_applied_household() -> None:
+    row, _ = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2),
+        Enrollment(RILEY, S1, "summer", 2),
+        placements={9201: Placement(9201, RILEY, S1, "summer")},
+    )
+    assert (row.person_cm_id, row.camper_basis) == (RILEY, "placed")
+
+
+def test_an_applicant_household_with_one_camper_still_waits_for_the_registrar() -> None:
+    """D142 is for families who never applied. An applicant's household-level line keeps today's
+    path: it needs a camper, and the registrar picks, even when only one camper fits."""
+    inputs = _inputs(
+        lines=(_line(),),
+        enrollments=(Enrollment(EMMA, S1, "summer", 2),),
+        household_people={HOUSEHOLD: frozenset({EMMA})},
+    )
+    rows = build_register(inputs)
+    row = _one(rows, transaction_cm_id=9001)
+    assert (row.person_cm_id, row.camper_basis, row.counts) == (0, "none", False)
+    (need,) = needs_attention(rows, inputs, candidates={HOUSEHOLD: (EMMA,)}, today=TODAY).needs_camper
+    assert (need.row.transaction_cm_id, need.household_applied) == (9001, True)
 
 
 def test_placed_named_and_reversed_lines_never_need_a_camper() -> None:
