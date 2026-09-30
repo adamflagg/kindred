@@ -189,6 +189,28 @@ class Season:
     rounds: Mapping[str, Mapping[int, RoundState]]
     register: tuple[RegisterRow, ...]
     sessions: Mapping[int, SessionRow]
+    # The grants register's calculator input per request, built once for pricing and the budget.
+    grants: Mapping[str, Sequence[GrantInput]]
+
+
+Names = tuple[dict[int, str], dict[int, str]]
+
+
+@dataclass(frozen=True)
+class _RequestSide:
+    """The season's loads that hang off its requests: rules, applications, corrections, equity
+    answers, and (for the grid) the family and camper names."""
+
+    rules: RulesVersion | None
+    applications: list[ApplicationRecord]
+    requests: list[RequestRecord]
+    corrections: list[CorrectionRecord]
+    equity: dict[int, EquityAnswers]
+    names: Names
+
+
+async def _no_names() -> Names:
+    return {}, {}
 
 
 def _to_price(
@@ -363,28 +385,47 @@ class FinancialAidDecisionsService:
         self._register = register
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
-    async def season(self, year: int) -> Season:
-        """Every request of the season priced now, with its rounds (D21: the server decides)."""
-        # Two gathers: asyncio.gather's typed overloads stop at six awaitables.
+    async def _request_side(self, year: int, *, names: bool) -> _RequestSide:
         rules, applications, requests, corrections = await asyncio.gather(
             self._rules.latest_approved(year, PRICING_SECTIONS),
             self._store.fetch_applications(year),
             self._store.fetch_requests(year),
             self._store.fetch_corrections(year, None),
         )
-        sessions, shares, events, register = await asyncio.gather(
+        people = sorted({r.person_cm_id for r in requests if r.person_cm_id > 0})
+        households = {r.household_cm_id for r in requests}
+        equity, found = await asyncio.gather(
+            self._store.fetch_equity_answers(year, people),
+            self._store.fetch_names(year, households, people) if names else _no_names(),
+        )
+        return _RequestSide(rules, applications, requests, corrections, equity, found)
+
+    async def _rounds_side(
+        self, year: int
+    ) -> tuple[list[SessionRow], list[PayerShareRecord], list[DecisionEvent], Sequence[RegisterRow]]:
+        return await asyncio.gather(
             self._store.fetch_sessions(year),
             self._store.fetch_payer_shares(year),
             self._store.fetch_decision_events(year),
             self._register(year),
         )
-        people = sorted({r.person_cm_id for r in requests if r.person_cm_id > 0})
-        equity = await self._store.fetch_equity_answers(year, people)
+
+    async def season(self, year: int) -> Season:
+        """Every request of the season priced now, with its rounds (D21: the server decides)."""
+        return (await self._season(year, names=False))[0]
+
+    async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
+        """The season's loads run as two concurrent branches: the requests with what hangs off them
+        (the names too, when asked), and the sessions, shares, events and grants register."""
+        side, (sessions, shares, events, register) = await asyncio.gather(
+            self._request_side(year, names=names), self._rounds_side(year)
+        )
+        rules = side.rules
         rounds = fold_rounds(events)
         grants = grant_inputs_by_request(register)
-        by_id = {a.id: a for a in applications}
+        by_id = {a.id: a for a in side.applications}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
-        for correction in corrections:
+        for correction in side.corrections:
             own[correction.application_id].append(correction)
         session_map = {s.cm_id: s for s in sessions}
         document = rules.document if rules is not None else None
@@ -396,30 +437,29 @@ class FinancialAidDecisionsService:
                     own.get(r.application_id, []),
                     session_map,
                     shares,
-                    equity.get(r.person_cm_id),
+                    side.equity.get(r.person_cm_id),
                     rounds.get(r.id, {}),
                     tuple(grants.get(r.id, [])),
                     document,
                 ),
                 document,
             )
-            for r in requests
+            for r in side.requests
         }
-        return Season(
+        season = Season(
             year=year,
             rules=rules,
-            requests={r.id: r for r in requests},
+            requests={r.id: r for r in side.requests},
             priced=priced,
             rounds=rounds,
             register=tuple(register),
             sessions=session_map,
+            grants=grants,
         )
+        return season, side.names
 
     def _budget(self, season: Season) -> SeasonBudget:
-        by_request = {
-            rid: sum((g.amount for g in grants), ZERO)
-            for rid, grants in grant_inputs_by_request(season.register).items()
-        }
+        by_request = {rid: sum((g.amount for g in grants), ZERO) for rid, grants in season.grants.items()}
         off = sum(
             (row.amount for row in season.register if row.counts and row.funder_type == "outside" and not row.requests),
             ZERO,
@@ -430,10 +470,7 @@ class FinancialAidDecisionsService:
         )
 
     async def grid(self, year: int) -> RequestsGridResponse:
-        season = await self.season(year)
-        households = {r.household_cm_id for r in season.requests.values()}
-        persons = {r.person_cm_id for r in season.requests.values() if r.person_cm_id > 0}
-        families, campers = await self._store.fetch_names(year, households, persons)
+        season, (families, campers) = await self._season(year, names=True)
         rows = [
             grid_row(season.requests[rid], priced, season.rounds.get(rid, {}), season.sessions, families, campers)
             for rid, priced in season.priced.items()
