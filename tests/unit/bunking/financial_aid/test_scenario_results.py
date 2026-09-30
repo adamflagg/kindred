@@ -16,6 +16,7 @@ from bunking.financial_aid.scenarios import (
     ScenarioResults,
     TableTierRow,
     TierRow,
+    committee_view,
     round1_by_request,
     scenario_results,
     up_down,
@@ -301,3 +302,51 @@ def test_results_stored_by_sp9b_still_load_and_say_they_have_no_committee_rows()
     loaded = ScenarioResults.model_validate(stored)
     assert (loaded.committee_rows, loaded.by_table, loaded.round2_by_tier) == (False, [], [])
     assert loaded.by_tier[0].asked is None
+
+
+# --- SP9c final review ---------------------------------------------------------------------------------------------
+
+
+def test_results_written_by_a_newer_build_still_load() -> None:
+    """A later rollback reads rows a newer build stored: a key this build doesn't know is ignored, never refused."""
+    results = _results([*_season(), _priced("req-a2", 1000008, 60000, rounds={2: _appeal("1000")})])
+    stored = results.model_dump(mode="json")
+    stored["a_later_figure"] = "1"
+    stored["by_tier"][0]["a_later_count"] = 2
+    stored["by_table"][0]["a_later_count"] = 2
+    stored["round2_by_tier"][0]["a_later_count"] = 2
+    stored["pools"][0]["a_later_figure"] = "1"
+    assert ScenarioResults.model_validate(stored) == results
+
+
+def test_a_counted_request_with_no_ask_is_counted_apart_and_out_of_the_asks() -> None:
+    # req-n is tier 2 and needs an offer of 3,000, but has no Round 1 ask: its Round 1 counts, its ask can't.
+    results = _results([_priced("req-a", 1000001, 60000), _priced("req-n", 1000009, 60000, r1_ask=None)])
+    assert results.by_tier == [
+        TierRow(
+            tier=2,
+            requests=2,
+            families=2,
+            round1=Decimal(6000),
+            asked=Decimal(4000),
+            no_ask=1,
+            no_ask_round1=Decimal(3000),
+        )
+    ]
+    assert (results.by_table[0].no_ask, results.by_table[0].no_ask_round1) == (1, Decimal(3000))
+    every = committee_view(results, RULES).round1_by_tier[-1]
+    assert (every.table, every.requests, every.round1, every.no_ask) == (None, 2, Decimal(6000), 1)
+    # Like for like: the ask-based figures read only the request with an ask.
+    assert (every.average_ask, every.pct_of_ask) == (Decimal("4000.00"), Decimal("75.0"))
+    assert every.average_round1 == Decimal("3000.00")  # Round 1 over every request the row counts
+
+
+def test_round2_rows_split_by_the_round2_table_not_the_award_table() -> None:
+    # teen's award table stays teen; its appeals move to the camp Round 2 table.
+    moved = with_levers(RULES, {"round2.program_tables.teen": "camp"})
+    teen = _priced(
+        "req-t", 1000004, 60000, request=req(session_cm_id=1000104, program_key="teen"), rounds={2: _appeal("500")}
+    )
+    results = scenario_results([teen], season_budget([teen], RULES, outside_grants={}), document=moved)
+    assert [(row.table, row.tier) for row in results.by_table] == [("teen", 2)]
+    assert [(row.table, row.tier, row.appeals) for row in results.round2_by_tier] == [("camp", 2, 1)]

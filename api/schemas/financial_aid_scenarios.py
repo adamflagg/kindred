@@ -182,6 +182,8 @@ class TierCompareOut(BaseModel):
     round1: float
     average_round1: float | None  # Round 1 ÷ requests (the requests the row counts)
     held: int  # the tier's live requests whose Round 1 is held (a check's hold has a tier): in none of the above
+    # Counted requests with no Round 1 ask: in `requests` and `round1`, out of `asked`, `average_ask` and `pct_of_ask`
+    no_ask: int
 
 
 class Round2CompareOut(BaseModel):

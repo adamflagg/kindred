@@ -11,7 +11,8 @@ priced season and its budget, exactly as sub-project 10a's Rounds & budget compu
                      exactly as the budget counts Round 1 (a posted Round 1 at its lock; a clawed-back round, or one
                      whose decision type is outside the budget, in no tier). SP9c fills `asked` (RPT-17) and `held`:
                      the tier's live requests whose Round 1 is held (a check's hold has a tier), counted apart so a
-                     tier's apps are never silently short.
+                     tier's apps are never silently short. A counted request with no Round 1 ask is counted apart
+                     (`no_ask`, with its Round 1): the ask-based figures leave it out, like for like.
   By table           the same requests split by the award table their program uses under the priced document
                      ("" for a program with no Round 1 table): RPT-17's per-table rows (SP9c). They sum to By tier.
   Round 2 by tier    per Round 2 table and final tier: the live requests with a Round 2 ask that is not clawed back
@@ -44,7 +45,9 @@ from bunking.financial_aid.scenarios.request_set import RequestSetNote
 
 
 class _Result(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    # Stored as JSON on kept options and trail rows: a key this build doesn't know (written by a newer one) is
+    # ignored, so a rollback still reads every row (SP9c final review).
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
 
 class TierRow(_Result):
@@ -56,6 +59,10 @@ class TierRow(_Result):
     # options stored by SP9b still load.
     asked: Decimal | None = None
     held: int = 0  # SP9c: the tier's live requests whose Round 1 is held, in none of the figures above
+    # SP9c: counted requests with no Round 1 ask, and their Round 1. In `requests` and `round1`, but not in `asked`,
+    # so the ask-based figures (average ask, % of ask) leave them out and stay like for like.
+    no_ask: int = 0
+    no_ask_round1: Decimal = ZERO
 
 
 class TableTierRow(_Result):
@@ -69,12 +76,17 @@ class TableTierRow(_Result):
     round1: Decimal
     asked: Decimal
     held: int = 0
+    no_ask: int = 0  # as TierRow's
+    no_ask_round1: Decimal = ZERO
 
 
 class Round2TierRow(_Result):
     """Round 2 by Round 2 table and final tier (RPT-32). `appeals` are live requests with a Round 2 ask, held ones
-    included; `priced` are those whose Round 2 the budget counts (Posted, Needs an offer), and `round2` and
-    `priced_asked` are theirs, so "% of Round 2 ask" divides like for like."""
+    included; `priced` are those whose Round 2 the budget counts (Posted, Needs an offer, Pending approval), and
+    `round2` and `priced_asked` are theirs, so "% of Round 2 ask" divides like for like.
+
+    An appeal on a request with no final tier (one that could not be priced: the results' total `held` counts it) is
+    in no row, by design: a tier row needs a tier. Its Round 2 money, if any, is `round2_not_in_tiers`."""
 
     table: str  # the program's Round 2 table under the priced document; "" when it has none
     tier: int
@@ -135,12 +147,20 @@ class TierTally:
     round1: Decimal = ZERO
     asked: Decimal = ZERO
     held: set[str] = field(default_factory=set)
+    no_ask: set[str] = field(default_factory=set)
+    no_ask_round1: Decimal = ZERO
 
     def add(self, priced: PricedRequest, amount: Decimal, ask: Decimal | None) -> None:
+        """A counted Round 1. One with no ask is counted apart (`no_ask`), so the ask-based figures stay like for
+        like; it still counts in the requests and Round 1."""
         self.requests.add(priced.request_id)
         self.families.add(priced.household_cm_id)
         self.round1 += amount
-        self.asked += ask or ZERO
+        if ask is None:
+            self.no_ask.add(priced.request_id)
+            self.no_ask_round1 += amount
+        else:
+            self.asked += ask
 
     def hold(self, priced: PricedRequest) -> None:
         self.held.add(priced.request_id)
@@ -183,7 +203,14 @@ def round2_table(document: AidRules, program_key: str | None) -> str:
 def tier_rows(tiers: Mapping[int, TierTally]) -> list[TierRow]:
     return [
         TierRow(
-            tier=n, requests=len(t.requests), families=len(t.families), round1=t.round1, asked=t.asked, held=len(t.held)
+            tier=n,
+            requests=len(t.requests),
+            families=len(t.families),
+            round1=t.round1,
+            asked=t.asked,
+            held=len(t.held),
+            no_ask=len(t.no_ask),
+            no_ask_round1=t.no_ask_round1,
         )
         for n, t in sorted(tiers.items())
     ]
@@ -199,6 +226,8 @@ def table_rows(tables: Mapping[tuple[str, int], TierTally]) -> list[TableTierRow
             round1=t.round1,
             asked=t.asked,
             held=len(t.held),
+            no_ask=len(t.no_ask),
+            no_ask_round1=t.no_ask_round1,
         )
         for (table, n), t in sorted(tables.items())
     ]

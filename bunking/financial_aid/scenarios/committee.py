@@ -4,7 +4,9 @@
                              ask and its average, the fee % (the table's Round 1 % for the tier, read from the
                              document, never computed), % of ask (Round 1 ÷ ask), and the average Round 1 (Round 1 ÷
                              requests: the requests the row counts, D80's population); and the tier's held requests,
-                             counted apart (a check's hold has a tier, but no Round 1).
+                             counted apart (a check's hold has a tier, but no Round 1). A counted request with no ask
+                             is counted apart too (`no_ask`): in the requests and Round 1, out of the ask-based
+                             figures (average ask, % of ask), which stay like for like.
   Round 2 by tier (RPT-32)   per ROUND 2 table and final tier, then All: appeals and their asks (held ones
                              included), the Round 2 max % (the table's total %, a rules value), Round 2 dollars, their
                              average (÷ the appeals priced) and % of ask (÷ those appeals' asks, `priced_asked`). Split
@@ -114,6 +116,9 @@ class TierCompareRow:
     round1: Decimal
     average_round1: Decimal | None
     held: int  # the tier's live requests whose Round 1 is held: in none of the figures above
+    # Counted requests with no Round 1 ask: in `requests` and `round1` (so the average Round 1), but out of the
+    # ask-based figures (`asked`, `average_ask`, `pct_of_ask`), which stay like for like.
+    no_ask: int = 0
 
 
 @dataclass(frozen=True)
@@ -169,12 +174,13 @@ def _round1_row(table: str | None, row: TierRow | TableTierRow, document: AidRul
         requests=row.requests,
         families=row.families,
         asked=asked,
-        average_ask=_average(asked, row.requests),
+        average_ask=_average(asked, row.requests - row.no_ask),
         fee_pct=fee_pct(document, table, row.tier),
-        pct_of_ask=pct(row.round1, asked),
+        pct_of_ask=pct(row.round1 - row.no_ask_round1, asked),
         round1=row.round1,
         average_round1=_average(row.round1, row.requests),
         held=row.held,
+        no_ask=row.no_ask,
     )
 
 

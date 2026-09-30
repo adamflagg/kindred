@@ -607,6 +607,7 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "round1": 1500.0,
         "average_round1": 1500.0,
         "held": 1,
+        "no_ask": 0,
     }
     assert committee["round1_by_tier"][1]["table"] is None  # All
     assert committee["round2_by_tier"][0] == {

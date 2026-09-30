@@ -225,6 +225,27 @@ def test_a_season_with_nothing_posted_is_not_loaded() -> None:
     assert (posted.round1, posted.by_tier, posted.by_table, posted.round2_by_tier) == (Decimal(0), (), (), ())
 
 
+def test_last_seasons_posted_round1_with_no_ask_is_counted_apart_and_out_of_the_asks() -> None:
+    rounds = {"req-a": {1: _lock(1, "3000", tier=2)}, "req-n": {1: _lock(1, "2000", tier=2)}}
+    a = _priced("req-a", 1000001, 60000, rounds=rounds["req-a"])
+    n = _priced("req-n", 1000002, 60000, rounds=rounds["req-n"], r1_ask=None)
+    posted = posted_season([a, n], rounds, RULES)
+    assert posted.by_tier == (
+        TierRow(
+            tier=2,
+            requests=2,
+            families=2,
+            round1=Decimal(5000),
+            asked=Decimal(4000),
+            no_ask=1,
+            no_ask_round1=Decimal(2000),
+        ),
+    )
+    every = committee_view(posted, RULES).round1_by_tier[-1]
+    assert (every.no_ask, every.average_ask, every.pct_of_ask) == (1, Decimal("4000.00"), Decimal("75.0"))
+    assert every.average_round1 == Decimal("2500.00")
+
+
 # --- last season's rules on this season's applications (RPT-18) ----------------------------------------------------
 
 
