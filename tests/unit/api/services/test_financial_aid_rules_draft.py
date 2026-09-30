@@ -342,8 +342,10 @@ async def test_a_whole_document_save_over_approved_pricing_rules_is_refused() ->
     store = FakeStore()
     service = await _approved_v1(store)
     before = len(store.operations)
-    with pytest.raises(PricingVersionInUseError, match="section editor"):
+    with pytest.raises(PricingVersionInUseError, match="section editor") as refused:
         await service.save(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    assert "awards" in str(refused.value)
+    assert "prices the season" in str(refused.value)
     assert len(store.operations) == before
 
 
@@ -392,8 +394,11 @@ async def test_a_whole_document_save_over_approved_programs_or_cost_that_intake_
     before = len(store.operations)
     for lever, value in (("cost.infant_age_cutoff_months", 30), ("programs.quest.label", "Quest II")):
         edited = with_lever(_minimum(fictional_rules(), "150"), lever, value)
-        with pytest.raises(PricingVersionInUseError):
+        with pytest.raises(PricingVersionInUseError) as refused:
             await service.save(2031, 2, edited, actor=TREASURER)
+        assert lever.split(".")[0] in str(refused.value)
+        assert "read by intake" in str(refused.value)
+        assert "prices the season" not in str(refused.value)
     assert len(store.operations) == before
     status = (await service.load(2031, 2)).section_status
     assert (status["programs"].state, status["cost"].state) == ("approved", "approved")
@@ -759,7 +764,7 @@ async def test_an_acknowledgement_expires_when_the_warned_section_is_edited_agai
 
 
 @pytest.mark.asyncio
-async def test_an_acknowledgement_is_for_its_own_section_only() -> None:
+async def test_an_empty_acknowledgement_token_is_refused() -> None:
     service = await _approved_v1(FakeStore())
     await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)
     with pytest.raises(ReplacementNotAcknowledgedError):
@@ -772,6 +777,56 @@ async def test_an_acknowledgement_is_for_its_own_section_only() -> None:
             actor=FINANCE,
             via="B2",
         )
+
+
+@pytest.mark.asyncio
+async def test_a_token_from_one_section_does_not_acknowledge_another() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    both = with_lever(_minimum(fictional_rules(), "120"), "award_tables.camp.tiers.1.r1_pct", "85")
+    await service.save_sections(2031, 1, both, actor=TREASURER)  # v2: awards and award_tables both draft
+    preview = await service.promotion_preview(2031, origin_version=1, document=_option())
+    warned = {s.section: s.warning for s in preview.sections}
+    assert warned["awards"] is not None
+    assert warned["award_tables"] is not None
+    assert warned["awards"].token != warned["award_tables"].token
+    before = len(store.operations)
+    with pytest.raises(ReplacementNotAcknowledgedError) as refused:
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=_option(),
+            base_version=2,
+            acknowledged={"awards": warned["awards"].token, "award_tables": warned["awards"].token},
+            actor=FINANCE,
+            via="B2",
+        )
+    assert refused.value.sections == ["award_tables"]
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_from_one_option_does_not_cover_another_option() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)  # v2, awards draft
+    option_a = _option()  # minimum $150
+    option_b = with_lever(fictional_rules(), "awards.minimum", "175")
+    preview = await service.promotion_preview(2031, origin_version=1, document=option_a)
+    token = {s.section: s.warning for s in preview.sections}["awards"].token  # type: ignore[union-attr]
+    before = len(store.operations)
+    with pytest.raises(ReplacementNotAcknowledgedError) as refused:
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=option_b,
+            base_version=2,
+            acknowledged={"awards": token},
+            actor=FINANCE,
+            via="B",
+        )
+    assert refused.value.sections == ["awards"]
+    assert len(store.operations) == before
 
 
 @pytest.mark.asyncio

@@ -137,7 +137,10 @@ from bunking.pocketbase_batch import BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 
-# Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11).
+# Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11). Two pricing sections are
+# absent on purpose. `quality_checks`: a hold gates posting but never changes a posted amount, and locking it would
+# freeze the thresholds for the season after the first tick; a change to it still needs approval. `budget`: a
+# mid-season re-split is a finance edit plus re-approval (D119), not something a tick freezes.
 ROUND_SECTIONS: Final[Mapping[int, tuple[SectionName, ...]]] = {
     1: ("income", "tiers", "equity", "award_tables", "programs", "cost", "grants", "awards"),
     2: ("round2",),

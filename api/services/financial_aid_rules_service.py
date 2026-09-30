@@ -6,10 +6,9 @@ api/routers/financial_aid.py gate every call on `financial_aid.rules`, except
 D76's approved read (`approved_view`), which needs `financial_aid.view`; this
 module does no permission check of its own.
 
-A version is (year, version). Each section has its own lifecycle
-(bunking.financial_aid.rules.lifecycle): saving a change to an approved section
-sends it back to draft, and a change to a locked section is refused -- that
-change needs a new version. Because sections refer to each other, `save` judges
+A version is (year, version). Each section has its own lifecycle (bunking.financial_aid.rules.lifecycle): saving a
+change to an approved section sends it back to draft, and a change to a locked section is refused -- that change
+needs a new version. Because sections refer to each other, `save` judges
 the whole document after the edit: an approved section the edit leaves with
 validation errors also goes back to draft (each such change is recorded), and
 an edit that would give a locked section new errors is refused. A draft with
@@ -262,9 +261,9 @@ def _replacement(
     status = current.section_status[section]
     shown = {
         "section": section,
-        "now": getattr(current.document, section).model_dump(mode="json"),
+        "now": current.document.model_dump(mode="json")[section],
         "status": status.model_dump(mode="json"),
-        "option": getattr(wanted, section).model_dump(mode="json"),
+        "option": wanted.model_dump(mode="json")[section],
     }
     token = hashlib.sha256(json.dumps(shown, sort_keys=True).encode()).hexdigest()[:16]
     if status.state == "draft":
@@ -642,10 +641,23 @@ class FinancialAidRulesService:
         touched = [*changed_sections(current.document, document), *outcome.reverted]
         # The version that prices the season is guarded whole; one only intake reads, for programs and cost.
         in_use = await self._sections_in_use(current)
-        if any(name in in_use and current.section_status[name].state in ("approved", "locked") for name in touched):
+        refused = [
+            name
+            for name in dict.fromkeys(touched)
+            if name in in_use and current.section_status[name].state in ("approved", "locked")
+        ]
+        if refused:
+            pricing = await self.latest_approved(year, PRICING_SECTIONS)
+            prices = pricing is not None and pricing.version == current.version
+            intake = await self.latest_approved(year, INTAKE_RULES_SECTIONS)
+            reads = intake is not None and intake.version == current.version
+            role = " and ".join(
+                part for part, on in (("prices the season", prices), ("is read by intake", reads)) if on
+            )
             raise PricingVersionInUseError(
-                f"Version {current.version} of {year} is in use: a whole-document save would "
-                "send its approved sections back to draft. Use the section editor, which branches a new version"
+                f"Version {current.version} of {year} {role}: a whole-document save would send its approved "
+                f"section(s) {', '.join(refused)} back to draft. "
+                "Use the section editor, which branches a new version"
             )
         # This save doesn't stamp (plan Decision 4), so a section it touches drops any earlier edit stamp rather than
         # keep naming someone who no longer made its last change.
@@ -675,10 +687,10 @@ class FinancialAidRulesService:
 
         This is the section editors' save and a promotion's (SP9, spec §7.5, D39). Unlike the whole-document
         `save`, it never overwrites an approved or locked section in use. (`quality_checks` is a pricing
-        section, so a never-approved one does not price the season either.) When a changed section is approved or locked here and `_protected` says the approved copy would
-        be lost, the whole candidate becomes a new version (parent = this one): changed approved sections go to
-        draft there, and a changed locked section's lock is lifted there only. Otherwise it saves in place,
-        lifting any lock that is only a copy of the parent's.
+        section, so a never-approved one does not price the season either.) When a changed section is approved or
+        locked here and `_protected` says the approved copy would be lost, the whole candidate becomes a new version
+        (parent = this one): changed approved sections go to draft there, and a changed locked section's lock is
+        lifted there only. Otherwise it saves in place, lifting any lock that is only a copy of the parent's.
 
         Each section the edit touched (changed, or sent back to draft by it) is stamped with `actor`, the time and
         `via` (the kept option it came from). One operation, one log row: "save" on the version written. A save
@@ -792,9 +804,9 @@ class FinancialAidRulesService:
     ) -> SectionSaveResult:
         """Copy the previewed sections from the option into the rules draft as one save (`save_sections`, so the
         approved rules in use are never overwritten), stamped `via` the option's code. Refused when the rules draft
-        moved past `base_version`, or when a warned section is not acknowledged with the token the preview returned for it. A section
-        re-edited since the preview has a new token, so its old acknowledgement is refused and the section named;
-        nothing is written then."""
+        moved past `base_version`, or when a warned section is not acknowledged with the token the preview returned
+        for it. A section re-edited since the preview has a new token, so its old acknowledgement is refused and the
+        section named; nothing is written then."""
         preview = await self.promotion_preview(year, origin_version=origin_version, document=document)
         if preview.base_version != base_version:
             raise NotLatestVersionError(
