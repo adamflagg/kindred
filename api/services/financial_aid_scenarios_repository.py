@@ -30,8 +30,8 @@ _PB_ID: Final = re.compile(r"^[a-z0-9]{15}$")
 _SNAPSHOT_FIELDS: Final = "id,year,requests,awaiting_rules,actor,created"
 _OPTION_FIELDS: Final = "id,year,code,starting_point,from_code,origin_version,document,results,snapshot,actor,created"
 _TRAIL_PAGE_FIELDS: Final = "id,year,actor,from_code,change,results,snapshot,kept_code,created"
-# Decoded snapshots by record id. A snapshot never changes once written, so a decoded one never goes stale. Two are
-# kept: least recently used goes first. Three: the current one plus two older ones a compare re-prices options on.
+# Decoded snapshots by record id. A snapshot never changes once written, so a decoded one never goes stale. Three are
+# kept (the current one plus two older ones a compare re-prices options on); the least recently used goes first.
 _DECODED: OrderedDict[str, SeasonSnapshot] = OrderedDict()
 _DECODED_KEPT: Final = 3
 # aid_scenario_snapshots.inputs is a PocketBase json field with maxSize 20000000 (1500000218_aid_scenarios.js). A larger
@@ -40,7 +40,7 @@ SNAPSHOT_INPUTS_MAX_BYTES: Final = 20_000_000
 
 
 class OptionCodeTakenError(FinancialAidError, ValueError):
-    """Someone kept an option with the same code at the same moment (the unique (year, code) index)."""
+    """Someone kept or started an option with the same code at the same moment (the unique (year, code) index)."""
 
 
 class SnapshotMissingError(FinancialAidError, LookupError):
@@ -215,15 +215,16 @@ class ScenarioRepository:
         return snapshot_meta(record) if record is not None else None
 
     async def snapshot_inputs(self, record_id: str) -> SeasonSnapshot:
-        cached = _DECODED.get(_record_id(record_id))
+        key = _record_id(record_id)  # validated once; every cache touch and the query use the same key
+        cached = _DECODED.get(key)
         if cached is not None:
-            _DECODED.move_to_end(record_id)
+            _DECODED.move_to_end(key)  # a hit is a use: least recently USED goes first
             return cached
-        rows = await self._page(AID_SCENARIO_SNAPSHOTS, {"filter": f'id = "{record_id}"', "fields": "id,inputs"})
+        rows = await self._page(AID_SCENARIO_SNAPSHOTS, {"filter": f'id = "{key}"', "fields": "id,inputs"})
         if not rows:
-            raise SnapshotMissingError(f"No frozen season {record_id}")
+            raise SnapshotMissingError(f"No frozen season {key}")
         snapshot = decode_snapshot(_json(rows[0].inputs))
-        _remember(record_id, snapshot)
+        _remember(key, snapshot)
         return snapshot
 
     async def options(self, year: int) -> list[OptionRecord]:
@@ -267,7 +268,5 @@ class ScenarioRepository:
             return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
         except BatchRequestFailedError as exc:
             if exc.status == 400 and any("unique" in message.lower() for message in exc.field_errors.values()):
-                raise OptionCodeTakenError(
-                    "Someone kept an option at the same moment: keep again to take the next code"
-                ) from exc
+                raise OptionCodeTakenError("Someone added an option at the same moment: try again.") from exc
             raise

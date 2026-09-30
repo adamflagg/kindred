@@ -127,6 +127,33 @@ async def test_a_snapshot_is_decoded_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_cache_hit_counts_as_recent_use() -> None:
+    """Three decoded snapshots are kept, least recently USED going first: reading one from the cache refreshes it."""
+    encoded = json.dumps(
+        encode_snapshot(
+            SeasonSnapshot(year=YEAR, requests=0, frozen_at=datetime(2027, 1, 12, tzinfo=UTC), calls={}, register=())
+        )
+    )
+    fetched: list[str] = []
+
+    def rows(*, batch: int, query_params: dict[str, Any]) -> list[SimpleNamespace]:
+        record_id = query_params["filter"].split('"')[1]
+        fetched.append(record_id)
+        return [SimpleNamespace(id=record_id, inputs=encoded)]
+
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.side_effect = rows
+    repository = ScenarioRepository(pb)
+    first, second, third, fourth = (f"snp00000000000{n}" for n in range(1, 5))
+    for record_id in (first, second, third, first, fourth):  # the hit on `first` makes `second` the oldest
+        await repository.snapshot_inputs(record_id)
+    assert fetched == [first, second, third, fourth]
+    await repository.snapshot_inputs(first)  # still cached
+    await repository.snapshot_inputs(second)  # evicted by `fourth`
+    assert fetched == [first, second, third, fourth, second]
+
+
+@pytest.mark.asyncio
 async def test_a_missing_snapshot_is_not_found() -> None:
     with pytest.raises(SnapshotMissingError):
         await ScenarioRepository(_pb([])).snapshot_inputs("snp000000000008")
@@ -324,3 +351,16 @@ def test_the_decoded_cache_is_least_recently_used() -> None:
     repository_module._remember("a", snap(1))  # a touched: b is now the oldest
     repository_module._remember("d", snap(1))
     assert list(cache) == ["c", "a", "d"]
+
+
+@pytest.mark.asyncio
+async def test_a_code_collision_says_so_neutrally_whether_it_came_from_a_keep_or_a_start() -> None:
+    with (
+        patch(
+            "api.services.financial_aid_scenarios_repository.commit_aid_writes",
+            side_effect=_batch_failure({"code": "Value must be unique."}),
+        ),
+        pytest.raises(OptionCodeTakenError) as raised,
+    ):
+        await ScenarioRepository(_pb()).commit([], actor=FINANCE)
+    assert str(raised.value) == "Someone added an option at the same moment: try again."

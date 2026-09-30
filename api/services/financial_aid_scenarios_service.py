@@ -417,7 +417,11 @@ class FinancialAidScenariosService:
             return None
 
     async def freeze(self, year: int, actor: str) -> SnapshotMeta:
-        """Freeze the season's applications as they are now; nothing is written when they haven't moved."""
+        """Freeze the season's applications as they are now; nothing is written when they haven't moved.
+
+        Two freezes at the same moment can each find the season moved and each write a snapshot: a duplicate, whose
+        newest copy every read then uses. Accepted (review ruling): one person works a season's scenarios at a time,
+        and a duplicate costs only storage."""
         captured = await self._capture(year)
         encoded = encode_snapshot(captured)
         latest = await self._store.latest_snapshot(year)

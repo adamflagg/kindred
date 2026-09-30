@@ -750,3 +750,50 @@ async def test_a_scenario_on_the_base_rules_shows_the_live_rounds_and_budget_fig
     }
     scenario_pools = {p.pool: (p.round1, p.round1_remaining, p.remaining) for p in scenario.pools}
     assert scenario_pools == live_pools
+
+
+# --- the parked B6 minors -------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_after_a_new_freeze_the_kept_option_is_stale_and_the_draft_reprices_on_the_newer_snapshot() -> None:
+    world = await _started()
+    _add_riley(world)
+    newer = await world.service.freeze(YEAR, FINANCE)
+    workspace = await world.service.workspace(YEAR, FINANCE)
+    assert (workspace.snapshot, workspace.options[0].stale) == (newer, True)
+    assert workspace.draft is not None
+    assert workspace.draft.results is not None
+    assert (workspace.draft.results.requests, workspace.draft.results.round1) == (3, Decimal(4100))
+
+
+@pytest.mark.asyncio
+async def test_a_trail_row_of_another_year_is_not_found() -> None:
+    world = await _started()
+    [row], _ = await world.service.trail(YEAR, page=1, per_page=1)
+    with pytest.raises(ScenarioNotFoundError):
+        await world.service.load(YEAR + 1, FINANCE, trail_row=row.id)
+
+
+@pytest.mark.asyncio
+async def test_a_freeze_refused_as_a_snapshot_error_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    world = await _world()
+    monkeypatch.setattr(repository_module, "SNAPSHOT_INPUTS_MAX_BYTES", 10)
+    with pytest.raises(SnapshotError, match="over the cap"):
+        await world.service.freeze(YEAR, FINANCE)
+    assert (world.store.rows[AID_SCENARIO_SNAPSHOTS], world.store.operations, world.store.log) == ([], [], [])
+
+
+@pytest.mark.asyncio
+async def test_freezes_and_trail_rows_log_who_made_them() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, TREASURER)
+    await world.service.start_from_rules(YEAR, FINANCE)
+    await world.service.save_draft(YEAR, _shifted(await _a(world), "5"), FINANCE)
+    logged = [(row["entity"], row["action"], row["actor"]) for row in world.store.log]
+    assert logged == [
+        ("aid_scenario_snapshots", "freeze", TREASURER),
+        ("aid_scenario_options", "keep", FINANCE),
+        ("aid_scenario_trail", "record", FINANCE),
+        ("aid_scenario_trail", "record", FINANCE),
+    ]
