@@ -58,6 +58,8 @@ from bunking.financial_aid.rules import (
     validate_rules,
 )
 from bunking.financial_aid.rules.lifecycle import (
+    DocumentHasErrorsError,
+    SectionNotApprovedError,
     SectionStatus,
     StatusMap,
     apply_edit,
@@ -68,7 +70,7 @@ from bunking.financial_aid.rules.lifecycle import (
     status_from_json,
     status_to_json,
 )
-from bunking.financial_aid.rules.schema import MilestonesSection
+from bunking.financial_aid.rules.schema import SECTION_NAMES, MilestonesSection
 from bunking.pocketbase_batch import BatchRequestFailedError
 
 # Rows per request for every paged read; PocketBase clamps anything above 1000.
@@ -386,6 +388,35 @@ class FinancialAidRulesService:
         write = _status_write(current, current.section_status, status, section, log_action="lock", reason=None)
         await self._store.commit([write], actor=actor)
         return await self.load(year, current.version)
+
+    async def lock_writes(
+        self, year: int, version: int, sections: Collection[SectionName]
+    ) -> tuple[list[AidWrite], list[SectionName]]:
+        """The writes that lock `sections` of `version` when a round that read them is first posted
+        (spec §7.5, sub-project 10a), for the caller to commit in the SAME operation as the tick.
+
+        A section already locked needs no write. Nothing locks on a version that is no longer the
+        latest (it is read-only already). A section that can't lock (not approved, or the document
+        has a validation error) is returned in the second list: the tick still stands, and says so.
+        """
+        current = await self.load(year, version)
+        wanted = [s for s in SECTION_NAMES if s in sections and current.section_status[s].state != "locked"]
+        if not wanted or await self._latest_version_number(year) != version:
+            return [], []
+        report = await self.validate_document(current.document)
+        at = self._clock()
+        status = current.section_status
+        writes: list[AidWrite] = []
+        not_locked: list[SectionName] = []
+        for section in wanted:
+            try:
+                updated = lock(status, section, at=at, report=report)
+            except SectionNotApprovedError, DocumentHasErrorsError:
+                not_locked.append(section)
+                continue
+            writes.append(_status_write(current, status, updated, section, log_action="lock", reason=None))
+            status = updated
+        return writes, not_locked
 
     async def new_version(
         self, year: int, from_version: int, *, actor: str, unlock: Collection[SectionName] = ()

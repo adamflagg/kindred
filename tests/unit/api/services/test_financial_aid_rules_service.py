@@ -591,6 +591,45 @@ async def test_lock_is_refused_while_the_document_has_errors_elsewhere() -> None
     assert (await service.load(2031, 1)).section_status["income"].state == "approved"
 
 
+@pytest.mark.asyncio
+async def test_lock_writes_lock_approved_sections_for_the_caller_to_commit() -> None:
+    """Sub-project 10a: a round's first Posted tick locks the sections it read, in the tick's own
+    operation, so lock_writes returns the writes and commits nothing itself."""
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, ["income", "tiers"], actor=FINANCE, note="Finance committee")
+    committed = len(store.operations)
+    writes, not_locked = await service.lock_writes(2031, 1, ["tiers", "income", "round2"])
+    assert len(store.operations) == committed
+    assert [w.entity_id for w in writes] == ["2031:1:income", "2031:1:tiers"]
+    assert not_locked == ["round2"]  # still a draft, so it can't lock
+    await store.commit(writes, actor=FINANCE)
+    status = (await service.load(2031, 1)).section_status
+    assert (status["income"].state, status["tiers"].state, status["round2"].state) == ("locked", "locked", "draft")
+
+
+@pytest.mark.asyncio
+async def test_lock_writes_skip_a_locked_section_and_a_superseded_version() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, ["income", "tiers"], actor=FINANCE, note="Finance committee")
+    await service.lock_section(2031, 1, "income", actor=FINANCE)
+    assert await service.lock_writes(2031, 1, ["income"]) == ([], [])
+    await service.new_version(2031, 1, actor=FINANCE)
+    assert await service.lock_writes(2031, 1, ["tiers"]) == ([], [])  # version 1 is read-only now
+
+
+@pytest.mark.asyncio
+async def test_lock_writes_report_sections_they_cannot_lock_while_the_rules_have_an_error() -> None:
+    service = _service()
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_section(2031, 1, "income", actor=FINANCE, note=None)
+    await service.save(2031, 1, with_lever(fictional_rules(), "budget.pools.camp_pool.share_pct", "79"), actor=FINANCE)
+    assert await service.lock_writes(2031, 1, ["income"]) == ([], ["income"])
+
+
 # --- final review minors -----------------------------------------------------------------
 
 

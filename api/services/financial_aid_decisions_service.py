@@ -6,6 +6,11 @@ season on the server and returns one aggregate (D21): the Requests grid, Rounds 
 Remaining line. They are live only (Decision 12), but every event they read is dated, so as-of can
 follow.
 
+Writes. Each is one staff action and one operation through sub-project 4a's commit_aid_writes:
+the aid_decisions rows and their aid_change_log rows in ONE PocketBase batch, and a first lock's
+rules-section locks in that same batch (Decision 11). A write that changes nothing writes nothing:
+the helper refuses an empty operation, and change_row refuses a no-op, which would be a 500.
+
 Pricing uses the season's newest rules version whose pricing sections are all approved or locked
 (PRICING_SECTIONS). With none, every live request is held and nothing is allocated.
 """
@@ -16,26 +21,37 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Final, Protocol
+from typing import Any, Final, Protocol
 
+from api.constants.collections import AID_DECISIONS
 from api.schemas.financial_aid_decisions import (
+    AcceptedIn,
+    AskIn,
     BelowTheLineOut,
     BudgetResponse,
     CellOut,
+    ChangedRowOut,
     CountOut,
+    DecisionWriteOut,
+    DiscretionaryIn,
     ForwardDemandOut,
     GridRowOut,
     PoolBudgetOut,
+    PostedIn,
     RemainingPoolOut,
     RemainingResponse,
     RequestsGridResponse,
+    Round3AmountIn,
+    Round3ApprovalIn,
     RoundCellOut,
     RoundCountsOut,
     RoundOut,
+    UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
+from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_calc_inputs import (
     calculator_inputs,
     effective_ask,
@@ -63,17 +79,22 @@ from bunking.financial_aid.decisions import (
     Cell,
     Count,
     DecisionEvent,
+    EventKind,
     PoolBudget,
     PricedRequest,
     RequestToPrice,
     RoundState,
     SeasonBudget,
     fold_rounds,
+    lock_snapshot,
+    needs_finance,
     price_request,
     season_budget,
 )
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, SectionName
+from bunking.pocketbase_batch import BatchLimitError
 
 PRICING_SECTIONS: Final[tuple[SectionName, ...]] = (
     "income",
@@ -89,6 +110,37 @@ PRICING_SECTIONS: Final[tuple[SectionName, ...]] = (
     "budget",
 )
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+
+# Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11).
+ROUND_SECTIONS: Final[Mapping[int, tuple[SectionName, ...]]] = {
+    1: ("income", "tiers", "equity", "award_tables", "programs", "cost", "grants", "awards"),
+    2: ("round2",),
+    3: ("round3",),
+}
+_WHY_NOT: Final[Mapping[str, str]] = {
+    "held": "is on hold: release the hold first",
+    "pending_approval": "waits for finance's approval",
+    "refused": "was refused by finance",
+    "not_decided": "has no amount keyed yet",
+}
+
+
+class DecisionNotFoundError(FinancialAidError, LookupError):
+    """No such request, or none in the season named."""
+
+
+class DecisionRefusedError(FinancialAidError, ValueError):
+    """A write that can't be applied; the message is safe to show staff."""
+
+
+class DecisionChangedError(FinancialAidError, ValueError):
+    """A confirmed amount is no longer the decided amount (Decision 9). Nothing was written."""
+
+    def __init__(self, rows: Sequence[ChangedRowOut]) -> None:
+        super().__init__(
+            "A decided amount moved since it was shown, so nothing was posted: check the rows and tick again"
+        )
+        self.rows = list(rows)
 
 
 class DecisionsStore(Protocol):
@@ -406,3 +458,258 @@ class FinancialAidDecisionsService:
             ],
             total=_money(budget.total.total.remaining),
         )
+
+    def _today(self) -> date:
+        return self._clock().astimezone(CAMP_TZ).date()
+
+    @staticmethod
+    def _unchanged(year: int, count: int = 1) -> DecisionWriteOut:
+        return DecisionWriteOut(year=year, written=0, unchanged=count, operation_id="")
+
+    @staticmethod
+    def _write(request: RequestRecord, n: int, kind: EventKind, actor: str, **fields: Any) -> AidWrite:
+        """One aid_decisions row and its log line. A field given as None is left out. The log's `after`
+        leaves out a post's snapshot: the row keeps the receipt, the log what changed."""
+        data: dict[str, Any] = {
+            "year": request.year,
+            "request": request.id,
+            "round": n,
+            "event": kind,
+            "actor": actor,
+            **{key: value for key, value in fields.items() if value is not None},
+        }
+        return AidWrite(
+            collection=AID_DECISIONS,
+            action="create",
+            year=request.year,
+            data=data,
+            after={key: value for key, value in data.items() if key != "snapshot"},
+            log_action=kind,
+            entity_id=f"{request.id}:{n}",
+        )
+
+    async def _live(self, request_id: str) -> tuple[RequestRecord, dict[int, RoundState]]:
+        request = await self._store.fetch_request(request_id)
+        if request is None:
+            raise DecisionNotFoundError("no such request")
+        if request.status not in _LIVE:
+            raise DecisionRefusedError(f"a {request.status} request takes no new asks or amounts")
+        rounds = fold_rounds(await self._store.fetch_request_events(request.id)).get(request.id, {})
+        return request, dict(rounds)
+
+    async def _approved_rules(self, year: int) -> RulesVersion:
+        rules = await self._rules.latest_approved(year, PRICING_SECTIONS)
+        if rules is None:
+            raise DecisionRefusedError(f"{year}'s pricing rules are not approved yet")
+        return rules
+
+    async def key_ask(self, request_id: str, body: AskIn, actor: str) -> DecisionWriteOut:
+        """A family's ask for Round 2 (an appeal) or Round 3, recorded dated when it arrives, before
+        anything is decided (D91, D82). Round 3's statement of need is the operation's reason (D22)."""
+        request, rounds = await self._live(request_id)
+        n = body.round
+        state = rounds.get(n, RoundState(round=n))
+        if state.posted:
+            raise DecisionRefusedError(f"Round {n} is posted; its ask can't change")
+        if n == 2 and not rounds.get(1, RoundState(round=1)).posted:
+            raise DecisionRefusedError(
+                "An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask"
+            )
+        if (state.ask, state.asked_on, state.statement_of_need) == (body.amount, body.asked_on, body.statement_of_need):
+            return self._unchanged(request.year)
+        write = self._write(
+            request,
+            n,
+            "ask",
+            actor,
+            amount=body.amount,
+            effective_on=body.asked_on,
+            statement_of_need=body.statement_of_need or None,
+            note=body.note or None,
+        )
+        reason = body.statement_of_need if n == 3 else (body.note or None)
+        result = await self._store.commit([write], actor=actor, reason=reason, require_reason=n == 3)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def key_round3_amount(
+        self, request_id: str, body: Round3AmountIn, actor: str, *, can_approve: bool
+    ) -> DecisionWriteOut:
+        """A Round 3 amount. Keyed by someone without finance's permission above the season's registrar
+        limit, it waits as Pending approval (D22, D79); finance's own is approved at once."""
+        request, rounds = await self._live(request_id)
+        state = rounds.get(3, RoundState(round=3))
+        if state.posted:
+            raise DecisionRefusedError("Round 3 is posted; its amount can't change")
+        if state.ask is None:
+            raise DecisionRefusedError("Key the family's Round 3 ask and statement of need first")
+        if state.award == body.amount and state.approval != "refused":
+            return self._unchanged(request.year)
+        rules = await self._approved_rules(request.year)
+        pending = not can_approve and needs_finance(body.amount, rules.document)
+        write = self._write(
+            request, 3, "award", actor, amount=body.amount, needs_approval=pending, note=body.note or None
+        )
+        result = await self._store.commit([write], actor=actor, reason=body.note or None)
+        return DecisionWriteOut(
+            year=request.year, written=1, unchanged=0, operation_id=result.operation_id, pending_approval=pending
+        )
+
+    async def key_discretionary(self, request_id: str, body: DiscretionaryIn, actor: str) -> DecisionWriteOut:
+        """Finance's discretionary money, on the round its decision type names (spec §7.1)."""
+        request, rounds = await self._live(request_id)
+        rules = await self._approved_rules(request.year)
+        decision = rules.document.awards.decision_types.get(body.decision_type)
+        if decision is None or decision.kind != "discretionary":
+            raise DecisionRefusedError(
+                f"'{body.decision_type}' is not a discretionary decision type in the {request.year} rules"
+            )
+        other = next(
+            (s.discretionary_type for s in rounds.values() if s.discretionary_type not in ("", body.decision_type)),
+            None,
+        )
+        if other is not None:
+            raise DecisionRefusedError(f"This request already carries '{other}'")
+        n = decision.round
+        state = rounds.get(n, RoundState(round=n))
+        if state.posted:
+            raise DecisionRefusedError(f"Round {n} is posted; its discretionary amount can't change")
+        if state.discretionary_type == body.decision_type and state.discretionary == body.amount:
+            return self._unchanged(request.year)
+        write = self._write(
+            request, n, "award", actor, amount=body.amount, decision_type=body.decision_type, note=body.note
+        )
+        result = await self._store.commit([write], actor=actor, reason=body.note, require_reason=True)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def decide_round3(self, request_id: str, body: Round3ApprovalIn, actor: str) -> DecisionWriteOut:
+        """Finance's answer to a pending Round 3 amount (D79): approved, it joins Needs an offer;
+        refused, it leaves."""
+        request, rounds = await self._live(request_id)
+        state = rounds.get(3, RoundState(round=3))
+        if state.approval == ("approved" if body.approve else "refused"):
+            return self._unchanged(request.year)
+        if state.approval != "pending":
+            raise DecisionRefusedError("No Round 3 amount is waiting for finance's approval")
+        write = self._write(request, 3, "approve" if body.approve else "refuse", actor, note=body.note)
+        result = await self._store.commit([write], actor=actor, reason=body.note, require_reason=True)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def tick_posted(self, year: int, body: PostedIn, actor: str) -> DecisionWriteOut:
+        """The registrar entered these awards in CampMinder: tick Posted, locking each round at its
+        decided amount with its receipt and rules version (D51, D52), and lock the rules sections a
+        round's first lock reads (Decision 11). All or nothing (Decision 9)."""
+        season = await self.season(year)
+        if season.rules is None:
+            raise DecisionRefusedError(f"{year}'s pricing rules are not approved yet")
+        confirmed = {(row.request_id, row.round): row.amount for row in body.rows}
+        problems: list[str] = []
+        changed: list[ChangedRowOut] = []
+        to_post: list[tuple[PricedRequest, int, Decimal]] = []
+        unchanged = 0
+        for (request_id, n), amount in confirmed.items():
+            priced = season.priced.get(request_id)
+            if priced is None:
+                raise DecisionNotFoundError(f"request {request_id} is not in {year}")
+            view = priced.view(n)
+            if view is not None and view.status == "posted":
+                unchanged += 1
+                continue
+            if view is None or view.status != "needs_offer" or view.decided is None:
+                why = _WHY_NOT.get(view.status, "cannot be posted") if view is not None else "has nothing decided"
+                problems.append(f"{request_id}: Round {n} {why}")
+                continue
+            earlier = priced.view(n - 1) if n > 1 else None
+            if earlier is not None and earlier.status != "posted" and (request_id, n - 1) not in confirmed:
+                problems.append(f"{request_id}: tick Round {n - 1} Posted before Round {n}")
+                continue
+            if view.decided != amount:
+                changed.append(
+                    ChangedRowOut(
+                        request_id=request_id, round=n, confirmed=money(amount), decided_now=money(view.decided)
+                    )
+                )
+                continue
+            to_post.append((priced, n, view.decided))
+        if problems:
+            raise DecisionRefusedError("; ".join(problems))
+        if changed:
+            raise DecisionChangedError(changed)
+        if not to_post:
+            return self._unchanged(year, unchanged)
+        version = season.rules.version
+        posted_on = body.posted_on or self._today()
+        writes = [
+            self._write(
+                season.requests[priced.request_id],
+                n,
+                "post",
+                actor,
+                amount=amount,
+                effective_on=posted_on,
+                lock_source="tick",
+                rules_version=version,
+                snapshot=lock_snapshot(priced, n, version),
+            )
+            for priced, n, amount in to_post
+        ]
+        sections = sorted({section for _, n, _ in to_post for section in ROUND_SECTIONS[n]})
+        locks, not_locked = await self._rules.lock_writes(year, version, sections)
+        try:
+            result = await self._store.commit([*writes, *locks], actor=actor)
+        except BatchLimitError as exc:
+            raise DecisionRefusedError(
+                f"{len(writes)} rounds are too many to tick at once; tick them in smaller groups"
+            ) from exc
+        return DecisionWriteOut(
+            year=year,
+            written=len(writes),
+            unchanged=unchanged,
+            operation_id=result.operation_id,
+            total_locked=money(sum((amount for _, _, amount in to_post), ZERO)),
+            sections_not_locked=list(not_locked),
+        )
+
+    async def undo_posted(self, year: int, body: UnpostIn, actor: str) -> DecisionWriteOut:
+        """Undo a mistaken Posted tick (Decision 10): refused while Accepted is ticked or a later round
+        is posted. The history keeps both rows; rules-section locks are not reversed."""
+        request = await self._store.fetch_request(body.request_id)
+        if request is None or request.year != year:
+            raise DecisionNotFoundError(f"request {body.request_id} is not in {year}")
+        rounds = fold_rounds(await self._store.fetch_request_events(request.id)).get(request.id, {})
+        n = body.round
+        state = rounds.get(n, RoundState(round=n))
+        if not state.posted:
+            return self._unchanged(year)
+        if state.accepted:
+            raise DecisionRefusedError(f"Untick Accepted on Round {n} first")
+        later = rounds.get(n + 1)
+        if later is not None and later.posted:
+            raise DecisionRefusedError(f"Round {n + 1} is posted and builds on Round {n}: undo it first")
+        write = self._write(request, n, "unpost", actor, note=body.reason)
+        result = await self._store.commit([write], actor=actor, reason=body.reason, require_reason=True)
+        return DecisionWriteOut(year=year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
+        """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""
+        requests = {r.id: r for r in await self._store.fetch_requests(year)}
+        rounds = fold_rounds(await self._store.fetch_decision_events(year))
+        writes: list[AidWrite] = []
+        problems: list[str] = []
+        unchanged = 0
+        for request_id, n in dict.fromkeys((row.request_id, row.round) for row in body.rows):
+            request = requests.get(request_id)
+            if request is None:
+                raise DecisionNotFoundError(f"request {request_id} is not in {year}")
+            state = rounds.get(request_id, {}).get(n, RoundState(round=n))
+            if state.accepted == body.accepted:
+                unchanged += 1
+            elif not state.posted:
+                problems.append(f"{request_id}: Round {n} is not posted")
+            else:
+                writes.append(self._write(request, n, "accept" if body.accepted else "unaccept", actor))
+        if problems:
+            raise DecisionRefusedError("; ".join(problems))
+        if not writes:
+            return self._unchanged(year, unchanged)
+        result = await self._store.commit(writes, actor=actor)
+        return DecisionWriteOut(year=year, written=len(writes), unchanged=unchanged, operation_id=result.operation_id)

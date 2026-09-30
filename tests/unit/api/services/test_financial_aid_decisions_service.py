@@ -12,9 +12,27 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
+from api.schemas.financial_aid_decisions import (
+    AcceptedIn,
+    AskIn,
+    ChangedRowOut,
+    DiscretionaryIn,
+    PostedIn,
+    PostedRow,
+    Round3AmountIn,
+    Round3ApprovalIn,
+    RoundRef,
+    UnpostIn,
+)
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository, decision_event
-from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_decisions_service import (
+    DecisionChangedError,
+    DecisionNotFoundError,
+    DecisionRefusedError,
+    FinancialAidDecisionsService,
+)
 from api.services.financial_aid_grants_register import RegisterRow
 from bunking.financial_aid.decisions import DecisionEvent
 from tests.unit.api.services.decisions_fakes import (
@@ -26,7 +44,8 @@ from tests.unit.api.services.decisions_fakes import (
     grant_row,
     seed_request,
 )
-from tests.unit.api.services.financial_aid_fakes import YEAR
+from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
+from tests.unit.bunking.financial_aid.fixtures import with_lever
 
 EMMA = "reqemma00000001"
 LIAM = "reqliam00000001"
@@ -226,3 +245,394 @@ async def test_an_incentive_line_never_reaches_the_calculator() -> None:
     seed_request(store, EMMA)
     (row,) = (await _service(store, register=[grant_row(EMMA, "500", funder_type="incentive")]).grid(YEAR)).rows
     assert row.rounds[0].decided == 1500.0
+
+
+# --- the writes (Task 7) -----------------------------------------------------------------------
+
+
+def _ask(n: int, amount: str, **fields: Any) -> AskIn:
+    return AskIn(round=n, amount=Decimal(amount), asked_on=date(2027, 3, 20), **fields)
+
+
+def _tick(*rows: tuple[str, int, str]) -> PostedIn:
+    return PostedIn(
+        rows=[PostedRow(request_id=r, round=n, amount=Decimal(a)) for r, n, a in rows],
+        posted_on=date(2027, 3, 9),
+    )
+
+
+def _round3_ready(store: FakeDecisionsStore) -> None:
+    """Round 1 posted, an appeal keyed, and the family's Round 3 ask with its statement of need."""
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))
+    _event(store, EMMA, 3, "ask", amount=Decimal(500), statement_of_need="A parent lost their job")
+
+
+@pytest.mark.asyncio
+async def test_an_appeal_ask_is_recorded_dated_before_anything_is_decided() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    out = await service.key_ask(EMMA, _ask(2, "400", note="Family emailed Mar 20"), ACTOR)
+    assert (out.written, out.unchanged) == (1, 0)
+    ask = store.events[-1]
+    assert (ask.kind, ask.round, ask.amount, ask.effective_on, ask.actor) == (
+        "ask",
+        2,
+        Decimal(400),
+        date(2027, 3, 20),
+        ACTOR,
+    )
+    (log,) = store.log
+    assert (log["entity"], log["entity_id"], log["action"], log["reason"], log["operation_id"]) == (
+        "aid_decisions",
+        f"{EMMA}:2",
+        "ask",
+        "Family emailed Mar 20",
+        out.operation_id,
+    )
+    (row,) = (await service.grid(YEAR)).rows
+    r2 = row.rounds[1]
+    assert (r2.status, r2.ask, r2.asked_on, r2.decided) == ("needs_offer", 400.0, date(2027, 3, 20), 300.0)
+
+
+@pytest.mark.asyncio
+async def test_an_appeal_answers_a_posted_offer() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted first"):
+        await _service(store).key_ask(EMMA, _ask(2, "400"), ACTOR)
+    assert store.operations == []
+
+
+def test_a_round_3_ask_needs_its_statement_of_need_and_only_round_3_has_one() -> None:
+    with pytest.raises(ValidationError, match="statement of need"):
+        _ask(3, "500")
+    with pytest.raises(ValidationError, match="only a Round 3 ask"):
+        _ask(2, "400", statement_of_need="A parent lost their job")
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_asks_statement_of_need_is_its_logged_reason() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))
+    await _service(store).key_ask(EMMA, _ask(3, "500", statement_of_need="A parent lost their job"), ACTOR)
+    assert store.log[-1]["reason"] == "A parent lost their job"
+    assert store.events[-1].statement_of_need == "A parent lost their job"
+
+
+@pytest.mark.asyncio
+async def test_resending_the_same_ask_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_ask(EMMA, _ask(2, "400"), ACTOR)
+    again = await service.key_ask(EMMA, _ask(2, "400"), ACTOR)
+    assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
+    assert len(store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_posted_rounds_ask_cannot_change() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))
+    _posted(store, EMMA, 2, "300")
+    with pytest.raises(DecisionRefusedError, match="Round 2 is posted"):
+        await _service(store).key_ask(EMMA, _ask(2, "600"), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_request_that_is_not_live_takes_no_new_ask() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    with pytest.raises(DecisionRefusedError, match="withdrawn"):
+        await _service(store).key_ask(EMMA, _ask(2, "400"), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_request_is_not_found() -> None:
+    with pytest.raises(DecisionNotFoundError):
+        await _service(FakeDecisionsStore()).key_ask(EMMA, _ask(2, "400"), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_amount_needs_the_familys_ask_first() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    with pytest.raises(DecisionRefusedError, match="Round 3 ask"):
+        await _service(store).key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_amount_above_the_registrars_limit_waits_for_finance() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=1000102)  # costs enough that 1,500 + 300 + 500 stays under it
+    _round3_ready(store)
+    rules = FakeRules(approved(with_lever(intake_rules(), "round3.registrar_limit", "300")))
+    service = _service(store, rules)
+    out = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=False)
+    assert out.pending_approval
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.rounds[2].status, row.rounds[2].pending_approval) == ("pending_approval", 500.0)
+    camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
+    assert next(c for c in camp.rounds if c.round == 3).pending_approval == 500.0
+    within = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+    assert not within.pending_approval
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.rounds[2].status, row.rounds[2].decided) == ("needs_offer", 300.0)
+
+
+@pytest.mark.asyncio
+async def test_finances_own_round_3_amount_is_approved_at_once() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _round3_ready(store)
+    out = await _service(store).key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=True)
+    assert not out.pending_approval
+    assert store.events[-1].needs_approval is False
+
+
+@pytest.mark.asyncio
+async def test_finance_approves_or_refuses_a_pending_round_3_amount() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=1000102)  # costs enough that 1,500 + 300 + 500 stays under it
+    _round3_ready(store)
+    service = _service(store)  # the season sets no limit, so every registrar amount waits
+    await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=False)
+    await service.decide_round3(EMMA, Round3ApprovalIn(approve=True, note="Finance, Jun 2"), "finance@example.com")
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.rounds[2].status, row.rounds[2].decided) == ("needs_offer", 500.0)
+    again = await service.decide_round3(EMMA, Round3ApprovalIn(approve=True, note="again"), "finance@example.com")
+    assert again.written == 0
+    with pytest.raises(DecisionRefusedError, match="waiting for finance"):
+        await service.decide_round3(EMMA, Round3ApprovalIn(approve=False, note="No"), "finance@example.com")
+
+
+@pytest.mark.asyncio
+async def test_a_refused_round_3_amount_counts_nowhere() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _round3_ready(store)
+    service = _service(store)
+    await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=False)
+    await service.decide_round3(EMMA, Round3ApprovalIn(approve=False, note="Finance, Jun 2"), "finance@example.com")
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.rounds[2].status, row.rounds[2].decided, row.rounds[2].pending_approval) == ("refused", None, None)
+
+
+@pytest.mark.asyncio
+async def test_discretionary_money_is_finances_and_names_a_discretionary_decision_type() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.key_discretionary(
+        EMMA, DiscretionaryIn(decision_type="discretionary", amount=Decimal(250), note="Board hardship fund"), ACTOR
+    )
+    (row,) = (await service.grid(YEAR)).rows
+    assert (row.rounds[-1].round, row.rounds[-1].decided) == (3, 250.0)
+    with pytest.raises(DecisionRefusedError, match="not a discretionary decision type"):
+        await service.key_discretionary(
+            EMMA, DiscretionaryIn(decision_type="appeal_top_up", amount=Decimal(250), note="x"), ACTOR
+        )
+
+
+@pytest.mark.asyncio
+async def test_ticking_posted_locks_the_decided_amount_with_its_receipt_version_and_sections() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    rules = FakeRules(approved())
+    out = await _service(store, rules).tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+    assert (out.written, out.unchanged, out.total_locked, out.sections_not_locked) == (1, 0, 1500.0, [])
+    post = store.events[-1]
+    assert (post.kind, post.amount, post.rules_version, post.lock_source, post.effective_on) == (
+        "post",
+        Decimal(1500),
+        1,
+        "tick",
+        date(2027, 3, 9),
+    )
+    assert post.snapshot is not None
+    assert (post.snapshot["pool"], post.snapshot["result"]["r1"]) == ("camp_pool", "1500")
+    sections = ("award_tables", "awards", "cost", "equity", "grants", "income", "programs", "tiers")
+    assert rules.lock_calls == [(YEAR, 1, sections)]
+    assert len(store.operations) == 1
+    assert len(store.rules_writes) == len(sections)
+    assert "snapshot" not in store.log[0]["after"]  # the row keeps the receipt; the log keeps what changed
+
+
+@pytest.mark.asyncio
+async def test_a_tick_whose_amount_moved_writes_nothing_and_names_the_row() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    with pytest.raises(DecisionChangedError) as raised:
+        await _service(store).tick_posted(YEAR, _tick((EMMA, 1, "1400")), ACTOR)
+    assert raised.value.rows == [ChangedRowOut(request_id=EMMA, round=1, confirmed=1400.0, decided_now=1500.0)]
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_one_row_that_cannot_be_posted_stops_the_whole_tick() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021, income=500.0)  # a placeholder income holds
+    # A held row is refused before amounts are compared, so any amount will do.
+    with pytest.raises(DecisionRefusedError, match=f"{LIAM}: Round 1 is on hold"):
+        await _service(store).tick_posted(YEAR, _tick((EMMA, 1, "1500"), (LIAM, 1, "1500")), ACTOR)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_resending_a_tick_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+    again = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+    assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
+    assert len(store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_later_round_is_ticked_only_with_or_after_the_one_before_it() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))  # recorded directly: the service would refuse it
+    service = _service(store)
+    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 2"):
+        await service.tick_posted(YEAR, _tick((EMMA, 2, "300")), ACTOR)
+    both = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 2, "300")), ACTOR)
+    assert both.written == 2
+
+
+@pytest.mark.asyncio
+async def test_the_tick_names_rules_sections_that_did_not_lock() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    rules = FakeRules(approved())
+    rules.not_locked = ["income"]
+    out = await _service(store, rules).tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+    assert (out.written, out.sections_not_locked) == (1, ["income"])
+
+
+@pytest.mark.asyncio
+async def test_a_tick_with_no_approved_rules_is_refused() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    with pytest.raises(DecisionRefusedError, match="not approved"):
+        await _service(store, FakeRules(None)).tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_undo_posted_waits_for_accepted_to_be_unticked_then_reopens_the_round() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True), ACTOR)
+    undo = UnpostIn(request_id=EMMA, round=1, reason="Ticked the wrong family")
+    with pytest.raises(DecisionRefusedError, match="Untick Accepted"):
+        await service.undo_posted(YEAR, undo, ACTOR)
+    await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=False), ACTOR)
+    out = await service.undo_posted(YEAR, undo, ACTOR)
+    assert out.written == 1
+    assert store.log[-1]["reason"] == "Ticked the wrong family"
+    (row,) = (await service.grid(YEAR)).rows
+    assert row.rounds[0].status == "needs_offer"
+
+
+@pytest.mark.asyncio
+async def test_undoing_a_round_that_is_not_posted_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    out = await _service(store).undo_posted(YEAR, UnpostIn(request_id=EMMA, round=1, reason="retry"), ACTOR)
+    assert (out.written, out.unchanged) == (0, 1)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_undo_is_refused_while_a_later_round_is_posted() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 2, "ask", amount=Decimal(400))
+    _posted(store, EMMA, 2, "300")
+    with pytest.raises(DecisionRefusedError, match="Round 2 is posted"):
+        await _service(store).undo_posted(YEAR, UnpostIn(request_id=EMMA, round=1, reason="x"), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_accepted_ticks_only_posted_rounds_and_resending_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    with pytest.raises(DecisionRefusedError, match=f"{LIAM}: Round 1 is not posted"):
+        await service.tick_accepted(YEAR, AcceptedIn(rows=[RoundRef(request_id=LIAM, round=1)], accepted=True), ACTOR)
+    first = await service.tick_accepted(
+        YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True), ACTOR
+    )
+    again = await service.tick_accepted(
+        YEAR, AcceptedIn(rows=[RoundRef(request_id=EMMA, round=1)], accepted=True), ACTOR
+    )
+    assert (first.written, again.written, again.unchanged) == (1, 0, 1)
+    camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
+    assert next(c for c in camp.rounds if c.round == 1).accepted == 1500.0
+
+
+@pytest.mark.asyncio
+async def test_resending_the_same_round_3_amount_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=1000102)
+    _round3_ready(store)
+    service = _service(store)
+    first = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+    events, logs, ops = len(store.events), len(store.log), len(store.operations)
+    again = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+    assert first.written == 1
+    assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
+    assert (len(store.events), len(store.log), len(store.operations)) == (events, logs, ops)
+
+
+@pytest.mark.asyncio
+async def test_resending_the_same_discretionary_amount_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    body = DiscretionaryIn(decision_type="discretionary", amount=Decimal(250), note="Board hardship fund")
+    first = await service.key_discretionary(EMMA, body, ACTOR)
+    events, logs, ops = len(store.events), len(store.log), len(store.operations)
+    again = await service.key_discretionary(EMMA, body, ACTOR)
+    assert first.written == 1
+    assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
+    assert (len(store.events), len(store.log), len(store.operations)) == (events, logs, ops)
+
+
+_BAD_ID = "not a valid id'\""
+
+
+@pytest.mark.asyncio
+async def test_a_write_on_a_malformed_request_id_is_not_found_never_a_500() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    calls = [
+        service.key_ask(_BAD_ID, _ask(2, "400"), ACTOR),
+        service.key_round3_amount(_BAD_ID, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=True),
+        service.key_discretionary(
+            _BAD_ID, DiscretionaryIn(decision_type="discretionary", amount=Decimal(1), note="x"), ACTOR
+        ),
+        service.decide_round3(_BAD_ID, Round3ApprovalIn(approve=True, note="x"), ACTOR),
+        service.undo_posted(YEAR, UnpostIn.model_construct(request_id=_BAD_ID, round=1, reason="x"), ACTOR),
+    ]
+    for call in calls:
+        with pytest.raises(DecisionNotFoundError):
+            await call
+    assert store.operations == []
