@@ -24,8 +24,8 @@ from bunking.financial_aid.decisions.holds import NO_HOLDS, HoldState
 from bunking.financial_aid.decisions.pricing import (
     PricedRequest,
     RoundView,
-    extra_locked,
     named_decision,
+    posted_view,
     round_exists,
 )
 from bunking.financial_aid.decisions.rounds import ROUNDS, RoundState
@@ -55,6 +55,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "outside_budget": "It includes decided money not yet posted; the posted part is outside_budget_posted",
     "round2_computed": _PRICED,
     "round1_unmet": _PRICED,
+    "pool_unknown": "A request with no posted round sits in No pool until its session and program are resolved as of that date (3c-2)",
     "request_history": "These requests' change history can't be replayed to that date, so only their posted rounds show",
     "rules_history": "The rules' change history for this season can't be replayed to that date",
 }
@@ -81,25 +82,13 @@ BUDGET_GAPS: Final[tuple[str, ...]] = (
 REMAINING_GAPS: Final[tuple[str, ...]] = ("remaining",)
 
 
-def _view(n: int, state: RoundState, decision: DecisionType | None, r1_ask: Decimal | None) -> RoundView:
+def _view(
+    n: int, state: RoundState, decision: DecisionType | None, r1_ask: Decimal | None, pool: str | None
+) -> RoundView:
     ask = r1_ask if n == 1 else state.ask
-    counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     if state.posted:
-        snapshot = state.snapshot or {}
-        pool = snapshot.get("pool")
-        return RoundView(
-            round=n,
-            status="posted",
-            ask=ask,
-            decided=state.locked_amount,
-            locked=state.locked_amount,
-            accepted=state.accepted,
-            pending=None,
-            would_change_by=None,
-            counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
-            pool=pool if isinstance(pool, str) else None,
-            extra=extra_locked(state, decision),
-        )
+        return posted_view(state, decision, ask, pool)
+    counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     return RoundView(
         round=n,
         status="not_rebuilt",
@@ -110,7 +99,7 @@ def _view(n: int, state: RoundState, decision: DecisionType | None, r1_ask: Deci
         pending=None,
         would_change_by=None,
         counts_toward_budget=counts,
-        pool=None,
+        pool=pool,
         extra=ZERO,
     )
 
@@ -124,14 +113,19 @@ def price_as_of(
     live: bool,
     r1_ask: Decimal | None,
     hold: HoldState = NO_HOLDS,
+    pool: str | None = None,
 ) -> PricedRequest:
     """One request as of a past instant, from its rounds and holds folded to it. `live` is its status
     then; `r1_ask` its Round 1 ask then (replayed and corrected); `rules` the version that priced the
-    season then (it names the decision type whose money counts outside the budget)."""
+    season then (it names the decision type whose money counts outside the budget); `pool` the request's
+    home pool then, resolved by the caller from its session and program (None: unknown, so NO_POOL
+    until 3c-2; see PAST_DATE_GAPS["pool_unknown"]). A posted round keeps its lock's own pool."""
     states = {n: rounds.get(n, RoundState(round=n)) for n in ROUNDS}
     decision = named_decision(rounds, rules) if rules is not None else None
     views = tuple(
-        _view(n, states[n], decision, r1_ask) for n in ROUNDS if round_exists(states[n]) and (states[n].posted or live)
+        _view(n, states[n], decision, r1_ask, pool)
+        for n in ROUNDS
+        if round_exists(states[n]) and (states[n].posted or live)
     )
     manual = hold.manual_issue()
     return PricedRequest(
@@ -139,11 +133,12 @@ def price_as_of(
         household_cm_id=household_cm_id,
         live=live,
         program_key=None,
-        pool=next((v.pool for v in views if v.pool), None),
+        pool=pool or next((v.pool for v in views if v.pool), None),
         rounds=views,
         holds=(manual,) if manual is not None else (),
         notes=(),
         application=ApplicationInputs(household_cm_id=household_cm_id),
         inputs=None,
         result=None,
+        decision_round=decision.round if decision is not None else None,
     )

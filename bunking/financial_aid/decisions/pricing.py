@@ -289,6 +289,35 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     )
 
 
+def posted_view(
+    state: RoundState,
+    decision: DecisionType | None,
+    ask: Decimal | None,
+    pool: str | None,
+    *,
+    would_change_by: Decimal | None = None,
+) -> RoundView:
+    """A posted round as its lock recorded it (D43): amount, pool and budget treatment from the
+    snapshot (`pool` when it has none), and the decision's own money inside. Live and past reads share it."""
+    n = state.round
+    snapshot = state.snapshot or {}
+    counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
+    locked_pool = snapshot.get("pool", pool)
+    return RoundView(
+        round=n,
+        status="posted",
+        ask=ask,
+        decided=state.locked_amount,
+        locked=state.locked_amount,
+        accepted=state.accepted,
+        pending=None,
+        would_change_by=would_change_by,
+        counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
+        pool=locked_pool if isinstance(locked_pool, str) else None,
+        extra=extra_locked(state, decision),
+    )
+
+
 def _view(
     n: int,
     state: RoundState,
@@ -303,21 +332,7 @@ def _view(
     ask = item.r1_ask if n == 1 else state.ask
     counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     if state.posted:
-        snapshot = state.snapshot or {}
-        locked_pool = snapshot.get("pool", pool)
-        return RoundView(
-            round=n,
-            status="posted",
-            ask=ask,
-            decided=state.locked_amount,
-            locked=state.locked_amount,
-            accepted=state.accepted,
-            pending=None,
-            would_change_by=_would_change(n, state, item, rules, decision),
-            counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
-            pool=locked_pool if isinstance(locked_pool, str) else None,
-            extra=extra_locked(state, decision),
-        )
+        return posted_view(state, decision, ask, pool, would_change_by=_would_change(n, state, item, rules, decision))
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
     if stopped or pending is not None:

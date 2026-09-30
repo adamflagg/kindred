@@ -20,7 +20,7 @@ from bunking.financial_aid.decisions import (
     price_as_of,
     price_request,
 )
-from bunking.financial_aid.decisions.budget import Count, season_budget
+from bunking.financial_aid.decisions.budget import NO_POOL, Count, season_budget
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever
 
 RULES = fictional_rules()
@@ -125,3 +125,69 @@ def test_the_budget_counts_what_was_posted_and_nothing_it_cannot_rebuild() -> No
 def test_every_figure_a_read_leaves_empty_has_its_reason() -> None:
     for figure in (*GRID_GAPS, *BUDGET_GAPS, *REMAINING_GAPS, "request_history", "rules_history"):
         assert PAST_DATE_GAPS[figure].strip(), figure
+
+
+def _asks(priced_requests: list, pool: str) -> tuple[Count, Decimal]:  # type: ignore[type-arg]
+    budget = season_budget(priced_requests, RULES, outside_grants={})
+    demand = next(p for p in budget.pools if p.pool == pool).demand
+    return demand.round2_asks, demand.round2_asked
+
+
+def test_a_past_request_with_only_a_round_2_ask_sits_in_its_home_pool_as_live_does() -> None:
+    past = price_as_of("req-emma", 1000001, {2: APPEAL}, RULES, live=True, r1_ask=None, pool="camp_pool")
+    assert past.pool == "camp_pool"
+    live = price_request(
+        RequestToPrice(
+            request_id="req-emma",
+            household_cm_id=1000001,
+            live=True,
+            application=app(),
+            request=req(),
+            blocked="",
+            issues=(),
+            rounds={2: APPEAL},
+            r1_ask=None,
+        ),
+        RULES,
+    )
+    assert _asks([past], "camp_pool") == _asks([live], "camp_pool") == (Count(1, 1), Decimal(400))
+
+
+def test_a_past_request_with_no_pool_and_no_posted_round_stays_in_no_pool() -> None:
+    past = price_as_of("req-emma", 1000001, {2: APPEAL}, RULES, live=True, r1_ask=None)
+    assert past.pool is None
+    assert _asks([past], NO_POOL) == (Count(1, 1), Decimal(400))
+    assert PAST_DATE_GAPS["pool_unknown"].strip()
+
+
+def test_a_posted_round_keeps_its_lock_pool_over_the_home_pool() -> None:
+    past = price_as_of("req-emma", 1000001, {1: POSTED}, RULES, live=True, r1_ask=None, pool="camp_pool")
+    assert past.view(1).pool == "bmitzvah_pool"  # type: ignore[union-attr]
+
+
+def test_the_decision_round_is_set_as_live_sets_it() -> None:
+    rules = with_lever(RULES, "awards.decision_types.discretionary.counts_toward_budget", False)
+    round3 = RoundState(round=3, discretionary=Decimal(250), discretionary_type="discretionary")
+    past = price_as_of("req-emma", 1000001, {3: round3}, rules, live=True, r1_ask=None)
+    assert past.decision_round == 3
+
+
+def test_with_no_rules_a_posted_round_still_reads_its_lock_money() -> None:
+    round3 = RoundState(
+        round=3,
+        posted=True,
+        locked_amount=Decimal(650),
+        locked_at=T0,
+        snapshot={"pool": "camp_pool", "decision_round": 3, "top_up": "0", "discretionary": "250"},
+    )
+    past = price_as_of("req-emma", 1000001, {3: round3}, None, live=True, r1_ask=None)
+    view = past.view(3)
+    assert view is not None
+    assert (view.status, view.locked, view.extra) == ("posted", Decimal(650), Decimal(250))
+
+
+def test_a_not_rebuilt_round_1_ask_adds_nothing_to_round_1_unmet() -> None:
+    past = price_as_of("req-emma", 1000001, {}, RULES, live=True, r1_ask=Decimal(4000), pool="camp_pool")
+    budget = season_budget([past], RULES, outside_grants={})
+    camp = next(p for p in budget.pools if p.pool == "camp_pool")
+    assert camp.demand.round1_unmet == Decimal(0)
