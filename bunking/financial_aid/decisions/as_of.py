@@ -11,6 +11,11 @@ amount, its Accepted tick, its asks and the request's holds fold exactly for any
 
 A request that wasn't live then (withdrawn, duplicate) shows only its posted rounds, as live does.
 3c-2 prices these rounds from the change log; figures left empty are named in PAST_DATE_GAPS.
+
+The fold is not the whole past Posted figure: the decisions service then applies sub-project 10b's
+clawback as of the date (D54), so a posted round whose money CampMinder had reversed by then counts
+nowhere, and where a request's payer shares or line placements can't be replayed its posted money is
+left empty and named (POSTED_GAPS).
 """
 
 from __future__ import annotations

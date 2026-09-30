@@ -392,13 +392,17 @@ def test_a_staff_family_camp_placement_lands_on_a_withdrawn_family_camp_request_
     assert ledger.by_request == {}
 
 
-def test_a_line_on_a_person_whose_own_request_is_withdrawn_stays_at_family_level_beside_two_live_family_camps() -> None:
+def test_a_line_on_a_person_whose_own_request_is_withdrawn_goes_to_the_closed_request_beside_two_live_family_camps() -> (
+    None
+):
+    """Decision 3 / D54: the person's own request is closed, so the closed pass takes the line; the
+    household's Family Camp requests are never consulted for it."""
     old = request("old", person=1000011, status="withdrawn")
     fc_a = request("fa", person=0, session=1000201, family="family_camp")
     fc_b = request("fb", person=0, session=1000202, family="family_camp")
     ledger = build_ledger([line(1, "1800", person=1000011)], {}, [old, fc_a, fc_b], None, frozenset({"old"}))
-    assert (ledger.by_request, ledger.by_closed_request) == ({}, {})
-    assert ledger.family_unplaced([1000001]) == Decimal(1800)
+    assert (ledger.by_request, list(ledger.by_closed_request)) == ({}, ["old"])
+    assert ledger.family_unplaced([1000001]) == Decimal(0)
 
 
 # --- confirmation and the Note (Task 3) -------------------------------------------------------------
@@ -903,3 +907,48 @@ def test_a_row_last_written_before_its_campminder_reversal_date_cuts_on_the_reve
     (jun5,) = as_recorded([reversed_line], JUN5)
     assert jun5.reversed_by(JUN5)
     assert not jun5.live(JUN5)
+
+
+# --- a Family Camp request could also own the line ------------------------------------------------
+
+APR1 = datetime(2027, 4, 1, 18, 0, tzinfo=UTC)
+
+
+def test_a_line_go_left_between_two_programs_is_not_placed_on_the_campers_summer_request() -> None:
+    """Go names the person but leaves the program empty (summer AND Family Camp): with a live household
+    Family Camp request the line could equally be its, so it stays at family level (Decision 3)."""
+    summer = request("emma")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    between = replace(line(1, "700", person=1000011), attributed_person_cm_id=1000011)
+    ledger = build_ledger([between], {}, [summer, weekend], None)
+    ticks = ledger_ticks([priced("emma", 1000001, view(1, "needs_offer", decided="1800"))], ledger, today=TODAY)
+    assert (dict(ledger.by_request), ticks) == ({}, [])
+    assert ledger.family_unplaced([1000001]) == Decimal(700)
+
+
+def test_a_line_go_left_between_programs_still_places_on_the_only_candidate() -> None:
+    summer = request("emma")
+    between = replace(line(1, "700", person=1000011), attributed_person_cm_id=1000011)
+    assert placed([between], [summer]) == {1: "emma"}
+
+
+def test_a_withdrawn_campers_reversed_line_lands_on_the_closed_request_not_family_camp() -> None:
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    rev = line(1, "1800", person=1000011, reversed_at=APR1)  # after the cancel Go gives the camper no program
+    ledger = build_ledger([rev], {}, [summer, weekend], None, frozenset({"emma"}))
+    assert ledger.closed_lines("emma") == (rev,)
+    assert ledger.by_request == {}
+    posted = priced("emma", 1000001, view(1, "posted", locked="1800", accepted=True))
+    out, day = apply_clawback(posted, {}, ledger.closed_lines("emma"), family_lines=[])
+    assert day == date(2027, 4, 1)
+    assert [v.clawed_back for v in out.rounds] == [True]
+
+
+def test_a_withdrawn_campers_live_line_does_not_tick_the_family_camp_round() -> None:
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    ledger = build_ledger([line(1, "1800", person=1000011)], {}, [summer, weekend], None, frozenset({"emma"}))
+    fam = priced("fam", 1000001, view(1, "needs_offer", decided="700"))
+    assert ledger.by_request == {}
+    assert ledger_ticks([fam], ledger, today=TODAY) == []

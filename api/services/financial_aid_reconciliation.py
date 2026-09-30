@@ -245,16 +245,21 @@ def _household_request(
     and Go did not tag the line with another program. With none of those (person 0) it is NONE when
     the household holds nothing live, or holds only a person-level request and the line's person's
     own request is closed (a sibling's request is not theirs); otherwise other live requests make
-    the line AMBIGUOUS."""
-    if line.program_family not in ("", FAMILY_CAMP):
+    the line AMBIGUOUS. A line on a person whose own request is closed is NONE first, whatever the
+    household holds: the closed-request pass takes it (D54), never a Family Camp request."""
+    if own_closed or line.program_family not in ("", FAMILY_CAMP):
         return _Miss.NONE
     held = by_household.get(line.household_cm_id, ())
     own = [r for r in held if r.person_cm_id == 0]
     if not own:
-        return _Miss.NONE if own_closed or not held else _Miss.AMBIGUOUS
+        return _Miss.NONE if not held else _Miss.AMBIGUOUS
     if len({r.id for r in held}) != 1:
         return _Miss.AMBIGUOUS
     return _one(own)
+
+
+def _holds_household_request(line: CampLine, by_household: Mapping[int, Sequence[PlaceableRequest]]) -> bool:
+    return any(r.person_cm_id == 0 for r in by_household.get(line.household_cm_id, ()))
 
 
 def _matching(pool: Sequence[PlaceableRequest], placement: Placement) -> list[PlaceableRequest]:
@@ -317,6 +322,8 @@ def _place(
         named = line.attributed_person_cm_id == line.person_cm_id
         if named and line.program_family and request.program_family and line.program_family != request.program_family:
             return _Miss.AMBIGUOUS
+        if named and not line.program_family and _holds_household_request(line, by_household):
+            return _Miss.AMBIGUOUS  # enrolled in two programs: the household's request could own it too
         return only
     return _household_request(line, by_household, False)
 
