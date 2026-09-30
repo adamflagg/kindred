@@ -4,6 +4,7 @@ FastAPI app (SP2's persona_client) rather than importing api.main, which poisons
 
 from __future__ import annotations
 
+import importlib
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -224,15 +225,20 @@ def test_a_year_out_of_range_is_422() -> None:
     assert _client().get("/api/financial-aid/decisions/1999/grid").status_code == 422
 
 
-def test_no_decisions_field_is_named_awarded_or_total_awards_granted() -> None:
+@pytest.mark.parametrize(
+    ("module", "floor"),
+    [("api.schemas.financial_aid_decisions", 10), ("api.schemas.financial_aid_scenarios", 20)],
+)
+def test_no_decisions_or_scenarios_field_is_named_awarded_or_total_awards_granted(module: str, floor: int) -> None:
     """Spec §5.6's naming guard: posted money is "posted" here. "Awarded" is finance's report label
     for it (D80), and "Total Awards Granted" is development's all-money figure (D87); neither is this."""
+    schemas_module = importlib.import_module(module)
     models = [
         m
-        for m in vars(schemas).values()
-        if isinstance(m, type) and issubclass(m, BaseModel) and m.__module__ == schemas.__name__
+        for m in vars(schemas_module).values()
+        if isinstance(m, type) and issubclass(m, BaseModel) and m.__module__ == schemas_module.__name__
     ]
-    assert len(models) >= 10
+    assert len(models) >= floor
     for model in models:
         for name, info in model.model_fields.items():
             text = f"{name} {info.description or ''} {info.title or ''}".lower()

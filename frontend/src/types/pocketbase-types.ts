@@ -26,6 +26,9 @@ export const Collections = {
   AidPostings: 'aid_postings',
   AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
+  AidScenarioOptions: 'aid_scenario_options',
+  AidScenarioSnapshots: 'aid_scenario_snapshots',
+  AidScenarioTrail: 'aid_scenario_trail',
   AidSessionCapacity: 'aid_session_capacity',
   AidSources: 'aid_sources',
   AttendeeStatusHistory: 'attendee_status_history',
@@ -642,6 +645,49 @@ export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   section_status?: null | Tsection_status
   updated: IsoAutoDateString
   version: number
+  year: number
+}
+
+export type AidScenarioOptionsRecord<
+  Tdocument = unknown,
+  Tresults = unknown,
+  Tround1_by_request = unknown,
+> = {
+  actor: string
+  code: string
+  created: IsoAutoDateString
+  document?: null | Tdocument
+  from_code?: string
+  id: string
+  origin_version: number
+  results?: null | Tresults
+  round1_by_request?: null | Tround1_by_request
+  snapshot: RecordIdString
+  starting_point?: string
+  year: number
+}
+
+export type AidScenarioSnapshotsRecord<Tinputs = unknown> = {
+  actor: string
+  awaiting_rules?: number
+  created: IsoAutoDateString
+  id: string
+  inputs?: null | Tinputs
+  requests?: number
+  year: number
+}
+
+export type AidScenarioTrailRecord<Tdocument = unknown, Tresults = unknown> = {
+  actor: string
+  change: string
+  created: IsoAutoDateString
+  document?: null | Tdocument
+  from_code: string
+  id: string
+  kept_code?: string
+  results?: null | Tresults
+  snapshot: RecordIdString
+  updated: IsoAutoDateString
   year: number
 }
 
@@ -2518,6 +2564,22 @@ export type AidRulesResponse<
   Tsection_status = unknown,
   Texpand = unknown,
 > = Required<AidRulesRecord<Tdocument, Tsection_status>> & BaseSystemFields<Texpand>
+export type AidScenarioOptionsResponse<
+  Tdocument = unknown,
+  Tresults = unknown,
+  Tround1_by_request = unknown,
+  Texpand = unknown,
+> = Required<AidScenarioOptionsRecord<Tdocument, Tresults, Tround1_by_request>> &
+  BaseSystemFields<Texpand>
+export type AidScenarioSnapshotsResponse<Tinputs = unknown, Texpand = unknown> = Required<
+  AidScenarioSnapshotsRecord<Tinputs>
+> &
+  BaseSystemFields<Texpand>
+export type AidScenarioTrailResponse<
+  Tdocument = unknown,
+  Tresults = unknown,
+  Texpand = unknown,
+> = Required<AidScenarioTrailRecord<Tdocument, Tresults>> & BaseSystemFields<Texpand>
 export type AidSessionCapacityResponse<Texpand = unknown> = Required<AidSessionCapacityRecord> &
   BaseSystemFields<Texpand>
 export type AidSourcesResponse<Timplied_program_families = unknown, Texpand = unknown> = Required<
@@ -2763,6 +2825,9 @@ export type CollectionRecords = {
   aid_postings: AidPostingsRecord
   aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
+  aid_scenario_options: AidScenarioOptionsRecord
+  aid_scenario_snapshots: AidScenarioSnapshotsRecord
+  aid_scenario_trail: AidScenarioTrailRecord
   aid_session_capacity: AidSessionCapacityRecord
   aid_sources: AidSourcesRecord
   attendee_status_history: AttendeeStatusHistoryRecord
@@ -2863,6 +2928,9 @@ export type CollectionResponses = {
   aid_postings: AidPostingsResponse
   aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse
+  aid_scenario_options: AidScenarioOptionsResponse
+  aid_scenario_snapshots: AidScenarioSnapshotsResponse
+  aid_scenario_trail: AidScenarioTrailResponse
   aid_session_capacity: AidSessionCapacityResponse
   aid_sources: AidSourcesResponse
   attendee_status_history: AttendeeStatusHistoryResponse

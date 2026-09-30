@@ -1121,6 +1121,11 @@ class FinancialAidDecisionsService:
             season.priced.values(), document, outside_grants=by_request, outside_grants_off_requests=off
         )
 
+    def budget_of(self, season: Season) -> SeasonBudget:
+        """The season's budget figures, exactly as the Rounds & budget read computes them. Scenarios (sub-project
+        9b) price through this service and read their figures here."""
+        return self._budget(season)
+
     async def grid(
         self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder"
     ) -> RequestsGridResponse:

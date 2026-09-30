@@ -23,9 +23,15 @@ asks and Round 3 amounts and the Posted and Accepted ticks (casework), and
 Round 3 approval (rules).
 Follow-up 3b adds releasing a check's hold and placing a manual hold
 (casework).
+
+Sub-project 9b adds the scenario routes (`/scenarios/...`, financial_aid.rules):
+freeze the season, the per-person draft and its trail, keep, compare, fit to
+budget, the one-step sensitivity, a request set (requests received through a
+date), and making a kept option the rules draft.
 """
 
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
@@ -107,6 +113,34 @@ from api.schemas.financial_aid_rules import (
     SectionSaveIn,
     field_change_out,
 )
+from api.schemas.financial_aid_scenarios import (
+    CompareColumnOut,
+    CompareOut,
+    DocumentIn,
+    DraftOut,
+    EvaluateIn,
+    EvaluateOut,
+    FitOut,
+    KeepIn,
+    LeverEffectOut,
+    LoadIn,
+    MakeRulesDraftIn,
+    OptionCode,
+    OptionOut,
+    PoolResultOut,
+    PromotionPreviewOut,
+    PromotionSectionOut,
+    ReplacementWarningOut,
+    RequestSetOut,
+    ResultsOut,
+    SensitivityOut,
+    SnapshotOut,
+    TierRowOut,
+    TrailPageOut,
+    TrailRowOut,
+    ViewIn,
+    WorkspaceOut,
+)
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -127,6 +161,7 @@ from api.services.financial_aid_ledger_service import (
     FinancialAidLedgerService,
     FinancialAidNotFoundError,
     FinancialAidValidationError,
+    money,
 )
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_repository import FinancialAidRepository
@@ -136,16 +171,37 @@ from api.services.financial_aid_rules_service import (
     FinancialAidRulesService,
     NotLatestVersionError,
     PricingVersionInUseError,
+    PromotionPreview,
     ReplacementNotAcknowledgedError,
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
     VersionExistsError,
 )
+from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
+from api.services.financial_aid_scenarios_repository import (
+    OptionCodeTakenError,
+    ScenarioRepository,
+    SnapshotMeta,
+    SnapshotMissingError,
+    TrailRecord,
+)
+from api.services.financial_aid_scenarios_service import (
+    CompareColumn,
+    Draft,
+    Evaluation,
+    FinancialAidScenariosService,
+    KeptOption,
+    RequestSetChoice,
+    ScenarioConflictError,
+    ScenarioNotFoundError,
+    Workspace,
+)
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
+from bunking.financial_aid.scenarios import ScenarioResults
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
@@ -868,3 +924,356 @@ async def set_manual_hold(
         return await _decisions().set_manual_hold(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
+
+
+# --- scenarios (sub-project 9b) ------------------------------------------------------------------------------
+
+
+def _scenarios() -> FinancialAidScenariosService:
+    async def capture(year: int) -> SeasonSnapshot:
+        return await capture_season(
+            FinancialAidDecisionsRepository(pb), GrantsService(GrantsRepository(pb)).register_rows, _rules(), year
+        )
+
+    return FinancialAidScenariosService(ScenarioRepository(pb), _rules(), capture)
+
+
+def _scenarios_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, (ScenarioNotFoundError, RulesNotFoundError, SnapshotMissingError)):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, ReplacementNotAcknowledgedError):
+        return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
+    if isinstance(exc, (ScenarioConflictError, OptionCodeTakenError, NotLatestVersionError, VersionExistsError)):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+def _request_set(view: ViewIn) -> RequestSetChoice | None:
+    """The request set a body asks for (D138); None: every frozen request."""
+    if view.through_round1_deadline:
+        return "round1_deadline"
+    return view.received_through
+
+
+def _cents(value: Decimal | None) -> float | None:
+    return money(value) if value is not None else None
+
+
+def _results_out(r: ScenarioResults) -> ResultsOut:
+    return ResultsOut(
+        requests=r.requests,
+        families=r.families,
+        round1=money(r.round1),
+        round2=money(r.round2),
+        round3=money(r.round3),
+        round1_allocated=_cents(r.round1_allocated),
+        round1_remaining=_cents(r.round1_remaining),
+        remaining=_cents(r.remaining),
+        at_minimum=r.at_minimum,
+        held=r.held,
+        held_asked=money(r.held_asked),
+        round1_unmet=money(r.round1_unmet),
+        pools=[
+            PoolResultOut(
+                pool=p.pool,
+                label=p.label,
+                round1=money(p.round1),
+                round2=money(p.round2),
+                round3=money(p.round3),
+                round1_allocated=_cents(p.round1_allocated),
+                round1_remaining=_cents(p.round1_remaining),
+                remaining=_cents(p.remaining),
+                round1_unmet=money(p.round1_unmet),
+            )
+            for p in r.pools
+        ],
+        by_tier=[
+            TierRowOut(
+                tier=t.tier, requests=t.requests, families=t.families, round1=money(t.round1), asked=_cents(t.asked)
+            )
+            for t in r.by_tier
+        ],
+        not_in_tiers=money(r.not_in_tiers),
+        request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
+    )
+
+
+def _snapshot_out(meta: SnapshotMeta) -> SnapshotOut:
+    return SnapshotOut(
+        id=meta.id,
+        taken_at=meta.created,
+        taken_by=meta.actor,
+        requests=meta.requests,
+        awaiting_rules=meta.awaiting_rules,
+    )
+
+
+def _option_out(kept: KeptOption) -> OptionOut:
+    r = kept.record
+    return OptionOut(
+        code=r.code,
+        starting_point=r.starting_point or None,
+        from_code=r.from_code or None,
+        origin_version=r.origin_version,
+        label=kept.label,
+        kept_by=r.actor,
+        kept_at=r.created,
+        results=_results_out(r.results),
+        stale=kept.stale,
+    )
+
+
+def _scenario_draft_out(draft: Draft) -> DraftOut:
+    return DraftOut(
+        trail_id=draft.trail_id,
+        from_code=draft.from_code,
+        label=draft.label,
+        document=draft.document,
+        changes=[field_change_out(c) for c in draft.changes],
+        results=_results_out(draft.results) if draft.results is not None else None,
+        report=draft.report,
+        recorded_at=draft.recorded_at,
+    )
+
+
+def _workspace_out(workspace: Workspace) -> WorkspaceOut:
+    return WorkspaceOut(
+        year=workspace.year,
+        rules_version=workspace.rules_version,
+        pricing_version=workspace.pricing_version,
+        snapshot=_snapshot_out(workspace.snapshot) if workspace.snapshot is not None else None,
+        draft=_scenario_draft_out(workspace.draft) if workspace.draft is not None else None,
+        options=[_option_out(kept) for kept in workspace.options],
+    )
+
+
+def _evaluation_out(evaluation: Evaluation) -> EvaluateOut:
+    return EvaluateOut(document=evaluation.document, results=_results_out(evaluation.results), report=evaluation.report)
+
+
+def _column_out(column: CompareColumn) -> CompareColumnOut:
+    return CompareColumnOut(
+        code=column.code,
+        label=column.label,
+        document=column.document,
+        changes=[field_change_out(c) for c in column.changes],
+        results=_results_out(column.results),
+        up=column.up,
+        down=column.down,
+    )
+
+
+def _trail_row_out(row: TrailRecord) -> TrailRowOut:
+    return TrailRowOut(
+        id=row.id,
+        recorded_at=row.created,
+        actor=row.actor,
+        from_code=row.from_code,
+        change=row.change,
+        kept_code=row.kept_code or None,
+        round1=_cents(row.results.round1) if row.results is not None else None,
+        round1_remaining=_cents(row.results.round1_remaining) if row.results is not None else None,
+        at_minimum=row.results.at_minimum if row.results is not None else None,
+        stale=row.stale,
+    )
+
+
+def _preview_out(code: str, preview: PromotionPreview) -> PromotionPreviewOut:
+    return PromotionPreviewOut(
+        code=code,
+        origin_version=preview.origin_version,
+        base_version=preview.base_version,
+        sections=[
+            PromotionSectionOut(
+                section=s.section,
+                changes=[field_change_out(c) for c in s.changes],
+                warning=ReplacementWarningOut(
+                    kind=s.warning.kind, by=s.warning.by, at=s.warning.at, via=s.warning.via, token=s.warning.token
+                )
+                if s.warning is not None
+                else None,
+            )
+            for s in preview.sections
+        ],
+        unchanged=list(preview.unchanged),
+    )
+
+
+_OptionCodePath = Annotated[str, Path(pattern=r"^[A-Z]+[0-9]*$", max_length=12)]
+
+
+@router.post("/scenarios/{year}/snapshot", response_model=SnapshotOut)
+async def freeze_scenario_season(year: _Year, user: AuthUser = _RULES) -> SnapshotOut:
+    """Freeze the season's applications for scenarios (spec §7.4); nothing is written when they haven't moved."""
+    try:
+        return _snapshot_out(await _scenarios().freeze(year, user.email))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.post("/scenarios/{year}/starting-points", response_model=WorkspaceOut)
+async def start_scenarios_from_rules(year: _Year, user: AuthUser = _RULES) -> WorkspaceOut:
+    """A starting point from the rules draft, loaded into your draft."""
+    try:
+        return _workspace_out(await _scenarios().start_from_rules(year, user.email))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.get("/scenarios/{year}", response_model=WorkspaceOut)
+async def get_scenarios(year: _Year, user: AuthUser = _RULES) -> WorkspaceOut:
+    """Your draft, every kept option, and the snapshot they run on (D38)."""
+    try:
+        return _workspace_out(await _scenarios().workspace(year, user.email))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.post("/scenarios/{year}/evaluate", response_model=EvaluateOut)
+async def evaluate_scenario(year: _Year, body: EvaluateIn, user: AuthUser = _RULES) -> EvaluateOut:
+    """A document priced on the frozen season with the sizing settings applied, on a request set when asked (D138);
+    nothing is recorded (the live preview while a slider moves)."""
+    try:
+        evaluation = await _scenarios().evaluate(
+            year,
+            body.document,
+            tier_shift=body.tier_shift,
+            band_width_delta=body.band_width_delta,
+            request_set=_request_set(body),
+        )
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return _evaluation_out(evaluation)
+
+
+@router.put("/scenarios/{year}/draft", response_model=DraftOut)
+async def save_scenario_draft(year: _Year, body: DocumentIn, user: AuthUser = _RULES) -> DraftOut:
+    """A released setting: your draft becomes this document, recorded in the trail (D38)."""
+    try:
+        return _scenario_draft_out(await _scenarios().save_draft(year, body.document, user.email))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.post("/scenarios/{year}/draft/load", response_model=DraftOut)
+async def load_scenario_draft(year: _Year, body: LoadIn, user: AuthUser = _RULES) -> DraftOut:
+    """A kept option or any trail row into your draft; recorded, so nothing is lost."""
+    try:
+        draft = await _scenarios().load(year, user.email, option=body.option, trail_row=body.trail_row)
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return _scenario_draft_out(draft)
+
+
+@router.post("/scenarios/{year}/keep", response_model=OptionOut)
+async def keep_scenario(year: _Year, body: KeepIn, user: AuthUser = _RULES) -> OptionOut:
+    """Keep your draft: a variant under its starting point, or a new starting point (two levels, D38)."""
+    try:
+        return _option_out(await _scenarios().keep(year, user.email, starting_point=body.starting_point))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.get("/scenarios/{year}/compare", response_model=CompareOut)
+async def compare_scenarios(
+    year: _Year,
+    codes: Annotated[list[OptionCode], Query(max_length=4)] = [],  # noqa: B006
+    through_round1_deadline: bool = Query(default=False),
+    received_through: date | None = Query(default=None),
+    user: AuthUser = _RULES,
+) -> CompareOut:
+    """Your draft first, beside up to 4 kept options, all on the current snapshot, on a request set when asked
+    (D138: the Round 1 deadline switch or a received-through date, not both)."""
+    if through_round1_deadline and received_through is not None:
+        raise HTTPException(status_code=422, detail="Choose the Round 1 deadline or a received-through date, not both")
+    request_set: RequestSetChoice | None = "round1_deadline" if through_round1_deadline else received_through
+    try:
+        comparison = await _scenarios().compare(year, user.email, codes, request_set=request_set)
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return CompareOut(
+        year=year, snapshot=_snapshot_out(comparison.snapshot), columns=[_column_out(c) for c in comparison.columns]
+    )
+
+
+@router.post("/scenarios/{year}/fit-to-budget", response_model=FitOut)
+async def fit_scenario_to_budget(year: _Year, body: ViewIn, user: AuthUser = _RULES) -> FitOut:
+    """The tier shift that uses Round 1's allocation: the total row's Round 1 Remaining (main spec §12.3 method 1;
+    Decision 11 (a), D119), naming the tightest pool as information; nothing is recorded. 422 on a request set."""
+    try:
+        fitted = await _scenarios().fit(year, body.document, request_set=_request_set(body))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return FitOut(
+        tier_shift=float(fitted.fit.shift),
+        outcome=fitted.fit.kind,
+        tightest_pool=fitted.tightest_pool,
+        tried=fitted.fit.tried,
+        document=fitted.evaluation.document,
+        results=_results_out(fitted.evaluation.results),
+        report=fitted.evaluation.report,
+    )
+
+
+@router.post("/scenarios/{year}/sensitivity", response_model=SensitivityOut)
+async def scenario_sensitivity(year: _Year, body: ViewIn, user: AuthUser = _RULES) -> SensitivityOut:
+    """What one step of each sizing setting moves Round 1 by (spec §7.4), the dollar-for-dollar switch included
+    (D137)."""
+    try:
+        sensitivity = await _scenarios().sensitivity(year, body.document, request_set=_request_set(body))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return SensitivityOut(
+        results=_results_out(sensitivity.results),
+        levers=[
+            LeverEffectOut(
+                lever=e.lever.key,
+                label=e.lever.label,
+                step=float(e.lever.step) if e.lever.step is not None else None,
+                on=e.on,
+                round1_change=money(e.round1_change),
+            )
+            for e in sensitivity.effects
+        ],
+    )
+
+
+@router.get("/scenarios/{year}/trail", response_model=TrailPageOut)
+async def get_scenario_trail(
+    year: _Year,
+    page: int = Query(default=1, ge=1, le=10000),
+    per_page: int = Query(default=50, ge=1, le=200),
+    user: AuthUser = _RULES,
+) -> TrailPageOut:
+    """Every released setting, everyone's, newest first (D38)."""
+    try:
+        rows, total = await _scenarios().trail(year, page=page, per_page=per_page)
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return TrailPageOut(page=page, per_page=per_page, total=total, rows=[_trail_row_out(r) for r in rows])
+
+
+@router.get("/scenarios/{year}/options/{code}/rules-draft", response_model=PromotionPreviewOut)
+async def preview_scenario_rules_draft(
+    year: _Year, code: _OptionCodePath, user: AuthUser = _RULES
+) -> PromotionPreviewOut:
+    """ "Make B2 the rules draft": each section it changes, old -> new, and whose edit it would replace (D39)."""
+    try:
+        return _preview_out(code, await _scenarios().rules_draft_preview(year, code))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.post("/scenarios/{year}/options/{code}/rules-draft", response_model=RulesDraftOut)
+async def make_scenario_rules_draft(
+    year: _Year, code: _OptionCodePath, body: MakeRulesDraftIn, user: AuthUser = _RULES
+) -> RulesDraftOut:
+    """Copy the option's changed sections into the rules draft; each then goes through approval (D39). 409 when the
+    rules draft moved on, or a section whose edit it replaces was not confirmed with its preview token."""
+    try:
+        draft, branched_from = await _scenarios().make_rules_draft(
+            year, code, base_version=body.base_version, acknowledged=body.acknowledged, actor=user.email
+        )
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+    return _draft_out(draft, branched_from=branched_from)

@@ -2263,6 +2263,49 @@ export type CommitmentOut = {
 }
 
 /**
+ * CompareColumnOut
+ */
+export type CompareColumnOut = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Label
+   */
+  label: string
+  document: AidRulesOutput
+  /**
+   * Changes
+   */
+  changes: Array<FieldChangeOut>
+  results: ResultsOut
+  /**
+   * Up
+   */
+  up: number | null
+  /**
+   * Down
+   */
+  down: number | null
+}
+
+/**
+ * CompareOut
+ */
+export type CompareOut = {
+  /**
+   * Year
+   */
+  year: number
+  snapshot: SnapshotOut
+  /**
+   * Columns
+   */
+  columns: Array<CompareColumnOut>
+}
+
+/**
  * ComparePartyReport
  *
  * One enrolled family's scenario-vs-CampMinder verdict (kindred#2478 §5).
@@ -3153,6 +3196,42 @@ export type DispositionsResponse = {
 }
 
 /**
+ * DocumentIn
+ */
+export type DocumentIn = {
+  document: AidRulesInput
+}
+
+/**
+ * DraftOut
+ */
+export type DraftOut = {
+  /**
+   * Trail Id
+   */
+  trail_id: string
+  /**
+   * From Code
+   */
+  from_code: string
+  /**
+   * Label
+   */
+  label: string
+  document: AidRulesOutput
+  /**
+   * Changes
+   */
+  changes: Array<FieldChangeOut>
+  results: ResultsOut | null
+  report: ValidationReport
+  /**
+   * Recorded At
+   */
+  recorded_at: string
+}
+
+/**
  * DraftSectionOut
  */
 export type DraftSectionOut = {
@@ -3561,6 +3640,38 @@ export type EquitySectionOutput = {
 }
 
 /**
+ * EvaluateIn
+ */
+export type EvaluateIn = {
+  document: AidRulesInput
+  /**
+   * Through Round1 Deadline
+   */
+  through_round1_deadline?: boolean
+  /**
+   * Received Through
+   */
+  received_through?: string | null
+  /**
+   * Tier Shift
+   */
+  tier_shift?: number | string
+  /**
+   * Band Width Delta
+   */
+  band_width_delta?: number | string
+}
+
+/**
+ * EvaluateOut
+ */
+export type EvaluateOut = {
+  document: AidRulesOutput
+  results: ResultsOut
+  report: ValidationReport
+}
+
+/**
  * ExpectedOut
  *
  * D56: never a grant, never counted.
@@ -3788,6 +3899,31 @@ export type FirstSummerYearEnrollment = {
    * Number of campers
    */
   count: number
+}
+
+/**
+ * FitOut
+ */
+export type FitOut = {
+  /**
+   * Tier Shift
+   */
+  tier_shift: number
+  /**
+   * Outcome
+   */
+  outcome: 'fits' | 'over_at_lowest' | 'under_at_highest'
+  /**
+   * Tightest Pool
+   */
+  tightest_pool: string | null
+  /**
+   * Tried
+   */
+  tried: number
+  document: AidRulesOutput
+  results: ResultsOut
+  report: ValidationReport
 }
 
 /**
@@ -6085,6 +6221,16 @@ export type JotformWriteInOption = {
 }
 
 /**
+ * KeepIn
+ */
+export type KeepIn = {
+  /**
+   * Starting Point
+   */
+  starting_point?: boolean
+}
+
+/**
  * LedgerCamper
  */
 export type LedgerCamper = {
@@ -6198,6 +6344,46 @@ export type LedgerTicksOut = {
    * Skipped
    */
   skipped?: string
+}
+
+/**
+ * LeverEffectOut
+ */
+export type LeverEffectOut = {
+  /**
+   * Lever
+   */
+  lever: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Step
+   */
+  step: number | null
+  /**
+   * On
+   */
+  on: boolean | null
+  /**
+   * Round1 Change
+   */
+  round1_change: number
+}
+
+/**
+ * LoadIn
+ */
+export type LoadIn = {
+  /**
+   * Option
+   */
+  option?: string | null
+  /**
+   * Trail Row
+   */
+  trail_row?: string | null
 }
 
 /**
@@ -6419,6 +6605,22 @@ export type LodgingWriteResponse = {
    * Deleted
    */
   deleted?: boolean
+}
+
+/**
+ * MakeRulesDraftIn
+ */
+export type MakeRulesDraftIn = {
+  /**
+   * Base Version
+   */
+  base_version: number
+  /**
+   * Acknowledged
+   */
+  acknowledged?: {
+    [key: string]: string
+  }
 }
 
 /**
@@ -6786,6 +6988,45 @@ export type NotRebuiltOut = {
    * Requests
    */
   requests?: Array<string>
+}
+
+/**
+ * OptionOut
+ */
+export type OptionOut = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Starting Point
+   */
+  starting_point: string | null
+  /**
+   * From Code
+   */
+  from_code: string | null
+  /**
+   * Origin Version
+   */
+  origin_version: number
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Kept By
+   */
+  kept_by: string
+  /**
+   * Kept At
+   */
+  kept_at: string
+  results: ResultsOut
+  /**
+   * Stale
+   */
+  stale: boolean
 }
 
 /**
@@ -8566,6 +8807,48 @@ export type PoolBudgetOut = {
 }
 
 /**
+ * PoolResultOut
+ */
+export type PoolResultOut = {
+  /**
+   * Pool
+   */
+  pool: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Round1
+   */
+  round1: number
+  /**
+   * Round2
+   */
+  round2: number
+  /**
+   * Round3
+   */
+  round3: number
+  /**
+   * Round1 Allocated
+   */
+  round1_allocated: number | null
+  /**
+   * Round1 Remaining
+   */
+  round1_remaining: number | null
+  /**
+   * Remaining
+   */
+  remaining: number | null
+  /**
+   * Round1 Unmet
+   */
+  round1_unmet: number
+}
+
+/**
  * PostedIn
  */
 export type PostedIn = {
@@ -8904,6 +9187,76 @@ export type ProgramProfile = {
    * Open To Aid
    */
   open_to_aid?: boolean
+}
+
+/**
+ * PromotionPreviewOut
+ */
+export type PromotionPreviewOut = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Origin Version
+   */
+  origin_version: number
+  /**
+   * Base Version
+   */
+  base_version: number
+  /**
+   * Sections
+   */
+  sections: Array<PromotionSectionOut>
+  /**
+   * Unchanged
+   */
+  unchanged: Array<
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  >
+}
+
+/**
+ * PromotionSectionOut
+ */
+export type PromotionSectionOut = {
+  /**
+   * Section
+   */
+  section:
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  /**
+   * Changes
+   */
+  changes: Array<FieldChangeOut>
+  warning: ReplacementWarningOut | null
 }
 
 /**
@@ -9546,6 +9899,32 @@ export type RemainingResponse = {
 }
 
 /**
+ * ReplacementWarningOut
+ */
+export type ReplacementWarningOut = {
+  /**
+   * Kind
+   */
+  kind: 'unapproved_edit' | 'changed_since'
+  /**
+   * By
+   */
+  by: string | null
+  /**
+   * At
+   */
+  at: string | null
+  /**
+   * Via
+   */
+  via: string | null
+  /**
+   * Token
+   */
+  token: string
+}
+
+/**
  * RequestBucket
  *
  * Reporting bucket — the scorecard grouping a request rolls into.
@@ -9639,6 +10018,34 @@ export type RequestQueueResponse = {
    * Requests
    */
   requests: Array<RequestOut>
+}
+
+/**
+ * RequestSetOut
+ *
+ * The request set the figures were priced on (D138): every affected figure is labelled with `label`.
+ */
+export type RequestSetOut = {
+  /**
+   * Basis
+   */
+  basis: 'round1_deadline' | 'date'
+  /**
+   * Through
+   */
+  through: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Left Out
+   */
+  left_out: number
+  /**
+   * Unknown
+   */
+  unknown: number
 }
 
 /**
@@ -9742,6 +10149,77 @@ export type RequestsGridResponse = {
    * Not Rebuilt
    */
   not_rebuilt?: Array<NotRebuiltOut>
+}
+
+/**
+ * ResultsOut
+ *
+ * A scenario's figures. Round n = Posted + Needs an offer + Pending approval (spec §5.3); Round 2 is only the
+ * appeals keyed so far, and `round1_unmet` (below the line) is the forward signal for Round 2 (plan Decision 10).
+ * `request_set` is None when every frozen request is counted.
+ */
+export type ResultsOut = {
+  /**
+   * Requests
+   */
+  requests: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Round1
+   */
+  round1: number
+  /**
+   * Round2
+   */
+  round2: number
+  /**
+   * Round3
+   */
+  round3: number
+  /**
+   * Round1 Allocated
+   */
+  round1_allocated: number | null
+  /**
+   * Round1 Remaining
+   */
+  round1_remaining: number | null
+  /**
+   * Remaining
+   */
+  remaining: number | null
+  /**
+   * At Minimum
+   */
+  at_minimum: number
+  /**
+   * Held
+   */
+  held: number
+  /**
+   * Held Asked
+   */
+  held_asked: number
+  /**
+   * Round1 Unmet
+   */
+  round1_unmet: number
+  /**
+   * Pools
+   */
+  pools: Array<PoolResultOut>
+  /**
+   * By Tier
+   */
+  by_tier: Array<TierRowOut>
+  /**
+   * Not In Tiers
+   */
+  not_in_tiers: number
+  request_set?: RequestSetOut | null
 }
 
 /**
@@ -11410,6 +11888,17 @@ export type SectionStatus = {
 }
 
 /**
+ * SensitivityOut
+ */
+export type SensitivityOut = {
+  results: ResultsOut
+  /**
+   * Levers
+   */
+  levers: Array<LeverEffectOut>
+}
+
+/**
  * SessionAttributionConflictRow
  *
  * One open `ambiguous_session` queue row, annotated with occupancy.
@@ -12011,6 +12500,32 @@ export type SlotMergeRequest = {
    * Combined
    */
   combined: boolean
+}
+
+/**
+ * SnapshotOut
+ */
+export type SnapshotOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Taken At
+   */
+  taken_at: string
+  /**
+   * Taken By
+   */
+  taken_by: string
+  /**
+   * Requests
+   */
+  requests: number
+  /**
+   * Awaiting Rules
+   */
+  awaiting_rules: number
 }
 
 /**
@@ -12904,6 +13419,32 @@ export type TierBandOutput = {
 }
 
 /**
+ * TierRowOut
+ */
+export type TierRowOut = {
+  /**
+   * Tier
+   */
+  tier: number
+  /**
+   * Requests
+   */
+  requests: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Round1
+   */
+  round1: number
+  /**
+   * Asked
+   */
+  asked?: number | null
+}
+
+/**
  * TiersSection
  */
 export type TiersSectionInput = {
@@ -13023,6 +13564,74 @@ export type TotalPercentOutput = {
    * Total Pct
    */
   total_pct: string
+}
+
+/**
+ * TrailPageOut
+ */
+export type TrailPageOut = {
+  /**
+   * Page
+   */
+  page: number
+  /**
+   * Per Page
+   */
+  per_page: number
+  /**
+   * Total
+   */
+  total: number
+  /**
+   * Rows
+   */
+  rows: Array<TrailRowOut>
+}
+
+/**
+ * TrailRowOut
+ */
+export type TrailRowOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Recorded At
+   */
+  recorded_at: string
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * From Code
+   */
+  from_code: string
+  /**
+   * Change
+   */
+  change: string
+  /**
+   * Kept Code
+   */
+  kept_code: string | null
+  /**
+   * Round1
+   */
+  round1: number | null
+  /**
+   * Round1 Remaining
+   */
+  round1_remaining: number | null
+  /**
+   * At Minimum
+   */
+  at_minimum: number | null
+  /**
+   * Stale
+   */
+  stale: boolean
 }
 
 /**
@@ -13360,6 +13969,24 @@ export type VelocityResponse = {
    * Combined weekly data for delta chart + WoW table
    */
   weekly?: Array<WeeklyDataPoint>
+}
+
+/**
+ * ViewIn
+ *
+ * A read of a document on the frozen season, optionally on a request set (D138): the "through the Round 1
+ * deadline" switch or the "received through" date, never both. Off by default.
+ */
+export type ViewIn = {
+  document: AidRulesInput
+  /**
+   * Through Round1 Deadline
+   */
+  through_round1_deadline?: boolean
+  /**
+   * Received Through
+   */
+  received_through?: string | null
 }
 
 /**
@@ -13864,6 +14491,30 @@ export type WithdrawIn = {
    * Reason
    */
   reason: string
+}
+
+/**
+ * WorkspaceOut
+ */
+export type WorkspaceOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rules Version
+   */
+  rules_version: number
+  /**
+   * Pricing Version
+   */
+  pricing_version: number | null
+  snapshot: SnapshotOut | null
+  draft: DraftOut | null
+  /**
+   * Options
+   */
+  options: Array<OptionOut>
 }
 
 /**
@@ -19835,6 +20486,453 @@ export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses
 
 export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponse =
   SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses[keyof SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses]
+
+export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/snapshot'
+}
+
+export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostError =
+  FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostErrors[keyof FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostErrors]
+
+export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: SnapshotOut
+}
+
+export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostResponse =
+  FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostResponses[keyof FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostResponses]
+
+export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/starting-points'
+}
+
+export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostError =
+  StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostErrors[keyof StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostErrors]
+
+export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: WorkspaceOut
+}
+
+export type StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponse =
+  StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponses[keyof StartScenariosFromRulesApiFinancialAidScenariosYearStartingPointsPostResponses]
+
+export type GetScenariosApiFinancialAidScenariosYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}'
+}
+
+export type GetScenariosApiFinancialAidScenariosYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetScenariosApiFinancialAidScenariosYearGetError =
+  GetScenariosApiFinancialAidScenariosYearGetErrors[keyof GetScenariosApiFinancialAidScenariosYearGetErrors]
+
+export type GetScenariosApiFinancialAidScenariosYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WorkspaceOut
+}
+
+export type GetScenariosApiFinancialAidScenariosYearGetResponse =
+  GetScenariosApiFinancialAidScenariosYearGetResponses[keyof GetScenariosApiFinancialAidScenariosYearGetResponses]
+
+export type EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostData = {
+  body: EvaluateIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/evaluate'
+}
+
+export type EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostError =
+  EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostErrors[keyof EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostErrors]
+
+export type EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: EvaluateOut
+}
+
+export type EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponse =
+  EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponses[keyof EvaluateScenarioApiFinancialAidScenariosYearEvaluatePostResponses]
+
+export type SaveScenarioDraftApiFinancialAidScenariosYearDraftPutData = {
+  body: DocumentIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/draft'
+}
+
+export type SaveScenarioDraftApiFinancialAidScenariosYearDraftPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveScenarioDraftApiFinancialAidScenariosYearDraftPutError =
+  SaveScenarioDraftApiFinancialAidScenariosYearDraftPutErrors[keyof SaveScenarioDraftApiFinancialAidScenariosYearDraftPutErrors]
+
+export type SaveScenarioDraftApiFinancialAidScenariosYearDraftPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: DraftOut
+}
+
+export type SaveScenarioDraftApiFinancialAidScenariosYearDraftPutResponse =
+  SaveScenarioDraftApiFinancialAidScenariosYearDraftPutResponses[keyof SaveScenarioDraftApiFinancialAidScenariosYearDraftPutResponses]
+
+export type LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostData = {
+  body: LoadIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/draft/load'
+}
+
+export type LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostError =
+  LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostErrors[keyof LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostErrors]
+
+export type LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DraftOut
+}
+
+export type LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostResponse =
+  LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostResponses[keyof LoadScenarioDraftApiFinancialAidScenariosYearDraftLoadPostResponses]
+
+export type KeepScenarioApiFinancialAidScenariosYearKeepPostData = {
+  body: KeepIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/keep'
+}
+
+export type KeepScenarioApiFinancialAidScenariosYearKeepPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type KeepScenarioApiFinancialAidScenariosYearKeepPostError =
+  KeepScenarioApiFinancialAidScenariosYearKeepPostErrors[keyof KeepScenarioApiFinancialAidScenariosYearKeepPostErrors]
+
+export type KeepScenarioApiFinancialAidScenariosYearKeepPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: OptionOut
+}
+
+export type KeepScenarioApiFinancialAidScenariosYearKeepPostResponse =
+  KeepScenarioApiFinancialAidScenariosYearKeepPostResponses[keyof KeepScenarioApiFinancialAidScenariosYearKeepPostResponses]
+
+export type CompareScenariosApiFinancialAidScenariosYearCompareGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Codes
+     */
+    codes?: Array<string>
+    /**
+     * Through Round1 Deadline
+     */
+    through_round1_deadline?: boolean
+    /**
+     * Received Through
+     */
+    received_through?: string | null
+  }
+  url: '/api/financial-aid/scenarios/{year}/compare'
+}
+
+export type CompareScenariosApiFinancialAidScenariosYearCompareGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CompareScenariosApiFinancialAidScenariosYearCompareGetError =
+  CompareScenariosApiFinancialAidScenariosYearCompareGetErrors[keyof CompareScenariosApiFinancialAidScenariosYearCompareGetErrors]
+
+export type CompareScenariosApiFinancialAidScenariosYearCompareGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: CompareOut
+}
+
+export type CompareScenariosApiFinancialAidScenariosYearCompareGetResponse =
+  CompareScenariosApiFinancialAidScenariosYearCompareGetResponses[keyof CompareScenariosApiFinancialAidScenariosYearCompareGetResponses]
+
+export type FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostData = {
+  body: ViewIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/fit-to-budget'
+}
+
+export type FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostError =
+  FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostErrors[keyof FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostErrors]
+
+export type FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: FitOut
+}
+
+export type FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostResponse =
+  FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostResponses[keyof FitScenarioToBudgetApiFinancialAidScenariosYearFitToBudgetPostResponses]
+
+export type ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostData = {
+  body: ViewIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/sensitivity'
+}
+
+export type ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostError =
+  ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostErrors[keyof ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostErrors]
+
+export type ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: SensitivityOut
+}
+
+export type ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostResponse =
+  ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostResponses[keyof ScenarioSensitivityApiFinancialAidScenariosYearSensitivityPostResponses]
+
+export type GetScenarioTrailApiFinancialAidScenariosYearTrailGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Page
+     */
+    page?: number
+    /**
+     * Per Page
+     */
+    per_page?: number
+  }
+  url: '/api/financial-aid/scenarios/{year}/trail'
+}
+
+export type GetScenarioTrailApiFinancialAidScenariosYearTrailGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetScenarioTrailApiFinancialAidScenariosYearTrailGetError =
+  GetScenarioTrailApiFinancialAidScenariosYearTrailGetErrors[keyof GetScenarioTrailApiFinancialAidScenariosYearTrailGetErrors]
+
+export type GetScenarioTrailApiFinancialAidScenariosYearTrailGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TrailPageOut
+}
+
+export type GetScenarioTrailApiFinancialAidScenariosYearTrailGetResponse =
+  GetScenarioTrailApiFinancialAidScenariosYearTrailGetResponses[keyof GetScenarioTrailApiFinancialAidScenariosYearTrailGetResponses]
+
+export type PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Code
+     */
+    code: string
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/options/{code}/rules-draft'
+}
+
+export type PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetError =
+  PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetErrors[keyof PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetErrors]
+
+export type PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: PromotionPreviewOut
+  }
+
+export type PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetResponse =
+  PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetResponses[keyof PreviewScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftGetResponses]
+
+export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostData = {
+  body: MakeRulesDraftIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Code
+     */
+    code: string
+  }
+  query?: never
+  url: '/api/financial-aid/scenarios/{year}/options/{code}/rules-draft'
+}
+
+export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostError =
+  MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostErrors[keyof MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostErrors]
+
+export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesDraftOut
+}
+
+export type MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponse =
+  MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponses[keyof MakeScenarioRulesDraftApiFinancialAidScenariosYearOptionsCodeRulesDraftPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
