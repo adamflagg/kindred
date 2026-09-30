@@ -280,7 +280,7 @@ class GrantsService:
     async def _family_members(
         self, year: int, links: Any, household_cm_ids: Collection[int]
     ) -> dict[int, frozenset[int]]:
-        """The family-membership rule place() and _commitment_fields() share exactly (Ruling 1/2):
+        """The family-membership rule place(), _commitment_fields() and the register's D142 tie share (Ruling 1/2):
         Go's attribution treats a person as belonging to a household if it is their own household
         OR their primary/alternate childhood household, across the household's linked family
         (family_household_set) -- never fetch_household_members plus a plain household_id
@@ -381,10 +381,17 @@ class GrantsService:
         )
         households.discard(0)
         family_sets = {h: family_household_set(links, h) for h in households}
-        members = await self.repo.fetch_household_members(year, {x for hs in family_sets.values() for x in hs})
+        # D142 ties a never-applied household's line only when it has exactly one camper, so it counts
+        # by the membership rule Go's attribution and place() use (own OR childhood household); the
+        # own-household pool alone could miss a second camper and tie by guesswork.
+        members, household_people = await asyncio.gather(
+            self.repo.fetch_household_members(year, {x for hs in family_sets.values() for x in hs}),
+            self._family_members(year, links, households),
+        )
         people = {int(m.cm_id): m for m in members}
         wanted = (
-            {ln.person_cm_id for ln in lines}
+            set().union(*household_people.values())
+            | {ln.person_cm_id for ln in lines}
             | {ln.attributed_person_cm_id for ln in lines}
             | {p.person_cm_id for p in placements.values()}
             | {c.person_cm_id for c in commitments}
@@ -422,6 +429,11 @@ class GrantsService:
             enrollments=enrollments,
             requests=requests,
             pays_after_grantors=frozenset(str(g.key) for g in grantors_raw if g.pays_after_camp_aid),
+            household_people=household_people,
+            families_by_source={
+                str(s.description_key): frozenset(str(f) for f in (getattr(s, "implied_program_families", None) or []))
+                for s in sources
+            },
         )
         rows = build_register(inputs)
         return _Loaded(

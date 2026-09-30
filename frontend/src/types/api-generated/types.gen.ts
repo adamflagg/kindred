@@ -4426,10 +4426,12 @@ export type GradeEnrollment = {
  *
  * One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
  * posted. person_cm_id 0 = needs a camper, except camper_basis "household": a household
- * program's grant (Family Camp), which needs none. counts = a live grant with a confirmed camper
- * (or a household target), or an open commitment whose camper hasn't cancelled; whether it
- * reduces an award is the rules' call (offset_programs, incentive modes). requests = the aid
- * requests it sits on; [] = didn't apply.
+ * program's grant (Family Camp), which needs none; and a line in a household that never applied,
+ * which stays at household level (D126). camper_basis "sole_camper" = tied by rule to that
+ * household's one camper the grant can pay for (D142), not placed by a person. counts = a live
+ * grant with a confirmed camper (or a household target), or an open commitment whose camper
+ * hasn't cancelled; whether it reduces an award is the rules' call (offset_programs, incentive
+ * modes). requests = the aid requests it sits on; [] = didn't apply.
  */
 export type GrantRowOut = {
   /**
@@ -4463,7 +4465,7 @@ export type GrantRowOut = {
   /**
    * Camper Basis
    */
-  camper_basis: 'ledger' | 'placed' | 'commitment' | 'household' | 'none'
+  camper_basis: 'ledger' | 'placed' | 'sole_camper' | 'commitment' | 'household' | 'none'
   /**
    * Session Cm Id
    */

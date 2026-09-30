@@ -91,7 +91,7 @@ class GrantorsResponse(BaseModel):
 
 # --- the register read (one aggregate for Grants, D21 / spec §10) -----------------------
 
-CamperBasis = Literal["ledger", "placed", "commitment", "household", "none"]
+CamperBasis = Literal["ledger", "placed", "sole_camper", "commitment", "household", "none"]
 WaitingReason = Literal["not_posted", "posted_then_reversed", "possible_match", "camper_cancelled"]
 
 
@@ -103,10 +103,12 @@ class RequestShareOut(BaseModel):
 class GrantRowOut(BaseModel):
     """One register row: a CampMinder grant line (live or reversed), or an open commitment not yet
     posted. person_cm_id 0 = needs a camper, except camper_basis "household": a household
-    program's grant (Family Camp), which needs none. counts = a live grant with a confirmed camper
-    (or a household target), or an open commitment whose camper hasn't cancelled; whether it
-    reduces an award is the rules' call (offset_programs, incentive modes). requests = the aid
-    requests it sits on; [] = didn't apply."""
+    program's grant (Family Camp), which needs none; and a line in a household that never applied,
+    which stays at household level (D126). camper_basis "sole_camper" = tied by rule to that
+    household's one camper the grant can pay for (D142), not placed by a person. counts = a live
+    grant with a confirmed camper (or a household target), or an open commitment whose camper
+    hasn't cancelled; whether it reduces an award is the rules' call (offset_programs, incentive
+    modes). requests = the aid requests it sits on; [] = didn't apply."""
 
     kind: Literal["ledger", "commitment"]
     transaction_cm_id: int
