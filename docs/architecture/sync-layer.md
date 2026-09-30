@@ -360,7 +360,9 @@ rather than deleting it. On the daily cron it covers seasons N−1, N and N+1. T
 `config/aid_sources.local.json` (kindred-local) is **seed-only**: a run adds a description the file names
 that has no `aid_sources` row yet, and never writes to a row that exists. After that, a classification
 changes only through the app's logged source edit (FastAPI `PATCH /sources`). A description CampMinder sends
-before the file names it lands `unclassified`, and the run logs a warning naming it. Classifications never
+before the file names it lands `unclassified` and its postings are flagged `unclassified_source`.
+Adding it to the file afterwards changes nothing: each run then logs a warning naming it until it is
+classified in the app. Classifications never
 come from a migration, because the camp's own descriptions name the camp.
 
 **Key ordering rules:**

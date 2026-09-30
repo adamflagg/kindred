@@ -312,7 +312,7 @@ func (s *AidPostingsSync) seedSourceClasses(
 		// The file came too late for these: each posted before the file named it, so the
 		// sync already holds an unclassified row. Only the app classifies an existing row.
 		slog.Warn("aid_sources file names descriptions that already exist unclassified; "+
-			"the file only adds new descriptions (D105), so classify these in the app",
+			"the file only adds new descriptions (D105), so classify these in the app (PATCH /sources)",
 			"description_keys", namedButUnclassified)
 	}
 	return nil
