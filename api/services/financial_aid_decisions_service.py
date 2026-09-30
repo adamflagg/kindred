@@ -230,7 +230,7 @@ class Season:
     holds: Mapping[str, HoldState]
     # None: priced now. A date: the past-date read (3c), as recorded by the end of that day.
     as_of: date | None = None
-    gaps: tuple[NotRebuiltOut, ...] = ()  # gaps found while rebuilding (rules or request history)
+    gaps: tuple[NotRebuiltOut, ...] = ()  # rebuild gaps: rules or request history, deleted since, pool unknown
     unrebuilt: frozenset[str] = frozenset()  # requests whose history couldn't be replayed
 
 

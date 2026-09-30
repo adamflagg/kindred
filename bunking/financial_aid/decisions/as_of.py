@@ -40,6 +40,10 @@ _PLACED: Final = (
     "Grant lines carry their own dates (recorded_on, recorded_at, reversal_date), but which "
     "request, and so which pool, a line sits on is today's placement"
 )
+_ROUND2: Final = (
+    "Some requests' status on that date can't be replayed (see request_history), so Round 2 asks "
+    "aren't counted season-wide"
+)
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "decided": _PRICED,
     "pending_approval": "It counts only while no hold covers the request, and the data checks are priced (3c-2)",
@@ -54,8 +58,8 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
     "held_asked": _PRICED,
     "outside_grants_off_requests": _PLACED,
-    "round2_asks": "A request's status on that date can't be replayed, so Round 2 asks aren't counted season-wide",
-    "round2_asked": "A request's status on that date can't be replayed, so Round 2 asks aren't counted season-wide",
+    "round2_asks": _ROUND2,
+    "round2_asked": _ROUND2,
     "outside_grants": _PLACED,
     "outside_budget": "It includes decided money not yet posted; the posted part is outside_budget_posted",
     "round2_computed": _PRICED,
