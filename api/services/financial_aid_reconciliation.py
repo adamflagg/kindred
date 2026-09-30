@@ -160,6 +160,35 @@ def _household_request(line: CampLine, by_household: Mapping[int, Sequence[Place
     return _one([r for r in held if r.person_cm_id == 0])
 
 
+def _matching(pool: Sequence[PlaceableRequest], placement: Placement) -> list[PlaceableRequest]:
+    if placement.session_cm_id:
+        return [r for r in pool if r.session_cm_id == placement.session_cm_id]
+    if placement.program_family:
+        return [r for r in pool if r.program_family == placement.program_family]
+    return list(pool)
+
+
+def _place_by_staff(
+    line: CampLine,
+    placement: Placement,
+    by_person: Mapping[int, Sequence[PlaceableRequest]],
+    by_household: Mapping[int, Sequence[PlaceableRequest]],
+) -> str | None:
+    """A staff placement decides: the named person's request it matches (one only); else, for a
+    session placement, that person's only live request when it is unmatched (session 0); else, when
+    the placement names Family Camp, the household's own request it matches (one only)."""
+    own = list(by_person.get(placement.person_cm_id, ())) if placement.person_cm_id > 0 else []
+    matched = _matching(own, placement)
+    if matched:
+        return _one(matched)
+    if own and placement.session_cm_id and len({r.id for r in own}) == 1 and own[0].session_cm_id == 0:
+        return own[0].id
+    if not (placement.program_family == FAMILY_CAMP or placement.session_cm_id):
+        return None
+    household = [r for r in by_household.get(line.household_cm_id, ()) if r.person_cm_id == 0]
+    return _one(_matching(household, placement))
+
+
 def _place(
     line: CampLine,
     placement: Placement | None,
@@ -167,16 +196,7 @@ def _place(
     by_household: Mapping[int, Sequence[PlaceableRequest]],
 ) -> str | None:
     if placement is not None:
-        pool = list(by_person.get(placement.person_cm_id, ())) if placement.person_cm_id > 0 else []
-        if not pool:
-            if not (placement.program_family == FAMILY_CAMP or placement.session_cm_id):
-                return None
-            pool = [r for r in by_household.get(line.household_cm_id, ()) if r.person_cm_id == 0]
-        if placement.session_cm_id:
-            pool = [r for r in pool if r.session_cm_id == placement.session_cm_id]
-        elif placement.program_family:
-            pool = [r for r in pool if r.program_family == placement.program_family]
-        return _one(pool)
+        return _place_by_staff(line, placement, by_person, by_household)
     if line.person_cm_id > 0:
         mine = by_person.get(line.person_cm_id, ())
         if not mine:

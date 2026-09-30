@@ -165,6 +165,29 @@ def test_a_reversed_line_is_placed_like_a_live_one_but_never_counts_as_unplaced_
     assert ledger.unplaced_by_household == {}
 
 
+def test_a_staff_placement_is_honoured_when_the_named_person_has_their_own_request() -> None:
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    summer = request("emma")
+    # (a) a camper with a summer request, placed on the household's Family Camp request
+    for named in (Placement(1, 1000011, 1000201, ""), Placement(1, 1000011, 0, "family_camp")):
+        assert placed([line(1, "700", person=1000011)], [summer, weekend], {1: named}) == {1: "fam"}
+    # (b) a parent with an adult-weekend request of their own, placed on Family Camp
+    adult = request("wk", person=1000019, session=1000202, family="adult_weekend")
+    fc = {2: Placement(2, 1000019, 1000201, "family_camp")}
+    assert placed([line(2, "700", person=1000019)], [adult, weekend], fc) == {2: "fam"}
+    # and the placement still picks the person's own request when that is what it names
+    own = {3: Placement(3, 1000019, 1000202, "")}
+    assert placed([line(3, "700", person=1000019)], [adult, weekend], own) == {3: "wk"}
+
+
+def test_a_session_placement_matches_the_persons_only_unmatched_request() -> None:
+    lost = request("emma", session=0, family="", status="unmatched_session")
+    old = {1: Placement(1, 1000011, 1000101, "summer")}
+    assert placed([line(1, "1800", person=1000011)], [lost], old) == {1: "emma"}
+    other = request("emmaq", session=1000106, family="quest")
+    assert placed([line(1, "1800", person=1000011)], [lost, other], old) == {}  # not their only request
+
+
 # --- small helpers -------------------------------------------------------------------------------
 
 
