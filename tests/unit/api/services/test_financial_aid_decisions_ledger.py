@@ -664,7 +664,7 @@ R1_SECTIONS = ("award_tables", "awards", "cost", "equity", "grants", "income", "
 async def test_the_ledger_ticks_what_the_registrar_forgot_at_the_decided_amount_as_one_logged_operation() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    seed_line(store, 9001, "1400", posted=MAR8)  # a typo: the offer was 1,500
+    seed_line(store, 9001, "1600", posted=MAR8)  # an over-posting: the offer was 1,500 (D146: full cover ticks)
     rules = FakeRules(approved())
     out = await _service(store, rules).ledger_ticks(YEAR)
     assert (out.ticked, out.total_locked, out.sections_not_locked, out.skipped) == (1, 1500.0, [], "")
@@ -676,7 +676,7 @@ async def test_the_ledger_ticks_what_the_registrar_forgot_at_the_decided_amount_
         "ledger",
         date(2027, 3, 8),
     )
-    assert post.note == "Ticked by the ledger sync: CampMinder shows $1,400 on this request"
+    assert post.note == "Ticked by the ledger sync: CampMinder shows $1,600 on this request"
     assert post.snapshot is not None
     assert post.snapshot["pool"] == "camp_pool"
     assert {row["actor"] for row in store.log} == {"system:ledger"}
@@ -685,9 +685,10 @@ async def test_the_ledger_ticks_what_the_registrar_forgot_at_the_decided_amount_
     assert rules.lock_calls == [(YEAR, 1, R1_SECTIONS)]
     row = await _row(store)
     assert row.confirmation is not None
-    assert (row.confirmation.status, row.confirmation.gap) == ("short", -100.0)
+    assert (row.confirmation.status, row.confirmation.gap) == ("over", 100.0)
     assert row.rounds[0].lock_source == "ledger"
-    # The sync re-runs the same night: nothing new is beyond the lock, so nothing is written.
+    # The sync re-runs the same night: Round 1 is posted and no later round is decided, so the $100
+    # over the lock ticks nothing and nothing is written.
     again = await _service(store, rules).ledger_ticks(YEAR)
     assert (again.ticked, again.operation_id) == (0, "")
     assert len(store.operations) == 1
@@ -713,19 +714,21 @@ async def test_the_ledger_never_ticks_a_held_request() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_payer_shares_posting_ticks_the_whole_round() -> None:
-    """D81: the first share's posting ticks the round and locks its full decided amount; the other
-    share reads "not in CampMinder" until its household posts."""
+async def test_a_payer_share_round_ticks_once_the_shares_posted_cover_it() -> None:
+    """D81 / D146: the round ticks once the shares posted cover its decided amount in full; a first share
+    alone waits for the registrar. Each share then confirms against its own household."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
     seed_line(store, 9001, "600", household=1000004)
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 0
+    seed_line(store, 9002, "900", household=1000001)
     out = await _service(store).ledger_ticks(YEAR)
     assert (out.ticked, out.total_locked) == (1, 1500.0)
     c = (await _row(store)).confirmation
     assert c is not None
     assert [(s.household_cm_id, s.status) for s in c.shares] == [
-        (1000001, "not_in_campminder"),
+        (1000001, "confirmed"),
         (1000004, "confirmed"),
     ]
 

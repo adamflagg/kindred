@@ -671,7 +671,9 @@ type Stats struct {
 	// run but must not be silent either (2026-09 aid-ledger hardening, F1/F2 of the prod
 	// diagnosis that day): no aid_sources classification file found, more than half of a
 	// season's live postings still unclassified_source, or financial_transactions' last
-	// recorded run not succeeding (stale input). One increment per condition raised, not
+	// recorded run not succeeding (stale input); and, per season (campership SP10b), a ledger
+	// tick skipped because that season's covering financial_transactions run did not succeed,
+	// or a ledger tick call to FastAPI that failed. One increment per condition raised, not
 	// per record -- deliberately its own counter rather than Stats.Rejected, which
 	// rejection_sites_test.go pins to per-record transform rejections only and which also
 	// suppresses a collection's orphan sweep for the run (base_sync.go), neither of which

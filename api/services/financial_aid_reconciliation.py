@@ -17,11 +17,18 @@ The rules, in order:
      a session placement then matches the person's closed request that holds posted money on that
      session exactly, before the person's lone unmatched request;
   2. a line CampMinder posted to a person goes on that person's ONE live request, unless Go's
-     attribution names that same person and a program that differs from the request's program, in
-     which case it stays at family level;
+     attribution names that same person and a program that differs from the request's program, or
+     names that person with no program (enrolled in two programs) while the household holds a live
+     Family Camp request that could own it too, in which case it stays at family level;
   3. a line posted to the household, or to a person with no request of their own (the parent on a
      Family Camp line), goes on the household's request only when Go's program is empty or Family
-     Camp AND that request (Family Camp, person 0) is the only live request the household holds.
+     Camp AND that request (Family Camp, person 0) is the only live request the household holds. A
+     line on a person whose own request is closed never takes the household's request (the
+     closed-request pass takes it, D54), except a LIVE line Go tags Family Camp: that person left
+     summer but stays in Family Camp, and the line goes to the household's request by this rule;
+  4. the closed-request pass places what the live pass found no request for by the same rules, except
+     that it ignores Go's program on a REVERSED line: a reversal follows the person's closed request,
+     so the clawback fires (D54) even though Go re-tagged the line after the cancel (below).
 
 Several candidates and no staff placement leave the line at family level. Go's attribution is NEVER
 used to choose among candidates: Go re-attributes every row nightly from active enrollments, so after
@@ -245,16 +252,25 @@ def _household_request(
     and Go did not tag the line with another program. With none of those (person 0) it is NONE when
     the household holds nothing live, or holds only a person-level request and the line's person's
     own request is closed (a sibling's request is not theirs); otherwise other live requests make
-    the line AMBIGUOUS."""
+    the line AMBIGUOUS. A line on a person whose own request is closed is NONE first, whatever the
+    household holds: the closed-request pass takes it (D54), never a Family Camp request. The one
+    exception is a live line Go tags Family Camp: that person left summer but stays in Family Camp,
+    so the line is the household's Family Camp request's by the rule above."""
+    if own_closed and (line.is_reversed or line.program_family != FAMILY_CAMP):
+        return _Miss.NONE
     if line.program_family not in ("", FAMILY_CAMP):
         return _Miss.NONE
     held = by_household.get(line.household_cm_id, ())
     own = [r for r in held if r.person_cm_id == 0]
     if not own:
-        return _Miss.NONE if own_closed or not held else _Miss.AMBIGUOUS
+        return _Miss.NONE if not held else _Miss.AMBIGUOUS
     if len({r.id for r in held}) != 1:
         return _Miss.AMBIGUOUS
     return _one(own)
+
+
+def _holds_household_request(line: CampLine, by_household: Mapping[int, Sequence[PlaceableRequest]]) -> bool:
+    return any(r.person_cm_id == 0 for r in by_household.get(line.household_cm_id, ()))
 
 
 def _matching(pool: Sequence[PlaceableRequest], placement: Placement) -> list[PlaceableRequest]:
@@ -303,7 +319,10 @@ def _place(
     by_household: Mapping[int, Sequence[PlaceableRequest]],
     own_closed: bool = False,
     closed_by_person: Mapping[int, Sequence[PlaceableRequest]] | None = None,
+    ignore_program: bool = False,
 ) -> str | _Miss:
+    """One line's request, or why none. `ignore_program` (the closed pass, on a reversed line) skips
+    Go's program: a reversal follows the person's closed request, however Go re-tagged it since."""
     if placement is not None:
         return _place_by_staff(line, placement, by_person, by_household, closed_by_person or {})
     if line.person_cm_id > 0:
@@ -314,9 +333,11 @@ def _place(
         if isinstance(only, _Miss):
             return only  # several candidates: never narrowed by Go's attribution
         request = mine[0]
-        named = line.attributed_person_cm_id == line.person_cm_id
+        named = line.attributed_person_cm_id == line.person_cm_id and not ignore_program
         if named and line.program_family and request.program_family and line.program_family != request.program_family:
             return _Miss.AMBIGUOUS
+        if named and not line.program_family and _holds_household_request(line, by_household):
+            return _Miss.AMBIGUOUS  # enrolled in two programs: the household's request could own it too
         return only
     return _household_request(line, by_household, False)
 
@@ -370,7 +391,13 @@ def build_ledger(
             placed[outcome].append(line)
             continue
         # The second pass runs on ABSENCE only: several live candidates are ambiguity, and stay at family level.
-        closed_outcome = _place(line, placement, closed_person, closed_household) if outcome is _Miss.NONE else outcome
+        # A reversed line ignores Go's program there: after a cancel Go re-tags it from what the person is
+        # still enrolled in, and the reversal must still reach the closed request for its clawback (D54).
+        closed_outcome = (
+            _place(line, placement, closed_person, closed_household, ignore_program=line.is_reversed)
+            if outcome is _Miss.NONE
+            else outcome
+        )
         if isinstance(closed_outcome, str):
             closed[closed_outcome].append(line)
         elif line.live(at):
@@ -637,12 +664,11 @@ def ledger_ticks(
     falling net never ticks. Family-level lines are not placed on any request, so they never tick
     (D81). A round a person un-ticked (`undone`) is left for a person to tick again.
 
-    Any excess ticks a round only while the request has nothing counted posted when the walk starts
-    (locked 0): a typo on the first money still locks the decided amount (D78). Once a round is
-    posted, every round in the walk needs full cover (in CampMinder >= locked + decided), whichever
-    night it runs, so a sliver over a posted round never ticks the next one. That includes a payer
-    share's Round 2: it waits until the shares posted cover it in full, and the registrar ticks it
-    sooner by hand."""
+    Every round, the first included, needs full cover (in CampMinder >= locked + decided), whichever
+    night it runs (D146): a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's
+    award, so a sliver or a short posting never ticks, and the registrar ticks it by hand. Over-postings
+    still tick, at the decided amount. That includes a payer share's Round 2: it waits until the shares
+    posted cover it in full."""
     ticks: list[LedgerTick] = []
     for request in priced:
         if not request.live:
@@ -654,7 +680,6 @@ def ledger_ticks(
             continue
         days = [camp_date(line.post_date) for line in live if line.post_date is not None]
         posted_on = min(max(days), today) if days else today
-        any_excess = locked == ZERO
         for view in sorted(request.rounds, key=lambda v: v.round):
             if view.status == "posted":
                 continue
@@ -662,12 +687,13 @@ def ledger_ticks(
                 view.status != "needs_offer"
                 or view.decided is None
                 or (request.request_id, view.round) in undone
+                # Full cover below implies this for any round above $0; it stops a $0 round ticking on
+                # money the earlier rounds already lock.
                 or in_campminder <= locked
             ):
                 break
-            if not any_excess and in_campminder < locked + view.decided:
+            if in_campminder < locked + view.decided:
                 break
-            any_excess = False
             ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
             locked += view.decided
     return ticks

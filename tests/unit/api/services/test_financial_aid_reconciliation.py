@@ -392,13 +392,17 @@ def test_a_staff_family_camp_placement_lands_on_a_withdrawn_family_camp_request_
     assert ledger.by_request == {}
 
 
-def test_a_line_on_a_person_whose_own_request_is_withdrawn_stays_at_family_level_beside_two_live_family_camps() -> None:
+def test_a_line_on_a_person_whose_own_request_is_withdrawn_goes_to_the_closed_request_beside_two_live_family_camps() -> (
+    None
+):
+    """Decision 3 / D54: the person's own request is closed, so the closed pass takes the line; the
+    household's Family Camp requests are never consulted for it."""
     old = request("old", person=1000011, status="withdrawn")
     fc_a = request("fa", person=0, session=1000201, family="family_camp")
     fc_b = request("fb", person=0, session=1000202, family="family_camp")
     ledger = build_ledger([line(1, "1800", person=1000011)], {}, [old, fc_a, fc_b], None, frozenset({"old"}))
-    assert (ledger.by_request, ledger.by_closed_request) == ({}, {})
-    assert ledger.family_unplaced([1000001]) == Decimal(1800)
+    assert (ledger.by_request, list(ledger.by_closed_request)) == ({}, ["old"])
+    assert ledger.family_unplaced([1000001]) == Decimal(0)
 
 
 # --- confirmation and the Note (Task 3) -------------------------------------------------------------
@@ -602,16 +606,33 @@ def ledger_of(request_id: str, *lines: CampLine) -> SeasonLedger:
 
 
 def test_money_beyond_the_locks_ticks_the_oldest_decided_round_at_its_decided_amount() -> None:
-    """D78: a typo ($1,590 for $1,800) still locks the decided $1,800; the gap is the confirmation's."""
+    """D78 / D146: an over-posting ($1,801 for $1,800) still locks the decided $1,800; the gap is the confirmation's."""
     needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
-    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1590", posted=MAR9)), today=TODAY)
+    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1801", posted=MAR9)), today=TODAY)
     assert (tick.request_id, tick.round, tick.amount, tick.posted_on, tick.in_campminder) == (
         "emma",
         1,
         Decimal(1800),
         date(2027, 3, 9),
-        Decimal(1590),
+        Decimal(1801),
     )
+
+
+def test_a_first_round_needs_the_full_decided_amount_in_campminder() -> None:
+    """D146: a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's award, so the first
+    round no longer ticks on any excess: a $50 line, or a $1,590 typo, waits for the registrar."""
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    assert ledger_ticks([needs], ledger_of("emma", line(1, "50", posted=MAR9)), today=TODAY) == []
+    assert ledger_ticks([needs], ledger_of("emma", line(1, "1590", posted=MAR9)), today=TODAY) == []
+    (full,) = ledger_ticks([needs], ledger_of("emma", line(1, "1800", posted=MAR9)), today=TODAY)
+    assert (full.round, full.amount, full.in_campminder) == (1, Decimal(1800), Decimal(1800))
+
+
+def test_a_sliver_after_a_zero_dollar_posted_round_never_ticks_the_next_round() -> None:
+    """Round 1 posted at $0 (a grant left nothing), Round 2 decided $800: a $50 line is no cover."""
+    rounds = (view(1, "posted", locked="0"), view(2, "needs_offer", decided="800"))
+    ticks = ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "50", posted=MAR9)), today=TODAY)
+    assert ticks == []
 
 
 def test_a_falling_net_a_held_round_or_a_pending_round_3_never_ticks() -> None:
@@ -635,8 +656,7 @@ def test_the_ledger_ticks_later_rounds_in_order_only_while_the_money_covers_them
         view(2, "needs_offer", decided="300"),
         view(3, "needs_offer", decided="300"),
     )
-    # Changed from the brief (controller ruling, narrowed by the final review): any excess ticks a round
-    # only while the request has nothing counted posted; with Round 1 posted, every round needs full cover.
+    # Every round needs full cover (D146); with Round 1 posted, a sliver never ticks the next.
     sliver = ledger_ticks(
         [priced("emma", 1000001, *rounds)],
         ledger_of("emma", line(1, "1800"), line(2, "400", posted=MAR9)),
@@ -757,15 +777,14 @@ def test_a_round_whose_latest_tick_event_is_an_undo_is_left_for_a_person() -> No
 
 def test_a_sliver_over_a_posted_round_never_ticks_a_later_round() -> None:
     """Probe: Round 1 is posted at 1,800, CampMinder holds 1,800.50 and Round 2 is decided at 300.
-    Any excess ticks only while the request has no counted posted round (locked 0); otherwise the
-    round needs full cover (final review ruling)."""
+    Every round needs full cover (D146)."""
     req = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "needs_offer", decided="300"))
     assert ledger_ticks([req], ledger_of("emma", line(1, "1800.50")), today=TODAY) == []
 
 
 def test_a_first_walks_sliver_never_ticks_the_next_round() -> None:
-    """Nothing is posted, so Round 1 ticks on any excess (1,850 > 1,800 decided). That tick spends the
-    excess: Round 2 then needs full cover (1,800 + 300 = 2,100 > 1,850) and does not tick."""
+    """Round 1 ticks on full cover (1,850 >= 1,800 decided). That tick spends the money: Round 2
+    then needs full cover (1,800 + 300 = 2,100 > 1,850) and does not tick."""
     rounds = (view(1, "needs_offer", decided="1800"), view(2, "needs_offer", decided="300"))
     ticks = ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "1850")), today=TODAY)
     assert [t.round for t in ticks] == [1]
@@ -903,3 +922,99 @@ def test_a_row_last_written_before_its_campminder_reversal_date_cuts_on_the_reve
     (jun5,) = as_recorded([reversed_line], JUN5)
     assert jun5.reversed_by(JUN5)
     assert not jun5.live(JUN5)
+
+
+# --- a Family Camp request could also own the line ------------------------------------------------
+
+APR1 = datetime(2027, 4, 1, 18, 0, tzinfo=UTC)
+
+
+def test_a_line_go_left_between_two_programs_is_not_placed_on_the_campers_summer_request() -> None:
+    """Go names the person but leaves the program empty (summer AND Family Camp): with a live household
+    Family Camp request the line could equally be its, so it stays at family level (Decision 3)."""
+    summer = request("emma")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    between = replace(line(1, "700", person=1000011), attributed_person_cm_id=1000011)
+    ledger = build_ledger([between], {}, [summer, weekend], None)
+    ticks = ledger_ticks([priced("emma", 1000001, view(1, "needs_offer", decided="1800"))], ledger, today=TODAY)
+    assert (dict(ledger.by_request), ticks) == ({}, [])
+    assert ledger.family_unplaced([1000001]) == Decimal(700)
+
+
+def test_a_line_go_left_between_programs_still_places_on_the_only_candidate() -> None:
+    summer = request("emma")
+    between = replace(line(1, "700", person=1000011), attributed_person_cm_id=1000011)
+    assert placed([between], [summer]) == {1: "emma"}
+
+
+def test_a_withdrawn_campers_reversed_line_lands_on_the_closed_request_not_family_camp() -> None:
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    rev = line(1, "1800", person=1000011, reversed_at=APR1)  # no other enrollment after the cancel: Go gives no program
+    ledger = build_ledger([rev], {}, [summer, weekend], None, frozenset({"emma"}))
+    assert ledger.closed_lines("emma") == (rev,)
+    assert ledger.by_request == {}
+    posted = priced("emma", 1000001, view(1, "posted", locked="1800", accepted=True))
+    out, day = apply_clawback(posted, {}, ledger.closed_lines("emma"), family_lines=[])
+    assert day == date(2027, 4, 1)
+    assert [v.clawed_back for v in out.rounds] == [True]
+
+
+def test_a_withdrawn_campers_live_line_does_not_tick_the_family_camp_round() -> None:
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    ledger = build_ledger([line(1, "1800", person=1000011)], {}, [summer, weekend], None, frozenset({"emma"}))
+    fam = priced("fam", 1000001, view(1, "needs_offer", decided="700"))
+    assert ledger.by_request == {}
+    assert ledger_ticks([fam], ledger, today=TODAY) == []
+
+
+# --- a camper who leaves summer but stays in Family Camp ------------------------------------------
+# After the cancel, Go re-tags her lines family_camp (her only active enrollment left).
+
+
+def _left_summer_stayed_in_family_camp() -> tuple[CampLine, CampLine]:
+    rev = line(1, "1800", person=1000011, session=1000201, family="family_camp", reversed_at=APR1)
+    weekend_line = line(2, "700", person=1000011, session=1000201, family="family_camp", posted=MAR9)
+    return rev, weekend_line
+
+
+def test_a_camper_who_leaves_summer_but_stays_in_family_camp_has_her_summer_reversal_clawed_back() -> None:
+    """D54: a reversal follows the person's closed request. Go's family_camp re-tag after the cancel is
+    the instability the module warns about, so the closed pass ignores it on a reversed line."""
+    rev, weekend_line = _left_summer_stayed_in_family_camp()
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    ledger = build_ledger([rev, weekend_line], {}, [summer, weekend], None, frozenset({"emma"}))
+    assert ledger.closed_lines("emma") == (rev,)
+    posted = priced("emma", 1000001, view(1, "posted", locked="1800", accepted=True))
+    out, day = apply_clawback(posted, {}, ledger.closed_lines("emma"), family_lines=ledger.family_lines([1000001]))
+    assert day == date(2027, 4, 1)
+    assert [v.clawed_back for v in out.rounds] == [True]
+
+
+def test_a_camper_who_leaves_summer_keeps_her_live_family_camp_line_on_the_family_camp_request() -> None:
+    """Her live family_camp line goes to the household's only live Family Camp request, and ticks it on
+    full cover (D146)."""
+    rev, weekend_line = _left_summer_stayed_in_family_camp()
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    ledger = build_ledger([rev, weekend_line], {}, [summer, weekend], None, frozenset({"emma"}))
+    assert ledger.lines("fam") == (weekend_line,)
+    assert ledger.family_unplaced([1000001]) == Decimal(0)
+    fam = priced("fam", 1000001, view(1, "needs_offer", decided="700"))
+    (tick,) = ledger_ticks([fam], ledger, today=TODAY)
+    assert (tick.request_id, tick.round, tick.amount) == ("fam", 1, Decimal(700))
+
+
+def test_a_camper_who_leaves_summer_with_two_live_family_camps_leaves_her_live_line_at_family_level() -> None:
+    """Decision 3: never guess among several Family Camp requests. Her reversal still follows her own
+    closed request."""
+    rev, weekend_line = _left_summer_stayed_in_family_camp()
+    summer = request("emma", status="withdrawn")
+    fc_a = request("fa", person=0, session=1000201, family="family_camp")
+    fc_b = request("fb", person=0, session=1000202, family="family_camp")
+    ledger = build_ledger([rev, weekend_line], {}, [summer, fc_a, fc_b], None, frozenset({"emma"}))
+    assert ledger.by_request == {}
+    assert ledger.closed_lines("emma") == (rev,)
+    assert ledger.family_lines([1000001]) == (weekend_line,)
