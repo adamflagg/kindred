@@ -87,6 +87,7 @@ class BelowTheLine:
     held_asked: Decimal
     outside_grants: Decimal
     outside_budget: Decimal
+    outside_budget_posted: Decimal  # the posted part of outside_budget: dated on every read (3c)
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,7 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
             add("accepted", locked - outside)
         if outside:
             add("outside_budget", outside)
+            add("outside_budget_posted", outside)
     elif view.status == "needs_offer":
         decided = view.decided or ZERO
         outside = min(outside, decided)
@@ -260,6 +262,7 @@ def _pool_budget(
             held_asked=held.amount,
             outside_grants=grants,
             outside_budget=sum((amount(n, "outside_budget") for n in ROUNDS), ZERO),
+            outside_budget_posted=sum((amount(n, "outside_budget_posted") for n in ROUNDS), ZERO),
         ),
         demand=ForwardDemand(
             round2_asks=asks2.count(), round2_asked=asks2.amount, round2_computed=computed2, round1_unmet=unmet1

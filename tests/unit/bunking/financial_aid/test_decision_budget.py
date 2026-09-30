@@ -2,6 +2,7 @@
 
 The fixture's budget: 500,000; Camp 80% (reserves: Round 2 10%, Round 3 5%), Weekends 15%, B'mitzvah 5%."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 from bunking.financial_aid.decisions import PricedRequest, RoundStatus, RoundView
@@ -254,3 +255,10 @@ def test_round_1_s_allocation_is_the_rounded_remainder_and_never_below_zero() ->
         },
     )
     assert allocations(rules)["camp_pool"] == {1: ZERO, 2: Decimal("50.01"), 3: Decimal("50.01")}
+
+
+def test_posted_money_outside_the_budget_is_shown_as_its_own_posted_figure() -> None:
+    request = priced("req-f", 6, view(1, "posted", locked="3000", counts=False))
+    request = replace(request, rounds=(replace(request.rounds[0], extra=Decimal(3000)),))
+    camp = pool_of(season_budget([request], RULES, outside_grants={}), "camp_pool")
+    assert (camp.below.outside_budget, camp.below.outside_budget_posted) == (Decimal(3000), Decimal(3000))

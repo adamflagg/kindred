@@ -10,7 +10,8 @@ locked at (D43). Each round that exists gets one state:
   pending_approval  a Round 3 amount above the registrar's limit awaiting finance (D79);
   refused           finance refused the Round 3 amount, and nothing else is on the round;
   not_decided       a Round 3 ask with no amount keyed yet;
-  needs_offer       decided and not posted: money spoken for (D44).
+  needs_offer       decided and not posted: money spoken for (D44);
+  not_rebuilt       a past date's round whose state isn't rebuilt (as_of.py).
 
 A posted round's "would change by" is what it works out to now, with the rounds before it as
 locked, less the amount it locked (D43: information only once the family has been told).
@@ -39,7 +40,7 @@ from bunking.financial_aid.decisions.rounds import ROUNDS, RoundState
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, DecisionType
 
-RoundStatus = Literal["posted", "held", "pending_approval", "refused", "not_decided", "needs_offer"]
+RoundStatus = Literal["posted", "held", "pending_approval", "refused", "not_decided", "needs_offer", "not_rebuilt"]
 # A result that cannot be priced stops the award like a hold does, and no release lifts it.
 _UNPRICEABLE: Final = frozenset({"needs_input", "error"})
 
@@ -129,6 +130,11 @@ def _decision(states: Mapping[int, RoundState], rules: AidRules) -> tuple[str | 
                 decision = decision.model_copy(update={"round": held_by})
             return state.discretionary_type, decision, state.discretionary or ZERO
     return None, None, ZERO
+
+
+def named_decision(rounds: Mapping[int, RoundState], rules: AidRules) -> DecisionType | None:
+    """The request's named decision type, whose money `counts_toward_budget` places (spec §7.2)."""
+    return _decision(_states(rounds), rules)[1]
 
 
 def _amount(value: Any) -> Decimal:
@@ -221,14 +227,14 @@ def _extra_now(result: CalcResult | None, decision: DecisionType | None, n: int)
     return (result.top_up or ZERO) + result.discretionary
 
 
-def _extra_locked(state: RoundState, decision: DecisionType | None) -> Decimal:
+def extra_locked(state: RoundState, decision: DecisionType | None) -> Decimal:
     """The decision type's money the lock recorded inside this round (its snapshot, never the rules
     now, so a rules change can't move posted money); 0 if none."""
     extras = _locked_extras(state, decision.round if decision is not None else None)
     return sum(extras, ZERO) if extras is not None else ZERO
 
 
-def _exists(state: RoundState) -> bool:
+def round_exists(state: RoundState) -> bool:
     if state.round == 1:
         return True
     return state.posted or state.ask is not None or state.award is not None or state.discretionary is not None
@@ -265,7 +271,7 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     views = tuple(
         _view(n, states[n], item, rules, decision, result, stopped=stopped, pool=pool)
         for n in ROUNDS
-        if _exists(states[n]) and (states[n].posted or item.live)
+        if round_exists(states[n]) and (states[n].posted or item.live)
     )
     return PricedRequest(
         request_id=item.request_id,
@@ -310,7 +316,7 @@ def _view(
             would_change_by=_would_change(n, state, item, rules, decision),
             counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
             pool=locked_pool if isinstance(locked_pool, str) else None,
-            extra=_extra_locked(state, decision),
+            extra=extra_locked(state, decision),
         )
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
