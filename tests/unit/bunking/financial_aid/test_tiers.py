@@ -170,6 +170,42 @@ def test_household_answers_come_from_the_application_not_the_request() -> None:
     assert _final(rules, unemployment="Yes")[0] == 3
 
 
+def _with_single_parent_criterion(weight: str) -> AidRules:
+    rules = fictional_rules()
+    criteria = [c.model_dump(mode="json") for c in rules.equity.criteria]
+    criteria.append(
+        {
+            "key": "single_parent",
+            "label": "Single parent",
+            "source": "household",
+            "field": "single_parent",
+            "match": "equals_any",
+            "values": ["yes"],
+        }
+    )
+    return with_levers(
+        rules,
+        {"equity.criteria": criteria, "equity.weights": {"camp": {"single_parent": weight}, "teen": {}, "family": {}}},
+    )
+
+
+def test_a_single_parent_criterion_moves_a_single_parent_applicant_as_configured() -> None:
+    rules = _with_single_parent_criterion("1")
+    assert _final(rules, application=app(answers={"single_parent": "Yes"}))[0] == 2
+    assert _final(rules, application=app(answers={"single_parent": "No"}))[0] == 3
+
+
+def test_without_a_single_parent_criterion_the_answer_changes_nothing() -> None:
+    rules = fictional_rules()
+    assert _final(rules, application=app(answers={"single_parent": "Yes"})) == _final(rules, application=app())
+
+
+def test_a_household_criterion_on_single_parent_is_not_dead_code() -> None:
+    from bunking.financial_aid.rules.validation import validate_rules
+
+    assert not validate_rules(_with_single_parent_criterion("1")).errors
+
+
 def test_a_new_criterion_is_data_not_code() -> None:
     # Exercises "equity.criteria.key", "equity.criteria.field", "equity.criteria.match"
     # and "equity.criteria.values": a criterion defined purely in the rules document,

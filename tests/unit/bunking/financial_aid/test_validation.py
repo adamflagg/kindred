@@ -212,7 +212,7 @@ def test_a_camper_answer_matching_no_passes_because_a_blank_camper_answer_stays_
 # --- retired household fields (owner ruling 2026-09-27: live questions only) -----------
 
 
-@pytest.mark.parametrize("field", ["still_unemployed", "single_parent", "owns_home"])
+@pytest.mark.parametrize("field", ["still_unemployed", "owns_home"])
 def test_a_household_criterion_on_a_retired_field_is_refused(field: str) -> None:
     # These were live through 2025 (or earlier) and are gone from the current CampMinder
     # form: a criterion built against one would never fire, so validation refuses it
@@ -221,6 +221,21 @@ def test_a_household_criterion_on_a_retired_field_is_refused(field: str) -> None
     report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
     (issue,) = [i for i in report.errors if i.code == "retired_household_field"]
     assert field in issue.message
+
+
+def test_a_household_criterion_may_name_single_parent() -> None:
+    # Owner ruling D144 (+ 2026-09-30 follow-up): every tier-boost question stays on the
+    # form and finance can switch it on, so single_parent is a live optional field again.
+    criteria = _with_criterion(field="single_parent", match="equals_any", values=["yes"])
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "retired_household_field" not in report.codes()
+    assert not report.errors
+
+
+def test_a_single_parent_criterion_matching_no_is_refused_like_the_other_yes_no_fields() -> None:
+    criteria = _with_criterion(field="single_parent", match="equals_any", values=["no"])
+    report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
+    assert "yes_no_criterion_matches_no" in report.codes()
 
 
 def test_a_household_criterion_on_a_retired_also_field_is_refused() -> None:
@@ -233,7 +248,7 @@ def test_a_household_criterion_on_a_retired_also_field_is_refused() -> None:
 
 def test_a_camper_criterion_on_a_field_named_like_a_retired_one_is_not_refused() -> None:
     # Guarded by source, the same as the No-matching check.
-    criteria = _with_criterion(field="single_parent", match="equals_any", values=["yes"])
+    criteria = _with_criterion(field="owns_home", match="equals_any", values=["yes"])
     criteria[-1]["source"] = "camper"
     report = validate_rules(with_lever(fictional_rules(), "equity.criteria", criteria))
     assert "retired_household_field" not in report.codes()
