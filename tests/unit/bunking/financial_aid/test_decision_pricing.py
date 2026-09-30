@@ -10,6 +10,7 @@ from typing import Any
 
 from bunking.financial_aid.calculator import CalcIssue, GrantInput
 from bunking.financial_aid.decisions import RoundState
+from bunking.financial_aid.decisions.budget import season_budget
 from bunking.financial_aid.decisions.pricing import RequestToPrice, lock_snapshot, price_request
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
@@ -216,7 +217,8 @@ def test_posting_a_round_that_carries_discretionary_money_does_not_count_it_twic
     assert (r2.status, r2.decided) == ("needs_offer", Decimal(850))
     assert before.result is not None
     assert before.result.total == Decimal(3850)
-    posted = replace(keyed, posted=True, locked_amount=Decimal(850), locked_at=T0)
+    snapshot = lock_snapshot(before, 2, rules_version=1)
+    posted = replace(keyed, posted=True, locked_amount=Decimal(850), locked_at=T0, snapshot=snapshot)
     after = price_request(item(rounds={1: POSTED_R1, 2: posted}), rules)
     assert after.result is not None
     assert after.result.total == Decimal(3850)
@@ -252,7 +254,10 @@ def test_extra_of_a_posted_round_is_what_its_lock_snapshot_recorded() -> None:
     snapshot = {
         "pool": "camp_pool",
         "counts_toward_budget": True,
-        "result": {"top_up": None, "discretionary": "250"},
+        "decision_type": "discretionary",
+        "decision_round": 2,
+        "top_up": "0",
+        "discretionary": "250",
     }
     keyed = RoundState(round=2, ask=Decimal(99999), discretionary=Decimal(250), discretionary_type="discretionary")
     posted = replace(keyed, posted=True, locked_amount=Decimal(850), locked_at=T0, snapshot=snapshot)
@@ -263,3 +268,76 @@ def test_extra_of_a_posted_round_is_what_its_lock_snapshot_recorded() -> None:
     r2_bare = price_request(item(rounds={1: POSTED_R1, 2: bare}), rules).view(2)
     assert r2_bare is not None
     assert r2_bare.extra == Decimal(0)
+
+
+def _post(priced_before: Any, state: RoundState, n: int) -> RoundState:
+    """Round n ticked Posted at its decided amount, with the snapshot the tick stores."""
+    view = priced_before.view(n)
+    assert view is not None
+    assert view.decided is not None
+    snapshot = lock_snapshot(priced_before, n, rules_version=1)
+    return replace(state, posted=True, locked_amount=view.decided, locked_at=T0, snapshot=snapshot)
+
+
+def test_posting_round_1_with_its_discretionary_money_leaves_round_2_s_cap_as_it_was() -> None:
+    # The 2026 definition: top-ups and discretionary money sit outside the caps, posted or not.
+    rules = with_lever(RULES, "awards.decision_types.discretionary.round", 1)
+    keyed = RoundState(round=1, discretionary=Decimal(250), discretionary_type="discretionary")
+    before = price_request(item(rounds={1: keyed, 2: APPEAL}), rules)
+    r1, r2 = before.view(1), before.view(2)
+    assert r1 is not None
+    assert r2 is not None
+    assert before.result is not None
+    assert (r1.decided, r2.decided, before.result.total) == (Decimal(3250), Decimal(600), Decimal(3850))
+    after = price_request(item(rounds={1: _post(before, keyed, 1), 2: APPEAL}), rules)
+    r1_after, r2_after = after.view(1), after.view(2)
+    assert r1_after is not None
+    assert r2_after is not None
+    assert after.result is not None
+    assert (r1_after.locked, r1_after.would_change_by, r1_after.extra) == (Decimal(3250), None, Decimal(250))
+    assert (r2_after.decided, after.result.total) == (Decimal(600), Decimal(3850))
+    assert after.holds == ()
+
+
+def test_the_lock_snapshot_records_the_decision_money_it_locked() -> None:
+    rules = with_lever(RULES, "awards.decision_types.discretionary.round", 2)
+    keyed = RoundState(round=2, ask=Decimal(99999), discretionary=Decimal(250), discretionary_type="discretionary")
+    priced = price_request(item(rounds={1: POSTED_R1, 2: keyed}), rules)
+    snapshot = lock_snapshot(priced, 2, rules_version=1)
+    assert (snapshot["decision_type"], snapshot["decision_round"], snapshot["top_up"], snapshot["discretionary"]) == (
+        "discretionary",
+        2,
+        "0",
+        "250",
+    )
+    plain = lock_snapshot(price_request(item(), RULES), 1, rules_version=1)
+    assert (plain["decision_type"], plain["decision_round"], plain["top_up"], plain["discretionary"]) == (
+        None,
+        None,
+        "0",
+        "0",
+    )
+
+
+def test_moving_a_decision_type_to_another_round_after_posting_moves_no_posted_money() -> None:
+    rules = with_levers(
+        RULES,
+        {
+            "awards.decision_types.discretionary.round": 1,
+            "awards.decision_types.discretionary.counts_toward_budget": False,
+        },
+    )
+    keyed = RoundState(round=1, discretionary=Decimal(250), discretionary_type="discretionary")
+    posted = {1: _post(price_request(item(rounds={1: keyed, 2: APPEAL}), rules), keyed, 1), 2: APPEAL}
+
+    def figures(season_rules: Any) -> tuple[Any, ...]:
+        priced = price_request(item(rounds=posted), season_rules)
+        total = season_budget([priced], season_rules, outside_grants={}).total
+        r1, r2 = priced.view(1), priced.view(2)
+        assert r1 is not None
+        assert r2 is not None
+        return (total.total.posted, total.below.outside_budget, r1.extra, r2.decided)
+
+    assert figures(rules) == (Decimal(3000), Decimal(250), Decimal(250), Decimal(600))
+    moved = with_lever(rules, "awards.decision_types.discretionary.round", 2)
+    assert figures(moved) == figures(rules)

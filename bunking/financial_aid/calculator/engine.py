@@ -225,7 +225,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     _total_cap(work, rules, request)
     _top_up(work, decision, above_ceiling=above_ceiling)
     _discretionary(work, decision, above_ceiling=above_ceiling)
-    _fold_into_lock(work, decision, request)
+    _freeze_locked_extras(work, request)
     _total(work)
     work.issues.extend(
         run_quality_checks(
@@ -630,33 +630,30 @@ def _discretionary(work: _Work, decision: DecisionType | None, *, above_ceiling:
     work.step("discretionary", "Discretionary amount", ZERO, inputs={"withheld": typed}, bound="income_ceiling")
 
 
-def _fold_into_lock(work: _Work, decision: DecisionType | None, request: RequestInputs) -> None:
-    """A locked round is the round's full posted amount, so when the decision type's own round is
-    locked, its top-up and discretionary money are already inside it and are not added again."""
-    if decision is None:
-        return
-    locked = (request.r1_locked, request.r2_locked, request.r3_locked)[decision.round - 1]
-    if locked is None:
-        return
-    if work.top_up:
+def _freeze_locked_extras(work: _Work, request: RequestInputs) -> None:
+    """The decision type's top-up and discretionary money keep the amounts its posted round locked
+    them at (D43), beside the round's locked base and outside the caps, as in 2026. What they work
+    out to now stays in the trace."""
+    if request.locked_top_up is not None:
         work.step(
             "top_up_locked",
-            f"Top-up: {decision.label}",
-            ZERO,
-            inputs={"included_in_locked": work.top_up, "round": decision.round},
-            note=f"Included in the locked Round {decision.round}",
+            "Top-up as posted",
+            request.locked_top_up,
+            inputs={"worked_out": work.top_up},
+            bound="locked",
+            note="Locked when its round was posted",
         )
-    if work.discretionary:
+        work.top_up = request.locked_top_up
+    if request.locked_discretionary is not None:
         work.step(
             "discretionary_locked",
-            "Discretionary amount",
-            ZERO,
-            inputs={"included_in_locked": work.discretionary, "round": decision.round},
-            note=f"Included in the locked Round {decision.round}",
+            "Discretionary amount as posted",
+            request.locked_discretionary,
+            inputs={"worked_out": work.discretionary},
+            bound="locked",
+            note="Locked when its round was posted",
         )
-    if work.top_up is not None:
-        work.top_up = ZERO
-    work.discretionary = ZERO
+        work.discretionary = request.locked_discretionary
 
 
 def _total(work: _Work) -> None:

@@ -53,24 +53,53 @@ def test_a_locked_round_3_is_never_cut_by_the_total_cap() -> None:
     assert (result.r3, result.r3_bound) == (Decimal(400), "locked")
 
 
-def test_a_locked_decision_round_already_holds_its_discretionary_money() -> None:
-    # Round 2 posted at its full amount: 600 worked out plus 250 discretionary = 850.
+def test_a_locked_decision_round_keeps_its_discretionary_money_at_the_amount_it_locked() -> None:
+    # Round 2 posted at 850: its base 600 locks, and the 250 discretionary freezes beside it.
     rules = with_lever(fictional_rules(), "awards.decision_types.discretionary.round", 2)
     request = req(**APPEAL, decision_type="discretionary", discretionary_amount="250", r1_locked="3000")
     before = calculate(app(), request, rules)
     assert before.total == Decimal(3850)
-    after = calculate(app(), request.model_copy(update={"r2_locked": Decimal(600) + Decimal(250)}), rules)
+    locked = {"r2_locked": Decimal(600), "locked_discretionary": Decimal(250)}
+    after = calculate(app(), request.model_copy(update=locked), rules)
     assert after.total == Decimal(3850)
-    assert (after.top_up, after.discretionary) == (Decimal(0), Decimal(0))
+    assert (after.top_up, after.discretionary) == (Decimal(0), Decimal(250))
     assert "award_above_cost" not in {i.code for i in after.issues}
-    assert after.step("discretionary_locked").inputs["included_in_locked"] == Decimal(250)
+    assert after.step("discretionary_locked").value == Decimal(250)
+    rekeyed = calculate(app(), request.model_copy(update={**locked, "discretionary_amount": Decimal(400)}), rules)
+    assert (rekeyed.discretionary, rekeyed.total) == (Decimal(250), Decimal(3850))
+    assert rekeyed.step("discretionary_locked").inputs["worked_out"] == Decimal(400)
 
 
-def test_a_locked_decision_round_already_holds_its_top_up() -> None:
+def test_a_locked_decision_round_keeps_its_top_up_at_the_amount_it_locked() -> None:
     request = req(**APPEAL, decision_type="appeal_top_up", r1_locked="3000")
     before = calculate(app(), request, fictional_rules())
     assert before.total == Decimal(3850)
-    after = calculate(app(), request.model_copy(update={"r2_locked": Decimal(850)}), fictional_rules())
-    assert (after.total, after.top_up) == (Decimal(3850), Decimal(0))
+    locked = {"r2_locked": Decimal(600), "locked_top_up": Decimal(250)}
+    after = calculate(app(), request.model_copy(update=locked), fictional_rules())
+    assert (after.total, after.top_up) == (Decimal(3850), Decimal(250))
     assert "award_above_cost" not in {i.code for i in after.issues}
-    assert after.step("top_up_locked").inputs["included_in_locked"] == Decimal(250)
+    assert after.step("top_up_locked").value == Decimal(250)
+    raised = with_lever(fictional_rules(), "awards.decision_types.appeal_top_up.amount", "300")
+    assert calculate(app(), request.model_copy(update=locked), raised).top_up == Decimal(250)
+
+
+def test_a_locked_round_1_s_discretionary_money_sits_outside_round_2_s_cap() -> None:
+    # The 2026 definition: caps measure the base round, never the decision type's own money.
+    rules = with_lever(fictional_rules(), "awards.decision_types.discretionary.round", 1)
+    request = req(**APPEAL, decision_type="discretionary", discretionary_amount="250")
+    before = calculate(app(), request, rules)
+    assert (before.r1, before.discretionary, before.r2, before.total) == (
+        Decimal(3000),
+        Decimal(250),
+        Decimal(600),
+        Decimal(3850),
+    )
+    after = calculate(
+        app(), request.model_copy(update={"r1_locked": Decimal(3000), "locked_discretionary": Decimal(250)}), rules
+    )
+    assert (after.r1, after.discretionary, after.r2, after.total) == (
+        Decimal(3000),
+        Decimal(250),
+        Decimal(600),
+        Decimal(3850),
+    )

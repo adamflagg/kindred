@@ -102,6 +102,8 @@ class PricedRequest:
     application: ApplicationInputs
     inputs: RequestInputs | None
     result: CalcResult | None
+    # The round the named decision's money belongs to: a posted lock's record, else the rules'.
+    decision_round: int | None = None
 
     def view(self, n: int) -> RoundView | None:
         return next((view for view in self.rounds if view.round == n), None)
@@ -112,25 +114,57 @@ def _states(rounds: Mapping[int, RoundState]) -> dict[int, RoundState]:
 
 
 def _decision(states: Mapping[int, RoundState], rules: AidRules) -> tuple[str | None, DecisionType | None, Decimal]:
-    """The request's named discretionary decision (the only kind sub-project 10a keys) and its amount."""
+    """The request's named discretionary decision (the only kind sub-project 10a keys) and its amount.
+
+    Once a posted round's lock recorded the decision's money inside it, the decision belongs to that
+    round whatever the rules say now, so a rules change never moves posted money (D43)."""
     for state in states.values():
         if state.discretionary_type:
             decision = rules.awards.decision_types.get(state.discretionary_type)
+            held_by = next((n for n in ROUNDS if _locked_extras(states[n]) is not None), None)
+            if decision is not None and held_by is not None and held_by != decision.round:
+                decision = decision.model_copy(update={"round": held_by})
             return state.discretionary_type, decision, state.discretionary or ZERO
     return None, None, ZERO
+
+
+def _amount(value: Any) -> Decimal:
+    return Decimal(str(value)) if value is not None else ZERO
+
+
+def _locked_extras(state: RoundState) -> tuple[Decimal, Decimal] | None:
+    """The decision type's top-up and discretionary money a posted round's lock recorded inside its
+    amount; None when the round is not posted or its lock recorded none (the snapshot's
+    `decision_round` is another round, or absent)."""
+    snapshot = state.snapshot or {}
+    if not state.posted or snapshot.get("decision_round") != state.round:
+        return None
+    return _amount(snapshot.get("top_up")), _amount(snapshot.get("discretionary"))
 
 
 def request_inputs(item: RequestToPrice, rules: AidRules, *, lock_through: int = 3) -> RequestInputs:
     """The request with its rounds' asks and amounts, and its posted rounds up to `lock_through`
     held at their locked amounts. The decision times are this request's own locks, so a grant
-    recorded after its Round 1 lock never lowers its Round 1 (no single season date)."""
+    recorded after its Round 1 lock never lowers its Round 1 (no single season date).
+
+    A posted round locks its base (the locked amount less the decision money its lock recorded),
+    and that decision money freezes beside it (locked_top_up, locked_discretionary). Totals are the
+    full locked amounts, and the caps measure the base only, as they did before posting (2026)."""
     if item.request is None:
         raise ValueError(f"request {item.request_id} cannot be priced: {item.blocked}")
     states = _states(item.rounds)
     decision_type, _, discretionary = _decision(states, rules)
 
     def locked(n: int) -> Decimal | None:
-        return states[n].locked_amount if states[n].posted and n <= lock_through else None
+        state = states[n]
+        if not state.posted or n > lock_through or state.locked_amount is None:
+            return None
+        extras = _locked_extras(state)
+        return state.locked_amount - sum(extras, ZERO) if extras is not None else state.locked_amount
+
+    frozen = next(
+        (extras for n in ROUNDS if n <= lock_through and (extras := _locked_extras(states[n])) is not None), None
+    )
 
     r1, r2, r3 = states[1], states[2], states[3]
     return item.request.model_copy(
@@ -148,6 +182,8 @@ def request_inputs(item: RequestToPrice, rules: AidRules, *, lock_through: int =
             "r1_locked": locked(1),
             "r2_locked": locked(2),
             "r3_locked": locked(3),
+            "locked_top_up": frozen[0] if frozen is not None else None,
+            "locked_discretionary": frozen[1] if frozen is not None else None,
         }
     )
 
@@ -168,12 +204,11 @@ def _extra_now(result: CalcResult | None, decision: DecisionType | None, n: int)
     return (result.top_up or ZERO) + result.discretionary
 
 
-def _extra_locked(snapshot: Mapping[str, Any], decision: DecisionType | None, n: int) -> Decimal:
-    """The decision type's money the lock recorded (its stored result's top_up + discretionary); 0 if none."""
-    stored = snapshot.get("result")
-    if decision is None or decision.round != n or not isinstance(stored, dict):
-        return ZERO
-    return sum((Decimal(str(stored[key])) for key in ("top_up", "discretionary") if stored.get(key) is not None), ZERO)
+def _extra_locked(state: RoundState) -> Decimal:
+    """The decision type's money the lock recorded inside this round (its snapshot, never the rules
+    now, so a rules change can't move posted money); 0 if none."""
+    extras = _locked_extras(state)
+    return sum(extras, ZERO) if extras is not None else ZERO
 
 
 def _exists(state: RoundState) -> bool:
@@ -227,6 +262,7 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
         application=item.application,
         inputs=inputs,
         result=result,
+        decision_round=decision.round if decision is not None else None,
     )
 
 
@@ -257,7 +293,7 @@ def _view(
             would_change_by=_would_change(n, state, item, rules, decision),
             counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
             pool=locked_pool if isinstance(locked_pool, str) else None,
-            extra=_extra_locked(snapshot, decision, n),
+            extra=_extra_locked(state),
         )
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
@@ -305,13 +341,23 @@ def _would_change(
 
 def lock_snapshot(priced: PricedRequest, n: int, rules_version: int) -> dict[str, Any]:
     """What a Posted tick stores beside the amount (D43, D52): the receipt as it was when posted,
-    and where the round counts, so a later rules change never moves posted money between pools."""
+    where the round counts, and the decision money it locked (`top_up`, `discretionary`: inside
+    this round's amount when `decision_round` is this round, else 0), so a later rules change never
+    moves posted money between pools or rounds."""
     view = priced.view(n)
     if view is None or view.decided is None:
         raise ValueError(f"round {n} of request {priced.request_id} has nothing decided to lock")
+    result = priced.result
+    top_up, discretionary = ZERO, ZERO
+    if result is not None and priced.decision_round == n:
+        top_up, discretionary = result.top_up or ZERO, result.discretionary
     return {
         "round": n,
         "decided": str(view.decided),
+        "decision_type": priced.inputs.decision_type if priced.inputs is not None else None,
+        "decision_round": priced.decision_round,
+        "top_up": str(top_up),
+        "discretionary": str(discretionary),
         "rules_version": rules_version,
         "program_key": priced.program_key,
         "pool": view.pool,
