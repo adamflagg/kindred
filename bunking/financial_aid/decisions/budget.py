@@ -1,0 +1,319 @@
+"""Rounds & budget's figures (campership sub-project 10a; spec §5.3, §5.9, §7.2; D44, D46, D53, D54, D79, D82).
+
+Per pool × round, and in total:
+
+  Allocated         the round's share of the pool, from the approved rules. Round 2 and Round 3 get
+                    their reserves (budget.reserves, % of the pool); Round 1 gets the rest, its
+                    late-Round-1 reserve included (D44: unused reserves stay inside each round).
+  Posted            the locked amounts of posted rounds (D53).
+  Accepted          the locked amounts of posted rounds ticked Accepted: shown, never subtracted.
+  Needs an offer    the decided amounts of rounds decided and not posted.
+  Pending approval  Round 3 amounts above the registrar's limit awaiting finance, at the keyed amount (D79).
+  Remaining         Allocated − Posted − Needs an offer − Pending approval (D44, D53, D79).
+
+Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
+a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
+total asked, total computed; held appeals' asks included) and Round 1 unmet ask, not yet appealed
+(§5.9). This year only (D46): no pace, no last year. A clawback (D54) is sub-project 10b's; until it
+lands, every posted round stays in Posted.
+
+Money on a program the rules give no pool is counted in the total only, under "No pool": it has no
+allocation of its own. The total's allocation is the sum of the rules' pools.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Final
+
+from bunking.financial_aid.decisions.pricing import PricedRequest, RoundView
+from bunking.financial_aid.decisions.rounds import ROUNDS
+from bunking.financial_aid.money import HUNDRED, ZERO
+from bunking.financial_aid.rules.schema import AidRules
+
+NO_POOL: Final = ""
+NO_POOL_LABEL: Final = "No pool"
+TOTAL: Final = "*"
+_CENT: Final = Decimal("0.01")
+_STRIP: Final = ("needs_offer", "posted", "accepted", "held", "pending_approval")
+
+
+def _cents(value: Decimal) -> Decimal:
+    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+@dataclass(frozen=True)
+class Count:
+    """Principle 7: every count says both ("3 families · 4 requests")."""
+
+    families: int = 0
+    requests: int = 0
+
+
+@dataclass(frozen=True)
+class Cell:
+    allocated: Decimal | None
+    posted: Decimal
+    accepted: Decimal
+    needs_offer: Decimal
+    pending_approval: Decimal
+
+    @property
+    def remaining(self) -> Decimal | None:
+        """Allocated − Posted − Needs an offer − Pending approval (D44, D53, D79); None with no allocation."""
+        if self.allocated is None:
+            return None
+        return self.allocated - self.posted - self.needs_offer - self.pending_approval
+
+
+@dataclass(frozen=True)
+class RoundCounts:
+    needs_offer: Count
+    posted: Count
+    accepted: Count
+    held: Count
+    pending_approval: Count
+
+
+@dataclass(frozen=True)
+class BelowTheLine:
+    held: Count
+    held_asked: Decimal
+    outside_grants: Decimal
+    outside_budget: Decimal
+
+
+@dataclass(frozen=True)
+class ForwardDemand:
+    round2_asks: Count
+    round2_asked: Decimal
+    round2_computed: Decimal
+    round1_unmet: Decimal
+
+
+@dataclass(frozen=True)
+class PoolBudget:
+    pool: str
+    label: str
+    rounds: Mapping[int, Cell]
+    total: Cell
+    below: BelowTheLine
+    demand: ForwardDemand
+
+
+@dataclass(frozen=True)
+class SeasonBudget:
+    pools: tuple[PoolBudget, ...]
+    total: PoolBudget
+    strip: Mapping[int, RoundCounts]
+    outside_grants_off_requests: Decimal
+
+
+@dataclass
+class _Tally:
+    amount: Decimal = ZERO
+    families: set[int] = field(default_factory=set)
+    requests: set[str] = field(default_factory=set)
+
+    def add(self, request: PricedRequest, amount: Decimal) -> None:
+        self.amount += amount
+        self.families.add(request.household_cm_id)
+        self.requests.add(request.request_id)
+
+    def count(self) -> Count:
+        return Count(families=len(self.families), requests=len(self.requests))
+
+
+_Tallies = dict[tuple[str, int, str], _Tally]
+
+
+def _merged(tallies: Iterable[_Tally]) -> _Tally:
+    out = _Tally()
+    for tally in tallies:
+        out.amount += tally.amount
+        out.families |= tally.families
+        out.requests |= tally.requests
+    return out
+
+
+def allocations(rules: AidRules) -> dict[str, dict[int, Decimal]]:
+    """pool -> round -> Allocated (Decision 6): Round 2 and 3 get their reserves, Round 1 the rest."""
+    out: dict[str, dict[int, Decimal]] = {}
+    budget = rules.budget
+    for key, pool in budget.pools.items():
+        whole = pool.amount if pool.amount is not None else budget.total * (pool.share_pct or ZERO) / HUNDRED
+        reserves = budget.reserves.get(key, {})
+        r2 = _cents(whole * reserves.get("r2", ZERO) / HUNDRED)
+        r3 = _cents(whole * reserves.get("r3", ZERO) / HUNDRED)
+        out[key] = {1: _cents(whole) - r2 - r3, 2: r2, 3: r3}
+    return out
+
+
+def _home_pool(request: PricedRequest) -> str:
+    return request.pool or next((view.pool for view in request.rounds if view.pool), None) or NO_POOL
+
+
+def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: RoundView) -> None:
+    def add(measure: str, amount: Decimal) -> None:
+        tallies[(pool, view.round, measure)].add(request, amount)
+
+    if view.status == "posted":
+        locked = view.locked or ZERO
+        if not view.counts_toward_budget:
+            add("outside_budget", locked)
+            return
+        add("posted", locked)
+        if view.accepted:
+            add("accepted", locked)
+    elif view.status == "needs_offer":
+        add("needs_offer" if view.counts_toward_budget else "outside_budget", view.decided or ZERO)
+    elif view.status == "pending_approval":
+        add("pending_approval", view.pending or ZERO)
+    elif view.status == "held":
+        add("held", view.ask or ZERO)
+
+
+def _tally_demand(
+    request: PricedRequest,
+    pool: str,
+    asks2: dict[str, _Tally],
+    computed2: dict[str, Decimal],
+    unmet1: dict[str, Decimal],
+) -> None:
+    """D82. Round 2 asks so far, held appeals' asks included (computed leaves held ones out); else
+    Round 1 unmet ask, not yet appealed (§5.9): ask − Round 1 on a decided or posted Round 1, or the
+    whole ask while Round 1 is held. It knows only the appeals keyed so far (a known gap, D82)."""
+    r1, r2 = request.view(1), request.view(2)
+    if r2 is not None and r2.ask is not None:
+        asks2[pool].add(request, r2.ask)
+        if r2.status == "posted":
+            computed2[pool] += r2.locked or ZERO
+        elif r2.status == "needs_offer":
+            computed2[pool] += r2.decided or ZERO
+        return
+    if r1 is None or r1.ask is None:
+        return
+    if r1.status == "held":
+        unmet1[pool] += r1.ask
+    elif r1.status in ("needs_offer", "posted"):
+        amount = r1.locked if r1.status == "posted" else r1.decided
+        if amount is not None:
+            unmet1[pool] += r1.ask - amount
+
+
+def _tally_of(tallies: _Tallies, pool: str, n: int, measure: str) -> _Tally:
+    return tallies.get((pool, n, measure)) or _Tally()
+
+
+def _pool_budget(
+    pool: str,
+    label: str,
+    by_round: Mapping[int, Decimal] | None,
+    tallies: _Tallies,
+    *,
+    grants: Decimal,
+    asks2: _Tally,
+    computed2: Decimal,
+    unmet1: Decimal,
+) -> PoolBudget:
+    def amount(n: int, measure: str) -> Decimal:
+        return _tally_of(tallies, pool, n, measure).amount
+
+    rounds = {
+        n: Cell(
+            allocated=by_round[n] if by_round is not None else None,
+            posted=amount(n, "posted"),
+            accepted=amount(n, "accepted"),
+            needs_offer=amount(n, "needs_offer"),
+            pending_approval=amount(n, "pending_approval"),
+        )
+        for n in ROUNDS
+    }
+    cells = list(rounds.values())
+    total = Cell(
+        allocated=sum((c.allocated for c in cells if c.allocated is not None), ZERO) if by_round is not None else None,
+        posted=sum((c.posted for c in cells), ZERO),
+        accepted=sum((c.accepted for c in cells), ZERO),
+        needs_offer=sum((c.needs_offer for c in cells), ZERO),
+        pending_approval=sum((c.pending_approval for c in cells), ZERO),
+    )
+    held = _merged(_tally_of(tallies, pool, n, "held") for n in ROUNDS)
+    return PoolBudget(
+        pool=pool,
+        label=label,
+        rounds=rounds,
+        total=total,
+        below=BelowTheLine(
+            held=held.count(),
+            held_asked=held.amount,
+            outside_grants=grants,
+            outside_budget=sum((amount(n, "outside_budget") for n in ROUNDS), ZERO),
+        ),
+        demand=ForwardDemand(
+            round2_asks=asks2.count(), round2_asked=asks2.amount, round2_computed=computed2, round1_unmet=unmet1
+        ),
+    )
+
+
+def season_budget(
+    priced: Iterable[PricedRequest],
+    rules: AidRules | None,
+    *,
+    outside_grants: Mapping[str, Decimal],
+    outside_grants_off_requests: Decimal = ZERO,
+) -> SeasonBudget:
+    """`outside_grants` is each request's counted outside grants (the grants register's bridge,
+    summed); `outside_grants_off_requests` the counted outside grants on no request (Decision 14)."""
+    allocated = allocations(rules) if rules is not None else {}
+    labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
+    tallies: _Tallies = defaultdict(_Tally)
+    grants: dict[str, Decimal] = defaultdict(Decimal)
+    asks2: dict[str, _Tally] = defaultdict(_Tally)
+    computed2: dict[str, Decimal] = defaultdict(Decimal)
+    unmet1: dict[str, Decimal] = defaultdict(Decimal)
+    for request in priced:
+        home = _home_pool(request)
+        for view in request.rounds:
+            for pool in (view.pool or NO_POOL, TOTAL):
+                _tally_round(tallies, pool, request, view)
+        for pool in (home, TOTAL):
+            grants[pool] += outside_grants.get(request.request_id, ZERO)
+            if request.live:
+                _tally_demand(request, pool, asks2, computed2, unmet1)
+    seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1)
+    seen.discard(TOTAL)
+    order = [*allocated, *sorted(seen - set(allocated) - {NO_POOL}), *([NO_POOL] if NO_POOL in seen else [])]
+
+    def budget_for(pool: str, label: str, by_round: Mapping[int, Decimal] | None) -> PoolBudget:
+        return _pool_budget(
+            pool,
+            label,
+            by_round,
+            tallies,
+            grants=grants[pool],
+            asks2=asks2[pool],
+            computed2=computed2[pool],
+            unmet1=unmet1[pool],
+        )
+
+    pools = tuple(
+        budget_for(pool, labels.get(pool) or (NO_POOL_LABEL if pool == NO_POOL else pool), allocated.get(pool))
+        for pool in order
+    )
+    total_allocated = (
+        {n: sum((per_round[n] for per_round in allocated.values()), ZERO) for n in ROUNDS}
+        if rules is not None
+        else None
+    )
+    strip = {
+        n: RoundCounts(**{measure: _tally_of(tallies, TOTAL, n, measure).count() for measure in _STRIP}) for n in ROUNDS
+    }
+    return SeasonBudget(
+        pools=pools,
+        total=budget_for(TOTAL, "Total", total_allocated),
+        strip=strip,
+        outside_grants_off_requests=outside_grants_off_requests,
+    )
