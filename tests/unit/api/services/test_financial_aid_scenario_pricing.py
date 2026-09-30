@@ -259,3 +259,50 @@ async def test_a_request_set_prices_only_its_requests() -> None:
     priced = await price_document(frozen, approved().document, approved(), requests={EMMA})
     assert set(priced.season.priced) == {EMMA}
     assert priced.budget.total.rounds[1].needs_offer == Decimal(1500)
+
+
+# --- a stored snapshot this code can't read (final review 1) --------------------------------------------
+
+
+async def _encoded() -> dict[str, object]:
+    return encode_snapshot(await capture_season(_store(), _register(), FakeRules(approved()), YEAR))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["year", "calls", "register", "received", "live", "awaiting_rules"])
+async def test_a_stored_snapshot_missing_a_key_is_a_snapshot_error(key: str) -> None:
+    encoded = await _encoded()
+    del encoded[key]
+    with pytest.raises(SnapshotError, match="can't be read: freeze the applications again"):
+        decode_snapshot(encoded)
+
+
+@pytest.mark.asyncio
+async def test_a_stored_read_that_no_longer_validates_is_a_snapshot_error_that_never_echoes_its_values() -> None:
+    encoded = await _encoded()
+    calls = dict(encoded["calls"])  # type: ignore[call-overload]
+    requests = [dict(r) for r in calls["fetch_requests"]]
+    del requests[0]["household_cm_id"]
+    requests[1]["person_cm_id"] = "not-a-person-XYZZY"
+    calls["fetch_requests"] = requests
+    with pytest.raises(SnapshotError) as raised:
+        decode_snapshot({**encoded, "calls": calls})
+    assert "freeze the applications again" in str(raised.value)
+    assert "XYZZY" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("frozen_at", "not a moment"), ("received", ["not", "a", "mapping"]), ("register", [{"request_id": 5}])],
+)
+async def test_a_stored_value_of_the_wrong_shape_is_a_snapshot_error(key: str, value: object) -> None:
+    encoded = await _encoded()
+    with pytest.raises(SnapshotError, match="can't be read"):
+        decode_snapshot({**encoded, key: value})
+
+
+@pytest.mark.asyncio
+async def test_a_stored_snapshot_that_is_not_a_mapping_is_a_snapshot_error() -> None:
+    with pytest.raises(SnapshotError, match="can't be read"):
+        decode_snapshot(["not", "a", "snapshot"])  # type: ignore[arg-type]

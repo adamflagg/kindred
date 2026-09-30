@@ -14,12 +14,12 @@ from decimal import Decimal
 
 import pytest
 
-from api.constants.collections import AID_REQUESTS
+from api.constants.collections import AID_REQUESTS, AID_SCENARIO_SNAPSHOTS
 from api.services import financial_aid_scenarios_repository as repository_module
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
 from api.services.financial_aid_rules_service import FinancialAidRulesService
-from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
+from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, capture_season
 from api.services.financial_aid_scenarios_service import (
     FinancialAidScenariosService,
     ScenarioConflictError,
@@ -143,6 +143,19 @@ async def test_a_season_frozen_before_its_rules_are_approved_holds_those_request
     # only Emma's Round 1 (1,500 -> 1,600).
     evaluation = await world.service.evaluate(YEAR, shift_round1_tables(intake_rules(), Decimal(5)))
     assert (evaluation.results.held, evaluation.results.round1) == (1, Decimal(1600))
+
+
+@pytest.mark.asyncio
+async def test_a_stored_season_this_code_cant_read_is_refused_and_freezing_replaces_it() -> None:
+    world = await _started()
+    [row] = world.store.rows[AID_SCENARIO_SNAPSHOTS]
+    row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}  # a required key dropped
+    with pytest.raises(SnapshotError, match="freeze the applications again"):
+        await world.service.evaluate(YEAR, intake_rules())
+    frozen = await world.service.freeze(YEAR, FINANCE)  # an unreadable latest counts as "the season moved"
+    assert frozen.id != row.id
+    assert len(world.store.rows[AID_SCENARIO_SNAPSHOTS]) == 2
+    assert (await world.service.evaluate(YEAR, intake_rules())).results.round1 == Decimal(2600)
 
 
 @pytest.mark.asyncio

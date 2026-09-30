@@ -30,7 +30,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Final, cast, get_type_hints
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from api.constants.collections import AID_REQUESTS
 from api.services.financial_aid_calc_inputs import awaiting_approved_rules
@@ -204,9 +204,26 @@ def encode_snapshot(snapshot: SeasonSnapshot) -> dict[str, Any]:
     }
 
 
+_UNREADABLE: Final = "The frozen season stored for this year can't be read: freeze the applications again"
+
+
 def decode_snapshot(raw: Mapping[str, Any]) -> SeasonSnapshot:
-    if raw.get("format") != SNAPSHOT_FORMAT:
-        raise SnapshotError("This snapshot was frozen by an older version of Kindred: freeze the applications again")
+    """A stored snapshot back into a SeasonSnapshot. One this code can't read (a key missing, a value of the wrong
+    shape, a read whose type has changed) is a SnapshotError (422) that says to freeze again, never a 500 that locks
+    staff out of Scenarios. Its message never echoes a stored value: the inputs hold families' figures."""
+    try:
+        if raw.get("format") != SNAPSHOT_FORMAT:
+            raise SnapshotError(
+                "This snapshot was frozen by an older version of Kindred: freeze the applications again"
+            )
+        return _decoded(raw)
+    except SnapshotError:
+        raise
+    except (ValidationError, KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise SnapshotError(_UNREADABLE) from exc
+
+
+def _decoded(raw: Mapping[str, Any]) -> SeasonSnapshot:
     calls = {name: _adapter(name).validate_json(json.dumps(value)) for name, value in dict(raw["calls"]).items()}
     return SeasonSnapshot(
         year=int(raw["year"]),

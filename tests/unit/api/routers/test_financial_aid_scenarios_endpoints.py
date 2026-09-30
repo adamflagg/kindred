@@ -4,6 +4,8 @@ api.main (it poisons auth for xdist). Fictional only."""
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -12,8 +14,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from api.constants.collections import AID_SCENARIO_SNAPSHOTS
+from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_rules_service import (
     DraftSection,
+    FinancialAidRulesService,
     PromotionPreview,
     PromotionSection,
     ReplacementNotAcknowledgedError,
@@ -22,7 +27,7 @@ from api.services.financial_aid_rules_service import (
     RulesVersion,
     VersionExistsError,
 )
-from api.services.financial_aid_scenario_pricing import SnapshotError
+from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, capture_season
 from api.services.financial_aid_scenarios_repository import (
     OptionCodeTakenError,
     OptionRecord,
@@ -34,6 +39,7 @@ from api.services.financial_aid_scenarios_service import (
     Comparison,
     Draft,
     Evaluation,
+    FinancialAidScenariosService,
     Fitted,
     KeptOption,
     LeverEffect,
@@ -57,7 +63,10 @@ from bunking.financial_aid.scenarios import (
     TierRow,
 )
 from bunking.rbac.permissions import Permission
+from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_request
 from tests.unit.api.services.financial_aid_fakes import intake_rules
+from tests.unit.api.services.rules_fakes import FakeStore
+from tests.unit.api.services.scenarios_fakes import FakeScenarioStore
 from tests.unit.rbac.permission_personas import PERSONA_FINANCE, PERSONAS, persona_client, persona_user
 
 RULES = Permission.FINANCIAL_AID_RULES
@@ -433,3 +442,54 @@ def test_a_load_naming_nothing_is_422_before_the_service() -> None:
     service = _stub()
     assert _client().post("/api/financial-aid/scenarios/2027/draft/load", json={}).status_code == 422
     service.load.assert_not_called()
+
+
+# --- a route through the real service over in-memory stores (final review 10b) ---------------------------------
+
+
+def _real_service() -> tuple[FinancialAidScenariosService, FakeScenarioStore]:
+    """The real scenarios service over fake stores: a frozen-season flow through a route fails on any exception the
+    router does not map (a 500 here, since the persona client never raises)."""
+    season = FakeDecisionsStore()
+    seed_request(season, "reqemma00000001")
+    seed_request(season, "reqliam00000001", household=1000002, person=1000021, income=90000.0)
+    rules = FinancialAidRulesService(FakeStore(), clock=lambda: T0)
+    asyncio.run(rules.create_version(intake_rules(), actor=FINANCE))
+
+    async def register(year: int) -> Sequence[RegisterRow]:
+        return ()
+
+    async def capture(year: int) -> SeasonSnapshot:
+        return await capture_season(season, register, FakeRules(approved()), year)
+
+    store = FakeScenarioStore()
+    return FinancialAidScenariosService(store, rules, capture), store
+
+
+def test_freeze_then_the_workspace_through_the_real_service() -> None:
+    service, _ = _real_service()
+    patch("api.routers.financial_aid._scenarios", return_value=service).start()
+    client = _client()
+    frozen = client.post("/api/financial-aid/scenarios/2027/snapshot")
+    assert (frozen.status_code, frozen.json()["requests"]) == (200, 2)
+    started = client.post("/api/financial-aid/scenarios/2027/starting-points")
+    assert started.status_code == 200, started.text
+    workspace = client.get("/api/financial-aid/scenarios/2027").json()
+    assert (workspace["snapshot"]["id"], workspace["options"][0]["results"]["round1"]) == (frozen.json()["id"], 2600.0)
+
+
+def test_a_stored_season_this_code_cant_read_is_422_and_a_freeze_replaces_it() -> None:
+    service, store = _real_service()
+    patch("api.routers.financial_aid._scenarios", return_value=service).start()
+    client = _client()
+    first = client.post("/api/financial-aid/scenarios/2027/snapshot").json()
+    assert client.post("/api/financial-aid/scenarios/2027/starting-points").status_code == 200
+    [row] = store.rows[AID_SCENARIO_SNAPSHOTS]
+    row.inputs = {key: value for key, value in row.inputs.items() if key != "live"}
+    evaluated = client.post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY)
+    assert evaluated.status_code == 422
+    assert "freeze the applications again" in evaluated.json()["detail"]
+    assert client.get("/api/financial-aid/scenarios/2027").status_code == 200
+    again = client.post("/api/financial-aid/scenarios/2027/snapshot")
+    assert (again.status_code, again.json()["id"] != first["id"]) == (200, True)
+    assert client.post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).status_code == 200

@@ -33,7 +33,7 @@ from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHO
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import FinancialAidRulesService, PromotionPreview, RulesDraft
-from api.services.financial_aid_scenario_pricing import SeasonSnapshot, encode_snapshot, price_document
+from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
@@ -378,14 +378,20 @@ class FinancialAidScenariosService:
 
     # --- freeze, start, read ------------------------------------------------------------------------
 
+    async def _stored_season(self, meta: SnapshotMeta) -> dict[str, Any] | None:
+        """What the stored snapshot froze, as freeze compares it; None when this code can't read it, which counts as
+        "the season moved", so freezing writes a readable one rather than locking staff out."""
+        try:
+            return _season_of(encode_snapshot(await self._store.snapshot_inputs(meta.id)))
+        except SnapshotError:
+            return None
+
     async def freeze(self, year: int, actor: str) -> SnapshotMeta:
         """Freeze the season's applications as they are now; nothing is written when they haven't moved."""
         captured = await self._capture(year)
         encoded = encode_snapshot(captured)
         latest = await self._store.latest_snapshot(year)
-        if latest is not None and _season_of(
-            encode_snapshot(await self._store.snapshot_inputs(latest.id))
-        ) == _season_of(encoded):
+        if latest is not None and await self._stored_season(latest) == _season_of(encoded):
             return latest  # the season hasn't moved (the moment it was frozen doesn't count)
         write = AidWrite(
             collection=AID_SCENARIO_SNAPSHOTS,
