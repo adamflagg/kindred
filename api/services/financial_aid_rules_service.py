@@ -48,6 +48,7 @@ them with one `except` without catching pydantic's ValidationError.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -171,6 +172,10 @@ class ReplacementWarning:
     by: str | None
     at: datetime | None
     via: str | None
+    # Stands for exactly what the preview showed: the rules draft's copy of the section (content and edit stamps) and
+    # the option's. `promote` accepts an acknowledgement only with this token, so a re-edit since the preview, or a
+    # different option, invalidates it.
+    token: str = ""
 
 
 @dataclass(frozen=True)
@@ -249,13 +254,22 @@ def _approved_section(version: RulesVersion | None, name: SectionName) -> Approv
     return ApprovedSection(name, version.section_status[name], content, version.version)
 
 
-def _replacement(current: RulesVersion, origin: RulesVersion, section: SectionName) -> ReplacementWarning | None:
+def _replacement(
+    current: RulesVersion, origin: RulesVersion, wanted: AidRules, section: SectionName
+) -> ReplacementWarning | None:
     if getattr(current.document, section) == getattr(origin.document, section):
         return None
     status = current.section_status[section]
+    shown = {
+        "section": section,
+        "now": getattr(current.document, section).model_dump(mode="json"),
+        "status": status.model_dump(mode="json"),
+        "option": getattr(wanted, section).model_dump(mode="json"),
+    }
+    token = hashlib.sha256(json.dumps(shown, sort_keys=True).encode()).hexdigest()[:16]
     if status.state == "draft":
-        return ReplacementWarning("unapproved_edit", status.edited_by, status.edited_at, status.edited_via)
-    return ReplacementWarning("changed_since", status.approved_by, status.approved_at, None)
+        return ReplacementWarning("unapproved_edit", status.edited_by, status.edited_at, status.edited_via, token)
+    return ReplacementWarning("changed_since", status.approved_by, status.approved_at, None, token)
 
 
 def parse_section(document: AidRules, section: SectionName, content: Mapping[str, Any]) -> AidRules:
@@ -755,7 +769,9 @@ class FinancialAidRulesService:
         moved = set(changed_sections(origin.document, document))
         now, wanted = current.document.model_dump(), document.model_dump()
         entries = tuple(
-            PromotionSection(name, tuple(field_changes(now[name], wanted[name])), _replacement(current, origin, name))
+            PromotionSection(
+                name, tuple(field_changes(now[name], wanted[name])), _replacement(current, origin, document, name)
+            )
             for name in SECTION_NAMES
             if name in moved and getattr(current.document, name) != getattr(document, name)
         )
@@ -770,19 +786,25 @@ class FinancialAidRulesService:
         origin_version: int,
         document: AidRules,
         base_version: int,
-        acknowledged: Collection[SectionName],
+        acknowledged: Mapping[SectionName, str],
         actor: str,
         via: str,
     ) -> SectionSaveResult:
         """Copy the previewed sections from the option into the rules draft as one save (`save_sections`, so the
         approved rules in use are never overwritten), stamped `via` the option's code. Refused when the rules draft
-        moved past `base_version`, or when a warned section is not in `acknowledged`; nothing is written then."""
+        moved past `base_version`, or when a warned section is not acknowledged with the token the preview returned for it. A section
+        re-edited since the preview has a new token, so its old acknowledgement is refused and the section named;
+        nothing is written then."""
         preview = await self.promotion_preview(year, origin_version=origin_version, document=document)
         if preview.base_version != base_version:
             raise NotLatestVersionError(
                 f"The rules draft is version {preview.base_version} now, not {base_version}: look at the changes again"
             )
-        unconfirmed = [s.section for s in preview.sections if s.warning is not None and s.section not in acknowledged]
+        unconfirmed = [
+            s.section
+            for s in preview.sections
+            if s.warning is not None and not (s.warning.token and acknowledged.get(s.section) == s.warning.token)
+        ]
         if unconfirmed:
             raise ReplacementNotAcknowledgedError(unconfirmed)
         current = await self.load(year, base_version)

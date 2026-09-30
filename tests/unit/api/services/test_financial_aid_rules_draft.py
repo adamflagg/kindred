@@ -677,7 +677,7 @@ async def test_promoting_branches_the_approved_rules_and_stamps_the_option() -> 
     store = FakeStore()
     service = await _approved_v1(store)
     saved = await service.promote(
-        2031, origin_version=1, document=_option(), base_version=1, acknowledged=(), actor=FINANCE, via="B2"
+        2031, origin_version=1, document=_option(), base_version=1, acknowledged={}, actor=FINANCE, via="B2"
     )
     assert (saved.branched_from, saved.version.version) == (1, 2)
     awards = saved.version.section_status["awards"]
@@ -700,16 +700,78 @@ async def test_replacing_an_unapproved_edit_needs_confirming() -> None:
     before = len(store.operations)
     with pytest.raises(ReplacementNotAcknowledgedError) as refused:
         await service.promote(
-            2031, origin_version=1, document=_option(), base_version=2, acknowledged=(), actor=FINANCE, via="B2"
+            2031, origin_version=1, document=_option(), base_version=2, acknowledged={}, actor=FINANCE, via="B2"
         )
     assert refused.value.sections == ["awards"]
     assert len(store.operations) == before
+    assert warned["awards"].token  # the preview hands back what to confirm
     saved = await service.promote(
-        2031, origin_version=1, document=_option(), base_version=2, acknowledged=["awards"], actor=FINANCE, via="B2"
+        2031,
+        origin_version=1,
+        document=_option(),
+        base_version=2,
+        acknowledged={"awards": warned["awards"].token},
+        actor=FINANCE,
+        via="B2",
     )
     assert (saved.branched_from, saved.version.version) == (None, 2)  # v2 is already a draft version
     assert saved.version.document.awards.minimum == Decimal(150)
     assert saved.version.section_status["awards"].edited_by == FINANCE
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_expires_when_the_warned_section_is_edited_again_after_the_preview() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)  # v2, awards draft
+    preview = await service.promotion_preview(2031, origin_version=1, document=_option())
+    token = {s.section: s.warning for s in preview.sections}["awards"].token  # type: ignore[union-attr]
+    # Someone edits awards again (in place on v2) between the preview and the apply.
+    await service.save_sections(2031, 2, _minimum(fictional_rules(), "130"), actor=FINANCE)
+    before = len(store.operations)
+    with pytest.raises(ReplacementNotAcknowledgedError) as refused:
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=_option(),
+            base_version=2,
+            acknowledged={"awards": token},
+            actor=FINANCE,
+            via="B2",
+        )
+    assert refused.value.sections == ["awards"]
+    assert len(store.operations) == before
+    assert (await service.load(2031, 2)).document.awards.minimum == Decimal(130)  # the re-edit was not overwritten
+    fresh = {
+        s.section: s.warning
+        for s in (await service.promotion_preview(2031, origin_version=1, document=_option())).sections
+    }
+    saved = await service.promote(
+        2031,
+        origin_version=1,
+        document=_option(),
+        base_version=2,
+        acknowledged={"awards": fresh["awards"].token},  # type: ignore[union-attr]
+        actor=FINANCE,
+        via="B2",
+    )
+    assert saved.version.document.awards.minimum == Decimal(150)
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_is_for_its_own_section_only() -> None:
+    service = await _approved_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)
+    with pytest.raises(ReplacementNotAcknowledgedError):
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=_option(),
+            base_version=2,
+            acknowledged={"awards": ""},
+            actor=FINANCE,
+            via="B2",
+        )
 
 
 @pytest.mark.asyncio
@@ -729,7 +791,13 @@ async def test_promoting_against_an_older_rules_draft_is_refused() -> None:
     await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)
     with pytest.raises(NotLatestVersionError):
         await service.promote(
-            2031, origin_version=1, document=_option(), base_version=1, acknowledged=["awards"], actor=FINANCE, via="B2"
+            2031,
+            origin_version=1,
+            document=_option(),
+            base_version=1,
+            acknowledged={"awards": "x"},
+            actor=FINANCE,
+            via="B2",
         )
 
 
@@ -739,7 +807,7 @@ async def test_an_option_that_changes_nothing_promotes_nothing() -> None:
     service = await _approved_v1(store)
     before = len(store.operations)
     saved = await service.promote(
-        2031, origin_version=1, document=fictional_rules(), base_version=1, acknowledged=(), actor=FINANCE, via="A"
+        2031, origin_version=1, document=fictional_rules(), base_version=1, acknowledged={}, actor=FINANCE, via="A"
     )
     assert (saved.branched_from, saved.version.version) == (None, 1)
     assert len(store.operations) == before
@@ -764,7 +832,7 @@ async def test_a_section_the_option_did_not_change_keeps_the_drafts_newer_copy()
     service = await _approved_v1(store)
     await service.save_sections(2031, 1, with_lever(fictional_rules(), "income.floor", "500"), actor=TREASURER)  # v2
     saved = await service.promote(
-        2031, origin_version=1, document=_option(), base_version=2, acknowledged=(), actor=FINANCE, via="B2"
+        2031, origin_version=1, document=_option(), base_version=2, acknowledged={}, actor=FINANCE, via="B2"
     )
     assert saved.version.document.awards.minimum == Decimal(150)  # the option's change lands
     assert saved.version.document.income.floor == Decimal(500)  # the draft's newer copy of an untouched section stays
