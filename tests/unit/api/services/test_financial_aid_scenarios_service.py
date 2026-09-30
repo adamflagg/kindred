@@ -612,3 +612,38 @@ async def test_a_request_set_writes_nothing_and_leaves_kept_figures_alone() -> N
     assert (kept.record.results.requests, kept.record.results.request_set) == (3, None)
     assert (len(world.store.operations), len(world.season.operations)) == (scenario_writes, season_writes)
     assert world.season.change_log == season_log
+
+
+@pytest.mark.asyncio
+async def test_a_family_that_edited_its_answer_after_the_deadline_keeps_its_on_time_date() -> None:
+    """Intake withdrew Riley's first request (Jan 20) when the family edited its answer, and created a replacement on
+    Feb 10: the replacement was received when the family first applied, so a request set through Feb 1 keeps it."""
+    world = await _world()
+    log_seeded(world.season, JAN20)
+    first = seed_request(world.season, "reqrile00000009", household=1000003, person=1000031, status="withdrawn")
+    world.season.change_log.append(
+        LogRow(
+            id="log000000000098",
+            entity=AID_REQUESTS,
+            entity_id=first.id,
+            before=None,
+            after={"year": YEAR, "household_cm_id": 1000003},
+            created=JAN20,
+        )
+    )
+    replacement = seed_request(world.season, RILEY, household=1000003, person=1000031)
+    world.season.requests[RILEY] = replace(replacement, program_option_key="session 3")
+    world.season.change_log.append(
+        LogRow(
+            id="log000000000099",
+            entity=AID_REQUESTS,
+            entity_id=RILEY,
+            before=None,
+            after={"year": YEAR, "household_cm_id": 1000003},
+            created=datetime(2027, 2, 10, 18, 0, tzinfo=UTC),
+        )
+    )
+    await world.service.freeze(YEAR, FINANCE)
+    through = await world.service.evaluate(YEAR, intake_rules(), request_set=date(2027, 2, 1))
+    assert through.results.request_set is not None
+    assert (through.results.requests, through.results.request_set.left_out) == (3, 0)

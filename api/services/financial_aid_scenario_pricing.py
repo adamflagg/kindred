@@ -15,8 +15,8 @@ A request intake flagged as waiting for approved programs and cost rules is held
 scenario on that snapshot: `awaiting_rules` counts them, so the screen can say "freeze again once the rules are
 approved" (plan Decision 8). Freezing never refuses for it.
 
-Freezing also records when each frozen request was received (`received`: its create row in aid_change_log, D138, as
-bunking.financial_aid.received defines it) and which requests are live, so a scenario can price only the requests
+Freezing also records when each frozen request was received (`received`: its create row in aid_change_log, or its
+withdrawn predecessor's when the family edited its answer, D138, as bunking.financial_aid.received defines it) and which requests are live, so a scenario can price only the requests
 received through a date (`price_document`'s `requests`). That log is read after the season read, so every frozen
 request's create row is already there.
 """
@@ -46,7 +46,7 @@ from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.decisions import SeasonBudget
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.received import received_dates
+from bunking.financial_aid.received import edit_predecessors, received_dates
 from bunking.financial_aid.rules import AidRules, SectionName
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from bunking.financial_aid.rules.schema import SECTION_NAMES
@@ -185,7 +185,7 @@ async def capture_season(
         calls=dict(recorder.calls),
         register=tuple(rows),
         awaiting_rules=awaiting,
-        received=received_dates(season.requests.keys(), log),
+        received=received_dates(season.requests.keys(), log, predecessors=edit_predecessors(season.requests.values())),
         live=live,
     )
 
