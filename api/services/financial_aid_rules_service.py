@@ -46,7 +46,9 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
+from api.services.financial_aid_change_log_reads import fetch_change_log
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import (
     AidRules,
@@ -61,6 +63,7 @@ from bunking.financial_aid.rules.lifecycle import (
     DocumentHasErrorsError,
     SectionNotApprovedError,
     SectionStatus,
+    SectionStatusMissingError,
     StatusMap,
     apply_edit,
     approve,
@@ -104,6 +107,10 @@ class NoSectionsNamedError(FinancialAidError, ValueError):
     """An approval must name at least one section."""
 
 
+class RulesHistoryIncompleteError(FinancialAidError, LookupError):
+    """A rules version's change history can't be replayed to the instant asked for (the as-of reads)."""
+
+
 class RulesVersion(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -122,6 +129,8 @@ class AidRulesStore(Protocol):
     async def fetch_version(self, year: int, version: int) -> Any | None: ...
 
     async def fetch_session_refs(self, year: int) -> list[SessionRef]: ...
+
+    async def fetch_log(self, year: int) -> list[LogRow]: ...
 
     async def commit(
         self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None
@@ -164,6 +173,9 @@ class AidRulesRepository:
             )
             for row in rows
         ]
+
+    async def fetch_log(self, year: int) -> list[LogRow]:
+        return await fetch_change_log(self.pb, year, AID_RULES)
 
     async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
         """Each write and its aid_change_log row in ONE PocketBase batch (sub-project 4a, spec 14.4).
@@ -242,6 +254,11 @@ def _entity_id(year: int, version: int, section: SectionName | None = None) -> s
     return f"{year}:{version}" if section is None else f"{year}:{version}:{section}"
 
 
+def _version_key(row: LogRow) -> str:
+    """A version's log rows: "year:version", and its section approvals and locks, "year:version:section"."""
+    return ":".join(row.entity_id.split(":")[:2])
+
+
 def _stored(version: RulesVersion) -> dict[str, Any]:
     """The record's two JSON fields as they are stored: a log row's `before`."""
     return {"document": _dump(version.document), "section_status": status_to_json(version.section_status)}
@@ -295,6 +312,46 @@ class FinancialAidRulesService:
             version = _to_version(row)
             if all(version.section_status[name].state in ("approved", "locked") for name in sections):
                 return version
+        return None
+
+    async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
+        """The version that priced `year` at the instant `at` (the as-of reads, 3c): each version's
+        document and section statuses replayed from aid_change_log to `at` (every create, save,
+        approval and lock is logged with its before and after, 4a), then latest_approved's rule. A
+        later edit, re-approval or new version changes nothing earlier. A version whose history
+        can't be replayed raises rather than letting an older version answer in its place."""
+        # `current` settles two same-instant rows that changed the same field with nothing after them.
+        current = {
+            _entity_id(year, int(row.version)): {
+                "document": _json_object(row, "document"),
+                "section_status": _json_object(row, "section_status"),
+            }
+            for row in await self._store.list_versions(year)
+        }
+        replayed = replay(await self._store.fetch_log(year), as_of=at, key=_version_key, current=current)
+        for name in sorted(replayed, key=lambda k: int(k.split(":")[1]), reverse=True):
+            version = replayed[name]
+            if version.state is None:
+                continue
+            if not version.complete:
+                raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
+            state = version.state
+            try:
+                status = status_from_json(state.get("section_status"))
+            except SectionStatusMissingError as exc:
+                raise RulesHistoryIncompleteError(
+                    f"aid_rules {name}: its replayed section status is incomplete"
+                ) from exc
+            if all(status[section].state in ("approved", "locked") for section in sections):
+                return RulesVersion(
+                    record_id="",  # rebuilt from the log; read-only
+                    year=int(state["year"]),
+                    version=int(state["version"]),
+                    document=AidRules.model_validate(state.get("document") or {}),
+                    section_status=status,
+                    parent_year=int(state.get("parent_year") or 0) or None,
+                    parent_version=int(state.get("parent_version") or 0) or None,
+                )
         return None
 
     async def validate_document(self, document: AidRules) -> ValidationReport:
