@@ -53,7 +53,7 @@ from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import split_by_received
-from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
+from bunking.financial_aid.rules import AidRules, SectionName, ValidationIssue, ValidationReport
 from bunking.financial_aid.scenarios import (
     SIZING_LEVERS,
     CommitteeView,
@@ -68,6 +68,7 @@ from bunking.financial_aid.scenarios import (
     dollar_for_dollar,
     fit_margin,
     fit_tier_shift,
+    last_seasons_criteria,
     nudge,
     posted_season,
     request_set_note,
@@ -249,6 +250,18 @@ def _posted_label(year: int, as_of: datetime | None) -> str:
     return f"{year}, {basis} (as of {local:%b} {local.day}, {local.year})"
 
 
+def _last_season_name(last: RulesVersion, year: int, origin: RulesVersion) -> str:
+    """RPT-18's starting point: last season's criteria on this season's applications, the rest from this season's
+    rules, named as SP9b names them ("rules draft vN" while that version can't price the season)."""
+    return f"{last.year} v{last.version} rules on {year}'s applications, the rest from {_rules_name(origin)}"
+
+
+def _introduced(before: Sequence[ValidationIssue], after: Sequence[ValidationIssue]) -> list[ValidationIssue]:
+    """The errors a merge added: `after`'s that the rules draft did not already have (same section, code, path)."""
+    had = {(issue.section, issue.code, issue.path) for issue in before}
+    return [issue for issue in after if (issue.section, issue.code, issue.path) not in had]
+
+
 def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
     return tuple(field_changes(old.model_dump(), new.model_dump()))
 
@@ -335,11 +348,20 @@ class FinancialAidScenariosService:
             return options[option.starting_point].document
         return (await self._rules.load(option.year, option.origin_version)).document
 
-    async def _label(self, option: OptionRecord, options: Mapping[str, OptionRecord]) -> str:
+    async def _last_rules(self, year: int) -> RulesVersion | None:
+        """Last season's approved rules: the version that priced it (every pricing section approved)."""
+        return await self._rules.latest_approved(year - 1, PRICING_SECTIONS)
+
+    async def _label(
+        self, option: OptionRecord, options: Mapping[str, OptionRecord], last: RulesVersion | None = None
+    ) -> str:
+        """`last`: last season's approved rules, which name a starting point made from them (RPT-18)."""
         if not option.from_code:
             # "rules vN" only when vN is approved rules and the option is them: one started from a draft that was
             # approved later with edits stays "rules draft vN", as it was.
             origin = await self._rules.load(option.year, option.origin_version)
+            if last is not None and option.document == last_seasons_criteria(origin.document, last.document):
+                return _last_season_name(last, option.year, origin)
             name = _rules_name(origin) if origin.document == option.document else f"rules draft v{origin.version}"
             return f"{name} as they were"
         return describe(await self._reference(option, options), option.document)
@@ -527,13 +549,71 @@ class FinancialAidScenariosService:
         await self._store.commit(writes, actor=actor)
         return await self.workspace(year, actor)
 
+    async def start_from_last_season(self, year: int, actor: str) -> Workspace:
+        """RPT-18: a new starting point from the rules draft with last season's approved criteria copied in
+        (bunking.financial_aid.scenarios.last_seasons_criteria), loaded into `actor`'s draft. This season's routing,
+        grants, decision types, programs, cost, budget, stages, quality checks and milestones stay. Refused when last
+        season has no approved rules, or when the merge adds a validation error the rules draft did not already have
+        (say which; the draft's own errors never block it). When a kept option already is that document, it is
+        loaded instead of copied."""
+        meta = await self._meta(year)
+        last = await self._last_rules(year)
+        if last is None:
+            raise ScenarioRefusedError(f"{year - 1} has no approved rules to start from: load and approve them first")
+        rules = await self._rules.load(year)
+        document = last_seasons_criteria(rules.document, last.document)
+        introduced = _introduced(
+            (await self._rules.validate_document(rules.document)).errors,
+            (await self._rules.validate_document(document)).errors,
+        )
+        if introduced:
+            named = "; ".join(f"{issue.path}: {issue.message}" for issue in introduced[:3])
+            raise ScenarioRefusedError(
+                f"{year - 1}'s criteria don't fit {year}'s rules draft ({named}): start from the rules and edit instead"
+            )
+        options = await self._options(year)
+        same = next((o for o in options.values() if o.document == document), None)
+        if same is not None:
+            await self.load(year, actor, option=same.code)
+            return await self.workspace(year, actor)
+        code = starting_point_code(sum(1 for o in options.values() if not o.starting_point))
+        priced = await (await self._pricer(meta))(document)
+        writes = [
+            self._option_write(
+                year,
+                actor,
+                code=code,
+                starting_point="",
+                from_code="",
+                origin_version=rules.version,
+                document=document,
+                priced=priced,
+                meta=meta,
+            ),
+            self._trail_write(
+                year,
+                actor,
+                document=document,
+                from_code=code,
+                change=f"started from {_last_season_name(last, year, rules)}",
+                results=priced.results,
+                meta=meta,
+                kept_code=code,
+            ),
+        ]
+        await self._store.commit(writes, actor=actor)
+        return await self.workspace(year, actor)
+
     async def workspace(self, year: int, actor: str) -> Workspace:
         rules = await self._rules.load(year)
         pricing = await self._rules.latest_approved(year, PRICING_SECTIONS)
         meta = await self._store.latest_snapshot(year)
         options = await self._options(year)
+        last = await self._last_rules(year)
         kept = [
-            KeptOption(option, await self._label(option, options), stale=meta is None or option.snapshot != meta.id)
+            KeptOption(
+                option, await self._label(option, options, last), stale=meta is None or option.snapshot != meta.id
+            )
             for option in options.values()
         ]
         return Workspace(
@@ -670,6 +750,7 @@ class FinancialAidScenariosService:
         meta = await self._meta(year)
         chosen = await self._request_set(year, request_set)
         price = await self._pricer(meta, chosen)
+        last = await self._last_rules(year)
         seen: dict[str, Priced] = {}
 
         async def of_option(option: OptionRecord) -> Priced:
@@ -724,7 +805,7 @@ class FinancialAidScenariosService:
             columns.append(
                 CompareColumn(
                     code,
-                    await self._label(option, options),
+                    await self._label(option, options, last),
                     option.document,
                     _changes(reference, option.document),
                     priced.results,

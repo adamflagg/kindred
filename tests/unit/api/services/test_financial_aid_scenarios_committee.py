@@ -22,9 +22,10 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_rules_service import FinancialAidRulesService
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
-from api.services.financial_aid_scenarios_service import FinancialAidScenariosService
+from api.services.financial_aid_scenarios_service import FinancialAidScenariosService, ScenarioRefusedError
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.rules import AidRules
+from bunking.financial_aid.rules.schema import SECTION_NAMES
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.api.services.rules_fakes import FakeStore
@@ -241,3 +242,117 @@ async def test_last_season_is_read_only_when_asked() -> None:
     comparison = await world.service.compare(YEAR, FINANCE, ["A"])
     assert comparison.last_season is None
     assert world.last_season_reads == []
+
+
+async def _last_rules_approved(world: World, document: AidRules | None = None) -> None:
+    version = await world.rules.create_version(document or last_season_rules(), actor=FINANCE)
+    await world.rules.approve_sections(
+        LAST, version.version, list(SECTION_NAMES), actor=TREASURER, note="Campership committee"
+    )
+
+
+# --- RPT-18: start from last season's rules -----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_criteria_on_this_seasons_applications() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    workspace = await world.service.start_from_last_season(YEAR, FINANCE)
+    [option] = workspace.options
+    # 2027 v1 can't price the season yet (every section draft), so it is named as SP9b names it.
+    assert (option.record.code, option.label) == (
+        "A",
+        "2026 v1 rules on 2027's applications, the rest from rules draft v1",
+    )
+    # Emma at 2026's 80% of 2,000 = 1,600; Liam's tier 3 is 55% in both: 1,100.
+    assert option.record.results.round1 == Decimal(2700)
+    assert workspace.draft is not None
+    assert workspace.draft.from_code == "A"
+    [trail] = (await world.service.trail(YEAR, page=1, per_page=10))[0]
+    assert trail.change == "started from 2026 v1 rules on 2027's applications, the rest from rules draft v1"
+    comparison = await world.service.compare(YEAR, FINANCE, ["A"])
+    committee = comparison.columns[1].committee
+    assert committee is not None
+    assert (committee.round1, committee.round1_pct_of_budget) == (Decimal(2700), Decimal("0.5"))
+
+
+@pytest.mark.asyncio
+async def test_this_seasons_routing_grants_budget_lines_programs_cost_and_budget_are_kept() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    last = with_levers(
+        last_season_rules(),
+        {
+            "budget.total": "400000",
+            "cost.tuition.1000101": "1800",
+            "grants.offset_mode": "reduce_cost_basis",
+            "awards.minimum": "150",
+            "awards.decision_types.discretionary.label": "Last season's line",
+        },
+    )
+    await _last_rules_approved(world, last)
+    workspace = await world.service.start_from_last_season(YEAR, FINANCE)
+    document = workspace.options[0].record.document
+    this_season = intake_rules()
+    assert (document.year, document.budget, document.cost, document.programs) == (
+        YEAR,
+        this_season.budget,
+        this_season.cost,
+        this_season.programs,
+    )
+    assert (document.grants, document.awards.decision_types, document.round2.program_tables) == (
+        this_season.grants,
+        this_season.awards.decision_types,
+        this_season.round2.program_tables,
+    )
+    assert (document.award_tables, document.awards.minimum) == (last.award_tables, Decimal(150))
+
+
+@pytest.mark.asyncio
+async def test_no_approved_rules_last_season_is_refused() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await world.rules.create_version(last_season_rules(), actor=FINANCE)  # a 2026 draft, never approved
+    with pytest.raises(ScenarioRefusedError, match="2026 has no approved rules to start from"):
+        await world.service.start_from_last_season(YEAR, FINANCE)
+    assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+
+
+@pytest.mark.asyncio
+async def test_last_seasons_rules_that_dont_fit_this_seasons_programs_are_refused() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    raw = last_season_rules().model_dump(mode="json")
+    raw["programs"]["teen"]["r1_table"] = "camp"  # 2026 had no teen table
+    del raw["award_tables"]["teen"]
+    await _last_rules_approved(world, AidRules.model_validate(raw))
+    with pytest.raises(
+        ScenarioRefusedError, match=r"2026's criteria don't fit 2027's rules draft \(programs\.teen\.r1_table"
+    ):
+        await world.service.start_from_last_season(YEAR, FINANCE)
+    assert world.store.rows[AID_SCENARIO_OPTIONS] == []
+
+
+@pytest.mark.asyncio
+async def test_the_rules_drafts_own_errors_never_block_a_start_from_last_season() -> None:
+    raw = intake_rules().model_dump(mode="json")
+    del raw["round2"]["program_tables"]["quest"]  # the 2027 draft's own error: quest names no Round 2 table
+    world = await _world(this_season=AidRules.model_validate(raw))
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    workspace = await world.service.start_from_last_season(YEAR, FINANCE)
+    assert [option.record.code for option in workspace.options] == ["A"]
+
+
+@pytest.mark.asyncio
+async def test_starting_from_last_season_again_loads_the_option_it_made() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world)
+    await world.service.start_from_last_season(YEAR, FINANCE)
+    again = await world.service.start_from_last_season(YEAR, TREASURER)
+    assert [o.record.code for o in again.options] == ["A"]
+    assert again.draft is not None
+    assert again.draft.from_code == "A"
