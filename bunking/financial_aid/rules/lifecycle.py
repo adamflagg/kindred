@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from datetime import datetime
-from typing import Any, Literal, NamedTuple
+from typing import Any, Final, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 
@@ -41,6 +41,12 @@ class SectionStatus(BaseModel):
     approved_at: datetime | None = None
     note: str | None = None
     locked_at: datetime | None = None
+    # SP9: the last change made to this section in the rules draft that is not yet approved -- who, when, and
+    # the kept scenario option it came from ("B2") when a promotion made it. Approval replaces the whole status,
+    # so it clears these; a status stored before SP9 has none and loads with them empty.
+    edited_by: str | None = None
+    edited_at: datetime | None = None
+    edited_via: str | None = None
 
 
 StatusMap = dict[SectionName, SectionStatus]
@@ -199,8 +205,31 @@ def carry_forward(status: StatusMap, *, unlock: Collection[SectionName] = ()) ->
     }
 
 
+def stamp_edits(
+    status: StatusMap, sections: Collection[SectionName], *, by: str, at: datetime, via: str | None
+) -> StatusMap:
+    """`status` with each of `sections` stamped as edited by `by` at `at` (from kept option `via`, if any).
+    A section's state is not touched: `apply_edit` has already decided it."""
+    return {
+        name: s.model_copy(update={"edited_by": by, "edited_at": at, "edited_via": via}) if name in sections else s
+        for name, s in status.items()
+    }
+
+
+# SP9's edit stamps. Left out of the stored JSON when empty: code from before SP9 forbids unknown keys, so a
+# rolled-back deploy must still load every section with no live edit (or every request would hold).
+_STAMPS: Final = ("edited_by", "edited_at", "edited_via")
+
+
 def status_to_json(status: StatusMap) -> dict[str, Any]:
-    return {name: status[name].model_dump(mode="json") for name in SECTION_NAMES}
+    out: dict[str, Any] = {}
+    for name in SECTION_NAMES:
+        entry = status[name].model_dump(mode="json")
+        for key in _STAMPS:
+            if entry[key] is None:
+                del entry[key]
+        out[name] = entry
+    return out
 
 
 def status_from_json(raw: Mapping[str, Any] | None) -> StatusMap:

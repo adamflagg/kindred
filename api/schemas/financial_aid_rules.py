@@ -2,17 +2,20 @@
 
 The rules document itself is bunking.financial_aid.rules.AidRules: FastAPI
 validates a posted document against it, so a malformed one is a 422 before any
-service call. Every route needs financial_aid.rules.
+service call. Every route needs financial_aid.rules, except D76's approved read
+(financial_aid.view).
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
-from bunking.financial_aid.rules.lifecycle import SectionStatus
+from bunking.financial_aid.rules.lifecycle import SectionState, SectionStatus
 
 
 class RulesDocumentIn(BaseModel):
@@ -39,3 +42,75 @@ class RulesVersionOut(BaseModel):
     document: AidRules
     section_status: dict[SectionName, SectionStatus]
     report: ValidationReport
+
+
+class SectionSaveIn(BaseModel):
+    """One section editor's save: the section's whole JSON, and the rules draft version the editor opened."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_version: int = Field(ge=1)
+    content: dict[str, Any]
+
+
+class NewVersionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Locked sections the new version lifts; every other lock is kept (spec §7.5).
+    unlock: list[SectionName] = Field(default_factory=list)
+
+
+class FieldChangeOut(BaseModel):
+    """One changed setting: its path inside the section, and its value before and after."""
+
+    path: list[str]
+    kind: Literal["added", "removed", "changed"]
+    before: Any = None
+    after: Any = None
+
+
+def field_change_out(change: FieldChange) -> FieldChangeOut:
+    return FieldChangeOut(
+        path=[str(part) for part in change.path], kind=change.kind, before=change.before, after=change.after
+    )
+
+
+class DraftSectionOut(BaseModel):
+    section: SectionName
+    status: SectionStatus
+    changes: list[FieldChangeOut]  # against the approved rules pricing the season: "Draft · n changes"
+    errors: int
+    warnings: int
+
+
+class RulesDraftOut(BaseModel):
+    """The Rules tab: the rules draft (the latest version) section by section (spec §7.5, D39)."""
+
+    year: int
+    version: int
+    parent_year: int | None
+    parent_version: int | None
+    approved_version: int | None  # the version pricing the season, which `changes` compare against
+    document: AidRules
+    sections: list[DraftSectionOut]
+    report: ValidationReport
+    branched_from: int | None = None  # a save that made this version from the one it names
+
+
+class ApprovedSectionOut(BaseModel):
+    section: SectionName
+    version: int | None  # the version this section is served from (D76 reads section by section)
+    state: SectionState
+    approved_by: str | None
+    approved_at: datetime | None
+    note: str | None
+    locked_at: datetime | None
+    content: dict[str, Any] | None  # None: not approved in this version (never shown, D76)
+
+
+class ApprovedRulesOut(BaseModel):
+    """D76: the approved rules, read only."""
+
+    year: int
+    version: int | None  # the version pricing the season (or the `version` asked for); None while none prices
+    sections: list[ApprovedSectionOut]

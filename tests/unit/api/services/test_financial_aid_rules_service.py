@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import json
-from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -24,10 +22,11 @@ from api.services.financial_aid_rules_service import (
     RulesNotFoundError,
     VersionExistsError,
     YearMismatchError,
+    _dump,
+    _stored,
     _to_version,
 )
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite, change_row, new_operation_id, new_record_id
-from bunking.financial_aid.change_replay import LogRow
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, SessionRef
 from bunking.financial_aid.rules.lifecycle import (
@@ -41,6 +40,7 @@ from bunking.financial_aid.rules.lifecycle import (
     status_to_json,
 )
 from bunking.pocketbase_batch import BatchRequestFailedError
+from tests.unit.api.services.rules_fakes import FakeStore
 from tests.unit.bunking.financial_aid.fixtures import (
     FICTIONAL_SESSION_IDS,
     fictional_rules,
@@ -50,86 +50,6 @@ from tests.unit.bunking.financial_aid.fixtures import (
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
 FINANCE = "finance@example.com"
-
-
-class FakeStore:
-    """aid_rules in memory, written only through `commit`, the one write path (4a).
-
-    Each committed operation is kept as the aid_change_log rows commit_aid_writes would write
-    for it, built with the same `change_row`, so a write the real helper would refuse (a
-    change that changes nothing) fails here too. An operation applies whole or not at all.
-    """
-
-    def __init__(self, sessions: list[SessionRef] | None = None, clock: Callable[[], datetime] | None = None) -> None:
-        self._now: Callable[[], datetime] = clock or (lambda: AT)
-        self.log_rows: list[LogRow] = []
-        self.rows: list[SimpleNamespace] = []
-        self.sessions = sessions if sessions is not None else [SessionRef(cm_id=s) for s in FICTIONAL_SESSION_IDS]
-        self.operations: list[list[dict[str, Any]]] = []
-
-    async def list_versions(self, year: int) -> list[Any]:
-        return sorted((r for r in self.rows if r.year == year), key=lambda r: r.version)
-
-    async def fetch_version(self, year: int, version: int) -> Any | None:
-        return next((r for r in self.rows if r.year == year and r.version == version), None)
-
-    async def fetch_session_refs(self, year: int) -> list[SessionRef]:
-        return list(self.sessions)
-
-    async def fetch_log(self, year: int) -> list[LogRow]:
-        return [r for r in self.log_rows if r.entity_id.startswith(f"{year}:")]
-
-    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
-        operation_id = new_operation_id()
-        staged = copy.deepcopy(self.rows)
-        log: list[dict[str, Any]] = []
-        ids: list[str] = []
-        for write in writes:
-            data = json.loads(json.dumps(dict(write.data or {})))
-            if write.action == "create":
-                if any(r.year == data["year"] and r.version == data["version"] for r in staged):
-                    raise VersionExistsError("unique index (year, version)")
-                record_id = write.record_id or new_record_id()
-                staged.append(SimpleNamespace(id=record_id, **data))
-                after: dict[str, Any] | None = data
-            else:
-                assert write.record_id is not None
-                assert write.before is not None
-                record_id = write.record_id
-                row = next(r for r in staged if r.id == record_id)
-                for key, value in data.items():
-                    setattr(row, key, value)
-                after = {**write.before, **data}
-            log.append(
-                change_row(
-                    entity=write.collection,
-                    entity_id=write.entity_id or record_id,
-                    year=write.year,
-                    action=write.log_action or write.action,
-                    before=write.before,
-                    after=after,
-                    actor=actor,
-                    reason=write.reason if write.reason is not None else reason,
-                    operation_id=operation_id,
-                )
-            )
-            logged = log[-1]
-            self.log_rows.append(
-                LogRow(
-                    id=new_record_id(),
-                    entity=logged["entity"],
-                    entity_id=logged["entity_id"],
-                    before=logged["before"],
-                    after=logged["after"],
-                    created=self._now(),
-                )
-            )
-            ids.append(record_id)
-        self.rows = staged
-        self.operations.append(log)
-        return AidOperationResult(
-            operation_id=operation_id, record_ids=tuple(ids), records=tuple(None for _ in ids), batches=1
-        )
 
 
 def _service(store: FakeStore | None = None) -> FinancialAidRulesService:
@@ -629,28 +549,13 @@ async def test_lock_writes_lock_approved_sections_for_the_caller_to_commit() -> 
 
 
 @pytest.mark.asyncio
-async def test_lock_writes_skip_a_locked_section_and_a_superseded_version() -> None:
+async def test_lock_writes_skip_a_locked_section() -> None:
     store = FakeStore()
     service = _service(store)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_sections(2031, 1, ["income", "tiers"], actor=FINANCE, note="Finance committee")
     await service.lock_section(2031, 1, "income", actor=FINANCE)
     assert await service.lock_writes(2031, 1, ["income"]) == ([], [])
-    await service.new_version(2031, 1, actor=FINANCE)
-    # Version 1 is read-only now: nothing locks, and the tick is told so.
-    assert await service.lock_writes(2031, 1, ["tiers"]) == ([], ["tiers"])
-
-
-@pytest.mark.asyncio
-async def test_lock_writes_on_a_superseded_version_report_every_wanted_section_as_not_locked() -> None:
-    store = FakeStore()
-    service = _service(store)
-    await service.create_version(fictional_rules(), actor=FINANCE)
-    await service.approve_sections(2031, 1, ["income", "tiers"], actor=FINANCE, note="Finance committee")
-    await service.lock_section(2031, 1, "income", actor=FINANCE)
-    await service.new_version(2031, 1, actor=FINANCE)
-    writes, not_locked = await service.lock_writes(2031, 1, ["tiers", "income", "round2"])
-    assert (writes, not_locked) == ([], ["tiers", "round2"])  # income is already locked: it needs nothing
 
 
 @pytest.mark.asyncio
@@ -746,15 +651,37 @@ async def test_latest_approved_is_none_until_every_named_section_is_approved() -
     assert found.version == 1
 
 
+async def _knock_back_programs(
+    service: FinancialAidRulesService, store: FakeStore, version: int, document: AidRules
+) -> None:
+    """Seed what a whole-document save once wrote: `document` stored on `version` with `programs` sent back to draft,
+    logged as a "save". Written through the store because the rules PUT now refuses this knock-back (ruling 1)."""
+    current = await service.load(2031, version)
+    status = {**current.section_status, "programs": initial_status()["programs"]}
+    data = {"document": _dump(document), "section_status": status_to_json(status)}
+    write = AidWrite(
+        collection="aid_rules",
+        action="update",
+        year=2031,
+        record_id=current.record_id,
+        before=_stored(current),
+        data=data,
+        log_action="save",
+        entity_id=f"2031:{version}",
+    )
+    await store.commit([write], actor=FINANCE)
+
+
 @pytest.mark.asyncio
 async def test_latest_approved_skips_a_newer_version_whose_section_went_back_to_draft() -> None:
-    service = _service()
+    store = FakeStore()
+    service = _service(store)
     await service.create_version(fictional_rules(), actor=FINANCE)
     for section in ("programs", "cost"):
         await service.approve_section(2031, 1, section, actor=FINANCE, note="Approved.")
     await service.new_version(2031, 1, actor=FINANCE)
     edited = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
-    await service.save(2031, 2, edited, actor=FINANCE)  # an edit sends programs back to draft
+    await _knock_back_programs(service, store, 2, edited)  # programs back to draft (the PUT now refuses this)
     found = await service.latest_approved(2031, ("programs", "cost"))
     assert found is not None
     assert (found.version, found.document.programs["summer"].label) == (1, "Summer")
@@ -836,7 +763,7 @@ async def test_an_edit_after_the_date_does_not_change_the_document_the_date_show
     service, store, clock = await _made_jan_approved_feb()
     clock.now = MAR
     renamed = with_lever(fictional_rules(), "programs.summer.label", "Summer, renamed")
-    await service.save(2031, 1, renamed, actor=FINANCE)
+    await _knock_back_programs(service, store, 1, renamed)  # the PUT now refuses this knock-back (ruling 1)
     await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
     _label_in_order(store, reverse=reverse)  # the save and the approval share March's instant
     then = await service.approved_as_of(2031, _PRICING, FEB + DAY)
@@ -889,7 +816,8 @@ async def test_a_newer_version_whose_create_row_is_lost_is_refused_not_skipped()
     clock.now = MAR
     await service.new_version(2031, 1, actor=FINANCE)
     clock.now = APR
-    await service.save(2031, 2, with_lever(fictional_rules(), "programs.summer.label", "Renamed"), actor=FINANCE)
+    # The PUT now refuses this knock-back (ruling 1), so seed it through the store.
+    await _knock_back_programs(service, store, 2, with_lever(fictional_rules(), "programs.summer.label", "Renamed"))
     store.log_rows = [r for r in store.log_rows if not (r.entity_id == "2031:2" and r.before is None)]
     for at in (MAR + DAY, APR + DAY):
         with pytest.raises(RulesHistoryIncompleteError):

@@ -2,18 +2,20 @@
 
 Reads and writes go through FastAPI's superuser client: all five PocketBase rules
 on `aid_rules` are null, so nothing else can reach the table. The routes in
-api/routers/financial_aid.py gate every call on `financial_aid.rules`; this
+api/routers/financial_aid.py gate every call on `financial_aid.rules`, except
+D76's approved read (`approved_view`), which needs `financial_aid.view`; this
 module does no permission check of its own.
 
-A version is (year, version). Each section has its own lifecycle
-(bunking.financial_aid.rules.lifecycle): saving a change to an approved section
-sends it back to draft, and a change to a locked section is refused -- that
-change needs a new version. Because sections refer to each other, `save` judges
+A version is (year, version). Each section has its own lifecycle (bunking.financial_aid.rules.lifecycle): saving a
+change to an approved section sends it back to draft, and a change to a locked section is refused -- that change
+needs a new version. Because sections refer to each other, `save` judges
 the whole document after the edit: an approved section the edit leaves with
 validation errors also goes back to draft (each such change is recorded), and
 an edit that would give a locked section new errors is refused. A draft with
 validation errors still saves, and the report comes back with it, so staff see
-what is wrong; approval and locking are what errors block.
+what is wrong; approval and locking are what errors block. (On the version
+pricing the season, SP9 refuses such a save rather than send approved sections
+back to draft: see below.)
 
 A write to `save`, `approve_section` or `lock_section` targets a specific
 version; if that version is no longer the latest for its year, the write is
@@ -31,6 +33,13 @@ for an approval or a lock; an approval's note, which names the approving body
 (D39), is its reason. A save that sends approved sections back to draft logs
 that in the same row, as the section_status change.
 
+SP9 adds the rules draft: `save_sections` (the section editors' and a promotion's save, which never overwrites an
+approved or locked section in use: see `_protected`), a
+first lock that reaches an open rules draft (`lock_writes`), the Rules tab's `draft_view`, D76's `approved_view`, and
+`promotion_preview` / `promote` ("Make B2 the rules draft"). The whole-document `save` refuses to touch an approved
+section of the version pricing the season, or of programs and cost on the version intake reads
+(`PricingVersionInUseError`).
+
 Every refusal raised here subclasses FinancialAidError, so a router can map
 them with one `except` without catching pydantic's ValidationError.
 """
@@ -38,15 +47,19 @@ them with one `except` without catching pydantic's ValidationError.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Final, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
+from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
+from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
@@ -68,8 +81,10 @@ from bunking.financial_aid.rules.lifecycle import (
     apply_edit,
     approve,
     carry_forward,
+    changed_sections,
     initial_status,
     lock,
+    stamp_edits,
     status_from_json,
     status_to_json,
 )
@@ -81,6 +96,25 @@ PAGE_SIZE = 1000
 # Every paged read ends its sort on the record id: LIMIT/OFFSET paging without a
 # total order can skip or repeat a row.
 STABLE_SORT = "id"
+
+# The sections a decision is priced by (sub-project 10a): pricing uses the newest version in which every one
+# is approved or locked. Moved here from the decisions service by SP9, which needs it to know which version
+# prices the season (a save of an approved or locked section there always branches; D76's approved read serves
+# the pricing sections from that version).
+PRICING_SECTIONS: Final[tuple[SectionName, ...]] = (
+    "income",
+    "tiers",
+    "equity",
+    "award_tables",
+    "programs",
+    "cost",
+    "grants",
+    "awards",
+    "round2",
+    "round3",
+    "budget",
+    "quality_checks",  # pricing reads the hold-check thresholds, so a draft's settings must not hold live requests
+)
 
 
 class RulesNotFoundError(FinancialAidError, LookupError):
@@ -105,6 +139,167 @@ class NotLatestVersionError(FinancialAidError, ValueError):
 
 class NoSectionsNamedError(FinancialAidError, ValueError):
     """An approval must name at least one section."""
+
+
+class PricingVersionInUseError(FinancialAidError, ValueError):
+    """A whole-document save would change an approved or locked section of a version that is read for it (the whole
+    version when it prices the season, programs and cost when only intake reads it); the section editor branches a
+    new version instead."""
+
+
+class ReplacementNotAcknowledgedError(FinancialAidError, ValueError):
+    """A promotion would replace changes the person did not confirm replacing (D39's warning)."""
+
+    def __init__(self, sections: list[SectionName]) -> None:
+        super().__init__(
+            "This option replaces other changes in the rules draft's "
+            + ", ".join(sections)
+            + ": confirm each of those sections to replace them"
+        )
+        self.sections = sections
+
+
+ReplacementKind = Literal["unapproved_edit", "changed_since"]
+
+
+@dataclass(frozen=True)
+class ReplacementWarning:
+    """unapproved_edit: someone's change not yet approved (who, when, from which option); changed_since: an
+    approved change made after the option's starting point, which the option would undo (who approved it)."""
+
+    kind: ReplacementKind
+    by: str | None
+    at: datetime | None
+    via: str | None
+    # Stands for exactly what the preview showed: the rules draft's copy of the section (content and edit stamps) and
+    # the option's. `promote` accepts an acknowledgement only with this token, so a re-edit since the preview, or a
+    # different option, invalidates it.
+    token: str = ""
+
+
+@dataclass(frozen=True)
+class PromotionSection:
+    section: SectionName
+    changes: tuple[FieldChange, ...]  # the rules draft now -> the option
+    warning: ReplacementWarning | None
+
+
+@dataclass(frozen=True)
+class PromotionPreview:
+    origin_version: int
+    base_version: int  # the rules draft (the latest version) this preview was made against
+    sections: tuple[PromotionSection, ...]
+    unchanged: tuple[SectionName, ...]
+
+
+class SectionInvalidError(FinancialAidError, ValueError):
+    """A section editor's content is not a valid section; the message names each bad field."""
+
+
+@dataclass(frozen=True)
+class SectionSaveResult:
+    """A section save: the version it landed on, that version's validation report, and the version it branched
+    from (None when it saved in place)."""
+
+    version: RulesVersion
+    report: ValidationReport
+    branched_from: int | None
+
+
+@dataclass(frozen=True)
+class DraftSection:
+    """One section of the rules draft: its status and its field-level changes against the version pricing the
+    season (none when the draft IS that version, or no version prices it yet): "Draft · n changes"."""
+
+    section: SectionName
+    status: SectionStatus
+    changes: tuple[FieldChange, ...]
+
+
+@dataclass(frozen=True)
+class RulesDraft:
+    version: RulesVersion
+    approved_version: int | None
+    report: ValidationReport
+    sections: tuple[DraftSection, ...]
+
+
+@dataclass(frozen=True)
+class ApprovedSection:
+    """One section as D76 shows it, from `version`: its content only when approved or locked there. A section
+    approved nowhere has no content, no version and a bare draft status (no edit stamps): the registrar never
+    sees a draft."""
+
+    section: SectionName
+    status: SectionStatus
+    content: dict[str, Any] | None
+    version: int | None
+
+
+@dataclass(frozen=True)
+class ApprovedRules:
+    year: int
+    version: int | None  # the version pricing the season (or the one asked for); None when none prices yet
+    sections: tuple[ApprovedSection, ...]
+
+
+_HELD: Final = ("approved", "locked")
+
+
+def _approved_section(version: RulesVersion | None, name: SectionName) -> ApprovedSection:
+    if version is None or version.section_status[name].state not in _HELD:
+        return ApprovedSection(name, SectionStatus(), None, None)
+    content = version.document.model_dump(mode="json")[name]
+    return ApprovedSection(name, version.section_status[name], content, version.version)
+
+
+def _replacement(
+    current: RulesVersion, origin: RulesVersion, wanted: AidRules, section: SectionName
+) -> ReplacementWarning | None:
+    if getattr(current.document, section) == getattr(origin.document, section):
+        return None
+    status = current.section_status[section]
+    shown = {
+        "section": section,
+        "now": current.document.model_dump(mode="json")[section],
+        "status": status.model_dump(mode="json"),
+        "option": wanted.model_dump(mode="json")[section],
+    }
+    token = hashlib.sha256(json.dumps(shown, sort_keys=True).encode()).hexdigest()[:16]
+    if status.state == "draft":
+        return ReplacementWarning("unapproved_edit", status.edited_by, status.edited_at, status.edited_via, token)
+    return ReplacementWarning("changed_since", status.approved_by, status.approved_at, None, token)
+
+
+def parse_section(document: AidRules, section: SectionName, content: Mapping[str, Any]) -> AidRules:
+    """`document` with `section` replaced by `content` (that section's JSON, as its editor sends it), validated
+    as a whole document so a section is judged exactly as a full save would judge it."""
+    body = document.model_dump(mode="json")
+    body[section] = dict(content)
+    try:
+        return AidRules.model_validate(body)
+    except ValidationError as exc:
+        details = "; ".join(f"{'.'.join(str(part) for part in e['loc'])}: {e['msg']}" for e in exc.errors())
+        raise SectionInvalidError(f"{section} is not a valid section: {details}") from exc
+
+
+def _protected(current: RulesVersion, parent: RulesVersion | None, section: SectionName, *, in_use: bool) -> bool:
+    """True when editing `section` in place would lose approved rules, so the edit belongs in a new version.
+
+    A draft section never is. An approved or locked one is when `current` prices the season (`in_use`), or when
+    `current` holds the newest approved copy: its same-year parent doesn't have the same content held the same
+    way. A lock `current` merely carried from its parent (carry_forward copies locks), or an approval where the
+    parent has it approved or locked, is a copy; the parent keeps it.
+    """
+    state = current.section_status[section].state
+    if state == "draft":
+        return False
+    if in_use or parent is None:
+        return True
+    held = parent.section_status[section].state
+    same = getattr(parent.document, section) == getattr(current.document, section)
+    carried = held == state or (state == "approved" and held == "locked")
+    return not (same and carried)
 
 
 class RulesHistoryIncompleteError(FinancialAidError, LookupError):
@@ -314,6 +509,52 @@ class FinancialAidRulesService:
                 return version
         return None
 
+    async def draft_view(self, year: int) -> RulesDraft:
+        """The Rules tab (spec §7.5, D39): the rules draft (the latest version) section by section, each with its
+        status and its changes against the version pricing the season."""
+        current = await self.load(year)
+        approved = await self.latest_approved(year, PRICING_SECTIONS)
+        report = await self.validate_document(current.document)
+        base = approved.document.model_dump() if approved is not None and approved.version != current.version else None
+        now = current.document.model_dump()
+        sections = tuple(
+            DraftSection(
+                section=name,
+                status=current.section_status[name],
+                changes=tuple(field_changes(base[name], now[name])) if base is not None else (),
+            )
+            for name in SECTION_NAMES
+        )
+        return RulesDraft(current, approved.version if approved is not None else None, report, sections)
+
+    async def approved_view(self, year: int, version: int | None = None) -> ApprovedRules:
+        """D76: the approved rules, read only. Drafts are withheld.
+
+        With `version` (a receipt's link): that version alone. Without it, section by section (review ruling,
+        plan Decision 5): each PRICING_SECTIONS section from the version pricing the season when there is one
+        (the rules that price the registrar's work), and every other section -- or a pricing section while no
+        version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
+        [section])`). So editing stages or milestones in a draft never blanks the read.
+        """
+        if version is not None:
+            chosen = await self.load(year, version)
+            if all(chosen.section_status[n].state not in _HELD for n in SECTION_NAMES):
+                raise RulesNotFoundError(f"{year} version {version} has no approved rules")
+            return ApprovedRules(year, chosen.version, tuple(_approved_section(chosen, n) for n in SECTION_NAMES))
+        versions = [_to_version(row) for row in await self._store.list_versions(year)]
+
+        def newest(names: Collection[SectionName]) -> RulesVersion | None:
+            return next((v for v in reversed(versions) if all(v.section_status[n].state in _HELD for n in names)), None)
+
+        pricing = newest(PRICING_SECTIONS)
+        sections = tuple(
+            _approved_section(pricing if pricing is not None and name in PRICING_SECTIONS else newest([name]), name)
+            for name in SECTION_NAMES
+        )
+        if all(section.content is None for section in sections):
+            raise RulesNotFoundError(f"{year} has no approved rules yet")
+        return ApprovedRules(year, pricing.version if pricing is not None else None, sections)
+
     async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
         """The version that priced `year` at the instant `at` (the as-of reads, 3c): each version's
         document and section statuses replayed from aid_change_log to `at` (every create, save,
@@ -397,8 +638,33 @@ class FinancialAidRulesService:
         before = validate_rules(current.document, context)
         report = validate_rules(document, context)
         outcome = apply_edit(current.document, document, current.section_status, before=before, after=report)
+        touched = [*changed_sections(current.document, document), *outcome.reverted]
+        # The version that prices the season is guarded whole; one only intake reads, for programs and cost.
+        in_use = await self._sections_in_use(current)
+        refused = [
+            name
+            for name in dict.fromkeys(touched)
+            if name in in_use and current.section_status[name].state in ("approved", "locked")
+        ]
+        if refused:
+            pricing = await self.latest_approved(year, PRICING_SECTIONS)
+            prices = pricing is not None and pricing.version == current.version
+            intake = await self.latest_approved(year, INTAKE_RULES_SECTIONS)
+            reads = intake is not None and intake.version == current.version
+            role = " and ".join(
+                part for part, on in (("prices the season", prices), ("is read by intake", reads)) if on
+            )
+            raise PricingVersionInUseError(
+                f"Version {current.version} of {year} {role}: a whole-document save would send its approved "
+                f"section(s) {', '.join(refused)} back to draft. "
+                "Use the section editor, which branches a new version"
+            )
+        # This save doesn't stamp (plan Decision 4), so a section it touches drops any earlier edit stamp rather than
+        # keep naming someone who no longer made its last change.
+        unstamped = {"edited_by": None, "edited_at": None, "edited_via": None}
+        status = {name: s.model_copy(update=unstamped) if name in touched else s for name, s in outcome.status.items()}
         stored = _stored(current)
-        data = {"document": _dump(document), "section_status": status_to_json(outcome.status)}
+        data = {"document": _dump(document), "section_status": status_to_json(status)}
         if data == stored:
             return current, report  # nothing changed: nothing to write or log
         write = AidWrite(
@@ -413,6 +679,171 @@ class FinancialAidRulesService:
         )
         await self._store.commit([write], actor=actor)
         return await self.load(year, current.version), report
+
+    async def save_sections(
+        self, year: int, base_version: int, candidate: AidRules, *, actor: str, via: str | None = None
+    ) -> SectionSaveResult:
+        """Save `candidate` over the rules draft (the latest version), which the editor opened as `base_version`.
+
+        This is the section editors' save and a promotion's (SP9, spec §7.5, D39). Unlike the whole-document
+        `save`, it never overwrites an approved or locked section in use. (`quality_checks` is a pricing
+        section, so a never-approved one does not price the season either.) When a changed section is approved or
+        locked here and `_protected` says the approved copy would be lost, the whole candidate becomes a new version
+        (parent = this one): changed approved sections go to draft there, and a changed locked section's lock is
+        lifted there only. Otherwise it saves in place, lifting any lock that is only a copy of the parent's.
+
+        Each section the edit touched (changed, or sent back to draft by it) is stamped with `actor`, the time and
+        `via` (the kept option it came from). One operation, one log row: "save" on the version written. A save
+        that changes nothing writes nothing.
+        """
+        if candidate.year != year:
+            raise YearMismatchError(f"The document is for {candidate.year}, not {year}")
+        current = await self._rules_draft(year, base_version)
+        return await self._save_over(current, candidate, actor=actor, via=via)
+
+    async def save_section(
+        self, year: int, base_version: int, section: SectionName, content: Mapping[str, Any], *, actor: str
+    ) -> SectionSaveResult:
+        """One section editor's save: `content` (that section's JSON) merged into the rules draft this call loads,
+        then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
+        earlier, means a save that landed in between is never silently reverted."""
+        current = await self._rules_draft(year, base_version)
+        return await self._save_over(current, parse_section(current.document, section, content), actor=actor, via=None)
+
+    async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
+        current = await self.load(year)
+        if current.version != base_version:
+            raise NotLatestVersionError(
+                f"Version {base_version} of {year} is not the rules draft any more (version {current.version} is); "
+                "reload it and make the change again"
+            )
+        return current
+
+    async def _save_over(
+        self, current: RulesVersion, candidate: AidRules, *, actor: str, via: str | None
+    ) -> SectionSaveResult:
+        year = current.year
+        context = await self._context(year)
+        before = validate_rules(current.document, context)
+        changed = changed_sections(current.document, candidate)
+        if not changed:
+            return SectionSaveResult(current, before, None)
+        after = validate_rules(candidate, context)
+        in_use = await self._sections_in_use(current)
+        parent = await self._same_year_parent(current)
+        locked = [name for name in changed if current.section_status[name].state == "locked"]
+        outcome = apply_edit(
+            current.document,
+            candidate,
+            carry_forward(current.section_status, unlock=locked),
+            before=before,
+            after=after,
+        )
+        # apply_edit also sends an UNCHANGED approved section back to draft when the edit gives it new
+        # validation errors: that loses its approval as surely as editing it, so it counts toward branching.
+        touched = [name for name in SECTION_NAMES if name in changed or name in outcome.reverted]
+        branch = any(_protected(current, parent, name, in_use=name in in_use) for name in touched)
+        status = stamp_edits(outcome.status, touched, by=actor, at=self._clock(), via=via)
+        if branch:
+            number = await self._next_version(year)
+            body = _body(year, number, candidate, status, parent_year=year, parent_version=current.version)
+            write = AidWrite(
+                collection=AID_RULES,
+                action="create",
+                year=year,
+                data=body,
+                log_action="save",
+                entity_id=_entity_id(year, number),
+            )
+            await self._store.commit([write], actor=actor)
+            return SectionSaveResult(await self.load(year, number), after, current.version)
+        write = AidWrite(
+            collection=AID_RULES,
+            action="update",
+            year=year,
+            record_id=current.record_id,
+            before=_stored(current),
+            data={"document": _dump(candidate), "section_status": status_to_json(status)},
+            log_action="save",
+            entity_id=_entity_id(year, current.version),
+        )
+        await self._store.commit([write], actor=actor)
+        return SectionSaveResult(await self.load(year, current.version), after, None)
+
+    async def promotion_preview(self, year: int, *, origin_version: int, document: AidRules) -> PromotionPreview:
+        """ "Make B2 the rules draft" (D39): the sections the option changed from the rules version its lineage
+        started from (`origin_version`) and that differ from the rules draft now, each old -> new, with a warning
+        where the rules draft's copy has moved since that starting point."""
+        if document.year != year:
+            raise YearMismatchError(f"The document is for {document.year}, not {year}")
+        origin = await self.load(year, origin_version)
+        current = await self.load(year)
+        moved = set(changed_sections(origin.document, document))
+        now, wanted = current.document.model_dump(), document.model_dump()
+        entries = tuple(
+            PromotionSection(
+                name, tuple(field_changes(now[name], wanted[name])), _replacement(current, origin, document, name)
+            )
+            for name in SECTION_NAMES
+            if name in moved and getattr(current.document, name) != getattr(document, name)
+        )
+        listed = {entry.section for entry in entries}
+        unchanged = tuple(name for name in SECTION_NAMES if name not in listed)
+        return PromotionPreview(origin_version, current.version, entries, unchanged)
+
+    async def promote(
+        self,
+        year: int,
+        *,
+        origin_version: int,
+        document: AidRules,
+        base_version: int,
+        acknowledged: Mapping[SectionName, str],
+        actor: str,
+        via: str,
+    ) -> SectionSaveResult:
+        """Copy the previewed sections from the option into the rules draft as one save (`save_sections`, so the
+        approved rules in use are never overwritten), stamped `via` the option's code. Refused when the rules draft
+        moved past `base_version`, or when a warned section is not acknowledged with the token the preview returned
+        for it. A section re-edited since the preview has a new token, so its old acknowledgement is refused and the
+        section named; nothing is written then."""
+        preview = await self.promotion_preview(year, origin_version=origin_version, document=document)
+        if preview.base_version != base_version:
+            raise NotLatestVersionError(
+                f"The rules draft is version {preview.base_version} now, not {base_version}: look at the changes again"
+            )
+        unconfirmed = [
+            s.section
+            for s in preview.sections
+            if s.warning is not None and not (s.warning.token and acknowledged.get(s.section) == s.warning.token)
+        ]
+        if unconfirmed:
+            raise ReplacementNotAcknowledgedError(unconfirmed)
+        current = await self.load(year, base_version)
+        candidate = current.document.model_copy(
+            update={entry.section: getattr(document, entry.section) for entry in preview.sections}
+        )
+        return await self.save_sections(year, base_version, candidate, actor=actor, via=via)
+
+    async def _sections_in_use(self, version: RulesVersion, *, intake: bool = True) -> frozenset[SectionName]:
+        """The sections of `version` a save must not overwrite because a reader takes them from it: every
+        section when it prices the season, and just intake's (programs, cost) when only intake reads it. Editing
+        an unread section of an intake-only version moves nothing, so it may still save in place."""
+        pricing = await self.latest_approved(version.year, PRICING_SECTIONS)
+        if pricing is not None and pricing.version == version.version:
+            return frozenset(SECTION_NAMES)
+        if not intake:
+            return frozenset()
+        read = await self.latest_approved(version.year, INTAKE_RULES_SECTIONS)
+        if read is not None and read.version == version.version:
+            return frozenset(INTAKE_RULES_SECTIONS)
+        return frozenset()
+
+    async def _same_year_parent(self, version: RulesVersion) -> RulesVersion | None:
+        """The version `version` was copied from in the same season; None for version 1 or "start from last year"."""
+        if version.parent_year != version.year or not version.parent_version:
+            return None
+        return await self.load(version.year, version.parent_version)
 
     async def approve_section(
         self, year: int, version: int, section: SectionName, *, actor: str, note: str | None
@@ -457,34 +888,40 @@ class FinancialAidRulesService:
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
     ) -> tuple[list[AidWrite], list[SectionName]]:
-        """The writes that lock `sections` of `version` when a round that read them is first posted
+        """The writes that lock `sections` when a round that read them, priced on `version`, is first posted
         (spec §7.5, sub-project 10a), for the caller to commit in the SAME operation as the tick.
 
-        A section already locked needs no write. Nothing locks on a version that is no longer the
-        latest (it is read-only already), so every section it wanted comes back not locked. A
-        section that can't lock (not approved, or the document has a validation error) is returned
-        in the second list: the tick still stands, and says so.
+        Wanted: each named section not already locked on `version`. Writes only ever go to the LATEST version.
+        When `version` is the latest, each wanted section locks there. When a rules draft has branched above it
+        (SP9a, plan Decision 18, amending SP10a Decision 11), a wanted section whose content in the latest version
+        equals `version`'s is locked there -- the draft carries the very rules the round read -- while a section
+        the draft changed is the draft's own edit and stays unlocked. A section already locked in the latest
+        needs no write. Anything that can't lock (changed in the draft, not approved there, or the latest
+        document has a validation error) is returned in the second list, in section order: the tick still
+        stands, and says so.
         """
-        current = await self.load(year, version)
-        wanted = [s for s in SECTION_NAMES if s in sections and current.section_status[s].state != "locked"]
-        if not wanted:
-            return [], []
-        if await self._latest_version_number(year) != version:
-            return [], wanted
-        report = await self.validate_document(current.document)
-        at = self._clock()
-        status = current.section_status
+        priced = await self.load(year, version)
+        latest = await self.load(year)
+        wanted = [s for s in SECTION_NAMES if s in sections and priced.section_status[s].state != "locked"]
+        changed: set[SectionName] = set()
+        if latest.version != version:
+            changed = {s for s in wanted if getattr(latest.document, s) != getattr(priced.document, s)}
+        lockable = [s for s in wanted if s not in changed and latest.section_status[s].state != "locked"]
+        not_locked: list[SectionName] = [s for s in wanted if s in changed]
         writes: list[AidWrite] = []
-        not_locked: list[SectionName] = []
-        for section in wanted:
-            try:
-                updated = lock(status, section, at=at, report=report)
-            except SectionNotApprovedError, DocumentHasErrorsError:
-                not_locked.append(section)
-                continue
-            writes.append(_status_write(current, status, updated, section, log_action="lock", reason=None))
-            status = updated
-        return writes, not_locked
+        if lockable:
+            report = await self.validate_document(latest.document)
+            at = self._clock()
+            status = latest.section_status
+            for section in lockable:
+                try:
+                    updated = lock(status, section, at=at, report=report)
+                except SectionNotApprovedError, DocumentHasErrorsError:
+                    not_locked.append(section)
+                    continue
+                writes.append(_status_write(latest, status, updated, section, log_action="lock", reason=None))
+                status = updated
+        return writes, sorted(not_locked, key=SECTION_NAMES.index)
 
     async def new_version(
         self, year: int, from_version: int, *, actor: str, unlock: Collection[SectionName] = ()

@@ -7,7 +7,8 @@ writes including payer shares and the income override (financial_aid.casework),
 and session capacity (financial_aid.rules). The rules routes (`/rules/...`, the
 rules loader) read, validate, create, save and approve a season's rules
 document (financial_aid.rules); an approval's note names the approving body
-(D39). Every aid_* collection is superuser-only in PocketBase, so these routes
+(D39). SP9a adds the rules draft read, the section editor's save, a new version, and D76's approved
+read for financial_aid.view. Every aid_* collection is superuser-only in PocketBase, so these routes
 are the only way in. Every ledger write passes the real signed-in person
 (user.email); the write service records it (spec sec 14.4).
 
@@ -94,7 +95,18 @@ from api.schemas.financial_aid_intake import (
     RequestStatus,
     SessionResolve,
 )
-from api.schemas.financial_aid_rules import RulesApproveIn, RulesDocumentIn, RulesVersionOut
+from api.schemas.financial_aid_rules import (
+    ApprovedRulesOut,
+    ApprovedSectionOut,
+    DraftSectionOut,
+    NewVersionIn,
+    RulesApproveIn,
+    RulesDocumentIn,
+    RulesDraftOut,
+    RulesVersionOut,
+    SectionSaveIn,
+    field_change_out,
+)
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -120,8 +132,12 @@ from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_rules_service import (
     AidRulesRepository,
+    ApprovedRules,
     FinancialAidRulesService,
     NotLatestVersionError,
+    PricingVersionInUseError,
+    ReplacementNotAcknowledgedError,
+    RulesDraft,
     RulesNotFoundError,
     RulesVersion,
     VersionExistsError,
@@ -129,7 +145,7 @@ from api.services.financial_aid_rules_service import (
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.financial_aid.errors import FinancialAidError
-from bunking.financial_aid.rules import AidRules, ValidationReport
+from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
@@ -188,7 +204,15 @@ def _rules() -> FinancialAidRulesService:
 def _rules_http(exc: FinancialAidError) -> HTTPException:
     if isinstance(exc, RulesNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, (VersionExistsError, NotLatestVersionError)):
+    if isinstance(
+        exc,
+        (
+            VersionExistsError,
+            NotLatestVersionError,
+            PricingVersionInUseError,
+            ReplacementNotAcknowledgedError,
+        ),
+    ):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -207,6 +231,50 @@ def _rules_out(version: RulesVersion, report: ValidationReport) -> RulesVersionO
         document=version.document,
         section_status=version.section_status,
         report=report,
+    )
+
+
+def _draft_out(draft: RulesDraft, *, branched_from: int | None = None) -> RulesDraftOut:
+    version = draft.version
+    return RulesDraftOut(
+        year=version.year,
+        version=version.version,
+        parent_year=version.parent_year,
+        parent_version=version.parent_version,
+        approved_version=draft.approved_version,
+        document=version.document,
+        report=draft.report,
+        branched_from=branched_from,
+        sections=[
+            DraftSectionOut(
+                section=s.section,
+                status=s.status,
+                changes=[field_change_out(c) for c in s.changes],
+                errors=sum(1 for i in draft.report.errors if i.section == s.section),
+                warnings=sum(1 for i in draft.report.warnings if i.section == s.section),
+            )
+            for s in draft.sections
+        ],
+    )
+
+
+def _approved_out(rules: ApprovedRules) -> ApprovedRulesOut:
+    return ApprovedRulesOut(
+        year=rules.year,
+        version=rules.version,
+        sections=[
+            ApprovedSectionOut(
+                section=s.section,
+                version=s.version,
+                state=s.status.state,
+                approved_by=s.status.approved_by,
+                approved_at=s.status.approved_at,
+                note=s.status.note,
+                locked_at=s.status.locked_at,
+                content=s.content,
+            )
+            for s in rules.sections
+        ],
     )
 
 
@@ -532,7 +600,9 @@ async def save_aid_rules(
     year: _Year, version: _Version, body: RulesDocumentIn, user: AuthUser = _RULES
 ) -> RulesVersionOut:
     """Save the whole document over the latest version. Changed approved sections go back to draft;
-    a change to a locked section is refused (make a new version)."""
+    a change to a locked section is refused (make a new version). 409 when the version prices the season, or
+    is the one intake reads for `programs` and `cost`, and the save would change an approved or locked section
+    there, or send one back to draft: use the section editor, which branches a new version."""
     _same_year(year, body.document)
     try:
         saved, report = await _rules().save(year, version, body.document, actor=user.email)
@@ -553,6 +623,56 @@ async def approve_aid_rules_sections(
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc
     return _rules_out(approved, report)
+
+
+@router.get("/rules/{year}/draft", response_model=RulesDraftOut)
+async def get_aid_rules_draft(year: _Year, user: AuthUser = _RULES) -> RulesDraftOut:
+    """The rules draft section by section, each with its status and its changes against the approved rules
+    pricing the season (spec §7.5, D39)."""
+    try:
+        return _draft_out(await _rules().draft_view(year))
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.put("/rules/{year}/sections/{section}", response_model=RulesDraftOut)
+async def save_aid_rules_section(
+    year: _Year, section: SectionName, body: SectionSaveIn, user: AuthUser = _RULES
+) -> RulesDraftOut:
+    """One section editor's save. It lands in a new version rather than overwrite the approved rules in use
+    (`branched_from` names the version it came from); 409 when the rules draft moved on since the editor opened."""
+    service = _rules()
+    try:
+        saved = await service.save_section(year, body.base_version, section, body.content, actor=user.email)
+        return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.post("/rules/{year}/versions/{version}/new-version", response_model=RulesVersionOut, status_code=201)
+async def start_aid_rules_version(
+    year: _Year, version: _Version, body: NewVersionIn, user: AuthUser = _RULES
+) -> RulesVersionOut:
+    """A new version copied from `version`, keeping every approval and every lock except those in `unlock`."""
+    service = _rules()
+    try:
+        created = await service.new_version(year, version, actor=user.email, unlock=body.unlock)
+        return _rules_out(created, await service.validate_document(created.document))
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
+
+
+@router.get("/rules/{year}/approved", response_model=ApprovedRulesOut)
+async def get_approved_aid_rules(
+    year: _Year, version: int | None = Query(default=None, ge=1), user: AuthUser = _VIEW
+) -> ApprovedRulesOut:
+    """D76: the approved rules, read only, for everyone with view. Without `version`, section by section: the
+    pricing sections from the version pricing the season, every other section from the newest version where it is
+    approved or locked. With `version` (a receipt's link), that version alone. A draft section has no content."""
+    try:
+        return _approved_out(await _rules().approved_view(year, version))
+    except FinancialAidError as exc:
+        raise _rules_http(exc) from exc
 
 
 # --- grants (sub-project 6-core) ----------------------------------------------------

@@ -616,6 +616,80 @@ export type ApproveRequest = {
 }
 
 /**
+ * ApprovedRulesOut
+ *
+ * D76: the approved rules, read only.
+ */
+export type ApprovedRulesOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Version
+   */
+  version: number | null
+  /**
+   * Sections
+   */
+  sections: Array<ApprovedSectionOut>
+}
+
+/**
+ * ApprovedSectionOut
+ */
+export type ApprovedSectionOut = {
+  /**
+   * Section
+   */
+  section:
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  /**
+   * Version
+   */
+  version: number | null
+  /**
+   * State
+   */
+  state: 'draft' | 'approved' | 'locked'
+  /**
+   * Approved By
+   */
+  approved_by: string | null
+  /**
+   * Approved At
+   */
+  approved_at: string | null
+  /**
+   * Note
+   */
+  note: string | null
+  /**
+   * Locked At
+   */
+  locked_at: string | null
+  /**
+   * Content
+   */
+  content: {
+    [key: string]: unknown
+  } | null
+}
+
+/**
  * AskIn
  *
  * A family's ask for Round 2 (an appeal) or Round 3, keyed when it arrives (D91, D82). Round 3's
@@ -3032,6 +3106,43 @@ export type DispositionsResponse = {
 }
 
 /**
+ * DraftSectionOut
+ */
+export type DraftSectionOut = {
+  /**
+   * Section
+   */
+  section:
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  status: SectionStatus
+  /**
+   * Changes
+   */
+  changes: Array<FieldChangeOut>
+  /**
+   * Errors
+   */
+  errors: number
+  /**
+   * Warnings
+   */
+  warnings: number
+}
+
+/**
  * DrilldownAttendee
  *
  * Attendee record for drill-down display.
@@ -3500,6 +3611,30 @@ export type FamilyRateOutput = {
    * Child
    */
   child?: string | null
+}
+
+/**
+ * FieldChangeOut
+ *
+ * One changed setting: its path inside the section, and its value before and after.
+ */
+export type FieldChangeOut = {
+  /**
+   * Path
+   */
+  path: Array<string>
+  /**
+   * Kind
+   */
+  kind: 'added' | 'removed' | 'changed'
+  /**
+   * Before
+   */
+  before?: unknown
+  /**
+   * After
+   */
+  after?: unknown
 }
 
 /**
@@ -6464,6 +6599,31 @@ export type NetTotalsResponse = {
    * Rows
    */
   rows: Array<NetAidTotal>
+}
+
+/**
+ * NewVersionIn
+ */
+export type NewVersionIn = {
+  /**
+   * Unlock
+   */
+  unlock?: Array<
+    | 'income'
+    | 'tiers'
+    | 'equity'
+    | 'award_tables'
+    | 'programs'
+    | 'cost'
+    | 'grants'
+    | 'awards'
+    | 'round2'
+    | 'round3'
+    | 'budget'
+    | 'stages'
+    | 'quality_checks'
+    | 'milestones'
+  >
 }
 
 /**
@@ -10629,6 +10789,44 @@ export type RulesDocumentIn = {
 }
 
 /**
+ * RulesDraftOut
+ *
+ * The Rules tab: the rules draft (the latest version) section by section (spec §7.5, D39).
+ */
+export type RulesDraftOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Version
+   */
+  version: number
+  /**
+   * Parent Year
+   */
+  parent_year: number | null
+  /**
+   * Parent Version
+   */
+  parent_version: number | null
+  /**
+   * Approved Version
+   */
+  approved_version: number | null
+  document: AidRulesOutput
+  /**
+   * Sections
+   */
+  sections: Array<DraftSectionOut>
+  report: ValidationReport
+  /**
+   * Branched From
+   */
+  branched_from?: number | null
+}
+
+/**
  * RulesVersionOut
  *
  * One version of a season's rules, each section's status, and the document's validation report.
@@ -11035,6 +11233,24 @@ export type SchoolEnrollment = {
 }
 
 /**
+ * SectionSaveIn
+ *
+ * One section editor's save: the section's whole JSON, and the rules draft version the editor opened.
+ */
+export type SectionSaveIn = {
+  /**
+   * Base Version
+   */
+  base_version: number
+  /**
+   * Content
+   */
+  content: {
+    [key: string]: unknown
+  }
+}
+
+/**
  * SectionStatus
  */
 export type SectionStatus = {
@@ -11058,6 +11274,18 @@ export type SectionStatus = {
    * Locked At
    */
   locked_at?: string | null
+  /**
+   * Edited By
+   */
+  edited_by?: string | null
+  /**
+   * Edited At
+   */
+  edited_at?: string | null
+  /**
+   * Edited Via
+   */
+  edited_via?: string | null
 }
 
 /**
@@ -18681,6 +18909,161 @@ export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprov
 
 export type ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponse =
   ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses[keyof ApproveAidRulesSectionsApiFinancialAidRulesYearVersionsVersionApprovePostResponses]
+
+export type GetAidRulesDraftApiFinancialAidRulesYearDraftGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/draft'
+}
+
+export type GetAidRulesDraftApiFinancialAidRulesYearDraftGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetAidRulesDraftApiFinancialAidRulesYearDraftGetError =
+  GetAidRulesDraftApiFinancialAidRulesYearDraftGetErrors[keyof GetAidRulesDraftApiFinancialAidRulesYearDraftGetErrors]
+
+export type GetAidRulesDraftApiFinancialAidRulesYearDraftGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesDraftOut
+}
+
+export type GetAidRulesDraftApiFinancialAidRulesYearDraftGetResponse =
+  GetAidRulesDraftApiFinancialAidRulesYearDraftGetResponses[keyof GetAidRulesDraftApiFinancialAidRulesYearDraftGetResponses]
+
+export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutData = {
+  body: SectionSaveIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Section
+     */
+    section:
+      | 'income'
+      | 'tiers'
+      | 'equity'
+      | 'award_tables'
+      | 'programs'
+      | 'cost'
+      | 'grants'
+      | 'awards'
+      | 'round2'
+      | 'round3'
+      | 'budget'
+      | 'stages'
+      | 'quality_checks'
+      | 'milestones'
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/sections/{section}'
+}
+
+export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutError =
+  SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutErrors[keyof SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutErrors]
+
+export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: RulesDraftOut
+}
+
+export type SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponse =
+  SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponses[keyof SaveAidRulesSectionApiFinancialAidRulesYearSectionsSectionPutResponses]
+
+export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostData = {
+  body: NewVersionIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Version
+     */
+    version: number
+  }
+  query?: never
+  url: '/api/financial-aid/rules/{year}/versions/{version}/new-version'
+}
+
+export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostError =
+  StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostErrors[keyof StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostErrors]
+
+export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: RulesVersionOut
+}
+
+export type StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostResponse =
+  StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostResponses[keyof StartAidRulesVersionApiFinancialAidRulesYearVersionsVersionNewVersionPostResponses]
+
+export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Version
+     */
+    version?: number | null
+  }
+  url: '/api/financial-aid/rules/{year}/approved'
+}
+
+export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetError =
+  GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetErrors[keyof GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetErrors]
+
+export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ApprovedRulesOut
+}
+
+export type GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetResponse =
+  GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetResponses[keyof GetApprovedAidRulesApiFinancialAidRulesYearApprovedGetResponses]
 
 export type ListGrantorsApiFinancialAidGrantorsGetData = {
   body?: never
