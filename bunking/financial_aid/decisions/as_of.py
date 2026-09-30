@@ -89,13 +89,11 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     ),
     "payer_shares_history": (
         "These requests' payer shares can't be replayed to that date, so whether CampMinder had reversed their "
-        "posted money is unknown and it is left empty. (Also as of today, not that date: a line's "
-        "funder-type reclassification and Go's attribution.)"
+        "posted money is unknown and it is left empty"
     ),
     "line_placements_history": (
         "The staff placements of some CampMinder lines can't be replayed to that date, so whether CampMinder "
-        "had reversed these requests' posted money is unknown and it is left empty. (Also as of today, not "
-        "that date: a line's funder-type reclassification and Go's attribution.)"
+        "had reversed these requests' posted money is unknown and it is left empty"
     ),
 }
 GRID_GAPS: Final[tuple[str, ...]] = (

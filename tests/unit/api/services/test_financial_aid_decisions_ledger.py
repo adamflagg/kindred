@@ -6,6 +6,7 @@ the Camp pool's Round 1 is allocated 340,000 of a 500,000 budget (see decisions_
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -24,6 +25,7 @@ from api.services.financial_aid_decisions_repository import (
 )
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import Placement, RegisterRow
+from api.services.financial_aid_reconciliation import confirmation
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -40,6 +42,7 @@ from tests.unit.api.services.decisions_fakes import (
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, LIAM, _posted, _service
+from tests.unit.api.services.test_financial_aid_reconciliation import POSTED_R1, R1
 
 APR1 = datetime(2027, 4, 1, 18, 0, tzinfo=UTC)
 JUN1 = datetime(2027, 6, 1, 18, 0, tzinfo=UTC)
@@ -116,29 +119,41 @@ async def test_camp_aid_lines_are_read_live_and_reversed_by_their_funder_type() 
     }
 
 
-def _run(trigger: str, year: int, ended: str) -> SimpleNamespace:
-    return SimpleNamespace(trigger=trigger, year=year, ended=ended)
+def _run(trigger: str, year: int, started: str) -> SimpleNamespace:
+    return SimpleNamespace(trigger=trigger, year=year, started=started)
 
 
-async def _last_sync(runs: list[SimpleNamespace], season: int = YEAR) -> tuple[datetime | None, MagicMock]:
+async def _last_sync(
+    runs: list[SimpleNamespace],
+    season: int = YEAR,
+    transactions: list[SimpleNamespace] | None = None,
+) -> tuple[datetime | None, MagicMock]:
+    """`runs` are the aid_postings runs; the transactions sync's runs are the same unless given."""
+    by_service = {"aid_postings": runs, "financial_transactions": runs if transactions is None else transactions}
+
+    def get_list(page: int, per_page: int, query_params: dict[str, Any]) -> SimpleNamespace:
+        service = query_params["filter"].split('"')[1]
+        return SimpleNamespace(items=by_service[service])
+
     pb = MagicMock()
-    pb.collection.return_value.get_list.return_value = SimpleNamespace(items=runs)
+    pb.collection.return_value.get_list.side_effect = get_list
     return await FinancialAidDecisionsRepository(pb).fetch_last_ledger_sync(season), pb
 
 
 @pytest.mark.asyncio
-async def test_the_last_ledger_sync_reads_the_seasons_window_of_successful_aid_postings_runs() -> None:
+async def test_the_last_ledger_sync_reads_the_seasons_window_of_successful_runs_of_both_syncs() -> None:
     found, pb = await _last_sync([_run("daily", YEAR, "2027-03-10 09:00:00.000Z")])
     assert found == datetime(2027, 3, 10, 9, 0, tzinfo=UTC)
     pb.collection.assert_called_with("sync_runs")
-    call = pb.collection.return_value.get_list.call_args
-    assert call.args[:2] == (1, 100)
-    query = call.kwargs["query_params"]
-    assert query["filter"] == (
-        f'service = "aid_postings" && status = "success" && year >= {YEAR - 1} && year <= {YEAR + 1}'
+    calls = pb.collection.return_value.get_list.call_args_list
+    assert sorted(c.kwargs["query_params"]["filter"] for c in calls) == sorted(
+        f'service = "{service}" && status = "success" && year >= {YEAR - 1} && year <= {YEAR + 1}'
+        for service in ("aid_postings", "financial_transactions")
     )
-    assert query["sort"] == "-started,-id"
-    assert set(query["fields"].split(",")) == {"ended", "trigger", "year"}
+    for call in calls:
+        assert call.args[:2] == (1, 100)
+        assert call.kwargs["query_params"]["sort"] == "-started,-id"
+        assert set(call.kwargs["query_params"]["fields"].split(",")) == {"started", "trigger", "year"}
     assert (await _last_sync([]))[0] is None
 
 
@@ -162,6 +177,34 @@ async def test_a_manual_run_recorded_as_the_prior_season_does_not_count() -> Non
 async def test_a_manual_run_recorded_as_the_season_counts_for_it() -> None:
     found, _ = await _last_sync([_run("manual", YEAR, "2027-03-11 09:00:00.000Z")])
     assert found == datetime(2027, 3, 11, 9, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_transactions_sync_keeps_a_tick_awaiting_though_the_ledger_rebuilt() -> None:
+    """F2: aid_postings rebuilds from the financial_transactions mirror, so after a failed transactions
+    run it rebuilt from stale rows. The sync time is the older of the two starts, so a tick made after
+    the last good transactions run still awaits rather than reading "not in CampMinder"."""
+    ledger_run = [_run("daily", YEAR, "2027-03-10 10:10:00.000Z")]
+    last_good_transactions = [_run("daily", YEAR, "2027-03-08 10:00:00.000Z")]  # Mar 9's run failed
+    synced, _ = await _last_sync(ledger_run, transactions=last_good_transactions)
+    assert synced == datetime(2027, 3, 8, 10, 0, tzinfo=UTC)
+    tick = replace(POSTED_R1[1], locked_at=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
+    c = confirmation(R1, {1: tick}, [], (), 1000001, synced_at=synced)
+    assert c is not None
+    assert c.status == "awaiting_sync"
+    assert (await _last_sync(ledger_run, transactions=[]))[0] is None  # no transactions run at all: awaiting
+
+
+@pytest.mark.asyncio
+async def test_both_syncs_succeeding_after_the_tick_end_the_wait() -> None:
+    ledger_run = [_run("daily", YEAR, "2027-03-10 10:10:00.000Z")]
+    transactions = [_run("daily", YEAR, "2027-03-10 10:00:00.000Z")]
+    synced, _ = await _last_sync(ledger_run, transactions=transactions)
+    assert synced == datetime(2027, 3, 10, 10, 0, tzinfo=UTC)
+    tick = replace(POSTED_R1[1], locked_at=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
+    c = confirmation(R1, {1: tick}, [], (), 1000001, synced_at=synced)
+    assert c is not None
+    assert c.status == "not_in_campminder"  # the wait is over: the ledger read it and found nothing
 
 
 # --- the reads (Task 5) -----------------------------------------------------------------------------
@@ -376,7 +419,9 @@ async def test_case_b_family_level_money_live_on_the_date_holds_the_clawback() -
     store = FakeDecisionsStore()
     _emma_posted(store)
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
-    seed_line(store, 9002, "1500", person=0, posted=T0, reversed_at=datetime(2027, 6, 3, 18, 0, tzinfo=UTC))
+    # Posted on the reversal's day, so it may be the repost (final review: only money posted on or after
+    # the reversal blocks); itself reversed Jun 3.
+    seed_line(store, 9002, "1500", person=0, posted=JUN1, reversed_at=datetime(2027, 6, 3, 18, 0, tzinfo=UTC))
     assert await _r1_posted(store, date(2027, 6, 2)) == 1500.0
     assert await _r1_posted(store, date(2027, 6, 4)) == 0.0
 
@@ -405,7 +450,7 @@ async def test_payer_shares_are_replayed_to_the_date_not_read_as_they_are_now() 
     store.shares = [share_row(EMMA, 1000001, "100")]
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
-    seed_line(store, 9002, "500", household=1000004, person=0, posted=datetime(2027, 3, 20, 18, 0, tzinfo=UTC))
+    seed_line(store, 9002, "500", household=1000004, person=0, posted=datetime(2027, 6, 2, 18, 0, tzinfo=UTC))
     assert await _r1_posted(store, date(2027, 6, 5)) == 1500.0
     assert await _r1_posted(store, date(2027, 6, 12)) == 0.0
 
@@ -437,7 +482,8 @@ async def test_shares_that_cannot_be_replayed_leave_that_requests_posted_money_e
     assert rows[LIAM].total_posted == 1500.0
     gap = next(g for g in grid.not_rebuilt if g.figure == "payer_shares_history")
     assert gap.requests == [EMMA]
-    assert "today" in gap.reason  # names the undated reclassification and attribution
+    # The undated reclassification and attribution are named once, by their own gap (final review).
+    assert "ledger_classification" in [g.figure for g in grid.not_rebuilt]
     budget = await service.budget(YEAR, as_of=date(2027, 6, 5))
     assert budget.total.total.posted is None
     assert budget.total.total.accepted is None
@@ -459,7 +505,7 @@ async def test_placements_that_cannot_be_replayed_are_named_and_empty_only_their
     assert (rows[EMMA].total_posted, rows[LIAM].total_posted) == (None, 1500.0)
     gap = next(g for g in grid.not_rebuilt if g.figure == "line_placements_history")
     assert gap.requests == [EMMA]
-    assert "today" in gap.reason
+    assert "ledger_classification" in [g.figure for g in grid.not_rebuilt]  # named once, by its own gap
 
 
 @pytest.mark.asyncio
@@ -740,5 +786,61 @@ async def test_a_failed_write_is_a_refusal_the_caller_can_map_not_a_bare_error()
         raise BatchTransportError("connection dropped")
 
     store.commit = boom  # type: ignore[method-assign,assignment]
-    with pytest.raises(DecisionRefusedError, match="could not be written"):
+    with pytest.raises(DecisionRefusedError, match="may not have been written"):
         await _service(store).ledger_ticks(YEAR)
+
+
+# --- final review fixes ------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_ledger_tick_commits_the_rules_locks_first_and_may_chunk() -> None:
+    """March's bulk import can outgrow one batch: the sections lock in the first chunk, before any tick."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    seen: list[tuple[list[str], bool]] = []
+    commit = store.commit
+
+    async def spy(writes: Any, **kwargs: Any) -> Any:
+        seen.append(([w.collection for w in writes], kwargs.get("allow_chunking", False)))
+        return await commit(writes, **kwargs)
+
+    store.commit = spy  # type: ignore[method-assign]
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 1
+    ((collections, chunking),) = seen
+    assert chunking is True
+    locks = collections.index("aid_decisions")
+    assert locks == len(R1_SECTIONS)
+    assert set(collections[:locks]) == {"aid_rules"}
+
+
+@pytest.mark.asyncio
+async def test_a_partially_committed_tick_is_not_a_refusal() -> None:
+    """Some of it is saved: the codebase contract is the global 500, not a 422 (change_log.py)."""
+    from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
+
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+
+    async def partial(*args: Any, **kwargs: Any) -> None:
+        raise AidOperationPartiallyCommittedError(operation_id="op1", committed=8, total=9, detail="chunk 2 failed")
+
+    store.commit = partial  # type: ignore[method-assign,assignment]
+    with pytest.raises(AidOperationPartiallyCommittedError):
+        await _service(store).ledger_ticks(YEAR)
+
+
+@pytest.mark.asyncio
+async def test_family_level_money_posted_before_the_reversal_does_not_block_the_clawback() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
+    seed_line(store, 9002, "900", person=0, posted=T0)  # a sibling's or the family's older money
+    store.synced_at = JUN1 + timedelta(hours=12)
+    row = await _row(store)
+    assert (row.total_posted, row.rounds[0].clawed_back) == (None, True)
+    assert row.confirmation is not None
+    assert row.confirmation.status == "reversed"

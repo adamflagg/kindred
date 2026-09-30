@@ -14,6 +14,8 @@ The rules, in order:
   1. a staff placement (aid_attribution_overrides naming a person or a session) decides, narrowing
      by its own session, else its program family. With no request of the named person it falls back
      to the household's request only when the placement names Family Camp (a session or program);
+     a session placement then matches the person's closed request that holds posted money on that
+     session exactly, before the person's lone unmatched request;
   2. a line CampMinder posted to a person goes on that person's ONE live request, unless Go's
      attribution names that same person and a program that differs from the request's program, in
      which case it stays at family level;
@@ -168,6 +170,7 @@ class SeasonLedger:
     by_request: Mapping[str, tuple[CampLine, ...]] = field(default_factory=dict)
     by_closed_request: Mapping[str, tuple[CampLine, ...]] = field(default_factory=dict)
     unplaced_by_household: Mapping[int, Decimal] = field(default_factory=dict)
+    unplaced_lines_by_household: Mapping[int, tuple[CampLine, ...]] = field(default_factory=dict)
     synced_at: datetime | None = None
     read: bool = False
 
@@ -182,6 +185,10 @@ class SeasonLedger:
     def family_unplaced(self, households: Iterable[int]) -> Decimal:
         """The live camp aid on these households that no single request takes (family level)."""
         return sum((self.unplaced_by_household.get(h, ZERO) for h in set(households)), ZERO)
+
+    def family_lines(self, households: Iterable[int]) -> tuple[CampLine, ...]:
+        """The live lines behind `family_unplaced`: what a clawback reads, by post date."""
+        return tuple(line for h in sorted(set(households)) for line in self.unplaced_lines_by_household.get(h, ()))
 
 
 FAMILY_CAMP = "family_camp"
@@ -234,10 +241,14 @@ def _place_by_staff(
     placement: Placement,
     by_person: Mapping[int, Sequence[PlaceableRequest]],
     by_household: Mapping[int, Sequence[PlaceableRequest]],
+    closed_by_person: Mapping[int, Sequence[PlaceableRequest]],
 ) -> str | _Miss:
     """A staff placement decides: the named person's request it matches (one only); else, when
-    the placement names Family Camp, the household's own request it matches (one only); and only when
-    nothing matched there, for a session placement, that person's only live request if unmatched."""
+    the placement names Family Camp, the household's own request it matches (one only); else, for a
+    session placement, the person's closed request with posted money on exactly that session (NONE
+    here, so the closed pass takes it); and only when nothing matched there, that person's only live
+    request if unmatched. The staff placement names the session, so the withdrawn request on it beats
+    a live request that merely has no session yet."""
     own = list(by_person.get(placement.person_cm_id, ())) if placement.person_cm_id > 0 else []
     matched = _matching(own, placement)
     if matched:
@@ -247,6 +258,10 @@ def _place_by_staff(
         fallback = _matching(household, placement)
         if fallback:
             return _one(fallback)
+    if placement.session_cm_id and any(
+        r.session_cm_id == placement.session_cm_id for r in closed_by_person.get(placement.person_cm_id, ())
+    ):
+        return _Miss.NONE
     if own and placement.session_cm_id and len({r.id for r in own}) == 1 and own[0].session_cm_id == 0:
         return own[0].id
     return _Miss.NONE
@@ -258,9 +273,10 @@ def _place(
     by_person: Mapping[int, Sequence[PlaceableRequest]],
     by_household: Mapping[int, Sequence[PlaceableRequest]],
     own_closed: bool = False,
+    closed_by_person: Mapping[int, Sequence[PlaceableRequest]] | None = None,
 ) -> str | _Miss:
     if placement is not None:
-        return _place_by_staff(line, placement, by_person, by_household)
+        return _place_by_staff(line, placement, by_person, by_household, closed_by_person or {})
     if line.person_cm_id > 0:
         mine = by_person.get(line.person_cm_id, ())
         if not mine:
@@ -316,10 +332,11 @@ def build_ledger(
     placed: dict[str, list[CampLine]] = defaultdict(list)
     closed: dict[str, list[CampLine]] = defaultdict(list)
     unplaced: dict[int, Decimal] = defaultdict(Decimal)
+    unplaced_lines: dict[int, list[CampLine]] = defaultdict(list)
     for line in lines:
         placement = placements.get(line.transaction_cm_id)
         own_closed = line.person_cm_id > 0 and bool(closed_person.get(line.person_cm_id))
-        outcome = _place(line, placement, by_person, by_household, own_closed)
+        outcome = _place(line, placement, by_person, by_household, own_closed, closed_person)
         if isinstance(outcome, str):
             placed[outcome].append(line)
             continue
@@ -329,10 +346,12 @@ def build_ledger(
             closed[closed_outcome].append(line)
         elif line.live(at):
             unplaced[line.household_cm_id] += line.amount
+            unplaced_lines[line.household_cm_id].append(line)
     return SeasonLedger(
         by_request={rid: tuple(lns) for rid, lns in placed.items()},
         by_closed_request={rid: tuple(lns) for rid, lns in closed.items()},
         unplaced_by_household=dict(unplaced),
+        unplaced_lines_by_household={h: tuple(lns) for h, lns in unplaced_lines.items()},
         synced_at=synced_at,
         read=True,
     )
@@ -355,25 +374,36 @@ def clawed_back_on(
     lines: Sequence[CampLine],
     first_posted_on: date,
     at: datetime | None = None,
-    family_unplaced: Decimal = ZERO,
+    *,
+    family_lines: Sequence[CampLine],
 ) -> date | None:
     """D54: the day CampMinder took back what it held for this request, or None. Nothing placed on it
     is live, and a placed line was reversed on or after its first posted day. A reversal that leaves
     money live reads short instead, and an appeal's reverse-and-repost is never one (the repost is
     live). Derived on every read: a later repost makes the money posted again.
 
-    `family_unplaced` is the live camp aid its D26 households hold at family level: an unplaced
-    repost may be the appeal (reversed on the camper, reposted on a parent), so while any is there
-    CampMinder may still hold the money and nothing is clawed back yet (D54). A reversed line with no
-    reversal_date never counts as a reversal; CampMinder data is not expected to carry one."""
-    if family_unplaced > ZERO or any(line.live(at) for line in lines):
+    `family_lines` are the live family-level lines of its D26 households. An unplaced repost may be
+    the appeal (reversed on the camper, reposted on a parent), so a family-level line posted on or
+    after the request's earliest reversal day blocks the clawback: CampMinder may still hold the money.
+    One posted before it cannot be that repost (a repost follows its reversal), so it blocks nothing;
+    otherwise a sibling's unplaceable money would switch clawback off for the whole household. A line
+    with no post date can't be ordered, so it blocks. A reversed line with no reversal_date never
+    counts as a reversal; CampMinder data is not expected to carry one."""
+    if any(line.live(at) for line in lines):
         return None
     days = [
         camp_date(line.reversal_date)
         for line in lines
         if line.reversal_date is not None and line.reversed_by(at) and camp_date(line.reversal_date) >= first_posted_on
     ]
-    return max(days) if days else None
+    if not days:
+        return None
+    first_reversed = min(days)
+    if any(
+        line.post_date is None or camp_date(line.post_date) >= first_reversed for line in family_lines if line.live(at)
+    ):
+        return None
+    return max(days)
 
 
 def apply_clawback(
@@ -382,15 +412,17 @@ def apply_clawback(
     lines: Sequence[CampLine],
     *,
     at: datetime | None = None,
-    family_unplaced: Decimal,
+    family_lines: Sequence[CampLine],
 ) -> tuple[PricedRequest, date | None]:
     """The request with every posted round marked clawed back when its money came back, and the
     reversal's day; otherwise the same request and None. All of a request's posted rounds go
-    together, because reconciliation is by the request's net total (main spec §11)."""
+    together, because reconciliation is by the request's net total (main spec §11). `family_lines`
+    is `SeasonLedger.family_lines` over the request's D26 households (`request_scope`)."""
     posted = [view for view in priced.rounds if view.status == "posted"]
     if not posted:
         return priced, None
-    day = clawed_back_on(lines, min(_posted_day(rounds.get(view.round)) for view in posted), at, family_unplaced)
+    first_posted_on = min(_posted_day(rounds.get(view.round)) for view in posted)
+    day = clawed_back_on(lines, first_posted_on, at, family_lines=family_lines)
     if day is None:
         return priced, None
     views = tuple(replace(view, clawed_back=True) if view.status == "posted" else view for view in priced.rounds)
@@ -504,8 +536,9 @@ def confirmation(
     """The request's confirmation state, or None while nothing on it is posted. `lines` are the
     lines placed on this request (a closed request passes `SeasonLedger.closed_lines`), never
     family-level money. For a clawed-back request `reversed_on` must be the day `apply_clawback`
-    returned; without it the request reads not_in_campminder with a locked total of 0. The season gate (no confirmation before the first ticked
-    season) is the caller's."""
+    returned: without it the request is read against a locked total of 0, so it reads confirmed when
+    nothing is live and over when anything is, never reversed. The season gate (no confirmation
+    before the first ticked season) is the caller's."""
     posted = [view for view in priced.rounds if view.status == "posted"]
     if not posted:
         return None
@@ -573,8 +606,14 @@ def ledger_ticks(
     money still covers more. Stop at the first round that can't be ticked (held, pending approval,
     refused, not decided), so a later round is never ticked before the one before it (SP10a). A
     falling net never ticks. Family-level lines are not placed on any request, so they never tick
-    (D81). A round a person un-ticked (`undone`) is left for a person to tick again. Only the first
-    round ticked in a walk may tick on any excess; each further one needs the money to cover it fully."""
+    (D81). A round a person un-ticked (`undone`) is left for a person to tick again.
+
+    Any excess ticks a round only while the request has nothing counted posted when the walk starts
+    (locked 0): a typo on the first money still locks the decided amount (D78). Once a round is
+    posted, every round in the walk needs full cover (in CampMinder >= locked + decided), whichever
+    night it runs, so a sliver over a posted round never ticks the next one. That includes a payer
+    share's Round 2: it waits until the shares posted cover it in full, and the registrar ticks it
+    sooner by hand."""
     ticks: list[LedgerTick] = []
     for request in priced:
         if not request.live:
@@ -586,7 +625,7 @@ def ledger_ticks(
             continue
         days = [camp_date(line.post_date) for line in live if line.post_date is not None]
         posted_on = min(max(days), today) if days else today
-        first = True
+        any_excess = locked == ZERO
         for view in sorted(request.rounds, key=lambda v: v.round):
             if view.status == "posted":
                 continue
@@ -597,11 +636,9 @@ def ledger_ticks(
                 or in_campminder <= locked
             ):
                 break
-            # Any excess ticks the first round (a typo still locks the decided amount, D78); a further
-            # round ticks only when the money fully covers it, so a sliver never ticks the next round.
-            if not first and in_campminder < locked + view.decided:
+            if not any_excess and in_campminder < locked + view.decided:
                 break
-            first = False
+            any_excess = False
             ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
             locked += view.decided
     return ticks

@@ -10766,6 +10766,10 @@ export type RoundCountsOut = {
 
 /**
  * RoundOut
+ *
+ * One round of a request. On a clawed-back round (D54) `posted` still carries the locked amount and
+ * `accepted` stays True, as the record of what was ticked, but the budget counts that money nowhere:
+ * never sum `rounds[].posted` for a total. Use the row's `total_posted` or the budget's figures.
  */
 export type RoundOut = {
   /**

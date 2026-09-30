@@ -895,7 +895,9 @@ class FinancialAidDecisionsService:
             unplaced = ledger.family_unplaced(scope)
             live = request.status in _LIVE
             lines = ledger.lines(request.id) if live else ledger.closed_lines(request.id)
-            item, day = apply_clawback(priced[request.id], rounds.get(request.id, {}), lines, family_unplaced=unplaced)
+            item, day = apply_clawback(
+                priced[request.id], rounds.get(request.id, {}), lines, family_lines=ledger.family_lines(scope)
+            )
             if day is not None:
                 reversed_on[request.id] = day
             note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
@@ -1052,9 +1054,9 @@ class FinancialAidDecisionsService:
             if request_id in unknown:
                 continue
             lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
-            unplaced = ledger.family_unplaced(request_scope(request, shares_of.get(request_id, ())))
+            family = ledger.family_lines(request_scope(request, shares_of.get(request_id, ())))
             priced[request_id], _ = apply_clawback(
-                priced[request_id], rounds.get(request_id, {}), lines, at=at, family_unplaced=unplaced
+                priced[request_id], rounds.get(request_id, {}), lines, at=at, family_lines=family
             )
         gaps = [
             NotRebuiltOut(figure="ledger_classification", reason=PAST_DATE_GAPS["ledger_classification"]),
@@ -1505,8 +1507,10 @@ class FinancialAidDecisionsService:
         try:
             result = await self._store.commit([*locks, *writes], actor=LEDGER_ACTOR, allow_chunking=True)
         except BatchError as exc:
-            # Nothing in the failed batch committed (a transport failure may have): the next run re-reads.
-            raise DecisionRefusedError(f"the ledger tick for {year} could not be written: {exc}") from exc
+            # A refused batch committed nothing, but a transport failure's may have: either way the
+            # next run re-reads. A failure after an earlier chunk committed is not a BatchError
+            # (AidOperationPartiallyCommittedError): it goes to the global 500 (change_log.py).
+            raise DecisionRefusedError(f"the ledger tick for {year} may not have been written: {exc}") from exc
         return LedgerTicksOut(
             year=year,
             ticked=len(writes),

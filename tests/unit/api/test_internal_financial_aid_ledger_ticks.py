@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routers import internal
 from api.schemas.financial_aid_decisions import LedgerTicksOut
+from bunking.financial_aid.change_log import AidOperationPartiallyCommittedError
 from bunking.financial_aid.errors import FinancialAidError
 
 
@@ -38,3 +40,12 @@ def test_a_refused_tick_is_a_mapped_error_never_a_bare_500() -> None:
         response = _client().post("/api/internal/financial-aid/ledger-ticks", json={"year": 2027})
     assert response.status_code == 422
     assert response.json()["detail"] == "rules are not approved"
+
+
+def test_a_partially_committed_tick_is_not_mapped_to_a_refusal() -> None:
+    """Part of it is saved: it reaches the global 500 handler, never a 422 (change_log.py's contract)."""
+    partial = AidOperationPartiallyCommittedError(operation_id="op1", committed=8, total=9, detail="chunk 2 failed")
+    with patch.object(internal, "FinancialAidDecisionsService") as service_cls:
+        service_cls.return_value.ledger_ticks = AsyncMock(side_effect=partial)
+        with pytest.raises(AidOperationPartiallyCommittedError):
+            _client().post("/api/internal/financial-aid/ledger-ticks", json={"year": 2027})
