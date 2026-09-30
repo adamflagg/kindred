@@ -1,6 +1,25 @@
 """Campership scenarios (sub-project 9b): sizing moves, labels and codes, results, and fit to budget. Pure: no I/O."""
 
 from bunking.financial_aid.scenarios.describe import change_phrases, describe, starting_point_code, variant_code
+from bunking.financial_aid.scenarios.fit import (
+    FIT_HIGH,
+    FIT_LOW,
+    FIT_STEP,
+    FitKind,
+    FitResult,
+    fit_margin,
+    fit_tier_shift,
+    tightest_pool,
+)
+from bunking.financial_aid.scenarios.results import (
+    PoolResult,
+    ScenarioResults,
+    TierRow,
+    round1_amount,
+    round1_by_request,
+    scenario_results,
+    up_down,
+)
 from bunking.financial_aid.scenarios.sizing import (
     SIZING_LEVERS,
     SizingError,
@@ -16,17 +35,32 @@ from bunking.financial_aid.scenarios.sizing import (
 )
 
 __all__ = [
+    "FIT_HIGH",
+    "FIT_LOW",
+    "FIT_STEP",
     "SIZING_LEVERS",
+    "FitKind",
+    "FitResult",
+    "PoolResult",
+    "ScenarioResults",
     "SizingError",
     "SizingLever",
     "SizingLeverKey",
+    "TierRow",
     "apply_sizing",
     "change_phrases",
     "describe",
     "dollar_for_dollar",
+    "fit_margin",
+    "fit_tier_shift",
     "nudge",
+    "round1_amount",
+    "round1_by_request",
+    "scenario_results",
     "shift_round1_tables",
     "starting_point_code",
+    "tightest_pool",
+    "up_down",
     "variant_code",
     "widen_bands",
     "with_dollar_for_dollar",
