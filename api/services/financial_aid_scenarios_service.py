@@ -182,9 +182,17 @@ def _from(row: TrailRecord) -> str:
     return row.kept_code or row.from_code
 
 
+# Reads whose value moves with the clock rather than the season: the last ledger sync's time changes on every sync,
+# even one that brought nothing. A real write still stores the latest.
+_CLOCK_READS: Final = frozenset({"fetch_last_ledger_sync"})
+
+
 def _season_of(encoded: Mapping[str, Any]) -> dict[str, Any]:
-    """An encoded snapshot without the moment it was frozen: what "the season hasn't moved" compares."""
-    return {key: value for key, value in encoded.items() if key != "frozen_at"}
+    """An encoded snapshot without the moment it was frozen or the last ledger sync's time: what "the season hasn't
+    moved" compares."""
+    season = {key: value for key, value in encoded.items() if key != "frozen_at"}
+    season["calls"] = {name: value for name, value in dict(encoded["calls"]).items() if name not in _CLOCK_READS}
+    return season
 
 
 def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:

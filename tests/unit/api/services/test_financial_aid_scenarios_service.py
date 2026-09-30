@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -119,6 +119,17 @@ async def test_freezing_an_unchanged_season_writes_nothing() -> None:
     world = await _world()
     first = await world.service.freeze(YEAR, FINANCE)
     again = await world.service.freeze(YEAR, TREASURER)
+    assert again.id == first.id
+    assert len(world.store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_season_whose_only_move_is_the_ledger_sync_time_writes_nothing() -> None:
+    world = await _world()
+    world.season.synced_at = T0
+    first = await world.service.freeze(YEAR, FINANCE)
+    world.season.synced_at = T0 + timedelta(hours=6)  # a later sync that brought nothing new
+    again = await world.service.freeze(YEAR, FINANCE)
     assert again.id == first.id
     assert len(world.store.operations) == 1
 
