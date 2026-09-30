@@ -6,10 +6,15 @@ season on the server and returns one aggregate (D21): the Requests grid, Rounds 
 Remaining line. They are live only (Decision 12), but every event they read is dated, so as-of can
 follow.
 
+Holds (follow-up 3b): each request's released check codes and its manual hold come from
+aid_hold_events, folded like the rounds, and reach pricing through with_holds.
+
 Writes. Each is one staff action and one operation through sub-project 4a's commit_aid_writes:
 the aid_decisions rows and their aid_change_log rows in ONE PocketBase batch, and a first lock's
 rules-section locks in that same batch (Decision 11). A write that changes nothing writes nothing:
 the helper refuses an empty operation, and change_row refuses a no-op, which would be a 500.
+Holds (follow-up 3b): releasing a check's hold, putting it back, and placing or lifting a manual hold
+are each one operation of one aid_hold_events row with a required note.
 
 Pricing uses the season's newest rules version whose pricing sections are all approved or locked
 (PRICING_SECTIONS). With none, every live request is held and nothing is allocated.
@@ -25,7 +30,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
 
-from api.constants.collections import AID_DECISIONS
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
@@ -37,8 +42,11 @@ from api.schemas.financial_aid_decisions import (
     DecisionWriteOut,
     ForwardDemandOut,
     GridRowOut,
+    HoldReleaseIn,
+    ManualHoldIn,
     PoolBudgetOut,
     PostedIn,
+    ReleasedHoldOut,
     RemainingPoolOut,
     RemainingResponse,
     RequestsGridResponse,
@@ -74,21 +82,31 @@ from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions import (
+    MANUAL_HOLD,
+    NEVER_A_HOLD,
+    NO_HOLDS,
     NO_POOL,
+    UNRELEASABLE,
     Cell,
     Count,
     DecisionEvent,
     EventKind,
+    HoldEvent,
+    HoldEventKind,
+    HoldState,
     PoolBudget,
     PricedRequest,
     RequestToPrice,
     RoundState,
     SeasonBudget,
+    fold_holds,
     fold_rounds,
     lock_snapshot,
     needs_finance,
     price_request,
+    releasable,
     season_budget,
+    with_holds,
 )
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
@@ -154,6 +172,8 @@ class DecisionsStore(Protocol):
     async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
     async def fetch_decision_events(self, year: int) -> list[DecisionEvent]: ...
     async def fetch_request_events(self, request_id: str) -> list[DecisionEvent]: ...
+    async def fetch_hold_events(self, year: int) -> list[HoldEvent]: ...
+    async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
@@ -190,6 +210,8 @@ class Season:
     sessions: Mapping[int, SessionRow]
     # The grants register's calculator input per request, built once for pricing and the budget.
     grants: Mapping[str, Sequence[GrantInput]]
+    # Each request's released check codes and manual hold (follow-up 3b).
+    holds: Mapping[str, HoldState]
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -270,6 +292,7 @@ def grid_row(
     sessions: Mapping[int, SessionRow],
     families: Mapping[int, str],
     campers: Mapping[int, str],
+    hold: HoldState,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -309,6 +332,11 @@ def grid_row(
         total_decided=money(sum(decided, ZERO)) if decided else None,
         total_posted=money(sum(posted, ZERO)) if posted else None,
         holds=[_issue(i) for i in priced.holds],
+        released_holds=[
+            ReleasedHoldOut(code=r.code, note=r.note, released_at=r.released_at, released_by=r.released_by)
+            for code, r in sorted(hold.released.items())
+            if priced.live and code in hold.released_codes() and code not in NEVER_A_HOLD
+        ],
         notes=[_issue(i) for i in priced.notes],
     )
 
@@ -401,26 +429,28 @@ class FinancialAidDecisionsService:
 
     async def _rounds_side(
         self, year: int
-    ) -> tuple[list[SessionRow], list[PayerShareRecord], list[DecisionEvent], Sequence[RegisterRow]]:
+    ) -> tuple[list[SessionRow], list[PayerShareRecord], list[DecisionEvent], list[HoldEvent], Sequence[RegisterRow]]:
         return await asyncio.gather(
             self._store.fetch_sessions(year),
             self._store.fetch_payer_shares(year),
             self._store.fetch_decision_events(year),
+            self._store.fetch_hold_events(year),
             self._register(year),
         )
 
     async def season(self, year: int) -> Season:
-        """Every request of the season priced now, with its rounds (D21: the server decides)."""
+        """Every request of the season priced now, with its rounds and its holds (D21: the server decides)."""
         return (await self._season(year, names=False))[0]
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as two concurrent branches: the requests with what hangs off them
         (the names too, when asked), and the sessions, shares, events and grants register."""
-        side, (sessions, shares, events, register) = await asyncio.gather(
+        side, (sessions, shares, events, hold_events, register) = await asyncio.gather(
             self._request_side(year, names=names), self._rounds_side(year)
         )
         rules = side.rules
         rounds = fold_rounds(events)
+        holds = fold_holds(hold_events)
         grants = grant_inputs_by_request(register)
         by_id = {a.id: a for a in side.applications}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
@@ -428,8 +458,8 @@ class FinancialAidDecisionsService:
             own[correction.application_id].append(correction)
         session_map = {s.cm_id: s for s in sessions}
         document = rules.document if rules is not None else None
-        priced = {
-            r.id: price_request(
+        items = {
+            r.id: with_holds(
                 _to_price(
                     r,
                     by_id.get(r.application_id),
@@ -441,10 +471,11 @@ class FinancialAidDecisionsService:
                     tuple(grants.get(r.id, [])),
                     document,
                 ),
-                document,
+                holds.get(r.id, NO_HOLDS),
             )
             for r in side.requests
         }
+        priced = {r.id: price_request(items[r.id], document) for r in side.requests}
         season = Season(
             year=year,
             rules=rules,
@@ -454,6 +485,7 @@ class FinancialAidDecisionsService:
             register=tuple(register),
             sessions=session_map,
             grants=grants,
+            holds=holds,
         )
         return season, side.names
 
@@ -471,7 +503,15 @@ class FinancialAidDecisionsService:
     async def grid(self, year: int) -> RequestsGridResponse:
         season, (families, campers) = await self._season(year, names=True)
         rows = [
-            grid_row(season.requests[rid], priced, season.rounds.get(rid, {}), season.sessions, families, campers)
+            grid_row(
+                season.requests[rid],
+                priced,
+                season.rounds.get(rid, {}),
+                season.sessions,
+                families,
+                campers,
+                season.holds.get(rid, NO_HOLDS),
+            )
             for rid, priced in season.priced.items()
         ]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))
@@ -743,3 +783,109 @@ class FinancialAidDecisionsService:
             return self._unchanged(year, unchanged)
         result = await self._store.commit(writes, actor=actor)
         return DecisionWriteOut(year=year, written=len(writes), unchanged=unchanged, operation_id=result.operation_id)
+
+    # --- holds (follow-up 3b) --------------------------------------------------------------
+
+    async def _hold_target(self, request_id: str) -> tuple[RequestRecord, HoldState]:
+        """The live request and its hold state now. A request that is not live has no hold to change."""
+        request = await self._store.fetch_request(request_id)
+        if request is None:
+            raise DecisionNotFoundError("no such request")
+        if request.status not in _LIVE:
+            raise DecisionRefusedError(f"a {request.status} request's holds can't change")
+        events = await self._store.fetch_request_hold_events(request.id)
+        return request, fold_holds(events).get(request.id, NO_HOLDS)
+
+    @staticmethod
+    def _hold_write(
+        request: RequestRecord,
+        kind: HoldEventKind,
+        code: str,
+        note: str,
+        actor: str,
+        fact: Mapping[str, Any] | None = None,
+    ) -> AidWrite:
+        """One aid_hold_events row and its log line: entity aid_hold_events, id "{request}:{code}". The
+        log's `after` leaves out a release's `fact`: the row keeps it, the log keeps what changed."""
+        data: dict[str, Any] = {
+            "year": request.year,
+            "request": request.id,
+            "event": kind,
+            "code": code,
+            "note": note,
+            "actor": actor,
+        }
+        if fact is not None:
+            data["fact"] = dict(fact)
+        return AidWrite(
+            collection=AID_HOLD_EVENTS,
+            action="create",
+            year=request.year,
+            data=data,
+            after={key: value for key, value in data.items() if key != "fact"},
+            log_action=kind,
+            entity_id=f"{request.id}:{code}",
+        )
+
+    async def _commit_hold(self, request: RequestRecord, write: AidWrite, note: str, actor: str) -> DecisionWriteOut:
+        result = await self._store.commit([write], actor=actor, reason=note, require_reason=True)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def _release_fact(self, request: RequestRecord, code: str) -> dict[str, Any]:
+        """A release lifts only a hold the request shows now (Decision 4). Returns what it is released
+        against, stored as the row's `fact` (Decision 3): the check's message and step, and the
+        application figures the checks read. Prices the season, as the Posted tick does."""
+        priced = (await self.season(request.year)).priced.get(request.id)
+        shown = next((h for h in priced.holds if h.code == code), None) if priced is not None else None
+        if priced is None or shown is None:
+            raise DecisionRefusedError(
+                f"This request is not on hold for '{code}': only a hold it shows now can be released"
+            )
+        if not releasable(shown):
+            raise DecisionRefusedError(
+                f"'{code}' means the request can't be priced ({shown.message}): fix that instead"
+            )
+        return {
+            "message": shown.message,
+            "step": shown.step,
+            "application": priced.application.model_dump(mode="json"),
+        }
+
+    async def set_hold_release(self, request_id: str, body: HoldReleaseIn, actor: str) -> DecisionWriteOut:
+        """Release a check's hold with a note, or put it back (main spec §10.5). A release stands until
+        it is put back, and covers every round of the request not yet posted (Decisions 2 and 3). A
+        hold that clears only when fixed, or a code that is never a hold, is refused first, before the
+        no-op guard, so asking to release one is always a 422, even when an old release row exists
+        (Decision 5)."""
+        request, state = await self._hold_target(request_id)
+        if body.code == MANUAL_HOLD:
+            raise DecisionRefusedError("The manual hold is not a check: lift the manual hold instead")
+        if body.released:
+            why = UNRELEASABLE.get(body.code)
+            if why is not None:
+                raise DecisionRefusedError(f"The '{body.code}' hold can't be released: {why}")
+            if body.code in NEVER_A_HOLD:
+                raise DecisionRefusedError(
+                    f"'{body.code}' is never a hold: either the request can't be priced (fix that instead) "
+                    "or it is only a note"
+                )
+        if (body.code in state.released) == body.released:
+            return self._unchanged(request.year)
+        fact = await self._release_fact(request, body.code) if body.released else None
+        kind: HoldEventKind = "release" if body.released else "unrelease"
+        write = self._hold_write(request, kind, body.code, body.note, actor, fact)
+        return await self._commit_hold(request, write, body.note, actor)
+
+    async def set_manual_hold(self, request_id: str, body: ManualHoldIn, actor: str) -> DecisionWriteOut:
+        """Put the request on hold by hand with a reason ("waiting on something" is a hold, not a stage:
+        main spec §10.2; app spec §6.3), or lift it. Placing it again with a new reason replaces the
+        reason; the same reason again writes nothing (Decision 6)."""
+        request, state = await self._hold_target(request_id)
+        current = state.manual
+        if body.held and current is not None and current.reason == body.note:
+            return self._unchanged(request.year)
+        if not body.held and current is None:
+            return self._unchanged(request.year)
+        kind: HoldEventKind = "place" if body.held else "lift"
+        write = self._hold_write(request, kind, MANUAL_HOLD, body.note, actor)
+        return await self._commit_hold(request, write, body.note, actor)

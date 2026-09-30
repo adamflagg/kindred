@@ -1,4 +1,4 @@
-"""Campership decisions (sub-project 10a): the aid_decisions history, pricing and the budget. Pure: no I/O."""
+"""Campership decisions (sub-project 10a, follow-up 3b): the aid_decisions and aid_hold_events histories, pricing and the budget. Pure: no I/O."""
 
 from bunking.financial_aid.decisions.budget import (
     NO_POOL,
@@ -12,6 +12,22 @@ from bunking.financial_aid.decisions.budget import (
     SeasonBudget,
     allocations,
     season_budget,
+)
+from bunking.financial_aid.decisions.holds import (
+    HOLD_EVENT_KINDS,
+    MANUAL_HOLD,
+    NEVER_A_HOLD,
+    NO_HOLDS,
+    UNRELEASABLE,
+    HoldEvent,
+    HoldEventKind,
+    HoldRelease,
+    HoldState,
+    ManualHold,
+    apply_hold_event,
+    fold_holds,
+    releasable,
+    with_holds,
 )
 from bunking.financial_aid.decisions.pricing import (
     PricedRequest,
@@ -36,9 +52,14 @@ from bunking.financial_aid.decisions.rounds import (
 
 __all__ = [
     "EVENT_KINDS",
+    "HOLD_EVENT_KINDS",
+    "MANUAL_HOLD",
+    "NEVER_A_HOLD",
+    "NO_HOLDS",
     "NO_POOL",
     "ROUNDS",
     "TOTAL",
+    "UNRELEASABLE",
     "Approval",
     "BelowTheLine",
     "Cell",
@@ -46,6 +67,11 @@ __all__ = [
     "DecisionEvent",
     "EventKind",
     "ForwardDemand",
+    "HoldEvent",
+    "HoldEventKind",
+    "HoldRelease",
+    "HoldState",
+    "ManualHold",
     "PoolBudget",
     "PricedRequest",
     "RequestToPrice",
@@ -56,10 +82,14 @@ __all__ = [
     "SeasonBudget",
     "allocations",
     "apply_event",
+    "apply_hold_event",
+    "fold_holds",
     "fold_rounds",
     "lock_snapshot",
     "needs_finance",
     "price_request",
+    "releasable",
     "request_inputs",
     "season_budget",
+    "with_holds",
 ]

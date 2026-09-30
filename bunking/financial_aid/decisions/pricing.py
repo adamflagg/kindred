@@ -52,7 +52,7 @@ class RequestToPrice:
     duplicate or duplicate-pending request is not live: only its posted rounds count (Decision 13).
     `request` is None when it can't be priced (`blocked` says why); `r1_ask` is its Round 1 ask
     either way (aid_requests.ask, as corrected). `released_holds` names the hold codes staff have
-    released (the follow-up PR fills it; empty in sub-project 10a).
+    released (`with_holds` in holds.py fills it from the request's hold events).
     """
 
     request_id: str

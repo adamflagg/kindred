@@ -4606,6 +4606,10 @@ export type GridRowOut = {
    */
   holds: Array<IssueOut>
   /**
+   * Released Holds
+   */
+  released_holds: Array<ReleasedHoldOut>
+  /**
    * Notes
    */
   notes: Array<IssueOut>
@@ -4675,6 +4679,27 @@ export type HistoricalTrendsResponse = {
    * Metrics for each year
    */
   years: Array<YearMetrics>
+}
+
+/**
+ * HoldReleaseIn
+ *
+ * Release a check's hold with a note (released=True), or put it back (released=False) (main spec
+ * §10.5; follow-up 3b). The note is required both ways (app spec §4.6; main spec §14.4).
+ */
+export type HoldReleaseIn = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Released
+   */
+  released: boolean
+  /**
+   * Note
+   */
+  note: string
 }
 
 /**
@@ -6134,6 +6159,23 @@ export type LodgingWriteResponse = {
    * Deleted
    */
   deleted?: boolean
+}
+
+/**
+ * ManualHoldIn
+ *
+ * Put the request on hold by hand (held=True, "Put on hold…", app spec §6.3), or lift it
+ * (held=False). The note is the hold's reason when placing it and why when lifting it; required.
+ */
+export type ManualHoldIn = {
+  /**
+   * Held
+   */
+  held: boolean
+  /**
+   * Note
+   */
+  note: string
 }
 
 /**
@@ -9122,6 +9164,31 @@ export type RejectResponse = {
    * Number of mappings dissolved
    */
   dissolved_count: number
+}
+
+/**
+ * ReleasedHoldOut
+ *
+ * A check's hold released with a note (follow-up 3b; main spec §10.5): it no longer stops the
+ * award. Listed so the household page can show it and put it back.
+ */
+export type ReleasedHoldOut = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Note
+   */
+  note: string
+  /**
+   * Released At
+   */
+  released_at: string
+  /**
+   * Released By
+   */
+  released_by: string
 }
 
 /**
@@ -19081,6 +19148,70 @@ export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponses = {
 
 export type TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponse =
   TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponses[keyof TickAcceptedApiFinancialAidDecisionsYearAcceptedPostResponses]
+
+export type SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostData = {
+  body: HoldReleaseIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/hold-release'
+}
+
+export type SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostError =
+  SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostErrors[keyof SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostErrors]
+
+export type SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostResponse =
+  SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostResponses[keyof SetHoldReleaseApiFinancialAidRequestsRequestIdHoldReleasePostResponses]
+
+export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostData = {
+  body: ManualHoldIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/manual-hold'
+}
+
+export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostError =
+  SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostErrors[keyof SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostErrors]
+
+export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponse =
+  SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses[keyof SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

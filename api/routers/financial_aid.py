@@ -20,6 +20,8 @@ Sub-project 10a adds decisions: the season's Requests grid, Rounds & budget and
 the Remaining line (view; the Remaining line also summary, D75), each round's
 asks and Round 3 amounts and the Posted and Accepted ticks (casework), and
 Round 3 approval (rules).
+Follow-up 3b adds releasing a check's hold and placing a manual hold
+(casework).
 """
 
 from datetime import date
@@ -53,6 +55,8 @@ from api.schemas.financial_aid_decisions import (
     AskIn,
     BudgetResponse,
     DecisionWriteOut,
+    HoldReleaseIn,
+    ManualHoldIn,
     PostedIn,
     RemainingResponse,
     RequestsGridResponse,
@@ -710,5 +714,27 @@ async def undo_posted(year: _Year, body: UnpostIn, user: AuthUser = _CASEWORK) -
 async def tick_accepted(year: _Year, body: AcceptedIn, user: AuthUser = _CASEWORK) -> DecisionWriteOut:
     try:
         return await _decisions().tick_accepted(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/hold-release", response_model=DecisionWriteOut)
+async def set_hold_release(
+    request_id: _RequestIdPath, body: HoldReleaseIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """Release a check's hold with a note, or put it back (main spec §10.5; follow-up 3b)."""
+    try:
+        return await _decisions().set_hold_release(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/manual-hold", response_model=DecisionWriteOut)
+async def set_manual_hold(
+    request_id: _RequestIdPath, body: ManualHoldIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """Put the request on hold by hand with a reason, or lift it (app spec §6.3; follow-up 3b)."""
+    try:
+        return await _decisions().set_manual_hold(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
