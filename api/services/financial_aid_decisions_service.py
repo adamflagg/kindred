@@ -88,6 +88,9 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_rules_service import (
+    PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
+)
 from api.services.financial_aid_rules_service import RulesHistoryIncompleteError, RulesVersion
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
@@ -129,19 +132,6 @@ from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchLimitError
 
-PRICING_SECTIONS: Final[tuple[SectionName, ...]] = (
-    "income",
-    "tiers",
-    "equity",
-    "award_tables",
-    "programs",
-    "cost",
-    "grants",
-    "awards",
-    "round2",
-    "round3",
-    "budget",
-)
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 
 # Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11).
