@@ -527,3 +527,60 @@ def test_a_staff_session_other_than_the_one_named_is_flagged_too() -> None:
     ((_, changes),) = plan.request_updates
     codes = [f["code"] for f in changes["flags"]]
     assert codes == ["not_enrolled", "session_differs_from_answer"]
+
+
+def test_a_session_swap_logged_through_the_commit_replays_to_the_records() -> None:
+    """3c: the cycle-breaker's two same-instant writes to one request replay to the record now."""
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from api.services.financial_aid_intake_plan import request_fields
+    from api.services.financial_aid_intake_service import plan_writes
+    from bunking.financial_aid.change_log import commit_aid_writes
+    from bunking.financial_aid.change_replay import LogRow, replay
+    from bunking.pocketbase_batch import BatchRequest, BatchResult
+
+    enrolled = frozenset({1000101, 1000102})
+    first_now, second_now = (
+        spec(session=1000102, enrolled=enrolled),
+        spec(household=1000002, session=1000101, enrolled=enrolled),
+    )
+    existing = [
+        record(spec(), "req000000000001"),
+        record(spec(household=1000002, session=1000102), "req000000000002"),
+    ]
+    plan = plan_intake(
+        [household(first_now), household(second_now, household_cm_id=1000002)],
+        [app()],
+        existing,
+        {},
+        frozenset({"req000000000001", "req000000000002"}),
+    )
+    writes = plan_writes(2027, plan, [app()], existing)
+    sent: list[BatchRequest] = []
+
+    def send(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+        sent.extend(requests)
+        return [BatchResult(status=200, body=dict(r.body or {})) for r in requests]
+
+    with patch("bunking.financial_aid.change_log.send_batch", side_effect=send):
+        commit_aid_writes(object(), writes, actor="intake@example.com")  # type: ignore[arg-type]
+
+    created = datetime(2027, 1, 10, 18, 0, tzinfo=UTC)
+    then = datetime(2027, 1, 10, 19, 0, tzinfo=UTC)  # the whole batch shares one instant
+    logged = [
+        LogRow(f"log{n:012d}", b["entity"], b["entity_id"], b["before"], b["after"], then)
+        for n, b in enumerate(
+            (r.body or {} for r in sent if r.url.endswith("/aid_change_log/records")),
+        )
+    ]
+    starts = [
+        LogRow(f"crt{n:012d}", "aid_requests", r.id, None, request_fields(r), created) for n, r in enumerate(existing)
+    ]
+    now = {"req000000000001": {"session_cm_id": 1000102}, "req000000000002": {"session_cm_id": 1000101}}
+    for rows in ([*starts, *logged], [*starts, *reversed(logged)]):
+        replayed = replay(rows, current=now)
+        for rid, session in ((r, s["session_cm_id"]) for r, s in now.items()):
+            assert replayed[rid].complete is True
+            assert replayed[rid].state is not None
+            assert replayed[rid].state["session_cm_id"] == session  # type: ignore[index]
