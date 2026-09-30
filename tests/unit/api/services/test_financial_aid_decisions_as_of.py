@@ -118,7 +118,7 @@ async def test_a_past_date_shows_the_ticks_recorded_by_the_end_of_that_day_in_ca
 
 @pytest.mark.asyncio
 async def test_as_of_cuts_on_when_kindred_recorded_a_tick_not_its_effective_date() -> None:
-    """Decision 6: CampMinder posted it March 5; Ben keyed the tick March 12."""
+    """Decision 6: CampMinder posted it March 5; staff keyed the tick March 12."""
     store = _seeded(EMMA)
     _post_at(store, EMMA, _day(3, 12), on=date(2027, 3, 5))
     (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
