@@ -14,6 +14,7 @@ from api.services.financial_aid_rules_service import (
     FinancialAidRulesService,
     NotLatestVersionError,
     PricingVersionInUseError,
+    ReplacementNotAcknowledgedError,
     RulesNotFoundError,
     SectionInvalidError,
     YearMismatchError,
@@ -25,7 +26,7 @@ from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.lifecycle import LockedSectionInvalidatedError
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from tests.unit.api.services.rules_fakes import FakeStore
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json, with_lever, with_levers
 
 AT = datetime(2031, 1, 15, 18, 0, tzinfo=UTC)
 FINANCE = "finance@example.com"
@@ -440,3 +441,97 @@ async def test_the_draft_read_has_no_changes_when_it_is_the_approved_version_or_
     draft = await service.draft_view(2031)
     assert draft.approved_version == 1
     assert all(s.changes == () for s in draft.sections)
+
+
+# --- promotion ----------------------------------------------------------------------------------------
+
+
+def _option() -> AidRules:
+    """A kept option from 2031 v1: Round 1 tier 1 two points lower, minimum $150."""
+    return with_levers(fictional_rules(), {"awards.minimum": "150", "award_tables.camp.tiers.1.r1_pct": "88"})
+
+
+@pytest.mark.asyncio
+async def test_the_preview_lists_only_the_sections_the_option_changed() -> None:
+    service = await _approved_v1(FakeStore())
+    preview = await service.promotion_preview(2031, origin_version=1, document=_option())
+    assert (preview.origin_version, preview.base_version) == (1, 1)
+    assert [s.section for s in preview.sections] == ["award_tables", "awards"]
+    awards = preview.sections[1]
+    assert awards.changes == (FieldChange(("minimum",), "changed", Decimal(100), Decimal(150)),)
+    assert [c.path for c in preview.sections[0].changes] == [("camp", "tiers", 1, "r1_pct")]  # type: ignore[comparison-overlap]  # FieldChange.path is typed tuple[str, ...] but holds the int tier
+    assert all(s.warning is None for s in preview.sections)
+    assert len(preview.unchanged) == len(SECTION_NAMES) - 2
+
+
+@pytest.mark.asyncio
+async def test_promoting_branches_the_approved_rules_and_stamps_the_option() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    saved = await service.promote(
+        2031, origin_version=1, document=_option(), base_version=1, acknowledged=(), actor=FINANCE, via="B2"
+    )
+    assert (saved.branched_from, saved.version.version) == (1, 2)
+    awards = saved.version.section_status["awards"]
+    assert (awards.state, awards.edited_by, awards.edited_via) == ("draft", FINANCE, "B2")
+    assert saved.version.document.awards.minimum == Decimal(150)
+    assert (await service.load(2031, 1)).document.awards.minimum == Decimal(100)
+
+
+@pytest.mark.asyncio
+async def test_replacing_an_unapproved_edit_needs_confirming() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)  # v2, awards draft
+    preview = await service.promotion_preview(2031, origin_version=1, document=_option())
+    warned = {s.section: s.warning for s in preview.sections}
+    assert preview.base_version == 2
+    assert warned["awards"] is not None
+    assert (warned["awards"].kind, warned["awards"].by, warned["awards"].at) == ("unapproved_edit", TREASURER, AT)
+    assert warned["award_tables"] is None
+    before = len(store.operations)
+    with pytest.raises(ReplacementNotAcknowledgedError) as refused:
+        await service.promote(
+            2031, origin_version=1, document=_option(), base_version=2, acknowledged=(), actor=FINANCE, via="B2"
+        )
+    assert refused.value.sections == ["awards"]
+    assert len(store.operations) == before
+    saved = await service.promote(
+        2031, origin_version=1, document=_option(), base_version=2, acknowledged=["awards"], actor=FINANCE, via="B2"
+    )
+    assert (saved.branched_from, saved.version.version) == (None, 2)  # v2 is already a draft version
+    assert saved.version.document.awards.minimum == Decimal(150)
+    assert saved.version.section_status["awards"].edited_by == FINANCE
+
+
+@pytest.mark.asyncio
+async def test_undoing_an_approved_change_made_since_the_option_started_is_warned() -> None:
+    service = await _approved_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)
+    await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Jan 20")
+    preview = await service.promotion_preview(2031, origin_version=1, document=_option())
+    warning = {s.section: s.warning for s in preview.sections}["awards"]
+    assert warning is not None
+    assert (warning.kind, warning.by) == ("changed_since", FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_promoting_against_an_older_rules_draft_is_refused() -> None:
+    service = await _approved_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)
+    with pytest.raises(NotLatestVersionError):
+        await service.promote(
+            2031, origin_version=1, document=_option(), base_version=1, acknowledged=["awards"], actor=FINANCE, via="B2"
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_option_that_changes_nothing_promotes_nothing() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    before = len(store.operations)
+    saved = await service.promote(
+        2031, origin_version=1, document=fictional_rules(), base_version=1, acknowledged=(), actor=FINANCE, via="A"
+    )
+    assert (saved.branched_from, saved.version.version) == (None, 1)
+    assert len(store.operations) == before

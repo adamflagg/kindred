@@ -48,7 +48,7 @@ import json
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Final, Protocol
+from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -140,6 +140,47 @@ class PricingVersionInUseError(FinancialAidError, ValueError):
     feeding intake); the section editor branches a new version instead."""
 
 
+class ReplacementNotAcknowledgedError(FinancialAidError, ValueError):
+    """A promotion would replace changes the person did not confirm replacing (D39's warning)."""
+
+    def __init__(self, sections: list[SectionName]) -> None:
+        super().__init__(
+            "This option replaces other changes in the rules draft's "
+            + ", ".join(sections)
+            + ": confirm each of those sections to replace them"
+        )
+        self.sections = sections
+
+
+ReplacementKind = Literal["unapproved_edit", "changed_since"]
+
+
+@dataclass(frozen=True)
+class ReplacementWarning:
+    """unapproved_edit: someone's change not yet approved (who, when, from which option); changed_since: an
+    approved change made after the option's starting point, which the option would undo (who approved it)."""
+
+    kind: ReplacementKind
+    by: str | None
+    at: datetime | None
+    via: str | None
+
+
+@dataclass(frozen=True)
+class PromotionSection:
+    section: SectionName
+    changes: tuple[FieldChange, ...]  # the rules draft now -> the option
+    warning: ReplacementWarning | None
+
+
+@dataclass(frozen=True)
+class PromotionPreview:
+    origin_version: int
+    base_version: int  # the rules draft (the latest version) this preview was made against
+    sections: tuple[PromotionSection, ...]
+    unchanged: tuple[SectionName, ...]
+
+
 class SectionInvalidError(FinancialAidError, ValueError):
     """A section editor's content is not a valid section; the message names each bad field."""
 
@@ -199,6 +240,15 @@ def _approved_section(version: RulesVersion | None, name: SectionName) -> Approv
         return ApprovedSection(name, SectionStatus(), None, None)
     content = version.document.model_dump(mode="json")[name]
     return ApprovedSection(name, version.section_status[name], content, version.version)
+
+
+def _replacement(current: RulesVersion, origin: RulesVersion, section: SectionName) -> ReplacementWarning | None:
+    if getattr(current.document, section) == getattr(origin.document, section):
+        return None
+    status = current.section_status[section]
+    if status.state == "draft" and status.edited_by is not None:
+        return ReplacementWarning("unapproved_edit", status.edited_by, status.edited_at, status.edited_via)
+    return ReplacementWarning("changed_since", status.approved_by, status.approved_at, None)
 
 
 def parse_section(document: AidRules, section: SectionName, content: Mapping[str, Any]) -> AidRules:
@@ -662,6 +712,53 @@ class FinancialAidRulesService:
         )
         await self._store.commit([write], actor=actor)
         return SectionSaveResult(await self.load(year, current.version), after, None)
+
+    async def promotion_preview(self, year: int, *, origin_version: int, document: AidRules) -> PromotionPreview:
+        """ "Make B2 the rules draft" (D39): the sections the option changed from the rules version its lineage
+        started from (`origin_version`) and that differ from the rules draft now, each old -> new, with a warning
+        where the rules draft's copy has moved since that starting point."""
+        if document.year != year:
+            raise YearMismatchError(f"The document is for {document.year}, not {year}")
+        origin = await self.load(year, origin_version)
+        current = await self.load(year)
+        moved = set(changed_sections(origin.document, document))
+        now, wanted = current.document.model_dump(), document.model_dump()
+        entries = tuple(
+            PromotionSection(name, tuple(field_changes(now[name], wanted[name])), _replacement(current, origin, name))
+            for name in SECTION_NAMES
+            if name in moved and getattr(current.document, name) != getattr(document, name)
+        )
+        listed = {entry.section for entry in entries}
+        unchanged = tuple(name for name in SECTION_NAMES if name not in listed)
+        return PromotionPreview(origin_version, current.version, entries, unchanged)
+
+    async def promote(
+        self,
+        year: int,
+        *,
+        origin_version: int,
+        document: AidRules,
+        base_version: int,
+        acknowledged: Collection[SectionName],
+        actor: str,
+        via: str,
+    ) -> SectionSaveResult:
+        """Copy the previewed sections from the option into the rules draft as one save (`save_sections`, so the
+        approved rules in use are never overwritten), stamped `via` the option's code. Refused when the rules draft
+        moved past `base_version`, or when a warned section is not in `acknowledged`; nothing is written then."""
+        preview = await self.promotion_preview(year, origin_version=origin_version, document=document)
+        if preview.base_version != base_version:
+            raise NotLatestVersionError(
+                f"The rules draft is version {preview.base_version} now, not {base_version}: look at the changes again"
+            )
+        unconfirmed = [s.section for s in preview.sections if s.warning is not None and s.section not in acknowledged]
+        if unconfirmed:
+            raise ReplacementNotAcknowledgedError(unconfirmed)
+        current = await self.load(year, base_version)
+        candidate = current.document.model_copy(
+            update={entry.section: getattr(document, entry.section) for entry in preview.sections}
+        )
+        return await self.save_sections(year, base_version, candidate, actor=actor, via=via)
 
     async def _sections_in_use(self, version: RulesVersion, *, intake: bool = True) -> frozenset[SectionName]:
         """The sections of `version` a save must not overwrite because a reader takes them from it: every
