@@ -362,3 +362,18 @@ def last_seasons_criteria(this_season: AidRules, last_season: AidRules) -> AidRu
     for name, kept in CRITERIA_BUT.items():
         merged[name] = {**last[name], kept: merged[name][kept]}
     return AidRules.model_validate(merged)
+
+
+def _criteria(document: AidRules) -> dict[str, Any]:
+    raw = document.model_dump(mode="json")
+    criteria = {name: raw[name] for name in CRITERIA_SECTIONS}
+    for name, kept in CRITERIA_BUT.items():
+        criteria[name] = {key: value for key, value in raw[name].items() if key != kept}
+    return criteria
+
+
+def has_last_seasons_criteria(document: AidRules, last_season: AidRules) -> bool:
+    """Whether `document` carries `last_season`'s criteria (what last_seasons_criteria copies in), whatever else it
+    holds. Names RPT-18's starting point by its criteria alone, so an edit in place to this season's rules draft (its
+    budget, its routing) never renames it."""
+    return _criteria(document) == _criteria(last_season)

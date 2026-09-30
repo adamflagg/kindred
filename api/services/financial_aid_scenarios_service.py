@@ -68,6 +68,7 @@ from bunking.financial_aid.scenarios import (
     dollar_for_dollar,
     fit_margin,
     fit_tier_shift,
+    has_last_seasons_criteria,
     last_seasons_criteria,
     nudge,
     posted_season,
@@ -362,7 +363,9 @@ class FinancialAidScenariosService:
             origin = await self._rules.load(option.year, option.origin_version)
             if origin.document == option.document:
                 return f"{_rules_name(origin)} as they were"  # SP9b's name first: exactly the rules
-            if last is not None and option.document == last_seasons_criteria(origin.document, last.document):
+            # RPT-18's start, recognised by its criteria alone: the rules draft it was made from can be edited in
+            # place after the start, and that must not rename it.
+            if last is not None and has_last_seasons_criteria(option.document, last.document):
                 return _last_season_name(last, option.year, origin)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)

@@ -19,6 +19,7 @@ from bunking.financial_aid.scenarios import (
     TierCompareRow,
     TierRow,
     committee_view,
+    has_last_seasons_criteria,
     last_seasons_criteria,
     posted_season,
     round2_compare,
@@ -285,3 +286,23 @@ def test_last_seasons_criteria_come_in_and_this_seasons_routing_grants_and_budge
     assert (merged.budget.total, merged.cost) == (Decimal(650000), this_season.cost)
     assert set(CRITERIA_SECTIONS) == {"income", "tiers", "equity", "award_tables", "round3"}
     assert dict(CRITERIA_BUT) == {"round2": "program_tables", "awards": "decision_types"}
+
+
+def test_a_document_has_last_seasons_criteria_whatever_else_moved() -> None:
+    last_season = with_levers(RULES, {"year": 2030, "award_tables.camp.tiers.2.r1_pct": "80", "awards.minimum": "150"})
+    merged = last_seasons_criteria(RULES, last_season)
+    assert has_last_seasons_criteria(merged, last_season)
+    # This season's own settings (the budget, a program's Round 2 table, a budget line) can move after the start.
+    moved = with_levers(
+        merged,
+        {
+            "budget.total": "450000",
+            "round2.program_tables.quest": "teen",
+            "awards.decision_types.discretionary.label": "A new line",
+        },
+    )
+    assert has_last_seasons_criteria(moved, last_season)
+    # A criterion that moved is no longer last season's.
+    assert not has_last_seasons_criteria(with_levers(merged, {"awards.minimum": "175"}), last_season)
+    assert not has_last_seasons_criteria(with_levers(merged, {"award_tables.camp.tiers.2.r1_pct": "75"}), last_season)
+    assert not has_last_seasons_criteria(RULES, last_season)
