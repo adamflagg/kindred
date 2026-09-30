@@ -18,10 +18,11 @@ import pytest
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_TRAIL
 from api.services import financial_aid_scenarios_repository as repository_module
+from api.services import financial_aid_scenarios_service as service_module
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, Season
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_rules_service import FinancialAidRulesService
-from api.services.financial_aid_scenario_pricing import SeasonSnapshot, capture_season
+from api.services.financial_aid_scenario_pricing import PricedSeason, SeasonSnapshot, capture_season, price_document
 from api.services.financial_aid_scenarios_service import FinancialAidScenariosService, ScenarioRefusedError
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.rules import AidRules
@@ -100,8 +101,11 @@ def last_season_rules() -> AidRules:
     return with_levers(intake_rules(), {"year": LAST, "award_tables.camp.tiers.2.r1_pct": "80"})
 
 
-async def _world(*, last_posted: bool = True, this_season: AidRules | None = None) -> World:
-    """`this_season`: 2027's v1 (every section draft); intake_rules() by default."""
+async def _world(
+    *, last_posted: bool = True, this_season: AidRules | None = None, last_has_rules: bool = True
+) -> World:
+    """`this_season`: 2027's v1 (every section draft); intake_rules() by default. `last_has_rules`: whether last
+    season's read finds approved rules."""
     season = FakeDecisionsStore()
     seed_request(season, EMMA)
     seed_request(season, LIAM, household=1000002, person=1000021, income=90000.0)
@@ -118,7 +122,8 @@ async def _world(*, last_posted: bool = True, this_season: AidRules | None = Non
 
     async def season_read(year: int) -> Season:
         reads.append(year)
-        service = FinancialAidDecisionsService(last_store, FakeRules(approved(last_season_rules())), register)
+        last_rules = FakeRules(approved(last_season_rules()) if last_has_rules else None)
+        service = FinancialAidDecisionsService(last_store, last_rules, register)
         return await service.season(year)
 
     store = FakeScenarioStore()
@@ -234,6 +239,7 @@ async def test_last_season_not_loaded_is_said_not_zeroed() -> None:
     assert last is not None
     assert (last.loaded, last.view, last.rules_version) == (False, None, None)
     assert last.label == "2026's decisions are not loaded yet, so there is no last-season column"
+    assert world.last_season_reads == [LAST]
 
 
 @pytest.mark.asyncio
@@ -387,3 +393,75 @@ async def test_a_start_from_last_season_keeps_its_name_after_the_rules_draft_is_
     assert (saved.branched_from, saved.version.version) == (None, 1)  # in place: the option's origin moved
     workspace = await world.service.workspace(YEAR, FINANCE)
     assert workspace.options[0].label == "2026 v1 rules on 2027's applications, the rest from rules draft v1"
+
+
+# --- SP9c final review: the last-season label on a request set, up/down references, and last season's edges -------
+
+
+@pytest.mark.asyncio
+async def test_last_season_says_it_is_every_request_when_a_request_set_is_on() -> None:
+    world = await _started()
+    plain = (await world.service.compare(YEAR, FINANCE, ["A"], last_season=True)).last_season
+    on_a_set = (
+        await world.service.compare(YEAR, FINANCE, ["A"], request_set=date(YEAR, 12, 31), last_season=True)
+    ).last_season
+    assert plain is not None
+    assert on_a_set is not None
+    assert plain.label == "2026, posted as reproduced from the repaired sheet (as of Mar 9, 2027)"
+    assert on_a_set.label == "2026, posted as reproduced from the repaired sheet (as of Mar 9, 2027), every request"
+    assert on_a_set.view == plain.view  # the whole season either way
+
+
+@pytest.mark.asyncio
+async def test_a_starting_point_kept_before_sp9c_used_only_as_a_reference_prices_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = await _started()
+    await world.service.save_draft(
+        YEAR, with_levers(intake_rules(), {"award_tables.camp.tiers.2.r1_pct": "80"}), FINANCE
+    )
+    await world.service.keep(YEAR, FINANCE, starting_point=False)  # A1, kept with the committee's rows
+    [start] = [row for row in world.store.rows[AID_SCENARIO_OPTIONS] if row.code == "A"]
+    start.results = {**start.results, "committee_rows": False}  # A as SP9b stored it
+    priced: list[AidRules] = []
+
+    async def counting(snapshot: SeasonSnapshot, document: AidRules, *args: Any, **kwargs: Any) -> PricedSeason:
+        priced.append(document)
+        return await price_document(snapshot, document, *args, **kwargs)
+
+    monkeypatch.setattr(service_module, "price_document", counting)
+    comparison = await world.service.compare(YEAR, FINANCE, ["A1"])
+    assert len(priced) == 1  # the draft only: A1's figures are stored, and A is only A1's reference
+    kept = comparison.columns[1]
+    assert (kept.code, kept.up, kept.down) == ("A1", 1, 0)  # Emma's tier 2 went from 75% to 80%
+
+
+@pytest.mark.asyncio
+async def test_last_season_with_no_approved_rules_shows_its_posted_money_with_no_rules_figures() -> None:
+    world = await _started(last_has_rules=False)
+    last = (await world.service.compare(YEAR, FINANCE, [], last_season=True)).last_season
+    assert last is not None
+    assert last.view is not None
+    assert (last.loaded, last.rules_version) == (True, None)
+    assert (last.view.budget_total, last.view.round1_pct_of_budget, last.view.round1) == (None, None, Decimal(2600))
+    assert [(r.table, r.tier, r.fee_pct, r.round1) for r in last.view.round1_by_tier] == [
+        ("", 2, None, Decimal(1500)),  # no rules: no table, no fee %
+        ("", 3, None, Decimal(1100)),
+        (None, 2, None, Decimal(1500)),
+        (None, 3, None, Decimal(1100)),
+    ]
+    assert [(r.table, r.max_pct) for r in last.view.round2_by_tier] == [("", None), (None, None)]
+
+
+@pytest.mark.asyncio
+async def test_last_season_without_a_season_read_is_refused() -> None:
+    world = await _started()
+    service = FinancialAidScenariosService(world.store, world.rules, _no_capture)
+    with pytest.raises(ScenarioRefusedError, match="Last season can't be read here"):
+        await service.last_season(YEAR)
+    with pytest.raises(ScenarioRefusedError, match="Last season can't be read here"):
+        await service.compare(YEAR, FINANCE, [], last_season=True)
+
+
+async def _no_capture(year: int) -> SeasonSnapshot:
+    raise AssertionError("never captured")

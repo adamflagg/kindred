@@ -768,6 +768,15 @@ class FinancialAidScenariosService:
                 )
             return seen[option.code]
 
+        async def round1_of(option: OptionRecord) -> dict[str, Decimal]:
+            # A reference needed only for up/down: its stored Round 1 by request is enough when it is on this
+            # snapshot and every request, committee rows or not (SP9b's kept options are never priced for them).
+            if option.code in seen:
+                return seen[option.code].round1
+            if option.snapshot == meta.id and chosen is None:
+                return await self._store.option_round1(option.id)
+            return (await of_option(option)).round1
+
         async def of_rules(version: int) -> Priced:
             key = f"rules v{version}"
             if key not in seen:
@@ -781,7 +790,7 @@ class FinancialAidScenariosService:
             if source is None:
                 raise ScenarioNotFoundError(f"{year} has no kept option {_from(row)}")  # as the draft read does
             mine = await price(row.document)
-            up, down = up_down((await of_option(source)).round1, mine.round1)
+            up, down = up_down(await round1_of(source), mine.round1)
             columns.append(
                 CompareColumn(
                     "draft",
@@ -801,11 +810,11 @@ class FinancialAidScenariosService:
             up_or_down: tuple[int | None, int | None] = (None, None)  # a start from the rules: nothing to be up from
             if option.from_code:
                 against = (
-                    await of_option(options[option.starting_point])
+                    await round1_of(options[option.starting_point])
                     if option.starting_point
-                    else await of_rules(option.origin_version)
+                    else (await of_rules(option.origin_version)).round1
                 )
-                up_or_down = up_down(against.round1, priced.round1)
+                up_or_down = up_down(against, priced.round1)
             columns.append(
                 CompareColumn(
                     code,
@@ -817,7 +826,11 @@ class FinancialAidScenariosService:
                     committee=committee_view(priced.results, option.document),
                 )
             )
-        return Comparison(meta, tuple(columns), await self.last_season(year) if last_season else None)
+        previous = await self.last_season(year) if last_season else None
+        if previous is not None and previous.loaded and chosen is not None:
+            # Last season is always its whole season: say so beside columns priced on part of this one (D138).
+            previous = replace(previous, label=f"{previous.label}, every request")
+        return Comparison(meta, tuple(columns), previous)
 
     async def last_season(self, year: int) -> LastSeason:
         """Last season's posted money by tier, read live (RPT-17's and RPT-32's last-season columns): every round
