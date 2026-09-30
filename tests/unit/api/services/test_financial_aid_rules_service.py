@@ -547,28 +547,13 @@ async def test_lock_writes_lock_approved_sections_for_the_caller_to_commit() -> 
 
 
 @pytest.mark.asyncio
-async def test_lock_writes_skip_a_locked_section_and_a_superseded_version() -> None:
+async def test_lock_writes_skip_a_locked_section() -> None:
     store = FakeStore()
     service = _service(store)
     await service.create_version(fictional_rules(), actor=FINANCE)
     await service.approve_sections(2031, 1, ["income", "tiers"], actor=FINANCE, note="Finance committee")
     await service.lock_section(2031, 1, "income", actor=FINANCE)
     assert await service.lock_writes(2031, 1, ["income"]) == ([], [])
-    await service.new_version(2031, 1, actor=FINANCE)
-    # Version 1 is read-only now: nothing locks, and the tick is told so.
-    assert await service.lock_writes(2031, 1, ["tiers"]) == ([], ["tiers"])
-
-
-@pytest.mark.asyncio
-async def test_lock_writes_on_a_superseded_version_report_every_wanted_section_as_not_locked() -> None:
-    store = FakeStore()
-    service = _service(store)
-    await service.create_version(fictional_rules(), actor=FINANCE)
-    await service.approve_sections(2031, 1, ["income", "tiers"], actor=FINANCE, note="Finance committee")
-    await service.lock_section(2031, 1, "income", actor=FINANCE)
-    await service.new_version(2031, 1, actor=FINANCE)
-    writes, not_locked = await service.lock_writes(2031, 1, ["tiers", "income", "round2"])
-    assert (writes, not_locked) == ([], ["tiers", "round2"])  # income is already locked: it needs nothing
 
 
 @pytest.mark.asyncio

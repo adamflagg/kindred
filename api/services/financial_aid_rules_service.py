@@ -634,34 +634,40 @@ class FinancialAidRulesService:
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
     ) -> tuple[list[AidWrite], list[SectionName]]:
-        """The writes that lock `sections` of `version` when a round that read them is first posted
+        """The writes that lock `sections` when a round that read them, priced on `version`, is first posted
         (spec §7.5, sub-project 10a), for the caller to commit in the SAME operation as the tick.
 
-        A section already locked needs no write. Nothing locks on a version that is no longer the
-        latest (it is read-only already), so every section it wanted comes back not locked. A
-        section that can't lock (not approved, or the document has a validation error) is returned
-        in the second list: the tick still stands, and says so.
+        Wanted: each named section not already locked on `version`. Writes only ever go to the LATEST version.
+        When `version` is the latest, each wanted section locks there. When a rules draft has branched above it
+        (SP9a, plan Decision 18, amending SP10a Decision 11), a wanted section whose content in the latest version
+        equals `version`'s is locked there -- the draft carries the very rules the round read -- while a section
+        the draft changed is the draft's own edit and stays unlocked. A section already locked in the latest
+        needs no write. Anything that can't lock (changed in the draft, not approved there, or the latest
+        document has a validation error) is returned in the second list, in section order: the tick still
+        stands, and says so.
         """
-        current = await self.load(year, version)
-        wanted = [s for s in SECTION_NAMES if s in sections and current.section_status[s].state != "locked"]
-        if not wanted:
-            return [], []
-        if await self._latest_version_number(year) != version:
-            return [], wanted
-        report = await self.validate_document(current.document)
-        at = self._clock()
-        status = current.section_status
+        priced = await self.load(year, version)
+        latest = await self.load(year)
+        wanted = [s for s in SECTION_NAMES if s in sections and priced.section_status[s].state != "locked"]
+        changed: set[SectionName] = set()
+        if latest.version != version:
+            changed = {s for s in wanted if getattr(latest.document, s) != getattr(priced.document, s)}
+        lockable = [s for s in wanted if s not in changed and latest.section_status[s].state != "locked"]
+        not_locked: list[SectionName] = [s for s in wanted if s in changed]
         writes: list[AidWrite] = []
-        not_locked: list[SectionName] = []
-        for section in wanted:
-            try:
-                updated = lock(status, section, at=at, report=report)
-            except SectionNotApprovedError, DocumentHasErrorsError:
-                not_locked.append(section)
-                continue
-            writes.append(_status_write(current, status, updated, section, log_action="lock", reason=None))
-            status = updated
-        return writes, not_locked
+        if lockable:
+            report = await self.validate_document(latest.document)
+            at = self._clock()
+            status = latest.section_status
+            for section in lockable:
+                try:
+                    updated = lock(status, section, at=at, report=report)
+                except SectionNotApprovedError, DocumentHasErrorsError:
+                    not_locked.append(section)
+                    continue
+                writes.append(_status_write(latest, status, updated, section, log_action="lock", reason=None))
+                status = updated
+        return writes, sorted(not_locked, key=SECTION_NAMES.index)
 
     async def new_version(
         self, year: int, from_version: int, *, actor: str, unlock: Collection[SectionName] = ()

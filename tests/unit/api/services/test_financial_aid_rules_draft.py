@@ -18,6 +18,7 @@ from api.services.financial_aid_rules_service import (
     YearMismatchError,
     parse_section,
 )
+from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.lifecycle import LockedSectionInvalidatedError
 from bunking.financial_aid.rules.schema import SECTION_NAMES
@@ -288,3 +289,64 @@ async def test_a_whole_document_save_on_a_version_not_in_use_still_saves() -> No
     await service.approve_sections(2031, 1, ["income"], actor=FINANCE, note="Board")
     saved, _ = await service.save(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
     assert saved.document.awards.minimum == Decimal(150)
+
+
+# --- a first lock under an open rules draft ------------------------------------------------------------
+
+
+async def _commit(store: FakeStore, writes: list[AidWrite]) -> None:
+    if writes:
+        await store.commit(writes, actor=FINANCE)
+
+
+@pytest.mark.asyncio
+async def test_on_the_latest_version_a_first_lock_locks_there_as_before() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    writes, not_locked = await service.lock_writes(2031, 1, ["income", "tiers"])
+    assert ([w.entity_id for w in writes], not_locked) == (["2031:1:income", "2031:1:tiers"], [])
+
+
+@pytest.mark.asyncio
+async def test_a_first_lock_under_an_open_draft_locks_the_drafts_identical_sections() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)  # v2, awards draft
+    writes, not_locked = await service.lock_writes(2031, 1, ["income", "tiers", "awards"])
+    assert [w.entity_id for w in writes] == ["2031:2:income", "2031:2:tiers"]
+    assert not_locked == ["awards"]  # the draft's own edit stays unlocked
+    await _commit(store, writes)
+    v2, v1 = await service.load(2031, 2), await service.load(2031, 1)
+    assert (v2.section_status["income"].state, v2.section_status["awards"].state) == ("locked", "draft")
+    assert v1.section_status["income"].state == "approved"  # writes only ever go to the latest
+
+
+@pytest.mark.asyncio
+async def test_a_section_the_draft_changed_stays_unlocked_even_once_approved_there() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Feb 3")
+    writes, not_locked = await service.lock_writes(2031, 1, ["awards"])
+    assert (writes, not_locked) == ([], ["awards"])
+
+
+@pytest.mark.asyncio
+async def test_a_section_already_locked_in_the_draft_needs_no_write() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)  # v2
+    await _commit(store, (await service.lock_writes(2031, 1, ["income"]))[0])  # an earlier tick locked it on v2
+    writes, not_locked = await service.lock_writes(2031, 1, ["income", "tiers"])
+    assert ([w.entity_id for w in writes], not_locked) == (["2031:2:tiers"], [])
+
+
+@pytest.mark.asyncio
+async def test_a_draft_with_a_validation_error_locks_nothing_and_says_so() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    broken = fictional_rules_json()
+    del broken["award_tables"]["teen"]  # programs.teen.r1_table names no table: an error in programs
+    await service.save_sections(2031, 1, AidRules.model_validate(broken), actor=TREASURER)  # v2, with the error
+    writes, not_locked = await service.lock_writes(2031, 1, ["income", "tiers"])
+    assert (writes, not_locked) == ([], ["income", "tiers"])
