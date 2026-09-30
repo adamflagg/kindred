@@ -66,6 +66,8 @@ class ResultsOut(BaseModel):
     round1_unmet: float  # below the line: §5.9's forward signal for sizing Round 2 (Decision 10 (b), RULED 2026-09-30)
     pools: list[PoolResultOut]
     by_tier: list[TierRowOut]
+    # Round 1 on requests in no tier (a withdrawn request's posted round): the tier rows plus this are `round1`.
+    not_in_tiers: float
     request_set: RequestSetOut | None = None
 
 

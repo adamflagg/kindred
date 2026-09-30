@@ -114,3 +114,37 @@ def test_results_round_trip_through_json() -> None:
 def test_a_tier_row_stored_before_sp9c_still_loads() -> None:
     stored = {"tier": 2, "requests": 1, "families": 1, "round1": "3000"}
     assert TierRow.model_validate(stored) == TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=None)
+
+
+def _posted(amount: str, *, counts: bool = True) -> RoundState:
+    return RoundState(
+        round=1,
+        posted=True,
+        locked_amount=Decimal(amount),
+        snapshot={"pool": "camp_pool", "counts_toward_budget": counts},
+    )
+
+
+def test_the_tier_rows_and_what_is_in_no_tier_add_up_to_round1() -> None:
+    """Final review 2: the tiers count Round 1 money exactly as the budget does. A clawed-back round and a round of a
+    type outside the budget count in no tier (nor in Round 1); a withdrawn request's posted round counts in Round 1
+    but has no tier today, so it is `not_in_tiers`."""
+    clawed = _priced("req-b", 1000002, 250000, rounds={1: _posted("2500")})
+    clawed = replace(clawed, rounds=(replace(clawed.rounds[0], clawed_back=True),))
+    priced = [
+        _priced("req-a", 1000001, 60000),  # tier 2, needs an offer: 3,000
+        clawed,
+        _priced("req-c", 1000003, 60000, rounds={1: _posted("2000", counts=False)}),  # outside the budget
+        _priced("req-d", 1000004, 60000, live=False, rounds={1: _posted("1200")}),  # withdrawn after its post
+    ]
+    results = _results(priced)
+    assert results.round1 == Decimal(4200)
+    assert results.by_tier == [TierRow(tier=2, requests=1, families=1, round1=Decimal(3000))]
+    assert results.not_in_tiers == Decimal(1200)
+    assert sum((t.round1 for t in results.by_tier), Decimal(0)) + results.not_in_tiers == results.round1
+
+
+def test_results_stored_before_not_in_tiers_still_load() -> None:
+    stored = _results(_season()).model_dump(mode="json")
+    del stored["not_in_tiers"]
+    assert ScenarioResults.model_validate(stored).not_in_tiers == Decimal(0)

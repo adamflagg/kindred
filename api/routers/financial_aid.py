@@ -993,6 +993,7 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
             )
             for t in r.by_tier
         ],
+        not_in_tiers=money(r.not_in_tiers),
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
     )
 

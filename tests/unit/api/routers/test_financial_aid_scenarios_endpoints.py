@@ -493,3 +493,12 @@ def test_a_stored_season_this_code_cant_read_is_422_and_a_freeze_replaces_it() -
     again = client.post("/api/financial-aid/scenarios/2027/snapshot")
     assert (again.status_code, again.json()["id"] != first["id"]) == (200, True)
     assert client.post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).status_code == 200
+
+
+def test_the_results_say_how_much_round1_is_in_no_tier() -> None:
+    service = _stub()
+    service.evaluate = AsyncMock(
+        return_value=Evaluation(DOC, RESULTS.model_copy(update={"not_in_tiers": Decimal(1100)}), ValidationReport())
+    )
+    body = _client().post("/api/financial-aid/scenarios/2027/evaluate", json=DOC_BODY).json()
+    assert (body["results"]["by_tier"][0]["round1"], body["results"]["not_in_tiers"]) == (1500.0, 1100.0)
