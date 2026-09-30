@@ -5,19 +5,26 @@ Pure functions over records the decisions service read. Nothing here writes.
 
 PLACEMENT. A camp-aid line (an aid_postings row whose funder type, after any reclassification, is
 "camp"; live, or the reversed credit leg kept as history) sits on ONE request only when that is the
-only request it could be (main spec §11: "a posting on the camper … whose person has one request in
+only request it could be (main spec §11: "a posting on the camper ... whose person has one request in
 that program this season belongs to that request"). That is a rule, not an inference (D16).
-Anything else stays at family level: it waits in Money › To place (sub-project 11), never ticks on
-its own (D81), and is never split by estimate (D12). The rules, in order:
+Anything else stays at family level: it waits in Money > To place (sub-project 11), never ticks on
+its own (D81: "always require Ben to do the data entry first"), and is never split by estimate (D12).
+The rules, in order:
 
-  1. a staff placement (aid_attribution_overrides naming a person or a session) decides;
-  2. a line CampMinder posted to a person goes on that person's one live request; with two or more,
-     the session, then the program family, Go attributed to that same person narrows them;
+  1. a staff placement (aid_attribution_overrides naming a person or a session) decides, narrowing
+     by its own session, else its program family. With no request of the named person it falls back
+     to the household's request only when the placement names Family Camp (a session or program);
+  2. a line CampMinder posted to a person goes on that person's ONE live request, unless Go's
+     attribution names that same person and a program that differs from the request's program, in
+     which case it stays at family level;
   3. a line posted to the household, or to a person with no request of their own (the parent on a
-     Family Camp line), goes on the one live HOUSEHOLD-LEVEL request (Family Camp, person 0) the
-     household holds a payer share of. A summer line posted to a parent or the household stays at
-     family level (main spec §11; D81: "always require Ben to do the data entry first"), and a
-     sibling's line never lands on another sibling.
+     Family Camp line), goes on the household's request only when Go's program is empty or Family
+     Camp AND that request (Family Camp, person 0) is the only live request the household holds.
+
+Several candidates and no staff placement leave the line at family level. Go's attribution is NEVER
+used to choose among candidates: Go re-attributes every row nightly from active enrollments, so after
+a cancellation a reversed line could move requests and the clawback return would break. A choice
+made by a person (a placement) is stable; a choice made by a nightly recompute is not.
 
 NET-TOTAL RECONCILIATION (main spec §11, D59): a request's placed live lines are summed and compared
 with the locked total of its posted rounds, never line by line, so reverse-and-repost, an added
@@ -34,7 +41,11 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_grants_register import LIVE_REQUEST_STATUSES, program_family_for_session_type
+from api.services.financial_aid_grants_register import (
+    LIVE_REQUEST_STATUSES,
+    Placement,
+    program_family_for_session_type,
+)
 from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord, SessionRow
 from bunking.financial_aid.money import ZERO
 
@@ -51,7 +62,8 @@ def dollars(amount: Decimal) -> str:
 
 @dataclass(frozen=True)
 class CampLine:
-    """One camp-aid aid_postings row, in aid dollars (positive). person_cm_id is CampMinder's posted
+    """One camp-aid aid_postings row, in aid dollars (positive). Callers must pass only
+    funder_type == "camp" lines (after reclassification). person_cm_id is CampMinder's posted
     person (0 = posted to the household); the attributed_* fields are Go's attribution."""
 
     transaction_cm_id: int
@@ -78,17 +90,6 @@ class CampLine:
         if not self.is_reversed:
             return False
         return at is None or (self.reversal_date is not None and self.reversal_date <= at)
-
-
-@dataclass(frozen=True)
-class LinePlacement:
-    """An aid_attribution_overrides row that names a person or a session: a staff (or 2026 sheet)
-    placement. A reclassify-only override places nothing and is never one of these."""
-
-    transaction_cm_id: int
-    person_cm_id: int
-    session_cm_id: int
-    program_family: str
 
 
 @dataclass(frozen=True)
@@ -140,56 +141,60 @@ class SeasonLedger:
         return sum((self.unplaced_by_household.get(h, ZERO) for h in set(households)), ZERO)
 
 
+FAMILY_CAMP = "family_camp"
+
+
 def _one(candidates: Sequence[PlaceableRequest]) -> str | None:
     ids = {r.id for r in candidates}
     return next(iter(ids)) if len(ids) == 1 else None
 
 
-def _narrow(candidates: list[PlaceableRequest], session: int, family: str) -> list[PlaceableRequest]:
-    """Two or more candidates: keep those in `session`, else those in `family`; else leave them all
-    (still two or more, so the line stays at family level)."""
-    if len(candidates) < 2:
-        return candidates
-    if session:
-        in_session = [r for r in candidates if r.session_cm_id == session]
-        if in_session:
-            return in_session
-    if family:
-        in_family = [r for r in candidates if r.program_family == family]
-        if in_family:
-            return in_family
-    return candidates
+def _household_request(line: CampLine, by_household: Mapping[int, Sequence[PlaceableRequest]]) -> str | None:
+    """The household's own (Family Camp) request, only when it is the household's only live request
+    and Go did not tag the line with another program."""
+    if line.program_family not in ("", FAMILY_CAMP):
+        return None
+    held = by_household.get(line.household_cm_id, ())
+    if len({r.id for r in held}) != 1:
+        return None
+    return _one([r for r in held if r.person_cm_id == 0])
 
 
 def _place(
     line: CampLine,
-    placement: LinePlacement | None,
+    placement: Placement | None,
     by_person: Mapping[int, Sequence[PlaceableRequest]],
     by_household: Mapping[int, Sequence[PlaceableRequest]],
 ) -> str | None:
-    households = [r for r in by_household.get(line.household_cm_id, ()) if r.person_cm_id == 0]
     if placement is not None:
         pool = list(by_person.get(placement.person_cm_id, ())) if placement.person_cm_id > 0 else []
-        pool = pool or households
+        if not pool:
+            if not (placement.program_family == FAMILY_CAMP or placement.session_cm_id):
+                return None
+            pool = [r for r in by_household.get(line.household_cm_id, ()) if r.person_cm_id == 0]
         if placement.session_cm_id:
             pool = [r for r in pool if r.session_cm_id == placement.session_cm_id]
         elif placement.program_family:
             pool = [r for r in pool if r.program_family == placement.program_family]
         return _one(pool)
     if line.person_cm_id > 0:
-        mine = list(by_person.get(line.person_cm_id, ()))
+        mine = by_person.get(line.person_cm_id, ())
         if not mine:
-            return _one(households)
-        on_person = line.attributed_person_cm_id == line.person_cm_id
-        return _one(
-            _narrow(mine, line.attributed_session_cm_id if on_person else 0, line.program_family if on_person else "")
-        )
-    return _one(households)  # only a household-level (Family Camp) request takes a household line
+            return _household_request(line, by_household)
+        only = _one(mine)
+        if only is None:
+            return None  # several candidates: never narrowed by Go's attribution
+        request = mine[0]
+        named = line.attributed_person_cm_id == line.person_cm_id
+        if named and line.program_family and request.program_family and line.program_family != request.program_family:
+            return None
+        return only
+    return _household_request(line, by_household)
 
 
 def build_ledger(
     lines: Iterable[CampLine],
-    placements: Mapping[int, LinePlacement],
+    placements: Mapping[int, Placement],
     requests: Iterable[PlaceableRequest],
     synced_at: datetime | None,
 ) -> SeasonLedger:

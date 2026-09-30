@@ -8,9 +8,9 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_reconciliation import (
     CampLine,
-    LinePlacement,
     PlaceableRequest,
     build_ledger,
     camp_date,
@@ -72,7 +72,7 @@ def request(
 def placed(
     lines: Sequence[CampLine],
     requests: Sequence[PlaceableRequest],
-    placements: Mapping[int, LinePlacement] | None = None,
+    placements: Mapping[int, Placement] | None = None,
 ) -> dict[int, str]:
     ledger = build_ledger(lines, placements or {}, requests, None)
     return {ln.transaction_cm_id: rid for rid, lns in ledger.by_request.items() for ln in lns}
@@ -85,10 +85,20 @@ def test_a_line_on_a_camper_with_one_request_sits_on_that_request() -> None:
     assert placed([line(1, "1800", person=1000011)], [request("emma")]) == {1: "emma"}
 
 
-def test_a_camper_in_two_programs_is_placed_by_what_campminder_attributed_to_them() -> None:
+def test_a_camper_with_several_requests_is_never_narrowed_by_campminders_attribution() -> None:
+    """Go re-attributes nightly, so its choice is unstable (fix round 1, ruling 3): family level."""
     both = [request("emma"), request("emmaq", session=1000106, family="quest")]
-    assert placed([line(1, "900", person=1000011, session=1000106, family="quest")], both) == {1: "emmaq"}
-    assert placed([line(2, "900", person=1000011)], both) == {}  # nothing narrows it: family level
+    assert placed([line(1, "900", person=1000011, session=1000106, family="quest")], both) == {}
+    assert placed([line(2, "900", person=1000011)], both) == {}
+    same = [request("a"), request("b", session=1000102)]  # two requests in the same program
+    assert placed([line(3, "900", person=1000011)], same) == {}
+
+
+def test_a_line_go_attributed_to_another_program_is_not_placed_on_the_only_candidate() -> None:
+    assert placed([line(1, "900", person=1000011, session=1000106, family="quest")], [request("emma")]) == {}
+    adult = request("wk", person=1000019, session=1000201, family="adult_weekend")
+    assert placed([line(2, "700", person=1000019, session=1000201, family="family_camp")], [adult]) == {}
+    assert placed([line(3, "700", person=1000019, session=1000201, family="adult_weekend")], [adult]) == {3: "wk"}
 
 
 def test_a_summer_household_line_stays_at_family_level_even_with_one_request() -> None:
@@ -98,7 +108,14 @@ def test_a_summer_household_line_stays_at_family_level_even_with_one_request() -
     assert placed([line(1, "3000")], one) == {}
     assert placed([line(2, "1800", person=1000019)], one) == {}  # posted to a parent
     weekend = request("fam", person=0, session=1000201, family="family_camp")
-    assert placed([line(3, "700")], [*one, weekend]) == {3: "fam"}  # a Family Camp household line
+    assert placed([line(3, "700")], [*one, weekend]) == {}  # the household holds a summer request too
+    assert placed([line(4, "700")], [weekend]) == {4: "fam"}  # its only request
+    summer_tagged = line(5, "700", session=1000101, family="summer")
+    assert placed([summer_tagged], [weekend]) == {}
+    assert placed([summer_tagged], [*one, weekend]) == {}
+    parent_summer = line(6, "700", person=1000019, session=1000101, family="summer")
+    assert placed([parent_summer], [*one, weekend]) == {}
+    assert placed([parent_summer], [weekend]) == {}
     ledger = build_ledger([line(1, "3000")], {}, two, None)
     assert ledger.by_request == {}
     assert ledger.unplaced_by_household == {1000001: Decimal(3000)}
@@ -122,9 +139,11 @@ def test_a_parents_family_camp_line_sits_on_the_households_request() -> None:
 
 def test_a_staff_placement_decides() -> None:
     two = [request("emma"), request("samuel", person=1000012, session=1000102)]
-    staff = {1: LinePlacement(1, 1000012, 1000102, "summer")}
+    staff = {1: Placement(1, 1000012, 1000102, "summer")}
     assert placed([line(1, "1200")], two, staff) == {1: "samuel"}
-    parent = {2: LinePlacement(2, 1000019, 1000201, "family_camp")}
+    person_only = {4: Placement(4, 1000019, 0, "")}
+    assert placed([line(4, "700", person=1000019)], [request("f", person=0, family="family_camp")], person_only) == {}
+    parent = {2: Placement(2, 1000019, 1000201, "family_camp")}
     weekend = request("fam", person=0, session=1000201, family="family_camp")
     assert placed([line(2, "700", person=1000019)], [*two, weekend], parent) == {2: "fam"}
 
@@ -141,7 +160,8 @@ def test_an_unmatched_request_still_takes_its_campers_line() -> None:
 
 
 def test_a_reversed_line_is_placed_like_a_live_one_but_never_counts_as_unplaced_money() -> None:
-    ledger = build_ledger([line(1, "900", reversed_at=JUN1)], {}, [request("a"), request("b", person=1000012)], None)
+    assert placed([line(1, "900", person=1000011, reversed_at=JUN1)], [request("a")]) == {1: "a"}
+    ledger = build_ledger([line(2, "900", reversed_at=JUN1)], {}, [request("a"), request("b", person=1000012)], None)
     assert ledger.unplaced_by_household == {}
 
 
