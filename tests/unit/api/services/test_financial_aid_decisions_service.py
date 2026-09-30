@@ -722,6 +722,18 @@ async def test_discretionary_money_is_refused_once_it_is_posted_even_after_its_d
 
 
 @pytest.mark.asyncio
+async def test_discretionary_money_can_still_change_after_an_earlier_round_that_does_not_hold_it_is_posted() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)  # its money sits on Round 3
+    await service.tick_posted(YEAR, _tick((EMMA, 1, "1500")), ACTOR)  # Round 1's lock records the type, not the money
+    body = DiscretionaryIn(decision_type="discretionary", amount=Decimal(300), note="More")
+    out = await service.key_discretionary(EMMA, body, ACTOR)
+    assert out.written == 1
+
+
+@pytest.mark.asyncio
 async def test_a_round_3_amount_is_refused_without_a_round_2_ask_while_the_rules_require_one() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)

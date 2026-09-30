@@ -11,6 +11,9 @@ Per pool × round, and in total:
   Pending approval  Round 3 amounts above the registrar's limit awaiting finance, at the keyed amount (D79).
   Remaining         Allocated − Posted − Needs an offer − Pending approval (D44, D53, D79).
 
+Posted, Accepted and Needs an offer leave out a decision type's own money (top-up + discretionary)
+when that type does not count toward the budget: that money goes below the line (spec §7.2).
+
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
 total asked, total computed; held appeals' asks included) and Round 1 unmet ask, not yet appealed

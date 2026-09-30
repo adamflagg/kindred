@@ -16,7 +16,10 @@ derived), so they need financial_aid.view. Development's financial_aid.summary
 reaches none of these routes except the decisions Remaining line below; its
 aggregate endpoint (sub-project 8) must be named apart from /summary.
 
-Sub-project 10a adds decisions: the season's Requests grid, Rounds & budget and the Remaining line (view; the Remaining line also summary, D75), each round's asks and Round 3 amounts and the Posted and Accepted ticks (casework), and discretionary money and Round 3 approval (rules).
+Sub-project 10a adds decisions: the season's Requests grid, Rounds & budget and
+the Remaining line (view; the Remaining line also summary, D75), each round's
+asks and Round 3 amounts and the Posted and Accepted ticks (casework), and
+discretionary money and Round 3 approval (rules).
 """
 
 from datetime import date
