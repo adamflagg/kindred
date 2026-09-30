@@ -16,6 +16,12 @@ One draft per person, kept options and the trail, all over one frozen season:
   allocation; **sensitivity** is what one step of each sizing setting moves Round 1 by. **Make it the rules draft**
   hands a kept option to the rules service (SP9a's promotion).
 
+**What the committee compares** (sub-project 9c; spec §9.7 RPT-17, RPT-18, RPT-32) rides on compare: each column
+carries its Round 1 and Round 2 tables by tier and its share of the total budget, and, when asked, last season's
+posted money beside them (read live through the decisions service; empty and named until last season's decisions
+are loaded, never estimated). "Start from last season's rules" makes a starting point from this season's rules with
+last season's approved criteria copied in.
+
 Kept options and the trail are shared by everyone with financial_aid.rules; the draft is per person. Nothing here
 writes live awards. Every write is one 4a operation whose log rows carry a summary, never a document or the frozen
 inputs (plan Decision 15).
@@ -31,6 +37,7 @@ from typing import Any, Final, Literal, Protocol
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
+from api.services.financial_aid_decisions_service import Season
 from api.services.financial_aid_ledger_service import as_of_cutoff
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
@@ -49,12 +56,14 @@ from bunking.financial_aid.received import split_by_received
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import (
     SIZING_LEVERS,
+    CommitteeView,
     FitResult,
     RequestSet,
     RequestSetNote,
     ScenarioResults,
     SizingLever,
     apply_sizing,
+    committee_view,
     describe,
     dollar_for_dollar,
     fit_margin,
@@ -86,6 +95,8 @@ class ScenarioConflictError(FinancialAidError, ValueError):
 
 
 SeasonCapture = Callable[[int], Awaitable[SeasonSnapshot]]
+# A season read live, as Rounds & budget reads it (FinancialAidDecisionsService.season): last season's posted money.
+SeasonRead = Callable[[int], Awaitable[Season]]
 # A request set (D138): the Round 1 deadline switch, or the received-through date. None: every frozen request.
 RequestSetChoice = Literal["round1_deadline"] | date
 
@@ -157,6 +168,7 @@ class CompareColumn:
     results: ScenarioResults
     up: int | None  # requests whose Round 1 is higher than in its reference; None for rules as they were
     down: int | None
+    committee: CommitteeView | None = None  # RPT-17 / RPT-32's tables by tier and the budget share (SP9c)
 
 
 @dataclass(frozen=True)
@@ -230,10 +242,18 @@ def _fit_margin(results: ScenarioResults) -> Decimal:
 
 
 class FinancialAidScenariosService:
-    def __init__(self, store: ScenarioStore, rules: FinancialAidRulesService, capture: SeasonCapture) -> None:
+    def __init__(
+        self,
+        store: ScenarioStore,
+        rules: FinancialAidRulesService,
+        capture: SeasonCapture,
+        *,
+        season_read: SeasonRead | None = None,
+    ) -> None:
         self._store = store
         self._rules = rules
         self._capture = capture
+        self._season_read = season_read
 
     # --- what every action shares -------------------------------------------------------------------
 
@@ -622,11 +642,12 @@ class FinancialAidScenariosService:
         seen: dict[str, Priced] = {}
 
         async def of_option(option: OptionRecord) -> Priced:
-            # A kept option's stored figures are on every request of its own snapshot: reused only when both hold.
+            # A kept option's stored figures are on every request of its own snapshot: reused only when both hold,
+            # and only when they carry the committee's rows (SP9b stored none).
             if option.code not in seen:
                 seen[option.code] = (
                     Priced(option.results, await self._store.option_round1(option.id))
-                    if option.snapshot == meta.id and chosen is None
+                    if option.snapshot == meta.id and chosen is None and option.results.committee_rows
                     else await price(option.document)
                 )
             return seen[option.code]
@@ -654,6 +675,7 @@ class FinancialAidScenariosService:
                     mine.results,
                     up,
                     down,
+                    committee=committee_view(mine.results, row.document),
                 )
             )
         for code in wanted:
@@ -676,6 +698,7 @@ class FinancialAidScenariosService:
                     _changes(reference, option.document),
                     priced.results,
                     *up_or_down,
+                    committee=committee_view(priced.results, option.document),
                 )
             )
         return Comparison(meta, tuple(columns))
