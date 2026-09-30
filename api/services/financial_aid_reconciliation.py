@@ -8,7 +8,7 @@ PLACEMENT. A camp-aid line (an aid_postings row whose funder type, after any rec
 only request it could be (main spec §11: "a posting on the camper ... whose person has one request in
 that program this season belongs to that request"). That is a rule, not an inference (D16).
 Anything else stays at family level: it waits in Money > To place (sub-project 11), never ticks on
-its own (D81: "always require Ben to do the data entry first"), and is never split by estimate (D12).
+its own (D81: "always require the registrar to do the data entry first"), and is never split by estimate (D12).
 The rules, in order:
 
   1. a staff placement (aid_attribution_overrides naming a person or a session) decides, narrowing

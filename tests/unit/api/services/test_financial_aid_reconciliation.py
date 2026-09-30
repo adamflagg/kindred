@@ -102,7 +102,7 @@ def test_a_line_go_attributed_to_another_program_is_not_placed_on_the_only_candi
 
 
 def test_a_summer_household_line_stays_at_family_level_even_with_one_request() -> None:
-    """Main spec §11 and D81: a line on a parent or the household waits for Ben, whatever the count."""
+    """Main spec §11 and D81: a line on a parent or the household waits for the registrar, whatever the count."""
     one = [request("emma")]
     two = [*one, request("samuel", person=1000012, session=1000102)]
     assert placed([line(1, "3000")], one) == {}
