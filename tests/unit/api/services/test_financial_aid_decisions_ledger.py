@@ -687,7 +687,8 @@ async def test_the_ledger_ticks_what_the_registrar_forgot_at_the_decided_amount_
     assert row.confirmation is not None
     assert (row.confirmation.status, row.confirmation.gap) == ("over", 100.0)
     assert row.rounds[0].lock_source == "ledger"
-    # The sync re-runs the same night: nothing new is beyond the lock, so nothing is written.
+    # The sync re-runs the same night: Round 1 is posted and no later round is decided, so the $100
+    # over the lock ticks nothing and nothing is written.
     again = await _service(store, rules).ledger_ticks(YEAR)
     assert (again.ticked, again.operation_id) == (0, "")
     assert len(store.operations) == 1
@@ -713,9 +714,9 @@ async def test_the_ledger_never_ticks_a_held_request() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_payer_shares_posting_ticks_the_whole_round() -> None:
-    """D81 / D146: the round ticks once the shares posted cover its decided amount in full (a first share
-    alone waits for the registrar); the other share reads "not in CampMinder" until its household posts."""
+async def test_a_payer_share_round_ticks_once_the_shares_posted_cover_it() -> None:
+    """D81 / D146: the round ticks once the shares posted cover its decided amount in full; a first share
+    alone waits for the registrar. Each share then confirms against its own household."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]

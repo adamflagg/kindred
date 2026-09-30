@@ -17,11 +17,14 @@ The rules, in order:
      a session placement then matches the person's closed request that holds posted money on that
      session exactly, before the person's lone unmatched request;
   2. a line CampMinder posted to a person goes on that person's ONE live request, unless Go's
-     attribution names that same person and a program that differs from the request's program, in
-     which case it stays at family level;
+     attribution names that same person and a program that differs from the request's program, or
+     names that person with no program (enrolled in two programs) while the household holds a live
+     Family Camp request that could own it too, in which case it stays at family level;
   3. a line posted to the household, or to a person with no request of their own (the parent on a
      Family Camp line), goes on the household's request only when Go's program is empty or Family
-     Camp AND that request (Family Camp, person 0) is the only live request the household holds.
+     Camp AND that request (Family Camp, person 0) is the only live request the household holds. A
+     line on a person whose own request is closed never takes the household's request: the
+     closed-request pass takes it (D54).
 
 Several candidates and no staff placement leave the line at family level. Go's attribution is NEVER
 used to choose among candidates: Go re-attributes every row nightly from active enrollments, so after
@@ -667,6 +670,8 @@ def ledger_ticks(
                 view.status != "needs_offer"
                 or view.decided is None
                 or (request.request_id, view.round) in undone
+                # Full cover below implies this for any round above $0; it stops a $0 round ticking on
+                # money the earlier rounds already lock.
                 or in_campminder <= locked
             ):
                 break

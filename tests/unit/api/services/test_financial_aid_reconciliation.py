@@ -950,7 +950,7 @@ def test_a_line_go_left_between_programs_still_places_on_the_only_candidate() ->
 def test_a_withdrawn_campers_reversed_line_lands_on_the_closed_request_not_family_camp() -> None:
     summer = request("emma", status="withdrawn")
     weekend = request("fam", person=0, session=1000201, family="family_camp")
-    rev = line(1, "1800", person=1000011, reversed_at=APR1)  # after the cancel Go gives the camper no program
+    rev = line(1, "1800", person=1000011, reversed_at=APR1)  # no other enrollment after the cancel: Go gives no program
     ledger = build_ledger([rev], {}, [summer, weekend], None, frozenset({"emma"}))
     assert ledger.closed_lines("emma") == (rev,)
     assert ledger.by_request == {}
