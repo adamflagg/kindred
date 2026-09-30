@@ -72,7 +72,7 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, tuple[str, ...], int]] = [
         (CASEWORK,),
         200,
     ),
-    ("POST", f"/api/financial-aid/requests/{REQ}/round3-amount", {"amount": "300"}, (CASEWORK,), 200),
+    ("POST", f"/api/financial-aid/requests/{REQ}/round3-amount", {"amount": "350"}, (CASEWORK,), 200),
     (
         "POST",
         f"/api/financial-aid/requests/{REQ}/discretionary",

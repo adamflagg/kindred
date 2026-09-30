@@ -8,7 +8,7 @@ The fixture's default request: tier 2, cost 4,000. Round 1 = 75% of cost = 3,000
 from decimal import Decimal
 
 from bunking.financial_aid.calculator import calculate
-from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever
+from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_lever, with_levers
 
 APPEAL = {"appeal_amount": "99999"}
 ROUND3 = {"round2_decided": True, "round3_amount": "400", "round3_statement_of_need": True}
@@ -103,3 +103,22 @@ def test_a_locked_round_1_s_discretionary_money_sits_outside_round_2_s_cap() -> 
         Decimal(600),
         Decimal(3850),
     )
+
+
+def test_a_frozen_discretionary_amount_is_paid_without_the_withheld_note_above_the_income_ceiling() -> None:
+    rules = with_levers(
+        fictional_rules(),
+        {"awards.decision_types.discretionary.round": 2, "tiers.income_ceiling": "220000"},
+    )
+    request = req(
+        **APPEAL,
+        decision_type="discretionary",
+        discretionary_amount="250",
+        r1_locked="3000",
+        r2_locked="600",
+        locked_discretionary="250",
+    )
+    result = calculate(app(prior_year_gross="230000", current_year_gross="230000"), request, rules)
+    assert result.discretionary == Decimal(250)
+    assert result.step("discretionary_locked").value == Decimal(250)
+    assert "above_income_ceiling" not in result.issue_codes()

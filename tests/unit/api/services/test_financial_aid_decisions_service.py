@@ -706,6 +706,22 @@ async def test_an_ask_is_refused_while_a_later_round_is_posted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discretionary_money_is_refused_once_it_is_posted_even_after_its_decision_type_moves_rounds() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)
+    await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
+    moved = FakeRules(approved(with_lever(intake_rules(), "awards.decision_types.discretionary.round", 2)))
+    ops = len(store.operations)
+    body = DiscretionaryIn(decision_type="discretionary", amount=Decimal(300), note="More")
+    with pytest.raises(DecisionRefusedError, match="already posted"):
+        await _service(store, moved).key_discretionary(EMMA, body, ACTOR)
+    assert len(store.operations) == ops
+
+
+@pytest.mark.asyncio
 async def test_a_round_3_amount_is_refused_without_a_round_2_ask_while_the_rules_require_one() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)

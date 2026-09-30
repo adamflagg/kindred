@@ -613,6 +613,8 @@ class FinancialAidDecisionsService:
         )
         if other is not None:
             raise DecisionRefusedError(f"This request already carries '{other}'")
+        if any(s.posted and (s.snapshot or {}).get("decision_type") for s in rounds.values()):
+            raise DecisionRefusedError("This request's discretionary money is already posted; it can't change")
         n = decision.round
         state = rounds.get(n, RoundState(round=n))
         if state.posted:

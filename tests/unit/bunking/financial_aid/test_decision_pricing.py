@@ -270,6 +270,28 @@ def test_extra_of_a_posted_round_is_what_its_lock_snapshot_recorded() -> None:
     assert r2_bare.extra == Decimal(0)
 
 
+def _legacy_round_2(snapshot: dict[str, Any] | None) -> tuple[Any, ...]:
+    """Round 1 posted at 3000, then Round 2 (appeal plus 250 discretionary) posted at 850 with a
+    snapshot from before `decision_round` existed, or none at all."""
+    rules = with_lever(RULES, "awards.decision_types.discretionary.round", 2)
+    keyed = RoundState(round=2, ask=Decimal(99999), discretionary=Decimal(250), discretionary_type="discretionary")
+    posted = replace(keyed, posted=True, locked_amount=Decimal(850), locked_at=T0, snapshot=snapshot)
+    priced = price_request(item(rounds={1: POSTED_R1, 2: posted}), rules)
+    r2 = priced.view(2)
+    assert priced.result is not None
+    assert r2 is not None
+    return priced.result.total, tuple(h.code for h in priced.holds), r2.would_change_by
+
+
+def test_a_lock_snapshot_from_before_decision_round_still_folds_the_money_into_its_locked_amount() -> None:
+    old_shape = {"pool": "camp_pool", "counts_toward_budget": True}
+    assert _legacy_round_2(old_shape) == (Decimal(3850), (), None)
+
+
+def test_a_posted_round_with_no_snapshot_folds_the_money_into_its_locked_amount() -> None:
+    assert _legacy_round_2(None) == (Decimal(3850), (), None)
+
+
 def _post(priced_before: Any, state: RoundState, n: int) -> RoundState:
     """Round n ticked Posted at its decided amount, with the snapshot the tick stores."""
     view = priced_before.view(n)

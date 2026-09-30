@@ -121,7 +121,10 @@ def _decision(states: Mapping[int, RoundState], rules: AidRules) -> tuple[str | 
     for state in states.values():
         if state.discretionary_type:
             decision = rules.awards.decision_types.get(state.discretionary_type)
-            held_by = next((n for n in ROUNDS if _locked_extras(states[n]) is not None), None)
+            held_by = next(
+                (n for n in ROUNDS if _locked_extras(states[n], decision.round if decision else None) is not None),
+                None,
+            )
             if decision is not None and held_by is not None and held_by != decision.round:
                 decision = decision.model_copy(update={"round": held_by})
             return state.discretionary_type, decision, state.discretionary or ZERO
@@ -132,12 +135,20 @@ def _amount(value: Any) -> Decimal:
     return Decimal(str(value)) if value is not None else ZERO
 
 
-def _locked_extras(state: RoundState) -> tuple[Decimal, Decimal] | None:
+def _locked_extras(state: RoundState, rules_decision_round: int | None = None) -> tuple[Decimal, Decimal] | None:
     """The decision type's top-up and discretionary money a posted round's lock recorded inside its
     amount; None when the round is not posted or its lock recorded none (the snapshot's
-    `decision_round` is another round, or absent)."""
+    `decision_round` is another round).
+
+    Safety net: a posted round whose snapshot predates `decision_round` (or is missing) is the round
+    the current rules name for the decision, so its locked amount is the full figure: nothing is
+    frozen apart from it and nothing is added on top."""
+    if not state.posted:
+        return None
     snapshot = state.snapshot or {}
-    if not state.posted or snapshot.get("decision_round") != state.round:
+    if "decision_round" not in snapshot:
+        return (ZERO, ZERO) if rules_decision_round == state.round else None
+    if snapshot["decision_round"] != state.round:
         return None
     return _amount(snapshot.get("top_up")), _amount(snapshot.get("discretionary"))
 
@@ -153,17 +164,23 @@ def request_inputs(item: RequestToPrice, rules: AidRules, *, lock_through: int =
     if item.request is None:
         raise ValueError(f"request {item.request_id} cannot be priced: {item.blocked}")
     states = _states(item.rounds)
-    decision_type, _, discretionary = _decision(states, rules)
+    decision_type, decision, discretionary = _decision(states, rules)
+    decision_round = decision.round if decision is not None else None
 
     def locked(n: int) -> Decimal | None:
         state = states[n]
         if not state.posted or n > lock_through or state.locked_amount is None:
             return None
-        extras = _locked_extras(state)
+        extras = _locked_extras(state, decision_round)
         return state.locked_amount - sum(extras, ZERO) if extras is not None else state.locked_amount
 
     frozen = next(
-        (extras for n in ROUNDS if n <= lock_through and (extras := _locked_extras(states[n])) is not None), None
+        (
+            extras
+            for n in ROUNDS
+            if n <= lock_through and (extras := _locked_extras(states[n], decision_round)) is not None
+        ),
+        None,
     )
 
     r1, r2, r3 = states[1], states[2], states[3]
@@ -204,10 +221,10 @@ def _extra_now(result: CalcResult | None, decision: DecisionType | None, n: int)
     return (result.top_up or ZERO) + result.discretionary
 
 
-def _extra_locked(state: RoundState) -> Decimal:
+def _extra_locked(state: RoundState, decision: DecisionType | None) -> Decimal:
     """The decision type's money the lock recorded inside this round (its snapshot, never the rules
     now, so a rules change can't move posted money); 0 if none."""
-    extras = _locked_extras(state)
+    extras = _locked_extras(state, decision.round if decision is not None else None)
     return sum(extras, ZERO) if extras is not None else ZERO
 
 
@@ -293,7 +310,7 @@ def _view(
             would_change_by=_would_change(n, state, item, rules, decision),
             counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
             pool=locked_pool if isinstance(locked_pool, str) else None,
-            extra=_extra_locked(state),
+            extra=_extra_locked(state, decision),
         )
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None

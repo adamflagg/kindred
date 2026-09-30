@@ -224,7 +224,7 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
     _lock(work, 3, request.r3_locked)
     _total_cap(work, rules, request)
     _top_up(work, decision, above_ceiling=above_ceiling)
-    _discretionary(work, decision, above_ceiling=above_ceiling)
+    _discretionary(work, request, decision, above_ceiling=above_ceiling)
     _freeze_locked_extras(work, request)
     _total(work)
     work.issues.extend(
@@ -615,10 +615,13 @@ def _top_up(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) 
     work.step("top_up", f"Top-up: {decision.label}", amount, inputs={"kind": decision.kind}, note=note)
 
 
-def _discretionary(work: _Work, decision: DecisionType | None, *, above_ceiling: bool) -> None:
-    """Withholds a typed discretionary amount above the income ceiling, and says so."""
+def _discretionary(work: _Work, request: RequestInputs, decision: DecisionType | None, *, above_ceiling: bool) -> None:
+    """Withholds a typed discretionary amount above the income ceiling, and says so. Money frozen by
+    a lock is paid whatever the income says now, so it is never withheld or flagged."""
     typed = work.discretionary
     if typed == 0 or not above_ceiling or (decision is not None and decision.ceiling_exempt):
+        return
+    if request.locked_discretionary is not None:
         return
     work.discretionary = ZERO
     work.issue(
