@@ -14,10 +14,12 @@ from api.services.financial_aid_rules_service import (
     FinancialAidRulesService,
     NotLatestVersionError,
     PricingVersionInUseError,
+    RulesNotFoundError,
     SectionInvalidError,
     YearMismatchError,
     parse_section,
 )
+from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.change_log import AidWrite
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.lifecycle import LockedSectionInvalidatedError
@@ -350,3 +352,91 @@ async def test_a_draft_with_a_validation_error_locks_nothing_and_says_so() -> No
     await service.save_sections(2031, 1, AidRules.model_validate(broken), actor=TREASURER)  # v2, with the error
     writes, not_locked = await service.lock_writes(2031, 1, ["income", "tiers"])
     assert (writes, not_locked) == ([], ["income", "tiers"])
+
+
+# --- draft_view and approved_view --------------------------------------------------------------------
+
+
+async def _priced_v1(store: FakeStore) -> FinancialAidRulesService:
+    """Version 1 with only the pricing sections approved: stages, quality_checks and milestones stay draft."""
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board, Jan 8")
+    return service
+
+
+@pytest.mark.asyncio
+async def test_the_approved_read_is_the_pricing_version_and_never_shows_a_draft_section() -> None:
+    service = await _priced_v1(FakeStore())
+    approved = await service.approved_view(2031)
+    assert (approved.year, approved.version) == (2031, 1)
+    sections = {s.section: s for s in approved.sections}
+    assert sections["income"].content == fictional_rules().model_dump(mode="json")["income"]
+    assert (sections["income"].status.approved_by, sections["income"].version) == (FINANCE, 1)
+    assert (sections["milestones"].content, sections["milestones"].version) == (None, None)  # approved nowhere
+    assert sections["milestones"].status.state == "draft"
+
+
+@pytest.mark.asyncio
+async def test_the_approved_read_stays_on_the_approved_version_while_a_draft_is_open() -> None:
+    service = await _priced_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)  # branches v2
+    approved = {s.section: s for s in (await service.approved_view(2031)).sections}
+    assert (approved["awards"].version, approved["awards"].content["minimum"]) == (1, "100")  # type: ignore[index]
+    at_v2 = {s.section: s for s in (await service.approved_view(2031, 2)).sections}
+    assert at_v2["awards"].content is None  # draft in v2: withheld, and its edit stamp too
+    assert at_v2["awards"].status.edited_by is None
+    assert at_v2["income"].content is not None
+
+
+@pytest.mark.asyncio
+async def test_a_season_description_section_edited_in_a_draft_stays_readable() -> None:
+    service = await _approved_v1(FakeStore())
+    moved = with_lever(fictional_rules(), "milestones.r1_run", "2031-03-02")
+    await service.save_sections(2031, 1, moved, actor=TREASURER)  # v2: milestones draft
+    milestones = {s.section: s for s in (await service.approved_view(2031)).sections}["milestones"]
+    assert (milestones.version, milestones.content["r1_run"]) == (1, "2031-03-01")  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_a_pricing_section_approved_in_a_draft_that_cannot_price_yet_is_not_shown() -> None:
+    service = await _approved_v1(FakeStore())
+    both = with_lever(_minimum(fictional_rules(), "150"), "award_tables.camp.tiers.1.r1_pct", "88")
+    await service.save_sections(2031, 1, both, actor=TREASURER)  # v2: award_tables and awards draft
+    await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Feb 3")  # v2 still can't price
+    awards = {s.section: s for s in (await service.approved_view(2031)).sections}["awards"]
+    assert (awards.version, awards.content["minimum"]) == (1, "100")  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_a_season_with_no_approved_rules_has_no_approved_read() -> None:
+    service = _service(FakeStore())
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(RulesNotFoundError):
+        await service.approved_view(2031)
+
+
+@pytest.mark.asyncio
+async def test_the_draft_read_lists_each_sections_changes_against_the_approved_rules() -> None:
+    service = await _priced_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    draft = await service.draft_view(2031)
+    assert (draft.version.version, draft.approved_version) == (2, 1)
+    sections = {s.section: s for s in draft.sections}
+    assert sections["awards"].changes == (FieldChange(("minimum",), "changed", Decimal(100), Decimal(150)),)
+    assert sections["awards"].status.edited_by == TREASURER
+    assert sections["income"].changes == ()
+    assert [s.section for s in draft.sections] == list(SECTION_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_the_draft_read_has_no_changes_when_it_is_the_approved_version_or_there_is_none() -> None:
+    service = _service(FakeStore())
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    draft = await service.draft_view(2031)
+    assert draft.approved_version is None
+    assert all(s.changes == () for s in draft.sections)
+    await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
+    draft = await service.draft_view(2031)
+    assert draft.approved_version == 1
+    assert all(s.changes == () for s in draft.sections)

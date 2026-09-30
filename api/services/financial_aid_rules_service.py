@@ -55,6 +55,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
+from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
@@ -151,6 +152,53 @@ class SectionSaveResult:
     version: RulesVersion
     report: ValidationReport
     branched_from: int | None
+
+
+@dataclass(frozen=True)
+class DraftSection:
+    """One section of the rules draft: its status and its field-level changes against the version pricing the
+    season (none when the draft IS that version, or no version prices it yet): "Draft · n changes"."""
+
+    section: SectionName
+    status: SectionStatus
+    changes: tuple[FieldChange, ...]
+
+
+@dataclass(frozen=True)
+class RulesDraft:
+    version: RulesVersion
+    approved_version: int | None
+    report: ValidationReport
+    sections: tuple[DraftSection, ...]
+
+
+@dataclass(frozen=True)
+class ApprovedSection:
+    """One section as D76 shows it, from `version`: its content only when approved or locked there. A section
+    approved nowhere has no content, no version and a bare draft status (no edit stamps): the registrar never
+    sees a draft."""
+
+    section: SectionName
+    status: SectionStatus
+    content: dict[str, Any] | None
+    version: int | None
+
+
+@dataclass(frozen=True)
+class ApprovedRules:
+    year: int
+    version: int | None  # the version pricing the season (or the one asked for); None when none prices yet
+    sections: tuple[ApprovedSection, ...]
+
+
+_HELD: Final = ("approved", "locked")
+
+
+def _approved_section(version: RulesVersion | None, name: SectionName) -> ApprovedSection:
+    if version is None or version.section_status[name].state not in _HELD:
+        return ApprovedSection(name, SectionStatus(), None, None)
+    content = version.document.model_dump(mode="json")[name]
+    return ApprovedSection(name, version.section_status[name], content, version.version)
 
 
 def parse_section(document: AidRules, section: SectionName, content: Mapping[str, Any]) -> AidRules:
@@ -390,6 +438,50 @@ class FinancialAidRulesService:
             if all(version.section_status[name].state in ("approved", "locked") for name in sections):
                 return version
         return None
+
+    async def draft_view(self, year: int) -> RulesDraft:
+        """The Rules tab (spec §7.5, D39): the rules draft (the latest version) section by section, each with its
+        status and its changes against the version pricing the season."""
+        current = await self.load(year)
+        approved = await self.latest_approved(year, PRICING_SECTIONS)
+        report = await self.validate_document(current.document)
+        base = approved.document.model_dump() if approved is not None and approved.version != current.version else None
+        now = current.document.model_dump()
+        sections = tuple(
+            DraftSection(
+                section=name,
+                status=current.section_status[name],
+                changes=tuple(field_changes(base[name], now[name])) if base is not None else (),
+            )
+            for name in SECTION_NAMES
+        )
+        return RulesDraft(current, approved.version if approved is not None else None, report, sections)
+
+    async def approved_view(self, year: int, version: int | None = None) -> ApprovedRules:
+        """D76: the approved rules, read only. Drafts are withheld.
+
+        With `version` (a receipt's link): that version alone. Without it, section by section (review ruling,
+        plan Decision 5): each PRICING_SECTIONS section from the version pricing the season when there is one
+        (the rules that price the registrar's work), and every other section -- or a pricing section while no
+        version prices yet -- from the newest version where it is approved or locked (`latest_approved(year,
+        [section])`). So editing stages, quality_checks or milestones in a draft never blanks the read.
+        """
+        if version is not None:
+            chosen = await self.load(year, version)
+            return ApprovedRules(year, chosen.version, tuple(_approved_section(chosen, n) for n in SECTION_NAMES))
+        versions = [_to_version(row) for row in await self._store.list_versions(year)]
+
+        def newest(names: Collection[SectionName]) -> RulesVersion | None:
+            return next((v for v in reversed(versions) if all(v.section_status[n].state in _HELD for n in names)), None)
+
+        pricing = newest(PRICING_SECTIONS)
+        sections = tuple(
+            _approved_section(pricing if pricing is not None and name in PRICING_SECTIONS else newest([name]), name)
+            for name in SECTION_NAMES
+        )
+        if all(section.content is None for section in sections):
+            raise RulesNotFoundError(f"{year} has no approved rules yet")
+        return ApprovedRules(year, pricing.version if pricing is not None else None, sections)
 
     async def approved_as_of(self, year: int, sections: Collection[SectionName], at: datetime) -> RulesVersion | None:
         """The version that priced `year` at the instant `at` (the as-of reads, 3c): each version's
