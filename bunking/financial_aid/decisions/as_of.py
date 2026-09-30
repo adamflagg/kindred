@@ -36,6 +36,10 @@ _PRICED: Final = (
     "Priced from the family's answers as they stood then; this read rebuilds dated records only "
     "(the rebuilt pricing is the next PR, 3c-2)"
 )
+_PLACED: Final = (
+    "Grant lines carry their own dates (recorded_on, recorded_at, reversal_date), but which "
+    "request, and so which pool, a line sits on is today's placement"
+)
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "decided": _PRICED,
     "pending_approval": "It counts only while no hold covers the request, and the data checks are priced (3c-2)",
@@ -48,10 +52,11 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "needs_offer": _PRICED,
     "held": _PRICED,
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
-    "outside_grants": (
-        "Grant lines carry their own dates (recorded_on, recorded_at, reversal_date), but which "
-        "request, and so which pool, a line sits on is today's placement"
-    ),
+    "held_asked": _PRICED,
+    "outside_grants_off_requests": _PLACED,
+    "round2_asks": "A request's status on that date can't be replayed, so Round 2 asks aren't counted season-wide",
+    "round2_asked": "A request's status on that date can't be replayed, so Round 2 asks aren't counted season-wide",
+    "outside_grants": _PLACED,
     "outside_budget": "It includes decided money not yet posted; the posted part is outside_budget_posted",
     "round2_computed": _PRICED,
     "round1_unmet": _PRICED,
@@ -77,6 +82,8 @@ BUDGET_GAPS: Final[tuple[str, ...]] = (
     "remaining",
     "outside_grants",
     "outside_budget",
+    "held_asked",
+    "outside_grants_off_requests",
     "round2_computed",
     "round1_unmet",
 )

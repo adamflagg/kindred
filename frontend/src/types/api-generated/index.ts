@@ -774,6 +774,7 @@ export type {
   NetAidTotal,
   NetTotalsResponse,
   NewVsReturning,
+  NotRebuiltOut,
   OriginalRequestItem,
   OriginalRequestsListResponse,
   OriginalRequestsWithParseResponse,

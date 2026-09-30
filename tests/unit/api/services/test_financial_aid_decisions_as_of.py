@@ -6,6 +6,8 @@ allocation is 340,000, its total 400,000. The clock is April 1 2027 (camp time).
 
 from __future__ import annotations
 
+import asyncio
+import gc
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -415,29 +417,41 @@ async def test_a_past_rows_program_key_is_the_live_rows() -> None:
 GHOST = "reqghost0000001"
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("deleted_by_then", [False, True])
-async def test_a_request_deleted_since_whose_history_cannot_be_replayed_is_named_not_dropped(
-    deleted_by_then: bool,
-) -> None:
-    store = _seeded(EMMA)
-    log_update(store, AID_REQUESTS, GHOST, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 1))  # no create row
-    if deleted_by_then:
-        store.change_log.append(
-            LogRow(
-                id="log999999999999",
-                entity=AID_REQUESTS,
-                entity_id=GHOST,
-                before={"ask": 3500.0},
-                after=None,
-                created=_day(3, 2),
-            )
+def _log_delete(store: FakeDecisionsStore, entity_id: str, at: datetime) -> None:
+    store.change_log.append(
+        LogRow(
+            id=f"log9{len(store.change_log):011d}",
+            entity=AID_REQUESTS,
+            entity_id=entity_id,
+            before={"ask": 3500.0},
+            after=None,
+            created=at,
         )
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("update_day", [1, 20])
+async def test_a_request_deleted_since_whose_history_cannot_be_replayed_is_named_not_dropped(update_day: int) -> None:
+    """No create row. Whether its update came before the date or after, and it was deleted after."""
+    store = _seeded(EMMA)
+    log_update(store, AID_REQUESTS, GHOST, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, update_day))
+    _log_delete(store, GHOST, _day(3, 25))
     out = await _service(store).grid(YEAR, as_of=MAR_9)
     assert [row.request_id for row in out.rows] == [EMMA]
     gap = next(g for g in out.not_rebuilt if g.figure == "request_deleted")
     assert (gap.requests, gap.reason) == ([GHOST], PAST_DATE_GAPS["request_deleted"])
     assert "request_history" not in [g.figure for g in out.not_rebuilt]
+
+
+@pytest.mark.asyncio
+async def test_a_request_deleted_by_the_date_provably_wasnt_there_and_names_no_gap() -> None:
+    store = _seeded(EMMA)
+    log_update(store, AID_REQUESTS, GHOST, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 1))  # no create row
+    _log_delete(store, GHOST, _day(3, 2))
+    out = await _service(store).grid(YEAR, as_of=MAR_9)
+    assert [row.request_id for row in out.rows] == [EMMA]
+    assert "request_deleted" not in [g.figure for g in out.not_rebuilt]
 
 
 @pytest.mark.asyncio
@@ -487,27 +501,70 @@ async def test_no_rules_by_the_date_names_no_pool_unknown(history_incomplete: bo
 
 
 @pytest.mark.asyncio
-async def test_the_requests_are_read_before_the_change_log_they_settle() -> None:
+async def test_the_requests_read_completes_before_the_change_log_read_starts() -> None:
     store = _seeded(EMMA)
     order: list[str] = []
     fetch_requests, fetch_log = store.fetch_requests, store.fetch_change_log
 
     async def requests(*args: Any, **kwargs: Any) -> Any:
-        order.append("requests")
-        return await fetch_requests(*args, **kwargs)
+        order.append("requests-start")
+        for _ in range(5):
+            await asyncio.sleep(0)  # a slow read: a concurrent log read would start meanwhile
+        found = await fetch_requests(*args, **kwargs)
+        order.append("requests-done")
+        return found
 
     async def log(*args: Any, **kwargs: Any) -> Any:
-        order.append("log")
+        order.append("log-start")
         return await fetch_log(*args, **kwargs)
 
     store.fetch_requests = requests  # type: ignore[method-assign]
     store.fetch_change_log = log  # type: ignore[method-assign]
     await _service(store).grid(YEAR, as_of=MAR_9)
-    assert order == ["requests", "log"]
+    assert order == ["requests-start", "requests-done", "log-start"]
 
 
-# held_asked is the money of the `held` gap, and outside_grants_off_requests of `outside_grants`.
-_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS, "held_asked", "outside_grants_off_requests"}
+@pytest.mark.asyncio
+async def test_a_failed_read_leaves_no_unretrieved_rules_exception() -> None:
+    store = _seeded(EMMA)
+    rules = FakeRules(approved())
+    rules.as_of_version = RuntimeError("rules store down")
+    seen: list[dict[str, Any]] = []
+    asyncio.get_running_loop().set_exception_handler(lambda _loop, context: seen.append(context))
+
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        raise ConnectionError("log store down")
+
+    store.fetch_change_log = broken  # type: ignore[method-assign]
+    try:
+        await _service(store, rules).grid(YEAR, as_of=MAR_9)
+    except ConnectionError:
+        pass  # (no `pytest.raises`: its traceback would keep the rules task alive)
+    else:
+        raise AssertionError("the failed read should have raised")
+    gc.collect()
+    await asyncio.sleep(0)
+    assert seen == []
+
+
+@pytest.mark.asyncio
+async def test_round_2_asks_are_named_only_when_an_unrebuilt_request_empties_them() -> None:
+    store = _seeded(EMMA)
+    service = _service(store)
+    clean = [g.figure for g in (await service.budget(YEAR, as_of=MAR_9)).not_rebuilt]
+    assert "round2_asks" not in clean
+    assert "round2_asked" not in clean
+    store.change_log = [r for r in store.change_log if r.entity_id != EMMA]
+    log_update(store, AID_REQUESTS, EMMA, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 1))  # no create
+    out = await service.budget(YEAR, as_of=MAR_9)
+    named = [g.figure for g in out.not_rebuilt]
+    assert "round2_asks" in named
+    assert "round2_asked" in named
+    camp = next(p for p in out.pools if p.pool == "camp_pool")
+    assert (camp.demand.round2_asks, camp.demand.round2_asked) == (None, None)
+
+
+_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS}
 
 
 def _without_gaps(value: Any) -> Any:
@@ -534,9 +591,7 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
         return _without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored})
 
     def rows(model: Any) -> Any:
-        return [
-            _without_gaps({k: v for k, v in row.items() if k != "request_status"}) for row in model.model_dump()["rows"]
-        ]
+        return [_without_gaps(row) for row in model.model_dump()["rows"]]
 
     assert rows(past_grid) == rows(live_grid)
     live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)

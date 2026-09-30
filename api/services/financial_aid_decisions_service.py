@@ -474,12 +474,15 @@ def _requests_as_of(
         elif request_id in now:
             out[request_id] = now[request_id]
             unrebuilt.add(request_id)
-        else:
+        elif record.state is not None:
             deleted.add(request_id)
+        # else: an incomplete history that ends deleted by `at`: it provably wasn't there
     for request_id, request in now.items():
         if request_id not in made and request_id not in out:  # rows only after `at`, or none: no create to replay
             out[request_id] = request
             unrebuilt.add(request_id)
+    # Logged, with no create row, absent today, and not replayed by `at` (rows only after it): deleted since.
+    deleted |= {row.entity_id for row in log} - made - now.keys() - rebuilt.keys()
     return out, frozenset(unrebuilt), frozenset(deleted)
 
 
@@ -519,6 +522,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
     """3c-1's past Rounds & budget: Allocated, Posted, Accepted, posted money outside the budget, the
     posted and accepted counts, and Round 2 asks so far (unless a request's status is unknown)."""
     asks = not season.unrebuilt
+    emptied = [] if asks else _gaps(["round2_asks", "round2_asked"])
     return out.model_copy(
         update={
             "pools": [_past_pool(pool, asks=asks) for pool in out.pools],
@@ -530,7 +534,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
             "outside_grants_off_requests": None,
             "as_of": season.as_of,
             "as_of_axis": "recorded",
-            "not_rebuilt": [*_gaps(BUDGET_GAPS), *season.gaps],
+            "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *season.gaps],
         }
     )
 
@@ -645,10 +649,11 @@ class FinancialAidDecisionsService:
         at = as_of_instant(day)
         rules_read = asyncio.create_task(self._rules_as_of(year, at))
         try:
-            # Requests before the log: today's requests settle same-instant clashes in the log, so
-            # they must never run ahead of it (approved_as_of orders its reads the same way).
-            today, log, corrections, sessions, events, hold_events = await asyncio.gather(
-                self._store.fetch_requests(year),
+            # Today's requests settle same-instant clashes in the log, so they are read to completion
+            # BEFORE the log read starts (approved_as_of orders its reads the same way). The rules
+            # read, and the other reads, overlap freely.
+            today = await self._store.fetch_requests(year)
+            log, corrections, sessions, events, hold_events = await asyncio.gather(
                 self._store.fetch_change_log(year, AID_REQUESTS),
                 self._store.fetch_corrections(year, None),
                 self._store.fetch_sessions(year),
@@ -658,6 +663,7 @@ class FinancialAidDecisionsService:
             rules, gaps = await rules_read
         finally:
             rules_read.cancel()
+            await asyncio.gather(rules_read, return_exceptions=True)  # retrieve its exception, if it had one
         requests, unrebuilt, deleted = _requests_as_of(log, at, today)
         rounds = fold_rounds(events, as_of=at)
         holds = fold_holds(hold_events, as_of=at)
