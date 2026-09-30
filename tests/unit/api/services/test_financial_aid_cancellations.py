@@ -35,6 +35,7 @@ TYPES = {s.cm_id: s.session_type for s in SESSIONS}
 MAR9 = datetime(2027, 3, 9, 18, 0, tzinfo=UTC)
 APR1 = datetime(2027, 4, 1, 18, 0, tzinfo=UTC)
 MAY2 = date(2027, 5, 2)
+MAY3 = datetime(2027, 5, 3, 18, 0, tzinfo=UTC)
 
 
 def request(
@@ -104,6 +105,21 @@ def test_a_staff_set_session_is_not_cancelled_when_the_camper_enrolled_elsewhere
     assert enrollment_cancelled(request(), switched, TYPES) == (True, MAY2)  # until intake re-resolves it
 
 
+def test_a_staff_set_session_is_cancelled_by_a_cancellation_anywhere_in_the_program() -> None:
+    """Final review (ruled): program-wide both ways. Staff set Session 2; the camper's only registration,
+    in Taste of Camp 1, was cancelled; nothing is enrolled anywhere: the request is cancelled."""
+    staff = request(resolution="staff")
+    assert enrollment_cancelled(staff, [row(32, session=1000104)], TYPES) == (True, MAY2)
+    assert enrollment_cancelled(staff, [row(32, session=1000201)], TYPES) == (False, None)  # another program
+
+
+def test_the_cancellation_day_is_the_latest_cancelled_rows() -> None:
+    lost = request(session=0, status="unmatched_session")
+    rows = [row(32, session=1000104, on=date(2027, 4, 20)), row(256, session=1000101)]
+    assert enrollment_cancelled(lost, rows, TYPES) == (True, MAY2)
+    assert enrollment_cancelled(lost, list(reversed(rows)), TYPES) == (True, MAY2)
+
+
 def test_a_waitlisted_or_applied_row_keeps_nothing_on_and_an_enrolled_row_does() -> None:
     """Owner ruling 2026-09-30 (owner + data): only an enrolled (2) row keeps a registration on."""
     lost = request(session=0, status="unmatched_session")
@@ -128,6 +144,13 @@ def test_a_family_camp_request_is_cancelled_when_every_household_member_is() -> 
     parent, child = row(32, person=1000019, session=1000201), row(32, person=1000011, session=1000201)
     assert enrollment_cancelled(weekend, [parent, child], TYPES) == (True, MAY2)
     assert enrollment_cancelled(weekend, [parent, row(2, person=1000011, session=1000201)], TYPES) == (False, None)
+
+
+def test_another_households_cancelled_row_does_not_cancel_a_family_camp_request() -> None:
+    weekend = request("fam", person=0, session=1000201, program="family_camp")
+    neighbour = EnrollmentState(1000021, 1000002, 1000201, 32, MAY2)
+    assert cancellations_by_request([weekend], [], [neighbour], SESSIONS) == {}
+    assert enrollment_cancelled(weekend, [neighbour], TYPES) == (False, None)
 
 
 def test_the_latest_event_wins_and_a_reopen_clears_the_reason() -> None:
@@ -162,9 +185,29 @@ def test_cancellations_come_from_campminder_or_kindred_and_only_live_requests_ta
 
 
 def test_a_reason_given_for_a_campminder_cancellation_travels_with_it() -> None:
-    events = [CancelEvent("c1", "emma", "cancel", MAR9, reason="another_reason", note="Moved away")]
+    events = [CancelEvent("c1", "emma", "cancel", MAY3, reason="another_reason", note="Moved away")]
     out = cancellations_by_request([request()], events, [row(32)], SESSIONS)
     assert out["emma"] == Cancellation("campminder", MAY2, "another_reason", "Moved away")
+
+
+def test_a_campminder_cancellations_reason_does_not_answer_a_later_cancellation() -> None:
+    """Final review: reason given, the camper re-enrolled, CampMinder cancelled again on a later day. Only
+    a reason recorded on or after the current cancellation's day satisfies its to-do."""
+    events = [CancelEvent("c1", "emma", "cancel", APR1, reason="schedule", note="Summer job")]
+    first = cancellations_by_request([request()], events, [row(32, on=date(2027, 3, 20))], SESSIONS)
+    assert first["emma"] == Cancellation("campminder", date(2027, 3, 20), "schedule", "Summer job")
+    again = cancellations_by_request([request()], events, [row(32)], SESSIONS)
+    assert again["emma"] == Cancellation("campminder", MAY2, None, "")
+    assert needs_reason(again["emma"], 2027) is True
+    same_day = [CancelEvent("c1", "emma", "cancel", datetime(2027, 5, 2, 18, 0, tzinfo=UTC), reason="schedule")]
+    assert cancellations_by_request([request()], same_day, [row(32)], SESSIONS)["emma"].reason == "schedule"
+
+
+def test_a_kindred_cancellations_reason_stands_when_campminder_cancels_after_it() -> None:
+    """The family declined in Kindred first; CampMinder's later cancellation is the same one, not a new one."""
+    events = [CancelEvent("c1", "emma", "cancel", MAR9, reason="aid_not_enough", in_kindred=True)]
+    out = cancellations_by_request([request()], events, [row(32)], SESSIONS)
+    assert out["emma"] == Cancellation("campminder", MAY2, "aid_not_enough", "")
 
 
 def test_d141s_nine_reasons_each_have_a_staff_label() -> None:

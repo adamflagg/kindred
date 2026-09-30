@@ -10,7 +10,8 @@ A request is CANCELLED when either:
     because intake re-resolves every request from registration on every run and only an enrolled
     registration sets a session, so a cancelled camper's request turns unmatched (session 0) the
     night after. A session STAFF set is kept on every run (intake's _session_choice), so for one an
-    enrolled registration anywhere in the program also means not cancelled: the camper switched.
+    enrolled registration anywhere in the program also means not cancelled (the camper switched), and
+    a cancelled one there cancels it, as for an unmatched request.
     The day is the latest cancelled row's enrollment_date, CampMinder's PostDate, which is the
     cancellation date (spec §6.2); or
   * the registrar cancelled it in Kindred (an aid_cancellations "cancel" with in_kindred): the family
@@ -147,14 +148,15 @@ def enrollment_cancelled(
         mine = [e for e in enrollments if e.household_cm_id == request.household_cm_id]
     program = PROGRAM_SESSION_TYPES.get(request.program_key, frozenset())
     in_program = [e for e in mine if session_types.get(e.session_cm_id, "") in program]
+    in_session = [e for e in mine if e.session_cm_id == request.session_cm_id]
     if request.session_cm_id <= 0:
         scope = in_program
-    elif request.session_resolution == RESOLUTION_STAFF and any(
-        e.status_id == ACTIVE_ENROLLED_STATUS_ID for e in in_program
-    ):
-        return False, None  # intake keeps a staff session on every run: an enrolment elsewhere is a switch
+    elif request.session_resolution == RESOLUTION_STAFF:
+        # Intake keeps a staff session on every run, so the program counts both ways (final review,
+        # ruled): an enrolment elsewhere in it is a switch, a cancellation elsewhere in it still cancels.
+        scope = [*in_program, *(e for e in in_session if e not in in_program)]
     else:
-        scope = [e for e in mine if e.session_cm_id == request.session_cm_id]
+        scope = in_session
     if not registrations_cancelled(e.status_id for e in scope):
         return False, None
     days = [e.changed_on for e in scope if e.status_id in CANCELLED_STATUS_IDS and e.changed_on is not None]
@@ -167,6 +169,16 @@ class Cancellation:
     on: date | None
     reason: CancelReason | None  # None: "Cancelled: give a reason" (D101), from FIRST_REASONED_SEASON
     note: str
+
+
+def reason_answers(state: CancelState, day: date | None) -> bool:
+    """Whether the recorded reason belongs to the current cancellation, CampMinder's of `day`. A reason
+    given for a Kindred cancellation does (CampMinder only followed it); one given for a CampMinder
+    cancellation does only if recorded on or after its day, so a re-enrolment and a later cancellation
+    ask again (final review). An unknown day can't be told apart, so the reason stands."""
+    if state.in_kindred or day is None or state.at is None:
+        return True
+    return camp_date(state.at) >= day
 
 
 def needs_reason(cancellation: Cancellation | None, year: int) -> bool:
@@ -214,7 +226,10 @@ def cancellations_by_request(
         state = states.get(request.id, CancelState())
         cancelled, day = enrollment_cancelled(request, _rows(request, by_person, by_household), session_types)
         if cancelled:
-            out[request.id] = Cancellation("campminder", day, state.reason, state.note)
+            current = reason_answers(state, day)
+            out[request.id] = Cancellation(
+                "campminder", day, state.reason if current else None, state.note if current else ""
+            )
         elif state.in_kindred:
             out[request.id] = Cancellation(
                 "kindred", camp_date(state.at) if state.at is not None else None, state.reason, state.note

@@ -383,7 +383,7 @@ async def test_a_campminder_cancellation_with_a_pending_round3_ask_drops_the_sam
 async def test_a_reason_for_a_campminder_cancellation_clears_the_to_do_and_only_campminder_reopens_it() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    _enrol(store, 32)
+    _enrol(store, 32, on=date(2027, 3, 1))  # before the fake clock: the reason answers this cancellation
     service = _service(store)
     body = CancellationIn(cancelled=True, reason="another_reason", note="Moved away")
     await service.set_cancellation(EMMA, body, ACTOR)
@@ -401,6 +401,50 @@ async def test_a_reason_for_a_campminder_cancellation_clears_the_to_do_and_only_
     with pytest.raises(DecisionRefusedError, match="CampMinder"):
         await service.set_cancellation(EMMA, CancellationIn(cancelled=False, note="A mistake"), ACTOR)
     assert len(store.operations) == writes
+
+
+@pytest.mark.asyncio
+async def test_a_familys_kindred_decline_survives_a_campminder_cancel_a_reason_edit_and_a_re_enrolment() -> None:
+    """Final review: the reason edited after CampMinder also cancelled keeps the Kindred cancellation, so
+    the camper re-enrolling in CampMinder leaves the request cancelled, not back in Needs an offer."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _enrol(store, 2)
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="aid_not_enough"), ACTOR)
+    store.enrollments.clear()
+    _enrol(store, 32)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    assert store.cancel_events[-1].in_kindred is True
+    store.enrollments.clear()
+    _enrol(store, 2)
+    row = await _row(store)
+    assert row.cancellation is not None
+    assert (row.cancellation.by, row.cancellation.reason, row.rounds) == ("kindred", "schedule", [])
+
+
+@pytest.mark.asyncio
+async def test_a_later_campminder_cancellation_asks_for_its_own_reason() -> None:
+    """Final review: a reason given for CampMinder's cancellation, then a re-enrolment and a second
+    cancellation on a later day: the to-do asks again, and giving the same reason is a real write."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _enrol(store, 32, on=date(2027, 3, 1))
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    assert (await _row(store)).todos == []
+    store.enrollments.clear()
+    _enrol(store, 2)
+    assert (await _row(store)).cancellation is None
+    store.enrollments.clear()
+    _enrol(store, 32, on=date(2027, 3, 20))
+    row = await _row(store)
+    assert row.cancellation is not None
+    assert (row.cancellation.reason, [t.code for t in row.todos or []]) == (None, ["cancel_reason_missing"])
+    store._clock = datetime(2027, 3, 21, 17, 0, tzinfo=UTC)
+    out = await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="schedule"), ACTOR)
+    assert (out.written, out.unchanged) == (1, 0)
+    assert (await _row(store)).todos == []
 
 
 @pytest.mark.asyncio
