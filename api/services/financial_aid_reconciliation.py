@@ -644,12 +644,11 @@ def ledger_ticks(
     falling net never ticks. Family-level lines are not placed on any request, so they never tick
     (D81). A round a person un-ticked (`undone`) is left for a person to tick again.
 
-    Any excess ticks a round only while the request has nothing counted posted when the walk starts
-    (locked 0): a typo on the first money still locks the decided amount (D78). Once a round is
-    posted, every round in the walk needs full cover (in CampMinder >= locked + decided), whichever
-    night it runs, so a sliver over a posted round never ticks the next one. That includes a payer
-    share's Round 2: it waits until the shares posted cover it in full, and the registrar ticks it
-    sooner by hand."""
+    Every round, the first included, needs full cover (in CampMinder >= locked + decided), whichever
+    night it runs (D146): a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's
+    award, so a sliver or a short posting never ticks, and the registrar ticks it by hand. Over-postings
+    still tick, at the decided amount. That includes a payer share's Round 2: it waits until the shares
+    posted cover it in full."""
     ticks: list[LedgerTick] = []
     for request in priced:
         if not request.live:
@@ -661,7 +660,6 @@ def ledger_ticks(
             continue
         days = [camp_date(line.post_date) for line in live if line.post_date is not None]
         posted_on = min(max(days), today) if days else today
-        any_excess = locked == ZERO
         for view in sorted(request.rounds, key=lambda v: v.round):
             if view.status == "posted":
                 continue
@@ -672,9 +670,8 @@ def ledger_ticks(
                 or in_campminder <= locked
             ):
                 break
-            if not any_excess and in_campminder < locked + view.decided:
+            if in_campminder < locked + view.decided:
                 break
-            any_excess = False
             ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
             locked += view.decided
     return ticks

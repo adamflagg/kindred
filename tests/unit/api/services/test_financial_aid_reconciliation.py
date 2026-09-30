@@ -606,16 +606,33 @@ def ledger_of(request_id: str, *lines: CampLine) -> SeasonLedger:
 
 
 def test_money_beyond_the_locks_ticks_the_oldest_decided_round_at_its_decided_amount() -> None:
-    """D78: a typo ($1,590 for $1,800) still locks the decided $1,800; the gap is the confirmation's."""
+    """D78 / D146: an over-posting ($1,801 for $1,800) still locks the decided $1,800; the gap is the confirmation's."""
     needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
-    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1590", posted=MAR9)), today=TODAY)
+    (tick,) = ledger_ticks([needs], ledger_of("emma", line(1, "1801", posted=MAR9)), today=TODAY)
     assert (tick.request_id, tick.round, tick.amount, tick.posted_on, tick.in_campminder) == (
         "emma",
         1,
         Decimal(1800),
         date(2027, 3, 9),
-        Decimal(1590),
+        Decimal(1801),
     )
+
+
+def test_a_first_round_needs_the_full_decided_amount_in_campminder() -> None:
+    """D146: a generic camp-aid ("<camp> FA") line can be an outside grant posted before the camp's award, so the first
+    round no longer ticks on any excess: a $50 line, or a $1,590 typo, waits for the registrar."""
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    assert ledger_ticks([needs], ledger_of("emma", line(1, "50", posted=MAR9)), today=TODAY) == []
+    assert ledger_ticks([needs], ledger_of("emma", line(1, "1590", posted=MAR9)), today=TODAY) == []
+    (full,) = ledger_ticks([needs], ledger_of("emma", line(1, "1800", posted=MAR9)), today=TODAY)
+    assert (full.round, full.amount, full.in_campminder) == (1, Decimal(1800), Decimal(1800))
+
+
+def test_a_sliver_after_a_zero_dollar_posted_round_never_ticks_the_next_round() -> None:
+    """Round 1 posted at $0 (a grant left nothing), Round 2 decided $800: a $50 line is no cover."""
+    rounds = (view(1, "posted", locked="0"), view(2, "needs_offer", decided="800"))
+    ticks = ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "50", posted=MAR9)), today=TODAY)
+    assert ticks == []
 
 
 def test_a_falling_net_a_held_round_or_a_pending_round_3_never_ticks() -> None:
@@ -639,8 +656,7 @@ def test_the_ledger_ticks_later_rounds_in_order_only_while_the_money_covers_them
         view(2, "needs_offer", decided="300"),
         view(3, "needs_offer", decided="300"),
     )
-    # Changed from the brief (controller ruling, narrowed by the final review): any excess ticks a round
-    # only while the request has nothing counted posted; with Round 1 posted, every round needs full cover.
+    # Every round needs full cover (D146); with Round 1 posted, a sliver never ticks the next.
     sliver = ledger_ticks(
         [priced("emma", 1000001, *rounds)],
         ledger_of("emma", line(1, "1800"), line(2, "400", posted=MAR9)),
@@ -761,15 +777,14 @@ def test_a_round_whose_latest_tick_event_is_an_undo_is_left_for_a_person() -> No
 
 def test_a_sliver_over_a_posted_round_never_ticks_a_later_round() -> None:
     """Probe: Round 1 is posted at 1,800, CampMinder holds 1,800.50 and Round 2 is decided at 300.
-    Any excess ticks only while the request has no counted posted round (locked 0); otherwise the
-    round needs full cover (final review ruling)."""
+    Every round needs full cover (D146)."""
     req = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "needs_offer", decided="300"))
     assert ledger_ticks([req], ledger_of("emma", line(1, "1800.50")), today=TODAY) == []
 
 
 def test_a_first_walks_sliver_never_ticks_the_next_round() -> None:
-    """Nothing is posted, so Round 1 ticks on any excess (1,850 > 1,800 decided). That tick spends the
-    excess: Round 2 then needs full cover (1,800 + 300 = 2,100 > 1,850) and does not tick."""
+    """Round 1 ticks on full cover (1,850 >= 1,800 decided). That tick spends the money: Round 2
+    then needs full cover (1,800 + 300 = 2,100 > 1,850) and does not tick."""
     rounds = (view(1, "needs_offer", decided="1800"), view(2, "needs_offer", decided="300"))
     ticks = ledger_ticks([priced("emma", 1000001, *rounds)], ledger_of("emma", line(1, "1850")), today=TODAY)
     assert [t.round for t in ticks] == [1]
