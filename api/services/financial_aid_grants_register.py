@@ -92,7 +92,7 @@ class GrantLine:
 
 @dataclass(frozen=True)
 class Placement:
-    """An aid_attribution_overrides row that names a person: a confirmed camper."""
+    """An aid_attribution_overrides row that names a person or a session: a staff (or 2026 sheet) placement."""
 
     transaction_cm_id: int
     person_cm_id: int

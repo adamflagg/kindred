@@ -59,6 +59,10 @@ class NotRebuiltOut(BaseModel):
 
 
 class RoundOut(BaseModel):
+    """One round of a request. On a clawed-back round (D54) `posted` still carries the locked amount and
+    `accepted` stays True, as the record of what was ticked, but the budget counts that money nowhere:
+    never sum `rounds[].posted` for a total. Use the row's `total_posted` or the budget's figures."""
+
     round: int
     status: RoundStatusOut
     ask: float | None
@@ -71,6 +75,8 @@ class RoundOut(BaseModel):
     would_change_by: float | None
     counts_toward_budget: bool
     rules_version: int | None
+    lock_source: str | None = None  # "tick" (registrar) or "ledger" (automatic tick, D78); None while unposted
+    clawed_back: bool = False  # CampMinder reversed its money: it counts nowhere (D54)
 
 
 class ReleasedHoldOut(BaseModel):
@@ -81,6 +87,34 @@ class ReleasedHoldOut(BaseModel):
     note: str
     released_at: datetime
     released_by: str
+
+
+ConfirmationStatusOut = Literal["awaiting_sync", "confirmed", "short", "over", "not_in_campminder", "reversed"]
+
+
+class ShareConfirmationOut(BaseModel):
+    """One payer share against its own household's lines (main spec §11)."""
+
+    household_cm_id: int
+    expected: float
+    in_campminder: float
+    status: ConfirmationStatusOut
+
+
+class ConfirmationOut(BaseModel):
+    """Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
+    in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
+    the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
+    is the family's camp aid no single request takes yet (D81)."""
+
+    status: ConfirmationStatusOut
+    locked: float
+    in_campminder: float
+    gap: float
+    on: date | None
+    reconciled: bool
+    family_unplaced: float
+    shares: list[ShareConfirmationOut]
 
 
 class GridRowOut(BaseModel):
@@ -97,11 +131,14 @@ class GridRowOut(BaseModel):
     tier: int | None
     cost: float | None
     rounds: list[RoundOut]
+    # Decided includes a clawed-back round: a declined offer was still decided (owner ruling 2026-09-30).
+    # total_posted, and the budget's Posted and Remaining, drop it (D54).
     total_decided: float | None
     total_posted: float | None
     holds: list[IssueOut]
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
+    confirmation: ConfirmationOut | None = None
 
 
 class RequestsGridResponse(BaseModel):
@@ -120,8 +157,8 @@ class CountOut(BaseModel):
 
 class CellOut(BaseModel):
     allocated: float | None
-    posted: float
-    accepted: float
+    posted: float | None  # None: a past read whose posted money can't be replayed exactly
+    accepted: float | None
     needs_offer: float | None
     pending_approval: float | None
     remaining: float | None
@@ -136,7 +173,7 @@ class BelowTheLineOut(BaseModel):
     held_asked: float | None
     outside_grants: float | None
     outside_budget: float | None
-    outside_budget_posted: float
+    outside_budget_posted: float | None
 
 
 class ForwardDemandOut(BaseModel):
@@ -158,8 +195,8 @@ class PoolBudgetOut(BaseModel):
 class RoundCountsOut(BaseModel):
     round: int
     needs_offer: CountOut | None
-    posted: CountOut
-    accepted: CountOut
+    posted: CountOut | None
+    accepted: CountOut | None
     held: CountOut | None
     pending_approval: CountOut | None
 
@@ -290,3 +327,15 @@ class DecisionWriteOut(BaseModel):
     total_locked: float | None = None
     pending_approval: bool = False
     sections_not_locked: list[str] = Field(default_factory=list)
+
+
+class LedgerTicksOut(BaseModel):
+    """What the ledger's automatic Posted tick did for one season (D78). The Go ledger sync reads it.
+    `skipped` says why nothing was considered (a season before ticks began, no approved rules)."""
+
+    year: int
+    ticked: int
+    operation_id: str
+    total_locked: float | None = None
+    sections_not_locked: list[str] = Field(default_factory=list)
+    skipped: str = ""

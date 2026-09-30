@@ -1157,7 +1157,7 @@ export type BelowTheLineOut = {
   /**
    * Outside Budget Posted
    */
-  outside_budget_posted: number
+  outside_budget_posted: number | null
 }
 
 /**
@@ -2055,11 +2055,11 @@ export type CellOut = {
   /**
    * Posted
    */
-  posted: number
+  posted: number | null
   /**
    * Accepted
    */
-  accepted: number
+  accepted: number | null
   /**
    * Needs Offer
    */
@@ -2380,6 +2380,49 @@ export type ComparisonMetricsResponse = {
    * Change between years
    */
   delta: ComparisonDelta
+}
+
+/**
+ * ConfirmationOut
+ *
+ * Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
+ * in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
+ * the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
+ * is the family's camp aid no single request takes yet (D81).
+ */
+export type ConfirmationOut = {
+  /**
+   * Status
+   */
+  status: 'awaiting_sync' | 'confirmed' | 'short' | 'over' | 'not_in_campminder' | 'reversed'
+  /**
+   * Locked
+   */
+  locked: number
+  /**
+   * In Campminder
+   */
+  in_campminder: number
+  /**
+   * Gap
+   */
+  gap: number
+  /**
+   * On
+   */
+  on: string | null
+  /**
+   * Reconciled
+   */
+  reconciled: boolean
+  /**
+   * Family Unplaced
+   */
+  family_unplaced: number
+  /**
+   * Shares
+   */
+  shares: Array<ShareConfirmationOut>
 }
 
 /**
@@ -3686,6 +3729,16 @@ export type FinancialAidIntakeRun = {
 }
 
 /**
+ * FinancialAidLedgerTicksRun
+ */
+export type FinancialAidLedgerTicksRun = {
+  /**
+   * Year
+   */
+  year: number
+}
+
+/**
  * FirstSummerYearBreakdown
  *
  * Breakdown by first summer year (cohort analysis).
@@ -4764,6 +4817,7 @@ export type GridRowOut = {
    * Notes
    */
   notes: Array<IssueOut> | null
+  confirmation?: ConfirmationOut | null
 }
 
 /**
@@ -6089,6 +6143,39 @@ export type LedgerResponse = {
    * Rows
    */
   rows: Array<LedgerHouseholdRow>
+}
+
+/**
+ * LedgerTicksOut
+ *
+ * What the ledger's automatic Posted tick did for one season (D78). The Go ledger sync reads it.
+ * `skipped` says why nothing was considered (a season before ticks began, no approved rules).
+ */
+export type LedgerTicksOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Ticked
+   */
+  ticked: number
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * Total Locked
+   */
+  total_locked?: number | null
+  /**
+   * Sections Not Locked
+   */
+  sections_not_locked?: Array<string>
+  /**
+   * Skipped
+   */
+  skipped?: string
 }
 
 /**
@@ -10639,11 +10726,11 @@ export type RoundCellOut = {
   /**
    * Posted
    */
-  posted: number
+  posted: number | null
   /**
    * Accepted
    */
-  accepted: number
+  accepted: number | null
   /**
    * Needs Offer
    */
@@ -10671,14 +10758,18 @@ export type RoundCountsOut = {
    */
   round: number
   needs_offer: CountOut | null
-  posted: CountOut
-  accepted: CountOut
+  posted: CountOut | null
+  accepted: CountOut | null
   held: CountOut | null
   pending_approval: CountOut | null
 }
 
 /**
  * RoundOut
+ *
+ * One round of a request. On a clawed-back round (D54) `posted` still carries the locked amount and
+ * `accepted` stays True, as the record of what was ticked, but the budget counts that money nowhere:
+ * never sum `rounds[].posted` for a total. Use the row's `total_posted` or the budget's figures.
  */
 export type RoundOut = {
   /**
@@ -10736,6 +10827,14 @@ export type RoundOut = {
    * Rules Version
    */
   rules_version: number | null
+  /**
+   * Lock Source
+   */
+  lock_source?: string | null
+  /**
+   * Clawed Back
+   */
+  clawed_back?: boolean
 }
 
 /**
@@ -11774,6 +11873,30 @@ export type SessionResolve = {
    * Reason
    */
   reason: string
+}
+
+/**
+ * ShareConfirmationOut
+ *
+ * One payer share against its own household's lines (main spec §11).
+ */
+export type ShareConfirmationOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Expected
+   */
+  expected: number
+  /**
+   * In Campminder
+   */
+  in_campminder: number
+  /**
+   * Status
+   */
+  status: 'awaiting_sync' | 'confirmed' | 'short' | 'over' | 'not_in_campminder' | 'reversed'
 }
 
 /**
@@ -20294,6 +20417,33 @@ export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses = {
 
 export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponse =
   RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses[keyof RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses]
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostData = {
+  body: FinancialAidLedgerTicksRun
+  path?: never
+  query?: never
+  url: '/api/internal/financial-aid/ledger-ticks'
+}
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostError =
+  RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostErrors[keyof RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostErrors]
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: LedgerTicksOut
+}
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponse =
+  RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses[keyof RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses]
 
 export type ListAuditLogApiAdminAuditLogGetData = {
   body?: never

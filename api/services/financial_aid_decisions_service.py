@@ -6,7 +6,8 @@ season on the server and returns one aggregate (D21): the Requests grid, Rounds 
 Remaining line. Each takes an optional as-of date (3c): a past date shows the season by the end of
 that day, and names every figure it leaves empty in not_rebuilt. On the default axis, `campminder`
 (owner ruling 2026-09-30), a Posted tick counts from its CampMinder post day, as Money's ledger ?as_of
-does; on `recorded` every fold and replay cuts on created, which is what Kindred showed that day. Facts
+does; on `recorded` every fold and replay cuts on created, which is what Kindred showed that day, and the
+ledger's lines count only once Kindred had recorded them and their reversals (as_recorded). Facts
 with no CampMinder date (decisions, asks, holds, corrections, the rules, request status, payer shares,
 Accepted) cut on created on both axes.
 
@@ -28,14 +29,20 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, Final, Protocol
 
-from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_REQUESTS
+from api.constants.collections import (
+    AID_ATTRIBUTION_OVERRIDES,
+    AID_DECISIONS,
+    AID_HOLD_EVENTS,
+    AID_PAYER_SHARES,
+    AID_REQUESTS,
+)
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
@@ -44,11 +51,13 @@ from api.schemas.financial_aid_decisions import (
     BudgetResponse,
     CellOut,
     ChangedRowOut,
+    ConfirmationOut,
     CountOut,
     DecisionWriteOut,
     ForwardDemandOut,
     GridRowOut,
     HoldReleaseIn,
+    LedgerTicksOut,
     ManualHoldIn,
     NotRebuiltOut,
     PoolBudgetOut,
@@ -62,6 +71,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundCountsOut,
     RoundOut,
+    ShareConfirmationOut,
     UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
@@ -74,8 +84,8 @@ from api.services.financial_aid_calc_inputs import (
     to_application_inputs,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
-from api.services.financial_aid_grants_register import RegisterRow, grant_inputs_by_request
-from api.services.financial_aid_intake_plan import request_fields
+from api.services.financial_aid_grants_register import Placement, RegisterRow, grant_inputs_by_request
+from api.services.financial_aid_intake_plan import request_fields, share_entity_id
 from api.services.financial_aid_intake_repository import request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
@@ -88,6 +98,23 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_reconciliation import (
+    CampLine,
+    Confirmation,
+    LineOverride,
+    SeasonLedger,
+    apply_clawback,
+    as_recorded,
+    build_ledger,
+    confirmation,
+    dollars,
+    ledger_note,
+    ledger_ticks,
+    override_placement,
+    placeable,
+    request_scope,
+    undone_rounds,
+)
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
@@ -97,7 +124,7 @@ from api.services.financial_aid_rules_service import (
 )
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
-from bunking.financial_aid.change_replay import LogRow, replay
+from bunking.financial_aid.change_replay import LogRow, Replayed, replay
 from bunking.financial_aid.decisions import (
     BUDGET_GAPS,
     GRID_GAPS,
@@ -106,6 +133,7 @@ from bunking.financial_aid.decisions import (
     NO_HOLDS,
     NO_POOL,
     PAST_DATE_GAPS,
+    POSTED_GAPS,
     REMAINING_GAPS,
     UNRELEASABLE,
     Cell,
@@ -133,9 +161,13 @@ from bunking.financial_aid.decisions import (
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, SectionName
-from bunking.pocketbase_batch import BatchLimitError
+from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+
+# Spec §5.4: 2026 has no ticks and no dated decisions; its decisions are reproduced from the repaired
+# sheet (D67). Before this season the ledger never ticks, and no confirmation or Note is shown.
+FIRST_TICKED_SEASON: Final = 2027
 
 # Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11). Two pricing sections are
 # absent on purpose. `quality_checks`: a hold gates posting but never changes a posted amount, and locking it would
@@ -152,6 +184,9 @@ _WHY_NOT: Final[Mapping[str, str]] = {
     "refused": "was refused by finance",
     "not_decided": "has no amount keyed yet",
 }
+
+# 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
+LEDGER_ACTOR: Final = "system:ledger"
 
 
 class DecisionNotFoundError(FinancialAidError, LookupError):
@@ -190,6 +225,10 @@ class DecisionsStore(Protocol):
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
+    async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
+    async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
+    async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -233,9 +272,27 @@ class Season:
     axis: AsOfAxis | None = None  # the as-of axis a past read cut on; None when live
     gaps: tuple[NotRebuiltOut, ...] = ()  # rebuild gaps: rules or request history, deleted since, pool unknown
     unrebuilt: frozenset[str] = frozenset()  # requests whose history couldn't be replayed
+    # Sub-project 10b. Defaults: a read that loads no ledger (3c's past date) reconciles nothing.
+    ledger: SeasonLedger = field(default_factory=SeasonLedger)
+    reversed_on: Mapping[str, date] = field(default_factory=dict)  # request -> the day its money came back (D54)
+    shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
+    undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
+    posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
 
 
 Names = tuple[dict[int, str], dict[int, str]]
+
+
+@dataclass(frozen=True)
+class _PastLedgerInputs:
+    """A past read's ledger loads: the dated lines, and the payer shares and staff placements as they
+    stand now (the replay's `current`) with their change logs."""
+
+    camp_lines: list[CampLine]
+    overrides: list[LineOverride]
+    override_log: list[LogRow]
+    shares: list[PayerShareRecord]
+    share_log: list[LogRow]
 
 
 @dataclass(frozen=True)
@@ -306,6 +363,129 @@ def _issue(issue: CalcIssue) -> IssueOut:
     return IssueOut(code=issue.code, severity=issue.severity, message=issue.message)
 
 
+def _shares_by_request(shares: Iterable[PayerShareRecord]) -> dict[str, tuple[PayerShareRecord, ...]]:
+    grouped: dict[str, list[PayerShareRecord]] = defaultdict(list)
+    for share in shares:
+        grouped[share.request_id].append(share)
+    return {request_id: tuple(rows) for request_id, rows in grouped.items()}
+
+
+def _share_key(request_id: str, household_cm_id: int) -> str:
+    return share_entity_id(request_id, household_cm_id)
+
+
+def _share_log_fields(share: PayerShareRecord) -> dict[str, Any]:
+    """A stored share in the shape its log rows carry (the replay's `current`)."""
+    return {
+        "year": share.year,
+        "request": share.request_id,
+        "household_cm_id": share.household_cm_id,
+        "share_pct": f"{share.share_pct.normalize():f}",
+        "source": share.source,
+        "actor": share.actor,
+        "note": share.note,
+    }
+
+
+def _unreplayable(keys_now: Collection[str], log: Sequence[LogRow], replayed: Mapping[str, Replayed]) -> frozenset[str]:
+    """The records whose state at the date can't be established: a history that isn't complete, one
+    with no create row, or a record that exists today with no log row at all."""
+    logged = {row.entity_id for row in log}
+    made = {row.entity_id for row in log if row.before is None}
+    return frozenset(
+        {key for key, record in replayed.items() if not record.complete} | (logged - made) | (set(keys_now) - logged)
+    )
+
+
+def _shares_as_of(
+    current: Sequence[PayerShareRecord], log: Sequence[LogRow], at: datetime
+) -> tuple[dict[str, tuple[PayerShareRecord, ...]], frozenset[str], frozenset[int]]:
+    """Each request's payer shares as of `at`, replayed from aid_change_log the way requests are
+    (3c-1), and the requests, and the households, behind shares that can't be replayed exactly."""
+    now = {_share_key(s.request_id, s.household_cm_id): s for s in current}
+    replayed = replay(log, as_of=at, current={key: _share_log_fields(s) for key, s in now.items()})
+    bad = _unreplayable(now.keys(), log, replayed)
+    grouped: dict[str, list[PayerShareRecord]] = defaultdict(list)
+    for key, record in replayed.items():
+        if key in bad or record.state is None:
+            continue
+        state = record.state
+        grouped[str(state["request"])].append(
+            PayerShareRecord(
+                id=now[key].id if key in now else "",
+                year=int(state["year"]),
+                request_id=str(state["request"]),
+                household_cm_id=int(state["household_cm_id"]),
+                share_pct=Decimal(str(state["share_pct"])),
+                source=str(state.get("source", "")),
+                actor=str(state.get("actor", "")),
+                note=str(state.get("note", "")),
+            )
+        )
+    return (
+        {rid: tuple(rows) for rid, rows in grouped.items()},
+        frozenset(key.split(":")[0] for key in bad),
+        frozenset(int(key.split(":")[1]) for key in bad),
+    )
+
+
+def _placements_as_of(
+    current: Sequence[LineOverride], log: Sequence[LogRow], at: datetime
+) -> tuple[dict[int, Placement], set[int], set[int]]:
+    """The staff placements as of `at`, replayed from aid_change_log, and the transactions and camper
+    people behind any placement that can't be replayed exactly (an unreplayable one places nothing)."""
+    now = {o.id: o for o in current}
+    replayed = replay(log, as_of=at, current={o.id: o.fields() for o in current})
+    bad = _unreplayable(now.keys(), log, replayed)
+    placements: dict[int, Placement] = {}
+    for key, record in replayed.items():
+        if key in bad or record.state is None:
+            continue
+        placement = override_placement(record.state)
+        if placement is not None:
+            placements[placement.transaction_cm_id] = placement
+    transactions: set[int] = set()
+    people: set[int] = set()
+    for row in log:
+        if row.entity_id in bad:
+            for side in (row.before, row.after):
+                if side and side.get("transaction_cm_id"):
+                    transactions.add(int(side["transaction_cm_id"]))
+                if side and side.get("attributed_person_cm_id"):
+                    people.add(int(side["attributed_person_cm_id"]))
+    for key in bad & now.keys():
+        transactions.add(now[key].transaction_cm_id)
+        if now[key].attributed_person_cm_id:
+            people.add(now[key].attributed_person_cm_id)
+    return placements, transactions, people
+
+
+def _posted_ids(rounds: Mapping[str, Mapping[int, RoundState]]) -> frozenset[str]:
+    """Requests, of any status, with at least one posted round: a closed one's reversed money can be clawed back."""
+    return frozenset(rid for rid, states in rounds.items() if any(state.posted for state in states.values()))
+
+
+def _confirmation_out(c: Confirmation) -> ConfirmationOut:
+    return ConfirmationOut(
+        status=c.status,
+        locked=money(c.locked),
+        in_campminder=money(c.in_campminder),
+        gap=money(c.gap),
+        on=c.on,
+        reconciled=c.reconciled,
+        family_unplaced=money(c.family_unplaced),
+        shares=[
+            ShareConfirmationOut(
+                household_cm_id=s.household_cm_id,
+                expected=money(s.expected),
+                in_campminder=money(s.in_campminder),
+                status=s.status,
+            )
+            for s in c.shares
+        ],
+    )
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -314,6 +494,8 @@ def grid_row(
     families: Mapping[int, str],
     campers: Mapping[int, str],
     hold: HoldState,
+    *,
+    confirmation: Confirmation | None = None,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -331,11 +513,14 @@ def grid_row(
             would_change_by=_money(v.would_change_by),
             counts_toward_budget=v.counts_toward_budget,
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
+            lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
+            clawed_back=v.clawed_back,
         )
         for v in priced.rounds
     ]
+    # A clawed-back round stays in Decided (a declined offer was still decided) and leaves Posted.
     decided = [v.decided for v in priced.rounds if v.decided is not None]
-    posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None]
+    posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None and not v.clawed_back]
     return GridRowOut(
         request_id=request.id,
         household_cm_id=request.household_cm_id,
@@ -359,6 +544,7 @@ def grid_row(
             if priced.live and code in hold.released_codes() and code not in NEVER_A_HOLD
         ],
         notes=[_issue(i) for i in priced.notes],
+        confirmation=_confirmation_out(confirmation) if confirmation is not None else None,
     )
 
 
@@ -535,11 +721,45 @@ def _past_pool(pool: PoolBudgetOut, *, asks: bool) -> PoolBudgetOut:
     )
 
 
+def _posted_unknown(row: GridRowOut) -> GridRowOut:
+    """A past row whose payer shares or staff placements can't be replayed: whether CampMinder had
+    reversed its posted money is unknown, so the money is left empty (never guessed)."""
+    rounds = [r.model_copy(update={"posted": None, "clawed_back": False}) for r in row.rounds]
+    return row.model_copy(update={"rounds": rounds, "total_posted": None})
+
+
+def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
+    """The budget's posted and accepted figures, when some request's posted money is unknown."""
+
+    def cell[C: CellOut](cell: C) -> C:
+        return cell.model_copy(update={"posted": None, "accepted": None})
+
+    def pool(p: PoolBudgetOut) -> PoolBudgetOut:
+        return p.model_copy(
+            update={
+                "rounds": [cell(c) for c in p.rounds],
+                "total": cell(p.total),
+                "below": p.below.model_copy(update={"outside_budget_posted": None}),
+            }
+        )
+
+    return out.model_copy(
+        update={
+            "pools": [pool(p) for p in out.pools],
+            "total": pool(out.total),
+            "strip": [row.model_copy(update={"posted": None, "accepted": None}) for row in out.strip],
+        }
+    )
+
+
 def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
     """3c-1's past Rounds & budget: Allocated, Posted, Accepted, posted money outside the budget, the
     posted and accepted counts, and Round 2 asks so far (unless a request's status is unknown)."""
     asks = not season.unrebuilt
     emptied = [] if asks else _gaps(["round2_asks", "round2_asked"])
+    posted_gaps = _gaps(POSTED_GAPS) if season.posted_unknown else []
+    if season.posted_unknown:
+        out = _emptied_posted(out)
     return out.model_copy(
         update={
             "pools": [_past_pool(pool, asks=asks) for pool in out.pools],
@@ -551,7 +771,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
             "outside_grants_off_requests": None,
             "as_of": season.as_of,
             "as_of_axis": season.axis,
-            "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *season.gaps],
+            "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *posted_gaps, *season.gaps],
         }
     )
 
@@ -596,15 +816,43 @@ class FinancialAidDecisionsService:
             self._register(year),
         )
 
+    async def _ledger_side(self, year: int) -> tuple[list[CampLine], dict[int, Placement], datetime | None]:
+        return await asyncio.gather(
+            self._store.fetch_camp_lines(year),
+            self._store.fetch_line_placements(year),
+            self._store.fetch_last_ledger_sync(year),
+        )
+
+    async def _past_ledger_side(self, year: int) -> _PastLedgerInputs | None:
+        """What a past read needs of the ledger: the (dated) lines, and each undated record as it stands
+        now, read BEFORE its change log, only as the replay's `current` (3c-1). With no lines there is
+        nothing to place or claw back, and none of it is read."""
+        camp_lines, overrides = await asyncio.gather(
+            self._store.fetch_camp_lines(year, recorded_times=True), self._store.fetch_line_overrides(year)
+        )
+        if not camp_lines:
+            return None
+        shares = await self._store.fetch_payer_shares(year)
+        share_log, override_log = await asyncio.gather(
+            self._store.fetch_change_log(year, AID_PAYER_SHARES),
+            self._store.fetch_change_log(year, AID_ATTRIBUTION_OVERRIDES),
+        )
+        return _PastLedgerInputs(camp_lines, overrides, override_log, shares, share_log)
+
     async def season(self, year: int) -> Season:
         """Every request of the season priced now, with its rounds and its holds (D21: the server decides)."""
         return (await self._season(year, names=False))[0]
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
-        """The season's loads run as two concurrent branches: the requests with what hangs off them
-        (the names too, when asked), and the sessions, shares, events and grants register."""
-        side, (sessions, shares, events, hold_events, register) = await asyncio.gather(
-            self._request_side(year, names=names), self._rounds_side(year)
+        """The season's loads run as three concurrent branches: the requests with what hangs off them
+        (the names too, when asked), the sessions, shares, events and grants register, and the
+        CampMinder ledger (10b)."""
+        (
+            side,
+            (sessions, shares, events, hold_events, register),
+            (camp_lines, placements, synced_at),
+        ) = await asyncio.gather(
+            self._request_side(year, names=names), self._rounds_side(year), self._ledger_side(year)
         )
         rules = side.rules
         rounds = fold_rounds(events)
@@ -634,6 +882,29 @@ class FinancialAidDecisionsService:
             for r in side.requests
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
+        # Sub-project 10b: the CampMinder ledger. Each camp-aid line on its one request (main spec §11),
+        # money CampMinder reversed back in Remaining (D54), and the Note on unticked rows (D81).
+        shares_of = _shares_by_request(shares)
+        ledger = build_ledger(
+            camp_lines,
+            placements,
+            [placeable(r, session_map, shares_of.get(r.id, ())) for r in side.requests],
+            synced_at,
+            _posted_ids(rounds),
+        )
+        reversed_on: dict[str, date] = {}
+        for request in side.requests:
+            scope = request_scope(request, shares_of.get(request.id, ()))
+            unplaced = ledger.family_unplaced(scope)
+            live = request.status in _LIVE
+            lines = ledger.lines(request.id) if live else ledger.closed_lines(request.id)
+            item, day = apply_clawback(
+                priced[request.id], rounds.get(request.id, {}), lines, family_lines=ledger.family_lines(scope)
+            )
+            if day is not None:
+                reversed_on[request.id] = day
+            note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
+            priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
         season = Season(
             year=year,
             rules=rules,
@@ -644,6 +915,10 @@ class FinancialAidDecisionsService:
             sessions=session_map,
             grants=grants,
             holds=holds,
+            ledger=ledger,
+            reversed_on=reversed_on,
+            shares=shares_of,
+            undone=undone_rounds(events),
         )
         return season, side.names
 
@@ -671,12 +946,13 @@ class FinancialAidDecisionsService:
             # BEFORE the log read starts (approved_as_of orders its reads the same way). The rules
             # read, and the other reads, overlap freely.
             today = await self._store.fetch_requests(year)
-            log, corrections, sessions, events, hold_events = await asyncio.gather(
+            log, corrections, sessions, events, hold_events, ledger_in = await asyncio.gather(
                 self._store.fetch_change_log(year, AID_REQUESTS),
                 self._store.fetch_corrections(year, None),
                 self._store.fetch_sessions(year),
                 self._store.fetch_decision_events(year),
                 self._store.fetch_hold_events(year),
+                self._past_ledger_side(year),
             )
             rules, gaps = await rules_read
         finally:
@@ -706,6 +982,16 @@ class FinancialAidDecisionsService:
                 pool=pool,
                 program_key=program_key,
             )
+        # Sub-project 10b: money CampMinder had reversed by then is back in Remaining on that date too
+        # (D54), so Posted stays exact. Everything the ledger reads is as of the date: the lines are
+        # dated (on the recorded axis, also by when Kindred recorded them), and the payer shares and
+        # staff placements are replayed from their change logs. A request
+        # whose shares or placements can't be replayed keeps its posted money empty, and is named.
+        # Undated, still today's: a line's funder-type reclassification and Go's attribution.
+        posted_unknown: frozenset[str] = frozenset()
+        if ledger_in is not None:
+            ledger_gaps, posted_unknown = self._ledger_as_of(ledger_in, at, axis, requests, session_map, rounds, priced)
+            gaps = (*gaps, *ledger_gaps)
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None))
         if axis == "campminder":
             gaps = (*gaps, *_posted_before_request(rounds, requests.keys() | deleted))
@@ -723,7 +1009,72 @@ class FinancialAidDecisionsService:
             axis=axis,
             gaps=gaps,
             unrebuilt=unrebuilt,
+            posted_unknown=posted_unknown,
         )
+
+    @staticmethod
+    def _ledger_as_of(
+        inputs: _PastLedgerInputs,
+        at: datetime,
+        axis: AsOfAxis,
+        requests: Mapping[str, RequestRecord],
+        sessions: Mapping[int, SessionRow],
+        rounds: Mapping[str, Mapping[int, RoundState]],
+        priced: dict[str, PricedRequest],
+    ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
+        """Clawbacks as of `at`, applied to `priced` in place; the gaps and the requests whose posted money
+        is left empty (their shares or placements can't be replayed). On the campminder axis the lines
+        cut on CampMinder's post and reversal dates; on recorded, also on when Kindred had recorded each
+        line and its reversal (as_recorded, ruling C), so everything below reads that set."""
+        camp_lines = inputs.camp_lines if axis == "campminder" else as_recorded(inputs.camp_lines, at)
+        shares_of, bad_shares, bad_share_households = _shares_as_of(inputs.shares, inputs.share_log, at)
+        placements, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
+        ledger = build_ledger(
+            camp_lines,
+            placements,
+            [placeable(r, sessions, shares_of.get(r.id, ())) for r in requests.values()],
+            None,
+            _posted_ids(rounds),
+            at,
+        )
+        behind = [line for line in camp_lines if line.transaction_cm_id in bad_txns]
+        bad_households = {line.household_cm_id for line in behind}
+        bad_people |= {line.person_cm_id for line in behind if line.person_cm_id > 0}
+        posted = _posted_ids(rounds)
+        by_shares = sorted(
+            rid
+            for rid, r in requests.items()
+            if rid in posted and (rid in bad_shares or bad_share_households & request_scope(r, shares_of.get(rid, ())))
+        )
+        by_placements = (
+            sorted(
+                rid
+                for rid, r in requests.items()
+                if rid in posted
+                and rid not in by_shares
+                and (r.person_cm_id in bad_people or bad_households & request_scope(r, shares_of.get(rid, ())))
+            )
+            if bad_txns or bad_people
+            else []
+        )
+        unknown = frozenset(by_shares) | frozenset(by_placements)
+        for request_id, request in requests.items():
+            if request_id in unknown:
+                continue
+            lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
+            family = ledger.family_lines(request_scope(request, shares_of.get(request_id, ())))
+            priced[request_id], _ = apply_clawback(
+                priced[request_id], rounds.get(request_id, {}), lines, at=at, family_lines=family
+            )
+        gaps = [
+            NotRebuiltOut(figure="ledger_classification", reason=PAST_DATE_GAPS["ledger_classification"]),
+            *(
+                NotRebuiltOut(figure=figure, reason=PAST_DATE_GAPS[figure], requests=ids)
+                for figure, ids in (("payer_shares_history", by_shares), ("line_placements_history", by_placements))
+                if ids
+            ),
+        ]
+        return gaps, unknown
 
     @staticmethod
     def _unresolved(
@@ -789,6 +1140,7 @@ class FinancialAidDecisionsService:
                 families,
                 campers,
                 season.holds.get(rid, NO_HOLDS),
+                confirmation=self._confirmation(season, rid),
             )
             for rid, priced in season.priced.items()
         ]
@@ -803,6 +1155,7 @@ class FinancialAidDecisionsService:
                 )
                 for row in rows
             ]
+            rows = [_posted_unknown(row) if row.request_id in season.posted_unknown else row for row in rows]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))
         rules_version = season.rules.version if season.rules is not None else None
         past = season.as_of is not None
@@ -812,7 +1165,30 @@ class FinancialAidDecisionsService:
             rows=rows,
             as_of=season.as_of,
             as_of_axis=season.axis,
-            not_rebuilt=[*_gaps(GRID_GAPS), *season.gaps] if past else [],
+            not_rebuilt=[*_gaps(GRID_GAPS), *(_gaps(["posted"]) if season.posted_unknown else []), *season.gaps]
+            if past
+            else [],
+        )
+
+    @staticmethod
+    def _confirmation(season: Season, request_id: str) -> Confirmation | None:
+        """The request's confirmation state (D59); None on a read that loaded no ledger (a past date),
+        and before the first ticked season (nothing then was ticked, SP10b Decision 9)."""
+        if not season.ledger.read or season.year < FIRST_TICKED_SEASON:
+            return None
+        request = season.requests[request_id]
+        shares = season.shares.get(request_id, ())
+        ledger = season.ledger
+        lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
+        return confirmation(
+            season.priced[request_id],
+            season.rounds.get(request_id, {}),
+            lines,
+            shares,
+            request.household_cm_id,
+            synced_at=ledger.synced_at,
+            family_unplaced=ledger.family_unplaced(request_scope(request, shares)),
+            reversed_on=season.reversed_on.get(request_id),
         )
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:
@@ -878,6 +1254,36 @@ class FinancialAidDecisionsService:
             after={key: value for key, value in data.items() if key != "snapshot"},
             log_action=kind,
             entity_id=f"{request.id}:{n}",
+        )
+
+    def _post_write(
+        self,
+        season: Season,
+        priced: PricedRequest,
+        n: int,
+        amount: Decimal,
+        actor: str,
+        *,
+        posted_on: date,
+        lock_source: str,
+        note: str | None = None,
+    ) -> AidWrite:
+        """A Posted tick's row (D51, D52): the decided amount it locks, the receipt as it was when posted,
+        and the rules version that priced it. A person's tick and the ledger's (D78) write the same row."""
+        if season.rules is None:
+            raise DecisionRefusedError(f"{season.year}'s pricing rules are not approved yet")
+        version = season.rules.version
+        return self._write(
+            season.requests[priced.request_id],
+            n,
+            "post",
+            actor,
+            amount=amount,
+            effective_on=posted_on,
+            lock_source=lock_source,
+            rules_version=version,
+            snapshot=lock_snapshot(priced, n, version),
+            note=note,
         )
 
     async def _live(self, request_id: str) -> tuple[RequestRecord, dict[int, RoundState]]:
@@ -1024,17 +1430,7 @@ class FinancialAidDecisionsService:
         version = season.rules.version
         posted_on = body.posted_on or self._today()
         writes = [
-            self._write(
-                season.requests[priced.request_id],
-                n,
-                "post",
-                actor,
-                amount=amount,
-                effective_on=posted_on,
-                lock_source="tick",
-                rules_version=version,
-                snapshot=lock_snapshot(priced, n, version),
-            )
+            self._post_write(season, priced, n, amount, actor, posted_on=posted_on, lock_source="tick")
             for priced, n, amount in to_post
         ]
         sections = sorted({section for _, n, _ in to_post for section in ROUND_SECTIONS[n]})
@@ -1074,6 +1470,62 @@ class FinancialAidDecisionsService:
         write = self._write(request, n, "unpost", actor, note=body.reason)
         result = await self._store.commit([write], actor=actor, reason=body.reason, require_reason=True)
         return DecisionWriteOut(year=year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def ledger_ticks(self, year: int) -> LedgerTicksOut:
+        """D78: after the overnight ledger sync, tick Posted where CampMinder holds camp aid on a request
+        beyond what its posted rounds lock: the oldest decided round first, locked at its decided amount
+        with its receipt, as a person's tick would have done, dated the posting's day (never after today).
+        A family-level line never ticks (D81), nor a round a person un-ticked. One operation for the
+        season, as system:ledger, with the rules sections a first lock reads (SP10a Decision 11).
+        Idempotent: a round it ticked is posted, so the next run finds nothing beyond the locks. Two runs
+        at once could each write a post for one round; the fold is idempotent, so that is left alone.
+        Called by the Go aid-ledger sync (/api/internal)."""
+        if year < FIRST_TICKED_SEASON:
+            return LedgerTicksOut(
+                year=year,
+                ticked=0,
+                operation_id="",
+                skipped=f"{year} predates Posted ticks (the first ticked season is {FIRST_TICKED_SEASON})",
+            )
+        season = await self.season(year)
+        if season.rules is None:
+            return LedgerTicksOut(
+                year=year, ticked=0, operation_id="", skipped=f"{year}'s pricing rules are not approved yet"
+            )
+        ticks = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=season.undone)
+        if not ticks:
+            return LedgerTicksOut(year=year, ticked=0, operation_id="")
+        writes = [
+            self._post_write(
+                season,
+                season.priced[tick.request_id],
+                tick.round,
+                tick.amount,
+                LEDGER_ACTOR,
+                posted_on=tick.posted_on,
+                lock_source="ledger",
+                note=f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request",
+            )
+            for tick in ticks
+        ]
+        sections = sorted({section for tick in ticks for section in ROUND_SECTIONS[tick.round]})
+        locks, not_locked = await self._rules.lock_writes(year, season.rules.version, sections)
+        # Locks first: March's bulk import can pass one batch, so this may commit in chunks, and the
+        # sections then lock in the first one. A chunk that fails leaves its rounds for the next run.
+        try:
+            result = await self._store.commit([*locks, *writes], actor=LEDGER_ACTOR, allow_chunking=True)
+        except BatchError as exc:
+            # A refused batch committed nothing, but a transport failure's may have: either way the
+            # next run re-reads. A failure after an earlier chunk committed is not a BatchError
+            # (AidOperationPartiallyCommittedError): it goes to the global 500 (change_log.py).
+            raise DecisionRefusedError(f"the ledger tick for {year} may not have been written: {exc}") from exc
+        return LedgerTicksOut(
+            year=year,
+            ticked=len(writes),
+            operation_id=result.operation_id,
+            total_locked=money(sum((tick.amount for tick in ticks), ZERO)),
+            sections_not_locked=list(not_locked),
+        )
 
     async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
         """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""

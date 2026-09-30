@@ -37,6 +37,7 @@ from tests.unit.api.services.decisions_fakes import (
     approved,
     log_seeded,
     log_update,
+    seed_line,
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
@@ -263,6 +264,7 @@ async def test_the_budget_on_a_past_date() -> None:
     assert (camp.demand.round2_asks.requests, camp.demand.round2_asked) == (1, 700.0)  # type: ignore[union-attr]
     assert (camp.demand.round2_computed, camp.demand.round1_unmet) == (None, None)
     strip = next(s for s in out.strip if s.round == 1)
+    assert strip.posted is not None
     assert (strip.posted.requests, strip.needs_offer, strip.held) == (1, None, None)
     assert [g.figure for g in out.not_rebuilt] == list(BUDGET_GAPS)
     grid = await service.grid(YEAR, as_of=MAR_9)
@@ -320,7 +322,9 @@ async def test_a_past_read_reads_only_dated_records(monkeypatch: pytest.MonkeyPa
     store = _seeded(EMMA)
 
     async def refuse(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError("3c-1's past read reads no answers, shares or equity")
+        raise AssertionError(
+            "3c-1's past read reads no answers or equity, and no payer shares while the ledger has no lines"
+        )
 
     for name in ("fetch_applications", "fetch_payer_shares", "fetch_equity_answers"):
         monkeypatch.setattr(store, name, refuse)
@@ -623,6 +627,9 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
         )
     )
     _changed(store, OLIVIA, _day(3, 10), status="withdrawn")
+    # The ledger path: Emma's money is live in CampMinder; the withdrawn request's was reversed on Mar 20.
+    seed_line(store, 9001, "1500", posted=_day(3, 5))
+    seed_line(store, 9002, "1500", household=1000003, person=1000031, posted=_day(3, 5), reversed_at=_day(3, 20))
     # A lowered ask logged before the date, and a Round 2 ask.
     _changed(store, NOAH, _day(3, 4), ask=3500.0)
     _at(store, NOAH, 2, "ask", _day(3, 8), amount=Decimal(700), effective_on=date(2027, 3, 8))
@@ -674,6 +681,8 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
     assert [r.status for r in rows[NOAH].rounds] == ["not_rebuilt", "not_rebuilt"]
     assert (rows[NOAH].rounds[0].ask, rows[AVA].pool, rows[MIA].program_key) == (3500.0, "bmitzvah_pool", None)
     assert by_id[OLIVIA].holds == []
+    assert (by_id[OLIVIA].rounds[0].clawed_back, rows[OLIVIA].rounds[0].clawed_back) == (True, True)  # the ledger path
+    assert (by_id[EMMA].rounds[0].clawed_back, rows[EMMA].rounds[0].clawed_back) == (False, False)
     live_budget, past_budget_ = await service.budget(YEAR), await service.budget(YEAR, as_of=yesterday)
     assert strip(past_budget_) == strip(live_budget)
     assert past_budget_.total.below.outside_budget_posted == 250.0

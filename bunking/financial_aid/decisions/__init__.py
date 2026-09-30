@@ -4,6 +4,7 @@ from bunking.financial_aid.decisions.as_of import (
     BUDGET_GAPS,
     GRID_GAPS,
     PAST_DATE_GAPS,
+    POSTED_GAPS,
     REMAINING_GAPS,
     price_as_of,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "NO_HOLDS",
     "NO_POOL",
     "PAST_DATE_GAPS",
+    "POSTED_GAPS",
     "REMAINING_GAPS",
     "ROUNDS",
     "TOTAL",

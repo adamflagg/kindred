@@ -53,6 +53,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "total_decided": _PRICED,
     "holds": "Only the manual hold is listed: the data checks run on the family's answers (3c-2)",
     "notes": _PRICED,
+    "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
     "needs_offer": _PRICED,
     "held": _PRICED,
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
@@ -69,6 +70,31 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
     "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
     "rules_history": "The rules' change history for this season can't be replayed to that date",
+    "ledger_classification": (
+        "Which CampMinder lines count as the camp's own aid (a line's funder-type reclassification) and Go's "
+        "session attribution are read as they are today, not as of that date"
+    ),
+    "posted": (
+        "Posted, as a request's round and in the budget's cells and strip counts, is left empty where a "
+        "request's payer shares or line placements can't be replayed (see payer_shares_history and "
+        "line_placements_history)"
+    ),
+    "accepted": (
+        "Accepted, in the budget's cells and strip counts, is left empty with Posted (see payer_shares_history "
+        "and line_placements_history)"
+    ),
+    "outside_budget_posted": (
+        "Posted money outside the budget is left empty with Posted (see payer_shares_history and "
+        "line_placements_history)"
+    ),
+    "payer_shares_history": (
+        "These requests' payer shares can't be replayed to that date, so whether CampMinder had reversed their "
+        "posted money is unknown and it is left empty"
+    ),
+    "line_placements_history": (
+        "The staff placements of some CampMinder lines can't be replayed to that date, so whether CampMinder "
+        "had reversed these requests' posted money is unknown and it is left empty"
+    ),
 }
 GRID_GAPS: Final[tuple[str, ...]] = (
     "decided",
@@ -79,6 +105,7 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "total_decided",
     "holds",
     "notes",
+    "confirmation",
 )
 BUDGET_GAPS: Final[tuple[str, ...]] = (
     "needs_offer",
@@ -93,6 +120,8 @@ BUDGET_GAPS: Final[tuple[str, ...]] = (
     "round1_unmet",
 )
 REMAINING_GAPS: Final[tuple[str, ...]] = ("remaining",)
+# Named only when a past read empties them (a request's posted money can't be replayed): not always-on.
+POSTED_GAPS: Final[tuple[str, ...]] = ("posted", "accepted", "outside_budget_posted")
 
 
 def _view(

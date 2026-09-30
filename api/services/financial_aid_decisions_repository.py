@@ -1,4 +1,5 @@
-"""aid_decisions and aid_hold_events reads, and the names the Requests grid shows (campership sub-project 10a, follow-up 3b).
+"""aid_decisions and aid_hold_events reads, and the names the Requests grid shows (campership sub-project
+10a, follow-up 3b).
 
 Extends the intake repository, so the decisions service reads the applications, requests,
 corrections, sessions, payer shares and equity answers casework reads, converted the same way, and
@@ -10,14 +11,21 @@ import asyncio
 import json
 import re
 from collections.abc import Collection
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_POSTINGS, SYNC_RUNS
 from api.services.financial_aid_change_log_reads import fetch_change_log
+from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
-from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
+from api.services.financial_aid_ledger_service import (
+    aid_dollars,
+    household_display_name,
+    parse_pb_datetime,
+    person_display_name,
+)
+from api.services.financial_aid_reconciliation import CampLine, LineOverride, override_placement
 from api.services.financial_aid_repository import FinancialAidRepository
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -66,6 +74,51 @@ def decision_event(record: Any) -> DecisionEvent:
     )
 
 
+def ledger_run_covers(trigger: str, recorded_year: int, season: int) -> bool:
+    """Whether a successful aid_postings or financial_transactions run counts for `season`: a
+    scheduled (window) run recorded within season-1..season+1, or any other run (manual, pinned)
+    recorded as that season."""
+    if trigger in _SCHEDULED_TRIGGERS:
+        return abs(recorded_year - season) <= 1
+    return recorded_year == season
+
+
+def camp_line(record: Any) -> CampLine:
+    """One camp-aid aid_postings record as a line, in aid dollars (CampMinder's sign flipped)."""
+    return CampLine(
+        transaction_cm_id=int(record.transaction_cm_id),
+        household_cm_id=int(record.household_cm_id or 0),
+        person_cm_id=int(record.person_cm_id or 0),
+        amount=aid_dollars(record.amount),
+        post_date=parse_pb_datetime(getattr(record, "post_date", None)),
+        is_reversed=bool(record.is_reversed),
+        reversal_date=parse_pb_datetime(getattr(record, "reversal_date", None)),
+        attributed_person_cm_id=int(getattr(record, "attributed_person_cm_id", 0) or 0),
+        attributed_session_cm_id=int(getattr(record, "attributed_session_cm_id", 0) or 0),
+        program_family=str(getattr(record, "program_family", "") or ""),
+        recorded_at=parse_pb_datetime(getattr(record, "created", None)),
+        updated_at=parse_pb_datetime(getattr(record, "updated", None)),
+    )
+
+
+def line_override(record: Any) -> LineOverride:
+    """An aid_attribution_overrides record: what it places, with the id its log rows carry."""
+    return LineOverride(
+        id=str(getattr(record, "id", "")),
+        transaction_cm_id=int(record.transaction_cm_id),
+        attributed_person_cm_id=int(record.attributed_person_cm_id or 0),
+        attributed_session_cm_id=int(record.attributed_session_cm_id or 0),
+        program_family=str(record.program_family or ""),
+    )
+
+
+def line_placement(record: Any) -> Placement | None:
+    """An aid_attribution_overrides record as a placement; None for a reclassify-only override.
+    Unlike the grants read, an override naming only a session places a line too (a Family Camp
+    placement names no person)."""
+    return override_placement(line_override(record).fields())
+
+
 def hold_event(record: Any) -> HoldEvent:
     """One aid_hold_events record as an event (follow-up 3b)."""
     kind = str(record.event)
@@ -86,6 +139,18 @@ def hold_event(record: Any) -> HoldEvent:
     )
 
 
+_LINE_FIELDS = (
+    "transaction_cm_id,household_cm_id,person_cm_id,amount,post_date,is_reversed,reversal_date,"
+    "attributed_person_cm_id,attributed_session_cm_id,program_family"
+)
+# sync_runs.trigger values a current-season queue records (sync/orchestrator.go). Only `daily` runs
+# aid_postings and financial_transactions today; each such run spans seasons N-1..N+1, but Go records it
+# with year = the configured season N (UsesSeasonWindow; the rolling transactions sync).
+_SCHEDULED_TRIGGERS: Final = frozenset({"hourly", "daily", "weekly"})
+# The ledger's syncs: aid_postings rebuilds from the financial_transactions mirror (sync/aid_postings.go).
+_LEDGER_SERVICE: Final = "aid_postings"
+_TRANSACTIONS_SERVICE: Final = "financial_transactions"
+_RUN_PAGE = 100
 _HOLD_SEASON_FIELDS = "id,request,event,code,note,actor,created"
 
 
@@ -129,3 +194,63 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {int(h.cm_id): household_display_name(h, int(h.cm_id)) for h in households},
             {int(p.cm_id): person_display_name(p) for p in persons},
         )
+
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
+        """The season's camp-aid lines, live and reversed (spec §5.5: the camp's own aid, after any
+        reclassification, which aid_postings materializes in funder_type). `recorded_times` also reads
+        when Kindred recorded and last wrote each row, which only a past read needs (as_recorded)."""
+        rows = await self._page(
+            AID_POSTINGS,
+            {
+                "filter": f"year = {int(year)} && funder_type = 'camp'",
+                "sort": "transaction_cm_id,id",
+                "fields": f"{_LINE_FIELDS},created,updated" if recorded_times else _LINE_FIELDS,
+            },
+        )
+        return [camp_line(row) for row in rows]
+
+    async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
+        placements = (line_placement(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
+        return {p.transaction_cm_id: p for p in placements if p is not None}
+
+    async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
+        """Every override as it stands now: the replay's `current` for a past read (3c-1)."""
+        return [line_override(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year)]
+
+    async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
+        """When the season's ledger was last read from CampMinder: a tick after it awaits tonight's sync
+        (D59). aid_postings rebuilds from the financial_transactions mirror, so after a failed
+        transactions run it rebuilds stale rows with a clean success (aid_postings.go's F2 case). The
+        time is therefore the OLDER of the starts of the last successful covering run of each; None
+        (awaiting) while either has none. A start, not an end: a posting made during a run may have
+        been read before it was made.
+
+        This errs toward "awaiting" a little longer after a manual run of the window, which Go records
+        under the one season it named. TODO(owner): exact coverage needs Go to record the seasons a run
+        covered (sync_runs has only `year`)."""
+        ledger, transactions = await asyncio.gather(
+            self._last_covering_run(_LEDGER_SERVICE, year), self._last_covering_run(_TRANSACTIONS_SERVICE, year)
+        )
+        if ledger is None or transactions is None:
+            return None
+        return min(ledger, transactions)
+
+    async def _last_covering_run(self, service: str, year: int) -> datetime | None:
+        """The start of `service`'s newest successful run covering the season (`ledger_run_covers`), of
+        its newest `_RUN_PAGE` successful runs in the season's window."""
+        result = await asyncio.to_thread(
+            self.pb.collection(SYNC_RUNS).get_list,
+            1,
+            _RUN_PAGE,
+            query_params={
+                "filter": (
+                    f'service = "{service}" && status = "success" && year >= {int(year) - 1} && year <= {int(year) + 1}'
+                ),
+                "sort": "-started,-id",
+                "fields": "started,trigger,year",
+            },
+        )
+        for run in result.items:
+            if ledger_run_covers(str(getattr(run, "trigger", "")), int(getattr(run, "year", 0) or 0), year):
+                return parse_pb_datetime(getattr(run, "started", None))
+        return None

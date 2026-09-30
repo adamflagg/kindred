@@ -127,11 +127,13 @@ func newAidTestApp(t *testing.T) core.App {
 	}
 	saveCollection(t, app, overrides)
 
-	// Minimal sync_runs: only the columns the F2 stale-input check reads
-	// (pocketbase/sync/sync_runs.go's real migration carries many more).
+	// Minimal sync_runs: only the columns the F2 stale-input check and the per-season ledger tick
+	// check read (pocketbase/sync/sync_runs.go's real migration carries many more).
 	runs := core.NewBaseCollection(syncRunsCollection)
 	runs.Fields.Add(&core.TextField{Name: "service"})
 	runs.Fields.Add(&core.TextField{Name: "status"})
+	runs.Fields.Add(&core.TextField{Name: "trigger"})
+	runs.Fields.Add(&core.NumberField{Name: "year"})
 	runs.Fields.Add(&core.DateField{Name: "started"})
 	runs.Fields.Add(&core.DateField{Name: "ended"})
 	saveCollection(t, app, runs)
@@ -243,6 +245,13 @@ func (f *aidFixture) writeConfig(doc string) string {
 func (f *aidFixture) recordSyncRun(service, status, started, ended string) {
 	saveRecord(f.t, f.app, syncRunsCollection,
 		map[string]any{"service": service, "status": status, "started": started, "ended": ended})
+}
+
+// recordSeasonRun records a finished run the way recordSyncRun does, with the trigger and the season
+// year sync_runs carries, which the per-season ledger tick check reads.
+func (f *aidFixture) recordSeasonRun(service, status, trigger string, year int, started, ended string) {
+	saveRecord(f.t, f.app, syncRunsCollection, map[string]any{"service": service, "status": status,
+		"trigger": trigger, "year": year, "started": started, "ended": ended})
 }
 
 // service is a hermetic AidPostingsSync: it can never find a real config file

@@ -26,23 +26,46 @@ func TriggerFinancialAidIntake(ctx context.Context, year int) error {
 }
 
 func postFinancialAidIntake(ctx context.Context, apiURL string, year int) error {
+	return postFinancialAidSeason(ctx, financialAidIntakeClient, apiURL+financialAidIntakePath, "intake", year)
+}
+
+// maxSeasonErrDetail caps the detail quoted from a refusal, in runes, so a warning stays one short line.
+const maxSeasonErrDetail = 200
+
+// postFinancialAidSeason POSTs {"year": year} to one of FastAPI's campership season jobs (intake,
+// the ledger tick) and treats anything but 200 as a failure, naming the job. Only a string
+// "detail" (a service refusal) is quoted, truncated: FastAPI's own validation 422 carries a list,
+// and a raw body is never echoed, since it could hold names.
+func postFinancialAidSeason(ctx context.Context, client *http.Client, url, what string, year int) error {
 	body, err := json.Marshal(map[string]int{"year": year})
 	if err != nil {
-		return fmt.Errorf("marshaling intake request: %w", err)
+		return fmt.Errorf("marshaling %s request: %w", what, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+financialAidIntakePath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("building intake request: %w", err)
+		return fmt.Errorf("building %s request: %w", what, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := financialAidIntakeClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("calling financial-aid intake: %w", err)
+		return fmt.Errorf("calling financial-aid %s: %w", what, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return fmt.Errorf("financial-aid intake returned %d: %s", resp.StatusCode, string(msg))
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		var parsed struct {
+			Detail any `json:"detail"`
+		}
+		detail := ""
+		if json.Unmarshal(raw, &parsed) == nil {
+			if d, ok := parsed.Detail.(string); ok {
+				if clipped := truncateRunes(d, maxSeasonErrDetail); clipped != d {
+					d = clipped + "..."
+				}
+				detail = ": " + d
+			}
+		}
+		return fmt.Errorf("financial-aid %s returned %d%s", what, resp.StatusCode, detail)
 	}
 	return nil
 }

@@ -17,8 +17,8 @@ when that type does not count toward the budget: that money goes below the line 
 Below the line, never in Remaining: held rounds (their count and ask), outside grants, and money on
 a decision type outside the camp's own budget. Forward demand (D82): Round 2 asks so far (count,
 total asked, total computed; held appeals' asks included) and Round 1 unmet ask, not yet appealed
-(§5.9). This year only (D46): no pace, no last year. A clawback (D54) is sub-project 10b's; until it
-lands, every posted round stays in Posted.
+(§5.9). This year only (D46): no pace, no last year. A posted round whose money CampMinder has
+reversed (clawed_back, D54) counts nowhere: its money is back in Remaining.
 
 Money on a program the rules give no pool is counted in the total only, under "No pool": it has no
 allocation of its own. The total's allocation is the sum of the rules' pools.
@@ -167,6 +167,8 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
 
     outside = ZERO if view.counts_toward_budget else view.extra  # only the decision type's own money leaves (§7.2)
     if view.status == "posted":
+        if view.clawed_back:
+            return  # D54: its money came back to Remaining when CampMinder's reversal posted
         locked = view.locked or ZERO
         outside = min(outside, locked)
         add("posted", locked - outside)
@@ -199,14 +201,16 @@ def _tally_demand(
     whole ask while Round 1 is held. It knows only the appeals keyed so far (a known gap, D82)."""
     r1, r2 = request.view(1), request.view(2)
     if r2 is not None and r2.ask is not None:
+        if r2.clawed_back:
+            return  # D54: a clawed-back round counts nowhere (and implies Round 1 was clawed back too)
         asks2[pool].add(request, r2.ask)
         if r2.status == "posted":
             computed2[pool] += r2.locked or ZERO
         elif r2.status == "needs_offer":
             computed2[pool] += r2.decided or ZERO
         return
-    if r1 is None or r1.ask is None:
-        return
+    if r1 is None or r1.ask is None or r1.clawed_back:
+        return  # D54: a declined offer is not unmet ask
     if r1.status == "held":
         unmet1[pool] += r1.ask
     elif r1.status in ("needs_offer", "posted"):

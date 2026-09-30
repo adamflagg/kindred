@@ -8,6 +8,7 @@ Prices under financial_aid_fakes.intake_rules(): Session 2 (1000101) costs 2,000
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ import httpx
 
 from api.constants.collections import (
     AID_APPLICATIONS,
+    AID_ATTRIBUTION_OVERRIDES,
     AID_DECISIONS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
@@ -24,7 +26,7 @@ from api.constants.collections import (
     AID_RULES,
 )
 from api.services.financial_aid_decisions_repository import decision_event, hold_event
-from api.services.financial_aid_grants_register import RegisterRow, RequestShare
+from api.services.financial_aid_grants_register import Placement, RegisterRow, RequestShare
 from api.services.financial_aid_intake_plan import application_fields, request_fields
 from api.services.financial_aid_intake_types import (
     ApplicationRecord,
@@ -34,6 +36,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
+from api.services.financial_aid_reconciliation import CampLine, LineOverride
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow
@@ -61,6 +64,10 @@ class FakeDecisionsStore:
         self.operations: list[list[AidWrite]] = []  # every commit a service attempted
         self.log: list[dict[str, Any]] = []  # every aid_change_log row that committed
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
+        self.camp_lines: list[CampLine] = []
+        self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
+        self.placements: dict[int, Placement] = {}
+        self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -106,6 +113,27 @@ class FakeDecisionsStore:
 
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
         return [e for e in self.hold_events if e.request_id == request_id]
+
+    async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
+        """As the repository reads them: without the recorded times unless asked for (a past read)."""
+        self.camp_line_reads.append(recorded_times)
+        if recorded_times:
+            return list(self.camp_lines)
+        return [replace(line, recorded_at=None, updated_at=None) for line in self.camp_lines]
+
+    async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
+        return dict(self.placements)
+
+    async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
+        return [
+            LineOverride(
+                f"ovr{p.transaction_cm_id:012d}", p.transaction_cm_id, p.person_cm_id, p.session_cm_id, p.program_family
+            )
+            for p in self.placements.values()
+        ]
+
+    async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
+        return self.synced_at
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
@@ -348,3 +376,67 @@ def log_update(
 ) -> None:
     """One logged update (changed fields only, as 4a trims them)."""
     _log(store, entity, entity_id, before, after, at)
+
+
+def seed_line(
+    store: FakeDecisionsStore,
+    txn: int,
+    amount: str,
+    *,
+    household: int = 1000001,
+    person: int = 1000011,
+    posted: datetime | None = datetime(2027, 3, 8, 18, 0, tzinfo=UTC),
+    reversed_at: datetime | None = None,
+    recorded: datetime | None = None,
+    rewritten: datetime | None = None,
+) -> CampLine:
+    """One camp-aid line in the ledger: CampMinder posted it to `person` (0 = the household). Kindred
+    recorded it (the aid_postings row's created) when it posted unless `recorded` says otherwise, and
+    last wrote it (updated) when it was reversed, never before it recorded it, unless `rewritten` says otherwise."""
+    recorded = recorded or posted
+    written = [t for t in (recorded, reversed_at) if t is not None]
+    line = CampLine(
+        transaction_cm_id=txn,
+        household_cm_id=household,
+        person_cm_id=person,
+        amount=Decimal(amount),
+        post_date=posted,
+        is_reversed=reversed_at is not None,
+        reversal_date=reversed_at,
+        recorded_at=recorded,
+        updated_at=rewritten or (max(written) if written else None),
+    )
+    store.camp_lines.append(line)
+    return line
+
+
+def share_row(request_id: str, household: int, pct: str) -> PayerShareRecord:
+    return PayerShareRecord(
+        id=f"shr{household:012d}",
+        year=YEAR,
+        request_id=request_id,
+        household_cm_id=household,
+        share_pct=Decimal(pct),
+        source="staff",
+        actor=ACTOR,
+    )
+
+
+def seed_override(
+    store: FakeDecisionsStore, txn: int, person: int, at: datetime, *, session: int = 0, family: str = ""
+) -> None:
+    """A staff placement of one line, as the write path logs it: created at `at`."""
+    store.placements[txn] = Placement(txn, person, session, family)
+    body = {
+        "transaction_cm_id": txn,
+        "year": YEAR,
+        "attributed_person_cm_id": person,
+        "attributed_session_cm_id": session,
+        "program_family": family,
+    }
+    _log(store, AID_ATTRIBUTION_OVERRIDES, f"ovr{txn:012d}", None, body, at)
+
+
+def log_delete(store: FakeDecisionsStore, entity: str, entity_id: str, before: dict[str, Any], at: datetime) -> None:
+    """One logged delete (its `before` is the whole record)."""
+    _log(store, entity, entity_id, before, None, at)
