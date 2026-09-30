@@ -419,7 +419,8 @@ var serviceGrainDeclarations = []ServiceGrain{
 			NoGrain: "AidPostingsSync.sweepPostings is hand-rolled (no BaseSyncService); the write and " +
 				"the sweep share one key builder, aidPostingKey"},
 		{Collection: "aid_sources",
-			NoGrain: "create-or-classify only, never swept: a description CampMinder stops sending keeps its classification"},
+			NoGrain: "create only (unclassified, or seeded from the private file, D105), never updated or swept: " +
+				"a description CampMinder stops sending keeps its classification"},
 		{Collection: "aid_household_links",
 			NoGrain: "sweeps only source=auto rows, in the hand-rolled syncHouseholdLinks; staff rows are never touched"},
 	}},

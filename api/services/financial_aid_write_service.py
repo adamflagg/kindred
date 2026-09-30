@@ -198,8 +198,8 @@ class FinancialAidWriteService:
 
     async def map_source_grantor(self, source_id: str, body: SourceGrantorIn, actor: str) -> AidSourceRow:
         """Names (or clears) the grantor a CampMinder description belongs to (spec §8.2, D58).
-        Writes only grantor_key: classified_by stays as it was, so a config-file description keeps
-        its classification from the file (Decision 9)."""
+        Writes only grantor_key: a mapping is not a classification, so classified_by stays as it was
+        (Decision 9). The file never rewrites a row that exists (D105), so nothing else touches it."""
         current = await self.repo.get_source(source_id)
         if current is None:
             raise FinancialAidNotFoundError(f"aid source {source_id} not found")

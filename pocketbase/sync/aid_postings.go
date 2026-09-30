@@ -46,7 +46,8 @@ const (
 // aidAttributionContext.
 //
 // Writes three collections (grain.go): aid_postings (upsert + guarded,
-// year-scoped sweep), aid_sources (create-or-classify, never swept) and the
+// year-scoped sweep), aid_sources (create only, never updated or swept: a new
+// description arrives unclassified or seeded from the private file, D105) and the
 // source = "auto" rows of aid_household_links (upsert + sweep; staff rows are
 // never touched).
 type AidPostingsSync struct {
@@ -90,8 +91,9 @@ func (s *AidPostingsSync) SetYear(year int) { s.Year = year }
 // without it, runSyncAndWait would pin the daily run to season N alone.
 func (s *AidPostingsSync) UsesSeasonWindow() bool { return true }
 
-// Sync applies the private classifications once, then materializes each
-// target season's aid_postings (and the auto household links).
+// Sync seeds any description the private file names that has no aid_sources row
+// yet (D105), then materializes each target season's aid_postings (and the auto
+// household links).
 func (s *AidPostingsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
 	years, err := s.targetYears()
@@ -114,8 +116,8 @@ func (s *AidPostingsSync) Sync(ctx context.Context) error {
 		return err
 	}
 	if classes != nil {
-		slog.Info("Applying aid source classifications", "path", path, "entries", len(classes))
-		if err := s.applySourceClasses(sources, classes); err != nil {
+		slog.Info("Seeding new aid source descriptions from the file", "path", path, "entries", len(classes))
+		if err := s.seedSourceClasses(sources, classes); err != nil {
 			return err
 		}
 	} else {
@@ -254,9 +256,14 @@ func (s *AidPostingsSync) loadSources() (map[string]*aidSourceView, error) {
 	return out, nil
 }
 
-// applySourceClasses writes the config file's classifications onto every row
-// that is absent or not staff-classified. Staff edits (FastAPI) always win.
-func (s *AidPostingsSync) applySourceClasses(
+// seedSourceClasses inserts the config file's classification for each description
+// that has no aid_sources row yet. D105: the file is SEED-ONLY. A row that exists --
+// unclassified, config_file or staff -- is never written, so a file edit can never
+// fight an edit made in the app (FastAPI's PATCH /sources, logged with who and why).
+// The file still pre-loads a description before its first posting, and seeds a fresh
+// database: Sync calls this before any season, so a file-named description is seeded
+// before syncYear could create it unclassified.
+func (s *AidPostingsSync) seedSourceClasses(
 	sources map[string]*aidSourceView, classes map[string]aidSourceClass,
 ) error {
 	col, err := s.App.FindCollectionByNameOrId(colAidSources)
@@ -268,49 +275,45 @@ func (s *AidPostingsSync) applySourceClasses(
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	var namedButUnclassified []string
 	for _, key := range keys {
-		c := classes[key]
-		view := sources[key]
-		if view != nil && view.ClassifiedBy == aidClassifiedStaff {
-			continue
-		}
-		rec := core.NewRecord(col)
-		if view != nil && view.Record != nil {
-			rec = view.Record
-		}
-		// grantor_key is staff data (FastAPI's PUT /sources/{id}/grantor), never in this
-		// map, so re-applying the file never clears a description's grantor.
-		data := map[string]any{
-			"description_key": key, "source_name": c.SourceName, "source_family": c.SourceFamily,
-			"funder_type": c.FunderType, "counts_as_aid": c.CountsAsAid, "counts_toward_budget": c.CountsTowardBudget,
-			"implied_program_families": c.ImpliedFamilies, "classified_by": aidClassifiedConfigFile,
-		}
-		if rec.GetString("description") == "" {
-			data["description"] = c.Description
-		}
-		isNew := rec.IsNew()
-		if !isNew && !aidRecordNeedsUpdate(rec, data) {
+		if view := sources[key]; view != nil {
+			// An existing row is an unchanged row: Skipped, like every other one this
+			// sync leaves alone (the no-op rerun contract).
 			s.Stats.Skipped++
+			if view.ClassifiedBy == aidClassifiedUnclassified {
+				namedButUnclassified = append(namedButUnclassified, key)
+			}
 			continue
 		}
+		c := classes[key]
 		if s.DryRun {
 			sources[key] = &aidSourceView{ClassifiedBy: aidClassifiedConfigFile, CountsAsAid: c.CountsAsAid,
 				Implied: c.ImpliedFamilies, SourceFamily: c.SourceFamily, FunderType: c.FunderType,
 				CountsTowardBudget: c.CountsTowardBudget}
 			continue
 		}
-		for k, v := range data {
+		rec := core.NewRecord(col)
+		for k, v := range map[string]any{
+			"description_key": key, "description": c.Description, "source_name": c.SourceName,
+			"source_family": c.SourceFamily, "funder_type": c.FunderType, "counts_as_aid": c.CountsAsAid,
+			"counts_toward_budget": c.CountsTowardBudget, "implied_program_families": c.ImpliedFamilies,
+			"classified_by": aidClassifiedConfigFile,
+		} {
 			rec.Set(k, v)
 		}
 		if err := s.App.Save(rec); err != nil {
-			return fmt.Errorf("saving aid source %q: %w", key, err)
+			return fmt.Errorf("seeding aid source %q: %w", key, err)
 		}
-		if isNew {
-			s.Stats.Created++
-		} else {
-			s.Stats.Updated++
-		}
+		s.Stats.Created++
 		sources[key] = aidSourceViewFromRecord(rec)
+	}
+	if len(namedButUnclassified) > 0 {
+		// The file came too late for these: each posted before the file named it, so the
+		// sync already holds an unclassified row. Only the app classifies an existing row.
+		slog.Warn("aid_sources file names descriptions that already exist unclassified; "+
+			"the file only adds new descriptions (D105), so classify these in the app (PATCH /sources)",
+			"description_keys", namedButUnclassified)
 	}
 	return nil
 }

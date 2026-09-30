@@ -318,8 +318,8 @@ class AidSourceUpdate(BaseModel):
 
 class SourceGrantorIn(BaseModel):
     """Names the description's grantor (D58: descriptions map to grantors through aid_sources, the
-    one registry); None unmaps it. Staff data: the config file never writes or clears it, and
-    naming a grantor doesn't take the description's classification away from the file."""
+    one registry); None unmaps it. Staff data: the config file only seeds new descriptions (D105) and
+    never writes or clears an existing row, so every later change goes through the app."""
 
     grantor_key: (
         Annotated[

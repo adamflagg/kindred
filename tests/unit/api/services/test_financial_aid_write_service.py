@@ -689,7 +689,7 @@ async def test_mapping_a_description_to_a_grantor_writes_only_grantor_key() -> N
     service, spy = _service(_mapping_repo(source, _GRANTOR))
     out = await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
     assert out.grantor_key == "regional_fund"
-    assert out.classified_by == "config_file"  # the file keeps managing it
+    assert out.classified_by == "config_file"  # a mapping is not a classification
     (write,) = spy.writes
     assert write.collection == "aid_sources"
     assert write.data == {"grantor_key": "regional_fund"}
