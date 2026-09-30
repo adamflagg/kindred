@@ -343,7 +343,11 @@ def _round1(
         if fully_covered and not rules.grants.minimum_when_fully_covered:
             potential = max(before_minimum, ZERO)
         elif rules.grants.minimum_after_grants:
-            potential = max(before_minimum, awards.minimum)
+            minimum = awards.minimum
+            if rules.grants.minimum_capped_at_share:
+                # D140: never more than the family still owes after counted grants.
+                minimum = min(minimum, max(work.cost - grants, ZERO))
+            potential = max(before_minimum, minimum)
         else:
             potential = max(before_minimum, awards.minimum - grants, ZERO)
         bound = source

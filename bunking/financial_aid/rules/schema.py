@@ -343,6 +343,11 @@ class GrantsSection(RulesModel):
     # anyway; False (the owner's 2027 ruling) pays nothing. A partial grant follows
     # `minimum_after_grants` alone.
     minimum_when_fully_covered: bool
+    # True (owner ruling D140, 2027 on): the minimum is capped at what is left of the cost after
+    # counted grants, so a grant plus the minimum never passes the cost and nothing is left means
+    # no minimum. False (2026 as operated): `minimum_after_grants` and `minimum_when_fully_covered`
+    # decide alone. Defaults False so a document without it prices as the 2026 sheet did.
+    minimum_capped_at_share: bool = False
     count_when: Literal["committed", "received"] = "committed"
     # A grant recorded after the Round 1 decision: leave it out, leave it out and flag it,
     # or count it.
@@ -395,7 +400,8 @@ class TotalCap(RulesModel):
     """
 
     pct_of_cost: Percent
-    include_grants: bool = True
+    # False (owner ruling D139): an appeal never subtracts outside grants, whenever recorded.
+    include_grants: bool = False
 
 
 class AwardsSection(RulesModel):

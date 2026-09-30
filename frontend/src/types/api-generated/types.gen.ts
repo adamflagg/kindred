@@ -4726,6 +4726,10 @@ export type GrantsSection = {
    */
   minimum_when_fully_covered: boolean
   /**
+   * Minimum Capped At Share
+   */
+  minimum_capped_at_share?: boolean
+  /**
    * Count When
    */
   count_when?: 'committed' | 'received'
