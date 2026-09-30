@@ -244,13 +244,18 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     ) -> list[EnrollmentState]:
         """The enrolled, cancelled and withdrawn registrations of these campers (camper-level requests)
         and of everyone in these households (household-level, Family Camp, requests), with each person's
-        household and session. Never the whole season: only the people the requests name."""
-        rows: dict[str, Any] = {}
+        household and session. Never the whole season: only the people the requests name. The chunks
+        are read concurrently."""
+        chunks: list[str] = []
         for field, ids in (("person_id", person_cm_ids), ("person.household_id", household_cm_ids)):
             wanted = sorted({int(i) for i in ids if int(i) > 0})
-            for start in range(0, len(wanted), PERSON_FILTER_CHUNK):
-                chunk = " || ".join(f"{field} = {i}" for i in wanted[start : start + PERSON_FILTER_CHUNK])
-                found = await self._page(
+            chunks.extend(
+                " || ".join(f"{field} = {i}" for i in wanted[start : start + PERSON_FILTER_CHUNK])
+                for start in range(0, len(wanted), PERSON_FILTER_CHUNK)
+            )
+        found = await asyncio.gather(
+            *(
+                self._page(
                     ATTENDEES,
                     {
                         "filter": f"year = {int(year)} && ({_ENROLLMENT_FILTER}) && ({chunk})",
@@ -259,7 +264,11 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
                         "sort": "id",
                     },
                 )
-                rows.update((str(row.id), row) for row in found)  # a household member may also be named
+                for chunk in chunks
+            )
+        )
+        # A household member may also be named: one row each.
+        rows: dict[str, Any] = {str(row.id): row for batch in found for row in batch}
         return [enrollment_state(row) for row in rows.values()]
 
     async def fetch_names(

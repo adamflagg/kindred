@@ -334,13 +334,15 @@ class _PastLedgerInputs:
 @dataclass(frozen=True)
 class _RequestSide:
     """The season's loads that hang off its requests: rules, applications, corrections, equity
-    answers, and (for the grid) the family and camper names."""
+    answers, the registrations a cancellation reads (10b-2), and (for the grid) the family and camper
+    names."""
 
     rules: RulesVersion | None
     applications: list[ApplicationRecord]
     requests: list[RequestRecord]
     corrections: list[CorrectionRecord]
     equity: dict[int, EquityAnswers]
+    enrollments: list[EnrollmentState]
     names: Names
 
 
@@ -859,11 +861,12 @@ class FinancialAidDecisionsService:
         )
         people = sorted({r.person_cm_id for r in requests if r.person_cm_id > 0})
         households = {r.household_cm_id for r in requests}
-        equity, found = await asyncio.gather(
+        equity, enrollments, found = await asyncio.gather(
             self._store.fetch_equity_answers(year, people),
+            self._store.fetch_enrollment_states(year, *_enrollment_scope(requests)),
             self._store.fetch_names(year, households, people) if names else _no_names(),
         )
-        return _RequestSide(rules, applications, requests, corrections, equity, found)
+        return _RequestSide(rules, applications, requests, corrections, equity, enrollments, found)
 
     async def _rounds_side(
         self, year: int
@@ -906,8 +909,8 @@ class FinancialAidDecisionsService:
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
         """The season's loads run as four concurrent branches: the requests with what hangs off them
         (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
-        ledger (10b), and the cancellation events (10b-2). The registrations those read follow, once the
-        requests say whose to read."""
+        ledger (10b), and the cancellation events (10b-2). The registrations a cancellation reads hang off
+        the requests, so they are read in the first branch, once the requests say whose to read."""
         (
             side,
             (sessions, shares, events, hold_events, register),
@@ -919,7 +922,7 @@ class FinancialAidDecisionsService:
             self._ledger_side(year),
             self._store.fetch_cancellations(year),
         )
-        enrollments = await self._store.fetch_enrollment_states(year, *_enrollment_scope(side.requests))
+        enrollments = side.enrollments
         rules = side.rules
         rounds = fold_rounds(events)
         holds = fold_holds(hold_events)
