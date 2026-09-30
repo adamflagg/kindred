@@ -601,7 +601,11 @@ class FinancialAidDecisionsService:
         season = await self.season(year)
         if season.rules is None:
             raise DecisionRefusedError(f"{year}'s pricing rules are not approved yet")
-        confirmed = {(row.request_id, row.round): row.amount for row in body.rows}
+        confirmed: dict[tuple[str, int], Decimal] = {}
+        for row in body.rows:
+            key = (row.request_id, row.round)
+            if confirmed.setdefault(key, row.amount) != row.amount:
+                raise DecisionRefusedError(f"{row.request_id}: Round {row.round} appears twice with different amounts")
         problems: list[str] = []
         changed: list[ChangedRowOut] = []
         to_post: list[tuple[PricedRequest, int, Decimal]] = []
@@ -618,9 +622,18 @@ class FinancialAidDecisionsService:
                 why = _WHY_NOT.get(view.status, "cannot be posted") if view is not None else "has nothing decided"
                 problems.append(f"{request_id}: Round {n} {why}")
                 continue
-            earlier = priced.view(n - 1) if n > 1 else None
-            if earlier is not None and earlier.status != "posted" and (request_id, n - 1) not in confirmed:
-                problems.append(f"{request_id}: tick Round {n - 1} Posted before Round {n}")
+            unposted = next(
+                (
+                    m
+                    for m in range(1, n)
+                    if (earlier := priced.view(m)) is not None
+                    and earlier.status != "posted"
+                    and (request_id, m) not in confirmed
+                ),
+                None,
+            )
+            if unposted is not None:
+                problems.append(f"{request_id}: tick Round {unposted} Posted before Round {n}")
                 continue
             if view.decided != amount:
                 changed.append(
@@ -682,9 +695,10 @@ class FinancialAidDecisionsService:
             return self._unchanged(year)
         if state.accepted:
             raise DecisionRefusedError(f"Untick Accepted on Round {n} first")
-        later = rounds.get(n + 1)
-        if later is not None and later.posted:
-            raise DecisionRefusedError(f"Round {n + 1} is posted and builds on Round {n}: undo it first")
+        for m in range(n + 1, 4):
+            later = rounds.get(m)
+            if later is not None and later.posted:
+                raise DecisionRefusedError(f"Round {m} is posted and builds on Round {n}: undo it first")
         write = self._write(request, n, "unpost", actor, note=body.reason)
         result = await self._store.commit([write], actor=actor, reason=body.reason, require_reason=True)
         return DecisionWriteOut(year=year, written=1, unchanged=0, operation_id=result.operation_id)

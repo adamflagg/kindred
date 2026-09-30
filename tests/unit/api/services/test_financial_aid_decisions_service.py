@@ -636,3 +636,46 @@ async def test_a_write_on_a_malformed_request_id_is_not_found_never_a_500() -> N
         with pytest.raises(DecisionNotFoundError):
             await call
     assert store.operations == []
+
+
+_DISCRETIONARY = DiscretionaryIn(decision_type="discretionary", amount=Decimal(250), note="Board hardship fund")
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_tick_is_refused_while_an_earlier_round_is_unposted_even_without_a_round_2() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)  # makes a Round 3 view with no Round 2
+    ops = len(store.operations)
+    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted before Round 3"):
+        await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
+    assert len(store.operations) == ops
+    both = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 3, "250")), ACTOR)
+    assert both.written == 2
+
+
+@pytest.mark.asyncio
+async def test_undo_is_refused_while_any_later_round_is_posted_even_without_a_round_2() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)
+    await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
+    ops = len(store.operations)
+    with pytest.raises(DecisionRefusedError, match="Round 3 is posted"):
+        await service.undo_posted(YEAR, UnpostIn(request_id=EMMA, round=1, reason="x"), ACTOR)
+    assert len(store.operations) == ops
+
+
+@pytest.mark.asyncio
+async def test_a_tick_naming_one_round_with_two_amounts_is_refused_but_an_exact_repeat_collapses() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    with pytest.raises(DecisionRefusedError, match=f"{EMMA}: Round 1 appears twice"):
+        await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 1, "1400")), ACTOR)
+    assert store.operations == []
+    out = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 1, "1500")), ACTOR)
+    assert out.written == 1
