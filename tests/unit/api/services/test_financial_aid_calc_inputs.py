@@ -70,6 +70,7 @@ def test_application_inputs_use_corrected_values_as_decimals_and_carry_every_fig
         total_rent=1800.0,
         total_housing_expenses=2400.0,
         gov_subsidies=True,
+        single_parent=True,
     )
     inputs = to_application_inputs(1000001, effective(answers, fix("total_gross_income", "90000.00", "85000.00")))
     assert inputs.prior_year_gross == Decimal("90000.00")
@@ -89,6 +90,7 @@ def test_application_inputs_use_corrected_values_as_decimals_and_carry_every_fig
     assert inputs.answers == {
         "unemployment": "No",
         "gov_subsidies": "Yes",
+        "single_parent": "Yes",
     }
     assert inputs.income_override is None
 

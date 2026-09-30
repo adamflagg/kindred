@@ -88,13 +88,18 @@ IncomeFigure = Literal[
 # on one of them, and intake warns when no applicant in a season answered one yes.
 #
 # LIVE QUESTIONS ONLY (owner ruling 2026-09-27): `still_unemployed` (a retired 2020-21
-# follow-up that a non-seasonal CampMinder field keeps returning under later years),
-# `single_parent` (dropped from the form after 2025) and `owns_home` (0 since 2022) are
-# retired, not live, and are dropped from here. RETIRED_YES_NO_FIELDS below names them so
-# validation.py can refuse a criterion that still points at one.
+# follow-up that a non-seasonal CampMinder field keeps returning under later years) and
+# `owns_home` (0 since 2022) are retired, not live, and are not here. RETIRED_YES_NO_FIELDS
+# below names them so validation.py can refuse a criterion that still points at one.
+#
+# `single_parent` is live and optional again (owner ruling D144 + the 2026-09-30
+# follow-up: every tier-boost question stays on the aid form and is a toggle finance can
+# switch). A household criterion may name it; it is off unless a season's rules add a
+# criterion for it (2026 and 2027 v1 do not), so the answer moves no one's tier until then.
 YES_NO_ANSWER_FIELDS: tuple[str, ...] = (
     "unemployment",
     "gov_subsidies",
+    "single_parent",
 )
 
 # Former members of YES_NO_ANSWER_FIELDS the FA mirror still stores but the current
@@ -103,7 +108,6 @@ YES_NO_ANSWER_FIELDS: tuple[str, ...] = (
 # outright instead of leaving a silently-dead criterion in the document.
 RETIRED_YES_NO_FIELDS: tuple[str, ...] = (
     "still_unemployed",
-    "single_parent",
     "owns_home",
 )
 

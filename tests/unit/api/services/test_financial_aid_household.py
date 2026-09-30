@@ -124,12 +124,18 @@ _RETIRED_HOUSEHOLD_FIELDS = (
     "retirement_accounts",
     "other_support_amount",
     "still_unemployed",
-    "single_parent",
     "owns_home",
     "total_exemptions",
     "gov_subsidies_detail",
     "other_financial_support",
 )
+
+
+def test_single_parent_is_a_live_optional_answer_carried_into_household_answers() -> None:
+    answers, _ = choose_household_answers([fa_row(1000011, single_parent=True)])
+    assert answers["single_parent"] is True
+    blank, _ = choose_household_answers([fa_row(1000011)])
+    assert blank["single_parent"] is False
 
 
 def test_retired_fields_are_never_carried_into_household_answers() -> None:
@@ -141,7 +147,6 @@ def test_retired_fields_are_never_carried_into_household_answers() -> None:
                 retirement_accounts=5000.0,
                 other_support_amount=1200.0,
                 still_unemployed=True,
-                single_parent=True,
                 owns_home=False,
                 total_exemptions=2.0,
                 gov_subsidies_detail="Housing voucher.",
