@@ -2,7 +2,8 @@
 
 The rules document itself is bunking.financial_aid.rules.AidRules: FastAPI
 validates a posted document against it, so a malformed one is a 422 before any
-service call. Every route needs financial_aid.rules.
+service call. Every route needs financial_aid.rules, except D76's approved read
+(financial_aid.view).
 """
 
 from __future__ import annotations
@@ -111,5 +112,5 @@ class ApprovedRulesOut(BaseModel):
     """D76: the approved rules, read only."""
 
     year: int
-    version: int | None  # the version pricing the season; None while none does
+    version: int | None  # the version pricing the season (or the `version` asked for); None while none prices
     sections: list[ApprovedSectionOut]

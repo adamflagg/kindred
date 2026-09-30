@@ -2,7 +2,8 @@
 
 Reads and writes go through FastAPI's superuser client: all five PocketBase rules
 on `aid_rules` are null, so nothing else can reach the table. The routes in
-api/routers/financial_aid.py gate every call on `financial_aid.rules`; this
+api/routers/financial_aid.py gate every call on `financial_aid.rules`, except
+D76's approved read (`approved_view`), which needs `financial_aid.view`; this
 module does no permission check of its own.
 
 A version is (year, version). Each section has its own lifecycle
@@ -13,7 +14,9 @@ the whole document after the edit: an approved section the edit leaves with
 validation errors also goes back to draft (each such change is recorded), and
 an edit that would give a locked section new errors is refused. A draft with
 validation errors still saves, and the report comes back with it, so staff see
-what is wrong; approval and locking are what errors block.
+what is wrong; approval and locking are what errors block. (On the version
+pricing the season, SP9 refuses such a save rather than send approved sections
+back to draft: see below.)
 
 A write to `save`, `approve_section` or `lock_section` targets a specific
 version; if that version is no longer the latest for its year, the write is
@@ -96,7 +99,8 @@ STABLE_SORT = "id"
 
 # The sections a decision is priced by (sub-project 10a): pricing uses the newest version in which every one
 # is approved or locked. Moved here from the decisions service by SP9, which needs it to know which version
-# prices the season (a save there always branches; D76's approved read shows that version).
+# prices the season (a save of an approved or locked section there always branches; D76's approved read serves
+# the pricing sections from that version).
 PRICING_SECTIONS: Final[tuple[SectionName, ...]] = (
     "income",
     "tiers",
@@ -627,8 +631,12 @@ class FinancialAidRulesService:
                 f"Version {current.version} of {year} prices the season: a whole-document save would "
                 "send its approved sections back to draft. Use the section editor, which branches a new version"
             )
+        # This save doesn't stamp (plan Decision 4), so a section it touches drops any earlier edit stamp rather than
+        # keep naming someone who no longer made its last change.
+        unstamped = {"edited_by": None, "edited_at": None, "edited_via": None}
+        status = {name: s.model_copy(update=unstamped) if name in touched else s for name, s in outcome.status.items()}
         stored = _stored(current)
-        data = {"document": _dump(document), "section_status": status_to_json(outcome.status)}
+        data = {"document": _dump(document), "section_status": status_to_json(status)}
         if data == stored:
             return current, report  # nothing changed: nothing to write or log
         write = AidWrite(
@@ -658,8 +666,9 @@ class FinancialAidRulesService:
         draft there, and a changed locked section's lock is lifted there only. Otherwise it saves in place,
         lifting any lock that is only a copy of the parent's.
 
-        Each changed section is stamped with `actor`, the time and `via` (the kept option it came from). One
-        operation, one log row: "save" on the version written. A save that changes nothing writes nothing.
+        Each section the edit touched (changed, or sent back to draft by it) is stamped with `actor`, the time and
+        `via` (the kept option it came from). One operation, one log row: "save" on the version written. A save
+        that changes nothing writes nothing.
         """
         if candidate.year != year:
             raise YearMismatchError(f"The document is for {candidate.year}, not {year}")

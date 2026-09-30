@@ -365,6 +365,23 @@ async def test_a_whole_document_save_on_a_version_not_in_use_still_saves() -> No
     assert saved.document.awards.minimum == Decimal(150)
 
 
+@pytest.mark.asyncio
+async def test_a_whole_document_save_clears_an_earlier_editors_stamp_on_the_section_it_changes() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)  # every section a draft
+    edited = with_lever(_minimum(fictional_rules(), "150"), "income.floor", "500")
+    await service.save_sections(2031, 1, edited, actor=TREASURER)  # awards and income stamped
+    saved, _ = await service.save(
+        2031, 1, with_lever(_minimum(fictional_rules(), "175"), "income.floor", "500"), actor=FINANCE
+    )
+    # The whole-document save doesn't stamp (plan Decision 4), so it must not leave the earlier editor's stamp
+    # naming someone who no longer made the section's last change; a section it left alone keeps its stamp.
+    awards = saved.section_status["awards"]
+    assert (awards.edited_by, awards.edited_at, awards.edited_via) == (None, None, None)
+    assert saved.section_status["income"].edited_by == TREASURER
+
+
 # --- a first lock under an open rules draft ------------------------------------------------------------
 
 

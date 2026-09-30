@@ -600,7 +600,9 @@ async def save_aid_rules(
     year: _Year, version: _Version, body: RulesDocumentIn, user: AuthUser = _RULES
 ) -> RulesVersionOut:
     """Save the whole document over the latest version. Changed approved sections go back to draft;
-    a change to a locked section is refused (make a new version)."""
+    a change to a locked section is refused (make a new version). 409 when the version prices the season and
+    the save would change an approved or locked section, or send one back to draft: use the section editor,
+    which branches a new version."""
     _same_year(year, body.document)
     try:
         saved, report = await _rules().save(year, version, body.document, actor=user.email)
@@ -664,8 +666,9 @@ async def start_aid_rules_version(
 async def get_approved_aid_rules(
     year: _Year, version: int | None = Query(default=None, ge=1), user: AuthUser = _VIEW
 ) -> ApprovedRulesOut:
-    """D76: the approved rules, read only, for everyone with view -- the version pricing the season, or `version`
-    (a receipt's link). A draft section has no content."""
+    """D76: the approved rules, read only, for everyone with view. Without `version`, section by section: the
+    pricing sections from the version pricing the season, every other section from the newest version where it is
+    approved or locked. With `version` (a receipt's link), that version alone. A draft section has no content."""
     try:
         return _approved_out(await _rules().approved_view(year, version))
     except FinancialAidError as exc:
