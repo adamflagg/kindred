@@ -666,3 +666,32 @@ def test_start_from_last_season_through_the_real_service_without_its_rules_is_42
     response = client.post("/api/financial-aid/scenarios/2027/starting-points/last-season")
     assert response.status_code == 422
     assert response.json()["detail"].startswith("2026 has no approved rules to start from")
+
+
+def test_nothing_in_the_committee_rows_reads_as_zero() -> None:
+    """None is "nothing there" (no rules, All's table cells, nothing priced), never 0: it stays null in JSON."""
+    service = _stub()
+    empty = replace(
+        COMMITTEE,
+        budget_total=None,
+        round1_pct_of_budget=None,
+        round1_by_tier=(replace(_tier_row(None), fee_pct=None, average_ask=None, pct_of_ask=None),),
+        round2_by_tier=(replace(COMMITTEE.round2_by_tier[0], max_pct=None, average_round2=None, pct_of_ask=None),),
+    )
+    column = CompareColumn("draft", "no changes", DOC, (), RESULTS, None, None, empty)
+    service.compare = AsyncMock(return_value=Comparison(META, (column,)))
+    committee = _client().get("/api/financial-aid/scenarios/2027/compare").json()["columns"][0]["committee"]
+    assert (committee["budget_total"], committee["round1_pct_of_budget"]) == (None, None)
+    row = committee["round1_by_tier"][0]
+    assert (row["fee_pct"], row["average_ask"], row["pct_of_ask"]) == (None, None, None)
+    appeal = committee["round2_by_tier"][0]
+    assert (appeal["max_pct"], appeal["average_round2"], appeal["pct_of_ask"]) == (None, None, None)
+
+
+def test_the_router_gives_the_scenarios_service_the_live_season_read() -> None:
+    from api.routers import financial_aid
+
+    service_class = patch("api.routers.financial_aid.FinancialAidScenariosService").start()
+    decisions = patch("api.routers.financial_aid._decisions").start()
+    financial_aid._scenarios()
+    assert service_class.call_args.kwargs["season_read"] is decisions.return_value.season
