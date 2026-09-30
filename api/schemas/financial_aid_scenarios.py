@@ -69,6 +69,10 @@ class ResultsOut(BaseModel):
     # Round 1 on requests in no tier (a withdrawn request's posted round): the tier rows plus this are `round1`.
     not_in_tiers: float
     request_set: RequestSetOut | None = None
+    # "Round 2's allocation" and what is left of it (spec §5.3): RPT-32's "against the appeals allocation" (SP9c).
+    # 0 when the rules set no Round 2 reserves; None only with no rules.
+    round2_allocated: float | None = None
+    round2_remaining: float | None = None
 
 
 class SnapshotOut(BaseModel):
@@ -164,6 +168,61 @@ class KeepIn(BaseModel):
     starting_point: bool = False
 
 
+class TierCompareOut(BaseModel):
+    """One Round 1 row of what the committee compares (RPT-17): an award table's tier, or All's (`table` None)."""
+
+    table: str | None  # the award table ("" for a program with none); None: All
+    tier: int
+    requests: int
+    families: int
+    asked: float  # the Round 1 asks of the requests the row counts
+    average_ask: float | None
+    fee_pct: float | None  # the table's Round 1 % for the tier: a rules value, never computed; None for All
+    pct_of_ask: float | None  # Round 1 ÷ asked, one decimal; None when nothing was asked
+    round1: float
+    average_round1: float | None  # Round 1 ÷ requests (the requests the row counts)
+    held: int  # the tier's live requests whose Round 1 is held (a check's hold has a tier): in none of the above
+
+
+class Round2CompareOut(BaseModel):
+    """One Round 2 row (RPT-32): a Round 2 table's tier, or All's (`table` None)."""
+
+    table: str | None
+    tier: int
+    appeals: int  # requests with a Round 2 ask, held ones included
+    asked: float  # their Round 2 asks
+    max_pct: float | None  # the Round 2 table's cap (total %): a rules value; None for All
+    priced: int  # appeals whose Round 2 the budget counts
+    priced_asked: float  # those appeals' asks: what pct_of_ask divides by
+    round2: float
+    average_round2: float | None  # Round 2 ÷ priced
+    pct_of_ask: float | None  # Round 2 ÷ the priced appeals' asks
+
+
+class CommitteeOut(BaseModel):
+    """What the committee compares for one column (spec §9.7 RPT-17, RPT-32)."""
+
+    budget_total: float | None  # the column's own total budget
+    round1: float
+    round1_pct_of_budget: float | None  # Round 1 ÷ the total budget, one decimal (RPT-17's and RPT-18's headline)
+    round2: float
+    round1_by_tier: list[TierCompareOut]  # each award table's tiers, then All
+    round2_by_tier: list[Round2CompareOut]  # each Round 2 table's tiers, then All
+    not_in_tiers: float  # Round 1 no row holds (a withdrawn request's posted round): All's rows + this = round1
+    round2_not_in_tiers: float  # the same for Round 2
+
+
+class LastSeasonOut(BaseModel):
+    """Last season's posted money, at each lock, beside the compare (RPT-17's and RPT-32's last-season columns).
+    `view` is None until last season is loaded, and `label` says so: never zeros, never an estimate."""
+
+    year: int
+    loaded: bool
+    label: str
+    rules_version: int | None
+    view: CommitteeOut | None
+
+
 class CompareColumnOut(BaseModel):
     code: str  # "draft" for the draft
     label: str
@@ -172,12 +231,14 @@ class CompareColumnOut(BaseModel):
     results: ResultsOut
     up: int | None
     down: int | None
+    committee: CommitteeOut | None = None
 
 
 class CompareOut(BaseModel):
     year: int
     snapshot: SnapshotOut
     columns: list[CompareColumnOut]
+    last_season: LastSeasonOut | None = None  # only with ?last_season=true
 
 
 class FitOut(BaseModel):
