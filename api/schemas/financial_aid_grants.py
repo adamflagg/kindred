@@ -25,12 +25,18 @@ _Note = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 class GrantorFields(BaseModel):
     """The grantor facts, each in one home (owner ruling 2026-09-28). covers_canteen (D86) is
     whether a FULL-COVERAGE grant includes the canteen deposit: "unknown" until staff answer,
-    and recorded only for a full-coverage grantor. The camp's own aid never pays canteen."""
+    and recorded only for a full-coverage grantor. The camp's own aid never pays canteen.
+
+    pays_after_camp_aid (D143): the grantor pays whatever the camp's award leaves (a last-dollar funder,
+    posted at the full price, then reversed and reposted for the remainder), so its grants never
+    lower the award: the calculator bridge leaves them out. Paying the remainder IS covering the
+    full cost, so it is recorded only for a full-coverage grantor."""
 
     name: _Name
     aliases: list[_Name] = Field(default_factory=list, max_length=50)
     full_coverage: bool = False
     covers_canteen: CoversCanteen = "unknown"
+    pays_after_camp_aid: bool = False
     eligibility: _Text = ""
     contacts: _Text = ""
 
@@ -38,6 +44,12 @@ class GrantorFields(BaseModel):
     def _canteen_needs_full_coverage(self) -> GrantorFields:
         if self.covers_canteen != "unknown" and not self.full_coverage:
             raise ValueError("covers_canteen is recorded only for a full-coverage grantor")
+        return self
+
+    @model_validator(mode="after")
+    def _pays_after_needs_full_coverage(self) -> GrantorFields:
+        if self.pays_after_camp_aid and not self.full_coverage:
+            raise ValueError("pays_after_camp_aid is recorded only for a full-coverage grantor")
         return self
 
 
@@ -67,6 +79,7 @@ class GrantorOut(BaseModel):
     aliases: list[str]
     full_coverage: bool
     covers_canteen: CoversCanteen
+    pays_after_camp_aid: bool
     eligibility: str
     contacts: str
     descriptions: list[GrantorDescription]

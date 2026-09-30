@@ -84,7 +84,12 @@ from api.services.financial_aid_calc_inputs import (
     to_application_inputs,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
-from api.services.financial_aid_grants_register import Placement, RegisterRow, grant_inputs_by_request
+from api.services.financial_aid_grants_register import (
+    Placement,
+    RegisterRow,
+    grant_inputs_by_request,
+    outside_grants_by_request,
+)
 from api.services.financial_aid_intake_plan import request_fields, share_entity_id
 from api.services.financial_aid_intake_repository import request_record
 from api.services.financial_aid_intake_types import (
@@ -263,8 +268,6 @@ class Season:
     rounds: Mapping[str, Mapping[int, RoundState]]
     register: tuple[RegisterRow, ...]
     sessions: Mapping[int, SessionRow]
-    # The grants register's calculator input per request, built once for pricing and the budget.
-    grants: Mapping[str, Sequence[GrantInput]]
     # Each request's released check codes and manual hold (follow-up 3b).
     holds: Mapping[str, HoldState]
     # None: priced now. A date: the past-date read (3c), by the end of that day on `axis`.
@@ -913,7 +916,6 @@ class FinancialAidDecisionsService:
             rounds=rounds,
             register=tuple(register),
             sessions=session_map,
-            grants=grants,
             holds=holds,
             ledger=ledger,
             reversed_on=reversed_on,
@@ -1003,7 +1005,6 @@ class FinancialAidDecisionsService:
             rounds=rounds,
             register=(),
             sessions=session_map,
-            grants={},
             holds=holds,
             as_of=day,
             axis=axis,
@@ -1108,7 +1109,9 @@ class FinancialAidDecisionsService:
         return await self.season(year) if day is None else await self.past_season(year, day, axis)
 
     def _budget(self, season: Season) -> SeasonBudget:
-        by_request = {rid: sum((g.amount for g in grants), ZERO) for rid, grants in season.grants.items()}
+        # The register's money, not the calculator's inputs: a pays-after-camp-aid grant (D143) never
+        # reaches the calculator but is still outside money below the line (D125).
+        by_request = outside_grants_by_request(season.register)
         off = sum(
             (row.amount for row in season.register if row.counts and row.funder_type == "outside" and not row.requests),
             ZERO,

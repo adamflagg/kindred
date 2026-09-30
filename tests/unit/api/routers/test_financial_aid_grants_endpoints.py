@@ -31,6 +31,7 @@ GRANTOR = GrantorOut(
     aliases=[],
     full_coverage=False,
     covers_canteen="unknown",
+    pays_after_camp_aid=False,
     eligibility="",
     contacts="",
     descriptions=[],
@@ -168,3 +169,17 @@ def test_a_withdrawal_needs_a_reason() -> None:
     _stub()
     url = "/api/financial-aid/grants/2031/commitments/com000000000001/withdraw"
     assert _client().post(url, json={"reason": "  "}).status_code == 422
+
+
+def test_a_grantor_that_pays_after_camp_aid_reaches_the_service() -> None:
+    """D143: the pays-after fact is accepted on create and save, and only for a full-coverage grantor."""
+    service = _stub()
+    client = _client()
+    body = {**GRANTOR_BODY, "full_coverage": True, "pays_after_camp_aid": True}
+    assert client.post("/api/financial-aid/grantors", json=body).status_code == 201
+    assert service.create_grantor.call_args.args[0].pays_after_camp_aid is True
+    save = {**SAVE_BODY, "full_coverage": True, "pays_after_camp_aid": True}
+    assert client.put("/api/financial-aid/grantors/regional_fund", json=save).status_code == 200
+    assert service.save_grantor.call_args.args[1].pays_after_camp_aid is True
+    partial = {**GRANTOR_BODY, "pays_after_camp_aid": True}
+    assert client.post("/api/financial-aid/grantors", json=partial).status_code == 422

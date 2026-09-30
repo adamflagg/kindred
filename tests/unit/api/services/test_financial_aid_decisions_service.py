@@ -248,6 +248,22 @@ async def test_outside_grants_reach_the_calculator_and_sit_below_the_line() -> N
 
 
 @pytest.mark.asyncio
+async def test_a_pays_after_camp_aid_grant_never_lowers_the_award_but_sits_below_the_line() -> None:
+    """D143: a last-dollar funder is posted at the full session price and pays what the camp's award leaves,
+    so the calculator never sees it (the award stays 1,500, not 0) and no above-cost hold fires. It
+    is still outside money, so the budget shows it below the line with the other outside grants."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store, register=[grant_row(EMMA, "2000", pays_after_camp_aid=True)])
+    (row,) = (await service.grid(YEAR)).rows
+    assert row.rounds[0].decided == 1500.0
+    assert "award_above_cost" not in {h.code for h in row.holds}
+    budget = await service.budget(YEAR)
+    camp = next(p for p in budget.pools if p.pool == "camp_pool")
+    assert camp.below.outside_grants == 2000.0
+
+
+@pytest.mark.asyncio
 async def test_an_incentive_line_never_reaches_the_calculator() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)

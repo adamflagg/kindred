@@ -297,7 +297,14 @@ def seed_request(
     return request
 
 
-def grant_row(request_id: str, amount: str, *, funder_type: str = "outside", on_request: bool = True) -> RegisterRow:
+def grant_row(
+    request_id: str,
+    amount: str,
+    *,
+    funder_type: str = "outside",
+    on_request: bool = True,
+    pays_after_camp_aid: bool = False,
+) -> RegisterRow:
     """One counted grants-register row, placed on `request_id` unless `on_request` is False."""
     value = Decimal(amount)
     return RegisterRow(
@@ -322,6 +329,7 @@ def grant_row(request_id: str, amount: str, *, funder_type: str = "outside", on_
         counts=True,
         fulfils_commitment_id="",
         requests=(RequestShare(request_id, value),) if on_request else (),
+        pays_after_camp_aid=pays_after_camp_aid,
     )
 
 
