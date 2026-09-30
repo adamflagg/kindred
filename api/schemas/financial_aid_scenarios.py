@@ -106,7 +106,8 @@ class DraftOut(BaseModel):
 
 class WorkspaceOut(BaseModel):
     year: int
-    rules_version: int
+    rules_version: int  # the rules draft: the latest version
+    pricing_version: int | None  # the version pricing the season (every pricing section approved); None while none
     snapshot: SnapshotOut | None
     draft: DraftOut | None
     options: list[OptionOut]

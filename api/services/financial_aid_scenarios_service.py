@@ -32,7 +32,13 @@ from typing import Any, Final, Literal, Protocol
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_ledger_service import as_of_cutoff
-from api.services.financial_aid_rules_service import FinancialAidRulesService, PromotionPreview, RulesDraft
+from api.services.financial_aid_rules_service import (
+    PRICING_SECTIONS,
+    FinancialAidRulesService,
+    PromotionPreview,
+    RulesDraft,
+    RulesVersion,
+)
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, SnapshotError, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
 from bunking.financial_aid.change_diff import FieldChange, field_changes
@@ -139,6 +145,7 @@ class Workspace:
     snapshot: SnapshotMeta | None
     draft: Draft | None
     options: tuple[KeptOption, ...]
+    pricing_version: int | None = None  # the version pricing the season; None while none does (final review 8)
 
 
 @dataclass(frozen=True)
@@ -193,6 +200,17 @@ def _season_of(encoded: Mapping[str, Any]) -> dict[str, Any]:
     season = {key: value for key, value in encoded.items() if key != "frozen_at"}
     season["calls"] = {name: value for name, value in dict(encoded["calls"]).items() if name not in _CLOCK_READS}
     return season
+
+
+def _prices(version: RulesVersion) -> bool:
+    """Whether a version can price the season: every pricing section approved or locked (the rules service's
+    `latest_approved(year, PRICING_SECTIONS)` takes the newest such version)."""
+    return all(version.section_status[name].state in ("approved", "locked") for name in PRICING_SECTIONS)
+
+
+def _rules_name(version: RulesVersion) -> str:
+    """ "rules vN" for approved rules, "rules draft vN" for a version that can't price the season (final review 8)."""
+    return f"rules v{version.version}" if _prices(version) else f"rules draft v{version.version}"
 
 
 def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
@@ -274,7 +292,11 @@ class FinancialAidScenariosService:
 
     async def _label(self, option: OptionRecord, options: Mapping[str, OptionRecord]) -> str:
         if not option.from_code:
-            return f"rules v{option.origin_version} as they were"
+            # "rules vN" only when vN is approved rules and the option is them: one started from a draft that was
+            # approved later with edits stays "rules draft vN", as it was.
+            origin = await self._rules.load(option.year, option.origin_version)
+            name = _rules_name(origin) if origin.document == option.document else f"rules draft v{origin.version}"
+            return f"{name} as they were"
         return describe(await self._reference(option, options), option.document)
 
     @staticmethod
@@ -447,7 +469,7 @@ class FinancialAidScenariosService:
                 actor,
                 document=rules.document,
                 from_code=code,
-                change=f"started from rules v{rules.version}",
+                change=f"started from {_rules_name(rules)}",
                 results=priced.results,
                 meta=meta,
                 kept_code=code,
@@ -458,13 +480,21 @@ class FinancialAidScenariosService:
 
     async def workspace(self, year: int, actor: str) -> Workspace:
         rules = await self._rules.load(year)
+        pricing = await self._rules.latest_approved(year, PRICING_SECTIONS)
         meta = await self._store.latest_snapshot(year)
         options = await self._options(year)
         kept = [
             KeptOption(option, await self._label(option, options), stale=meta is None or option.snapshot != meta.id)
             for option in options.values()
         ]
-        return Workspace(year, rules.version, meta, await self._draft(year, actor), tuple(kept))
+        return Workspace(
+            year,
+            rules.version,
+            meta,
+            await self._draft(year, actor),
+            tuple(kept),
+            pricing_version=pricing.version if pricing is not None else None,
+        )
 
     async def trail(self, year: int, *, page: int, per_page: int) -> tuple[tuple[TrailRecord, ...], int]:
         """A page of everyone's trail, newest first; each row says whether its figures are from an older snapshot."""

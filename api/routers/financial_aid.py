@@ -1040,6 +1040,7 @@ def _workspace_out(workspace: Workspace) -> WorkspaceOut:
     return WorkspaceOut(
         year=workspace.year,
         rules_version=workspace.rules_version,
+        pricing_version=workspace.pricing_version,
         snapshot=_snapshot_out(workspace.snapshot) if workspace.snapshot is not None else None,
         draft=_scenario_draft_out(workspace.draft) if workspace.draft is not None else None,
         options=[_option_out(kept) for kept in workspace.options],

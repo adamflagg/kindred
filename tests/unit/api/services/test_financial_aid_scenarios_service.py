@@ -31,6 +31,7 @@ from api.services.financial_aid_scenarios_service import (
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.rules import AidRules
+from bunking.financial_aid.rules.schema import SECTION_NAMES
 from bunking.financial_aid.scenarios import RequestSetNote, shift_round1_tables, with_minimum
 from tests.unit.api.services.decisions_fakes import (
     T0,
@@ -184,9 +185,13 @@ async def test_starting_from_the_rules_keeps_a_and_puts_it_in_my_draft() -> None
     workspace = await world.service.workspace(YEAR, FINANCE)
     [a] = workspace.options
     assert (a.record.code, a.record.starting_point, a.record.from_code, a.record.origin_version) == ("A", "", "", 1)
-    assert (a.label, a.stale, a.record.results.round1) == ("rules v1 as they were", False, Decimal(2600))
+    # 2027 v1 is every section a draft here: it prices nothing yet, so it is "rules draft v1" (final review 8).
+    assert (a.label, a.stale, a.record.results.round1) == ("rules draft v1 as they were", False, Decimal(2600))
     assert workspace.draft is not None
     assert (workspace.draft.from_code, workspace.draft.label, workspace.rules_version) == ("A", "no changes", 1)
+    assert workspace.pricing_version is None
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=50)
+    assert rows[0].change == "started from rules draft v1"
 
 
 @pytest.mark.asyncio
@@ -197,6 +202,24 @@ async def test_starting_from_unchanged_rules_again_loads_a_rather_than_copy_it()
     assert [o.record.code for o in workspace.options] == ["A"]
     assert workspace.draft is not None
     assert workspace.draft.from_code == "A"
+
+
+@pytest.mark.asyncio
+async def test_a_starting_point_says_rules_only_for_rules_that_price_the_season() -> None:
+    """Final review 8. v1 approved prices the season: "rules v1". A later v2 draft that changes the minimum is a
+    new starting point (its lineage starts at v2) labelled "rules draft v2", while A keeps "rules v1"."""
+    world = await _world()
+    await world.rules.approve_sections(YEAR, 1, list(SECTION_NAMES), actor=TREASURER, note="Finance committee")
+    await world.service.freeze(YEAR, FINANCE)
+    started = await world.service.start_from_rules(YEAR, FINANCE)
+    assert ([o.label for o in started.options], started.pricing_version) == (["rules v1 as they were"], 1)
+    await world.rules.create_version(with_minimum(intake_rules(), Decimal(150)), actor=FINANCE)
+    later = await world.service.start_from_rules(YEAR, TREASURER)
+    labels = [(o.record.code, o.record.origin_version, o.label) for o in later.options]
+    assert labels == [("A", 1, "rules v1 as they were"), ("B", 2, "rules draft v2 as they were")]
+    assert (later.rules_version, later.pricing_version) == (2, 1)
+    rows, _ = await world.service.trail(YEAR, page=1, per_page=50)
+    assert [r.change for r in rows] == ["started from rules draft v2", "started from rules v1"]
 
 
 # --- the draft and the trail --------------------------------------------------------------------------
@@ -351,7 +374,7 @@ async def test_compare_puts_the_draft_first_beside_the_ticked_options() -> None:
     assert [c.code for c in comparison.columns] == ["draft", "A", "A1"]
     draft, first, variant = comparison.columns
     assert (draft.label, draft.up, draft.down) == ("Round 1 % +5 pts", 2, 0)
-    assert (first.label, first.up, first.down) == ("rules v1 as they were", None, None)
+    assert (first.label, first.up, first.down) == ("rules draft v1 as they were", None, None)  # v1 prices nothing
     assert (variant.label, variant.up, variant.down, variant.results.round1) == (
         "Round 1 % +5 pts",
         2,

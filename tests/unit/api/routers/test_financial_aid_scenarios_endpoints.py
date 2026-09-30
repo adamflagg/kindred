@@ -524,3 +524,12 @@ def test_a_trail_row_says_whether_its_figures_are_stale() -> None:
     service.trail = AsyncMock(return_value=((replace(ROW, stale=True), ROW), 2))
     rows = _client().get("/api/financial-aid/scenarios/2027/trail").json()["rows"]
     assert [row["stale"] for row in rows] == [True, False]
+
+
+def test_the_workspace_names_the_version_that_prices_the_season() -> None:
+    service = _stub()
+    service.workspace = AsyncMock(return_value=Workspace(2027, 2, META, DRAFT, (KEPT,), pricing_version=1))
+    body = _client().get("/api/financial-aid/scenarios/2027").json()
+    assert (body["rules_version"], body["pricing_version"]) == (2, 1)
+    service.workspace = AsyncMock(return_value=Workspace(2027, 1, META, DRAFT, (KEPT,)))
+    assert _client().get("/api/financial-aid/scenarios/2027").json()["pricing_version"] is None
