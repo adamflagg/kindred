@@ -885,6 +885,18 @@ def test_a_source_that_funds_no_camper_program_is_never_tied_to_a_camper() -> No
     assert (row.person_cm_id, row.camper_basis) == (0, "none")
 
 
+def test_a_family_that_applied_through_a_linked_household_is_worked_as_an_applicant() -> None:
+    """D126 is about FAMILIES that never applied. An aid family spans its linked households
+    (aid_household_links, the set the ledger's "requested aid" reads), so a line posted to a
+    household whose linked household applied still needs a camper, and is never tied by rule."""
+    row, attention = _never_applied(
+        Enrollment(OLIVIA, S1, "summer", 2),
+        family_households={NEVER_APPLIED: frozenset({NEVER_APPLIED, HOUSEHOLD})},
+    )
+    assert (row.person_cm_id, row.camper_basis, row.counts) == (0, "none", False)
+    assert [(n.row.transaction_cm_id, n.household_applied) for n in attention.needs_camper] == [(9201, True)]
+
+
 def test_a_staff_placement_still_wins_in_a_never_applied_household() -> None:
     row, _ = _never_applied(
         Enrollment(OLIVIA, S1, "summer", 2),

@@ -27,7 +27,7 @@ grant whose grantor pays after the camp's award (D143, a last-dollar funder); th
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
@@ -155,6 +155,9 @@ class RegisterInputs:
     household_people: Mapping[int, frozenset[int]] = field(default_factory=dict)
     # description_key -> the source's reporting group as program families (D100); empty = unset.
     families_by_source: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    # household -> its aid family (aid_household_links, family_household_set). D126 asks whether the
+    # FAMILY applied, as the ledger's "requested aid" does; a household missing here is its own family.
+    family_households: Mapping[int, frozenset[int]] = field(default_factory=dict)
 
 
 # --- outputs ------------------------------------------------------------------------------
@@ -226,9 +229,13 @@ def _line_camper(line: GrantLine, placement: Placement | None, enrolled: frozens
     return _Camper(0, 0, "", "none")
 
 
-def applied_households(requests: Iterable[RequestRef]) -> frozenset[int]:
-    """The households with a live aid request (Decision 10): the ones worked in the aid part (D126)."""
-    return frozenset(r.household_cm_id for r in requests if r.status in LIVE_REQUEST_STATUSES)
+def applied_households(
+    requests: Iterable[RequestRef], family_households: Mapping[int, Collection[int]]
+) -> frozenset[int]:
+    """The households whose family has a live aid request (Decision 10): the ones worked in the aid
+    part (D126). A household counts when it, or a household linked to it, applied."""
+    live = frozenset(r.household_cm_id for r in requests if r.status in LIVE_REQUEST_STATUSES)
+    return live | frozenset(h for h, family in family_households.items() if live.intersection(family))
 
 
 def _sole_camper(
@@ -266,9 +273,11 @@ def _fulfilments(
       and reposting, so only the repost may close the commitment;
     * outside-funded -- an incentive never reaches the calculator, so letting one close an outside
       commitment would lose the grant;
-    * confirmed on the commitment's camper -- or, for a household program (Family Camp), where the
-      target is the household, a household-program line in the commitment's household; a line and a
-      commitment on opposite sides of that divide never pair;
+    * confirmed on the commitment's camper -- by a placement, by CampMinder naming them, or by
+      D142's sole-camper tie (a never-applied family's line is confirmed no other way) -- or, for a
+      household program (Family Camp), where the target is the household, a household-program line
+      in the commitment's household; a line and a commitment on opposite sides of that divide never
+      pair;
     * from a description mapped to the commitment's own grantor -- never an unmapped one (item B);
     * not in a different session, when both name one (item D2);
     * posted on or after the commitment's committed_on (item D6): a commitment is for a grant not
@@ -399,7 +408,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
     campers = [_line_camper(ln, inputs.placements.get(ln.transaction_cm_id), enrolled) for ln in inputs.lines]
     # D142: a never-applied household's line that no one placed ties itself to the household's sole
     # camper the grant can pay for; a household program's line (Family Camp) needs no camper.
-    applied = applied_households(inputs.requests)
+    applied = applied_households(inputs.requests, inputs.family_households)
     campers = [
         (_sole_camper(line, inputs, by_person) or camper)
         if camper.basis == "none"
@@ -723,7 +732,7 @@ def needs_attention(
     a commitment still not in CampMinder. The late-grant "contact the family" line is Today's and
     needs SP10's lock, so it isn't here."""
     lines = {ln.transaction_cm_id: ln for ln in inputs.lines}
-    applied = applied_households(inputs.requests)
+    applied = applied_households(inputs.requests, inputs.family_households)
     fulfilled = {r.fulfils_commitment_id for r in rows if r.fulfils_commitment_id}
     open_commitments = [c for c in inputs.commitments if c.status == "open" and c.id not in fulfilled]
 

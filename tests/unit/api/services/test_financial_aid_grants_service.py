@@ -358,6 +358,38 @@ async def test_a_camper_linked_by_a_childhood_household_is_a_second_candidate() 
 
 
 @pytest.mark.asyncio
+async def test_read_asks_for_the_wider_family_pool_only_where_a_grant_can_tie() -> None:
+    """The own-or-childhood pool is one query per few households; the register read needs it only
+    for a family that never applied (D142), so an applicant-only season never pays for it."""
+    repo = _read_repo()
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    assert repo.fetch_household_persons_by_household.await_count == 0
+    assert [c.name for c in out.needs_camper[0].candidates] == ["Emma Johnson", "Liam Johnson"]
+
+
+@pytest.mark.asyncio
+async def test_a_grant_whose_linked_household_applied_still_needs_a_camper() -> None:
+    """D126 is about families: household 150's own request list is empty, but it is linked to
+    household 100, which applied, so its grant waits for the registrar rather than tying itself."""
+    repo = _never_applied_repo(persons=[_person(1001, "Emma", household=150)])
+    repo.fetch_grant_postings = AsyncMock(return_value=[_posting(9001, 500, household_cm_id=150)])
+    repo.fetch_links = AsyncMock(
+        return_value=[SimpleNamespace(household_cm_id=h, family_key="family-1", excluded=False) for h in (100, 150)]
+    )
+    repo.fetch_request_refs = AsyncMock(
+        return_value=[
+            SimpleNamespace(id="req-1", household_cm_id=100, person_cm_id=1002, session_cm_id=1000101, status="active")
+        ]
+    )
+    service, _ = _service(repo)
+    out = await service.read(2031)
+    (row,) = out.grants
+    assert (row.person_cm_id, row.camper_basis) == (0, "none")
+    assert [n.grant.transaction_cm_id for n in out.needs_camper] == [9001]
+
+
+@pytest.mark.asyncio
 async def test_read_reads_the_sources_reporting_group_before_tying() -> None:
     """D100: a Quest-only source can't pay for a summer camper, so the grant stays at household
     level -- and, the household never having applied, off "needs a camper" (D126)."""
