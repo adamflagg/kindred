@@ -71,6 +71,8 @@ class RoundOut(BaseModel):
     would_change_by: float | None
     counts_toward_budget: bool
     rules_version: int | None
+    lock_source: str | None = None  # "tick" (registrar) or "ledger" (automatic tick, D78); None while unposted
+    clawed_back: bool = False  # CampMinder reversed its money: it counts nowhere (D54)
 
 
 class ReleasedHoldOut(BaseModel):
@@ -81,6 +83,34 @@ class ReleasedHoldOut(BaseModel):
     note: str
     released_at: datetime
     released_by: str
+
+
+ConfirmationStatusOut = Literal["awaiting_sync", "confirmed", "short", "over", "not_in_campminder", "reversed"]
+
+
+class ShareConfirmationOut(BaseModel):
+    """One payer share against its own household's lines (main spec §11)."""
+
+    household_cm_id: int
+    expected: float
+    in_campminder: float
+    status: ConfirmationStatusOut
+
+
+class ConfirmationOut(BaseModel):
+    """Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
+    in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
+    the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
+    is the family's camp aid no single request takes yet (D81)."""
+
+    status: ConfirmationStatusOut
+    locked: float
+    in_campminder: float
+    gap: float
+    on: date | None
+    reconciled: bool
+    family_unplaced: float
+    shares: list[ShareConfirmationOut]
 
 
 class GridRowOut(BaseModel):
@@ -102,6 +132,7 @@ class GridRowOut(BaseModel):
     holds: list[IssueOut]
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
+    confirmation: ConfirmationOut | None = None
 
 
 class RequestsGridResponse(BaseModel):

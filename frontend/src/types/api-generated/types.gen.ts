@@ -2383,6 +2383,49 @@ export type ComparisonMetricsResponse = {
 }
 
 /**
+ * ConfirmationOut
+ *
+ * Beside every Posted figure (D59): awaiting tonight's sync · ✓ confirmed (on) · CampMinder shows
+ * in_campminder, short or over by gap · not in CampMinder · reversed (on). Net-total reconciliation of
+ * the camp-aid lines placed on the request against its locked total (main spec §11). family_unplaced
+ * is the family's camp aid no single request takes yet (D81).
+ */
+export type ConfirmationOut = {
+  /**
+   * Status
+   */
+  status: 'awaiting_sync' | 'confirmed' | 'short' | 'over' | 'not_in_campminder' | 'reversed'
+  /**
+   * Locked
+   */
+  locked: number
+  /**
+   * In Campminder
+   */
+  in_campminder: number
+  /**
+   * Gap
+   */
+  gap: number
+  /**
+   * On
+   */
+  on: string | null
+  /**
+   * Reconciled
+   */
+  reconciled: boolean
+  /**
+   * Family Unplaced
+   */
+  family_unplaced: number
+  /**
+   * Shares
+   */
+  shares: Array<ShareConfirmationOut>
+}
+
+/**
  * CorrectionCreate
  */
 export type CorrectionCreate = {
@@ -4764,6 +4807,7 @@ export type GridRowOut = {
    * Notes
    */
   notes: Array<IssueOut> | null
+  confirmation?: ConfirmationOut | null
 }
 
 /**
@@ -10736,6 +10780,14 @@ export type RoundOut = {
    * Rules Version
    */
   rules_version: number | null
+  /**
+   * Lock Source
+   */
+  lock_source?: string | null
+  /**
+   * Clawed Back
+   */
+  clawed_back?: boolean
 }
 
 /**
@@ -11774,6 +11826,30 @@ export type SessionResolve = {
    * Reason
    */
   reason: string
+}
+
+/**
+ * ShareConfirmationOut
+ *
+ * One payer share against its own household's lines (main spec §11).
+ */
+export type ShareConfirmationOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Expected
+   */
+  expected: number
+  /**
+   * In Campminder
+   */
+  in_campminder: number
+  /**
+   * Status
+   */
+  status: 'awaiting_sync' | 'confirmed' | 'short' | 'over' | 'not_in_campminder' | 'reversed'
 }
 
 /**

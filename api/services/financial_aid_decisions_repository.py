@@ -10,14 +10,21 @@ import asyncio
 import json
 import re
 from collections.abc import Collection
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS
+from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_POSTINGS, SYNC_RUNS
 from api.services.financial_aid_change_log_reads import fetch_change_log
+from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
-from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
+from api.services.financial_aid_ledger_service import (
+    aid_dollars,
+    household_display_name,
+    parse_pb_datetime,
+    person_display_name,
+)
+from api.services.financial_aid_reconciliation import CampLine
 from api.services.financial_aid_repository import FinancialAidRepository
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -64,6 +71,33 @@ def decision_event(record: Any) -> DecisionEvent:
         note=str(getattr(record, "note", "") or ""),
         actor=str(getattr(record, "actor", "") or ""),
     )
+
+
+def camp_line(record: Any) -> CampLine:
+    """One camp-aid aid_postings record as a line, in aid dollars (CampMinder's sign flipped)."""
+    return CampLine(
+        transaction_cm_id=int(record.transaction_cm_id),
+        household_cm_id=int(record.household_cm_id or 0),
+        person_cm_id=int(record.person_cm_id or 0),
+        amount=aid_dollars(record.amount),
+        post_date=parse_pb_datetime(getattr(record, "post_date", None)),
+        is_reversed=bool(record.is_reversed),
+        reversal_date=parse_pb_datetime(getattr(record, "reversal_date", None)),
+        attributed_person_cm_id=int(getattr(record, "attributed_person_cm_id", 0) or 0),
+        attributed_session_cm_id=int(getattr(record, "attributed_session_cm_id", 0) or 0),
+        program_family=str(getattr(record, "program_family", "") or ""),
+    )
+
+
+def line_placement(record: Any) -> Placement | None:
+    """An aid_attribution_overrides record as a placement; None for a reclassify-only override.
+    Unlike the grants read, an override naming only a session places a line too (a Family Camp
+    placement names no person)."""
+    person = int(record.attributed_person_cm_id or 0)
+    session = int(record.attributed_session_cm_id or 0)
+    if person <= 0 and session <= 0:
+        return None
+    return Placement(int(record.transaction_cm_id), person, session, str(record.program_family or ""))
 
 
 def hold_event(record: Any) -> HoldEvent:
@@ -129,3 +163,32 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {int(h.cm_id): household_display_name(h, int(h.cm_id)) for h in households},
             {int(p.cm_id): person_display_name(p) for p in persons},
         )
+
+    async def fetch_camp_lines(self, year: int) -> list[CampLine]:
+        """The season's camp-aid lines, live and reversed (spec §5.5: the camp's own aid, after any
+        reclassification, which aid_postings materializes in funder_type)."""
+        rows = await self._page(
+            AID_POSTINGS, {"filter": f"year = {int(year)} && funder_type = 'camp'", "sort": "transaction_cm_id,id"}
+        )
+        return [camp_line(row) for row in rows]
+
+    async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
+        rows = await FinancialAidRepository(self.pb).fetch_overrides(year)
+        placements = (line_placement(row) for row in rows)
+        return {p.transaction_cm_id: p for p in placements if p is not None}
+
+    async def fetch_last_ledger_sync(self) -> datetime | None:
+        """When the aid ledger (aid_postings) last finished a successful run: a tick after it awaits
+        tonight's sync (D59). One row, sorted as sync_runs' other readers sort it."""
+        result = await asyncio.to_thread(
+            self.pb.collection(SYNC_RUNS).get_list,
+            1,
+            1,
+            query_params={
+                "filter": 'service = "aid_postings" && status = "success"',
+                "sort": "-started,-id",
+                "fields": "ended",
+            },
+        )
+        items = list(result.items)
+        return parse_pb_datetime(getattr(items[0], "ended", None)) if items else None

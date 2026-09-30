@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -44,6 +44,7 @@ from api.schemas.financial_aid_decisions import (
     BudgetResponse,
     CellOut,
     ChangedRowOut,
+    ConfirmationOut,
     CountOut,
     DecisionWriteOut,
     ForwardDemandOut,
@@ -62,6 +63,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundCountsOut,
     RoundOut,
+    ShareConfirmationOut,
     UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
@@ -74,7 +76,7 @@ from api.services.financial_aid_calc_inputs import (
     to_application_inputs,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
-from api.services.financial_aid_grants_register import RegisterRow, grant_inputs_by_request
+from api.services.financial_aid_grants_register import Placement, RegisterRow, grant_inputs_by_request
 from api.services.financial_aid_intake_plan import request_fields
 from api.services.financial_aid_intake_repository import request_record
 from api.services.financial_aid_intake_types import (
@@ -88,6 +90,17 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_reconciliation import (
+    CampLine,
+    Confirmation,
+    SeasonLedger,
+    apply_clawback,
+    build_ledger,
+    confirmation,
+    ledger_note,
+    placeable,
+    request_scope,
+)
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
@@ -136,6 +149,10 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+
+# Spec §5.4: 2026 has no ticks and no dated decisions; its decisions are reproduced from the repaired
+# sheet (D67). Before this season the ledger never ticks, and no confirmation or Note is shown.
+FIRST_TICKED_SEASON: Final = 2027
 
 # Which rules sections a round reads, so its first lock locks them (spec §7.5, Decision 11). Two pricing sections are
 # absent on purpose. `quality_checks`: a hold gates posting but never changes a posted amount, and locking it would
@@ -190,6 +207,9 @@ class DecisionsStore(Protocol):
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
+    async def fetch_camp_lines(self, year: int) -> list[CampLine]: ...
+    async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
+    async def fetch_last_ledger_sync(self) -> datetime | None: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -233,6 +253,10 @@ class Season:
     axis: AsOfAxis | None = None  # the as-of axis a past read cut on; None when live
     gaps: tuple[NotRebuiltOut, ...] = ()  # rebuild gaps: rules or request history, deleted since, pool unknown
     unrebuilt: frozenset[str] = frozenset()  # requests whose history couldn't be replayed
+    # Sub-project 10b. Defaults: a read that loads no ledger (3c's past date) reconciles nothing.
+    ledger: SeasonLedger = field(default_factory=SeasonLedger)
+    reversed_on: Mapping[str, date] = field(default_factory=dict)  # request -> the day its money came back (D54)
+    shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -306,6 +330,39 @@ def _issue(issue: CalcIssue) -> IssueOut:
     return IssueOut(code=issue.code, severity=issue.severity, message=issue.message)
 
 
+def _shares_by_request(shares: Iterable[PayerShareRecord]) -> dict[str, tuple[PayerShareRecord, ...]]:
+    grouped: dict[str, list[PayerShareRecord]] = defaultdict(list)
+    for share in shares:
+        grouped[share.request_id].append(share)
+    return {request_id: tuple(rows) for request_id, rows in grouped.items()}
+
+
+def _posted_ids(rounds: Mapping[str, Mapping[int, RoundState]]) -> frozenset[str]:
+    """Requests, of any status, with at least one posted round: a closed one's reversed money can be clawed back."""
+    return frozenset(rid for rid, states in rounds.items() if any(state.posted for state in states.values()))
+
+
+def _confirmation_out(c: Confirmation) -> ConfirmationOut:
+    return ConfirmationOut(
+        status=c.status,
+        locked=money(c.locked),
+        in_campminder=money(c.in_campminder),
+        gap=money(c.gap),
+        on=c.on,
+        reconciled=c.reconciled,
+        family_unplaced=money(c.family_unplaced),
+        shares=[
+            ShareConfirmationOut(
+                household_cm_id=s.household_cm_id,
+                expected=money(s.expected),
+                in_campminder=money(s.in_campminder),
+                status=s.status,
+            )
+            for s in c.shares
+        ],
+    )
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -314,6 +371,8 @@ def grid_row(
     families: Mapping[int, str],
     campers: Mapping[int, str],
     hold: HoldState,
+    *,
+    confirmation: Confirmation | None = None,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -331,11 +390,13 @@ def grid_row(
             would_change_by=_money(v.would_change_by),
             counts_toward_budget=v.counts_toward_budget,
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
+            lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
+            clawed_back=v.clawed_back,
         )
         for v in priced.rounds
     ]
     decided = [v.decided for v in priced.rounds if v.decided is not None]
-    posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None]
+    posted = [v.locked for v in priced.rounds if v.status == "posted" and v.locked is not None and not v.clawed_back]
     return GridRowOut(
         request_id=request.id,
         household_cm_id=request.household_cm_id,
@@ -359,6 +420,7 @@ def grid_row(
             if priced.live and code in hold.released_codes() and code not in NEVER_A_HOLD
         ],
         notes=[_issue(i) for i in priced.notes],
+        confirmation=_confirmation_out(confirmation) if confirmation is not None else None,
     )
 
 
@@ -634,6 +696,32 @@ class FinancialAidDecisionsService:
             for r in side.requests
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
+        # Sub-project 10b: the CampMinder ledger. Each camp-aid line on its one request (main spec §11),
+        # money CampMinder reversed back in Remaining (D54), and the Note on unticked rows (D81).
+        camp_lines, placements, synced_at = await asyncio.gather(
+            self._store.fetch_camp_lines(year),
+            self._store.fetch_line_placements(year),
+            self._store.fetch_last_ledger_sync(),
+        )
+        shares_of = _shares_by_request(shares)
+        ledger = build_ledger(
+            camp_lines,
+            placements,
+            [placeable(r, session_map, shares_of.get(r.id, ())) for r in side.requests],
+            synced_at,
+            _posted_ids(rounds),
+        )
+        reversed_on: dict[str, date] = {}
+        for request in side.requests:
+            scope = request_scope(request, shares_of.get(request.id, ()))
+            unplaced = ledger.family_unplaced(scope)
+            live = request.status in _LIVE
+            lines = ledger.lines(request.id) if live else ledger.closed_lines(request.id)
+            item, day = apply_clawback(priced[request.id], rounds.get(request.id, {}), lines, family_unplaced=unplaced)
+            if day is not None:
+                reversed_on[request.id] = day
+            note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
+            priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
         season = Season(
             year=year,
             rules=rules,
@@ -644,6 +732,9 @@ class FinancialAidDecisionsService:
             sessions=session_map,
             grants=grants,
             holds=holds,
+            ledger=ledger,
+            reversed_on=reversed_on,
+            shares=shares_of,
         )
         return season, side.names
 
@@ -678,6 +769,9 @@ class FinancialAidDecisionsService:
                 self._store.fetch_decision_events(year),
                 self._store.fetch_hold_events(year),
             )
+            camp_lines, placements = await asyncio.gather(
+                self._store.fetch_camp_lines(year), self._store.fetch_line_placements(year)
+            )
             rules, gaps = await rules_read
         finally:
             rules_read.cancel()
@@ -705,6 +799,24 @@ class FinancialAidDecisionsService:
                 hold=holds.get(request_id, NO_HOLDS),
                 pool=pool,
                 program_key=program_key,
+            )
+        # Sub-project 10b: money CampMinder had reversed by then is back in Remaining on that date too
+        # (D54), so Posted stays exact. The lines are dated; placements and payer shares are read as
+        # they are now (neither is dated). The confirmation state stays live only.
+        # With no lines there is nothing to place or claw back, so the (undated) shares are not read.
+        shares_of = _shares_by_request(await self._store.fetch_payer_shares(year) if camp_lines else ())
+        ledger = build_ledger(
+            camp_lines,
+            placements,
+            [placeable(r, session_map, shares_of.get(r.id, ())) for r in requests.values()],
+            None,
+            _posted_ids(rounds),
+        )
+        for request_id, request in requests.items():
+            lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
+            unplaced = ledger.family_unplaced(request_scope(request, shares_of.get(request_id, ())))
+            priced[request_id], _ = apply_clawback(
+                priced[request_id], rounds.get(request_id, {}), lines, at=at, family_unplaced=unplaced
             )
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None))
         if axis == "campminder":
@@ -789,6 +901,7 @@ class FinancialAidDecisionsService:
                 families,
                 campers,
                 season.holds.get(rid, NO_HOLDS),
+                confirmation=self._confirmation(season, rid),
             )
             for rid, priced in season.priced.items()
         ]
@@ -813,6 +926,27 @@ class FinancialAidDecisionsService:
             as_of=season.as_of,
             as_of_axis=season.axis,
             not_rebuilt=[*_gaps(GRID_GAPS), *season.gaps] if past else [],
+        )
+
+    @staticmethod
+    def _confirmation(season: Season, request_id: str) -> Confirmation | None:
+        """The request's confirmation state (D59); None on a read that loaded no ledger (a past date),
+        and before the first ticked season (nothing then was ticked, SP10b Decision 9)."""
+        if not season.ledger.read or season.year < FIRST_TICKED_SEASON:
+            return None
+        request = season.requests[request_id]
+        shares = season.shares.get(request_id, ())
+        ledger = season.ledger
+        lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
+        return confirmation(
+            season.priced[request_id],
+            season.rounds.get(request_id, {}),
+            lines,
+            shares,
+            request.household_cm_id,
+            synced_at=ledger.synced_at,
+            family_unplaced=ledger.family_unplaced(request_scope(request, shares)),
+            reversed_on=season.reversed_on.get(request_id),
         )
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:

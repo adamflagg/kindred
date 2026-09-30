@@ -53,6 +53,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "total_decided": _PRICED,
     "holds": "Only the manual hold is listed: the data checks run on the family's answers (3c-2)",
     "notes": _PRICED,
+    "confirmation": "CampMinder's ledger is read as it is now, so confirmation isn't rebuilt",
     "needs_offer": _PRICED,
     "held": _PRICED,
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
@@ -79,6 +80,7 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "total_decided",
     "holds",
     "notes",
+    "confirmation",
 )
 BUDGET_GAPS: Final[tuple[str, ...]] = (
     "needs_offer",
