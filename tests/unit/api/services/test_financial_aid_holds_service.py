@@ -213,10 +213,10 @@ async def test_a_release_written_for_a_needs_input_code_is_neither_applied_nor_l
 
 
 @pytest.mark.asyncio
-async def test_a_release_for_a_code_the_request_does_not_show_is_not_listed() -> None:
+async def test_a_standing_release_for_a_hold_code_that_does_not_fire_now_is_still_listed() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    _hold(store, EMMA, "release", "placeholder_income")  # nothing fires it for this request
+    _hold(store, EMMA, "release", "placeholder_income")  # nothing fires it for this request now
     (row,) = (await _service(store).grid(YEAR)).rows
     assert row.holds == []
-    assert row.released_holds == []
+    assert [r.code for r in row.released_holds] == ["placeholder_income"]  # decision 3: it stands until put back

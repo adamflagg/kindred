@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, Protocol
@@ -78,6 +78,7 @@ from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions import (
+    NEVER_A_HOLD,
     NO_HOLDS,
     NO_POOL,
     Cell,
@@ -203,10 +204,6 @@ class Season:
     grants: Mapping[str, Sequence[GrantInput]]
     # Each request's released check codes and manual hold (follow-up 3b).
     holds: Mapping[str, HoldState]
-    # The released codes that take effect: a hold-severity issue the request shows now, or would
-    # show unreleased. A release written for anything else (needs_input, error, a code that no
-    # longer fires) changes nothing, so the grid does not list it.
-    effective_releases: Mapping[str, frozenset[str]]
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -330,17 +327,10 @@ def grid_row(
         released_holds=[
             ReleasedHoldOut(code=r.code, note=r.note, released_at=r.released_at, released_by=r.released_by)
             for code, r in sorted(hold.released.items())
-            if code in hold.released_codes()
+            if code in hold.released_codes() and code not in NEVER_A_HOLD
         ],
         notes=[_issue(i) for i in priced.notes],
     )
-
-
-def _effective_holds(season: Season, request_id: str) -> HoldState:
-    """The request's hold state with only the releases that take effect (see Season)."""
-    state = season.holds.get(request_id, NO_HOLDS)
-    keep = season.effective_releases.get(request_id, frozenset())
-    return replace(state, released={c: r for c, r in state.released.items() if c in keep})
 
 
 def _count(count: Count) -> CountOut:
@@ -478,15 +468,6 @@ class FinancialAidDecisionsService:
             for r in side.requests
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
-        effective = {
-            rid: frozenset(
-                i.code
-                for i in price_request(replace(items[rid], released_holds=frozenset()), document).holds
-                if i.severity == "hold" and i.code in state.released_codes()
-            )
-            for rid, state in holds.items()
-            if rid in items and state.released_codes()
-        }
         season = Season(
             year=year,
             rules=rules,
@@ -497,7 +478,6 @@ class FinancialAidDecisionsService:
             sessions=session_map,
             grants=grants,
             holds=holds,
-            effective_releases=effective,
         )
         return season, side.names
 
@@ -522,7 +502,7 @@ class FinancialAidDecisionsService:
                 season.sessions,
                 families,
                 campers,
-                _effective_holds(season, rid),
+                season.holds.get(rid, NO_HOLDS),
             )
             for rid, priced in season.priced.items()
         ]

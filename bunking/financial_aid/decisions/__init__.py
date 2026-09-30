@@ -16,6 +16,7 @@ from bunking.financial_aid.decisions.budget import (
 from bunking.financial_aid.decisions.holds import (
     HOLD_EVENT_KINDS,
     MANUAL_HOLD,
+    NEVER_A_HOLD,
     NO_HOLDS,
     UNRELEASABLE,
     HoldEvent,
@@ -53,6 +54,7 @@ __all__ = [
     "EVENT_KINDS",
     "HOLD_EVENT_KINDS",
     "MANUAL_HOLD",
+    "NEVER_A_HOLD",
     "NO_HOLDS",
     "NO_POOL",
     "ROUNDS",
