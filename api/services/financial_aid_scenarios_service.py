@@ -31,21 +31,31 @@ from typing import Any, Final, Protocol
 
 from api.constants.collections import AID_SCENARIO_OPTIONS, AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_TRAIL
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_rules_service import FinancialAidRulesService
+from api.services.financial_aid_rules_service import FinancialAidRulesService, PromotionPreview, RulesDraft
 from api.services.financial_aid_scenario_pricing import SeasonSnapshot, encode_snapshot, price_document
 from api.services.financial_aid_scenarios_repository import OptionRecord, SnapshotMeta, TrailRecord
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.rules import AidRules, ValidationReport
+from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import (
+    SIZING_LEVERS,
+    FitResult,
     ScenarioResults,
+    SizingLever,
     apply_sizing,
     describe,
+    dollar_for_dollar,
+    fit_margin,
+    fit_tier_shift,
+    nudge,
     round1_by_request,
     scenario_results,
+    shift_round1_tables,
     starting_point_code,
+    tightest_pool,
+    up_down,
     variant_code,
 )
 
@@ -124,6 +134,43 @@ class Workspace:
     options: tuple[KeptOption, ...]
 
 
+@dataclass(frozen=True)
+class CompareColumn:
+    code: str  # "draft" for the draft
+    label: str
+    document: AidRules
+    changes: tuple[FieldChange, ...]  # against its reference: the screen's amber
+    results: ScenarioResults
+    up: int | None  # requests whose Round 1 is higher than in its reference; None for rules as they were
+    down: int | None
+
+
+@dataclass(frozen=True)
+class Comparison:
+    snapshot: SnapshotMeta
+    columns: tuple[CompareColumn, ...]
+
+
+@dataclass(frozen=True)
+class Fitted:
+    fit: FitResult
+    tightest_pool: str | None  # information only (D119): the pool with the least Round 1 Remaining at the shift found
+    evaluation: Evaluation
+
+
+@dataclass(frozen=True)
+class LeverEffect:
+    lever: SizingLever
+    round1_change: Decimal
+    on: bool | None = None  # a switch's state in the document (dollar-for-dollar); None for a stepped lever
+
+
+@dataclass(frozen=True)
+class Sensitivity:
+    results: ScenarioResults  # the document's own figures, which each step moves from
+    effects: tuple[LeverEffect, ...]
+
+
 def _from(row: TrailRecord) -> str:
     return row.kept_code or row.from_code
 
@@ -140,6 +187,13 @@ def _changes(old: AidRules, new: AidRules) -> tuple[FieldChange, ...]:
 def _when(row: TrailRecord) -> str:
     local = row.created.astimezone(CAMP_TZ)
     return f"{local:%b} {local.day} {local:%H:%M}"
+
+
+def _fit_margin(results: ScenarioResults) -> Decimal:
+    try:
+        return fit_margin(results)
+    except ValueError as exc:
+        raise ScenarioRefusedError(f"There is nothing to fit: {exc}") from exc
 
 
 class FinancialAidScenariosService:
@@ -459,3 +513,126 @@ class FinancialAidScenariosService:
         await self._store.commit([option, mark], actor=actor)
         options = await self._options(year)
         return KeptOption(options[code], await self._label(options[code], options), stale=False)
+
+    # --- compare, fit, sensitivity ------------------------------------------------------------------
+
+    async def compare(self, year: int, actor: str, codes: Sequence[str]) -> Comparison:
+        """`actor`'s draft first, then up to 4 kept options, every one on the current snapshot. Each shows what
+        differs from its reference (a variant's starting point; a starting point's origin rules; the draft's
+        option) and how many requests' Round 1 went up or down against it."""
+        wanted = list(dict.fromkeys(codes))
+        if len(wanted) > MAX_COMPARED:
+            raise ScenarioRefusedError(f"Compare up to {MAX_COMPARED} kept options beside your draft")
+        options = await self._options(year)
+        missing = [code for code in wanted if code not in options]
+        if missing:
+            raise ScenarioNotFoundError(f"{year} has no kept option {', '.join(missing)}")
+        meta = await self._meta(year)
+        price = await self._pricer(meta)
+        seen: dict[str, Priced] = {}
+
+        async def of_option(option: OptionRecord) -> Priced:
+            if option.code not in seen:
+                seen[option.code] = (
+                    Priced(option.results, await self._store.option_round1(option.id))
+                    if option.snapshot == meta.id
+                    else await price(option.document)
+                )
+            return seen[option.code]
+
+        async def of_rules(version: int) -> tuple[AidRules, Priced]:
+            document = (await self._rules.load(year, version)).document
+            key = f"rules v{version}"
+            if key not in seen:
+                seen[key] = await price(document)
+            return document, seen[key]
+
+        columns: list[CompareColumn] = []
+        row = await self._store.latest_trail(year, actor)
+        source = options.get(_from(row)) if row is not None else None
+        if row is not None and row.document is not None and source is not None:
+            mine = await price(row.document)
+            up, down = up_down((await of_option(source)).round1, mine.round1)
+            columns.append(
+                CompareColumn(
+                    "draft",
+                    describe(source.document, row.document),
+                    row.document,
+                    _changes(source.document, row.document),
+                    mine.results,
+                    up,
+                    down,
+                )
+            )
+        for code in wanted:
+            option = options[code]
+            priced = await of_option(option)
+            if option.starting_point:
+                head = options[option.starting_point]
+                reference, against = head.document, await of_option(head)
+            else:
+                reference, against = await of_rules(option.origin_version)
+            up_or_down = up_down(against.round1, priced.round1) if option.from_code else (None, None)
+            columns.append(
+                CompareColumn(
+                    code,
+                    await self._label(option, options),
+                    option.document,
+                    _changes(reference, option.document),
+                    priced.results,
+                    *up_or_down,
+                )
+            )
+        return Comparison(meta, tuple(columns))
+
+    async def fit(self, year: int, document: AidRules) -> Fitted:
+        """Fit to budget: the largest shift of every Round 1 table cell that keeps Round 1 Remaining, summed over the
+        pools, at or above zero, priced on the frozen season (plan Decision 11 (a), RULED 2026-09-30; D119). The
+        tightest pool is named as information only; `budget.spillover` is not read."""
+        self._check_year(year, document)
+        price = await self._pricer(await self._meta(year))
+
+        async def remaining_at(shift: Decimal) -> Decimal:
+            return _fit_margin((await price(shift_round1_tables(document, shift))).results)
+
+        found = await fit_tier_shift(remaining_at)
+        fitted = shift_round1_tables(document, found.shift)
+        priced = await price(fitted)
+        evaluation = Evaluation(fitted, priced.results, await self._rules.validate_document(fitted))
+        tightest = tightest_pool(priced.results)
+        return Fitted(found, tightest.pool if tightest is not None else None, evaluation)
+
+    async def sensitivity(self, year: int, document: AidRules) -> Sensitivity:
+        """What one step of each sizing setting moves Round 1 by (spec §7.4), on the frozen season. The
+        dollar-for-dollar switch's one step is flipping it (D137)."""
+        self._check_year(year, document)
+        price = await self._pricer(await self._meta(year))
+        base = (await price(document)).results
+        effects: list[LeverEffect] = []
+        for lever in SIZING_LEVERS:
+            moved = (await price(nudge(document, lever))).results.round1
+            on = dollar_for_dollar(document) if lever.step is None else None
+            effects.append(LeverEffect(lever, moved - base.round1, on))
+        return Sensitivity(base, tuple(effects))
+
+    # --- make it the rules draft --------------------------------------------------------------------
+
+    async def rules_draft_preview(self, year: int, code: str) -> PromotionPreview:
+        option = await self._option(year, code)
+        return await self._rules.promotion_preview(year, origin_version=option.origin_version, document=option.document)
+
+    async def make_rules_draft(
+        self, year: int, code: str, *, base_version: int, acknowledged: Mapping[SectionName, str], actor: str
+    ) -> tuple[RulesDraft, int | None]:
+        """ "Make B2 the rules draft" (D39): the rules draft as it is after, and the version it branched from."""
+        option = await self._option(year, code)
+        saved = await self._rules.promote(
+            year,
+            origin_version=option.origin_version,
+            document=option.document,
+            base_version=base_version,
+            acknowledged=acknowledged,
+            actor=actor,
+            via=code,
+        )
+        return await self._rules.draft_view(year), saved.branched_from
