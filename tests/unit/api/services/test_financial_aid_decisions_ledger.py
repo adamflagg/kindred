@@ -16,7 +16,7 @@ import pytest
 
 import api.services.financial_aid_decisions_service as decisions_service
 from api.constants.collections import AID_PAYER_SHARES
-from api.schemas.financial_aid_decisions import GridRowOut
+from api.schemas.financial_aid_decisions import GridRowOut, PostedIn, PostedRow, UnpostIn
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     camp_line,
@@ -25,6 +25,7 @@ from api.services.financial_aid_decisions_repository import (
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from tests.unit.api.services.decisions_fakes import (
+    ACTOR,
     T0,
     FakeDecisionsStore,
     FakeRules,
@@ -605,3 +606,139 @@ async def test_each_current_read_completes_before_its_change_log_read_starts() -
     await _past_service(store).grid(YEAR, as_of=date(2027, 6, 5))
     assert order.index("shares-done") < order.index("log-aid_payer_shares")
     assert order.index("overrides-done") < order.index("log-aid_attribution_overrides")
+
+
+# --- the automatic tick (Task 6) ---------------------------------------------------------------------
+
+MAR8 = datetime(2027, 3, 8, 18, 0, tzinfo=UTC)
+R1_SECTIONS = ("award_tables", "awards", "cost", "equity", "grants", "income", "programs", "tiers")
+
+
+@pytest.mark.asyncio
+async def test_the_ledger_ticks_what_the_registrar_forgot_at_the_decided_amount_as_one_logged_operation() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1400", posted=MAR8)  # a typo: the offer was 1,500
+    rules = FakeRules(approved())
+    out = await _service(store, rules).ledger_ticks(YEAR)
+    assert (out.ticked, out.total_locked, out.sections_not_locked, out.skipped) == (1, 1500.0, [], "")
+    post = store.events[-1]
+    assert (post.kind, post.round, post.amount, post.lock_source, post.effective_on) == (
+        "post",
+        1,
+        Decimal(1500),
+        "ledger",
+        date(2027, 3, 8),
+    )
+    assert post.note == "Ticked by the ledger sync: CampMinder shows $1,400 on this request"
+    assert post.snapshot is not None
+    assert post.snapshot["pool"] == "camp_pool"
+    assert {row["actor"] for row in store.log} == {"system:ledger"}
+    assert len(store.operations) == 1
+    assert len({row["operation_id"] for row in store.log}) == 1
+    assert rules.lock_calls == [(YEAR, 1, R1_SECTIONS)]
+    row = await _row(store)
+    assert row.confirmation is not None
+    assert (row.confirmation.status, row.confirmation.gap) == ("short", -100.0)
+    assert row.rounds[0].lock_source == "ledger"
+    # The sync re-runs the same night: nothing new is beyond the lock, so nothing is written.
+    again = await _service(store, rules).ledger_ticks(YEAR)
+    assert (again.ticked, again.operation_id) == (0, "")
+    assert len(store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_family_level_line_never_ticks() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, person=1000012)
+    seed_line(store, 9001, "3000", person=0)
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 0
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_the_ledger_never_ticks_a_held_request() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=0, status="unmatched_session")
+    seed_line(store, 9001, "1500")
+    assert (await _service(store).ledger_ticks(YEAR)).ticked == 0
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_a_payer_shares_posting_ticks_the_whole_round() -> None:
+    """D81: the first share's posting ticks the round and locks its full decided amount; the other
+    share reads "not in CampMinder" until its household posts."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
+    seed_line(store, 9001, "600", household=1000004)
+    out = await _service(store).ledger_ticks(YEAR)
+    assert (out.ticked, out.total_locked) == (1, 1500.0)
+    c = (await _row(store)).confirmation
+    assert c is not None
+    assert [(s.household_cm_id, s.status) for s in c.shares] == [
+        (1000001, "not_in_campminder"),
+        (1000004, "confirmed"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_round_a_person_unticked_is_left_for_a_person() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    service = _service(store)
+    assert (await service.ledger_ticks(YEAR)).ticked == 1
+    await service.undo_posted(YEAR, UnpostIn(request_id=EMMA, round=1, reason="Ticked the wrong family"), ACTOR)
+    assert (await service.ledger_ticks(YEAR)).ticked == 0
+    row = await _row(store)
+    assert row.rounds[0].status == "needs_offer"
+    assert _notes(row) == ["CampMinder shows $1,500 for this family; not yet ticked"]
+
+
+@pytest.mark.asyncio
+async def test_the_registrars_own_tick_still_locks_as_before() -> None:
+    """The row builder is now shared: a person's tick writes lock_source "tick" and no note."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    body = PostedIn(rows=[PostedRow(request_id=EMMA, round=1, amount=Decimal(1500))])
+    await _service(store).tick_posted(YEAR, body, ACTOR)
+    post = store.events[-1]
+    assert (post.lock_source, post.note, post.effective_on) == ("tick", "", date(2027, 3, 9))
+
+
+@pytest.mark.asyncio
+async def test_a_season_before_ticks_began_is_never_ticked() -> None:
+    store = FakeDecisionsStore()
+    out = await _service(store).ledger_ticks(2026)
+    assert (out.ticked, out.skipped) == (0, "2026 predates Posted ticks (the first ticked season is 2027)")
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_with_no_approved_rules_the_ledger_ticks_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+    out = await _service(store, FakeRules(None)).ledger_ticks(YEAR)
+    assert (out.ticked, out.skipped) == (0, "2027's pricing rules are not approved yet")
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_write_is_a_refusal_the_caller_can_map_not_a_bare_error() -> None:
+    from api.services.financial_aid_decisions_service import DecisionRefusedError
+    from bunking.pocketbase_batch import BatchTransportError
+
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_line(store, 9001, "1500")
+
+    async def boom(*args: Any, **kwargs: Any) -> None:
+        raise BatchTransportError("connection dropped")
+
+    store.commit = boom  # type: ignore[method-assign,assignment]
+    with pytest.raises(DecisionRefusedError, match="could not be written"):
+        await _service(store).ledger_ticks(YEAR)

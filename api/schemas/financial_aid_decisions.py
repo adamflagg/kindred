@@ -321,3 +321,15 @@ class DecisionWriteOut(BaseModel):
     total_locked: float | None = None
     pending_approval: bool = False
     sections_not_locked: list[str] = Field(default_factory=list)
+
+
+class LedgerTicksOut(BaseModel):
+    """What the ledger's automatic Posted tick did for one season (D78). The Go ledger sync reads it.
+    `skipped` says why nothing was considered (a season before ticks began, no approved rules)."""
+
+    year: int
+    ticked: int
+    operation_id: str
+    total_locked: float | None = None
+    sections_not_locked: list[str] = Field(default_factory=list)
+    skipped: str = ""

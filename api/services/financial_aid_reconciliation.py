@@ -51,7 +51,7 @@ from api.services.financial_aid_grants_register import (
 from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord, SessionRow
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
-from bunking.financial_aid.decisions import PricedRequest, RoundState
+from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundState
 from bunking.financial_aid.money import ZERO
 
 
@@ -605,3 +605,14 @@ def ledger_ticks(
             ticks.append(LedgerTick(request.request_id, view.round, view.decided, posted_on, in_campminder))
             locked += view.decided
     return ticks
+
+
+def undone_rounds(events: Iterable[DecisionEvent]) -> frozenset[tuple[str, int]]:
+    """The rounds a person un-ticked (SP10a's undo) that nobody has ticked since. The ledger leaves
+    them for a person: an undo says the tick was wrong (a wrong family), and a nightly re-tick would
+    fight it (SP10b Decision 8)."""
+    last: dict[tuple[str, int], str] = {}
+    for event in sorted(events, key=lambda e: (e.created, e.id)):
+        if event.kind in ("post", "unpost"):
+            last[(event.request_id, event.round)] = event.kind
+    return frozenset(key for key, kind in last.items() if kind == "unpost")

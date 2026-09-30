@@ -3729,6 +3729,16 @@ export type FinancialAidIntakeRun = {
 }
 
 /**
+ * FinancialAidLedgerTicksRun
+ */
+export type FinancialAidLedgerTicksRun = {
+  /**
+   * Year
+   */
+  year: number
+}
+
+/**
  * FirstSummerYearBreakdown
  *
  * Breakdown by first summer year (cohort analysis).
@@ -6133,6 +6143,39 @@ export type LedgerResponse = {
    * Rows
    */
   rows: Array<LedgerHouseholdRow>
+}
+
+/**
+ * LedgerTicksOut
+ *
+ * What the ledger's automatic Posted tick did for one season (D78). The Go ledger sync reads it.
+ * `skipped` says why nothing was considered (a season before ticks began, no approved rules).
+ */
+export type LedgerTicksOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Ticked
+   */
+  ticked: number
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * Total Locked
+   */
+  total_locked?: number | null
+  /**
+   * Sections Not Locked
+   */
+  sections_not_locked?: Array<string>
+  /**
+   * Skipped
+   */
+  skipped?: string
 }
 
 /**
@@ -20370,6 +20413,33 @@ export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses = {
 
 export type RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponse =
   RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses[keyof RunFinancialAidIntakeApiInternalFinancialAidIntakePostResponses]
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostData = {
+  body: FinancialAidLedgerTicksRun
+  path?: never
+  query?: never
+  url: '/api/internal/financial-aid/ledger-ticks'
+}
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostError =
+  RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostErrors[keyof RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostErrors]
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: LedgerTicksOut
+}
+
+export type RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponse =
+  RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses[keyof RunFinancialAidLedgerTicksApiInternalFinancialAidLedgerTicksPostResponses]
 
 export type ListAuditLogApiAdminAuditLogGetData = {
   body?: never

@@ -15,7 +15,9 @@ from api.services.financial_aid_reconciliation import (
     build_ledger,
     camp_date,
     dollars,
+    undone_rounds,
 )
+from bunking.financial_aid.decisions import DecisionEvent
 
 MAR8 = datetime(2027, 3, 8, 18, 0, tzinfo=UTC)  # 10 am Pacific (PST), Mar 8
 MAR9 = datetime(2027, 3, 9, 18, 0, tzinfo=UTC)
@@ -737,3 +739,18 @@ def test_several_requests_tick_independently_in_one_call() -> None:
         ("emma", Decimal(1800)),
         ("noah", Decimal(900)),
     ]
+
+
+# --- rounds a person un-ticked (Task 6) ---------------------------------------------------------------
+
+
+def test_a_round_whose_latest_tick_event_is_an_undo_is_left_for_a_person() -> None:
+    events = [
+        DecisionEvent("e1", "emma", 1, "post", MAR8, amount=Decimal(1800)),
+        DecisionEvent("e2", "emma", 1, "unpost", MAR9),
+        DecisionEvent("e3", "liam", 1, "post", MAR8, amount=Decimal(1500)),
+        DecisionEvent("e4", "liam", 1, "unpost", MAR9),
+        DecisionEvent("e5", "liam", 1, "post", JUN1, amount=Decimal(1500)),
+        DecisionEvent("e6", "noah", 2, "accept", JUN1),
+    ]
+    assert undone_rounds(events) == frozenset({("emma", 1)})

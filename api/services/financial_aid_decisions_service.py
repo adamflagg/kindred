@@ -56,6 +56,7 @@ from api.schemas.financial_aid_decisions import (
     ForwardDemandOut,
     GridRowOut,
     HoldReleaseIn,
+    LedgerTicksOut,
     ManualHoldIn,
     NotRebuiltOut,
     PoolBudgetOut,
@@ -104,10 +105,13 @@ from api.services.financial_aid_reconciliation import (
     apply_clawback,
     build_ledger,
     confirmation,
+    dollars,
     ledger_note,
+    ledger_ticks,
     override_placement,
     placeable,
     request_scope,
+    undone_rounds,
 )
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
@@ -155,7 +159,7 @@ from bunking.financial_aid.decisions import (
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, SectionName
-from bunking.pocketbase_batch import BatchLimitError
+from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 
@@ -178,6 +182,9 @@ _WHY_NOT: Final[Mapping[str, str]] = {
     "refused": "was refused by finance",
     "not_decided": "has no amount keyed yet",
 }
+
+# 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
+LEDGER_ACTOR: Final = "system:ledger"
 
 
 class DecisionNotFoundError(FinancialAidError, LookupError):
@@ -267,6 +274,7 @@ class Season:
     ledger: SeasonLedger = field(default_factory=SeasonLedger)
     reversed_on: Mapping[str, date] = field(default_factory=dict)  # request -> the day its money came back (D54)
     shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
+    undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
     posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
 
 
@@ -905,6 +913,7 @@ class FinancialAidDecisionsService:
             ledger=ledger,
             reversed_on=reversed_on,
             shares=shares_of,
+            undone=undone_rounds(events),
         )
         return season, side.names
 
@@ -1237,6 +1246,36 @@ class FinancialAidDecisionsService:
             entity_id=f"{request.id}:{n}",
         )
 
+    def _post_write(
+        self,
+        season: Season,
+        priced: PricedRequest,
+        n: int,
+        amount: Decimal,
+        actor: str,
+        *,
+        posted_on: date,
+        lock_source: str,
+        note: str | None = None,
+    ) -> AidWrite:
+        """A Posted tick's row (D51, D52): the decided amount it locks, the receipt as it was when posted,
+        and the rules version that priced it. A person's tick and the ledger's (D78) write the same row."""
+        if season.rules is None:
+            raise DecisionRefusedError(f"{season.year}'s pricing rules are not approved yet")
+        version = season.rules.version
+        return self._write(
+            season.requests[priced.request_id],
+            n,
+            "post",
+            actor,
+            amount=amount,
+            effective_on=posted_on,
+            lock_source=lock_source,
+            rules_version=version,
+            snapshot=lock_snapshot(priced, n, version),
+            note=note,
+        )
+
     async def _live(self, request_id: str) -> tuple[RequestRecord, dict[int, RoundState]]:
         request = await self._store.fetch_request(request_id)
         if request is None:
@@ -1381,17 +1420,7 @@ class FinancialAidDecisionsService:
         version = season.rules.version
         posted_on = body.posted_on or self._today()
         writes = [
-            self._write(
-                season.requests[priced.request_id],
-                n,
-                "post",
-                actor,
-                amount=amount,
-                effective_on=posted_on,
-                lock_source="tick",
-                rules_version=version,
-                snapshot=lock_snapshot(priced, n, version),
-            )
+            self._post_write(season, priced, n, amount, actor, posted_on=posted_on, lock_source="tick")
             for priced, n, amount in to_post
         ]
         sections = sorted({section for _, n, _ in to_post for section in ROUND_SECTIONS[n]})
@@ -1431,6 +1460,60 @@ class FinancialAidDecisionsService:
         write = self._write(request, n, "unpost", actor, note=body.reason)
         result = await self._store.commit([write], actor=actor, reason=body.reason, require_reason=True)
         return DecisionWriteOut(year=year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def ledger_ticks(self, year: int) -> LedgerTicksOut:
+        """D78: after the overnight ledger sync, tick Posted where CampMinder holds camp aid on a request
+        beyond what its posted rounds lock: the oldest decided round first, locked at its decided amount
+        with its receipt, as a person's tick would have done, dated the posting's day (never after today).
+        A family-level line never ticks (D81), nor a round a person un-ticked. One operation for the
+        season, as system:ledger, with the rules sections a first lock reads (SP10a Decision 11).
+        Idempotent: a round it ticked is posted, so the next run finds nothing beyond the locks. Two runs
+        at once could each write a post for one round; the fold is idempotent, so that is left alone.
+        Called by the Go aid-ledger sync (/api/internal)."""
+        if year < FIRST_TICKED_SEASON:
+            return LedgerTicksOut(
+                year=year,
+                ticked=0,
+                operation_id="",
+                skipped=f"{year} predates Posted ticks (the first ticked season is {FIRST_TICKED_SEASON})",
+            )
+        season = await self.season(year)
+        if season.rules is None:
+            return LedgerTicksOut(
+                year=year, ticked=0, operation_id="", skipped=f"{year}'s pricing rules are not approved yet"
+            )
+        ticks = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=season.undone)
+        if not ticks:
+            return LedgerTicksOut(year=year, ticked=0, operation_id="")
+        writes = [
+            self._post_write(
+                season,
+                season.priced[tick.request_id],
+                tick.round,
+                tick.amount,
+                LEDGER_ACTOR,
+                posted_on=tick.posted_on,
+                lock_source="ledger",
+                note=f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request",
+            )
+            for tick in ticks
+        ]
+        sections = sorted({section for tick in ticks for section in ROUND_SECTIONS[tick.round]})
+        locks, not_locked = await self._rules.lock_writes(year, season.rules.version, sections)
+        # Locks first: March's bulk import can pass one batch, so this may commit in chunks, and the
+        # sections then lock in the first one. A chunk that fails leaves its rounds for the next run.
+        try:
+            result = await self._store.commit([*locks, *writes], actor=LEDGER_ACTOR, allow_chunking=True)
+        except BatchError as exc:
+            # Nothing in the failed batch committed (a transport failure may have): the next run re-reads.
+            raise DecisionRefusedError(f"the ledger tick for {year} could not be written: {exc}") from exc
+        return LedgerTicksOut(
+            year=year,
+            ticked=len(writes),
+            operation_id=result.operation_id,
+            total_locked=money(sum((tick.amount for tick in ticks), ZERO)),
+            sections_not_locked=list(not_locked),
+        )
 
     async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
         """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""

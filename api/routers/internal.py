@@ -10,13 +10,20 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from api.constants.geo import GeoCategory
+from api.schemas.financial_aid_decisions import LedgerTicksOut
+from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
+from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_grants_repository import GrantsRepository
+from api.services.financial_aid_grants_service import GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_intake_service import FinancialAidIntakeService
+from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.geo_normalizer.normalizer import normalize_values
 from bunking.logging_config import TRACE, get_logger
 from bunking.sync.bunk_request_processor.data.repositories import SessionRepository
@@ -238,3 +245,29 @@ async def run_financial_aid_intake(body: FinancialAidIntakeRun) -> dict[str, int
     """
     service = FinancialAidIntakeService(FinancialAidIntakeRepository(pb))
     return asdict(await service.build(body.year))
+
+
+# --- Campership ledger ticks (sub-project 10b, D78) ---
+
+
+class FinancialAidLedgerTicksRun(BaseModel):
+    year: int = Field(ge=2017, le=2100)
+
+
+@router.post("/financial-aid/ledger-ticks", response_model=LedgerTicksOut)
+async def run_financial_aid_ledger_ticks(body: FinancialAidLedgerTicksRun) -> LedgerTicksOut:
+    """Tick Posted where the CampMinder ledger holds camp aid a request's ticks don't cover yet (D78).
+
+    Called by the Go aid-ledger sync (AidPostingsSync) after it writes a season, so the tick sees
+    the fresh ledger. Idempotent: a re-run the same night ticks nothing new. Every tick is one logged
+    operation as system:ledger (sub-project 4a). A refusal maps to 422: the Go caller counts any
+    failed call as an aid-ledger warning, never a red run."""
+    service = FinancialAidDecisionsService(
+        FinancialAidDecisionsRepository(pb),
+        FinancialAidRulesService(AidRulesRepository(pb)),
+        GrantsService(GrantsRepository(pb)).register_rows,
+    )
+    try:
+        return await service.ledger_ticks(body.year)
+    except FinancialAidError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
