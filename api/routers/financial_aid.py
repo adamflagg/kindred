@@ -141,7 +141,6 @@ from api.services.financial_aid_rules_service import (
     RulesNotFoundError,
     RulesVersion,
     VersionExistsError,
-    parse_section,
 )
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
@@ -642,9 +641,7 @@ async def save_aid_rules_section(
     (`branched_from` names the version it came from); 409 when the rules draft moved on since the editor opened."""
     service = _rules()
     try:
-        current = await service.load(year, body.base_version)
-        candidate = parse_section(current.document, section, body.content)
-        saved = await service.save_sections(year, body.base_version, candidate, actor=user.email)
+        saved = await service.save_section(year, body.base_version, section, body.content, actor=user.email)
         return _draft_out(await service.draft_view(year), branched_from=saved.branched_from)
     except FinancialAidError as exc:
         raise _rules_http(exc) from exc

@@ -19,6 +19,7 @@ from api.services.financial_aid_rules_service import (
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
+    SectionInvalidError,
     SectionSaveResult,
 )
 from bunking.financial_aid.change_diff import FieldChange
@@ -86,7 +87,7 @@ def _client(persona: str = PERSONA_FINANCE) -> TestClient:
 def _stub() -> Any:
     service = patch("api.routers.financial_aid.FinancialAidRulesService").start().return_value
     service.load = AsyncMock(return_value=VERSION)
-    service.save_sections = AsyncMock(return_value=SectionSaveResult(VERSION, ValidationReport(), 1))
+    service.save_section = AsyncMock(return_value=SectionSaveResult(VERSION, ValidationReport(), 1))
     service.draft_view = AsyncMock(return_value=DRAFT)
     service.new_version = AsyncMock(return_value=VERSION)
     service.validate_document = AsyncMock(return_value=ValidationReport())
@@ -118,37 +119,39 @@ def test_the_registrar_reads_the_approved_rules_but_not_the_draft() -> None:
     assert client.get("/api/financial-aid/rules/2031/draft").status_code == 403
 
 
-def test_a_section_save_sends_the_whole_candidate_and_reports_the_branch() -> None:
+def test_a_section_save_sends_the_section_and_its_raw_content_and_reports_the_branch() -> None:
     service = _stub()
     body = _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY).json()
-    call = service.save_sections.await_args
-    assert call.args[:2] == (2031, 2)
-    assert call.args[2].awards.minimum == Decimal(150)
+    call = service.save_section.await_args
+    assert call.args == (2031, 2, "awards", SAVE_BODY["content"])
     assert call.kwargs["actor"] == persona_user(PERSONA_FINANCE).email
+    service.load.assert_not_called()  # the service loads the draft itself, so a save in between is never reverted
     assert body["branched_from"] == 1
     awards = next(s for s in body["sections"] if s["section"] == "awards")
     assert awards["changes"] == [{"path": ["minimum"], "kind": "changed", "before": "100", "after": "150"}]
 
 
-def test_section_content_that_does_not_parse_is_422_before_any_save() -> None:
+def test_section_content_that_does_not_parse_is_422() -> None:
     service = _stub()
+    service.save_section = AsyncMock(
+        side_effect=SectionInvalidError("awards is not a valid section: awards.minimum: x")
+    )
     bad = {"base_version": 2, "content": fictional_rules_json()["awards"] | {"minimum": "-5"}}
     response = _client().put("/api/financial-aid/rules/2031/sections/awards", json=bad)
     assert response.status_code == 422
     assert "awards.minimum" in response.json()["detail"]
-    service.save_sections.assert_not_called()
 
 
 def test_an_unknown_section_is_422() -> None:
     service = _stub()
     response = _client().put("/api/financial-aid/rules/2031/sections/canteen", json=SAVE_BODY)
     assert response.status_code == 422
-    service.save_sections.assert_not_called()
+    service.save_section.assert_not_called()
 
 
 def test_a_stale_editor_is_409() -> None:
     service = _stub()
-    service.save_sections = AsyncMock(side_effect=NotLatestVersionError("Version 2 of 2031 is not the rules draft"))
+    service.save_section = AsyncMock(side_effect=NotLatestVersionError("Version 2 of 2031 is not the rules draft"))
     assert _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY).status_code == 409
 
 

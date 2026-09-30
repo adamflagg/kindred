@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from api.services.financial_aid_rules_service import (
     NotLatestVersionError,
+    PricingVersionInUseError,
     RulesNotFoundError,
     RulesVersion,
     VersionExistsError,
@@ -156,6 +157,7 @@ def test_a_document_that_is_not_a_rules_document_is_422() -> None:
         (RulesNotFoundError("No aid rules for 2031 version 9"), 404),
         (VersionExistsError("2032 already has aid rules"), 409),
         (NotLatestVersionError("Version 1 of 2031 is not the latest"), 409),
+        (PricingVersionInUseError("Version 1 of 2031 prices the season"), 409),
         (SectionHasErrorsError("budget has 1 validation error(s)"), 422),
         (LockedSectionError(["income"]), 422),
     ],

@@ -35,7 +35,8 @@ SP9 adds the rules draft: `save_sections` (the section editors' and a promotion'
 approved or locked section in use: see `_protected`; `quality_checks` is the known exception, plan Decision 19), a
 first lock that reaches an open rules draft (`lock_writes`), the Rules tab's `draft_view`, D76's `approved_view`, and
 `promotion_preview` / `promote` ("Make B2 the rules draft"). The whole-document `save` refuses to touch an approved
-section of a version in use (`PricingVersionInUseError`).
+section of the version pricing the season (`PricingVersionInUseError`); it does not guard the version intake
+reads (`save_sections` does).
 
 Every refusal raised here subclasses FinancialAidError, so a router can map
 them with one `except` without catching pydantic's ValidationError.
@@ -136,8 +137,8 @@ class NoSectionsNamedError(FinancialAidError, ValueError):
 
 
 class PricingVersionInUseError(FinancialAidError, ValueError):
-    """A whole-document save would change an approved or locked section of the version pricing the season (or
-    feeding intake); the section editor branches a new version instead."""
+    """A whole-document save would change an approved or locked section of the version pricing the season; the section
+    editor branches a new version instead. (Only the pricing version is guarded here, not one only intake reads.)"""
 
 
 class ReplacementNotAcknowledgedError(FinancialAidError, ValueError):
@@ -246,7 +247,7 @@ def _replacement(current: RulesVersion, origin: RulesVersion, section: SectionNa
     if getattr(current.document, section) == getattr(origin.document, section):
         return None
     status = current.section_status[section]
-    if status.state == "draft" and status.edited_by is not None:
+    if status.state == "draft":
         return ReplacementWarning("unapproved_edit", status.edited_by, status.edited_at, status.edited_via)
     return ReplacementWarning("changed_since", status.approved_by, status.approved_at, None)
 
@@ -518,6 +519,8 @@ class FinancialAidRulesService:
         """
         if version is not None:
             chosen = await self.load(year, version)
+            if all(chosen.section_status[n].state not in _HELD for n in SECTION_NAMES):
+                raise RulesNotFoundError(f"{year} version {version} has no approved rules")
             return ApprovedRules(year, chosen.version, tuple(_approved_section(chosen, n) for n in SECTION_NAMES))
         versions = [_to_version(row) for row in await self._store.list_versions(year)]
 
@@ -660,12 +663,31 @@ class FinancialAidRulesService:
         """
         if candidate.year != year:
             raise YearMismatchError(f"The document is for {candidate.year}, not {year}")
+        current = await self._rules_draft(year, base_version)
+        return await self._save_over(current, candidate, actor=actor, via=via)
+
+    async def save_section(
+        self, year: int, base_version: int, section: SectionName, content: Mapping[str, Any], *, actor: str
+    ) -> SectionSaveResult:
+        """One section editor's save: `content` (that section's JSON) merged into the rules draft this call loads,
+        then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
+        earlier, means a save that landed in between is never silently reverted."""
+        current = await self._rules_draft(year, base_version)
+        return await self._save_over(current, parse_section(current.document, section, content), actor=actor, via=None)
+
+    async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
         current = await self.load(year)
         if current.version != base_version:
             raise NotLatestVersionError(
                 f"Version {base_version} of {year} is not the rules draft any more (version {current.version} is); "
                 "reload it and make the change again"
             )
+        return current
+
+    async def _save_over(
+        self, current: RulesVersion, candidate: AidRules, *, actor: str, via: str | None
+    ) -> SectionSaveResult:
+        year = current.year
         context = await self._context(year)
         before = validate_rules(current.document, context)
         changed = changed_sections(current.document, candidate)

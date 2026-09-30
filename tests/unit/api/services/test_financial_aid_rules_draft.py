@@ -193,30 +193,67 @@ async def test_a_document_for_another_season_is_refused() -> None:
         await service.save_sections(2031, 1, with_lever(fictional_rules(), "year", 2030), actor=TREASURER)
 
 
+@pytest.mark.asyncio
+async def test_a_section_save_merges_into_the_version_it_loads_not_an_earlier_read() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, with_lever(fictional_rules(), "income.floor", "500"), actor=FINANCE)  # v2
+    awards = fictional_rules_json()["awards"] | {"minimum": "150"}
+    saved = await service.save_section(2031, 2, "awards", awards, actor=TREASURER)
+    assert (saved.branched_from, saved.version.version) == (None, 2)
+    assert saved.version.document.income.floor == Decimal(500)  # the save that landed first is kept
+    assert saved.version.document.awards.minimum == Decimal(150)
+    assert saved.version.section_status["awards"].edited_by == TREASURER
+    assert saved.version.section_status["income"].edited_by == FINANCE
+
+
+@pytest.mark.asyncio
+async def test_a_section_save_that_does_not_parse_is_refused_and_writes_nothing() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    before = len(store.operations)
+    with pytest.raises(SectionInvalidError, match="awards.minimum"):
+        await service.save_section(
+            2031, 1, "awards", fictional_rules_json()["awards"] | {"minimum": "-5"}, actor=FINANCE
+        )
+    assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_a_section_save_against_an_older_version_is_refused() -> None:
+    service = await _approved_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
+    with pytest.raises(NotLatestVersionError):
+        await service.save_section(2031, 1, "awards", fictional_rules_json()["awards"], actor=FINANCE)
+
+
 def test_pricing_reads_the_same_sections_the_decisions_service_did() -> None:
     from api.services import financial_aid_decisions_service
 
     assert financial_aid_decisions_service.PRICING_SECTIONS is PRICING_SECTIONS
 
 
+def _without_bmitzvah_pool(document: AidRules) -> AidRules:
+    body = document.model_dump(mode="json")
+    del body["budget"]["pools"]["bmitzvah_pool"]  # programs.bmitzvah.budget_pool now names no pool
+    return AidRules.model_validate(body)
+
+
 @pytest.mark.asyncio
-async def test_an_edit_that_knocks_back_an_unchanged_approved_section_branches() -> None:
+async def test_an_edit_to_a_draft_section_that_knocks_back_an_approved_one_branches() -> None:
     store = FakeStore()
-    service = await _approved_v1(store)
-    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
-    await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Jan 15")
-    v2 = await service.load(2031, 2)
-    broken = v2.document.model_dump(mode="json")
-    del broken["award_tables"]["teen"]
-    saved = await service.save_sections(2031, 2, AidRules.model_validate(broken), actor=TREASURER)
-    assert (saved.branched_from, saved.version.version) == (2, 3)
+    service = await _priced_v1(store)  # v1 prices the season; budget is a draft section, programs approved
+    saved = await service.save_sections(2031, 1, _without_bmitzvah_pool(fictional_rules()), actor=TREASURER)
+    # Only `budget` changed, and it is a draft: the branch is decided over the sections the edit touched, which
+    # includes programs, sent back to draft by the pool it can no longer find.
+    assert (saved.branched_from, saved.version.version) == (1, 2)
     status = saved.version.section_status
-    assert (status["award_tables"].state, status["programs"].state) == ("draft", "draft")
+    assert (status["budget"].state, status["programs"].state) == ("draft", "draft")
     assert status["programs"].edited_by == TREASURER  # a reverted section is stamped too
-    assert (await service.load(2031, 2)).section_status["programs"].state == "approved"
+    assert (await service.load(2031, 1)).section_status["programs"].state == "approved"
     latest = await service.latest_approved(2031, ["programs"])
     assert latest is not None
-    assert latest.version == 2
+    assert latest.version == 1
 
 
 @pytest.mark.asyncio
@@ -282,6 +319,17 @@ async def test_a_whole_document_save_over_approved_pricing_rules_is_refused() ->
     with pytest.raises(PricingVersionInUseError, match="section editor"):
         await service.save(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)
     assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_a_whole_document_save_that_only_knocks_back_an_approved_section_is_refused() -> None:
+    store = FakeStore()
+    service = await _priced_v1(store)  # budget is a draft: the edit changes only it, and knocks programs back
+    before = len(store.operations)
+    with pytest.raises(PricingVersionInUseError):
+        await service.save(2031, 1, _without_bmitzvah_pool(fictional_rules()), actor=TREASURER)
+    assert len(store.operations) == before
+    assert (await service.load(2031, 1)).section_status["programs"].state == "approved"
 
 
 @pytest.mark.asyncio
@@ -355,6 +403,48 @@ async def test_a_draft_with_a_validation_error_locks_nothing_and_says_so() -> No
     assert (writes, not_locked) == ([], ["income", "tiers"])
 
 
+@pytest.mark.asyncio
+async def test_a_lock_written_on_the_draft_reads_back_through_approved_as_of() -> None:
+    now = [AT]
+    store = FakeStore(clock=lambda: now[0])
+    service = FinancialAidRulesService(store, clock=lambda: now[0])
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, list(SECTION_NAMES), actor=FINANCE, note="Board, Jan 8")
+    now[0] = AT + timedelta(days=10)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)  # v2, awards draft
+    now[0] = AT + timedelta(days=20)
+    writes, _ = await service.lock_writes(2031, 1, ["income"])
+    await _commit(store, writes)
+    early = await service.approved_as_of(2031, ["income"], AT + timedelta(days=15))
+    late = await service.approved_as_of(2031, ["income"], AT + timedelta(days=25))
+    assert early is not None
+    assert late is not None
+    assert (early.version, early.section_status["income"].state) == (2, "approved")
+    assert (late.version, late.section_status["income"].state) == (2, "locked")
+
+
+@pytest.mark.asyncio
+async def test_editing_a_section_locked_on_the_draft_branches_and_the_old_draft_keeps_the_lock() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)  # v2, awards draft
+    await _commit(store, (await service.lock_writes(2031, 1, ["income"]))[0])  # income locked on v2 only
+    v2 = await service.load(2031, 2)
+    saved = await service.save_sections(2031, 2, with_lever(v2.document, "income.floor", "500"), actor=TREASURER)
+    assert (saved.branched_from, saved.version.version) == (2, 3)
+    assert saved.version.section_status["income"].state == "draft"
+    assert (await service.load(2031, 2)).section_status["income"].state == "locked"
+
+
+@pytest.mark.asyncio
+async def test_a_draft_section_cannot_lock_and_is_reported() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "150"), actor=TREASURER)  # v2: awards is draft
+    writes, not_locked = await service.lock_writes(2031, 2, ["awards", "income"])
+    assert ([w.entity_id for w in writes], not_locked) == (["2031:2:income"], ["awards"])
+
+
 # --- draft_view and approved_view --------------------------------------------------------------------
 
 
@@ -407,6 +497,32 @@ async def test_a_pricing_section_approved_in_a_draft_that_cannot_price_yet_is_no
     await service.approve_sections(2031, 2, ["awards"], actor=FINANCE, note="Board, Feb 3")  # v2 still can't price
     awards = {s.section: s for s in (await service.approved_view(2031)).sections}["awards"]
     assert (awards.version, awards.content["minimum"]) == (1, "100")  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_a_version_with_nothing_approved_has_no_approved_read() -> None:
+    service = _service(FakeStore())
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    with pytest.raises(RulesNotFoundError):
+        await service.approved_view(2031, 1)
+
+
+@pytest.mark.asyncio
+async def test_an_old_version_of_drafts_has_no_approved_read_though_a_later_one_is_approved() -> None:
+    service = _service(FakeStore())
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.new_version(2031, 1, actor=FINANCE)
+    await service.approve_sections(2031, 2, list(SECTION_NAMES), actor=FINANCE, note="Board, Jan 8")
+    with pytest.raises(RulesNotFoundError):
+        await service.approved_view(2031, 1)
+    assert (await service.approved_view(2031, 2)).version == 2
+
+
+@pytest.mark.asyncio
+async def test_a_missing_version_has_no_approved_read() -> None:
+    service = await _approved_v1(FakeStore())
+    with pytest.raises(RulesNotFoundError):
+        await service.approved_view(2031, 9)
 
 
 @pytest.mark.asyncio
@@ -535,3 +651,29 @@ async def test_an_option_that_changes_nothing_promotes_nothing() -> None:
     )
     assert (saved.branched_from, saved.version.version) == (None, 1)
     assert len(store.operations) == before
+
+
+@pytest.mark.asyncio
+async def test_an_unstamped_draft_the_option_would_replace_is_an_unapproved_edit() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)  # v1: every section a draft
+    await service.new_version(2031, 1, actor=FINANCE)  # v2, the rules draft
+    await service.save(2031, 2, _minimum(fictional_rules(), "120"), actor=FINANCE)  # a whole-document save: no stamp
+    preview = await service.promotion_preview(2031, origin_version=1, document=_option())
+    warning = {s.section: s.warning for s in preview.sections}["awards"]
+    assert warning is not None
+    assert (warning.kind, warning.by, warning.at, warning.via) == ("unapproved_edit", None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_section_the_option_did_not_change_keeps_the_drafts_newer_copy() -> None:
+    store = FakeStore()
+    service = await _approved_v1(store)
+    await service.save_sections(2031, 1, with_lever(fictional_rules(), "income.floor", "500"), actor=TREASURER)  # v2
+    saved = await service.promote(
+        2031, origin_version=1, document=_option(), base_version=2, acknowledged=(), actor=FINANCE, via="B2"
+    )
+    assert saved.version.document.awards.minimum == Decimal(150)  # the option's change lands
+    assert saved.version.document.income.floor == Decimal(500)  # the draft's newer copy of an untouched section stays
+    assert saved.version.section_status["income"].edited_by == TREASURER
