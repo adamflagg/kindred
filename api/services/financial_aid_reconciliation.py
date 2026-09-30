@@ -23,8 +23,12 @@ The rules, in order:
   3. a line posted to the household, or to a person with no request of their own (the parent on a
      Family Camp line), goes on the household's request only when Go's program is empty or Family
      Camp AND that request (Family Camp, person 0) is the only live request the household holds. A
-     line on a person whose own request is closed never takes the household's request: the
-     closed-request pass takes it (D54).
+     line on a person whose own request is closed never takes the household's request (the
+     closed-request pass takes it, D54), except a LIVE line Go tags Family Camp: that person left
+     summer but stays in Family Camp, and the line goes to the household's request by this rule;
+  4. the closed-request pass places what the live pass found no request for by the same rules, except
+     that it ignores Go's program on a REVERSED line: a reversal follows the person's closed request,
+     so the clawback fires (D54) even though Go re-tagged the line after the cancel (below).
 
 Several candidates and no staff placement leave the line at family level. Go's attribution is NEVER
 used to choose among candidates: Go re-attributes every row nightly from active enrollments, so after
@@ -249,8 +253,12 @@ def _household_request(
     the household holds nothing live, or holds only a person-level request and the line's person's
     own request is closed (a sibling's request is not theirs); otherwise other live requests make
     the line AMBIGUOUS. A line on a person whose own request is closed is NONE first, whatever the
-    household holds: the closed-request pass takes it (D54), never a Family Camp request."""
-    if own_closed or line.program_family not in ("", FAMILY_CAMP):
+    household holds: the closed-request pass takes it (D54), never a Family Camp request. The one
+    exception is a live line Go tags Family Camp: that person left summer but stays in Family Camp,
+    so the line is the household's Family Camp request's by the rule above."""
+    if own_closed and (line.is_reversed or line.program_family != FAMILY_CAMP):
+        return _Miss.NONE
+    if line.program_family not in ("", FAMILY_CAMP):
         return _Miss.NONE
     held = by_household.get(line.household_cm_id, ())
     own = [r for r in held if r.person_cm_id == 0]
@@ -311,7 +319,10 @@ def _place(
     by_household: Mapping[int, Sequence[PlaceableRequest]],
     own_closed: bool = False,
     closed_by_person: Mapping[int, Sequence[PlaceableRequest]] | None = None,
+    ignore_program: bool = False,
 ) -> str | _Miss:
+    """One line's request, or why none. `ignore_program` (the closed pass, on a reversed line) skips
+    Go's program: a reversal follows the person's closed request, however Go re-tagged it since."""
     if placement is not None:
         return _place_by_staff(line, placement, by_person, by_household, closed_by_person or {})
     if line.person_cm_id > 0:
@@ -322,7 +333,7 @@ def _place(
         if isinstance(only, _Miss):
             return only  # several candidates: never narrowed by Go's attribution
         request = mine[0]
-        named = line.attributed_person_cm_id == line.person_cm_id
+        named = line.attributed_person_cm_id == line.person_cm_id and not ignore_program
         if named and line.program_family and request.program_family and line.program_family != request.program_family:
             return _Miss.AMBIGUOUS
         if named and not line.program_family and _holds_household_request(line, by_household):
@@ -380,7 +391,13 @@ def build_ledger(
             placed[outcome].append(line)
             continue
         # The second pass runs on ABSENCE only: several live candidates are ambiguity, and stay at family level.
-        closed_outcome = _place(line, placement, closed_person, closed_household) if outcome is _Miss.NONE else outcome
+        # A reversed line ignores Go's program there: after a cancel Go re-tags it from what the person is
+        # still enrolled in, and the reversal must still reach the closed request for its clawback (D54).
+        closed_outcome = (
+            _place(line, placement, closed_person, closed_household, ignore_program=line.is_reversed)
+            if outcome is _Miss.NONE
+            else outcome
+        )
         if isinstance(closed_outcome, str):
             closed[closed_outcome].append(line)
         elif line.live(at):

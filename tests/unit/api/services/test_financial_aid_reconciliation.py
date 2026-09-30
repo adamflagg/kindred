@@ -967,3 +967,54 @@ def test_a_withdrawn_campers_live_line_does_not_tick_the_family_camp_round() -> 
     fam = priced("fam", 1000001, view(1, "needs_offer", decided="700"))
     assert ledger.by_request == {}
     assert ledger_ticks([fam], ledger, today=TODAY) == []
+
+
+# --- a camper who leaves summer but stays in Family Camp ------------------------------------------
+# After the cancel, Go re-tags her lines family_camp (her only active enrollment left).
+
+
+def _left_summer_stayed_in_family_camp() -> tuple[CampLine, CampLine]:
+    rev = line(1, "1800", person=1000011, session=1000201, family="family_camp", reversed_at=APR1)
+    weekend_line = line(2, "700", person=1000011, session=1000201, family="family_camp", posted=MAR9)
+    return rev, weekend_line
+
+
+def test_a_camper_who_leaves_summer_but_stays_in_family_camp_has_her_summer_reversal_clawed_back() -> None:
+    """D54: a reversal follows the person's closed request. Go's family_camp re-tag after the cancel is
+    the instability the module warns about, so the closed pass ignores it on a reversed line."""
+    rev, weekend_line = _left_summer_stayed_in_family_camp()
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    ledger = build_ledger([rev, weekend_line], {}, [summer, weekend], None, frozenset({"emma"}))
+    assert ledger.closed_lines("emma") == (rev,)
+    posted = priced("emma", 1000001, view(1, "posted", locked="1800", accepted=True))
+    out, day = apply_clawback(posted, {}, ledger.closed_lines("emma"), family_lines=ledger.family_lines([1000001]))
+    assert day == date(2027, 4, 1)
+    assert [v.clawed_back for v in out.rounds] == [True]
+
+
+def test_a_camper_who_leaves_summer_keeps_her_live_family_camp_line_on_the_family_camp_request() -> None:
+    """Her live family_camp line goes to the household's only live Family Camp request, and ticks it on
+    full cover (D146)."""
+    rev, weekend_line = _left_summer_stayed_in_family_camp()
+    summer = request("emma", status="withdrawn")
+    weekend = request("fam", person=0, session=1000201, family="family_camp")
+    ledger = build_ledger([rev, weekend_line], {}, [summer, weekend], None, frozenset({"emma"}))
+    assert ledger.lines("fam") == (weekend_line,)
+    assert ledger.family_unplaced([1000001]) == Decimal(0)
+    fam = priced("fam", 1000001, view(1, "needs_offer", decided="700"))
+    (tick,) = ledger_ticks([fam], ledger, today=TODAY)
+    assert (tick.request_id, tick.round, tick.amount) == ("fam", 1, Decimal(700))
+
+
+def test_a_camper_who_leaves_summer_with_two_live_family_camps_leaves_her_live_line_at_family_level() -> None:
+    """Decision 3: never guess among several Family Camp requests. Her reversal still follows her own
+    closed request."""
+    rev, weekend_line = _left_summer_stayed_in_family_camp()
+    summer = request("emma", status="withdrawn")
+    fc_a = request("fa", person=0, session=1000201, family="family_camp")
+    fc_b = request("fb", person=0, session=1000202, family="family_camp")
+    ledger = build_ledger([rev, weekend_line], {}, [summer, fc_a, fc_b], None, frozenset({"emma"}))
+    assert ledger.by_request == {}
+    assert ledger.closed_lines("emma") == (rev,)
+    assert ledger.family_lines([1000001]) == (weekend_line,)
