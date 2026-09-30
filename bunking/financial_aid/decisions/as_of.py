@@ -49,6 +49,12 @@ _ROUND2: Final = (
     "Some requests' status on that date can't be replayed (see request_history), so Round 2 asks "
     "aren't counted season-wide"
 )
+_CANCELLED: Final = (
+    "A cancellation in Kindred applies as of the date, but CampMinder's aren't rebuilt: registration statuses are "
+    "read as they are today, so a request CampMinder had cancelled by then shows its rounds as if live (10b-2)"
+)
+
+
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "decided": _PRICED,
     "pending_approval": "It counts only while no hold covers the request, and the data checks are priced (3c-2)",
@@ -59,6 +65,9 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "holds": "Only the manual hold is listed: the data checks run on the family's answers (3c-2)",
     "notes": _PRICED,
     "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
+    "cancellation": _CANCELLED,
+    "to_reverse": _CANCELLED,
+    "todos": _CANCELLED,
     "needs_offer": _PRICED,
     "held": _PRICED,
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
@@ -111,6 +120,9 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "holds",
     "notes",
     "confirmation",
+    "cancellation",
+    "to_reverse",
+    "todos",
 )
 BUDGET_GAPS: Final[tuple[str, ...]] = (
     "needs_offer",

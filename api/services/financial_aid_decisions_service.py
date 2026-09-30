@@ -49,6 +49,7 @@ from api.schemas.financial_aid_decisions import (
     AsOfAxis,
     BelowTheLineOut,
     BudgetResponse,
+    CancellationOut,
     CellOut,
     ChangedRowOut,
     ConfirmationOut,
@@ -72,6 +73,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCountsOut,
     RoundOut,
     ShareConfirmationOut,
+    TodoOut,
     UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
@@ -82,6 +84,17 @@ from api.services.financial_aid_calc_inputs import (
     priced_program,
     request_issues,
     to_application_inputs,
+)
+from api.services.financial_aid_cancellations import (
+    TODO_CANCEL_REASON,
+    TODO_CANCEL_REASON_TEXT,
+    CancelEvent,
+    Cancellation,
+    EnrollmentState,
+    cancellations_by_request,
+    fold_cancellations,
+    needs_reason,
+    withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
 from api.services.financial_aid_grants_register import (
@@ -95,6 +108,7 @@ from api.services.financial_aid_intake_repository import request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
+    STATUS_WITHDRAWN,
     ApplicationRecord,
     CorrectionRecord,
     EquityAnswers,
@@ -234,6 +248,11 @@ class DecisionsStore(Protocol):
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
+    async def fetch_cancellations(self, year: int) -> list[CancelEvent]: ...
+    async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]: ...
+    async def fetch_enrollment_states(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[EnrollmentState]: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -281,6 +300,11 @@ class Season:
     shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
     undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
     posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
+    # Sub-project 10b-2: the cancelled live requests (D101). Empty on a past read (not rebuilt).
+    cancellations: Mapping[str, Cancellation] = field(default_factory=dict)
+    # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
+    # with posted camp aid still live (D54's forgotten reversal). Empty on a past read.
+    to_reverse: frozenset[str] = frozenset()
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -325,12 +349,13 @@ def _to_price(
     rounds: Mapping[int, RoundState],
     grants: tuple[GrantInput, ...],
     rules: AidRules | None,
+    cancelled: bool = False,
 ) -> RequestToPrice:
     ask = effective_ask(request, corrections)
     answers = effective_values(
         application.answers if application is not None else {}, APPLICATION_CORRECTABLE, corrections
     )
-    live = request.status in _LIVE
+    live = request.status in _LIVE and not cancelled  # a cancelled request is not live (10b-2 Decision 14)
 
     def build(
         app_inputs: ApplicationInputs, inputs: RequestInputs | None, blocked: str, issues: tuple[CalcIssue, ...]
@@ -349,7 +374,7 @@ def _to_price(
         )
 
     if not live or application is None:
-        blocked = request.status if not live else "no application for this request"
+        blocked = ("cancelled" if cancelled else request.status) if not live else "no application for this request"
         return build(ApplicationInputs(household_cm_id=request.household_cm_id), None, blocked, ())
     if rules is None:
         issues = tuple(request_issues(request, application.flags, answers, shares, None))
@@ -489,6 +514,20 @@ def _confirmation_out(c: Confirmation) -> ConfirmationOut:
     )
 
 
+def _enrollment_scope(requests: Iterable[RequestRecord]) -> tuple[set[int], set[int]]:
+    """Whose registrations a cancellation reads (SP10b-2): the camper of each live or withdrawn
+    camper-level request, and the household of each household-level (Family Camp) one."""
+    wanted = [r for r in requests if r.status in _LIVE or r.status == STATUS_WITHDRAWN]
+    return (
+        {r.person_cm_id for r in wanted if r.person_cm_id > 0},
+        {r.household_cm_id for r in wanted if r.person_cm_id <= 0},
+    )
+
+
+def _cancellation_out(c: Cancellation) -> CancellationOut:
+    return CancellationOut(by=c.by, on=c.on, reason=c.reason, note=c.note)
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -499,6 +538,8 @@ def grid_row(
     hold: HoldState,
     *,
     confirmation: Confirmation | None = None,
+    cancellation: Cancellation | None = None,
+    to_reverse: bool = False,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -548,6 +589,13 @@ def grid_row(
         ],
         notes=[_issue(i) for i in priced.notes],
         confirmation=_confirmation_out(confirmation) if confirmation is not None else None,
+        cancellation=_cancellation_out(cancellation) if cancellation is not None else None,
+        to_reverse=to_reverse,
+        todos=(
+            [TodoOut(code=TODO_CANCEL_REASON, message=TODO_CANCEL_REASON_TEXT)]
+            if needs_reason(cancellation, request.year)
+            else []
+        ),
     )
 
 
@@ -847,16 +895,22 @@ class FinancialAidDecisionsService:
         return (await self._season(year, names=False))[0]
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
-        """The season's loads run as three concurrent branches: the requests with what hangs off them
-        (the names too, when asked), the sessions, shares, events and grants register, and the
-        CampMinder ledger (10b)."""
+        """The season's loads run as four concurrent branches: the requests with what hangs off them
+        (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
+        ledger (10b), and the cancellation events (10b-2). The registrations those read follow, once the
+        requests say whose to read."""
         (
             side,
             (sessions, shares, events, hold_events, register),
             (camp_lines, placements, synced_at),
+            cancel_events,
         ) = await asyncio.gather(
-            self._request_side(year, names=names), self._rounds_side(year), self._ledger_side(year)
+            self._request_side(year, names=names),
+            self._rounds_side(year),
+            self._ledger_side(year),
+            self._store.fetch_cancellations(year),
         )
+        enrollments = await self._store.fetch_enrollment_states(year, *_enrollment_scope(side.requests))
         rules = side.rules
         rounds = fold_rounds(events)
         holds = fold_holds(hold_events)
@@ -867,6 +921,8 @@ class FinancialAidDecisionsService:
             own[correction.application_id].append(correction)
         session_map = {s.cm_id: s for s in sessions}
         document = rules.document if rules is not None else None
+        # Sub-project 10b-2: a cancelled request is not live (spec §5.3, Decision 14), so it is priced that way.
+        cancellations = cancellations_by_request(side.requests, cancel_events, enrollments, sessions)
         items = {
             r.id: with_holds(
                 _to_price(
@@ -879,12 +935,19 @@ class FinancialAidDecisionsService:
                     rounds.get(r.id, {}),
                     tuple(grants.get(r.id, [])),
                     document,
+                    cancelled=r.id in cancellations,
                 ),
                 holds.get(r.id, NO_HOLDS),
             )
             for r in side.requests
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
+        for request in side.requests:
+            if request.id in cancellations:
+                # Decision 19: a cancelled request keeps the program and pool live pricing gives it, so
+                # the grid still names them and its outside grants stay in its pool, not in No pool.
+                key, pool = _home(request, session_map, document)
+                priced[request.id] = replace(priced[request.id], program_key=key, pool=pool)
         # Sub-project 10b: the CampMinder ledger. Each camp-aid line on its one request (main spec §11),
         # money CampMinder reversed back in Remaining (D54), and the Note on unticked rows (D81).
         shares_of = _shares_by_request(shares)
@@ -908,6 +971,13 @@ class FinancialAidDecisionsService:
                 reversed_on[request.id] = day
             note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
             priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
+        withdrawn = withdrawn_on_cancelled_enrollments(side.requests, enrollments, sessions)
+        to_reverse = frozenset(
+            r.id
+            for r in side.requests
+            if (r.id in cancellations and any(line.live() for line in ledger.lines(r.id)))
+            or (r.id in withdrawn and any(line.live() for line in ledger.closed_lines(r.id)))
+        )
         season = Season(
             year=year,
             rules=rules,
@@ -921,6 +991,8 @@ class FinancialAidDecisionsService:
             reversed_on=reversed_on,
             shares=shares_of,
             undone=undone_rounds(events),
+            cancellations=cancellations,
+            to_reverse=to_reverse,
         )
         return season, side.names
 
@@ -948,13 +1020,13 @@ class FinancialAidDecisionsService:
             # BEFORE the log read starts (approved_as_of orders its reads the same way). The rules
             # read, and the other reads, overlap freely.
             today = await self._store.fetch_requests(year)
-            log, corrections, sessions, events, hold_events, ledger_in = await asyncio.gather(
+            log, corrections, sessions, events, hold_events, (ledger_in, cancel_events) = await asyncio.gather(
                 self._store.fetch_change_log(year, AID_REQUESTS),
                 self._store.fetch_corrections(year, None),
                 self._store.fetch_sessions(year),
                 self._store.fetch_decision_events(year),
                 self._store.fetch_hold_events(year),
-                self._past_ledger_side(year),
+                asyncio.gather(self._past_ledger_side(year), self._store.fetch_cancellations(year)),
             )
             rules, gaps = await rules_read
         finally:
@@ -963,6 +1035,9 @@ class FinancialAidDecisionsService:
         requests, unrebuilt, deleted = _requests_as_of(log, at, today)
         rounds = fold_rounds(events, as_of=at, posted_by=day if axis == "campminder" else None)
         holds = fold_holds(hold_events, as_of=at)
+        # Decision 21: a cancellation in Kindred is dated, so it applies as of the date (on created, on
+        # both axes); CampMinder's is not rebuilt (GRID_GAPS' cancellation).
+        in_kindred = {rid for rid, state in fold_cancellations(cancel_events, as_of=at).items() if state.in_kindred}
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
         for correction in _dated_by(corrections, at):
@@ -978,7 +1053,7 @@ class FinancialAidDecisionsService:
                 request.household_cm_id,
                 rounds.get(request_id, {}),
                 document,
-                live=rebuilt and request.status in _LIVE,
+                live=rebuilt and request.status in _LIVE and request_id not in in_kindred,
                 r1_ask=Decimal(ask.effective) if rebuilt and ask.effective != "" else None,
                 hold=holds.get(request_id, NO_HOLDS),
                 pool=pool,
@@ -1149,6 +1224,8 @@ class FinancialAidDecisionsService:
                 campers,
                 season.holds.get(rid, NO_HOLDS),
                 confirmation=self._confirmation(season, rid),
+                cancellation=season.cancellations.get(rid),
+                to_reverse=rid in season.to_reverse,
             )
             for rid, priced in season.priced.items()
         ]
@@ -1158,6 +1235,10 @@ class FinancialAidDecisionsService:
                     update={
                         "notes": None,
                         "total_decided": None,
+                        # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
+                        "cancellation": None,
+                        "to_reverse": None,
+                        "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
                     }
                 )
