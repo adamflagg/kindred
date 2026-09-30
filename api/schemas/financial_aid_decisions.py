@@ -10,13 +10,30 @@ A test pins it.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_validator
 
 from api.schemas.financial_aid_intake import IssueOut
+from api.services.camp_calendar import CAMP_TZ
+
+
+def today() -> date:
+    """Today on camp time. A module function, so a test can pin it."""
+    return datetime.now(CAMP_TZ).date()
+
+
+def _not_future(value: date) -> date:
+    if value > today():
+        raise ValueError("can't be a future date")
+    return value
+
+
+# A day something happened outside Kindred (the family asked; the registrar posted): never after today.
+_PastDay = Annotated[date, AfterValidator(_not_future)]
+
 
 RoundStatusOut = Literal["posted", "held", "pending_approval", "refused", "not_decided", "needs_offer"]
 
@@ -147,7 +164,7 @@ class AskIn(BaseModel):
 
     round: Literal[2, 3]
     amount: _Amount
-    asked_on: date
+    asked_on: _PastDay
     statement_of_need: _Statement = ""
     note: _Note = ""
 
@@ -193,7 +210,7 @@ class PostedRow(RoundRef):
 
 class PostedIn(BaseModel):
     rows: list[PostedRow] = Field(min_length=1, max_length=900)
-    posted_on: date | None = None  # the day it was posted in CampMinder; default today, camp time
+    posted_on: _PastDay | None = None  # the day it was posted in CampMinder; default today, camp time
 
 
 class UnpostIn(RoundRef):

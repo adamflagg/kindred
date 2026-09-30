@@ -4,6 +4,7 @@ FastAPI app (SP2's persona_client) rather than importing api.main, which poisons
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -144,6 +145,12 @@ def _stop_patches() -> Any:
     patch.stopall()
 
 
+@pytest.fixture(autouse=True)
+def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The writes refuse a date after today; the routes' dates sit in the fictional 2031 season."""
+    monkeypatch.setattr(schemas, "today", lambda: date(2031, 12, 31))
+
+
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 @pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), ROUTES)
 def test_permission_matrix(
@@ -227,3 +234,10 @@ def test_no_decisions_field_is_named_awarded_or_total_awards_granted() -> None:
             text = f"{name} {info.description or ''} {info.title or ''}".lower()
             assert "awarded" not in text, (model.__name__, name)
             assert "awards granted" not in text, (model.__name__, name)
+
+
+def test_a_posted_day_after_today_is_422() -> None:
+    service = _stub()
+    body = {"rows": [{"request_id": REQ, "round": 1, "amount": "1500"}], "posted_on": "2032-01-01"}
+    assert _client().post("/api/financial-aid/decisions/2031/posted", json=body).status_code == 422
+    service.tick_posted.assert_not_called()

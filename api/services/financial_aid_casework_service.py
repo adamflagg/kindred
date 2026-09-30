@@ -674,7 +674,10 @@ class FinancialAidCaseworkService:
     async def calculator_inputs_for(self, year: int, household_cm_id: int, rules: AidRules) -> list[CalculatorInputs]:
         """Every live request (active or unmatched) on the family's application, converted under
         `rules`, the version the caller prices with. Nothing is dropped: a request that cannot be
-        priced comes back with request=None and the reason in `blocked`."""
+        priced comes back with request=None and the reason in `blocked`.
+
+        These are UNLOCKED inputs: no posted round's lock is applied. A preview that must agree with
+        the Requests grid prices through `bunking.financial_aid.decisions.request_inputs` instead."""
         if rules.year != year:
             raise CaseworkValidationError(f"the rules are for {rules.year}, not {year}")
         application = await self._require_application(year, household_cm_id)

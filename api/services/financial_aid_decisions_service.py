@@ -552,6 +552,9 @@ class FinancialAidDecisionsService:
             raise DecisionRefusedError(
                 "An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask"
             )
+        later = next((m for m in range(n + 1, 4) if rounds.get(m, RoundState(round=m)).posted), None)
+        if later is not None:
+            raise DecisionRefusedError(f"Round {later} is posted and builds on Round {n}: its ask can't change now")
         if (state.ask, state.asked_on, state.statement_of_need) == (body.amount, body.asked_on, body.statement_of_need):
             return self._unchanged(request.year)
         write = self._write(
@@ -579,9 +582,13 @@ class FinancialAidDecisionsService:
             raise DecisionRefusedError("Round 3 is posted; its amount can't change")
         if state.ask is None:
             raise DecisionRefusedError("Key the family's Round 3 ask and statement of need first")
+        rules = await self._approved_rules(request.year)
+        if rules.document.round3.require_round2 and rounds.get(2, RoundState(round=2)).ask is None:
+            raise DecisionRefusedError(
+                f"The {request.year} rules give Round 3 only after a Round 2 appeal: key the family's Round 2 ask first"
+            )
         if state.award == body.amount and state.approval != "refused":
             return self._unchanged(request.year)
-        rules = await self._approved_rules(request.year)
         pending = not can_approve and needs_finance(body.amount, rules.document)
         write = self._write(
             request, 3, "award", actor, amount=body.amount, needs_approval=pending, note=body.note or None

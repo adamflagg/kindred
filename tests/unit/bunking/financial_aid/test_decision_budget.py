@@ -242,3 +242,15 @@ def test_round_1_unmet_never_goes_negative() -> None:
         outside_grants={},
     )
     assert pool_of(budget, "camp_pool").demand.round1_unmet == Decimal(500)
+
+
+def test_round_1_s_allocation_is_the_rounded_remainder_and_never_below_zero() -> None:
+    # 100.01 with 50% + 50% reserves: each reserve rounds up to 50.01, leaving Round 1 no cent.
+    rules = with_levers(
+        RULES,
+        {
+            "budget.pools.camp_pool": {"label": "Camp", "amount": "100.01"},
+            "budget.reserves.camp_pool": {"r2": "50", "r3": "50"},
+        },
+    )
+    assert allocations(rules)["camp_pool"] == {1: ZERO, 2: Decimal("50.01"), 3: Decimal("50.01")}

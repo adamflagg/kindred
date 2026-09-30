@@ -148,7 +148,8 @@ def allocations(rules: AidRules) -> dict[str, dict[int, Decimal]]:
         reserves = budget.reserves.get(key, {})
         r2 = _cents(whole * reserves.get("r2", ZERO) / HUNDRED)
         r3 = _cents(whole * reserves.get("r3", ZERO) / HUNDRED)
-        out[key] = {1: _cents(whole) - r2 - r3, 2: r2, 3: r3}
+        # Round 1 is the remainder after the reserves round, never below 0 (an odd cent at 100% reserves).
+        out[key] = {1: max(_cents(whole) - r2 - r3, ZERO), 2: r2, 3: r3}
     return out
 
 

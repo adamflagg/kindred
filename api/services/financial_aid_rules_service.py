@@ -396,13 +396,16 @@ class FinancialAidRulesService:
         (spec §7.5, sub-project 10a), for the caller to commit in the SAME operation as the tick.
 
         A section already locked needs no write. Nothing locks on a version that is no longer the
-        latest (it is read-only already). A section that can't lock (not approved, or the document
-        has a validation error) is returned in the second list: the tick still stands, and says so.
+        latest (it is read-only already), so every section it wanted comes back not locked. A
+        section that can't lock (not approved, or the document has a validation error) is returned
+        in the second list: the tick still stands, and says so.
         """
         current = await self.load(year, version)
         wanted = [s for s in SECTION_NAMES if s in sections and current.section_status[s].state != "locked"]
-        if not wanted or await self._latest_version_number(year) != version:
+        if not wanted:
             return [], []
+        if await self._latest_version_number(year) != version:
+            return [], wanted
         report = await self.validate_document(current.document)
         at = self._clock()
         status = current.section_status

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
+import api.schemas.financial_aid_decisions as schemas
 from api.schemas.financial_aid_decisions import (
     AcceptedIn,
     AskIn,
@@ -49,6 +50,12 @@ from tests.unit.bunking.financial_aid.fixtures import with_lever
 
 EMMA = "reqemma00000001"
 LIAM = "reqliam00000001"
+
+
+@pytest.fixture(autouse=True)
+def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The writes refuse a date after today; the fixtures' dates sit in the fictional 2027 season."""
+    monkeypatch.setattr(schemas, "today", lambda: date(2027, 12, 31))
 
 
 def _service(
@@ -679,3 +686,45 @@ async def test_a_tick_naming_one_round_with_two_amounts_is_refused_but_an_exact_
     assert store.operations == []
     out = await service.tick_posted(YEAR, _tick((EMMA, 1, "1500"), (EMMA, 1, "1500")), ACTOR)
     assert out.written == 1
+
+
+# --- final review guards -----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_ask_is_refused_while_a_later_round_is_posted() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_discretionary(EMMA, _DISCRETIONARY, ACTOR)
+    await service.tick_posted(YEAR, _tick((EMMA, 3, "250")), ACTOR)
+    ops = len(store.operations)
+    with pytest.raises(DecisionRefusedError, match="Round 3 is posted"):
+        await service.key_ask(EMMA, _ask(2, "400"), ACTOR)
+    assert len(store.operations) == ops
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_amount_is_refused_without_a_round_2_ask_while_the_rules_require_one() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    _event(store, EMMA, 3, "ask", amount=Decimal(500), statement_of_need="A parent lost their job")
+    with pytest.raises(DecisionRefusedError, match="Round 2"):
+        await _service(store).key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=True)
+    assert store.operations == []
+    lenient = FakeRules(approved(with_lever(intake_rules(), "round3.require_round2", False)))
+    out = await _service(store, lenient).key_round3_amount(
+        EMMA, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=True
+    )
+    assert out.written == 1
+
+
+def test_a_write_dated_after_today_is_refused() -> None:
+    row = PostedRow(request_id=EMMA, round=1, amount=Decimal(1500))
+    assert PostedIn(rows=[row], posted_on=date(2027, 12, 31)).posted_on == date(2027, 12, 31)
+    with pytest.raises(ValidationError, match="future"):
+        PostedIn(rows=[row], posted_on=date(2028, 1, 1))
+    with pytest.raises(ValidationError, match="future"):
+        AskIn(round=2, amount=Decimal(400), asked_on=date(2028, 1, 1))
