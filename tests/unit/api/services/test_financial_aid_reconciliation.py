@@ -401,3 +401,135 @@ def test_a_line_on_a_person_whose_own_request_is_withdrawn_stays_at_family_level
     ledger = build_ledger([line(1, "1800", person=1000011)], {}, [old, fc_a, fc_b], None, frozenset({"old"}))
     assert (ledger.by_request, ledger.by_closed_request) == ({}, {})
     assert ledger.family_unplaced([1000001]) == Decimal(1800)
+
+
+# --- confirmation and the Note (Task 3) -------------------------------------------------------------
+
+from api.services.financial_aid_intake_types import PayerShareRecord
+from api.services.financial_aid_reconciliation import Confirmation, confirmation, ledger_note
+
+SYNCED = datetime(2027, 3, 10, 9, 0, tzinfo=UTC)  # the night after the Mar 9 tick
+
+
+def share(household: int, pct: str) -> PayerShareRecord:
+    return PayerShareRecord(
+        id=f"shr{household:012d}",
+        year=2027,
+        request_id="emma",
+        household_cm_id=household,
+        share_pct=Decimal(pct),
+        source="staff",
+        actor="registrar@example.com",
+    )
+
+
+def confirm(
+    lines: Sequence[CampLine],
+    *,
+    shares: Sequence[PayerShareRecord] = (),
+    synced: datetime | None = SYNCED,
+    rounds: Mapping[int, RoundState] = POSTED_R1,
+) -> Confirmation | None:
+    return confirmation(R1, rounds, lines, shares, 1000001, synced_at=synced)
+
+
+def test_a_tick_made_after_the_last_sync_awaits_tonights_sync() -> None:
+    c = confirm([], synced=datetime(2027, 3, 9, 9, 0, tzinfo=UTC))
+    assert c is not None
+    assert (c.status, c.reconciled) == ("awaiting_sync", False)
+    never = confirm([line(1, "1800", posted=MAR9)], synced=None)
+    assert never is not None
+    assert never.status == "awaiting_sync"
+
+
+def test_the_ledgers_own_tick_never_waits_for_the_sync() -> None:
+    rounds = {1: replace(POSTED_R1[1], lock_source="ledger", locked_at=datetime(2027, 3, 10, 10, 0, tzinfo=UTC))}
+    c = confirm([line(1, "1800", posted=MAR9)], rounds=rounds)
+    assert c is not None
+    assert c.status == "confirmed"
+
+
+def test_the_ledger_confirms_or_shows_short_over_or_not_in_campminder_by_net_total() -> None:
+    confirmed = confirm([line(1, "1800", posted=MAR9)])
+    assert confirmed is not None
+    assert (confirmed.status, confirmed.on, confirmed.reconciled) == (
+        "confirmed",
+        date(2027, 3, 9),
+        True,
+    )
+    short = confirm([line(1, "1590", posted=MAR9)])
+    assert short is not None
+    assert (short.status, short.in_campminder, short.gap) == ("short", Decimal(1590), Decimal(-210))
+    over = confirm([line(1, "1800"), line(2, "300", posted=MAR9)])
+    assert over is not None
+    assert (over.status, over.gap) == ("over", Decimal(300))
+    missing = confirm([])
+    assert missing is not None
+    assert (missing.status, missing.on) == ("not_in_campminder", None)
+
+
+def test_posting_habit_does_not_matter_only_the_net() -> None:
+    """Reverse-and-repost plus the +$300 on its own line reconcile like one line (main spec §11)."""
+    lines = [line(1, "1500", posted=MAR8, reversed_at=MAR9), line(2, "1500", posted=MAR9), line(3, "300", posted=MAR9)]
+    c = confirm(lines)
+    assert c is not None
+    assert (c.status, c.in_campminder) == ("confirmed", Decimal(1800))
+
+
+def test_each_payer_share_is_confirmed_against_its_own_household() -> None:
+    """The family total matches, but it was all posted to one parent: one share over, the other missing."""
+    c = confirm([line(1, "1800", posted=MAR9)], shares=[share(1000001, "60"), share(1000004, "40")])
+    assert c is not None
+    assert c.status == "confirmed"
+    assert not c.reconciled
+    assert [(s.household_cm_id, s.expected, s.in_campminder, s.status) for s in c.shares] == [
+        (1000001, Decimal(1080), Decimal(1800), "over"),
+        (1000004, Decimal(720), Decimal(0), "not_in_campminder"),
+    ]
+
+
+def test_one_share_or_shares_not_adding_up_give_no_share_lines() -> None:
+    one = confirm([line(1, "1800", posted=MAR9)], shares=[share(1000001, "100")])
+    broken = confirm([line(1, "1800", posted=MAR9)], shares=[share(1000001, "60"), share(1000004, "30")])
+    assert one is not None
+    assert broken is not None
+    assert one.shares == ()
+    assert broken.shares == ()
+
+
+def test_a_clawed_back_request_reads_reversed_and_a_request_with_nothing_posted_reads_nothing() -> None:
+    back = priced("emma", 1000001, replace(view(1, "posted", locked="1800"), clawed_back=True))
+    c = confirmation(back, POSTED_R1, [], (), 1000001, synced_at=SYNCED, reversed_on=date(2027, 6, 1))
+    assert c is not None
+    assert (c.status, c.on, c.locked, c.reconciled) == ("reversed", date(2027, 6, 1), Decimal(0), True)
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    assert confirmation(needs, {}, [], (), 1000001, synced_at=SYNCED) is None
+
+
+def test_the_family_level_figure_travels_with_the_confirmation() -> None:
+    c = confirmation(R1, POSTED_R1, [], (), 1000001, synced_at=SYNCED, family_unplaced=Decimal(1200))
+    assert c is not None
+    assert (c.status, c.family_unplaced) == ("not_in_campminder", Decimal(1200))
+
+
+def test_money_in_campminder_on_an_unticked_row_raises_the_note() -> None:
+    held = priced("emma", 1000001, view(1, "held", ask="2000"))
+    note = ledger_note(held, [line(1, "1800", person=1000011)], Decimal(0))
+    assert note is not None
+    assert (note.code, note.severity) == ("in_campminder_not_ticked", "warn")
+    assert note.message == "CampMinder shows $1,800 for this family; not yet ticked"
+
+
+def test_an_unplaced_family_line_raises_the_note_on_each_unticked_request() -> None:
+    needs = priced("emma", 1000001, view(1, "needs_offer", decided="1800"))
+    note = ledger_note(needs, [], Decimal(3000))
+    assert note is not None
+    assert note.message == "CampMinder shows $3,000 for this family; not yet ticked"
+
+
+def test_no_note_once_every_round_is_ticked_nothing_is_extra_or_the_request_is_not_live() -> None:
+    assert ledger_note(R1, [line(1, "1800")], Decimal(500)) is None  # every round posted
+    appeal = priced("emma", 1000001, view(1, "posted", locked="1800"), view(2, "needs_offer", decided="300"))
+    assert ledger_note(appeal, [line(1, "1800")], Decimal(0)) is None  # CampMinder holds only what is locked
+    gone = priced("emma", 1000001, view(1, "needs_offer", decided="1800"), live=False)
+    assert ledger_note(gone, [line(1, "1800")], Decimal(0)) is None

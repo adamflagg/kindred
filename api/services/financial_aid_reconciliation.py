@@ -40,6 +40,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Final, Literal
 
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_grants_register import (
@@ -48,6 +49,8 @@ from api.services.financial_aid_grants_register import (
     program_family_for_session_type,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord, SessionRow
+from api.services.financial_aid_payer_shares import PayerShareError, split_award
+from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.money import ZERO
 
@@ -356,3 +359,152 @@ def apply_clawback(
         return priced, None
     views = tuple(replace(view, clawed_back=True) if view.status == "posted" else view for view in priced.rounds)
     return replace(priced, rounds=views), day
+
+
+# --- the confirmation state (D59) and the Note (D81) -------------------------------------------
+
+ConfirmationStatus = Literal["awaiting_sync", "confirmed", "short", "over", "not_in_campminder", "reversed"]
+NOTE_NOT_TICKED: Final = "in_campminder_not_ticked"
+
+
+@dataclass(frozen=True)
+class ShareConfirmation:
+    """One payer share against its own household's lines (main spec §11): `expected` is its
+    whole-dollar part of the locked total (split_award)."""
+
+    household_cm_id: int
+    expected: Decimal
+    in_campminder: Decimal
+    status: ConfirmationStatus
+
+
+@dataclass(frozen=True)
+class Confirmation:
+    """Beside every Posted figure (D59). `locked` is the locked total of the request's posted rounds
+    still counted; `in_campminder` is the net of the live camp-aid lines placed on it. `on` is the
+    day behind "confirmed (date)" (the latest live line's camp day), or a reversal's day.
+    `family_unplaced` is the family's camp aid no single request takes: shown as its own figure
+    (D81), it never enters `status`, `in_campminder` or `gap`."""
+
+    status: ConfirmationStatus
+    locked: Decimal
+    in_campminder: Decimal
+    on: date | None
+    shares: tuple[ShareConfirmation, ...]
+    family_unplaced: Decimal
+
+    @property
+    def gap(self) -> Decimal:
+        """In CampMinder minus locked: negative is short, positive is over."""
+        return self.in_campminder - self.locked
+
+    @property
+    def reconciled(self) -> bool:
+        """Off Requests > Not reconciled (D59): confirmed with every share confirmed, or reversed."""
+        if self.status == "reversed":
+            return True
+        return self.status == "confirmed" and all(s.status == "confirmed" for s in self.shares)
+
+
+def _status(awaiting: bool, held: Decimal, due: Decimal) -> ConfirmationStatus:
+    if awaiting:
+        return "awaiting_sync"
+    if held == 0:
+        return "not_in_campminder"
+    if held == due:
+        return "confirmed"
+    return "short" if held < due else "over"
+
+
+def _awaiting(state: RoundState | None, synced_at: datetime | None) -> bool:
+    """The tick was made after the last successful ledger sync ("awaiting tonight's sync", D59).
+    The ledger's own tick came from the ledger, so it never waits for it."""
+    if state is None or state.lock_source == "ledger":
+        return False
+    return synced_at is None or state.locked_at is None or state.locked_at > synced_at
+
+
+def _live_net(lines: Iterable[CampLine]) -> Decimal:
+    return sum((line.amount for line in lines if line.live()), ZERO)
+
+
+def _locked(priced: PricedRequest) -> Decimal:
+    """The locked total of the posted rounds still counted (a clawed-back round counts nowhere)."""
+    return sum(
+        (view.locked or ZERO for view in priced.rounds if view.status == "posted" and not view.clawed_back), ZERO
+    )
+
+
+def _share_lines(
+    locked: Decimal,
+    shares: Sequence[PayerShareRecord],
+    application_household_cm_id: int,
+    by_household: Mapping[int, Decimal],
+    awaiting: bool,
+) -> tuple[ShareConfirmation, ...]:
+    if len(shares) < 2:
+        return ()  # one payer: the request's own line is the share's
+    try:
+        due = split_award(locked, shares, application_household_cm_id)
+    except PayerShareError:
+        return ()  # shares not adding to 100% hold the request (§6.3): no split to check
+    return tuple(
+        ShareConfirmation(h, amount, by_household.get(h, ZERO), _status(awaiting, by_household.get(h, ZERO), amount))
+        for h, amount in sorted(due.items())
+    )
+
+
+def confirmation(
+    priced: PricedRequest,
+    rounds: Mapping[int, RoundState],
+    lines: Sequence[CampLine],
+    shares: Sequence[PayerShareRecord],
+    application_household_cm_id: int,
+    *,
+    synced_at: datetime | None,
+    family_unplaced: Decimal = ZERO,
+    reversed_on: date | None = None,
+) -> Confirmation | None:
+    """The request's confirmation state, or None while nothing on it is posted. `lines` are the
+    lines placed on this request (a closed request passes `SeasonLedger.closed_lines`), never
+    family-level money. The season gate (no confirmation before the first ticked season) is the
+    caller's."""
+    posted = [view for view in priced.rounds if view.status == "posted"]
+    if not posted:
+        return None
+    if reversed_on is not None:
+        return Confirmation("reversed", ZERO, ZERO, reversed_on, (), family_unplaced)
+    live = [line for line in lines if line.live()]
+    held = _live_net(live)
+    locked = _locked(priced)
+    awaiting = any(_awaiting(rounds.get(view.round), synced_at) for view in posted)
+    days = [camp_date(line.post_date) for line in live if line.post_date is not None]
+    by_household: dict[int, Decimal] = defaultdict(Decimal)
+    for line in live:
+        by_household[line.household_cm_id] += line.amount
+    return Confirmation(
+        status=_status(awaiting, held, locked),
+        locked=locked,
+        in_campminder=held,
+        on=max(days) if days else None,
+        shares=_share_lines(locked, shares, application_household_cm_id, by_household, awaiting),
+        family_unplaced=family_unplaced,
+    )
+
+
+def ledger_note(priced: PricedRequest, lines: Sequence[CampLine], family_unplaced: Decimal) -> CalcIssue | None:
+    """D81's amber Note, on a live request with a round not yet ticked, when CampMinder already holds
+    money for the family beyond what the request's ticks lock: placed on it, or at family level. A
+    Note never stops anything (§4.4); it is there so the registrar doesn't post the family twice.
+    The season gate (no Note before the first ticked season) is the caller's."""
+    if not priced.live or all(view.status == "posted" for view in priced.rounds):
+        return None
+    extra = max(ZERO, _live_net(lines) - _locked(priced)) + family_unplaced
+    if extra <= 0:
+        return None
+    return CalcIssue(
+        code=NOTE_NOT_TICKED,
+        severity="warn",
+        message=f"CampMinder shows {dollars(extra)} for this family; not yet ticked",
+        step="ledger",
+    )
