@@ -367,6 +367,14 @@
 /* ============================================
    COMPONENTS - Lodge-Inspired Elements
    ============================================ */
+/* Registered so the glow card's spotlight can fade in rather than snap:
+   an unregistered custom property is not animatable. */
+@property --glow-fill {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
 @layer components {
   /* Primary Button - Solid Forest */
   .btn-primary {
@@ -472,6 +480,46 @@
     box-shadow:
       0 2px 4px hsl(var(--shadow-color) / 0.08),
       0 12px 32px hsl(var(--shadow-color) / 0.12);
+  }
+
+  /* Glow card — the house hover effect (docs/reference/ui-uplift.md).
+     Pair with `.card-lodge` and put the cards in a `useGlowGroup` container,
+     which writes --glow-x/--glow-y onto every card as the pointer moves.
+     Two layers, both painted as backgrounds so they sit under the content:
+     a spotlight fill inside the hovered card, and a border that lights up
+     near the pointer — on the neighbours too, from their nearest edge.
+     Set `--glow` per card to its colour; it defaults to the primary green.
+     Off the group the position falls back far away, so the border reads as
+     the ordinary lodge border. */
+  .glow-card {
+    --glow: var(--color-primary);
+    --glow-size: 360px;
+    background:
+      radial-gradient(
+          var(--glow-size) circle at var(--glow-x, -9999px) var(--glow-y, -9999px),
+          color-mix(in oklab, var(--glow) calc(var(--glow-fill) * 1%), transparent),
+          transparent 65%
+        )
+        padding-box,
+      linear-gradient(var(--color-card), var(--color-card)) padding-box,
+      radial-gradient(
+          var(--glow-size) circle at var(--glow-x, -9999px) var(--glow-y, -9999px),
+          var(--glow),
+          var(--color-border) 70%
+        )
+        border-box;
+    transition-property: box-shadow, opacity, --glow-fill;
+  }
+
+  /* The border colour must stay clear so the border-box gradient shows —
+     including over `.card-lodge:hover`, which would otherwise paint it. */
+  .glow-card,
+  .glow-card:hover {
+    border-color: transparent;
+  }
+
+  .glow-card:hover {
+    --glow-fill: 18;
   }
 
   /* Card with subtle texture */

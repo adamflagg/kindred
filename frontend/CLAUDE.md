@@ -22,6 +22,7 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 - **Modular extraction** — large components (e.g. `SocialNetworkGraph.tsx`) decompose into utility modules
 - **Custom hooks** — extract data fetching once a query has **2+ consumers** (`useSocialGraphData`, `useBunkNames`, `useSessionHierarchy`, `useLodgingAreas`, `useLodgingUnits`). A query with a single consumer is fine inline — don't extract pre-emptively.
 - **Barrel exports** — directories use `index.ts` for clean imports
+- **Visual effects** — read `docs/reference/ui-uplift.md` first: its ground rules (no new dependency, nothing idles, pointer work bounded to a frame) and the house effects to reuse, starting with the glow card (`.glow-card` + `ui/useGlowGroup.ts`)
 
 ## Accessibility — deliberately minimal
 
