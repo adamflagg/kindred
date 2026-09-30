@@ -117,3 +117,42 @@ def test_a_key_can_merge_rows_under_one_record() -> None:
     ]
     merged = replay(rows, key=lambda r: ":".join(r.entity_id.split(":")[:2]))
     assert merged["2027:1"].state == {"status": {"x": "approved", "y": "draft"}}
+
+
+def test_a_clash_followed_by_a_same_instant_pair_settles_from_the_value_no_sibling_produced() -> None:
+    """The next instant holds a chain 102 -> 103 -> 104 written in one batch; the value the clash
+    left is the one `before` no sibling's `after` explains (102), whichever row sorts first."""
+    create = _row(0, "r1", None, {"session": 101}, 0)
+    vacate = _row(1, "r1", {"session": 101}, {"session": 0}, 1)
+    final = _row(2, "r1", {"session": 101}, {"session": 102}, 1)
+    step_a = _row(3, "r1", {"session": 102}, {"session": 103}, 3)
+    step_b = _row(4, "r1", {"session": 103}, {"session": 104}, 3)
+    for pair in ([vacate, final], [final, vacate]):
+        for later in ([step_a, step_b], [step_b, step_a]):
+            got = replay([create, *pair, *later], as_of=T0 + timedelta(hours=2))["r1"]
+            assert (got.state, got.complete) == ({"session": 102}, True)
+    # the ids decide the sort order, so also swap them
+    swapped_a = _row(4, "r1", {"session": 102}, {"session": 103}, 3)
+    swapped_b = _row(3, "r1", {"session": 103}, {"session": 104}, 3)
+    got = replay([create, vacate, final, swapped_a, swapped_b], as_of=T0 + timedelta(hours=2))["r1"]
+    assert (got.state, got.complete) == ({"session": 102}, True)
+
+
+def test_a_clash_followed_by_a_pair_that_cannot_be_ordered_is_incomplete() -> None:
+    create = _row(0, "r1", None, {"session": 101}, 0)
+    vacate = _row(1, "r1", {"session": 101}, {"session": 0}, 1)
+    final = _row(2, "r1", {"session": 101}, {"session": 102}, 1)
+    there = _row(3, "r1", {"session": 102}, {"session": 103}, 3)
+    back = _row(4, "r1", {"session": 103}, {"session": 102}, 3)
+    assert replay([create, vacate, final, there, back], as_of=T0 + timedelta(hours=2))["r1"].complete is False
+
+
+def test_a_dict_to_scalar_change_clashing_with_a_nested_edit_settles_in_either_order() -> None:
+    create = _row(0, "r1", None, {"a": {"x": 1}}, 0)
+    whole = _row(1, "r1", {"a": {"x": 1}}, {"a": 5}, 1)
+    nested = _row(2, "r1", {"a": {"x": 1}}, {"a": {"x": 2}}, 1)
+    swapped_whole = _row(2, "r1", {"a": {"x": 1}}, {"a": 5}, 1)
+    swapped_nested = _row(1, "r1", {"a": {"x": 1}}, {"a": {"x": 2}}, 1)
+    for rows in ([create, whole, nested], [create, swapped_nested, swapped_whole]):
+        got = replay(rows, current={"r1": {"a": 5}})["r1"]
+        assert (got.state, got.complete) == ({"a": 5}, True)

@@ -105,25 +105,46 @@ def _put(state: dict[str, Any], path: Path, value: Any) -> None:
 
 
 def _clash(group: Sequence[LogRow]) -> frozenset[Path]:
-    """The fields two same-instant updates both changed."""
+    """The fields two same-instant updates both changed. Both sides of each clashing pair count,
+    so the result never depends on row order; a path under another clashing path is covered by it."""
     clashing: set[Path] = set()
     updates = [row for row in group if row.kind == "update"]
     for i, row in enumerate(updates):
         for other in updates[i + 1 :]:
-            clashing |= {p for p in row.paths() for q in other.paths() if _related(p, q)}
-    return frozenset(clashing)
+            for p in row.paths():
+                for q in other.paths():
+                    if _related(p, q):
+                        clashing |= {p, q}
+    return frozenset(p for p in clashing if not any(q != p and q == p[: len(q)] for q in clashing))
 
 
 def _from_later(path: Path, later: Sequence[LogRow]) -> Any:
+    """The value at `path` before the first later instant that touched it, as that instant logged it.
+    Rows sharing that instant have no known order: the value is the `before` no sibling's `after`
+    explains; with no such single value the path is ambiguous."""
+    touching: list[tuple[Any, Any]] = []  # (before, after) of each row at the first touching instant
+    instant: datetime | None = None
     for row in later:
+        if instant is not None and row.created != instant:
+            break
         if row.kind == "create":
             return _AMBIGUOUS
         for change in field_changes(row.before, row.after):
             if change.path == path:
-                return _MISSING if change.kind == "added" else copy.deepcopy(change.before)
-            if _related(change.path, path):
+                instant = row.created
+                before = _MISSING if change.kind == "added" else copy.deepcopy(change.before)
+                after = _MISSING if change.kind == "removed" else change.after
+                touching.append((before, after))
+            elif _related(change.path, path):
                 return _AMBIGUOUS
-    return _UNSETTLED
+    if not touching:
+        return _UNSETTLED
+    afters = [after for _, after in touching]
+    candidates: list[Any] = []
+    for before, _ in touching:
+        if before not in afters and before not in candidates:
+            candidates.append(before)
+    return candidates[0] if len(candidates) == 1 else _AMBIGUOUS
 
 
 def _settle(paths: frozenset[Path], later: Sequence[LogRow], now: Mapping[str, Any] | None) -> dict[Path, Any] | None:

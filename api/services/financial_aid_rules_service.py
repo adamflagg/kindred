@@ -321,6 +321,7 @@ class FinancialAidRulesService:
         later edit, re-approval or new version changes nothing earlier. A version whose history
         can't be replayed raises rather than letting an older version answer in its place."""
         # `current` settles two same-instant rows that changed the same field with nothing after them.
+        # list_versions is read BEFORE fetch_log, so `current` never runs ahead of the log.
         current = {
             _entity_id(year, int(row.version)): {
                 "document": _json_object(row, "document"),
@@ -328,21 +329,25 @@ class FinancialAidRulesService:
             }
             for row in await self._store.list_versions(year)
         }
-        replayed = replay(await self._store.fetch_log(year), as_of=at, key=_version_key, current=current)
-        for name in sorted(replayed, key=lambda k: int(k.split(":")[1]), reverse=True):
-            version = replayed[name]
-            if version.state is None:
-                continue
+        log = await self._store.fetch_log(year)
+        made = {_version_key(row) for row in log if row.before is None and row.entity_id == _version_key(row)}
+        replayed = replay(log, as_of=at, key=_version_key, current=current)
+        for name in sorted({*replayed, *current}, key=lambda k: int(k.split(":")[1]), reverse=True):
+            version = replayed.get(name)
+            if version is None:
+                # No row by `at`: legitimately made later, unless its create row is missing altogether.
+                if name in made:
+                    continue
+                raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history has no create to replay from")
             if not version.complete:
                 raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
             state = version.state
+            if state is None:
+                continue  # deleted by `at`
             try:
                 status = status_from_json(state.get("section_status"))
-            except SectionStatusMissingError as exc:
-                raise RulesHistoryIncompleteError(
-                    f"aid_rules {name}: its replayed section status is incomplete"
-                ) from exc
-            if all(status[section].state in ("approved", "locked") for section in sections):
+                if not all(status[section].state in ("approved", "locked") for section in sections):
+                    continue
                 return RulesVersion(
                     record_id="",  # rebuilt from the log; read-only
                     year=int(state["year"]),
@@ -352,6 +357,9 @@ class FinancialAidRulesService:
                     parent_year=int(state.get("parent_year") or 0) or None,
                     parent_version=int(state.get("parent_version") or 0) or None,
                 )
+            except (SectionStatusMissingError, KeyError, TypeError, ValueError) as exc:
+                # ValueError covers pydantic's ValidationError
+                raise RulesHistoryIncompleteError(f"aid_rules {name}: its replayed state is malformed") from exc
         return None
 
     async def validate_document(self, document: AidRules) -> ValidationReport:

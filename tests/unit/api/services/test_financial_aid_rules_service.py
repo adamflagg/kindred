@@ -855,3 +855,64 @@ async def test_a_version_whose_history_cannot_be_replayed_is_refused_not_skipped
     store.log_rows = [r for r in store.log_rows if r.before is not None]  # lose the create
     with pytest.raises(RulesHistoryIncompleteError):
         await service.approved_as_of(2031, _PRICING, FEB + DAY)
+
+
+APR = datetime(2031, 4, 15, 18, 0, tzinfo=UTC)
+_PROGRAMS: tuple[SectionName, ...] = ("programs",)
+
+
+@pytest.mark.asyncio
+async def test_a_newer_version_with_no_log_at_all_is_refused_not_skipped() -> None:
+    service, store, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.new_version(2031, 1, actor=FINANCE)
+    store.log_rows = [r for r in store.log_rows if not r.entity_id.startswith("2031:2")]
+    with pytest.raises(RulesHistoryIncompleteError):
+        await service.approved_as_of(2031, _PRICING, MAR + DAY)
+
+
+@pytest.mark.asyncio
+async def test_a_newer_version_whose_create_row_is_lost_is_refused_not_skipped() -> None:
+    service, store, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.new_version(2031, 1, actor=FINANCE)
+    clock.now = APR
+    await service.save(2031, 2, with_lever(fictional_rules(), "programs.summer.label", "Renamed"), actor=FINANCE)
+    store.log_rows = [r for r in store.log_rows if not (r.entity_id == "2031:2" and r.before is None)]
+    for at in (MAR + DAY, APR + DAY):
+        with pytest.raises(RulesHistoryIncompleteError):
+            await service.approved_as_of(2031, _PRICING, at)
+
+
+@pytest.mark.asyncio
+async def test_a_locked_section_counts_as_approved_as_of_the_date() -> None:
+    service, _, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.lock_section(2031, 1, "programs", actor=FINANCE)
+    found = await service.approved_as_of(2031, _PRICING, MAR + DAY)
+    assert found is not None
+    assert found.section_status["programs"].state == "locked"
+    earlier = await service.approved_as_of(2031, _PRICING, FEB + DAY)
+    assert earlier is not None
+    assert earlier.section_status["programs"].state == "approved"
+
+
+@pytest.mark.asyncio
+async def test_a_same_instant_clash_is_settled_from_a_later_row_not_from_the_record_now() -> None:
+    """Approval then edit-to-draft then re-approval, the first two in one instant (a save that sends
+    the section back to draft, then an approval): the later row's `before` says what the clash left."""
+    clock = _Clock(JAN)
+    store = FakeStore(clock=clock)
+    service = FinancialAidRulesService(store, clock=clock)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    day1, day5 = JAN + DAY, JAN + 5 * DAY
+    clock.now = day1
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved.")
+    await service.save(2031, 1, with_lever(fictional_rules(), "programs.summer.label", "Renamed"), actor=FINANCE)
+    clock.now = day5
+    await service.approve_section(2031, 1, "programs", actor=FINANCE, note="Approved again.")
+    then = await service.approved_as_of(2031, _PROGRAMS, day1 + timedelta(hours=1))
+    assert then is None  # the save sent programs back to draft within day 1
+    now = await service.approved_as_of(2031, _PROGRAMS, day5 + DAY)
+    assert now is not None
+    assert now.section_status["programs"].approved_at == day5
