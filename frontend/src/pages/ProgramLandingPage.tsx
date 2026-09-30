@@ -1,15 +1,151 @@
+import type { LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router'
-import { useProgram } from '../contexts/ProgramContext'
+import { type Program, useProgram } from '../contexts/ProgramContext'
 import { getProgramHomeUrl } from '../utils/programUrls'
 import { BrandedLogo } from '../components/BrandedLogo'
+import { useGlowGroup } from '../components/ui/useGlowGroup'
 import { getCampName } from '../config/branding'
 import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3 } from 'lucide-react'
+
+interface ProgramCardSpec {
+  program: Program
+  title: string
+  description: string
+  features: string[]
+  cta: string
+  Icon: LucideIcon
+  /** Per-program colour classes. `glow` sets the glow-card's `--glow`. */
+  tone: {
+    glow: string
+    iconBackdrop: string
+    iconTile: string
+    text: string
+    headingHover: string
+    dot: string
+  }
+}
+
+// Camperships joins as a fourth entry when /aid launches. At four, move the
+// grid to lg:grid-cols-4 and widen the max-w-4xl wrapper — the layout was
+// chosen for four across (docs/reference/ui-uplift.md, "Landing page").
+const PROGRAM_CARDS: ProgramCardSpec[] = [
+  {
+    program: 'summer',
+    title: 'Summer Bunking',
+    description: 'Youth cabin assignments',
+    features: ['Session management', 'Bunk request matching', 'Cabin optimization'],
+    cta: 'Enter Summer Bunking',
+    Icon: Tent,
+    tone: {
+      glow: '', // the glow-card default, primary green
+      iconBackdrop: 'bg-primary/10',
+      iconTile: 'bg-primary/20',
+      text: 'text-primary',
+      headingHover: 'group-hover:text-primary',
+      dot: 'bg-primary',
+    },
+  },
+  {
+    program: 'weekend',
+    title: 'Weekend Housing',
+    description: 'Family and weekend program housing',
+    features: ['Family groupings', 'Relationship mapping', 'Quick assignments'],
+    cta: 'Enter Weekend Housing',
+    Icon: Users,
+    tone: {
+      glow: '[--glow:var(--color-amber-600)] dark:[--glow:var(--color-accent)]',
+      iconBackdrop: 'bg-accent/10',
+      iconTile: 'bg-accent/20',
+      text: 'dark:text-accent text-amber-600',
+      headingHover: 'dark:group-hover:text-accent group-hover:text-amber-600',
+      dot: 'bg-accent',
+    },
+  },
+  {
+    program: 'analytics',
+    title: 'Camp Analytics',
+    description: 'Registration and retention analysis',
+    features: ['Retention trends', 'Year-over-year comparison', 'Enrollment breakdowns'],
+    cta: 'View Analytics',
+    Icon: BarChart3,
+    tone: {
+      glow: '[--glow:var(--color-sky-500)]',
+      iconBackdrop: 'bg-sky-500/10',
+      iconTile: 'bg-sky-500/20',
+      text: 'text-sky-600 dark:text-sky-400',
+      headingHover: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
+      dot: 'bg-sky-500',
+    },
+  },
+]
+
+function ProgramCard({
+  card,
+  stagger,
+  onSelect,
+}: {
+  card: ProgramCardSpec
+  stagger: number
+  onSelect: () => void
+}) {
+  const { title, description, features, cta, Icon, tone } = card
+  return (
+    <button
+      onClick={onSelect}
+      className={`group animate-slide-up stagger-${stagger} relative`}
+      style={{ animationFillMode: 'both' }}
+    >
+      <div
+        data-glow-card=""
+        className={`card-lodge glow-card h-full p-5 text-left lg:p-6 ${tone.glow}`}
+      >
+        {/* Icon */}
+        <div className="relative mb-5 h-14 w-14">
+          <div
+            className={`absolute inset-0 rotate-6 rounded-xl transition-transform duration-300 group-hover:rotate-12 ${tone.iconBackdrop}`}
+          />
+          <div
+            className={`absolute inset-0 flex items-center justify-center rounded-xl ${tone.iconTile}`}
+          >
+            <Icon className={`h-7 w-7 ${tone.text}`} />
+          </div>
+        </div>
+
+        {/* Content */}
+        <h2
+          className={`font-display text-foreground mb-2 text-xl font-bold transition-colors lg:text-2xl ${tone.headingHover}`}
+        >
+          {title}
+        </h2>
+
+        <p className="text-muted-foreground mb-5 text-sm leading-relaxed">{description}</p>
+
+        {/* Features */}
+        <ul className="mb-6 space-y-2">
+          {features.map((feature) => (
+            <li key={feature} className="text-muted-foreground flex items-center gap-2.5 text-sm">
+              <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${tone.dot}`} />
+              {feature}
+            </li>
+          ))}
+        </ul>
+
+        {/* CTA */}
+        <div className={`flex items-center gap-2 text-sm font-semibold ${tone.text}`}>
+          <span>{cta}</span>
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+        </div>
+      </div>
+    </button>
+  )
+}
 
 export default function ProgramLandingPage() {
   const navigate = useNavigate()
   const { setProgram } = useProgram()
+  const glow = useGlowGroup<HTMLDivElement>()
 
-  const handleProgramSelect = (program: 'summer' | 'weekend' | 'analytics') => {
+  const handleProgramSelect = (program: Program) => {
     setProgram(program)
     void navigate(getProgramHomeUrl(program))
   }
@@ -70,163 +206,20 @@ export default function ProgramLandingPage() {
             </p>
           </div>
 
-          {/* Program Selection Cards */}
-          <div className="mx-auto grid max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
-            {/* Summer Bunking Card */}
-            <button
-              onClick={() => handleProgramSelect('summer')}
-              className="group animate-slide-up stagger-1 relative"
-              style={{ animationFillMode: 'both' }}
-            >
-              <div className="from-primary/20 via-primary/5 absolute -inset-px rounded-2xl bg-gradient-to-br to-transparent opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
-
-              <div className="card-lodge group-hover:border-primary/40 relative h-full p-5 text-left transition-all duration-300 group-hover:-translate-y-1 lg:p-6">
-                {/* Decorative corner */}
-                <div className="from-primary/5 absolute top-0 right-0 h-24 w-24 rounded-2xl bg-gradient-to-bl to-transparent" />
-
-                {/* Icon */}
-                <div className="relative mb-5 h-14 w-14">
-                  <div className="bg-primary/10 absolute inset-0 rotate-6 rounded-xl transition-transform duration-300 group-hover:rotate-12" />
-                  <div className="bg-primary/20 absolute inset-0 flex items-center justify-center rounded-xl">
-                    <Tent className="text-primary h-7 w-7" />
-                  </div>
-                </div>
-
-                {/* Content */}
-                <h2 className="font-display text-foreground group-hover:text-primary mb-2 text-xl font-bold transition-colors lg:text-2xl">
-                  Summer Bunking
-                </h2>
-
-                <p className="text-muted-foreground mb-5 text-sm leading-relaxed">
-                  Youth cabin assignments
-                </p>
-
-                {/* Features */}
-                <ul className="mb-6 space-y-2">
-                  {['Session management', 'Bunk request matching', 'Cabin optimization'].map(
-                    (feature, i) => (
-                      <li
-                        key={i}
-                        className="text-muted-foreground flex items-center gap-2.5 text-sm"
-                      >
-                        <span className="bg-primary h-1.5 w-1.5 flex-shrink-0 rounded-full" />
-                        {feature}
-                      </li>
-                    )
-                  )}
-                </ul>
-
-                {/* CTA */}
-                <div className="text-primary flex items-center gap-2 text-sm font-semibold">
-                  <span>Enter Summer Bunking</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </div>
-            </button>
-
-            {/* Weekend Housing Card */}
-            <button
-              onClick={() => handleProgramSelect('weekend')}
-              className="group animate-slide-up stagger-2 relative"
-              style={{ animationFillMode: 'both' }}
-            >
-              <div className="from-accent/20 via-accent/5 absolute -inset-px rounded-2xl bg-gradient-to-br to-transparent opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
-
-              <div className="card-lodge group-hover:border-accent/40 relative h-full p-5 text-left transition-all duration-300 group-hover:-translate-y-1 lg:p-6">
-                {/* Decorative corner */}
-                <div className="from-accent/5 absolute top-0 right-0 h-24 w-24 rounded-2xl bg-gradient-to-bl to-transparent" />
-
-                {/* Icon */}
-                <div className="relative mb-5 h-14 w-14">
-                  <div className="bg-accent/10 absolute inset-0 rotate-6 rounded-xl transition-transform duration-300 group-hover:rotate-12" />
-                  <div className="bg-accent/20 absolute inset-0 flex items-center justify-center rounded-xl">
-                    <Users className="dark:text-accent h-7 w-7 text-amber-600" />
-                  </div>
-                </div>
-
-                {/* Content */}
-                <h2 className="font-display text-foreground dark:group-hover:text-accent mb-2 text-xl font-bold transition-colors group-hover:text-amber-600 lg:text-2xl">
-                  Weekend Housing
-                </h2>
-
-                <p className="text-muted-foreground mb-5 text-sm leading-relaxed">
-                  Family and weekend program housing
-                </p>
-
-                {/* Features */}
-                <ul className="mb-6 space-y-2">
-                  {['Family groupings', 'Relationship mapping', 'Quick assignments'].map(
-                    (feature, i) => (
-                      <li
-                        key={i}
-                        className="text-muted-foreground flex items-center gap-2.5 text-sm"
-                      >
-                        <span className="bg-accent h-1.5 w-1.5 flex-shrink-0 rounded-full" />
-                        {feature}
-                      </li>
-                    )
-                  )}
-                </ul>
-
-                {/* CTA */}
-                <div className="dark:text-accent flex items-center gap-2 text-sm font-semibold text-amber-600">
-                  <span>Enter Weekend Housing</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </div>
-            </button>
-
-            {/* Camp Analytics Card */}
-            <button
-              onClick={() => handleProgramSelect('analytics')}
-              className="group animate-slide-up stagger-3 relative"
-              style={{ animationFillMode: 'both' }}
-            >
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-br from-sky-500/20 via-sky-500/5 to-transparent opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
-
-              <div className="card-lodge relative h-full p-5 text-left transition-all duration-300 group-hover:-translate-y-1 group-hover:border-sky-500/40 lg:p-6">
-                {/* Decorative corner */}
-                <div className="absolute top-0 right-0 h-24 w-24 rounded-2xl bg-gradient-to-bl from-sky-500/5 to-transparent" />
-
-                {/* Icon */}
-                <div className="relative mb-5 h-14 w-14">
-                  <div className="absolute inset-0 rotate-6 rounded-xl bg-sky-500/10 transition-transform duration-300 group-hover:rotate-12" />
-                  <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-sky-500/20">
-                    <BarChart3 className="h-7 w-7 text-sky-600 dark:text-sky-400" />
-                  </div>
-                </div>
-
-                {/* Content */}
-                <h2 className="font-display text-foreground mb-2 text-xl font-bold transition-colors group-hover:text-sky-600 lg:text-2xl dark:group-hover:text-sky-400">
-                  Camp Analytics
-                </h2>
-
-                <p className="text-muted-foreground mb-5 text-sm leading-relaxed">
-                  Registration and retention analysis
-                </p>
-
-                {/* Features */}
-                <ul className="mb-6 space-y-2">
-                  {['Retention trends', 'Year-over-year comparison', 'Enrollment breakdowns'].map(
-                    (feature, i) => (
-                      <li
-                        key={i}
-                        className="text-muted-foreground flex items-center gap-2.5 text-sm"
-                      >
-                        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-sky-500" />
-                        {feature}
-                      </li>
-                    )
-                  )}
-                </ul>
-
-                {/* CTA */}
-                <div className="flex items-center gap-2 text-sm font-semibold text-sky-600 dark:text-sky-400">
-                  <span>View Analytics</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </div>
-            </button>
+          {/* Program Selection Cards — one pointer-tracked group, so a card's
+              neighbours light their nearest edge too (useGlowGroup). */}
+          <div
+            {...glow}
+            className="mx-auto grid max-w-7xl gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6"
+          >
+            {PROGRAM_CARDS.map((card, i) => (
+              <ProgramCard
+                key={card.program}
+                card={card}
+                stagger={i + 1}
+                onSelect={() => handleProgramSelect(card.program)}
+              />
+            ))}
           </div>
 
           {/* Footer */}
