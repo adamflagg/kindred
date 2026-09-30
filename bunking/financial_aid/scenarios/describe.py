@@ -8,22 +8,34 @@ rules-section order, joined by " · ":
   "minimum $150"         the minimum award
   "dollar-for-dollar off"  the grant-offset method, by its sizing-lever name (D137)
   "income.floor 0 → 500"   any other single change
-  "income: 2 changes"    several other changes in one section
+  "income: 2 changes"    several other changes in one section (bands moved unevenly count bound by bound)
+
+A label longer than the trail's change column (CHANGE_MAX_CHARS) is cut, ending in "…".
 
 Codes: starting points A..Z, AA, AB...; variants are their starting point's code and a count (A1, B2).
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
+from typing import Final
 
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.rules.lifecycle import changed_sections
 from bunking.financial_aid.rules.schema import AidRules
 
+# aid_scenario_trail.change is a text field capped at 2,000 characters (1500000218_aid_scenarios.js).
+CHANGE_MAX_CHARS: Final = 2000
+
 
 def _number(value: Decimal) -> str:
     return format(value.normalize(), ",f")
+
+
+def _money(value: Decimal) -> str:
+    """Dollars as staff write them: $150, $150.50, $5,000."""
+    return f"{value:,.0f}" if value == value.to_integral_value() else f"{value:,.2f}"
 
 
 def _text(value: object) -> str:
@@ -75,6 +87,21 @@ def _band_widening(old: AidRules, new: AidRules) -> Decimal | None:
     return delta
 
 
+def _band_leaves(old: AidRules, new: AidRules) -> list[FieldChange]:
+    """The bands' changes bound by bound ("bands.2.upper"), bands counted from 1: the diff compares a list whole, which
+    would read as one change printing every band."""
+    before, after = old.tiers.bands, new.tiers.bands
+    if len(before) != len(after):
+        return [FieldChange(("bands",), "changed", f"{len(before)} bands", f"{len(after)} bands")]
+    leaves: list[FieldChange] = []
+    for index, (was, now) in enumerate(zip(before, after, strict=True), start=1):
+        leaves.extend(
+            replace(change, path=("bands", str(index), *change.path))
+            for change in field_changes(was.model_dump(), now.model_dump())
+        )
+    return leaves
+
+
 def _one(section: str, change: FieldChange) -> str:
     path = ".".join(str(part) for part in (section, *change.path))
     return f"{path} {_text(change.before)} → {_text(change.after)}"
@@ -89,15 +116,18 @@ def change_phrases(old: AidRules, new: AidRules) -> list[str]:
         if shift is not None:
             phrases.append(f"Round 1 % {'+' if shift > 0 else '−'}{_number(abs(shift))} pts")
             continue
-        widening = _band_widening(old, new) if section == "tiers" else None
-        if widening is not None:
-            phrases.append(f"bands ${_number(abs(widening))} {'wider' if widening > 0 else 'narrower'}")
+        if section == "tiers" and old.tiers.bands != new.tiers.bands:
+            widening = _band_widening(old, new)
             leaves = [change for change in leaves if change.path[0] != "bands"]
+            if widening is not None:
+                phrases.append(f"bands ${_money(abs(widening))} {'wider' if widening > 0 else 'narrower'}")
+            else:
+                leaves = [*_band_leaves(old, new), *leaves]
         if section == "grants" and old.grants.offset_mode != new.grants.offset_mode:
             phrases.append(f"dollar-for-dollar {'on' if new.grants.offset_mode == 'dollar' else 'off'}")
             leaves = [change for change in leaves if change.path != ("offset_mode",)]
         if section == "awards" and old.awards.minimum != new.awards.minimum:
-            phrases.append(f"minimum ${_number(new.awards.minimum)}")
+            phrases.append(f"minimum ${_money(new.awards.minimum)}")
             leaves = [change for change in leaves if change.path != ("minimum",)]
         if len(leaves) == 1:
             phrases.append(_one(section, leaves[0]))
@@ -107,7 +137,9 @@ def change_phrases(old: AidRules, new: AidRules) -> list[str]:
 
 
 def describe(old: AidRules, new: AidRules) -> str:
-    return " · ".join(change_phrases(old, new)) or "no changes"
+    """The label, cut to the trail's change column so a long multi-section change never fails the write."""
+    text = " · ".join(change_phrases(old, new)) or "no changes"
+    return text if len(text) <= CHANGE_MAX_CHARS else text[: CHANGE_MAX_CHARS - 1] + "…"
 
 
 def starting_point_code(index: int) -> str:

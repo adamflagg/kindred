@@ -1,6 +1,12 @@
 """Campership scenarios (sub-project 9b): sizing moves, labels and codes, results, and fit to budget. Pure: no I/O."""
 
-from bunking.financial_aid.scenarios.describe import change_phrases, describe, starting_point_code, variant_code
+from bunking.financial_aid.scenarios.describe import (
+    CHANGE_MAX_CHARS,
+    change_phrases,
+    describe,
+    starting_point_code,
+    variant_code,
+)
 from bunking.financial_aid.scenarios.fit import (
     FIT_HIGH,
     FIT_LOW,
@@ -36,6 +42,7 @@ from bunking.financial_aid.scenarios.sizing import (
 )
 
 __all__ = [
+    "CHANGE_MAX_CHARS",
     "FIT_HIGH",
     "FIT_LOW",
     "FIT_STEP",

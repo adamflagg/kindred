@@ -10,6 +10,7 @@ import pytest
 
 from bunking.financial_aid.rules.schema import AidRules
 from bunking.financial_aid.scenarios import (
+    CHANGE_MAX_CHARS,
     SIZING_LEVERS,
     SizingError,
     apply_sizing,
@@ -24,7 +25,7 @@ from bunking.financial_aid.scenarios import (
     with_dollar_for_dollar,
     with_minimum,
 )
-from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules, with_lever, with_levers
 
 RULES = fictional_rules()
 
@@ -142,3 +143,58 @@ def test_no_change_says_so() -> None:
 def test_starting_points_are_letters_and_variants_count_under_their_head() -> None:
     assert [starting_point_code(i) for i in (0, 1, 25, 26, 27)] == ["A", "B", "Z", "AA", "AB"]
     assert (variant_code("A", 0), variant_code("B", 1)) == ("A1", "B2")
+
+
+def test_the_carry_from_zz_to_aaa() -> None:
+    assert (starting_point_code(701), starting_point_code(702)) == ("ZZ", "AAA")
+
+
+# --- labels: the parked review minors and final review 9 ----------------------------------------------
+
+
+def test_money_with_cents_reads_as_dollars_and_cents() -> None:
+    assert describe(RULES, with_minimum(RULES, Decimal("150.5"))) == "minimum $150.50"
+    assert describe(RULES, with_minimum(RULES, Decimal("150.00"))) == "minimum $150"
+
+
+def test_bands_moved_unevenly_are_counted_not_named_a_widening() -> None:
+    bands = list(RULES.tiers.bands)
+    bands[1] = bands[1].model_copy(update={"upper": bands[1].upper + 1000})  # type: ignore[operator]
+    bands[2] = bands[2].model_copy(update={"lower": bands[2].lower + 1000})
+    uneven = RULES.model_copy(update={"tiers": RULES.tiers.model_copy(update={"bands": bands})})
+    assert describe(RULES, uneven) == "tiers: 2 changes"
+
+
+def test_a_named_move_and_another_change_in_the_same_section_each_read() -> None:
+    awards = with_lever(with_minimum(RULES, Decimal(150)), "awards.ask_cap", not RULES.awards.ask_cap)
+    ask_cap = f"awards.ask_cap {'yes' if RULES.awards.ask_cap else 'no'} → {'no' if RULES.awards.ask_cap else 'yes'}"
+    assert change_phrases(RULES, awards) == ["minimum $150", ask_cap]
+    tiers = with_lever(widen_bands(RULES, Decimal(1000)), "tiers.floor_tier", 2)
+    assert change_phrases(RULES, tiers) == ["bands $1,000 wider", "tiers.floor_tier 1 → 2"]
+    grants = with_levers(RULES, {"grants.offset_mode": "reduce_cost_basis", "grants.late_grant_policy": "recalculate"})
+    assert change_phrases(RULES, grants) == [
+        "dollar-for-dollar off",
+        f"grants.late_grant_policy {RULES.grants.late_grant_policy} → recalculate",
+    ]
+
+
+def test_narrowing_that_empties_a_band_says_narrower() -> None:
+    with pytest.raises(SizingError, match=r"^Bands \$50,000 narrower would leave band 1 empty or below \$0$"):
+        widen_bands(RULES, Decimal(-50000))
+
+
+def test_a_change_too_long_for_the_trail_column_is_cut_with_an_ellipsis() -> None:
+    long = with_lever(RULES, "programs.summer.label", "a very long label " * 150)
+    text = describe(RULES, long)
+    assert (len(text), text[-1]) == (CHANGE_MAX_CHARS, "…")
+    assert text.startswith("programs.summer.label ")
+    assert describe(RULES, with_minimum(RULES, Decimal(150))) == "minimum $150"  # a short one is untouched
+
+
+def test_one_band_bound_moved_names_that_bound_and_a_new_band_counts_them() -> None:
+    bands = list(RULES.tiers.bands)
+    bands[5] = bands[5].model_copy(update={"lower": bands[5].lower + 1000})
+    one = RULES.model_copy(update={"tiers": RULES.tiers.model_copy(update={"bands": bands})})
+    assert describe(RULES, one) == "tiers.bands.6.lower 200,001 → 201,001"
+    fewer = RULES.model_copy(update={"tiers": RULES.tiers.model_copy(update={"bands": list(RULES.tiers.bands[:5])})})
+    assert describe(RULES, fewer) == "tiers.bands 6 bands → 5 bands"

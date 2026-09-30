@@ -81,7 +81,8 @@ def widen_bands(rules: AidRules, delta: Decimal) -> AidRules:
         lower = band.lower + index * delta
         upper = band.upper + (index + 1) * delta if band.upper is not None else None
         if lower < 0 or (upper is not None and upper < lower):
-            raise SizingError(f"Bands ${-delta:,} narrower would leave band {index + 1} empty or below $0")
+            wording = "narrower" if delta < 0 else "wider"
+            raise SizingError(f"Bands ${abs(delta):,} {wording} would leave band {index + 1} empty or below $0")
         bands.append(band.model_copy(update={"lower": lower, "upper": upper}))
     return rules.model_copy(update={"tiers": rules.tiers.model_copy(update={"bands": bands})})
 
