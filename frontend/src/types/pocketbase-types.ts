@@ -20,6 +20,7 @@ export const Collections = {
   AidFlagDispositions: 'aid_flag_dispositions',
   AidGrantors: 'aid_grantors',
   AidGrants: 'aid_grants',
+  AidHoldEvents: 'aid_hold_events',
   AidHouseholdLinks: 'aid_household_links',
   AidPayerShares: 'aid_payer_shares',
   AidPostings: 'aid_postings',
@@ -416,6 +417,26 @@ export type AidGrantsRecord = {
   status: AidGrantsStatusOptions
   updated: IsoAutoDateString
   withdrawn_at?: IsoDateString
+  year: number
+}
+
+export const AidHoldEventsEventOptions = {
+  release: 'release',
+  unrelease: 'unrelease',
+  place: 'place',
+  lift: 'lift',
+} as const
+export type AidHoldEventsEventOptions =
+  (typeof AidHoldEventsEventOptions)[keyof typeof AidHoldEventsEventOptions]
+export type AidHoldEventsRecord<Tfact = unknown> = {
+  actor: string
+  code: string
+  created: IsoAutoDateString
+  event: AidHoldEventsEventOptions
+  fact?: null | Tfact
+  id: string
+  note: string
+  request: RecordIdString
   year: number
 }
 
@@ -2474,6 +2495,10 @@ export type AidGrantorsResponse<Taliases = unknown, Texpand = unknown> = Require
   BaseSystemFields<Texpand>
 export type AidGrantsResponse<Texpand = unknown> = Required<AidGrantsRecord> &
   BaseSystemFields<Texpand>
+export type AidHoldEventsResponse<Tfact = unknown, Texpand = unknown> = Required<
+  AidHoldEventsRecord<Tfact>
+> &
+  BaseSystemFields<Texpand>
 export type AidHouseholdLinksResponse<Texpand = unknown> = Required<AidHouseholdLinksRecord> &
   BaseSystemFields<Texpand>
 export type AidPayerSharesResponse<Texpand = unknown> = Required<AidPayerSharesRecord> &
@@ -2731,6 +2756,7 @@ export type CollectionRecords = {
   aid_flag_dispositions: AidFlagDispositionsRecord
   aid_grantors: AidGrantorsRecord
   aid_grants: AidGrantsRecord
+  aid_hold_events: AidHoldEventsRecord
   aid_household_links: AidHouseholdLinksRecord
   aid_payer_shares: AidPayerSharesRecord
   aid_postings: AidPostingsRecord
@@ -2830,6 +2856,7 @@ export type CollectionResponses = {
   aid_flag_dispositions: AidFlagDispositionsResponse
   aid_grantors: AidGrantorsResponse
   aid_grants: AidGrantsResponse
+  aid_hold_events: AidHoldEventsResponse
   aid_household_links: AidHouseholdLinksResponse
   aid_payer_shares: AidPayerSharesResponse
   aid_postings: AidPostingsResponse
