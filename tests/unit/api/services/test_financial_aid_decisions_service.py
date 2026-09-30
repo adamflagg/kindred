@@ -367,15 +367,15 @@ async def test_a_round_3_amount_needs_the_familys_ask_first() -> None:
     seed_request(store, EMMA)
     _posted(store, EMMA, 1, "1500")
     with pytest.raises(DecisionRefusedError, match="Round 3 ask"):
-        await _service(store).key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+        await _service(store).key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=False)
 
 
 @pytest.mark.asyncio
 async def test_a_round_3_amount_above_the_registrars_limit_waits_for_finance() -> None:
     store = FakeDecisionsStore()
-    seed_request(store, EMMA, session=1000102)  # costs enough that 1,500 + 300 + 500 stays under it
+    seed_request(store, EMMA, session=1000102)  # costs 4,000: 1,500 + 400 + 500 stays under it
     _round3_ready(store)
-    rules = FakeRules(approved(with_lever(intake_rules(), "round3.registrar_limit", "300")))
+    rules = FakeRules(approved(with_lever(intake_rules(), "round3.registrar_limit", "400")))
     service = _service(store, rules)
     out = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=False)
     assert out.pending_approval
@@ -383,10 +383,10 @@ async def test_a_round_3_amount_above_the_registrars_limit_waits_for_finance() -
     assert (row.rounds[2].status, row.rounds[2].pending_approval) == ("pending_approval", 500.0)
     camp = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
     assert next(c for c in camp.rounds if c.round == 3).pending_approval == 500.0
-    within = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+    within = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(400)), ACTOR, can_approve=False)
     assert not within.pending_approval
     (row,) = (await service.grid(YEAR)).rows
-    assert (row.rounds[2].status, row.rounds[2].decided) == ("needs_offer", 300.0)
+    assert (row.rounds[2].status, row.rounds[2].decided) == ("needs_offer", 400.0)
 
 
 @pytest.mark.asyncio
@@ -402,7 +402,7 @@ async def test_finances_own_round_3_amount_is_approved_at_once() -> None:
 @pytest.mark.asyncio
 async def test_finance_approves_or_refuses_a_pending_round_3_amount() -> None:
     store = FakeDecisionsStore()
-    seed_request(store, EMMA, session=1000102)  # costs enough that 1,500 + 300 + 500 stays under it
+    seed_request(store, EMMA, session=1000102)  # costs 4,000: 1,500 + 400 + 500 stays under it
     _round3_ready(store)
     service = _service(store)  # the season sets no limit, so every registrar amount waits
     await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=False)
@@ -593,9 +593,9 @@ async def test_resending_the_same_round_3_amount_writes_nothing() -> None:
     seed_request(store, EMMA, session=1000102)
     _round3_ready(store)
     service = _service(store)
-    first = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+    first = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=False)
     events, logs, ops = len(store.events), len(store.log), len(store.operations)
-    again = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=False)
+    again = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=False)
     assert first.written == 1
     assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
     assert (len(store.events), len(store.log), len(store.operations)) == (events, logs, ops)
@@ -625,7 +625,7 @@ async def test_a_write_on_a_malformed_request_id_is_not_found_never_a_500() -> N
     service = _service(store)
     calls = [
         service.key_ask(_BAD_ID, _ask(2, "400"), ACTOR),
-        service.key_round3_amount(_BAD_ID, Round3AmountIn(amount=Decimal(300)), ACTOR, can_approve=True),
+        service.key_round3_amount(_BAD_ID, Round3AmountIn(amount=Decimal(350)), ACTOR, can_approve=True),
         service.key_discretionary(
             _BAD_ID, DiscretionaryIn(decision_type="discretionary", amount=Decimal(1), note="x"), ACTOR
         ),
