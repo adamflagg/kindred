@@ -217,6 +217,9 @@ var serialGroups = []struct {
 			"TestAidPostingsSyncLogsMissingClassificationFileWithSearchedPaths",
 			"TestAidPostingsSyncWarnsWhenTransactionsLastRunFailed",
 			"TestStrandedAssignmentCleanup_ProdAuditLogCapsTheRecordSample",
+			"TestAidPostingsSyncSkipsTheLedgerTickOnStaleInput",
+			"TestAFailedNightlyThenASuccessfulManualRunForAnotherYearStillSkips2026",
+			"TestAFailedManualRunForAnotherYearDoesNotSkipACoveredSeason",
 		},
 	},
 	{
