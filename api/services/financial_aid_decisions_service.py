@@ -153,6 +153,7 @@ from api.services.financial_aid_reconciliation import (
     apply_clawback,
     as_recorded,
     build_ledger,
+    camp_date,
     confirmation,
     dollars,
     ledger_note,
@@ -368,8 +369,11 @@ class Season:
     gapped: Mapping[str, str] = field(default_factory=dict)
     grants_unplaced: bool = False
     deleted: frozenset[str] = frozenset()  # past read: requests deleted since, which can't be shown or priced
-    # Sub-project 10b-2: the cancelled live requests (D101). Empty on a past read (not rebuilt).
+    # Sub-project 10b-2: the cancelled live requests (D101); on a past read, as of the day (Decision 11).
     cancellations: Mapping[str, Cancellation] = field(default_factory=dict)
+    # Owner ruling 2026-10-02 (⚠, via the lead): the requests whose registration CampMinder cancelled (by the day, on a
+    # past read: 3c-2's rule). Read ONLY by forward demand (season_budget's not_demand); never widens `live`.
+    cancelled_in_campminder: frozenset[str] = frozenset()
     # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
     # with posted camp aid still live (D54's forgotten reversal). Empty on a past read.
     to_reverse: frozenset[str] = frozenset()
@@ -907,6 +911,39 @@ def _cancelled_in_campminder(
     )
 
 
+def _past_cancellations(
+    requests: Mapping[str, RequestRecord],
+    today: Sequence[RequestRecord],
+    enrollments: Sequence[EnrollmentState],
+    sessions: Sequence[SessionRow],
+    day: date,
+    kindred: Mapping[str, CancelState],
+    cancelled_now: frozenset[str],
+) -> dict[str, Cancellation]:
+    """Decision 11: each request's cancellation as of `day`, built by the rule the past figures use, so 6(b)'s
+    Appeals list (which reads the row's cancellation) agrees with Round 2 asks so far. CampMinder's first, dated by
+    its earliest cancelled registration on or before the day (`_cancelled_in_campminder`'s rule, under the record as
+    it stood then or as it is now); else Kindred's as recorded by then. As cancellations_by_request orders them."""
+    session_types = {s.cm_id: s.session_type for s in sessions}
+    now = {r.id: r for r in today}
+    out: dict[str, Cancellation] = {}
+    for request_id, record in requests.items():
+        state = kindred.get(request_id, CancelState())
+        if request_id in cancelled_now:
+            days = [
+                on
+                for r in (record, now.get(request_id))
+                if r is not None
+                for cancelled, on in (first_cancelled_on(r, enrollments, session_types),)
+                if cancelled and on is not None and on <= day
+            ]
+            out[request_id] = Cancellation("campminder", min(days) if days else None, state.reason, state.note)
+        elif state.in_kindred and record.status in _LIVE:
+            on = camp_date(state.at) if state.at is not None else None
+            out[request_id] = Cancellation("kindred", on, state.reason, state.note)
+    return out
+
+
 def _pricing_gap(
     request: RequestRecord,
     *,
@@ -1336,6 +1373,7 @@ class FinancialAidDecisionsService:
             shares=shares_of,
             undone=undone_rounds(events),
             cancellations=cancellations,
+            cancelled_in_campminder=frozenset(rid for rid, c in cancellations.items() if c.by == "campminder"),
             to_reverse=to_reverse,
             inputs=items,
             camp_lines=tuple(camp_lines),
@@ -1448,7 +1486,8 @@ class FinancialAidDecisionsService:
         # both axes). CampMinder's is read from today's registrations, dated by their current status: a request
         # whose registration CampMinder had cancelled by the day isn't priced as live then (the cancellation
         # gap); one whose status changed since (re-enrolled, cancelled again, removed) can't be seen.
-        in_kindred = {rid for rid, state in fold_cancellations(cancel_events, as_of=at).items() if state.in_kindred}
+        kindred_states = fold_cancellations(cancel_events, as_of=at)
+        in_kindred = {rid for rid, state in kindred_states.items() if state.in_kindred}
         cancelled_now = _cancelled_in_campminder(requests, today, enrollments, sessions, day)
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
@@ -1569,6 +1608,10 @@ class FinancialAidDecisionsService:
             grants_unplaced=grants_unplaced,
             deleted=deleted,
             cost_overrides=cost_overrides,
+            cancelled_in_campminder=cancelled_now,
+            cancellations=_past_cancellations(
+                requests, today, enrollments, sessions, day, kindred_states, cancelled_now
+            ),
         )
 
     @staticmethod
@@ -1683,7 +1726,11 @@ class FinancialAidDecisionsService:
         )
         document = season.rules.document if season.rules is not None else None
         return season_budget(
-            season.priced.values(), document, outside_grants=by_request, outside_grants_off_requests=off
+            season.priced.values(),
+            document,
+            outside_grants=by_request,
+            outside_grants_off_requests=off,
+            not_demand=season.cancelled_in_campminder,
         )
 
     def budget_of(self, season: Season) -> SeasonBudget:
@@ -1716,8 +1763,6 @@ class FinancialAidDecisionsService:
                 row.model_copy(
                     update={
                         "queues": None,
-                        # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
-                        "cancellation": None,
                         "to_reverse": None,
                         "appeal_refusal": None,
                         "included": None,

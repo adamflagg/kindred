@@ -27,7 +27,7 @@ allocation of its own. The total's allocation is the sum of the rules' pools.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Final
@@ -292,10 +292,12 @@ def season_budget(
     *,
     outside_grants: Mapping[str, Decimal],
     outside_grants_off_requests: Decimal = ZERO,
+    not_demand: Collection[str] = frozenset(),
 ) -> SeasonBudget:
     """`outside_grants` is each request's counted outside grants (the grants register's shares,
     summed, a pays-after-camp-aid grant included, D143); `outside_grants_off_requests` the counted
-    outside grants on no request (Decision 14)."""
+    outside grants on no request (Decision 14). `not_demand` are requests forward demand leaves out although
+    they are live (owner ruling 2026-10-02: CampMinder cancelled them; `live` itself is not changed)."""
     allocated = allocations(rules) if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
     tallies: _Tallies = defaultdict(_Tally)
@@ -313,7 +315,7 @@ def season_budget(
                 unrebuilt.add(view.pool or NO_POOL)
         for pool in (home, TOTAL):
             grants[pool] += outside_grants.get(request.request_id, ZERO)
-            if request.live:
+            if request.live and request.request_id not in not_demand:
                 _tally_demand(request, pool, asks2, computed2, unmet1)
     seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1) | unrebuilt
     seen.discard(TOTAL)

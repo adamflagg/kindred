@@ -317,3 +317,15 @@ def test_a_past_reads_unrebuilt_round_lists_the_pool_it_sits_in() -> None:
     nowhere = pool_of(budget, NO_POOL)
     assert (nowhere.total.posted, nowhere.total.accepted) == (ZERO, ZERO)
     assert [p.pool for p in budget.pools][-1] == NO_POOL
+
+
+def test_a_request_left_out_of_demand_adds_no_round_2_ask_and_keeps_its_money() -> None:
+    """Lead relay 2026-10-02 (owner ⚠ approved): forward demand leaves out a request CampMinder cancelled. Only
+    demand: its posted money still counts (that is D54's job), and `live` is not read differently."""
+    appeal = priced("e", 1000001, view(1, "posted", locked="1500"), view(2, "needs_offer", ask="900", decided="400"))
+    kept = season_budget([appeal], RULES, outside_grants={})
+    left = season_budget([appeal], RULES, outside_grants={}, not_demand=frozenset({"e"}))
+    assert (kept.total.demand.round2_asks, kept.total.demand.round2_asked) == (Count(1, 1), Decimal(900))
+    assert (left.total.demand.round2_asks, left.total.demand.round2_asked) == (Count(0, 0), ZERO)
+    assert left.total.total.posted == kept.total.total.posted == Decimal(1500)
+    assert left.total.total.needs_offer == kept.total.total.needs_offer == Decimal(400)

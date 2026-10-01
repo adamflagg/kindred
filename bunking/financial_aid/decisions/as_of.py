@@ -50,11 +50,12 @@ _POOL_EMPTY: Final = (
 )
 _CANCELLED: Final = (
     "CampMinder keeps only each registration's current status, dated (its enrollment date), so a past date "
-    "shows no cancellation by CampMinder. A request live then whose registration CampMinder had cancelled on "
+    "reads CampMinder's cancellation by that status date. A request live then whose registration CampMinder had cancelled on "
     "or before that day, by that status date, can't be priced as live: only its posted rounds, asks and "
     "manual hold show" + _POOL_EMPTY + ". A registration whose status changed after that day (re-enrolled, "
     "back to waitlisted or applied, cancelled again later, which re-dates it, or removed from CampMinder) "
-    "reads by today's status, so its request is priced and counted as live then"
+    "reads by today's status, so its request is priced and counted as live then. A request CampMinder had "
+    "cancelled by that day is left out of Round 2 asks so far, as today's read leaves it out"
 )
 _CANCELLED_TODAY: Final = "Reads CampMinder's cancellations, which a past date doesn't show (see cancellation)"
 
