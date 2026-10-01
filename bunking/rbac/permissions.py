@@ -59,7 +59,8 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
         "Open the Staff Analysis page. Its staff figures are admin-only today, so only admins see data there."
     ),
     Permission.USERS_MANAGE: (
-        "Give and remove other staff's roles. The Users page won't let them change admins or their own roles."
+        "Give and remove other staff's roles. They can't change their own or an admin's roles, "
+        "or give or remove one that includes user management."
     ),
 }
 
