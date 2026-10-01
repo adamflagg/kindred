@@ -279,3 +279,11 @@ post-merge:
           fi
           echo ""
         fi
+    git-tidy:
+      # Stale branches, backup refs and old stashes. Report only: deletion is
+      # `scripts/git-tidy.sh --apply`, which removes nothing that is not already
+      # on main or inside a merged/closed PR. Agents read this on every pull --
+      # it is the only place the owner's stale-ref hygiene happens.
+      run: |
+        [ -f scripts/git-tidy.sh ] || exit 0
+        bash scripts/git-tidy.sh --notice
