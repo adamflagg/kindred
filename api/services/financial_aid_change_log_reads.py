@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 from collections.abc import Collection
+from datetime import UTC, datetime
 from typing import Any, Final
 
 from api.services.financial_aid_ledger_service import parse_pb_datetime
@@ -77,7 +78,10 @@ async def fetch_entity_log(pb: Any, year: int, *, exact: Collection[str], contai
             query_params={"filter": f"{base} && ({' || '.join(chunk)})", "sort": "created,id"},
         )
         rows.update({str(r.id): r for r in found})
-    return sorted(rows.values(), key=lambda r: (str(r.created), str(r.id)))
+    return sorted(
+        rows.values(),
+        key=lambda r: (parse_pb_datetime(getattr(r, "created", None)) or datetime.min.replace(tzinfo=UTC), str(r.id)),
+    )
 
 
 class EntityLogReads:
