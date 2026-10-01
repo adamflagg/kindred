@@ -203,6 +203,23 @@ def test_household_link_delete_blank_reason_is_422_and_never_writes() -> None:
     writes.return_value.delete_link.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("method", "url"),
+    [
+        ("GET", "/api/financial-aid/flag-dispositions?year=2026"),
+        ("POST", "/api/financial-aid/flag-dispositions/bulk"),
+        ("DELETE", "/api/financial-aid/flag-dispositions/d1?reason=x"),
+    ],
+)
+def test_the_old_flag_disposition_routes_are_gone(method: str, url: str) -> None:
+    """Owner ruling 2026-10-01: the table stays (To place's Leave/Reopen use it); the routes do not.
+
+    Finance holds both view and rules, so a 403 cannot hide a route that still exists."""
+    _stub_services()
+    response = _client(PERSONA_FINANCE).request(method, url, json={} if method == "POST" else None)
+    assert response.status_code in (404, 405), (method, url, response.text)
+
+
 def test_a_household_link_that_lost_a_race_with_the_sync_is_409() -> None:
     _, writes = _stub_services()
     writes.return_value.create_link = AsyncMock(

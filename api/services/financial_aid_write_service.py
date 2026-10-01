@@ -13,8 +13,8 @@ A reason is required on every write (spec §14.4: overrides and exceptions; a
 classification and a delete already require one at the API).
 
 Classifications, links and overrides take effect on the next aid_postings run
-(POST /api/custom/sync/aid-postings?year= runs it on demand). The Go sync never comes here: spec §14.4 does not log
-the CampMinder sync.
+(POST /api/custom/sync/aid-postings?year= runs it on demand). The Go sync never comes here: spec §14.4 does not
+log the CampMinder sync.
 """
 
 from __future__ import annotations
@@ -114,9 +114,8 @@ def _stage_upsert(
     ``payload``, skip a no-op via ``changed_fields``, and stage the create or
     update ``AidWrite``, recording it in ``result`` and ``writes``.
 
-    Used by ``load_overrides``: it upserts a row
-    by a key, logs only the placement (not who loaded it), and count
-    created/updated/unchanged the same way.
+    Used by ``load_overrides``: it upserts a row by a key, logs only the
+    placement (not who loaded it), and counts created/updated/unchanged.
     """
     if current is None:
         result.created += 1
