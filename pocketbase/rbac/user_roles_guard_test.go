@@ -132,7 +132,7 @@ var seededLinks = func() []string {
 }()
 
 // expectRefusedUntouched: nothing changed and nothing was logged.
-func expectRefusedUntouched(t testing.TB, app *tests.TestApp, _ *http.Response) {
+func expectRefusedUntouched(t testing.TB, app *tests.TestApp) {
 	t.Helper()
 	if got := userRoleLinks(t, app); !slices.Equal(got, seededLinks) {
 		t.Errorf("user_roles changed on a refused write:\n got %v\nwant %v", got, seededLinks)
@@ -143,8 +143,8 @@ func expectRefusedUntouched(t testing.TB, app *tests.TestApp, _ *http.Response) 
 }
 
 // expectOneAccessRow: an allowed write is in the audit log as Access.
-func expectOneAccessRow(action, recordID string) func(testing.TB, *tests.TestApp, *http.Response) {
-	return func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+func expectOneAccessRow(action, recordID string) check {
+	return func(t testing.TB, app *tests.TestApp) {
 		t.Helper()
 		rows := audittest.Rows(t, app)
 		if len(rows) != 1 {
@@ -161,8 +161,8 @@ func expectOneAccessRow(action, recordID string) func(testing.TB, *tests.TestApp
 	}
 }
 
-func expectLinks(want ...string) func(testing.TB, *tests.TestApp, *http.Response) {
-	return func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+func expectLinks(want ...string) check {
+	return func(t testing.TB, app *tests.TestApp) {
 		t.Helper()
 		slices.Sort(want)
 		if got := userRoleLinks(t, app); !slices.Equal(got, want) {
@@ -177,11 +177,19 @@ func without(links []string, drop string) []string {
 
 func with(links []string, add string) []string { return append(slices.Clone(links), add) }
 
-func all(fns ...func(testing.TB, *tests.TestApp, *http.Response)) func(testing.TB, *tests.TestApp, *http.Response) {
-	return func(t testing.TB, app *tests.TestApp, res *http.Response) {
+// check is one assertion about the app after a scenario's request.
+type check func(t testing.TB, app *tests.TestApp)
+
+// afterFunc is tests.ApiScenario.AfterTestFunc's type.
+type afterFunc func(t testing.TB, app *tests.TestApp, res *http.Response)
+
+// after runs checks as a scenario's AfterTestFunc. The harness owns, and
+// closes, the response; no check reads it.
+func after(checks ...check) afterFunc {
+	return func(t testing.TB, app *tests.TestApp, _ *http.Response) {
 		t.Helper()
-		for _, fn := range fns {
-			fn(t, app, res)
+		for _, c := range checks {
+			c(t, app)
 		}
 	}
 }
@@ -222,31 +230,31 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "manager cannot give themselves a role", Method: http.MethodPost, URL: records,
 			Body: grant(urManagerID, urRoleBunking), BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"your own roles"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			Name: "manager cannot remove one of their own roles", Method: http.MethodDelete,
 			URL: records + "/" + urManagerSelf, BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"your own roles"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			Name: "manager cannot give an admin a role", Method: http.MethodPost, URL: records,
 			Body: grant(urAdminID, urRoleRegistrar), BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"an admin's roles"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			Name: "manager cannot remove an admin's role", Method: http.MethodDelete,
 			URL: records + "/" + urAdminBunking, BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"an admin's roles"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			Name: "manager cannot grant a role carrying users.manage", Method: http.MethodPost, URL: records,
 			Body: grant(urFreshID, urRoleUsers), BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"carries users.manage"},
-			AfterTestFunc: all(expectRefusedUntouched, func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+			AfterTestFunc: after(expectRefusedUntouched, func(t testing.TB, app *tests.TestApp) {
 				assertAccess(t, findUser(t, app, "sam.patel@example.com"), false, nil)
 			}),
 		},
@@ -254,7 +262,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "manager cannot remove a role carrying users.manage", Method: http.MethodDelete,
 			URL: records + "/" + urTargetUsers, BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"carries users.manage"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			// An in-place edit could move an ordinary assignment onto a
@@ -264,14 +272,14 @@ func TestUserRolesBounds(t *testing.T) {
 			URL: records + "/" + urTargetBunk, Body: strings.NewReader(`{"role":"` + urRoleRegistrar + `"}`),
 			BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"remove the role and add"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			Name: "manager cannot retarget an assignment at themselves", Method: http.MethodPatch,
 			URL: records + "/" + urTargetBunk, Body: strings.NewReader(`{"user":"` + urManagerID + `"}`),
 			BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"remove the role and add"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 		{
 			// A preview downgrades and never grants: an admin previewing a
@@ -279,7 +287,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "an admin previewing users.manage is bounded like the persona", Method: http.MethodPost,
 			URL: records, Body: grant(urFreshID, urRoleUsers), BeforeTestFunc: as(urAdminID, "users.manage"),
 			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"carries users.manage"},
-			AfterTestFunc: expectRefusedUntouched,
+			AfterTestFunc: after(expectRefusedUntouched),
 		},
 
 		// --- a non-admin users.manage holder: allowed ---
@@ -287,10 +295,10 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "manager can grant an ordinary role to another non-admin", Method: http.MethodPost, URL: records,
 			Body: grant(urFreshID, urRoleBunking), BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"role":"` + urRoleBunking + `"`},
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(with(seededLinks, link(urFreshID, urRoleBunking))...),
 				expectOneAccessRow(audit.ActionCreate, ""),
-				func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				func(t testing.TB, app *tests.TestApp) {
 					assertAccess(t, findUser(t, app, "sam.patel@example.com"), false, []string{"bunking.manage"})
 				},
 			),
@@ -299,7 +307,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "manager can remove an ordinary role from another non-admin", Method: http.MethodDelete,
 			URL: records + "/" + urTargetBunk, BeforeTestFunc: as(urManagerID, ""),
 			ExpectedStatus: http.StatusNoContent,
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(without(seededLinks, link(urTargetID, urRoleBunking))...),
 				expectOneAccessRow(audit.ActionDelete, urTargetBunk),
 			),
@@ -310,7 +318,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "admin can grant a role carrying users.manage", Method: http.MethodPost, URL: records,
 			Body: grant(urFreshID, urRoleUsers), BeforeTestFunc: as(urAdminID, ""),
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"role":"` + urRoleUsers + `"`},
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(with(seededLinks, link(urFreshID, urRoleUsers))...),
 				expectOneAccessRow(audit.ActionCreate, ""),
 			),
@@ -319,7 +327,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "admin can remove a role carrying users.manage", Method: http.MethodDelete,
 			URL: records + "/" + urManagerSelf, BeforeTestFunc: as(urAdminID, ""),
 			ExpectedStatus: http.StatusNoContent,
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(without(seededLinks, link(urManagerID, urRoleUsers))...),
 				expectOneAccessRow(audit.ActionDelete, urManagerSelf),
 			),
@@ -328,7 +336,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "admin can give themselves a role", Method: http.MethodPost, URL: records,
 			Body: grant(urAdminID, urRoleRegistrar), BeforeTestFunc: as(urAdminID, ""),
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"user":"` + urAdminID + `"`},
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(with(seededLinks, link(urAdminID, urRoleRegistrar))...),
 				expectOneAccessRow(audit.ActionCreate, ""),
 			),
@@ -337,7 +345,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "admin can remove an admin's role", Method: http.MethodDelete,
 			URL: records + "/" + urAdminBunking, BeforeTestFunc: as(urAdminID, ""),
 			ExpectedStatus: http.StatusNoContent,
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(without(seededLinks, link(urAdminID, urRoleBunking))...),
 				expectOneAccessRow(audit.ActionDelete, urAdminBunking),
 			),
@@ -347,7 +355,7 @@ func TestUserRolesBounds(t *testing.T) {
 			URL: records + "/" + urTargetBunk, Body: strings.NewReader(`{"role":"` + urRoleRegistrar + `"}`),
 			BeforeTestFunc: as(urAdminID, ""),
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"role":"` + urRoleRegistrar + `"`},
-			AfterTestFunc: all(
+			AfterTestFunc: after(
 				expectLinks(with(without(seededLinks, link(urTargetID, urRoleBunking)),
 					link(urTargetID, urRoleRegistrar))...),
 				expectOneAccessRow(audit.ActionUpdate, urTargetBunk),
@@ -359,7 +367,7 @@ func TestUserRolesBounds(t *testing.T) {
 			Name: "superuser can grant a role carrying users.manage", Method: http.MethodPost, URL: records,
 			Body: grant(urFreshID, urRoleUsers), BeforeTestFunc: asSuperuser,
 			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"role":"` + urRoleUsers + `"`},
-			AfterTestFunc: expectLinks(with(seededLinks, link(urFreshID, urRoleUsers))...),
+			AfterTestFunc: after(expectLinks(with(seededLinks, link(urFreshID, urRoleUsers))...)),
 		},
 	}
 	for _, s := range scenarios {
