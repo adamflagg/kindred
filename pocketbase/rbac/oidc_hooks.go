@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
 
@@ -189,14 +190,29 @@ func registerLastSeenHook(app core.App) {
 		if e.Record == nil || strings.HasSuffix(strings.ToLower(e.Record.Email()), "@"+viewAsPersonaEmailDomain) {
 			return nil
 		}
-		now := time.Now().UTC()
-		if !shouldStampLastSeen(e.Record.GetDateTime("last_seen"), now) {
-			return nil
-		}
-		e.Record.Set("last_seen", now)
-		if err := e.App.Save(e.Record); err != nil {
-			slog.Error("Failed to stamp last_seen", "user_id", e.Record.Id, "error", err)
-		}
+		stampLastSeen(e.App, e.Record, time.Now().UTC())
 		return nil
 	})
+}
+
+// stampLastSeen re-stamps rec's last_seen when the loaded value is stale. The
+// record was loaded when the request started, so a full Save would write every
+// other column back from that snapshot — including cached_permissions, undoing
+// a role recompute that landed in between. The stamp is therefore one column.
+func stampLastSeen(app core.App, rec *core.Record, now time.Time) {
+	if !shouldStampLastSeen(rec.GetDateTime("last_seen"), now) {
+		return
+	}
+	stamp, err := types.ParseDateTime(now)
+	if err != nil {
+		slog.Error("Failed to stamp last_seen", "user_id", rec.Id, "error", err)
+		return
+	}
+	// Raw UPDATE: fires no record hooks, so it stays out of the audit log.
+	if _, err := app.DB().NewQuery("UPDATE users SET last_seen = {:ts} WHERE id = {:id}").
+		Bind(dbx.Params{"ts": stamp.String(), "id": rec.Id}).Execute(); err != nil {
+		slog.Error("Failed to stamp last_seen", "user_id", rec.Id, "error", err)
+		return
+	}
+	rec.Set("last_seen", stamp)
 }

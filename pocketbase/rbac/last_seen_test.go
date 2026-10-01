@@ -153,3 +153,41 @@ func TestLastSeenStampIsNotAudited(t *testing.T) {
 	}
 	s.Test(t)
 }
+
+// TestLastSeenStampDoesNotClobberConcurrentWrites: the refresh hook holds a
+// record loaded at request start. A role recompute (cached_permissions) or an
+// admin edit landing before the stamp must survive it.
+func TestLastSeenStampDoesNotClobberConcurrentWrites(t *testing.T) {
+	app := lastSeenApp(t)
+	defer app.Cleanup()
+	u := newUser(t, app, "noah@example.com", time.Time{})
+
+	loaded, err := app.FindRecordById("users", u.Id) // what the hook sees
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	// Concurrent write underneath the loaded snapshot.
+	fresh, _ := app.FindRecordById("users", u.Id)
+	fresh.Set("name", "Changed Underneath")
+	if err = app.Save(fresh); err != nil {
+		t.Fatalf("concurrent save: %v", err)
+	}
+
+	now := time.Now().UTC()
+	stampLastSeen(app, loaded, now)
+
+	got, err := app.FindRecordById("users", u.Id)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got.GetString("name") != "Changed Underneath" {
+		t.Errorf("name = %q, stamp overwrote the concurrent write", got.GetString("name"))
+	}
+	if got.GetDateTime("last_seen").IsZero() || time.Since(got.GetDateTime("last_seen").Time()) > time.Minute {
+		t.Errorf("last_seen = %v, want just now", got.GetDateTime("last_seen"))
+	}
+	if loaded.GetDateTime("last_seen").IsZero() {
+		t.Error("in-memory record was not updated")
+	}
+}
