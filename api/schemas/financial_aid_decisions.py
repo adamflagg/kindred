@@ -76,7 +76,8 @@ class RoundOut(BaseModel):
     would_change_by: float | None
     counts_toward_budget: bool
     rules_version: int | None
-    lock_source: str | None = None  # "tick" (registrar) or "ledger" (automatic tick, D78); None while unposted
+    # "tick" (registrar), "ledger" (automatic tick, D78) or "placement" (To place, D81); None while unposted
+    lock_source: str | None = None
     clawed_back: bool = False  # CampMinder reversed its money: it counts nowhere (D54)
 
 

@@ -38,7 +38,7 @@ from api.services.financial_aid_intake_types import (
     RequestRecord,
     SessionRow,
 )
-from api.services.financial_aid_reconciliation import CampLine, LineOverride
+from api.services.financial_aid_reconciliation import CampLine, LineOverride, SplitPart
 from api.services.financial_aid_rules_service import RulesVersion
 from bunking.financial_aid.change_log import COLLECTION, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow
@@ -78,6 +78,7 @@ class FakeDecisionsStore:
         self.camp_lines: list[CampLine] = []
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
+        self.splits: dict[int, tuple[SplitPart, ...]] = {}  # lines a person split across requests (SP11-rest)
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
         self.cancel_events: list[CancelEvent] = []
         self.enrollments: list[EnrollmentState] = []
@@ -151,13 +152,18 @@ class FakeDecisionsStore:
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         return dict(self.placements)
 
+    async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]:
+        return dict(self.splits)
+
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
-        return [
+        whole = [
             LineOverride(
                 f"ovr{p.transaction_cm_id:012d}", p.transaction_cm_id, p.person_cm_id, p.session_cm_id, p.program_family
             )
             for p in self.placements.values()
         ]
+        split = [LineOverride(f"ovr{txn:012d}", txn, 0, 0, "", parts) for txn, parts in self.splits.items()]
+        return [*whole, *split]
 
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
         return self.synced_at
@@ -498,3 +504,17 @@ def seed_override(
 def log_delete(store: FakeDecisionsStore, entity: str, entity_id: str, before: dict[str, Any], at: datetime) -> None:
     """One logged delete (its `before` is the whole record)."""
     _log(store, entity, entity_id, before, None, at)
+
+
+def seed_split(store: FakeDecisionsStore, txn: int, parts: tuple[SplitPart, ...], at: datetime) -> None:
+    """A staff split of one line across requests (SP11-rest), as the write path logs it: created at `at`."""
+    store.splits[txn] = parts
+    body = {
+        "transaction_cm_id": txn,
+        "year": YEAR,
+        "attributed_person_cm_id": 0,
+        "attributed_session_cm_id": 0,
+        "program_family": "",
+        "split": [part.fields() for part in parts],
+    }
+    _log(store, AID_ATTRIBUTION_OVERRIDES, f"ovr{txn:012d}", None, body, at)

@@ -33,7 +33,14 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     person_display_name,
 )
-from api.services.financial_aid_reconciliation import CampLine, LineOverride, camp_date, override_placement
+from api.services.financial_aid_reconciliation import (
+    CampLine,
+    LineOverride,
+    SplitPart,
+    camp_date,
+    override_placement,
+    override_split,
+)
 from api.services.financial_aid_repository import FinancialAidRepository
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -110,13 +117,15 @@ def camp_line(record: Any) -> CampLine:
 
 
 def line_override(record: Any) -> LineOverride:
-    """An aid_attribution_overrides record: what it places, with the id its log rows carry."""
+    """An aid_attribution_overrides record: what it places, with the id its log rows carry, and the
+    parts of a split (SP11-rest)."""
     return LineOverride(
         id=str(getattr(record, "id", "")),
         transaction_cm_id=int(record.transaction_cm_id),
         attributed_person_cm_id=int(record.attributed_person_cm_id or 0),
         attributed_session_cm_id=int(record.attributed_session_cm_id or 0),
         program_family=str(record.program_family or ""),
+        split=override_split({"split": getattr(record, "split", None)}),
     )
 
 
@@ -301,6 +310,11 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         placements = (line_placement(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
         return {p.transaction_cm_id: p for p in placements if p is not None}
+
+    async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]:
+        """The lines a person split across requests (SP11-rest, D12), each with its parts."""
+        overrides = (line_override(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
+        return {o.transaction_cm_id: o.split for o in overrides if o.split}
 
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
         """Every override as it stands now: the replay's `current` for a past read (3c-1)."""
