@@ -15,6 +15,7 @@ import {
   type RoleLike,
 } from './usersPageModel'
 import { useSaveUserRoles } from './useSaveUserRoles'
+import { pbErrorText } from './pbErrorText'
 import type { UsersPageProps } from './types'
 
 interface UserDrawerProps {
@@ -358,8 +359,8 @@ function DrawerBody({
           </div>
           {save.isError && (
             <div className="text-xs text-red-600">
-              Couldn&apos;t save: {save.error.message}. Nothing was changed; your ticks are still
-              here.
+              Couldn&apos;t save: {pbErrorText(save.error)}. Nothing was changed; your ticks are
+              still here.
             </div>
           )}
           <div className="flex justify-end gap-2">

@@ -10,6 +10,27 @@ const ops: Array<[string, unknown]> = []
 let sendFails = false
 let mockIsAdmin = false
 
+// The real shape of a refused PocketBase batch: a generic 400 whose reason is nested.
+const batchRefusal = Object.assign(new Error('Batch transaction failed.'), {
+  response: {
+    status: 400,
+    message: 'Batch transaction failed.',
+    data: {
+      requests: {
+        '0': {
+          code: 'batch_request_failed',
+          message: 'Batch request failed.',
+          response: {
+            status: 403,
+            message: "You can't change your own roles. Ask an admin.",
+            data: {},
+          },
+        },
+      },
+    },
+  },
+})
+
 vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: () => ({
     hasPermission: vi.fn(),
@@ -26,8 +47,7 @@ vi.mock('../../../lib/pocketbase', () => ({
         create: (body: unknown) => ops.push(['create', body]),
         delete: (id: string) => ops.push(['delete', id]),
       }),
-      send: () =>
-        sendFails ? Promise.reject(new Error('Failed to create record.')) : Promise.resolve([]),
+      send: () => (sendFails ? Promise.reject(batchRefusal) : Promise.resolve([])),
     }),
   },
 }))
@@ -135,7 +155,11 @@ describe('UserDrawer', () => {
     renderDrawer('u-emma')
     await userEvent.click(screen.getByRole('checkbox', { name: /Finance/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    expect(await screen.findByText(/Nothing was changed/)).toBeInTheDocument()
+    const msg = await screen.findByText(/Nothing was changed/)
+    expect(msg).toHaveTextContent(
+      "Couldn't save: You can't change your own roles. Ask an admin. Nothing was changed"
+    )
+    expect(msg).not.toHaveTextContent('..')
     expect(screen.getByTestId('drawer-footer')).toHaveTextContent('1 change: + Finance')
   })
 

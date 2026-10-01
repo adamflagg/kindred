@@ -15,6 +15,7 @@ import {
   permissionHolders,
   type MergedPermission,
 } from './usersPageModel'
+import { pbErrorText } from './pbErrorText'
 import type { UsersPageProps } from './types'
 
 const GRID = 'grid grid-cols-[200px_minmax(0,1fr)_260px] gap-3.5'
@@ -89,7 +90,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
       onError: (e: Error) =>
         setRowError({
           code: m.entry.codename,
-          msg: `Couldn't save: ${e.message}. Your wording is still here.`,
+          msg: `Couldn't save: ${pbErrorText(e)}. Your wording is still here.`,
         }),
     })
   }
@@ -100,7 +101,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
       { kind: 'delete', id: m.overrideId },
       {
         onError: (e: Error) =>
-          setRowError({ code: m.entry.codename, msg: `Couldn't reset: ${e.message}.` }),
+          setRowError({ code: m.entry.codename, msg: `Couldn't reset: ${pbErrorText(e)}.` }),
       }
     )
   }

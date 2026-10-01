@@ -9,6 +9,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import { usePermissionDescriptions } from '../../../hooks/usePermissionDescriptions'
 import { SlideInPanel } from '../../weekend/SlideInPanel'
 import { mergeDescriptions, roleEditImpact, roleHolders, type UserLike } from './usersPageModel'
+import { pbErrorText } from './pbErrorText'
 import type { UsersPageProps } from './types'
 
 interface RoleDrawerProps {
@@ -518,8 +519,8 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
           )}
           {error && (
             <div className="text-xs text-red-600">
-              Couldn&apos;t {errorVerb}: {error.message}. Nothing was changed; your edits are still
-              here.
+              Couldn&apos;t {errorVerb}: {pbErrorText(error)}. Nothing was changed; your edits are
+              still here.
             </div>
           )}
           <div className="flex justify-end gap-2">
