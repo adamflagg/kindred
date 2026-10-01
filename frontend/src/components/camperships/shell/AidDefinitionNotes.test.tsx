@@ -30,4 +30,15 @@ describe('AidDefinitionNotes', () => {
     render(<AidDefinitionNotes surface="requests" />)
     expect(screen.getByText("The definitions for these figures couldn't load.")).toBeInTheDocument()
   })
+
+  it('keeps the notes it has when a later refetch fails', () => {
+    state = {
+      notes: [{ n: 1, text: 'Decided: the award computed or decided for the round.' }],
+      isPending: false,
+      error: new Error('refetch failed'),
+    }
+    render(<AidDefinitionNotes surface="requests" />)
+    expect(screen.getByRole('listitem')).toHaveTextContent('1. Decided')
+    expect(screen.queryByText(/couldn't load/)).not.toBeInTheDocument()
+  })
 })

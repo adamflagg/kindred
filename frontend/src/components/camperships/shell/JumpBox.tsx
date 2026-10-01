@@ -23,15 +23,15 @@ export function JumpBox() {
   const navigate = useNavigate()
   const year = useYear()
   const asOf = useAidAsOf()
-  const { data, isPending, error } = useAidJumpIndex()
-  // Four states (frontend/CLAUDE.md; Ruling 2026-10-01 (plan review)): loading and error take no search.
-  const unavailable = isPending || error !== null
-  const placeholder =
-    error !== null
+  const { data, error } = useAidJumpIndex()
+  // Four states (frontend/CLAUDE.md; Ruling 2026-10-01 (plan review)): loading and error take no
+  // search. A failed background refetch keeps the loaded index, so it stays searchable.
+  const unavailable = data === undefined
+  const placeholder = unavailable
+    ? error !== null
       ? 'Search unavailable'
-      : isPending
-        ? 'Loading families…'
-        : 'Family, camper or CM id'
+      : 'Loading families…'
+    : 'Family, camper or CM id'
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const [open, setOpen] = useState(false)

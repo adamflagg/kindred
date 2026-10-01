@@ -68,6 +68,15 @@ describe('JumpBox (§3.5; D13)', () => {
     expect(box()).toHaveAttribute('placeholder', 'Search unavailable')
   })
 
+  it('keeps searching the loaded index when a later refetch fails', async () => {
+    index = { data: LOADED.data, isPending: false, error: new Error('refetch failed') }
+    renderBox()
+    expect(box()).toBeEnabled()
+    expect(box()).toHaveAttribute('placeholder', 'Family, camper or CM id')
+    await userEvent.type(box(), 'chen')
+    expect(screen.getByRole('button', { name: /Chen/ })).toBeInTheDocument()
+  })
+
   it('leaves "/" alone while a modifier is held', async () => {
     renderBox()
     await userEvent.keyboard('{Control>}/{/Control}')
