@@ -7,7 +7,13 @@ from typing import Any
 from api.services.financial_aid_billing import BilledHeadcount
 from api.services.financial_aid_household import RequestSpec
 from api.services.financial_aid_intake_plan import HouseholdIntake, StatusChange, plan_intake
-from api.services.financial_aid_intake_types import ApplicationRecord, Flag, RequestRecord, SessionResolution
+from api.services.financial_aid_intake_types import (
+    ApplicationRecord,
+    EquityAnswers,
+    Flag,
+    RequestRecord,
+    SessionResolution,
+)
 from api.services.financial_aid_session_resolver import normalize_option_text
 
 ANSWERS = {"total_gross_income": 85000.0}
@@ -603,3 +609,34 @@ def test_a_session_swap_logged_through_the_commit_replays_to_the_records() -> No
             assert (before[r.id].state or {})["session_cm_id"] == r.session_cm_id
             assert before[r.id].complete is True
     assert [r.session_cm_id for r in existing] == [1000101, 1000102]
+
+
+# --- 3c-2: intake records each camper's equity answers (owner ruling 2026-09-30) ---------------------
+
+_SHE = EquityAnswers(bipoc=True, gender_identity="", pronouns="she/her")
+
+
+def test_intake_records_a_campers_equity_answers_and_writes_nothing_when_they_are_unchanged() -> None:
+    s = spec()
+    (create,) = plan_intake([household(s)], [], [], {}, equity={1000011: _SHE}).request_creates
+    assert create.payload["equity"] == {"bipoc": True, "gender_identity": "", "pronouns": "she/her"}
+    recorded = record(s, "req000000000001", equity=_SHE)
+    again = plan_intake([household(s)], [app()], [recorded], {}, frozenset({"req000000000001"}), equity={1000011: _SHE})
+    assert again.is_empty
+
+
+def test_a_changed_answer_is_one_logged_update_and_a_camper_who_answered_nothing_is_recorded_as_unknown() -> None:
+    s = spec()
+    recorded = record(s, "req000000000001", equity=_SHE)
+    plan = plan_intake([household(s)], [app()], [recorded], {}, frozenset({"req000000000001"}), equity={})
+    assert plan.request_updates == [
+        ("req000000000001", {"equity": {"bipoc": None, "gender_identity": "", "pronouns": ""}})
+    ]
+
+
+def test_a_household_level_request_records_no_equity_and_a_run_that_read_no_answers_writes_none() -> None:
+    family = spec(person=0, program="family_camp", text="Family Camp 6", session=1000202, enrolled=frozenset({1000202}))
+    (create,) = plan_intake([household(family)], [], [], {}, equity={}).request_creates
+    assert "equity" not in create.payload
+    (camper,) = plan_intake([household(spec())], [], [], {}).request_creates
+    assert "equity" not in camper.payload

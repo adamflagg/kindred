@@ -63,6 +63,7 @@ from api.services.financial_aid_intake_types import (
     PayerShareRecord,
     RequestRecord,
     SessionRow,
+    equity_from_json,
 )
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from api.utils.pb_filters import pb_escape
@@ -226,6 +227,7 @@ def _request(record: Any) -> RequestRecord:
         status=_str(record.status),
         duplicate_of=_str(getattr(record, "duplicate_of", "")),
         flags=tuple(_json(getattr(record, "flags", None), [])),
+        equity=equity_from_json(_json(getattr(record, "equity", None), None)),
     )
 
 

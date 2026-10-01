@@ -61,6 +61,7 @@ from api.services.financial_aid_intake_types import (
     ApplicationRecord,
     AttendeeRow,
     BillingLine,
+    EquityAnswers,
     FaRow,
     Flag,
     PayerShareRecord,
@@ -104,6 +105,7 @@ class IntakeStore(Protocol):
         self, year: int, request_ids: Sequence[str] | None = None
     ) -> list[PayerShareRecord]: ...
     async def fetch_birthdates(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, str]: ...
+    async def fetch_equity_answers(self, year: int, person_cm_ids: Sequence[int]) -> dict[int, EquityAnswers]: ...
     async def load_intake_rules(self, year: int) -> AidRules | None: ...
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
     async def commit(
@@ -387,6 +389,10 @@ class FinancialAidIntakeService:
 
         family_households = [h.household_cm_id for h in households if any(s.person_cm_id == 0 for s in h.requests)]
         billed = billed_headcounts(billing, family_households, await self._age_rule(year, rules, sessions, billing))
+        # 3c-2: each camper-level request records its camper's equity answers, so a past date can price
+        # them as they stood. Live pricing keeps reading the synced answers (owner ruling 2026-09-30).
+        people = sorted({s.person_cm_id for h in households for s in h.requests if s.person_cm_id > 0})
+        equity = await self._store.fetch_equity_answers(year, people)
         plan = plan_intake(
             households,
             applications,
@@ -394,6 +400,7 @@ class FinancialAidIntakeService:
             billed,
             frozenset(s.request_id for s in shares),
             _rules_check(rules, sessions),
+            equity=equity,
         )
         operation_id = await self._commit(year, plan, applications, requests)
         statuses = _final_statuses(plan, requests)

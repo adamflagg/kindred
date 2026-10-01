@@ -5,6 +5,7 @@ batch. Figures: Session 2 costs 2,000, so a tier-2 family's Round 1 is 1,500 (se
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -34,6 +35,7 @@ from api.services.financial_aid_decisions_service import (
     FinancialAidDecisionsService,
 )
 from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_intake_types import EquityAnswers
 from bunking.financial_aid.decisions import DecisionEvent
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
@@ -730,3 +732,17 @@ def test_a_write_dated_after_today_is_refused() -> None:
         PostedIn(rows=[row], posted_on=date(2028, 1, 1))
     with pytest.raises(ValidationError, match="future"):
         AskIn(round=2, amount=Decimal(400), asked_on=date(2028, 1, 1))
+
+
+@pytest.mark.asyncio
+async def test_live_pricing_reads_the_synced_equity_answers_not_intakes_recorded_copy() -> None:
+    """Owner ruling 2026-09-30 (3c-2): only a past date prices from the recorded copy."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.requests[EMMA] = replace(
+        store.requests[EMMA], equity=EquityAnswers(bipoc=True, gender_identity="", pronouns="")
+    )
+    store.equity[1000011] = EquityAnswers(bipoc=False, gender_identity="", pronouns="")
+    inputs = (await _service(store).season(YEAR)).priced[EMMA].inputs
+    assert inputs is not None
+    assert inputs.equity_answers["bipoc"] == "No"

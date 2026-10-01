@@ -302,3 +302,27 @@ async def test_a_named_application_scopes_the_request_and_correction_reads() -> 
     await repository.fetch_corrections(2027, "app000000000001")
     filters = [c.kwargs["query_params"]["filter"] for c in handle.get_full_list.call_args_list]
     assert filters == ["year = 2027 && application = 'app000000000001'"] * 2
+
+
+@pytest.mark.asyncio
+async def test_a_request_reads_its_recorded_equity_copy_and_none_when_there_is_none() -> None:
+    """3c-2: aid_requests.equity, intake's recorded copy; null until intake records one."""
+    row = SimpleNamespace(
+        id="req000000000001",
+        year=2027,
+        application="app000000000001",
+        household_cm_id=1000001,
+        person_cm_id=1000011,
+        session_cm_id=1000101,
+        program_key="summer",
+        session_resolution="enrollment",
+        status="active",
+        equity={"bipoc": None, "gender_identity": "", "pronouns": "they/them"},
+    )
+    handle = MagicMock()
+    handle.get_full_list.return_value = [row, SimpleNamespace(**{**vars(row), "id": "req000000000002", "equity": None})]
+    pb = MagicMock()
+    pb.collection.return_value = handle
+    recorded, unrecorded = await FinancialAidIntakeRepository(pb).fetch_requests(2027)
+    assert recorded.equity == EquityAnswers(bipoc=None, gender_identity="", pronouns="they/them")
+    assert unrecorded.equity is None

@@ -17,6 +17,7 @@ from api.services.financial_aid_intake_types import (
     AttendeeRow,
     BillingLine,
     CorrectionRecord,
+    EquityAnswers,
     PayerShareRecord,
     RequestRecord,
 )
@@ -569,3 +570,19 @@ async def test_no_season_warning_without_a_weight_approved_rules_or_applicants(c
     if case == "no_applicants":
         store.fa_rows = []
     assert (await FinancialAidIntakeService(store).build(YEAR)).warnings == ()
+
+
+@pytest.mark.asyncio
+async def test_a_build_records_each_campers_equity_answers_on_their_request_and_a_rebuild_writes_nothing() -> None:
+    """3c-2: the copy a past date prices from, logged like every intake field."""
+    store = seeded_store()
+    store.equity[1000011] = EquityAnswers(bipoc=True, gender_identity="", pronouns="she/her")
+    service = FinancialAidIntakeService(store)
+    await service.build(YEAR)
+    by_person = {r.person_cm_id: r for r in store.requests.values()}
+    assert by_person[1000011].equity == EquityAnswers(bipoc=True, gender_identity="", pronouns="she/her")
+    assert by_person[1000021].equity == EquityAnswers(bipoc=None, gender_identity="", pronouns="")  # answered nothing
+    assert by_person[0].equity is None  # the Family Camp request is the household's
+    writes = len(store.writes)
+    await service.build(YEAR)
+    assert len(store.writes) == writes

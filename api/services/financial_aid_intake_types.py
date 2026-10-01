@@ -153,6 +153,35 @@ class ApplicationRecord:
 
 
 @dataclass(frozen=True)
+class EquityAnswers:
+    """A camper's own equity answers. None / "" means unanswered, never "no"."""
+
+    bipoc: bool | None
+    gender_identity: str
+    pronouns: str
+
+
+UNKNOWN_EQUITY: Final = EquityAnswers(bipoc=None, gender_identity="", pronouns="")
+
+
+def equity_json(answers: EquityAnswers) -> dict[str, Any]:
+    """The recorded copy's shape on aid_requests.equity (3c-2)."""
+    return {"bipoc": answers.bipoc, "gender_identity": answers.gender_identity, "pronouns": answers.pronouns}
+
+
+def equity_from_json(value: Any) -> EquityAnswers | None:
+    """aid_requests.equity back into answers; None when no copy is recorded (null, or not an object)."""
+    if not isinstance(value, Mapping):
+        return None
+    bipoc = value.get("bipoc")
+    return EquityAnswers(
+        bipoc=bipoc if isinstance(bipoc, bool) else None,
+        gender_identity=str(value.get("gender_identity") or ""),
+        pronouns=str(value.get("pronouns") or ""),
+    )
+
+
+@dataclass(frozen=True)
 class RequestRecord:
     id: str
     year: int
@@ -171,6 +200,10 @@ class RequestRecord:
     status: str
     duplicate_of: str
     flags: tuple[Mapping[str, Any], ...] = ()
+    # Intake's recorded copy of the camper's equity answers (3c-2), logged like every intake field, so
+    # a past date prices the answers as intake had recorded them. Live pricing still reads the synced
+    # answers (owner ruling 2026-09-30). None: no copy yet (always so for a household-level request).
+    equity: EquityAnswers | None = None
 
     @property
     def key(self) -> RequestKey:
@@ -214,15 +247,3 @@ class PayerShareRecord:
     source: str
     actor: str
     note: str = ""
-
-
-@dataclass(frozen=True)
-class EquityAnswers:
-    """A camper's own equity answers. None / "" means unanswered, never "no"."""
-
-    bipoc: bool | None
-    gender_identity: str
-    pronouns: str
-
-
-UNKNOWN_EQUITY: Final = EquityAnswers(bipoc=None, gender_identity="", pronouns="")
