@@ -5,7 +5,7 @@
  */
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -71,12 +71,14 @@ function Walk({
   go?: () => void
 }) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
+  // Stable, as the hook asks of every surface (a state setter or a useCallback).
+  const move = useCallback((key: string | null) => {
+    moves.push(key)
+    setHighlighted(key)
+  }, [])
   const walk = useEditorWalk({
     highlighted,
-    setHighlighted: (key) => {
-      moves.push(key)
-      setHighlighted(key)
-    },
+    setHighlighted: move,
     save: saveSpy,
   })
   return (
@@ -344,5 +346,106 @@ describe('useEditorWalk: leaving (C1; Decision 4)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Leave by the app nav' }))
     await act(async () => held[0]?.reject(new Error('The server is down')))
     expect(moves).toEqual(before)
+  })
+})
+
+describe('useEditorWalk: fix round 1 (races found in review)', () => {
+  it('keeps what was typed after a reopened row saved (M8, the typed-more half)', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.keyboard('{ArrowUp}')
+    await userEvent.keyboard('0')
+    expect(amountField()).toHaveValue('5000')
+    await act(async () => held[0]?.resolve())
+    expect(amountField()).toHaveValue('5000')
+  })
+
+  it('a second ↓ while the first save is in flight saves both and keeps moving', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.keyboard('300{ArrowDown}')
+    expect(editing('Chen')).toBeInTheDocument()
+    expect(saveSpy).toHaveBeenNthCalledWith(1, 'r1', { amount: 500, reason: NOTE })
+    expect(saveSpy).toHaveBeenNthCalledWith(2, 'r2', { amount: 300, reason: NOTE })
+    await act(async () => held[0]?.resolve())
+    await act(async () => held[1]?.resolve())
+    expect(editing('Chen')).toBeInTheDocument()
+    expect(screen.queryByText(/Couldn't save/)).toBeNull()
+  })
+
+  it("doesn't write a row again while the same figure is still in flight", async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.keyboard('{ArrowUp}')
+    expect(amountField()).toHaveValue('500')
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(editing('Chen')).toBeInTheDocument()
+  })
+
+  it('a superseded save that fails late leaves no phantom failure on a row that saved (P1b)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.keyboard('{ArrowUp}')
+    await userEvent.keyboard('0')
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(saveSpy).toHaveBeenCalledTimes(2)
+    expect(saveSpy).toHaveBeenLastCalledWith('r1', { amount: 5000, reason: NOTE })
+    await act(async () => held[0]?.reject(new Error('first failed')))
+    await act(async () => held[1]?.resolve())
+    expect(screen.queryByText(/Couldn't save/)).toBeNull()
+    expect(editing('Chen')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+
+  it('what is typed while leaving waits is saved too, and the page goes only after (P2)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    await userEvent.click(amountField())
+    await userEvent.keyboard('300')
+    await act(async () => held[0]?.resolve())
+    expect(go).not.toHaveBeenCalled()
+    expect(saveSpy).toHaveBeenLastCalledWith('r2', { amount: 300, reason: NOTE })
+    await act(async () => held[1]?.resolve())
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+
+  it('a save started while leaving waits is awaited, and its failure keeps the person here (P3)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    await userEvent.click(amountField())
+    await userEvent.keyboard('300{Enter}')
+    expect(saveSpy).toHaveBeenCalledTimes(2)
+    await act(async () => held[0]?.resolve())
+    expect(go).not.toHaveBeenCalled()
+    await act(async () => held[1]?.reject(new Error('The server is down')))
+    expect(go).not.toHaveBeenCalled()
+    expect(editing('Garcia')).toBeInTheDocument()
+    expect(amountField()).toHaveValue('300')
+    expect(screen.getByText('The server is down')).toBeInTheDocument()
+  })
+
+  it('a second leave while one is waiting goes once, not twice', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    const leave = screen.getByRole('button', { name: 'Open the Chen household' })
+    await userEvent.click(leave)
+    await userEvent.click(leave)
+    await act(async () => held[0]?.resolve())
+    expect(go).toHaveBeenCalledTimes(1)
   })
 })

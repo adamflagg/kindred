@@ -22,7 +22,9 @@ export interface EditorWalkOptions {
   /**
    * Moves the highlight with no questions asked: the walk has saved what needed saving. Pass sync
    * state (a `useState` setter); a surface that keeps the row in its URL mirrors the state there in
-   * an effect, never the other way round (Ruling 2026-10-01 (plan review) I2).
+   * an effect, never the other way round (Ruling 2026-10-01 (plan review) I2). It must be STABLE
+   * (a state setter or a `useCallback`): `onHighlight`, the table's nav and its key listener
+   * follow its identity.
    */
   readonly setHighlighted: (key: string | null) => void
   /** Writes one row's save. Rejects with an Error whose message staff can read. */
@@ -112,6 +114,10 @@ export function useEditorWalk({
   const typed = useRef<Typed | null>(null)
   // Every save still in flight, by row (C1): `leave` waits for them all.
   const inFlight = useRef(new Map<string, Promise<boolean>>())
+  // What each in-flight save carries, so the same figure is never written twice.
+  const inFlightEntry = useRef(new Map<string, EditorSave>())
+  // True while a `leave` is waiting: a second one is ignored, so `go` runs once.
+  const leaving = useRef(false)
   // The highlight now, for a save that answers after the person has moved on.
   const now = useRef(highlighted)
   // False once the surface is gone: nothing moves or sets after that (C1).
@@ -143,10 +149,14 @@ export function useEditorWalk({
       setSaving((s) => withMember(s, rowKey, true))
       putError(rowKey, undefined)
       const sent = stashed.current.get(rowKey)
+      // A newer save for the row supersedes this one: it answers for the row (settled is read later).
+      const latest = () => inFlight.current.get(rowKey) === settled
       const settled: Promise<boolean> = save(rowKey, entry)
         .then(
           () => {
             if (!mounted.current) return true
+            if (!latest()) return true
+            putError(rowKey, undefined)
             // M8: an editor reopened on this row and still showing exactly what was saved starts
             // again from the saved figure. Anything typed since stays the person's.
             const shown = typedOn(typed.current, rowKey)
@@ -165,6 +175,8 @@ export function useEditorWalk({
           (error: unknown) => {
             // C1: after the surface is gone a late failure moves nothing.
             if (!mounted.current) return false
+            // Superseded: the newer save for this row answers for it, so this failure is not listed.
+            if (!latest()) return true
             putError(rowKey, messageOf(error))
             const open = now.current
             // Ruling A, refined (Decision 3): come back at once only when the row being worked on
@@ -176,14 +188,24 @@ export function useEditorWalk({
           }
         )
         .finally(() => {
-          if (inFlight.current.get(rowKey) === settled) inFlight.current.delete(rowKey)
+          if (latest()) {
+            inFlight.current.delete(rowKey)
+            inFlightEntry.current.delete(rowKey)
+          }
           if (mounted.current) setSaving((s) => withMember(s, rowKey, false))
         })
       inFlight.current.set(rowKey, settled)
+      inFlightEntry.current.set(rowKey, entry)
       return settled
     },
     [save, setHighlighted, putStash, putError]
   )
+
+  /** Is this exactly what the row's save in flight already carries? Then writing it again is noise. */
+  const alreadySent = useCallback((rowKey: string, entry: EditorSave): boolean => {
+    const flying = inFlightEntry.current.get(rowKey)
+    return flying?.amount === entry.amount && flying.reason === entry.reason
+  }, [])
 
   /** Leaves `rowKey`: keeps its text in case the save fails, moves at once, then writes (ruling A). */
   const moveFrom = useCallback(
@@ -194,9 +216,9 @@ export function useEditorWalk({
       // Cleared before moving, so the move isn't taken for a click with something typed (ruling B).
       typed.current = null
       go()
-      if (entry !== null) void write(rowKey, entry, true)
+      if (entry !== null && !alreadySent(rowKey, entry)) void write(rowKey, entry, true)
     },
-    [write, putStash]
+    [write, putStash, alreadySent]
   )
 
   const onHighlight = useCallback(
@@ -218,17 +240,10 @@ export function useEditorWalk({
 
   const leave = useCallback(
     (rowKey: string | null, go: () => void) => {
-      const open = highlighted
-      const report = typedOn(typed.current, open)
-      if (open !== null && report !== null) {
-        if (report.save === null) {
-          setBlocked((b) => withMember(b, open, true))
-          return
-        }
-        putStash(open, { raw: report.raw, reason: report.reason })
-        void write(open, report.save, false)
-      }
-      const finish = (firstFailed: string | undefined) => {
+      if (leaving.current) return
+      leaving.current = true
+      const conclude = (firstFailed: string | undefined) => {
+        leaving.current = false
         if (!mounted.current) return
         if (firstFailed !== undefined) {
           // C1: stay, back on the failed row with its amount and its error.
@@ -239,20 +254,42 @@ export function useEditorWalk({
         if (rowKey !== null && rowKey !== now.current) setHighlighted(rowKey)
         go()
       }
-      const waiting = [...inFlight.current.entries()]
-      if (waiting.length === 0) {
-        // A failure still listed holds the person here too: its typing would die with the page.
-        finish([...refused.current.keys()][0])
-        return
-      }
-      void Promise.all(waiting.map(([key, done]) => done.then((ok) => (ok ? null : key)))).then(
-        (outcomes) => {
-          const failedNow = outcomes.find((key): key is string => key !== null)
-          finish(failedNow ?? [...refused.current.keys()][0])
+      // Looked at again after every wait: what was typed or saved while it ran counts too.
+      const pass = () => {
+        if (!mounted.current) {
+          leaving.current = false
+          return
         }
-      )
+        const open = now.current
+        const report = typedOn(typed.current, open)
+        if (open !== null && report !== null) {
+          if (report.save === null) {
+            leaving.current = false
+            setBlocked((b) => withMember(b, open, true))
+            return
+          }
+          if (!alreadySent(open, report.save)) {
+            putStash(open, { raw: report.raw, reason: report.reason })
+            void write(open, report.save, false)
+          }
+        }
+        const waiting = [...inFlight.current.entries()]
+        if (waiting.length === 0) {
+          // A failure still listed holds the person here too: its typing would die with the page.
+          conclude([...refused.current.keys()][0])
+          return
+        }
+        void Promise.all(waiting.map(([key, done]) => done.then((ok) => (ok ? null : key)))).then(
+          (outcomes) => {
+            const failedNow = outcomes.find((key): key is string => key !== null)
+            if (failedNow !== undefined) conclude(failedNow)
+            else pass()
+          }
+        )
+      }
+      pass()
     },
-    [highlighted, putStash, setHighlighted, write]
+    [putStash, setHighlighted, write, alreadySent]
   )
 
   const editorFor = useCallback(
