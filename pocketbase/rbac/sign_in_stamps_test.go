@@ -75,10 +75,11 @@ func TestOAuth2SignInStampsBothTimestamps(t *testing.T) {
 	}
 }
 
-// TestSelfPatchCannotSetSignInTimestamps: users.updateRule is owner-only, so a
-// person could otherwise PATCH their own last_seen / last_login and hide (or
-// invent) their activity. Like is_admin and cached_permissions, the request
-// guard keeps them server-owned; the auth hooks still write them with app.Save.
+// TestSelfPatchCannotSetSignInTimestamps: users.updateRule is null (superusers
+// only) since migration 1500000181; this test loosens it to owner-only to prove
+// that, were it ever loosened, a person still could not PATCH their own
+// last_seen / last_login to hide (or invent) their activity. Like is_admin and
+// cached_permissions, the request guard keeps them server-owned; the auth hooks still write them with app.Save.
 func TestSelfPatchCannotSetSignInTimestamps(t *testing.T) {
 	headers := map[string]string{}
 	past := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)

@@ -42,6 +42,7 @@ func TestBatchRefusesSuperusersCollection(t *testing.T) {
 	}
 	grant := `{"method":"POST","url":"/api/collections/user_roles/records","body":` +
 		`{"user":"` + urFreshID + `","role":"` + urRoleBunking + `"}}`
+	refusedInBatch := []string{"Superuser accounts can't be changed", `"status":403`}
 	// Only the superuser the scenario itself created.
 	expectOnlyTheCaller := func(t testing.TB, app *tests.TestApp) {
 		t.Helper()
@@ -50,23 +51,38 @@ func TestBatchRefusesSuperusersCollection(t *testing.T) {
 		}
 	}
 
-	scenarios := make([]tests.ApiScenario, 0, 6)
+	scenarios := make([]tests.ApiScenario, 0, 10)
 	for _, spelling := range []string{
-		core.CollectionNameSuperusers, "_SUPERUSERS", "pbc_3142635823", "%5Fsuperusers",
+		core.CollectionNameSuperusers, "_SUPERUSERS", "pbc_3142635823", "_\u017fuperusers", "_superuser\u017f",
 	} {
 		scenarios = append(scenarios, tests.ApiScenario{
 			Name: "a _superusers create as " + spelling + " is refused", Method: http.MethodPost, URL: "/api/batch",
 			Body: body(superCreate(spelling)), TestAppFactory: factory, BeforeTestFunc: asSuperuser, Headers: headers,
-			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"Superuser accounts can't be changed"},
+			ExpectedStatus: http.StatusBadRequest, ExpectedContent: refusedInBatch,
 			AfterTestFunc: after(expectOnlyTheCaller),
 		})
 	}
 	scenarios = append(scenarios,
 		tests.ApiScenario{
+			Name: "a percent-encoded name is a not-found, not a refusal", Method: http.MethodPost, URL: "/api/batch",
+			Body: body(superCreate("%5Fsuperusers")), TestAppFactory: factory, BeforeTestFunc: asSuperuser, Headers: headers,
+			ExpectedStatus: http.StatusBadRequest, ExpectedContent: []string{`"status":404`},
+			NotExpectedContent: []string{"Superuser accounts can't be changed"},
+			AfterTestFunc:      after(expectOnlyTheCaller),
+		},
+		tests.ApiScenario{
+			Name: "the direct records API is not this hook's business", Method: http.MethodPost,
+			URL: "/api/collections/_superusers/records",
+			Body: strings.NewReader(`{"email":"direct@example.com","password":"correct-horse-battery-staple",` +
+				`"passwordConfirm":"correct-horse-battery-staple"}`),
+			TestAppFactory: factory, BeforeTestFunc: asSuperuser, Headers: headers,
+			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"email":"direct@example.com"`},
+		},
+		tests.ApiScenario{
 			Name: "one _superusers sub-request refuses the whole batch", Method: http.MethodPost, URL: "/api/batch",
 			Body: body(grant, superCreate(core.CollectionNameSuperusers)), TestAppFactory: factory,
 			BeforeTestFunc: asSuperuser, Headers: headers,
-			ExpectedStatus: http.StatusForbidden, ExpectedContent: []string{"Superuser accounts can't be changed"},
+			ExpectedStatus: http.StatusBadRequest, ExpectedContent: refusedInBatch,
 			AfterTestFunc: after(expectOnlyTheCaller, expectRefusedUntouched),
 		},
 		tests.ApiScenario{
