@@ -108,4 +108,5 @@ async def test_the_ledger_tick_sends_its_guarded_locks_first() -> None:
     await _service(store, FakeRules(approved())).ledger_ticks(YEAR)
     [operation] = store.operations
     collections = [write.collection for write in operation]
+    assert collections[0] == AID_RULES  # at least one lock: with none, the ordering below holds vacuously
     assert collections == [AID_RULES] * (len(collections) - 1) + [AID_DECISIONS]

@@ -833,7 +833,12 @@ class FinancialAidRulesService:
             raise YearMismatchError(f"The document is for {document.year}, not {year}")
         # One read of the rules draft for the preview, the tokens, the candidate and the write's revision
         # (Ruling 2026-10-01 (plan review)): a second read could see a save the confirmed preview never showed.
-        current = await self._rules_draft(year, base_version)
+        # Not `_rules_draft`: a promotion was confirmed against a preview, so staff go back to the preview.
+        current = await self.load(year)
+        if current.version != base_version:
+            raise NotLatestVersionError(
+                f"The rules draft is version {current.version} now, not {base_version}: look at the changes again"
+            )
         preview = await self._preview(current, origin_version=origin_version, document=document)
         unconfirmed = [
             s.section

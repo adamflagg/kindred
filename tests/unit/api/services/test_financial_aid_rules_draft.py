@@ -857,6 +857,25 @@ async def test_promoting_against_an_older_rules_draft_is_refused() -> None:
 
 
 @pytest.mark.asyncio
+async def test_promoting_against_an_older_rules_draft_says_to_look_at_the_changes_again() -> None:
+    """A promotion is confirmed against a preview, so its stale-base refusal sends staff back to the preview, not
+    to "make the change again" as a section save's does."""
+    service = await _approved_v1(FakeStore())
+    await service.save_sections(2031, 1, _minimum(fictional_rules(), "120"), actor=TREASURER)
+    with pytest.raises(NotLatestVersionError) as refused:
+        await service.promote(
+            2031,
+            origin_version=1,
+            document=_option(),
+            base_version=1,
+            acknowledged={"awards": "x"},
+            actor=FINANCE,
+            via="B2",
+        )
+    assert str(refused.value) == "The rules draft is version 2 now, not 1: look at the changes again"
+
+
+@pytest.mark.asyncio
 async def test_an_option_that_changes_nothing_promotes_nothing() -> None:
     store = FakeStore()
     service = await _approved_v1(store)

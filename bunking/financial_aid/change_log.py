@@ -502,9 +502,9 @@ def commit_aid_writes(
     to log. ``reason`` is the operation's default reason; ``require_reason``
     refuses any write left without one.
 
-    **Size.** An operation of N writes is 2N sub-requests. Up to
-    ``max_requests`` (default: the server's limit, 2000, so about 1000 writes)
-    it is ONE atomic batch. Over it, the operation is refused with
+    **Size.** An operation of N writes and G guards is G + 2N sub-requests (a
+    guard has no log row). Up to ``max_requests`` (default: the server's limit,
+    2000, so about 1000 writes) it is ONE atomic batch. Over it, the operation is refused with
     ``BatchLimitError`` unless ``allow_chunking=True``: then it is sent as
     consecutive batches that never split a write from its log row. Each chunk is
     atomic; the operation as a whole is not. If a later chunk fails,
