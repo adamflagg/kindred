@@ -63,6 +63,9 @@ from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundState
 from bunking.financial_aid.money import ZERO
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def camp_date(moment: datetime) -> date:
@@ -189,17 +192,23 @@ def override_split(fields: Mapping[str, Any]) -> tuple[SplitPart, ...]:
     """The parts of a split override (its `split` JSON, a list or its text); () for an override that
     places or reclassifies a line whole."""
     raw = fields.get("split")
-    if isinstance(raw, str):
-        raw = json.loads(raw) if raw.strip() else None
-    return tuple(
-        SplitPart(
-            int(part.get("person_cm_id") or 0),
-            int(part.get("session_cm_id") or 0),
-            str(part.get("program_family") or ""),
-            Decimal(str(part["amount"])),
+    try:
+        if isinstance(raw, str):
+            raw = json.loads(raw) if raw.strip() else None
+        return tuple(
+            SplitPart(
+                int(part.get("person_cm_id") or 0),
+                int(part.get("session_cm_id") or 0),
+                str(part.get("program_family") or ""),
+                Decimal(str(part["amount"])),
+            )
+            for part in raw or ()
         )
-        for part in raw or ()
-    )
+    except (ValueError, TypeError, AttributeError, KeyError, ArithmeticError) as exc:
+        # An unreadable split must not fail the season read: a part with no amount reads as a bad record,
+        # and _pieces leaves the line at family level, where To place shows it.
+        logger.warning("Unreadable aid split override ignored: %s: %s", type(exc).__name__, exc)
+        return (SplitPart(0, 0, "", ZERO),)
 
 
 @dataclass(frozen=True)
@@ -428,6 +437,16 @@ def _index(
     return by_person, by_household
 
 
+def _split_is_sound(line: CampLine, parts: Sequence[SplitPart]) -> bool:
+    """A split places a line only when every part is positive, no two parts name one request, and the
+    parts add up to the line (CampMinder never changes a posted amount, so anything else is a bad record)."""
+    if any(part.amount <= 0 for part in parts):
+        return False
+    if len({(p.person_cm_id, p.session_cm_id, p.program_family) for p in parts}) != len(parts):
+        return False
+    return sum((part.amount for part in parts), ZERO) == line.amount
+
+
 def _pieces(
     lines: Iterable[CampLine], placements: Mapping[int, Placement], splits: Mapping[int, Sequence[SplitPart]]
 ) -> Iterable[tuple[CampLine, Placement | None]]:
@@ -437,10 +456,13 @@ def _pieces(
         parts = splits.get(line.transaction_cm_id)
         if not parts:
             yield line, placements.get(line.transaction_cm_id)
-        elif sum((part.amount for part in parts), ZERO) == line.amount:
+        elif _split_is_sound(line, parts):
             for part in parts:
                 yield replace(line, amount=part.amount), part.placement(line.transaction_cm_id)
         else:
+            logger.warning(
+                "Aid split on transaction %s is not usable; the line stays at family level", line.transaction_cm_id
+            )
             yield line, None
 
 

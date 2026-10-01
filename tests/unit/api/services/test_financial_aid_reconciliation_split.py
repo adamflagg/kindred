@@ -4,9 +4,12 @@ placement's own tick never waiting for tonight's sync. Fictional throughout: hou
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+
+import pytest
 
 from api.services.financial_aid_reconciliation import (
     PlaceableRequest,
@@ -101,3 +104,39 @@ def test_the_public_totals_are_what_reconciliation_compares() -> None:
     assert locked_total(replace(R1, rounds=(replace(R1.rounds[0], clawed_back=True),))) == 0
     assert live_net([line(1, "1500"), line(2, "300", reversed_at=JUN1)]) == Decimal(1500)
     assert POSTED_R1[1].posted_on == date(2027, 3, 9)
+
+
+def _bad_split_cases() -> list[object]:
+    return [
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "program_family": "summer", "amount": 2500},'
+        ' {"person_cm_id": 1000012, "session_cm_id": 1000102, "program_family": "summer", "amount": -100}]',
+        "{not json",
+        '{"amount": 5}',
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101}]',
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": "lots"}]',
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": 0},'
+        ' {"person_cm_id": 1000012, "session_cm_id": 1000102, "amount": 2400}]',
+        "[1, 2]",
+    ]
+
+
+@pytest.mark.parametrize("raw", _bad_split_cases())
+def test_an_unreadable_or_non_positive_split_leaves_the_line_at_family_level(
+    raw: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        parts = override_split({"split": raw})
+        ledger = build_ledger([line(1, "2400")], {}, _two(), None, splits={1: parts})
+    assert ledger.lines("emma") == ()
+    assert ledger.lines("samuel") == ()
+    assert ledger.family_unplaced([1000001]) == Decimal(2400)
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_two_split_parts_on_one_request_leave_the_line_at_family_level(caplog: pytest.LogCaptureFixture) -> None:
+    again = SplitPart(1000011, 1000101, "summer", Decimal(900))
+    with caplog.at_level(logging.WARNING):
+        ledger = build_ledger([line(1, "2400")], {}, _two(), None, splits={1: (EMMA_PART, again)})
+    assert ledger.lines("emma") == ()
+    assert ledger.family_unplaced([1000001]) == Decimal(2400)
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
