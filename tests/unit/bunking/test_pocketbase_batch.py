@@ -324,16 +324,28 @@ def test_batch_timeout_is_the_migrations_timeout() -> None:
 
 
 @pytest.mark.parametrize("caddyfile", ["docker/Caddyfile", "frontend/Caddyfile"])
-def test_caddy_does_not_route_the_batch_api_to_pocketbase(caddyfile: str) -> None:
-    """A batch's sub-requests pass PocketBase's rules but not Caddy's path gates
-    (the _superusers IP allowlist sees only /api/batch). Only Kindred's services,
-    on the internal network, may reach it (migration 1500000195)."""
+def test_caddy_routes_the_batch_api_to_pocketbase_and_nothing_wider(caddyfile: str) -> None:
+    """The Users page saves a person's role changes in one batch from the browser,
+    so Caddy routes /api/batch to PocketBase -- and never a blanket /api/*."""
     text = (REPO_ROOT / caddyfile).read_text()
     matchers = [line for line in text.splitlines() if line.strip().startswith("@pocketbase ")]
     assert matchers, f"{caddyfile} has no @pocketbase matcher to check"
     for line in matchers:
-        assert "/api/batch" not in line, line
-        assert "/api/*" not in line.split("path", 1)[1], line
+        paths = line.split("path", 1)[1].split()
+        assert "/api/batch" in paths, line
+        assert "/api/*" not in paths, line
+
+
+def test_batch_cannot_reach_superusers_past_the_caddy_ip_gate() -> None:
+    """A batch's sub-requests skip Caddy's path gates (the _superusers IP allowlist
+    sees only /api/batch), so PocketBase itself refuses superuser writes inside a
+    batch. rbac/batch_guard_test.go proves the behaviour; this pins the binding."""
+    guard = (REPO_ROOT / "pocketbase" / "rbac" / "batch_guard.go").read_text()
+    for hook in ("OnRecordCreateRequest", "OnRecordUpdateRequest", "OnRecordDeleteRequest"):
+        assert f"app.{hook}(core.CollectionNameSuperusers)" in guard, hook
+    assert "core.RequestInfoContextBatch" in guard
+    hooks = (REPO_ROOT / "pocketbase" / "rbac" / "hooks.go").read_text()
+    assert any(line.strip() == "registerBatchSuperusersGuard(app)" for line in hooks.splitlines())
 
 
 # --- If-Match: write only if unchanged (campership G6) ------------------------------------------------
