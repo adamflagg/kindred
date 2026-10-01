@@ -37,6 +37,18 @@ export interface EditorSave {
   readonly reason: string
 }
 
+/** What is typed, as text: the amount field and the note. */
+export interface EditorTyped {
+  readonly raw: string
+  readonly reason: string
+}
+
+/** What `onDraftChange` reports while something is typed: the text, the save it would make, or why it can't. */
+export interface EditorDraftReport extends EditorTyped {
+  readonly save: EditorSave | null
+  readonly problem: string | null
+}
+
 interface RequestEditorProps {
   readonly familyName: string
   readonly householdCmId: number
@@ -71,6 +83,24 @@ interface RequestEditorProps {
    * (`useMutation` does this on mutate): it stays on screen while set.
    */
   readonly saveError?: string | null | undefined
+  /**
+   * Owner ruling A (2026-10-01): what was typed when this row's save failed, put back when the
+   * editor opens on it again. The baseline stays the opening figure and note, so it counts as typed:
+   * Enter or ↓ saves it again.
+   */
+  readonly draft?: EditorTyped | undefined
+  /**
+   * Every change in what is typed: null while nothing is (the amount and note it opened with), else
+   * the text, the save it would make (null while not valid) and why not. Owner ruling B saves from
+   * it when another row is clicked (kit/useEditorWalk.ts). Read through a ref, so a new callback
+   * each render doesn't report again.
+   */
+  readonly onDraftChange?: ((report: EditorDraftReport | null) => void) | undefined
+  /**
+   * Show the editor's own problem now, as if Enter had been tried: the walk sets it when a click
+   * elsewhere found nothing it could save yet (slice 1 Decision 5; plan review M9).
+   */
+  readonly showProblem?: boolean | undefined
   /** 'row' under the highlighted grid row; 'card' in place on the household page's request card (D22). */
   readonly layout?: 'row' | 'card' | undefined
 }
@@ -127,8 +157,10 @@ interface Baseline {
  */
 export function RequestEditor(props: RequestEditorProps) {
   const noteStart = initialReason(props.policy, props.today)
-  const [raw, setRaw] = useState(props.initialAmount === null ? '' : String(props.initialAmount))
-  const [reason, setReason] = useState(noteStart)
+  const [raw, setRaw] = useState(
+    props.draft?.raw ?? (props.initialAmount === null ? '' : String(props.initialAmount))
+  )
+  const [reason, setReason] = useState(props.draft?.reason ?? noteStart)
   // What "nothing typed" means: the amount and note the editor opened with, moved forward when a
   // save finishes or an untouched field's amount is refetched. Amounts compare PARSED, so "1,200"
   // over 1200 is not an edit.
@@ -195,6 +227,23 @@ export function RequestEditor(props: RequestEditorProps) {
         : props.policy.kind === 'required' && reasonMissing(props.policy, reason)
           ? `${props.policy.label} is required`
           : null
+
+  const reportTo = useRef(props.onDraftChange)
+  useEffect(() => {
+    reportTo.current = props.onDraftChange
+  })
+  const readyAmount = parsed.kind === 'ok' ? parsed.amount : null
+  useEffect(() => {
+    if (untouched) {
+      reportTo.current?.(null)
+      return
+    }
+    const save =
+      problem === null && readyAmount !== null
+        ? { amount: readyAmount, reason: reason.trim() }
+        : null
+    reportTo.current?.({ raw, reason, save, problem })
+  }, [untouched, raw, reason, problem, readyAmount])
 
   /** The save, once: null when it isn't valid yet or one is already on its way. */
   const takeSave = (): EditorSave | null => {
@@ -317,7 +366,9 @@ export function RequestEditor(props: RequestEditorProps) {
       <span className="text-muted-foreground text-xs">
         Enter saves{props.onMove ? ' · ↓ saves and moves on' : ''} · Esc cancels
       </span>
-      {tried && problem !== null && <span className={AMBER_NOTE}>{problem}</span>}
+      {(tried || props.showProblem === true) && problem !== null && (
+        <span className={AMBER_NOTE}>{problem}</span>
+      )}
       {props.saveError ? <span className={AMBER_NOTE}>{props.saveError}</span> : null}
     </div>
   )
