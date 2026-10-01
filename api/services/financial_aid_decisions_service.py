@@ -101,7 +101,6 @@ from api.services.financial_aid_cancellations import (
     enrollment_cancelled,
     fold_cancellations,
     needs_reason,
-    reason_answers,
     withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
@@ -1683,23 +1682,17 @@ class FinancialAidDecisionsService:
             self._store.fetch_sessions(request.year),
         )
         state = fold_cancellations(events).get(request.id, CancelState())
-        in_campminder, day = enrollment_cancelled(request, enrollments, {s.cm_id: s.session_type for s in sessions})
+        in_campminder, _ = enrollment_cancelled(request, enrollments, {s.cm_id: s.session_type for s in sessions})
         if body.cancelled:
             if body.reason is None:  # the model refuses this; narrowed for mypy
                 raise DecisionRefusedError("a cancellation needs its reason")
             # A reason edited after CampMinder also cancelled keeps Kindred's cancellation (the family
             # declined), so a later re-enrolment in CampMinder does not bring the request back.
             in_kindred = state.in_kindred or not in_campminder
-            current = not in_campminder or reason_answers(state, day)
-            if (
-                current
-                and state.reason is not None
-                and (state.reason, state.note, state.in_kindred)
-                == (
-                    body.reason,
-                    body.note,
-                    in_kindred,
-                )
+            if state.reason is not None and (state.reason, state.note, state.in_kindred) == (
+                body.reason,
+                body.note,
+                in_kindred,
             ):
                 return self._unchanged(request.year)
             label = CANCEL_REASON_LABELS[body.reason]

@@ -190,17 +190,13 @@ def test_a_reason_given_for_a_campminder_cancellation_travels_with_it() -> None:
     assert out["emma"] == Cancellation("campminder", MAY2, "another_reason", "Moved away")
 
 
-def test_a_campminder_cancellations_reason_does_not_answer_a_later_cancellation() -> None:
-    """Final review: reason given, the camper re-enrolled, CampMinder cancelled again on a later day. Only
-    a reason recorded on or after the current cancellation's day satisfies its to-do."""
+def test_a_campminder_cancellations_reason_stands_when_campminder_re_dates_it() -> None:
+    """Owner 2026-10-01: families cancel once and never un-cancel, so a recorded reason always answers the
+    request's cancellation, even when CampMinder later moves the cancellation's date past it."""
     events = [CancelEvent("c1", "emma", "cancel", APR1, reason="schedule", note="Summer job")]
-    first = cancellations_by_request([request()], events, [row(32, on=date(2027, 3, 20))], SESSIONS)
-    assert first["emma"] == Cancellation("campminder", date(2027, 3, 20), "schedule", "Summer job")
-    again = cancellations_by_request([request()], events, [row(32)], SESSIONS)
-    assert again["emma"] == Cancellation("campminder", MAY2, None, "")
-    assert needs_reason(again["emma"], 2027) is True
-    same_day = [CancelEvent("c1", "emma", "cancel", datetime(2027, 5, 2, 18, 0, tzinfo=UTC), reason="schedule")]
-    assert cancellations_by_request([request()], same_day, [row(32)], SESSIONS)["emma"].reason == "schedule"
+    out = cancellations_by_request([request()], events, [row(32)], SESSIONS)
+    assert out["emma"] == Cancellation("campminder", MAY2, "schedule", "Summer job")
+    assert needs_reason(out["emma"], 2027) is False
 
 
 def test_a_kindred_cancellations_reason_stands_when_campminder_cancels_after_it() -> None:

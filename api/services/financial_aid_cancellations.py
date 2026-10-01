@@ -170,16 +170,6 @@ class Cancellation:
     note: str
 
 
-def reason_answers(state: CancelState, day: date | None) -> bool:
-    """Whether the recorded reason belongs to the current cancellation, CampMinder's of `day`. A reason
-    given for a Kindred cancellation does (CampMinder only followed it); one given for a CampMinder
-    cancellation does only if recorded on or after its day, so a re-enrolment and a later cancellation
-    ask again (final review). An unknown day can't be told apart, so the reason stands."""
-    if state.in_kindred or day is None or state.at is None:
-        return True
-    return camp_date(state.at) >= day
-
-
 def needs_reason(cancellation: Cancellation | None, year: int) -> bool:
     """D101: a cancelled request with no reason carries "Cancelled: give a reason", from the first
     season cancel reasons exist (clean spec §5.6)."""
@@ -225,10 +215,9 @@ def cancellations_by_request(
         state = states.get(request.id, CancelState())
         cancelled, day = enrollment_cancelled(request, _rows(request, by_person, by_household), session_types)
         if cancelled:
-            current = reason_answers(state, day)
-            out[request.id] = Cancellation(
-                "campminder", day, state.reason if current else None, state.note if current else ""
-            )
+            # A family cancels once (owner 2026-10-01), so a recorded reason answers this cancellation
+            # even if CampMinder later moves its date.
+            out[request.id] = Cancellation("campminder", day, state.reason, state.note)
         elif state.in_kindred:
             out[request.id] = Cancellation(
                 "kindred", camp_date(state.at) if state.at is not None else None, state.reason, state.note
