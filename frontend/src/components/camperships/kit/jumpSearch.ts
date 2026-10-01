@@ -16,6 +16,11 @@ interface Candidate {
   readonly detail: string
 }
 
+/** Case- and accent-insensitive: "José" and "jose" are the same word to someone typing fast. */
+function fold(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
 function idCandidates(household: ApiAidJumpHousehold, query: string): Candidate[] {
   const out: Candidate[] = []
   const id = String(household.household_cm_id)
@@ -34,11 +39,11 @@ function idCandidates(household: ApiAidJumpHousehold, query: string): Candidate[
 
 function nameCandidates(household: ApiAidJumpHousehold, query: string): Candidate[] {
   const out: Candidate[] = []
-  const family = household.family_name.toLowerCase()
+  const family = fold(household.family_name)
   if (family.startsWith(query)) out.push({ score: 80, detail: 'family' })
   else if (family.includes(query)) out.push({ score: 40, detail: 'family' })
   for (const person of household.people) {
-    const name = person.name.toLowerCase()
+    const name = fold(person.name)
     const wordStart =
       name.startsWith(query) || name.split(/\s+/).some((word) => word.startsWith(query))
     if (wordStart) out.push({ score: 70, detail: `${person.role} ${person.name}` })
@@ -56,7 +61,7 @@ export function searchJumpIndex(
   query: string,
   limit = 8
 ): JumpMatch[] {
-  const q = query.trim().toLowerCase()
+  const q = fold(query.trim())
   if (q === '') return []
   const scored: Array<{ match: JumpMatch; score: number }> = []
   for (const household of households) {

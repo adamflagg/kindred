@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { acquireOverlayToken, releaseOverlayToken } from '../../ui/modalStack'
 import { JumpBox } from './JumpBox'
 
 const LOADED = {
@@ -78,6 +79,46 @@ describe('JumpBox (§3.5; D13)', () => {
     await userEvent.keyboard('/')
     expect(box()).toHaveFocus()
     expect(box()).toHaveValue('')
+  })
+
+  it('leaves "/" alone on a held-down repeat, so it is never typed into the box', () => {
+    renderBox()
+    fireEvent.keyDown(document.body, { key: '/', repeat: true })
+    expect(box()).not.toHaveFocus()
+  })
+
+  it('leaves "/" alone during an IME composition', () => {
+    renderBox()
+    fireEvent.keyDown(document.body, { key: '/', isComposing: true })
+    expect(box()).not.toHaveFocus()
+  })
+
+  it('leaves "/" alone while a modal is open', () => {
+    renderBox()
+    const token = acquireOverlayToken()
+    try {
+      fireEvent.keyDown(document.body, { key: '/' })
+      expect(box()).not.toHaveFocus()
+    } finally {
+      releaseOverlayToken(token)
+    }
+  })
+
+  it('does not navigate on Enter while an IME is composing', () => {
+    renderBox()
+    fireEvent.change(box(), { target: { value: 'olivia' } })
+    fireEvent.keyDown(box(), { key: 'Enter', isComposing: true })
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests')
+  })
+
+  it('opens a result only on the primary mouse button', () => {
+    renderBox()
+    fireEvent.change(box(), { target: { value: 'john' } })
+    const row = screen.getByRole('button', { name: /Johnson/ })
+    fireEvent.mouseDown(row, { button: 2 })
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests')
+    fireEvent.mouseDown(row, { button: 0 })
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000001')
   })
 
   it('leaves "/" alone while you type in another field', async () => {

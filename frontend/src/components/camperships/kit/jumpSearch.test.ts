@@ -65,6 +65,20 @@ describe('searchJumpIndex (§3.5; D13: family, camper or parent name, or a CampM
     expect(searchJumpIndex(INDEX, '1000002')[0]?.familyName).toBe('Johnson')
   })
 
+  it('ignores accents on either side', () => {
+    const accented: ApiAidJumpHousehold[] = [
+      {
+        household_cm_id: 1000007,
+        family_name: 'Núñez',
+        people: [{ person_cm_id: 1000008, name: 'José Núñez', role: 'camper' }],
+      },
+    ]
+    expect(searchJumpIndex(accented, 'jose')[0]?.familyName).toBe('Núñez')
+    expect(searchJumpIndex(accented, 'nunez')[0]?.familyName).toBe('Núñez')
+    expect(searchJumpIndex(INDEX, 'gárcia')[0]?.familyName).toBe('Garcia')
+    expect(searchJumpIndex(accented, 'JOSÉ')[0]?.familyName).toBe('Núñez')
+  })
+
   it('finds nothing for nothing, and nothing for a stranger', () => {
     expect(searchJumpIndex(INDEX, '  ')).toEqual([])
     expect(searchJumpIndex(INDEX, 'zzz')).toEqual([])

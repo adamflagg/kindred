@@ -43,6 +43,8 @@ export function JumpBox() {
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
+      // Not a held-down repeat, an IME composition or a key already handled (as AidTable's keys).
+      if (event.repeat || event.isComposing || event.defaultPrevented) return
       if (event.key !== '/' || !isPageKey(event)) return
       event.preventDefault()
       inputRef.current?.focus()
@@ -72,6 +74,7 @@ export function JumpBox() {
       event.preventDefault()
       setActive((a) => Math.max(a - 1, 0))
     } else if (event.key === 'Enter') {
+      if (event.nativeEvent.isComposing) return
       event.preventDefault()
       go(matches[active])
     } else if (event.key === 'Escape') {
@@ -111,6 +114,7 @@ export function JumpBox() {
                 type="button"
                 // mousedown, so the input's blur doesn't close the list before the click lands
                 onMouseDown={(event) => {
+                  if (event.button !== 0) return
                   event.preventDefault()
                   go(match)
                 }}
