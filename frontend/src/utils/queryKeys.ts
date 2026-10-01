@@ -133,6 +133,8 @@ export const queryKeys = {
   roles: () => ['roles'] as const,
   userRoles: () => ['user-roles'] as const,
   userRolesForUser: (userId: string) => ['user-roles', userId] as const,
+  permissionRegistry: () => ['permission-registry'] as const,
+  permissionDescriptions: () => ['permission-descriptions'] as const,
 
   // Admin/Config (Tier 2 - user data)
   adminSettings: () => ['admin-settings'] as const,
