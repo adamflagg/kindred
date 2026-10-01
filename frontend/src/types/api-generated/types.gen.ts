@@ -3383,6 +3383,10 @@ export type DraftSectionOut = {
    * Warnings
    */
   warnings: number
+  /**
+   * Fingerprint
+   */
+  fingerprint: string
 }
 
 /**
@@ -12404,6 +12408,12 @@ export type RulesApproveIn = {
    * Note
    */
   note: string
+  /**
+   * Fingerprints
+   */
+  fingerprints: {
+    [key: string]: string
+  }
 }
 
 /**
@@ -12873,6 +12883,10 @@ export type SectionSaveIn = {
   content: {
     [key: string]: unknown
   }
+  /**
+   * Expected Fingerprint
+   */
+  expected_fingerprint: string
 }
 
 /**
