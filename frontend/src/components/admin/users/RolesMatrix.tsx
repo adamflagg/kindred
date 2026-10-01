@@ -146,7 +146,9 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
           roleId={drawer}
           data={data}
           registry={registry}
+          url={url}
           onClose={() => setDrawer(undefined)}
+          onCreated={(id) => setDrawer(id)}
         />
       )}
     </div>
