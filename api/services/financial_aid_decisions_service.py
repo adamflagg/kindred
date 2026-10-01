@@ -149,7 +149,7 @@ from api.services.financial_aid_rules_service import (
     RulesVersion,
 )
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.change_replay import LogRow, Replayed, replay
 from bunking.financial_aid.decisions import (
     BUDGET_GAPS,
@@ -1610,6 +1610,23 @@ class FinancialAidDecisionsService:
         return DecisionWriteOut(year=year, written=1, unchanged=0, operation_id=result.operation_id)
 
     async def ledger_ticks(self, year: int) -> LedgerTicksOut:
+        """`_ledger_ticks_once`, re-run ONCE when a person changed the rules between its read and its write (G6).
+
+        The refused attempt wrote nothing: its rules-section locks are the only guarded writes, and they ride
+        in its first batch. So the retry is a fresh run, re-reading the season and re-deriving every tick and
+        lock; nothing is applied twice. A second conflict is a DecisionRefusedError, which the internal route
+        answers 422 and the Go sync counts as an aid-ledger warning: the next night's run ticks those rounds."""
+        try:
+            return await self._ledger_ticks_once(year)
+        except AidWriteConflictError:
+            try:
+                return await self._ledger_ticks_once(year)
+            except AidWriteConflictError as exc:
+                raise DecisionRefusedError(
+                    f"the {year} rules changed while the ledger tick ran, twice; the next ledger sync ticks these rounds"
+                ) from exc
+
+    async def _ledger_ticks_once(self, year: int) -> LedgerTicksOut:
         """D78: after the overnight ledger sync, tick Posted where CampMinder holds camp aid on a request
         beyond what its posted rounds lock: the oldest decided round first, locked at its decided amount
         with its receipt, as a person's tick would have done, dated the posting's day (never after today).
