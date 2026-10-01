@@ -12,6 +12,7 @@ import { campToday } from '../../components/camperships/kit/dates'
 import { DefRef, DefinitionNotes } from '../../components/camperships/kit/DefinitionNotes'
 import { REASON_POLICY } from '../../components/camperships/kit/editor'
 import {
+  EDITOR_PREVIEW_ROUND2,
   GALLERY_ROWS,
   REAL_INCENTIVE_ASK,
   REAL_REDUCE_COST_BASIS,
@@ -72,6 +73,11 @@ const MONEY_EXAMPLES: ReadonlyArray<[string, ReactNode]> = [
   ],
   ['A reversed line', <ReversedAmount key="g" value={1500} reversedOn="2027-06-03" />],
 ]
+
+// AidTable memoises on these: module-level, so each render hands it the same references.
+const ROW_KEY = (r: GalleryRow) => r.id
+const SEARCH_EXTRA = (r: GalleryRow) => [r.householdCmId, r.personCmId]
+const FOOTER_LABEL = (rows: readonly GalleryRow[]) => `${String(rows.length)} requests`
 
 const COLUMNS: Array<AidColumn<GalleryRow>> = [
   {
@@ -224,11 +230,11 @@ export default function AidKitPage() {
         <AidTable<GalleryRow>
           rows={GALLERY_ROWS}
           columns={COLUMNS}
-          rowKey={(r) => r.id}
-          searchExtra={(r) => [r.householdCmId, r.personCmId]}
+          rowKey={ROW_KEY}
+          searchExtra={SEARCH_EXTRA}
           groupings={GROUPINGS}
           csvFilename={aidCsvFilename({ surface: 'kit', view: 'gallery', season: 2027 })}
-          footerLabel={(rows) => `${String(rows.length)} requests`}
+          footerLabel={FOOTER_LABEL}
           arrowKeys
           renderBelowHighlighted={(row, nav) => (
             <RequestEditor
@@ -239,28 +245,7 @@ export default function AidKitPage() {
               initialAmount={null}
               policy={REASON_POLICY.appeal_ask}
               today={today}
-              preview={{
-                status: 'ready',
-                award: 1000,
-                trace: REAL_INCENTIVE_ASK,
-                stageChange: 'Needs an offer',
-                shares: [
-                  {
-                    householdCmId: 1000001,
-                    chip: 1,
-                    householdName: 'Johnson',
-                    pct: 60,
-                    amount: 600,
-                  },
-                  {
-                    householdCmId: 1000003,
-                    chip: 2,
-                    householdName: 'Garcia',
-                    pct: 40,
-                    amount: 400,
-                  },
-                ],
-              }}
+              preview={EDITOR_PREVIEW_ROUND2}
               onAmountChange={() => undefined}
               onSave={() => undefined}
               onMove={(direction) => (direction === 1 ? nav.next() : nav.previous())}

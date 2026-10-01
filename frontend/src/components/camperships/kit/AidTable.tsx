@@ -83,6 +83,11 @@ export interface AidGrouping<Row> {
   readonly groupOf: (row: Row) => { id: string; heading: string }
 }
 
+/**
+ * Stability: `columns`, `groupings`, `rowKey` and `searchExtra` feed memos and effects, so pass
+ * module-level constants or memoised values, never fresh literals each render. Only one table per
+ * page may set `arrowKeys` (it adds a `window` ↑/↓ listener).
+ */
 export interface AidTableProps<Row> {
   readonly rows: readonly Row[]
   readonly columns: ReadonlyArray<AidColumn<Row>>
@@ -365,7 +370,10 @@ export function AidTable<Row>({
                       {isHighlighted && renderBelowHighlighted && (
                         <tr>
                           <td colSpan={columns.length} className={EDITOR_ROW} data-aid-editor="">
-                            {renderBelowHighlighted(row, nav)}
+                            {/* Sticky-left like the group headings, so focus doesn't snap a right-scrolled table back. */}
+                            <div className="sticky left-3 w-fit max-w-5xl">
+                              {renderBelowHighlighted(row, nav)}
+                            </div>
                           </td>
                         </tr>
                       )}

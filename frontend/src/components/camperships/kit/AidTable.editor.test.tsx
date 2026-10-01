@@ -104,4 +104,14 @@ describe('walking rows with the editor open', () => {
     expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
     expect(screen.getByText('Liam Garcia').closest('tr')).not.toHaveAttribute('data-highlighted')
   })
+
+  // Like the group headings' sticky-left span: focus must not snap a wide, right-scrolled table back left.
+  it('pins the editor row to the left edge the way a group heading is', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    const wrapper = screen
+      .getByLabelText('Round 2 ask')
+      .closest('[data-aid-editor]')?.firstElementChild
+    expect(wrapper).toHaveClass('sticky', 'left-3', 'w-fit')
+  })
 })

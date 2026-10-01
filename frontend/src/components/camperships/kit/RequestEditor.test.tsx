@@ -3,19 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { REASON_POLICY } from './editor'
-import { TRACE_ROUND2_CAPPED } from './fixtures'
+import { EDITOR_PREVIEW_ROUND2 } from './fixtures'
 import { RequestEditor, type EditorPreview } from './RequestEditor'
 
-const READY: EditorPreview = {
-  status: 'ready',
-  award: 1000,
-  trace: TRACE_ROUND2_CAPPED,
-  stageChange: 'Needs an offer',
-  shares: [
-    { householdCmId: 1000001, chip: 1, householdName: 'Johnson', pct: 60, amount: 600 },
-    { householdCmId: 1000003, chip: 2, householdName: 'Garcia', pct: 40, amount: 400 },
-  ],
-}
+const READY: EditorPreview = EDITOR_PREVIEW_ROUND2
 
 function setup(over: Partial<Parameters<typeof RequestEditor>[0]> = {}) {
   const props = {
@@ -36,6 +27,75 @@ function setup(over: Partial<Parameters<typeof RequestEditor>[0]> = {}) {
   const view = render(<RequestEditor {...props} />)
   return { ...props, rerender: view.rerender }
 }
+
+describe('the Round 2 preview fixture models the server (§6.3)', () => {
+  const valueOf = (key: string) =>
+    Number(EDITOR_PREVIEW_ROUND2.trace?.find((s) => s.key === key)?.value)
+
+  it("awards the trace's own Round 2 value", () => {
+    expect(EDITOR_PREVIEW_ROUND2.award).toBe(valueOf('r2'))
+  })
+
+  it("splits the request's decided total between the payers, not the Round 2 award", () => {
+    const shares = EDITOR_PREVIEW_ROUND2.shares ?? []
+    expect(shares.reduce((sum, share) => sum + share.amount, 0)).toBe(valueOf('total'))
+    expect(shares.reduce((sum, share) => sum + share.pct, 0)).toBe(100)
+  })
+
+  it('shows those shares', () => {
+    setup()
+    expect(screen.getByText('1 · Johnson').parentElement).toHaveTextContent('60% · $2,700')
+    expect(screen.getByText('2 · Garcia').parentElement).toHaveTextContent('40% · $1,800')
+  })
+})
+
+describe("a long statement is a small text area, and its arrows are the caret's (m7)", () => {
+  const round3 = { policy: REASON_POLICY.round3_ask, amountLabel: 'Round 3 ask' } as const
+
+  it('renders the 4000-character statement as a textarea, and the 2000-character note as a line', () => {
+    setup(round3)
+    expect(screen.getByLabelText('Statement of need').tagName).toBe('TEXTAREA')
+    expect(screen.getByLabelText('Statement of need')).toHaveAttribute('maxlength', '4000')
+  })
+
+  it('keeps a note a one-line input', () => {
+    setup()
+    expect(screen.getByLabelText('Note').tagName).toBe('INPUT')
+  })
+
+  it('saves once on Enter in it', async () => {
+    const { onSave } = setup(round3)
+    await userEvent.type(screen.getByLabelText('Round 3 ask'), '400')
+    await userEvent.type(screen.getByLabelText('Statement of need'), 'Lost a job{Enter}{Enter}')
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith({ amount: 400, reason: 'Lost a job' })
+  })
+
+  it('Shift+Enter makes a new line and does not save', async () => {
+    const { onSave } = setup(round3)
+    await userEvent.type(screen.getByLabelText('Round 3 ask'), '400')
+    await userEvent.type(
+      screen.getByLabelText('Statement of need'),
+      'one{Shift>}{Enter}{/Shift}two'
+    )
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Statement of need')).toHaveValue('one\ntwo')
+  })
+
+  it.each(['ArrowDown', 'ArrowUp'])(
+    '%s in it neither saves nor moves, and is left to the caret',
+    (key) => {
+      const { onSave, onMove } = setup({ ...round3, initialAmount: 400 })
+      fireEvent.change(screen.getByLabelText('Statement of need'), {
+        target: { value: 'Lost a job' },
+      })
+      const notPrevented = fireEvent.keyDown(screen.getByLabelText('Statement of need'), { key })
+      expect(notPrevented).toBe(true)
+      expect(onSave).not.toHaveBeenCalled()
+      expect(onMove).not.toHaveBeenCalled()
+    }
+  )
+})
 
 const SAVE = { amount: 2500, reason: 'Family emailed (Apr 9)' }
 

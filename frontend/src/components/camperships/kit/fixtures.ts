@@ -6,6 +6,7 @@
  */
 import type { ConfirmationOut } from '../../../types/api-generated'
 import type { AttentionItem } from './NeedsAttentionCell'
+import type { EditorPreview } from './RequestEditor'
 import type { AidTraceStep, TraceValue } from './receiptModel'
 
 export function traceStep(
@@ -174,6 +175,22 @@ export const TRACE_ROUND2_CAPPED: readonly AidTraceStep[] = [
   step('r2', 'Round 2 award', '1000.00', { appeal: '2500.00', cap: '1000.00' }, 'cap'),
   total('3500.00', '1000.00'),
 ]
+
+/**
+ * What the editor shows for a Round 2 ask of $2,500 on TRACE_ROUND2_CAPPED, as the server sends it
+ * (§6.3): the award is the round's own ($1,000, the cap), and each payer's share is part of the
+ * request's whole decided total ($4,500: Round 1's $3,500 plus it), so the shares add up to that.
+ */
+export const EDITOR_PREVIEW_ROUND2: EditorPreview = {
+  status: 'ready',
+  award: 1000,
+  trace: TRACE_ROUND2_CAPPED,
+  stageChange: 'Needs an offer',
+  shares: [
+    { householdCmId: 1000001, chip: 1, householdName: 'Johnson', pct: 60, amount: 2700 },
+    { householdCmId: 1000003, chip: 2, householdName: 'Garcia', pct: 40, amount: 1800 },
+  ],
+}
 
 /** Above the income ceiling: no award, said why (engine.py emits no percentage step here). */
 export const TRACE_INCOME_CEILING: readonly AidTraceStep[] = [

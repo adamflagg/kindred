@@ -109,6 +109,9 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
   )
 }
 
+/** A reason limit above this is a statement, not a line: it gets a text area. */
+const LONG_TEXT = 2000
+
 interface Baseline {
   amount: number | null
   note: string
@@ -204,7 +207,7 @@ export function RequestEditor(props: RequestEditorProps) {
     return { amount: parsed.amount, reason: reason.trim() }
   }
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     // Not a modified key, nor one that confirms an IME composition (AidTable does the same).
     if (
       event.ctrlKey ||
@@ -219,7 +222,12 @@ export function RequestEditor(props: RequestEditorProps) {
       if (event.repeat) return
       const save = takeSave()
       if (save) props.onSave(save)
-    } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && props.onMove) {
+    } else if (
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+      props.onMove &&
+      // In a multi-line field the arrows belong to the caret: no save, no move.
+      !(event.currentTarget instanceof HTMLTextAreaElement)
+    ) {
       event.preventDefault()
       // A held arrow must not walk the table.
       if (event.repeat) return
@@ -277,17 +285,33 @@ export function RequestEditor(props: RequestEditorProps) {
           }
         >
           {props.policy.label}
-          <input
-            type="text"
-            maxLength={props.policy.maxLength}
-            value={reason}
-            onChange={(event) => {
-              submitted.current = false
-              setReason(event.target.value)
-            }}
-            onKeyDown={onKeyDown}
-            className={FIELD}
-          />
+          {props.policy.maxLength > LONG_TEXT ? (
+            // The statement of need (4000 characters): a small text area that grows with its text.
+            // Enter still saves; Shift+Enter is a new line.
+            <textarea
+              rows={2}
+              maxLength={props.policy.maxLength}
+              value={reason}
+              onChange={(event) => {
+                submitted.current = false
+                setReason(event.target.value)
+              }}
+              onKeyDown={onKeyDown}
+              className={`${FIELD} field-sizing-content max-h-48 min-h-[3.25rem]`}
+            />
+          ) : (
+            <input
+              type="text"
+              maxLength={props.policy.maxLength}
+              value={reason}
+              onChange={(event) => {
+                submitted.current = false
+                setReason(event.target.value)
+              }}
+              onKeyDown={onKeyDown}
+              className={FIELD}
+            />
+          )}
         </label>
       )}
       <span className="text-muted-foreground text-xs">
