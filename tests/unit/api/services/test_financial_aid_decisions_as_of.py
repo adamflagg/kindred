@@ -563,7 +563,9 @@ async def test_round_2_asks_are_named_only_when_an_unrebuilt_request_empties_the
     assert (camp.demand.round2_asks, camp.demand.round2_asked) == (None, None)
 
 
-_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS}
+# appeal_refusal is not a named gap: a past row simply carries none (nothing is keyed into the past), while the
+# live row says why an appeal can't be keyed.
+_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS, "appeal_refusal"}
 
 
 def _without_gaps(value: Any) -> Any:
