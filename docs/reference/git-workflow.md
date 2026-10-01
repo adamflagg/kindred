@@ -98,6 +98,36 @@ After `git pull`, the `post-merge` hook detects merged worktree branches and sug
 ./scripts/worktree/cleanup.sh --all-merged
 ```
 
+### Stale branches, refs and stashes
+
+The same hook runs `scripts/git-tidy.sh --notice`, which reports local refs older
+than 14 days and prints nothing when there are none. It considers local branches
+(never `main`, never one a worktree has checked out), `refs/backup/*`, and
+`refs/remotes/<name>/*` for any `<name>` that is not a configured remote. Remote
+branches deleted on GitHub are handled by `fetch.prune`, not by this script.
+
+```bash
+scripts/git-tidy.sh            # dry run
+scripts/git-tidy.sh --apply    # delete the "Safe to delete" list only
+```
+
+**What `--apply` deletes is decided by containment, never by age or PR state.**
+A ref is safe only when its tip is already on `origin/main`, or contained in the
+head of a merged or closed PR (GitHub keeps those under `refs/pull/N/head`).
+"PR merged, branch is old" is not enough: in kindred#2486 a commit pushed one
+minute after the squash-merge existed on the branch and nowhere else.
+
+The "Kept -- needs a look" list is for exactly those cases. It means the ref
+holds commits that may exist nowhere else. Audit one before removing it
+(find its PR, compare its hunks with main), and never delete it on age alone.
+
+Stashes are listed and never dropped. Every worktree shares one stash stack, so
+an old stash may be another agent's parked work. Prefer a WIP commit on your
+branch to a stash.
+
+Every SHA that `--apply` deletes goes to `.git/git-tidy-recovery.log`.
+`git branch <name> <sha>` restores one until `git gc` prunes it (about 90 days).
+
 ## Git Hooks — Escape Hatches & Manual Runs
 
 > The hook *stages* table (what runs when) is in `CLAUDE.md` → Daily Workflow →

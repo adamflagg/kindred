@@ -100,7 +100,7 @@ Managed via `.lefthook.yml`. Setup once after cloning: `./scripts/setup-git-hook
 | **pre-commit** | Formatters on staged files (prettier, ruff format, gofmt) | <1s |
 | **commit-msg** | commitlint validation | Instant |
 | **pre-push** | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint, markdownlint), api-types freshness, full mockable pytest | ~40s |
-| **post-merge** | Worktree cleanup notifications | ~5s |
+| **post-merge** | Worktree cleanup notifications; stale-ref report (`scripts/git-tidy.sh --notice`) | ~5s |
 
 **`golangci-lint` and `eslint` are CI-only** — `.lefthook.yml` moved them out of pre-push for
 speed, along with `hadolint` and `caddy-validate`. A clean pre-push therefore says nothing about

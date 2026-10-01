@@ -272,14 +272,21 @@ def test_a_failed_github_lookup_keeps_the_ref(repo: Path, gh: Gh) -> None:
 # ─── what is never a candidate ─────────────────────────────────────────────
 
 
-def test_a_branch_checked_out_in_a_worktree_is_never_deleted(repo: Path, gh: Gh) -> None:
+def test_a_branch_checked_out_in_a_worktree_is_not_a_candidate(repo: Path, gh: Gh) -> None:
+    """A worktree's branch is someone's live work -- not listed, not offered for deletion.
+
+    `git branch -D` already refuses a checked-out branch, so "still exists"
+    alone cannot tell whether the script skipped it or merely failed to delete
+    it. The report is what an agent acts on, so the report is what is pinned.
+    """
     _branch_with_commit(repo, "feature/busy", "busy")
     _land_on_main(repo, "feature/busy")
     _git("worktree", "add", "-q", ".worktrees/busy", "feature/busy", cwd=repo)
 
-    _run(repo, gh, "--apply")
+    result = _run(repo, gh, "--apply")
 
     assert "feature/busy" in _branches(repo)
+    assert "feature/busy" not in result.stdout, "offered a worktree's live branch for deletion"
 
 
 def test_main_is_never_a_candidate(repo: Path, gh: Gh) -> None:
