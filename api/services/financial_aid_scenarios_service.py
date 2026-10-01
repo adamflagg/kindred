@@ -63,7 +63,6 @@ from bunking.financial_aid.scenarios import (
     ScenarioResults,
     SizingLever,
     apply_sizing,
-    budget_unset,
     committee_view,
     describe,
     dollar_for_dollar,
@@ -376,10 +375,11 @@ class FinancialAidScenariosService:
                 and has_last_seasons_criteria(option.document, last.document)
                 and not has_last_seasons_criteria(origin.document, last.document)
             ):
-                # Last season's budget stood in for a missing one: the draft still sets none and the option holds last
-                # season's. (Once the draft sets its own budget the note goes: it can't be told from a start made when
-                # the two budgets were equal.)
-                placeholder = budget_unset(origin.document) and option.document.budget == last.document.budget
+                # Last season's budget stands in when the option holds it and the draft's own differs (unset, or
+                # set since): named by what the option holds. All three equal needs no note.
+                placeholder = (
+                    option.document.budget == last.document.budget and option.document.budget != origin.document.budget
+                )
                 return _last_season_name(last, option.year, origin, placeholder=placeholder)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)

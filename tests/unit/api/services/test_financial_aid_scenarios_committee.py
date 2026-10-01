@@ -340,6 +340,19 @@ async def test_a_season_with_no_budget_starts_from_last_seasons_budget_as_a_plac
 
 
 @pytest.mark.asyncio
+async def test_the_placeholder_note_stays_after_this_season_sets_its_own_budget_in_place() -> None:
+    raw = intake_rules().model_dump(mode="json")
+    raw["budget"] = {**raw["budget"], "total": "0", "pools": {}, "reserves": {}}
+    world = await _world(this_season=AidRules.model_validate(raw))
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world, with_levers(last_season_rules(), {"budget.total": "400000"}))
+    await world.service.start_from_last_season(YEAR, FINANCE)
+    await world.rules.save_sections(YEAR, 1, with_levers(intake_rules(), {"budget.total": "450000"}), actor=FINANCE)
+    [option] = (await world.service.workspace(YEAR, FINANCE)).options
+    assert option.label.endswith(", and 2026 budget as a placeholder")
+
+
+@pytest.mark.asyncio
 async def test_a_season_with_a_budget_keeps_it_and_the_label_does_not_mention_a_placeholder() -> None:
     world = await _world()
     await world.service.freeze(YEAR, FINANCE)
@@ -435,7 +448,11 @@ async def test_a_start_from_last_season_keeps_its_name_after_the_rules_draft_is_
     )
     assert (saved.branched_from, saved.version.version) == (None, 1)  # in place: the option's origin moved
     workspace = await world.service.workspace(YEAR, FINANCE)
-    assert workspace.options[0].label == "2026 v1 rules on 2027's applications, the rest from rules draft v1"
+    # Expectation changed with the placeholder rule: the label says what the option holds now (2026's budget, which
+    # today's draft no longer has), not how it was started.
+    assert workspace.options[0].label == (
+        "2026 v1 rules on 2027's applications, the rest from rules draft v1, and 2026 budget as a placeholder"
+    )
 
 
 # --- SP9c final review: the last-season label on a request set, up/down references, and last season's edges -------
