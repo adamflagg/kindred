@@ -10,8 +10,8 @@ function isActive(section: AidSection, pathname: string): boolean {
 
 /**
  * Camperships' nav (D7 as amended by D64 and D65): Today · Requests · Grants · Money · Season ·
- * Reports, each shown only to who may open it. No Campers link. A divider ends it, before
- * Kindred's shared Users · Manage.
+ * Reports, each shown only to who may open it. No Campers link. Users · Manage are not here:
+ * they live in the user menu for every program (owner ruling 2026-10-01).
  */
 export function AidNavLinks() {
   const { pathname } = useLocation()
@@ -27,7 +27,6 @@ export function AidNavLinks() {
           {section.label}
         </Link>
       ))}
-      <span data-testid="aid-nav-divider" className="mx-1 h-5 w-px self-center bg-white/25" />
     </>
   )
 }

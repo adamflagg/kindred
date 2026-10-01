@@ -2,7 +2,7 @@
  * AppLayout on Camperships pages (spec §3.1, §3.3; D7, D64, D65). The mocks mirror
  * AppLayout.test.tsx's, trimmed to what these cases touch.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -59,6 +59,7 @@ vi.mock('../components/BrandedLogo', () => ({ BrandedLogo: () => <div>Logo</div>
 vi.mock('../components/VersionInfo', () => ({ VersionInfo: () => null }))
 vi.mock('../components/FeedbackModal', () => ({ FeedbackModal: () => null }))
 vi.mock('../components/ViewAsSwitcher', () => ({ ViewAsSwitcher: () => null }))
+vi.mock('../hooks/useCanViewAs', () => ({ useCanViewAs: () => false }))
 vi.mock('../components/camperships/shell/AidFreshness', () => ({
   AidFreshness: () => <div data-testid="aid-freshness" />,
 }))
@@ -87,7 +88,10 @@ beforeEach(() => {
 })
 
 describe('AppLayout on a Camperships page', () => {
-  it('shows its six links, no Campers link, then Users after a divider (D7, D64, D65)', () => {
+  // Owner ruling 2026-10-01 (supersedes "then Users after a divider", D7/D64/D65):
+  // Users and Manage left the bar for the user menu, so the divider that ended the
+  // section has nothing to separate and is gone.
+  it('shows its six links and no Campers link; Users lives in the user menu, not the bar', () => {
     granted = [VIEW]
     renderAt('/aid/requests')
 
@@ -95,10 +99,24 @@ describe('AppLayout on a Camperships page', () => {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
     }
     expect(screen.queryByRole('link', { name: 'Campers' })).toBeNull()
-    const divider = screen.getByTestId('aid-nav-divider')
-    const users = screen.getByRole('link', { name: 'Users' })
-    expect(divider).toBeInTheDocument()
-    expect(divider.compareDocumentPosition(users) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByTestId('aid-nav-divider')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Users' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull()
+
+    fireEvent.click(screen.getByText('Test User'))
+    expect(screen.getByRole('link', { name: 'Users' })).toHaveAttribute('href', '/users')
+    // No manage-tab permission granted: no Manage item.
+    expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull()
+  })
+
+  it('offers Manage in the user menu to someone with a manage-tab permission', () => {
+    granted = [VIEW, 'metrics.geo']
+    renderAt('/aid/requests')
+
+    fireEvent.click(screen.getByText('Test User'))
+    expect(screen.getByRole('link', { name: 'Manage' })).toHaveAttribute('href', '/manage')
+    fireEvent.click(screen.getByRole('link', { name: 'Manage' }))
+    expect(screen.queryByRole('link', { name: 'My Account' })).toBeNull()
   })
 
   it('shows a summary-only user Reports alone (D65)', () => {
@@ -116,7 +134,10 @@ describe('AppLayout on a Camperships page', () => {
     renderAt('/aid/requests')
 
     expect(screen.getByRole('link', { name: 'Campers' })).toBeInTheDocument()
-    expect(screen.queryByTestId('aid-nav-divider')).toBeNull()
+    // Not Camperships: none of its section links are in the bar.
+    for (const label of ['Today', 'Requests', 'Grants', 'Money', 'Season', 'Reports']) {
+      expect(screen.queryByRole('link', { name: label })).toBeNull()
+    }
     expect(screen.queryByTestId('aid-freshness')).toBeNull()
     expect(screen.getByRole('button', { name: 'Summer' })).toBeInTheDocument()
   })

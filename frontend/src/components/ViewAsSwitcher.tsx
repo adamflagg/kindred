@@ -1,16 +1,19 @@
 /**
  * Admin "View as" persona switcher.
  *
- * Rendered for a REAL admin outside bypass mode, and it stays rendered while
+ * Available to a REAL admin outside bypass mode, and it stays available while
  * previewing: it is gated on `realIsAdmin`, never the effective `isAdmin`, so
- * the way back can never be hidden. Every switch reloads the page so nothing
+ * the way back can never be hidden. Not previewing, the bar shows nothing: the
+ * menu is opened from the user menu's "View as…" item (owner ruling
+ * 2026-10-01), via the controlled `open` / `onOpenChange` props. While
+ * previewing, the amber pill sits in the bar and opens the same menu. Every switch reloads the page so nothing
  * fetched under the previous persona survives in any cache. The persona itself
  * lives in auth/viewAs.ts; PocketBase and FastAPI enforce it.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, Eye, X } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
 import { usePermissions } from '../hooks/usePermissions'
+import { useCanViewAs } from '../hooks/useCanViewAs'
 import { useRoles } from '../hooks/useRoles'
 import { ALL_PERMISSIONS } from '../constants/permissions'
 import { ViewAsPermissionPicker } from './ViewAsPermissionPicker'
@@ -45,30 +48,42 @@ function CheckSlot({ on }: { on: boolean }) {
   )
 }
 
-export function ViewAsSwitcher() {
-  const { isBypassMode } = useAuth()
-  const { realIsAdmin, viewAs } = usePermissions()
-  const canSwitch = realIsAdmin && !isBypassMode
+interface ViewAsSwitcherProps {
+  /** Controlled open state; the menu is uncontrolled when omitted. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}
+
+export function ViewAsSwitcher({ open, onOpenChange }: ViewAsSwitcherProps) {
+  const { viewAs } = usePermissions()
+  const canSwitch = useCanViewAs()
   const {
     data: roles = [],
     isLoading: rolesLoading,
     error: rolesError,
   } = useRoles({ enabled: canSwitch })
-  const [isOpen, setIsOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const isOpen = open ?? uncontrolledOpen
   const [isCustomOpen, setIsCustomOpen] = useState(viewAs?.source === 'custom')
   const [customPerms, setCustomPerms] = useState<string[]>(
     viewAs?.source === 'custom' ? viewAs.permissions : []
   )
+  // Closing discards a Custom selection that was never applied, so the next
+  // open, from the pill or from outside, starts from the real persona.
+  const setIsOpen = useCallback(
+    (next: boolean) => {
+      if (!next) {
+        setIsCustomOpen(viewAs?.source === 'custom')
+        setCustomPerms(viewAs?.source === 'custom' ? viewAs.permissions : [])
+      }
+      setUncontrolledOpen(next)
+      onOpenChange?.(next)
+    },
+    [onOpenChange, viewAs]
+  )
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const toggleMenu = () => {
-    // Re-opening discards a Custom selection that was never applied.
-    if (!isOpen) {
-      setIsCustomOpen(viewAs?.source === 'custom')
-      setCustomPerms(viewAs?.source === 'custom' ? viewAs.permissions : [])
-    }
-    setIsOpen(!isOpen)
-  }
+  const toggleMenu = () => setIsOpen(!isOpen)
 
   useEffect(() => {
     if (!isOpen) return
@@ -84,7 +99,7 @@ export function ViewAsSwitcher() {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isOpen])
+  }, [isOpen, setIsOpen])
 
   if (!canSwitch) return null
 
@@ -96,16 +111,7 @@ export function ViewAsSwitcher() {
 
   return (
     <div className="relative flex items-center" ref={menuRef}>
-      {label === null ? (
-        <button
-          onClick={toggleMenu}
-          className="flex items-center gap-2 rounded-xl border border-white/25 px-3 py-2 text-sm font-semibold text-white/85 transition-all hover:bg-white/10"
-        >
-          <Eye className="h-4 w-4" />
-          View as
-          {chevron}
-        </button>
-      ) : (
+      {label !== null && (
         <div className="text-forest-900 flex items-center overflow-hidden rounded-xl border border-amber-600 bg-amber-500 text-sm font-bold">
           <button
             onClick={toggleMenu}

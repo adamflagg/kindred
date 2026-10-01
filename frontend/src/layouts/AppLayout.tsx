@@ -16,6 +16,9 @@ import {
   Clock,
   LogOut,
   Settings,
+  Eye,
+  Users,
+  Wrench,
   HelpCircle,
   MessageSquareWarning,
 } from 'lucide-react'
@@ -47,6 +50,7 @@ import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
 import { ViewAsSwitcher } from '../components/ViewAsSwitcher'
+import { useCanViewAs } from '../hooks/useCanViewAs'
 import type { SyncStatusResponse } from '../hooks/useSyncStatusAPI'
 import { buildSyncTooltip } from '../utils/syncTooltip'
 import { AidFreshness } from '../components/camperships/shell/AidFreshness'
@@ -162,6 +166,8 @@ export const AppLayout = () => {
   const { fetchWithAuth } = useApiWithAuth()
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [isViewAsOpen, setIsViewAsOpen] = useState(false)
+  const canViewAs = useCanViewAs()
   const currentYear = useYear()
   const { currentProgram, setProgram, clearProgram } = useProgram()
   const programMenuRef = useRef<HTMLDivElement>(null)
@@ -297,6 +303,10 @@ export const AppLayout = () => {
     return location.pathname.includes(path)
   }
 
+  // The route you are on gets a subtle fill, as the bar's links used to.
+  const userMenuItemClass = (active: boolean) =>
+    `hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${active ? 'bg-muted/50' : ''}`
+
   return (
     <div className="bg-background min-h-screen">
       {/* Primary Navigation */}
@@ -406,20 +416,6 @@ export const AppLayout = () => {
                     Campers
                   </Link>
                 )}
-                <Link
-                  to="/users"
-                  className={`nav-link-lodge ${isActiveRoute('/users') ? 'active' : ''}`}
-                >
-                  Users
-                </Link>
-                {canAccessManage && (
-                  <Link
-                    to="/manage"
-                    className={`nav-link-lodge ${isActiveRoute('/manage') ? 'active' : ''}`}
-                  >
-                    Manage
-                  </Link>
-                )}
                 {activeProgram === 'summer' && isAdmin && (
                   <Link
                     to="/summer/debug"
@@ -433,8 +429,9 @@ export const AppLayout = () => {
 
             {/* Right side items */}
             <div className="flex items-center gap-2">
-              {/* Admin "View as" persona preview; renders only for a real admin */}
-              <ViewAsSwitcher />
+              {/* Admin "View as": the bar shows only the amber pill while previewing;
+                  the menu is opened from the user menu's "View as…" item. */}
+              <ViewAsSwitcher open={isViewAsOpen} onOpenChange={setIsViewAsOpen} />
               {/* User Menu Dropdown */}
               {isAuthenticated && user && (
                 <div className="relative" ref={userMenuRef}>
@@ -510,6 +507,36 @@ export const AppLayout = () => {
                         <Settings className="text-muted-foreground h-4 w-4" />
                         My Account
                       </Link>
+                      <Link
+                        to="/users"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className={userMenuItemClass(isActiveRoute('/users'))}
+                      >
+                        <Users className="text-muted-foreground h-4 w-4" />
+                        Users
+                      </Link>
+                      {canAccessManage && (
+                        <Link
+                          to="/manage"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className={userMenuItemClass(isActiveRoute('/manage'))}
+                        >
+                          <Wrench className="text-muted-foreground h-4 w-4" />
+                          Manage
+                        </Link>
+                      )}
+                      {canViewAs && (
+                        <button
+                          onClick={() => {
+                            setIsUserMenuOpen(false)
+                            setIsViewAsOpen(true)
+                          }}
+                          className={userMenuItemClass(false)}
+                        >
+                          <Eye className="text-muted-foreground h-4 w-4" />
+                          View as…
+                        </button>
+                      )}
 
                       <div className="bg-border my-2 h-px" />
 
