@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { formatSort, nextSort, parseSort, type SortState } from './table'
@@ -25,7 +25,8 @@ export function useAidTableUrl(
   const [params, setParams] = useSearchParams()
   const sortParam = `${prefix}sort`
   const groupParam = `${prefix}group`
-  const sort = parseSort(params.get(sortParam), columnKeys)
+  const rawSort = params.get(sortParam)
+  const sort = useMemo(() => parseSort(rawSort, columnKeys), [rawSort, columnKeys])
   const raw = params.get(groupParam)
   const group =
     raw === FLAT

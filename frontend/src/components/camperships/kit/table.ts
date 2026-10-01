@@ -4,6 +4,8 @@
  * (D21); the browser only filters and sorts what it was given.
  */
 
+const COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+
 export type CellValue = string | number | null
 export type SortDir = 'asc' | 'desc'
 
@@ -47,7 +49,7 @@ export function sortRows<Row>(
       const order =
         typeof a.v === 'number' && typeof b.v === 'number'
           ? a.v - b.v
-          : String(a.v).localeCompare(String(b.v), 'en', { numeric: true, sensitivity: 'base' })
+          : COLLATOR.compare(String(a.v), String(b.v))
       return order !== 0 ? sign * order : a.index - b.index
     })
     .map((entry) => entry.row)

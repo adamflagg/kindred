@@ -15,6 +15,17 @@ import { IdChip } from './Pills'
 import { matchedId } from './table'
 
 const downloadSpy = vi.fn()
+const parseSortSpy = vi.fn()
+vi.mock('./table', async (importActual) => {
+  const actual = await importActual<typeof import('./table')>()
+  return {
+    ...actual,
+    parseSort: (...args: Parameters<typeof actual.parseSort>) => {
+      parseSortSpy(...args)
+      return actual.parseSort(...args)
+    },
+  }
+})
 vi.mock('../../../utils/csvExport', async (importActual) => ({
   ...(await importActual<typeof import('../../../utils/csvExport')>()),
   downloadCsv: (...args: unknown[]) => downloadSpy(...args),
@@ -396,7 +407,8 @@ describe('AidTable', () => {
       ),
     })
     await userEvent.click(screen.getByText('Emma Johnson'))
-    await userEvent.type(screen.getByLabelText('Note for Emma Johnson'), '{ArrowDown}')
+    await userEvent.click(screen.getByLabelText('Note for Emma Johnson'))
+    await userEvent.keyboard('{ArrowDown}')
     expect(saved).toHaveBeenCalledWith('r1')
     expect(screen.getByText('Liam Garcia').closest('tr')).toHaveAttribute(
       'data-highlighted',
@@ -404,11 +416,18 @@ describe('AidTable', () => {
     )
     expect(screen.getAllByLabelText(/^Note for/)).toHaveLength(1)
     // The table's own listener stands aside while the editor's field has the key: one step, not two.
-    await userEvent.type(screen.getByLabelText('Note for Liam Garcia'), '{ArrowUp}')
-    expect(screen.getByText('Emma Johnson').closest('tr')).toHaveAttribute(
+    // Walk from Olivia (index 2) so a double step could not land on the same row.
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByText('Olivia Chen').closest('tr')).toHaveAttribute(
       'data-highlighted',
       'true'
     )
+    await userEvent.keyboard('{ArrowUp}')
+    expect(screen.getByText('Liam Garcia').closest('tr')).toHaveAttribute(
+      'data-highlighted',
+      'true'
+    )
+    expect(screen.getAllByLabelText(/^Note for/)).toHaveLength(1)
   })
 
   it('ignores a key already handled, held down, or part of a composition', async () => {
@@ -435,5 +454,46 @@ describe('AidTable', () => {
     expect(row('Emma Johnson')).not.toHaveAttribute('data-highlighted')
     press({})
     expect(row('Emma Johnson')).toHaveAttribute('data-highlighted', 'true')
+  })
+
+  it('stands aside for a button inside the editor row too (I1)', async () => {
+    renderTable('/aid/requests', {
+      renderBelowHighlighted: () => <button type="button">Save</button>,
+    })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    screen.getByRole('button', { name: 'Save' }).focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByText('Emma Johnson').closest('tr')).toHaveAttribute(
+      'data-highlighted',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+  })
+
+  it('parses the sort once while the URL is unchanged (I2)', async () => {
+    renderTable('/aid/requests?sort=camper%3Aasc')
+    parseSortSpy.mockClear()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.click(screen.getByText('Liam Garcia'))
+    await userEvent.keyboard('{ArrowDown}')
+    expect(parseSortSpy).not.toHaveBeenCalled()
+  })
+
+  it('gives a right-aligned header one text-align class (I3)', () => {
+    renderTable()
+    const cls = screen.getByRole('columnheader', { name: 'Decided' }).className.split(' ')
+    expect(cls.filter((c) => c === 'text-left' || c === 'text-right').length).toBeLessThanOrEqual(1)
+  })
+
+  it('writes a money column without its own csv through moneyCsv (M5)', async () => {
+    renderTable('/aid/requests', {
+      columns: COLUMNS.map((c) => {
+        if (c.key !== 'decided') return c
+        return { ...c, csv: undefined, value: (r: Row) => (r.id === 'r1' ? 0.1 + 0.2 : r.decided) }
+      }),
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls[0] as [string, string]
+    expect(content.split('\n')[1]).toMatch(/^Johnson,Emma Johnson,0\.30,/)
   })
 })

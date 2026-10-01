@@ -35,6 +35,7 @@ import {
 } from './aidStyles'
 import { csvCell, withLinkLine } from './csv'
 import { isPageKey } from './keyboard'
+import { moneyCsv } from './money'
 import { Money } from './MoneyText'
 import {
   groupRows,
@@ -54,7 +55,7 @@ export interface CellContext {
 
 /**
  * Handed to the editor row (Ruling 2026-10-01 (plan review)): while the editor holds focus the
- * table's own ↑/↓ stand aside (`isPageKey`), so the editor moves the highlight through these.
+ * table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside the editor row, so a focused Save or Cancel button never lets ↓ unmount the editor with unsaved input), so the editor moves the highlight through these.
  */
 export interface AidRowNav {
   readonly next: () => void
@@ -98,6 +99,9 @@ export interface AidTableProps<Row> {
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
 }
+
+/** A column with a `total` is money: its value is a number, or nothing there. */
+const moneyValue = (value: CellValue): number | null => (typeof value === 'number' ? value : null)
 
 const NO_GROUPINGS: readonly never[] = []
 const FLEX_MIN = 250
@@ -166,6 +170,9 @@ export function AidTable<Row>({
       // Not while a field (the search box, the editor) owns the key, a modifier is held or a modal is open.
       // Nor a key already handled, held down, or part of an IME composition.
       if (event.defaultPrevented || event.repeat || event.isComposing) return
+      // Nor while focus is anywhere in the editor row (a Save button is not a typing target).
+      if (event.target instanceof Element && event.target.closest('[data-aid-editor]') !== null)
+        return
       if (!isPageKey(event) || order.length === 0) return
       event.preventDefault()
       setHighlighted((current) => stepHighlight(order, current, event.key === 'ArrowDown' ? 1 : -1))
@@ -217,7 +224,9 @@ export function AidTable<Row>({
 
   const download = () => {
     const data = ordered.map((row) =>
-      columns.map((c) => (c.csv ? c.csv(row) : csvCell(c.value(row))))
+      columns.map((c) =>
+        c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
+      )
     )
     downloadCsv(
       buildCsvContent(
@@ -289,7 +298,7 @@ export function AidTable<Row>({
                   }
                   onSort={() => toggleSort(c.key)}
                   style={pinStyle(c)}
-                  className={join(TH, pinClasses(c, 'z-20'), c.align === 'right' && 'text-right')}
+                  className={join(TH, pinClasses(c, 'z-20'))}
                   {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
                 />
               ))}
@@ -356,7 +365,7 @@ export function AidTable<Row>({
                       </tr>
                       {isHighlighted && renderBelowHighlighted && (
                         <tr>
-                          <td colSpan={columns.length} className={EDITOR_ROW}>
+                          <td colSpan={columns.length} className={EDITOR_ROW} data-aid-editor="">
                             {renderBelowHighlighted(row, nav)}
                           </td>
                         </tr>
