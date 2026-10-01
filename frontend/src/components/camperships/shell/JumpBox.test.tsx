@@ -158,6 +158,25 @@ describe('JumpBox (§3.5; D13)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000001')
   })
 
+  it('keeps the highlight on a real match when a refetch shortens the list', async () => {
+    const tree = () => (
+      <MemoryRouter initialEntries={['/aid/requests']}>
+        <JumpBox />
+        <Routes>
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(tree())
+    // "10000" matches both; ↓ highlights the second (Johnson).
+    await userEvent.type(box(), '10000{ArrowDown}')
+    // A refetch drops Johnson, so only Chen is left.
+    index = { ...LOADED, data: { ...LOADED.data, households: LOADED.data.households.slice(1) } }
+    rerender(tree())
+    await userEvent.type(box(), '{Enter}')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005')
+  })
+
   it('opens a match on click', async () => {
     renderBox()
     await userEvent.type(box(), 'john')

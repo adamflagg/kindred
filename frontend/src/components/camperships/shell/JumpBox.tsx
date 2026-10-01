@@ -40,6 +40,8 @@ export function JumpBox() {
     () => searchJumpIndex(data?.households ?? NO_HOUSEHOLDS, query),
     [data, query]
   )
+  // A refetch can shorten the list under a highlight; never point past its end.
+  const current = Math.min(active, Math.max(matches.length - 1, 0))
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -74,7 +76,7 @@ export function JumpBox() {
     } else if (event.key === 'Enter') {
       if (event.nativeEvent.isComposing) return
       event.preventDefault()
-      go(matches[active])
+      go(matches[current])
     } else if (event.key === 'Escape') {
       event.preventDefault()
       letGo()
@@ -116,7 +118,7 @@ export function JumpBox() {
                   event.preventDefault()
                   go(match)
                 }}
-                className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${index === active ? 'bg-muted/60' : ''}`}
+                className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${index === current ? 'bg-muted/60' : ''}`}
               >
                 <span className="font-medium">{match.familyName}</span>{' '}
                 <span className="text-muted-foreground text-xs">{match.detail}</span>
