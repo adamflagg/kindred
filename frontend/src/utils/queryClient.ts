@@ -51,8 +51,8 @@ export const queryClient = new QueryClient({
 })
 
 /**
- * Ask the API to clear its server-side caches. The route requires `bunking.manage`
- * (it used to be unauthenticated), so this sends the PocketBase token like
+ * Ask the API to clear its server-side caches. The route requires `registration.manage`
+ * or admin (it used to be unauthenticated), so this sends the PocketBase token like
  * `useApiWithAuth` does; a 401/403 is swallowed because the PocketBase sync
  * orchestrator clears the same caches itself after every job. `syncType` names the
  * completed sync so the server clears only what that job could have changed.

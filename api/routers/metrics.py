@@ -645,7 +645,7 @@ def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
       unauthenticated and blocked at the edge by Caddy: PocketBase's sync
       orchestrator after EVERY job it finishes, naming the job (kindred#2803),
       and its hook on registration config changes -- neither carries a user
-    - `POST /api/metrics/cache/invalidate` below, `bunking.manage` or `registration.manage` (whoever can edit a screen that
+    - `POST /api/metrics/cache/invalidate` below, `registration.manage`, admin passes (whoever can edit a screen that
       triggers the clear): the browser, on sync completion (redundant with the orchestrator's call, kept
       because a second clear is harmless) and after admin config saves
 
@@ -688,9 +688,9 @@ async def invalidate_metrics_cache(
             "social graph cache: each is cleared when this job writes a table it reads, or when no job is named."
         ),
     ),
-    user: AuthUser = Depends(require_any_permission(Permission.BUNKING_MANAGE, Permission.REGISTRATION_MANAGE)),
+    user: AuthUser = Depends(require_any_permission(Permission.REGISTRATION_MANAGE)),
 ) -> dict[str, int]:
-    """Clear the server caches (browser callers). Requires `bunking.manage` or `registration.manage`; see `invalidate_server_caches`."""
+    """Clear the server caches (browser callers). Requires `registration.manage` (admin passes): whoever edits a screen that triggers the clear; see `invalidate_server_caches`."""
     return invalidate_server_caches(sync_type)
 
 
