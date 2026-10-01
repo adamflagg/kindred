@@ -118,6 +118,8 @@ export function useEditorWalk({
   const inFlightEntry = useRef(new Map<string, EditorSave>())
   // True while a `leave` is waiting: a second one is ignored, so `go` runs once.
   const leaving = useRef(false)
+  // Rows whose in-flight save a click-away skipped re-writing: if it fails, it comes back like a ↓.
+  const jumpOnFail = useRef(new Set<string>())
   // The highlight now, for a save that answers after the person has moved on.
   const now = useRef(highlighted)
   // False once the surface is gone: nothing moves or sets after that (C1).
@@ -145,7 +147,13 @@ export function useEditorWalk({
   }, [])
 
   const write = useCallback(
-    (rowKey: string, entry: EditorSave, jumpBack: boolean): Promise<boolean> => {
+    (
+      rowKey: string,
+      entry: EditorSave,
+      jumpBack: boolean,
+      // What an Enter-save sent, text and all, kept if it is refused (never before: see below).
+      retain?: EditorTyped
+    ): Promise<boolean> => {
       setSaving((s) => withMember(s, rowKey, true))
       putError(rowKey, undefined)
       const sent = stashed.current.get(rowKey)
@@ -169,6 +177,7 @@ export function useEditorWalk({
               typed.current = null
               setRevisions((r) => withKey(r, rowKey, (r.get(rowKey) ?? 0) + 1))
             }
+            jumpOnFail.current.delete(rowKey)
             putStash(rowKey, undefined)
             return true
           },
@@ -178,10 +187,15 @@ export function useEditorWalk({
             // Superseded: the newer save for this row answers for it, so this failure is not listed.
             if (!latest()) return true
             putError(rowKey, messageOf(error))
+            // A refused Enter-save is kept like a ↓ failure, so a remount of the editor (a refetch,
+            // a regrouping) doesn't clear the typing and the listed failure together.
+            if (retain !== undefined && !stashed.current.has(rowKey)) putStash(rowKey, retain)
+            const jump = jumpBack || jumpOnFail.current.has(rowKey)
+            jumpOnFail.current.delete(rowKey)
             const open = now.current
             // Ruling A, refined (Decision 3): come back at once only when the row being worked on
             // has nothing typed; else focus stays and the surface's failure line offers Go back.
-            if (jumpBack && open !== rowKey && typedOn(typed.current, open) === null) {
+            if (jump && open !== rowKey && typedOn(typed.current, open) === null) {
               setHighlighted(rowKey)
             }
             return false
@@ -216,7 +230,10 @@ export function useEditorWalk({
       // Cleared before moving, so the move isn't taken for a click with something typed (ruling B).
       typed.current = null
       go()
-      if (entry !== null && !alreadySent(rowKey, entry)) void write(rowKey, entry, true)
+      if (entry !== null) {
+        if (alreadySent(rowKey, entry)) jumpOnFail.current.add(rowKey)
+        else void write(rowKey, entry, true)
+      }
     },
     [write, putStash, alreadySent]
   )
@@ -247,7 +264,10 @@ export function useEditorWalk({
         if (!mounted.current) return
         if (firstFailed !== undefined) {
           // C1: stay, back on the failed row with its amount and its error.
-          if (firstFailed !== now.current) setHighlighted(firstFailed)
+          // Decision 3: the row being typed on is never taken; the failure stays listed (Go back).
+          if (firstFailed !== now.current && typedOn(typed.current, now.current) === null) {
+            setHighlighted(firstFailed)
+          }
           return
         }
         typed.current = null
@@ -310,7 +330,13 @@ export function useEditorWalk({
         putError(rowKey, undefined)
       },
       onSave: (entry) => {
-        void write(rowKey, entry, false)
+        const report = typedOn(typed.current, rowKey)
+        void write(
+          rowKey,
+          entry,
+          false,
+          report === null ? undefined : { raw: report.raw, reason: report.reason }
+        )
       },
       onMove: (direction, entry) => {
         moveFrom(rowKey, entry, direction === 1 ? nav.next : nav.previous)

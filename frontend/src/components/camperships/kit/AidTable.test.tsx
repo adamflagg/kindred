@@ -186,6 +186,14 @@ const bodyCampers = () =>
 beforeEach(() => downloadSpy.mockClear())
 
 describe('AidTable', () => {
+  it('keeps the row you are on through a search that does not match it (uncontrolled)', async () => {
+    renderTable('/aid/requests', { renderBelowHighlighted: (r) => <div>Editing {r.camper}</div> })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'garcia')
+    expect(bodyCampers()).toEqual(['Emma Johnson', 'Liam Garcia'])
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
+  })
+
   it('sorts on a header click, ascending then descending, keeping "—" last, and keeps it in the URL', async () => {
     renderTable()
     await userEvent.click(screen.getByRole('button', { name: 'Decided' }))
@@ -534,6 +542,16 @@ const highlightedCamper = () =>
 describe('AidTable with a controlled highlight', () => {
   beforeEach(() => {
     asked = []
+  })
+
+  it('keeps the highlighted row through a search that does not match it, so its editor stays', async () => {
+    render(<Controlled agree />)
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'chen')
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Liam Garcia')).toBeNull()
   })
 
   it('asks the surface before a click moves the highlight, and moves only when it agrees', async () => {

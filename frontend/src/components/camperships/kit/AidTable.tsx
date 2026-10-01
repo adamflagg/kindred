@@ -170,14 +170,26 @@ export function AidTable<Row>({
   )
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>())
 
+  const searchable = useMemo(() => columns.filter((c) => c.searchable), [columns])
+  const matches = useCallback(
+    (row: Row) =>
+      matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], query),
+    [searchable, searchExtra, query]
+  )
+  // The row you are on stays through a search, as if it matched: its editor, its typing and its
+  // failure are on it. Only a highlight the search would hide changes `kept`, so ↑/↓ over matching
+  // rows never re-sorts.
+  const kept = useMemo(() => {
+    if (highlighted === null) return null
+    const row = rows.find((r) => rowKey(r) === highlighted)
+    return row !== undefined && !matches(row) ? highlighted : null
+  }, [rows, rowKey, highlighted, matches])
+
   const visible = useMemo(() => {
-    const searchable = columns.filter((c) => c.searchable)
-    const filtered = rows.filter((row) =>
-      matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], query)
-    )
+    const filtered = rows.filter((row) => (kept !== null && rowKey(row) === kept) || matches(row))
     const column = sort ? columns.find((c) => c.key === sort.key) : undefined
     return column && sort ? sortRows(filtered, column.value, sort.dir) : filtered
-  }, [rows, columns, searchExtra, query, sort])
+  }, [rows, columns, rowKey, matches, kept, sort])
 
   const grouping = groupings.find((g) => g.key === group)
   const groups: Array<RowGroup<Row>> = useMemo(

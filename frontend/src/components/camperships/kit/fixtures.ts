@@ -1,6 +1,6 @@
 /**
- * Fictional Camperships data for the kit's tests. Names are
- * tests/CLAUDE.md's set; every rule (percentages, minimums, caps) and every figure is invented.
+ * Fictional Camperships data for the kit's tests. Names are tests/CLAUDE.md's set; every rule
+ * (percentages, minimums, caps) and every figure is invented.
  * The traces carry the keys the calculator really emits (bunking/financial_aid/calculator/*.py),
  * Decimals as strings, so the receipt is exercised on engine-shaped input.
  */

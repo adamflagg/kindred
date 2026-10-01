@@ -71,6 +71,8 @@ function Walk({
   go?: () => void
 }) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
+  // Bumped to remount every editor, as a refetch or a regrouping of the rows does.
+  const [epoch, setEpoch] = useState(0)
   // Stable, as the hook asks of every surface (a state setter or a useCallback).
   const move = useCallback((key: string | null) => {
     moves.push(key)
@@ -93,7 +95,7 @@ function Walk({
         onHighlight={walk.onHighlight}
         renderBelowHighlighted={(row, nav) => (
           <RequestEditor
-            key={walk.editorKey(row.id)}
+            key={`${walk.editorKey(row.id)}:${String(epoch)}`}
             familyName={row.family}
             householdCmId={row.householdCmId}
             personCmId={row.personCmId}
@@ -115,6 +117,9 @@ function Walk({
           </button>
         </p>
       ))}
+      <button type="button" onClick={() => setEpoch((e) => e + 1)}>
+        Remount the editors
+      </button>
       <button type="button" onClick={() => walk.leave('r3', go)}>
         Open the Chen household
       </button>
@@ -447,5 +452,75 @@ describe('useEditorWalk: fix round 1 (races found in review)', () => {
     await userEvent.click(leave)
     await act(async () => held[0]?.resolve())
     expect(go).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useEditorWalk: final fix wave (review probes)', () => {
+  const leaveButton = () => screen.getByRole('button', { name: 'Open the Chen household' })
+
+  it('leave: a failure found while waiting never takes the row being typed on (P2)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.keyboard('300')
+    await userEvent.click(leaveButton())
+    await userEvent.click(amountField())
+    await userEvent.keyboard('7')
+    await act(async () => held[1]?.resolve())
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    expect(go).not.toHaveBeenCalled()
+    expect(editing('Garcia')).toBeInTheDocument()
+    expect(amountField()).toHaveValue('3007')
+    expect(screen.getByText("Couldn't save r1: The server is down")).toBeInTheDocument()
+  })
+
+  it('leave: nor does it take a row with something that cannot be saved yet typed (P6)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await userEvent.click(leaveButton())
+    await userEvent.click(amountField())
+    await userEvent.keyboard('12,5')
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    expect(go).not.toHaveBeenCalled()
+    expect(editing('Garcia')).toBeInTheDocument()
+    expect(amountField()).toHaveValue('12,5')
+    expect(screen.getByText("Couldn't save r1: The server is down")).toBeInTheDocument()
+  })
+
+  it('a failed Enter-save survives a remount of its editor, and leaving still stays (P1)', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{Enter}')
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    await userEvent.click(screen.getByRole('button', { name: 'Remount the editors' }))
+    expect(amountField()).toHaveValue('500')
+    expect(screen.getByText("Couldn't save r1: The server is down")).toBeInTheDocument()
+    await userEvent.click(leaveButton())
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('an Enter-save followed by a click away comes back like a ↓ when it fails (P4)', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{Enter}')
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(editing('Chen')).toBeInTheDocument()
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    expect(editing('Johnson')).toBeInTheDocument()
+    expect(amountField()).toHaveValue('500')
+  })
+
+  it('a successful Enter-save does not remount or flash the old figure', async () => {
+    // Regression guard: stashing happens on failure only, so M8's remount is not triggered.
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{Enter}')
+    await act(async () => held[0]?.resolve())
+    expect(amountField()).toHaveValue('500')
   })
 })
