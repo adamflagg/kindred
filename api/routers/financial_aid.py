@@ -570,6 +570,8 @@ async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUs
 async def create_household_link(body: HouseholdLinkCreate, user: AuthUser = _CASEWORK) -> HouseholdLinkRow:
     try:
         return await _writes().create_link(body, user.email)
+    except AidWriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 

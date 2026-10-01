@@ -51,8 +51,8 @@ from api.services.financial_aid_ledger_service import (
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
-from bunking.financial_aid.change_log import AidWrite, commit_aid_writes
-from bunking.pocketbase_batch import MAX_BATCH_REQUESTS
+from bunking.financial_aid.change_log import AidWrite, AidWriteConflictError, commit_aid_writes
+from bunking.pocketbase_batch import MAX_BATCH_REQUESTS, BatchRequestFailedError
 
 # A bulk load is ONE atomic operation: each changed row is two batch requests
 # (the record and its log row), all in one batch. A reviewed load is one finance
@@ -263,14 +263,21 @@ class FinancialAidWriteService:
             if body.excluded:
                 raise FinancialAidValidationError("nothing to exclude: no automatic link joins these")
             write = AidWrite(collection=AID_HOUSEHOLD_LINKS, action="create", year=body.year, data=payload)
-        result = await asyncio.to_thread(
-            commit_aid_writes,
-            self.repo.pb,
-            [write],
-            actor=actor,
-            reason=body.note,
-            require_reason=True,
-        )
+        try:
+            result = await asyncio.to_thread(
+                commit_aid_writes,
+                self.repo.pb,
+                [write],
+                actor=actor,
+                reason=body.note,
+                require_reason=True,
+            )
+        except BatchRequestFailedError as exc:
+            # G6 (Ruling 2026-10-01): the aid_postings sync swept this automatic row after we read it, so the
+            # in-place conversion found nothing (404). Refused whole, like every other G6 conflict: reload.
+            if write.action == "update" and exc.status == 404:
+                raise AidWriteConflictError(collection=AID_HOUSEHOLD_LINKS, record_id=str(write.record_id)) from exc
+            raise
         return HouseholdLinkRow(id=result.record_ids[0], **payload)
 
     async def delete_link(self, link_id: str, actor: str, reason: str) -> None:

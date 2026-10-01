@@ -25,8 +25,8 @@ from api.schemas.financial_aid import (
 )
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from api.services.financial_aid_write_service import FinancialAidWriteService
-from bunking.financial_aid.change_log import AidWrite, commit_aid_writes
-from bunking.pocketbase_batch import BatchRequest, BatchResult
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWrite, AidWriteConflictError, commit_aid_writes
+from bunking.pocketbase_batch import BatchRequest, BatchRequestFailedError, BatchResult
 
 ACTOR = "finance@example.com"
 SOURCE_ID = "src000000000001"
@@ -750,3 +750,59 @@ async def test_reclassifying_a_mapped_description_as_camp_aid_clears_its_grantor
     assert out.grantor_key == ""
     assert spy.writes[0].data is not None
     assert spy.writes[0].data["grantor_key"] == ""
+
+
+@pytest.mark.asyncio
+async def test_an_exclusion_whose_auto_row_the_sync_just_swept_is_a_conflict_not_a_500() -> None:
+    """G6 (Ruling 2026-10-01): the sync's sweep deleted the automatic row after create_link read it, so
+    PocketBase answers the update 404 inside the batch. The exclusion is refused whole; the person reloads."""
+    service, spy = _service(_link_repo([_link()]))
+
+    def swept(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+        raise BatchRequestFailedError(
+            index=0,
+            total=len(requests),
+            request=requests[0],
+            status=404,
+            message="The requested resource wasn't found.",
+            field_errors={},
+            response=None,
+        )
+
+    patch("bunking.financial_aid.change_log.send_batch", side_effect=swept).start()
+    with pytest.raises(AidWriteConflictError) as refused:
+        await service.create_link(
+            HouseholdLinkCreate(year=2026, household_cm_id=400, family_key="hh-100", excluded=True, note="Not family"),
+            ACTOR,
+        )
+    assert (refused.value.collection, refused.value.record_id, str(refused.value)) == (
+        "aid_household_links",
+        LINK_ID,
+        CONFLICT_MESSAGE,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_new_staff_link_that_fails_for_another_reason_is_not_dressed_as_a_conflict() -> None:
+    """Only the update branch's 404 is the sweep race. A create's failure is a real fault and goes through."""
+    service, _ = _service(_link_repo([]))
+
+    def broken(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+        raise BatchRequestFailedError(
+            index=0,
+            total=len(requests),
+            request=requests[0],
+            status=404,
+            message="Missing collection.",
+            field_errors={},
+            response=None,
+        )
+
+    patch("bunking.financial_aid.change_log.send_batch", side_effect=broken).start()
+    with pytest.raises(BatchRequestFailedError):
+        await service.create_link(
+            HouseholdLinkCreate(
+                year=2026, household_cm_id=400, family_key="hh-100", excluded=False, note="Same family"
+            ),
+            ACTOR,
+        )

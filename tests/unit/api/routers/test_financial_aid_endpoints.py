@@ -25,6 +25,7 @@ from api.schemas.financial_aid import (
     SummaryResponse,
 )
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import PERSONA_FINANCE, PERSONAS, persona_client, persona_user
 
@@ -233,3 +234,12 @@ def test_flag_disposition_delete_blank_reason_is_422_and_never_writes() -> None:
     response = _client(PERSONA_FINANCE).delete("/api/financial-aid/flag-dispositions/d1?reason=%20%20%20")
     assert response.status_code == 422
     writes.return_value.delete_disposition.assert_not_called()
+
+
+def test_a_household_link_that_lost_a_race_with_the_sync_is_409() -> None:
+    _, writes = _stub_services()
+    writes.return_value.create_link = AsyncMock(
+        side_effect=AidWriteConflictError(collection="aid_household_links", record_id="l1")
+    )
+    response = _client(PERSONA_FINANCE).post("/api/financial-aid/household-links", json=LINK_BODY)
+    assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
