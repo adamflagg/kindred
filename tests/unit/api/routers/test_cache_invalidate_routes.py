@@ -1,4 +1,4 @@
-"""Both cache-invalidate routes: internal (service) and browser (bunking.manage).
+"""Both cache-invalidate routes: internal (service) and browser (bunking.manage or registration.manage).
 
 Lives under tests/unit/api/ so the conftest applies AUTH_MODE=bypass before
 `api.main` builds its app (avoids xdist auth pollution).
@@ -71,3 +71,19 @@ def test_browser_route_allows_admin(client: TestClient) -> None:
     app.dependency_overrides[get_current_user] = lambda: _user(admin=True)
     r = client.post(BROWSER)
     assert r.status_code == 200
+
+
+def test_browser_route_allows_registration_manage(client: TestClient) -> None:
+    """Registrars save on ManageRegistrationPage and its callers clear this cache."""
+    app.dependency_overrides[get_current_user] = lambda: _user(permissions={Permission.REGISTRATION_MANAGE})
+    with patch("api.routers.metrics.metrics_cache") as cache:
+        cache.invalidate_all.return_value = 2
+        r = client.post(BROWSER)
+    assert r.status_code == 200
+    assert r.json() == {"cleared": 2}
+
+
+def test_browser_route_refuses_unrelated_permission(client: TestClient) -> None:
+    app.dependency_overrides[get_current_user] = lambda: _user(permissions={Permission.SHEETS_EXPORT})
+    r = client.post(BROWSER)
+    assert r.status_code == 403
