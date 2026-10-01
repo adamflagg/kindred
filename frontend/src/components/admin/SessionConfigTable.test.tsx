@@ -12,7 +12,7 @@ const { mockGetFullList, mockUpdate, mockCreate, mockCollection } = vi.hoisted((
   mockCollection: vi.fn(),
 }))
 vi.mock('../../lib/pocketbase', () => ({
-  pb: { collection: mockCollection },
+  pb: { collection: mockCollection, authStore: { token: '' } },
 }))
 
 // Mock useCurrentYear
@@ -886,9 +886,10 @@ describe('SessionConfigTable', () => {
     await saveOneGradeEdit(queryClient)
 
     await waitFor(() =>
-      expect(globalThis.fetch).toHaveBeenCalledWith('/api/metrics/cache/invalidate', {
-        method: 'POST',
-      })
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        '/api/metrics/cache/invalidate',
+        expect.objectContaining({ method: 'POST' })
+      )
     )
     // Server cache still clearing — a forecast refetch now would read stale data.
     expect(forecastInvalidated(invalidateSpy)).toBe(false)

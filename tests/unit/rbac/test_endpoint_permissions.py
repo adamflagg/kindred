@@ -228,11 +228,25 @@ class TestMetricsPermissions:
 
         _assert_endpoint_has_auth_dep(get_forecast)
 
-    def test_cache_invalidate_has_no_endpoint_auth(self) -> None:
-        """Cache invalidation has no endpoint-level auth dep (middleware bypass)."""
+    def test_cache_invalidate_requires_a_screen_editing_permission(self) -> None:
+        """The browser route is gated; it was once a public middleware bypass.
+
+        Whoever can edit a screen that triggers the clear may clear: registration.manage
+        (ManageRegistrationPage's callers); the Sync tab's callers are admin-only, and
+        admin always passes. Service callers use /api/internal/metrics/cache/invalidate.
+        """
         from api.routers.metrics import invalidate_metrics_cache
 
-        assert _get_dependency(invalidate_metrics_cache) is None
+        dep = _get_dependency(invalidate_metrics_cache)
+        granted: set[str] = set()
+        for cell in getattr(dep, "__closure__", None) or ():
+            try:
+                contents = cell.cell_contents
+            except ValueError:
+                continue
+            if isinstance(contents, tuple) and all(isinstance(c, str) for c in contents):
+                granted.update(contents)
+        assert granted == {Permission.REGISTRATION_MANAGE}
 
     def test_cache_stats_requires_authentication(self) -> None:
         from api.routers.metrics import get_cache_stats

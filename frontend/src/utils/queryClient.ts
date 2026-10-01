@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { viewAsHeaders } from '../auth/viewAs'
 
 // Clean up legacy localStorage persistence (removed in this version)
 localStorage.removeItem('bunking-query-cache')
@@ -49,6 +50,26 @@ export const queryClient = new QueryClient({
   },
 })
 
+/**
+ * Ask the API to clear its server-side caches. The route requires `registration.manage`
+ * or admin (it used to be unauthenticated), so this sends the PocketBase token like
+ * `useApiWithAuth` does; a 401/403 is swallowed because the PocketBase sync
+ * orchestrator clears the same caches itself after every job. `syncType` names the
+ * completed sync so the server clears only what that job could have changed.
+ * Never rejects.
+ */
+export const invalidateServerCaches = (syncType?: string): Promise<void> => {
+  const url = syncType
+    ? `/api/metrics/cache/invalidate?sync_type=${encodeURIComponent(syncType)}`
+    : '/api/metrics/cache/invalidate'
+  const headers: Record<string, string> = { ...viewAsHeaders() }
+  if (pb.authStore.token) headers['Authorization'] = `Bearer ${pb.authStore.token}`
+  return fetch(url, { method: 'POST', headers, credentials: 'include' }).then(
+    () => undefined,
+    () => undefined
+  )
+}
+
 // Helper to manually invalidate cache (e.g., after sync)
 export const invalidateCache = () => {
   void queryClient.invalidateQueries()
@@ -58,7 +79,7 @@ export const invalidateCache = () => {
 export const clearCache = () => {
   queryClient.clear()
   // Also invalidate server-side metrics cache (fire-and-forget)
-  fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+  void invalidateServerCaches()
 }
 
 /**
@@ -128,10 +149,7 @@ const SYNC_DEPENDENT_PREFIXES = [
  * The browser-side invalidation below is unchanged either way.
  */
 export const invalidateSyncData = (syncType?: string) => {
-  const url = syncType
-    ? `/api/metrics/cache/invalidate?sync_type=${encodeURIComponent(syncType)}`
-    : '/api/metrics/cache/invalidate'
-  fetch(url, { method: 'POST' }).catch(() => {})
+  void invalidateServerCaches(syncType)
   for (const prefix of SYNC_DEPENDENT_PREFIXES) {
     void queryClient.invalidateQueries({ queryKey: [prefix] })
   }

@@ -6,6 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { RegistrationDatesConfig } from './RegistrationDatesConfig'
 import { CurrentYearContext, type CurrentYearContextType } from '../../hooks/useCurrentYear'
 
@@ -16,6 +17,7 @@ const mockUpdate = vi.fn()
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: {
+    authStore: { token: '' },
     collection: () => ({
       getFullList: mockGetFullList,
       create: mockCreate,
@@ -225,6 +227,36 @@ describe('RegistrationDatesConfig', () => {
         expect.objectContaining({ method: 'POST' })
       )
     })
+
+    mockFetch.mockRestore()
+  })
+
+  it('waits for the server cache clear before reporting the save', async () => {
+    vi.mocked(toast.success).mockClear()
+    let releaseClear: (r: Response) => void = () => {}
+    const mockFetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValue(new Promise<Response>((resolve) => (releaseClear = resolve)))
+    mockGetFullList.mockResolvedValue([
+      makeConfigRecord(2026, 'priority_reg_date', '2025-11-10', 'existing_1'),
+      makeConfigRecord(2026, 'early_reg_date', '2025-11-13', 'existing_2'),
+      makeConfigRecord(2026, 'open_reg_date', '2025-11-20', 'existing_3'),
+    ])
+    mockUpdate.mockResolvedValue({ id: 'existing_1' })
+
+    const user = userEvent.setup()
+    render(<RegistrationDatesConfig />, { wrapper: createWrapper(2026) })
+    await waitFor(() => {
+      expect(screen.getByLabelText(/priority/i)).toHaveValue('2025-11-10')
+    })
+    await user.clear(screen.getByLabelText(/priority/i))
+    await user.type(screen.getByLabelText(/priority/i), '2025-11-09')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+    releaseClear(new Response('{}'))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Registration dates saved'))
 
     mockFetch.mockRestore()
   })
