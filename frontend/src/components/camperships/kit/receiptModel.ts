@@ -7,7 +7,7 @@
  */
 import { aidHref, type AidView } from './asOf'
 import { formatShortDate } from './dates'
-import type { TraceStep } from '../../../types/api-generated'
+import type { ReceiptLabelOut, TraceStep } from '../../../types/api-generated'
 import { MINUS, formatMoney, isNegativeMoney } from './money'
 
 export type TraceValue = string | number | boolean | null
@@ -18,55 +18,42 @@ export type TraceValue = string | number | boolean | null
  */
 export type AidTraceStep = TraceStep
 
-export type ReceiptLabel =
-  | {
-      readonly kind: 'live'
-      readonly season: number
-      readonly rulesVersion: number
-      readonly decidedByName?: string | null | undefined
-    }
-  | {
-      readonly kind: 'locked'
-      readonly season: number
-      readonly rulesVersion: number
-      readonly lockedOn: string
-      readonly lockSource: 'tick' | 'ledger'
-      readonly tickedByName?: string | null | undefined
-      readonly decidedByName?: string | null | undefined
-    }
-  | { readonly kind: 'reproduced'; readonly season: number; readonly rulesVersion: number }
-
 /** "rules 2027 v3": the words the label links to Season › Rules (D76). */
-export function receiptRulesWords(label: ReceiptLabel): string {
-  return `rules ${String(label.season)} v${String(label.rulesVersion)}`
+export function receiptRulesWords(label: ReceiptLabelOut): string {
+  return `rules ${String(label.season)} v${String(label.rules_version)}`
 }
 
 /**
  * D76: the rules version a receipt names opens that version, read only for `view` holders. The
  * season is the version's own (a 2026 receipt opens 2026's rules); the as-of is the page's (Decision 9).
  */
-export function receiptRulesHref(label: ReceiptLabel, view?: AidView): string {
+export function receiptRulesHref(label: ReceiptLabelOut, view?: AidView): string {
   return aidHref(
     '/aid/season/rules',
     { year: label.season, asOf: view?.asOf ?? { kind: 'live' } },
-    { version: String(label.rulesVersion) }
+    { version: String(label.rules_version) }
   )
 }
 
-/** §4.7's label: what version, live or locked, and what locked it. */
-export function receiptLabel(label: ReceiptLabel): string {
+/**
+ * §4.7's label: what version, live or locked, and what locked it. The server's facts are
+ * nullable (a lock may have no posted date; a lock source is only ever tick or ledger), so each
+ * missing fact leaves its words out rather than guessing them.
+ */
+export function receiptLabel(label: ReceiptLabelOut): string {
   const rules = receiptRulesWords(label)
   if (label.kind === 'reproduced')
     return `${rules} · ${String(label.season)}, reproduced from the repaired sheet`
-  const decided = label.decidedByName ? ` · decided by ${label.decidedByName}` : ''
+  const decided = label.decided_by_name ? ` · decided by ${label.decided_by_name}` : ''
   if (label.kind === 'live') return `live · ${rules}${decided}`
+  const on = label.locked_on ? ` ${formatShortDate(label.locked_on)}` : ''
   const by =
-    label.lockSource === 'ledger'
-      ? 'the ledger match'
-      : label.tickedByName
-        ? `${label.tickedByName}'s Posted tick`
-        : 'a Posted tick'
-  return `${rules} · locked ${formatShortDate(label.lockedOn)} by ${by} · as it was when posted${decided}`
+    label.lock_source === 'ledger'
+      ? ' by the ledger match'
+      : label.lock_source === 'tick'
+        ? ` by ${label.ticked_by_name ? `${label.ticked_by_name}'s` : 'a'} Posted tick`
+        : ''
+  return `${rules} · locked${on}${by} · as it was when posted${decided}`
 }
 
 const isBlank = (value: TraceValue | undefined) =>
@@ -494,7 +481,7 @@ export function receiptLineCount(trace: readonly AidTraceStep[]): number {
   return trace.filter((step) => step.key !== 'total').length
 }
 
-export interface SentencePart {
+export interface ReceiptSentencePart {
   readonly text: string
   readonly kind: 'plain' | 'figure' | 'bound'
   /** A money figure below zero, which the component inks red (D74). */
@@ -507,8 +494,8 @@ export interface SentencePart {
  * Every figure the total adds appears, so the sentence always adds up: top-up and discretionary
  * money included. Each wording follows the engine's own arithmetic (engine.py `_round1`).
  */
-export function receiptSentence(trace: readonly AidTraceStep[]): SentencePart[] {
-  const parts: SentencePart[] = []
+export function receiptSentence(trace: readonly AidTraceStep[]): ReceiptSentencePart[] {
+  const parts: ReceiptSentencePart[] = []
   const plain = (t: string) => parts.push({ text: t, kind: 'plain' })
   const figure = (t: string) =>
     parts.push(
@@ -681,7 +668,7 @@ export function receiptSentence(trace: readonly AidTraceStep[]): SentencePart[] 
   return parts
 }
 
-export function sentenceText(parts: readonly SentencePart[]): string {
+export function receiptSentenceText(parts: readonly ReceiptSentencePart[]): string {
   return parts
     .map((part) => part.text)
     .join('')

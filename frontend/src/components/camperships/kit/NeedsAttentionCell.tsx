@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { STATUS_TONE } from './aidStyles'
+import { STATUS_TONE } from './kitStyles'
 import { StatusPill } from './Pills'
 
 /** Hold = it stops the award until released with a note; note = it never stops anything (main spec §10.5). */

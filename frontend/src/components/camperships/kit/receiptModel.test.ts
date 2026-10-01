@@ -32,12 +32,13 @@ import {
   receiptRulesHref,
   receiptSections,
   receiptSentence,
-  sentenceText,
+  receiptSentenceText,
   stepHow,
   stepIsNegativeMoney,
   stepValue,
   type AidTraceStep,
 } from './receiptModel'
+import type { ReceiptLabelOut } from '../../../types/api-generated'
 
 const find = (trace: readonly AidTraceStep[], key: string) => {
   const step = trace.find((s) => s.key === key)
@@ -47,25 +48,25 @@ const find = (trace: readonly AidTraceStep[], key: string) => {
 
 describe('receiptSentence (D33; the editor row and the household page say the same thing)', () => {
   it('reads a Round 1 set by the ask', () => {
-    expect(sentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).toBe(
+    expect(receiptSentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).toBe(
       "Adjusted income $120,000 → tier 5. Round 1: 40% of $5,000 = $2,000, limited by the family's ask to $1,500. Total $1,500."
     )
   })
 
   it('reads an appeal limited by the Round 2 cap, and a Round 1 the table set', () => {
-    expect(sentenceText(receiptSentence(TRACE_ROUND2_CAPPED))).toBe(
+    expect(receiptSentenceText(receiptSentence(TRACE_ROUND2_CAPPED))).toBe(
       'Adjusted income $80,000 → tier 3. Round 1: 70% of $5,000 = $3,500 → $3,500. Round 2: appeal $2,500, limited by the Round 2 cap to $1,000. Total $4,500.'
     )
   })
 
   it('says why there is no award above the income ceiling', () => {
-    expect(sentenceText(receiptSentence(TRACE_INCOME_CEILING))).toBe(
+    expect(receiptSentenceText(receiptSentence(TRACE_INCOME_CEILING))).toBe(
       'Adjusted income $400,000 → tier 9. Round 1: above the income ceiling → $0. Total $0.'
     )
   })
 
   it('ends a locked round with what was posted, which the total uses (D43, D52)', () => {
-    expect(sentenceText(receiptSentence(TRACE_ROUND1_LOCKED))).toBe(
+    expect(receiptSentenceText(receiptSentence(TRACE_ROUND1_LOCKED))).toBe(
       "Adjusted income $120,000 → tier 5. Round 1: 40% of $5,000 = $2,000, limited by the family's ask to $1,500; posted $1,800. Total $1,800."
     )
   })
@@ -78,7 +79,7 @@ describe('receiptSentence (D33; the editor row and the household page say the sa
           ? { ...s, value: 4, inputs: { income_tier: 5, equity_shift: 1 } }
           : s
     )
-    expect(sentenceText(receiptSentence(shifted))).toContain('→ tier 5 +1 equity → tier 4.')
+    expect(receiptSentenceText(receiptSentence(shifted))).toContain('→ tier 5 +1 equity → tier 4.')
     expect(stepHow(find(shifted, 'final_tier'), shifted)).toBe(`tier 5 ${MINUS} 1`)
   })
 
@@ -245,57 +246,71 @@ describe('lines the engine emits without inputs', () => {
 })
 
 describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
+  const base = {
+    season: 2027,
+    rules_version: 3,
+    locked_on: null,
+    lock_source: null,
+    ticked_by_name: null,
+    decided_by_name: null,
+  } as const satisfies Omit<ReceiptLabelOut, 'kind'>
+
   it('says a live receipt moves', () => {
-    expect(receiptLabel({ kind: 'live', season: 2027, rulesVersion: 3 })).toBe(
-      'live · rules 2027 v3'
-    )
+    expect(receiptLabel({ ...base, kind: 'live' })).toBe('live · rules 2027 v3')
   })
 
   it('names what locked a posted round, and when', () => {
     expect(
       receiptLabel({
+        ...base,
         kind: 'locked',
-        season: 2027,
-        rulesVersion: 3,
-        lockedOn: '2027-03-09',
-        lockSource: 'tick',
-        tickedByName: 'Test User',
+        locked_on: '2027-03-09',
+        lock_source: 'tick',
+        ticked_by_name: 'Test User',
       })
     ).toBe("rules 2027 v3 · locked Mar 9 by Test User's Posted tick · as it was when posted")
     expect(
-      receiptLabel({
-        kind: 'locked',
-        season: 2027,
-        rulesVersion: 3,
-        lockedOn: '2027-03-09',
-        lockSource: 'tick',
-      })
+      receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-09', lock_source: 'tick' })
     ).toBe('rules 2027 v3 · locked Mar 9 by a Posted tick · as it was when posted')
     expect(
-      receiptLabel({
-        kind: 'locked',
-        season: 2027,
-        rulesVersion: 3,
-        lockedOn: '2027-03-10',
-        lockSource: 'ledger',
-      })
+      receiptLabel({ ...base, kind: 'locked', locked_on: '2027-03-10', lock_source: 'ledger' })
     ).toBe('rules 2027 v3 · locked Mar 10 by the ledger match · as it was when posted')
   })
 
+  it('says "locked" with no date and no stray space when the server sends no posted date', () => {
+    expect(receiptLabel({ ...base, kind: 'locked', lock_source: 'ledger' })).toBe(
+      'rules 2027 v3 · locked by the ledger match · as it was when posted'
+    )
+    expect(receiptLabel({ ...base, kind: 'locked' })).toBe(
+      'rules 2027 v3 · locked · as it was when posted'
+    )
+  })
+
+  it('does not claim a Posted tick when the server names no lock source', () => {
+    const words = receiptLabel({
+      ...base,
+      kind: 'locked',
+      locked_on: '2027-03-09',
+      ticked_by_name: 'Test User',
+    })
+    expect(words).toBe('rules 2027 v3 · locked Mar 9 · as it was when posted')
+    expect(words).not.toContain('tick')
+  })
+
   it("names 2026's reproduced decisions", () => {
-    expect(receiptLabel({ kind: 'reproduced', season: 2026, rulesVersion: 1 })).toBe(
+    expect(receiptLabel({ ...base, kind: 'reproduced', season: 2026, rules_version: 1 })).toBe(
       'rules 2026 v1 · 2026, reproduced from the repaired sheet'
     )
   })
 
   it('names who decided staff-decided money (Round 3)', () => {
-    expect(
-      receiptLabel({ kind: 'live', season: 2027, rulesVersion: 3, decidedByName: 'Test User' })
-    ).toBe('live · rules 2027 v3 · decided by Test User')
+    expect(receiptLabel({ ...base, kind: 'live', decided_by_name: 'Test User' })).toBe(
+      'live · rules 2027 v3 · decided by Test User'
+    )
   })
 
   it('links the rules version to Season › Rules, for that version and season', () => {
-    expect(receiptRulesHref({ kind: 'live', season: 2027, rulesVersion: 3 })).toBe(
+    expect(receiptRulesHref({ ...base, kind: 'live' })).toBe(
       '/aid/season/rules?version=3&year=2027'
     )
   })
@@ -303,28 +318,28 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
 
 describe('fix round 1: the sentence agrees with the engine', () => {
   it('I1: a raised minimum is not "= $potential"', () => {
-    expect(sentenceText(receiptSentence(TRACE_MINIMUM_RAISED))).toBe(
+    expect(receiptSentenceText(receiptSentence(TRACE_MINIMUM_RAISED))).toBe(
       'Adjusted income $30,000 → tier 1. Round 1: 1% of $5,000, raised to the minimum award → $100. Total $100.'
     )
-    expect(sentenceText(receiptSentence(TRACE_MINIMUM_THEN_ASK))).toBe(
+    expect(receiptSentenceText(receiptSentence(TRACE_MINIMUM_THEN_ASK))).toBe(
       "Adjusted income $30,000 → tier 1. Round 1: 1% of $5,000, raised to the minimum award $100, limited by the family's ask to $80. Total $80."
     )
   })
 
   it('I2: the two grant offsets read differently (D137)', () => {
-    expect(sentenceText(receiptSentence(TRACE_GRANTS_DOLLAR))).toContain(
+    expect(receiptSentenceText(receiptSentence(TRACE_GRANTS_DOLLAR))).toContain(
       'Round 1: 40% of $5,000, less $500 in grants, = $1,500 → $1,500.'
     )
-    expect(sentenceText(receiptSentence(TRACE_GRANTS_REDUCE_COST))).toContain(
+    expect(receiptSentenceText(receiptSentence(TRACE_GRANTS_REDUCE_COST))).toContain(
       'Round 1: 40% of ($5,000 less $500 in grants) = $1,800 → $1,800.'
     )
   })
 
   it('I3: top-up and discretionary money are in the sentence, so it adds up', () => {
-    expect(sentenceText(receiptSentence(TRACE_TOP_UP))).toContain(
+    expect(receiptSentenceText(receiptSentence(TRACE_TOP_UP))).toContain(
       'to $1,500. Top-up $400. Total $1,900.'
     )
-    expect(sentenceText(receiptSentence(TRACE_DISCRETIONARY))).toContain(
+    expect(receiptSentenceText(receiptSentence(TRACE_DISCRETIONARY))).toContain(
       'to $1,500. Discretionary $250. Total $1,750.'
     )
   })
@@ -341,7 +356,7 @@ describe('fix round 1: the sentence agrees with the engine', () => {
         discretionary: '0.00',
       }),
     ]
-    expect(sentenceText(receiptSentence(trace))).toContain('Top-up $300. Total $1,800.')
+    expect(receiptSentenceText(receiptSentence(trace))).toContain('Top-up $300. Total $1,800.')
   })
 
   it('I4a: a top-up withheld above the income ceiling says so', () => {
@@ -357,19 +372,19 @@ describe('fix round 1: the sentence agrees with the engine', () => {
       ),
       ...TRACE_INCOME_CEILING.slice(-1),
     ]
-    expect(sentenceText(receiptSentence(trace))).toContain(
+    expect(receiptSentenceText(receiptSentence(trace))).toContain(
       'Round 1: above the income ceiling → $0. Top-up: above the income ceiling → $0. Total $0.'
     )
   })
 
   it('an incentive taken off the award is in the sentence', () => {
-    expect(sentenceText(receiptSentence(TRACE_INCENTIVE_AWARD))).toContain(
+    expect(receiptSentenceText(receiptSentence(TRACE_INCENTIVE_AWARD))).toContain(
       "Round 1: 40% of $5,000 = $2,000, limited by the family's ask to $1,500, less an incentive of $100 → $1,400. Total $1,400."
     )
   })
 
   it('the total-aid cap reads as a cut', () => {
-    expect(sentenceText(receiptSentence(TRACE_TOTAL_CAP))).toContain(
+    expect(receiptSentenceText(receiptSentence(TRACE_TOTAL_CAP))).toContain(
       'Round 2: appeal $2,500, cut to fit the total-aid cap → $700. Total $4,200.'
     )
   })
@@ -388,7 +403,7 @@ describe('fix round 1: the sentence agrees with the engine', () => {
         discretionary: '0.00',
       }),
     ]
-    expect(sentenceText(receiptSentence(trace))).toContain(
+    expect(receiptSentenceText(receiptSentence(trace))).toContain(
       'limited by the Round 2 cap to $1,000; posted $900. Round 3: requested $300, limited by the Round 3 maximum to $200; posted $150. Total $4,550.'
     )
   })
@@ -627,7 +642,7 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
 
 describe('fix round 2: real engine traces', () => {
   it('B: an incentive larger than the award shows the incentive actually taken', () => {
-    expect(sentenceText(receiptSentence(REAL_INCENTIVE_CLAMPED))).toContain(
+    expect(receiptSentenceText(receiptSentence(REAL_INCENTIVE_CLAMPED))).toContain(
       'Round 1: 2% of $2,000, raised to the minimum award → $100, less an incentive of $100 → $0. Total $0.'
     )
     expect(stepHow(find(REAL_INCENTIVE_CLAMPED, 'r1'), REAL_INCENTIVE_CLAMPED)).toBe(
@@ -636,7 +651,7 @@ describe('fix round 2: real engine traces', () => {
   })
 
   it('B: an incentive after the ask limited the award', () => {
-    expect(sentenceText(receiptSentence(REAL_INCENTIVE_ASK))).toContain(
+    expect(receiptSentenceText(receiptSentence(REAL_INCENTIVE_ASK))).toContain(
       "limited by the family's ask to $1,500, less an incentive of $100 → $1,400. Total $1,400."
     )
   })
@@ -645,7 +660,7 @@ describe('fix round 2: real engine traces', () => {
     const trace = [
       traceStep('r1', 'Round 1 award', '1400.00', {}, 'ask', 'Reduced by an incentive of 100.00'),
     ]
-    expect(sentenceText(receiptSentence(trace))).toContain('less an incentive of $100')
+    expect(receiptSentenceText(receiptSentence(trace))).toContain('less an incentive of $100')
   })
 
   it('A: reduce_cost_basis reads like the sentence', () => {
@@ -678,7 +693,7 @@ describe('fix round 2: real engine traces', () => {
 
   it('4: an unknown cost is not "0% of —"', () => {
     const trace = REAL_COST_UNKNOWN_MINIMUM
-    expect(sentenceText(receiptSentence(trace))).toContain(
+    expect(receiptSentenceText(receiptSentence(trace))).toContain(
       'Round 1: cost not set, minimum award → $100. Total $100.'
     )
     expect(stepHow(find(trace, 'r1_potential'), trace)).toBe(
@@ -701,13 +716,13 @@ describe('fix round 3', () => {
     ['reworded', 'An incentive was applied'],
     ['removed', null],
   ])('1: an incentive is read from the amounts, with the note %s', (_name, note) => {
-    expect(sentenceText(receiptSentence(reworded(note)))).toContain(
+    expect(receiptSentenceText(receiptSentence(reworded(note)))).toContain(
       "limited by the family's ask to $1,500, less an incentive of $100 → $1,400. Total $1,400."
     )
   })
 
   it('1: a step with no incentive says none', () => {
-    expect(sentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).not.toContain('incentive')
+    expect(receiptSentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).not.toContain('incentive')
   })
 
   it('3: a minimum capped at what the family owes says both figures', () => {

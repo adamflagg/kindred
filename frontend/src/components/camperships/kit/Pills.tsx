@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
-import { HOUSEHOLD_CHIP, ID_CHIP, PILL, type PillTone } from './aidStyles'
+import { HOUSEHOLD_CHIP, ID_CHIP, PILL, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
 import { formatGap, formatMoney } from './money'
 

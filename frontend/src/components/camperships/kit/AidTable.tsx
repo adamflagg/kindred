@@ -32,7 +32,7 @@ import {
   TFOOT_CELL,
   TH,
   TOTAL_BUTTON,
-} from './aidStyles'
+} from './kitStyles'
 import { csvCell, withLinkLine } from './csv'
 import { isPageKey } from './keyboard'
 import { moneyCsv } from './money'

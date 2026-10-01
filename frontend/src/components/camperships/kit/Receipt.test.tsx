@@ -8,7 +8,15 @@ import { TRACE_CAPPED_BY_ASK, traceStep } from './fixtures'
 import { MINUS } from './money'
 import { Receipt } from './Receipt'
 
-const LIVE = { kind: 'live', season: 2027, rulesVersion: 3 } as const
+const LIVE = {
+  kind: 'live',
+  season: 2027,
+  rules_version: 3,
+  locked_on: null,
+  lock_source: null,
+  ticked_by_name: null,
+  decided_by_name: null,
+} as const
 
 function renderReceipt(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>)

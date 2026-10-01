@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import { AMBER_NOTE, FIELD, FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
-import { STATUS_TONE } from './aidStyles'
+import { STATUS_TONE } from './kitStyles'
 import { initialReason, parseMoneyInput, reasonMissing, type TextReasonPolicy } from './editor'
 import { Money } from './MoneyText'
 import { HouseholdChip, StatusPill } from './Pills'
@@ -129,7 +129,7 @@ export function RequestEditor(props: RequestEditorProps) {
   // What "nothing typed" means: the amount and note the editor opened with, moved forward when a
   // save finishes or an untouched field's amount is refetched. Amounts compare PARSED, so "1,200"
   // over 1200 is not an edit.
-  const [base, setBase] = useState<{ amount: number | null; note: string }>({
+  const [base, setBase] = useState<Baseline>({
     amount: props.initialAmount,
     note: noteStart,
   })

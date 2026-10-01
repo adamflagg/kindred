@@ -5,7 +5,10 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import * as styles from './aidStyles'
+import * as aid from './aidStyles'
+import * as kit from './kitStyles'
+
+const styles = { ...aid, ...kit }
 
 // Ruling 2026-10-01 (plan review): two- and three-digit shades, so `amber-50` is checked too.
 const PALETTE = /(?<!dark:)\b(bg|text|border)-(red|amber|emerald|sky|purple|stone)-\d{2,3}\b/g

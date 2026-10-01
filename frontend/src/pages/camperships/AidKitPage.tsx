@@ -6,7 +6,7 @@ import {
   type AidColumn,
   type AidGrouping,
 } from '../../components/camperships/kit/AidTable'
-import { STATUS_TONE } from '../../components/camperships/kit/aidStyles'
+import { STATUS_TONE } from '../../components/camperships/kit/kitStyles'
 import { aidCsvFilename } from '../../components/camperships/kit/csv'
 import { campToday } from '../../components/camperships/kit/dates'
 import { DefRef, DefinitionNotes } from '../../components/camperships/kit/DefinitionNotes'
@@ -41,6 +41,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     </section>
   )
 }
+
+/** A receipt label with none of the lock facts (the server sends them nullable). */
+const NO_LOCK = {
+  locked_on: null,
+  lock_source: null,
+  ticked_by_name: null,
+  decided_by_name: null,
+} as const
 
 const MONEY_EXAMPLES: ReadonlyArray<[string, ReactNode]> = [
   ['Nothing there yet', <Money key="a" value={null} />],
@@ -265,23 +273,24 @@ export default function AidKitPage() {
       <Section title="Receipt">
         <Receipt
           trace={REAL_INCENTIVE_ASK}
-          label={{ kind: 'live', season: 2027, rulesVersion: 3 }}
+          label={{ ...NO_LOCK, kind: 'live', season: 2027, rules_version: 3 }}
         />
         <Receipt
           trace={REAL_ROUND2_CAP_NEGATIVE}
           label={{
+            ...NO_LOCK,
             kind: 'locked',
             season: 2027,
-            rulesVersion: 3,
-            lockedOn: '2027-03-09',
-            lockSource: 'tick',
-            tickedByName: 'Test User',
+            rules_version: 3,
+            locked_on: '2027-03-09',
+            lock_source: 'tick',
+            ticked_by_name: 'Test User',
           }}
           folded
         />
         <Receipt
           trace={REAL_REDUCE_COST_BASIS}
-          label={{ kind: 'reproduced', season: 2026, rulesVersion: 1 }}
+          label={{ ...NO_LOCK, kind: 'reproduced', season: 2026, rules_version: 1 }}
           folded
         />
       </Section>

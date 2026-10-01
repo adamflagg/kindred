@@ -1,8 +1,10 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
-import { BINDING_LINE, BINDING_TEXT, NEGATIVE_INK } from './aidStyles'
+import { NEGATIVE_INK } from './aidStyles'
+import { BINDING_LINE, BINDING_TEXT } from './kitStyles'
 import type { AidView } from './asOf'
+import type { ReceiptLabelOut } from '../../../types/api-generated'
 import {
   bindingPhrase,
   receiptLabel,
@@ -15,7 +17,6 @@ import {
   stepIsNegativeMoney,
   stepValue,
   type AidTraceStep,
-  type ReceiptLabel,
 } from './receiptModel'
 
 /** The receipt's sentence. It is also the editor row's one-line form (§6.5), so the two agree. */
@@ -49,7 +50,7 @@ export function ReceiptSentence({
 }
 
 /** The label, with its rules version linked to Season › Rules (D76). */
-function ReceiptLabelLine({ label, view }: { label: ReceiptLabel; view?: AidView | undefined }) {
+function ReceiptLabelLine({ label, view }: { label: ReceiptLabelOut; view?: AidView | undefined }) {
   const words = receiptRulesWords(label)
   const full = receiptLabel(label)
   const at = full.indexOf(words)
@@ -66,7 +67,7 @@ function ReceiptLabelLine({ label, view }: { label: ReceiptLabel; view?: AidView
 
 interface ReceiptProps {
   trace: readonly AidTraceStep[]
-  label: ReceiptLabel
+  label: ReceiptLabelOut
   /** The page's season and as-of, which the rules link carries (Decision 9). */
   view?: AidView | undefined
   /** The household page folds receipts under their sentence (D34). */

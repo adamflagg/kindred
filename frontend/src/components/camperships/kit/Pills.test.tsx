@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
-import { STATUS_TONE } from './aidStyles'
+import { STATUS_TONE } from './kitStyles'
 import { ConfirmationState, HouseholdChip, IdChip, OverPill, StatusPill } from './Pills'
 
 function confirmation(over: Partial<ConfirmationOut>): ConfirmationOut {
