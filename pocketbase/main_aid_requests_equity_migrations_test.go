@@ -22,7 +22,9 @@ func aidRequestsEquityMigration(t *testing.T) string {
 func TestAidRequestsEquityMigrationAddsTheField(t *testing.T) {
 	path := aidRequestsEquityMigration(t)
 	up := readAidMigrationUp(t, path)
-	for _, want := range []string{`findCollectionByNameOrId("aid_requests")`, `new Field({`, `type: "json", name: "equity"`} {
+	for _, want := range []string{
+		`findCollectionByNameOrId("aid_requests")`, `new Field({`, `type: "json", name: "equity"`,
+	} {
 		if !strings.Contains(up, want) {
 			t.Errorf("up must contain %q", want)
 		}

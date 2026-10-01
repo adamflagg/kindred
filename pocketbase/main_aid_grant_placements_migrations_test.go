@@ -43,7 +43,8 @@ func TestAidGrantPlacementsMigrationDeclaresItsShape(t *testing.T) {
 	path := aidGrantPlacementsMigration(t)
 	up := readAidMigrationUp(t, path)
 	for _, want := range []string{
-		`name: "grant", required: true, presentable: true, min: 1, max: 64, pattern: "^(ledger:[0-9]+|commitment:[a-z0-9]{15})$"`,
+		`name: "grant", required: true, presentable: true, min: 1, max: 64, ` +
+			`pattern: "^(ledger:[0-9]+|commitment:[a-z0-9]{15})$"`,
 		`values: ["place", "remove"]`,
 		`{ type: "json", name: "placement", required: false`,
 		`{ type: "number", name: "household_cm_id", required: false`,
