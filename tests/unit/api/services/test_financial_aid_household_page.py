@@ -944,3 +944,27 @@ async def test_each_request_card_carries_its_grants_and_what_of_them_applied() -
     assert (emma.grants, emma.grants_applied, emma.grants_beyond_owed) == (200.0, 200.0, 0.0)
     assert (liam.grants, liam.grants_applied, liam.grants_beyond_owed) == (0.0, 0.0, 0.0)
     assert (page.totals.grants, page.totals.grants_applied, page.totals.grants_beyond_owed) == (200.0, 200.0, 0.0)
+
+
+# --- aid, decided so far (read 12; Decision 2) ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", ["held", "not_decided", "pending_approval"])
+def test_aid_decided_is_partial_while_an_included_round_is_undecided(status: str) -> None:
+    """Decision 2 (⚠): a held round counts too: its amount is unknown, so the sum is partial."""
+    posted = _round(1, "posted", decided=1500.0, posted=1500.0)
+    rows = [_row(EMMA, JOHNSON), _row(LIAM, GARCIA, rounds=[posted, _round(3, status, ask=500.0)])]
+    assert totals(rows, {}).decided_partial is True
+
+
+def test_aid_decided_is_whole_once_every_included_round_is_decided_or_refused() -> None:
+    rows = [
+        _row(EMMA, JOHNSON),
+        _row(LIAM, GARCIA, rounds=[_round(1, "needs_offer", decided=1500.0), _round(3, "refused")]),
+    ]
+    assert totals(rows, {}).decided_partial is False
+
+
+def test_an_undecided_round_outside_the_band_leaves_it_whole() -> None:
+    rows = [_row(EMMA, JOHNSON), _row(OLIVIA, OTHER, request_status="withdrawn", rounds=[_round(1, "held")])]
+    assert totals(rows, {}).decided_partial is False

@@ -18,7 +18,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from api.schemas.financial_aid import HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
@@ -62,6 +62,8 @@ from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.errors import FinancialAidError
 
 _ZERO = Decimal(0)
+# The round states whose amount isn't decided yet (Decision 2): a held round's amount is unknown (D44).
+_UNDECIDED: Final = frozenset({"held", "not_decided", "pending_approval"})
 # The lock_source the 2026 decision-year load (D67) is to write on its reproduced rounds: the receipt then
 # reads "2026, reproduced from the repaired sheet". Nothing writes it yet; the load's plan owns it.
 REPRODUCED = "reproduced"
@@ -195,6 +197,7 @@ def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal])
         family_share=money(share) if share is not None else None,
         posted=money(p) if (p := _sum(dollars(row.total_posted) for row in rows)) is not None else None,
         states=_states(pair for row in rows for pair in _band_states(row)),
+        decided_partial=any(r.status in _UNDECIDED for row in rows for r in row.rounds),
         grants_applied=money(sum((a for a in applied if a is not None), _ZERO)) if known else None,
         grants_beyond_owed=money(sum((b for b in beyond if b is not None), _ZERO)) if known else None,
     )

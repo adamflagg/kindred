@@ -73,6 +73,9 @@ class HouseholdTotalsOut(BaseModel):
     # (the Grants table's money). Both None whenever family_share is (Decision 1).
     grants_applied: float | None = None
     grants_beyond_owed: float | None = None
+    # Read 12 (Decision 2, ⚠): an included request has a round whose amount isn't decided yet (held, not decided,
+    # pending approval), so "aid, decided" is a partial sum: the band labels it "aid, decided so far".
+    decided_partial: bool = False
 
 
 class ShareLineOut(BaseModel):
