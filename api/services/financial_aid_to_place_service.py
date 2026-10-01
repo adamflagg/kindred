@@ -9,7 +9,8 @@ One read and four writes over the season the decisions service prices (D21: the 
               the placed money makes, as ONE operation (D12, D16, D81). A placement ticks the rounds the money
               covers in full, oldest first, at their decided amounts, dated the latest live line's day on the
               request: the ledger's own walk (ledger_ticks, D146), so a person's placement and the overnight
-              tick never disagree;
+              tick never disagree. A round whose request something re-priced after its posting day is not
+              ticked: the money is placed and the response names the round for a person to tick (D16);
   leave       Leave at family level, with a note (casework): an aid_flag_dispositions row, flag `to_place`;
   reopen      undo that (casework);
   reclassify  Reclassify (rules, D104): the override's source_key_override, with a reason. Go applies it on
@@ -32,10 +33,10 @@ from typing import Any, Final, Protocol
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOSITIONS
 from api.schemas.financial_aid_to_place import (
     CandidateOut,
-    ChangedSinceOut,
     EvidenceOut,
     LeaveLineIn,
     LeftToTickOut,
+    NotTickedOut,
     PartOut,
     PlaceLineIn,
     PlaceLinesIn,
@@ -153,8 +154,10 @@ def _left_to_tick(
     ledger: SeasonLedger,
     ticked: Collection[tuple[str, int]],
     undone: Collection[tuple[str, int]],
+    withheld: Collection[tuple[str, int]] = frozenset(),
 ) -> list[LeftToTickOut]:
-    """Each placed request's first round still waiting for a tick, and why the placement left it."""
+    """Each placed request's first round still waiting for a tick, and why the placement left it. A round whose
+    tick was withheld (D16) is named apart, with its reasons, so the walk stops there without naming it."""
     out: list[LeftToTickOut] = []
     for request in priced:
         held = live_net(ledger.lines(request.request_id))
@@ -164,6 +167,8 @@ def _left_to_tick(
             if key in ticked:
                 locked += view.decided or ZERO
                 continue
+            if key in withheld:
+                break
             if view.status == "posted":
                 continue
             if view.status != "needs_offer" or view.decided is None:
@@ -180,13 +185,17 @@ def _left_to_tick(
     return out
 
 
-def _ticked_out(outcome: Outcome) -> list[TickedOut]:
-    return [TickedOut(request_id=t.request_id, round=t.round, amount=money(t.amount)) for t in outcome.ticks]
+Withheld = Sequence[tuple[LedgerTick, tuple[ChangedReason, ...]]]
 
 
-def _left_out(outcome: Outcome, season: Season) -> list[LeftToTickOut]:
-    ticked = {(t.request_id, t.round) for t in outcome.ticks}
-    return _left_to_tick(outcome.priced, outcome.ledger, ticked, season.undone)
+def _ticked_out(ticks: Sequence[LedgerTick]) -> list[TickedOut]:
+    return [TickedOut(request_id=t.request_id, round=t.round, amount=money(t.amount)) for t in ticks]
+
+
+def _left_out(outcome: Outcome, season: Season, ticks: Sequence[LedgerTick], withheld: Withheld) -> list[LeftToTickOut]:
+    ticked = {(t.request_id, t.round) for t in ticks}
+    held = {(t.request_id, t.round) for t, _ in withheld}
+    return _left_to_tick(outcome.priced, outcome.ledger, ticked, season.undone, held)
 
 
 def _suggested(
@@ -204,13 +213,23 @@ def _joined(texts: Sequence[str]) -> str:
     return texts[0] if len(texts) == 1 else f"{', '.join(texts[:-1])} and {texts[-1]}"
 
 
-def changed_text(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[ChangedReason]) -> str:
-    """D16b's refusal for one line and one round (owner ruling 2026-10-01): the registrar ticks it by hand."""
+def not_ticked_out(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[ChangedReason]) -> NotTickedOut:
+    """D16, owner ruling 2026-10-01, refined (option a): the money is placed, and this round's automatic tick is
+    withheld for the registrar to make by hand. Tonight's ledger sync ticks whatever is still unticked, at the
+    amount pricing gives then (SP10b-1 Decision 2, unchanged), so the prompt says to tick it before then."""
     n, day = tick.round, f"{tick.posted_on:%b} {tick.posted_on.day}"
-    return (
-        f"line {transaction_cm_id}: Round {n} of {tick.request_id} isn't ticked by placing it: since CampMinder "
-        f"posted it on {day}, {_joined([r.text for r in reasons])}, so Kindred can't tell what Round {n} was decided "
-        f"at that day. Tick Round {n} Posted by hand at the amount that was right then, then place the line"
+    why = (
+        f"since CampMinder posted it on {day}, {_joined([r.text for r in reasons])}, so Kindred can't tell what "
+        f"Round {n} was decided at that day. The money is placed; tick Round {n} Posted by hand at the amount that "
+        "was right then, before tonight's ledger sync ticks it at today's amount"
+    )
+    return NotTickedOut(
+        transaction_cm_id=transaction_cm_id,
+        request_id=tick.request_id,
+        round=n,
+        posted_on=tick.posted_on,
+        reasons=[r.text for r in reasons],
+        why=why,
     )
 
 
@@ -252,9 +271,21 @@ class ToPlaceService:
         )
 
     @staticmethod
-    def _changed(season: Season, tick: LedgerTick, since: SinceInputs | None) -> tuple[ChangedReason, ...]:
-        """The one check the preview and the write both run (§4.10)."""
-        return changed_since(season, tick, since) if since is not None else ()
+    def _withhold(
+        season: Season, ticks: Sequence[LedgerTick], since: SinceInputs | None
+    ) -> tuple[list[LedgerTick], list[tuple[LedgerTick, tuple[ChangedReason, ...]]]]:
+        """The one check the preview and the write both run (§4.10): the ticks a placement writes, and apart the
+        ones it withholds, with why (D16 option a). A request's rounds share one posting day and the check reads
+        no round, so they are withheld together: a later round is never ticked before the one before it (SP10a)."""
+        kept: list[LedgerTick] = []
+        held: list[tuple[LedgerTick, tuple[ChangedReason, ...]]] = []
+        for tick in ticks:
+            reasons = changed_since(season, tick, since) if since is not None else ()
+            if reasons:
+                held.append((tick, reasons))
+            else:
+                kept.append(tick)
+        return kept, held
 
     # --- the read ---------------------------------------------------------------------------------
 
@@ -299,19 +330,14 @@ class ToPlaceService:
             outcome = outcomes.get(item.line.transaction_cm_id)
             if item.suggestion is None or outcome is None:
                 return None
-            refused = [(t, reasons) for t in outcome.ticks if (reasons := self._changed(season, t, since))]
+            ticks, held = self._withhold(season, outcome.ticks, since)
             return SuggestionOut(
                 parts=[PartOut(request_id=p.request_id, amount=money(p.amount)) for p in item.suggestion.parts],
                 evidence=[EvidenceOut(kind=e.kind, text=e.text) for e in item.suggestion.evidence],
-                would_tick=_ticked_out(outcome),
-                would_lock=money(sum((t.amount for t in outcome.ticks), ZERO)),
-                would_leave=_left_out(outcome, season),
-                changed_since=[
-                    ChangedSinceOut(
-                        request_id=t.request_id, round=t.round, posted_on=t.posted_on, reasons=[r.text for r in reasons]
-                    )
-                    for t, reasons in refused
-                ],
+                would_tick=_ticked_out(ticks),
+                would_lock=money(sum((t.amount for t in ticks), ZERO)),
+                would_leave=_left_out(outcome, season, ticks, held),
+                would_not_tick=[not_ticked_out(item.line.transaction_cm_id, t, reasons) for t, reasons in held],
             )
 
         def line_out(item: ToPlaceItem, pending: str, note: str) -> ToPlaceLineOut:
@@ -474,7 +500,8 @@ class ToPlaceService:
     async def place_lines(self, year: int, body: PlaceLinesIn, actor: str) -> PlaceOut:
         """Confirm or Split one line, or confirm a whole class of them (D16), all or nothing: each line's
         override, the Posted ticks the placed money makes, and the end of any Leave at family level on those
-        lines, as ONE operation (D12, D81)."""
+        lines, as ONE operation (D12, D81). The ticks D16 withholds are not written; they come back in
+        `not_ticked`, per line."""
         if skipped := _gate(year):
             raise DecisionRefusedError(skipped)
         if len(body.lines) > 1 and body.expected_locked is not None:
@@ -536,18 +563,18 @@ class ToPlaceService:
                     problems.append(f"line {row.transaction_cm_id}: this part would not land on {part.request_id}{why}")
         if problems:
             raise DecisionRefusedError("; ".join(problems))
-        # D16 option (b), owner ruling 2026-10-01: each round locks at its decided amount as of its posting day,
-        # so a tick whose request something re-priced since that day is refused, all or nothing, line by line.
+        # D16, owner ruling 2026-10-01, refined (option a): each round locks at its decided amount as of its posting
+        # day. Where something that prices the request was recorded after that day, the money is still placed and
+        # only that round's automatic tick is withheld (no Posted row, no rules lock), named per line for a person.
         since = await self._since(season, outcome.ticks)
-        problems.extend(
-            changed_text(row.transaction_cm_id, tick, reasons)
+        ticks, held = self._withhold(season, outcome.ticks, since)
+        not_ticked = [
+            not_ticked_out(row.transaction_cm_id, tick, reasons)
             for row in body.lines
-            for tick in outcome.ticks
-            if tick.request_id in {p.request_id for p in row.parts} and (reasons := self._changed(season, tick, since))
-        )
-        if problems:
-            raise DecisionRefusedError("; ".join(problems))
-        locking = sum((t.amount for t in outcome.ticks), ZERO)
+            for tick, reasons in held
+            if tick.request_id in {p.request_id for p in row.parts}
+        ]
+        locking = sum((t.amount for t in ticks), ZERO)
         if body.expected_locked is not None and locking != body.expected_locked:
             raise DecisionRefusedError(
                 f"this now locks {dollars(locking)}, not the {dollars(Decimal(body.expected_locked))} you confirmed: "
@@ -556,10 +583,10 @@ class ToPlaceService:
         posts: list[AidWrite] = []
         locks: list[AidWrite] = []
         not_locked: list[str] = []
-        if outcome.ticks:
+        if ticks:
             posts, locks, sections = await self._decisions.tick_writes(
                 season,
-                outcome.ticks,
+                ticks,
                 actor,
                 lock_source="placement",
                 note=lambda tick: (
@@ -578,8 +605,9 @@ class ToPlaceService:
             year=year,
             operation_id=result.operation_id,
             placed=[row.transaction_cm_id for row in body.lines],
-            ticked=_ticked_out(outcome),
-            left_to_tick=_left_out(outcome, season),
+            ticked=_ticked_out(ticks),
+            left_to_tick=_left_out(outcome, season, ticks, held),
+            not_ticked=not_ticked,
             sections_not_locked=not_locked,
         )
 

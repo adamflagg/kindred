@@ -2187,32 +2187,6 @@ export type CellOut = {
 }
 
 /**
- * ChangedSinceOut
- *
- * A round the money would tick that confirming refuses (D16 option b, owner ruling 2026-10-01): something
- * that prices the request was recorded after the day CampMinder posted it, so Kindred can't tell what the round
- * was decided at that day. The registrar ticks it Posted by hand at the amount that was right then.
- */
-export type ChangedSinceOut = {
-  /**
-   * Request Id
-   */
-  request_id: string
-  /**
-   * Round
-   */
-  round: number
-  /**
-   * Posted On
-   */
-  posted_on: string
-  /**
-   * Reasons
-   */
-  reasons: Array<string>
-}
-
-/**
  * CityBreakdown
  *
  * Breakdown of metrics by city.
@@ -7678,6 +7652,41 @@ export type NotRebuiltOut = {
 }
 
 /**
+ * NotTickedOut
+ *
+ * A round the money covers that the placement does not tick (D16, owner ruling 2026-10-01, refined: option a).
+ * Something that prices the request was recorded after the day CampMinder posted it, so Kindred can't tell what
+ * the round was decided at that day. The money is placed anyway; only the automatic tick is withheld, and `why`
+ * asks the registrar to tick it Posted by hand at the amount that was right then.
+ */
+export type NotTickedOut = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Posted On
+   */
+  posted_on: string
+  /**
+   * Reasons
+   */
+  reasons: Array<string>
+  /**
+   * Why
+   */
+  why: string
+}
+
+/**
  * OptionOut
  */
 export type OptionOut = {
@@ -9418,6 +9427,8 @@ export type PlaceLinesRow = {
  * PlaceOut
  *
  * What a placement did: the lines it placed, the rounds it ticked, and the rounds it left for a person.
+ * not_ticked: the rounds the money covers whose automatic tick was withheld because something that prices the
+ * request changed after the posting (D16), each with why and a prompt to tick it by hand.
  */
 export type PlaceOut = {
   /**
@@ -9440,6 +9451,10 @@ export type PlaceOut = {
    * Left To Tick
    */
   left_to_tick: Array<LeftToTickOut>
+  /**
+   * Not Ticked
+   */
+  not_ticked?: Array<NotTickedOut>
   /**
    * Sections Not Locked
    */
@@ -14131,9 +14146,9 @@ export type SubjectNotesResponse = {
  *
  * Kindred's suggestion (D12): one part places the whole line, two or more split it. would_tick is what
  * confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
- * it locks); would_leave names the rounds it leaves for a person to tick, and why. changed_since names the
- * ticks confirming would refuse, from the same check the write runs: while it is not empty, confirming this
- * line is refused, and so is any bulk confirm that includes it (all or nothing).
+ * it locks); would_leave names the rounds it leaves for a person to tick, and why. would_not_tick names the
+ * rounds the money covers that confirming will NOT tick, from the same check the write runs (D16): the line
+ * is still placed, and each of those rounds waits for a person to tick it by hand.
  */
 export type SuggestionOut = {
   /**
@@ -14157,9 +14172,9 @@ export type SuggestionOut = {
    */
   would_leave?: Array<LeftToTickOut>
   /**
-   * Changed Since
+   * Would Not Tick
    */
-  changed_since?: Array<ChangedSinceOut>
+  would_not_tick?: Array<NotTickedOut>
 }
 
 /**

@@ -1,6 +1,7 @@
-"""D16 option (b), ruled 2026-10-01: a placement locks each round at its decided amount as of the POSTING
-DATE (the tick's posted_on), and refuses when anything that prices the request was recorded after the end of
-that day (camp time). `changed_since` is the one pure check the read's preview and the write both run.
+"""D16, ruled 2026-10-01 and refined the same day (option a): a placement locks each round at its decided amount
+as of the POSTING DATE (the tick's posted_on). When anything that prices the request was recorded after the end of
+that day (camp time), the money is still placed and only that round's automatic tick is withheld, for a person to
+tick by hand. `changed_since` is the one pure check the read's preview and the write both run.
 Fictional only. Emma (1000011) is in household 1000001; her request prices Round 1 at 1,500 (decisions_fakes).
 The tick's posting day is Mar 8 2027; its cut is the end of Mar 8 in camp time; "today" is Mar 9 (T0)."""
 
@@ -441,7 +442,7 @@ async def test_a_round_posted_today_is_never_refused() -> None:
     assert changed_since(season, today, since) == ()
 
 
-# --- the service: the write refuses, the read previews the same refusal ---------------------------------------
+# --- the service: the write places and withholds the tick, the read previews the same ---------------------------
 
 LIAM_ELSEWHERE = "reqliam00000009"  # a camper in another household, for the bulk confirm
 
@@ -465,25 +466,38 @@ def _correction(store: FakeToPlaceStore, at: datetime = T0) -> None:
     )
 
 
-REFUSED_9001 = (
-    f"line 9001: Round 1 of {EMMA} isn't ticked by placing it: since CampMinder posted it on Mar 8, a correction "
-    "was entered (Mar 9), so Kindred can't tell what Round 1 was decided at that day. Tick Round 1 Posted by hand "
-    "at the amount that was right then, then place the line"
+NOT_TICKED_WHY = (
+    "since CampMinder posted it on Mar 8, a correction was entered (Mar 9), so Kindred can't tell what Round 1 was "
+    "decided at that day. The money is placed; tick Round 1 Posted by hand at the amount that was right then, "
+    "before tonight's ledger sync ticks it at today's amount"
 )
+NOT_TICKED_9001 = (9001, EMMA, 1, POSTED, ["a correction was entered (Mar 9)"], NOT_TICKED_WHY)
+
+
+def _not_ticked(rows: Sequence[Any]) -> list[tuple[Any, ...]]:
+    return [(n.transaction_cm_id, n.request_id, n.round, n.posted_on, n.reasons, n.why) for n in rows]
 
 
 @pytest.mark.asyncio
-async def test_a_placement_whose_request_changed_since_the_posting_is_refused_and_writes_nothing() -> None:
+async def test_money_placed_tick_withheld_and_the_response_names_the_round() -> None:
+    """D16 option (a), owner ruling 2026-10-01: something that sets the award was recorded after the posting, so
+    the money IS placed, and only the automatic tick is withheld: no Posted row and no rules lock for it. The
+    response names the round, says why, and asks the registrar to tick it by hand."""
     store = one_line()
     _correction(store)
-    with pytest.raises(DecisionRefusedError) as refused:
-        await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
-    assert str(refused.value) == REFUSED_9001
-    assert store.operations == []  # commit never ran: nothing written
+    out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+    assert out.placed == [9001]
+    assert out.ticked == []
+    assert _not_ticked(out.not_ticked) == [NOT_TICKED_9001]
+    assert out.left_to_tick == []  # named once, in not_ticked, with its reasons
+    (operation,) = store.operations
+    assert [w.collection for w in operation] == ["aid_attribution_overrides"]  # no Posted row, no aid_rules lock
+    assert [e.kind for e in store.events if e.request_id == EMMA and e.kind == "post"] == []
+    assert (await to_place_service(store).read(YEAR)).open_count == 0  # the line is on Emma's request
 
 
 @pytest.mark.asyncio
-async def test_a_bulk_confirm_with_one_changed_line_refuses_the_whole_class_and_names_it() -> None:
+async def test_a_bulk_confirm_places_every_line_and_withholds_only_the_changed_lines_tick() -> None:
     store = one_line()
     seed_request(store, LIAM_ELSEWHERE, household=1000002, person=1000021)
     seed_line(store, 9002, "1500", household=1000002, person=0, posted=MAR8)
@@ -494,28 +508,42 @@ async def test_a_bulk_confirm_with_one_changed_line_refuses_the_whole_class_and_
             PlaceLinesRow(transaction_cm_id=9002, parts=[PlacePartIn(request_id=LIAM_ELSEWHERE, amount=Decimal(1500))]),
         ]
     )
-    with pytest.raises(DecisionRefusedError) as refused:
-        await to_place_service(store).place_lines(YEAR, body, ACTOR)
-    assert str(refused.value) == REFUSED_9001  # only the changed line is named; nothing of either is written
-    assert store.operations == []
+    out = await to_place_service(store).place_lines(YEAR, body, ACTOR)
+    assert out.placed == [9001, 9002]
+    assert [(t.request_id, t.round, t.amount) for t in out.ticked] == [(LIAM_ELSEWHERE, 1, 1500.0)]
+    assert _not_ticked(out.not_ticked) == [NOT_TICKED_9001]  # listed against its own line
+    (operation,) = store.operations  # still one atomic operation
+    posts = [w for w in operation if w.collection == "aid_decisions"]
+    assert [w.data["request"] for w in posts if w.data is not None] == [LIAM_ELSEWHERE]
+    assert sum(w.collection == "aid_attribution_overrides" for w in operation) == 2
 
 
 @pytest.mark.asyncio
-async def test_the_read_shows_the_refusal_the_write_would_raise() -> None:
-    """Preview = write (§4.10): the same function on the same loads, so would_tick never promises a tick the
-    write refuses; would_tick itself still says what the money would tick."""
+async def test_the_read_previews_the_round_as_won_t_tick_from_the_same_check_the_write_runs() -> None:
+    """Preview = write (§4.10): the same function on the same loads. would_tick and would_lock leave the round
+    out; would_not_tick carries it with the reasons, exactly as the write returns it in not_ticked."""
     store = one_line()
     _correction(store)
     service = to_place_service(store)
     out = await service.read(YEAR)
     (line,) = out.groups[0].lines
     assert line.suggestion is not None
-    assert [(t.request_id, t.round) for t in line.suggestion.would_tick] == [(EMMA, 1)]
-    assert [(c.request_id, c.round, c.posted_on, c.reasons) for c in line.suggestion.changed_since] == [
-        (EMMA, 1, POSTED, ["a correction was entered (Mar 9)"])
-    ]
-    with pytest.raises(DecisionRefusedError, match="a correction was entered \\(Mar 9\\)"):
-        await service.place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+    assert line.suggestion.would_tick == []
+    assert line.suggestion.would_lock == 0
+    assert line.suggestion.would_leave == []
+    assert _not_ticked(line.suggestion.would_not_tick) == [NOT_TICKED_9001]
+    placed = await service.place(YEAR, 9001, _place((EMMA, "1500"), expected="0"), ACTOR)
+    assert _not_ticked(placed.not_ticked) == _not_ticked(line.suggestion.would_not_tick)
+
+
+@pytest.mark.asyncio
+async def test_the_exact_total_is_checked_against_the_ticks_that_will_be_written() -> None:
+    """expected_locked compares with what is written: a withheld tick locks nothing."""
+    store = one_line()
+    _correction(store)
+    with pytest.raises(DecisionRefusedError, match="this now locks \\$0, not the \\$1,500 you confirmed"):
+        await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500"), expected="1500"), ACTOR)
+    assert store.operations == []
 
 
 @pytest.mark.asyncio
@@ -524,7 +552,7 @@ async def test_the_read_loads_what_changed_once_for_every_suggestion() -> None:
     seed_request(store, LIAM_ELSEWHERE, household=1000002, person=1000021)
     seed_line(store, 9002, "1500", household=1000002, person=0, posted=datetime(2027, 3, 5, 18, 0, tzinfo=UTC))
     out = await to_place_service(store).read(YEAR)
-    assert all(ln.suggestion is not None and ln.suggestion.changed_since == [] for ln in out.groups[0].lines)
+    assert all(ln.suggestion is not None and ln.suggestion.would_not_tick == [] for ln in out.groups[0].lines)
     assert store.since_reads == [as_of_instant(date(2027, 3, 5))]  # one read, from the earliest posting day
 
 
