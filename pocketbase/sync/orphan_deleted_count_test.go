@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -108,5 +109,60 @@ func TestPersonsHouseholdSweepCountsItsDeletionsInStats(t *testing.T) {
 		if s.Stats.Deleted != want {
 			t.Errorf("dryRun=%v: Stats.Deleted = %d, want %d", dryRun, s.Stats.Deleted, want)
 		}
+	}
+}
+
+func TestDeleteOrphansFailedDeleteIsAnErrorNotADeletion(t *testing.T) {
+	t.Parallel()
+	app := newBaseSyncDryRunTestApp(t, "failing_orphans")
+	seedOrphanRows(t, app, "failing_orphans", "1", "2", "3")
+	app.OnRecordDelete("failing_orphans").BindFunc(func(e *core.RecordEvent) error {
+		if e.Record.GetString("cm_id") == "2" {
+			return errors.New("forced delete failure")
+		}
+		return e.Next()
+	})
+	b := &BaseSyncService{
+		App:            app,
+		Stats:          Stats{Deleted: 4},
+		SyncSuccessful: true,
+		ProcessedKeys:  map[string]bool{"1": true},
+	}
+	if err := b.DeleteOrphans("failing_orphans", cmIDKey, "failing_orphan", ""); err != nil {
+		t.Fatalf("DeleteOrphans: %v", err)
+	}
+	if b.Stats.Deleted != 5 { // only the row 3 delete landed
+		t.Errorf("Stats.Deleted = %d, want 5", b.Stats.Deleted)
+	}
+	if b.Stats.Errors != 1 {
+		t.Errorf("Stats.Errors = %d, want 1", b.Stats.Errors)
+	}
+	left, err := app.FindAllRecords("failing_orphans")
+	if err != nil {
+		t.Fatalf("FindAllRecords: %v", err)
+	}
+	kept := map[string]bool{}
+	for _, r := range left {
+		kept[r.GetString("cm_id")] = true
+	}
+	if len(left) != 2 || !kept["1"] || !kept["2"] {
+		t.Errorf("rows left = %v, want the processed row 1 and the undeletable row 2", kept)
+	}
+}
+
+func TestDeleteOrphansDryRunLeavesEveryRow(t *testing.T) {
+	t.Parallel()
+	app := newBaseSyncDryRunTestApp(t, "dry_orphans")
+	seedOrphanRows(t, app, "dry_orphans", "1", "2", "3")
+	b := &BaseSyncService{App: app, DryRun: true, SyncSuccessful: true, ProcessedKeys: map[string]bool{"1": true}}
+	if err := b.DeleteOrphans("dry_orphans", cmIDKey, "dry_orphan", ""); err != nil {
+		t.Fatalf("DeleteOrphans: %v", err)
+	}
+	left, err := app.FindAllRecords("dry_orphans")
+	if err != nil {
+		t.Fatalf("FindAllRecords: %v", err)
+	}
+	if len(left) != 3 {
+		t.Errorf("a dry run left %d rows, want 3", len(left))
 	}
 }

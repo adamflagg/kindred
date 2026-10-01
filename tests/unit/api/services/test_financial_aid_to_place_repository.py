@@ -284,3 +284,10 @@ async def test_persons_are_read_only_when_the_rules_read_a_person_field() -> Non
     at = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
     assert records.synced == (Synced("persons", at, person_cm_id=1000011, household_cm_id=1000001),)
     assert len(queries["persons"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_record_with_no_created_or_updated_time_is_a_named_error_not_a_bare_max_failure() -> None:
+    repo, _ = _by_collection({"aid_grantors": [_row(key="regional_fund", created=None, updated="")]})
+    with pytest.raises(ValueError, match="no created or updated time"):
+        await repo.fetch_changed_since(YEAR, FLOOR, persons=False)

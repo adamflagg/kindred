@@ -512,7 +512,7 @@ def test_a_split_override_that_cannot_be_replayed_names_the_people_in_its_parts(
     """A split override has attributed_person_cm_id 0; the campers it paid must still be unknown (never estimated)."""
     from api.services.financial_aid_reconciliation import LineOverride, SplitPart
 
-    split = (SplitPart(1000011, 0, "", Decimal("500")), SplitPart(1000021, 0, "", Decimal("1000")))
+    split = (SplitPart(1000011, 0, "", Decimal(500)), SplitPart(1000021, 0, "", Decimal(1000)))
     now = [LineOverride("ovr1", 9001, 0, 0, "", split)]  # exists now, never logged
     _, _, transactions, people = decisions_service._placements_as_of(now, [], datetime(2027, 6, 5, tzinfo=UTC))
     assert transactions == {9001}

@@ -508,7 +508,12 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
 
         def when(row: Any) -> datetime:
             stamps = [parse_pb_datetime(getattr(row, f, None)) for f in ("created", "updated")]
-            return max(s for s in stamps if s is not None)
+            dated = [s for s in stamps if s is not None]
+            if not dated:  # as log() does: an undated record can't be placed against the floor, so say so
+                raise ValueError(
+                    f"{type(row).__name__} record {getattr(row, 'id', '')!r} has no created or updated time"
+                )
+            return max(dated)
 
         def expanded(row: Any, name: str) -> Any:
             expand = getattr(row, "expand", None) or {}
