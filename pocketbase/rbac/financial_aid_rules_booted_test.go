@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/camp/kindred/pocketbase/aidguard"
 )
 
 // bootedField is the slice of a collection field this file reads.
@@ -150,6 +152,31 @@ func TestBootedAidChangeLogShape(t *testing.T) {
 	for name := range got {
 		if _, ok := want[name]; !ok && name != "id" {
 			t.Errorf("aid_change_log.%s is not in the fixed contract", name)
+		}
+	}
+}
+
+// TestBootedGuardedCollectionsCarryARevision: aidguard reads and moves a
+// `revision` number on every collection it guards (campership G6). Without the
+// field nothing is stored, every record reads revision 0 forever, and the guard
+// passes every write: no error anywhere, and no protection either.
+func TestBootedGuardedCollectionsCarryARevision(t *testing.T) {
+	cols := loadBootedCollections(t)
+	for _, name := range aidguard.Collections {
+		var fields []bootedField
+		found := false
+		for _, c := range cols {
+			if c.Name == name {
+				fields, found = c.Fields, true
+			}
+		}
+		if !found {
+			t.Errorf("guarded collection %q missing from the booted schema", name)
+			continue
+		}
+		i := slices.IndexFunc(fields, func(f bootedField) bool { return f.Name == aidguard.FieldRevision })
+		if i < 0 || fields[i].Type != "number" || fields[i].Required {
+			t.Errorf("%s must carry an optional number field %q", name, aidguard.FieldRevision)
 		}
 	}
 }
