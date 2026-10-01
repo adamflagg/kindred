@@ -220,6 +220,19 @@ def test_not_reconciled_breaks_down_by_state_and_names_the_largest_gap() -> None
     assert line.largest_gap == 300.0  # short and over only: awaiting tonight's sync is not a disagreement
 
 
+def test_a_lock_campminder_does_not_hold_is_the_largest_gap_when_it_is_biggest() -> None:
+    """Owner ruling 2026-10-01: not_in_campminder (a sync ran and CampMinder holds $0) is a disagreement, gap = the
+    locked amount; awaiting_sync stays out."""
+    posted = _round(1, "posted", posted=1500.0, accepted=True, posted_on=date(2031, 3, 9))
+    rows = [
+        _row("reqemma00000001", 1000001, posted, confirmation=_confirmation("short", -210.0)),
+        _row("reqliam00000001", 1000002, posted, confirmation=_confirmation("not_in_campminder", -1500.0)),
+        _row("reqoliv00000001", 1000003, posted, confirmation=_confirmation("awaiting_sync", -2500.0)),
+    ]
+    line = _line(build_today(_inputs(rows), casework=True, finance=False).casework, "not_reconciled")
+    assert line.largest_gap == 1500.0
+
+
 def test_a_payer_share_that_disagrees_is_counted_under_its_own_state() -> None:
     """D59: a request confirmed overall stays Not reconciled while a share is short; the share's state is the reason."""
     confirmation = ConfirmationOut(

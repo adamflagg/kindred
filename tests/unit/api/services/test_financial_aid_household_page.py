@@ -239,6 +239,17 @@ def test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_z
     assert (out.grants, out.family_share) == (2000.0, 0.0)
 
 
+def test_the_family_share_floors_each_request_at_zero_before_summing() -> None:
+    """Owner ruling 2026-10-01: an over-covered request (a minimum award paid though grants cover the cost, an
+    ignored late grant) is $0, not a negative that cancels a sibling's real share: -108 and +1,000 read 1,000."""
+    rows = [
+        _row(EMMA, JOHNSON, cost=1000.0, total_decided=1108.0),  # -108
+        _row(LIAM, GARCIA, cost=2000.0, total_decided=1000.0),  # +1,000
+    ]
+    assert totals(rows, {}).family_share == 1000.0
+    assert totals([rows[0]], {}).family_share == 0.0
+
+
 def test_with_no_included_request_the_band_has_no_grants_figure() -> None:
     """Plan review minor 2: a grants-only household's band reads "—", not "$0", beside a register that lists money."""
     out = totals([], {})

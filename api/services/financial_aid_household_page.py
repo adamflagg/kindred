@@ -202,16 +202,29 @@ def _band_states(row: GridRowOut) -> list[tuple[ConfirmationStatusOut, Decimal]]
 
 def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal]) -> HouseholdTotalsOut:
     """The band (D77, §5.8): cost − {camp} aid (decided) − grants = family's share, then Posted with its states.
-    Grants come from band_grants_by_request. The share never reads below $0: a last-dollar grantor's first line
-    is the full price until it reverses and reposts the remainder (D143), and a family never owes less than
-    nothing (Decision 7). With no included request every figure is "—"."""
+    Grants come from band_grants_by_request. Each request's share is floored at $0, then summed (owner ruling
+    2026-10-01): an over-covered request (a last-dollar grantor's full-price first line before it reverses, D143;
+    a minimum award paid though grants cover the cost; a late grant) owes nothing and never cancels a sibling's
+    real share. The share is "—" until every included request has a cost and a decided total. With no included
+    request every figure is "—"."""
     rows = [row for row in rows if included(row)]
     costs = [_dollars(row.cost) for row in rows]
     decided = [_dollars(row.total_decided) for row in rows]
     cost = sum((c for c in costs if c is not None), _ZERO) if rows and None not in costs else None
     aid = _sum(decided)
     grants = sum((grants_by_request.get(row.request_id, _ZERO) for row in rows), _ZERO)
-    share = max(_ZERO, cost - aid - grants) if cost is not None and aid is not None and None not in decided else None
+    share = (
+        sum(
+            (
+                max(_ZERO, c - d - grants_by_request.get(row.request_id, _ZERO))
+                for row, c, d in zip(rows, costs, decided, strict=True)
+                if c is not None and d is not None
+            ),
+            _ZERO,
+        )
+        if cost is not None and None not in decided
+        else None
+    )
     return HouseholdTotalsOut(
         cost=money(cost) if cost is not None else None,
         decided=money(aid) if aid is not None else None,

@@ -128,17 +128,22 @@ def _unreconciled(row: GridRowOut) -> set[str]:
     return {s.status for s in c.shares if s.status in UNRECONCILED}
 
 
+DISAGREEING: Final = frozenset({"short", "over", "not_in_campminder"})
+
+
 def _disagreements(row: GridRowOut) -> list[float]:
-    """The dollar size of each short or over on the row: the request's, else its shares'."""
+    """The dollar size of each disagreement on the row: the request's, else its shares'. Short, over and
+    not_in_campminder (a lock CampMinder holds $0 against: its gap is the locked amount) count; awaiting_sync
+    is not a disagreement (owner ruling 2026-10-01)."""
     c = row.confirmation
     if c is None:
         return []
-    if c.status in ("short", "over"):
+    if c.status in DISAGREEING:
         return [abs(c.gap)]
     return [
         money(abs(Decimal(str(s.in_campminder)) - Decimal(str(s.expected))))
         for s in c.shares
-        if s.status in ("short", "over")
+        if s.status in DISAGREEING
     ]
 
 
