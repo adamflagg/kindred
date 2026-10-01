@@ -165,6 +165,23 @@ async def test_user_names_read_only_people_and_only_their_names() -> None:
     assert call["fields"] == "email,name"
 
 
+@pytest.mark.asyncio
+async def test_fa_requests_for_some_households_reads_only_theirs() -> None:
+    """Spec §10's known cost: /households/{id} re-read the whole season's FA mirror on every call."""
+    pb, calls = _pb([])
+    await FinancialAidRepository(pb).fetch_fa_requests(2026, [100, 200])
+    (call,) = calls
+    assert "(household.cm_id = 100 || household.cm_id = 200)" in str(call["filter"])
+    assert str(call["filter"]).startswith("year = 2026 && ")
+
+
+@pytest.mark.asyncio
+async def test_fa_requests_for_no_households_reads_nothing() -> None:
+    pb, calls = _pb([])
+    assert await FinancialAidRepository(pb).fetch_fa_requests(2026, []) == []
+    assert calls == []
+
+
 def _person_row(pid: str, cm: int, household: int, primary: int = 0, alternate: int = 0) -> SimpleNamespace:
     expand: dict[str, object] = {"household": SimpleNamespace(cm_id=household)}
     if primary:

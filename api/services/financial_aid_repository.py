@@ -242,16 +242,22 @@ class FinancialAidRepository:
             out.setdefault(int(r.cm_id), set()).add(int(r.year))
         return out
 
-    async def fetch_fa_requests(self, year: int) -> list[FaRequestRow]:
-        rows = await self._page(
-            FINANCIAL_AID_APPLICATIONS,
-            {
-                "filter": f"year = {int(year)} && (summer_amount_requested > 0 || fc_amount_requested > 0"
-                " || tbm_amount_requested > 0)",
-                "expand": "household",
-                "sort": STABLE_SORT,
-            },
+    async def fetch_fa_requests(self, year: int, household_ids: Collection[int] | None = None) -> list[FaRequestRow]:
+        """The FA mirror's per-program asks: the season's, or only these households' (spec §10: a single
+        household's read must not pay for the whole season's mirror)."""
+        asked = (
+            f"year = {int(year)} && (summer_amount_requested > 0 || fc_amount_requested > 0"
+            " || tbm_amount_requested > 0)"
         )
+        params = {"expand": "household", "sort": STABLE_SORT}
+        if household_ids is None:
+            rows = await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": asked, **params})
+        else:
+            rows = []
+            wanted = _positive_unique(household_ids)
+            for start in range(0, len(wanted), ID_CHUNK):
+                terms = _any_of("household.cm_id", wanted[start : start + ID_CHUNK])
+                rows += await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": f"{asked} && ({terms})", **params})
         out: list[FaRequestRow] = []
         for r in rows:
             household = (getattr(r, "expand", None) or {}).get("household")

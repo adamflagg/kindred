@@ -428,7 +428,7 @@ class FinancialAidLedgerService:
         names = {int(p.cm_id): person_display_name(p) for p in people}
         enrollments = await self.repo.fetch_enrollments(year, sorted(names))
         households = {int(h.cm_id): h for h in await self.repo.fetch_households(year, family)}
-        requests = await self.repo.fetch_fa_requests(year)
+        requests = await self.repo.fetch_fa_requests(year, family)
         history = sorted(postings, key=lambda p: (str(p.post_date or ""), int(p.transaction_cm_id)))
         return HouseholdDetailResponse(
             year=year,

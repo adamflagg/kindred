@@ -318,6 +318,8 @@ async def test_household_detail_shows_the_familys_posting_history() -> None:
     got = await FinancialAidLedgerService(repo).household(2026, 100)
 
     repo.fetch_postings.assert_awaited_once_with(2026, [100, 200], include_reversed=True)
+    # Spec §10: the family's FA mirror rows only, never the whole season's.
+    repo.fetch_fa_requests.assert_awaited_once_with(2026, [100, 200])
     assert got.family_households == [100, 200]
     assert got.display_name == "Test Family"
     assert [(p.transaction_cm_id, p.is_reversed) for p in got.postings] == [(9001, True), (9002, False)]
