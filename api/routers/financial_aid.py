@@ -150,7 +150,7 @@ from api.schemas.financial_aid_scenarios import (
     ViewIn,
     WorkspaceOut,
 )
-from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse
+from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse, TodayResponse
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -209,6 +209,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     Workspace,
 )
+from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.branding import get_branding, get_camp_name
@@ -883,7 +884,7 @@ async def key_round3_amount(
     request_id: _RequestIdPath, body: Round3AmountIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
     # D22, D79: finance's own Round 3 amount needs no approval; the registrar's above the limit waits.
-    can_approve = user.is_admin or Permission.FINANCIAL_AID_RULES in user.permissions
+    can_approve = _holds(user, Permission.FINANCIAL_AID_RULES)
     try:
         return await _decisions().key_round3_amount(request_id, body, user.email, can_approve=can_approve)
     except FinancialAidError as exc:
@@ -1425,3 +1426,24 @@ async def get_definitions(
 async def get_jump_index(year: _Year, user: AuthUser = _VIEW) -> JumpIndexResponse:
     """The jump box's index (§3.5, D13): every household with aid activity this season, read once."""
     return await JumpIndexService(JumpIndexRepository(pb)).read(year)
+
+
+def _holds(user: AuthUser, permission: str) -> bool:
+    return user.is_admin or permission in user.permissions
+
+
+@router.get("/today/{year}", response_model=TodayResponse)
+async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
+    """Today (§6.4): one dense line per waiting queue; its sections follow the user's permissions."""
+    service = TodayService(
+        store=FinancialAidDecisionsRepository(pb),
+        pricing=_rules(),
+        rules=_rules(),
+        grants=GrantsService(GrantsRepository(pb)),
+        ledger=_ledger(),
+    )
+    return await service.read(
+        year,
+        casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
+        finance=_holds(user, Permission.FINANCIAL_AID_RULES),
+    )

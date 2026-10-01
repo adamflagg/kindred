@@ -15,6 +15,7 @@ from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import (
     PERSONA_DEVELOPMENT,
     PERSONA_FINANCE,
+    PERSONA_REGISTRAR,
     PERSONAS,
     persona_client,
 )
@@ -107,3 +108,31 @@ def test_the_jump_index_reads_the_season_asked() -> None:
 def test_the_jump_index_refuses_a_year_out_of_range() -> None:
     _stub_jump()
     assert _client().get("/api/financial-aid/jump-index/1999").status_code == 422
+
+
+# --- Today (§6.4) ---------------------------------------------------------------------------------------
+
+
+def _stub_today() -> Any:
+    from api.schemas.financial_aid_surfaces import TodayResponse
+
+    service = patch("api.routers.financial_aid.TodayService").start().return_value
+    service.read = AsyncMock(return_value=TodayResponse(year=2031, casework=None, finance=None))
+    return service
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_today_is_view_only(persona: str) -> None:
+    _stub_today()
+    response = _client(persona).get("/api/financial-aid/today/2031")
+    assert response.status_code == (200 if VIEW in PERSONAS[persona] else 403), persona
+
+
+@pytest.mark.parametrize(
+    ("persona", "casework", "finance"), [(PERSONA_REGISTRAR, True, False), (PERSONA_FINANCE, True, True)]
+)
+def test_todays_sections_follow_the_users_permissions(persona: str, casework: bool, finance: bool) -> None:
+    """§6.4: Casework lines for casework, Finance lines for rules."""
+    service = _stub_today()
+    assert _client(persona).get("/api/financial-aid/today/2031").status_code == 200
+    service.read.assert_awaited_once_with(2031, casework=casework, finance=finance)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # --- the definitions registry (§4.8, D20) ---------------------------------------------------------
 
@@ -53,3 +53,64 @@ class JumpIndexHousehold(BaseModel):
 class JumpIndexResponse(BaseModel):
     year: int
     households: list[JumpIndexHousehold]
+
+
+# --- Today (§6.4, D24) --------------------------------------------------------------------------------
+
+TodayKey = Literal[
+    # casework (financial_aid.casework)
+    "needs_offer",
+    "holds",
+    "waiting_on_family",
+    "not_reconciled",
+    "to_reverse",
+    "session_not_settled",
+    "duplicates",
+    "cancel_reason",
+    "grants",
+    "late_full_coverage",
+    # finance (financial_aid.rules)
+    "pending_approval",
+    "rules_sections",
+    "would_change",
+    "sources",
+    "intake",
+]
+TodayItemKind = Literal["requests", "grants", "sections", "descriptions"]
+
+
+class TodayReasonOut(BaseModel):
+    """One reason inside a line ("income conflict 3 · payer shares 1"): a hold code, a round (r1, r2, r3),
+    a confirmation state, a grant's reason, a rules section or a description's state."""
+
+    code: str
+    families: int | None
+    items: int
+
+
+class TodayLineOut(BaseModel):
+    """One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
+    exactly these rows. `families` is None where a line has no family (rules sections, descriptions).
+    A line that is no Requests view (late_full_coverage, would_change, intake) names its `request_ids`.
+    Reasons need not sum to `items`: a request Not reconciled on two payer shares counts once in items and
+    under each share's state."""
+
+    key: TodayKey
+    families: int | None
+    items: int
+    item_kind: TodayItemKind
+    reasons: list[TodayReasonOut] = Field(default_factory=list)
+    amount: float | None = None  # pending_approval: the keyed amounts awaiting finance (D79)
+    oldest_days: int | None = None  # waiting_on_family: days since the oldest waiting round was posted
+    over_14_days: int | None = None  # waiting_on_family: requests waiting more than 14 days
+    largest_gap: float | None = None  # not_reconciled: the largest short or over, in dollars (positive)
+    request_ids: list[str] = Field(default_factory=list)  # what Open › shows, for a line that is no view
+
+
+class TodayResponse(BaseModel):
+    """Today's sections follow the user's permissions: casework None without financial_aid.casework,
+    finance None without financial_aid.rules."""
+
+    year: int
+    casework: list[TodayLineOut] | None
+    finance: list[TodayLineOut] | None
