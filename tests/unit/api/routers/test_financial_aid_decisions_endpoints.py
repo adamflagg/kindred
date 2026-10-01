@@ -241,6 +241,7 @@ def test_a_year_out_of_range_is_422() -> None:
         ("api.schemas.financial_aid_decisions", 10),
         ("api.schemas.financial_aid_scenarios", 29),
         ("api.schemas.financial_aid_surfaces", 8),
+        ("api.schemas.financial_aid_household_page", 11),
     ],
 )
 def test_no_decisions_or_scenarios_field_is_named_awarded_or_total_awards_granted(module: str, floor: int) -> None:

@@ -289,3 +289,10 @@ def test_full_coverage_is_not_a_source_attribute() -> None:
     assert not hasattr(AidSourceUpdate(**base, source_family="other_outside", funder_type="outside"), "full_coverage")
     with pytest.raises(ValidationError):
         AidSourceUpdate(**base, source_family="other_outside", funder_type="outside", full_coverage=True)  # type: ignore[call-arg]
+
+
+@pytest.mark.asyncio
+async def test_user_names_are_keyed_by_lowercased_email() -> None:
+    pb, _ = _pb([SimpleNamespace(email="Registrar@Example.com", name="Test User")])
+    out = await FinancialAidRepository(pb).fetch_user_names({"REGISTRAR@example.com"})
+    assert out == {"registrar@example.com": "Test User"}

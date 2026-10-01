@@ -89,6 +89,7 @@ from api.schemas.financial_aid_grants import (
     PlaceGrantsOut,
     WithdrawIn,
 )
+from api.schemas.financial_aid_household_page import HouseholdPageResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
@@ -157,6 +158,7 @@ from api.services.financial_aid_casework_service import (
     DuplicateRequestError,
     FinancialAidCaseworkService,
 )
+from api.services.financial_aid_change_log_reads import EntityLogReads
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import (
@@ -166,6 +168,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
+from api.services.financial_aid_household_page import HouseholdNotFoundError, HouseholdPageService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
 from api.services.financial_aid_ledger_service import (
@@ -1447,3 +1450,22 @@ async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
         casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
         finance=_holds(user, Permission.FINANCIAL_AID_RULES),
     )
+
+
+@router.get("/household-page/{year}/{household_cm_id}", response_model=HouseholdPageResponse)
+async def get_household_page(
+    year: _Year, household_cm_id: Annotated[int, Path(gt=0)], user: AuthUser = _VIEW
+) -> HouseholdPageResponse:
+    """The household page (§6.3): one family's aggregate, its request rows the grid's own (D21, D26)."""
+    service = HouseholdPageService(
+        store=FinancialAidDecisionsRepository(pb),
+        pricing=_rules(),
+        grants=GrantsService(GrantsRepository(pb)),
+        casework=_casework(),
+        ledger=FinancialAidRepository(pb),
+        history=EntityLogReads(pb),
+    )
+    try:
+        return await service.read(year, household_cm_id)
+    except HouseholdNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

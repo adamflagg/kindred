@@ -136,3 +136,34 @@ def test_todays_sections_follow_the_users_permissions(persona: str, casework: bo
     service = _stub_today()
     assert _client(persona).get("/api/financial-aid/today/2031").status_code == 200
     service.read.assert_awaited_once_with(2031, casework=casework, finance=finance)
+
+
+# --- the household page (§6.3) --------------------------------------------------------------------------
+
+
+def _stub_page() -> Any:
+    from api.services.financial_aid_household_page import HouseholdNotFoundError
+
+    service = patch("api.routers.financial_aid.HouseholdPageService").start().return_value
+    service.read = AsyncMock(side_effect=HouseholdNotFoundError("household 1000009 has no aid activity in 2031"))
+    return service
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_the_household_page_is_view_only(persona: str) -> None:
+    """D57, D65: family-level; development never sees a family."""
+    _stub_page()
+    response = _client(persona).get("/api/financial-aid/household-page/2031/1000009")
+    assert response.status_code == (404 if VIEW in PERSONAS[persona] else 403), persona
+
+
+def test_a_household_with_no_aid_activity_is_404() -> None:
+    service = _stub_page()
+    response = _client().get("/api/financial-aid/household-page/2031/1000009")
+    assert response.json() == {"detail": "household 1000009 has no aid activity in 2031"}
+    service.read.assert_awaited_once_with(2031, 1000009)
+
+
+def test_a_household_id_that_isnt_positive_is_422() -> None:
+    _stub_page()
+    assert _client().get("/api/financial-aid/household-page/2031/0").status_code == 422

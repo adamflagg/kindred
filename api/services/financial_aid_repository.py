@@ -268,16 +268,16 @@ class FinancialAidRepository:
         return out
 
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
-        """Kindred users' display names by email, for the receipt label (§4.7): who ticked Posted, who
+        """Kindred users' display names by lowercased email, for the receipt label (§4.7): who ticked Posted, who
         decided a Round 3 amount. An actor that isn't a person (system:ledger) or has no name is left out."""
-        wanted = sorted({e for e in emails if "@" in e})
+        wanted = sorted({e.strip().lower() for e in emails if "@" in e})
         out: dict[str, str] = {}
         for start in range(0, len(wanted), USER_CHUNK):
             terms = " || ".join(f"email = '{pb_escape(e)}'" for e in wanted[start : start + USER_CHUNK])
             for user in await self._page(USERS, {"filter": terms, "fields": "email,name", "sort": STABLE_SORT}):
                 name = str(getattr(user, "name", "") or "").strip()
                 if name:
-                    out[str(user.email)] = name
+                    out[str(user.email).strip().lower()] = name
         return out
 
     # --- raw transactions (data quality only) --------------------------------

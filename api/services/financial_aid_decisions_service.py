@@ -191,6 +191,7 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
+LIVE_STATUSES: Final = _LIVE  # public: the household page's "included" reads the budget's own set (slice 1)
 
 # Spec §5.4: 2026 has no ticks and no dated decisions; its decisions are reproduced from the repaired
 # sheet (D67). Before this season the ledger never ticks, and no confirmation or Note is shown.
