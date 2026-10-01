@@ -3,7 +3,12 @@
  * URLs and turns a non-ok answer into an error that keeps its status. Protected: pass
  * `fetchWithAuth` from `useApiWithAuth()`.
  */
-import type { ApiAidDefinitions, ApiAidJumpIndex, ApiAidRemaining } from '../../types/api-types'
+import type {
+  ApiAidDefinitions,
+  ApiAidGrid,
+  ApiAidJumpIndex,
+  ApiAidRemaining,
+} from '../../types/api-types'
 import { ApiError, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
 
@@ -48,4 +53,18 @@ export async function fetchAidDefinitions(
   const response = await fetchWithAuth(withQuery(`${BASE}/definitions`, { surface }))
   if (!response.ok) throw await toApiError(response, 'Failed to load the definitions', AidApiError)
   return (await response.json()) as ApiAidDefinitions
+}
+
+/** The Requests grid (§6.1; D21): one row per request, each naming the views it is in; live or as of a past day. */
+export async function fetchAidGrid(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  asOfParams: Record<string, string>
+): Promise<ApiAidGrid> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/decisions/${String(year)}/grid`, asOfParams)
+  )
+  if (!response.ok)
+    throw await toApiError(response, 'Failed to load the Requests grid', AidApiError)
+  return (await response.json()) as ApiAidGrid
 }
