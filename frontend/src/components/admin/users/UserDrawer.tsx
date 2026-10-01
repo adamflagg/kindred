@@ -126,6 +126,17 @@ function DrawerBody({
     )
   }
 
+  const redundantNote = (r: RoleLike) => {
+    const cover = redundant.get(r.id)
+    if (!cover || cover.length === 0 || !draftIds.has(r.id)) return null
+    return (
+      <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+        Adds nothing: {cover.map((c) => c.name).join(' and ')}{' '}
+        {cover.length === 1 ? 'already grants' : 'already grant'} all of this.
+      </div>
+    )
+  }
+
   const chips = (r: RoleLike) =>
     r.permissions.map((p) => (
       <span key={p} className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10.5px]">
@@ -206,7 +217,6 @@ function DrawerBody({
           ) : (
             <div className="space-y-2">
               {heldRoles.map((r) => {
-                const cover = redundant.get(r.id)
                 return (
                   <div
                     key={r.id}
@@ -232,12 +242,7 @@ function DrawerBody({
                       </span>
                     </label>
                     {lockNote(r)}
-                    {cover && cover.length > 0 && draftIds.has(r.id) && (
-                      <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-                        Adds nothing: {cover.map((c) => c.name).join(' and ')}{' '}
-                        {cover.length === 1 ? 'already grants' : 'already grant'} all of this.
-                      </div>
-                    )}
+                    {redundantNote(r)}
                   </div>
                 )
               })}
@@ -274,6 +279,7 @@ function DrawerBody({
                     </span>
                   </label>
                   {lockNote(r)}
+                  {redundantNote(r)}
                 </div>
               )
             })}

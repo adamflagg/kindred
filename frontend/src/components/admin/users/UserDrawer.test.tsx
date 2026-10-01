@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { makeProps, USERS } from './testFixtures'
+import { queryKeys } from '../../../utils/queryKeys'
 
 const ops: Array<[string, unknown]> = []
 let sendFails = false
@@ -33,21 +34,37 @@ vi.mock('../../../lib/pocketbase', () => ({
 
 const { UserDrawer } = await import('./UserDrawer')
 
-function renderDrawer(userId: string, opts: { noRegistry?: boolean } = {}) {
-  const props = makeProps()
+type Props = ReturnType<typeof makeProps>
+
+function drawerTree(
+  client: QueryClient,
+  userId: string,
+  data: Props['data'],
+  registry: Props['registry']
+) {
   const user = USERS.find((u) => u.id === userId)!
-  const registry = opts.noRegistry
-    ? ({ data: undefined, isLoading: true, error: null } as unknown as typeof props.registry)
-    : props.registry
-  render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+  return (
+    <QueryClientProvider client={client}>
       <MemoryRouter>
-        <UserDrawer user={user} data={props.data} registry={registry} onClose={vi.fn()} />
+        <UserDrawer user={user} data={data} registry={registry} onClose={vi.fn()} />
       </MemoryRouter>
     </QueryClientProvider>
   )
+}
+
+function renderDrawer(userId: string, opts: { noRegistry?: boolean } = {}) {
+  const props = makeProps()
+  const registry = opts.noRegistry
+    ? ({ data: undefined, isLoading: true, error: null } as unknown as Props['registry'])
+    : props.registry
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const view = render(drawerTree(client, userId, props.data, registry))
+  return {
+    client,
+    props,
+    rerenderWith: (id: string, data: Props['data'] = props.data) =>
+      view.rerender(drawerTree(client, id, data, registry)),
+  }
 }
 
 beforeEach(() => {
@@ -123,6 +140,7 @@ describe('UserDrawer', () => {
         'Only admins can give or remove user management'
       )
       await userEvent.click(box)
+      await userEvent.click(screen.getByText('Executive'))
       expect(screen.getByTestId('drawer-footer')).toHaveTextContent('No changes')
     })
 
@@ -144,6 +162,59 @@ describe('UserDrawer', () => {
       expect(box).toBeEnabled()
       await userEvent.click(box)
       expect(screen.getByTestId('drawer-footer')).toHaveTextContent('1 change: + Executive')
+    })
+  })
+
+  it('lets an admin remove a held users.manage role', async () => {
+    mockIsAdmin = true
+    renderDrawer('u-emma')
+    await userEvent.click(screen.getByRole('checkbox', { name: /Executive/ }))
+    expect(screen.getByTestId('drawer-footer')).toHaveTextContent('1 change: − Executive')
+  })
+
+  it('flags a ticked "Add a role" row that adds nothing (U10c)', async () => {
+    mockIsAdmin = true
+    renderDrawer('u-olivia')
+    await userEvent.click(screen.getByRole('checkbox', { name: /Executive/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Bunking Staff/ }))
+    expect(screen.getByTestId('add-role-r-bunk')).toHaveTextContent(
+      'Adds nothing: Executive already grants all of this.'
+    )
+  })
+
+  describe('after a save and across props', () => {
+    it('invalidates both user-role queries on success', async () => {
+      const { client } = renderDrawer('u-emma')
+      const spy = vi.spyOn(client, 'invalidateQueries')
+      await userEvent.click(screen.getByRole('checkbox', { name: /Finance/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.userRoles() }))
+      expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.userRolesForUser('u-emma') })
+    })
+
+    it('shows the just-saved set as saved, then defers to a new held set', async () => {
+      const { props, rerenderWith } = renderDrawer('u-emma')
+      await userEvent.click(screen.getByRole('checkbox', { name: /Finance/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('drawer-footer')).toHaveTextContent('No changes')
+      )
+      expect(screen.getByRole('heading', { name: /Emma's roles\s*3/ })).toBeInTheDocument()
+
+      const byId = (id: string) => props.data.roleLikes.find((r) => r.id === id)!
+      const held = new Map(props.data.held)
+      held.set('u-emma', [byId('r-exec'), byId('r-bunk'), byId('r-fin'), byId('r-empty')])
+      rerenderWith('u-emma', { ...props.data, held })
+      expect(screen.getByRole('heading', { name: /Emma's roles\s*4/ })).toBeInTheDocument()
+    })
+
+    it('resets the draft when the drawer switches person', async () => {
+      const { rerenderWith } = renderDrawer('u-emma')
+      await userEvent.click(screen.getByRole('checkbox', { name: /Finance/ }))
+      expect(screen.getByTestId('drawer-footer')).toHaveTextContent('1 change')
+      rerenderWith('u-liam')
+      expect(screen.getByRole('heading', { name: /Liam's roles/ })).toBeInTheDocument()
+      expect(screen.getByTestId('drawer-footer')).toHaveTextContent('No changes')
     })
   })
 
