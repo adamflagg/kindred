@@ -115,9 +115,15 @@ vi.mock('../components/FeedbackModal', () => ({
     isOpen ? <div data-testid="feedback-modal">Feedback Modal</div> : null,
 }))
 
+// The real switcher is covered in ViewAsSwitcher.test.tsx; here it is a stub that
+// shows the menu only when AppLayout opens it through the controlled props.
+let mockCanViewAs = false
 vi.mock('../components/ViewAsSwitcher', () => ({
-  ViewAsSwitcher: () => <div data-testid="view-as-switcher" />,
+  ViewAsSwitcher: ({ open }: { open?: boolean }) => (
+    <div data-testid="view-as-switcher">{open && <div data-testid="view-as-menu" />}</div>
+  ),
 }))
+vi.mock('../hooks/useCanViewAs', () => ({ useCanViewAs: () => mockCanViewAs }))
 
 const toastError = vi.fn()
 const toastSuccess = vi.fn()
@@ -178,19 +184,42 @@ describe('Program Switcher', () => {
 describe('View as switcher', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCanViewAs = false
     mockPerms = { hasPermission: () => false, isAdmin: false }
     syncStatusSpy.mockImplementation(() => ({ data: null }))
   })
 
-  it('mounts the View as switcher in the header, left of the user menu', () => {
+  // Owner ruling 2026-10-01: the preview strip sits above the nav, inside the
+  // same sticky block, never in the nav bar itself.
+  it('mounts the View as switcher above the nav, in the same sticky block', () => {
     renderAppLayout()
     const switcher = screen.getByTestId('view-as-switcher')
-    const userName = screen.getByText('Jane Smith')
-    expect(switcher.closest('nav')).not.toBeNull()
-    // DOCUMENT_POSITION_FOLLOWING: the user menu comes after the switcher.
-    expect(
-      switcher.compareDocumentPosition(userName) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy()
+    const nav = document.querySelector('nav')!
+    expect(nav.contains(switcher)).toBe(false)
+    expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(switcher.parentElement).toBe(nav.parentElement)
+    expect(switcher.parentElement).toHaveClass('sticky')
+  })
+
+  // Owner ruling 2026-10-01: "View as" lives in the user menu; the bar shows it
+  // only while previewing (that part is the switcher's own concern).
+  it('adds "View as…" to the user menu for a real admin; clicking it closes the menu and opens the View as menu', () => {
+    mockCanViewAs = true
+    renderAppLayout()
+    expect(screen.queryByTestId('view-as-menu')).toBeNull()
+    fireEvent.click(screen.getByText('Jane Smith'))
+    expect(screen.getByText('My Account')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /View as…/ }))
+    expect(screen.getByTestId('view-as-menu')).toBeInTheDocument()
+    expect(screen.queryByText('My Account')).toBeNull()
+  })
+
+  it('has no "View as…" item for anyone who cannot switch', () => {
+    mockCanViewAs = false
+    renderAppLayout()
+    fireEvent.click(screen.getByText('Jane Smith'))
+    expect(screen.getByText('My Account')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /View as…/ })).toBeNull()
   })
 })
 
@@ -480,34 +509,73 @@ describe('AppLayout fresh-login crash guard', () => {
 })
 
 // Nav consolidation: /admin folded into /manage as one top-level tab (#1895,
-// #450). There must be exactly one nav entry ("Manage"), never a separate
-// "Admin" entry — an admin having two nav links into the same layout would
-// be the old split resurfacing.
-describe('AppLayout Manage nav link', () => {
+// #450). There must be exactly one entry ("Manage"), never a separate "Admin"
+// entry — an admin having two links into the same layout would be the old split
+// resurfacing. Owner ruling 2026-10-01: Users and Manage left the top bar for
+// the user menu, for every program.
+describe('AppLayout Users and Manage in the user menu', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCanViewAs = false
     syncStatusSpy.mockImplementation(() => ({ data: null }))
   })
 
-  it('shows no Manage link for a user with no manage-tab permission', () => {
+  const openUserMenu = () => fireEvent.click(screen.getByText('Jane Smith'))
+
+  it('has neither Users nor Manage in the bar', () => {
+    mockPerms = { hasPermission: () => true, isAdmin: true }
+    renderAppLayout()
+    expect(screen.queryByRole('link', { name: 'Users' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull()
+  })
+
+  it('shows Users but no Manage for a user with no manage-tab permission', () => {
     mockPerms = { hasPermission: () => false, isAdmin: false }
     renderAppLayout()
+    openUserMenu()
+    expect(screen.getByRole('link', { name: 'Users' })).toHaveAttribute('href', '/users')
     expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
   })
 
-  it('shows exactly one Manage link for a user with a single manage-tab permission', () => {
+  it('shows exactly one Manage item for a user with a single manage-tab permission', () => {
     mockPerms = { hasPermission: (p: string) => p === 'metrics.geo', isAdmin: false }
     renderAppLayout()
+    openUserMenu()
     expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(1)
     expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
   })
 
-  it('shows one Manage link for an admin, not two nav entries', () => {
+  it('shows one Manage item for an admin, in order My Account, Users, Manage, View as…', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: true }
+    mockCanViewAs = true
+    renderAppLayout()
+    openUserMenu()
+    expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(1)
+    const order = ['My Account', 'Users', 'Manage', 'View as…'].map((name) =>
+      screen.getByRole(name === 'View as…' ? 'button' : 'link', { name })
+    )
+    for (let i = 0; i < order.length - 1; i++) {
+      expect(
+        order[i]!.compareDocumentPosition(order[i + 1]!) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    }
+  })
+
+  it('closes the menu when an item is chosen', () => {
     mockPerms = { hasPermission: () => false, isAdmin: true }
     renderAppLayout()
-    expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(1)
-    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
+    openUserMenu()
+    fireEvent.click(screen.getByRole('link', { name: 'Users' }))
+    expect(screen.queryByText('My Account')).toBeNull()
+  })
+
+  it('marks the item for the route you are on', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: true }
+    renderAppLayout('/users')
+    openUserMenu()
+    expect(screen.getByRole('link', { name: 'Users' })).toHaveClass('bg-muted/50')
+    expect(screen.getByRole('link', { name: 'Manage' })).not.toHaveClass('bg-muted/50')
   })
 })
 

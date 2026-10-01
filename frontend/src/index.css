@@ -26,6 +26,10 @@
   --color-forest-100: oklch(94% 0.02 145); /* #eef7f0 - Dawn light */
   --color-forest-50: oklch(97% 0.01 145); /* #f7fbf8 - First light */
 
+  /* Camperships' program colour (docs/reference/ui-uplift.md, "Landing page"; Decision 1). */
+  --color-berry-300: hsl(330 65% 72%);
+  --color-berry-600: hsl(330 55% 42%);
+
   /* Amber/Campfire Accents */
   --color-amber-600: oklch(62% 0.18 65); /* #c98418 - Deep amber */
   --color-amber-500: oklch(72% 0.17 75); /* #fdbe59 - Camp Secondary */

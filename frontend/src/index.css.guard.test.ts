@@ -108,3 +108,12 @@ describe('index.css — motion groundwork (spec 1a/1b, 2026-08-21)', () => {
     expect(css).toMatch(/\.pending-lock-glow(?![\w-])/)
   })
 })
+
+describe('index.css — Camperships berry tokens (ui-uplift "Landing page")', () => {
+  it.each(['300', '600'])(
+    'defines --color-berry-%s inside @theme so its utilities generate',
+    (shade) => {
+      expect(themeBlock()).toMatch(new RegExp(`--color-berry-${shade}:\\s*hsl\\(`))
+    }
+  )
+})

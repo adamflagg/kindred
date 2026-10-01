@@ -35,6 +35,7 @@ import type {
   CamperJourneyResponse,
   CamperJourneyRow,
   CrossScopeEdge,
+  RemainingResponse,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
@@ -67,3 +68,8 @@ export type ApiCamperJourneyRow = CamperJourneyRow
 
 /** The journey header's counts. Mirrors Python `CamperJourneyCounts`. */
 export type ApiCamperJourneyCounts = CamperJourneyCounts
+
+// ── Camperships (financial aid) ───────────────────────────────────────────────
+
+/** The Remaining line's read (D48). Mirrors Python `RemainingResponse`. */
+export type ApiAidRemaining = RemainingResponse

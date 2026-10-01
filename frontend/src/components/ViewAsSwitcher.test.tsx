@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 import { AuthContext } from '../contexts/AuthContext'
 import { createMockAuthContext, createMockUser } from '../test/test-helpers'
 import { readViewAs, writeViewAs } from '../auth/viewAs'
@@ -28,6 +28,7 @@ vi.mock('../hooks/useRoles', () => ({
 }))
 
 import { ViewAsSwitcher } from './ViewAsSwitcher'
+import { useCanViewAs } from '../hooks/useCanViewAs'
 
 const reload = vi.fn()
 
@@ -42,22 +43,84 @@ beforeEach(() => {
   })
 })
 
-function renderAs({ isAdmin, isBypassMode = false }: { isAdmin: boolean; isBypassMode?: boolean }) {
-  const ctx = createMockAuthContext({ user: createMockUser({ is_admin: isAdmin }), isBypassMode })
-  return render(createElement(AuthContext.Provider, { value: ctx }, createElement(ViewAsSwitcher)))
+// Owner ruling 2026-10-01: the bar no longer carries a "View as" button while
+// not previewing; the menu is opened from the user menu in AppLayout. This
+// harness plays AppLayout: an "Open View as" entry point drives the controlled
+// `open` prop, and shows whether the entry would be offered (useCanViewAs).
+function Harness() {
+  const [open, setOpen] = useState(false)
+  const canViewAs = useCanViewAs()
+  return createElement(
+    'div',
+    null,
+    canViewAs && createElement('button', { onClick: () => setOpen(true) }, 'Open View as'),
+    createElement(ViewAsSwitcher, { open, onOpenChange: setOpen })
+  )
 }
 
-const openMenu = () => fireEvent.click(screen.getByRole('button', { name: /view as/i }))
+function renderAs({ isAdmin, isBypassMode = false }: { isAdmin: boolean; isBypassMode?: boolean }) {
+  const ctx = createMockAuthContext({ user: createMockUser({ is_admin: isAdmin }), isBypassMode })
+  return render(createElement(AuthContext.Provider, { value: ctx }, createElement(Harness)))
+}
+
+const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'Open View as' }))
 
 describe('ViewAsSwitcher', () => {
-  it('is hidden for a real non-admin', () => {
+  it('is hidden for a real non-admin: no pill, no entry point', () => {
     renderAs({ isAdmin: false })
     expect(screen.queryByRole('button', { name: /view as/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Exit preview' })).toBeNull()
   })
 
   it('is hidden in bypass mode', () => {
     renderAs({ isAdmin: true, isBypassMode: true })
     expect(screen.queryByRole('button', { name: /view as/i })).toBeNull()
+  })
+
+  it('a real admin not previewing has no View as button in the bar, only the entry point', () => {
+    renderAs({ isAdmin: true })
+    expect(screen.getByRole('button', { name: 'Open View as' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^view as$/i })).toBeNull()
+    expect(screen.queryByTestId('view-as-menu')).toBeNull()
+  })
+
+  it('the controlled open prop shows the menu and reports closing on Escape', () => {
+    renderAs({ isAdmin: true })
+    openMenu()
+    expect(screen.getByTestId('view-as-menu')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('view-as-menu')).toBeNull()
+  })
+
+  // Owner ruling 2026-10-01 (supersedes the amber pill in the nav bar): while
+  // previewing, an amber strip above the nav carries the state, a Switch button
+  // that opens the menu, and Exit preview.
+  it('previewing: the strip shows the persona, Switch opens the menu', () => {
+    writeViewAs({ label: 'Registrar', source: 'role', permissions: ['metrics.geo'] })
+    renderAs({ isAdmin: true })
+    const strip = screen.getByTestId('view-as-strip')
+    expect(strip).toHaveTextContent('Viewing as Registrar')
+    expect(screen.queryByTestId('view-as-menu')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Switch/ }))
+    expect(screen.getByTestId('view-as-menu')).toBeTruthy()
+  })
+
+  it('not previewing: no strip', () => {
+    renderAs({ isAdmin: true })
+    expect(screen.queryByTestId('view-as-strip')).toBeNull()
+  })
+
+  it('a non-admin gets no strip', () => {
+    renderAs({ isAdmin: false })
+    expect(screen.queryByTestId('view-as-strip')).toBeNull()
+  })
+
+  it('an admin previewing as a non-admin role still gets the strip and the entry point', () => {
+    writeViewAs({ label: 'No role', source: 'none', permissions: [] })
+    renderAs({ isAdmin: true })
+    expect(screen.getByTestId('view-as-strip')).toHaveTextContent('Viewing as No role')
+    expect(screen.getByRole('button', { name: /Exit preview/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open View as' })).toBeTruthy()
   })
 
   it('picking a role stores its permission snapshot and reloads', () => {
@@ -81,7 +144,7 @@ describe('ViewAsSwitcher', () => {
       permissions: ['metrics.geo'],
     })
     renderAs({ isAdmin: true })
-    fireEvent.click(screen.getByRole('button', { name: /Old Registrar Name/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Switch/ }))
     const registrarItem = screen.getByRole('button', { name: /^Registrar/ })
     const bunkingItem = screen.getByRole('button', { name: /^Bunking Staff/ })
     expect(registrarItem.querySelector('svg')).not.toBeNull()
@@ -109,14 +172,14 @@ describe('ViewAsSwitcher', () => {
   it('stays visible while previewing and shows the persona', () => {
     writeViewAs({ label: 'Registrar', source: 'role', permissions: ['metrics.geo'] })
     renderAs({ isAdmin: true })
-    expect(screen.getByRole('button', { name: /Registrar/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Exit preview' })).toBeTruthy()
+    expect(screen.getByTestId('view-as-strip')).toHaveTextContent('Registrar')
+    expect(screen.getByRole('button', { name: /Exit preview/ })).toBeTruthy()
   })
 
   it('the exit button clears the persona in one click and reloads', () => {
     writeViewAs({ label: 'Registrar', source: 'role', permissions: ['metrics.geo'] })
     renderAs({ isAdmin: true })
-    fireEvent.click(screen.getByRole('button', { name: 'Exit preview' }))
+    fireEvent.click(screen.getByRole('button', { name: /Exit preview/ }))
     expect(readViewAs()).toBeNull()
     expect(reload).toHaveBeenCalledTimes(1)
   })
@@ -147,7 +210,7 @@ describe('ViewAsSwitcher', () => {
   it('labels a custom persona with its permission count', () => {
     writeViewAs({ label: 'Custom', source: 'custom', permissions: [] })
     renderAs({ isAdmin: true })
-    expect(screen.getByRole('button', { name: /Custom \(0\)/ })).toBeTruthy()
+    expect(screen.getByTestId('view-as-strip')).toHaveTextContent('Custom (0)')
   })
 
   it('says roles are loading instead of looking empty, and keeps No role usable', () => {

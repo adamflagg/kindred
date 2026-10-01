@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router'
-import { useProgram } from '../contexts/ProgramContext'
+import { type Program, useProgram } from '../contexts/ProgramContext'
 import { useCallback } from 'react'
 import {
   getSessionUrl,
@@ -76,7 +76,7 @@ export function useNavigation() {
 
   // Switch to a different program
   const switchProgram = useCallback(
-    (program: 'summer' | 'weekend' | 'analytics') => {
+    (program: Program) => {
       void navigate(getProgramHomeUrl(program))
     },
     [navigate]

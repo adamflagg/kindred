@@ -56,6 +56,8 @@ describe('invalidateSyncData', () => {
       'sync-status',
       // kindred#2759: a completed Jotform pull refreshes the admin tab.
       'jotform',
+      // Camperships (spec §10): every aid read refreshes when a sync completes.
+      'financial-aid',
     ]
 
     for (const prefix of requiredPrefixes) {
