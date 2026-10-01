@@ -57,7 +57,18 @@ interface RequestEditorProps {
    */
   readonly onMove?: ((direction: 1 | -1, save: EditorSave | null) => void) | undefined
   readonly onCancel: () => void
+  /**
+   * Surfaces must pass `saving` (true while the write is in flight): without it ↓ after Enter
+   * does nothing until the person edits, and a finished save never moves the "nothing typed"
+   * baseline.
+   */
   readonly saving?: boolean | undefined
+  /**
+   * Surfaces must pass `saveError` for a failed save to be retryable. Set when `saving` goes
+   * true→false and the write failed: the typed value and baseline are kept, the message shows,
+   * and Enter or ↓ saves again. Leave it empty on success.
+   */
+  readonly saveError?: string | null | undefined
   /** 'row' under the highlighted grid row; 'card' in place on the household page's request card (D22). */
   readonly layout?: 'row' | 'card' | undefined
 }
@@ -146,13 +157,13 @@ export function RequestEditor(props: RequestEditorProps) {
   useEffect(() => {
     if (wasSaving.current && props.saving !== true) {
       submitted.current = false
-      if (lastSaved.current) {
-        setBase(lastSaved.current)
-        lastSaved.current = null
-      }
+      // A finished save moves the baseline; a failed one keeps it, so what was typed still counts
+      // as unsaved and ↓ or Enter retries it.
+      if (lastSaved.current && !props.saveError) setBase(lastSaved.current)
+      lastSaved.current = null
     }
     wasSaving.current = props.saving === true
-  }, [props.saving])
+  }, [props.saving, props.saveError])
 
   const problem =
     parsed.kind === 'invalid'
@@ -263,6 +274,7 @@ export function RequestEditor(props: RequestEditorProps) {
         Enter saves{props.onMove ? ' · ↓ saves and moves on' : ''} · Esc cancels
       </span>
       {tried && problem !== null && <span className={AMBER_NOTE}>{problem}</span>}
+      {props.saveError ? <span className={AMBER_NOTE}>{props.saveError}</span> : null}
     </div>
   )
 }

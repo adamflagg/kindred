@@ -221,6 +221,44 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
     })
   })
 
+  describe('a save that fails stays retryable', () => {
+    async function failedSave() {
+      const view = setup()
+      const { onMove, onSave, rerender, ...props } = view
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{Enter}')
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} saving />)
+      rerender(
+        <RequestEditor
+          {...props}
+          onMove={onMove}
+          onSave={onSave}
+          saving={false}
+          saveError="Could not save"
+        />
+      )
+      return { onMove, onSave }
+    }
+
+    it('shows the error and keeps what was typed', async () => {
+      await failedSave()
+      expect(screen.getByText('Could not save')).toBeInTheDocument()
+      expect(screen.getByLabelText('Round 2 ask')).toHaveValue('2500')
+    })
+
+    it('retries the save on ↓ instead of moving on without it', async () => {
+      const { onMove } = await failedSave()
+      await userEvent.keyboard('{ArrowDown}')
+      expect(onMove).toHaveBeenCalledWith(1, SAVE)
+    })
+
+    it('retries the save on Enter', async () => {
+      const { onSave } = await failedSave()
+      await userEvent.keyboard('{Enter}')
+      expect(onSave).toHaveBeenCalledTimes(2)
+      expect(onSave).toHaveBeenLastCalledWith(SAVE)
+    })
+  })
+
   describe('keys', () => {
     it('ignores keys pressed with a modifier (M1)', async () => {
       const { onMove, onSave, onCancel } = setup()
