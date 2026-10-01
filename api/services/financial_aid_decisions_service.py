@@ -167,6 +167,7 @@ from api.services.financial_aid_rules_service import (
     RulesHistoryIncompleteError,
     RulesVersion,
 )
+from api.services.financial_aid_share_split import grid_shares, payers
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.change_replay import LogRow, Replayed, replay
@@ -1072,6 +1073,11 @@ def _round3_rules_refusal(rounds: Mapping[int, RoundState], rules: AidRules, yea
     return None
 
 
+def _payer_households(season: Season) -> set[int]:
+    """Every household holding a payer share this season: a split row names each (⚠39)."""
+    return {s.household_cm_id for shares in season.shares.values() for s in shares}
+
+
 class FinancialAidDecisionsService:
     def __init__(
         self,
@@ -1604,11 +1610,15 @@ class FinancialAidDecisionsService:
         day = self._past_day(as_of)
         if day is None:
             season, (families, campers) = await self._season(year, names=True)
+            unnamed = _payer_households(season) - families.keys()
+            if unnamed:  # a household that pays a share but applied for nothing (⚠39)
+                more, _ = await self._store.fetch_names(year, unnamed, set())
+                families = {**families, **more}
         else:
             season = await self.past_season(year, day, as_of_axis)
             families, campers = await self._store.fetch_names(
                 year,
-                {r.household_cm_id for r in season.requests.values()},
+                {r.household_cm_id for r in season.requests.values()} | _payer_households(season),
                 {r.person_cm_id for r in season.requests.values() if r.person_cm_id > 0},
             )
         rows = [self.row_of(season, (families, campers), rid) for rid in season.priced]
@@ -1664,7 +1674,15 @@ class FinancialAidDecisionsService:
             cancellation=season.cancellations.get(request_id),
             to_reverse=request_id in season.to_reverse,
         )
-        return row.model_copy(update={"queues": row_queues(row)})
+        request = season.requests[request_id]
+        paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
+        return row.model_copy(
+            update={
+                "queues": row_queues(row),
+                "payer_count": len(paying),
+                "payer_shares": grid_shares(row, paying, families),
+            }
+        )
 
     @staticmethod
     def _confirmation(season: Season, request_id: str) -> Confirmation | None:
