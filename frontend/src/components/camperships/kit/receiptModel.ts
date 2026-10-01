@@ -7,19 +7,16 @@
  */
 import { aidHref, type AidView } from './asOf'
 import { formatShortDate } from './dates'
+import type { TraceStep } from '../../../types/api-generated'
 import { MINUS, formatMoney, isNegativeMoney } from './money'
 
 export type TraceValue = string | number | boolean | null
 
-/** bunking/financial_aid/calculator/result.py `TraceStep`, as the generator types it. */
-export interface AidTraceStep {
-  readonly key: string
-  readonly label: string
-  readonly value?: TraceValue | undefined
-  readonly inputs?: Readonly<Record<string, TraceValue>> | undefined
-  readonly bound?: string | null | undefined
-  readonly note?: string | null | undefined
-}
+/**
+ * The calculator's `TraceStep` as the generator types it (result.py). An alias, so a change to the
+ * server's shape breaks tsc here instead of drifting.
+ */
+export type AidTraceStep = TraceStep
 
 export type ReceiptLabel =
   | {
@@ -170,8 +167,20 @@ function noteText(note: string): string {
 
 const INCENTIVE_NOTE = /^Reduced by an incentive of (\d+(?:\.\d+)?)/
 
-/** What an incentive took off a Round 1 award (engine.py `_round1`), 0 when none. */
+/**
+ * What an incentive took off a Round 1 award, 0 when none. The engine floors the award at 0, so the
+ * note's figure can exceed what was taken: read it from the structure (the amount before the
+ * incentive is the ask when the ask bound it, else the potential, rounded half-up to the dollar as
+ * `_round1` does) and fall back to the note only when the step carries no inputs.
+ */
 function incentiveOf(step: AidTraceStep): number {
+  if (!INCENTIVE_NOTE.test(step.note ?? '')) return 0
+  const i = step.inputs ?? {}
+  const before = step.bound === 'ask' ? i['ask'] : i['potential']
+  if (!isBlank(before) && Number.isFinite(Number(before)) && !isBlank(step.value)) {
+    const taken = Math.floor(Number(before) + 0.5) - Number(step.value)
+    return taken > 0 ? taken : 0
+  }
   const match = INCENTIVE_NOTE.exec(step.note ?? '')
   return match ? Number(match[1]) : 0
 }
@@ -179,13 +188,16 @@ function incentiveOf(step: AidTraceStep): number {
 const CEILING_HOW = 'adjusted income is above the income ceiling, so there is no award'
 
 /** How a line was worked out, shown when the line is clicked (D33). The engine's note is kept. */
-export function stepHow(step: AidTraceStep): string {
-  const { base, skipNote } = howBase(step)
+export function stepHow(step: AidTraceStep, trace: readonly AidTraceStep[] = []): string {
+  const { base, skipNote } = howBase(step, trace)
   const note = skipNote || isBlank(step.note) ? '' : noteText(String(step.note))
   return [base, note].filter(Boolean).join('; ')
 }
 
-function howBase(step: AidTraceStep): { base: string; skipNote?: boolean } {
+function howBase(
+  step: AidTraceStep,
+  trace: readonly AidTraceStep[]
+): { base: string; skipNote?: boolean } {
   const i = step.inputs ?? {}
   const bound = step.bound ?? ''
   if (step.key.endsWith('_locked')) {
@@ -310,20 +322,51 @@ function howBase(step: AidTraceStep): { base: string; skipNote?: boolean } {
       if (i['source'] === 'full_cost') return { base: 'full cost (decision type)' }
       if (i['source'] === 'no_table') return { base: 'no Round 1 table' }
       return { base: `${text(i['table'])} award table, tier ${text(i['tier'])}` }
-    case 'r1_potential':
-      return {
-        base:
-          `${pct(i['pct'])} × ${money(i['cost'])}` +
-          (Number(i['grants'] ?? 0) !== 0 ? ` less grants ${money(i['grants'])}` : '') +
-          `, never below the ${money(i['minimum'])} minimum`,
+    case 'r1_potential': {
+      const grants = Number(i['grants'] ?? 0)
+      if (isBlank(i['cost'])) {
+        return { base: `cost not set; the minimum award ${money(i['minimum'])} applies` }
       }
-    case 'r1':
-      return {
-        base:
-          bound === 'ask'
-            ? `the family's ask ${money(i['ask'])}, under the potential ${money(i['potential'])}`
-            : `the potential ${money(i['potential'])}`,
+      // The grants step carries the offset mode; this step does not (engine.py `_round1`).
+      const reduceCost =
+        grants !== 0 &&
+        trace.find((t) => t.key === 'grants')?.inputs?.['offset_mode'] === 'reduce_cost_basis'
+      const basis = reduceCost
+        ? `(${money(i['cost'])} less grants ${money(grants)})`
+        : money(i['cost'])
+      const body =
+        `${pct(i['pct'])} × ${basis}` +
+        (grants !== 0 && !reduceCost ? ` less grants ${money(grants)}` : '')
+      if (bound === 'grants_cover') {
+        return { base: `${body}; outside grants cover the cost, so no minimum applies` }
       }
+      if (bound === 'minimum') {
+        const value = Number(step.value)
+        const minimum = Number(i['minimum'])
+        const lessGrants = Math.abs(value - (minimum - grants)) < 0.005 && grants !== 0
+        const full = Math.abs(value - minimum) < 0.005
+        return {
+          base:
+            body +
+            (full
+              ? `, raised to the ${money(minimum)} minimum`
+              : lessGrants
+                ? `, raised to the ${money(minimum)} minimum less grants ${money(grants)}`
+                : ', raised to the minimum'),
+        }
+      }
+      return { base: body }
+    }
+    case 'r1': {
+      const taken = incentiveOf(step)
+      const base =
+        bound === 'ask'
+          ? `the family's ask ${money(i['ask'])}, under the potential ${money(i['potential'])}`
+          : `the potential ${money(i['potential'])}`
+      return taken > 0
+        ? { base: `${base}; reduced by an incentive of ${formatMoney(taken)}`, skipNote: true }
+        : { base }
+    }
     case 'r2_cap': {
       const cap =
         bound === 'original_ask'
@@ -343,7 +386,9 @@ function howBase(step: AidTraceStep): { base: string; skipNote?: boolean } {
         case 'appeal':
           return { base: `the appeal ${money(i['appeal'])}, under the cap ${money(i['cap'])}` }
         default:
-          return { base: `the cap ${money(i['cap'])}, under the appeal ${money(i['appeal'])}` }
+          return Number(i['cap']) < 0
+            ? { base: `the cap ${money(i['cap'])} is below zero, so Round 2 is held at $0` }
+            : { base: `the cap ${money(i['cap'])}, under the appeal ${money(i['appeal'])}` }
       }
     case 'r3':
       switch (bound) {
@@ -529,36 +574,51 @@ export function receiptSentence(trace: readonly AidTraceStep[]): SentencePart[] 
       // When the minimum lifted the potential, "= $potential" would be false: the percentage's
       // own figure is not the potential (engine.py `_round1`), so the limit is named instead.
       const lifted = potential.bound === 'minimum' || potential.bound === 'grants_cover'
-      figure(stepValue(share))
-      plain(' of ')
-      if (offset && reduceCost) {
-        plain('(')
-        figure(stepValue(cost))
-        plain(' less ')
-        figure(stepValue(offset))
-        plain(' in grants)')
-      } else {
-        figure(stepValue(cost))
-        if (offset) {
-          plain(', less ')
-          figure(stepValue(offset))
-          plain(' in grants')
-        }
-      }
-      if (lifted) {
+      if (isBlank(cost.value)) {
+        // No price to take a percentage of: the engine used the minimum award (engine.py `_round1`).
+        plain('cost not set, ')
+        parts.push({ text: 'minimum award', kind: 'bound' })
         if (r1.bound === potential.bound) {
-          roundTail(r1, 1)
+          plain(' → ')
+          limitThenFigure({ ...r1, bound: null })
+          endRound(1)
         } else {
-          plain(', ')
-          parts.push({ text: LIMITS[potential.bound ?? ''] ?? '', kind: 'bound' })
           plain(' ')
           figure(stepValue(potential))
           roundTail(r1, 1)
         }
       } else {
-        plain(offset && !reduceCost ? ', = ' : ' = ')
-        figure(stepValue(potential))
-        roundTail(r1, 1)
+        figure(stepValue(share))
+        plain(' of ')
+        if (offset && reduceCost) {
+          plain('(')
+          figure(stepValue(cost))
+          plain(' less ')
+          figure(stepValue(offset))
+          plain(' in grants)')
+        } else {
+          figure(stepValue(cost))
+          if (offset) {
+            plain(', less ')
+            figure(stepValue(offset))
+            plain(' in grants')
+          }
+        }
+        if (lifted) {
+          if (r1.bound === potential.bound) {
+            roundTail(r1, 1)
+          } else {
+            plain(', ')
+            parts.push({ text: LIMITS[potential.bound ?? ''] ?? '', kind: 'bound' })
+            plain(' ')
+            figure(stepValue(potential))
+            roundTail(r1, 1)
+          }
+        } else {
+          plain(offset && !reduceCost ? ', = ' : ' = ')
+          figure(stepValue(potential))
+          roundTail(r1, 1)
+        }
       }
     } else {
       limitThenFigure(r1)

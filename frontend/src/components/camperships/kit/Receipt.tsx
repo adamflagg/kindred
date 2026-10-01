@@ -152,7 +152,7 @@ export function Receipt({
                     </span>
                     {expanded.has(index) && (
                       <span className="text-muted-foreground col-span-2 text-xs">
-                        {stepHow(step)}
+                        {stepHow(step, trace)}
                       </span>
                     )}
                   </button>

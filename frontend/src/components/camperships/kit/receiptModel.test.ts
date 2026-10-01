@@ -14,6 +14,13 @@ import {
   TRACE_ROUND2_CAPPED,
   TRACE_TOP_UP,
   TRACE_TOTAL_CAP,
+  REAL_COST_UNKNOWN_MINIMUM,
+  REAL_GRANTS_COVER_NO_MINIMUM,
+  REAL_INCENTIVE_ASK,
+  REAL_INCENTIVE_CLAMPED,
+  REAL_MINIMUM_LESS_GRANTS,
+  REAL_REDUCE_COST_BASIS,
+  REAL_ROUND2_CAP_NEGATIVE,
   traceStep,
 } from './fixtures'
 import { MINUS } from './money'
@@ -200,9 +207,9 @@ describe('each line', () => {
         key: 'grants',
         label: 'Outside grants',
         value: '0.00',
-        inputs: { count_when: 'posted', offset_mode: 'reduce_cost_basis' },
+        inputs: { count_when: 'received', offset_mode: 'reduce_cost_basis' },
       })
-    ).toBe('outside grants counted when posted; taken off the cost before the percentage')
+    ).toBe('outside grants counted when received; taken off the cost before the percentage')
   })
 })
 
@@ -575,5 +582,73 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
       )
     ).toBe('summer class · criteria met: a · weight 3 · capped at +2, the most a shift can be')
     expect(bindingPhrase(traceStep('final_tier', 'F', 1, {}, 'tier_floor'))).toBeNull()
+  })
+})
+
+describe('fix round 2: real engine traces', () => {
+  it('B: an incentive larger than the award shows the incentive actually taken', () => {
+    expect(sentenceText(receiptSentence(REAL_INCENTIVE_CLAMPED))).toContain(
+      'Round 1: 2% of $2,000, raised to the minimum award → $100, less an incentive of $100 → $0. Total $0.'
+    )
+    expect(stepHow(find(REAL_INCENTIVE_CLAMPED, 'r1'))).toBe(
+      'the potential $100; reduced by an incentive of $100'
+    )
+  })
+
+  it('B: an incentive after the ask limited the award', () => {
+    expect(sentenceText(receiptSentence(REAL_INCENTIVE_ASK))).toContain(
+      "limited by the family's ask to $1,500, less an incentive of $100 → $1,400. Total $1,400."
+    )
+  })
+
+  it('B: with no structure to read, the incentive in the note still shows', () => {
+    const trace = [
+      traceStep('r1', 'Round 1 award', '1400.00', {}, 'ask', 'Reduced by an incentive of 100.00'),
+    ]
+    expect(sentenceText(receiptSentence(trace))).toContain('less an incentive of $100')
+  })
+
+  it('A: reduce_cost_basis reads like the sentence', () => {
+    const trace = REAL_REDUCE_COST_BASIS
+    expect(stepHow(find(trace, 'r1_potential'), trace)).toBe('55% × ($4,000 less grants $500)')
+  })
+
+  it('A: a potential grants covered does not claim the minimum', () => {
+    const trace = REAL_GRANTS_COVER_NO_MINIMUM
+    expect(stepHow(find(trace, 'r1_potential'), trace)).toBe(
+      '75% × $4,000 less grants $5,000; outside grants cover the cost, so no minimum applies'
+    )
+  })
+
+  it('A: a minimum worked out after grants says so', () => {
+    const trace = REAL_MINIMUM_LESS_GRANTS
+    expect(stepHow(find(trace, 'r1_potential'), trace)).toBe(
+      '2% × $2,000 less grants $60, raised to the $100 minimum less grants $60'
+    )
+  })
+
+  it('A: a table potential no longer says "never below the minimum"', () => {
+    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'r1_potential'), TRACE_CAPPED_BY_ASK)).toBe(
+      '40% × $5,000'
+    )
+    expect(stepHow(find(TRACE_MINIMUM_RAISED, 'r1_potential'), TRACE_MINIMUM_RAISED)).toBe(
+      '1% × $5,000, raised to the $100 minimum'
+    )
+  })
+
+  it('4: an unknown cost is not "0% of —"', () => {
+    const trace = REAL_COST_UNKNOWN_MINIMUM
+    expect(sentenceText(receiptSentence(trace))).toContain(
+      'Round 1: cost not set, minimum award → $100. Total $100.'
+    )
+    expect(stepHow(find(trace, 'r1_potential'), trace)).toBe(
+      'cost not set; the minimum award $100 applies'
+    )
+  })
+
+  it('5: a negative Round 2 cap holds the award at $0', () => {
+    expect(stepHow(find(REAL_ROUND2_CAP_NEGATIVE, 'r2'))).toBe(
+      'the cap −$100 is below zero, so Round 2 is held at $0'
+    )
   })
 })
