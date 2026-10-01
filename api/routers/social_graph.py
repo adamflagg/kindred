@@ -81,6 +81,19 @@ def _fetch_person_labels(cm_ids: list[int], year: int) -> dict[int, Any]:
     return by_cm_id
 
 
+def _require_manage_for_scenario(user: AuthUser, scenario_id: str | None) -> None:
+    """Refuse a scenario read unless the caller holds bunking.manage.
+
+    A scenario_id sources the graph from bunk_assignments_draft, whose
+    PocketBase list rule requires bunking.manage. This router reads PocketBase
+    as the service account, so that rule never sees the caller: the check has
+    to be made here. The production graph (no scenario_id) stays open to any
+    signed-in user. Admins pass, as with require_permission.
+    """
+    if scenario_id and not user.is_admin and Permission.BUNKING_MANAGE not in user.permissions:
+        raise HTTPException(status_code=403, detail=f"Permission required: {Permission.BUNKING_MANAGE}")
+
+
 # ========================================
 # Session Social Graph Endpoint
 # ========================================
@@ -122,6 +135,7 @@ async def get_session_social_graph(
     Returns:
         Complete social graph with nodes, edges, metrics, and communities
     """
+    _require_manage_for_scenario(user, scenario_id)
     try:
         if year is None:
             year = datetime.now(tz=UTC).year
@@ -425,6 +439,7 @@ async def get_bunk_social_graph(
     Returns:
         Bunk subgraph with health metrics and improvement suggestions
     """
+    _require_manage_for_scenario(user, scenario_id)
     try:
         if year is None:
             year = datetime.now(tz=UTC).year
