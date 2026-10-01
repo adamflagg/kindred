@@ -76,7 +76,8 @@ func registerUsersWriteGuard(app core.App, adminGroup string) {
 		// Sign-in timestamps are server-owned too: users.updateRule is null
 		// (superusers only) since migration 1500000181, and this keeps "last
 		// active" server-owned if that rule is ever loosened. The auth hooks
-		// (oidc_hooks.go, last_seen.go) write them with app.Save, not a request.
+		// (registerLastLoginHook and registerLastSeenHook, oidc_hooks.go) write them
+		// with app.Save, not a request.
 		e.Record.Set(fieldLastLogin, stored.Get(fieldLastLogin))
 		e.Record.Set(fieldLastSeen, stored.Get(fieldLastSeen))
 		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern

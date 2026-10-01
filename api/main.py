@@ -29,7 +29,6 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import configure_logging, get_logger
 from bunking.rbac.permissions import (
     ADMIN_ONLY_AREAS,
-    ALL_PERMISSIONS,
     PERMISSION_AREAS,
     PERMISSION_DESCRIPTIONS,
     PERMISSION_INFO,
@@ -244,7 +243,7 @@ def create_app() -> FastAPI:
             ],
             areas=list(PERMISSION_AREAS),
             admin_only=list(ADMIN_ONLY_AREAS),
-            total=len(ALL_PERMISSIONS),
+            total=len(ordered),
         )
 
     return app

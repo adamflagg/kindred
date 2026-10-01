@@ -150,7 +150,9 @@ export const REGISTRY: ApiPermissionRegistry = {
 export function makeProps(
   url: Partial<UsersPageProps['url']> = {}
 ): UsersPageProps & { url: UsersPageProps['url'] } {
-  const roleLikes = ROLES.map((r) => ({
+  // Fresh copies per call: a test that edits a role must not leak into the next one.
+  const roles = ROLES.map((r) => ({ ...r, permissions: [...r.permissions] }))
+  const roleLikes = roles.map((r) => ({
     id: r.id,
     slug: r.slug,
     name: r.name,
@@ -164,7 +166,7 @@ export function makeProps(
   return {
     data: {
       users: USERS,
-      roles: ROLES,
+      roles,
       roleLikes,
       userRoles: LINKS,
       held,

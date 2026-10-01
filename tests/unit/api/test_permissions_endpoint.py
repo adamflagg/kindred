@@ -42,3 +42,10 @@ def test_carries_areas_and_admin_only(client):
     body = client.get("/api/permissions").json()
     assert body["areas"] == list(PERMISSION_AREAS)
     assert body["admin_only"][0] == "Manage › Sync page (bunking staff can still refresh data)"
+
+
+def test_total_counts_the_permissions_it_returns(client):
+    """The Permissions tab badge reads `total`, so it must count the list it sits beside."""
+    with patch("api.main.PERMISSION_AREAS", PERMISSION_AREAS[:-1]):
+        body = client.get("/api/permissions").json()
+    assert body["total"] == len(body["permissions"])
