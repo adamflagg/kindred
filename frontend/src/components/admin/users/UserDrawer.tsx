@@ -31,6 +31,7 @@ const parseDate = (s: string) => new Date(s.replace(' ', 'T'))
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 const firstNonEmpty = (...xs: Array<string | undefined>) => xs.find((x) => x) ?? ''
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+const peopleLabel = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
 
 export function UserDrawer({ user, data, registry, onClose }: UserDrawerProps) {
   const saved = data.held.get(user.id) ?? NO_ROLES
@@ -234,7 +235,7 @@ function DrawerBody({
                             </span>
                           )}
                           <span className="text-muted-foreground text-[11px]">
-                            {plural(roleHolders(r.id, data.users, data.held).length, 'person')}
+                            {peopleLabel(roleHolders(r.id, data.users, data.held).length)}
                           </span>
                           {tag(r)}
                         </span>

@@ -74,6 +74,11 @@ beforeEach(() => {
 })
 
 describe('UserDrawer', () => {
+  it('counts role holders as "people", never "persons"', () => {
+    renderDrawer('u-emma')
+    expect(document.body.textContent).not.toMatch(/\bpersons\b/)
+  })
+
   it('lists their roles first, then one-line "Add a role" rows', () => {
     renderDrawer('u-emma')
     expect(screen.getByRole('heading', { name: /Emma's roles\s*2/ })).toBeInTheDocument()
