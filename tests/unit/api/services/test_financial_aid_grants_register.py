@@ -1016,3 +1016,12 @@ def test_expected_is_never_a_grant() -> None:
 
 def test_an_answer_with_no_household_is_skipped() -> None:
     assert expected_grants([FormAnswer(EMMA, 0, True, True)], [], FAMILIES) == []
+
+
+def test_a_fulfilled_commitments_line_still_carries_its_own_post_instant() -> None:
+    """D16b: To place tests a ledger grant's own CampMinder post date, which recorded_at (the earlier
+    commitment's) hides; a line posted after the posting day must still read as posted then."""
+    line = _line(person_cm_id=EMMA, post_date="2031-03-15 17:00:00.000Z")
+    row = build_register(_inputs(lines=(line,), commitments=(_commitment(),)))[0]
+    assert row.posted_at == datetime(2031, 3, 15, 17, 0, tzinfo=UTC)
+    assert row.recorded_at == datetime(2031, 1, 21, 18, 0, tzinfo=UTC)  # unchanged (Decision 5)

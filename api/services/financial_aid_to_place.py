@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 from api.services.financial_aid_grants_register import (
     LIVE_REQUEST_STATUSES,
     Placement,
+    RegisterRow,
     program_family_for_session_type,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, family_household_set, parse_pb_datetime
@@ -459,9 +460,8 @@ ChangedCode = Literal[
 ]
 # The CampMinder syncs that delete rows pricing reads (sync_runs.service): registrations, people and their
 # households, the equity custom field (both scopes), sessions, and the grant lines with Go's household links.
-REMOVAL_SERVICES: Final = frozenset(
-    {"attendees", "persons", "person_custom_values", "person_custom_values_family_camp", "sessions", "aid_postings"}
-)
+CUSTOM_VALUE_SERVICES: Final = frozenset({"person_custom_values", "person_custom_values_family_camp"})
+REMOVAL_SERVICES: Final = frozenset({"attendees", "persons", "sessions", "aid_postings", *CUSTOM_VALUE_SERVICES})
 
 
 @dataclass(frozen=True)
@@ -612,6 +612,16 @@ def reads_person_fields(rules: RulesVersion | None) -> bool:
     )
 
 
+def reads_custom_values(rules: RulesVersion | None) -> bool:
+    """Whether the rules weigh a camper answer kept in person custom values (the BIPOC answer): only then can
+    a custom-value sync's removal move a camper-level request's price."""
+    if rules is None:
+        return False
+    return any(
+        c.source == "camper" and ({c.field, *c.also_fields} - _PERSON_FIELDS) for c in rules.document.equity.criteria
+    )
+
+
 def _named(record: Mapping[str, Any] | None, field: str) -> set[int]:
     """The ids a logged record names in `field`, and in each part of its split."""
     if not record:
@@ -643,7 +653,10 @@ def _names_grant(
     if log.entity == "aid_attribution_overrides":
         txns = named("transaction_cm_id")
         moved = named("attributed_person_cm_id") | named("person_cm_id")
-        return not txns <= set(camp) and bool(txns & set(lines) or moved & set(people))
+        was, now = ((record or {}).get("source_key_override") or "" for record in (before, after))
+        if txns <= set(camp) and was == now:
+            return False  # placing camp aid, not reclassifying it: camp aid never prices (D81/D146)
+        return bool(txns & set(lines) or moved & set(people))
     if log.entity == "aid_grants":
         return log.entity_id in commitments or bool(
             named("household_cm_id") & set(households) or named("person_cm_id") & set(people)
@@ -654,6 +667,19 @@ def _names_grant(
         linked = {str(r.get("family_key")) for r in (before, after) if r and r.get("family_key")}
         return bool(named("household_cm_id") & set(households) or linked & set(keys))
     return False
+
+
+def _known_at(grant: RegisterRow, synced_at: Mapping[int, datetime]) -> datetime | None:
+    """When a grant joined the register on the campminder axis: a ledger line's own CampMinder post date (not
+    an earlier commitment's created, which recorded_at carries when the line fulfils one), else when Kindred
+    first read the line; a commitment's created."""
+    if grant.kind != "ledger":
+        return grant.recorded_at
+    if grant.posted_at is not None:
+        return grant.posted_at
+    if grant.recorded_at is not None and not grant.fulfils_commitment_id:
+        return grant.recorded_at  # recorded_at is the post date when no commitment came first
+    return synced_at.get(grant.transaction_cm_id)
 
 
 def _grant_moments(
@@ -684,11 +710,21 @@ def _grant_moments(
         g.source_key for g in since.records.grant_lines if g.transaction_cm_id in lines
     }
     camp = {line.transaction_cm_id for line in season.camp_lines}
+    # The family's camp-aid lines too: today's funder type, which a Reclassify since the posting day may have set.
+    lines |= {
+        line.transaction_cm_id
+        for line in season.camp_lines
+        if line.household_cm_id in households
+        or ({line.person_cm_id, line.attributed_person_cm_id} & people)
+        or any(p.person_cm_id in people for p in season.splits.get(line.transaction_cm_id, ()))
+    }
     keys = {link.family_key for link in since.records.links if link.household_cm_id in households}
     moments: list[datetime] = []
+    synced_at = {g.transaction_cm_id: g.created for g in since.records.grant_lines if g.created is not None}
     for grant in rows:  # CampMinder's own dates (the campminder axis): posted or reversed after the posting day
-        if grant.recorded_at is not None and grant.recorded_at > cut:
-            moments.append(grant.recorded_at)
+        known = _known_at(grant, synced_at)
+        if known is not None and known > cut:
+            moments.append(known)
         reversed_at = parse_pb_datetime(grant.reversal_date) if grant.reversal_date else None
         if reversed_at is not None and camp_date(reversed_at) > camp_date(cut):
             moments.append(reversed_at)
@@ -739,6 +775,7 @@ def changed_since(season: Season, tick: LedgerTick, since: SinceInputs) -> tuple
         for rid, r in season.requests.items()
         if (person > 0 and r.person_cm_id == person) or (r.person_cm_id == 0 and r.household_cm_id in households)
     } | {request.id}
+    sessions = {season.requests[rid].session_cm_id for rid in family} - {0}
     found: dict[ChangedCode, list[datetime]] = defaultdict(list)
     texts: dict[ChangedCode, str] = {}
 
@@ -784,10 +821,13 @@ def changed_since(season: Season, tick: LedgerTick, since: SinceInputs) -> tuple
             synced.collection == "persons" and person_fields and synced.person_cm_id in people
         ):
             found["equity"].append(synced.at)
-        elif synced.collection == "camp_sessions" and synced.session_cm_id == request.session_cm_id > 0:
+        elif synced.collection == "camp_sessions" and synced.session_cm_id in sessions:
             found["session"].append(synced.at)
+    custom = person > 0 and reads_custom_values(rules_now)  # else a custom-value removal can't move the price
     found["removed_by_sync"] = [
-        r.ended for r in since.records.removals if r.service in REMOVAL_SERVICES and r.ended > cut
+        r.ended
+        for r in since.records.removals
+        if r.service in REMOVAL_SERVICES and r.ended > cut and (custom or r.service not in CUSTOM_VALUE_SERVICES)
     ]
     if cut < since.history_from:
         texts["too_long_ago"] = _TEXT["too_long_ago"]

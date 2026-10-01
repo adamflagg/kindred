@@ -472,7 +472,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             page(CAMP_SESSIONS, f"{season} && {touched}", "cm_id,created,updated"),
             page(
                 AID_POSTINGS,
-                f"{season} && funder_type != 'camp' && {touched}",
+                f"{season} && {touched}",  # every funder type: a line moved into camp aid is a grant that moved
                 "transaction_cm_id,household_cm_id,person_cm_id,attributed_person_cm_id,effective_source_key,"
                 "created,updated",
             ),

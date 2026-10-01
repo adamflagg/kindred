@@ -545,3 +545,85 @@ async def test_the_overnight_tick_is_not_gated() -> None:
     out = await service._decisions.ledger_ticks(YEAR)
     assert out.ticked == 1
     assert store.since_reads == []
+
+
+# --- fix round 1 (review of b97bd7ab): three false "unchanged" routes, and two minors ------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_grant_line_reclassified_into_camp_aid_after_the_posting_day_refuses() -> None:
+    """Critical 2: it was an outside grant on the posting day and is camp aid now, so it is a camp line today.
+    The Reclassify that moved it is a grant moving, even though the line is camp aid now."""
+    store = _store()
+    seed_line(store, 9002, "300", person=0, posted=BEFORE)  # camp aid today, in Emma's household
+    season = await _season(store=store)
+    reclassified = SinceLog(
+        "aid_attribution_overrides",
+        "ovr000000009002",
+        "reclassify",
+        AFTER,
+        before={"transaction_cm_id": 9002, "source_key_override": ""},
+        after={"transaction_cm_id": 9002, "source_key_override": "camp fa"},
+    )
+    assert _codes(changed_since(season, TICK, _since(log=(reclassified,)))) == ["grant"]
+    elsewhere = _store()
+    seed_line(elsewhere, 9002, "300", household=1000009, person=0, posted=BEFORE)  # another family's line
+    assert changed_since(await _season(store=elsewhere), TICK, _since(log=(reclassified,))) == ()
+
+
+@pytest.mark.asyncio
+async def test_a_camp_aid_line_rewritten_by_the_sync_after_the_posting_day_refuses() -> None:
+    """Critical 2: Go re-stamps a line it moved from an outside grant to camp aid (its funder type); the read
+    keeps every funder type, and an in-scope row rewritten after the cut refuses whatever it is now."""
+    season = await _season()
+    restamped = GrantLineRow(9002, 1000001, 0, 0, "camp fa", created=BEFORE, updated=AFTER)
+    assert _codes(changed_since(season, TICK, _since(grant_lines=(restamped,)))) == ["grant"]
+
+
+@pytest.mark.asyncio
+async def test_a_line_posted_after_the_posting_day_that_fulfils_an_earlier_commitment_refuses() -> None:
+    """Critical 3: recorded_at is the commitment's earlier created; the line's own post date is what moved."""
+    posted = datetime(2027, 3, 10, 18, 0, tzinfo=UTC)
+    season = await _season(register=[_grant(fulfils_commitment_id="grt000000000001", posted_at=posted)])
+    reasons = changed_since(season, TICK, _since())
+    assert [(r.code, r.text) for r in reasons] == [("grant", "an outside grant was posted, reversed or moved (Mar 10)")]
+
+
+@pytest.mark.asyncio
+async def test_a_grant_line_with_no_post_date_synced_after_the_posting_day_refuses() -> None:
+    season = await _season(register=[_grant(recorded_at=None, recorded_on="", posted_at=None)])
+    line = GrantLineRow(7001, 1000001, 1000011, 1000011, "regional grant", created=AFTER, updated=AFTER)
+    assert _codes(changed_since(season, TICK, _since(grant_lines=(line,)))) == ["grant"]
+
+
+@pytest.mark.asyncio
+async def test_a_session_of_another_family_request_changing_refuses() -> None:
+    """Its session type decides its program family, and with it how a grant splits across the camper's requests."""
+    season = await _season()
+    since = _since(synced=(Synced("camp_sessions", AFTER, session_cm_id=1000104),))  # Emma's other request
+    assert _codes(changed_since(season, TICK, since)) == ["session"]
+
+
+@pytest.mark.asyncio
+async def test_a_custom_value_sync_removal_refuses_only_where_the_rules_weigh_a_custom_value() -> None:
+    """Now that sweeps count their deletions, the equity custom-value syncs trip only a camper-level request
+    whose rules read a camper answer kept in custom values (the BIPOC answer)."""
+    removals = tuple(SyncRemoval(s, AFTER) for s in ("person_custom_values", "person_custom_values_family_camp"))
+    rules = intake_rules()
+    no_custom = rules.model_copy(
+        update={
+            "equity": rules.equity.model_copy(
+                update={"criteria": [c for c in rules.equity.criteria if c.source != "camper"]}
+            )
+        }
+    )
+    season = await _season(rules=approved(no_custom))
+    assert changed_since(season, TICK, _since(rules_at=approved(no_custom), removals=removals)) == ()
+    assert _codes(changed_since(await _season(), TICK, _since(removals=removals))) == ["removed_by_sync"]
+    household_level = _store()
+    seed_request(household_level, "reqfamily000001", household=1000003, person=0, session=1000202)
+    family_tick = replace(TICK, request_id="reqfamily000001")
+    season = await _season(store=household_level)
+    assert changed_since(season, family_tick, _since(removals=removals)) == ()
+    attendees = (SyncRemoval("attendees", AFTER),)
+    assert _codes(changed_since(season, family_tick, _since(removals=attendees))) == ["removed_by_sync"]

@@ -244,7 +244,8 @@ async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_af
             if name != "aid_household_links":  # every link is read: the family is today's
                 assert since in query["filter"], name
     assert "field_definition.cm_id" in queries["person_custom_values"][0]["filter"]  # equity fields only
-    assert "funder_type != 'camp'" in queries["aid_postings"][0]["filter"]  # camp aid never prices
+    # Every funder type: a grant line Go moved into camp aid after the posting day is a grant that moved (review fix 1)
+    assert "funder_type" not in queries["aid_postings"][0]["filter"]
     runs = queries["sync_runs"][0]["filter"]
     assert "deleted_count > 0" in runs
     for service in (
