@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  confirmationOut,
   GRID_ROWS,
   gridRow,
   roundOut,
@@ -160,6 +161,26 @@ describe('grouping', () => {
     })
   })
 
+  it("heads a confirmed request's group by its open share's own state, as Today's reasons do (Minor 1)", () => {
+    const share = (status: 'confirmed' | 'short' | 'awaiting_sync') => ({
+      household_cm_id: 1000001,
+      expected: 900,
+      in_campminder: 900,
+      status,
+    })
+    const row = gridRow({
+      confirmation: confirmationOut({
+        status: 'confirmed',
+        reconciled: false,
+        shares: [share('confirmed'), share('short'), share('awaiting_sync')],
+      }),
+    })
+    expect(reasonGroup(requestView('not-reconciled'), TODAY)(row)).toEqual({
+      id: 'Short',
+      heading: 'Short',
+    })
+  })
+
   it('groups by family under the household name', () => {
     expect(familyGroup(ROW_SAMUEL)).toEqual({ id: '1000001', heading: 'The Johnson Family' })
   })
@@ -180,6 +201,27 @@ describe('cells', () => {
     expect(GRID_COLUMNS.daysWaiting.value(ROW_SAMUEL, ctx('waiting_on_family'))).toBe(23)
   })
 
+  it('Days waiting ignores a clawed-back round and an accepted one (regression guard, the server’s _waiting_since)', () => {
+    const ctx = { view: 'waiting_on_family' as const, today: TODAY }
+    const posted = (round: 1 | 2 | 3, on: string, over = {}) =>
+      roundOut(round, 'posted', { posted: 100, posted_on: on, ...over })
+    const row = gridRow({
+      rounds: [
+        posted(1, '2027-01-01', { clawed_back: true }),
+        posted(2, '2027-02-01', { accepted: true }),
+        posted(3, '2027-03-20'),
+      ],
+    })
+    expect(GRID_COLUMNS.daysWaiting.value(row, ctx)).toBe(12)
+    const none = gridRow({
+      rounds: [
+        posted(1, '2027-01-01', { clawed_back: true }),
+        posted(2, '2027-02-01', { accepted: true }),
+      ],
+    })
+    expect(GRID_COLUMNS.daysWaiting.value(none, ctx)).toBeNull()
+  })
+
   it("read Ask as Round 1's ask, and R3 as its decided amount, not one pending approval", () => {
     const ctx = { view: 'all' as const, today: TODAY }
     expect(GRID_COLUMNS.ask.value(ROW_OLIVIA, ctx)).toBe(2000)
@@ -188,6 +230,23 @@ describe('cells', () => {
       rounds: [roundOut(3, 'pending_approval', { pending_approval: 450 })],
     })
     expect(GRID_COLUMNS.r3.value(pending, ctx)).toBeNull()
+  })
+})
+
+describe('Session not settled (Minor 2)', () => {
+  it('always shows an item and a session, even when the rules only warn about the session', () => {
+    const row = gridRow({
+      request_status: 'unmatched_session',
+      session_name: '',
+      holds: [],
+      queues: ['session_not_settled'],
+    })
+    const ctx = { view: 'session_not_settled' as const, today: TODAY }
+    expect(GRID_COLUMNS.attention.value(row, ctx)).toContain('Session not settled')
+    expect(reasonGroup(requestView('session-not-settled'), TODAY)(row).heading).toBe(
+      'Session not settled'
+    )
+    expect(GRID_COLUMNS.session.value(row, ctx)).toBeNull()
   })
 })
 
