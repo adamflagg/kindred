@@ -43,8 +43,6 @@ export function JumpBox() {
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
-      // Not a held-down repeat, an IME composition or a key already handled (as AidTable's keys).
-      if (event.repeat || event.isComposing || event.defaultPrevented) return
       if (event.key !== '/' || !isPageKey(event)) return
       event.preventDefault()
       inputRef.current?.focus()

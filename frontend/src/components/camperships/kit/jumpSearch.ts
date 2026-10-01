@@ -4,6 +4,8 @@
  */
 import type { ApiAidJumpHousehold } from '../../../types/api-types'
 
+import { fold } from './table'
+
 export interface JumpMatch {
   readonly householdCmId: number
   readonly familyName: string
@@ -14,11 +16,6 @@ export interface JumpMatch {
 interface Candidate {
   readonly score: number
   readonly detail: string
-}
-
-/** Case- and accent-insensitive: "José" and "jose" are the same word to someone typing fast. */
-function fold(text: string): string {
-  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 }
 
 function idCandidates(household: ApiAidJumpHousehold, query: string): Candidate[] {
