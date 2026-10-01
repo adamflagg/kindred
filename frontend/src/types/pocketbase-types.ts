@@ -87,6 +87,7 @@ export const Collections = {
   NormalizedMappings: 'normalized_mappings',
   OriginalBunkRequests: 'original_bunk_requests',
   PaymentMethods: 'payment_methods',
+  PermissionDescriptions: 'permission_descriptions',
   PersonCustomValues: 'person_custom_values',
   PersonTagDefs: 'person_tag_defs',
   Persons: 'persons',
@@ -2059,6 +2060,15 @@ export type PaymentMethodsRecord = {
   updated: IsoAutoDateString
 }
 
+export type PermissionDescriptionsRecord = {
+  base_description: string
+  codename: string
+  created: IsoAutoDateString
+  description: string
+  id: string
+  updated: IsoAutoDateString
+}
+
 export type PersonCustomValuesRecord = {
   created: IsoAutoDateString
   field_definition?: RecordIdString
@@ -2527,6 +2537,7 @@ export type UsersRecord<Tcached_permissions = unknown> = {
   id: string
   is_admin?: boolean
   last_login?: IsoDateString
+  last_seen?: IsoDateString
   name?: string
   password: string
   tokenKey: string
@@ -2779,6 +2790,8 @@ export type OriginalBunkRequestsResponse<Texpand = unknown> = Required<OriginalB
   BaseSystemFields<Texpand>
 export type PaymentMethodsResponse<Texpand = unknown> = Required<PaymentMethodsRecord> &
   BaseSystemFields<Texpand>
+export type PermissionDescriptionsResponse<Texpand = unknown> =
+  Required<PermissionDescriptionsRecord> & BaseSystemFields<Texpand>
 export type PersonCustomValuesResponse<Texpand = unknown> = Required<PersonCustomValuesRecord> &
   BaseSystemFields<Texpand>
 export type PersonTagDefsResponse<Texpand = unknown> = Required<PersonTagDefsRecord> &
@@ -2922,6 +2935,7 @@ export type CollectionRecords = {
   normalized_mappings: NormalizedMappingsRecord
   original_bunk_requests: OriginalBunkRequestsRecord
   payment_methods: PaymentMethodsRecord
+  permission_descriptions: PermissionDescriptionsRecord
   person_custom_values: PersonCustomValuesRecord
   person_tag_defs: PersonTagDefsRecord
   persons: PersonsRecord
@@ -3026,6 +3040,7 @@ export type CollectionResponses = {
   normalized_mappings: NormalizedMappingsResponse
   original_bunk_requests: OriginalBunkRequestsResponse
   payment_methods: PaymentMethodsResponse
+  permission_descriptions: PermissionDescriptionsResponse
   person_custom_values: PersonCustomValuesResponse
   person_tag_defs: PersonTagDefsResponse
   persons: PersonsResponse

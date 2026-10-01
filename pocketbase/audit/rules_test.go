@@ -34,8 +34,8 @@ func TestRedactedKeys(t *testing.T) {
 	if !slices.Equal(redactedKeys, want) {
 		t.Fatalf("redactedKeys = %v, want %v", redactedKeys, want)
 	}
-	if got := derivedFields["users"]; !slices.Equal(got, []string{"cached_permissions"}) {
-		t.Fatalf(`derivedFields["users"] = %v, want [cached_permissions]`, got)
+	if got := derivedFields["users"]; !slices.Equal(got, []string{"cached_permissions", "last_seen"}) {
+		t.Fatalf(`derivedFields["users"] = %v, want [cached_permissions last_seen]`, got)
 	}
 }
 
@@ -54,6 +54,7 @@ func TestClassify(t *testing.T) {
 		{"users", root, TypeAccess, true},
 		{"_superusers", root, TypeAccess, true},
 		{"roles", user, TypeRoles, true},
+		{"permission_descriptions", user, TypeRoles, true},
 		{"user_roles", root, TypeAccess, true},
 		{"user_roles", user, TypeAccess, true},
 		{"config", user, TypeSettings, true},
