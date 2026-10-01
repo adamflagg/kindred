@@ -63,7 +63,10 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         "These requests' change history can't be replayed to that date, so only their posted rounds show, and "
         "every pool's Needs an offer, Pending approval, Held and Remaining stay empty"
     ),
-    "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
+    "request_deleted": (
+        "Deleted since; its history can't be replayed, so it isn't shown, and every pool's Needs an offer, "
+        "Pending approval, Held, Remaining and outside grants stay empty"
+    ),
     "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
     "rules_history": (
         "The rules' change history for this season can't be replayed to that date, so nothing is priced: only "
@@ -94,7 +97,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "posted": (
         "Posted, as a request's round and in the budget's cells and strip counts, is left empty where a "
         "request's payer shares or line placements can't be replayed (see payer_shares_history and "
-        "line_placements_history)"
+        "line_placements_history); the row's Notes are left empty with it (its ledger Note can't be built)"
     ),
     "accepted": (
         "Accepted, in the budget's cells and strip counts, is left empty with Posted (see payer_shares_history "

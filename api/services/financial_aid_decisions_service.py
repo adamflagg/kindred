@@ -340,6 +340,7 @@ class Season:
     # grant by then has no logged placement (its household's pools, and money off requests, stay empty).
     gapped: Mapping[str, str] = field(default_factory=dict)
     grants_unplaced: bool = False
+    deleted: frozenset[str] = frozenset()  # past read: requests deleted since, which can't be shown or priced
     # Sub-project 10b-2: the cancelled live requests (D101). Empty on a past read (not rebuilt).
     cancellations: Mapping[str, Cancellation] = field(default_factory=dict)
     # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
@@ -360,14 +361,12 @@ Names = tuple[dict[int, str], dict[int, str]]
 
 @dataclass(frozen=True)
 class _PastLedgerInputs:
-    """A past read's ledger loads: the dated lines, and the payer shares and staff placements as they
-    stand now (the replay's `current`) with their change logs."""
+    """A past read's ledger loads: the dated lines, and the staff placements as they stand now (the
+    replay's `current`) with their change log."""
 
     camp_lines: list[CampLine]
     overrides: list[LineOverride]
     override_log: list[LogRow]
-    shares: list[PayerShareRecord]
-    share_log: list[LogRow]
 
 
 @dataclass(frozen=True)
@@ -828,27 +827,29 @@ def _pricing_gap(
     placed: PlacementsAsOf,
 ) -> str | None:
     """Which undated or unreplayable input keeps this request from being priced as of the date, if any.
-    A request that wasn't live then (its status, or cancelled in Kindred by then) shows only its posted
-    rounds, exactly as live does, so none reaches it."""
+    A request that wasn't live then (its status) shows only its posted rounds, exactly as live does, so none
+    reaches it. One cancelled in Kindred by then also shows only those, but Decision 19 still counts the
+    grants on it in its pool, so a grant with no logged placement reaches it."""
     if not rules_known:
         return "rules_history"
     if unrebuilt:
         return "request_history"
-    if request.status not in _LIVE or cancelled:
+    if request.status not in _LIVE:
         return None
+    unplaced = (
+        request.household_cm_id in placed.households
+        or request.person_cm_id in placed.people
+        or request.id in placed.requests
+    )
+    if cancelled:
+        return "grant_placement" if unplaced else None
     if request.application_id in bad_applications:
         return "application_history"
     if request.id in bad_shares:
         return "pricing_shares_history"
     if request.person_cm_id > 0 and request.equity is None:
         return "equity_not_recorded"
-    if (
-        request.household_cm_id in placed.households
-        or request.person_cm_id in placed.people
-        or request.id in placed.requests
-    ):
-        return "grant_placement"
-    return None
+    return "grant_placement" if unplaced else None
 
 
 def _posted_before_request(
@@ -881,14 +882,16 @@ def _home(
 
 def _gapped_pools(season: Season) -> frozenset[str] | None:
     """The pools a gap request sits in, as the budget places it (budget._home_pool); None, meaning
-    every pool, when one can't be placed: its history can't be replayed, or it has no pool."""
+    every pool, when one can't be placed: its history can't be replayed, or it has no pool. A request deleted
+    since can't be priced or placed at all, so every pool then (it may have sat in any)."""
+    if season.deleted:
+        return None
     pools: set[str] = set()
     for request_id, gap in season.gapped.items():
         priced = season.priced[request_id]
         if gap in ("rules_history", "request_history"):
             return None
-        if not priced.live:
-            continue
+        # A gap request that isn't live is one cancelled in Kindred (Decision 19: its grants stay in its pool).
         home = priced.pool or next((view.pool for view in priced.rounds if view.pool), None)
         if home is None:
             return None
@@ -935,7 +938,7 @@ def _posted_unknown(row: GridRowOut) -> GridRowOut:
     """A past row whose payer shares or staff placements can't be replayed: whether CampMinder had
     reversed its posted money is unknown, so the money is left empty (never guessed)."""
     rounds = [r.model_copy(update={"posted": None, "clawed_back": False}) for r in row.rounds]
-    return row.model_copy(update={"rounds": rounds, "total_posted": None})
+    return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None})
 
 
 def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
@@ -1087,12 +1090,10 @@ class FinancialAidDecisionsService:
             self._store.fetch_last_ledger_sync(year),
         )
 
-    async def _past_ledger_side(
-        self, year: int, shares: list[PayerShareRecord], share_log: list[LogRow]
-    ) -> _PastLedgerInputs | None:
+    async def _past_ledger_side(self, year: int) -> _PastLedgerInputs | None:
         """What a past read needs of the ledger: the (dated) lines, and each undated record as it stands
         now, read BEFORE its change log, only as the replay's `current` (3c-1). With no lines there is
-        nothing to place or claw back, and none of it is read. The payer shares and their log come from
+        nothing to place or claw back, and none of it is read. The payer shares are replayed once, by
         past_season, which prices with them too (3c-2)."""
         camp_lines, overrides = await asyncio.gather(
             self._store.fetch_camp_lines(year, recorded_times=True), self._store.fetch_line_overrides(year)
@@ -1100,7 +1101,7 @@ class FinancialAidDecisionsService:
         if not camp_lines:
             return None
         override_log = await self._store.fetch_change_log(year, AID_ATTRIBUTION_OVERRIDES)
-        return _PastLedgerInputs(camp_lines, overrides, override_log, shares, share_log)
+        return _PastLedgerInputs(camp_lines, overrides, override_log)
 
     async def season(self, year: int) -> Season:
         """Every request of the season priced now, with its rounds and its holds (D21: the server decides)."""
@@ -1295,14 +1296,14 @@ class FinancialAidDecisionsService:
                     self._register(year),  # today's, only to find the grants the log can't place
                 ),
             )
-            ledger_in = await self._past_ledger_side(year, shares_now, share_log)
+            ledger_in = await self._past_ledger_side(year)
             rules, gaps = await rules_read
         finally:
             rules_read.cancel()
             await asyncio.gather(rules_read, return_exceptions=True)  # retrieve its exception, if it had one
         requests, unrebuilt, deleted = _requests_as_of(log, at, today)
         applications, bad_applications = _applications_as_of(app_log, at, applications_now)
-        shares_of, bad_shares, _ = _shares_as_of(shares_now, share_log, at)
+        shares_of, bad_shares, bad_share_households = _shares_as_of(shares_now, share_log, at)
         shares = [share for group in shares_of.values() for share in group]
         placed = placements_as_of(logged, register, grant_log, at, posted_by=posted_by)
         grants = grant_inputs_by_request(placed.rows)
@@ -1384,7 +1385,15 @@ class FinancialAidDecisionsService:
         posted_unknown: frozenset[str] = frozenset()
         if ledger_in is not None:
             ledger_gaps, posted_unknown = self._ledger_as_of(
-                ledger_in, at, axis, requests, session_map, rounds, priced, notes=year >= FIRST_TICKED_SEASON
+                ledger_in,
+                at,
+                axis,
+                requests,
+                session_map,
+                rounds,
+                priced,
+                (shares_of, bad_shares, bad_share_households),
+                notes=year >= FIRST_TICKED_SEASON,
             )
             gaps = (*gaps, *ledger_gaps)
         grants_unplaced = bool(placed.households or placed.people or placed.requests)
@@ -1413,6 +1422,7 @@ class FinancialAidDecisionsService:
             posted_unknown=posted_unknown,
             gapped=gapped,
             grants_unplaced=grants_unplaced,
+            deleted=deleted,
         )
 
     @staticmethod
@@ -1424,15 +1434,16 @@ class FinancialAidDecisionsService:
         sessions: Mapping[int, SessionRow],
         rounds: Mapping[str, Mapping[int, RoundState]],
         priced: dict[str, PricedRequest],
+        shares_as_of: tuple[dict[str, tuple[PayerShareRecord, ...]], frozenset[str], frozenset[int]],
         *,
         notes: bool = False,
     ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
-        """Clawbacks as of `at`, and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied to `priced` in place; the gaps and the requests whose posted money
-        is left empty (their shares or placements can't be replayed). On the campminder axis the lines
+        """Clawbacks as of `at`, and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
+        to `priced` in place; the gaps and the requests whose posted money is left empty (their shares or placements can't be replayed). On the campminder axis the lines
         cut on CampMinder's post and reversal dates; on recorded, also on when Kindred had recorded each
         line and its reversal (as_recorded, ruling C), so everything below reads that set."""
         camp_lines = inputs.camp_lines if axis == "campminder" else as_recorded(inputs.camp_lines, at)
-        shares_of, bad_shares, bad_share_households = _shares_as_of(inputs.shares, inputs.share_log, at)
+        shares_of, bad_shares, bad_share_households = shares_as_of
         placements, splits, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
         ledger = build_ledger(
             camp_lines,

@@ -13,9 +13,10 @@ from typing import Any
 import pytest
 
 from api.constants.collections import AID_APPLICATIONS, AID_GRANTS, AID_REQUESTS
+from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, _applications_as_of
 from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
-from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, EquityAnswers
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import BUDGET_GAPS, GRID_GAPS, REMAINING_GAPS, DecisionEvent
@@ -291,3 +292,77 @@ async def test_a_past_date_shows_the_ledger_note_live_showed_then() -> None:
     assert note in [n.message for n in past.notes or []]
     before = _row(await service.grid(YEAR, as_of=date(2027, 3, 4)), EMMA)
     assert note not in [n.message for n in before.notes or []]
+
+
+@pytest.mark.asyncio
+async def test_a_request_deleted_since_empties_every_pool_and_the_total_and_is_named() -> None:
+    """A request deleted after the date can't be priced then, so no pool's Needs an offer or Remaining may read
+    as exact while leaving it out."""
+    store = _two_families()
+    del store.requests[LIAM]
+    store.change_log = [r for r in store.change_log if r.entity_id != LIAM]
+    log_update(store, AID_REQUESTS, LIAM, {"ask": 4000.0}, {"ask": 3500.0}, _day(3, 1))  # no create row
+    store.change_log.append(
+        LogRow(
+            id="log900000000002",
+            entity=AID_REQUESTS,
+            entity_id=LIAM,
+            before={"ask": 3500.0},
+            after=None,
+            created=_day(3, 25),
+        )
+    )
+    service = _service(store)
+    budget = await service.budget(YEAR, as_of=MAR_9)
+    camp = _pool(budget, "camp_pool")
+    assert (camp.total.needs_offer, camp.total.remaining, budget.total.total.remaining) == (None, None, None)
+    remaining = await service.remaining(YEAR, as_of=MAR_9)
+    assert [p.remaining for p in remaining.pools] == [None, None, None]
+    assert remaining.total is None
+    assert "request_deleted" in [g.figure for g in budget.not_rebuilt]
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_request_in_a_household_with_an_unlogged_grant_empties_its_pools_outside_grants() -> None:
+    """Decision 19 counts a cancelled request's outside grants in its pool, so the unlogged grant must not
+    read as 0 there."""
+    store = _two_families()
+    store.cancel_events.append(
+        CancelEvent("can000000000002", EMMA, "cancel", _day(3, 2), reason="schedule", in_kindred=True)
+    )
+    line = replace(grant_row(EMMA, "500"), recorded_at=_day(3, 1))
+    service = _service(store, register=[line])
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "grant_placement")
+    assert gap.requests == [EMMA]
+    budget = await service.budget(YEAR, as_of=MAR_9)
+    camp = _pool(budget, "camp_pool")
+    assert (camp.below.outside_grants, camp.total.remaining) == (None, None)
+    assert budget.outside_grants_off_requests is None
+
+
+@pytest.mark.asyncio
+async def test_a_row_whose_posted_money_is_unknown_loses_its_notes_and_the_gap_says_so() -> None:
+    store = _two_families()
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged
+    store.events.append(
+        DecisionEvent(
+            id="ev0000000000002",
+            request_id=EMMA,
+            round=1,
+            kind="post",
+            created=_day(3, 5),
+            amount=Decimal(1500),
+            effective_on=date(2027, 3, 5),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+    seed_line(store, 9001, "1500", person=0, posted=_day(3, 5))
+    grid = await _service(store).grid(YEAR, as_of=MAR_9)
+    emma, liam = _row(grid, EMMA), _row(grid, LIAM)
+    assert (emma.total_posted, emma.notes) == (None, None)
+    assert liam.notes  # the ask-above-cost note stands where nothing is unknown
+    gap = next(g for g in grid.not_rebuilt if g.figure == "posted")
+    assert "Note" in gap.reason
