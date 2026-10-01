@@ -184,18 +184,18 @@ describe('RoleDrawer', () => {
   it('new role derives the slug from the name until edited, then creates', async () => {
     const { onCreated } = renderRoleDrawer(null)
     expect(screen.getByRole('button', { name: 'Create role' })).toBeDisabled()
-    await userEvent.type(screen.getByLabelText('Name'), 'Health Center')
-    expect(screen.getByLabelText('Slug')).toHaveValue('health-center')
+    await userEvent.type(screen.getByLabelText('Name'), 'Office Staff')
+    expect(screen.getByLabelText('Slug')).toHaveValue('office-staff')
     expect(screen.getByRole('button', { name: 'Create role' })).toBeEnabled()
     await userEvent.type(screen.getByLabelText('Slug'), 'x')
     await userEvent.type(screen.getByLabelText('Name'), 's')
-    expect(screen.getByLabelText('Slug')).toHaveValue('health-centerx')
+    expect(screen.getByLabelText('Slug')).toHaveValue('office-staffx')
     await userEvent.click(screen.getByRole('checkbox', { name: /Google Sheets export/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Create role' }))
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'Health Centers',
-        slug: 'health-centerx',
+        name: 'Office Staffs',
+        slug: 'office-staffx',
         permissions: ['sheets.export'],
         is_system: false,
       })

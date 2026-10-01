@@ -75,7 +75,7 @@ describe('RolesMatrix with the real RoleDrawer', () => {
       </QueryClientProvider>
     )
     await userEvent.click(screen.getByRole('button', { name: /New role/ }))
-    await userEvent.type(screen.getByLabelText('Name'), 'Health Center')
+    await userEvent.type(screen.getByLabelText('Name'), 'Office Staff')
 
     const snap: string[] = []
     const watch = new MutationObserver(() => {
@@ -86,9 +86,7 @@ describe('RolesMatrix with the real RoleDrawer', () => {
     watch.observe(document.body, { childList: true, subtree: true })
 
     await userEvent.click(screen.getByRole('button', { name: 'Create role' }))
-    await waitFor(() =>
-      expect(screen.getByTestId('role-drawer')).toHaveTextContent('Health Center')
-    )
+    await waitFor(() => expect(screen.getByTestId('role-drawer')).toHaveTextContent('Office Staff'))
     watch.disconnect()
     expect(snap).toEqual([])
   })
