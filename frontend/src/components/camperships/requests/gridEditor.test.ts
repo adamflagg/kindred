@@ -2,18 +2,18 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { appealTarget } from './gridEditor'
+import { appealTarget, LIVE_REQUEST_STATUSES } from './gridEditor'
 import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_SAMUEL } from './gridFixtures'
 
 // The shared contract: the pytest holds the write's own refusals (`_ask_refusal`) to it (I5).
-const WORDS = (
-  JSON.parse(
-    readFileSync(
-      resolve(__dirname, '../../../../../tests/fixtures/camperships_frontend_mirrors.json'),
-      'utf-8'
-    )
-  ) as { ask_refusals: Record<string, string> }
-).ask_refusals
+const MIRRORS = JSON.parse(
+  readFileSync(
+    resolve(__dirname, '../../../../../tests/fixtures/camperships_frontend_mirrors.json'),
+    'utf-8'
+  )
+) as { ask_refusals: Record<string, string>; live_request_statuses: string[] }
+const WORDS = MIRRORS.ask_refusals
+const LIVE_STATUSES_FIXTURE = MIRRORS.live_request_statuses
 
 describe('appealTarget (Decision 13)', () => {
   it('opens the Round 2 ask once Round 1 is posted, on the ask already keyed', () => {
@@ -53,5 +53,23 @@ describe('appealTarget (Decision 13)', () => {
       cancellation: { by: 'kindred', on: null, reason: 'medical', note: '' },
     })
     expect(appealTarget(cancelled)).toEqual({ kind: 'none', why: WORDS['cancelled_in_kindred'] })
+  })
+
+  it("gets no editor for a request that isn't live, and says why in the write's words", () => {
+    for (const status of ['withdrawn', 'duplicate', 'duplicate_pending']) {
+      const row = gridRow({ request_status: status, rounds: [roundOut(1, 'posted')] })
+      expect(appealTarget(row)).toEqual({
+        kind: 'none',
+        why: (WORDS['not_live'] ?? '').replace('{status}', status),
+      })
+    }
+  })
+
+  it('keeps an editor for the statuses the server treats as live, through the shared fixture', () => {
+    for (const status of LIVE_STATUSES_FIXTURE) {
+      const row = gridRow({ request_status: status, rounds: [roundOut(1, 'posted')] })
+      expect(appealTarget(row).kind).toBe('appeal')
+    }
+    expect([...LIVE_REQUEST_STATUSES].sort()).toEqual([...LIVE_STATUSES_FIXTURE].sort())
   })
 })

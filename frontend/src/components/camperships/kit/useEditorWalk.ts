@@ -208,7 +208,8 @@ export function useEditorWalk({
             const open = now.current
             // Ruling A, refined (Decision 3): come back at once only when the row being worked on
             // has nothing typed; else focus stays and the surface's failure line offers Go back.
-            if (jump && open !== rowKey && typedOn(typed.current, open) === null) {
+            const stillThere = known.current === undefined || known.current.has(rowKey)
+            if (jump && stillThere && open !== rowKey && typedOn(typed.current, open) === null) {
               setHighlighted(rowKey)
             }
             return false

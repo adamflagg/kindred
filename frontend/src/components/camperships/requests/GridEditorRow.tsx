@@ -1,5 +1,6 @@
 import { useCallback, type MouseEvent } from 'react'
 
+import { ACTION_LINK } from '../../admin/lodging/lodgingStyles'
 import { useAidEditorPreview } from '../../../hooks/camperships/useAidEditorPreview'
 import type { ApiAidGridRow } from '../../../types/api-types'
 import { campToday } from '../kit/dates'
@@ -81,6 +82,16 @@ export function GridEditorRow({
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
       <span className="text-muted-foreground">{target.why}</span>
+      {walk.saveError !== null && (
+        // A refused save can leave a row nothing can be keyed on (posted or cancelled meanwhile):
+        // with no editor to clear it, "Dismiss" does (Esc's clear), so it can't hold every exit.
+        <>
+          <span className="text-amber-700 dark:text-amber-400">{`Couldn't save: ${walk.saveError}`}</span>
+          <button type="button" className={ACTION_LINK} onClick={walk.onCancel}>
+            Dismiss
+          </button>
+        </>
+      )}
       <a href={href} onClick={open} className="text-primary font-medium hover:underline">
         Open the household ›
       </a>

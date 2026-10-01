@@ -596,4 +596,15 @@ describe('useEditorWalk: rowKeys (build ruling 2)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
     expect(go).not.toHaveBeenCalled()
   })
+
+  it("doesn't jump back to a failed row the surface no longer has (M4)", async () => {
+    const { rerender } = renderWalk({ rowKeys: new Set(['r1', 'r2', 'r3']) })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    rerender(<Page rowKeys={new Set(['r2', 'r3'])} />)
+    moves = []
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    expect(moves).toEqual([])
+    expect(editing('Garcia')).toBeInTheDocument()
+  })
 })
