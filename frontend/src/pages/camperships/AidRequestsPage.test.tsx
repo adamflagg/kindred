@@ -188,6 +188,16 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText(/posts one amount per household/)).toBeNull()
   })
 
+  it('says on Waiting on the family that Posted is this round, not yet accepted (owner ruling I2)', () => {
+    renderAt('/aid/requests?view=waiting')
+    expect(screen.getByText(/posted in this round, not yet accepted/)).toBeInTheDocument()
+  })
+
+  it('shows the Posted note on Waiting on the family only', () => {
+    renderAt('/aid/requests?view=holds')
+    expect(screen.queryByText(/posted in this round, not yet accepted/)).toBeNull()
+  })
+
   it('keeps showing loaded rows when a background refetch fails (Decision 33)', () => {
     grid = { data: LIVE, isLoading: false, error: new Error('Network down') }
     renderAt('/aid/requests')
