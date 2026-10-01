@@ -71,7 +71,8 @@ class HouseholdTotalsOut(BaseModel):
 
 
 class ShareLineOut(BaseModel):
-    """One payer of a request: the share table's row, or the one money line when there is one payer (D32)."""
+    """One payer of a request: the share table's row, or the one money line when there is one payer (D32).
+    `chip` 0 means the payer is outside the page's scope: it has no household card."""
 
     household_cm_id: int
     chip: int

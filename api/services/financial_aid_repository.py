@@ -270,7 +270,9 @@ class FinancialAidRepository:
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
         """Kindred users' display names by lowercased email, for the receipt label (§4.7): who ticked Posted, who
         decided a Round 3 amount. An actor that isn't a person (system:ledger) or has no name is left out."""
-        wanted = sorted({e.strip().lower() for e in emails if "@" in e})
+        # PocketBase's `=` is case-sensitive, so ask for the address as recorded and in lowercase; results are
+        # keyed by lowercase.
+        wanted = sorted({form for e in emails if "@" in e for form in (e.strip(), e.strip().lower())})
         out: dict[str, str] = {}
         for start in range(0, len(wanted), USER_CHUNK):
             terms = " || ".join(f"email = '{pb_escape(e)}'" for e in wanted[start : start + USER_CHUNK])

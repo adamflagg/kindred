@@ -482,7 +482,7 @@ class _Ledger:
 
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
         self.name_reads.append(frozenset(emails))
-        return {e: "Test User" for e in emails if e == ACTOR}
+        return {e.lower(): "Test User" for e in emails if e.lower() == ACTOR}
 
     async def fetch_links(self, year: int) -> list[Any]:
         return [
@@ -731,16 +731,25 @@ async def test_a_household_whose_only_request_is_withdrawn_still_opens_a_page() 
 
 
 @pytest.mark.asyncio
-async def test_a_malformed_log_row_does_not_fail_the_page() -> None:
+@pytest.mark.parametrize("before", ["{not json", '["ab"]', "[[1, 2]]", "5", '"x"'])
+async def test_a_malformed_or_non_object_log_detail_does_not_fail_the_page(before: str) -> None:
     history = _History()
     bad = _log("log000000000009", "aid_decisions", f"{EMMA}:2", "post", ACTOR, "2027-03-11 17:00:00.000Z")
-    bad.before = "{not json"
+    bad.before = before
     bad.after = "[1, 2]"
     history.rows.append(bad)
     page = await _page_service(_family(), history=history).read(YEAR, JOHNSON)
     entry = next(h for h in page.history if h.entity_id == f"{EMMA}:2")
     assert (entry.before, entry.after) == (None, None)
     assert len(page.history) == 6  # the rest of the timeline is intact
+
+
+@pytest.mark.asyncio
+async def test_a_log_row_with_no_created_time_is_left_out_of_the_timeline() -> None:
+    history = _History()
+    history.rows.append(_log("log000000000009", "aid_decisions", f"{EMMA}:2", "post", ACTOR, ""))
+    page = await _page_service(_family(), history=history).read(YEAR, JOHNSON)
+    assert len(page.history) == 5
 
 
 @pytest.mark.asyncio
@@ -758,5 +767,44 @@ async def test_a_ticking_actors_name_is_found_whatever_the_case_of_their_email()
     ledger = _Ledger()
     page = await _page_service(store, ledger=ledger).read(YEAR, GARCIA)
     liam = next(card for card in page.requests if card.row.request_id == LIAM)
-    assert ledger.name_reads == [frozenset({ACTOR})]  # asked for lowercase
+    assert ledger.name_reads == [frozenset({ACTOR.upper()})]  # asked as recorded; the repository adds the lowercase
     assert liam.receipts[0].label.ticked_by_name == "Test User"
+
+
+def test_a_round_locked_by_the_ledger_names_no_one() -> None:
+    from api.services.financial_aid_household_page import receipts
+    from bunking.financial_aid.decisions import PricedRequest, RoundState  # noqa: F401
+
+    state = RoundState(
+        round=1,
+        posted=True,
+        posted_on=date(2027, 3, 9),
+        posted_by="registrar@example.com",
+        lock_source="ledger",
+        rules_version=1,
+        snapshot={"result": {"trace": []}},
+    )
+    priced = SimpleNamespace(rounds=[SimpleNamespace(round=1)], result=None)
+    (out,) = receipts(priced, {1: state}, year=YEAR, rules_version=1, names={ACTOR: "Test User"})  # type: ignore[arg-type]
+    assert (out.label.kind, out.label.lock_source, out.label.ticked_by_name) == ("locked", "ledger", None)
+
+
+def test_the_band_counts_a_confirmed_split_request_under_its_short_share() -> None:
+    """D59: confirmed overall, but one payer's share is short: the band agrees with Today and the cards."""
+    row = _row(
+        EMMA,
+        JOHNSON,
+        rounds=[_round(1, "posted", decided=1500.0, posted=1500.0, posted_on=date(2031, 3, 9))],
+        total_posted=1500.0,
+        confirmation=_confirmation(
+            "confirmed",
+            1500.0,
+            1500.0,
+            [
+                ShareConfirmationOut(household_cm_id=JOHNSON, expected=900.0, in_campminder=1100.0, status="confirmed"),
+                ShareConfirmationOut(household_cm_id=GARCIA, expected=600.0, in_campminder=400.0, status="short"),
+            ],
+        ),
+    )
+    out = totals([row], {})
+    assert [(s.status, s.count, s.gap) for s in out.states] == [("confirmed", 1, 200.0), ("short", 1, -200.0)]

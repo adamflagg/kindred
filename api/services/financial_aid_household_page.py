@@ -13,6 +13,7 @@ Included requests (D77's band) are live ones: not withdrawn, duplicate or cancel
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -37,7 +38,6 @@ from api.schemas.financial_aid_household_page import (
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
 from api.services.financial_aid_casework_service import CaseworkNotFoundError
-from api.services.financial_aid_change_log_reads import json_object
 from api.services.financial_aid_decisions_service import (
     LIVE_STATUSES,
     DecisionsStore,
@@ -188,6 +188,17 @@ def band_grants_by_request(register: Iterable[RegisterRow]) -> dict[str, Decimal
     return outside_grants_by_request(register)
 
 
+def _band_states(row: GridRowOut) -> list[tuple[ConfirmationStatusOut, Decimal]]:
+    """A request's confirmation for the band: its own state, or, when it is confirmed and split, each payer
+    share's (D59: one payer short is not "confirmed"), as Today and the household cards count it."""
+    c = row.confirmation
+    if c is None:
+        return []
+    if c.status == "confirmed" and c.shares:
+        return [(s.status, Decimal(str(s.in_campminder)) - Decimal(str(s.expected))) for s in c.shares]
+    return [(c.status, Decimal(str(c.gap)))]
+
+
 def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal]) -> HouseholdTotalsOut:
     """The band (D77, §5.8): cost − {camp} aid (decided) − grants = family's share, then Posted with its states.
     Grants come from band_grants_by_request. The share never reads below $0: a last-dollar grantor's first line
@@ -206,11 +217,7 @@ def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal])
         grants=money(grants) if rows else None,
         family_share=money(share) if share is not None else None,
         posted=money(p) if (p := _sum(_dollars(row.total_posted) for row in rows)) is not None else None,
-        states=_states(
-            (row.confirmation.status, Decimal(str(row.confirmation.gap)))
-            for row in rows
-            if row.confirmation is not None
-        ),
+        states=_states(pair for row in rows for pair in _band_states(row)),
     )
 
 
@@ -365,17 +372,21 @@ class HistoryReads(Protocol):
 
 
 def _detail(value: Any) -> dict[str, Any] | None:
-    """A log row's before/after JSON; a malformed or non-object value shows no detail rather than failing the page."""
-    try:
-        return json_object(value)
-    except ValueError, TypeError:
-        return None
+    """A log row's before/after JSON object; anything else (malformed, a list, a scalar) shows no detail
+    rather than failing the page."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else None
+        except ValueError:
+            return None
+    return dict(value) if isinstance(value, dict) else None
 
 
-def _history_entry(record: Any, request_ids: Collection[str]) -> HistoryEntryOut:
+def _history_entry(record: Any, request_ids: Collection[str]) -> HistoryEntryOut | None:
+    """One timeline entry; a row with no created time has no place in the order and is left out."""
     created = parse_pb_datetime(getattr(record, "created", None))
     if created is None:
-        raise ValueError(f"aid_change_log {record.id} has no created time")
+        return None
     entity_id = str(record.entity_id)
     head = entity_id.split(":", 1)[0]
     return HistoryEntryOut(
@@ -442,7 +453,7 @@ class HouseholdPageService:
             for state in season.rounds.get(rid, {}).values()
             for actor in (state.posted_by, state.decided_by)
         } - {""}
-        actors = {a.strip().lower() for a in actors}
+        actors = {a.strip() for a in actors} - {""}
         (names, user_names, postings, dispositions, household_rows, persons), links, details = await asyncio.gather(
             asyncio.gather(
                 self._store.fetch_names(year, scope.households, campers),
@@ -552,7 +563,7 @@ class HouseholdPageService:
                 for p in sorted(postings, key=lambda p: (str(p.post_date or ""), int(p.transaction_cm_id)))
             ],
             links=[_link_row(ln) for ln in family_links],
-            history=[_history_entry(record, request_ids) for record in log],
+            history=[entry for record in log if (entry := _history_entry(record, request_ids)) is not None],
         )
 
 

@@ -296,3 +296,13 @@ async def test_user_names_are_keyed_by_lowercased_email() -> None:
     pb, _ = _pb([SimpleNamespace(email="Registrar@Example.com", name="Test User")])
     out = await FinancialAidRepository(pb).fetch_user_names({"REGISTRAR@example.com"})
     assert out == {"registrar@example.com": "Test User"}
+
+
+@pytest.mark.asyncio
+async def test_user_names_query_both_the_original_and_lowercased_email() -> None:
+    """PocketBase's `=` is case-sensitive: a user stored as Registrar@Example.com is only found by that string."""
+    pb, calls = _pb([SimpleNamespace(email="Registrar@Example.com", name="Test User")])
+    await FinancialAidRepository(pb).fetch_user_names({"Registrar@Example.com"})
+    (call,) = calls
+    assert "email = 'Registrar@Example.com'" in str(call["filter"])
+    assert "email = 'registrar@example.com'" in str(call["filter"])
