@@ -20,9 +20,10 @@ import (
 const devBaseURL = "http://127.0.0.1:8000"
 
 // cacheInvalidatePath is FastAPI's server-cache invalidate endpoint
-// (api/routers/metrics.py). The auth middleware skips it: clearing a cache is
-// safe and idempotent, and its PocketBase callers carry no user.
-const cacheInvalidatePath = "/api/metrics/cache/invalidate"
+// (api/routers/internal.py). It is under /api/internal/, which the auth
+// middleware skips and Caddy blocks at the edge; PocketBase's callers carry no
+// user. The public /api/metrics/cache/invalidate requires bunking.manage.
+const cacheInvalidatePath = "/api/internal/metrics/cache/invalidate"
 
 // invalidateTimeout bounds one invalidate call. The endpoint only clears
 // in-memory caches and schedules a background warm, so it answers in

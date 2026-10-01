@@ -40,8 +40,8 @@ func TestInvalidateCachesNamesTheSyncThatFinished(t *testing.T) {
 	if err := InvalidateCaches(context.Background(), ts.URL, "bunk_assignments"); err != nil {
 		t.Fatalf("InvalidateCaches: %v", err)
 	}
-	if gotMethod != http.MethodPost || gotPath != "/api/metrics/cache/invalidate" {
-		t.Errorf("got %s %s, want POST /api/metrics/cache/invalidate", gotMethod, gotPath)
+	if gotMethod != http.MethodPost || gotPath != "/api/internal/metrics/cache/invalidate" {
+		t.Errorf("got %s %s, want POST /api/internal/metrics/cache/invalidate", gotMethod, gotPath)
 	}
 	if gotQuery != "sync_type=bunk_assignments" {
 		t.Errorf("query = %q, want sync_type=bunk_assignments", gotQuery)

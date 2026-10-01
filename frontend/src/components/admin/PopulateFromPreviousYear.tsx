@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { invalidateServerCaches } from '../../utils/queryClient'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 import {
   matchSessions,
@@ -219,7 +220,7 @@ export function PopulateFromPreviousYear() {
       // in the API's 2 h server-side metrics_cache, so clear it BEFORE the
       // invalidations below trigger a refetch, or the refetch reads the stale
       // cached body. Best-effort: a failed clear must not fail the populate.
-      await fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+      await invalidateServerCaches()
 
       // Invalidate all registration config queries
       await Promise.all([

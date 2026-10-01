@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { queryClient, invalidateSyncData } from './queryClient'
+import { pb } from '../lib/pocketbase'
 
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({}))
 
@@ -67,9 +68,24 @@ describe('invalidateSyncData', () => {
 
   it('fires server-side cache invalidation', () => {
     invalidateSyncData()
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/metrics/cache/invalidate', {
-      method: 'POST',
-    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/metrics/cache/invalidate',
+      expect.objectContaining({ method: 'POST' })
+    )
+  })
+
+  // The route requires bunking.manage (it used to be unauthenticated), so a bare
+  // fetch would now 401 for every caller.
+  it('sends the PocketBase token with the server-side invalidation', () => {
+    // setup.ts stubs localStorage, which LocalAuthStore reads its token from.
+    const tokenSpy = vi.spyOn(pb.authStore, 'token', 'get').mockReturnValue('test-token')
+    try {
+      invalidateSyncData()
+      const init = vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1] as RequestInit
+      expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer test-token')
+    } finally {
+      tokenSpy.mockRestore()
+    }
   })
 
   // kindred#2803: the server clears its weekend cache only for a sync that writes a
@@ -79,7 +95,7 @@ describe('invalidateSyncData', () => {
     invalidateSyncData('bunk_assignments')
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/metrics/cache/invalidate?sync_type=bunk_assignments',
-      { method: 'POST' }
+      expect.objectContaining({ method: 'POST' })
     )
   })
 

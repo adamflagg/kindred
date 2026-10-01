@@ -7,6 +7,7 @@ import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { useAdminSessions } from '../../hooks/useAdminSessions'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { invalidateServerCaches } from '../../utils/queryClient'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 import {
   isQuestSession,
@@ -288,7 +289,7 @@ export function SessionConfigTable() {
       // it BEFORE the invalidations below trigger a refetch, or the refetch
       // reads the stale cached body. Best-effort: a failed clear must not turn
       // a saved config into a reported failure.
-      await fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+      await invalidateServerCaches()
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.gradeEligibilityConfig(currentYear),

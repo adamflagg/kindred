@@ -29,6 +29,8 @@ from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.graph.social_graph_builder import SocialGraphBuilder
+from bunking.rbac.dependencies import require_permission
+from bunking.rbac.permissions import Permission
 
 from ..dependencies import graph_cache, lodging_cache, metrics_cache, pb
 from ..schemas.day1 import Day1Response
@@ -635,27 +637,21 @@ async def get_day1(
 # ============================================================================
 
 
-@router.post("/cache/invalidate")
-async def invalidate_metrics_cache(
-    sync_type: str | None = Query(
-        None,
-        description=(
-            "The sync job whose completion triggered this call. Scopes the lodging year cache and the "
-            "social graph cache: each is cleared when this job writes a table it reads, or when no job is named."
-        ),
-    ),
-) -> dict[str, int]:
+def invalidate_server_caches(sync_type: str | None) -> dict[str, int]:
     """Invalidate cached metrics responses + geo person-id cache + lodging year cache + social graph cache.
 
-    Auth is handled by the middleware (skipped for this path since cache
-    clearing is safe and idempotent). Called by:
-    - PocketBase's sync orchestrator after EVERY job it finishes, naming the
-      job (kindred#2803) -- so an unattended scheduled sync clears these too,
-      not only one a browser tab happened to watch finish
-    - PocketBase hook on registration config changes (internal, no user context)
-    - Frontend on sync completion (via invalidateSyncData) -- now redundant
-      with the orchestrator's call, and kept because a second clear is harmless
-    - Frontend after saving registration dates
+    Shared by two routes, which differ only in who may call them:
+    - `POST /api/internal/metrics/cache/invalidate` (api/routers/internal.py),
+      unauthenticated and blocked at the edge by Caddy: PocketBase's sync
+      orchestrator after EVERY job it finishes, naming the job (kindred#2803),
+      and its hook on registration config changes -- neither carries a user
+    - `POST /api/metrics/cache/invalidate` below, `bunking.manage` only: the
+      browser, on sync completion (redundant with the orchestrator's call, kept
+      because a second clear is harmless) and after admin config saves
+
+    This used to be one unauthenticated route on the middleware's skip list,
+    which let anyone who could reach the API clear every cache and trigger a
+    lodging warm.
 
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
     changes attendee status_id, which feeds _fetch_active_person_pb_ids.
@@ -681,6 +677,21 @@ async def invalidate_metrics_cache(
     if sync_writes_any(sync_type, SocialGraphBuilder.READ_TABLES):
         graph_cache.clear()
     return {"cleared": cleared}
+
+
+@router.post("/cache/invalidate")
+async def invalidate_metrics_cache(
+    sync_type: str | None = Query(
+        None,
+        description=(
+            "The sync job whose completion triggered this call. Scopes the lodging year cache and the "
+            "social graph cache: each is cleared when this job writes a table it reads, or when no job is named."
+        ),
+    ),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> dict[str, int]:
+    """Clear the server caches (browser callers). Requires `bunking.manage`; see `invalidate_server_caches`."""
+    return invalidate_server_caches(sync_type)
 
 
 @router.get("/cache/stats")

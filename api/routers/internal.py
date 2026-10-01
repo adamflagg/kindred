@@ -10,11 +10,12 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from api.constants.geo import GeoCategory
+from api.routers.metrics import invalidate_server_caches
 from api.schemas.financial_aid_decisions import LedgerTicksOut
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
@@ -40,6 +41,22 @@ from ..dependencies import pb
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
+
+
+# --- Cache invalidate ---
+
+
+@router.post("/metrics/cache/invalidate")
+async def invalidate_caches(
+    sync_type: str | None = Query(
+        None,
+        description="The sync job that just finished; scopes the lodging and social graph cache clears.",
+    ),
+) -> dict[str, int]:
+    """Clear the server caches. Called by PocketBase after every sync job and on
+    registration-config changes. The browser uses the authenticated
+    `POST /api/metrics/cache/invalidate` instead (this prefix is blocked at the edge)."""
+    return invalidate_server_caches(sync_type)
 
 
 # --- Geo Normalize ---

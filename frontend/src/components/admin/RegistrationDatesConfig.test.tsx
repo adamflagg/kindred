@@ -16,6 +16,7 @@ const mockUpdate = vi.fn()
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: {
+    authStore: { token: '' },
     collection: () => ({
       getFullList: mockGetFullList,
       create: mockCreate,
