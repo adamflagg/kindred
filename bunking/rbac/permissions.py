@@ -33,17 +33,17 @@ ALL_PERMISSIONS: frozenset[str] = frozenset(getattr(Permission, attr) for attr i
 
 PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.BUNKING_MANAGE: (
-        "Adds placing and editing. The Summer and Weekend boards are open to every signed-in user; "
-        "this permission adds editing bunk requests, scenarios, the solver, board edits and lodging admin."
+        "Place campers and families: edit bunk requests, run scenarios and the solver, edit the summer "
+        "and weekend boards and manage lodging. Both boards are open to every signed-in user; this adds the editing."
     ),
     Permission.FINANCIAL_AID_CASEWORK: (
-        "Adds editing actions on the Camperships screens that financial_aid.view opens: on Requests and "
-        "household pages, move stages, record cancellations, set appeal amounts and cost overrides, "
-        "assign grants and clear the posting worklist. The server enforces it."
+        "Work a family's aid on the Requests and household pages: move stages, record cancellations, "
+        "set appeal amounts and cost overrides, assign grants and clear the posting worklist. "
+        "It only adds editing to the screens that family-detail access opens."
     ),
     Permission.FINANCIAL_AID_RULES: (
-        "Adds, on the Camperships screens that financial_aid.view opens, the Season › Scenarios tab "
-        "and editing the aid rules and budget, approving rounds and setting session capacity."
+        "Set the aid rules and budget, approve rounds, set session capacity and use the Season › Scenarios tab. "
+        "It only adds these to the Camperships screens that family-detail access opens."
     ),
     Permission.FINANCIAL_AID_SUMMARY: (
         "See Camperships totals for reporting. Small groups are hidden, so no family can be picked out."
@@ -56,7 +56,7 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.REGISTRATION_MANAGE: "Set registration dates, budgets and grade eligibility.",
     Permission.SHEETS_EXPORT: "Run the Google Sheets exports and see how they went.",
     Permission.STAFF_HIRING: (
-        "Opens Staff Analysis. Its staff data is admin-only today, so only admins see figures there."
+        "Open the Staff Analysis page. Its staff figures are admin-only today, so only admins see data there."
     ),
     Permission.USERS_MANAGE: (
         "Give and remove other staff's roles. The Users page won't let them change admins or their own roles."
