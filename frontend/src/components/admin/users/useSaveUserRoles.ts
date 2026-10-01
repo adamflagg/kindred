@@ -25,9 +25,12 @@ export function useSaveUserRoles() {
       for (const linkId of remove) batch.collection('user_roles').delete(linkId)
       await batch.send()
     },
-    onSuccess: (_r, { userId }) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.userRoles() })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.userRolesForUser(userId) })
-    },
+    // Returned, so Save stays pending until the links have refetched: the drawer
+    // builds its next `remove` from them, and a stale list would delete the wrong rows.
+    onSuccess: (_r, { userId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.userRoles() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.userRolesForUser(userId) }),
+      ]),
   })
 }
