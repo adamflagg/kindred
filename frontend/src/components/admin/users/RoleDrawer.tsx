@@ -386,7 +386,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
             <input
               className={fieldCls}
               value={name}
-              placeholder="e.g. Health Center"
+              placeholder="e.g. Office Staff"
               onChange={(e) => {
                 setName(e.target.value)
                 if (isNew && !slugTouched) setSlug(slugify(e.target.value))
