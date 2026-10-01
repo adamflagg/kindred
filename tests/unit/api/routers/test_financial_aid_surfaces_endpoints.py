@@ -220,3 +220,37 @@ def test_a_preview_of_round_1_is_422() -> None:
     _stub_preview()
     response = _client().post(f"/api/financial-aid/requests/{REQ}/preview", json={"round": 1, "amount": "400"})
     assert response.status_code == 422
+
+
+# --- the household search (owner F3 #27) -------------------------------------------------------------------------
+
+
+def _stub_search() -> Any:
+    from api.schemas.financial_aid_surfaces import HouseholdSearchResponse
+
+    service = patch("api.routers.financial_aid.HouseholdSearchService").start().return_value
+    service.search = AsyncMock(return_value=HouseholdSearchResponse(year=2031, matches=[], truncated=False))
+    return service
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_the_household_search_is_view_as_the_household_links_are(persona: str) -> None:
+    _stub_search()
+    response = _client(persona).get("/api/financial-aid/household-search/2031?q=garcia")
+    assert response.status_code == (200 if VIEW in PERSONAS[persona] else 403), persona
+
+
+def test_the_household_search_passes_the_season_and_query() -> None:
+    service = _stub_search()
+    assert _client().get("/api/financial-aid/household-search/2031?q=garcia").json() == {
+        "year": 2031,
+        "matches": [],
+        "truncated": False,
+    }
+    service.search.assert_awaited_once_with(2031, "garcia")
+
+
+@pytest.mark.parametrize("query", ["", "a", "x" * 101])
+def test_the_household_search_refuses_a_query_too_short_or_too_long(query: str) -> None:
+    _stub_search()
+    assert _client().get(f"/api/financial-aid/household-search/2031?q={query}").status_code == 422

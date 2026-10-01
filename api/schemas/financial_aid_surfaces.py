@@ -114,3 +114,21 @@ class TodayResponse(BaseModel):
     year: int
     casework: list[TodayLineOut] | None
     finance: list[TodayLineOut] | None
+
+
+class HouseholdMatchOut(BaseModel):
+    """One household the Add-a-link picker can name (owner F3 #27; §6.3 †): its CampMinder id and name, the people on
+    its record this season, the family keys it is linked under (aid_household_links, excluded rows left out), and the
+    other households those keys join."""
+
+    household_cm_id: int
+    family_name: str
+    people: list[str]
+    family_keys: list[str]
+    linked_household_cm_ids: list[int]
+
+
+class HouseholdSearchResponse(BaseModel):
+    year: int
+    matches: list[HouseholdMatchOut]  # by family name, then id; at most MAX_MATCHES
+    truncated: bool  # more households matched than are listed: type more of the name
