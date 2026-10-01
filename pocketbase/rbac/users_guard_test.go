@@ -91,7 +91,7 @@ func newAuthTestApp(t testing.TB, adminGroup string) *tests.TestApp {
 	}
 	users.Fields.Add(&core.BoolField{Name: "is_admin"})
 	users.Fields.Add(&core.JSONField{Name: "cached_permissions", MaxSize: 2000000})
-	users.Fields.Add(&core.DateField{Name: "last_login"})
+	users.Fields.Add(&core.DateField{Name: "last_login"}, &core.DateField{Name: "last_seen"})
 	users.ListRule = types.Pointer(authedRule)
 	users.ViewRule = types.Pointer(authedRule)
 	users.CreateRule = types.Pointer(hardenedUsersCreateRule)
