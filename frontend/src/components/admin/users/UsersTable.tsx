@@ -71,12 +71,15 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
     u.id !== currentUser?.id && !u['is_admin'] && canSeeLastLogin
 
   const counts = useMemo(() => bucketCounts(data.users, data.held), [data.users, data.held])
+  // A ?role= naming a role that no longer exists is ignored: filtering by it would
+  // show "Nobody matches" with no chip to clear.
+  const roleFilter = url.roleId ? data.roles.find((r) => r.id === url.roleId) : undefined
+  const roleId = roleFilter ? url.roleId : null
   const filtered = useMemo(
-    () => filterUsers(data.users, data.held, { search, bucket: url.bucket, roleId: url.roleId }),
-    [data.users, data.held, search, url.bucket, url.roleId]
+    () => filterUsers(data.users, data.held, { search, bucket: url.bucket, roleId }),
+    [data.users, data.held, search, url.bucket, roleId]
   )
   const paged = pageOf(filtered, url.page, PER_PAGE)
-  const roleFilter = url.roleId ? data.roles.find((r) => r.id === url.roleId) : undefined
   const openUser = openUserId ? data.users.find((u) => u.id === openUserId) : undefined
   const now = new Date()
 
@@ -185,141 +188,147 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
         </div>
       </div>
 
-      <div className="bg-card border-border overflow-hidden rounded-xl border">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead>
-              <tr className="border-border border-b">
-                <th className={TH}>Person</th>
-                <th className={TH}>Email</th>
-                <th className={TH}>Roles</th>
-                {canSeeLastLogin && <th className={TH}>Last active</th>}
-                <th className={TH}>Joined</th>
-                <th className={TH} />
-              </tr>
-            </thead>
-            <tbody>
-              {paged.items.map((user) => {
-                const email = String(user['email'] ?? '')
-                const rawName = String(user['name'] ?? '')
-                const name = rawName === '' ? (email.split('@')[0] ?? '') : rawName
-                const avatar = String(user['avatar'] ?? '')
-                const isSelf = user.id === currentUser?.id
-                const isAdminUser = Boolean(user['is_admin'])
-                const manageable = canManage(user)
-                const mine = data.held.get(user.id) ?? []
-                const lastSeen = String(user['last_seen'] ?? '')
-                const created = String(user['created'] ?? '')
-                const fresh = freshness(lastSeen, now)
-                return (
-                  <tr
-                    key={user.id}
-                    data-testid={`user-row-${user.id}`}
-                    onClick={manageable ? () => setOpenUserId(user.id) : undefined}
-                    className={`border-border/50 hover:bg-muted/50 border-b last:border-b-0 ${
-                      manageable ? 'cursor-pointer' : ''
-                    }`}
-                  >
-                    <td className="px-3.5 py-[7px]">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold ${
-                            avatar ? '' : getAvatarColor(email)
-                          }`}
-                        >
-                          {avatar ? (
-                            <img
-                              src={pb.files.getURL(user, avatar, { thumb: '56x56' })}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            (name === '' ? email : name).charAt(0).toUpperCase()
-                          )}
-                        </span>
-                        {manageable ? (
-                          <button
-                            type="button"
-                            data-testid={`manage-${user.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setOpenUserId(user.id)
-                            }}
-                            className="text-foreground text-left font-semibold"
+      {data.users.length === 0 ? (
+        <div className="text-muted-foreground bg-card border-border rounded-xl border p-8 text-center text-sm">
+          Users will appear here after signing in via Pocket ID
+        </div>
+      ) : (
+        <div className="bg-card border-border overflow-hidden rounded-xl border">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead>
+                <tr className="border-border border-b">
+                  <th className={TH}>Person</th>
+                  <th className={TH}>Email</th>
+                  <th className={TH}>Roles</th>
+                  {canSeeLastLogin && <th className={TH}>Last active</th>}
+                  <th className={TH}>Joined</th>
+                  <th className={TH} />
+                </tr>
+              </thead>
+              <tbody>
+                {paged.items.map((user) => {
+                  const email = String(user['email'] ?? '')
+                  const rawName = String(user['name'] ?? '')
+                  const name = rawName === '' ? (email.split('@')[0] ?? '') : rawName
+                  const avatar = String(user['avatar'] ?? '')
+                  const isSelf = user.id === currentUser?.id
+                  const isAdminUser = Boolean(user['is_admin'])
+                  const manageable = canManage(user)
+                  const mine = data.held.get(user.id) ?? []
+                  const lastSeen = String(user['last_seen'] ?? '')
+                  const created = String(user['created'] ?? '')
+                  const fresh = freshness(lastSeen, now)
+                  return (
+                    <tr
+                      key={user.id}
+                      data-testid={`user-row-${user.id}`}
+                      onClick={manageable ? () => setOpenUserId(user.id) : undefined}
+                      className={`border-border/50 hover:bg-muted/50 border-b last:border-b-0 ${
+                        manageable ? 'cursor-pointer' : ''
+                      }`}
+                    >
+                      <td className="px-3.5 py-[7px]">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold ${
+                              avatar ? '' : getAvatarColor(email)
+                            }`}
                           >
-                            {name}
-                          </button>
-                        ) : (
-                          <span className="text-foreground font-semibold">{name}</span>
-                        )}
-                        {isSelf && (
-                          <span className="bg-muted text-muted-foreground rounded-md px-1.5 text-xs">
-                            you
+                            {avatar ? (
+                              <img
+                                src={pb.files.getURL(user, avatar, { thumb: '56x56' })}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              (name === '' ? email : name).charAt(0).toUpperCase()
+                            )}
                           </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="text-muted-foreground px-3.5 py-[7px]">{email}</td>
-                    <td className="px-3.5 py-[7px]">
-                      <div className="flex flex-wrap gap-1">
-                        {isAdminUser ? (
-                          <span className="rounded-md bg-purple-100 px-1.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                            Admin · everything
-                          </span>
-                        ) : mine.length > 0 ? (
-                          mine.map((role) => (
+                          {manageable ? (
                             <button
-                              key={role.id}
                               type="button"
+                              data-testid={`manage-${user.id}`}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                url.setRole(role.id)
+                                setOpenUserId(user.id)
                               }}
-                              className="bg-primary/12 text-primary rounded-md px-1.5 text-xs font-medium"
+                              className="text-foreground text-left font-semibold"
                             >
-                              {role.name}
+                              {name}
                             </button>
-                          ))
-                        ) : (
-                          <span className="text-muted-foreground">No role</span>
-                        )}
-                      </div>
-                    </td>
-                    {canSeeLastLogin && (
-                      <td
-                        data-testid={`last-active-${user.id}`}
-                        className="text-muted-foreground px-3.5 py-[7px]"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <span className={`h-2 w-2 rounded-full ${FRESH_DOT[fresh] ?? ''}`} />
-                          {lastSeen
-                            ? formatDistanceToNow(new Date(lastSeen.replace(' ', 'T')), {
-                                addSuffix: true,
-                              })
-                            : 'Never'}
-                        </span>
+                          ) : (
+                            <span className="text-foreground font-semibold">{name}</span>
+                          )}
+                          {isSelf && (
+                            <span className="bg-muted text-muted-foreground rounded-md px-1.5 text-xs">
+                              you
+                            </span>
+                          )}
+                        </div>
                       </td>
-                    )}
-                    <td className="text-muted-foreground px-3.5 py-[7px]">
-                      {created ? format(new Date(created.replace(' ', 'T')), 'MMM d, yyyy') : ''}
-                    </td>
-                    <td className="text-muted-foreground px-3.5 py-[7px] text-right">
-                      {manageable ? (
-                        <ChevronRight className="inline h-4 w-4" />
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs">
-                          <Lock className="h-3 w-3" />
-                          {isSelf ? 'You' : isAdminUser ? 'Admin' : ''}
-                        </span>
+                      <td className="text-muted-foreground px-3.5 py-[7px]">{email}</td>
+                      <td className="px-3.5 py-[7px]">
+                        <div className="flex flex-wrap gap-1">
+                          {isAdminUser ? (
+                            <span className="rounded-md bg-purple-100 px-1.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              Admin · everything
+                            </span>
+                          ) : mine.length > 0 ? (
+                            mine.map((role) => (
+                              <button
+                                key={role.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  url.setRole(role.id)
+                                }}
+                                className="bg-primary/12 text-primary rounded-md px-1.5 text-xs font-medium"
+                              >
+                                {role.name}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="text-muted-foreground">No role</span>
+                          )}
+                        </div>
+                      </td>
+                      {canSeeLastLogin && (
+                        <td
+                          data-testid={`last-active-${user.id}`}
+                          className="text-muted-foreground px-3.5 py-[7px]"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${FRESH_DOT[fresh] ?? ''}`} />
+                            {lastSeen
+                              ? formatDistanceToNow(new Date(lastSeen.replace(' ', 'T')), {
+                                  addSuffix: true,
+                                })
+                              : 'Never'}
+                          </span>
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                      <td className="text-muted-foreground px-3.5 py-[7px]">
+                        {created ? format(new Date(created.replace(' ', 'T')), 'MMM d, yyyy') : ''}
+                      </td>
+                      <td className="text-muted-foreground px-3.5 py-[7px] text-right">
+                        {manageable ? (
+                          <ChevronRight className="inline h-4 w-4" />
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs">
+                            <Lock className="h-3 w-3" />
+                            {isSelf ? 'You' : isAdminUser ? 'Admin' : ''}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {openUser && (
         <UserDrawer

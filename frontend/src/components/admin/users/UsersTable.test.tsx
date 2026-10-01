@@ -51,6 +51,26 @@ beforeEach(() => {
 })
 
 describe('UsersTable', () => {
+  it('ignores a ?role= for a role that no longer exists instead of filtering to nobody', () => {
+    renderTable({ roleId: 'r-deleted' })
+    expect(screen.queryByTestId('role-filter')).not.toBeInTheDocument()
+    expect(screen.getByTestId('users-toolbar')).toHaveTextContent('1–15 of 20')
+  })
+
+  it('shows the empty state when there are no users at all', () => {
+    const props = makeProps()
+    props.data = { ...props.data, users: [], held: new Map() }
+    render(
+      <MemoryRouter>
+        <UsersTable {...props} />
+      </MemoryRouter>
+    )
+    expect(
+      screen.getByText('Users will appear here after signing in via Pocket ID')
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
   it('shows Executive-split buckets whose counts sum to All', () => {
     renderTable()
     for (const [label, n] of [

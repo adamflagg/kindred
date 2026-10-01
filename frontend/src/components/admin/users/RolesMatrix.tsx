@@ -186,7 +186,7 @@ function GroupRows({
             colSpan={colSpan}
             className="border-border bg-muted/35 text-muted-foreground border-b px-2.5 py-1 text-[11px] font-semibold tracking-[0.06em] uppercase"
           >
-            {group.area}
+            <span className="sticky left-2.5 inline-block">{group.area}</span>
           </td>
         </tr>
       )}

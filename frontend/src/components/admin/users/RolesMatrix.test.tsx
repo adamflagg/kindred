@@ -68,6 +68,12 @@ describe('RolesMatrix', () => {
     expect(screen.getByTestId('role-count-r-empty')).toHaveTextContent('no one')
   })
 
+  it('keeps the area label in view while the matrix scrolls sideways', () => {
+    renderMatrix()
+    const label = screen.getByText('Analytics', { selector: 'td span' })
+    expect(label.className).toMatch(/sticky/)
+  })
+
   it('pins the permission column for horizontal scroll (R3)', () => {
     renderMatrix()
     expect(screen.getByTestId('matrix-pin-metrics.geo').className).toMatch(/sticky/)
