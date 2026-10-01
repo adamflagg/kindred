@@ -637,6 +637,7 @@ export type {
   GrantsResponse,
   GrantsSection,
   GridRowOut,
+  GridShareOut,
   GroupedRequestsResponse,
   HeadcountSet,
   HealthCheckHealthGetData,

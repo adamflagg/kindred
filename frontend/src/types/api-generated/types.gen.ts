@@ -5191,6 +5191,50 @@ export type GridRowOut = {
     | 'duplicates'
     | 'cancel_reason'
   > | null
+  /**
+   * Payer Count
+   */
+  payer_count?: number
+  /**
+   * Payer Shares
+   */
+  payer_shares?: Array<GridShareOut>
+}
+
+/**
+ * GridShareOut
+ *
+ * One payer of a split request, on its grid row (§6.2: Needs an offer has one row per payer share; ⚠39, owner
+ * ruling 2026-10-01). Its whole-dollar part of the request's decided total (`decided`: the household's new total
+ * once the open rounds post, ⚠40), of the posted total, and of the rounds that need an offer (`needs_offer`: what
+ * is posted to this household when they are ticked). None while the request has no such money, or its shares
+ * don't add up to 100%.
+ */
+export type GridShareOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Share Pct
+   */
+  share_pct: number
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * Needs Offer
+   */
+  needs_offer: number | null
 }
 
 /**
