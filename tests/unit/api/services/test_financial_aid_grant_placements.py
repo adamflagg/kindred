@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -20,9 +20,11 @@ from api.services.financial_aid_grant_placements import (
     placement_json,
     placement_record,
     placement_writes,
+    placements_as_of,
     register_row,
 )
 from api.services.financial_aid_grants_register import RegisterRow, RequestShare
+from bunking.financial_aid.change_replay import LogRow
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, grant_row, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
 
@@ -156,3 +158,63 @@ async def test_a_placement_log_write_that_fails_fails_the_read() -> None:
     store.commit = refused  # type: ignore[method-assign]
     with pytest.raises(RuntimeError, match="the batch failed"):
         await _service(store, [grant_row(EMMA, "500")]).remaining(YEAR)
+
+
+# --- a past date replays the log (Task 3) ------------------------------------------------------------
+
+MAR_1, MAR_9_END, MAR_20 = (
+    datetime(2027, 3, 1, 18, 0, tzinfo=UTC),
+    datetime(2027, 3, 10, 7, 59, tzinfo=UTC),
+    datetime(2027, 3, 20, 18, 0, tzinfo=UTC),
+)
+
+
+def test_a_past_instant_replays_each_grants_newest_logged_placement_by_then() -> None:
+    line = grant_row(EMMA, "500")
+    moved = grant_row(LIAM, "500")
+    log = [_logged(line, MAR_1), replace(_logged(moved, MAR_20), id="gpl000000000002")]
+    placed = placements_as_of(log, [moved], [], MAR_9_END)
+    assert [row.requests[0].request_id for row in placed.rows] == [EMMA]
+    assert (placed.households, placed.people, placed.requests) == (frozenset(), frozenset(), frozenset())
+    gone = [_logged(line, MAR_1), replace(_logged(line, MAR_1.replace(hour=19), event="remove"), id="gpl000000000003")]
+    assert placements_as_of(gone, [], [], MAR_9_END).rows == ()
+
+
+def test_a_grant_that_could_exist_by_then_with_no_logged_placement_is_unplaced() -> None:
+    line = replace(grant_row(EMMA, "500"), recorded_at=MAR_1)
+    later = replace(
+        grant_row(LIAM, "300"),
+        transaction_cm_id=9002,
+        household_cm_id=1000002,
+        person_cm_id=1000021,
+        recorded_at=MAR_20,
+    )
+    withdrawn = LogRow(
+        "log000000000001",
+        "aid_grants",
+        "grt000000000001",
+        None,
+        {"household_cm_id": 1000003, "person_cm_id": 1000031},
+        MAR_1,
+    )
+    placed = placements_as_of([], [line, later], [withdrawn], MAR_9_END)
+    assert (placed.households, placed.people, placed.requests) == (
+        frozenset({1000001, 1000003}),
+        frozenset({1000011, 1000031}),
+        frozenset({EMMA}),
+    )
+
+
+def test_on_the_campminder_axis_a_line_is_read_on_its_own_campminder_dates() -> None:
+    posted_later = replace(grant_row(EMMA, "500"), recorded_on="2027-03-12")
+    assert (
+        placements_as_of([_logged(posted_later, MAR_1)], [posted_later], [], MAR_9_END, posted_by=date(2027, 3, 9)).rows
+        == ()
+    )
+    assert len(placements_as_of([_logged(posted_later, MAR_1)], [posted_later], [], MAR_9_END).rows) == 1
+    live = grant_row(EMMA, "500")
+    reversed_now = replace(live, is_reversed=True, reversal_date="2027-03-05", counts=False, requests=())
+    (row,) = placements_as_of([_logged(live, MAR_1)], [reversed_now], [], MAR_9_END, posted_by=date(2027, 3, 9)).rows
+    assert (row.counts, row.requests) == (False, ())
+    (recorded,) = placements_as_of([_logged(live, MAR_1)], [reversed_now], [], MAR_9_END).rows
+    assert recorded == live

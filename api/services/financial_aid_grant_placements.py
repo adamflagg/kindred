@@ -21,8 +21,8 @@ its requests and their pools are left empty (grant_placement).
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from typing import Any, Final, Literal
 
 from pydantic import TypeAdapter
@@ -31,6 +31,7 @@ from api.constants.collections import AID_GRANT_PLACEMENTS
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from bunking.financial_aid.change_log import AidWrite
+from bunking.financial_aid.change_replay import LogRow
 
 # 4a's actor for the placement log, as intake writes as "system:intake".
 PLACEMENT_ACTOR: Final = "system:grant-placement"
@@ -140,3 +141,77 @@ def placement_writes(year: int, rows: Sequence[RegisterRow], records: Iterable[P
         if key not in seen and last.event == "place":
             writes.append(_write(year, key, last.household_cm_id, "remove", None))
     return writes
+
+
+@dataclass(frozen=True)
+class PlacementsAsOf:
+    """The grants as the log had placed them by an instant, and what the log can't place."""
+
+    rows: tuple[RegisterRow, ...]  # the logged placements standing then, read on the axis
+    households: frozenset[int]  # households with a grant by then that no logged row places
+    people: frozenset[int]  # the people those grants name
+    requests: frozenset[str]  # the requests today's register places those grants on (widening only)
+
+
+def placements_as_of(
+    records: Sequence[PlacementRecord],
+    register_now: Sequence[RegisterRow],
+    grant_log: Sequence[LogRow],
+    at: datetime,
+    *,
+    posted_by: date | None = None,
+) -> PlacementsAsOf:
+    """The grant placements standing at `at`, from the log, and the grants it can't place.
+
+    `posted_by` is the campminder axis's day (None: the recorded axis), as fold_rounds takes it. On it
+    a ledger line CampMinder posted after the day is left out, and one CampMinder reversed by the day
+    counts nowhere, read from the grant's newest row (today's register first): a line's post and
+    reversal dates are CampMinder's. Its placement stays the one logged by `at`.
+
+    A grant is unplaced when it could have existed by `at` and no row for it was recorded by then:
+    a register row recorded by then (its recorded_at is its CampMinder post date, or when Kindred
+    recorded the commitment), or a commitment whose create was logged by then (a withdrawn one has
+    left the register). This is wide on purpose: the register carries no sync time, so a line posted
+    before the date but synced after it is named too. It only ever empties, never mis-states. A ledger
+    line CampMinder deleted outright before the log began is invisible here."""
+    logged = newest(records, at)
+    latest = newest(records)
+    now = {grant_key(row): row for row in register_now}
+    rows: list[RegisterRow] = []
+    for key, record in sorted(logged.items()):
+        if record.event != "place" or record.placement is None:
+            continue
+        row = register_row(record.placement)
+        if posted_by is not None and row.kind == "ledger":
+            if row.recorded_on[:10] > posted_by.isoformat():
+                continue
+            newest_placement = latest[key].placement  # a remove since keeps its reversal unknown: none
+            current = now.get(key) or (register_row(newest_placement) if newest_placement is not None else None)
+            if (
+                current is not None
+                and current.is_reversed
+                and current.reversal_date[:10] <= posted_by.isoformat()
+                and not row.is_reversed
+            ):
+                row = replace(row, is_reversed=True, reversal_date=current.reversal_date, counts=False, requests=())
+        rows.append(row)
+    unplaced = [
+        row for key, row in now.items() if key not in logged and (row.recorded_at is None or row.recorded_at <= at)
+    ]
+    commitments = [
+        entry.after
+        for entry in grant_log
+        if entry.before is None
+        and entry.after is not None
+        and entry.created <= at
+        and f"commitment:{entry.entity_id}" not in logged
+        and f"commitment:{entry.entity_id}" not in now
+    ]
+    households = {row.household_cm_id for row in unplaced} | {int(c.get("household_cm_id") or 0) for c in commitments}
+    people = {row.person_cm_id for row in unplaced} | {int(c.get("person_cm_id") or 0) for c in commitments}
+    return PlacementsAsOf(
+        rows=tuple(rows),
+        households=frozenset(households - {0}),
+        people=frozenset(people - {0}),
+        requests=frozenset(share.request_id for row in unplaced for share in row.requests),
+    )

@@ -119,8 +119,8 @@ from api.services.financial_aid_grants_register import (
     grant_inputs_by_request,
     outside_grants_by_request,
 )
-from api.services.financial_aid_intake_plan import request_fields, share_entity_id
-from api.services.financial_aid_intake_repository import request_record
+from api.services.financial_aid_intake_plan import application_fields, request_fields, share_entity_id
+from api.services.financial_aid_intake_repository import application_record, request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
@@ -775,6 +775,24 @@ def _requests_as_of(
     # Logged, with no create row, absent today, and not replayed by `at` (rows only after it): deleted since.
     deleted |= {row.entity_id for row in log} - made - now.keys() - rebuilt.keys()
     return out, frozenset(unrebuilt), frozenset(deleted)
+
+
+def _applications_as_of(
+    log: Sequence[LogRow], at: datetime, today: Sequence[ApplicationRecord]
+) -> tuple[dict[str, ApplicationRecord], frozenset[str]]:
+    """Each application as it stood at `at`, replayed from its log (intake writes every application
+    through 4a), and the applications whose history can't be replayed, never read as state (3c-2)."""
+    now = {a.id: a for a in today}
+    replayed = replay(log, as_of=at, current={a.id: application_fields(a) for a in today})
+    bad = _unreplayable(now.keys(), log, replayed)
+    return (
+        {
+            key: application_record(SimpleNamespace(id=key, **record.state))
+            for key, record in replayed.items()
+            if key not in bad and record.state is not None
+        },
+        bad,
+    )
 
 
 def _posted_before_request(
