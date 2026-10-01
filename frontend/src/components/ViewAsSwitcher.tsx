@@ -6,7 +6,8 @@
  * the way back can never be hidden. Not previewing, the bar shows nothing: the
  * menu is opened from the user menu's "View as…" item (owner ruling
  * 2026-10-01), via the controlled `open` / `onOpenChange` props. While
- * previewing, the amber pill sits in the bar and opens the same menu. Every switch reloads the page so nothing
+ * previewing, an amber strip sits above the nav; its Switch opens the same
+ * menu and its Exit leaves the preview. Every switch reloads the page so nothing
  * fetched under the previous persona survives in any cache. The persona itself
  * lives in auth/viewAs.ts; PocketBase and FastAPI enforce it.
  */
