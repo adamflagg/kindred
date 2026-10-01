@@ -68,6 +68,11 @@ class HouseholdTotalsOut(BaseModel):
     family_share: float | None
     posted: float | None
     states: list[ConfirmationStateOut]
+    # ⚠38 (b), owner ruling 2026-10-01: the band shows grants APPLIED, so cost − aid (decided) − grants applied = family's
+    # share adds up; what grants paid beyond a request's owed amount is its own line. `grants` stays the counted grants
+    # (the Grants table's money). Both None whenever family_share is (Decision 1).
+    grants_applied: float | None = None
+    grants_beyond_owed: float | None = None
 
 
 class ShareLineOut(BaseModel):
@@ -113,6 +118,11 @@ class HouseholdRequestOut(BaseModel):
     payer_share_status: PayerShareStatus
     shares: list[ShareLineOut]
     receipts: list[ReceiptOut]
+    grants: float = 0.0  # the request's counted grants (band_grants_by_request)
+    # ⚠38 (b): min(grants, max(0, cost − decided)), what of them the family owed; None until the request has a cost and
+    # a decided total, and on a request outside the band (D77's included).
+    grants_applied: float | None = None
+    grants_beyond_owed: float | None = None  # grants − grants_applied
 
 
 class IncomeOut(BaseModel):
