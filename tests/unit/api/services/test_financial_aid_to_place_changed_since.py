@@ -467,9 +467,9 @@ def _correction(store: FakeToPlaceStore, at: datetime = T0) -> None:
 
 
 NOT_TICKED_WHY = (
-    "since CampMinder posted it on Mar 8, a correction was entered (Mar 9), so Kindred can't tell what Round 1 was "
-    "decided at that day. The money is placed; tick Round 1 Posted by hand at the amount that was right then, "
-    "before tonight's ledger sync ticks it at today's amount"
+    "Round 1 was not ticked automatically: after CampMinder posted it on Mar 8, a correction was entered (Mar 9). "
+    "Ticking it, by hand or by the next ledger sync, locks today's decided amount. Check it against what the "
+    "family was offered before it ticks."
 )
 NOT_TICKED_9001 = (9001, EMMA, 1, POSTED, ["a correction was entered (Mar 9)"], NOT_TICKED_WHY)
 

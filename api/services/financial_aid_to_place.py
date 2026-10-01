@@ -439,7 +439,7 @@ def placement_outcome(
     return Outcome(ledger, tuple(priced), tuple(ticks))
 
 
-# --- D16 option (b): a placement locks at the posting day's amount, or refuses -----------------------------------
+# --- D16 (option a): a placement ticks at the posting day's amount, or withholds the tick ------------------------
 
 ChangedCode = Literal[
     "rules",

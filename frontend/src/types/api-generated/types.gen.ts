@@ -7656,8 +7656,8 @@ export type NotRebuiltOut = {
  *
  * A round the money covers that the placement does not tick (D16, owner ruling 2026-10-01, refined: option a).
  * Something that prices the request was recorded after the day CampMinder posted it, so Kindred can't tell what
- * the round was decided at that day. The money is placed anyway; only the automatic tick is withheld, and `why`
- * asks the registrar to tick it Posted by hand at the amount that was right then.
+ * the round was decided at that day. The money is placed anyway; only the automatic tick is withheld. `why` says
+ * that ticking it, by hand or by the next ledger sync, locks today's decided amount, to check against the offer.
  */
 export type NotTickedOut = {
   /**

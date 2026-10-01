@@ -107,7 +107,7 @@ GROUP_LABELS: Final[dict[Reason, str]] = {
 PENDING_RECLASS: Final = "its reclassification waits for tonight's ledger sync"
 
 # sync_runs keeps 90 days (pocketbase/sync/sync_runs.go SyncRunRetentionDays); a day's margin, so a posting near
-# the edge refuses rather than trusting a removal record that may already be pruned (D16b).
+# the edge has its tick withheld rather than trusting a removal record that may already be pruned (D16).
 SYNC_HISTORY: Final = timedelta(days=89)
 
 
@@ -215,13 +215,13 @@ def _joined(texts: Sequence[str]) -> str:
 
 def not_ticked_out(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[ChangedReason]) -> NotTickedOut:
     """D16, owner ruling 2026-10-01, refined (option a): the money is placed, and this round's automatic tick is
-    withheld for the registrar to make by hand. Tonight's ledger sync ticks whatever is still unticked, at the
-    amount pricing gives then (SP10b-1 Decision 2, unchanged), so the prompt says to tick it before then."""
+    withheld. Any later tick, a person's (tick_posted takes only today's decided amount) or the next ledger sync's
+    (SP10b-1 Decision 2, unchanged), locks today's decided amount, so the text says that, not a posting-day amount."""
     n, day = tick.round, f"{tick.posted_on:%b} {tick.posted_on.day}"
     why = (
-        f"since CampMinder posted it on {day}, {_joined([r.text for r in reasons])}, so Kindred can't tell what "
-        f"Round {n} was decided at that day. The money is placed; tick Round {n} Posted by hand at the amount that "
-        "was right then, before tonight's ledger sync ticks it at today's amount"
+        f"Round {n} was not ticked automatically: after CampMinder posted it on {day}, "
+        f"{_joined([r.text for r in reasons])}. Ticking it, by hand or by the next ledger sync, locks today's decided "
+        "amount. Check it against what the family was offered before it ticks."
     )
     return NotTickedOut(
         transaction_cm_id=transaction_cm_id,
