@@ -2,9 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import {
   TRACE_CAPPED_BY_ASK,
+  TRACE_DISCRETIONARY,
+  TRACE_GRANTS_DOLLAR,
+  TRACE_GRANTS_REDUCE_COST,
+  TRACE_INCENTIVE_AWARD,
+  TRACE_INCENTIVE_COST,
   TRACE_INCOME_CEILING,
+  TRACE_MINIMUM_RAISED,
+  TRACE_MINIMUM_THEN_ASK,
   TRACE_ROUND1_LOCKED,
   TRACE_ROUND2_CAPPED,
+  TRACE_TOP_UP,
+  TRACE_TOTAL_CAP,
+  traceStep,
 } from './fixtures'
 import { MINUS } from './money'
 import {
@@ -16,6 +26,7 @@ import {
   receiptSentence,
   sentenceText,
   stepHow,
+  stepIsNegativeMoney,
   stepValue,
   type AidTraceStep,
 } from './receiptModel'
@@ -155,16 +166,16 @@ describe('each line', () => {
 
   it('says how a line was worked out', () => {
     expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'weighted_income'))).toBe(
-      '75% of prior year $118,000 + 25% of current year $126,000 (gross)'
+      '75% of prior year $120,000 + 25% of current year $120,000 (gross)'
     )
     expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'adjusted_income'))).toBe(
-      'after adjustments and dependents; never below $0'
+      'after adjustments and dependents; floor $0; floor tested after deductions'
     )
     expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'grants'))).toBe(
       'outside grants counted when committed; taken off the award dollar for dollar'
     )
     expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'r1'))).toBe(
-      'the lower of the ask $1,500 and the potential $2,000'
+      "the family's ask $1,500, under the potential $2,000"
     )
     expect(stepHow(find(TRACE_ROUND1_LOCKED, 'r1_locked'))).toBe(
       'worked out $1,500 now; locked at what was posted, and later rounds build on it'
@@ -183,13 +194,13 @@ describe('each line', () => {
         value: '500.00',
         inputs: { floor: '500.00' },
       })
-    ).toBe('after adjustments and dependents; never below $500')
+    ).toBe('after adjustments and dependents; floor $500')
     expect(
       stepHow({
         key: 'grants',
         label: 'Outside grants',
         value: '0.00',
-        inputs: { count_when: 'posted', offset_mode: 'percent' },
+        inputs: { count_when: 'posted', offset_mode: 'reduce_cost_basis' },
       })
     ).toBe('outside grants counted when posted; taken off the cost before the percentage')
   })
@@ -197,6 +208,14 @@ describe('each line', () => {
 
 describe('lines the engine emits without inputs', () => {
   it('reads a program with no equity class and grants that do not offset', () => {
+    expect(
+      stepHow({
+        key: 'grants',
+        label: 'Outside grants',
+        value: '0.00',
+        note: "Grants do not offset 'x' this season",
+      })
+    ).toBe("grants do not offset 'x' this season")
     expect(stepHow({ key: 'equity_shift', label: 'Equity shift', value: 0 })).toBe(
       'this program has no equity class'
     )
@@ -260,5 +279,301 @@ describe('receiptLabel (§4.7; D43, D52, D67) and its rules link (D76)', () => {
     expect(receiptRulesHref({ kind: 'live', season: 2027, rulesVersion: 3 })).toBe(
       '/aid/season/rules?version=3&year=2027'
     )
+  })
+})
+
+describe('fix round 1: the sentence agrees with the engine', () => {
+  it('I1: a raised minimum is not "= $potential"', () => {
+    expect(sentenceText(receiptSentence(TRACE_MINIMUM_RAISED))).toBe(
+      'Adjusted income $30,000 → tier 1. Round 1: 1% of $5,000, raised to the minimum award → $100. Total $100.'
+    )
+    expect(sentenceText(receiptSentence(TRACE_MINIMUM_THEN_ASK))).toBe(
+      "Adjusted income $30,000 → tier 1. Round 1: 1% of $5,000, raised to the minimum award $100, limited by the family's ask to $80. Total $80."
+    )
+  })
+
+  it('I2: the two grant offsets read differently (D137)', () => {
+    expect(sentenceText(receiptSentence(TRACE_GRANTS_DOLLAR))).toContain(
+      'Round 1: 40% of $5,000, less $500 in grants, = $1,500 → $1,500.'
+    )
+    expect(sentenceText(receiptSentence(TRACE_GRANTS_REDUCE_COST))).toContain(
+      'Round 1: 40% of ($5,000 less $500 in grants) = $1,800 → $1,800.'
+    )
+  })
+
+  it('I3: top-up and discretionary money are in the sentence, so it adds up', () => {
+    expect(sentenceText(receiptSentence(TRACE_TOP_UP))).toContain(
+      'to $1,500. Top-up $400. Total $1,900.'
+    )
+    expect(sentenceText(receiptSentence(TRACE_DISCRETIONARY))).toContain(
+      'to $1,500. Discretionary $250. Total $1,750.'
+    )
+  })
+
+  it('I3: a posted top-up reads its locked figure', () => {
+    const trace = [
+      ...TRACE_TOP_UP.slice(0, -1),
+      traceStep('top_up_locked', 'Top-up as posted', '300.00', { worked_out: '400.00' }, 'locked'),
+      traceStep('total', 'Total award', '1800.00', {
+        r1: '1500.00',
+        r2: null,
+        r3: null,
+        top_up: '300.00',
+        discretionary: '0.00',
+      }),
+    ]
+    expect(sentenceText(receiptSentence(trace))).toContain('Top-up $300. Total $1,800.')
+  })
+
+  it('I4a: a top-up withheld above the income ceiling says so', () => {
+    const trace = [
+      ...TRACE_INCOME_CEILING.slice(0, -1),
+      traceStep(
+        'top_up',
+        'Top-up: Named top-up',
+        '0.00',
+        { kind: 'top_up' },
+        'income_ceiling',
+        'Adjusted income is above the income ceiling'
+      ),
+      ...TRACE_INCOME_CEILING.slice(-1),
+    ]
+    expect(sentenceText(receiptSentence(trace))).toContain(
+      'Round 1: above the income ceiling → $0. Top-up: above the income ceiling → $0. Total $0.'
+    )
+  })
+
+  it('an incentive taken off the award is in the sentence', () => {
+    expect(sentenceText(receiptSentence(TRACE_INCENTIVE_AWARD))).toContain(
+      "Round 1: 40% of $5,000 = $2,000, limited by the family's ask to $1,500, less an incentive of $100 → $1,400. Total $1,400."
+    )
+  })
+
+  it('the total-aid cap reads as a cut', () => {
+    expect(sentenceText(receiptSentence(TRACE_TOTAL_CAP))).toContain(
+      'Round 2: appeal $2,500, cut to fit the total-aid cap → $700. Total $4,200.'
+    )
+  })
+
+  it('M9: a posted Round 2 and Round 3 end with what was posted', () => {
+    const trace = [
+      ...TRACE_ROUND2_CAPPED.slice(0, -1),
+      traceStep('r2_locked', 'Round 2 as posted', '900.00', { worked_out: '1000.00' }, 'locked'),
+      traceStep('r3', 'Round 3 award', '200.00', { requested: '300.00' }, 'max_amount'),
+      traceStep('r3_locked', 'Round 3 as posted', '150.00', { worked_out: '200.00' }, 'locked'),
+      traceStep('total', 'Total award', '4550.00', {
+        r1: '3500.00',
+        r2: '900.00',
+        r3: '150.00',
+        top_up: '0.00',
+        discretionary: '0.00',
+      }),
+    ]
+    expect(sentenceText(receiptSentence(trace))).toContain(
+      'limited by the Round 2 cap to $1,000; posted $900. Round 3: requested $300, limited by the Round 3 maximum to $200; posted $150. Total $4,550.'
+    )
+  })
+
+  it('marks negative money figures, and only money', () => {
+    const trace = [
+      traceStep('adjusted_income', 'Adjusted', '-1200.00', {}),
+      traceStep('income_tier', 'Income tier', 1, {}),
+    ]
+    expect(
+      receiptSentence(trace)
+        .filter((p) => p.negative)
+        .map((p) => p.text)
+    ).toEqual([`${MINUS}$1,200`])
+    expect(stepIsNegativeMoney(traceStep('income_adjustments', 'Adj', '-300.00'))).toBe(true)
+    expect(stepIsNegativeMoney(traceStep('equity_shift', 'Shift', -1))).toBe(false)
+    expect(stepIsNegativeMoney(traceStep('r1', 'R1', '300.00'))).toBe(false)
+  })
+})
+
+describe('fix round 1: limits on every line that can carry one (I4a, M9)', () => {
+  it.each([
+    ['r2', 'income_ceiling'],
+    ['r3', 'income_ceiling'],
+    ['top_up', 'income_ceiling'],
+    ['discretionary', 'income_ceiling'],
+  ])('%s bound by %s reads "above the income ceiling"', (key, bound) => {
+    expect(bindingPhrase({ key, label: key, bound })).toBe('above the income ceiling')
+  })
+
+  it('does not call a lock a limit', () => {
+    expect(bindingPhrase({ key: 'top_up_locked', label: 'x', bound: 'locked' })).toBeNull()
+  })
+})
+
+describe('fix round 1: the how-lines agree with the figures beside them', () => {
+  it('I5: a Round 1 line says what decided it', () => {
+    expect(stepHow(find(TRACE_MINIMUM_RAISED, 'r1'))).toBe('the potential $100')
+    expect(stepHow(find(TRACE_GRANTS_DOLLAR, 'r1'))).toBe('the potential $1,500')
+    expect(stepHow(find(TRACE_INCOME_CEILING, 'r1'))).toBe(
+      'adjusted income is above the income ceiling, so there is no award'
+    )
+  })
+
+  it('I5: an incentive shows in the cost and award lines', () => {
+    expect(stepHow(find(TRACE_INCENTIVE_AWARD, 'r1'))).toBe(
+      "the family's ask $1,500, under the potential $2,000; reduced by an incentive of $100"
+    )
+    expect(stepHow(find(TRACE_INCENTIVE_COST, 'cost'))).toBe('catalog price less incentive $100')
+  })
+
+  it('I5: Round 2 and Round 3 lines read their bound', () => {
+    expect(stepHow(find(TRACE_ROUND2_CAPPED, 'r2'))).toBe('the cap $1,000, under the appeal $2,500')
+    expect(stepHow(find(TRACE_TOTAL_CAP, 'r2'))).toBe('cut from $1,000 to fit the total-aid cap')
+    expect(
+      stepHow(traceStep('r2', 'R2', '1800.00', { appeal: '1800.00', cap: '2000.00' }, 'appeal'))
+    ).toBe('the appeal $1,800, under the cap $2,000')
+    expect(stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'not_allowed'))).toBe(
+      'this decision type does not allow an appeal, so Round 2 is $0'
+    )
+    expect(
+      stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'no_table', 'No Round 2 table'))
+    ).toBe('no Round 2 table, so Round 2 is $0')
+    expect(stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'income_ceiling'))).toBe(
+      'adjusted income is above the income ceiling, so there is no award'
+    )
+    expect(stepHow(traceStep('r3', 'R3', '300.00', { requested: '300.00' }, 'request'))).toBe(
+      'the amount requested, $300'
+    )
+    expect(stepHow(traceStep('r3', 'R3', '200.00', { requested: '300.00' }, 'max_amount'))).toBe(
+      'the Round 3 maximum $200, under the $300 requested'
+    )
+    expect(stepHow(traceStep('r3', 'R3', '150.00', { requested: '300.00' }, 'cap'))).toBe(
+      'the Round 3 share of the cost, $150, under the $300 requested'
+    )
+    expect(stepHow(traceStep('r3', 'R3', '0.00', { requested: '300.00' }, 'not_eligible'))).toBe(
+      'not eligible for Round 3: it needs a Round 2 decision or a statement of need'
+    )
+  })
+
+  it('I5: a note the engine attaches is never dropped', () => {
+    expect(stepHow(traceStep('mystery', 'M', 1, {}, null, 'Staff-entered income'))).toBe(
+      'staff-entered income'
+    )
+    expect(
+      stepHow(traceStep('cost', 'Cost', '0.00', { source: 'unknown' }, null, 'Cost unknown'))
+    ).toBe('cost not known; cost unknown')
+  })
+
+  it('I4a: top-up and discretionary lines read in words', () => {
+    expect(
+      stepHow(
+        traceStep(
+          'top_up',
+          'Top-up',
+          '0.00',
+          { kind: 'top_up' },
+          'income_ceiling',
+          'Adjusted income is above the income ceiling'
+        )
+      )
+    ).toBe('the named top-up is withheld above the income ceiling')
+    expect(
+      stepHow(traceStep('discretionary', 'Disc', '0.00', { withheld: '500.00' }, 'income_ceiling'))
+    ).toBe('$500 typed; withheld above the income ceiling')
+    expect(stepHow(find(TRACE_TOP_UP, 'top_up'))).toBe('a fixed top-up from the decision type')
+  })
+
+  it('I4c: the floor is held or merely stated, never "never below"', () => {
+    expect(stepHow(traceStep('adjusted_income', 'A', '500.00', { floor: '500.00' }, 'floor'))).toBe(
+      'held at the $500 floor'
+    )
+    expect(
+      stepHow(
+        traceStep('adjusted_income', 'A', '1000.00', {
+          base: '1200.00',
+          after_dependents: '1000.00',
+          floor: '500.00',
+        })
+      )
+    ).toBe('after adjustments and dependents (less $200); floor $500')
+  })
+
+  it('M1: a locked top-up or discretionary line reads like a locked round', () => {
+    expect(
+      stepHow(traceStep('top_up_locked', 'T', '300.00', { worked_out: '400.00' }, 'locked'))
+    ).toBe('worked out $400 now; locked at what was posted')
+  })
+
+  it('M2: staff-entered income', () => {
+    expect(
+      stepHow(
+        traceStep(
+          'weighted_income',
+          'W',
+          '90000.00',
+          { override_mode: 'staff_entered' },
+          null,
+          'Staff-entered income'
+        )
+      )
+    ).toBe('entered by staff')
+  })
+
+  it('M3: the Round 1 percentage names where it came from', () => {
+    expect(
+      stepHow(traceStep('r1_pct', 'p', '100.00', { table: null, tier: 5, source: 'full_cost' }))
+    ).toBe('full cost (decision type)')
+    expect(
+      stepHow(traceStep('r1_pct', 'p', '0.00', { table: null, tier: 5, source: 'no_table' }))
+    ).toBe('no Round 1 table')
+  })
+
+  it('M4: a Round 2 cap set by the original ask', () => {
+    expect(
+      stepHow(
+        traceStep(
+          'r2_cap',
+          'c',
+          '500.00',
+          { total_pct: '90.00', cost: '5000.00', r1: '1500.00' },
+          'original_ask'
+        )
+      )
+    ).toBe('the original ask $2,000 less Round 1 $1,500')
+  })
+
+  it('M5: per-person cost', () => {
+    expect(
+      stepHow(
+        traceStep('cost', 'C', '5000.00', { source: 'per_person', incentive_reduction: '0.00' })
+      )
+    ).toBe('family-camp headcount price')
+  })
+
+  it('M6: subtracted adjustments carry a minus, and dependents are left to the adjusted-income line', () => {
+    expect(
+      stepHow(
+        traceStep('income_adjustments', 'I', '-400.00', {
+          medical_excess: '300.00',
+          education_excess: '0.00',
+          savings_excess: '100.00',
+          extra_terms: '0.00',
+          dependent_reduction: '200.00',
+        })
+      )
+    ).toBe(`medical excess ${MINUS}$300 · savings excess $100`)
+  })
+
+  it('M4b: a held tier and a capped shift read in words', () => {
+    expect(
+      stepHow(traceStep('final_tier', 'F', 1, { income_tier: 2, equity_shift: 3 }, 'tier_floor'))
+    ).toBe(`tier 2 ${MINUS} 3, held at tier 1, the lowest tier`)
+    expect(
+      stepHow(
+        traceStep(
+          'equity_shift',
+          'E',
+          2,
+          { equity_class: 'summer', criteria_met: 'a', weight_sum: '3', aggregation: 'sum' },
+          'max_shift'
+        )
+      )
+    ).toBe('summer class · criteria met: a · weight 3 · capped at +2, the most a shift can be')
+    expect(bindingPhrase(traceStep('final_tier', 'F', 1, {}, 'tier_floor'))).toBeNull()
   })
 })

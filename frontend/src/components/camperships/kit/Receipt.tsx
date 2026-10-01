@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
-import { BINDING_LINE, BINDING_TEXT } from './aidStyles'
+import { BINDING_LINE, BINDING_TEXT, NEGATIVE_INK } from './aidStyles'
+import type { AidView } from './asOf'
 import {
   bindingPhrase,
   receiptLabel,
@@ -11,6 +12,7 @@ import {
   receiptSections,
   receiptSentence,
   stepHow,
+  stepIsNegativeMoney,
   stepValue,
   type AidTraceStep,
   type ReceiptLabel,
@@ -28,7 +30,10 @@ export function ReceiptSentence({
     <p className={className ?? 'text-sm'}>
       {receiptSentence(trace).map((part, index) =>
         part.kind === 'figure' ? (
-          <b key={index} className="tabular-nums">
+          <b
+            key={index}
+            className={part.negative ? `tabular-nums ${NEGATIVE_INK}` : 'tabular-nums'}
+          >
             {part.text}
           </b>
         ) : part.kind === 'bound' ? (
@@ -44,14 +49,14 @@ export function ReceiptSentence({
 }
 
 /** The label, with its rules version linked to Season › Rules (D76). */
-function ReceiptLabelLine({ label }: { label: ReceiptLabel }) {
+function ReceiptLabelLine({ label, view }: { label: ReceiptLabel; view?: AidView | undefined }) {
   const words = receiptRulesWords(label)
   const full = receiptLabel(label)
   const at = full.indexOf(words)
   return (
     <div className="text-muted-foreground text-xs">
       {full.slice(0, at)}
-      <Link to={receiptRulesHref(label)} className="hover:underline">
+      <Link to={receiptRulesHref(label, view)} className="hover:underline">
         {words}
       </Link>
       {full.slice(at + words.length)}
@@ -62,6 +67,8 @@ function ReceiptLabelLine({ label }: { label: ReceiptLabel }) {
 interface ReceiptProps {
   trace: readonly AidTraceStep[]
   label: ReceiptLabel
+  /** The page's season and as-of, which the rules link carries (Decision 9). */
+  view?: AidView | undefined
   /** The household page folds receipts under their sentence (D34). */
   folded?: boolean | undefined
   /** …except on a hold, or while a "would change by" flag shows (D34), including one that arrives later. */
@@ -73,7 +80,13 @@ interface ReceiptProps {
  * grouped Income → Tier → Cost → Round 1 → Round 2 → Total, with the binding limit in amber. Each
  * line opens on click to show how it was worked out, never on hover.
  */
-export function Receipt({ trace, label, folded = false, openByItself = false }: ReceiptProps) {
+export function Receipt({
+  trace,
+  label,
+  view,
+  folded = false,
+  openByItself = false,
+}: ReceiptProps) {
   const [open, setOpen] = useState(!folded || openByItself)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
   const sections = useMemo(() => receiptSections(trace), [trace])
@@ -96,7 +109,7 @@ export function Receipt({ trace, label, folded = false, openByItself = false }: 
 
   return (
     <div className="space-y-1.5">
-      <ReceiptLabelLine label={label} />
+      <ReceiptLabelLine label={label} view={view} />
       <ReceiptSentence trace={trace} />
       {folded && (
         <button
@@ -109,7 +122,7 @@ export function Receipt({ trace, label, folded = false, openByItself = false }: 
             : `Show the receipt (${String(receiptLineCount(trace))} lines) ▾`}
         </button>
       )}
-      {open && (
+      {(!folded || open) && (
         <div className="border-border divide-border divide-y rounded-lg border text-sm">
           {sections.map((section) => (
             <div key={section.name} className="py-1">
@@ -130,7 +143,13 @@ export function Receipt({ trace, label, folded = false, openByItself = false }: 
                       {step.label}
                       {limit && <span className={`${BINDING_TEXT} ml-2 text-xs`}>{limit}</span>}
                     </span>
-                    <span className="tabular-nums">{stepValue(step)}</span>
+                    <span
+                      className={
+                        stepIsNegativeMoney(step) ? `tabular-nums ${NEGATIVE_INK}` : 'tabular-nums'
+                      }
+                    >
+                      {stepValue(step)}
+                    </span>
                     {expanded.has(index) && (
                       <span className="text-muted-foreground col-span-2 text-xs">
                         {stepHow(step)}

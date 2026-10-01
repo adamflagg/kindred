@@ -5,9 +5,9 @@
  * and the household page can never disagree. Wording follows the engine
  * (bunking/financial_aid/calculator/engine.py, tiers.py; Ruling 2026-10-01 (plan review)).
  */
-import { aidHref } from './asOf'
+import { aidHref, type AidView } from './asOf'
 import { formatShortDate } from './dates'
-import { MINUS, formatMoney } from './money'
+import { MINUS, formatMoney, isNegativeMoney } from './money'
 
 export type TraceValue = string | number | boolean | null
 
@@ -44,11 +44,14 @@ export function receiptRulesWords(label: ReceiptLabel): string {
   return `rules ${String(label.season)} v${String(label.rulesVersion)}`
 }
 
-/** D76: the rules version a receipt names opens that version, read only for `view` holders. */
-export function receiptRulesHref(label: ReceiptLabel): string {
+/**
+ * D76: the rules version a receipt names opens that version, read only for `view` holders. The
+ * season is the version's own (a 2026 receipt opens 2026's rules); the as-of is the page's (Decision 9).
+ */
+export function receiptRulesHref(label: ReceiptLabel, view?: AidView): string {
   return aidHref(
     '/aid/season/rules',
-    { year: label.season, asOf: { kind: 'live' } },
+    { year: label.season, asOf: view?.asOf ?? { kind: 'live' } },
     { version: String(label.rulesVersion) }
   )
 }
@@ -109,7 +112,8 @@ export function stepValue(step: AidTraceStep): string {
   return Number.isFinite(n) ? formatMoney(n) : String(value)
 }
 
-const AWARD_KEYS = new Set(['r1', 'r2', 'r3'])
+/** Lines whose amount a limit can decide or zero. */
+const AWARD_KEYS = new Set(['r1', 'r2', 'r3', 'top_up', 'discretionary'])
 
 /** The engine's limits (engine.py), as words. `table` and `full_cost` aren't limits. */
 const LIMITS: Readonly<Record<string, string>> = {
@@ -142,88 +146,259 @@ export function bindingPhrase(step: AidTraceStep): string | null {
   return LIMITS[bound] ?? bound.replaceAll('_', ' ')
 }
 
-/** How a line was worked out, shown when the line is clicked (D33). */
+const NON_MONEY_KEYS = new Set(['income_tier', 'final_tier', 'equity_shift', 'r1_pct'])
+
+/** A money line whose value is below zero, so the receipt inks it red (D74). */
+export function stepIsNegativeMoney(step: AidTraceStep): boolean {
+  if (NON_MONEY_KEYS.has(step.key) || isBlank(step.value) || typeof step.value === 'boolean')
+    return false
+  return isNegativeMoney(Number(step.value))
+}
+
+const lowerFirst = (t: string) =>
+  t.length > 1 && /[a-z]/.test(t[1] ?? '') ? t.charAt(0).toLowerCase() + t.slice(1) : t
+
+/** The engine's own note, its bare Decimals written as money ("an incentive of 100.00" -> "$100"). */
+function noteText(note: string): string {
+  return lowerFirst(
+    note.replace(
+      /\b(of|by) (\d+(?:\.\d+)?)\b/g,
+      (_, w: string, n: string) => `${w} ${formatMoney(Number(n))}`
+    )
+  )
+}
+
+const INCENTIVE_NOTE = /^Reduced by an incentive of (\d+(?:\.\d+)?)/
+
+/** What an incentive took off a Round 1 award (engine.py `_round1`), 0 when none. */
+function incentiveOf(step: AidTraceStep): number {
+  const match = INCENTIVE_NOTE.exec(step.note ?? '')
+  return match ? Number(match[1]) : 0
+}
+
+const CEILING_HOW = 'adjusted income is above the income ceiling, so there is no award'
+
+/** How a line was worked out, shown when the line is clicked (D33). The engine's note is kept. */
 export function stepHow(step: AidTraceStep): string {
+  const { base, skipNote } = howBase(step)
+  const note = skipNote || isBlank(step.note) ? '' : noteText(String(step.note))
+  return [base, note].filter(Boolean).join('; ')
+}
+
+function howBase(step: AidTraceStep): { base: string; skipNote?: boolean } {
   const i = step.inputs ?? {}
-  if (/^r[123]_locked$/.test(step.key)) {
-    return `worked out ${money(i['worked_out'])} now; locked at what was posted, and later rounds build on it`
+  const bound = step.bound ?? ''
+  if (step.key.endsWith('_locked')) {
+    const worked = `worked out ${money(i['worked_out'])} now; locked at what was posted`
+    return {
+      base: /^r[123]_locked$/.test(step.key) ? `${worked}, and later rounds build on it` : worked,
+      skipNote: true,
+    }
+  }
+  if (AWARD_KEYS.has(step.key) && bound === 'income_ceiling') {
+    if (step.key === 'top_up') {
+      return { base: 'the named top-up is withheld above the income ceiling', skipNote: true }
+    }
+    if (step.key === 'discretionary') {
+      return {
+        base: `${money(i['withheld'])} typed; withheld above the income ceiling`,
+        skipNote: true,
+      }
+    }
+    return { base: CEILING_HOW, skipNote: true }
+  }
+  if (step.key === 'r2' || step.key === 'r3') {
+    if (bound === 'total_cap') {
+      return {
+        base: `cut from ${money(i['before_total_cap'])} to fit the total-aid cap`,
+        skipNote: true,
+      }
+    }
   }
   switch (step.key) {
-    case 'weighted_income':
-      return (
-        `${pct(Number(i['weight_prior']) * 100)} of prior year ${money(i['prior_year'])} + ` +
-        `${pct(Number(i['weight_current']) * 100)} of current year ${money(i['current_year'])} (${text(i['basis'])})` +
-        (isBlank(i['override_mode']) ? '' : `; staff override: ${text(i['override_mode'])}`)
-      )
-    case 'income_adjustments': {
-      const parts = Object.entries(i)
-        .filter(([, v]) => !isBlank(v) && Number(v) !== 0)
-        .map(([k, v]) => `${k.replaceAll('_', ' ')} ${money(v)}`)
-      return parts.length > 0 ? parts.join(' · ') : 'none apply'
+    case 'weighted_income': {
+      if (i['override_mode'] === 'staff_entered')
+        return { base: 'entered by staff', skipNote: true }
+      const terms = [
+        [i['weight_prior'], 'prior year', i['prior_year']],
+        [i['weight_current'], 'current year', i['current_year']],
+      ] as const
+      const words = terms
+        .filter(([weight]) => Number(weight) !== 0)
+        .map(([weight, name, figure]) => `${pct(Number(weight) * 100)} of ${name} ${money(figure)}`)
+        .join(' + ')
+      return { base: `${words} (${text(i['basis'])})` }
     }
-    case 'adjusted_income':
-      return `after adjustments and dependents; never below ${money(i['floor'] ?? 0)}`
+    case 'income_adjustments': {
+      // Medical and education excess come off income; the dependent reduction is on the next line.
+      const items: ReadonlyArray<[string, TraceValue | undefined, boolean]> = [
+        ['medical excess', i['medical_excess'], true],
+        ['education excess', i['education_excess'], true],
+        ['savings excess', i['savings_excess'], false],
+        ['extra terms', i['extra_terms'], false],
+      ]
+      const parts = items
+        .filter(([, v]) => !isBlank(v) && Number(v) !== 0)
+        .map(([name, v, subtract]) => `${name} ${subtract ? MINUS : ''}${money(v)}`)
+      return { base: parts.length > 0 ? parts.join(' · ') : 'none apply' }
+    }
+    case 'adjusted_income': {
+      if (bound === 'floor') return { base: `held at the ${money(i['floor'] ?? 0)} floor` }
+      const reduction = Number(i['base']) - Number(i['after_dependents'])
+      const deps =
+        !isBlank(i['after_dependents']) && reduction > 0 ? ` (less ${formatMoney(reduction)})` : ''
+      return { base: `after adjustments and dependents${deps}; floor ${money(i['floor'] ?? 0)}` }
+    }
     case 'income_tier':
-      return `the tier band ${money(i['adjusted_income'])} falls in`
-    case 'equity_shift':
-      if (isBlank(i['equity_class'])) return 'this program has no equity class'
-      return `${text(i['equity_class'])} class · criteria met: ${text(i['criteria_met'], 'none')} · weight ${text(i['weight_sum'], '0')}`
+      return { base: `the tier band ${money(i['adjusted_income'])} falls in` }
+    case 'equity_shift': {
+      if (isBlank(i['equity_class'])) {
+        return { base: isBlank(step.note) ? 'this program has no equity class' : '' }
+      }
+      const cap =
+        bound === 'max_shift'
+          ? ` · capped at ${signed(Number(step.value))}, the most a shift can be`
+          : ''
+      return {
+        base: `${text(i['equity_class'])} class · criteria met: ${text(i['criteria_met'], 'none')} · weight ${text(i['weight_sum'], '0')}${cap}`,
+      }
+    }
     case 'final_tier': {
       // tiers.py `final_tier`: the shift is subtracted, so +1 moves a family one tier down the table.
       const shift = Number(i['equity_shift'] ?? 0)
-      return `tier ${text(i['income_tier'])} ${shift >= 0 ? MINUS : '+'} ${String(Math.abs(shift))}`
+      const sum = `tier ${text(i['income_tier'])} ${shift >= 0 ? MINUS : '+'} ${String(Math.abs(shift))}`
+      return {
+        base:
+          bound === 'tier_floor'
+            ? `${sum}, held at tier ${text(step.value)}, the lowest tier`
+            : sum,
+      }
     }
-    case 'cost':
-      return i['source'] === 'override'
-        ? 'a staff override (cost or headcount), with its reason on record'
-        : `${text(i['source'])} price` +
-            (Number(i['incentive_reduction'] ?? 0) !== 0
-              ? ` less incentive ${money(i['incentive_reduction'])}`
-              : '')
+    case 'cost': {
+      const incentive =
+        Number(i['incentive_reduction'] ?? 0) !== 0
+          ? ` less incentive ${money(i['incentive_reduction'])}`
+          : ''
+      switch (i['source']) {
+        case 'override':
+          return { base: 'a staff override (cost or headcount), with its reason on record' }
+        case 'per_person':
+          return { base: `family-camp headcount price${incentive}` }
+        case 'unknown':
+          return { base: 'cost not known' }
+        default:
+          return { base: `${text(i['source'])} price${incentive}` }
+      }
+    }
     case 'grants':
-      if (isBlank(i['offset_mode'])) return 'outside grants do not offset this program this season'
-      return (
-        `outside grants counted when ${text(i['count_when'])}; ` +
-        (i['offset_mode'] === 'dollar'
-          ? 'taken off the award dollar for dollar'
-          : 'taken off the cost before the percentage') +
-        (Number(i['late_left_out'] ?? 0) !== 0
-          ? `; ${text(i['late_left_out'])} late grant left out`
-          : '')
-      )
+      if (isBlank(i['offset_mode'])) {
+        return {
+          base: isBlank(step.note) ? 'outside grants do not offset this program this season' : '',
+        }
+      }
+      return {
+        base:
+          `outside grants counted when ${text(i['count_when'])}; ` +
+          (i['offset_mode'] === 'dollar'
+            ? 'taken off the award dollar for dollar'
+            : 'taken off the cost before the percentage') +
+          (Number(i['late_left_out'] ?? 0) !== 0
+            ? `; ${text(i['late_left_out'])} late grant left out`
+            : ''),
+      }
     case 'r1_pct':
-      return `${text(i['table'])} award table, tier ${text(i['tier'])}`
+      if (i['source'] === 'full_cost') return { base: 'full cost (decision type)' }
+      if (i['source'] === 'no_table') return { base: 'no Round 1 table' }
+      return { base: `${text(i['table'])} award table, tier ${text(i['tier'])}` }
     case 'r1_potential':
-      return (
-        `${pct(i['pct'])} × ${money(i['cost'])}` +
-        (Number(i['grants'] ?? 0) !== 0 ? ` less grants ${money(i['grants'])}` : '') +
-        `, never below the ${money(i['minimum'])} minimum`
-      )
+      return {
+        base:
+          `${pct(i['pct'])} × ${money(i['cost'])}` +
+          (Number(i['grants'] ?? 0) !== 0 ? ` less grants ${money(i['grants'])}` : '') +
+          `, never below the ${money(i['minimum'])} minimum`,
+      }
     case 'r1':
-      return `the lower of the ask ${money(i['ask'])} and the potential ${money(i['potential'])}`
-    case 'r2_cap':
-      return `${pct(i['total_pct'])} of ${money(i['cost'])} in all, less Round 1 ${money(i['r1'])}${i['grants_subtracted'] === true ? ' and grants' : ''}`
+      return {
+        base:
+          bound === 'ask'
+            ? `the family's ask ${money(i['ask'])}, under the potential ${money(i['potential'])}`
+            : `the potential ${money(i['potential'])}`,
+      }
+    case 'r2_cap': {
+      const cap =
+        bound === 'original_ask'
+          ? `the original ask ${money(Number(step.value) + Number(i['r1']))} less Round 1 ${money(i['r1'])}`
+          : `${pct(i['total_pct'])} of ${money(i['cost'])} in all, less Round 1 ${money(i['r1'])}${i['grants_subtracted'] === true ? ' and grants' : ''}`
+      return { base: cap }
+    }
     case 'r2':
-      return `the lower of the appeal ${money(i['appeal'])} and the cap ${money(i['cap'])}`
+      switch (bound) {
+        case 'not_allowed':
+          return {
+            base: 'this decision type does not allow an appeal, so Round 2 is $0',
+            skipNote: true,
+          }
+        case 'no_table':
+          return { base: 'no Round 2 table, so Round 2 is $0', skipNote: true }
+        case 'appeal':
+          return { base: `the appeal ${money(i['appeal'])}, under the cap ${money(i['cap'])}` }
+        default:
+          return { base: `the cap ${money(i['cap'])}, under the appeal ${money(i['appeal'])}` }
+      }
     case 'r3':
-      return `the amount requested, ${money(i['requested'])}`
+      switch (bound) {
+        case 'not_allowed':
+          return {
+            base: 'this decision type does not allow an appeal, so Round 3 is $0',
+            skipNote: true,
+          }
+        case 'not_eligible':
+          return {
+            base: 'not eligible for Round 3: it needs a Round 2 decision or a statement of need',
+            skipNote: true,
+          }
+        case 'max_amount':
+          return {
+            base: `the Round 3 maximum ${money(step.value)}, under the ${money(i['requested'])} requested`,
+          }
+        case 'cap':
+          return {
+            base: `the Round 3 share of the cost, ${money(step.value)}, under the ${money(i['requested'])} requested`,
+          }
+        default:
+          return { base: `the amount requested, ${money(i['requested'])}` }
+      }
     case 'total_cap':
-      return `${pct(i['pct_of_cost'])} of the cost${i['include_grants'] === true ? ', less grants' : ''}, Round 1 included`
+      return {
+        base: `${pct(i['pct_of_cost'])} of the cost${i['include_grants'] === true ? ', less grants' : ''}, Round 1 included`,
+      }
+    case 'top_up':
+      return {
+        base:
+          i['kind'] === 'top_up'
+            ? 'a fixed top-up from the decision type'
+            : "the decision type's top-up to the full cost",
+      }
+    case 'discretionary':
+      return { base: 'a staff-entered amount' }
     case 'total':
-      return (
-        ['r1', 'r2', 'r3']
-          .filter((k) => !isBlank(i[k]))
-          .map((k) => `Round ${k.slice(1)} ${money(i[k])}`)
-          .join(' + ') +
-        (Number(i['top_up'] ?? 0) !== 0 ? ` + top-up ${money(i['top_up'])}` : '') +
-        (Number(i['discretionary'] ?? 0) !== 0
-          ? ` + discretionary ${money(i['discretionary'])}`
-          : '')
-      )
+      return {
+        base:
+          ['r1', 'r2', 'r3']
+            .filter((k) => !isBlank(i[k]))
+            .map((k) => `Round ${k.slice(1)} ${money(i[k])}`)
+            .join(' + ') +
+          (Number(i['top_up'] ?? 0) !== 0 ? ` + top-up ${money(i['top_up'])}` : '') +
+          (Number(i['discretionary'] ?? 0) !== 0
+            ? ` + discretionary ${money(i['discretionary'])}`
+            : ''),
+      }
     default:
-      return Object.entries(i)
-        .map(([k, v]) => `${k.replaceAll('_', ' ')}: ${text(v, '—')}`)
-        .join(' · ')
+      return {
+        base: Object.entries(i)
+          .map(([k, v]) => `${k.replaceAll('_', ' ')}: ${text(v, '—')}`)
+          .join(' · '),
+      }
   }
 }
 
@@ -273,26 +448,42 @@ export function receiptLineCount(trace: readonly AidTraceStep[]): number {
 export interface SentencePart {
   readonly text: string
   readonly kind: 'plain' | 'figure' | 'bound'
+  /** A money figure below zero, which the component inks red (D74). */
+  readonly negative?: boolean
 }
 
 /**
  * The sentence (§6.5): "Adjusted income $X → tier N. Round 1: P% of $C = $Q, limited by … to $A.
  * Total $T." A locked round ends "; posted $L" (D43, D52), and the total is the locked one.
+ * Every figure the total adds appears, so the sentence always adds up: top-up and discretionary
+ * money included. Each wording follows the engine's own arithmetic (engine.py `_round1`).
  */
 export function receiptSentence(trace: readonly AidTraceStep[]): SentencePart[] {
   const parts: SentencePart[] = []
   const plain = (t: string) => parts.push({ text: t, kind: 'plain' })
-  const figure = (t: string) => parts.push({ text: t, kind: 'figure' })
+  const figure = (t: string) =>
+    parts.push(
+      t.startsWith(`${MINUS}$`)
+        ? { text: t, kind: 'figure', negative: true }
+        : { text: t, kind: 'figure' }
+    )
   const find = (key: string) => trace.find((step) => step.key === key)
   const limitThenFigure = (step: AidTraceStep) => {
     const limit = bindingPhrase(step)
+    // An incentive comes off after the limit has decided the amount (engine.py `_round1`).
+    const incentive = incentiveOf(step)
+    const shown = incentive > 0 ? formatMoney(Number(step.value) + incentive) : stepValue(step)
     if (limit === null) {
-      figure(stepValue(step))
-      return
+      figure(shown)
+    } else {
+      parts.push({ text: limit, kind: 'bound' })
+      plain(limit.startsWith('limited by') ? ' to ' : ' → ')
+      figure(shown)
     }
-    parts.push({ text: limit, kind: 'bound' })
-    plain(limit.startsWith('limited by') ? ' to ' : ' → ')
-    figure(stepValue(step))
+    if (incentive > 0) {
+      plain(`, less an incentive of ${formatMoney(incentive)} → `)
+      figure(stepValue(step))
+    }
   }
   const endRound = (n: 1 | 2 | 3) => {
     const locked = find(`r${String(n)}_locked`)
@@ -332,36 +523,92 @@ export function receiptSentence(trace: readonly AidTraceStep[]): SentencePart[] 
     const cost = find('cost')
     const potential = find('r1_potential')
     if (share && cost && potential) {
+      const grants = find('grants')
+      const offset = Number(grants?.value ?? 0) > 0 ? grants : undefined
+      const reduceCost = offset?.inputs?.['offset_mode'] === 'reduce_cost_basis'
+      // When the minimum lifted the potential, "= $potential" would be false: the percentage's
+      // own figure is not the potential (engine.py `_round1`), so the limit is named instead.
+      const lifted = potential.bound === 'minimum' || potential.bound === 'grants_cover'
       figure(stepValue(share))
       plain(' of ')
-      figure(stepValue(cost))
-      const grants = find('grants')
-      if (grants && Number(grants.value ?? 0) > 0) {
+      if (offset && reduceCost) {
+        plain('(')
+        figure(stepValue(cost))
         plain(' less ')
-        figure(stepValue(grants))
-        plain(' in grants')
+        figure(stepValue(offset))
+        plain(' in grants)')
+      } else {
+        figure(stepValue(cost))
+        if (offset) {
+          plain(', less ')
+          figure(stepValue(offset))
+          plain(' in grants')
+        }
       }
-      plain(` = ${stepValue(potential)}`)
-      roundTail(r1, 1)
+      if (lifted) {
+        if (r1.bound === potential.bound) {
+          roundTail(r1, 1)
+        } else {
+          plain(', ')
+          parts.push({ text: LIMITS[potential.bound ?? ''] ?? '', kind: 'bound' })
+          plain(' ')
+          figure(stepValue(potential))
+          roundTail(r1, 1)
+        }
+      } else {
+        plain(offset && !reduceCost ? ', = ' : ' = ')
+        figure(stepValue(potential))
+        roundTail(r1, 1)
+      }
     } else {
       limitThenFigure(r1)
       endRound(1)
     }
   }
 
-  const r2 = find('r2')
-  if (r2) {
-    plain(' Round 2: appeal ')
-    figure(money(r2.inputs?.['appeal']))
-    roundTail(r2, 2)
+  const later = (n: 2 | 3, lead: string, figureKey: string) => {
+    const award = find(`r${String(n)}`)
+    if (award) {
+      plain(` Round ${String(n)}: ${lead} `)
+      figure(money(award.inputs?.[figureKey]))
+      roundTail(award, n)
+      return
+    }
+    const locked = find(`r${String(n)}_locked`)
+    if (locked) {
+      plain(` Round ${String(n)}: posted `)
+      figure(stepValue(locked))
+      plain('.')
+    }
   }
-  const r3 = find('r3')
-  if (r3) {
-    plain(' Round 3: requested ')
-    figure(money(r3.inputs?.['requested']))
-    roundTail(r3, 3)
-  }
+  later(2, 'appeal', 'appeal')
+  later(3, 'requested', 'requested')
+
   const total = find('total')
+  const extra = (label: string, key: 'top_up' | 'discretionary') => {
+    const locked = find(`${key}_locked`)
+    const step = find(key)
+    const figureText = locked
+      ? stepValue(locked)
+      : total && !isBlank(total.inputs?.[key])
+        ? money(total.inputs?.[key])
+        : step
+          ? stepValue(step)
+          : '$0'
+    if (step && bindingPhrase(step) !== null && !locked) {
+      plain(` ${label}: `)
+      parts.push({ text: bindingPhrase(step) ?? '', kind: 'bound' })
+      plain(' → ')
+      figure(figureText)
+      plain('.')
+    } else if (figureText !== '$0') {
+      plain(` ${label} `)
+      figure(figureText)
+      plain('.')
+    }
+  }
+  extra('Top-up', 'top_up')
+  extra('Discretionary', 'discretionary')
   if (total) {
     plain(' Total ')
     figure(stepValue(total))
