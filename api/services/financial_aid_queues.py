@@ -36,9 +36,12 @@ UNRECONCILED: Final = frozenset({"awaiting_sync", "short", "over", "not_in_campm
 
 
 def _waiting_on_family(row: GridRowOut) -> bool:
-    """§6.2: posted rounds not yet ticked Accepted. A clawed-back round, or a cancelled request's, waits on no one."""
-    return row.cancellation is None and any(
-        r.status == "posted" and not r.accepted and not r.clawed_back for r in row.rounds
+    """§6.2: posted rounds not yet ticked Accepted. A clawed-back round waits on no one, nor does a request on
+    To reverse (cancelled, or withdrawn on a cancelled enrollment): that one is To reverse's (Decision 10)."""
+    return (
+        row.cancellation is None
+        and not row.to_reverse
+        and any(r.status == "posted" and not r.accepted and not r.clawed_back for r in row.rounds)
     )
 
 
