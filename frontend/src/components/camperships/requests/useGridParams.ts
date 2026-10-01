@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 
 import {
@@ -33,20 +33,23 @@ export interface GridParams {
  */
 export function useGridParams(): GridParams {
   const [params, setParams] = useSearchParams()
-  const setParam = useCallback(
-    (name: GridParamName, value: string | null) => {
-      setParams(
-        (previous) => {
-          const next = new URLSearchParams(previous)
-          if (value === null) next.delete(name)
-          else next.set(name, value)
-          return next
-        },
-        { replace: true }
-      )
-    },
-    [setParams]
-  )
+  // react-router's setter changes identity with every URL change; a writer that did would rebuild
+  // the grid's columns on every highlight move. Hold the latest in a ref instead.
+  const setParamsRef = useRef(setParams)
+  useEffect(() => {
+    setParamsRef.current = setParams
+  }, [setParams])
+  const setParam = useCallback((name: GridParamName, value: string | null) => {
+    setParamsRef.current(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        if (value === null) next.delete(name)
+        else next.set(name, value)
+        return next
+      },
+      { replace: true }
+    )
+  }, [])
   return {
     view: requestView(params.get('view')),
     program: params.get('program'),

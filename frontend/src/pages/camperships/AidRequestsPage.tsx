@@ -1,5 +1,5 @@
 import { ListChecks } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { QueryGuard } from '../../components/QueryGuard'
@@ -51,14 +51,17 @@ export default function AidRequestsPage() {
   const viewState = useMemo(() => ({ year, asOf }), [year, asOf])
 
   // I2: a ↓ must move on React's sync lane, not a router transition, so the next row's editor has
-  // focus before the next key. Seeded once from ?row=; the URL follows in an effect, with replace.
+  // focus before the next key. Seeded once from ?row=; the URL follows below, with replace.
   const [highlighted, setHighlighted] = useState<string | null>(rowParam)
-  // Leaving writes the row itself, then navigates; this mirror must not replace that navigation with
-  // a write to the page being left (it runs before the router's transition commits).
-  const leaving = useRef(false)
-  useEffect(() => {
-    if (!leaving.current && highlighted !== rowParam) setParam('row', highlighted)
-  }, [highlighted, rowParam, setParam])
+  // The URL follows each highlight move directly (replace); nothing mirrors it in an effect, so
+  // nothing can race a navigation that follows.
+  const onHighlight = useCallback(
+    (key: string | null) => {
+      setHighlighted(key)
+      setParam('row', key)
+    },
+    [setParam]
+  )
 
   const rows = grid.data?.rows
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
@@ -114,7 +117,6 @@ export default function AidRequestsPage() {
         }),
       open: (r: ApiAidGridRow, href: string) => {
         // Back lands on this row (§3.5): it is highlighted, and written to the URL, before leaving.
-        leaving.current = true
         setHighlighted(r.request_id)
         setParam('row', r.request_id)
         void navigate(href)
@@ -172,7 +174,7 @@ export default function AidRequestsPage() {
               today={today}
               csvFilename={csvFilename}
               highlighted={highlighted}
-              onHighlight={setHighlighted}
+              onHighlight={onHighlight}
               links={links}
             />
           )

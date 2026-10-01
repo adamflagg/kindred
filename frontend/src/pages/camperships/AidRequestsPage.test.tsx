@@ -183,6 +183,11 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.getByText(/posts one amount per household/)).toBeInTheDocument()
   })
 
+  it('shows the split-request line on Needs an offer only', () => {
+    renderAt('/aid/requests?view=holds')
+    expect(screen.queryByText(/posts one amount per household/)).toBeNull()
+  })
+
   it('keeps showing loaded rows when a background refetch fails (Decision 33)', () => {
     grid = { data: LIVE, isLoading: false, error: new Error('Network down') }
     renderAt('/aid/requests')
