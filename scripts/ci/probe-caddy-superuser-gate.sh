@@ -106,6 +106,14 @@ GATED=(
   /api/collections/%5Fsuperusers/auth-with-password
   /api/collections/pbc_3142635823/auth-with-password
   /api/collections/PBC_3142635823/records
+  # PocketBase matches the collection with strings.EqualFold, which applies
+  # Unicode case folding: U+017F (long s) folds to `s`. Percent-encoded, raw
+  # UTF-8, and mixed with an uppercase letter.
+  /api/collections/_%C5%BFuperusers/auth-with-password
+  /api/collections/_%c5%bfuperusers/records
+  /api/collections/_%C5%BFuperuser%C5%BF/auth-with-password
+  /api/collections/_ſuperusers/auth-with-password
+  /api/collections/_SuperuſerS/request-otp
 )
 for path in "${GATED[@]}"; do
   expect blocked "$BLOCKED_IP" POST "$path"

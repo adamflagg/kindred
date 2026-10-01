@@ -103,14 +103,19 @@
 	handle @pocketbase {
 		# The superuser collection's API -- password login, OTP, record CRUD --
 		# is IP-gated like /_/ below. Both spellings, because PocketBase
-		# resolves {collection} by name OR id and ignores its case; Caddy's
-		# path matcher is case-insensitive too. The Traefik rule this backs up
+		# resolves {collection} by name OR id and folds its case (Unicode, not
+		# just ASCII -- see the matcher below). The Traefik rule this backs up
 		# was a literal PathPrefix that `_SUPERUSERS` and the id walked past.
 		# scripts/ci/probe-caddy-superuser-gate.sh checks every spelling.
 		# Internal superuser logins (kindred-api, sync, scripts on the host) go
 		# straight to pocketbase:8090 and never pass through here.
 		@superuser_api_blocked {
-			path /api/collections/_superusers /api/collections/_superusers/* /api/collections/pbc_3142635823 /api/collections/pbc_3142635823/*
+			# A regexp, not a `path` list, on purpose. PocketBase resolves the
+			# collection with strings.EqualFold: Unicode case folding, so
+			# `_%C5%BFuperusers` (U+017F long s) reaches `_superusers`. The
+			# `path` matcher only lowercases, so that spelling walked past it.
+			# Go's (?i) applies the same Unicode simple folding as EqualFold.
+			path_regexp superuser_api (?i)^/api/collections/(_superusers|pbc_3142635823)(/|$)
 			not client_ip {$ADMIN_ALLOWLIST}
 		}
 		respond @superuser_api_blocked 403
