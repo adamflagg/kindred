@@ -117,3 +117,20 @@ def test_a_zero_dollar_round_still_needs_its_offer_at_zero() -> None:
         total_posted=1500.0,
     )
     assert [s.needs_offer for s in grid_shares(row, HALVES, {})] == [0.0, 0.0]
+
+
+def test_a_clawed_back_round_moves_each_payer_to_the_posted_split() -> None:
+    """Decision 3, re-ruled: a payer's move is measured from the POSTED total, which leaves a clawed-back round
+    out (reconciliation does the same). R1 (1,001) was clawed back, R2 posted 1,501, R3 needs an offer at 301:
+    the payers go from 1,501 split (751/750) to 1,802 split (901/901), so the round posts 150 and 151."""
+    row = _row(
+        rounds=[
+            _round(1, "posted", decided=1001.0, posted=1001.0, clawed_back=True),
+            _round(2, "posted", decided=1501.0, posted=1501.0),
+            _round(3, "needs_offer", decided=301.0),
+        ],
+        total_decided=2803.0,
+        total_posted=1501.0,
+    )
+    out = grid_shares(row, HALVES, {})
+    assert [s.needs_offer for s in out] == [150.0, 151.0]

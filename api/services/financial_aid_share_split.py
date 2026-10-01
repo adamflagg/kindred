@@ -56,25 +56,27 @@ def _open_rounds(row: GridRowOut) -> list[RoundOut]:
 
 def grid_shares(row: GridRowOut, shares: Sequence[PayerShareRecord], families: Mapping[int, str]) -> list[GridShareOut]:
     """One line per payer when two or more households pay the request, the applicant first, then by household; []
-    for one payer. A payer's Needs an offer part is its share of the decided total less its share of the total before
-    the open rounds (Decision 3): what its CampMinder total moves by when they post, which is what reconciliation then
-    expects of it, and the parts add up to the rounds' amount exactly."""
+    for one payer. A payer's Needs an offer part is its share of the posted total plus the open rounds, less its share
+    of the posted total (Decision 3): what its CampMinder total moves by when they post, which is what reconciliation
+    then expects of it, and the parts add up to the rounds' amount exactly."""
     if len(shares) < 2:
         return []
     applicant = row.household_cm_id
     total = dollars(row.total_decided)
-    open_rounds = _open_rounds(row)
-    has_open = any(r.status == "needs_offer" for r in open_rounds)  # a question about rounds, not money (D74)
+    open_rounds = _open_rounds(row)  # a question about rounds, not money: a $0 round still needs its offer (D74)
     open_money = sum((Decimal(str(r.decided)) for r in open_rounds), _ZERO)
     after = split(total, shares, applicant)
-    # Decision 3: "before" is total_decided less the open rounds, the posted total only while no round was clawed back.
-    before = split(total - open_money, shares, applicant) if total is not None and has_open else {}
+    # Decision 3 (re-ruled): a payer's move is measured from the POSTED total, which leaves a clawed-back round out
+    # as reconciliation does, to the posted total plus the rounds that need an offer.
+    base = dollars(row.total_posted) or _ZERO
+    before = split(base, shares, applicant) if open_rounds else {}
+    moved = split(base + open_money, shares, applicant) if open_rounds else {}
     posted = split(dollars(row.total_posted), shares, applicant)
     out: list[GridShareOut] = []
     for share in sorted(shares, key=lambda s: (s.household_cm_id != applicant, s.household_cm_id)):
         h = share.household_cm_id
         mine = after.get(h)
-        part = mine - before[h] if mine is not None and h in before else None
+        part = moved[h] - before[h] if h in before and h in moved else None
         held = posted.get(h)
         out.append(
             GridShareOut(
