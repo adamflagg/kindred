@@ -20,6 +20,7 @@ const ROUTES: Record<string, Guard> = {
   'season/:tab?': 'view',
   'reports/:tab?': 'open',
   'households/:householdCmId': 'view',
+  kit: 'admin',
 }
 
 const GUARD_TEXT: Record<Guard, string> = {
