@@ -68,6 +68,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "cancellation": _CANCELLED,
     "to_reverse": _CANCELLED,
     "todos": _CANCELLED,
+    "queues": "Which Requests views a row is in reads its holds, notes, confirmation and cancellation",
     "needs_offer": _PRICED,
     "held": _PRICED,
     "remaining": "Remaining subtracts Needs an offer and Pending approval",
@@ -123,6 +124,7 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "cancellation",
     "to_reverse",
     "todos",
+    "queues",
 )
 BUDGET_GAPS: Final[tuple[str, ...]] = (
     "needs_offer",

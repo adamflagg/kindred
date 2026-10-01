@@ -41,6 +41,9 @@ from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, DecisionType
 
 RoundStatus = Literal["posted", "held", "pending_approval", "refused", "not_decided", "needs_offer", "not_rebuilt"]
+# The pricing stop while no rules version is approved (main spec §10.5); holds.py keys its release text on it
+# and Today names it beside intake's own flag.
+NO_APPROVED_RULES: Final = "no_approved_rules"
 # A result that cannot be priced stops the award like a hold does, and no release lifts it.
 _UNPRICEABLE: Final = frozenset({"needs_input", "error"})
 
@@ -261,7 +264,7 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     if item.live:
         issues.extend(item.issues)
         if rules is None:
-            issues.append(_stop("no_approved_rules", "This season's pricing rules are not approved yet"))
+            issues.append(_stop(NO_APPROVED_RULES, "This season's pricing rules are not approved yet"))
         elif item.request is None:
             issues.append(_stop("not_priceable", item.blocked or "This request cannot be priced yet"))
         else:

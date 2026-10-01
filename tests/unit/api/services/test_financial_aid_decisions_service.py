@@ -169,6 +169,19 @@ async def test_the_grid_prices_every_request_with_its_names_and_rounds() -> None
 
 
 @pytest.mark.asyncio
+async def test_each_grid_row_names_the_requests_views_it_is_in() -> None:
+    """Slice 1 (D21): queue membership is the server's; Today counts the same memberships."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    rows = {row.request_id: row for row in (await _service(store).grid(YEAR)).rows}
+    assert rows[EMMA].queues == ["needs_offer"]
+    # Ticked, and nothing of it in CampMinder yet: the family hasn't accepted, and the ledger hasn't confirmed it.
+    assert rows[LIAM].queues == ["waiting_on_family", "not_reconciled"]
+
+
+@pytest.mark.asyncio
 async def test_a_posted_round_shows_its_lock_and_the_day_it_was_posted() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)

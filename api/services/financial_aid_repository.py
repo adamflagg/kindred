@@ -32,6 +32,7 @@ from api.constants.collections import (
     FINANCIAL_TRANSACTIONS,
     HOUSEHOLDS,
     PERSONS,
+    USERS,
 )
 from api.services.lodging_repository import STABLE_SORT
 from api.utils.pb_filters import pb_escape
@@ -42,6 +43,8 @@ ID_CHUNK = 100
 # 1,200 characters, well under the 3,500-character limit below; 25 go over it and PocketBase answers
 # 400. One query per household instead cost ~65 ms each (SP6-core T7).
 HOUSEHOLD_CHUNK = 8
+# An email term is under 100 characters, so 25 keep a filter well below the 3,500-character limit below.
+USER_CHUNK = 25
 _PERSON_HOUSEHOLD_RELATIONS = ("household", "primary_childhood_household", "alternate_childhood_household")
 # PocketBase v0.40.4 refuses any filter over 3500 characters
 # (tools/search/provider.go:31); keep a margin below it and a cap on term count
@@ -73,7 +76,7 @@ def _positive_unique(ids: Collection[int]) -> list[int]:
     return sorted({int(i) for i in ids if int(i) > 0})
 
 
-def _chunk_filter_terms(
+def chunk_filter_terms(
     base_len: int,
     terms: Sequence[str],
     budget: int = AID_LIKE_FILTER_BUDGET,
@@ -239,16 +242,22 @@ class FinancialAidRepository:
             out.setdefault(int(r.cm_id), set()).add(int(r.year))
         return out
 
-    async def fetch_fa_requests(self, year: int) -> list[FaRequestRow]:
-        rows = await self._page(
-            FINANCIAL_AID_APPLICATIONS,
-            {
-                "filter": f"year = {int(year)} && (summer_amount_requested > 0 || fc_amount_requested > 0"
-                " || tbm_amount_requested > 0)",
-                "expand": "household",
-                "sort": STABLE_SORT,
-            },
+    async def fetch_fa_requests(self, year: int, household_ids: Collection[int] | None = None) -> list[FaRequestRow]:
+        """The FA mirror's per-program asks: the season's, or only these households' (spec §10: a single
+        household's read must not pay for the whole season's mirror)."""
+        asked = (
+            f"year = {int(year)} && (summer_amount_requested > 0 || fc_amount_requested > 0"
+            " || tbm_amount_requested > 0)"
         )
+        params = {"expand": "household", "sort": STABLE_SORT}
+        if household_ids is None:
+            rows = await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": asked, **params})
+        else:
+            rows = []
+            wanted = _positive_unique(household_ids)
+            for start in range(0, len(wanted), HOUSEHOLD_CHUNK):
+                terms = _any_of("household.cm_id", wanted[start : start + HOUSEHOLD_CHUNK])
+                rows += await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": f"{asked} && ({terms})", **params})
         out: list[FaRequestRow] = []
         for r in rows:
             household = (getattr(r, "expand", None) or {}).get("household")
@@ -262,6 +271,21 @@ class FinancialAidRepository:
                     bmitzvah=float(r.tbm_amount_requested or 0),
                 )
             )
+        return out
+
+    async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
+        """Kindred users' display names by lowercased email, for the receipt label (§4.7): who ticked Posted, who
+        decided a Round 3 amount. An actor that isn't a person (system:ledger) or has no name is left out."""
+        # PocketBase's `=` is case-sensitive, so ask for the address as recorded and in lowercase; results are
+        # keyed by lowercase.
+        wanted = sorted({form for e in emails if "@" in e for form in (e.strip(), e.strip().lower())})
+        out: dict[str, str] = {}
+        for start in range(0, len(wanted), USER_CHUNK):
+            terms = " || ".join(f"email = '{pb_escape(e)}'" for e in wanted[start : start + USER_CHUNK])
+            for user in await self._page(USERS, {"filter": terms, "fields": "email,name", "sort": STABLE_SORT}):
+                name = str(getattr(user, "name", "") or "").strip()
+                if name:
+                    out[str(user.email).strip().lower()] = name
         return out
 
     # --- raw transactions (data quality only) --------------------------------
@@ -324,7 +348,7 @@ class FinancialAidRepository:
         for r in await self._fetch_by_match_terms(year, outside, word_terms):
             merged[int(r.cm_id)] = r
         base_len = len(f"year = {int(year)} && is_reversed = false && {outside}")
-        for chunk in _chunk_filter_terms(base_len, equality_terms):
+        for chunk in chunk_filter_terms(base_len, equality_terms):
             for r in await self._fetch_by_match_terms(year, outside, chunk):
                 merged[int(r.cm_id)] = r
         return list(merged.values())

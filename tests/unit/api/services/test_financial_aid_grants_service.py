@@ -3,6 +3,7 @@ and commitments. Fictional data only; every write runs the real 4a helper over a
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Collection
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
@@ -20,7 +21,7 @@ from api.schemas.financial_aid_grants import (
     PlaceGrantsIn,
     WithdrawIn,
 )
-from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
+from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService, OneGrantsLoad
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from tests.unit.api.services.aid_commit_spy import AidCommitSpy, spy_on_commits
 
@@ -318,6 +319,29 @@ async def test_read_builds_the_register_with_names_and_the_suggestion() -> None:
     assert need.suggestion.camper_name == "Emma Johnson"
     assert [c.name for c in need.candidates] == ["Emma Johnson", "Liam Johnson"]  # sorted by name
     assert need.household_applied is True
+
+
+@pytest.mark.asyncio
+async def test_read_with_rows_loads_once_for_the_read_and_the_register() -> None:
+    """Slice 1: Today and the household page price the season and show the register from ONE load."""
+    repo = _read_repo()
+    service, _ = _service(repo)
+    out, rows = await service.read_with_rows(2031)
+    assert out == await service.read(2031)
+    assert [r.transaction_cm_id for r in rows] == [g.transaction_cm_id for g in out.grants]
+    assert repo.fetch_grant_postings.await_count == 2  # once per call above, never twice in one
+
+
+@pytest.mark.asyncio
+async def test_one_grants_load_serves_the_register_and_the_read_from_a_single_load() -> None:
+    repo = _read_repo()
+    service, _ = _service(repo)
+    shared = OneGrantsLoad(service, 2031)
+    rows, (out, _) = await asyncio.gather(shared.register(2031), shared.read())
+    assert [r.transaction_cm_id for r in rows] == [g.transaction_cm_id for g in out.grants]
+    assert repo.fetch_grant_postings.await_count == 1
+    with pytest.raises(ValueError, match="2032"):
+        await shared.register(2032)
 
 
 def _never_applied_repo(**kw: Any) -> MagicMock:

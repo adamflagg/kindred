@@ -76,6 +76,10 @@ class RoundState:
     snapshot: Mapping[str, Any] | None = None
     accepted: bool = False
     accepted_at: datetime | None = None
+    # Slice 1's receipt label (§4.7): who ticked Posted (the actor of the standing post), and who decided a
+    # staff-decided Round 3 amount (whoever keyed it, or finance once it approved it). "" when none.
+    posted_by: str = ""
+    decided_by: str = ""
 
 
 def apply_event(state: RoundState, event: DecisionEvent) -> RoundState:
@@ -85,9 +89,14 @@ def apply_event(state: RoundState, event: DecisionEvent) -> RoundState:
     if kind == "award" and event.decision_type:
         return replace(state, discretionary=event.amount, discretionary_type=event.decision_type)
     if kind == "award":
-        return replace(state, award=event.amount, approval="pending" if event.needs_approval else "not_needed")
+        return replace(
+            state,
+            award=event.amount,
+            approval="pending" if event.needs_approval else "not_needed",
+            decided_by=event.actor,
+        )
     if kind == "approve":
-        return replace(state, approval="approved")
+        return replace(state, approval="approved", decided_by=event.actor)
     if kind == "refuse":
         return replace(state, approval="refused")
     if kind == "post":
@@ -100,6 +109,7 @@ def apply_event(state: RoundState, event: DecisionEvent) -> RoundState:
             lock_source=event.lock_source,
             rules_version=event.rules_version,
             snapshot=event.snapshot,
+            posted_by=event.actor,
         )
     if kind == "unpost":
         return replace(
@@ -113,6 +123,7 @@ def apply_event(state: RoundState, event: DecisionEvent) -> RoundState:
             snapshot=None,
             accepted=False,
             accepted_at=None,
+            posted_by="",
         )
     if kind == "accept":
         return replace(state, accepted=True, accepted_at=event.created)

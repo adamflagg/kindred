@@ -2578,6 +2578,27 @@ export type ConfirmationOut = {
 }
 
 /**
+ * ConfirmationStateOut
+ *
+ * How many requests (or payer shares, on a household card) are in one confirmation state, and their
+ * summed gap (in CampMinder minus posted: negative is short). "posted · 1 short $210" (D77, D59).
+ */
+export type ConfirmationStateOut = {
+  /**
+   * Status
+   */
+  status: 'awaiting_sync' | 'confirmed' | 'short' | 'over' | 'not_in_campminder' | 'reversed'
+  /**
+   * Count
+   */
+  count: number
+  /**
+   * Gap
+   */
+  gap: number
+}
+
+/**
  * CorrectionCreate
  */
 export type CorrectionCreate = {
@@ -3213,6 +3234,40 @@ export type DecisionWriteOut = {
 }
 
 /**
+ * DefinitionNoteOut
+ *
+ * One numbered note: a signed meaning (§5), the camp's name filled in, numbered from 1 on its surface.
+ */
+export type DefinitionNoteOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * N
+   */
+  n: number
+  /**
+   * Text
+   */
+  text: string
+}
+
+/**
+ * DefinitionsResponse
+ */
+export type DefinitionsResponse = {
+  /**
+   * Surface
+   */
+  surface: string
+  /**
+   * Notes
+   */
+  notes: Array<DefinitionNoteOut>
+}
+
+/**
  * DispositionBulkLoad
  */
 export type DispositionBulkLoad = {
@@ -3592,6 +3647,50 @@ export type DuplicateMark = {
    * Reason
    */
   reason: string
+}
+
+/**
+ * EditorPreviewOut
+ *
+ * The editor's line while typing (§4.6): the round's computed award (None: held, or nothing computable),
+ * the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
+ * move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
+ * finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
+ * already pending.
+ */
+export type EditorPreviewOut = {
+  /**
+   * Award
+   */
+  award: number | null
+  /**
+   * Trace
+   */
+  trace: Array<TraceStep>
+  /**
+   * Stage After
+   */
+  stage_after:
+    | 'posted'
+    | 'held'
+    | 'pending_approval'
+    | 'refused'
+    | 'not_decided'
+    | 'needs_offer'
+    | 'not_rebuilt'
+    | null
+  /**
+   * Stage After Label
+   */
+  stage_after_label: string | null
+  /**
+   * Shares
+   */
+  shares: Array<PreviewShareOut>
+  /**
+   * Pending Approval
+   */
+  pending_approval: boolean
 }
 
 /**
@@ -5094,6 +5193,21 @@ export type GridRowOut = {
    * Todos
    */
   todos?: Array<TodoOut> | null
+  /**
+   * Queues
+   */
+  queues?: Array<
+    | 'needs_offer'
+    | 'holds'
+    | 'pending_approval'
+    | 'waiting_on_family'
+    | 'appeals'
+    | 'not_reconciled'
+    | 'to_reverse'
+    | 'session_not_settled'
+    | 'duplicates'
+    | 'cancel_reason'
+  > | null
 }
 
 /**
@@ -5163,6 +5277,59 @@ export type HistoricalTrendsResponse = {
 }
 
 /**
+ * HistoryEntryOut
+ *
+ * One aid_change_log row about the page's requests, applications, corrections, commitments or links
+ * (main spec §14.4); intake's own rows carry the actor system:intake. The screen writes the line (D49).
+ */
+export type HistoryEntryOut = {
+  /**
+   * At
+   */
+  at: string
+  /**
+   * Action
+   */
+  action: string
+  /**
+   * Entity
+   */
+  entity: string
+  /**
+   * Entity Id
+   */
+  entity_id: string
+  /**
+   * Request Id
+   */
+  request_id: string | null
+  /**
+   * Actor
+   */
+  actor: string
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Operation Id
+   */
+  operation_id: string
+  /**
+   * Before
+   */
+  before: {
+    [key: string]: unknown
+  } | null
+  /**
+   * After
+   */
+  after: {
+    [key: string]: unknown
+  } | null
+}
+
+/**
  * HoldReleaseIn
  *
  * Release a check's hold with a note (released=True), or put it back (released=False) (main spec
@@ -5181,6 +5348,49 @@ export type HoldReleaseIn = {
    * Note
    */
   note: string
+}
+
+/**
+ * HouseholdCardOut
+ *
+ * One household with a financial stake (D26). `chip` is D32's 1 · 2 · 3, the opened household first.
+ * `adults` are the parents its campers' records name; `request_ids` the page's requests it pays a share of
+ * or applied for.
+ */
+export type HouseholdCardOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Chip
+   */
+  chip: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Adults
+   */
+  adults: Array<string>
+  /**
+   * Phone
+   */
+  phone: string
+  /**
+   * Emails
+   */
+  emails: Array<string>
+  /**
+   * City
+   */
+  city: string
+  money: HouseholdMoneyOut
+  /**
+   * Request Ids
+   */
+  request_ids: Array<string>
 }
 
 /**
@@ -5526,6 +5736,102 @@ export type HouseholdMedicalResponse = {
 }
 
 /**
+ * HouseholdMoneyOut
+ *
+ * A household card's money line (D32 as amended by D59): this household's payer share of the decided
+ * and of the posted money on the page's requests, and its share's confirmation.
+ */
+export type HouseholdMoneyOut = {
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * In Campminder
+   */
+  in_campminder: number | null
+  /**
+   * States
+   */
+  states: Array<ConfirmationStateOut>
+}
+
+/**
+ * HouseholdPageResponse
+ */
+export type HouseholdPageResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  /**
+   * Households
+   */
+  households: Array<HouseholdCardOut>
+  totals: HouseholdTotalsOut
+  /**
+   * Requests
+   */
+  requests: Array<HouseholdRequestOut>
+  /**
+   * Incomes
+   */
+  incomes: Array<IncomeOut>
+  /**
+   * Grants
+   */
+  grants: Array<GrantRowOut>
+  /**
+   * Expected
+   */
+  expected: Array<ExpectedOut>
+  /**
+   * Postings
+   */
+  postings: Array<AidPostingLine>
+  /**
+   * Links
+   */
+  links: Array<HouseholdLinkRow>
+  /**
+   * History
+   */
+  history: Array<HistoryEntryOut>
+}
+
+/**
+ * HouseholdRequestOut
+ */
+export type HouseholdRequestOut = {
+  row: GridRowOut
+  ask: AnswerOut | null
+  /**
+   * Payer Share Status
+   */
+  payer_share_status: '' | 'complete' | 'incomplete'
+  /**
+   * Shares
+   */
+  shares: Array<ShareLineOut>
+  /**
+   * Receipts
+   */
+  receipts: Array<ReceiptOut>
+}
+
+/**
  * HouseholdShareSet
  *
  * One household's share, as a % or (once the request has a priced amount) as dollars,
@@ -5547,6 +5853,40 @@ export type HouseholdShareSet = {
 }
 
 /**
+ * HouseholdTotalsOut
+ *
+ * The band's five figures (D77): cost − {camp} aid (decided) − grants = family's share, then Posted with
+ * its confirmation folded into its label. Over the page's included requests (live, not cancelled).
+ * family_share is None until every included request has a cost and a decided total, and never below 0.
+ */
+export type HouseholdTotalsOut = {
+  /**
+   * Cost
+   */
+  cost: number | null
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Grants
+   */
+  grants: number | null
+  /**
+   * Family Share
+   */
+  family_share: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * States
+   */
+  states: Array<ConfirmationStateOut>
+}
+
+/**
  * IncentiveRule
  *
  * How a family incentive (for example a new-family discount) meets aid.
@@ -5556,6 +5896,37 @@ export type IncentiveRule = {
    * Mode
    */
   mode: 'ignore' | 'reduce_cost' | 'reduce_award'
+}
+
+/**
+ * IncomeOut
+ *
+ * One application's household income: every answer with corrections beside the original, the free-text
+ * answers (special circumstances) and the application's flags (main spec §9.3).
+ */
+export type IncomeOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Answers
+   */
+  answers: Array<AnswerOut>
+  /**
+   * Notes
+   */
+  notes: {
+    [key: string]: string
+  }
+  /**
+   * Flags
+   */
+  flags: Array<FlagOut>
 }
 
 /**
@@ -6336,6 +6707,63 @@ export type JotformWriteInOption = {
    * Linked Filers
    */
   linked_filers?: Array<string>
+}
+
+/**
+ * JumpIndexHousehold
+ *
+ * One household with aid activity this season: an application, a request or a payer share, a posting
+ * (live or reversed) or a grant commitment. The browser matches the family name, a person's name or either
+ * CampMinder id, and Enter opens /aid/households/:household_cm_id.
+ */
+export type JumpIndexHousehold = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * People
+   */
+  people: Array<JumpIndexPerson>
+}
+
+/**
+ * JumpIndexPerson
+ *
+ * A camper (with a request, a posting or a commitment in the household) or a parent its records name.
+ * A parent has no CampMinder id here (the camper record's parent names carry none): person_cm_id None.
+ */
+export type JumpIndexPerson = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id: number | null
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Role
+   */
+  role: 'camper' | 'parent'
+}
+
+/**
+ * JumpIndexResponse
+ */
+export type JumpIndexResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Households
+   */
+  households: Array<JumpIndexHousehold>
 }
 
 /**
@@ -9027,6 +9455,43 @@ export type PostedRow = {
 }
 
 /**
+ * PreviewIn
+ *
+ * What the request editor is typing (D22): a Round 2 ask (the award is computed) or a Round 3 amount.
+ * Priced as the write would price it; never written or logged.
+ */
+export type PreviewIn = {
+  /**
+   * Round
+   */
+  round: 2 | 3
+  /**
+   * Amount
+   */
+  amount: number | string
+}
+
+/**
+ * PreviewShareOut
+ *
+ * One payer's whole-dollar part of the request's decided total once the typed amount stands (§6.3).
+ */
+export type PreviewShareOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Pct
+   */
+  pct: number
+  /**
+   * Amount
+   */
+  amount: number
+}
+
+/**
  * PriorYearCancelledSummary
  */
 export type PriorYearCancelledSummary = {
@@ -9795,6 +10260,63 @@ export type R1PercentOutput = {
    * R1 Pct
    */
   r1_pct: string
+}
+
+/**
+ * ReceiptLabelOut
+ *
+ * What the receipt's label says (§4.7; D43, D52, D67): live ("live · rules 2027 v3"), or locked at a
+ * round's lock ("rules 2027 v3 · locked Mar 9 by <name>'s Posted tick"), or reproduced from the repaired
+ * 2026 sheet. The screen writes the words; these are the facts. A name is the Kindred user's display name,
+ * None for the ledger's own tick or a person Kindred has no name for.
+ */
+export type ReceiptLabelOut = {
+  /**
+   * Kind
+   */
+  kind: 'live' | 'locked' | 'reproduced'
+  /**
+   * Season
+   */
+  season: number
+  /**
+   * Rules Version
+   */
+  rules_version: number
+  /**
+   * Locked On
+   */
+  locked_on: string | null
+  /**
+   * Lock Source
+   */
+  lock_source: 'tick' | 'ledger' | null
+  /**
+   * Ticked By Name
+   */
+  ticked_by_name: string | null
+  /**
+   * Decided By Name
+   */
+  decided_by_name: string | null
+}
+
+/**
+ * ReceiptOut
+ *
+ * One round's receipt (D33, D34, §6.5): the calculator's own trace. A posted round's is the snapshot
+ * stored at its lock; an unposted round's is live, the request priced now.
+ */
+export type ReceiptOut = {
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Trace
+   */
+  trace: Array<TraceStep>
+  label: ReceiptLabelOut
 }
 
 /**
@@ -12615,6 +13137,43 @@ export type ShareConfirmationOut = {
 }
 
 /**
+ * ShareLineOut
+ *
+ * One payer of a request: the share table's row, or the one money line when there is one payer (D32).
+ * `chip` 0 means the payer is outside the page's scope: it has no household card.
+ */
+export type ShareLineOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Chip
+   */
+  chip: number
+  /**
+   * Share Pct
+   */
+  share_pct: number
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * In Campminder
+   */
+  in_campminder: number | null
+  /**
+   * Status
+   */
+  status: 'awaiting_sync' | 'confirmed' | 'short' | 'over' | 'not_in_campminder' | 'reversed' | null
+}
+
+/**
  * ShareRequestSummary
  *
  * The household's cabin-sharing request, unresolved.
@@ -13771,6 +14330,115 @@ export type TimeBucket = {
 }
 
 /**
+ * TodayLineOut
+ *
+ * One queue's dense line: "5 fam · 7 req", its reasons inline, and Open › to the view that lists
+ * exactly these rows. `families` is None where a line has no family (rules sections, descriptions).
+ * A line that is no Requests view (late_full_coverage, would_change, intake) names its `request_ids`.
+ * Reasons need not sum to `items`: a request Not reconciled on two payer shares counts once in items and
+ * under each share's state.
+ */
+export type TodayLineOut = {
+  /**
+   * Key
+   */
+  key:
+    | 'needs_offer'
+    | 'holds'
+    | 'waiting_on_family'
+    | 'not_reconciled'
+    | 'to_reverse'
+    | 'session_not_settled'
+    | 'duplicates'
+    | 'cancel_reason'
+    | 'grants'
+    | 'late_full_coverage'
+    | 'pending_approval'
+    | 'rules_sections'
+    | 'would_change'
+    | 'sources'
+    | 'intake'
+  /**
+   * Families
+   */
+  families: number | null
+  /**
+   * Items
+   */
+  items: number
+  /**
+   * Item Kind
+   */
+  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions'
+  /**
+   * Reasons
+   */
+  reasons?: Array<TodayReasonOut>
+  /**
+   * Amount
+   */
+  amount?: number | null
+  /**
+   * Oldest Days
+   */
+  oldest_days?: number | null
+  /**
+   * Over 14 Days
+   */
+  over_14_days?: number | null
+  /**
+   * Largest Gap
+   */
+  largest_gap?: number | null
+  /**
+   * Request Ids
+   */
+  request_ids?: Array<string>
+}
+
+/**
+ * TodayReasonOut
+ *
+ * One reason inside a line ("income conflict 3 · payer shares 1"): a hold code, a round (r1, r2, r3),
+ * a confirmation state, a grant's reason, a rules section or a description's state.
+ */
+export type TodayReasonOut = {
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Families
+   */
+  families: number | null
+  /**
+   * Items
+   */
+  items: number
+}
+
+/**
+ * TodayResponse
+ *
+ * Today's sections follow the user's permissions: casework None without financial_aid.casework,
+ * finance None without financial_aid.rules.
+ */
+export type TodayResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Casework
+   */
+  casework: Array<TodayLineOut> | null
+  /**
+   * Finance
+   */
+  finance: Array<TodayLineOut> | null
+}
+
+/**
  * TodoOut
  *
  * A to-do on the row: neither a hold nor a Note ("Cancelled: give a reason", D101).
@@ -13844,6 +14512,38 @@ export type TotalPercentOutput = {
    * Total Pct
    */
   total_pct: string
+}
+
+/**
+ * TraceStep
+ */
+export type TraceStep = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Value
+   */
+  value?: string | number | string | boolean | null
+  /**
+   * Inputs
+   */
+  inputs?: {
+    [key: string]: string | number | string | boolean | null
+  }
+  /**
+   * Bound
+   */
+  bound?: string | null
+  /**
+   * Note
+   */
+  note?: string | null
 }
 
 /**
@@ -21284,6 +21984,170 @@ export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPo
 
 export type SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponse =
   SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponses[keyof SetRequestCancellationApiFinancialAidRequestsRequestIdCancellationPostResponses]
+
+export type GetDefinitionsApiFinancialAidDefinitionsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Surface
+     */
+    surface: string
+  }
+  url: '/api/financial-aid/definitions'
+}
+
+export type GetDefinitionsApiFinancialAidDefinitionsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetDefinitionsApiFinancialAidDefinitionsGetError =
+  GetDefinitionsApiFinancialAidDefinitionsGetErrors[keyof GetDefinitionsApiFinancialAidDefinitionsGetErrors]
+
+export type GetDefinitionsApiFinancialAidDefinitionsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: DefinitionsResponse
+}
+
+export type GetDefinitionsApiFinancialAidDefinitionsGetResponse =
+  GetDefinitionsApiFinancialAidDefinitionsGetResponses[keyof GetDefinitionsApiFinancialAidDefinitionsGetResponses]
+
+export type GetJumpIndexApiFinancialAidJumpIndexYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/jump-index/{year}'
+}
+
+export type GetJumpIndexApiFinancialAidJumpIndexYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetJumpIndexApiFinancialAidJumpIndexYearGetError =
+  GetJumpIndexApiFinancialAidJumpIndexYearGetErrors[keyof GetJumpIndexApiFinancialAidJumpIndexYearGetErrors]
+
+export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: JumpIndexResponse
+}
+
+export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponse =
+  GetJumpIndexApiFinancialAidJumpIndexYearGetResponses[keyof GetJumpIndexApiFinancialAidJumpIndexYearGetResponses]
+
+export type GetTodayApiFinancialAidTodayYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/today/{year}'
+}
+
+export type GetTodayApiFinancialAidTodayYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTodayApiFinancialAidTodayYearGetError =
+  GetTodayApiFinancialAidTodayYearGetErrors[keyof GetTodayApiFinancialAidTodayYearGetErrors]
+
+export type GetTodayApiFinancialAidTodayYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TodayResponse
+}
+
+export type GetTodayApiFinancialAidTodayYearGetResponse =
+  GetTodayApiFinancialAidTodayYearGetResponses[keyof GetTodayApiFinancialAidTodayYearGetResponses]
+
+export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/household-page/{year}/{household_cm_id}'
+}
+
+export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetError =
+  GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetErrors[keyof GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetErrors]
+
+export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdPageResponse
+}
+
+export type GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetResponse =
+  GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetResponses[keyof GetHouseholdPageApiFinancialAidHouseholdPageYearHouseholdCmIdGetResponses]
+
+export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostData = {
+  body: PreviewIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/preview'
+}
+
+export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostError =
+  PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostErrors[keyof PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostErrors]
+
+export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: EditorPreviewOut
+}
+
+export type PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponse =
+  PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponses[keyof PreviewRequestEditApiFinancialAidRequestsRequestIdPreviewPostResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

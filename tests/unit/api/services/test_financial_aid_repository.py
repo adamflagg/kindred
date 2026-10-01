@@ -17,7 +17,7 @@ from api.schemas.financial_aid import (
     OverrideRow,
 )
 from api.services import financial_aid_repository
-from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_repository import HOUSEHOLD_CHUNK, FinancialAidRepository
 
 
 def _pb(rows: list[object] | None = None) -> tuple[MagicMock, list[dict[str, object]]]:
@@ -155,6 +155,50 @@ async def test_fa_requests_take_the_household_cm_id_from_the_expanded_relation()
     assert [(r.household_cm_id, r.summer, r.family_camp, r.bmitzvah) for r in got] == [(100, 1200.0, 0.0, 0.0)]
 
 
+@pytest.mark.asyncio
+async def test_user_names_read_only_people_and_only_their_names() -> None:
+    pb, calls = _pb([SimpleNamespace(email="registrar@example.com", name="Test User")])
+    out = await FinancialAidRepository(pb).fetch_user_names({"registrar@example.com", "system:ledger", ""})
+    assert out == {"registrar@example.com": "Test User"}
+    (call,) = calls
+    assert call["filter"] == "email = 'registrar@example.com'"
+    assert call["fields"] == "email,name"
+
+
+@pytest.mark.asyncio
+async def test_fa_requests_for_some_households_reads_only_theirs() -> None:
+    """Spec §10's known cost: /households/{id} re-read the whole season's FA mirror on every call."""
+    pb, calls = _pb([])
+    await FinancialAidRepository(pb).fetch_fa_requests(2026, [100, 200])
+    (call,) = calls
+    assert "(household.cm_id = 100 || household.cm_id = 200)" in str(call["filter"])
+    assert str(call["filter"]).startswith("year = 2026 && ")
+
+
+@pytest.mark.asyncio
+async def test_fa_requests_for_many_households_are_chunked_and_concatenated() -> None:
+    """More households than one HOUSEHOLD_CHUNK make several reads, each under the filter limit, whose rows join."""
+    row = SimpleNamespace(
+        summer_amount_requested=1200,
+        fc_amount_requested=0,
+        tbm_amount_requested=None,
+        expand={"household": SimpleNamespace(cm_id=100)},
+    )
+    pb, calls = _pb([row])
+    ids = [1_000_000 + i for i in range(HOUSEHOLD_CHUNK * 2 + 1)]
+    got = await FinancialAidRepository(pb).fetch_fa_requests(2026, ids)
+    assert len(calls) == 3
+    assert all(len(str(c["filter"])) <= 3500 for c in calls)
+    assert len(got) == 3  # one fake row per call, concatenated
+
+
+@pytest.mark.asyncio
+async def test_fa_requests_for_no_households_reads_nothing() -> None:
+    pb, calls = _pb([])
+    assert await FinancialAidRepository(pb).fetch_fa_requests(2026, []) == []
+    assert calls == []
+
+
 def _person_row(pid: str, cm: int, household: int, primary: int = 0, alternate: int = 0) -> SimpleNamespace:
     expand: dict[str, object] = {"household": SimpleNamespace(cm_id=household)}
     if primary:
@@ -279,3 +323,20 @@ def test_full_coverage_is_not_a_source_attribute() -> None:
     assert not hasattr(AidSourceUpdate(**base, source_family="other_outside", funder_type="outside"), "full_coverage")
     with pytest.raises(ValidationError):
         AidSourceUpdate(**base, source_family="other_outside", funder_type="outside", full_coverage=True)  # type: ignore[call-arg]
+
+
+@pytest.mark.asyncio
+async def test_user_names_are_keyed_by_lowercased_email() -> None:
+    pb, _ = _pb([SimpleNamespace(email="Registrar@Example.com", name="Test User")])
+    out = await FinancialAidRepository(pb).fetch_user_names({"REGISTRAR@example.com"})
+    assert out == {"registrar@example.com": "Test User"}
+
+
+@pytest.mark.asyncio
+async def test_user_names_query_both_the_original_and_lowercased_email() -> None:
+    """PocketBase's `=` is case-sensitive: a user stored as Registrar@Example.com is only found by that string."""
+    pb, calls = _pb([SimpleNamespace(email="Registrar@Example.com", name="Test User")])
+    await FinancialAidRepository(pb).fetch_user_names({"Registrar@Example.com"})
+    (call,) = calls
+    assert "email = 'Registrar@Example.com'" in str(call["filter"])
+    assert "email = 'registrar@example.com'" in str(call["filter"])

@@ -18,7 +18,7 @@ from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
 
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_GRANTORS, AID_GRANTS
 from api.constants.filters import ACTIVE_ENROLLED_STATUS_ID
@@ -472,6 +472,11 @@ class GrantsService:
     async def read(self, year: int) -> GrantsResponse:
         """Grants' one aggregate read (D21): the register, needs attention and Expected, joined
         and computed here; the browser only filters and sorts."""
+        return (await self.read_with_rows(year))[0]
+
+    async def read_with_rows(self, year: int) -> tuple[GrantsResponse, list[RegisterRow]]:
+        """The read and the register rows it was built from, from one load (slice 1: Today and the
+        household page price the season with the rows and show the read)."""
         loaded = await self._load(year)
         inputs, rows, sources, grantors_raw = loaded.inputs, loaded.rows, loaded.sources, loaded.grantors
         answers, family_sets, members, people = loaded.answers, loaded.family_sets, loaded.members, loaded.people
@@ -543,7 +548,7 @@ class GrantsService:
                 r.commitment_id,
             ),
         )
-        return GrantsResponse(
+        response = GrantsResponse(
             year=year,
             grants=grants,
             needs_camper=[
@@ -603,6 +608,7 @@ class GrantsService:
                 for e in expected
             ],
         )
+        return response, rows
 
     # --- placing a camper (casework) ----------------------------------------------
 
@@ -805,3 +811,28 @@ class GrantsService:
         )
         await self._commit([write], actor=actor, reason=body.reason, require_reason=True)
         return _commitment_out(commitment_id, year, _commitment_snapshot(current), "withdrawn", withdrawn_at)
+
+
+class GrantsLoader(Protocol):
+    async def read_with_rows(self, year: int) -> tuple[GrantsResponse, list[RegisterRow]]: ...
+
+
+class OneGrantsLoad:
+    """One season's grants load, shared by the register a season is priced with (the decisions service's
+    RegisterSource) and the grants read a surface shows (slice 1: Today and the household page), so a
+    surface never loads the register twice."""
+
+    def __init__(self, grants: GrantsLoader, year: int) -> None:
+        self._grants = grants
+        self._year = year
+        self._loading: asyncio.Future[tuple[GrantsResponse, list[RegisterRow]]] | None = None
+
+    async def read(self) -> tuple[GrantsResponse, list[RegisterRow]]:
+        if self._loading is None:
+            self._loading = asyncio.ensure_future(self._grants.read_with_rows(self._year))
+        return await self._loading
+
+    async def register(self, year: int) -> list[RegisterRow]:
+        if year != self._year:
+            raise ValueError(f"this grants load is for {self._year}, not {year}")
+        return (await self.read())[1]

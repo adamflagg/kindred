@@ -318,6 +318,8 @@ async def test_household_detail_shows_the_familys_posting_history() -> None:
     got = await FinancialAidLedgerService(repo).household(2026, 100)
 
     repo.fetch_postings.assert_awaited_once_with(2026, [100, 200], include_reversed=True)
+    # Spec §10: the family's FA mirror rows only, never the whole season's.
+    repo.fetch_fa_requests.assert_awaited_once_with(2026, [100, 200])
     assert got.family_households == [100, 200]
     assert got.display_name == "Test Family"
     assert [(p.transaction_cm_id, p.is_reversed) for p in got.postings] == [(9001, True), (9002, False)]
@@ -509,6 +511,27 @@ async def test_data_quality_lists_unclassified_orphans_and_open_versus_accepted_
     assert got.accepted_flag_counts == {"implied_program_mismatch": 1}
     assert [p.transaction_cm_id for p in got.flagged_postings] == [9001, 9002]
     assert got.no_enrollment_postings == 1
+
+
+@pytest.mark.asyncio
+async def test_unclassified_sources_are_data_qualitys_list_from_two_reads() -> None:
+    """Slice 1's Today reads the same list as Data quality, without Data quality's other reads."""
+    unclassified = _source("mystery grant", "unclassified", budget=False, classified_by="unclassified")
+    repo = _repo(
+        fetch_postings=[
+            _posting(9001, 100, -100.0, source_key="mystery grant", effective_source_key="mystery grant"),
+            _posting(9002, 100, -50.0, source_key="unknown line", effective_source_key="unknown line"),
+            _posting(9003, 200, -900.0),
+        ],
+        fetch_sources=[unclassified, _source(CAMP, "camp_fa", budget=True)],
+    )
+    got = await FinancialAidLedgerService(repo).unclassified_sources(2026)
+    assert [(u.source_key, u.postings, u.amount) for u in got] == [
+        ("mystery grant", 1, 100.0),
+        ("unknown line", 1, 50.0),
+    ]
+    assert got == (await FinancialAidLedgerService(repo).data_quality(2026)).unclassified_sources
+    repo.fetch_postings.assert_any_await(2026)
 
 
 # Review Focus 5.

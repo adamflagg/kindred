@@ -68,9 +68,11 @@ from api.schemas.financial_aid_decisions import (
     BudgetResponse,
     CancellationIn,
     DecisionWriteOut,
+    EditorPreviewOut,
     HoldReleaseIn,
     ManualHoldIn,
     PostedIn,
+    PreviewIn,
     RemainingResponse,
     RequestsGridResponse,
     Round3AmountIn,
@@ -89,6 +91,7 @@ from api.schemas.financial_aid_grants import (
     PlaceGrantsOut,
     WithdrawIn,
 )
+from api.schemas.financial_aid_household_page import HouseholdPageResponse
 from api.schemas.financial_aid_intake import (
     ApplicationDetailResponse,
     ApplicationListResponse,
@@ -150,12 +153,14 @@ from api.schemas.financial_aid_scenarios import (
     ViewIn,
     WorkspaceOut,
 )
+from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse, TodayResponse
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
     DuplicateRequestError,
     FinancialAidCaseworkService,
 )
+from api.services.financial_aid_change_log_reads import EntityLogReads
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import (
@@ -165,7 +170,9 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
+from api.services.financial_aid_household_page import HouseholdNotFoundError, HouseholdPageService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
 from api.services.financial_aid_ledger_service import (
     FinancialAidLedgerService,
     FinancialAidNotFoundError,
@@ -207,9 +214,12 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     Workspace,
 )
+from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
+from bunking.branding import get_branding, get_camp_name
 from bunking.financial_aid.change_log import AidWriteConflictError
+from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
@@ -879,7 +889,7 @@ async def key_round3_amount(
     request_id: _RequestIdPath, body: Round3AmountIn, user: AuthUser = _CASEWORK
 ) -> DecisionWriteOut:
     # D22, D79: finance's own Round 3 amount needs no approval; the registrar's above the limit waits.
-    can_approve = user.is_admin or Permission.FINANCIAL_AID_RULES in user.permissions
+    can_approve = _holds(user, Permission.FINANCIAL_AID_RULES)
     try:
         return await _decisions().key_round3_amount(request_id, body, user.email, can_approve=can_approve)
     except FinancialAidError as exc:
@@ -1385,5 +1395,91 @@ async def set_request_cancellation(
     cancellation, or reopen a Kindred cancellation (sub-project 10b-2)."""
     try:
         return await _decisions().set_cancellation(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+# --- slice 1's reads (clean spec §12.2) -------------------------------------------------------------
+
+
+def camp_label() -> str:
+    """The camp's name in staff copy: branding's short name, else its full name."""
+    short = str(get_branding().get("camp_name_short") or "").strip()
+    return short or get_camp_name()
+
+
+@router.get("/definitions", response_model=DefinitionsResponse)
+async def get_definitions(
+    surface: Annotated[str, Query(min_length=1, max_length=64)], user: AuthUser = _VIEW_OR_SUMMARY
+) -> DefinitionsResponse:
+    """A surface's numbered definition notes (§4.8, D20): §5's signed meanings, shared with Reports ›
+    Development. An unknown surface is 404."""
+    keys = SURFACES.get(surface)
+    if keys is None:
+        raise HTTPException(status_code=404, detail=f"no definitions for surface {surface!r}")
+    camp = camp_label()
+    return DefinitionsResponse(
+        surface=surface,
+        notes=[
+            DefinitionNoteOut(key=key, n=n, text=render(BY_KEY[key], camp=camp).text)
+            for n, key in enumerate(keys, start=1)
+        ],
+    )
+
+
+@router.get("/jump-index/{year}", response_model=JumpIndexResponse)
+async def get_jump_index(year: _Year, user: AuthUser = _VIEW) -> JumpIndexResponse:
+    """The jump box's index (§3.5, D13): every household with aid activity this season, read once."""
+    return await JumpIndexService(JumpIndexRepository(pb)).read(year)
+
+
+def _holds(user: AuthUser, permission: str) -> bool:
+    return user.is_admin or permission in user.permissions
+
+
+@router.get("/today/{year}", response_model=TodayResponse)
+async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
+    """Today (§6.4): one dense line per waiting queue; its sections follow the user's permissions."""
+    service = TodayService(
+        store=FinancialAidDecisionsRepository(pb),
+        pricing=_rules(),
+        rules=_rules(),
+        grants=GrantsService(GrantsRepository(pb)),
+        ledger=_ledger(),
+    )
+    return await service.read(
+        year,
+        casework=_holds(user, Permission.FINANCIAL_AID_CASEWORK),
+        finance=_holds(user, Permission.FINANCIAL_AID_RULES),
+    )
+
+
+@router.get("/household-page/{year}/{household_cm_id}", response_model=HouseholdPageResponse)
+async def get_household_page(
+    year: _Year, household_cm_id: Annotated[int, Path(gt=0)], user: AuthUser = _VIEW
+) -> HouseholdPageResponse:
+    """The household page (§6.3): one family's aggregate, its request rows the grid's own (D21, D26)."""
+    service = HouseholdPageService(
+        store=FinancialAidDecisionsRepository(pb),
+        pricing=_rules(),
+        grants=GrantsService(GrantsRepository(pb)),
+        casework=_casework(),
+        ledger=FinancialAidRepository(pb),
+        history=EntityLogReads(pb),
+    )
+    try:
+        return await service.read(year, household_cm_id)
+    except HouseholdNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/requests/{request_id}/preview", response_model=EditorPreviewOut)
+async def preview_request_edit(
+    request_id: _RequestIdPath, body: PreviewIn, user: AuthUser = _CASEWORK
+) -> EditorPreviewOut:
+    """The request editor's line while typing (§4.6, D22): priced as the write would price it; writes nothing."""
+    can_approve = _holds(user, Permission.FINANCIAL_AID_RULES)
+    try:
+        return await _decisions().preview(request_id, body, can_approve=can_approve)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
