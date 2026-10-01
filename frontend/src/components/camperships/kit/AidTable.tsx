@@ -305,6 +305,15 @@ export function AidTable<Row>({
   }
 
   const hasTotals = columns.some((c) => c.total)
+  const labelSpan = (() => {
+    if (!footerLabel) return 1
+    let span = 0
+    for (const c of columns) {
+      if (!pinnedLeft.has(c.key) || c.total) break
+      span += 1
+    }
+    return Math.max(span, 1)
+  })()
 
   return (
     <div className="space-y-2">
@@ -452,12 +461,22 @@ export function AidTable<Row>({
             <tfoot>
               <tr>
                 {columns.map((c, index) => {
+                  // The footer label spans the leading pinned columns that carry no total, so the
+                  // sticky cell after it can't paint over it (I1).
+                  if (index > 0 && index < labelSpan) return null
+                  const spans = index === 0 && labelSpan > 1
                   const total = c.total ? c.total(visible) : null
                   return (
                     <td
                       key={c.key}
+                      colSpan={spans ? labelSpan : undefined}
                       style={pinStyle(c)}
-                      className={join(TFOOT_CELL, pinClasses(c, 'z-10'), alignClass(c))}
+                      className={join(
+                        TFOOT_CELL,
+                        pinClasses(c, 'z-10'),
+                        spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
+                        alignClass(c)
+                      )}
                     >
                       {index === 0 && footerLabel ? footerLabel(visible) : null}
                       {c.total &&

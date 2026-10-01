@@ -647,6 +647,17 @@ describe('AidTable with a controlled highlight', () => {
   )
 })
 
+describe('the footer label', () => {
+  it('spans the pinned columns, so the sticky Camper cell cannot cover it (I1)', () => {
+    renderTable()
+    const label = screen.getByText('4 requests').closest('td')
+    expect(label).not.toBeNull()
+    expect(label).toHaveAttribute('colspan', '2')
+    // The two pinned footer cells are one cell now: label, then Decided, Would change by, attention.
+    expect(label?.closest('tr')?.querySelectorAll('td')).toHaveLength(4)
+  })
+})
+
 // Owner ruling R1 (2026-10-01): the row you are on stays on screen under a search that hides it,
 // but totals, group counts and the CSV always mean the rows matching the search.
 describe('a row kept on screen under a search', () => {
