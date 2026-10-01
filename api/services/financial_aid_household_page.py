@@ -294,7 +294,7 @@ def receipts(
         snapshot = state.snapshot or {}
         result = snapshot.get("result")
         if state.posted and isinstance(result, Mapping) and state.rules_version is not None:
-            source = state.lock_source if state.lock_source in ("tick", "ledger") else None
+            source = state.lock_source if state.lock_source in ("tick", "ledger", "placement") else None
             out.append(
                 ReceiptOut(
                     round=view.round,
@@ -305,7 +305,7 @@ def receipts(
                         rules_version=state.rules_version,
                         locked_on=state.posted_on,
                         lock_source=source,
-                        ticked_by_name=_name(names, state.posted_by) if source == "tick" else None,
+                        ticked_by_name=_name(names, state.posted_by) if source in ("tick", "placement") else None,
                         decided_by_name=decided_by,
                     ),
                 )
