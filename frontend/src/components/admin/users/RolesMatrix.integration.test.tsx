@@ -77,11 +77,9 @@ describe('RolesMatrix with the real RoleDrawer', () => {
     await userEvent.click(screen.getByRole('button', { name: /New role/ }))
     await userEvent.type(screen.getByLabelText('Name'), 'Health Center')
 
-    let vanished = false
     const snap: string[] = []
     const watch = new MutationObserver(() => {
       if (!screen.queryByTestId('role-drawer')) {
-        vanished = true
         snap.push(document.body.innerHTML.slice(0, 400))
       }
     })
