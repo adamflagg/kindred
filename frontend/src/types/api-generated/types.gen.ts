@@ -5931,6 +5931,10 @@ export type HouseholdTotalsOut = {
    * Grants Beyond Owed
    */
   grants_beyond_owed?: number | null
+  /**
+   * Decided Partial
+   */
+  decided_partial?: boolean
 }
 
 /**
