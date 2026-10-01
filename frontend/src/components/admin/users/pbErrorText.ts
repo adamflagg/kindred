@@ -20,23 +20,24 @@ export function pbErrorText(err: unknown): string {
   return raw.endsWith('.') ? raw.slice(0, -1) : raw
 }
 
+const at = (o: unknown, key: string): unknown => (isObj(o) ? o[key] : undefined)
+
 function describe(err: unknown): string {
   if (!isObj(err)) return 'Unknown error'
-  const data = isObj(err.response) && isObj(err.response.data) ? err.response.data : null
-  if (data) {
-    if (isObj(data.requests)) {
-      for (const sub of Object.values(data.requests)) {
-        if (isObj(sub) && isObj(sub.response)) {
-          const m = text(sub.response.message)
-          if (m) return m
-        }
+  const data = at(at(err, 'response'), 'data')
+  if (isObj(data)) {
+    const requests = at(data, 'requests')
+    if (isObj(requests)) {
+      for (const sub of Object.values(requests)) {
+        const m = text(at(at(sub, 'response'), 'message'))
+        if (m) return m
       }
     }
     for (const [key, field] of Object.entries(data)) {
-      if (key === 'requests' || !isObj(field)) continue
-      const m = text(field.message)
+      if (key === 'requests') continue
+      const m = text(at(field, 'message'))
       if (m) return m
     }
   }
-  return text(err.message) ?? 'Unknown error'
+  return text(at(err, 'message')) ?? 'Unknown error'
 }
