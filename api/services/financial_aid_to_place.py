@@ -298,6 +298,8 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
     if len(matches) > 1:  # equal amounts: only the person or the day can tell them apart
         by_person = _one([c for c in matches if line.person_cm_id > 0 and c.person_cm_id == line.person_cm_id])
         by_day = _one([c for c in matches if any(e.kind == "date" for e in _facts(line, c, False))])
+        if by_person is not None and by_day is not None and by_person is not by_day:
+            return None  # the person and the day point at different requests: Kindred never guesses (D12)
         chosen = by_person or by_day
         return _whole(line, chosen, alone) if chosen is not None else None
     if matches:

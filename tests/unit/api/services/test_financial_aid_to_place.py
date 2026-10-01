@@ -228,6 +228,16 @@ def test_a_person_and_a_day_pointing_at_different_requests_get_no_suggestion() -
     assert suggest(_line("1500", person=1000011), found) is None
 
 
+def test_a_person_and_a_day_pointing_at_different_requests_needing_the_same_amount_get_no_suggestion() -> None:
+    """D12, the same no-guess rule on a tie on the amount: both still need exactly the line, CampMinder posted
+    it to Emma, and it posted the day Liam's round was ticked."""
+    found = [
+        _cand("a", 1000011, due="1500", weight="1500"),
+        _cand("b", 1000012, due="1500", weight="1500", ticked=frozenset({date(2027, 3, 8)})),
+    ]
+    assert suggest(_line("1500", person=1000011), found) is None
+
+
 def test_a_cancelled_request_is_left_out_of_a_proportional_split() -> None:
     found = [
         _cand("a", 1000011, due="900", weight="900"),
