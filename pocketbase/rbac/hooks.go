@@ -51,15 +51,9 @@ func recomputeUserPermissions(app core.App, userID string) error {
 			continue
 		}
 
-		var perms []string
-		raw := role.Get("permissions")
-		if raw != nil {
-			data, marshalErr := json.Marshal(raw)
-			if marshalErr == nil {
-				if unmarshalErr := json.Unmarshal(data, &perms); unmarshalErr != nil {
-					slog.Warn("Failed to unmarshal role permissions", "role_id", roleID, "error", unmarshalErr)
-				}
-			}
+		perms, permsErr := rolePermissions(role.Get("permissions"))
+		if permsErr != nil {
+			slog.Warn("Failed to unmarshal role permissions", "role_id", roleID, "error", permsErr)
 		}
 		allPerms = append(allPerms, perms)
 	}
@@ -268,6 +262,10 @@ func RegisterHooks(app core.App) {
 
 	// Refuse assigning a role to a view-as persona stand-in (view_as.go).
 	registerViewAsRoleGuard(app)
+
+	// Bound a non-admin users.manage holder's user_roles writes: no self-edits,
+	// no admins, no roles carrying users.manage (user_roles_guard.go).
+	registerUserRolesBoundsGuard(app)
 
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)
