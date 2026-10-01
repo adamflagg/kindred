@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 const appSource = readFileSync(resolve(__dirname, '../App.tsx'), 'utf-8')
 
-type Guard = 'view' | 'open' | 'admin'
+type Guard = 'view' | 'open'
 
 // The route (relative to /aid) and the guard its surface demands (config/aidNav.ts).
 const ROUTES: Record<string, Guard> = {
@@ -20,13 +20,11 @@ const ROUTES: Record<string, Guard> = {
   'season/:tab?': 'view',
   'reports/:tab?': 'open',
   'households/:householdCmId': 'view',
-  kit: 'admin',
 }
 
 const GUARD_TEXT: Record<Guard, string> = {
   view: 'permission={Permission.FINANCIAL_AID_VIEW}',
   open: 'anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}',
-  admin: '<AdminRoute',
 }
 
 function aidBlock(): string {
@@ -60,11 +58,10 @@ describe('Camperships routes in App.tsx', () => {
 
   it.each(Object.entries(ROUTES))('guards %s with %s, outermost', (route, guard) => {
     const chunk = routeChunk(block, route)
-    const open = guard === 'admin' ? '<AdminRoute' : '<RequirePermission'
     // The guard is the route's element, then ErrorBoundary, then Suspense: never inside either.
-    const nesting = new RegExp(`element=\\{\\s*${open}[^>]*>\\s*<ErrorBoundary>\\s*<Suspense`)
+    const nesting = /element=\{\s*<RequirePermission[^>]*>\s*<ErrorBoundary>\s*<Suspense/
     expect(chunk).toMatch(nesting)
-    expect(chunk.match(/element=\{\s*<(\w+)/)?.[1]).toBe(open.slice(1))
+    expect(chunk.match(/element=\{\s*<(\w+)/)?.[1]).toBe('RequirePermission')
     expect(chunk).toContain(GUARD_TEXT[guard])
   })
 })

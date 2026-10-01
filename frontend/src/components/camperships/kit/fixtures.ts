@@ -1,11 +1,9 @@
 /**
- * Fictional Camperships data for the kit's tests and the /aid/kit gallery. Names are
+ * Fictional Camperships data for the kit's tests. Names are
  * tests/CLAUDE.md's set; every rule (percentages, minimums, caps) and every figure is invented.
  * The traces carry the keys the calculator really emits (bunking/financial_aid/calculator/*.py),
  * Decimals as strings, so the receipt is exercised on engine-shaped input.
  */
-import type { ConfirmationOut } from '../../../types/api-generated'
-import type { AttentionItem } from './NeedsAttentionCell'
 import type { EditorPreview } from './RequestEditor'
 import type { AidTraceStep, TraceValue } from './receiptModel'
 
@@ -1307,115 +1305,5 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     inputs: { r1: '50', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
     note: null,
-  },
-]
-
-// ── The /aid/kit gallery's rows (Decision 3; deleted with the gallery in slice 1) ─────────────
-
-export interface GalleryRow {
-  readonly id: string
-  readonly family: string
-  readonly householdCmId: number
-  readonly camper: string
-  readonly personCmId: number
-  readonly session: string
-  readonly decided: number | null
-  readonly posted: number | null
-  readonly confirmation: ConfirmationOut | null
-  readonly attention: AttentionItem | null
-}
-
-function confirmed(over: Partial<ConfirmationOut>): ConfirmationOut {
-  return {
-    status: 'confirmed',
-    locked: 0,
-    in_campminder: 0,
-    gap: 0,
-    on: '2027-03-12',
-    reconciled: true,
-    family_unplaced: 0,
-    shares: [],
-    ...over,
-  }
-}
-
-export const GALLERY_ROWS: readonly GalleryRow[] = [
-  {
-    id: 'g1',
-    family: 'Johnson',
-    householdCmId: 1000001,
-    camper: 'Emma Johnson',
-    personCmId: 1000002,
-    session: 'Session 2',
-    decided: 1800,
-    posted: 1800,
-    confirmation: confirmed({ locked: 1800, in_campminder: 1800 }),
-    attention: null,
-  },
-  {
-    id: 'g2',
-    family: 'Garcia',
-    householdCmId: 1000003,
-    camper: 'Liam Garcia',
-    personCmId: 1000004,
-    session: 'Session 3',
-    decided: 0,
-    posted: null,
-    confirmation: null,
-    attention: {
-      level: 'hold',
-      pill: 'Placeholder income',
-      fact: 'Income was entered as $1, so no tier can be set. Call for the real figure and enter it as a correction.',
-    },
-  },
-  {
-    id: 'g3',
-    family: 'Chen',
-    householdCmId: 1000005,
-    camper: 'Olivia Chen',
-    personCmId: 1000006,
-    session: 'Session 2',
-    decided: 2400,
-    posted: 2400,
-    confirmation: confirmed({
-      status: 'short',
-      locked: 2400,
-      in_campminder: 2399.72,
-      gap: -0.28,
-      reconciled: false,
-    }),
-    attention: {
-      level: 'note',
-      pill: 'Waiting 23 days',
-      fact: 'The award was posted on Mar 9 and the family has not replied. Follow up, then tick Accepted.',
-    },
-  },
-  {
-    id: 'g4',
-    family: 'Sam',
-    householdCmId: 1000007,
-    camper: 'Riley Sam',
-    personCmId: 1000008,
-    session: 'Session 4',
-    decided: null,
-    posted: null,
-    confirmation: null,
-    attention: {
-      level: 'hold',
-      pill: 'Income conflict',
-      fact: '$120,000 vs $95,000 on the two forms. Call the family and enter one figure; Kindred never picks one.',
-    },
-  },
-  {
-    id: 'g5',
-    family: 'Johnson',
-    householdCmId: 1000001,
-    camper: 'Samuel Johnson',
-    personCmId: 1000010,
-    session: 'Session 3',
-    decided: 1200,
-    posted: 1200,
-    confirmation: confirmed({ status: 'awaiting_sync', locked: 1200, on: null }),
-    attention: null,
   },
 ]
