@@ -737,3 +737,28 @@ describe('AidTable CSV columns (§11; M16)', () => {
     ])
   })
 })
+
+describe('marked rows (Decision 3: a save that failed)', () => {
+  const rowOf = (camper: string) => screen.getByText(camper).closest('tr')
+
+  it('marks only the rows named, and the mark follows a changed set without new columns', () => {
+    const table = (marked: ReadonlySet<string>) => (
+      <MemoryRouter initialEntries={['/aid/requests']}>
+        <AidTable<Row>
+          rows={ROWS}
+          columns={COLUMNS}
+          rowKey={(r) => r.id}
+          csvFilename="camperships-requests-all-2027.csv"
+          markedKeys={marked}
+        />
+      </MemoryRouter>
+    )
+    const { rerender } = render(table(new Set(['r2'])))
+    expect(rowOf('Liam Garcia')).toHaveAttribute('data-marked', 'true')
+    expect(rowOf('Emma Johnson')).not.toHaveAttribute('data-marked')
+    // Same COLUMNS object both times: the mark is read at row render, not built into the columns.
+    rerender(table(new Set(['r1'])))
+    expect(rowOf('Emma Johnson')).toHaveAttribute('data-marked', 'true')
+    expect(rowOf('Liam Garcia')).not.toHaveAttribute('data-marked')
+  })
+})
