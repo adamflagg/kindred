@@ -604,6 +604,7 @@ def grid_row(
     confirmation: Confirmation | None = None,
     cancellation: Cancellation | None = None,
     to_reverse: bool = False,
+    appeal: str | None = None,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -623,6 +624,7 @@ def grid_row(
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
             lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
             clawed_back=v.clawed_back,
+            status_label=ROUND_STATUS_LABELS[v.status],
         )
         for v in priced.rounds
     ]
@@ -655,6 +657,7 @@ def grid_row(
         confirmation=_confirmation_out(confirmation) if confirmation is not None else None,
         cancellation=_cancellation_out(cancellation) if cancellation is not None else None,
         to_reverse=to_reverse,
+        appeal_refusal=appeal,
         todos=(
             [TodoOut(code=TODO_CANCEL_REASON, message=TODO_CANCEL_REASON_TEXT)]
             if needs_reason(cancellation, request.year)
@@ -1059,6 +1062,23 @@ def _ask_refusal(rounds: Mapping[int, RoundState], n: int) -> str | None:
     if later is not None:
         return f"Round {later} is posted and builds on Round {n}: its ask can't change now"
     return None
+
+
+def _not_live(status: str) -> str:
+    return f"a {status} request takes no new asks or amounts"
+
+
+def appeal_refusal(
+    request: RequestRecord, rounds: Mapping[int, RoundState], cancellation: Cancellation | None
+) -> str | None:
+    """Why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words, or None (read 3): the
+    grid's editor row says it instead of opening. key_ask refuses the same ways in the same order (_live, then
+    _ask_refusal), so the row and the write never disagree."""
+    if request.status not in _LIVE:
+        return _not_live(request.status)
+    if cancellation is not None and cancellation.by == "kindred":
+        return CANCELLED_IN_KINDRED
+    return _ask_refusal(rounds, 2)
 
 
 def _round3_refusal(rounds: Mapping[int, RoundState]) -> str | None:
@@ -1644,6 +1664,7 @@ class FinancialAidDecisionsService:
                         # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
                         "cancellation": None,
                         "to_reverse": None,
+                        "appeal_refusal": None,
                         "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
                     }
@@ -1691,6 +1712,9 @@ class FinancialAidDecisionsService:
             confirmation=self._confirmation(season, request_id),
             cancellation=season.cancellations.get(request_id),
             to_reverse=request_id in season.to_reverse,
+            appeal=appeal_refusal(
+                season.requests[request_id], season.rounds.get(request_id, {}), season.cancellations.get(request_id)
+            ),
         )
         request = season.requests[request_id]
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
@@ -1850,7 +1874,7 @@ class FinancialAidDecisionsService:
         if request is None:
             raise DecisionNotFoundError("no such request")
         if request.status not in _LIVE:
-            raise DecisionRefusedError(f"a {request.status} request takes no new asks or amounts")
+            raise DecisionRefusedError(_not_live(request.status))
         events, cancels, enrollments, sessions = await asyncio.gather(
             self._store.fetch_request_events(request.id),
             self._store.fetch_request_cancellations(request.id),

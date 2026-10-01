@@ -79,6 +79,9 @@ class RoundOut(BaseModel):
     # "tick" (registrar), "ledger" (automatic tick, D78) or "placement" (To place, D81); None while unposted
     lock_source: str | None = None
     clawed_back: bool = False  # CampMinder reversed its money: it counts nowhere (D54)
+    # Its words (ROUND_STATUS_LABELS; read 3): the screens keep no map of their own (§6.1, D21). Set on every row the
+    # server builds.
+    status_label: str = ""
 
 
 class ReleasedHoldOut(BaseModel):
@@ -214,6 +217,9 @@ class GridRowOut(BaseModel):
     # (and payer_shares []) for a request whose payer shares couldn't be replayed for that date.
     payer_count: int | None = 1
     payer_shares: list[GridShareOut] = Field(default_factory=list)
+    # Read 3: why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words; None when it can,
+    # and on a past read (nothing is keyed into the past).
+    appeal_refusal: str | None = None
 
 
 class RequestsGridResponse(BaseModel):

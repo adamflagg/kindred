@@ -1,0 +1,104 @@
+"""Read 3 of the slice 1 screens: each round's stage words, and why an appeal can't be keyed, on the grid row
+itself, in the server's own words, so the frontend's mirrors of them can go. Fictional only."""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+import pytest
+
+import api.schemas.financial_aid_decisions as schemas
+from api.schemas.financial_aid_decisions import AskIn, CancellationIn
+from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED, DecisionRefusedError
+from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore, log_seeded, seed_request
+from tests.unit.api.services.financial_aid_fakes import YEAR
+from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _posted, _service
+
+SEEDED = datetime(2027, 2, 1, 18, 0, tzinfo=UTC)
+
+
+def _appeal() -> AskIn:
+    """Built inside the test: AskIn refuses a future day, and the autouse fixture moves today past it."""
+    return AskIn(round=2, amount=Decimal(400), asked_on=date(2027, 4, 1))
+
+
+@pytest.fixture(autouse=True)
+def _today_is_after_the_fictional_dates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(schemas, "today", lambda: date(2027, 12, 31))
+
+
+@pytest.mark.asyncio
+async def test_every_round_carries_its_stage_words() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert [(r.status, r.status_label) for r in row.rounds] == [("posted", "Posted")]
+
+
+@pytest.mark.asyncio
+async def test_an_appeal_before_round_1_is_posted_is_refused_on_the_row_in_the_writes_words() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    (row,) = (await service.grid(YEAR)).rows
+    with pytest.raises(DecisionRefusedError) as refused:
+        await service.key_ask(EMMA, _appeal(), ACTOR)
+    assert row.appeal_refusal == str(refused.value)
+    assert row.appeal_refusal.startswith("An appeal answers a posted offer")
+
+
+@pytest.mark.asyncio
+async def test_once_round_1_is_posted_the_appeal_can_be_keyed() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.appeal_refusal is None
+
+
+@pytest.mark.asyncio
+async def test_a_request_cancelled_in_kindred_says_reopen_it_first() -> None:
+    """Round 1 is posted, so only the cancellation stands in the appeal's way."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="medical"), ACTOR)
+    (row,) = (await service.grid(YEAR)).rows
+    assert row.appeal_refusal == CANCELLED_IN_KINDRED
+
+
+@pytest.mark.asyncio
+async def test_a_kindred_cancellation_outranks_an_unposted_round_1_as_in_key_ask() -> None:
+    """The order is key_ask's: _live (the cancellation) before _ask_refusal (Round 1 not posted)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.set_cancellation(EMMA, CancellationIn(cancelled=True, reason="medical"), ACTOR)
+    (row,) = (await service.grid(YEAR)).rows
+    with pytest.raises(DecisionRefusedError) as refused:
+        await service.key_ask(EMMA, _appeal(), ACTOR)
+    assert row.appeal_refusal == str(refused.value) == CANCELLED_IN_KINDRED
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_request_is_refused_in_the_writes_words() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, status="withdrawn")
+    service = _service(store)
+    (row,) = (await service.grid(YEAR)).rows
+    with pytest.raises(DecisionRefusedError) as refused:
+        await service.key_ask(EMMA, _appeal(), ACTOR)
+    assert row.appeal_refusal == str(refused.value) == "a withdrawn request takes no new asks or amounts"
+
+
+@pytest.mark.asyncio
+async def test_a_past_read_carries_no_appeal_refusal() -> None:
+    """Nothing is keyed into the past, and the refusal reads the cancellation a past date doesn't rebuild."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    log_seeded(store, SEEDED)
+    (row,) = (await _service(store).grid(YEAR, as_of=date(2027, 3, 1))).rows
+    assert row.appeal_refusal is None
