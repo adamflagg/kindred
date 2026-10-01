@@ -12,9 +12,9 @@ import { useAidAsOf } from './useAidAsOf'
 
 /**
  * The Requests grid's read (§6.1; D21): the season's every request, loaded whole and filtered in
- * memory (§10). `view` only. It inherits the app's cache defaults; a sync completion invalidates it
- * (the 'financial-aid' prefix). No writer exists yet, so invalidateAidMoneyQueries does not name this
- * read; the first writer adds it.
+ * memory (§10). `view` only. It inherits the app's cache defaults; every write invalidates it
+ * (`invalidateAidMoneyQueries`, by the grid prefix) and so does a sync completion
+ * (`useAidSyncInvalidation`, the 'financial-aid' prefix).
  * - `enabled: false`: the household page reads it only when it walks a queue (§3.5).
  * - `live`: it ignores the page's as-of, since the household page is live only (slice 1 Decision 36).
  */

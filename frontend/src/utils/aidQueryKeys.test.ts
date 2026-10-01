@@ -20,11 +20,46 @@ describe('Camperships query keys', () => {
   })
 })
 
-describe('invalidateAidMoneyQueries (D48: Remaining moves live)', () => {
-  it('invalidates the Remaining line by prefix', () => {
+describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", () => {
+  const keysOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.map(([args]) => (args as { queryKey: unknown[] }).queryKey)
+
+  it('returns a promise that settles only once every refresh it starts has (build ruling 1)', async () => {
+    let finish: (() => void) | undefined
+    const gridRefetch = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const invalidateQueries = vi.fn((args: { queryKey: readonly unknown[] }) =>
+      args.queryKey[1] === 'grid' ? gridRefetch : Promise.resolve()
+    )
+    let settled = false
+    const done = invalidateAidMoneyQueries({ invalidateQueries }).then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    finish?.()
+    await done
+    expect(settled).toBe(true)
+  })
+
+  it('refreshes every read a write can move, and leaves the definitions and the jump index', () => {
     const invalidateQueries = vi.fn()
-    invalidateAidMoneyQueries({ invalidateQueries })
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'remaining'] })
+    void invalidateAidMoneyQueries({ invalidateQueries })
+    expect(keysOf(invalidateQueries)).toEqual([
+      ['financial-aid', 'remaining'],
+      ['financial-aid', 'grid'],
+      ['financial-aid', 'today'],
+      ['financial-aid', 'household-page'],
+      ['financial-aid', 'application'],
+    ])
+  })
+
+  it('refreshes the jump index too when a write changes who has aid activity (payer shares)', () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidMoneyQueries({ invalidateQueries }, { jumpIndex: true })
+    expect(keysOf(invalidateQueries)).toContainEqual(['financial-aid', 'jump-index'])
+    expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
   })
 })
 
