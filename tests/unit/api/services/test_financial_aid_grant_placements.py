@@ -259,3 +259,56 @@ async def test_live_reads_with_a_shared_key_log_only_the_other_grants_and_then_n
     assert [p.grant for p in store.grant_placements] == ["ledger:9002"]
     await service.grid(YEAR)
     assert [p.grant for p in store.grant_placements] == ["ledger:9002"]
+
+
+# --- a commitment that left the register before the log could place it ------------------------------
+
+_OCT_2 = datetime(2027, 10, 2, 12, tzinfo=UTC)
+_NOV_15 = datetime(2027, 11, 15, 12, tzinfo=UTC)
+
+
+def _commitment_created(at: datetime) -> LogRow:
+    return LogRow(
+        "log000000000002",
+        "aid_grants",
+        "grt000000000009",
+        None,
+        {"household_cm_id": 1000001, "person_cm_id": 1000011},
+        at,
+    )
+
+
+def _fulfilling_line() -> RegisterRow:
+    return replace(grant_row(EMMA, "500"), recorded_at=MAR_1, fulfils_commitment_id="grt000000000009")
+
+
+def test_a_commitment_fulfilled_by_a_line_the_log_placed_is_not_a_gap() -> None:
+    line = _fulfilling_line()
+    placed = placements_as_of([_logged(line, _OCT_2)], [line], [_commitment_created(_OCT_2)], _NOV_15)
+    assert (placed.households, placed.people) == (frozenset(), frozenset())
+
+
+def test_a_commitment_whose_fulfilling_line_was_placed_only_after_the_read_is_still_a_gap() -> None:
+    line = _fulfilling_line()
+    placed = placements_as_of([_logged(line, _NOV_15.replace(day=20))], [line], [_commitment_created(_OCT_2)], _NOV_15)
+    assert placed.households == frozenset({1000001})
+
+
+def test_a_commitment_withdrawn_by_the_read_is_not_a_gap() -> None:
+    withdrawn = LogRow(
+        "log000000000003",
+        "aid_grants",
+        "grt000000000009",
+        {"status": "open"},
+        {"status": "withdrawn", "withdrawn_at": "2027-10-03 00:00:00.000Z"},
+        _OCT_2.replace(day=3),
+    )
+    log = [_commitment_created(_OCT_2), withdrawn]
+    assert placements_as_of([], [], log, _NOV_15).households == frozenset()
+    assert placements_as_of([], [], log, _OCT_2).households == frozenset({1000001})
+
+
+def test_a_commitment_that_is_neither_fulfilled_nor_withdrawn_and_unlogged_is_still_a_gap() -> None:
+    other = grant_row(LIAM, "300")  # a placed line that fulfils nothing
+    placed = placements_as_of([_logged(other, _OCT_2)], [other], [_commitment_created(_OCT_2)], _NOV_15)
+    assert placed.households == frozenset({1000001})

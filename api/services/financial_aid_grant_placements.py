@@ -184,7 +184,8 @@ def placements_as_of(
     A grant is unplaced when it could have existed by `at` and no row for it was recorded by then:
     a register row recorded by then (its recorded_at is its CampMinder post date, or when Kindred
     recorded the commitment), or a commitment whose create was logged by then (a withdrawn one has
-    left the register). This is wide on purpose: the register carries no sync time, so a line posted
+    left the register), unless its withdrawal was logged by then or a placement row for the line that
+    fulfils it was (the log then covers it). This is wide on purpose: the register carries no sync time, so a line posted
     before the date but synced after it is named too. It only ever empties, never mis-states. A ledger
     line CampMinder deleted outright before the log began is invisible here.
 
@@ -224,6 +225,21 @@ def placements_as_of(
         if (grant_key(row) in shared or grant_key(row) not in logged)
         and (row.recorded_at is None or row.recorded_at <= at)
     ]
+    # A commitment the log can no longer be waited on for: its withdrawal was logged by `at`, or the line
+    # that fulfils it (today's register) has a placement row by `at`. Otherwise it stays a gap.
+    withdrawn = {
+        entry.entity_id
+        for entry in grant_log
+        if entry.before is not None
+        and entry.after is not None
+        and entry.after.get("status") == "withdrawn"
+        and entry.created <= at
+    }
+    fulfilled = {
+        row.fulfils_commitment_id
+        for row in register_now
+        if row.fulfils_commitment_id and grant_key(row) not in shared and grant_key(row) in logged
+    }
     commitments = [
         entry.after
         for entry in grant_log
@@ -232,6 +248,8 @@ def placements_as_of(
         and entry.created <= at
         and f"commitment:{entry.entity_id}" not in logged
         and f"commitment:{entry.entity_id}" not in now
+        and entry.entity_id not in withdrawn
+        and entry.entity_id not in fulfilled
     ]
     households = {row.household_cm_id for row in unplaced} | {int(c.get("household_cm_id") or 0) for c in commitments}
     people = {row.person_cm_id for row in unplaced} | {int(c.get("person_cm_id") or 0) for c in commitments}
