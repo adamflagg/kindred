@@ -16,9 +16,11 @@
  *              early_cancel
  *              another_reason           with a note
  *              not_known
- *            in_kindred = true cancels a request whose camper is still enrolled in CampMinder (the
- *            family declined, or no longer wants aid); false only gives the reason for an enrollment
- *            CampMinder cancelled, which Kindred reads from attendees.
+ *            in_kindred = true: Kindred's own cancellation stands (the family declined, or no longer
+ *            wants aid, while the camper was enrolled in CampMinder). It stays true when the reason is
+ *            edited after CampMinder also cancelled, so a later re-enrolment does not bring the request
+ *            back. false only gives the reason for an enrollment CampMinder cancelled, which Kindred
+ *            reads from attendees.
  *   reopen   a Kindred cancellation undone; the note says why. It clears the reason.
  *
  * A cancelled request with no reason carries "Cancelled: give a reason", a to-do, never a hold.

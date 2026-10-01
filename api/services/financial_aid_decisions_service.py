@@ -20,6 +20,8 @@ rules-section locks in that same batch (Decision 11). A write that changes nothi
 the helper refuses an empty operation, and change_row refuses a no-op, which would be a 500.
 Holds (follow-up 3b): releasing a check's hold, putting it back, and placing or lifting a manual hold
 are each one operation of one aid_hold_events row with a required note.
+Cancellations (sub-project 10b-2): cancelling a request with its reason, or reopening one cancelled in
+Kindred, is one operation of one aid_cancellations row with a required reason.
 
 Pricing uses the season's newest rules version whose pricing sections are all approved or locked
 (PRICING_SECTIONS). With none, every live request is held and nothing is allocated.
@@ -1721,12 +1723,16 @@ class FinancialAidDecisionsService:
     async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
         """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""
         requests = {r.id: r for r in await self._store.fetch_requests(year)}
-        rounds = fold_rounds(await self._store.fetch_decision_events(year))
-        cancel_events, sessions = await asyncio.gather(
-            self._store.fetch_cancellations(year), self._store.fetch_sessions(year)
+        # Only the requests being ticked: their registrations, never every aid camper of the season.
+        ticked = [requests[rid] for rid in dict.fromkeys(row.request_id for row in body.rows) if rid in requests]
+        events, cancel_events, sessions, enrollments = await asyncio.gather(
+            self._store.fetch_decision_events(year),
+            self._store.fetch_cancellations(year),
+            self._store.fetch_sessions(year),
+            self._store.fetch_enrollment_states(year, *_enrollment_scope(ticked)),
         )
-        enrollments = await self._store.fetch_enrollment_states(year, *_enrollment_scope(requests.values()))
-        cancelled = cancellations_by_request(requests.values(), cancel_events, enrollments, sessions)
+        rounds = fold_rounds(events)
+        cancelled = cancellations_by_request(ticked, cancel_events, enrollments, sessions)
         in_kindred = {rid for rid, c in cancelled.items() if c.by == "kindred"}
         writes: list[AidWrite] = []
         problems: list[str] = []

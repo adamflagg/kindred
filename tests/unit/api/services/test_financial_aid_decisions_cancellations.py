@@ -40,7 +40,7 @@ from api.services.financial_aid_decisions_service import (
     DecisionRefusedError,
     FinancialAidDecisionsService,
 )
-from bunking.financial_aid.decisions import PAST_DATE_GAPS
+from bunking.financial_aid.decisions import PAST_DATE_GAPS, DecisionEvent
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -293,6 +293,49 @@ async def test_a_past_read_names_the_cancellation_fields_it_leaves_empty() -> No
     assert {f: named[f] for f in ("cancellation", "to_reverse", "todos")} == {
         f: PAST_DATE_GAPS[f] for f in ("cancellation", "to_reverse", "todos")
     }
+
+
+@pytest.mark.asyncio
+async def test_a_past_budget_names_the_cancellation_gap_its_round_2_asks_carry() -> None:
+    """D21: CampMinder's cancellations aren't rebuilt as of a date, so a past budget can still count a
+    Round 2 ask today's read dropped. It says so, as the past grid does."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    log_seeded(store, T0 - timedelta(days=30))
+    early = T0 - timedelta(days=5)
+    snapshot = {"pool": "camp_pool", "counts_toward_budget": True}
+    store.events += [
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=EMMA,
+            round=1,
+            kind="post",
+            created=early,
+            amount=Decimal(1500),
+            effective_on=date(2027, 3, 4),
+            lock_source="tick",
+            rules_version=1,
+            snapshot=snapshot,
+        ),
+        DecisionEvent(
+            id="ev0000000000002",
+            request_id=EMMA,
+            round=2,
+            kind="ask",
+            created=early,
+            amount=Decimal(900),
+            effective_on=date(2027, 3, 4),
+        ),
+    ]
+    _enrol(store, 32, on=date(2027, 3, 5))
+    service = _service(store)
+    live = next(p for p in (await service.budget(YEAR)).pools if p.pool == "camp_pool")
+    out = await service.budget(YEAR, as_of=date(2027, 3, 8))
+    past = next(p for p in out.pools if p.pool == "camp_pool")
+    assert live.demand.round2_asked == 0
+    assert past.demand.round2_asked == 900
+    named = {g.figure: g.reason for g in out.not_rebuilt}
+    assert named.get("cancellation") == PAST_DATE_GAPS["cancellation"]
 
 
 @pytest.mark.asyncio
@@ -611,3 +654,17 @@ async def test_a_kindred_cancellation_campminder_has_overtaken_no_longer_says_re
     with pytest.raises(DecisionRefusedError) as refused:
         await service.tick_accepted(YEAR, acc, ACTOR)
     assert str(refused.value) == f"{EMMA}: Round 1 is not posted"
+
+
+@pytest.mark.asyncio
+async def test_the_accepted_tick_reads_only_the_registrations_of_the_requests_it_ticks() -> None:
+    """A one-row Accepted tick reads that request's camper, never every aid camper of the season."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    _posted(store, LIAM, 1, "1500")
+    out = await _service(store).tick_accepted(
+        YEAR, AcceptedIn(rows=[RoundRef(request_id=LIAM, round=1)], accepted=True), ACTOR
+    )
+    assert out.written == 1
+    assert store.enrollment_reads == [(frozenset({1000021}), frozenset())]

@@ -135,6 +135,7 @@ BUDGET_GAPS: Final[tuple[str, ...]] = (
     "outside_grants_off_requests",
     "round2_computed",
     "round1_unmet",
+    "cancellation",  # 10b-2: Round 2 asks still count a request CampMinder had cancelled by then (D21)
 )
 REMAINING_GAPS: Final[tuple[str, ...]] = ("remaining",)
 # Named only when a past read empties them (a request's posted money can't be replayed): not always-on.
