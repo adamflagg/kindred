@@ -5856,6 +5856,18 @@ export type HouseholdRequestOut = {
    * Receipts
    */
   receipts: Array<ReceiptOut>
+  /**
+   * Grants
+   */
+  grants?: number
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
 }
 
 /**
@@ -5911,6 +5923,14 @@ export type HouseholdTotalsOut = {
    * States
    */
   states: Array<ConfirmationStateOut>
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
 }
 
 /**
