@@ -496,46 +496,46 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
         )}
       </div>
 
-      <div
-        data-testid="role-footer"
-        className={`border-border sticky bottom-0 space-y-2 border-t p-3 ${ok ? 'bg-primary/5' : 'bg-card'}`}
-      >
-        <div className="text-xs">{summary}</div>
-        {impact.length > 0 && (
-          <ul className="m-0 max-h-[140px] list-none space-y-1 overflow-y-auto p-0 text-xs">
-            {impact.map((line) => (
-              <li key={`${line.kind}${line.code}`} className="flex items-start gap-1">
-                {line.kind === 'gain' ? (
-                  <Plus className="mt-0.5 h-3 w-3 text-emerald-600" />
-                ) : (
-                  <span className="w-3 text-red-600">−</span>
-                )}
-                <span>
-                  <b>{labelOf(line.code)}</b>: {impactText(line)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {error && (
-          <div className="text-xs text-red-600">
-            Couldn&apos;t {errorVerb}: {error.message}. Nothing was changed; your edits are still
-            here.
+      <div data-testid="role-footer" className="border-border bg-card sticky bottom-0 border-t">
+        {/* The tint sits on an inner layer: a translucent sticky background lets the list show through. */}
+        <div className={`space-y-2 p-3 ${ok ? 'bg-primary/5' : ''}`}>
+          <div className="text-xs">{summary}</div>
+          {impact.length > 0 && (
+            <ul className="m-0 max-h-[140px] list-none space-y-1 overflow-y-auto p-0 text-xs">
+              {impact.map((line) => (
+                <li key={`${line.kind}${line.code}`} className="flex items-start gap-1">
+                  {line.kind === 'gain' ? (
+                    <Plus className="mt-0.5 h-3 w-3 text-emerald-600" />
+                  ) : (
+                    <span className="w-3 text-red-600">−</span>
+                  )}
+                  <span>
+                    <b>{labelOf(line.code)}</b>: {impactText(line)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {error && (
+            <div className="text-xs text-red-600">
+              Couldn&apos;t {errorVerb}: {error.message}. Nothing was changed; your edits are still
+              here.
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={cancel} className="rounded-md border px-3 py-1 text-xs">
+              {isNew ? 'Cancel' : 'Discard'}
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!ok || busy}
+              className="bg-primary text-primary-foreground inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs disabled:opacity-50"
+            >
+              <ShieldCheck className="h-3 w-3" />
+              {isNew ? 'Create role' : 'Save changes'}
+            </button>
           </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={cancel} className="rounded-md border px-3 py-1 text-xs">
-            {isNew ? 'Cancel' : 'Discard'}
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!ok || busy}
-            className="bg-primary text-primary-foreground inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs disabled:opacity-50"
-          >
-            <ShieldCheck className="h-3 w-3" />
-            {isNew ? 'Create role' : 'Save changes'}
-          </button>
         </div>
       </div>
     </div>

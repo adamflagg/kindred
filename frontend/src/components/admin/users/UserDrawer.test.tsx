@@ -94,6 +94,14 @@ describe('UserDrawer', () => {
     )
   })
 
+  it('keeps the sticky footer opaque while a draft is open', async () => {
+    renderDrawer('u-emma')
+    await userEvent.click(screen.getByRole('checkbox', { name: /Finance/ }))
+    const footer = screen.getByTestId('drawer-footer')
+    expect(footer.className).toContain('bg-card')
+    expect(footer.className).not.toContain('bg-primary/5')
+  })
+
   it('ticks build a draft; nothing writes until Save (U10b)', async () => {
     renderDrawer('u-emma')
     await userEvent.click(screen.getByRole('checkbox', { name: /Finance/ }))

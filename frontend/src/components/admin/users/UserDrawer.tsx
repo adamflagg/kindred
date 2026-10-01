@@ -338,48 +338,48 @@ function DrawerBody({
         </section>
       </div>
 
-      <div
-        data-testid="drawer-footer"
-        className={`border-border bg-card sticky bottom-0 space-y-2 border-t p-3 ${dirty ? 'bg-primary/5' : ''}`}
-      >
-        <div className="text-xs">
-          {dirty ? (
-            <>
-              {plural(changeLine.length, 'change')}:{' '}
-              {changeLine.map((c, i) => (
-                <span key={c.key} className={c.add ? 'text-emerald-600' : 'text-red-600'}>
-                  {i > 0 && <span className="text-muted-foreground"> · </span>}
-                  {c.text}
-                </span>
-              ))}
-            </>
-          ) : (
-            <span className="text-muted-foreground">No changes</span>
-          )}
-        </div>
-        {save.isError && (
-          <div className="text-xs text-red-600">
-            Couldn&apos;t save: {save.error.message}. Nothing was changed; your ticks are still
-            here.
+      <div data-testid="drawer-footer" className="border-border bg-card sticky bottom-0 border-t">
+        {/* The tint sits on an inner layer: a translucent sticky background lets the list show through. */}
+        <div className={`space-y-2 p-3 ${dirty ? 'bg-primary/5' : ''}`}>
+          <div className="text-xs">
+            {dirty ? (
+              <>
+                {plural(changeLine.length, 'change')}:{' '}
+                {changeLine.map((c, i) => (
+                  <span key={c.key} className={c.add ? 'text-emerald-600' : 'text-red-600'}>
+                    {i > 0 && <span className="text-muted-foreground"> · </span>}
+                    {c.text}
+                  </span>
+                ))}
+              </>
+            ) : (
+              <span className="text-muted-foreground">No changes</span>
+            )}
           </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={discard}
-            disabled={!dirty}
-            className="rounded-md border px-3 py-1 text-xs disabled:opacity-50"
-          >
-            Discard
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!dirty || save.isPending}
-            className="bg-primary text-primary-foreground rounded-md px-3 py-1 text-xs disabled:opacity-50"
-          >
-            Save changes
-          </button>
+          {save.isError && (
+            <div className="text-xs text-red-600">
+              Couldn&apos;t save: {save.error.message}. Nothing was changed; your ticks are still
+              here.
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={discard}
+              disabled={!dirty}
+              className="rounded-md border px-3 py-1 text-xs disabled:opacity-50"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!dirty || save.isPending}
+              className="bg-primary text-primary-foreground rounded-md px-3 py-1 text-xs disabled:opacity-50"
+            >
+              Save changes
+            </button>
+          </div>
         </div>
       </div>
     </div>

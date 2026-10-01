@@ -99,6 +99,15 @@ describe('RoleDrawer', () => {
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
   })
 
+  it('keeps the sticky footer opaque while editing (the tint must not be the background)', async () => {
+    renderRoleDrawer('r-exec')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Google Sheets export/ }))
+    const footer = screen.getByTestId('role-footer')
+    expect(footer.className).toContain('bg-card')
+    expect(footer.className).not.toContain('bg-primary/5')
+  })
+
   it('editing shows live impact in the footer (R4b)', async () => {
     renderRoleDrawer('r-exec')
     await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
@@ -253,14 +262,14 @@ describe('RoleDrawer', () => {
     )
   })
 
-  it('footer uses one background at a time', async () => {
+  it('tints the footer on an inner layer, only while the edit is valid', async () => {
     renderRoleDrawer('r-exec')
     await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
     const footer = screen.getByTestId('role-footer')
-    expect(footer.className).toContain('bg-card')
-    expect(footer.className).not.toContain('bg-primary/5')
+    const layer = footer.firstElementChild as HTMLElement
+    expect(layer.className).not.toContain('bg-primary/5')
     await userEvent.click(screen.getByRole('checkbox', { name: /Google Sheets export/ }))
-    expect(footer.className).toContain('bg-primary/5')
-    expect(footer.className).not.toContain('bg-card')
+    expect(layer.className).toContain('bg-primary/5')
+    expect(footer.className).toContain('bg-card')
   })
 })
