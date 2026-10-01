@@ -16,6 +16,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
 import { Permission } from './constants/permissions'
+import { CAMPERSHIPS_OPEN_PERMISSIONS } from './config/programAccess'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './contexts/AuthContext'
 import { MANAGE_TABS, canSeeTab } from './config/manageTabs'
@@ -60,6 +61,9 @@ const ManageRegistrationPage = lazy(() =>
     default: m.ManageRegistrationPage,
   }))
 )
+const AidHome = lazy(() => import('./pages/camperships/AidHome'))
+const AidSectionPage = lazy(() => import('./pages/camperships/AidSectionPage'))
+const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
 const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
 const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -609,6 +613,96 @@ function App() {
                             {/* Redirects for routes moved to global */}
                             <Route path="user" element={<Navigate to="/user" replace />} />
                             <Route path="users" element={<Navigate to="/users" replace />} />
+                          </Route>
+
+                          {/* Camperships routes (spec §3.1, §3.3). The first permission-gated
+                              program: every route below carries its own guard, and FastAPI is
+                              the real one. config/aidRoutes.guard.test.ts holds this line. */}
+                          <Route path="/aid" element={<AppLayout />}>
+                            <Route
+                              index
+                              element={
+                                <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidHome />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            <Route
+                              path="requests"
+                              element={
+                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidSectionPage section="requests" />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            <Route
+                              path="grants/:tab?"
+                              element={
+                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidSectionPage section="grants" />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            <Route
+                              path="money/:tab?"
+                              element={
+                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidSectionPage section="money" />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            <Route
+                              path="season/:tab?"
+                              element={
+                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidSectionPage section="season" />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            <Route
+                              path="reports/:tab?"
+                              element={
+                                <RequirePermission anyOf={[...CAMPERSHIPS_OPEN_PERMISSIONS]}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidSectionPage section="reports" />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
+                            <Route
+                              path="households/:householdCmId"
+                              element={
+                                <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <AidHouseholdPage />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                </RequirePermission>
+                              }
+                            />
                           </Route>
 
                           {/* Weekend Housing routes - with app layout */}
