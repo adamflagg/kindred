@@ -8,7 +8,7 @@ import type { UsersPageProps } from './types'
 const TH = 'px-2.5 py-[7px] border-b border-border align-bottom text-[12.5px] font-semibold'
 const TD = 'px-2.5 py-[7px] border-b border-border text-center'
 const PIN =
-  'sticky left-0 bg-card text-left min-w-[250px] group-data-[scrolled=true]:shadow-[6px_0_8px_-6px_hsl(var(--shadow-color)/0.35)]'
+  'sticky left-0 text-left min-w-[250px] group-data-[scrolled=true]:shadow-[6px_0_8px_-6px_hsl(var(--shadow-color)/0.35)]'
 const PILL =
   'ml-1.5 rounded-full px-1.5 py-px text-[10.5px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
 
@@ -180,7 +180,7 @@ function GroupRows({
       )}
       {group.rows.map((row) => (
         <tr key={row.code}>
-          <td data-testid={`matrix-pin-${row.code}`} className={`${TD} ${PIN} z-[1]`}>
+          <td data-testid={`matrix-pin-${row.code}`} className={`${TD} ${PIN} bg-card z-[1]`}>
             <button
               type="button"
               className={
