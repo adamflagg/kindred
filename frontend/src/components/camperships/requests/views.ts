@@ -215,7 +215,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     align: 'right',
     value: (r) => r.person_cm_id,
   },
-  session: { header: 'Session', width: 96, value: (r) => r.session_name },
+  // Blank when the session didn't match (an unsettled request): the cell draws "—".
+  session: { header: 'Session', width: 96, value: (r) => r.session_name || null },
   stage: { header: 'Stage', width: 104, value: (r) => requestStage(r)?.text ?? null },
   tier: { header: 'Tier', width: 44, align: 'right', value: (r) => r.tier },
   ask: {
@@ -421,6 +422,14 @@ export function footerWords(count: ViewCount): string {
   return `${requests} · ${families}`
 }
 
+/** The states Today counts as not reconciled (financial_aid_queues.UNRECONCILED). */
+const UNRECONCILED: ReadonlySet<string> = new Set([
+  'awaiting_sync',
+  'short',
+  'over',
+  'not_in_campminder',
+])
+
 const STATE_HEADINGS: Readonly<Record<ApiAidConfirmation['status'], string>> = {
   awaiting_sync: "Awaiting tonight's sync",
   // Confirmed as a request, but not reconciled: a payer share is what is open (D59, D81).
@@ -441,7 +450,12 @@ export function reasonGroup(view: RequestView, today: string) {
       return { id: `r${text}`, heading: `Round ${text}` }
     }
     if (view.key === 'not_reconciled' && row.confirmation) {
-      const heading = STATE_HEADINGS[row.confirmation.status]
+      const c = row.confirmation
+      // A confirmed request is here for a share: head the group by that share's own state, as
+      // Today's reasons do (financial_aid_today._unreconciled), not a vague "A payer share".
+      const open =
+        c.status === 'confirmed' ? c.shares.find((s) => UNRECONCILED.has(s.status)) : undefined
+      const heading = STATE_HEADINGS[open?.status ?? c.status]
       return { id: heading, heading }
     }
     const heading = attentionFor(row, view.key, today)?.item.pill ?? 'Nothing waiting'

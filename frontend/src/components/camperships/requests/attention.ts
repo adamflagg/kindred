@@ -179,6 +179,21 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
       )
     )
   }
+  // From the request's own status, so the view is never empty when the rules only warn about it (or
+  // turn the check off): the server's membership is `request_status`, not the check's severity.
+  if (
+    row.request_status === 'unmatched_session' &&
+    !row.holds.some((hold) => hold.code === 'unmatched_session')
+  ) {
+    items.push(
+      note(
+        codeWords('unmatched_session'),
+        'The requested session is not matched: resolve it on the household page.',
+        'session_not_settled',
+        ACTION_BY_CODE.unmatched_session ?? null
+      )
+    )
+  }
   if (row.request_status === 'duplicate_pending') {
     items.push(
       note(
