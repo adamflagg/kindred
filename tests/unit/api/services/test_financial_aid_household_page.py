@@ -6,6 +6,7 @@ pays half of Emma's request and applied for Liam alone; household 1000003 is unr
 from __future__ import annotations
 
 from collections.abc import Collection
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -37,6 +38,7 @@ from api.services.financial_aid_household_page import (
     totals,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord
+from bunking.financial_aid.decisions import RoundState
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -655,6 +657,21 @@ async def test_the_page_lists_the_scopes_postings_grants_incomes_and_links_only(
 
 
 @pytest.mark.asyncio
+async def test_a_household_excluded_from_a_family_shows_its_own_row_but_not_that_familys_members() -> None:
+    """The canonical family set takes its members from non-excluded rows only: excluding a household from
+    family K must not surface K's other members as its links."""
+
+    class _Excluded(_Ledger):
+        async def fetch_links(self, year: int) -> list[Any]:
+            rows = await super().fetch_links(year)
+            rows[0].excluded = True  # Johnson is excluded from fam-1
+            return rows
+
+    page = await _page_service(_family(), ledger=_Excluded()).read(YEAR, JOHNSON)
+    assert [(ln.household_cm_id, ln.excluded) for ln in page.links] == [(JOHNSON, True)]
+
+
+@pytest.mark.asyncio
 async def test_each_round_has_its_receipt_live_until_posted_then_the_lock_s_snapshot() -> None:
     """§4.7, D43, D52: a posted round's receipt is the snapshot stored at its lock, labelled with its rules version,
     lock day and who ticked it; an unposted round's is live."""
@@ -769,6 +786,29 @@ async def test_a_ticking_actors_name_is_found_whatever_the_case_of_their_email()
     liam = next(card for card in page.requests if card.row.request_id == LIAM)
     assert ledger.name_reads == [frozenset({ACTOR.upper()})]  # asked as recorded; the repository adds the lowercase
     assert liam.receipts[0].label.ticked_by_name == "Test User"
+
+
+def test_a_refused_round_three_names_no_decider() -> None:
+    from api.services.financial_aid_household_page import receipts
+
+    state = RoundState(
+        round=3,
+        award=Decimal(500),
+        approval="refused",
+        decided_by=ACTOR,
+        posted=True,
+        posted_on=date(2027, 3, 9),
+        posted_by=ACTOR,
+        lock_source="tick",
+        rules_version=1,
+        snapshot={"result": {"trace": []}},
+    )
+    priced = SimpleNamespace(rounds=[SimpleNamespace(round=3)], result=None)
+    (out,) = receipts(priced, {3: state}, year=YEAR, rules_version=1, names={ACTOR: "Test User"})  # type: ignore[arg-type]
+    assert out.label.decided_by_name is None
+    approved_state = replace(state, approval="approved")
+    (named,) = receipts(priced, {3: approved_state}, year=YEAR, rules_version=1, names={ACTOR: "Test User"})  # type: ignore[arg-type]
+    assert named.label.decided_by_name == "Test User"
 
 
 def test_a_round_locked_by_the_ledger_names_no_one() -> None:

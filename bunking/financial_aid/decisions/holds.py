@@ -28,7 +28,7 @@ from datetime import datetime
 from typing import Any, Final, Literal, get_args
 
 from bunking.financial_aid.calculator import CalcIssue
-from bunking.financial_aid.decisions.pricing import RequestToPrice
+from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES, RequestToPrice
 
 HoldEventKind = Literal["release", "unrelease", "place", "lift"]
 HOLD_EVENT_KINDS: Final[tuple[HoldEventKind, ...]] = get_args(HoldEventKind)
@@ -46,7 +46,7 @@ UNRELEASABLE: Final[Mapping[str, str]] = {
     "payer_shares_incomplete": "set the payer shares to add up to 100%, and it clears",
     "awaiting_approved_rules": "it clears when finance approves the season's rules and intake runs",
     "unmatched_session": "resolve the session, and it clears",
-    "no_approved_rules": "it clears when finance approves the season's pricing rules",
+    NO_APPROVED_RULES: "it clears when finance approves the season's pricing rules",
     "not_priceable": "it clears when the request can be priced",
     MANUAL_HOLD: "lift the manual hold instead",
 }

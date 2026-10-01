@@ -400,7 +400,9 @@ class PreviewShareOut(BaseModel):
 class EditorPreviewOut(BaseModel):
     """The editor's line while typing (§4.6): the round's computed award (None: held, or nothing computable),
     the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
-    move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for finance (D79)."""
+    move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
+    finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
+    already pending."""
 
     award: float | None
     trace: list[TraceStep]

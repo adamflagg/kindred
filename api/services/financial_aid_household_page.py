@@ -184,7 +184,8 @@ def band_grants_by_request(register: Iterable[RegisterRow]) -> dict[str, Decimal
     outside grants on the request, live lines plus open commitments (D116, D55; Expected never, D56), INCLUDING a
     last-dollar grantor's (D77's "live outside-grant lines", D143), as the budget's below-the-line money does.
     The other reading (§5.8's gloss "the same grants the calculator subtracts") is `grant_inputs_by_request`,
-    which leaves that grant out. Flipping it is this function and test_a_last_dollar_grant_counts_in_the_band."""
+    which leaves that grant out. Flipping it is this function and
+    test_a_last_dollar_grant_counts_in_the_band_and_the_share_never_goes_below_zero."""
     return outside_grants_by_request(register)
 
 
@@ -296,7 +297,12 @@ def receipts(
     out: list[ReceiptOut] = []
     for view in priced.rounds:
         state = rounds.get(view.round, RoundState(round=view.round))
-        decided_by = _name(names, state.decided_by) if view.round == 3 and state.award is not None else None
+        # A refused Round 3 was never decided: its keyer is not the decider (D79).
+        decided_by = (
+            _name(names, state.decided_by)
+            if view.round == 3 and state.award is not None and state.approval != "refused"
+            else None
+        )
         snapshot = state.snapshot or {}
         result = snapshot.get("result")
         if state.posted and isinstance(result, Mapping) and state.rules_version is not None:
@@ -476,11 +482,15 @@ class HouseholdPageService:
         if not rows and not grant_rows and not postings and not incomes:
             raise HouseholdNotFoundError(f"household {household_cm_id} has no aid activity in {year}")
 
-        family_keys = {str(ln.family_key) for ln in links if int(ln.household_cm_id) in households}
+        # The canonical family set (`family_household_set`) takes members from non-excluded rows only, so an
+        # exclusion never pulls the family's other members in; the scope's own excluded rows still show.
+        family_keys = {
+            str(ln.family_key) for ln in links if int(ln.household_cm_id) in households and not bool(ln.excluded)
+        }
         family_links = [
             ln
             for ln in sorted(links, key=lambda ln: (int(ln.household_cm_id), str(ln.id)))
-            if str(ln.family_key) in family_keys
+            if str(ln.family_key) in family_keys or int(ln.household_cm_id) in households
         ]
         log = await self._history.fetch_entity_log(
             year,

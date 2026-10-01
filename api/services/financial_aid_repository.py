@@ -76,7 +76,7 @@ def _positive_unique(ids: Collection[int]) -> list[int]:
     return sorted({int(i) for i in ids if int(i) > 0})
 
 
-def _chunk_filter_terms(
+def chunk_filter_terms(
     base_len: int,
     terms: Sequence[str],
     budget: int = AID_LIKE_FILTER_BUDGET,
@@ -255,8 +255,8 @@ class FinancialAidRepository:
         else:
             rows = []
             wanted = _positive_unique(household_ids)
-            for start in range(0, len(wanted), ID_CHUNK):
-                terms = _any_of("household.cm_id", wanted[start : start + ID_CHUNK])
+            for start in range(0, len(wanted), HOUSEHOLD_CHUNK):
+                terms = _any_of("household.cm_id", wanted[start : start + HOUSEHOLD_CHUNK])
                 rows += await self._page(FINANCIAL_AID_APPLICATIONS, {"filter": f"{asked} && ({terms})", **params})
         out: list[FaRequestRow] = []
         for r in rows:
@@ -348,7 +348,7 @@ class FinancialAidRepository:
         for r in await self._fetch_by_match_terms(year, outside, word_terms):
             merged[int(r.cm_id)] = r
         base_len = len(f"year = {int(year)} && is_reversed = false && {outside}")
-        for chunk in _chunk_filter_terms(base_len, equality_terms):
+        for chunk in chunk_filter_terms(base_len, equality_terms):
             for r in await self._fetch_by_match_terms(year, outside, chunk):
                 merged[int(r.cm_id)] = r
         return list(merged.values())

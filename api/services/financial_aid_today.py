@@ -35,6 +35,7 @@ from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_queues import UNRECONCILED
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
+from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES
 
 CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "needs_offer",
@@ -50,8 +51,6 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
 )
 FINANCE_LINES: Final[tuple[TodayKey, ...]] = ("pending_approval", "rules_sections", "would_change", "sources", "intake")
 WAITING_TOO_LONG_DAYS: Final = 14  # §6.4: "how many over 14 days"
-# The pricing stop while no rules version is approved, beside intake's own flag (main spec §10.5).
-NO_APPROVED_RULES: Final = "no_approved_rules"
 
 
 @dataclass(frozen=True)
@@ -165,7 +164,8 @@ def _late_full_coverage(inputs: TodayInputs) -> list[GridRowOut]:
         for share in grant.requests:
             row = by_id.get(share.request_id)
             if row is not None and any(
-                r.status == "posted" and r.posted_on is not None and r.posted_on < known for r in row.rounds
+                r.status == "posted" and not r.clawed_back and r.posted_on is not None and r.posted_on < known
+                for r in row.rounds
             ):
                 late[row.request_id] = row
     return [late[rid] for rid in sorted(late)]

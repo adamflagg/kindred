@@ -17,7 +17,7 @@ from api.schemas.financial_aid import (
     OverrideRow,
 )
 from api.services import financial_aid_repository
-from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_repository import HOUSEHOLD_CHUNK, FinancialAidRepository
 
 
 def _pb(rows: list[object] | None = None) -> tuple[MagicMock, list[dict[str, object]]]:
@@ -173,6 +173,23 @@ async def test_fa_requests_for_some_households_reads_only_theirs() -> None:
     (call,) = calls
     assert "(household.cm_id = 100 || household.cm_id = 200)" in str(call["filter"])
     assert str(call["filter"]).startswith("year = 2026 && ")
+
+
+@pytest.mark.asyncio
+async def test_fa_requests_for_many_households_are_chunked_and_concatenated() -> None:
+    """More households than one HOUSEHOLD_CHUNK make several reads, each under the filter limit, whose rows join."""
+    row = SimpleNamespace(
+        summer_amount_requested=1200,
+        fc_amount_requested=0,
+        tbm_amount_requested=None,
+        expand={"household": SimpleNamespace(cm_id=100)},
+    )
+    pb, calls = _pb([row])
+    ids = [1_000_000 + i for i in range(HOUSEHOLD_CHUNK * 2 + 1)]
+    got = await FinancialAidRepository(pb).fetch_fa_requests(2026, ids)
+    assert len(calls) == 3
+    assert all(len(str(c["filter"])) <= 3500 for c in calls)
+    assert len(got) == 3  # one fake row per call, concatenated
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,9 @@
 """The definitions registry (clean spec §4.8, D20): the numbered notes at the bottom of every
 Camperships surface that shows money come from here, and so will Reports › Development's.
 
-Each note is the signed meaning from the clean spec's §5, word for word, opening with the term it
-defines, with two substitutions: a staff member is named by role, and the camp's name is the `{camp}`
-placeholder, which render() fills from branding. A plan never redefines one of these (§5's preamble);
+Each note is condensed from the clean spec's §5 signed text, opening with the term it defines, with
+these substitutions: a staff member is named by role, the camp's name is the `{camp}` placeholder
+(render() fills it from branding), and named funders or outside programs are paraphrased. A plan never redefines one of these (§5's preamble);
 a new figure gets a new entry with its own sign-off. SURFACES says which notes a surface shows, in
 the order they are numbered there; a later slice adds its surface here with its plan.
 """

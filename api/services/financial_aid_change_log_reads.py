@@ -13,7 +13,7 @@ from collections.abc import Collection
 from typing import Any, Final
 
 from api.services.financial_aid_ledger_service import parse_pb_datetime
-from api.services.financial_aid_repository import _chunk_filter_terms
+from api.services.financial_aid_repository import chunk_filter_terms
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import COLLECTION
 from bunking.financial_aid.change_replay import LogRow
@@ -26,9 +26,6 @@ def _json_object(value: Any) -> dict[str, Any] | None:
     if isinstance(value, str):
         value = json.loads(value) if value.strip() else None
     return dict(value) if value is not None else None
-
-
-json_object = _json_object  # public for the household page's timeline (slice 1)
 
 
 def log_row(record: Any) -> LogRow:
@@ -73,7 +70,7 @@ async def fetch_entity_log(pb: Any, year: int, *, exact: Collection[str], contai
         return []
     base = f"year = {int(year)}"
     rows: dict[str, Any] = {}
-    for chunk in _chunk_filter_terms(len(base), terms):
+    for chunk in chunk_filter_terms(len(base), terms):
         found: list[Any] = await asyncio.to_thread(
             pb.collection(COLLECTION).get_full_list,
             batch=PAGE_SIZE,

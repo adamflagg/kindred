@@ -1558,6 +1558,8 @@ class FinancialAidDecisionsService:
             _refuse(_round3_rules_refusal(rounds, rules.document, request.year))
         current = rounds.get(n, RoundState(round=n))
         # The write's no-op: the amount already keyed stands as it is, so nothing moves and nothing waits.
+        # Round 2's write compares ask, asked_on and statement; the preview input carries only the amount, so
+        # the preview treats a same-amount retype as no change.
         unchanged = current.ask == body.amount if n == 2 else _round3_unchanged(current, body.amount)
         pending = not unchanged and n == 3 and not can_approve and needs_finance(body.amount, rules.document)
         season = await self.season(request.year)

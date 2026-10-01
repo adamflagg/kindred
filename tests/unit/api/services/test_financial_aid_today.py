@@ -296,6 +296,28 @@ def test_a_full_coverage_grant_known_after_the_round_was_posted_asks_to_contact_
     assert (line.families, line.items, line.request_ids) == (1, 1, ["reqemma00000001"])
 
 
+def test_a_clawed_back_posted_round_is_not_late_full_coverage() -> None:
+    """A round CampMinder reversed counts nowhere (D54), as `_waiting_since` and `_waiting_on_family` already
+    treat it: a late full-coverage grant on a request whose only posted round is clawed back is not counted."""
+    rows = [
+        _row(
+            "reqemma00000001",
+            1000001,
+            _round(1, "posted", posted=1500.0, posted_on=date(2031, 3, 9), clawed_back=True),
+        )
+    ]
+    out = build_today(
+        _inputs(
+            rows,
+            register=[_known("full_fund", date(2031, 4, 2))],
+            grantors=[_grantor("full_fund", full=True)],
+        ),
+        casework=True,
+        finance=False,
+    )
+    assert _line(out.casework, "late_full_coverage").items == 0
+
+
 def test_a_grant_committed_before_the_offer_and_posted_after_it_is_not_late() -> None:
     """Plan review I3, D116: a grant counts once known. A commitment entered before the lock was already in the
     award, so its later CampMinder line (recorded_on after the lock) is not late; recorded_at decides."""
