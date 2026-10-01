@@ -107,7 +107,7 @@ export function RegistrationDatesConfig() {
         queryKey: queryKeys.registrationDatesConfig(currentYear),
       })
       // Invalidate server-side metrics cache so velocity graph picks up new phase dates
-      void invalidateServerCaches()
+      await invalidateServerCaches()
       // Invalidate client-side metrics queries for immediate UI refresh
       await queryClient.invalidateQueries({ queryKey: ['metrics'] })
       toast.success('Registration dates saved')
