@@ -27,6 +27,8 @@ func targetLabel(app core.App, record *core.Record, before map[string]any) (labe
 		return record.Email(), nil
 	case "roles":
 		return record.GetString("name"), nil
+	case "permission_descriptions":
+		return record.GetString("codename"), nil
 	case "user_roles":
 		return userRoleLabel(app, record, before)
 	case "config":

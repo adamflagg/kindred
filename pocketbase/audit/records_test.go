@@ -109,6 +109,19 @@ func TestRecordWritesAreAudited(t *testing.T) {
 			},
 		},
 		{
+			Name: "a permission description override is labelled by its codename", Method: http.MethodPost,
+			URL:            "/api/collections/permission_descriptions/records",
+			Body:           strings.NewReader(`{"codename":"financial_aid.view","description":"See aid awards"}`),
+			TestAppFactory: factory, BeforeTestFunc: as("admin"), Headers: headers,
+			ExpectedStatus: 200, ExpectedContent: []string{`"codename":"financial_aid.view"`},
+			AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+				row := onlyRow(t, app, audit.TypeRoles)
+				expect(t, row, map[string]string{
+					"collection": "permission_descriptions", "action": "create", "target_label": "financial_aid.view",
+				})
+			},
+		},
+		{
 			Name: "a role assignment is Access and names the person and the role", Method: http.MethodPost,
 			URL:            "/api/collections/user_roles/records",
 			Body:           strings.NewReader(`{"user":"` + samID + `","role":"` + registrar + `"}`),

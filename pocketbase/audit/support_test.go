@@ -61,6 +61,11 @@ func newAppWith(t testing.TB, cfg audit.Config) *tests.TestApp {
 	roles.CreateRule, roles.UpdateRule, roles.DeleteRule = rule(adminRule), rule(adminRule), rule(adminRule)
 	mustSave(t, app, roles)
 
+	descriptions := core.NewBaseCollection("permission_descriptions")
+	descriptions.Fields.Add(&core.TextField{Name: "codename"}, &core.TextField{Name: "description"})
+	descriptions.CreateRule, descriptions.UpdateRule, descriptions.DeleteRule = rule(adminRule), rule(adminRule), rule(adminRule)
+	mustSave(t, app, descriptions)
+
 	userRoles := core.NewBaseCollection("user_roles")
 	userRoles.Fields.Add(
 		&core.RelationField{Name: "user", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true},
