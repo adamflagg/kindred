@@ -49,6 +49,7 @@ class _Store:
         ]
         self.links = [_link("lnk000000000001", JOHNSON, "hh-1000001"), _link("lnk000000000002", GARCIA, "hh-1000001")]
         self.name_searches: list[tuple[str, tuple[str, ...]]] = []
+        self.household_fetches: list[frozenset[int]] = []
 
     async def search_households(self, year: int, words: Sequence[str]) -> list[Any]:
         self.name_searches.append(("households", tuple(words)))
@@ -59,6 +60,7 @@ class _Store:
         return [p for p in self.people if all(w.lower() in f"{p.first_name} {p.last_name}".lower() for w in words)]
 
     async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:
+        self.household_fetches.append(frozenset(cm_ids))
         return [h for h in self.households if h.cm_id in cm_ids]
 
     async def fetch_persons(self, year: int, cm_ids: Collection[int]) -> list[Any]:
@@ -138,3 +140,28 @@ def test_quotes_and_backslashes_are_escaped() -> None:
         "year = 2027 && (first_name ~ 'O\\'Brien\\\\' || preferred_name ~ 'O\\'Brien\\\\' "
         "|| last_name ~ 'O\\'Brien\\\\')"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", [" a", "a b", "%%", "%", "% x"])
+async def test_a_query_with_no_word_of_two_characters_runs_no_name_search(query: str) -> None:
+    """A lone % would switch off PocketBase's wildcard wrapping and match nearly everything."""
+    store = _Store()
+    out = await HouseholdSearchService(store).search(YEAR, query)
+    assert (out.matches, store.name_searches) == ([], [])
+
+
+@pytest.mark.asyncio
+async def test_a_household_the_name_search_returned_is_not_fetched_again() -> None:
+    store = _Store()
+    await HouseholdSearchService(store).search(YEAR, "garcia")  # found by its title, and by Liam
+    assert store.household_fetches == []
+    store.household_fetches.clear()
+    await HouseholdSearchService(store).search(YEAR, "olivia")  # found only by a person: its row is fetched
+    assert store.household_fetches == [frozenset({CHEN})]
+
+
+def test_the_household_name_search_asks_only_for_the_fields_the_match_reads() -> None:
+    from api.services.financial_aid_household_search import HOUSEHOLD_FIELDS
+
+    assert HOUSEHOLD_FIELDS == "cm_id,mailing_title,greeting"
