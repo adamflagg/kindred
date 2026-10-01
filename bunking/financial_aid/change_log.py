@@ -48,8 +48,10 @@ from decimal import Decimal
 from typing import Any
 
 from bunking.financial_aid.change_diff import changed_fields
+from bunking.financial_aid.errors import FinancialAidError
 from bunking.pocketbase_batch import (
     MAX_BATCH_REQUESTS,
+    PRECONDITION_FAILED,
     BatchLimitError,
     BatchRequest,
     BatchRequestFailedError,
@@ -70,6 +72,14 @@ _ID_LENGTH = 15
 _PB_ID = re.compile(r"^[a-z0-9]{15}$")
 
 _WRITE_ACTIONS = ("create", "update", "delete")
+
+# "Write only if unchanged" (campership G6): every update and delete of these collections says which
+# revision of the record it read, and PocketBase (pocketbase/aidguard) refuses it if the record moved on.
+# Each has a `revision` number field (the *_aid_rules_revision.js migration); tests pin this set to it and to
+# aidguard.Collections.
+REVISIONED_COLLECTIONS: frozenset[str] = frozenset({"aid_rules"})
+
+CONFLICT_MESSAGE = "Someone else changed this; reload and try again"
 
 
 def _new_id() -> str:
@@ -246,6 +256,12 @@ class AidWrite:
     ("approve", "hold", "release"); ``entity_id`` overrides the logged key (for
     example a composite "2027:1000001:1000002"; default: the record id);
     ``reason`` overrides the operation's reason for this write.
+
+    ``expected_revision`` (an update or delete only) is the record's ``revision``
+    as the caller READ it: the write commits only if the record is unchanged
+    since (G6). Required for ``REVISIONED_COLLECTIONS``. Several writes to one
+    record in one operation all carry the same read revision; the helper
+    counts the saves before each one (``if_match_values``).
     """
 
     collection: str
@@ -258,6 +274,35 @@ class AidWrite:
     reason: str | None = None
     log_action: str | None = None
     entity_id: str | None = None
+    expected_revision: int | None = None
+
+
+@dataclass(frozen=True)
+class AidGuard:
+    """A precondition that changes no field anyone reads: the record must still be at ``expected_revision``.
+
+    Sent as an empty update with If-Match, before the operation's writes and in the same batch, so the
+    operation commits only while that record is unchanged. PocketBase still saves it, so its revision moves
+    on and a writer that read it earlier is refused in turn. It writes no aid_change_log row: nothing staff
+    see changed. A new rules version guards the version it supersedes this way (G6).
+    """
+
+    collection: str
+    record_id: str
+    expected_revision: int
+
+
+class AidWriteConflictError(FinancialAidError):
+    """A record the operation read changed before it wrote, so NOTHING in the operation was written (G6).
+
+    A routine refusal, not a fault: routers answer 409 and the person reloads and tries again. Never
+    retried here: a retry must re-read and re-derive its writes, or it would apply a stale change.
+    """
+
+    def __init__(self, *, collection: str, record_id: str) -> None:
+        self.collection = collection
+        self.record_id = record_id
+        super().__init__(CONFLICT_MESSAGE)
 
 
 @dataclass(frozen=True)
@@ -315,8 +360,69 @@ def _write_body(data: Mapping[str, Any], label: str) -> dict[str, Any]:
     return _snapshot(data, label) or {}
 
 
+def if_match_values(writes: Sequence[AidWrite], guards: Sequence[AidGuard] = ()) -> tuple[list[int], list[int | None]]:
+    """The revision each guard and each write must find (its If-Match), in batch order: guards first.
+
+    ``expected_revision`` is the revision the caller READ. Every save of a record moves its revision on by
+    one (pocketbase/aidguard), a guard's included, so the k-th save of one record in an operation must find
+    read + k. Refused before anything is sent (ValueError): a create with a revision, a negative or non-int
+    one, two read revisions for one record, and a revision or guard on a collection outside
+    REVISIONED_COLLECTIONS.
+    """
+    reads: dict[tuple[str, str], int] = {}
+    saves: dict[tuple[str, str], int] = {}
+
+    def expect(collection: str, record_id: str, read: object) -> int:
+        # Ruling 2026-10-01 (plan review): PocketBase checks If-Match only on aidguard's collections; anywhere
+        # else the header would be ignored and the write would look guarded when it is not.
+        if collection not in REVISIONED_COLLECTIONS:
+            raise ValueError(f"{collection} has no revision: only {sorted(REVISIONED_COLLECTIONS)} can be guarded")
+        if isinstance(read, bool) or not isinstance(read, int) or read < 0:
+            raise ValueError(f"expected_revision must be a non-negative int, got {read!r}")
+        key = (collection, record_id)
+        if reads.setdefault(key, read) != read:
+            raise ValueError(
+                f"{collection} {record_id} is expected at two revisions ({reads[key]} and {read}) in one operation"
+            )
+        return read + saves.get(key, 0)
+
+    guard_values: list[int] = []
+    for guard in guards:
+        guard_values.append(expect(guard.collection, guard.record_id, guard.expected_revision))
+        key = (guard.collection, guard.record_id)
+        saves[key] = saves.get(key, 0) + 1
+    write_values: list[int | None] = []
+    for write in writes:
+        if write.action == "create":
+            if write.expected_revision is not None:
+                raise ValueError("a create has no revision to expect")
+            write_values.append(None)
+            continue
+        if write.record_id is None:  # _pair refuses it: an update or delete needs a record_id
+            write_values.append(None)
+            continue
+        if write.expected_revision is None:
+            if write.collection in REVISIONED_COLLECTIONS:
+                raise ValueError(
+                    f"an {write.action} of {write.collection} must carry the revision it read (expected_revision)"
+                )
+            write_values.append(None)
+        else:
+            write_values.append(expect(write.collection, write.record_id, write.expected_revision))
+        if write.action == "update":
+            key = (write.collection, write.record_id)
+            saves[key] = saves.get(key, 0) + 1
+    return guard_values, write_values
+
+
 def _pair(
-    write: AidWrite, *, actor: str, operation_id: str, reason: str | None, require_reason: bool
+    write: AidWrite,
+    *,
+    actor: str,
+    operation_id: str,
+    reason: str | None,
+    require_reason: bool,
+    revision: int | None = None,
 ) -> tuple[str, BatchRequest, BatchRequest]:
     """Validate one write and build (record_id, write request, log request)."""
     collection = _check_collection(write.collection)
@@ -345,14 +451,14 @@ def _pair(
         if write.action == "update":
             if write.data is None:
                 raise ValueError("an update needs data")
-            request = BatchRequest.update(collection, record_id, _write_body(write.data, "data"))
+            request = BatchRequest.update(collection, record_id, _write_body(write.data, "data"), revision=revision)
             after = write.after if write.after is not None else {**write.before, **write.data}
         else:
             if write.data is not None:
                 raise ValueError("a delete carries no data")
             if write.after is not None:
                 raise ValueError("a delete must not carry an after snapshot")
-            request = BatchRequest.delete(collection, record_id)
+            request = BatchRequest.delete(collection, record_id, revision=revision)
             after = None
 
     row = change_row(
@@ -380,6 +486,7 @@ def commit_aid_writes(
     require_reason: bool = False,
     allow_chunking: bool = False,
     max_requests: int = MAX_BATCH_REQUESTS,
+    guards: Sequence[AidGuard] = (),
 ) -> AidOperationResult:
     """Commit ``writes`` and one ``aid_change_log`` row each, as one operation.
 
@@ -395,9 +502,9 @@ def commit_aid_writes(
     to log. ``reason`` is the operation's default reason; ``require_reason``
     refuses any write left without one.
 
-    **Size.** An operation of N writes is 2N sub-requests. Up to
-    ``max_requests`` (default: the server's limit, 2000, so about 1000 writes)
-    it is ONE atomic batch. Over it, the operation is refused with
+    **Size.** An operation of N writes and G guards is G + 2N sub-requests (a
+    guard has no log row). Up to ``max_requests`` (default: the server's limit,
+    2000, so about 1000 writes) it is ONE atomic batch. Over it, the operation is refused with
     ``BatchLimitError`` unless ``allow_chunking=True``: then it is sent as
     consecutive batches that never split a write from its log row. Each chunk is
     atomic; the operation as a whole is not. If a later chunk fails,
@@ -405,6 +512,14 @@ def commit_aid_writes(
     (and how many are in doubt, when the connection was lost mid-chunk), and
     the ``operation_id`` ties the committed chunks together. Allow chunking
     only for an operation that is safe to leave part-done and re-run.
+
+    **Write only if unchanged (G6).** A write with ``expected_revision`` and
+    each of ``guards`` (sent first, in the first batch) commit only while their
+    record is still at the revision read. Otherwise PocketBase fails the batch,
+    nothing in it is written, and ``AidWriteConflictError`` names the record.
+    Guards can't be chunked: an operation with guards is one batch or refused.
+    A chunked operation must put its guarded writes in its first chunk: a
+    conflict in a later one is ``AidOperationPartiallyCommittedError``.
     """
     if not 2 <= max_requests <= MAX_BATCH_REQUESTS:
         raise ValueError(f"max_requests must be 2-{MAX_BATCH_REQUESTS} to hold a write and its log row")
@@ -412,13 +527,23 @@ def commit_aid_writes(
         raise ValueError("an operation needs at least one write; there are no writes")
     actor = _required_text(actor, "actor")
     op_id = _operation_id(operation_id)
-    pairs = [_pair(w, actor=actor, operation_id=op_id, reason=reason, require_reason=require_reason) for w in writes]
+    if guards and allow_chunking:
+        raise ValueError("an operation with guards is one atomic batch; it can't be chunked")
+    guard_revisions, write_revisions = if_match_values(writes, guards)
+    pairs = [
+        _pair(w, actor=actor, operation_id=op_id, reason=reason, require_reason=require_reason, revision=r)
+        for w, r in zip(writes, write_revisions, strict=True)
+    ]
+    prefix = [
+        BatchRequest.update(_check_collection(g.collection), g.record_id, {}, revision=r)
+        for g, r in zip(guards, guard_revisions, strict=True)
+    ]
 
-    per_batch = max_requests // 2
+    per_batch = (max_requests - len(prefix)) // 2
     if len(pairs) > per_batch and not allow_chunking:
         raise BatchLimitError(
-            f"an operation of {len(pairs)} writes needs {2 * len(pairs)} batch requests, over the limit of "
-            f"{max_requests}; split it, or pass allow_chunking=True if it is safe to commit in parts"
+            f"an operation of {len(pairs)} writes needs {len(prefix) + 2 * len(pairs)} batch requests, over the "
+            f"limit of {max_requests}; split it, or pass allow_chunking=True if it is safe to commit in parts"
         )
 
     record_ids: list[str] = []
@@ -426,10 +551,18 @@ def commit_aid_writes(
     batches = 0
     for start in range(0, len(pairs), per_batch):
         chunk = pairs[start : start + per_batch]
-        requests = [r for _, write_request, log_request in chunk for r in (write_request, log_request)]
+        lead = prefix if start == 0 else []
+        requests = [*lead, *(r for _, write_request, log_request in chunk for r in (write_request, log_request))]
         try:
             results = send_batch(pb, requests, max_requests=max_requests)
         except BatchRequestFailedError as exc:
+            if start == 0 and exc.status == PRECONDITION_FAILED:
+                if exc.index < len(lead):
+                    target = (guards[exc.index].collection, guards[exc.index].record_id)
+                else:
+                    write = writes[(exc.index - len(lead)) // 2]
+                    target = (write.collection, write.record_id or "")
+                raise AidWriteConflictError(collection=target[0], record_id=target[1]) from exc
             if start == 0:
                 raise
             failed_write = start + exc.index // 2 + 1
@@ -451,5 +584,5 @@ def commit_aid_writes(
             ) from exc
         batches += 1
         record_ids.extend(record_id for record_id, _, _ in chunk)
-        records.extend(result.body if isinstance(result.body, dict) else None for result in results[::2])
+        records.extend(result.body if isinstance(result.body, dict) else None for result in results[len(lead) :: 2])
     return AidOperationResult(operation_id=op_id, record_ids=tuple(record_ids), records=tuple(records), batches=batches)

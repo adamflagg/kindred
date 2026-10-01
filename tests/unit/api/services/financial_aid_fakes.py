@@ -146,6 +146,27 @@ class _BatchTwin:
         return self._store.apply_batch(json.loads(kwargs["content"])["requests"])
 
 
+def precondition_failed(index: int, record: str) -> httpx.Response:
+    """PocketBase's answer when sub-request `index` fails pocketbase/aidguard's If-Match check: the batch is
+    refused whole (400) and the failing sub-request's own response carries 412 (G6)."""
+    return httpx.Response(
+        400,
+        json={
+            "data": {
+                "requests": {
+                    str(index): {
+                        "code": "batch_request_failed",
+                        "message": "Batch request failed.",
+                        "response": {"data": {}, "message": f"{record} changed since it was read.", "status": 412},
+                    }
+                }
+            },
+            "message": "Batch transaction failed.",
+            "status": 400,
+        },
+    )
+
+
 class FakeAidStore:
     """In-memory twin of FinancialAidIntakeRepository. Each read yields once so
     concurrent builds really interleave (the year-lock test depends on it), and

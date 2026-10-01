@@ -45,11 +45,19 @@ from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import DecisionEvent, HoldEvent
 from bunking.financial_aid.rules.lifecycle import SectionStatus
 from bunking.financial_aid.rules.schema import SECTION_NAMES, AidRules, SectionName
+from bunking.pocketbase_batch import IF_MATCH, if_match
 from pocketbase import PocketBase
-from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR, _BatchTwin, intake_rules
+from tests.unit.api.services.financial_aid_fakes import (
+    SESSIONS,
+    YEAR,
+    _BatchTwin,
+    intake_rules,
+    precondition_failed,
+)
 
 T0 = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
 ACTOR = "registrar@example.com"
+RULES_ID = "rul000000000001"  # the one aid_rules record approved() and FakeRules write to
 
 
 class FakeDecisionsStore:
@@ -66,6 +74,7 @@ class FakeDecisionsStore:
         self.operations: list[list[AidWrite]] = []  # every commit a service attempted
         self.log: list[dict[str, Any]] = []  # every aid_change_log row that committed
         self.rules_writes: list[dict[str, Any]] = []  # every aid_rules sub-request that committed
+        self.rules_revision: dict[str, int] = {}  # aid_rules record id -> revision, as pocketbase/aidguard keeps it
         self.camp_lines: list[CampLine] = []
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
@@ -180,6 +189,19 @@ class FakeDecisionsStore:
         )
 
     def apply_batch(self, requests: list[dict[str, Any]]) -> httpx.Response:
+        # pocketbase/aidguard (G6), checked before anything applies: one transaction, so a failed If-Match
+        # anywhere leaves every collection untouched. Every aid_rules save moves its revision on by one.
+        revisions = dict(self.rules_revision)
+        for index, item in enumerate(requests):
+            parts = item["url"].strip("/").split("/")
+            if parts[2] != AID_RULES or item["method"] != "PATCH":
+                continue
+            stored = revisions.get(parts[4], 0)
+            wanted = (item.get("headers") or {}).get(IF_MATCH)
+            if wanted is not None and wanted != if_match(stored):
+                return precondition_failed(index, f"aid_rules {parts[4]}")
+            revisions[parts[4]] = stored + 1
+        self.rules_revision = revisions
         results: list[dict[str, Any]] = []
         for item in requests:
             collection = item["url"].strip("/").split("/")[2]
@@ -206,7 +228,7 @@ class FakeDecisionsStore:
 def approved(rules: AidRules | None = None, version: int = 1) -> RulesVersion:
     """A rules version with every section approved (the pricing sections included)."""
     return RulesVersion(
-        record_id="rul000000000001",
+        record_id=RULES_ID,
         year=YEAR,
         version=version,
         document=rules or intake_rules(),
@@ -218,7 +240,11 @@ def approved(rules: AidRules | None = None, version: int = 1) -> RulesVersion:
 
 class FakeRules:
     """latest_approved returns `version`; lock_writes returns one aid_rules update per section, except
-    the ones listed in `not_locked`, which it reports as not locked (a rules validation error)."""
+    the ones listed in `not_locked`, which it reports as not locked (a rules validation error).
+
+    Each lock_writes call reads the record at the next of `revision_reads` (then 0 once they run out) and
+    its writes carry that as expected_revision (G6): a test makes a read stale by giving the store a newer one.
+    """
 
     def __init__(self, version: RulesVersion | None) -> None:
         self.version = version
@@ -226,6 +252,7 @@ class FakeRules:
         self.as_of_calls: list[datetime] = []
         self.not_locked: list[SectionName] = []
         self.lock_calls: list[tuple[int, int, tuple[SectionName, ...]]] = []
+        self.revision_reads: list[int] = []
 
     async def latest_approved(self, year: int, sections: Collection[SectionName]) -> RulesVersion | None:
         return self.version
@@ -241,16 +268,18 @@ class FakeRules:
     ) -> tuple[list[AidWrite], list[SectionName]]:
         named = tuple(sections)
         self.lock_calls.append((year, version, named))
+        read = self.revision_reads.pop(0) if self.revision_reads else 0
         writes = [
             AidWrite(
                 collection=AID_RULES,
                 action="update",
                 year=year,
-                record_id="rul000000000001",
+                record_id=RULES_ID,
                 before={"section_status": {section: "approved"}},
                 data={"section_status": {section: "locked"}},
                 log_action="lock",
                 entity_id=f"{year}:{version}:{section}",
+                expected_revision=read,
             )
             for section in named
             if section not in self.not_locked

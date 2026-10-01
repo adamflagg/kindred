@@ -60,7 +60,7 @@ from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
 from bunking.financial_aid.change_diff import FieldChange, field_changes
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import (
@@ -316,6 +316,9 @@ class RulesVersion(BaseModel):
     section_status: dict[SectionName, SectionStatus]
     parent_year: int | None
     parent_version: int | None
+    # The record's `revision` as read (G6): every write to this version carries it, and PocketBase refuses
+    # the write if anything saved the record since. 0 for a version rebuilt from the log (read-only).
+    revision: int = 0
 
 
 class AidRulesStore(Protocol):
@@ -328,7 +331,12 @@ class AidRulesStore(Protocol):
     async def fetch_log(self, year: int) -> list[LogRow]: ...
 
     async def commit(
-        self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None
+        self,
+        writes: Sequence[AidWrite],
+        *,
+        actor: str,
+        reason: str | None = None,
+        guards: Sequence[AidGuard] = (),
     ) -> AidOperationResult: ...
 
 
@@ -372,8 +380,18 @@ class AidRulesRepository:
     async def fetch_log(self, year: int) -> list[LogRow]:
         return await fetch_change_log(self.pb, year, AID_RULES)
 
-    async def commit(self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None) -> AidOperationResult:
+    async def commit(
+        self,
+        writes: Sequence[AidWrite],
+        *,
+        actor: str,
+        reason: str | None = None,
+        guards: Sequence[AidGuard] = (),
+    ) -> AidOperationResult:
         """Each write and its aid_change_log row in ONE PocketBase batch (sub-project 4a, spec 14.4).
+
+        `guards` ride in the same batch (G6): a new version guards the version it supersedes. A write or guard
+        whose record changed since it was read fails the whole batch as AidWriteConflictError (commit_aid_writes).
 
         A unique-index collision on (year, version) arrives from the batch as a 400 whose
         field errors say "Value must be unique."; the batch helper keeps PocketBase's message
@@ -382,8 +400,9 @@ class AidRulesRepository:
         """
         if self._read_only:
             raise RuntimeError("this repository only reads aid_rules")
+        extra: dict[str, Any] = {"guards": tuple(guards)} if guards else {}
         try:
-            return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason)
+            return await asyncio.to_thread(commit_aid_writes, self.pb, writes, actor=actor, reason=reason, **extra)
         except BatchRequestFailedError as exc:
             if exc.status == 400 and any("unique" in message.lower() for message in exc.field_errors.values()):
                 first_create = next((w for w in writes if w.action == "create" and w.data is not None), None)
@@ -423,6 +442,7 @@ def _to_version(record: Any) -> RulesVersion:
         section_status=status_from_json(_json_object(record, "section_status")),
         parent_year=parent_year or None,
         parent_version=parent_version or None,
+        revision=int(getattr(record, "revision", 0) or 0),
     )
 
 
@@ -478,6 +498,7 @@ def _status_write(
         log_action=log_action,
         entity_id=_entity_id(current.year, current.version, section),
         reason=reason,
+        expected_revision=current.revision,
     )
 
 
@@ -615,9 +636,10 @@ class FinancialAidRulesService:
         return await self.validate_document((await self.load(year, version)).document)
 
     async def create_version(self, document: AidRules, *, actor: str) -> RulesVersion:
-        version = await self._next_version(document.year)
+        latest = await self._latest(document.year)
+        version = (latest.version if latest is not None else 0) + 1
         body = _body(document.year, version, document, initial_status(), parent_year=None, parent_version=None)
-        return await self._create(body, log_action="create", actor=actor)
+        return await self._create(body, log_action="create", actor=actor, supersedes=latest)
 
     async def bootstrap(self, document: AidRules, *, actor: str) -> RulesVersion:
         """Version 1 of a season that has no rules yet, from a whole document (loading 2026 as history).
@@ -676,6 +698,7 @@ class FinancialAidRulesService:
             data=data,
             log_action="save",
             entity_id=_entity_id(year, current.version),
+            expected_revision=current.revision,
         )
         await self._store.commit([write], actor=actor)
         return await self.load(year, current.version), report
@@ -747,16 +770,8 @@ class FinancialAidRulesService:
         if branch:
             number = await self._next_version(year)
             body = _body(year, number, candidate, status, parent_year=year, parent_version=current.version)
-            write = AidWrite(
-                collection=AID_RULES,
-                action="create",
-                year=year,
-                data=body,
-                log_action="save",
-                entity_id=_entity_id(year, number),
-            )
-            await self._store.commit([write], actor=actor)
-            return SectionSaveResult(await self.load(year, number), after, current.version)
+            created = await self._create(body, log_action="save", actor=actor, supersedes=current)
+            return SectionSaveResult(created, after, current.version)
         write = AidWrite(
             collection=AID_RULES,
             action="update",
@@ -766,6 +781,7 @@ class FinancialAidRulesService:
             data={"document": _dump(candidate), "section_status": status_to_json(status)},
             log_action="save",
             entity_id=_entity_id(year, current.version),
+            expected_revision=current.revision,
         )
         await self._store.commit([write], actor=actor)
         return SectionSaveResult(await self.load(year, current.version), after, None)
@@ -776,8 +792,14 @@ class FinancialAidRulesService:
         where the rules draft's copy has moved since that starting point."""
         if document.year != year:
             raise YearMismatchError(f"The document is for {document.year}, not {year}")
-        origin = await self.load(year, origin_version)
-        current = await self.load(year)
+        return await self._preview(await self.load(year), origin_version=origin_version, document=document)
+
+    async def _preview(self, current: RulesVersion, *, origin_version: int, document: AidRules) -> PromotionPreview:
+        """The promotion preview against `current`, the rules draft as ONE read. `promote` checks the tokens against
+        this same read, builds its candidate from it and writes with its revision (Ruling 2026-10-01 (plan review)),
+        so a save that lands after the read is a conflict, never silently overwritten by the promotion."""
+        year = current.year
+        origin = current if origin_version == current.version else await self.load(year, origin_version)
         moved = set(changed_sections(origin.document, document))
         now, wanted = current.document.model_dump(), document.model_dump()
         entries = tuple(
@@ -807,11 +829,17 @@ class FinancialAidRulesService:
         moved past `base_version`, or when a warned section is not acknowledged with the token the preview returned
         for it. A section re-edited since the preview has a new token, so its old acknowledgement is refused and the
         section named; nothing is written then."""
-        preview = await self.promotion_preview(year, origin_version=origin_version, document=document)
-        if preview.base_version != base_version:
+        if document.year != year:
+            raise YearMismatchError(f"The document is for {document.year}, not {year}")
+        # One read of the rules draft for the preview, the tokens, the candidate and the write's revision
+        # (Ruling 2026-10-01 (plan review)): a second read could see a save the confirmed preview never showed.
+        # Not `_rules_draft`: a promotion was confirmed against a preview, so staff go back to the preview.
+        current = await self.load(year)
+        if current.version != base_version:
             raise NotLatestVersionError(
-                f"The rules draft is version {preview.base_version} now, not {base_version}: look at the changes again"
+                f"The rules draft is version {current.version} now, not {base_version}: look at the changes again"
             )
+        preview = await self._preview(current, origin_version=origin_version, document=document)
         unconfirmed = [
             s.section
             for s in preview.sections
@@ -819,11 +847,10 @@ class FinancialAidRulesService:
         ]
         if unconfirmed:
             raise ReplacementNotAcknowledgedError(unconfirmed)
-        current = await self.load(year, base_version)
         candidate = current.document.model_copy(
             update={entry.section: getattr(document, entry.section) for entry in preview.sections}
         )
-        return await self.save_sections(year, base_version, candidate, actor=actor, via=via)
+        return await self._save_over(current, candidate, actor=actor, via=via)
 
     async def _sections_in_use(self, version: RulesVersion, *, intake: bool = True) -> frozenset[SectionName]:
         """The sections of `version` a save must not overwrite because a reader takes them from it: every
@@ -933,8 +960,12 @@ class FinancialAidRulesService:
         version on purpose is the one write this module allows on a superseded
         version, and its result becomes the new latest.
         """
-        source = await self.load(year, from_version)
-        version = await self._next_version(year)
+        # The latest FIRST, and it is the source when branching from it (Ruling 2026-10-01 (plan review)): a source
+        # read before the latest could miss a save that landed between the two reads, while the guard, carrying
+        # the later read's revision, let the stale copy through.
+        latest = await self.load(year)
+        source = latest if from_version == latest.version else await self.load(year, from_version)
+        version = latest.version + 1
         body = _body(
             year,
             version,
@@ -943,7 +974,7 @@ class FinancialAidRulesService:
             parent_year=year,
             parent_version=from_version,
         )
-        return await self._create(body, log_action="new_version", actor=actor)
+        return await self._create(body, log_action="new_version", actor=actor, supersedes=latest)
 
     async def start_from_last_year(self, year: int, *, actor: str) -> tuple[RulesVersion, ValidationReport]:
         """Copy the previous season's latest version into an empty season, every section draft.
@@ -960,7 +991,7 @@ class FinancialAidRulesService:
         cost = prior.document.cost.model_copy(update={"tuition": {}, "family_rates": []})
         document = prior.document.model_copy(update={"year": year, "milestones": MilestonesSection(), "cost": cost})
         body = _body(year, 1, document, initial_status(), parent_year=prior.year, parent_version=prior.version)
-        created = await self._create(body, log_action="start_from_last_year", actor=actor)
+        created = await self._create(body, log_action="start_from_last_year", actor=actor, supersedes=None)
         report = await self.validate_document(created.document)
         cleared = ValidationIssue(
             section="cost",
@@ -974,7 +1005,13 @@ class FinancialAidRulesService:
         )
         return created, ValidationReport(issues=[cleared, *report.issues])
 
-    async def _create(self, body: dict[str, Any], *, log_action: str, actor: str) -> RulesVersion:
+    async def _create(
+        self, body: dict[str, Any], *, log_action: str, actor: str, supersedes: RulesVersion | None
+    ) -> RulesVersion:
+        """Create a version. `supersedes` is the season's latest version as read, None for a season's first: the
+        create guards it (G6), so a write still aimed at it as "the latest" (a save, an approval, a tick's lock)
+        is refused rather than landing on a version that is no longer the latest, and this create is refused if
+        that version changed since it was read."""
         year, version = int(body["year"]), int(body["version"])
         write = AidWrite(
             collection=AID_RULES,
@@ -984,21 +1021,27 @@ class FinancialAidRulesService:
             log_action=log_action,
             entity_id=_entity_id(year, version),
         )
-        await self._store.commit([write], actor=actor)
+        guards = (
+            [AidGuard(collection=AID_RULES, record_id=supersedes.record_id, expected_revision=supersedes.revision)]
+            if supersedes is not None
+            else []
+        )
+        await self._store.commit([write], actor=actor, guards=guards)
         return await self.load(year, version)
+
+    async def _latest(self, year: int) -> RulesVersion | None:
+        rows = await self._store.list_versions(year)
+        return _to_version(rows[-1]) if rows else None
 
     async def _latest_version_number(self, year: int) -> int | None:
         rows = await self._store.list_versions(year)
         return int(rows[-1].version) if rows else None
 
     async def _assert_latest(self, year: int, version: int) -> None:
-        # NOT atomic with the write that follows it: this read and that write are
-        # two separate PocketBase round trips, so a `new_version` that lands in
-        # between can still slip a write through against a version that was
-        # latest when this check ran but is not by the time the write does.
-        # Accepted for a single-user staff tool (campership design section 7);
-        # the unique index on (year, version) is what actually protects a
-        # concurrent `create` from a torn write, not this check.
+        # The early, friendly refusal. It is not atomic with the write that follows: what makes that write safe
+        # is G6's revision check. Every create guards the version it supersedes, so a version that stopped being
+        # the latest after this read has a new revision, and the write aimed at it is refused
+        # (AidWriteConflictError). The unique index on (year, version) refuses two concurrent creates.
         latest = await self._latest_version_number(year)
         if latest != version:
             raise NotLatestVersionError(

@@ -103,6 +103,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/google/
 !pocketbase/rbac/
 !pocketbase/audit/
+!pocketbase/aidguard/
 !pocketbase/feedback/
 !pocketbase/config/
 !pocketbase/bunk_requests/

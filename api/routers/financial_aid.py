@@ -209,6 +209,7 @@ from api.services.financial_aid_scenarios_service import (
 )
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
+from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
@@ -277,6 +278,7 @@ def _rules_http(exc: FinancialAidError) -> HTTPException:
             NotLatestVersionError,
             PricingVersionInUseError,
             ReplacementNotAcknowledgedError,
+            AidWriteConflictError,
         ),
     ):
         return HTTPException(status_code=409, detail=str(exc))
@@ -568,6 +570,8 @@ async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUs
 async def create_household_link(body: HouseholdLinkCreate, user: AuthUser = _CASEWORK) -> HouseholdLinkRow:
     try:
         return await _writes().create_link(body, user.email)
+    except AidWriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 
@@ -828,6 +832,8 @@ def _decisions_http(exc: FinancialAidError) -> HTTPException:
         return HTTPException(
             status_code=409, detail={"message": str(exc), "rows": [row.model_dump() for row in exc.rows]}
         )
+    if isinstance(exc, AidWriteConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
 
@@ -953,7 +959,10 @@ def _scenarios_http(exc: FinancialAidError) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ReplacementNotAcknowledgedError):
         return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
-    if isinstance(exc, (ScenarioConflictError, OptionCodeTakenError, NotLatestVersionError, VersionExistsError)):
+    if isinstance(
+        exc,
+        (ScenarioConflictError, OptionCodeTakenError, NotLatestVersionError, VersionExistsError, AidWriteConflictError),
+    ):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 

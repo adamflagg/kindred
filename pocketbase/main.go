@@ -21,6 +21,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/hook"
 
 	// Import our packages
+	"github.com/camp/kindred/pocketbase/aidguard"
 	"github.com/camp/kindred/pocketbase/audit"
 	bunkrequests "github.com/camp/kindred/pocketbase/bunk_requests"
 	"github.com/camp/kindred/pocketbase/feedback"
@@ -291,6 +292,11 @@ func main() {
 
 	// Register RBAC hooks for permission cache recomputation
 	rbac.RegisterHooks(app)
+
+	// Financial-aid writes only if unchanged (campership G6): every save of a
+	// guarded aid_ record moves its revision on, and a batch write sent with
+	// If-Match is refused (412) when the record changed since it was read.
+	aidguard.RegisterHooks(app)
 
 	// Admin audit log (pocketbase/audit): access, roles, view-as sessions,
 	// Manage-menu settings, sign-ins and anything a superuser other than

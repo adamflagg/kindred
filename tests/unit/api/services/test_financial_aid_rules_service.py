@@ -668,6 +668,7 @@ async def _knock_back_programs(
         data=data,
         log_action="save",
         entity_id=f"2031:{version}",
+        expected_revision=current.revision,
     )
     await store.commit([write], actor=FINANCE)
 

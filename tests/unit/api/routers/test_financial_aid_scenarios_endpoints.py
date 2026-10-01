@@ -52,6 +52,7 @@ from api.services.financial_aid_scenarios_service import (
     Workspace,
 )
 from bunking.financial_aid.change_diff import FieldChange
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.financial_aid.rules import ValidationReport
 from bunking.financial_aid.rules.lifecycle import SectionStatus, initial_status
 from bunking.financial_aid.rules.schema import SECTION_NAMES
@@ -376,6 +377,15 @@ def test_an_unconfirmed_replacement_is_409_naming_the_sections() -> None:
     )
     assert response.status_code == 409
     assert response.json()["detail"]["sections"] == ["awards"]
+
+
+def test_making_a_rules_draft_that_lost_a_race_is_409() -> None:
+    service = _stub()
+    service.make_rules_draft = AsyncMock(side_effect=AidWriteConflictError(collection="aid_rules", record_id="r" * 15))
+    response = _client().post(
+        "/api/financial-aid/scenarios/2027/options/B2/rules-draft", json={"base_version": 2, "acknowledged": {}}
+    )
+    assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
 
 
 def test_the_preview_shows_each_section_old_to_new_with_its_warning() -> None:

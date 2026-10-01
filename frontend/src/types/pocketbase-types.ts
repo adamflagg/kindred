@@ -675,6 +675,7 @@ export type AidRulesRecord<Tdocument = unknown, Tsection_status = unknown> = {
   id: string
   parent_version?: number
   parent_year?: number
+  revision?: number
   section_status?: null | Tsection_status
   updated: IsoAutoDateString
   version: number

@@ -18,13 +18,16 @@ import pytest
 
 from bunking.pocketbase_batch import (
     BATCH_TIMEOUT_SECONDS,
+    IF_MATCH,
     MAX_BATCH_REQUESTS,
+    PRECONDITION_FAILED,
     BatchError,
     BatchLimitError,
     BatchRequest,
     BatchRequestFailedError,
     BatchResult,
     BatchTransportError,
+    if_match,
     send_batch,
 )
 
@@ -331,3 +334,60 @@ def test_caddy_does_not_route_the_batch_api_to_pocketbase(caddyfile: str) -> Non
     for line in matchers:
         assert "/api/batch" not in line, line
         assert "/api/*" not in line.split("path", 1)[1], line
+
+
+# --- If-Match: write only if unchanged (campership G6) ------------------------------------------------
+
+
+def test_an_update_or_delete_with_a_revision_carries_if_match_as_a_quoted_tag() -> None:
+    update = BatchRequest.update("aid_rules", "rul000000000001", {"section_status": {}}, revision=7)
+    delete = BatchRequest.delete("aid_rules", "rul000000000001", revision=0)
+    assert update.to_json() == {
+        "method": "PATCH",
+        "url": "/api/collections/aid_rules/records/rul000000000001",
+        "body": {"section_status": {}},
+        "headers": {IF_MATCH: '"7"'},
+    }
+    assert delete.to_json() == {
+        "method": "DELETE",
+        "url": "/api/collections/aid_rules/records/rul000000000001",
+        "headers": {IF_MATCH: '"0"'},
+    }
+
+
+def test_without_a_revision_no_headers_are_sent() -> None:
+    assert "headers" not in BatchRequest.update("aid_rules", "rul000000000001", {"a": 1}).to_json()
+    assert "headers" not in BatchRequest.create("aid_rules", {"a": 1}).to_json()
+
+
+@pytest.mark.parametrize("bad", [-1, True, "3", 1.0])
+def test_a_revision_is_a_non_negative_int(bad: object) -> None:
+    with pytest.raises(ValueError, match="revision"):
+        if_match(bad)  # type: ignore[arg-type]
+
+
+def test_a_sub_request_failing_if_match_reports_412() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json=_sub_failure(0, {"data": {}, "message": "aid_rules rul000000000001 changed", "status": 412}),
+        )
+
+    update = BatchRequest.update("aid_rules", "rul000000000001", {"a": 1}, revision=3)
+    with pytest.raises(BatchRequestFailedError) as raised:
+        send_batch(FakePocketBase(refuse), [update])  # type: ignore[arg-type]
+    assert (raised.value.index, raised.value.status) == (0, PRECONDITION_FAILED)
+
+
+def test_the_if_match_header_travels_inside_the_batch_body() -> None:
+    pb = FakePocketBase(_ok)
+    send_batch(pb, [BatchRequest.update("aid_rules", "rul000000000001", {"a": 1}, revision=4)])  # type: ignore[arg-type]
+    [item] = json.loads(pb.sent[0].content)["requests"]
+    assert item["headers"] == {"If-Match": '"4"'}
+
+
+def test_the_outer_batch_request_never_carries_if_match() -> None:
+    """Every sub-request inherits the outer request's headers: an outer If-Match would guard them all."""
+    pb = FakePocketBase(_ok)
+    send_batch(pb, [BatchRequest.update("aid_rules", "rul000000000001", {"a": 1}, revision=4)])  # type: ignore[arg-type]
+    assert "if-match" not in {name.lower() for name in pb.sent[0].headers}

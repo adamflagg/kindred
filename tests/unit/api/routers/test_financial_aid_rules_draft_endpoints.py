@@ -23,6 +23,7 @@ from api.services.financial_aid_rules_service import (
     SectionSaveResult,
 )
 from bunking.financial_aid.change_diff import FieldChange
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.financial_aid.rules import ValidationReport
 from bunking.financial_aid.rules.lifecycle import SectionStatus, initial_status
 from bunking.financial_aid.rules.schema import SECTION_NAMES
@@ -153,6 +154,13 @@ def test_a_stale_editor_is_409() -> None:
     service = _stub()
     service.save_section = AsyncMock(side_effect=NotLatestVersionError("Version 2 of 2031 is not the rules draft"))
     assert _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY).status_code == 409
+
+
+def test_a_section_save_that_lost_a_race_is_409() -> None:
+    service = _stub()
+    service.save_section = AsyncMock(side_effect=AidWriteConflictError(collection="aid_rules", record_id="r" * 15))
+    response = _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY)
+    assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
 
 
 def test_a_new_version_names_the_sections_it_unlocks() -> None:

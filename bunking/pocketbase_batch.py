@@ -46,14 +46,32 @@ _RECORD_ID = re.compile(r"^[A-Za-z0-9_]+$")
 
 Method = Literal["POST", "PATCH", "DELETE"]
 
+# "Write only if unchanged" (campership G6). An update or delete sent with this header commits only while the
+# record's `revision` still equals the value in it; pocketbase/aidguard checks it inside the batch transaction
+# and answers PRECONDITION_FAILED when the record moved on since it was read.
+IF_MATCH = "If-Match"
+PRECONDITION_FAILED = 412
+
+
+def if_match(revision: int) -> str:
+    """The If-Match value for a revision: a quoted strong entity tag, as HTTP writes one ('"7"')."""
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        raise ValueError(f"a revision is a non-negative int, got {revision!r}")
+    return f'"{revision}"'
+
 
 @dataclass(frozen=True)
 class BatchRequest:
-    """One sub-request. Build it with ``create``, ``update`` or ``delete``."""
+    """One sub-request. Build it with ``create``, ``update`` or ``delete``.
+
+    ``revision`` on an update or delete sends ``If-Match``: the sub-request (and so the whole batch) fails
+    with PRECONDITION_FAILED unless the record is still at that revision.
+    """
 
     method: Method
     url: str
     body: Mapping[str, Any] | None = None
+    headers: Mapping[str, str] | None = None
 
     @staticmethod
     def _records_url(collection: str) -> str:
@@ -71,18 +89,26 @@ class BatchRequest:
     def create(cls, collection: str, body: Mapping[str, Any]) -> BatchRequest:
         return cls("POST", cls._records_url(collection), body)
 
-    @classmethod
-    def update(cls, collection: str, record_id: str, body: Mapping[str, Any]) -> BatchRequest:
-        return cls("PATCH", cls._record_url(collection, record_id), body)
+    @staticmethod
+    def _guard(revision: int | None) -> dict[str, str] | None:
+        return None if revision is None else {IF_MATCH: if_match(revision)}
 
     @classmethod
-    def delete(cls, collection: str, record_id: str) -> BatchRequest:
-        return cls("DELETE", cls._record_url(collection, record_id))
+    def update(
+        cls, collection: str, record_id: str, body: Mapping[str, Any], *, revision: int | None = None
+    ) -> BatchRequest:
+        return cls("PATCH", cls._record_url(collection, record_id), body, cls._guard(revision))
+
+    @classmethod
+    def delete(cls, collection: str, record_id: str, *, revision: int | None = None) -> BatchRequest:
+        return cls("DELETE", cls._record_url(collection, record_id), None, cls._guard(revision))
 
     def to_json(self) -> dict[str, Any]:
         item: dict[str, Any] = {"method": self.method, "url": self.url}
         if self.body is not None:
             item["body"] = dict(self.body)
+        if self.headers:
+            item["headers"] = dict(self.headers)
         return item
 
 
@@ -235,6 +261,9 @@ def send_batch(
         )
     content = _encode(requests)
     url = str(pb.base_url).rstrip("/") + "/api/batch"
+    # Never If-Match here: PocketBase gives every sub-request a copy of the outer request's headers before its own,
+    # so an outer If-Match would guard every write in the batch against one revision (pocketbase/aidguard). A
+    # revision travels only in its own sub-request's "headers" (BatchRequest.update/delete).
     headers = {"Content-Type": "application/json"}
     if pb.auth_store.token:
         headers["Authorization"] = pb.auth_store.token
