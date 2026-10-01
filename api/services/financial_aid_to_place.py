@@ -65,6 +65,8 @@ if TYPE_CHECKING:  # annotations only: the repository imports this module, and m
 MISMATCH_FLAG: Final = "implied_program_mismatch"
 # aid_flag_dispositions.flag for "Leave at family level" (D58: To place's own disposition).
 TO_PLACE_FLAG: Final = "to_place"
+# ...and a left line is that flag with this disposition (D10); the schema allows others, which are not left lines.
+LEFT_DISPOSITION: Final = "accepted_let_stand"
 
 Reason = Literal["several", "no_request", "program_mismatch"]
 REASONS: Final[tuple[Reason, ...]] = ("several", "no_request", "program_mismatch")

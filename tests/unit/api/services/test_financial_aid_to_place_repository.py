@@ -81,8 +81,27 @@ async def test_override_rows_are_read_whole_with_their_split() -> None:
 async def test_only_to_place_dispositions_are_lines_left_at_family_level() -> None:
     repo, _ = _repo(
         [
-            SimpleNamespace(id="dsp000000000001", transaction_cm_id=9001, flag="to_place", note="Pays it in June"),
-            SimpleNamespace(id="dsp000000000002", transaction_cm_id=9002, flag="positive_amount", note="Let stand"),
+            SimpleNamespace(
+                id="dsp000000000001",
+                transaction_cm_id=9001,
+                flag="to_place",
+                disposition="accepted_let_stand",
+                note="Pays it in June",
+            ),
+            SimpleNamespace(
+                id="dsp000000000002",
+                transaction_cm_id=9002,
+                flag="positive_amount",
+                disposition="accepted_let_stand",
+                note="Let stand",
+            ),
+            SimpleNamespace(
+                id="dsp000000000003",
+                transaction_cm_id=9003,
+                flag="to_place",
+                disposition="accepted_other",
+                note="Not a left line",
+            ),
         ]
     )
     assert await repo.fetch_left_lines(YEAR) == {9001: LeftLine("dsp000000000001", 9001, "Pays it in June")}

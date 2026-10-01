@@ -42,7 +42,14 @@ from api.services.financial_aid_reconciliation import (
     override_split,
 )
 from api.services.financial_aid_repository import FinancialAidRepository
-from api.services.financial_aid_to_place import TO_PLACE_FLAG, LeftLine, LineDetail, OverrideRow, SourceRow
+from api.services.financial_aid_to_place import (
+    LEFT_DISPOSITION,
+    TO_PLACE_FLAG,
+    LeftLine,
+    LineDetail,
+    OverrideRow,
+    SourceRow,
+)
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
 
@@ -346,7 +353,8 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         return details
 
     async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]:
-        """Every override in full, as To place's writes read and log it."""
+        """Every override in full, as To place's writes read and log it. Not `line_override`: that one omits
+        the source, source_key_override and note, which a rewrite must carry."""
         return {
             int(row.transaction_cm_id): OverrideRow(
                 id=str(row.id),
@@ -367,7 +375,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         return {
             int(row.transaction_cm_id): LeftLine(str(row.id), int(row.transaction_cm_id), str(row.note or ""))
             for row in await FinancialAidRepository(self.pb).fetch_dispositions(year)
-            if str(row.flag) == TO_PLACE_FLAG
+            if str(row.flag) == TO_PLACE_FLAG and str(row.disposition) == LEFT_DISPOSITION
         }
 
     async def fetch_source_rows(self) -> dict[str, SourceRow]:
