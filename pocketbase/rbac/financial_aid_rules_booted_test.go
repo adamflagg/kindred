@@ -158,8 +158,8 @@ func TestBootedAidChangeLogShape(t *testing.T) {
 
 // TestBootedGuardedCollectionsCarryARevision: aidguard reads and moves a
 // `revision` number on every collection it guards (campership G6). Without the
-// field nothing is stored, every record reads revision 0 forever, and the guard
-// passes every write: no error anywhere, and no protection either.
+// field the guard's SELECT of the stored revision fails, so every update of a
+// guarded record fails: rules could not be saved at all. Catch it at boot.
 func TestBootedGuardedCollectionsCarryARevision(t *testing.T) {
 	cols := loadBootedCollections(t)
 	for _, name := range aidguard.Collections {

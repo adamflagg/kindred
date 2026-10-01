@@ -7,10 +7,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"github.com/pocketbase/pocketbase/tools/hook"
 )
 
 const (
@@ -309,5 +311,68 @@ func TestSavingOneLoadedRecordTwiceMovesTheRevisionOnTwice(t *testing.T) {
 	mustSave(t, app, record)
 	if revision, _ := stored(t, app); revision != 2 {
 		t.Fatalf("revision %d after two saves of one loaded record, want 2", revision)
+	}
+}
+
+// A plain save (a dashboard edit, a Go save) that a batch overlaps must still
+// count both: two committed saves, two revisions. The plain save pauses between
+// its revision read and its write while a batch saves the same record. If the
+// read happened outside the write's transaction, the batch commits 0->1 in that
+// gap and the plain save then writes its stale 0+1 over it, so two states share
+// revision 1. With the read inside the write's transaction the batch waits for
+// the single write connection, reads 1 and writes 2.
+func TestAPlainSaveOverlappingABatchStillMovesTheRevisionOnTwice(t *testing.T) {
+	headers := map[string]string{}
+	app := newGuardApp(t, headers)
+	defer app.Cleanup()
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatalf("router: %v", err)
+	}
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatalf("mux: %v", err)
+	}
+
+	batchStatus := make(chan int, 1)
+	var paused sync.Once
+	// Priority 1 runs after the guard's own handlers (priority 0), just before the write.
+	app.OnRecordUpdateExecute("aid_rules").Bind(&hook.Handler[*core.RecordEvent]{
+		Priority: 1,
+		Func: func(e *core.RecordEvent) error {
+			paused.Do(func() {
+				go func() {
+					req := httptest.NewRequest(http.MethodPost, "/api/batch", batch(lock("")))
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Authorization", headers["Authorization"])
+					rec := httptest.NewRecorder()
+					mux.ServeHTTP(rec, req)
+					batchStatus <- rec.Code
+				}()
+				// Give the batch its chance to commit inside the plain save's gap.
+				// It can only if the plain save holds no transaction yet.
+				select {
+				case status := <-batchStatus:
+					batchStatus <- status
+				case <-time.After(500 * time.Millisecond):
+				}
+			})
+			return e.Next()
+		},
+	})
+
+	record, err := app.FindRecordById("aid_rules", rulesID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Set("section_status", map[string]string{"income": "draft"})
+	mustSave(t, app, record)
+
+	if status := <-batchStatus; status != http.StatusOK {
+		t.Fatalf("the overlapping batch answered %d, want 200", status)
+	}
+	if revision, _ := stored(t, app); revision != 2 {
+		t.Fatalf("revision %d after a plain save and a batch both committed, want 2: "+
+			"the plain save read its revision outside its write's transaction", revision)
 	}
 }

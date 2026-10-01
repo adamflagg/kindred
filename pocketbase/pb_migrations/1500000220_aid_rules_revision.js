@@ -17,8 +17,8 @@ migrate((app) => {
   app.save(rules);
 }, (app) => {
   // Rolling this back needs pocketbase/aidguard rolled back with it: the hook sets `revision` on every save,
-  // and FastAPI's commit_aid_writes sends it as If-Match on every aid_rules write. Without the field every row
-  // reads 0, so the guard passes everything silently.
+  // and FastAPI's commit_aid_writes sends it as If-Match on every aid_rules write. Without the field the hook's
+  // SELECT of the stored revision fails, so every aid_rules update fails loudly until the hook goes too.
   const rules = app.findCollectionByNameOrId("aid_rules");
   rules.fields.removeByName("revision");
   app.save(rules);

@@ -44,7 +44,7 @@ var Collections = []string{"aid_rules"}
 func RegisterHooks(app core.App) {
 	for _, name := range Collections {
 		app.OnRecordCreate(name).BindFunc(startRevision)
-		app.OnRecordUpdate(name).BindFunc(nextRevision)
+		app.OnRecordUpdateExecute(name).BindFunc(nextRevision)
 		app.OnRecordUpdateRequest(name).BindFunc(func(e *core.RecordRequestEvent) error {
 			if err := checkIfMatch(e); err != nil {
 				return err
@@ -69,18 +69,31 @@ func startRevision(e *core.RecordEvent) error {
 
 // nextRevision: every save moves the revision on by one, whatever the request
 // sent, so no writer can hide a change from one that read the record earlier.
-// The stored row is the source, read through e.App (the transaction's app inside
-// a batch): PocketBase refreshes Original() only when a record is loaded, never
-// after a save, so one object saved twice would otherwise move on only once.
+// The stored row is the source: PocketBase refreshes Original() only when a
+// record is loaded, never after a save, so one object saved twice would
+// otherwise move on only once.
+//
+// The read and the write share one transaction, so no other save can commit
+// between them. Inside a batch that is the batch's own transaction
+// (RunInTransaction joins it); a plain save (a dashboard edit, a Go save) gets
+// its own here, as PocketBase's own delete-execute hook does. Otherwise a plain
+// save's read would hit the read pool while its write waited for the single
+// write connection, and a batch committing in that gap would share its revision.
 func nextRevision(e *core.RecordEvent) error {
-	var stored int
-	err := e.App.DB().Select(FieldRevision).From(e.Record.Collection().Name).
-		Where(dbx.HashExp{"id": e.Record.LastSavedPK()}).Row(&stored)
-	if err != nil {
-		return fmt.Errorf("read the stored %s of %s: %w", FieldRevision, e.Record.Id, err)
-	}
-	e.Record.Set(FieldRevision, stored+1)
-	return e.Next()
+	original := e.App
+	defer func() { e.App = original }()
+	//nolint:wrapcheck // the hook chain's own error, passed through as PocketBase's delete-execute hook does
+	return e.App.RunInTransaction(func(txApp core.App) error {
+		e.App = txApp
+		var stored int
+		err := txApp.DB().Select(FieldRevision).From(e.Record.Collection().Name).
+			Where(dbx.HashExp{"id": e.Record.LastSavedPK()}).Row(&stored)
+		if err != nil {
+			return fmt.Errorf("read the stored %s of %s: %w", FieldRevision, e.Record.Id, err)
+		}
+		e.Record.Set(FieldRevision, stored+1)
+		return e.Next()
+	})
 }
 
 // checkIfMatch refuses a write whose If-Match is not the stored revision. A
