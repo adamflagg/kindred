@@ -20,11 +20,21 @@ export function getProgramUrl(path: string, program: Program): string {
   return `/${program}/${cleanPath}`
 }
 
+/** `/aid` and `/aid/…`, never `/aide` (a segment boundary, as getProgramUrl's shared routes). */
+function isAidPath(path: string): boolean {
+  return path === '/aid' || path.startsWith('/aid/')
+}
+
 /**
  * Check if a path is a program-specific route
  */
 export function isProgramRoute(path: string): boolean {
-  return path.startsWith('/summer') || path.startsWith('/weekend') || path.startsWith('/analytics')
+  return (
+    path.startsWith('/summer') ||
+    path.startsWith('/weekend') ||
+    path.startsWith('/analytics') ||
+    isAidPath(path)
+  )
 }
 
 /**
@@ -34,6 +44,7 @@ export function getProgramFromPath(path: string): Program | null {
   if (path.startsWith('/summer')) return 'summer'
   if (path.startsWith('/weekend')) return 'weekend'
   if (path.startsWith('/analytics')) return 'analytics'
+  if (isAidPath(path)) return 'aid'
   return null
 }
 
@@ -42,13 +53,14 @@ const PROGRAM_HOME: Record<Program, string> = {
   summer: '/summer/sessions',
   weekend: '/weekend/sessions',
   analytics: '/analytics',
+  aid: '/aid',
 }
 
 export function getProgramHomeUrl(program: Program): string {
   return PROGRAM_HOME[program]
 }
 
-const PROGRAM_PREFIXES = ['/summer/', '/weekend/', '/analytics/'] as const
+const PROGRAM_PREFIXES = ['/summer/', '/weekend/', '/analytics/', '/aid/'] as const
 
 /**
  * Remove program prefix from a path
@@ -57,7 +69,7 @@ export function removeProgramPrefix(path: string): string {
   for (const prefix of PROGRAM_PREFIXES) {
     if (path.startsWith(prefix)) return path.slice(prefix.length - 1)
   }
-  if (path === '/analytics') return '/'
+  if (path === '/analytics' || path === '/aid') return '/'
   return path
 }
 

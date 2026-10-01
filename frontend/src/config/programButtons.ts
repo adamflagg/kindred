@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { TreePine, Home, BarChart3 } from 'lucide-react'
+import { TreePine, Home, BarChart3, HandHeart } from 'lucide-react'
 import type { Program } from '../contexts/ProgramContext'
 
 export interface ProgramButtonConfig {
@@ -41,6 +41,15 @@ export const PROGRAM_BUTTONS: ProgramButtonConfig[] = [
     dropdownLabel: 'Camp Analytics',
     triggerColorClass: 'text-sky-400',
     activeClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+    inactiveClass: 'hover:bg-muted/50 text-foreground',
+  },
+  {
+    program: 'aid',
+    icon: HandHeart,
+    label: 'Camperships',
+    dropdownLabel: 'Camperships',
+    triggerColorClass: 'text-berry-300',
+    activeClass: 'bg-berry-600/10 text-berry-600 dark:text-berry-300',
     inactiveClass: 'hover:bg-muted/50 text-foreground',
   },
 ]

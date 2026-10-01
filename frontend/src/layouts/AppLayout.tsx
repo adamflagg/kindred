@@ -36,7 +36,8 @@ import { weekendHousingSyncedAt } from '../components/weekend/weekendFreshness'
 import { invalidateBunkingQueries } from '../utils/queryInvalidation'
 import { queryKeys } from '../utils/queryKeys'
 import { format, formatDistanceToNow } from 'date-fns'
-import { useProgram } from '../contexts/ProgramContext'
+import { type Program, useProgram } from '../contexts/ProgramContext'
+import { canOpenProgram } from '../config/programAccess'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
@@ -242,7 +243,7 @@ export const AppLayout = () => {
     void navigate('/login')
   }
 
-  const handleProgramSwitch = (program: 'summer' | 'weekend' | 'analytics') => {
+  const handleProgramSwitch = (program: Program) => {
     setProgram(program)
     setIsProgramMenuOpen(false)
     void navigate(getProgramHomeUrl(program))
@@ -347,7 +348,9 @@ export const AppLayout = () => {
 
                 {isProgramMenuOpen && (
                   <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full left-0 z-50 mt-2 w-52 p-2">
-                    {PROGRAM_BUTTONS.map((btn) => {
+                    {PROGRAM_BUTTONS.filter((btn) =>
+                      canOpenProgram(btn.program, { hasPermission })
+                    ).map((btn) => {
                       const Icon = btn.icon
                       return (
                         <button

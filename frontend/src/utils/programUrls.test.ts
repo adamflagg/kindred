@@ -197,4 +197,32 @@ describe('programUrls', () => {
       expect(getSessionsListUrl()).toBe('/summer/sessions')
     })
   })
+
+  describe('Camperships URLs (/aid, D5)', () => {
+    it('reads the program from an /aid path, and only a real /aid segment', () => {
+      expect(getProgramFromPath('/aid')).toBe('aid')
+      expect(getProgramFromPath('/aid/requests')).toBe('aid')
+      expect(getProgramFromPath('/aide')).toBeNull()
+    })
+
+    it('homes at /aid', () => {
+      expect(getProgramHomeUrl('aid')).toBe('/aid')
+    })
+
+    it('counts /aid paths as program routes', () => {
+      expect(isProgramRoute('/aid/money/ledger')).toBe(true)
+    })
+
+    it('strips the /aid prefix', () => {
+      expect(removeProgramPrefix('/aid/requests')).toBe('/requests')
+      expect(removeProgramPrefix('/aid')).toBe('/')
+    })
+
+    // Regression guard, not red-first (Ruling 2026-10-01 (plan review)): getProgramUrl already
+    // builds these on main; this pins that 'aid' doesn't change it.
+    it('keeps shared routes shared', () => {
+      expect(getProgramUrl('requests', 'aid')).toBe('/aid/requests')
+      expect(getProgramUrl('users', 'aid')).toBe('/users')
+    })
+  })
 })

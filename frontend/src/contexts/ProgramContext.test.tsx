@@ -74,4 +74,9 @@ describe('ProgramContext', () => {
       expect(screen.getByTestId('current-program').textContent).toBe('null')
     })
   })
+
+  it('accepts the saved "aid" value (Camperships)', () => {
+    renderWithStored('aid')
+    expect(screen.getByTestId('current-program').textContent).toBe('aid')
+  })
 })

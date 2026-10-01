@@ -7,11 +7,11 @@ import { AuthProvider } from './contexts/AuthContext'
 import { CurrentYearProvider } from './contexts/CurrentYearContext'
 import { ScenarioProvider } from './contexts/ScenarioContext'
 import { LockGroupProvider } from './contexts/LockGroupContext'
-import { ProgramProvider, useProgram } from './contexts/ProgramContext'
+import { ProgramProvider } from './contexts/ProgramContext'
+import { RootRedirect } from './components/RootRedirect'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ViewAsPreviewNote } from './components/ViewAsPreviewNote'
 import { queryClient } from './utils/queryClient'
-import { getProgramHomeUrl } from './utils/programUrls'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute } from './components/AdminRoute'
 import { RequirePermission } from './components/RequirePermission'
@@ -22,7 +22,6 @@ import { MANAGE_TABS, canSeeTab } from './config/manageTabs'
 import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
-import ProgramLandingPage from './pages/ProgramLandingPage'
 import './styles/fonts.css'
 
 // Lazy-loaded components for code splitting
@@ -120,19 +119,6 @@ function PageSkeleton() {
       </div>
     </div>
   )
-}
-
-// Root redirect component - auto-routes to saved program or shows picker
-function RootRedirect() {
-  const { currentProgram } = useProgram()
-
-  // If user has a saved program preference, go directly there
-  if (currentProgram) {
-    return <Navigate to={getProgramHomeUrl(currentProgram)} replace />
-  }
-
-  // First-time users see the program picker
-  return <ProgramLandingPage />
 }
 
 // Redirect helper for parameterized camper routes

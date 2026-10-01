@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { PROGRAM_BUTTONS, type ProgramButtonConfig } from './programButtons'
 
 describe('PROGRAM_BUTTONS config', () => {
-  it('has exactly 3 entries', () => {
-    expect(PROGRAM_BUTTONS).toHaveLength(3)
+  it('has exactly 4 entries', () => {
+    expect(PROGRAM_BUTTONS).toHaveLength(4)
   })
 
-  it('contains summer, weekend, and analytics programs in order', () => {
-    expect(PROGRAM_BUTTONS.map((b) => b.program)).toEqual(['summer', 'weekend', 'analytics'])
+  it('contains summer, weekend, analytics and Camperships, in order', () => {
+    expect(PROGRAM_BUTTONS.map((b) => b.program)).toEqual(['summer', 'weekend', 'analytics', 'aid'])
   })
 
   it('each entry has all required keys with correct types', () => {
@@ -46,5 +46,11 @@ describe('PROGRAM_BUTTONS config', () => {
     const analytics = PROGRAM_BUTTONS.find((b) => b.program === 'analytics') as ProgramButtonConfig
     expect(analytics.label).toBe('Analytics')
     expect(analytics.dropdownLabel).toBe('Camp Analytics')
+  })
+
+  it('Camperships has correct labels', () => {
+    const aid = PROGRAM_BUTTONS.find((b) => b.program === 'aid') as ProgramButtonConfig
+    expect(aid.label).toBe('Camperships')
+    expect(aid.dropdownLabel).toBe('Camperships')
   })
 })

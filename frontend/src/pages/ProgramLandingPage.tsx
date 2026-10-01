@@ -5,7 +5,9 @@ import { getProgramHomeUrl } from '../utils/programUrls'
 import { BrandedLogo } from '../components/BrandedLogo'
 import { useGlowGroup } from '../components/ui/useGlowGroup'
 import { getCampName } from '../config/branding'
-import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3 } from 'lucide-react'
+import { Users, Trees, Mountain, Sun, ArrowRight, Tent, BarChart3, HandHeart } from 'lucide-react'
+import { canOpenProgram } from '../config/programAccess'
+import { usePermissions } from '../hooks/usePermissions'
 
 interface ProgramCardSpec {
   program: Program
@@ -26,9 +28,9 @@ interface ProgramCardSpec {
 }
 
 // Cards are a fixed 295px with 20px gaps — the chosen mockup's size — so the
-// row grows by whole cards rather than stretching them. Camperships joins as
-// a fourth entry when /aid launches: four across is 1240px, too wide for the
-// lg breakpoint, so at four use lg:grid-cols-[repeat(2,295px)] and
+// row grows by whole cards rather than stretching them. The grid widens to four
+// when Camperships is shown: four across is 1240px, too wide for the lg
+// breakpoint, so at four it is lg:grid-cols-[repeat(2,295px)] and
 // xl:grid-cols-[repeat(4,295px)] (docs/reference/ui-uplift.md, "Landing page").
 const PROGRAM_CARDS: ProgramCardSpec[] = [
   {
@@ -77,6 +79,23 @@ const PROGRAM_CARDS: ProgramCardSpec[] = [
       text: 'text-sky-600 dark:text-sky-400',
       headingHover: 'group-hover:text-sky-600 dark:group-hover:text-sky-400',
       dot: 'bg-sky-500',
+    },
+  },
+  {
+    program: 'aid',
+    title: 'Camperships',
+    description: 'Financial aid applications and awards',
+    // Decision 1, RULED 2026-10-01: "Grantor ledger" was stale; D55 builds the register from the ledger.
+    features: ['Application review', 'Award rounds against the budget', 'Outside grants register'],
+    cta: 'Enter Camperships',
+    Icon: HandHeart,
+    tone: {
+      glow: '[--glow:var(--color-berry-600)] dark:[--glow:var(--color-berry-300)]',
+      iconBackdrop: 'bg-berry-600/10',
+      iconTile: 'bg-berry-600/20',
+      text: 'text-berry-600 dark:text-berry-300',
+      headingHover: 'group-hover:text-berry-600 dark:group-hover:text-berry-300',
+      dot: 'bg-berry-600 dark:bg-berry-300',
     },
   },
 ]
@@ -150,6 +169,13 @@ export default function ProgramLandingPage() {
   const navigate = useNavigate()
   const { setProgram } = useProgram()
   const glow = useGlowGroup<HTMLDivElement>()
+  const { hasPermission } = usePermissions()
+  const cards = PROGRAM_CARDS.filter((card) => canOpenProgram(card.program, { hasPermission }))
+  // Four 295px cards (1240px) don't fit at lg: two across there, four from xl (ui-uplift).
+  const grid =
+    cards.length === 4
+      ? 'grid gap-5 sm:grid-cols-2 lg:grid-cols-[repeat(2,295px)] lg:justify-center xl:grid-cols-[repeat(4,295px)]'
+      : 'grid gap-5 sm:grid-cols-2 lg:grid-cols-[repeat(3,295px)] lg:justify-center'
 
   const handleProgramSelect = (program: Program) => {
     setProgram(program)
@@ -214,11 +240,8 @@ export default function ProgramLandingPage() {
 
           {/* Program Selection Cards — one pointer-tracked group, so a card's
               neighbours light their nearest edge too (useGlowGroup). */}
-          <div
-            {...glow}
-            className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[repeat(3,295px)] lg:justify-center"
-          >
-            {PROGRAM_CARDS.map((card, i) => (
+          <div {...glow} className={grid}>
+            {cards.map((card, i) => (
               <ProgramCard
                 key={card.program}
                 card={card}

@@ -1,6 +1,12 @@
 import { type ReactNode, createContext, useContext, useState, useEffect, useCallback } from 'react'
 
-export type Program = 'summer' | 'weekend' | 'analytics'
+export type Program = 'summer' | 'weekend' | 'analytics' | 'aid'
+
+const PROGRAMS: readonly Program[] = ['summer', 'weekend', 'analytics', 'aid']
+
+function isProgram(value: string | null): value is Program {
+  return value !== null && (PROGRAMS as readonly string[]).includes(value)
+}
 
 interface ProgramContextType {
   currentProgram: Program | null
@@ -15,10 +21,7 @@ const STORAGE_KEY = 'bunking-program-selection'
 export function ProgramProvider({ children }: { children: ReactNode }) {
   const [currentProgram, setCurrentProgram] = useState<Program | null>(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'summer' || stored === 'weekend' || stored === 'analytics') {
-      return stored
-    }
-    return null
+    return isProgram(stored) ? stored : null
   })
 
   useEffect(() => {
