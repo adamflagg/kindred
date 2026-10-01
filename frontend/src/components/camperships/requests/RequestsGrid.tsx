@@ -82,11 +82,12 @@ function HouseholdLink({
 }) {
   const href = links.href(row)
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    // Opening the family is not a click on the row: no highlight, so no save-then-move (ruling B).
+    // Before the modifier check, so a modified click does not bubble to the row either.
+    event.stopPropagation()
     // A modified click opens a new tab, as any link does (Decision 1).
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
-    // Opening the family is not a click on the row: no highlight, so no save-then-move (ruling B).
-    event.stopPropagation()
     links.open(row, href)
   }
   return (
