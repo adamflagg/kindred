@@ -31,6 +31,7 @@ from api.services.financial_aid_decisions_service import (
     DecisionNotFoundError,
     DecisionRefusedError,
 )
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import (
     PERSONA_DEVELOPMENT,
@@ -206,6 +207,15 @@ def test_service_refusals_map_to_404_409_and_422(error: Exception, status: int) 
         assert response.json()["detail"]["rows"] == [
             {"request_id": REQ, "round": 1, "confirmed": 1400.0, "decided_now": 1500.0}
         ]
+
+
+def test_a_tick_whose_rules_moved_on_is_409_reload_and_try_again() -> None:
+    service = _stub()
+    service.tick_posted = AsyncMock(
+        side_effect=AidWriteConflictError(collection="aid_rules", record_id="rul000000000001")
+    )
+    response = _client().post("/api/financial-aid/decisions/2031/posted", json=ROUTES[6][2])
+    assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
 
 
 def test_a_round_3_ask_without_its_statement_of_need_is_422() -> None:

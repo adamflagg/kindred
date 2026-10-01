@@ -402,6 +402,10 @@ def if_match_values(writes: Sequence[AidWrite], guards: Sequence[AidGuard] = ())
             write_values.append(None)
             continue
         if write.expected_revision is None:
+            if write.collection in REVISIONED_COLLECTIONS:
+                raise ValueError(
+                    f"an {write.action} of {write.collection} must carry the revision it read (expected_revision)"
+                )
             write_values.append(None)
         else:
             write_values.append(expect(write.collection, write.record_id, write.expected_revision))

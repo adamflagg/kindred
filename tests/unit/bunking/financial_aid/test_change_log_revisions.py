@@ -118,6 +118,13 @@ def test_the_revisioned_set_matches_the_go_guard_and_the_migration() -> None:
     assert set(re.findall(r'findCollectionByNameOrId\("([a-z_]+)"\)', up)) == set(REVISIONED_COLLECTIONS)
 
 
+def test_an_aid_rules_update_without_the_revision_it_read_is_refused_before_anything_is_sent() -> None:
+    pb = RevisionedPocketBase({RULES_A: 0})
+    with pytest.raises(ValueError, match="must carry the revision it read"):
+        commit_aid_writes(pb, [_status(RULES_A, "income", None)], actor=ACTOR)  # type: ignore[arg-type]
+    assert pb.batches == []
+
+
 def test_a_create_carrying_a_revision_is_refused() -> None:
     write = AidWrite(collection="aid_rules", action="create", year=2031, data={"year": 2031}, expected_revision=0)
     with pytest.raises(ValueError, match="a create has no revision"):
