@@ -351,6 +351,19 @@ async def test_a_grantor_or_source_of_a_grant_in_scope_changing_refuses() -> Non
 
 
 @pytest.mark.asyncio
+async def test_a_grantor_record_changed_after_the_posting_day_refuses_whatever_season_its_log_names() -> None:
+    """The grantor directory spans seasons, so its log row carries the season configured when it was saved,
+    which a late placement's season may not be: the grantor record's own `updated` is the exact date."""
+    season = await _season(register=[_grant()])
+    grantor = Synced("aid_grantors", AFTER, key="regional_fund")
+    assert _codes(changed_since(season, TICK, _since(synced=(grantor,)))) == ["grant"]
+    other = Synced("aid_grantors", AFTER, key="another_fund")
+    assert _codes(changed_since(season, TICK, _since(synced=(other,)))) == []
+    before = Synced("aid_grantors", CUT, key="regional_fund")
+    assert _codes(changed_since(season, TICK, _since(synced=(before,)))) == []
+
+
+@pytest.mark.asyncio
 async def test_a_household_linked_into_the_family_after_the_posting_day_refuses() -> None:
     season = await _season()
     links = (LinkRow(1000001, "fam-a", False, BEFORE), LinkRow(1000007, "fam-a", False, AFTER))

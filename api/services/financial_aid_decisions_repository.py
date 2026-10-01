@@ -249,7 +249,8 @@ _TRANSACTIONS_SERVICE: Final = "financial_transactions"
 _RUN_PAGE = 100
 _HOLD_SEASON_FIELDS = "id,request,event,code,note,actor,created"
 # D16b: the aid_change_log entities whose rows say something that prices a request changed. aid_rules is read
-# apart (approved_as_of_each); aid_sources and auto household links are read from their own `updated`.
+# apart (approved_as_of_each); aid_sources and auto household links are read from their own `updated`, and so are
+# grantors as well (their log rows carry the season configured when saved, not necessarily the placement's).
 _SINCE_PLAIN: Final = (
     AID_REQUESTS,
     AID_APPLICATIONS,
@@ -477,6 +478,9 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
                 "created,updated",
             ),
             page(AID_SOURCES, touched, "description_key,created,updated"),
+            # The grantor directory spans seasons, and its log rows carry the season configured when each was
+            # saved, which a late placement's may not be: the record's own `updated` dates it whatever the season.
+            page(AID_GRANTORS, touched, "key,created,updated"),
             page(AID_HOUSEHOLD_LINKS, season, "household_cm_id,family_key,excluded,created,updated"),
             page(
                 SYNC_RUNS,
@@ -496,6 +500,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             sessions,
             postings,
             sources,
+            grantors,
             links,
             runs,
             *people,
@@ -541,6 +546,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             ),
             *(Synced("camp_sessions", when(r), session_cm_id=int(r.cm_id or 0)) for r in sessions),
             *(Synced("aid_sources", when(r), key=str(r.description_key)) for r in sources),
+            *(Synced("aid_grantors", when(r), key=str(r.key)) for r in grantors),
             *(
                 Synced("persons", when(r), person_cm_id=int(r.cm_id or 0), household_cm_id=int(r.household_id or 0))
                 for rows in people

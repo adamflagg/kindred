@@ -239,7 +239,7 @@ async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_af
     for name, reads in queries.items():
         for query in reads:
             assert len(query["filter"]) < 3500, name
-            if name not in ("aid_sources", "sync_runs"):
+            if name not in ("aid_sources", "aid_grantors", "sync_runs"):  # directories span seasons
                 assert f"year = {YEAR}" in query["filter"], name
             if name != "aid_household_links":  # every link is read: the family is today's
                 assert since in query["filter"], name
@@ -260,6 +260,19 @@ async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_af
     logs = [q["filter"] for q in queries["aid_change_log"]]
     assert all("aid_rules" not in f for f in logs)
     assert sorted("before" in q["fields"] for q in queries["aid_change_log"]) == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_grantors_are_read_from_their_own_records_not_by_season() -> None:
+    """A grantor's log row carries the season configured when it was saved (the directory spans seasons), so
+    a season-scoped log read can miss a grantor change behind a late placement: read the record's `updated`."""
+    repo, queries = _by_collection({"aid_grantors": [_row(key="regional_fund", created=EARLIER, updated=LATER)]})
+    records = await repo.fetch_changed_since(YEAR, FLOOR, persons=False)
+    at = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
+    assert Synced("aid_grantors", at, key="regional_fund") in records.synced
+    (query,) = queries["aid_grantors"]
+    assert "year" not in query["filter"]
+    assert "'2027-03-09 07:59:59.999Z'" in query["filter"]
 
 
 @pytest.mark.asyncio

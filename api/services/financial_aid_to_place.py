@@ -497,14 +497,15 @@ class SinceCorrection:
 @dataclass(frozen=True)
 class Synced:
     """A CampMinder-synced record created or changed after the floor, at the later of its created and
-    updated: attendees, persons, person_custom_values (equity fields only), camp_sessions, aid_sources."""
+    updated: attendees, persons, person_custom_values (equity fields only), camp_sessions, aid_sources,
+    aid_grantors."""
 
     collection: str
     at: datetime
     person_cm_id: int = 0
     household_cm_id: int = 0
     session_cm_id: int = 0
-    key: str = ""  # aid_sources: the description key
+    key: str = ""  # aid_sources: the description key; aid_grantors: the grantor key
 
 
 @dataclass(frozen=True)
@@ -743,10 +744,14 @@ def _grant_moments(
         for link in since.records.links
         if link.at is not None and link.at > cut and (link.household_cm_id in households or link.family_key in keys)
     )
-    moments.extend(
+    moments.extend(  # a description or a grantor (read from its own record: the directory spans seasons)
         synced.at
         for synced in since.records.synced
-        if synced.collection == "aid_sources" and synced.at > cut and synced.key in sources
+        if synced.at > cut
+        and (
+            (synced.collection == "aid_sources" and synced.key in sources)
+            or (synced.collection == "aid_grantors" and synced.key in grantors)
+        )
     )
     return moments
 
