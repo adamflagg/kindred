@@ -519,10 +519,14 @@ def _placements_as_of(
                     transactions.add(int(side["transaction_cm_id"]))
                 if side and side.get("attributed_person_cm_id"):
                     people.add(int(side["attributed_person_cm_id"]))
+                if side:
+                    people.update(part.person_cm_id for part in override_split(side) if part.person_cm_id > 0)
     for key in bad & now.keys():
         transactions.add(now[key].transaction_cm_id)
         if now[key].attributed_person_cm_id:
             people.add(now[key].attributed_person_cm_id)
+        # A split override attributes to no one (person 0): the campers it paid are in its parts.
+        people.update(part.person_cm_id for part in now[key].split if part.person_cm_id > 0)
     return placements, splits, transactions, people
 
 
