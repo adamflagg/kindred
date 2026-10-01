@@ -323,6 +323,33 @@ async def test_this_seasons_routing_grants_budget_lines_programs_cost_and_budget
 
 
 @pytest.mark.asyncio
+async def test_a_season_with_no_budget_starts_from_last_seasons_budget_as_a_placeholder() -> None:
+    raw = intake_rules().model_dump(mode="json")
+    raw["budget"] = {**raw["budget"], "total": "0", "pools": {}, "reserves": {}}
+    world = await _world(this_season=AidRules.model_validate(raw))
+    await world.service.freeze(YEAR, FINANCE)
+    last = with_levers(last_season_rules(), {"budget.total": "400000"})
+    await _last_rules_approved(world, last)
+    workspace = await world.service.start_from_last_season(YEAR, FINANCE)
+    [option] = workspace.options
+    assert option.record.document.budget == last.budget
+    expected = "2026 v1 rules on 2027's applications, the rest from rules draft v1, and 2026 budget as a placeholder"
+    assert option.label == expected
+    [trail] = (await world.service.trail(YEAR, page=1, per_page=10))[0]
+    assert trail.change == f"started from {expected}"
+
+
+@pytest.mark.asyncio
+async def test_a_season_with_a_budget_keeps_it_and_the_label_does_not_mention_a_placeholder() -> None:
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world, with_levers(last_season_rules(), {"budget.total": "400000"}))
+    [option] = (await world.service.start_from_last_season(YEAR, FINANCE)).options
+    assert option.record.document.budget == intake_rules().budget
+    assert "placeholder" not in option.label
+
+
+@pytest.mark.asyncio
 async def test_no_approved_rules_last_season_is_refused() -> None:
     world = await _world()
     await world.service.freeze(YEAR, FINANCE)

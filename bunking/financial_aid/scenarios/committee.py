@@ -118,6 +118,7 @@ class TierCompareRow:
     round1: Decimal
     average_round1: Decimal | None
     held: int  # the tier's live requests whose Round 1 is held: in none of the figures above
+    held_asked: Decimal = ZERO  # their Round 1 asks, counted apart (a held family's grant can't be counted yet)
     # Counted requests with no Round 1 ask: in `requests` and `round1` (so the average Round 1), but out of the
     # ask-based figures (`asked`, `average_ask`, `pct_of_ask`), which stay like for like.
     no_ask: int = 0
@@ -135,6 +136,7 @@ class Round2CompareRow:
     round2: Decimal
     average_round2: Decimal | None
     pct_of_ask: Decimal | None
+    held_asked: Decimal = ZERO  # the held appeals' asks: in `asked`, out of `priced_asked` and pct_of_ask
 
 
 @dataclass(frozen=True)
@@ -182,6 +184,7 @@ def _round1_row(table: str | None, row: TierRow | TableTierRow, document: AidRul
         round1=row.round1,
         average_round1=_average(row.round1, row.requests),
         held=row.held,
+        held_asked=row.held_asked,
         no_ask=row.no_ask,
     )
 
@@ -206,6 +209,7 @@ def _round2_row(table: str | None, row: Round2TierRow, document: AidRules | None
         round2=row.round2,
         average_round2=_average(row.round2, row.priced),
         pct_of_ask=pct(row.round2, row.priced_asked),
+        held_asked=row.held_asked,
     )
 
 
@@ -226,6 +230,7 @@ def round2_compare(rows: Sequence[Round2TierRow], document: AidRules | None) -> 
                     "priced": before.priced + row.priced,
                     "priced_asked": before.priced_asked + row.priced_asked,
                     "round2": before.round2 + row.round2,
+                    "held_asked": before.held_asked + row.held_asked,
                 }
             )
         )
@@ -353,16 +358,31 @@ def posted_season(
 # --- last season's rules on this season's applications (RPT-18) --------------------------------------------------
 
 
+def budget_unset(document: AidRules) -> bool:
+    """Whether `document` sets no budget yet: a zero total (the schema requires a total, so zero is how a draft says
+    "not set") and no pools. A total with no pools, or pools with no total, is a budget someone has started."""
+    return document.budget.total == ZERO and not document.budget.pools
+
+
+def uses_budget_placeholder(this_season: AidRules, last_season: AidRules) -> bool:
+    """Whether last_seasons_criteria borrows last season's budget: this season sets none, and last season's differs
+    (so there is something to borrow)."""
+    return budget_unset(this_season) and this_season.budget != last_season.budget
+
+
 def last_seasons_criteria(this_season: AidRules, last_season: AidRules) -> AidRules:
     """This season's rules with last season's criteria copied in: CRITERIA_SECTIONS whole, and CRITERIA_BUT's
     sections but for the key named, which stays this season's. The year and every other section stay this
-    season's (the routing of programs to tables included)."""
+    season's (the routing of programs to tables included), and so does the budget, unless this season has set none
+    (`budget_unset`): then last season's budget section is the starting baseline, a placeholder to edit."""
     merged: dict[str, Any] = this_season.model_dump(mode="json")
     last = last_season.model_dump(mode="json")
     for name in CRITERIA_SECTIONS:
         merged[name] = last[name]
     for name, kept in CRITERIA_BUT.items():
         merged[name] = {**last[name], kept: merged[name][kept]}
+    if budget_unset(this_season):
+        merged["budget"] = last["budget"]
     return AidRules.model_validate(merged)
 
 

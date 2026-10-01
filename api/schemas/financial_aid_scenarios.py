@@ -182,6 +182,7 @@ class TierCompareOut(BaseModel):
     round1: float
     average_round1: float | None  # Round 1 ÷ requests (the requests the row counts)
     held: int  # the tier's live requests whose Round 1 is held (a check's hold has a tier): in none of the above
+    held_asked: float  # their Round 1 asks, counted apart: a held family's grant can't be counted yet
     # Counted requests with no Round 1 ask: in `requests` and `round1`, out of `asked`, `average_ask` and `pct_of_ask`
     no_ask: int
 
@@ -199,6 +200,7 @@ class Round2CompareOut(BaseModel):
     round2: float
     average_round2: float | None  # Round 2 ÷ priced
     pct_of_ask: float | None  # Round 2 ÷ the priced appeals' asks
+    held_asked: float  # the held appeals' asks: inside `asked`, outside `priced_asked` and pct_of_ask
 
 
 class CommitteeOut(BaseModel):

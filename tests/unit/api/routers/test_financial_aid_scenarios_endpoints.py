@@ -557,6 +557,7 @@ def _tier_row(table: str | None) -> TierCompareRow:
         round1=Decimal(1500),
         average_round1=Decimal("1500.00"),
         held=1,
+        held_asked=Decimal(900),
     )
 
 
@@ -578,6 +579,7 @@ COMMITTEE = CommitteeView(
             round2=Decimal(600),
             average_round2=Decimal("600.00"),
             pct_of_ask=Decimal("60.0"),
+            held_asked=Decimal(500),
         ),
     ),
     not_in_tiers=Decimal(1100),
@@ -607,6 +609,7 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "round1": 1500.0,
         "average_round1": 1500.0,
         "held": 1,
+        "held_asked": 900.0,
         "no_ask": 0,
     }
     assert committee["round1_by_tier"][1]["table"] is None  # All
@@ -621,6 +624,7 @@ def test_compare_carries_the_committee_tables_and_last_season() -> None:
         "round2": 600.0,
         "average_round2": 600.0,
         "pct_of_ask": 60.0,
+        "held_asked": 500.0,
     }
     assert (body["last_season"]["year"], body["last_season"]["label"]) == (2026, LAST_LABEL)
     assert service.compare.await_args.kwargs == {"request_set": None, "last_season": True}

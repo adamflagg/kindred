@@ -18,12 +18,14 @@ from bunking.financial_aid.scenarios import (
     TableTierRow,
     TierCompareRow,
     TierRow,
+    budget_unset,
     committee_view,
     has_last_seasons_criteria,
     last_seasons_criteria,
     posted_season,
     round2_compare,
     tier_compare,
+    uses_budget_placeholder,
 )
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, req, with_levers
 
@@ -70,6 +72,47 @@ def test_percent_of_ask_and_the_averages_per_tier_then_all() -> None:
         held=0,
     )
     assert (rows[0].pct_of_ask, rows[1].pct_of_ask) == (Decimal("75.0"), Decimal("87.5"))
+
+
+def test_held_asks_ride_the_compare_rows_and_the_ratios_are_unchanged() -> None:
+    by_tier = [
+        TierRow(
+            tier=2, requests=2, families=2, round1=Decimal(6500), asked=Decimal(8000), held=2, held_asked=Decimal(900)
+        )
+    ]
+    by_table = [
+        TableTierRow(
+            table="camp",
+            tier=2,
+            requests=2,
+            families=2,
+            round1=Decimal(6500),
+            asked=Decimal(8000),
+            held=2,
+            held_asked=Decimal(900),
+        )
+    ]
+    rows = tier_compare(by_tier, by_table, RULES)
+    assert [(r.held, r.held_asked) for r in rows] == [(2, Decimal(900)), (2, Decimal(900))]
+    assert all(
+        (r.asked, r.average_ask, r.pct_of_ask) == (Decimal(8000), Decimal("4000.00"), Decimal("81.3")) for r in rows
+    )
+    round2 = [
+        Round2TierRow(
+            table=t,
+            tier=3,
+            appeals=2,
+            asked=Decimal(1500),
+            priced=1,
+            priced_asked=Decimal(1000),
+            round2=Decimal(600),
+            held_asked=Decimal(held),
+        )
+        for t, held in (("camp", 500), ("teen", 120))
+    ]
+    compared = round2_compare(round2, RULES)
+    assert [r.held_asked for r in compared] == [Decimal(500), Decimal(120), Decimal(620)]  # All sums the tables
+    assert compared[0].pct_of_ask == Decimal("60.0")  # still round2 / priced_asked
 
 
 def test_a_row_with_nothing_asked_has_no_percent_never_zero() -> None:
@@ -286,6 +329,28 @@ def test_last_seasons_criteria_come_in_and_this_seasons_routing_grants_and_budge
     assert (merged.budget.total, merged.cost) == (Decimal(650000), this_season.cost)
     assert set(CRITERIA_SECTIONS) == {"income", "tiers", "equity", "award_tables", "round3"}
     assert dict(CRITERIA_BUT) == {"round2": "program_tables", "awards": "decision_types"}
+
+
+def _no_budget(document: Any) -> Any:
+    raw = document.model_dump(mode="json")
+    raw["budget"] = {**raw["budget"], "total": "0", "pools": {}, "reserves": {}}
+    return type(document).model_validate(raw)
+
+
+def test_a_season_with_no_budget_takes_last_seasons_budget_as_a_starting_baseline() -> None:
+    last_season = with_levers(RULES, {"year": 2030, "budget.total": "400000"})
+    blank = _no_budget(RULES)
+    assert budget_unset(blank)
+    assert uses_budget_placeholder(blank, last_season)
+    assert last_seasons_criteria(blank, last_season).budget == last_season.budget
+    # a total alone is still a budget: only a zero total with no pools counts as unset
+    assert not budget_unset(with_levers(blank, {"budget.total": "1"}))
+    assert not budget_unset(RULES)
+    # a budget this season set stays exactly as it was
+    assert not uses_budget_placeholder(RULES, last_season)
+    assert last_seasons_criteria(RULES, last_season).budget == RULES.budget
+    # both unset: nothing to borrow
+    assert not uses_budget_placeholder(blank, _no_budget(last_season))
 
 
 def test_a_document_has_last_seasons_criteria_whatever_else_moved() -> None:

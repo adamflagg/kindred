@@ -11223,6 +11223,10 @@ export type Round2CompareOut = {
    * Pct Of Ask
    */
   pct_of_ask: number | null
+  /**
+   * Held Asked
+   */
+  held_asked: number
 }
 
 /**
@@ -13668,6 +13672,10 @@ export type TierCompareOut = {
    * Held
    */
   held: number
+  /**
+   * Held Asked
+   */
+  held_asked: number
   /**
    * No Ask
    */

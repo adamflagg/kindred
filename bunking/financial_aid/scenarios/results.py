@@ -59,6 +59,9 @@ class TierRow(_Result):
     # its kept options still load.
     asked: Decimal | None = None
     held: int = 0  # SP9c: the tier's live requests whose Round 1 is held, in none of the figures above
+    # Their Round 1 asks, counted apart: a held family's grant can't be counted yet, so its ask is not in `asked`
+    # (which stays like for like with Round 1). Defaulted so stored results still load.
+    held_asked: Decimal = ZERO
     # SP9c: counted requests with no Round 1 ask, and their Round 1. In `requests` and `round1`, but not in `asked`,
     # so the ask-based figures (average ask, % of ask) leave them out and stay like for like.
     no_ask: int = 0
@@ -76,6 +79,7 @@ class TableTierRow(_Result):
     round1: Decimal
     asked: Decimal
     held: int = 0
+    held_asked: Decimal = ZERO  # as TierRow's
     no_ask: int = 0  # as TierRow's
     no_ask_round1: Decimal = ZERO
 
@@ -95,6 +99,9 @@ class Round2TierRow(_Result):
     priced: int
     priced_asked: Decimal
     round2: Decimal
+    # The asks of the held appeals (a held Round 2 round): in `asked`, never in `priced_asked`, so "% of Round 2
+    # ask" is unchanged. Defaulted so stored results still load.
+    held_asked: Decimal = ZERO
 
 
 class PoolResult(_Result):
@@ -147,6 +154,7 @@ class TierTally:
     round1: Decimal = ZERO
     asked: Decimal = ZERO
     held: set[str] = field(default_factory=set)
+    held_asked: Decimal = ZERO
     no_ask: set[str] = field(default_factory=set)
     no_ask_round1: Decimal = ZERO
 
@@ -162,8 +170,10 @@ class TierTally:
         else:
             self.asked += ask
 
-    def hold(self, priced: PricedRequest) -> None:
+    def hold(self, priced: PricedRequest, ask: Decimal | None) -> None:
+        """A held Round 1: counted apart, with its ask (None: it had none) beside the count."""
         self.held.add(priced.request_id)
+        self.held_asked += ask or ZERO
 
 
 @dataclass
@@ -173,10 +183,13 @@ class AppealTally:
     priced: set[str] = field(default_factory=set)
     priced_asked: Decimal = ZERO
     round2: Decimal = ZERO
+    held_asked: Decimal = ZERO
 
-    def add(self, priced: PricedRequest, ask: Decimal, amount: Decimal | None) -> None:
+    def add(self, priced: PricedRequest, ask: Decimal, amount: Decimal | None, *, held: bool = False) -> None:
         self.appeals.add(priced.request_id)
         self.asked += ask
+        if held:
+            self.held_asked += ask
         if amount is not None:
             self.priced.add(priced.request_id)
             self.priced_asked += ask
@@ -209,6 +222,7 @@ def tier_rows(tiers: Mapping[int, TierTally]) -> list[TierRow]:
             round1=t.round1,
             asked=t.asked,
             held=len(t.held),
+            held_asked=t.held_asked,
             no_ask=len(t.no_ask),
             no_ask_round1=t.no_ask_round1,
         )
@@ -226,6 +240,7 @@ def table_rows(tables: Mapping[tuple[str, int], TierTally]) -> list[TableTierRow
             round1=t.round1,
             asked=t.asked,
             held=len(t.held),
+            held_asked=t.held_asked,
             no_ask=len(t.no_ask),
             no_ask_round1=t.no_ask_round1,
         )
@@ -243,6 +258,7 @@ def round2_rows(appeals: Mapping[tuple[str, int], AppealTally]) -> list[Round2Ti
             priced=len(a.priced),
             priced_asked=a.priced_asked,
             round2=a.round2,
+            held_asked=a.held_asked,
         )
         for (table, n), a in sorted(appeals.items())
     ]
@@ -340,13 +356,15 @@ def scenario_results(
                 tiers[tier].add(p, amount, view.ask)
                 tables[(round1_table(document, p.program_key), tier)].add(p, amount, view.ask)
         elif view is not None and view.status == "held" and tier is not None:
-            tiers[tier].hold(p)
-            tables[(round1_table(document, p.program_key), tier)].hold(p)
+            tiers[tier].hold(p, view.ask)
+            tables[(round1_table(document, p.program_key), tier)].hold(p, view.ask)
         appeal = p.view(2)
         money2 = counted(appeal) if appeal is not None else None
         asked2 = appeal_ask(appeal)
         if tier is not None and asked2 is not None:
-            appeals[(round2_table(document, p.program_key), tier)].add(p, asked2, money2)
+            appeals[(round2_table(document, p.program_key), tier)].add(
+                p, asked2, money2, held=appeal is not None and appeal.status == "held"
+            )
         elif money2 is not None:
             round2_not_in_tiers += money2
     total = budget.total

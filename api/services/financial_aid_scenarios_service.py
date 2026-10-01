@@ -63,6 +63,7 @@ from bunking.financial_aid.scenarios import (
     ScenarioResults,
     SizingLever,
     apply_sizing,
+    budget_unset,
     committee_view,
     describe,
     dollar_for_dollar,
@@ -79,6 +80,7 @@ from bunking.financial_aid.scenarios import (
     starting_point_code,
     tightest_pool,
     up_down,
+    uses_budget_placeholder,
     variant_code,
 )
 
@@ -251,10 +253,12 @@ def _posted_label(year: int, as_of: datetime | None) -> str:
     return f"{year}, {basis} (as of {local:%b} {local.day}, {local.year})"
 
 
-def _last_season_name(last: RulesVersion, year: int, origin: RulesVersion) -> str:
+def _last_season_name(last: RulesVersion, year: int, origin: RulesVersion, *, placeholder: bool = False) -> str:
     """RPT-18's starting point: last season's criteria on this season's applications, the rest from this season's
     rules, named as SP9b names them ("rules draft vN" while that version can't price the season)."""
-    return f"{last.year} v{last.version} rules on {year}'s applications, the rest from {_rules_name(origin)}"
+    # `placeholder`: this season had no budget, so last season's stands in for it.
+    name = f"{last.year} v{last.version} rules on {year}'s applications, the rest from {_rules_name(origin)}"
+    return f"{name}, and {last.year} budget as a placeholder" if placeholder else name
 
 
 def _introduced(before: Sequence[ValidationIssue], after: Sequence[ValidationIssue]) -> list[ValidationIssue]:
@@ -372,7 +376,11 @@ class FinancialAidScenariosService:
                 and has_last_seasons_criteria(option.document, last.document)
                 and not has_last_seasons_criteria(origin.document, last.document)
             ):
-                return _last_season_name(last, option.year, origin)
+                # Last season's budget stood in for a missing one: the draft still sets none and the option holds last
+                # season's. (Once the draft sets its own budget the note goes: it can't be told from a start made when
+                # the two budgets were equal.)
+                placeholder = budget_unset(origin.document) and option.document.budget == last.document.budget
+                return _last_season_name(last, option.year, origin, placeholder=placeholder)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)
 
@@ -562,7 +570,8 @@ class FinancialAidScenariosService:
     async def start_from_last_season(self, year: int, actor: str) -> Workspace:
         """RPT-18: a new starting point from the rules draft with last season's approved criteria copied in
         (bunking.financial_aid.scenarios.last_seasons_criteria), loaded into `actor`'s draft. This season's routing,
-        grants, decision types, programs, cost, budget, stages, quality checks and milestones stay. Refused when last
+        grants, decision types, programs, cost, budget (unless it sets none: then last season's stands in as a
+        placeholder), stages, quality checks and milestones stay. Refused when last
         season has no approved rules, or when the merge adds a validation error the rules draft did not already have
         (say which; the draft's own errors never block it). When a kept option already is that document, it is
         loaded instead of copied."""
@@ -572,6 +581,7 @@ class FinancialAidScenariosService:
             raise ScenarioRefusedError(f"{year - 1} has no approved rules to start from: load and approve them first")
         rules = await self._rules.load(year)
         document = last_seasons_criteria(rules.document, last.document)
+        placeholder = uses_budget_placeholder(rules.document, last.document)
         introduced = _introduced(
             (await self._rules.validate_document(rules.document)).errors,
             (await self._rules.validate_document(document)).errors,
@@ -605,7 +615,7 @@ class FinancialAidScenariosService:
                 actor,
                 document=document,
                 from_code=code,
-                change=f"started from {_last_season_name(last, year, rules)}",
+                change=f"started from {_last_season_name(last, year, rules, placeholder=placeholder)}",
                 results=priced.results,
                 meta=meta,
                 kept_code=code,

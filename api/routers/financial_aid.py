@@ -1033,6 +1033,7 @@ def _committee_out(view: CommitteeView) -> CommitteeOut:
                 round1=money(r.round1),
                 average_round1=_cents(r.average_round1),
                 held=r.held,
+                held_asked=money(r.held_asked),
                 no_ask=r.no_ask,
             )
             for r in view.round1_by_tier
@@ -1049,6 +1050,7 @@ def _committee_out(view: CommitteeView) -> CommitteeOut:
                 round2=money(r.round2),
                 average_round2=_cents(r.average_round2),
                 pct_of_ask=_pct(r.pct_of_ask),
+                held_asked=money(r.held_asked),
             )
             for r in view.round2_by_tier
         ],

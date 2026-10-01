@@ -211,7 +211,9 @@ def test_round2_by_tier_counts_appeals_their_asks_and_the_round2_the_budget_coun
     priced = [_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")}), held]
     results = _results(priced)
     assert results.by_tier == [
-        TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000), held=1)
+        TierRow(
+            tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000), held=1, held_asked=Decimal(4000)
+        )
     ]
     assert results.round2_by_tier == [
         Round2TierRow(
@@ -222,6 +224,7 @@ def test_round2_by_tier_counts_appeals_their_asks_and_the_round2_the_budget_coun
             priced=1,
             priced_asked=Decimal(1000),
             round2=Decimal(600),
+            held_asked=Decimal(500),  # req-h's appeal: in `asked`, never in `priced_asked`
         )
     ]
     assert results.round2 == Decimal(600)
@@ -245,9 +248,46 @@ def _posted2(round1: str, round2: str, ask: str) -> dict[int, RoundState]:
 def test_a_request_held_by_a_check_has_a_tier_but_stays_out_of_the_round1_rows_and_their_asks() -> None:
     results = _results([_priced("req-a", 1000001, 60000), _held_by_a_check("req-h", 1000005)])
     assert results.by_tier == [
-        TierRow(tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000), held=1)
+        TierRow(
+            tier=2, requests=1, families=1, round1=Decimal(3000), asked=Decimal(4000), held=1, held_asked=Decimal(4000)
+        )
     ]
-    assert results.by_table[0].held == 1
+    assert (results.by_table[0].held, results.by_table[0].held_asked) == (1, Decimal(4000))
+
+
+def test_held_asks_are_counted_apart_per_tier_and_leave_every_ratio_figure_alone() -> None:
+    plain = _results([_priced("req-a", 1000001, 60000)])
+    with_held = _results(
+        [_priced("req-a", 1000001, 60000), _held_by_a_check("req-h", 1000005), _held_by_a_check("req-i", 1000006)]
+    )
+    [row] = with_held.by_tier
+    assert (row.held, row.held_asked) == (2, Decimal(8000))
+    # what the ratios divide: unchanged by the held requests
+    [before] = plain.by_tier
+    assert (row.requests, row.families, row.round1, row.asked, row.no_ask) == (
+        before.requests,
+        before.families,
+        before.round1,
+        before.asked,
+        before.no_ask,
+    )
+    assert with_held.held_asked == Decimal(8000)  # the budget's below-the-line total agrees with the tier rows
+    assert sum(r.held_asked for r in with_held.by_table) == row.held_asked
+
+
+def test_a_held_appeal_is_counted_apart_and_the_priced_figures_stay_like_for_like() -> None:
+    held = _held_by_a_check("req-h", 1000005, rounds={2: _appeal("500")})
+    [row] = _results([_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")}), held]).round2_by_tier
+    assert (row.appeals, row.asked, row.held_asked) == (2, Decimal(1500), Decimal(500))
+    assert (row.priced, row.priced_asked, row.round2) == (1, Decimal(1000), Decimal(600))
+    [none_held] = _results([_priced("req-a", 1000001, 60000, rounds={2: _appeal("1000")})]).round2_by_tier
+    assert none_held.held_asked == Decimal(0)
+
+
+def test_rows_stored_before_held_asks_still_load_with_zero() -> None:
+    assert TierRow.model_validate({"tier": 2, "requests": 1, "families": 1, "round1": "1"}).held_asked == 0
+    stored = {"table": "camp", "tier": 2, "appeals": 1, "asked": "5", "priced": 1, "priced_asked": "5", "round2": "3"}
+    assert Round2TierRow.model_validate(stored).held_asked == 0
 
 
 def test_round2_rows_and_what_is_in_no_tier_add_up_to_round2() -> None:
