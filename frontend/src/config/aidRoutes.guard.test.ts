@@ -57,9 +57,13 @@ describe('Camperships routes in App.tsx', () => {
     )
   })
 
-  it.each(Object.entries(ROUTES))('guards %s with %s', (route, guard) => {
+  it.each(Object.entries(ROUTES))('guards %s with %s, outermost', (route, guard) => {
     const chunk = routeChunk(block, route)
+    const open = guard === 'admin' ? '<AdminRoute' : '<RequirePermission'
+    // The guard is the route's element, then ErrorBoundary, then Suspense: never inside either.
+    const nesting = new RegExp(`element=\\{\\s*${open}[^>]*>\\s*<ErrorBoundary>\\s*<Suspense`)
+    expect(chunk).toMatch(nesting)
+    expect(chunk.match(/element=\{\s*<(\w+)/)?.[1]).toBe(open.slice(1))
     expect(chunk).toContain(GUARD_TEXT[guard])
-    expect(chunk).toContain('<ErrorBoundary>')
   })
 })

@@ -47,4 +47,10 @@ describe('useAidAsOf', () => {
   it('is live when as_of is camp today', () => {
     expect(at('?as_of=2026-10-01')).toEqual({ kind: 'live' })
   })
+
+  it('reads camp time, not UTC, in the evening', () => {
+    vi.setSystemTime(new Date('2026-10-02T05:30:00Z'))
+    expect(at('?as_of=2026-10-01')).toEqual({ kind: 'live' })
+    expect(at('?as_of=2026-10-02')).toEqual({ kind: 'invalid', raw: '2026-10-02' })
+  })
 })
