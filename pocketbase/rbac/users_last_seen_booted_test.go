@@ -24,10 +24,12 @@ func TestBootedSchemaHasLastSeenAndOverrides(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	var n int
-	if err := db.NewQuery("SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'last_seen'").Row(&n); err != nil || n != 1 {
+	lastSeenQ := "SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'last_seen'"
+	if err := db.NewQuery(lastSeenQ).Row(&n); err != nil || n != 1 {
 		t.Fatalf("users.last_seen present = %d (err %v), want 1", n, err)
 	}
-	if err := db.NewQuery("SELECT COUNT(*) FROM _collections WHERE name = 'permission_descriptions'").Row(&n); err != nil || n != 1 {
+	descriptionsQ := "SELECT COUNT(*) FROM _collections WHERE name = 'permission_descriptions'"
+	if err := db.NewQuery(descriptionsQ).Row(&n); err != nil || n != 1 {
 		t.Fatalf("permission_descriptions present = %d (err %v), want 1", n, err)
 	}
 }
