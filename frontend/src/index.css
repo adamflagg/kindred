@@ -15,9 +15,6 @@
 @theme {
   /* Camp Forest Palette - Deepened & Warmed */
   --color-forest-950: oklch(14% 0.06 158); /* #061c13 - Twilight forest */
-  /* Camperships' program colour (docs/reference/ui-uplift.md, "Landing page"; Decision 1). */
-  --color-berry-300: hsl(330 65% 72%);
-  --color-berry-600: hsl(330 55% 42%);
   --color-forest-900: oklch(18% 0.08 160); /* #0a2e1f - Deep forest shadow */
   --color-forest-800: oklch(23% 0.1 162); /* #0d3d28 - Night forest */
   --color-forest-700: oklch(28% 0.12 164); /* #124d33 - Dense canopy */
@@ -28,6 +25,10 @@
   --color-forest-200: oklch(82% 0.06 148); /* #c5e6cd - Misty meadow */
   --color-forest-100: oklch(94% 0.02 145); /* #eef7f0 - Dawn light */
   --color-forest-50: oklch(97% 0.01 145); /* #f7fbf8 - First light */
+
+  /* Camperships' program colour (docs/reference/ui-uplift.md, "Landing page"; Decision 1). */
+  --color-berry-300: hsl(330 65% 72%);
+  --color-berry-600: hsl(330 55% 42%);
 
   /* Amber/Campfire Accents */
   --color-amber-600: oklch(62% 0.18 65); /* #c98418 - Deep amber */

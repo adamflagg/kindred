@@ -95,8 +95,10 @@ describe('AppLayout on a Camperships page', () => {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument()
     }
     expect(screen.queryByRole('link', { name: 'Campers' })).toBeNull()
-    expect(screen.getByTestId('aid-nav-divider')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Users' })).toBeInTheDocument()
+    const divider = screen.getByTestId('aid-nav-divider')
+    const users = screen.getByRole('link', { name: 'Users' })
+    expect(divider).toBeInTheDocument()
+    expect(divider.compareDocumentPosition(users) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('shows a summary-only user Reports alone (D65)', () => {
@@ -104,8 +106,19 @@ describe('AppLayout on a Camperships page', () => {
     renderAt('/aid/reports/development')
 
     expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Today' })).toBeNull()
-    expect(screen.queryByRole('link', { name: 'Requests' })).toBeNull()
+    for (const label of ['Today', 'Requests', 'Grants', 'Money', 'Season']) {
+      expect(screen.queryByRole('link', { name: label })).toBeNull()
+    }
+  })
+
+  it('shows a pasted /aid link as summer when the user cannot open Camperships', () => {
+    granted = []
+    renderAt('/aid/requests')
+
+    expect(screen.getByRole('link', { name: 'Campers' })).toBeInTheDocument()
+    expect(screen.queryByTestId('aid-nav-divider')).toBeNull()
+    expect(screen.queryByTestId('aid-freshness')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Summer' })).toBeInTheDocument()
   })
 
   it('marks the section you are in, and only that one', () => {
@@ -129,6 +142,7 @@ describe('AppLayout on a Camperships page', () => {
 
     expect(screen.getByText('Logo').closest('a')).toHaveAttribute('href', '/aid')
   })
+
   it('puts the season, the freshness chips and the Remaining line in the secondary bar (§3.4)', () => {
     granted = [VIEW]
     renderAt('/aid/requests')

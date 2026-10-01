@@ -179,7 +179,10 @@ export const AppLayout = () => {
 
   // Determine current program from URL if not set. A saved program the user can no longer open
   // (Camperships after a role is removed) doesn't steer the shell (spec §3.1).
-  const urlProgram = getProgramFromPath(location.pathname)
+  // A pasted /aid link from someone who can't open Camperships gets summer's shell, not a half-drawn one.
+  const pathProgram = getProgramFromPath(location.pathname)
+  const urlProgram =
+    pathProgram && canOpenProgram(pathProgram, { hasPermission }) ? pathProgram : null
   const savedProgram =
     currentProgram && canOpenProgram(currentProgram, { hasPermission }) ? currentProgram : null
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional || to fall through on empty string
