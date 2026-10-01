@@ -18,7 +18,7 @@ from api.services.financial_aid_grant_placements import PlacementRecord, grant_k
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, EquityAnswers
 from bunking.financial_aid.change_replay import LogRow
-from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.decisions import BUDGET_GAPS, GRID_GAPS, REMAINING_GAPS, DecisionEvent
 from tests.unit.api.services.decisions_fakes import (
     FakeDecisionsStore,
     FakeRules,
@@ -101,3 +101,193 @@ def test_an_application_replays_to_the_instant_and_one_with_no_create_row_is_unr
     assert later[app_id].answers["total_gross_income"] == 500.0
     missing, bad = _applications_as_of([r for r in app_log if r.entity_id != app_id], _day(3, 9), store.applications)
     assert (app_id in missing, bad) == (False, frozenset({app_id}))
+
+
+@pytest.mark.asyncio
+async def test_a_past_date_prices_the_answers_as_they_stood_then() -> None:
+    """Review Focus 5: the family's income changed after the date; the date prices the income it had."""
+    store = _two_families()
+    app_id = store.requests[EMMA].application_id
+    log_update(
+        store,
+        AID_APPLICATIONS,
+        app_id,
+        {"answers": {"total_gross_income": 60000.0, "expected_gross_income": 60000.0}},
+        {"answers": {"total_gross_income": 500.0, "expected_gross_income": 500.0}},
+        _day(3, 20),
+    )
+    service = _service(store)
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    emma = _row(grid, EMMA)
+    assert (emma.rounds[0].status, emma.rounds[0].decided, emma.tier) == ("needs_offer", 1500.0, 2)
+    assert [g.figure for g in grid.not_rebuilt] == list(GRID_GAPS)
+    budget = await service.budget(YEAR, as_of=MAR_9)
+    camp = _pool(budget, "camp_pool")
+    assert (camp.total.needs_offer, camp.total.remaining, budget.outside_grants_off_requests) == (3000.0, 397000.0, 0.0)
+    assert [g.figure for g in budget.not_rebuilt] == list(BUDGET_GAPS)
+    remaining = await service.remaining(YEAR, as_of=MAR_9)
+    assert (remaining.total, [g.figure for g in remaining.not_rebuilt]) == (497000.0, list(REMAINING_GAPS))
+
+
+@pytest.mark.asyncio
+async def test_the_equity_answers_intake_had_recorded_by_then_price_the_date() -> None:
+    store = _two_families()
+    was = {"equity": {"bipoc": None, "gender_identity": "", "pronouns": ""}}
+    now = {"equity": {"bipoc": True, "gender_identity": "", "pronouns": ""}}
+    log_update(store, AID_REQUESTS, EMMA, was, now, _day(3, 20))
+    store.requests[EMMA] = replace(
+        store.requests[EMMA], equity=EquityAnswers(bipoc=True, gender_identity="", pronouns="")
+    )
+    service = _service(store)
+    then = _row(await service.grid(YEAR, as_of=MAR_9), EMMA)
+    later = _row(await service.grid(YEAR, as_of=date(2027, 3, 25)), EMMA)
+    assert (then.tier, then.rounds[0].decided) == (2, 1500.0)
+    assert (later.tier, later.rounds[0].decided) == (1, 1800.0)
+
+
+@pytest.mark.asyncio
+async def test_a_camper_with_no_recorded_equity_answers_then_is_named_and_only_that_pool_left_empty() -> None:
+    store = _two_families(equity=None)
+    service = _service(store)
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    emma = _row(grid, EMMA)
+    assert (emma.rounds[0].status, emma.rounds[0].ask, emma.tier, emma.notes) == ("not_rebuilt", 4000.0, None, None)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "equity_not_recorded")
+    assert gap.requests == [EMMA, LIAM]
+    remaining = await service.remaining(YEAR, as_of=MAR_9)
+    assert [(p.pool, p.remaining) for p in remaining.pools] == [
+        ("camp_pool", None),
+        ("weekend_pool", 75000.0),
+        ("bmitzvah_pool", 25000.0),
+    ]
+    assert remaining.total is None
+    assert [g.figure for g in remaining.not_rebuilt] == [*REMAINING_GAPS, "equity_not_recorded"]
+    assert all(g.requests == [] for g in remaining.not_rebuilt)  # D75: never the requests on this line
+
+
+@pytest.mark.asyncio
+async def test_a_family_with_a_grant_whose_placement_was_not_logged_by_then_is_named_and_its_pool_left_empty() -> None:
+    """Review Focus 5 and owner ruling 2026-09-30: exact per-request figures, only the pool totals the
+    grant touches empty, never today's placement."""
+    store = _two_families()
+    line = replace(grant_row(EMMA, "500"), recorded_at=_day(3, 1))
+    service = _service(store, register=[line])
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    emma, liam = _row(grid, EMMA), _row(grid, LIAM)
+    assert (emma.rounds[0].status, emma.rounds[0].decided, emma.tier, emma.cost) == ("not_rebuilt", None, 2, 2000.0)
+    assert (liam.rounds[0].status, liam.rounds[0].decided) == ("needs_offer", 1500.0)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "grant_placement")
+    assert gap.requests == [EMMA]
+    budget = await service.budget(YEAR, as_of=MAR_9)
+    camp, weekend = _pool(budget, "camp_pool"), _pool(budget, "weekend_pool")
+    assert (camp.total.needs_offer, camp.total.remaining, camp.below.outside_grants) == (None, None, None)
+    assert (weekend.total.remaining, budget.outside_grants_off_requests) == (75000.0, None)
+    assert store.grant_placements == []  # a past read logs nothing
+
+
+@pytest.mark.asyncio
+async def test_a_grant_is_priced_where_the_log_had_it_then_not_where_it_sits_today() -> None:
+    store = _two_families()
+    on_emma = replace(grant_row(EMMA, "500"), recorded_at=_day(2, 10))
+    on_liam = replace(grant_row(LIAM, "500"), recorded_at=_day(2, 10))
+    _placed(store, on_emma, _day(3, 1))
+    _placed(store, on_liam, _day(3, 20))  # moved after the date
+    service = _service(store, register=[on_liam])
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    assert (_row(grid, EMMA).rounds[0].decided, _row(grid, LIAM).rounds[0].decided) == (1000.0, 1500.0)
+    assert [g.figure for g in grid.not_rebuilt] == list(GRID_GAPS)
+    camp = _pool(await service.budget(YEAR, as_of=MAR_9), "camp_pool")
+    assert (camp.total.needs_offer, camp.below.outside_grants) == (2500.0, 500.0)
+
+
+@pytest.mark.asyncio
+async def test_a_commitment_withdrawn_since_whose_placement_was_never_logged_names_its_family() -> None:
+    store = _two_families()
+    store.change_log.append(
+        LogRow(
+            id="log900000000001",
+            entity=AID_GRANTS,
+            entity_id="grt000000000001",
+            before=None,
+            after={"household_cm_id": 1000002, "person_cm_id": 1000021, "status": "open"},
+            created=_day(3, 1),
+        )
+    )
+    grid = await _service(store).grid(YEAR, as_of=MAR_9)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "grant_placement")
+    assert gap.requests == [LIAM]
+
+
+@pytest.mark.asyncio
+async def test_on_the_campminder_axis_a_grant_line_reversed_by_the_day_counts_nowhere() -> None:
+    """The line's reversal is CampMinder-dated March 5 but reached Kindred after the date."""
+    store = _two_families()
+    live = replace(grant_row(EMMA, "500"), recorded_at=_day(2, 10))
+    _placed(store, live, _day(3, 1))
+    reversed_ = replace(live, is_reversed=True, reversal_date="2027-03-05", counts=False, requests=())
+    service = _service(store, register=[reversed_])
+    default = _row(await service.grid(YEAR, as_of=MAR_9), EMMA)
+    recorded = _row(await service.grid(YEAR, as_of=MAR_9, as_of_axis="recorded"), EMMA)
+    assert (default.rounds[0].decided, recorded.rounds[0].decided) == (1500.0, 1000.0)
+
+
+@pytest.mark.asyncio
+async def test_a_request_whose_application_history_cannot_be_replayed_is_named() -> None:
+    store = _two_families()
+    app_id = store.requests[EMMA].application_id
+    store.change_log = [r for r in store.change_log if r.entity_id != app_id]
+    grid = await _service(store).grid(YEAR, as_of=MAR_9)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "application_history")
+    assert (gap.requests, _row(grid, EMMA).rounds[0].status, _row(grid, LIAM).rounds[0].status) == (
+        [EMMA],
+        "not_rebuilt",
+        "needs_offer",
+    )
+
+
+@pytest.mark.asyncio
+async def test_today_or_later_is_still_the_live_read_and_logs_its_placement() -> None:
+    store = _two_families()
+    await _service(store, register=[grant_row(EMMA, "500")]).grid(YEAR, as_of=NOW.date() + timedelta(days=1))
+    assert [p.grant for p in store.grant_placements] == ["ledger:9001"]
+
+
+@pytest.mark.asyncio
+async def test_remaining_stays_empty_in_every_pool_while_some_posted_money_cant_be_replayed() -> None:
+    """SP10b-1 empties Posted everywhere when a posted request's payer shares can't be replayed, and
+    Remaining subtracts Posted."""
+    store = _two_families()
+    store.shares.append(share_row(LIAM, 1000004, "0"))  # exists now, never logged
+    store.events.append(
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=LIAM,
+            round=1,
+            kind="post",
+            created=_day(3, 5),
+            amount=Decimal(1500),
+            effective_on=date(2027, 3, 5),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+    seed_line(store, 9001, "1500", household=1000002, person=1000021, posted=_day(3, 5))
+    remaining = await _service(store).remaining(YEAR, as_of=MAR_9)
+    assert [p.remaining for p in remaining.pools] == [None, None, None]
+    assert remaining.total is None
+
+
+@pytest.mark.asyncio
+async def test_a_past_date_shows_the_ledger_note_live_showed_then() -> None:
+    """D81's Note reads the ledger's dated lines, so a past date shows it exactly as live did then: CampMinder
+    held 1,500 for Emma's family on March 5, and nothing was ticked."""
+    store = _two_families()
+    seed_line(store, 9001, "1500", posted=_day(3, 5))
+    service = _service(store)
+    live, past = _row(await service.grid(YEAR), EMMA), _row(await service.grid(YEAR, as_of=MAR_9), EMMA)
+    note = "CampMinder shows $1,500 for this family; not yet ticked"
+    assert [n.message for n in past.notes or []] == [n.message for n in live.notes or []]
+    assert note in [n.message for n in past.notes or []]
+    before = _row(await service.grid(YEAR, as_of=date(2027, 3, 4)), EMMA)
+    assert note not in [n.message for n in before.notes or []]
