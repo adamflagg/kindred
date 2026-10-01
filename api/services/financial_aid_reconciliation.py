@@ -188,6 +188,14 @@ class SplitPart:
         }
 
 
+def _finite_amount(value: Any) -> Decimal:
+    """A split part's amount; NaN and the infinities are unreadable like any other bad value."""
+    amount = Decimal(str(value))
+    if not amount.is_finite():
+        raise ValueError(f"non-finite split amount {value!r}")
+    return amount
+
+
 def override_split(fields: Mapping[str, Any]) -> tuple[SplitPart, ...]:
     """The parts of a split override (its `split` JSON, a list or its text); () for an override that
     places or reclassifies a line whole."""
@@ -200,7 +208,7 @@ def override_split(fields: Mapping[str, Any]) -> tuple[SplitPart, ...]:
                 int(part.get("person_cm_id") or 0),
                 int(part.get("session_cm_id") or 0),
                 str(part.get("program_family") or ""),
-                Decimal(str(part["amount"])),
+                _finite_amount(part["amount"]),
             )
             for part in raw or ()
         )

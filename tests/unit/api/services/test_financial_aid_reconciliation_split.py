@@ -117,6 +117,10 @@ def _bad_split_cases() -> list[object]:
         '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": 0},'
         ' {"person_cm_id": 1000012, "session_cm_id": 1000102, "amount": 2400}]',
         "[1, 2]",
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": "NaN"}]',
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": NaN}]',
+        '[{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": Infinity}]',
+        [{"person_cm_id": 1000011, "session_cm_id": 1000101, "amount": float("nan")}],
     ]
 
 
