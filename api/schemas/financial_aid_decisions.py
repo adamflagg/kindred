@@ -148,6 +148,22 @@ class TodoOut(BaseModel):
     message: str
 
 
+# The Requests views a row belongs to (spec §6.2; D21: the server decides queue membership). Today's
+# counts (§6.4) count these same memberships. Order is the views' order; api.services.financial_aid_queues.
+QueueOut = Literal[
+    "needs_offer",
+    "holds",
+    "pending_approval",
+    "waiting_on_family",
+    "appeals",
+    "not_reconciled",
+    "to_reverse",
+    "session_not_settled",
+    "duplicates",
+    "cancel_reason",
+]
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -174,6 +190,8 @@ class GridRowOut(BaseModel):
     cancellation: CancellationOut | None = None
     to_reverse: bool | None = False  # cancelled with camp aid still live in CampMinder (spec §6.2, D54)
     todos: list[TodoOut] | None = Field(default_factory=list)
+    # Slice 1: the views the row is in. None on a past read: membership reads figures a past date leaves empty.
+    queues: list[QueueOut] | None = Field(default_factory=list)
 
 
 class RequestsGridResponse(BaseModel):

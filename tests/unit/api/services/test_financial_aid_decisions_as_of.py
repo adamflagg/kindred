@@ -245,6 +245,8 @@ async def test_a_past_date_decides_nothing_else_and_names_what_it_left_empty() -
         None,
     )
     assert [(g.figure, g.reason) for g in out.not_rebuilt] == [(f, PAST_DATE_GAPS[f]) for f in GRID_GAPS]
+    assert row.queues is None
+    assert "queues" in GRID_GAPS
 
 
 @pytest.mark.asyncio

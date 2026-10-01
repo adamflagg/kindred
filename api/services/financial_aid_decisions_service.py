@@ -124,6 +124,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_queues import row_queues
 from api.services.financial_aid_reconciliation import (
     CampLine,
     Confirmation,
@@ -1227,25 +1228,12 @@ class FinancialAidDecisionsService:
                 {r.household_cm_id for r in season.requests.values()},
                 {r.person_cm_id for r in season.requests.values() if r.person_cm_id > 0},
             )
-        rows = [
-            grid_row(
-                season.requests[rid],
-                priced,
-                season.rounds.get(rid, {}),
-                season.sessions,
-                families,
-                campers,
-                season.holds.get(rid, NO_HOLDS),
-                confirmation=self._confirmation(season, rid),
-                cancellation=season.cancellations.get(rid),
-                to_reverse=rid in season.to_reverse,
-            )
-            for rid, priced in season.priced.items()
-        ]
+        rows = [self.row_of(season, (families, campers), rid) for rid in season.priced]
         if season.as_of is not None:
             rows = [
                 row.model_copy(
                     update={
+                        "queues": None,
                         "notes": None,
                         "total_decided": None,
                         # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
@@ -1271,6 +1259,24 @@ class FinancialAidDecisionsService:
             if past
             else [],
         )
+
+    def row_of(self, season: Season, names: Names, request_id: str) -> GridRowOut:
+        """One request's grid row, with the Requests views it is in (slice 1, D21). The grid and the
+        household page build their rows here, so the two always show the same figures."""
+        families, campers = names
+        row = grid_row(
+            season.requests[request_id],
+            season.priced[request_id],
+            season.rounds.get(request_id, {}),
+            season.sessions,
+            families,
+            campers,
+            season.holds.get(request_id, NO_HOLDS),
+            confirmation=self._confirmation(season, request_id),
+            cancellation=season.cancellations.get(request_id),
+            to_reverse=request_id in season.to_reverse,
+        )
+        return row.model_copy(update={"queues": row_queues(row)})
 
     @staticmethod
     def _confirmation(season: Season, request_id: str) -> Confirmation | None:
