@@ -35,11 +35,11 @@ async def _opening(service: FinancialAidRulesService) -> dict[str, str]:
 
 
 def _awards(minimum: str) -> dict[str, Any]:
-    return fictional_rules_json()["awards"] | {"minimum": minimum}
+    return {**fictional_rules_json()["awards"], "minimum": minimum}
 
 
 def _income(floor: str) -> dict[str, Any]:
-    return fictional_rules_json()["income"] | {"floor": floor}
+    return {**fictional_rules_json()["income"], "floor": floor}
 
 
 def test_a_fingerprint_is_stable_across_key_order() -> None:
