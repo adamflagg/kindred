@@ -968,3 +968,24 @@ def test_aid_decided_is_whole_once_every_included_round_is_decided_or_refused() 
 def test_an_undecided_round_outside_the_band_leaves_it_whole() -> None:
     rows = [_row(EMMA, JOHNSON), _row(OLIVIA, OTHER, request_status="withdrawn", rounds=[_round(1, "held")])]
     assert totals(rows, {}).decided_partial is False
+
+
+def test_a_mixed_household_adds_up_per_request_not_across_the_household() -> None:
+    """Emma's 2,000 grant owes 500 of it, Liam's 300 applies whole: applied 800, beyond 1,500, and cost − aid − applied
+    is the share (200) request by request. A household-level floor would read 0 (4,000 − 3,000 − 2,300)."""
+    out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA)], {EMMA: Decimal(2000), LIAM: Decimal(300)})
+    assert (out.grants, out.grants_applied, out.grants_beyond_owed, out.family_share) == (2300.0, 800.0, 1500.0, 200.0)
+    assert out.cost is not None
+    assert out.decided is not None
+    assert out.grants_applied is not None
+    assert out.cost - out.decided - out.grants_applied == out.family_share
+
+
+def test_when_a_requests_aid_alone_passes_its_cost_the_band_falls_short_by_the_excess() -> None:
+    """Pins today's behaviour (open owner item 1b): aid 1,108 on a 1,000 cost owes nothing (share 0) and no grant
+    applies, so cost − aid − applied reads −108, not the share. The equation holds except for that excess."""
+    out = totals([_row(EMMA, JOHNSON, cost=1000.0, total_decided=1108.0)], {EMMA: Decimal(200)})
+    assert (out.family_share, out.grants_applied, out.grants_beyond_owed) == (0.0, 0.0, 200.0)
+    assert out.cost is not None
+    assert out.decided is not None
+    assert out.cost - out.decided - (out.grants_applied or 0) == -108.0
