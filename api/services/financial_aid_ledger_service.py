@@ -18,6 +18,7 @@ Flags. A flag is open unless aid_flag_dispositions holds a disposition for
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
@@ -244,6 +245,24 @@ def source_row(s: Any) -> AidSourceRow:
         classified_by=str(s.classified_by),
         note=str(s.note or ""),
     )
+
+
+def _unclassified(postings: Iterable[Any], sources: Mapping[str, Any]) -> list[UnclassifiedSource]:
+    """Live lines whose description aid_sources doesn't know, or knows as unclassified, by description."""
+    unclassified: dict[str, list[Any]] = defaultdict(list)
+    for p in postings:
+        source = sources.get(str(p.source_key))
+        if source is None or source.classified_by == "unclassified":
+            unclassified[str(p.source_key)].append(p)
+    return [
+        UnclassifiedSource(
+            source_key=key,
+            description=str(sources[key].description) if key in sources else "",
+            postings=len(items),
+            amount=money(_total(items)),
+        )
+        for key, items in sorted(unclassified.items())
+    ]
 
 
 class FinancialAidLedgerService:
@@ -523,6 +542,11 @@ class FinancialAidLedgerService:
             rows=rows,
         )
 
+    async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]:
+        """Data quality's unclassified descriptions alone (slice 1's Today), from two reads."""
+        postings, sources = await asyncio.gather(self.repo.fetch_postings(year), self._sources_by_key())
+        return _unclassified(postings, sources)
+
     async def data_quality(self, year: int) -> DataQualityResponse:
         every = await self.repo.fetch_postings(year, include_reversed=True)
         postings = [p for p in every if not p.is_reversed]
@@ -532,12 +556,6 @@ class FinancialAidLedgerService:
         links = await self.repo.fetch_links(year)
         reversed_rows = await self.repo.fetch_reversed_aid(year)
         accepted = _accepted_index(dispositions)
-
-        unclassified: dict[str, list[Any]] = defaultdict(list)
-        for p in postings:
-            source = sources.get(str(p.source_key))
-            if source is None or source.classified_by == "unclassified":
-                unclassified[str(p.source_key)].append(p)
 
         legs: dict[int, list[Any]] = defaultdict(list)
         for r in reversed_rows:
@@ -572,15 +590,7 @@ class FinancialAidLedgerService:
         cross, unknown = await self._off_season_sessions(year)
         return DataQualityResponse(
             year=year,
-            unclassified_sources=[
-                UnclassifiedSource(
-                    source_key=key,
-                    description=str(sources[key].description) if key in sources else "",
-                    postings=len(items),
-                    amount=money(_total(items)),
-                )
-                for key, items in sorted(unclassified.items())
-            ],
+            unclassified_sources=_unclassified(postings, sources),
             orphan_reversal_legs=orphans,
             flag_counts=dict(open_counts),
             accepted_flag_counts=dict(accepted_counts),
