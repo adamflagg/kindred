@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from api.constants.collections import AID_APPLICATIONS, AID_GRANTS, AID_REQUESTS
-from api.services.financial_aid_cancellations import CancelEvent
+from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, _applications_as_of
 from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
 from api.services.financial_aid_grants_register import Placement, RegisterRow
@@ -366,3 +366,74 @@ async def test_a_row_whose_posted_money_is_unknown_loses_its_notes_and_the_gap_s
     assert liam.notes  # the ask-above-cost note stands where nothing is unknown
     gap = next(g for g in grid.not_rebuilt if g.figure == "posted")
     assert "Note" in gap.reason
+
+
+@pytest.mark.asyncio
+async def test_a_request_campminder_has_cancelled_today_is_not_priced_as_live_then_and_its_pool_is_left_empty() -> None:
+    """Final review I1: CampMinder's cancellations are undated, so Emma's enrollment, cancelled as it reads
+    today, may have been cancelled by the date. Her row keeps 3c-1's figures, only her pool is left empty,
+    and the gap names her and the case a past read can't see (cancelled by then, re-enrolled since)."""
+    store = _two_families()
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, date(2027, 3, 20)))
+    service = _service(store)
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    emma, liam = _row(grid, EMMA), _row(grid, LIAM)
+    assert (emma.rounds[0].status, emma.rounds[0].ask, emma.rounds[0].decided, emma.total_decided) == (
+        "not_rebuilt",
+        4000.0,
+        None,
+        None,
+    )
+    assert (liam.rounds[0].status, liam.rounds[0].decided) == ("needs_offer", 1500.0)
+    assert [g.figure for g in grid.not_rebuilt] == list(GRID_GAPS)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "cancellation")
+    assert gap.requests == [EMMA]
+    assert "re-enrolled" in gap.reason
+    budget = await service.budget(YEAR, as_of=MAR_9)
+    camp = _pool(budget, "camp_pool")
+    assert (camp.total.needs_offer, camp.total.remaining, _pool(budget, "weekend_pool").total.remaining) == (
+        None,
+        None,
+        75000.0,
+    )
+    assert next(g for g in budget.not_rebuilt if g.figure == "cancellation").requests == [EMMA]
+    remaining = await service.remaining(YEAR, as_of=MAR_9)
+    assert [(p.pool, p.remaining) for p in remaining.pools] == [
+        ("camp_pool", None),
+        ("weekend_pool", 75000.0),
+        ("bmitzvah_pool", 25000.0),
+    ]
+    assert [g.figure for g in remaining.not_rebuilt] == list(REMAINING_GAPS)
+    assert all(g.requests == [] for g in remaining.not_rebuilt)  # D75
+
+
+@pytest.mark.asyncio
+async def test_a_grant_whose_key_two_register_rows_share_is_named_and_its_pool_left_empty_then() -> None:
+    """Final review I2: aid_postings' grain is (transaction, amount, year), so two register rows can share
+    one log key. The log can't say which one it placed, so neither is placed then."""
+    store = _two_families()
+    line = replace(grant_row(EMMA, "500"), recorded_at=_day(2, 10))
+    _placed(store, line, _day(3, 1))
+    service = _service(store, register=[line, replace(line, amount=Decimal("250.00"))])
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    gap = next(g for g in grid.not_rebuilt if g.figure == "grant_placement")
+    assert gap.requests == [EMMA]
+    assert (_row(grid, EMMA).rounds[0].status, _row(grid, LIAM).rounds[0].decided) == ("not_rebuilt", 1500.0)
+
+
+@pytest.mark.asyncio
+async def test_a_gap_request_with_no_pool_leaves_the_other_pools_priced() -> None:
+    """Final review M1: the budget puts a request with no pool in No pool, so only No pool (and the total)
+    is left empty, not every pool."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, session=1000999)  # a session no program covers; no equity recorded either
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    store.requests[LIAM] = replace(store.requests[LIAM], equity=UNKNOWN_EQUITY)
+    log_seeded(store, SEEDED)
+    remaining = await _service(store).remaining(YEAR, as_of=MAR_9)
+    assert [(p.pool, p.remaining) for p in remaining.pools] == [
+        ("camp_pool", 398500.0),
+        ("weekend_pool", 75000.0),
+        ("bmitzvah_pool", 25000.0),
+    ]
+    assert remaining.total is None

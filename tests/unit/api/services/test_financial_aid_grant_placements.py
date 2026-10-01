@@ -218,3 +218,44 @@ def test_on_the_campminder_axis_a_line_is_read_on_its_own_campminder_dates() -> 
     assert (row.counts, row.requests) == (False, ())
     (recorded,) = placements_as_of([_logged(live, MAR_1)], [reversed_now], [], MAR_9_END).rows
     assert recorded == live
+
+
+# --- two register rows that share one key (aid_postings' grain is transaction, amount, year) ----------
+
+
+def _twins() -> list[RegisterRow]:
+    """Two ledger rows of one CampMinder transaction, so one log key, and a third grant of its own."""
+    line = grant_row(EMMA, "500")
+    other = replace(grant_row(LIAM, "300"), transaction_cm_id=9002, household_cm_id=1000002, person_cm_id=1000021)
+    return [line, replace(line, amount=grant_row(EMMA, "250").amount), other]
+
+
+def test_a_key_two_register_rows_share_is_never_logged_and_a_second_read_writes_nothing() -> None:
+    rows = _twins()
+    first = placement_writes(YEAR, rows, [])
+    assert [w.entity_id for w in first] == ["ledger:9002"]
+    assert placement_writes(YEAR, rows, [_logged(rows[2], MAR_1)]) == []
+
+
+def test_a_key_two_register_rows_share_is_unplaced_even_where_the_log_placed_it() -> None:
+    rows = _twins()
+    log = [_logged(rows[0], MAR_1), replace(_logged(rows[2], MAR_1), id="gpl000000000002")]
+    placed = placements_as_of(log, rows, [], MAR_9_END)
+    assert [grant_key(row) for row in placed.rows] == ["ledger:9002"]
+    assert (placed.households, placed.people, placed.requests) == (
+        frozenset({1000001}),
+        frozenset({1000011}),
+        frozenset({EMMA}),
+    )
+
+
+@pytest.mark.asyncio
+async def test_live_reads_with_a_shared_key_log_only_the_other_grants_and_then_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    service = _service(store, _twins())
+    await service.grid(YEAR)
+    assert [p.grant for p in store.grant_placements] == ["ledger:9002"]
+    await service.grid(YEAR)
+    assert [p.grant for p in store.grant_placements] == ["ledger:9002"]

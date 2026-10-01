@@ -42,30 +42,44 @@ _ROUND2: Final = (
     "Some requests' status on that date can't be replayed (see request_history), so Round 2 asks "
     "aren't counted season-wide"
 )
-_CANCELLED: Final = (
-    "A cancellation in Kindred applies as of the date, but CampMinder's aren't rebuilt: registration statuses are "
-    "read as they are today, so a request CampMinder had cancelled by then shows its rounds, and is priced and "
-    "counted, as if live (10b-2)"
+# What a pool-masking gap empties (past_budget's _past_pool, and the season's total and strip with it).
+_POOL_EMPTY: Final = (
+    "; its pool's Needs an offer, Pending approval, Remaining, Held and the Held asks, outside grants, outside "
+    "the budget and computed demand (Round 2 computed, Round 1 unmet) stay empty, and so do the total's and the "
+    "strip's Needs an offer, Pending approval and Held"
 )
-_POOL_EMPTY: Final = "; its pool's Needs an offer, Pending approval, Held, Remaining and outside grants stay empty"
+_CANCELLED: Final = (
+    "CampMinder's cancellations aren't dated: registration statuses are read as they are today (10b-2), so a "
+    "past date shows no cancellation by CampMinder. A request live then whose enrollment CampMinder has "
+    "cancelled today may have been cancelled by then, so its pricing then can't be rebuilt: only its posted "
+    "rounds, asks and manual hold show" + _POOL_EMPTY + ". A request CampMinder had cancelled by then but "
+    "re-enrolled since reads as enrolled today, so it is priced and counted as if live then"
+)
+_CANCELLED_TODAY: Final = (
+    "Reads CampMinder's cancellations, which are read as they are today, not as of that date (see cancellation)"
+)
 
 
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
     "cancellation": _CANCELLED,
-    "to_reverse": _CANCELLED,
-    "todos": _CANCELLED,
+    "to_reverse": _CANCELLED_TODAY,
+    "todos": _CANCELLED_TODAY,
     "queues": "Which Requests views a row is in reads its confirmation and cancellation",
     "round2_asks": _ROUND2,
     "round2_asked": _ROUND2,
     "pool_unknown": "The request's session and program couldn't be resolved under the rules as of that date, so it sits in No pool",
     "request_history": (
         "These requests' change history can't be replayed to that date, so only their posted rounds show, and "
-        "every pool's Needs an offer, Pending approval, Held and Remaining stay empty"
+        "every pool's Needs an offer, Pending approval, Remaining, Held and the Held asks, outside grants, outside "
+        "the budget and computed demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the "
+        "strip's Needs an offer, Pending approval and Held, and Round 2 asks so far (round2_asks)"
     ),
     "request_deleted": (
         "Deleted since; its history can't be replayed, so it isn't shown, and every pool's Needs an offer, "
-        "Pending approval, Held, Remaining and outside grants stay empty"
+        "Pending approval, Remaining, Held and the Held asks, outside grants, outside the budget and computed "
+        "demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the strip's Needs an offer, "
+        "Pending approval and Held"
     ),
     "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
     "rules_history": (
@@ -117,7 +131,8 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     ),
 }
 # Named on every past read: what 3c-2 can't price from dated records (the ledger's sync time, and
-# CampMinder's cancellations, 10b-2 Decision 21). A gap request names what it empties itself.
+# CampMinder's cancellations, 10b-2 Decision 21; cancellation lists the requests it keeps unpriced). A gap
+# request names what it empties itself.
 GRID_GAPS: Final[tuple[str, ...]] = ("confirmation", "cancellation", "to_reverse", "todos", "queues")
 BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 REMAINING_GAPS: Final[tuple[str, ...]] = ("cancellation",)

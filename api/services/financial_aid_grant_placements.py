@@ -16,10 +16,14 @@ CampMinder date, so the cut is when Kindred recorded it on both axes (owner ruli
 the campminder axis a line CampMinder posted after the day, or reversed by it, is read on its own
 CampMinder dates. A household with a grant by then whose placement no row covers is named, and only
 its requests and their pools are left empty (grant_placement).
+
+aid_postings' grain is (transaction, amount, year), so two register rows can share one ledger key. The
+log can't tell them apart, so such a key is never logged, and a past date treats its grants as unplaced.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
@@ -48,6 +52,12 @@ _ROW: Final = TypeAdapter(RegisterRow)
 def grant_key(row: RegisterRow) -> str:
     """One grant's key in the log: its CampMinder transaction, or its commitment record."""
     return f"ledger:{row.transaction_cm_id}" if row.kind == "ledger" else f"commitment:{row.commitment_id}"
+
+
+def shared_keys(rows: Iterable[RegisterRow]) -> frozenset[str]:
+    """The keys more than one register row carries (two ledger rows of one transaction): the log can't
+    say which of them it placed."""
+    return frozenset(key for key, n in Counter(grant_key(row) for row in rows).items() if n > 1)
 
 
 def placement_json(row: RegisterRow) -> dict[str, Any]:
@@ -125,13 +135,16 @@ def _write(year: int, grant: str, household_cm_id: int, event: PlacementEvent, p
 def placement_writes(year: int, rows: Sequence[RegisterRow], records: Iterable[PlacementRecord]) -> list[AidWrite]:
     """The rows to append so the log holds the register's placement now: a `place` for each grant that
     is new or whose placement changed, a `remove` for each logged grant no longer in the register.
-    [] when the log already holds it."""
+    [] when the log already holds it. A key two rows share is never written (shared_keys)."""
     logged = newest(records)
+    shared = shared_keys(rows)
     writes: list[AidWrite] = []
     seen: set[str] = set()
     for row in rows:
         key = grant_key(row)
         seen.add(key)
+        if key in shared:
+            continue
         body = placement_json(row)
         last = logged.get(key)
         if last is not None and last.event == "place" and dict(last.placement or {}) == body:
@@ -173,13 +186,21 @@ def placements_as_of(
     recorded the commitment), or a commitment whose create was logged by then (a withdrawn one has
     left the register). This is wide on purpose: the register carries no sync time, so a line posted
     before the date but synced after it is named too. It only ever empties, never mis-states. A ledger
-    line CampMinder deleted outright before the log began is invisible here."""
+    line CampMinder deleted outright before the log began is invisible here.
+
+    A key two of today's register rows share (shared_keys) is unplaced whatever the log holds: every row
+    carrying it, and the requests its logged placement then named."""
     logged = newest(records, at)
     latest = newest(records)
-    now = {grant_key(row): row for row in register_now}
+    shared = shared_keys(register_now)
+    now = {grant_key(row): row for row in register_now if grant_key(row) not in shared}
     rows: list[RegisterRow] = []
+    shared_requests: set[str] = set()
     for key, record in sorted(logged.items()):
         if record.event != "place" or record.placement is None:
+            continue
+        if key in shared:
+            shared_requests |= {share.request_id for share in register_row(record.placement).requests}
             continue
         row = register_row(record.placement)
         if posted_by is not None and row.kind == "ledger":
@@ -196,7 +217,10 @@ def placements_as_of(
                 row = replace(row, is_reversed=True, reversal_date=current.reversal_date, counts=False, requests=())
         rows.append(row)
     unplaced = [
-        row for key, row in now.items() if key not in logged and (row.recorded_at is None or row.recorded_at <= at)
+        row
+        for row in register_now
+        if (grant_key(row) in shared or grant_key(row) not in logged)
+        and (row.recorded_at is None or row.recorded_at <= at)
     ]
     commitments = [
         entry.after
@@ -213,5 +237,5 @@ def placements_as_of(
         rows=tuple(rows),
         households=frozenset(households - {0}),
         people=frozenset(people - {0}),
-        requests=frozenset(share.request_id for row in unplaced for share in row.requests),
+        requests=frozenset(share.request_id for row in unplaced for share in row.requests) | shared_requests,
     )

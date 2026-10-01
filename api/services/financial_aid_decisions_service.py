@@ -732,6 +732,12 @@ def _gaps(figures: Sequence[str]) -> list[NotRebuiltOut]:
     return [NotRebuiltOut(figure=figure, reason=PAST_DATE_GAPS[figure]) for figure in figures]
 
 
+def _past_gaps(figures: Sequence[str], season: Season) -> list[NotRebuiltOut]:
+    """A past read's always-named gaps; cancellation lists the requests it keeps from being priced."""
+    cancelled = sorted(rid for rid, gap in season.gapped.items() if gap == "cancellation")
+    return [g.model_copy(update={"requests": cancelled}) if g.figure == "cancellation" else g for g in _gaps(figures)]
+
+
 def _dated_by(corrections: Sequence[CorrectionRecord], at: datetime) -> list[CorrectionRecord]:
     return [c for c in corrections if (stamp := parse_pb_datetime(c.created)) is not None and stamp <= at]
 
@@ -809,11 +815,32 @@ def _applications_as_of(
 _PRICING_GAPS: Final = (
     "rules_history",
     "request_history",
+    "cancellation",
     "application_history",
     "pricing_shares_history",
     "equity_not_recorded",
     "grant_placement",
 )
+# Named apart: rules_history and request_history as 3c-1 names them, and cancellation on every past read (_past_gaps).
+_NAMED_APART: Final = frozenset({"rules_history", "request_history", "cancellation"})
+
+
+def _cancelled_in_campminder(
+    requests: Mapping[str, RequestRecord],
+    today: Sequence[RequestRecord],
+    enrollments: Sequence[EnrollmentState],
+    sessions: Sequence[SessionRow],
+) -> frozenset[str]:
+    """The requests live on a past date whose enrollment CampMinder has cancelled, its registrations read as
+    they are today, as the live read reads them (cancellations_by_request); under the record as it stood then
+    or as it is now, since intake may have re-resolved its session since. Wide on purpose: CampMinder's
+    cancellations aren't dated, so one cancelled after the date is caught too. It only ever empties."""
+    live = [r for r in requests.values() if r.status in _LIVE]
+    now = {r.id: r for r in today}
+    as_now = [replace(now[r.id], status=r.status) for r in live if r.id in now]
+    return frozenset(cancellations_by_request(live, (), enrollments, sessions)) | frozenset(
+        cancellations_by_request(as_now, (), enrollments, sessions)
+    )
 
 
 def _pricing_gap(
@@ -822,6 +849,7 @@ def _pricing_gap(
     rules_known: bool,
     unrebuilt: bool,
     cancelled: bool,
+    cancelled_now: bool,
     bad_applications: frozenset[str],
     bad_shares: frozenset[str],
     placed: PlacementsAsOf,
@@ -829,7 +857,8 @@ def _pricing_gap(
     """Which undated or unreplayable input keeps this request from being priced as of the date, if any.
     A request that wasn't live then (its status) shows only its posted rounds, exactly as live does, so none
     reaches it. One cancelled in Kindred by then also shows only those, but Decision 19 still counts the
-    grants on it in its pool, so a grant with no logged placement reaches it."""
+    grants on it in its pool, so a grant with no logged placement reaches it. One whose enrollment CampMinder
+    has cancelled today (`cancelled_now`) may have been cancelled by then, so it can't be priced as live."""
     if not rules_known:
         return "rules_history"
     if unrebuilt:
@@ -843,6 +872,8 @@ def _pricing_gap(
     )
     if cancelled:
         return "grant_placement" if unplaced else None
+    if cancelled_now:
+        return "cancellation"
     if request.application_id in bad_applications:
         return "application_history"
     if request.id in bad_shares:
@@ -881,9 +912,9 @@ def _home(
 
 
 def _gapped_pools(season: Season) -> frozenset[str] | None:
-    """The pools a gap request sits in, as the budget places it (budget._home_pool); None, meaning
-    every pool, when one can't be placed: its history can't be replayed, or it has no pool. A request deleted
-    since can't be priced or placed at all, so every pool then (it may have sat in any)."""
+    """The pools a gap request sits in, as the budget places it (budget._home_pool: one with no pool sits in
+    No pool); None, meaning every pool, when one can't be placed: the rules' or its history can't be replayed.
+    A request deleted since can't be priced or placed at all, so every pool then (it may have sat in any)."""
     if season.deleted:
         return None
     pools: set[str] = set()
@@ -893,9 +924,7 @@ def _gapped_pools(season: Season) -> frozenset[str] | None:
             return None
         # A gap request that isn't live is one cancelled in Kindred (Decision 19: its grants stay in its pool).
         home = priced.pool or next((view.pool for view in priced.rounds if view.pool), None)
-        if home is None:
-            return None
-        pools.add(home)
+        pools.add(home or NO_POOL)
     return frozenset(pools)
 
 
@@ -991,7 +1020,7 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
             "outside_grants_off_requests": None if season.grants_unplaced else out.outside_grants_off_requests,
             "as_of": season.as_of,
             "as_of_axis": season.axis,
-            "not_rebuilt": [*_gaps(BUDGET_GAPS), *emptied, *posted_gaps, *season.gaps],
+            "not_rebuilt": [*_past_gaps(BUDGET_GAPS, season), *emptied, *posted_gaps, *season.gaps],
         }
     )
 
@@ -1261,7 +1290,8 @@ class FinancialAidDecisionsService:
         or unreplayable input reaches (_PRICING_GAPS) keeps 3c-1's figures (as_of.price_as_of) and is
         named. On the campminder axis the Posted ticks and grant lines CampMinder dated by `day` count too
         (posted_by); everything with no CampMinder date cuts on when Kindred recorded it, on both axes.
-        CampMinder's cancellations aren't rebuilt (GRID_GAPS, 10b-2 Decision 21)."""
+        CampMinder's cancellations aren't dated (10b-2 Decision 21): a request whose enrollment CampMinder has
+        cancelled today keeps 3c-1's figures and its pool is left empty (the cancellation gap)."""
         at = as_of_instant(day)
         posted_by = day if axis == "campminder" else None
         rules_read = asyncio.create_task(self._rules_as_of(year, at))
@@ -1274,11 +1304,13 @@ class FinancialAidDecisionsService:
                 self._store.fetch_applications(year),
                 self._store.fetch_payer_shares(year),
             )
-            # Two typed branches (asyncio.gather types at most six), run concurrently: the change logs with
-            # the corrections and sessions, then the dated rows and today's register.
+            # Three branches (asyncio.gather types at most six), run concurrently: the change logs with the
+            # corrections and sessions; the dated rows, today's register and today's registrations; and the
+            # ledger. Today's request records say whose registrations to read.
             (
                 (log, app_log, share_log, grant_log, corrections, sessions),
-                (events, hold_events, cancel_events, logged, register),
+                (events, hold_events, cancel_events, logged, register, enrollments),
+                ledger_in,
             ) = await asyncio.gather(
                 asyncio.gather(
                     self._store.fetch_change_log(year, AID_REQUESTS),
@@ -1294,9 +1326,14 @@ class FinancialAidDecisionsService:
                     self._store.fetch_cancellations(year),
                     self._store.fetch_grant_placements(year),
                     self._register(year),  # today's, only to find the grants the log can't place
+                    self._store.fetch_enrollment_states(  # today's: CampMinder's cancellations aren't dated
+                        year,
+                        {r.person_cm_id for r in today if r.person_cm_id > 0},
+                        {r.household_cm_id for r in today if r.person_cm_id <= 0},
+                    ),
                 ),
+                self._past_ledger_side(year),
             )
-            ledger_in = await self._past_ledger_side(year)
             rules, gaps = await rules_read
         finally:
             rules_read.cancel()
@@ -1310,8 +1347,10 @@ class FinancialAidDecisionsService:
         rounds = fold_rounds(events, as_of=at, posted_by=posted_by)
         holds = fold_holds(hold_events, as_of=at)
         # Decision 21: a cancellation in Kindred is dated, so it applies as of the date (on created, on
-        # both axes); CampMinder's is not rebuilt (GRID_GAPS' cancellation).
+        # both axes); CampMinder's is not rebuilt: a request whose enrollment CampMinder has cancelled today
+        # isn't priced as live then (the cancellation gap), and one re-enrolled since can't be seen.
         in_kindred = {rid for rid, state in fold_cancellations(cancel_events, as_of=at).items() if state.in_kindred}
+        cancelled_now = _cancelled_in_campminder(requests, today, enrollments, sessions)
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
         for correction in _dated_by(corrections, at):
@@ -1327,6 +1366,7 @@ class FinancialAidDecisionsService:
                 rules_known=rules_known,
                 unrebuilt=request_id in unrebuilt,
                 cancelled=cancelled,
+                cancelled_now=request_id in cancelled_now,
                 bad_applications=bad_applications,
                 bad_shares=bad_shares,
                 placed=placed,
@@ -1399,9 +1439,12 @@ class FinancialAidDecisionsService:
         grants_unplaced = bool(placed.households or placed.people or placed.requests)
         named = [
             NotRebuiltOut(figure=code, reason=PAST_DATE_GAPS[code], requests=ids)
-            for code in _PRICING_GAPS[2:]  # rules_history and request_history are named as 3c-1 names them
-            if (ids := sorted(r for r, g in gapped.items() if g == code))
-            or (code == "grant_placement" and grants_unplaced)
+            for code in _PRICING_GAPS
+            if code not in _NAMED_APART
+            and (
+                (ids := sorted(r for r, g in gapped.items() if g == code))
+                or (code == "grant_placement" and grants_unplaced)
+            )
         ]
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None), *named)
         if axis == "campminder":
@@ -1439,9 +1482,10 @@ class FinancialAidDecisionsService:
         notes: bool = False,
     ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
         """Clawbacks as of `at`, and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
-        to `priced` in place; the gaps and the requests whose posted money is left empty (their shares or placements can't be replayed). On the campminder axis the lines
-        cut on CampMinder's post and reversal dates; on recorded, also on when Kindred had recorded each
-        line and its reversal (as_recorded, ruling C), so everything below reads that set."""
+        to `priced` in place; the gaps and the requests whose posted money is left empty (their shares or
+        placements can't be replayed). On the campminder axis the lines cut on CampMinder's post and reversal
+        dates; on recorded, also on when Kindred had recorded each line and its reversal (as_recorded, ruling
+        C), so everything below reads that set."""
         camp_lines = inputs.camp_lines if axis == "campminder" else as_recorded(inputs.camp_lines, at)
         shares_of, bad_shares, bad_share_households = shares_as_of
         placements, splits, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
@@ -1585,7 +1629,11 @@ class FinancialAidDecisionsService:
             rows=rows,
             as_of=season.as_of,
             as_of_axis=season.axis,
-            not_rebuilt=[*_gaps(GRID_GAPS), *(_gaps(["posted"]) if season.posted_unknown else []), *season.gaps]
+            not_rebuilt=[
+                *_past_gaps(GRID_GAPS, season),
+                *(_gaps(["posted"]) if season.posted_unknown else []),
+                *season.gaps,
+            ]
             if past
             else [],
         )
