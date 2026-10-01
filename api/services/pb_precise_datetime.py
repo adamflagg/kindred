@@ -35,7 +35,7 @@ def precise_to_datetime(str_datetime: str, format: str = "%Y-%m-%d %H:%M:%S") ->
 
 def install() -> None:
     """Idempotent: point the SDK's base model at the precise parser."""
-    base_model.to_datetime = precise_to_datetime
+    base_model.to_datetime = precise_to_datetime  # type: ignore[attr-defined]  # a module attribute the SDK imports by name
 
 
 install()
