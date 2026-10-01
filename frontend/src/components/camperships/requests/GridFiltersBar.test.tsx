@@ -29,7 +29,7 @@ function bar(props: {
 describe('GridFiltersBar out-of-list values', () => {
   it('shows a program the options do not hold, and choosing All clears it', async () => {
     const onChange = bar({ program: 'nosuch' })
-    const select = screen.getByLabelText('Program') as HTMLSelectElement
+    const select = screen.getByLabelText('Program')
     expect(select.value).toBe('nosuch')
     expect(screen.getByRole('option', { name: 'nosuch' })).toBeTruthy()
     await userEvent.selectOptions(select, '')
@@ -38,12 +38,12 @@ describe('GridFiltersBar out-of-list values', () => {
 
   it('shows a pool the options do not hold', () => {
     bar({ pool: 'gone' })
-    expect((screen.getByLabelText('Pool') as HTMLSelectElement).value).toBe('gone')
+    expect(screen.getByLabelText('Pool').value).toBe('gone')
   })
 
   it('shows a checklist value the options do not hold', () => {
     bar({ tick: 'bogus' as 'posted' })
-    expect((screen.getByLabelText('Checklist') as HTMLSelectElement).value).toBe('bogus')
+    expect(screen.getByLabelText('Checklist').value).toBe('bogus')
   })
 
   it('adds no extra option for an in-list value', () => {
