@@ -42,6 +42,7 @@ from api.services.financial_aid_reconciliation import (
     override_split,
 )
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_to_place import TO_PLACE_FLAG, LeftLine, LineDetail, OverrideRow, SourceRow
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
 
@@ -53,6 +54,12 @@ _PB_ID: Final = re.compile(r"^[a-z0-9]{15}$")
 def _date(value: Any) -> date | None:
     text = str(value or "").strip()
     return date.fromisoformat(text[:10]) if text else None
+
+
+def _json_list(value: Any) -> list[Any]:
+    if isinstance(value, str):
+        value = json.loads(value) if value.strip() else None
+    return list(value) if value else []
 
 
 def _json_object(value: Any) -> dict[str, Any] | None:
@@ -315,6 +322,66 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         """The lines a person split across requests (SP11-rest, D12), each with its parts."""
         overrides = (line_override(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
         return {o.transaction_cm_id: o.split for o in overrides if o.split}
+
+    async def fetch_line_details(self, year: int) -> dict[int, LineDetail]:
+        """Each camp-aid line's description after any reclassification, and Go's posting flags (To place)."""
+        rows = await self._page(
+            AID_POSTINGS,
+            {
+                "filter": f"year = {int(year)} && funder_type = 'camp'",
+                "sort": "transaction_cm_id,id",
+                "fields": "transaction_cm_id,effective_source_key,flags",
+            },
+        )
+        details: dict[int, LineDetail] = {}
+        for row in rows:  # one row per transaction today; two would keep the first description, every flag
+            txn = int(row.transaction_cm_id)
+            known = details.get(txn)
+            flags = {str(flag) for flag in _json_list(getattr(row, "flags", None))}
+            details[txn] = LineDetail(
+                txn,
+                known.description_key if known is not None else str(row.effective_source_key or ""),
+                tuple(sorted(flags | set(known.flags if known is not None else ()))),
+            )
+        return details
+
+    async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]:
+        """Every override in full, as To place's writes read and log it."""
+        return {
+            int(row.transaction_cm_id): OverrideRow(
+                id=str(row.id),
+                transaction_cm_id=int(row.transaction_cm_id),
+                attributed_person_cm_id=int(row.attributed_person_cm_id or 0),
+                attributed_session_cm_id=int(row.attributed_session_cm_id or 0),
+                program_family=str(row.program_family or ""),
+                source_key_override=str(row.source_key_override or ""),
+                source=str(row.source or ""),
+                note=str(row.note or ""),
+                split=override_split({"split": getattr(row, "split", None)}),
+            )
+            for row in await FinancialAidRepository(self.pb).fetch_overrides(year)
+        }
+
+    async def fetch_left_lines(self, year: int) -> dict[int, LeftLine]:
+        """The lines left at family level (D58): To place's own aid_flag_dispositions rows."""
+        return {
+            int(row.transaction_cm_id): LeftLine(str(row.id), int(row.transaction_cm_id), str(row.note or ""))
+            for row in await FinancialAidRepository(self.pb).fetch_dispositions(year)
+            if str(row.flag) == TO_PLACE_FLAG
+        }
+
+    async def fetch_source_rows(self) -> dict[str, SourceRow]:
+        """The description registry, as Reclassify checks it and To place names a line's description."""
+        return {
+            str(row.description_key): SourceRow(
+                description_key=str(row.description_key),
+                description=str(row.description or row.description_key),
+                classified=str(row.classified_by) != "unclassified",
+                counts_as_aid=bool(row.counts_as_aid),
+                funder_type=str(row.funder_type or ""),
+            )
+            for row in await FinancialAidRepository(self.pb).fetch_sources()
+        }
 
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
         """Every override as it stands now: the replay's `current` for a past read (3c-1)."""
