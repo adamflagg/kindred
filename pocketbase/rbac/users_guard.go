@@ -26,7 +26,7 @@ const (
 // before this nothing overwrote a cached_permissions planted there.
 //
 // REQUEST hooks only. The model hooks (OnRecordCreate/Update/Validate) also fire
-// on app.Save, which recomputeUserPermissions, the OIDC last-login save and
+// on app.Save, which recomputeUserPermissions, the OIDC admin-sync save and
 // migrations 1500000130/1500000154 all use to write these very fields.
 //
 // adminGroup is ADMIN_GROUP_NAME. When it is set, the OIDC admin-sync hook has
