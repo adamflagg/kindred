@@ -517,6 +517,34 @@ describe('useEditorWalk: final fix wave (review probes)', () => {
     expect(screen.getByText(`Couldn't save r1: ${DOWN}`)).toBeInTheDocument()
   })
 
+  it('a landed Enter-save is not written again when the person leaves', async () => {
+    const go = vi.fn()
+    renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{Enter}')
+    await act(async () => held[0]?.resolve())
+    await userEvent.click(leaveButton())
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+
+  it('a superseded save settling does not end the saving state of the newer one', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    // Back on Emma (the ↓ save is still out), the figure changes and a click away writes it: that
+    // second save supersedes the first.
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.type(amountField(), '0')
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(saveSpy).toHaveBeenCalledTimes(2)
+    await act(async () => held[0]?.resolve())
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    // The newer save is still out, so Enter has to wait for it.
+    await userEvent.type(amountField(), '0{Enter}')
+    expect(saveSpy).toHaveBeenCalledTimes(2)
+  })
+
   it('an Enter-save followed by a click away comes back like a ↓ when it fails (P4)', async () => {
     renderWalk()
     await userEvent.click(screen.getByText('Emma Johnson'))

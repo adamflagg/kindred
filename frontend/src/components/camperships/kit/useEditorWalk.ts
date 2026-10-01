@@ -202,10 +202,10 @@ export function useEditorWalk({
           }
         )
         .finally(() => {
-          if (latest()) {
-            inFlight.current.delete(rowKey)
-            inFlightEntry.current.delete(rowKey)
-          }
+          // A superseded save leaves `saving` to the newer one, which is still out.
+          if (!latest()) return
+          inFlight.current.delete(rowKey)
+          inFlightEntry.current.delete(rowKey)
           if (mounted.current) setSaving((s) => withMember(s, rowKey, false))
         })
       inFlight.current.set(rowKey, settled)
