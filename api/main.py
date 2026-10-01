@@ -27,7 +27,13 @@ from bunking.auth_middleware import (
 )
 from bunking.config import ConfigLoader
 from bunking.logging_config import configure_logging, get_logger
-from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS
+from bunking.rbac.permissions import (
+    ADMIN_ONLY_AREAS,
+    ALL_PERMISSIONS,
+    PERMISSION_AREAS,
+    PERMISSION_DESCRIPTIONS,
+    PERMISSION_INFO,
+)
 
 from .dependencies import (
     auth_state,
@@ -55,6 +61,7 @@ from .routers import (
     subject_notes,
     validation,
 )
+from .schemas.permissions import PermissionEntry, PermissionRegistryResponse, PermissionScreen
 from .services.lodging_cache_warm import start_lodging_cache_refresher
 from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
@@ -215,20 +222,30 @@ def create_app() -> FastAPI:
         """Get current user information including permissions."""
         return user.to_dict()
 
-    @app.get("/api/permissions")
-    async def get_permission_registry(user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
-        """Get the permission registry for role-editing UI.
+    @app.get("/api/permissions", response_model=PermissionRegistryResponse)
+    async def get_permission_registry(user: AuthUser = Depends(get_current_user)) -> PermissionRegistryResponse:
+        """The permission registry the Users page explains RBAC from.
 
-        Returns all valid permission codenames and their descriptions.
-        Any authenticated user can read this; it's used by the role editor.
+        Code defaults only: admin wording overrides are a PocketBase collection
+        the browser merges. Any authenticated user can read this.
         """
-        return {
-            "permissions": [
-                {"codename": perm, "description": PERMISSION_DESCRIPTIONS.get(perm, "")}
-                for perm in sorted(ALL_PERMISSIONS)
+        ordered = [code for area in PERMISSION_AREAS for code, info in PERMISSION_INFO.items() if info.area == area]
+        return PermissionRegistryResponse(
+            permissions=[
+                PermissionEntry(
+                    codename=code,
+                    description=PERMISSION_DESCRIPTIONS[code],
+                    label=PERMISSION_INFO[code].label,
+                    short=PERMISSION_INFO[code].short,
+                    area=PERMISSION_INFO[code].area,
+                    screens=[PermissionScreen(name=s.name, path=s.path) for s in PERMISSION_INFO[code].screens],
+                )
+                for code in ordered
             ],
-            "total": len(ALL_PERMISSIONS),
-        }
+            areas=list(PERMISSION_AREAS),
+            admin_only=list(ADMIN_ONLY_AREAS),
+            total=len(ALL_PERMISSIONS),
+        )
 
     return app
 

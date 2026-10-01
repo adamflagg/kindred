@@ -38,6 +38,9 @@ import type {
   DefinitionsResponse,
   JumpIndexHousehold,
   JumpIndexResponse,
+  PermissionEntry,
+  PermissionRegistryResponse,
+  PermissionScreen,
   RemainingResponse,
   SocialGraphEdge,
   SocialGraphNode,
@@ -83,3 +86,8 @@ export type ApiAidJumpHousehold = JumpIndexHousehold
 
 /** A surface's numbered definition notes (§4.8, slice 1's read). Mirrors Python `DefinitionsResponse`. */
 export type ApiAidDefinitions = DefinitionsResponse
+
+/** The Users page's permission registry (code defaults). Mirrors Python `PermissionRegistryResponse`. */
+export type ApiPermissionRegistry = PermissionRegistryResponse
+export type ApiPermissionEntry = PermissionEntry
+export type ApiPermissionScreen = PermissionScreen
