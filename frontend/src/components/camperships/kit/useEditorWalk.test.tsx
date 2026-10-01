@@ -503,6 +503,20 @@ describe('useEditorWalk: final fix wave (review probes)', () => {
     expect(go).not.toHaveBeenCalled()
   })
 
+  it('a refused Enter-save replaces the stash a failed ↓ left, so a remount shows the newer figure', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}')
+    await act(async () => held[0]?.reject(new Error(DOWN)))
+    expect(amountField()).toHaveValue('500')
+    // Back on the row: 500 becomes 5000 and Enter is refused too.
+    await userEvent.type(amountField(), '0{Enter}')
+    await act(async () => held[1]?.reject(new Error(DOWN)))
+    await userEvent.click(screen.getByRole('button', { name: 'Remount the editors' }))
+    expect(amountField()).toHaveValue('5000')
+    expect(screen.getByText(`Couldn't save r1: ${DOWN}`)).toBeInTheDocument()
+  })
+
   it('an Enter-save followed by a click away comes back like a ↓ when it fails (P4)', async () => {
     renderWalk()
     await userEvent.click(screen.getByText('Emma Johnson'))

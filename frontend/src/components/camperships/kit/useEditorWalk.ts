@@ -189,7 +189,7 @@ export function useEditorWalk({
             putError(rowKey, messageOf(error))
             // A refused Enter-save is kept like a ↓ failure, so a remount of the editor (a refetch,
             // a regrouping) doesn't clear the typing and the listed failure together.
-            if (retain !== undefined && !stashed.current.has(rowKey)) putStash(rowKey, retain)
+            if (retain !== undefined) putStash(rowKey, retain)
             const jump = jumpBack || jumpOnFail.current.has(rowKey)
             jumpOnFail.current.delete(rowKey)
             const open = now.current
