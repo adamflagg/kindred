@@ -4,18 +4,18 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 
 ## Layout
 
-| Dir                      | Purpose                                                         |
-| ------------------------ | --------------------------------------------------------------- |
-| `src/components/`        | Reusable React components                                       |
-| `src/components/graph/`  | Social network graph modules (styles, interactions, layout, UI) |
-| `src/pages/`             | Route-level components                                          |
-| `src/hooks/`             | Custom React hooks (data fetching, state)                       |
-| `src/services/`          | API clients, business logic                                     |
-| `src/types/`             | TypeScript type definitions                                     |
-| `src/lib/`               | Third-party integrations                                        |
-| `src/contexts/`          | React context providers                                         |
-| `src/tours/definitions/` | Onboarding tour scripts                                         |
-| `src/utils/queryKeys.ts` | Centralized React Query keys — use these, don't inline strings  |
+| Dir | Purpose |
+|-----|---------|
+| `src/components/` | Reusable React components |
+| `src/components/graph/` | Social network graph modules (styles, interactions, layout, UI) |
+| `src/pages/` | Route-level components |
+| `src/hooks/` | Custom React hooks (data fetching, state) |
+| `src/services/` | API clients, business logic |
+| `src/types/` | TypeScript type definitions |
+| `src/lib/` | Third-party integrations |
+| `src/contexts/` | React context providers |
+| `src/tours/definitions/` | Onboarding tour scripts |
+| `src/utils/queryKeys.ts` | Centralized React Query keys — use these, don't inline strings |
 
 ## Component patterns
 
@@ -30,7 +30,7 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 
 The user base is **three people**, on laptops and desktop monitors, with a mouse and keyboard. There are no assistive-technology users and none planned. Mobile is rare and read-only — pulling up a camper detail or roster page. There is no legal requirement here. A default WCAG posture costs real work and buys this codebase nothing, which is how five days once went to an a11y sweep nobody asked for.
 
-**DO add `aria-label` / `role` when it is the only handle a test can query a control by.** This is a _test-infrastructure_ decision, not an accessibility one, and it is why the four `jsx-a11y` rules in `eslint.config.js` are still on: the suite addresses the UI through the accessibility tree (~1,721 `*ByRole` and ~309 `*ByLabelText` calls across ~141 test files), so a malformed role breaks the query layer far from the edit. An icon-only button needs a name — give it one.
+**DO add `aria-label` / `role` when it is the only handle a test can query a control by.** This is a *test-infrastructure* decision, not an accessibility one, and it is why the four `jsx-a11y` rules in `eslint.config.js` are still on: the suite addresses the UI through the accessibility tree (~1,721 `*ByRole` and ~309 `*ByLabelText` calls across ~141 test files), so a malformed role breaks the query layer far from the edit. An icon-only button needs a name — give it one.
 
 **DO NOT add:**
 
@@ -38,7 +38,7 @@ The user base is **three people**, on laptops and desktop monitors, with a mouse
 - `aria-live` regions or `role="status"` announcements
 - `aria-hidden` on lucide icons — lucide already emits it when you pass no a11y prop
 - `role=` that merely restates the tag (`role="list"` on a `<ul>`, `role="img"` on an `<svg>`)
-- keyboard handlers on non-controls, or roving-tabindex / arrow-key navigation. **Exception, and only this:** Camperships' `/` for the jump box and ↑/↓ to highlight a row (rulings D13, D31; owner, 2026-10-01: kept to that scope) are product features, not accessibility work. They are `window` listeners that stand aside while a field has focus, a modifier is held or a modal is open (`components/camperships/kit/keyboard.ts`), with no roving tabindex and no ARIA. Add no other page keys on their strength.
+- keyboard handlers on non-controls, or roving-tabindex / arrow-key navigation. Exception: Camperships' `/` jump box, ↑/↓ row highlight and `[`/`]` (D13, D31) are product features, not accessibility work, so add no other page keys on their strength.
 
 **DO prefer** converting `<div role="button" tabIndex={0} onKeyDown={…}>` into a plain `<button>`. That deletes three things and is the shape we want. Never go the other way.
 
@@ -46,9 +46,9 @@ The user base is **three people**, on laptops and desktop monitors, with a mouse
 
 - **`sr-only` on an `<input>` or `<legend>` is a visually-hidden native control, not AT scaffolding.** The friend-group colour swatches are real radios hidden behind styled spans — delete the class and a raw grey radio button appears next to every swatch. Exclude these by hand; a classname sweep will eat them.
 - **`aria-hidden` and `sr-only` both feed testing-library's accessible-name computation.** Removing either can change what `getByRole(…, { name })` matches in a file you did not touch. Change in batches, run the suite between them.
-- **`components/ui/modalStack.ts` is overlay-ordering correctness, not accessibility**, despite the neighbourhood. `isTopOverlay()` is what stops one Escape closing two stacked overlays; `acquireBackgroundInert()` sets `inert`, which blocks **mouse clicks** through an open dialog. Escape-to-close and focus _restore_ serve everyone. Do not remove any of it.
+- **`components/ui/modalStack.ts` is overlay-ordering correctness, not accessibility**, despite the neighbourhood. `isTopOverlay()` is what stops one Escape closing two stacked overlays; `acquireBackgroundInert()` sets `inert`, which blocks **mouse clicks** through an open dialog. Escape-to-close and focus *restore* serve everyone. Do not remove any of it.
 - **`ui/SortableColumnHeader.tsx`'s `aria-hidden` on the sort arrow is load-bearing.** Remove it and ↑/↓ folds into the accessible name of every sortable column across six tables.
-- **`components/weekend/AccessibilityFlagList.tsx` has nothing to do with screen readers.** It renders families' _housing_ needs — wheelchair access, CPAP power, bathroom proximity — on the weekend board. It matches every grep for "accessib".
+- **`components/weekend/AccessibilityFlagList.tsx` has nothing to do with screen readers.** It renders families' *housing* needs — wheelchair access, CPAP power, bathroom proximity — on the weekend board. It matches every grep for "accessib".
 
 ## Error handling — non-negotiable
 
@@ -73,14 +73,14 @@ Use the centralized keys from `src/utils/queryKeys.ts`. Inlining string keys cau
 
 Two rules that are not negotiable:
 
-- **Opting _down_ to a short `staleTime` to catch external edits is the trap.** It re-pays the whole fetch on every window focus and evicts the cache minutes after you navigate away. Freshness after a write is bought with **explicit invalidation in the mutation**.
+- **Opting *down* to a short `staleTime` to catch external edits is the trap.** It re-pays the whole fetch on every window focus and evicts the cache minutes after you navigate away. Freshness after a write is bought with **explicit invalidation in the mutation**.
 - **If you lengthen a `staleTime`, find every writer first.** The weekend roster's move to the app defaults left the lodging admin panels invalidating only their own registry keys, so a cabin confirmation stayed invisible on the roster for 30 minutes. `invalidateLodgingRegistryQueries` (`utils/queryKeys.ts`) is the fix and the pattern: one shared helper, invalidating by **prefix** where the writer cannot know the full key.
 
 Background: `CLAUDE.md` §4 "Family Camp Models Summer".
 
 ## Derived values in page components
 
-Anything that builds a model to read a number belongs in `useMemo`. `WeekendRosterPage` built the full board index _and_ the full map model on every render — for two tab-badge counts, on every tab, whether or not the board or map was mounted. Memoize on the payload, and put `?? []` fallbacks **inside** the memo: a bare `?? []` mints a new array each render and defeats every dependency list below it.
+Anything that builds a model to read a number belongs in `useMemo`. `WeekendRosterPage` built the full board index *and* the full map model on every render — for two tab-badge counts, on every tab, whether or not the board or map was mounted. Memoize on the payload, and put `?? []` fallbacks **inside** the memo: a bare `?? []` mints a new array each render and defeats every dependency list below it.
 
 ## Tour maintenance
 
