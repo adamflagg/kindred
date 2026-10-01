@@ -1,6 +1,7 @@
 import { Download, Search } from 'lucide-react'
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -55,12 +56,16 @@ export interface CellContext {
 
 /**
  * Handed to the editor row (Ruling 2026-10-01 (plan review)): while the editor holds focus the
- * table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside the editor row, so a focused Save or Cancel button never lets ↓ unmount the editor with unsaved input), so the editor moves the highlight through these.
+ * table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside the editor row, so a focused Save or
+ * Cancel button never lets ↓ unmount the editor with unsaved input), so the editor moves the
+ * highlight through these. `highlight` puts it on any row: owner ruling A (2026-10-01) jumps back to
+ * a row whose save failed.
  */
 export interface AidRowNav {
   readonly next: () => void
   readonly previous: () => void
   readonly close: () => void
+  readonly highlight: (key: string | null) => void
 }
 
 export interface AidColumn<Row> {
@@ -100,6 +105,13 @@ export interface AidTableProps<Row> {
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
+  /**
+   * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor row's
+   * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
+   * and keep the row in its URL. Without them the table keeps the highlight itself.
+   */
+  readonly highlighted?: string | null | undefined
+  readonly onHighlight?: ((key: string | null) => void) | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
@@ -132,6 +144,8 @@ export function AidTable<Row>({
   onOpenTotal,
   renderBelowHighlighted,
   arrowKeys = false,
+  highlighted: highlightedProp,
+  onHighlight,
   footerLabel,
   groupCount,
   emptyText = 'No rows match.',
@@ -145,7 +159,15 @@ export function AidTable<Row>({
     defaultGrouping
   )
   const [query, setQuery] = useState('')
-  const [highlighted, setHighlighted] = useState<string | null>(null)
+  const [ownHighlight, setOwnHighlight] = useState<string | null>(null)
+  const highlighted = onHighlight ? (highlightedProp ?? null) : ownHighlight
+  const setHighlight = useCallback(
+    (key: string | null) => {
+      if (onHighlight) onHighlight(key)
+      else setOwnHighlight(key)
+    },
+    [onHighlight]
+  )
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>())
 
   const visible = useMemo(() => {
@@ -179,23 +201,26 @@ export function AidTable<Row>({
         return
       if (!isPageKey(event) || order.length === 0) return
       event.preventDefault()
-      setHighlighted((current) => stepHighlight(order, current, event.key === 'ArrowDown' ? 1 : -1))
+      setHighlight(stepHighlight(order, highlighted, event.key === 'ArrowDown' ? 1 : -1))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [arrowKeys, order])
+  }, [arrowKeys, order, highlighted, setHighlight])
 
   useEffect(() => {
     if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
   }, [highlighted])
 
+  // Each move is worked out from the highlight this render shows, so two moves in one tick can't
+  // step twice.
   const nav: AidRowNav = useMemo(
     () => ({
-      next: () => setHighlighted((current) => stepHighlight(order, current, 1)),
-      previous: () => setHighlighted((current) => stepHighlight(order, current, -1)),
-      close: () => setHighlighted(null),
+      next: () => setHighlight(stepHighlight(order, highlighted, 1)),
+      previous: () => setHighlight(stepHighlight(order, highlighted, -1)),
+      close: () => setHighlight(null),
+      highlight: setHighlight,
     }),
-    [order]
+    [order, highlighted, setHighlight]
   )
 
   const pinnedLeft = useMemo(() => {
@@ -343,7 +368,9 @@ export function AidTable<Row>({
                           if (element) rowRefs.current.set(key, element)
                           else rowRefs.current.delete(key)
                         }}
-                        onClick={() => setHighlighted(key)}
+                        onClick={() => {
+                          if (key !== highlighted) setHighlight(key)
+                        }}
                         className="cursor-pointer"
                       >
                         {columns.map((c, index) => (

@@ -4,6 +4,7 @@
  */
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -495,5 +496,82 @@ describe('AidTable', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls[0] as [string, string]
     expect(content.split('\n')[1]).toMatch(/^Johnson,Emma Johnson,0\.30,/)
+  })
+})
+
+// Slice 1 (owner rulings A and B, 2026-10-01): a surface owns the highlight, so it can save what
+// is typed before a row changes, and put the highlight back on a row whose save failed.
+let asked: Array<string | null> = []
+
+function Controlled({ agree }: { agree: boolean }) {
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+  return (
+    <MemoryRouter initialEntries={['/aid/requests']}>
+      <AidTable<Row>
+        rows={ROWS}
+        columns={COLUMNS}
+        rowKey={rowKeyOf}
+        csvFilename="camperships-requests-all-2027.csv"
+        arrowKeys
+        highlighted={highlighted}
+        onHighlight={(key) => {
+          asked.push(key)
+          if (agree) setHighlighted(key)
+        }}
+        renderBelowHighlighted={(r) => <div>Editing {r.camper}</div>}
+      />
+    </MemoryRouter>
+  )
+}
+
+const rowKeyOf = (r: Row) => r.id
+const highlightedCamper = () =>
+  screen
+    .getAllByRole('row')
+    .find((row) => row.getAttribute('data-highlighted') === 'true')
+    ?.querySelectorAll('td')[1]?.textContent ?? null
+
+describe('AidTable with a controlled highlight', () => {
+  beforeEach(() => {
+    asked = []
+  })
+
+  it('asks the surface before a click moves the highlight, and moves only when it agrees', async () => {
+    render(<Controlled agree={false} />)
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(asked).toEqual(['r3'])
+    expect(highlightedCamper()).toBeNull()
+  })
+
+  it('shows the highlight the surface keeps, and sends the table’s ↓ through it too', async () => {
+    render(<Controlled agree />)
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(highlightedCamper()).toBe('Olivia Chen')
+    await userEvent.keyboard('{ArrowDown}')
+    expect(asked).toEqual(['r3', 'r4'])
+    expect(screen.getByText('Editing Samuel Johnson')).toBeInTheDocument()
+  })
+
+  it('asks nothing for a click on the row already highlighted', async () => {
+    render(<Controlled agree />)
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(asked).toEqual(['r3'])
+  })
+
+  it('lets the editor row put the highlight on any row (ruling A jumps back with it)', async () => {
+    renderTable('/aid/requests', {
+      renderBelowHighlighted: (r, nav) => (
+        <div>
+          <span>Editing {r.camper}</span>
+          <button type="button" onClick={() => nav.highlight('r1')}>
+            Back to Emma
+          </button>
+        </div>
+      ),
+    })
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Emma' }))
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
   })
 })
