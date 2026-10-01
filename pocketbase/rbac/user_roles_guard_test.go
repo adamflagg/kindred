@@ -49,6 +49,13 @@ func newUserRolesBoundsApp(t testing.TB) *tests.TestApp {
 		c.DeleteRule = types.Pointer(usersManageRule)
 	})
 	audittest.Setup(t, app)
+	// Batch on, as migration 1500000195 enables it in production: the Users
+	// page saves through pb.createBatch(), so each sub-request must be guarded.
+	settings := app.Settings()
+	settings.Batch.Enabled = true
+	settings.Batch.MaxRequests = 50
+	settings.Batch.Timeout = 10
+	mustSave(t, app, settings)
 
 	createUserWithID(t, app, urManagerID, "jordan.lee@example.com", false, nil)
 	createUserWithID(t, app, urTargetID, "casey.morgan@example.com", false, nil)
@@ -222,6 +229,12 @@ func TestUserRolesBounds(t *testing.T) {
 		return strings.NewReader(`{"user":"` + userID + `","role":"` + roleID + `"}`)
 	}
 	const records = "/api/collections/user_roles/records"
+	grantItem := func(userID, roleID string) string {
+		return `{"method":"POST","url":"` + records + `","body":{"user":"` + userID + `","role":"` + roleID + `"}}`
+	}
+	batchOf := func(items ...string) *strings.Reader {
+		return strings.NewReader(`{"requests":[` + strings.Join(items, ",") + `]}`)
+	}
 	link := func(u, r string) string { return u + "->" + r }
 
 	scenarios := []tests.ApiScenario{
@@ -290,6 +303,19 @@ func TestUserRolesBounds(t *testing.T) {
 			AfterTestFunc: after(expectRefusedUntouched),
 		},
 
+		{
+			// /api/batch runs each sub-request through the record create and
+			// delete actions, so the guard fires per sub-request; one refusal
+			// fails the whole batch and its transaction rolls the allowed
+			// sub-request back with it.
+			Name: "a batch with one refused grant is refused whole", Method: http.MethodPost, URL: "/api/batch",
+			Body:            batchOf(grantItem(urFreshID, urRoleBunking), grantItem(urFreshID, urRoleUsers)),
+			BeforeTestFunc:  as(urManagerID, ""),
+			ExpectedStatus:  http.StatusBadRequest,
+			ExpectedContent: []string{`"requests":{"1":`, `"status":403`, "carries users.manage"},
+			AfterTestFunc:   after(expectRefusedUntouched),
+		},
+
 		// --- a non-admin users.manage holder: allowed ---
 		{
 			Name: "manager can grant an ordinary role to another non-admin", Method: http.MethodPost, URL: records,
@@ -310,6 +336,16 @@ func TestUserRolesBounds(t *testing.T) {
 			AfterTestFunc: after(
 				expectLinks(without(seededLinks, link(urTargetID, urRoleBunking))...),
 				expectOneAccessRow(audit.ActionDelete, urTargetBunk),
+			),
+		},
+
+		{
+			Name: "manager can grant an ordinary role inside a batch", Method: http.MethodPost, URL: "/api/batch",
+			Body: batchOf(grantItem(urFreshID, urRoleBunking)), BeforeTestFunc: as(urManagerID, ""),
+			ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"role":"` + urRoleBunking + `"`},
+			AfterTestFunc: after(
+				expectLinks(with(seededLinks, link(urFreshID, urRoleBunking))...),
+				expectOneAccessRow(audit.ActionCreate, ""),
 			),
 		},
 
