@@ -132,99 +132,12 @@ describe('Users page shell', () => {
   })
 })
 
-// Migrated in Task 9/10: these assert on the old row/drawer markup, which the
-// new UsersTable (Task 9) and UserDrawer (Task 10) replace. Parked, not deleted.
-describe.skip('Users page access control (migrated in Task 9/10)', () => {
+// Parked for Task 10: the drawer's "Last full sign-in" line replaces these.
+describe.skip('Users drawer last sign-in label (migrated in Task 10)', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
     mockIsAdmin = false
     mockCurrentUserId = 'user-1'
-  })
-
-  it('does not show role management for users without users.manage', async () => {
-    mockHasPermission.mockReturnValue(false)
-    renderUsers()
-    // Wait for users to load
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    // No user rows should have cursor-pointer (no one is manageable without permission)
-    const liamRow = screen.getByText('Liam Garcia').closest('[class*="flex items-center gap"]')
-    expect(liamRow?.className).not.toContain('cursor-pointer')
-  })
-
-  it('shows cursor pointer for non-admin, non-self users when user has users.manage', async () => {
-    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
-    renderUsers()
-    // Wait for users to load
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    // Liam (not self, not admin) should have cursor-pointer parent
-    const liamRow = screen.getByText('Liam Garcia').closest('[class*="cursor"]')
-    expect(liamRow?.className).toContain('cursor-pointer')
-  })
-
-  it.each([
-    { description: 'own user row', name: 'Emma Johnson', userId: 'user-1' },
-    { description: 'admin users', name: 'Admin User', userId: 'user-1' },
-  ])('blocks role management on $description', async ({ name, userId }) => {
-    mockCurrentUserId = userId
-    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
-    renderUsers()
-    expect(await screen.findByText(name)).toBeTruthy()
-    const row = screen.getByText(name).closest('[class*="flex items-center gap"]')
-    expect(row?.className).not.toContain('cursor-pointer')
-  })
-
-  it('never lists view-as persona stand-ins', async () => {
-    renderUsers()
-    expect(await screen.findByText('Emma Johnson')).toBeTruthy()
-    expect(screen.queryByText('View as: No role')).toBeNull()
-  })
-})
-
-// jsx-a11y sweep (board-graph-users chunk): the row's click handler had no
-// keyboard equivalent. A manageable row is now a real <button> (native
-// Enter/Space activation); a non-manageable row gets no button at all — same
-// "no button at all, not just an inert row" rule GeoDetailList follows
-// (kindred#2063).
-describe.skip('Users page row keyboard reachability (migrated in Task 9/10)', () => {
-  beforeEach(() => {
-    mockHasPermission.mockReset()
-    mockIsAdmin = false
-    mockCurrentUserId = 'user-1'
-  })
-
-  it('opens the roles panel with Enter when a manageable row is focused', async () => {
-    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-
-    const row = screen.getByRole('button', { name: /Liam Garcia/ })
-    row.focus()
-    await userEvent.keyboard('{Enter}')
-
-    expect(await screen.findByRole('heading', { name: 'Liam Garcia' })).toBeInTheDocument()
-  })
-
-  it('renders a non-manageable row with no button at all', async () => {
-    mockHasPermission.mockReturnValue(false)
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-
-    expect(screen.queryByRole('button', { name: /Liam Garcia/ })).not.toBeInTheDocument()
-  })
-})
-
-describe.skip('Users page date column labels (migrated in Task 9/10)', () => {
-  beforeEach(() => {
-    mockHasPermission.mockReset()
-    mockIsAdmin = false
-    mockCurrentUserId = 'user-1'
-  })
-
-  it('renders Joined label next to join date', async () => {
-    mockHasPermission.mockReturnValue(false)
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    expect(screen.getAllByText('Joined').length).toBeGreaterThan(0)
   })
 
   it('renders Last login label for admin users', async () => {
@@ -239,35 +152,5 @@ describe.skip('Users page date column labels (migrated in Task 9/10)', () => {
     renderUsers()
     expect(await screen.findByText('Liam Garcia')).toBeTruthy()
     expect(screen.queryByText('Last login')).not.toBeInTheDocument()
-    expect(screen.getAllByText('Joined').length).toBeGreaterThan(0)
-  })
-})
-
-describe.skip('Users page last login visibility (migrated in Task 9/10)', () => {
-  beforeEach(() => {
-    mockHasPermission.mockReset()
-    mockIsAdmin = false
-    mockCurrentUserId = 'user-1'
-  })
-
-  it('shows last login column when user is admin', async () => {
-    mockIsAdmin = true
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    expect(screen.getByTestId('last-login-user-2')).toBeTruthy()
-  })
-
-  it('shows last login column when user has users.manage permission', async () => {
-    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    expect(screen.getByTestId('last-login-user-2')).toBeTruthy()
-  })
-
-  it('hides last login column for regular users', async () => {
-    mockHasPermission.mockReturnValue(false)
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    expect(screen.queryByTestId('last-login-user-2')).toBeNull()
   })
 })
