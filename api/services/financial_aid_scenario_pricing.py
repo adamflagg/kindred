@@ -178,7 +178,10 @@ async def capture_season(
         rows.extend(found)
         return found
 
-    service = FinancialAidDecisionsService(cast(DecisionsStore, recorder), rules, recorded, clock=lambda: frozen_at)
+    # A scenario never writes (spec §7.4): freezing leaves the grant placement log to live pricing (3c-2).
+    service = FinancialAidDecisionsService(
+        cast(DecisionsStore, recorder), rules, recorded, clock=lambda: frozen_at, log_placements=False
+    )
     season = await service.season(year)
     live = frozenset(rid for rid, priced in season.priced.items() if priced.live)
     # Live requests only, by design: a withdrawn request is never priced, so it never waits for rules (Decision 8).
@@ -264,6 +267,7 @@ async def price_document(
         _Approved(version),
         register,
         clock=lambda: snapshot.frozen_at,  # the replay runs at the frozen moment
+        log_placements=False,  # nor reads or writes the grant placement log (3c-2): a scenario never writes
     )
     season = await service.season(snapshot.year)
     if requests is not None:

@@ -21,6 +21,7 @@ from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
     AID_CANCELLATIONS,
     AID_DECISIONS,
+    AID_GRANT_PLACEMENTS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
@@ -28,6 +29,7 @@ from api.constants.collections import (
 )
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import cancel_event, decision_event, hold_event
+from api.services.financial_aid_grant_placements import PlacementRecord, placement_record
 from api.services.financial_aid_grants_register import Placement, RegisterRow, RequestShare
 from api.services.financial_aid_intake_plan import application_fields, request_fields
 from api.services.financial_aid_intake_types import (
@@ -83,6 +85,7 @@ class FakeDecisionsStore:
         self.cancel_events: list[CancelEvent] = []
         self.enrollments: list[EnrollmentState] = []
         self.enrollment_reads: list[tuple[frozenset[int], frozenset[int]]] = []  # each read's (persons, households)
+        self.grant_placements: list[PlacementRecord] = []  # the grant placement log (3c-2)
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -168,6 +171,9 @@ class FakeDecisionsStore:
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None:
         return self.synced_at
 
+    async def fetch_grant_placements(self, year: int) -> list[PlacementRecord]:
+        return list(self.grant_placements)
+
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]:
@@ -223,6 +229,9 @@ class FakeDecisionsStore:
             elif collection == AID_CANCELLATIONS:
                 self._clock += timedelta(seconds=1)
                 self.cancel_events.append(cancel_event(SimpleNamespace(**body, created=self._clock.isoformat())))
+            elif collection == AID_GRANT_PLACEMENTS:
+                self._clock += timedelta(seconds=1)
+                self.grant_placements.append(placement_record(SimpleNamespace(**body, created=self._clock.isoformat())))
             elif collection == AID_RULES:
                 self.rules_writes.append(body)
             else:

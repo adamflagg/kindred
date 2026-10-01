@@ -107,6 +107,12 @@ from api.services.financial_aid_cancellations import (
     withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
+from api.services.financial_aid_grant_placements import (
+    PLACEMENT_ACTOR,
+    PLACEMENT_REASON,
+    PlacementRecord,
+    placement_writes,
+)
 from api.services.financial_aid_grants_register import (
     Placement,
     RegisterRow,
@@ -269,6 +275,7 @@ class DecisionsStore(Protocol):
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
+    async def fetch_grant_placements(self, year: int) -> list[PlacementRecord]: ...
     async def fetch_cancellations(self, year: int) -> list[CancelEvent]: ...
     async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]: ...
     async def fetch_enrollment_states(
@@ -371,6 +378,10 @@ class _RequestSide:
 
 async def _no_names() -> Names:
     return {}, {}
+
+
+async def _unlogged() -> list[PlacementRecord]:
+    return []
 
 
 def _to_price(
@@ -916,11 +927,15 @@ class FinancialAidDecisionsService:
         register: RegisterSource,
         *,
         clock: Callable[[], datetime] | None = None,
+        log_placements: bool = True,
     ) -> None:
+        """`log_placements` False: this service's live pricing neither reads nor writes the grant placement
+        log (3c-2). Only a scenario's frozen season passes it, because a scenario never writes (spec §7.4)."""
         self._store = store
         self._rules = rules
         self._register = register
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        self._logs_placements = log_placements
 
     async def _request_side(self, year: int, *, names: bool) -> _RequestSide:
         rules, applications, requests, corrections = await asyncio.gather(
@@ -980,21 +995,26 @@ class FinancialAidDecisionsService:
         return (await self._season(year, names=False))[0]
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
-        """The season's loads run as four concurrent branches: the requests with what hangs off them
+        """The season's loads run as five concurrent branches: the requests with what hangs off them
         (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
-        ledger (10b), and the cancellation events (10b-2). The registrations a cancellation reads hang off
-        the requests, so they are read in the first branch, once the requests say whose to read."""
+        ledger (10b), the cancellation events (10b-2), and the grant placement log (3c-2). The registrations
+        a cancellation reads hang off the requests, so they are read in the first branch, once the requests
+        say whose to read. The register's placement is logged before anything is priced."""
         (
             side,
             (sessions, shares, events, hold_events, register),
             (camp_lines, placements, splits, synced_at),
             cancel_events,
+            logged,
         ) = await asyncio.gather(
             self._request_side(year, names=names),
             self._rounds_side(year),
             self._ledger_side(year),
             self._store.fetch_cancellations(year),
+            self._store.fetch_grant_placements(year) if self._logs_placements else _unlogged(),
         )
+        if self._logs_placements:
+            await self._log_placements(year, register, logged)
         enrollments = side.enrollments
         rules = side.rules
         rounds = fold_rounds(events)
@@ -1085,6 +1105,18 @@ class FinancialAidDecisionsService:
             splits=splits,
         )
         return season, side.names
+
+    async def _log_placements(
+        self, year: int, register: Sequence[RegisterRow], logged: Sequence[PlacementRecord]
+    ) -> None:
+        """3c-2 (owner rulings 2026-09-30, 2026-10-01): log where the grants register placed each grant this
+        pricing reads, so a past date can replay it. One operation as system:grant-placement, only for grants
+        whose placement is new, changed or gone; nothing when the log already holds it. Strict: a failed write
+        fails the read, since a placement priced but not logged would leave that day's past view wrong.
+        Chunking is safe: each row stands alone, and the next read writes whatever a failed chunk left."""
+        writes = placement_writes(year, register, logged)
+        if writes:
+            await self._store.commit(writes, actor=PLACEMENT_ACTOR, reason=PLACEMENT_REASON, allow_chunking=True)
 
     def _past_day(self, as_of: date | None) -> date | None:
         """The past date a read shows, or None for the live read (no date, or today or later in camp time)."""
