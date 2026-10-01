@@ -471,3 +471,33 @@ async def test_a_gap_request_with_no_pool_leaves_the_other_pools_priced() -> Non
         ("bmitzvah_pool", 25000.0),
     ]
     assert remaining.total is None
+
+
+@pytest.mark.asyncio
+async def test_a_split_row_whose_posted_money_is_unknown_hides_each_payers_posted_and_needs_offer() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.requests[EMMA] = replace(store.requests[EMMA], equity=UNKNOWN_EQUITY)
+    store.shares = [share_row(EMMA, 1000001, "50"), share_row(EMMA, 1000002, "50")]
+    log_seeded(store, SEEDED)
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged
+    store.events.append(
+        DecisionEvent(
+            id="ev0000000000002",
+            request_id=EMMA,
+            round=1,
+            kind="post",
+            created=_day(3, 5),
+            amount=Decimal(1500),
+            effective_on=date(2027, 3, 5),
+            lock_source="tick",
+            rules_version=1,
+            snapshot={"pool": "camp_pool", "counts_toward_budget": True},
+        )
+    )
+    seed_line(store, 9001, "1500", person=0, posted=_day(3, 5))
+    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
+    assert row.total_posted is None
+    assert row.payer_count == 2
+    assert [(s.posted, s.needs_offer) for s in row.payer_shares] == [(None, None), (None, None)]
+    assert [s.decided for s in row.payer_shares] == [750.0, 750.0]

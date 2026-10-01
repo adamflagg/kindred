@@ -976,7 +976,16 @@ def _posted_unknown(row: GridRowOut) -> GridRowOut:
     """A past row whose payer shares or staff placements can't be replayed: whether CampMinder had
     reversed its posted money is unknown, so the money is left empty (never guessed)."""
     rounds = [r.model_copy(update={"posted": None, "clawed_back": False}) for r in row.rounds]
-    return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None})
+    # A payer's Needs an offer part is measured from the posted total, so it goes with its posted part.
+    shares = [s.model_copy(update={"posted": None, "needs_offer": None}) for s in row.payer_shares]
+    return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None, "payer_shares": shares})
+
+
+def _decided_unknown(row: GridRowOut) -> GridRowOut:
+    """A past row whose total decided is masked: its payers' parts of it are masked with it (⚠39), and the part of
+    the rounds that need an offer, which reads the same decided amounts."""
+    shares = [s.model_copy(update={"decided": None, "needs_offer": None}) for s in row.payer_shares]
+    return row.model_copy(update={"notes": None, "total_decided": None, "payer_shares": shares})
 
 
 def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
@@ -1635,11 +1644,11 @@ class FinancialAidDecisionsService:
                         "to_reverse": None,
                         "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
-                        **({"notes": None, "total_decided": None} if row.request_id in season.gapped else {}),
                     }
                 )
                 for row in rows
             ]
+            rows = [_decided_unknown(row) if row.request_id in season.gapped else row for row in rows]
             rows = [_posted_unknown(row) if row.request_id in season.posted_unknown else row for row in rows]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))
         rules_version = season.rules.version if season.rules is not None else None

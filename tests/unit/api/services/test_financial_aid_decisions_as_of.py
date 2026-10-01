@@ -792,3 +792,18 @@ async def test_a_past_dates_grid_names_a_payer_that_applied_for_nothing() -> Non
         (1000001, "Family 1000001"),
         (1000002, "Family 1000002"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_gapped_split_row_hides_each_payers_decided_and_needs_offer_with_its_own_total() -> None:
+    """A row whose total decided is masked (here equity_not_recorded) must not leak it through its payers' parts."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, household=1000001, person=1000011)  # no equity recorded yet: a priced-figure gap
+    store.shares = [share_row(EMMA, 1000001, "50"), share_row(EMMA, 1000002, "50")]
+    log_seeded(store, SEEDED)
+    _post_at(store, EMMA, LATE_ON_MAR_9)
+    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
+    assert row.total_decided is None
+    assert row.payer_count == 2
+    assert [(s.decided, s.needs_offer) for s in row.payer_shares] == [(None, None), (None, None)]
+    assert [s.posted for s in row.payer_shares] == [750.0, 750.0]  # the posted total is still known
