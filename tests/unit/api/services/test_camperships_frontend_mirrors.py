@@ -11,7 +11,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED, _ask_refusal
 from api.services.financial_aid_queues import ROUND_STATUS_LABELS
+from bunking.financial_aid.decisions.rounds import RoundState
 
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "camperships_frontend_mirrors.json"
 MIRRORS: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -19,3 +21,13 @@ MIRRORS: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 def test_the_round_status_words_are_the_servers() -> None:
     assert MIRRORS["round_status_labels"] == dict(ROUND_STATUS_LABELS)
+
+
+def test_the_appeal_refusals_are_the_writes_own() -> None:
+    """The grid's editor row says why an appeal can't be keyed, in the write's own words."""
+    words = MIRRORS["ask_refusals"]
+    posted = RoundState(round=1, posted=True)
+    assert _ask_refusal({1: posted, 2: RoundState(round=2, posted=True)}, 2) == words["round2_posted"]
+    assert _ask_refusal({1: RoundState(round=1)}, 2) == words["round1_not_posted"]
+    assert _ask_refusal({1: posted, 3: RoundState(round=3, posted=True)}, 2) == words["round3_posted"]
+    assert CANCELLED_IN_KINDRED == words["cancelled_in_kindred"]

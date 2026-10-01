@@ -65,10 +65,12 @@ function Walk({
   policy = REASON_POLICY.appeal_ask,
   label = 'Round 2 ask',
   go = () => undefined,
+  rowKeys,
 }: {
   policy?: TextReasonPolicy
   label?: string
   go?: () => void
+  rowKeys?: ReadonlySet<string>
 }) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
   // Bumped to remount every editor, as a refetch or a regrouping of the rows does.
@@ -82,6 +84,7 @@ function Walk({
     highlighted,
     setHighlighted: move,
     save: saveSpy,
+    rowKeys,
   })
   return (
     <>
@@ -564,5 +567,33 @@ describe('useEditorWalk: final fix wave (review probes)', () => {
     await userEvent.keyboard('500{Enter}')
     await act(async () => held[0]?.resolve())
     expect(amountField()).toHaveValue('500')
+  })
+})
+
+describe('useEditorWalk: rowKeys (build ruling 2)', () => {
+  it("drops a failure for a row the surface no longer has, so it can't hold a leave", async () => {
+    const go = vi.fn()
+    const { rerender } = renderWalk({ go })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}300')
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    expect(screen.getByText("Couldn't save r1: The server is down")).toBeInTheDocument()
+    rerender(<Page go={go} rowKeys={new Set(['r2', 'r3'])} />)
+    expect(screen.queryByText(/Couldn't save r1/)).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps holding a leave for a failure on a row it still has', async () => {
+    // Regression guard: the filter drops only rows the surface lost.
+    const go = vi.fn()
+    renderWalk({ go, rowKeys: new Set(['r1', 'r2', 'r3']) })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.keyboard('500{ArrowDown}300')
+    await act(async () => held[0]?.reject(new Error('The server is down')))
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Chen household' }))
+    expect(go).not.toHaveBeenCalled()
   })
 })
