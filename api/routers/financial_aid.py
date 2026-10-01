@@ -150,7 +150,7 @@ from api.schemas.financial_aid_scenarios import (
     ViewIn,
     WorkspaceOut,
 )
-from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse
+from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -167,6 +167,7 @@ from api.services.financial_aid_decisions_service import (
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
 from api.services.financial_aid_ledger_service import (
     FinancialAidLedgerService,
     FinancialAidNotFoundError,
@@ -1418,3 +1419,9 @@ async def get_definitions(
             for n, key in enumerate(keys, start=1)
         ],
     )
+
+
+@router.get("/jump-index/{year}", response_model=JumpIndexResponse)
+async def get_jump_index(year: _Year, user: AuthUser = _VIEW) -> JumpIndexResponse:
+    """The jump box's index (§3.5, D13): every household with aid activity this season, read once."""
+    return await JumpIndexService(JumpIndexRepository(pb)).read(year)

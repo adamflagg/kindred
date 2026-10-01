@@ -6,7 +6,7 @@ imports api.main."""
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,3 +77,33 @@ def test_a_surfaces_notes_are_numbered_from_1_with_the_camp_name_filled_in() -> 
 def test_an_unknown_surface_is_404_and_a_missing_one_422() -> None:
     assert _client().get("/api/financial-aid/definitions?surface=nowhere").status_code == 404
     assert _client().get("/api/financial-aid/definitions").status_code == 422
+
+
+# --- the jump box's index (§3.5, D13, D65) ---------------------------------------------------------
+
+
+def _stub_jump() -> Any:
+    from api.schemas.financial_aid_surfaces import JumpIndexResponse
+
+    service = patch("api.routers.financial_aid.JumpIndexService").start().return_value
+    service.read = AsyncMock(return_value=JumpIndexResponse(year=2031, households=[]))
+    return service
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_the_jump_index_is_view_only(persona: str) -> None:
+    """D65: a summary-only user has no jump box."""
+    _stub_jump()
+    response = _client(persona).get("/api/financial-aid/jump-index/2031")
+    assert response.status_code == (200 if VIEW in PERSONAS[persona] else 403), persona
+
+
+def test_the_jump_index_reads_the_season_asked() -> None:
+    service = _stub_jump()
+    assert _client().get("/api/financial-aid/jump-index/2031").json() == {"year": 2031, "households": []}
+    service.read.assert_awaited_once_with(2031)
+
+
+def test_the_jump_index_refuses_a_year_out_of_range() -> None:
+    _stub_jump()
+    assert _client().get("/api/financial-aid/jump-index/1999").status_code == 422

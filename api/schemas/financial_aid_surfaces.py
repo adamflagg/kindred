@@ -8,6 +8,8 @@ decisions, grants and ledger reads. None is "nothing there"; 0 is a real zero (D
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 # --- the definitions registry (§4.8, D20) ---------------------------------------------------------
@@ -24,3 +26,30 @@ class DefinitionNoteOut(BaseModel):
 class DefinitionsResponse(BaseModel):
     surface: str
     notes: list[DefinitionNoteOut]
+
+
+# --- the jump box's index (§3.5, D13, D27) ---------------------------------------------------------
+
+
+class JumpIndexPerson(BaseModel):
+    """A camper (with a request, a posting or a commitment in the household) or a parent its records name.
+    A parent has no CampMinder id here (the camper record's parent names carry none): person_cm_id None."""
+
+    person_cm_id: int | None
+    name: str  # "" when a camper isn't in this season's persons: the id still finds the household
+    role: Literal["camper", "parent"]
+
+
+class JumpIndexHousehold(BaseModel):
+    """One household with aid activity this season: an application, a request or a payer share, a posting
+    (live or reversed) or a grant commitment. The browser matches the family name, a person's name or either
+    CampMinder id, and Enter opens /aid/households/:household_cm_id."""
+
+    household_cm_id: int
+    family_name: str
+    people: list[JumpIndexPerson]
+
+
+class JumpIndexResponse(BaseModel):
+    year: int
+    households: list[JumpIndexHousehold]
