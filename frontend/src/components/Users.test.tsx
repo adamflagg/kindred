@@ -16,7 +16,7 @@ vi.mock('../hooks/usePermissions', () => ({
   }),
 }))
 
-let mockCurrentUserId = 'user-1'
+const mockCurrentUserId = 'user-1'
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { id: mockCurrentUserId },
@@ -129,28 +129,5 @@ describe('Users page shell', () => {
     // 4 mock rows, one is a stand-in: the Users tab count is 3 (and the stub table mounts).
     expect(await screen.findByRole('button', { name: /Users\s*3/ })).toBeInTheDocument()
     expect(await screen.findByTestId('users-table')).toBeInTheDocument()
-  })
-})
-
-// Parked for Task 10: the drawer's "Last full sign-in" line replaces these.
-describe.skip('Users drawer last sign-in label (migrated in Task 10)', () => {
-  beforeEach(() => {
-    mockHasPermission.mockReset()
-    mockIsAdmin = false
-    mockCurrentUserId = 'user-1'
-  })
-
-  it('renders Last login label for admin users', async () => {
-    mockIsAdmin = true
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    expect(screen.getAllByText('Last login').length).toBeGreaterThan(0)
-  })
-
-  it('does not render Last login label when canSeeLastLogin is false', async () => {
-    mockHasPermission.mockReturnValue(false)
-    renderUsers()
-    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
-    expect(screen.queryByText('Last login')).not.toBeInTheDocument()
   })
 })
