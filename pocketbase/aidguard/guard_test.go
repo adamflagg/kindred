@@ -292,3 +292,22 @@ func TestTwoConcurrentWritersFromOneReadOnlyOneCommits(t *testing.T) {
 		t.Fatalf("revision %d after one committed write, want 1", revision)
 	}
 }
+
+// One loaded record saved twice is two saves. PocketBase refreshes Original()
+// only when a record is loaded, never after a save, so the revision must come
+// from the stored row or the second save would not move it on.
+func TestSavingOneLoadedRecordTwiceMovesTheRevisionOnTwice(t *testing.T) {
+	app := newGuardApp(t, map[string]string{})
+	defer app.Cleanup()
+	record, err := app.FindRecordById("aid_rules", rulesID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Set("section_status", map[string]string{"income": "draft"})
+	mustSave(t, app, record)
+	record.Set("section_status", map[string]string{"income": "locked"})
+	mustSave(t, app, record)
+	if revision, _ := stored(t, app); revision != 2 {
+		t.Fatalf("revision %d after two saves of one loaded record, want 2", revision)
+	}
+}

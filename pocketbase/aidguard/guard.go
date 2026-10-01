@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -68,8 +69,17 @@ func startRevision(e *core.RecordEvent) error {
 
 // nextRevision: every save moves the revision on by one, whatever the request
 // sent, so no writer can hide a change from one that read the record earlier.
+// The stored row is the source, read through e.App (the transaction's app inside
+// a batch): PocketBase refreshes Original() only when a record is loaded, never
+// after a save, so one object saved twice would otherwise move on only once.
 func nextRevision(e *core.RecordEvent) error {
-	e.Record.Set(FieldRevision, e.Record.Original().GetInt(FieldRevision)+1)
+	var stored int
+	err := e.App.DB().Select(FieldRevision).From(e.Record.Collection().Name).
+		Where(dbx.HashExp{"id": e.Record.LastSavedPK()}).Row(&stored)
+	if err != nil {
+		return fmt.Errorf("read the stored %s of %s: %w", FieldRevision, e.Record.Id, err)
+	}
+	e.Record.Set(FieldRevision, stored+1)
 	return e.Next()
 }
 
