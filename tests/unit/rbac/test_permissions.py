@@ -149,8 +149,30 @@ class TestPermissionInfo:
 
     def test_admin_only_areas(self):
         assert ADMIN_ONLY_AREAS == (
-            "Manage › Sync",
+            "Manage › Sync page (bunking staff can still refresh data)",
             "Manage › Config",
             "Manage › Audit log",
+            "Summer › Debug",
+            "Camperships › Kit",
             "Creating and editing roles",
         )
+
+    def test_aid_view_screens_cover_every_view_gated_section(self):
+        """Every Camperships section financial_aid.view opens (aidNav.ts) is listed."""
+        paths = [s.path for s in PERMISSION_INFO["financial_aid.view"].screens]
+        assert paths == ["/aid", "/aid/requests", "/aid/grants", "/aid/money", "/aid/season", "/aid/reports"]
+
+    def test_add_on_permissions_say_they_add_to_what_view_opens(self):
+        """casework and rules keep their screens but must read as additions."""
+        for code in ("financial_aid.casework", "financial_aid.rules"):
+            assert "financial_aid.view" in PERMISSION_DESCRIPTIONS[code], code
+        assert "Scenarios" in PERMISSION_DESCRIPTIONS["financial_aid.rules"]
+
+    def test_bunking_manage_does_not_claim_to_open_the_boards(self):
+        """The Summer and Weekend boards are open to every signed-in user (App.tsx)."""
+        text = PERMISSION_DESCRIPTIONS["bunking.manage"]
+        assert "every signed-in user" in text or "anyone signed in" in text
+        assert "Adds" in text
+
+    def test_staff_hiring_discloses_admin_only_data(self):
+        assert "admin" in PERMISSION_DESCRIPTIONS["staff.hiring"].lower()

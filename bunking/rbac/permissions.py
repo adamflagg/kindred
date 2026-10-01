@@ -33,15 +33,17 @@ ALL_PERMISSIONS: frozenset[str] = frozenset(getattr(Permission, attr) for attr i
 
 PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.BUNKING_MANAGE: (
-        "Place campers and families: edit bunk requests, run scenarios and the solver, "
-        "and edit the summer and weekend boards."
+        "Adds placing and editing. The Summer and Weekend boards are open to every signed-in user; "
+        "this permission adds editing bunk requests, scenarios, the solver, board edits and lodging admin."
     ),
     Permission.FINANCIAL_AID_CASEWORK: (
-        "Work a family's aid: move stages, record cancellations, set appeal amounts and "
-        "cost overrides, assign grants, clear the posting worklist."
+        "Adds editing actions on the Camperships screens that financial_aid.view opens: on Requests and "
+        "household pages, move stages, record cancellations, set appeal amounts and cost overrides, "
+        "assign grants and clear the posting worklist. The server enforces it."
     ),
     Permission.FINANCIAL_AID_RULES: (
-        "Set the aid rules and budget, run scenarios, approve rounds and set session capacity."
+        "Adds, on the Camperships screens that financial_aid.view opens, the Season › Scenarios tab "
+        "and editing the aid rules and budget, approving rounds and setting session capacity."
     ),
     Permission.FINANCIAL_AID_SUMMARY: (
         "See Camperships totals for reporting. Small groups are hidden, so no family can be picked out."
@@ -53,7 +55,9 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.METRICS_GEO: "See and edit the geographic data behind the maps.",
     Permission.REGISTRATION_MANAGE: "Set registration dates, budgets and grade eligibility.",
     Permission.SHEETS_EXPORT: "Run the Google Sheets exports and see how they went.",
-    Permission.STAFF_HIRING: "See the staff cabin-retention analysis.",
+    Permission.STAFF_HIRING: (
+        "Opens Staff Analysis. Its staff data is admin-only today, so only admins see figures there."
+    ),
     Permission.USERS_MANAGE: (
         "Give and remove other staff's roles. The Users page won't let them change admins or their own roles."
     ),
@@ -101,7 +105,14 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
         "Camperships: family detail",
         "Family detail",
         "Camperships",
-        (Screen("Camperships", "/aid"), Screen("Camperships › Requests", "/aid/requests")),
+        (
+            Screen("Camperships", "/aid"),
+            Screen("Camperships › Requests", "/aid/requests"),
+            Screen("Camperships › Grants", "/aid/grants"),
+            Screen("Camperships › Money", "/aid/money"),
+            Screen("Camperships › Season", "/aid/season"),
+            Screen("Camperships › Reports", "/aid/reports"),
+        ),
     ),
     Permission.FINANCIAL_AID_SUMMARY: PermissionInfo(
         "Camperships: totals only",
@@ -144,8 +155,10 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
 }
 
 ADMIN_ONLY_AREAS: tuple[str, ...] = (
-    "Manage › Sync",
+    "Manage › Sync page (bunking staff can still refresh data)",
     "Manage › Config",
     "Manage › Audit log",
+    "Summer › Debug",
+    "Camperships › Kit",
     "Creating and editing roles",
 )
