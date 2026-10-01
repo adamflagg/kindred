@@ -15,17 +15,25 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Final
 
-from api.constants.collections import AID_DECISIONS, AID_HOLD_EVENTS, AID_POSTINGS, SYNC_RUNS
+from api.constants.collections import (
+    AID_CANCELLATIONS,
+    AID_DECISIONS,
+    AID_HOLD_EVENTS,
+    AID_POSTINGS,
+    ATTENDEES,
+    SYNC_RUNS,
+)
+from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState, parse_reason
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_grants_register import Placement
-from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
+from api.services.financial_aid_intake_repository import PERSON_FILTER_CHUNK, FinancialAidIntakeRepository
 from api.services.financial_aid_ledger_service import (
     aid_dollars,
     household_display_name,
     parse_pb_datetime,
     person_display_name,
 )
-from api.services.financial_aid_reconciliation import CampLine, LineOverride, override_placement
+from api.services.financial_aid_reconciliation import CampLine, LineOverride, camp_date, override_placement
 from api.services.financial_aid_repository import FinancialAidRepository
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -119,6 +127,45 @@ def line_placement(record: Any) -> Placement | None:
     return override_placement(line_override(record).fields())
 
 
+_CANCEL_KINDS: Final = frozenset({"cancel", "reopen"})
+# Enrolled, cancelled, withdrawn: the only attendee statuses a cancellation turns on.
+_ENROLLMENT_FILTER: Final = "status_id = 2 || status_id = 32 || status_id = 256"
+_ENROLLMENT_FIELDS: Final = "id,person_id,status_id,enrollment_date,expand.person.household_id,expand.session.cm_id"
+
+
+def cancel_event(record: Any) -> CancelEvent:
+    """One aid_cancellations record as an event (sub-project 10b-2)."""
+    kind = str(record.event)
+    if kind not in _CANCEL_KINDS:
+        raise ValueError(f"aid_cancellations {record.id}: unknown event {kind!r}")
+    created = parse_pb_datetime(getattr(record, "created", None))
+    if created is None:
+        raise ValueError(f"aid_cancellations {record.id} has no created time")
+    return CancelEvent(
+        id=str(record.id),
+        request_id=str(record.request),
+        kind="cancel" if kind == "cancel" else "reopen",
+        created=created,
+        reason=parse_reason(getattr(record, "reason", "")),
+        in_kindred=bool(getattr(record, "in_kindred", False)),
+        note=str(getattr(record, "note", "") or ""),
+        actor=str(getattr(record, "actor", "") or ""),
+    )
+
+
+def enrollment_state(record: Any) -> EnrollmentState:
+    """One attendees record (expanded person and session) as an enrollment state."""
+    expand = getattr(record, "expand", None) or {}
+    changed = parse_pb_datetime(getattr(record, "enrollment_date", None))
+    return EnrollmentState(
+        person_cm_id=int(record.person_id or 0),
+        household_cm_id=int(getattr(expand.get("person"), "household_id", 0) or 0),
+        session_cm_id=int(getattr(expand.get("session"), "cm_id", 0) or 0),
+        status_id=int(record.status_id or 0),
+        changed_on=camp_date(changed) if changed is not None else None,
+    )
+
+
 def hold_event(record: Any) -> HoldEvent:
     """One aid_hold_events record as an event (follow-up 3b)."""
     kind = str(record.event)
@@ -181,6 +228,48 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             raise ValueError(f"{request_id!r} is not a record id")
         rows = await self._page(AID_HOLD_EVENTS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
         return [hold_event(row) for row in rows]
+
+    async def fetch_cancellations(self, year: int) -> list[CancelEvent]:
+        rows = await self._page(AID_CANCELLATIONS, {"filter": f"year = {int(year)}", "sort": "created,id"})
+        return [cancel_event(row) for row in rows]
+
+    async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]:
+        if not _PB_ID.fullmatch(request_id):
+            raise ValueError(f"{request_id!r} is not a record id")
+        rows = await self._page(AID_CANCELLATIONS, {"filter": f'request = "{request_id}"', "sort": "created,id"})
+        return [cancel_event(row) for row in rows]
+
+    async def fetch_enrollment_states(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[EnrollmentState]:
+        """The enrolled, cancelled and withdrawn registrations of these campers (camper-level requests)
+        and of everyone in these households (household-level, Family Camp, requests), with each person's
+        household and session. Never the whole season: only the people the requests name. The chunks
+        are read concurrently."""
+        chunks: list[str] = []
+        for field, ids in (("person_id", person_cm_ids), ("person.household_id", household_cm_ids)):
+            wanted = sorted({int(i) for i in ids if int(i) > 0})
+            chunks.extend(
+                " || ".join(f"{field} = {i}" for i in wanted[start : start + PERSON_FILTER_CHUNK])
+                for start in range(0, len(wanted), PERSON_FILTER_CHUNK)
+            )
+        found = await asyncio.gather(
+            *(
+                self._page(
+                    ATTENDEES,
+                    {
+                        "filter": f"year = {int(year)} && ({_ENROLLMENT_FILTER}) && ({chunk})",
+                        "expand": "person,session",
+                        "fields": _ENROLLMENT_FIELDS,
+                        "sort": "id",
+                    },
+                )
+                for chunk in chunks
+            )
+        )
+        # A household member may also be named: one row each.
+        rows: dict[str, Any] = {str(row.id): row for batch in found for row in batch}
+        return [enrollment_state(row) for row in rows.values()]
 
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]

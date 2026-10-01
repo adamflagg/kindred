@@ -19,13 +19,15 @@ import httpx
 from api.constants.collections import (
     AID_APPLICATIONS,
     AID_ATTRIBUTION_OVERRIDES,
+    AID_CANCELLATIONS,
     AID_DECISIONS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
     AID_REQUESTS,
     AID_RULES,
 )
-from api.services.financial_aid_decisions_repository import decision_event, hold_event
+from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
+from api.services.financial_aid_decisions_repository import cancel_event, decision_event, hold_event
 from api.services.financial_aid_grants_register import Placement, RegisterRow, RequestShare
 from api.services.financial_aid_intake_plan import application_fields, request_fields
 from api.services.financial_aid_intake_types import (
@@ -68,6 +70,9 @@ class FakeDecisionsStore:
         self.camp_line_reads: list[bool] = []  # each fetch_camp_lines call's recorded_times, in order
         self.placements: dict[int, Placement] = {}
         self.synced_at: datetime | None = None  # the last successful ledger sync covering YEAR; None = never
+        self.cancel_events: list[CancelEvent] = []
+        self.enrollments: list[EnrollmentState] = []
+        self.enrollment_reads: list[tuple[frozenset[int], frozenset[int]]] = []  # each read's (persons, households)
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -113,6 +118,19 @@ class FakeDecisionsStore:
 
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
         return [e for e in self.hold_events if e.request_id == request_id]
+
+    async def fetch_cancellations(self, year: int) -> list[CancelEvent]:
+        return [e for e in self.cancel_events if self.requests[e.request_id].year == year]
+
+    async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]:
+        return [e for e in self.cancel_events if e.request_id == request_id]
+
+    async def fetch_enrollment_states(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[EnrollmentState]:
+        """As the repository reads them: only the named campers' rows and the named households'."""
+        self.enrollment_reads.append((frozenset(person_cm_ids), frozenset(household_cm_ids)))
+        return [e for e in self.enrollments if e.person_cm_id in person_cm_ids or e.household_cm_id in household_cm_ids]
 
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """As the repository reads them: without the recorded times unless asked for (a past read)."""
@@ -174,6 +192,9 @@ class FakeDecisionsStore:
             elif collection == AID_HOLD_EVENTS:
                 self._clock += timedelta(seconds=1)
                 self.hold_events.append(hold_event(SimpleNamespace(**body, created=self._clock.isoformat())))
+            elif collection == AID_CANCELLATIONS:
+                self._clock += timedelta(seconds=1)
+                self.cancel_events.append(cancel_event(SimpleNamespace(**body, created=self._clock.isoformat())))
             elif collection == AID_RULES:
                 self.rules_writes.append(body)
             else:

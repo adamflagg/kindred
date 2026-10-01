@@ -20,6 +20,8 @@ rules-section locks in that same batch (Decision 11). A write that changes nothi
 the helper refuses an empty operation, and change_row refuses a no-op, which would be a 500.
 Holds (follow-up 3b): releasing a check's hold, putting it back, and placing or lifting a manual hold
 are each one operation of one aid_hold_events row with a required note.
+Cancellations (sub-project 10b-2): cancelling a request with its reason, or reopening one cancelled in
+Kindred, is one operation of one aid_cancellations row with a required reason.
 
 Pricing uses the season's newest rules version whose pricing sections are all approved or locked
 (PRICING_SECTIONS). With none, every live request is held and nothing is allocated.
@@ -38,6 +40,7 @@ from typing import Any, Final, Protocol
 
 from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
+    AID_CANCELLATIONS,
     AID_DECISIONS,
     AID_HOLD_EVENTS,
     AID_PAYER_SHARES,
@@ -49,6 +52,8 @@ from api.schemas.financial_aid_decisions import (
     AsOfAxis,
     BelowTheLineOut,
     BudgetResponse,
+    CancellationIn,
+    CancellationOut,
     CellOut,
     ChangedRowOut,
     ConfirmationOut,
@@ -72,6 +77,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCountsOut,
     RoundOut,
     ShareConfirmationOut,
+    TodoOut,
     UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
@@ -82,6 +88,20 @@ from api.services.financial_aid_calc_inputs import (
     priced_program,
     request_issues,
     to_application_inputs,
+)
+from api.services.financial_aid_cancellations import (
+    CANCEL_REASON_LABELS,
+    TODO_CANCEL_REASON,
+    TODO_CANCEL_REASON_TEXT,
+    CancelEvent,
+    Cancellation,
+    CancelState,
+    EnrollmentState,
+    cancellations_by_request,
+    enrollment_cancelled,
+    fold_cancellations,
+    needs_reason,
+    withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
 from api.services.financial_aid_grants_register import (
@@ -95,6 +115,7 @@ from api.services.financial_aid_intake_repository import request_record
 from api.services.financial_aid_intake_types import (
     STATUS_ACTIVE,
     STATUS_UNMATCHED,
+    STATUS_WITHDRAWN,
     ApplicationRecord,
     CorrectionRecord,
     EquityAnswers,
@@ -190,6 +211,9 @@ _WHY_NOT: Final[Mapping[str, str]] = {
     "not_decided": "has no amount keyed yet",
 }
 
+# Decision 14 (plan review 2026-09-30): a request the registrar cancelled takes no new decisions.
+CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
+
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
 
@@ -234,6 +258,11 @@ class DecisionsStore(Protocol):
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
+    async def fetch_cancellations(self, year: int) -> list[CancelEvent]: ...
+    async def fetch_request_cancellations(self, request_id: str) -> list[CancelEvent]: ...
+    async def fetch_enrollment_states(
+        self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
+    ) -> list[EnrollmentState]: ...
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -281,6 +310,11 @@ class Season:
     shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
     undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
     posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
+    # Sub-project 10b-2: the cancelled live requests (D101). Empty on a past read (not rebuilt).
+    cancellations: Mapping[str, Cancellation] = field(default_factory=dict)
+    # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
+    # with posted camp aid still live (D54's forgotten reversal). Empty on a past read.
+    to_reverse: frozenset[str] = frozenset()
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -301,13 +335,15 @@ class _PastLedgerInputs:
 @dataclass(frozen=True)
 class _RequestSide:
     """The season's loads that hang off its requests: rules, applications, corrections, equity
-    answers, and (for the grid) the family and camper names."""
+    answers, the registrations a cancellation reads (10b-2), and (for the grid) the family and camper
+    names."""
 
     rules: RulesVersion | None
     applications: list[ApplicationRecord]
     requests: list[RequestRecord]
     corrections: list[CorrectionRecord]
     equity: dict[int, EquityAnswers]
+    enrollments: list[EnrollmentState]
     names: Names
 
 
@@ -325,12 +361,13 @@ def _to_price(
     rounds: Mapping[int, RoundState],
     grants: tuple[GrantInput, ...],
     rules: AidRules | None,
+    cancelled: bool = False,
 ) -> RequestToPrice:
     ask = effective_ask(request, corrections)
     answers = effective_values(
         application.answers if application is not None else {}, APPLICATION_CORRECTABLE, corrections
     )
-    live = request.status in _LIVE
+    live = request.status in _LIVE and not cancelled  # a cancelled request is not live (10b-2 Decision 14)
 
     def build(
         app_inputs: ApplicationInputs, inputs: RequestInputs | None, blocked: str, issues: tuple[CalcIssue, ...]
@@ -349,7 +386,7 @@ def _to_price(
         )
 
     if not live or application is None:
-        blocked = request.status if not live else "no application for this request"
+        blocked = ("cancelled" if cancelled else request.status) if not live else "no application for this request"
         return build(ApplicationInputs(household_cm_id=request.household_cm_id), None, blocked, ())
     if rules is None:
         issues = tuple(request_issues(request, application.flags, answers, shares, None))
@@ -489,6 +526,20 @@ def _confirmation_out(c: Confirmation) -> ConfirmationOut:
     )
 
 
+def _enrollment_scope(requests: Iterable[RequestRecord]) -> tuple[set[int], set[int]]:
+    """Whose registrations a cancellation reads (SP10b-2): the camper of each live or withdrawn
+    camper-level request, and the household of each household-level (Family Camp) one."""
+    wanted = [r for r in requests if r.status in _LIVE or r.status == STATUS_WITHDRAWN]
+    return (
+        {r.person_cm_id for r in wanted if r.person_cm_id > 0},
+        {r.household_cm_id for r in wanted if r.person_cm_id <= 0},
+    )
+
+
+def _cancellation_out(c: Cancellation) -> CancellationOut:
+    return CancellationOut(by=c.by, on=c.on, reason=c.reason, note=c.note)
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -499,6 +550,8 @@ def grid_row(
     hold: HoldState,
     *,
     confirmation: Confirmation | None = None,
+    cancellation: Cancellation | None = None,
+    to_reverse: bool = False,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -548,6 +601,13 @@ def grid_row(
         ],
         notes=[_issue(i) for i in priced.notes],
         confirmation=_confirmation_out(confirmation) if confirmation is not None else None,
+        cancellation=_cancellation_out(cancellation) if cancellation is not None else None,
+        to_reverse=to_reverse,
+        todos=(
+            [TodoOut(code=TODO_CANCEL_REASON, message=TODO_CANCEL_REASON_TEXT)]
+            if needs_reason(cancellation, request.year)
+            else []
+        ),
     )
 
 
@@ -802,11 +862,12 @@ class FinancialAidDecisionsService:
         )
         people = sorted({r.person_cm_id for r in requests if r.person_cm_id > 0})
         households = {r.household_cm_id for r in requests}
-        equity, found = await asyncio.gather(
+        equity, enrollments, found = await asyncio.gather(
             self._store.fetch_equity_answers(year, people),
+            self._store.fetch_enrollment_states(year, *_enrollment_scope(requests)),
             self._store.fetch_names(year, households, people) if names else _no_names(),
         )
-        return _RequestSide(rules, applications, requests, corrections, equity, found)
+        return _RequestSide(rules, applications, requests, corrections, equity, enrollments, found)
 
     async def _rounds_side(
         self, year: int
@@ -847,16 +908,22 @@ class FinancialAidDecisionsService:
         return (await self._season(year, names=False))[0]
 
     async def _season(self, year: int, *, names: bool) -> tuple[Season, Names]:
-        """The season's loads run as three concurrent branches: the requests with what hangs off them
-        (the names too, when asked), the sessions, shares, events and grants register, and the
-        CampMinder ledger (10b)."""
+        """The season's loads run as four concurrent branches: the requests with what hangs off them
+        (the names too, when asked), the sessions, shares, events and grants register, the CampMinder
+        ledger (10b), and the cancellation events (10b-2). The registrations a cancellation reads hang off
+        the requests, so they are read in the first branch, once the requests say whose to read."""
         (
             side,
             (sessions, shares, events, hold_events, register),
             (camp_lines, placements, synced_at),
+            cancel_events,
         ) = await asyncio.gather(
-            self._request_side(year, names=names), self._rounds_side(year), self._ledger_side(year)
+            self._request_side(year, names=names),
+            self._rounds_side(year),
+            self._ledger_side(year),
+            self._store.fetch_cancellations(year),
         )
+        enrollments = side.enrollments
         rules = side.rules
         rounds = fold_rounds(events)
         holds = fold_holds(hold_events)
@@ -867,6 +934,8 @@ class FinancialAidDecisionsService:
             own[correction.application_id].append(correction)
         session_map = {s.cm_id: s for s in sessions}
         document = rules.document if rules is not None else None
+        # Sub-project 10b-2: a cancelled request is not live (spec §5.3, Decision 14), so it is priced that way.
+        cancellations = cancellations_by_request(side.requests, cancel_events, enrollments, sessions)
         items = {
             r.id: with_holds(
                 _to_price(
@@ -879,12 +948,19 @@ class FinancialAidDecisionsService:
                     rounds.get(r.id, {}),
                     tuple(grants.get(r.id, [])),
                     document,
+                    cancelled=r.id in cancellations,
                 ),
                 holds.get(r.id, NO_HOLDS),
             )
             for r in side.requests
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
+        for request in side.requests:
+            if request.id in cancellations:
+                # Decision 19: a cancelled request keeps the program and pool live pricing gives it, so
+                # the grid still names them and its outside grants stay in its pool, not in No pool.
+                key, pool = _home(request, session_map, document)
+                priced[request.id] = replace(priced[request.id], program_key=key, pool=pool)
         # Sub-project 10b: the CampMinder ledger. Each camp-aid line on its one request (main spec §11),
         # money CampMinder reversed back in Remaining (D54), and the Note on unticked rows (D81).
         shares_of = _shares_by_request(shares)
@@ -908,6 +984,13 @@ class FinancialAidDecisionsService:
                 reversed_on[request.id] = day
             note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
             priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
+        withdrawn = withdrawn_on_cancelled_enrollments(side.requests, enrollments, sessions)
+        to_reverse = frozenset(
+            r.id
+            for r in side.requests
+            if (r.id in cancellations and any(line.live() for line in ledger.lines(r.id)))
+            or (r.id in withdrawn and any(line.live() for line in ledger.closed_lines(r.id)))
+        )
         season = Season(
             year=year,
             rules=rules,
@@ -921,6 +1004,8 @@ class FinancialAidDecisionsService:
             reversed_on=reversed_on,
             shares=shares_of,
             undone=undone_rounds(events),
+            cancellations=cancellations,
+            to_reverse=to_reverse,
         )
         return season, side.names
 
@@ -948,13 +1033,13 @@ class FinancialAidDecisionsService:
             # BEFORE the log read starts (approved_as_of orders its reads the same way). The rules
             # read, and the other reads, overlap freely.
             today = await self._store.fetch_requests(year)
-            log, corrections, sessions, events, hold_events, ledger_in = await asyncio.gather(
+            log, corrections, sessions, events, hold_events, (ledger_in, cancel_events) = await asyncio.gather(
                 self._store.fetch_change_log(year, AID_REQUESTS),
                 self._store.fetch_corrections(year, None),
                 self._store.fetch_sessions(year),
                 self._store.fetch_decision_events(year),
                 self._store.fetch_hold_events(year),
-                self._past_ledger_side(year),
+                asyncio.gather(self._past_ledger_side(year), self._store.fetch_cancellations(year)),
             )
             rules, gaps = await rules_read
         finally:
@@ -963,6 +1048,9 @@ class FinancialAidDecisionsService:
         requests, unrebuilt, deleted = _requests_as_of(log, at, today)
         rounds = fold_rounds(events, as_of=at, posted_by=day if axis == "campminder" else None)
         holds = fold_holds(hold_events, as_of=at)
+        # Decision 21: a cancellation in Kindred is dated, so it applies as of the date (on created, on
+        # both axes); CampMinder's is not rebuilt (GRID_GAPS' cancellation).
+        in_kindred = {rid for rid, state in fold_cancellations(cancel_events, as_of=at).items() if state.in_kindred}
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
         for correction in _dated_by(corrections, at):
@@ -978,7 +1066,7 @@ class FinancialAidDecisionsService:
                 request.household_cm_id,
                 rounds.get(request_id, {}),
                 document,
-                live=rebuilt and request.status in _LIVE,
+                live=rebuilt and request.status in _LIVE and request_id not in in_kindred,
                 r1_ask=Decimal(ask.effective) if rebuilt and ask.effective != "" else None,
                 hold=holds.get(request_id, NO_HOLDS),
                 pool=pool,
@@ -1149,6 +1237,8 @@ class FinancialAidDecisionsService:
                 campers,
                 season.holds.get(rid, NO_HOLDS),
                 confirmation=self._confirmation(season, rid),
+                cancellation=season.cancellations.get(rid),
+                to_reverse=rid in season.to_reverse,
             )
             for rid, priced in season.priced.items()
         ]
@@ -1158,6 +1248,10 @@ class FinancialAidDecisionsService:
                     update={
                         "notes": None,
                         "total_decided": None,
+                        # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
+                        "cancellation": None,
+                        "to_reverse": None,
+                        "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
                     }
                 )
@@ -1294,13 +1388,45 @@ class FinancialAidDecisionsService:
             note=note,
         )
 
+    @staticmethod
+    def _cancel_write(request: RequestRecord, kind: str, actor: str, **fields: Any) -> AidWrite:
+        """One aid_cancellations row and its log line (entity aid_cancellations, id the request's). A
+        field given as None is left out."""
+        data: dict[str, Any] = {
+            "year": request.year,
+            "request": request.id,
+            "event": kind,
+            "actor": actor,
+            **{key: value for key, value in fields.items() if value is not None},
+        }
+        return AidWrite(
+            collection=AID_CANCELLATIONS,
+            action="create",
+            year=request.year,
+            data=data,
+            after=data,
+            log_action=kind,
+            entity_id=request.id,
+        )
+
     async def _live(self, request_id: str) -> tuple[RequestRecord, dict[int, RoundState]]:
         request = await self._store.fetch_request(request_id)
         if request is None:
             raise DecisionNotFoundError("no such request")
         if request.status not in _LIVE:
             raise DecisionRefusedError(f"a {request.status} request takes no new asks or amounts")
-        rounds = fold_rounds(await self._store.fetch_request_events(request.id)).get(request.id, {})
+        events, cancels, enrollments, sessions = await asyncio.gather(
+            self._store.fetch_request_events(request.id),
+            self._store.fetch_request_cancellations(request.id),
+            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_sessions(request.year),
+        )
+        # "Reopen it first" only while Kindred's cancellation stands: once CampMinder cancels the
+        # enrollment too it wins (as on the grid), and reopening is refused, so refusing here would strand staff.
+        cancelled = cancellations_by_request([request], cancels, enrollments, sessions).get(request.id)
+        if cancelled is not None and cancelled.by == "kindred":
+            raise DecisionRefusedError(CANCELLED_IN_KINDRED)
+        rounds = fold_rounds(events).get(request.id, {})
         return request, dict(rounds)
 
     async def _approved_rules(self, year: int) -> RulesVersion:
@@ -1403,6 +1529,10 @@ class FinancialAidDecisionsService:
             view = priced.view(n)
             if view is not None and view.status == "posted":
                 unchanged += 1
+                continue
+            cancelled = season.cancellations.get(request_id)
+            if cancelled is not None and cancelled.by == "kindred":
+                problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
                 continue
             if view is None or view.status != "needs_offer" or view.decided is None:
                 why = _WHY_NOT.get(view.status, "cannot be posted") if view is not None else "has nothing decided"
@@ -1535,10 +1665,68 @@ class FinancialAidDecisionsService:
             sections_not_locked=list(not_locked),
         )
 
+    async def set_cancellation(self, request_id: str, body: CancellationIn, actor: str) -> DecisionWriteOut:
+        """D101 as amended by D141: cancel a request with a reason from the fixed list, or reopen one
+        cancelled in Kindred. On a request CampMinder already cancelled, cancelling only records the
+        reason; on an enrolled camper it cancels the request in Kindred (the family declined, or wants
+        no aid). Reopening undoes only a Kindred cancellation: CampMinder's is undone by re-enrolling
+        there. A reason is changed by cancelling again: the latest wins."""
+        request = await self._store.fetch_request(request_id)
+        if request is None:
+            raise DecisionNotFoundError("no such request")
+        if request.status not in _LIVE:
+            raise DecisionRefusedError(f"a {request.status} request can't be cancelled or reopened")
+        events, enrollments, sessions = await asyncio.gather(
+            self._store.fetch_request_cancellations(request.id),
+            self._store.fetch_enrollment_states(request.year, *_enrollment_scope([request])),
+            self._store.fetch_sessions(request.year),
+        )
+        state = fold_cancellations(events).get(request.id, CancelState())
+        in_campminder, _ = enrollment_cancelled(request, enrollments, {s.cm_id: s.session_type for s in sessions})
+        if body.cancelled:
+            if body.reason is None:  # the model refuses this; narrowed for mypy
+                raise DecisionRefusedError("a cancellation needs its reason")
+            # A reason edited after CampMinder also cancelled keeps Kindred's cancellation (the family
+            # declined), so a later re-enrolment in CampMinder does not bring the request back.
+            in_kindred = state.in_kindred or not in_campminder
+            if state.reason is not None and (state.reason, state.note, state.in_kindred) == (
+                body.reason,
+                body.note,
+                in_kindred,
+            ):
+                return self._unchanged(request.year)
+            label = CANCEL_REASON_LABELS[body.reason]
+            write = self._cancel_write(
+                request, "cancel", actor, reason=body.reason, in_kindred=in_kindred, note=body.note or None
+            )
+            reason = f"{label}: {body.note}" if body.note else label
+        else:
+            if in_campminder:
+                raise DecisionRefusedError(
+                    "CampMinder cancelled this enrollment: re-enroll the camper there to reopen it "
+                    "(a reason can be changed by cancelling again)"
+                )
+            if not state.in_kindred and state.reason is None:
+                return self._unchanged(request.year)
+            write = self._cancel_write(request, "reopen", actor, note=body.note)
+            reason = body.note
+        result = await self._store.commit([write], actor=actor, reason=reason, require_reason=True)
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
     async def tick_accepted(self, year: int, body: AcceptedIn, actor: str) -> DecisionWriteOut:
         """The Accepted tick, single or bulk (D47: no ledger meaning; shown, never subtracted, D53)."""
         requests = {r.id: r for r in await self._store.fetch_requests(year)}
-        rounds = fold_rounds(await self._store.fetch_decision_events(year))
+        # Only the requests being ticked: their registrations, never every aid camper of the season.
+        ticked = [requests[rid] for rid in dict.fromkeys(row.request_id for row in body.rows) if rid in requests]
+        events, cancel_events, sessions, enrollments = await asyncio.gather(
+            self._store.fetch_decision_events(year),
+            self._store.fetch_cancellations(year),
+            self._store.fetch_sessions(year),
+            self._store.fetch_enrollment_states(year, *_enrollment_scope(ticked)),
+        )
+        rounds = fold_rounds(events)
+        cancelled = cancellations_by_request(ticked, cancel_events, enrollments, sessions)
+        in_kindred = {rid for rid, c in cancelled.items() if c.by == "kindred"}
         writes: list[AidWrite] = []
         problems: list[str] = []
         unchanged = 0
@@ -1549,6 +1737,8 @@ class FinancialAidDecisionsService:
             state = rounds.get(request_id, {}).get(n, RoundState(round=n))
             if state.accepted == body.accepted:
                 unchanged += 1
+            elif body.accepted and request_id in in_kindred:
+                problems.append(f"{request_id}: {CANCELLED_IN_KINDRED}")
             elif not state.posted:
                 problems.append(f"{request_id}: Round {n} is not posted")
             else:

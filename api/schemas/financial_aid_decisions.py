@@ -117,6 +117,37 @@ class ConfirmationOut(BaseModel):
     shares: list[ShareConfirmationOut]
 
 
+# D141's nine cancel reasons (api.services.financial_aid_cancellations.CancelReason; a test pins them equal).
+CancelReasonOut = Literal[
+    "aid_not_enough",
+    "medical",
+    "schedule",
+    "not_ready",
+    "did_not_want_to_appeal",
+    "not_financially_related",
+    "early_cancel",
+    "another_reason",
+    "not_known",
+]
+
+
+class CancellationOut(BaseModel):
+    """A cancelled request (D101): by CampMinder (the enrollment; `on` is its cancellation day) or in
+    Kindred (the registrar; `on` is the day it was recorded). reason None = none given yet."""
+
+    by: Literal["campminder", "kindred"]
+    on: date | None
+    reason: CancelReasonOut | None
+    note: str
+
+
+class TodoOut(BaseModel):
+    """A to-do on the row: neither a hold nor a Note ("Cancelled: give a reason", D101)."""
+
+    code: str
+    message: str
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -139,6 +170,10 @@ class GridRowOut(BaseModel):
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
     confirmation: ConfirmationOut | None = None
+    # Sub-project 10b-2. None on a past read: cancellations aren't rebuilt as of a date (not_rebuilt).
+    cancellation: CancellationOut | None = None
+    to_reverse: bool | None = False  # cancelled with camp aid still live in CampMinder (spec §6.2, D54)
+    todos: list[TodoOut] | None = Field(default_factory=list)
 
 
 class RequestsGridResponse(BaseModel):
@@ -303,6 +338,28 @@ class ManualHoldIn(BaseModel):
 
     held: bool
     note: _Reason
+
+
+class CancellationIn(BaseModel):
+    """D101 as amended by D141. cancelled=true records a reason from the fixed list; it cancels the
+    request in Kindred when CampMinder hasn't cancelled the enrollment. "another_reason" needs a note.
+    cancelled=false reopens a request cancelled in Kindred and needs a note saying why (main spec §14.4)."""
+
+    cancelled: bool
+    reason: CancelReasonOut | None = None
+    note: _Note = ""
+
+    @model_validator(mode="after")
+    def _d141(self) -> CancellationIn:
+        if self.cancelled and self.reason is None:
+            raise ValueError("a cancellation needs its reason (D141)")
+        if self.cancelled and self.reason == "another_reason" and not self.note:
+            raise ValueError('"another reason" needs a note')
+        if not self.cancelled and self.reason is not None:
+            raise ValueError("reopening takes no reason")
+        if not self.cancelled and not self.note:
+            raise ValueError("reopening needs a note saying why")
+        return self
 
 
 class AcceptedIn(BaseModel):

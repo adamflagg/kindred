@@ -15,6 +15,7 @@ export const Collections = {
   AidApplicationCorrections: 'aid_application_corrections',
   AidApplications: 'aid_applications',
   AidAttributionOverrides: 'aid_attribution_overrides',
+  AidCancellations: 'aid_cancellations',
   AidChangeLog: 'aid_change_log',
   AidDecisions: 'aid_decisions',
   AidFlagDispositions: 'aid_flag_dispositions',
@@ -291,6 +292,38 @@ export type AidAttributionOverridesRecord = {
   source_key_override?: string
   transaction_cm_id: number
   updated: IsoAutoDateString
+  year: number
+}
+
+export const AidCancellationsEventOptions = {
+  cancel: 'cancel',
+  reopen: 'reopen',
+} as const
+export type AidCancellationsEventOptions =
+  (typeof AidCancellationsEventOptions)[keyof typeof AidCancellationsEventOptions]
+
+export const AidCancellationsReasonOptions = {
+  aid_not_enough: 'aid_not_enough',
+  medical: 'medical',
+  schedule: 'schedule',
+  not_ready: 'not_ready',
+  did_not_want_to_appeal: 'did_not_want_to_appeal',
+  not_financially_related: 'not_financially_related',
+  early_cancel: 'early_cancel',
+  another_reason: 'another_reason',
+  not_known: 'not_known',
+} as const
+export type AidCancellationsReasonOptions =
+  (typeof AidCancellationsReasonOptions)[keyof typeof AidCancellationsReasonOptions]
+export type AidCancellationsRecord = {
+  actor: string
+  created: IsoAutoDateString
+  event: AidCancellationsEventOptions
+  id: string
+  in_kindred?: boolean
+  note?: string
+  reason?: AidCancellationsReasonOptions
+  request: RecordIdString
   year: number
 }
 
@@ -2526,6 +2559,8 @@ export type AidApplicationsResponse<
   BaseSystemFields<Texpand>
 export type AidAttributionOverridesResponse<Texpand = unknown> =
   Required<AidAttributionOverridesRecord> & BaseSystemFields<Texpand>
+export type AidCancellationsResponse<Texpand = unknown> = Required<AidCancellationsRecord> &
+  BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
   AidChangeLogRecord<Tafter, Tbefore>
 > &
@@ -2814,6 +2849,7 @@ export type CollectionRecords = {
   aid_application_corrections: AidApplicationCorrectionsRecord
   aid_applications: AidApplicationsRecord
   aid_attribution_overrides: AidAttributionOverridesRecord
+  aid_cancellations: AidCancellationsRecord
   aid_change_log: AidChangeLogRecord
   aid_decisions: AidDecisionsRecord
   aid_flag_dispositions: AidFlagDispositionsRecord
@@ -2917,6 +2953,7 @@ export type CollectionResponses = {
   aid_application_corrections: AidApplicationCorrectionsResponse
   aid_applications: AidApplicationsResponse
   aid_attribution_overrides: AidAttributionOverridesResponse
+  aid_cancellations: AidCancellationsResponse
   aid_change_log: AidChangeLogResponse
   aid_decisions: AidDecisionsResponse
   aid_flag_dispositions: AidFlagDispositionsResponse

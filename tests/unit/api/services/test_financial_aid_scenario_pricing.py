@@ -13,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 
+from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, RegisterSource
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import CorrectionRecord, EquityAnswers
@@ -47,6 +48,8 @@ LIAM = "reqliam00000001"
 RILEY = "reqrile00000001"
 OLIVIA = "reqoliv00000001"
 SAMUEL = "reqsamu00000001"
+CM_CANCELLED = "reqcmcancel0001"
+KINDRED_CANCELLED = "reqkdcancel0001"
 
 Rounds = dict[str, list[tuple[int, str, Decimal | None, Decimal | None]]]
 
@@ -84,10 +87,18 @@ def _busy_season(store: FakeDecisionsStore) -> None:
     - a request that simply needs an offer (Samuel);
     - SP10b-1's ledger: a camp-aid line CampMinder posted for Emma's family, staff's placement of it, and the last
       sync;
-    - an equity answer (Emma's)."""
+    - an equity answer (Emma's);
+    - SP10b-2's cancellations: one CampMinder cancelled (a status-32 registration) and one the registrar
+      cancelled in Kindred."""
     seed_request(store, RILEY, household=1000003, person=1000031)
     seed_request(store, OLIVIA, household=1000004, person=1000041, income=500.0)
     seed_request(store, SAMUEL, household=1000005, person=1000051)
+    seed_request(store, CM_CANCELLED, household=1000006, person=1000061)
+    seed_request(store, KINDRED_CANCELLED, household=1000007, person=1000071)
+    store.enrollments.append(EnrollmentState(1000061, 1000006, 1000101, 32, date(2027, 3, 2)))
+    store.cancel_events.append(
+        CancelEvent("can000000000001", KINDRED_CANCELLED, "cancel", T0, reason="schedule", in_kindred=True)
+    )
     seed_line(store, 9001, "1500", posted=T0)
     seed_override(store, 9001, 1000011, T0, session=1000101, family="summer")
     store.synced_at = T0
@@ -158,6 +169,10 @@ async def test_a_frozen_season_prices_exactly_as_the_live_season() -> None:
     assert priced.budget == live_service.budget_of(live)
     statuses = {v.status for p in live.priced.values() for v in p.rounds}
     assert {"posted", "held", "needs_offer"} <= statuses  # the guard really covers them
+    assert {rid: c.by for rid, c in live.cancellations.items()} == {
+        CM_CANCELLED: "campminder",
+        KINDRED_CANCELLED: "kindred",
+    }
     emma = live.priced[EMMA].inputs
     assert emma is not None
     assert emma.equity_answers  # and the equity answer reached the calculator

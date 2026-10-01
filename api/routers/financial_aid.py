@@ -22,7 +22,8 @@ the Remaining line (view; the Remaining line also summary, D75), each round's
 asks and Round 3 amounts and the Posted and Accepted ticks (casework), and
 Round 3 approval (rules).
 Follow-up 3b adds releasing a check's hold and placing a manual hold
-(casework).
+(casework). Sub-project 10b-2 adds each request's cancellation and its cancel reason
+(D101, D141; casework).
 
 Sub-project 9b adds the scenario routes (`/scenarios/...`, financial_aid.rules):
 freeze the season, the per-person draft and its trail, keep, compare, fit to
@@ -62,6 +63,7 @@ from api.schemas.financial_aid_decisions import (
     AskIn,
     AsOfAxis,
     BudgetResponse,
+    CancellationIn,
     DecisionWriteOut,
     HoldReleaseIn,
     ManualHoldIn,
@@ -1277,3 +1279,15 @@ async def make_scenario_rules_draft(
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
     return _draft_out(draft, branched_from=branched_from)
+
+
+@router.post("/requests/{request_id}/cancellation", response_model=DecisionWriteOut)
+async def set_request_cancellation(
+    request_id: _RequestIdPath, body: CancellationIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """D101, D141: cancel with a reason from the fixed list, give the reason for a CampMinder
+    cancellation, or reopen a Kindred cancellation (sub-project 10b-2)."""
+    try:
+        return await _decisions().set_cancellation(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc

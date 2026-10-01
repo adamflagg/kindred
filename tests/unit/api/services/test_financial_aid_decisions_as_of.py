@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from api.constants.collections import AID_REQUESTS
+from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, _requests_as_of, as_of_instant
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_plan import request_fields
@@ -604,7 +605,8 @@ def _live_round_as_past(round_: dict[str, Any]) -> dict[str, Any]:
 async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_gaps() -> None:
     """Yesterday recorded everything live shows, so outside the figures a past read names as gaps the
     two reads agree, field by field: across posted and unposted rounds, a request no longer live, a
-    Round 2 ask, posted money outside the budget, and requests changed before the date."""
+    Round 2 ask, posted money outside the budget, requests changed before the date, and a request
+    cancelled in Kindred before the date (SP10b-2 Decision 21: priced not live on both reads)."""
     rules = FakeRules(
         approved(with_lever(intake_rules(), "awards.decision_types.discretionary.counts_toward_budget", False))
     )
@@ -654,6 +656,10 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
             "discretionary": "250",
         },
     )
+    # Cancelled in Kindred on Mar 13, after its Round 3 posted: both reads show only the posted round.
+    store.cancel_events.append(
+        CancelEvent("can000000000001", AVA, "cancel", _day(3, 13), reason="schedule", in_kindred=True)
+    )
     # Waiting for approved rules: live resolves no program for it.
     _changed(store, MIA, _day(3, 3), flags=({"code": FLAG_AWAITING_RULES, "detail": {"sections": ["programs"]}},))
     service = _service(store, rules)
@@ -680,6 +686,7 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
     assert (rows[OLIVIA].request_status, rows[OLIVIA].program_key, rows[OLIVIA].pool) == ("withdrawn", None, None)
     assert [r.status for r in rows[NOAH].rounds] == ["not_rebuilt", "not_rebuilt"]
     assert (rows[NOAH].rounds[0].ask, rows[AVA].pool, rows[MIA].program_key) == (3500.0, "bmitzvah_pool", None)
+    assert [r.round for r in rows[AVA].rounds] == [3]  # not live as of the date: its unposted Round 1 is gone
     assert by_id[OLIVIA].holds == []
     assert (by_id[OLIVIA].rounds[0].clawed_back, rows[OLIVIA].rounds[0].clawed_back) == (True, True)  # the ledger path
     assert (by_id[EMMA].rounds[0].clawed_back, rows[EMMA].rounds[0].clawed_back) == (False, False)
