@@ -319,6 +319,8 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
     weighted = [c for c in found if c.weight > 0 and not c.cancelled]
     if len(weighted) > 1:
         parts = proportional(line.amount, [(c.request_id, c.weight) for c in weighted])
+        if any(part.amount <= 0 for part in parts):
+            return None  # a $0.00 share is a guess too (D12)
         what = "split in proportion to the decided amounts (a posted round at the amount it locked)"
         return Suggestion(parts, (Evidence("proportional", what),))
     return None

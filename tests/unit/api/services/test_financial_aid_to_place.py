@@ -254,3 +254,11 @@ def test_a_request_with_nothing_decided_gets_no_proportional_share() -> None:
 def test_proportional_refuses_weights_that_cannot_share_anything(weights: list[tuple[str, Decimal]]) -> None:
     with pytest.raises(ValueError, match="positive weight"):
         proportional(Decimal(100), weights)
+
+
+def test_a_proportional_split_with_a_zero_cent_part_offers_no_suggestion() -> None:
+    found = [
+        _cand("a", 1000011, due="900", weight="100000"),
+        _cand("b", 1000012, due="800", weight="1"),
+    ]
+    assert suggest(_line("0.05"), found) is None
