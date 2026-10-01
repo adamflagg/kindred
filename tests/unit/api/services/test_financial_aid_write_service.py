@@ -16,8 +16,6 @@ from pydantic import ValidationError
 
 from api.schemas.financial_aid import (
     AidSourceUpdate,
-    DispositionBulkLoad,
-    DispositionRow,
     HouseholdLinkCreate,
     OverrideBulkLoad,
     OverrideRow,
@@ -33,7 +31,6 @@ SOURCE_ID = "src000000000001"
 LINK_ID = "lnk000000000001"
 OVERRIDE_ID = "ovr000000000001"
 OVERRIDE_ID_3 = "ovr000000000003"
-DISPOSITION_ID = "dsp000000000001"
 
 
 def _source(**kw: Any) -> SimpleNamespace:
@@ -501,106 +498,6 @@ async def test_a_load_that_changes_more_rows_than_one_batch_holds_is_refused_who
     spy.commit.assert_not_called()
 
 
-# --- dispositions ------------------------------------------------------------
-
-
-def _disposition_repo(existing: list[SimpleNamespace] | None = None) -> MagicMock:
-    repo = MagicMock()
-    repo.fetch_posting_transaction_ids = AsyncMock(return_value={9001, 9002})
-    repo.fetch_dispositions = AsyncMock(return_value=existing or [])
-    repo.get_disposition = AsyncMock(return_value=None)
-    return repo
-
-
-def _existing_disposition(**kw: Any) -> SimpleNamespace:
-    base = {
-        "id": DISPOSITION_ID,
-        "year": 2026,
-        "transaction_cm_id": 9002,
-        "flag": "implied_program_mismatch",
-        "disposition": "accepted_let_stand",
-        "note": "Let stand",
-        "actor": "x",
-    }
-    base.update(kw)
-    return SimpleNamespace(**base)
-
-
-@pytest.mark.asyncio
-async def test_load_dispositions_creates_updates_skips_and_rejects_in_one_operation() -> None:
-    repo = _disposition_repo(
-        [
-            _existing_disposition(),
-            _existing_disposition(id="dsp000000000002", flag="unclassified_source", note="Billed to the household"),
-        ]
-    )
-    service, spy = _service(repo)
-    body = DispositionBulkLoad(
-        year=2026,
-        rows=[
-            DispositionRow(
-                transaction_cm_id=9001,
-                flag="live_aid_on_cancelled_enrollment",
-                disposition="accepted_let_stand",
-                note="Staff let it stand",
-            ),
-            DispositionRow(
-                transaction_cm_id=9002,
-                flag="implied_program_mismatch",
-                disposition="accepted_late_grant",
-                note="Grant arrived after the offer",
-            ),  # changed
-            DispositionRow(
-                transaction_cm_id=9002,
-                flag="unclassified_source",
-                disposition="accepted_let_stand",
-                note="Billed to the household",
-            ),  # same
-            DispositionRow(
-                transaction_cm_id=9077, flag="implied_program_mismatch", disposition="accepted_other", note="n"
-            ),
-        ],
-    )
-
-    got = await service.load_dispositions(body, ACTOR)
-
-    assert (got.created, got.updated, got.unchanged) == (1, 1, 1)
-    assert [(r.transaction_cm_id, r.flag) for r in got.rejected] == [(9077, "implied_program_mismatch")]
-    spy.commit.assert_called_once()
-    assert [(w.collection, w.action, w.record_id, w.reason) for w in spy.writes] == [
-        ("aid_flag_dispositions", "create", None, "Staff let it stand"),
-        ("aid_flag_dispositions", "update", DISPOSITION_ID, "Grant arrived after the offer"),
-    ]
-    created = spy.writes[0]
-    assert created.data is not None
-    assert created.data["actor"] == ACTOR
-    assert spy.kwargs["require_reason"] is True
-    assert {row["operation_id"] for row in spy.log_rows()} == {got.operation_id}
-
-
-@pytest.mark.asyncio
-async def test_deleting_a_disposition_reopens_the_flag_and_is_logged() -> None:
-    repo = _disposition_repo()
-    service, spy = _service(repo)
-    with pytest.raises(FinancialAidNotFoundError):
-        await service.delete_disposition("nope", ACTOR, "r")
-    spy.commit.assert_not_called()
-
-    repo.get_disposition = AsyncMock(return_value=_existing_disposition())
-    await service.delete_disposition(DISPOSITION_ID, ACTOR, "Recorded against the wrong posting")
-    [write] = spy.writes
-    assert (write.collection, write.action, write.record_id, write.year, write.data) == (
-        "aid_flag_dispositions",
-        "delete",
-        DISPOSITION_ID,
-        2026,
-        None,
-    )
-    assert spy.kwargs["reason"] == "Recorded against the wrong posting"
-    [log] = spy.log_rows()
-    assert (log["action"], log["after"]) == ("delete", None)
-
-
 # --- blank note / reason handling (fix round 1) -------------------------------
 #
 # A whitespace-only note is not a note. Without stripping at the schema, it is
@@ -637,14 +534,6 @@ async def test_a_whitespace_only_override_note_falls_back_to_the_loads_reason() 
     assert spy.kwargs["reason"] == "Reviewed 2026 attribution"
     [log] = spy.log_rows()
     assert log["reason"] == "Reviewed 2026 attribution"
-
-
-@pytest.mark.parametrize("note", ["   ", "\t\n"])
-def test_a_blank_disposition_note_is_refused_at_the_schema(note: str) -> None:
-    with pytest.raises(ValidationError):
-        DispositionRow(
-            transaction_cm_id=9001, flag="implied_program_mismatch", disposition="accepted_let_stand", note=note
-        )
 
 
 def test_a_blank_source_classification_note_is_refused_at_the_schema() -> None:

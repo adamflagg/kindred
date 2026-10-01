@@ -16,7 +16,6 @@ from api.schemas.financial_aid import (
     AidSourcesResponse,
     BulkLoadResult,
     DataQualityResponse,
-    DispositionsResponse,
     FaRequested,
     HouseholdDetailResponse,
     HouseholdLinkRow,
@@ -63,17 +62,6 @@ OVERRIDE_BODY = {
     "reason": "Reviewed placements",
     "rows": [{"transaction_cm_id": 9001, "program_family": "summer"}],
 }
-DISPOSITION_BODY = {
-    "year": 2026,
-    "rows": [
-        {
-            "transaction_cm_id": 9001,
-            "flag": "implied_program_mismatch",
-            "disposition": "accepted_late_grant",
-            "note": "Grant after the offer",
-        }
-    ],
-}
 
 # (method, url, json body, permission required, success status)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
@@ -87,9 +75,6 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("POST", "/api/financial-aid/household-links", LINK_BODY, CASEWORK, 201),
     ("DELETE", "/api/financial-aid/household-links/l1?reason=merged%20by%20mistake", None, CASEWORK, 204),
     ("POST", "/api/financial-aid/overrides/bulk", OVERRIDE_BODY, RULES, 200),
-    ("GET", "/api/financial-aid/flag-dispositions?year=2026", None, VIEW, 200),
-    ("POST", "/api/financial-aid/flag-dispositions/bulk", DISPOSITION_BODY, RULES, 200),
-    ("DELETE", "/api/financial-aid/flag-dispositions/d1?reason=wrong%20posting", None, RULES, 204),
     ("PUT", "/api/financial-aid/sources/src1/grantor", {"grantor_key": "regional_fund", "note": "n"}, RULES, 200),
 ]
 
@@ -141,15 +126,12 @@ def _stub_services() -> tuple[Any, Any]:
         )
     )
     ledger.return_value.sources = AsyncMock(return_value=AidSourcesResponse(sources=[SOURCE]))
-    ledger.return_value.dispositions = AsyncMock(return_value=DispositionsResponse(year=2026, dispositions=[]))
     writes = patch("api.routers.financial_aid.FinancialAidWriteService").start()
     writes.return_value.classify_source = AsyncMock(return_value=SOURCE)
     writes.return_value.map_source_grantor = AsyncMock(return_value=SOURCE)
     writes.return_value.create_link = AsyncMock(return_value=LINK)
     writes.return_value.delete_link = AsyncMock(return_value=None)
     writes.return_value.load_overrides = AsyncMock(return_value=BulkLoadResult(year=2026, dry_run=False))
-    writes.return_value.load_dispositions = AsyncMock(return_value=BulkLoadResult(year=2026, dry_run=False))
-    writes.return_value.delete_disposition = AsyncMock(return_value=None)
     return ledger, writes
 
 
@@ -173,10 +155,8 @@ def test_permission_matrix(
 def test_the_actor_is_the_callers_email() -> None:
     _, writes = _stub_services()
     _client(PERSONA_FINANCE).post("/api/financial-aid/overrides/bulk", json=OVERRIDE_BODY)
-    _client(PERSONA_FINANCE).post("/api/financial-aid/flag-dispositions/bulk", json=DISPOSITION_BODY)
     email = persona_user(PERSONA_FINANCE).email
-    for call in (writes.return_value.load_overrides.await_args, writes.return_value.load_dispositions.await_args):
-        assert call.args[1] == email
+    assert writes.return_value.load_overrides.await_args.args[1] == email
 
 
 def test_as_of_reaches_the_service_as_a_date() -> None:
@@ -189,19 +169,14 @@ def test_service_errors_map_to_404_and_422() -> None:
     ledger, writes = _stub_services()
     ledger.return_value.household = AsyncMock(side_effect=FinancialAidNotFoundError("no rows"))
     writes.return_value.create_link = AsyncMock(side_effect=FinancialAidValidationError("already linked"))
-    writes.return_value.delete_disposition = AsyncMock(side_effect=FinancialAidNotFoundError("gone"))
     writes.return_value.load_overrides = AsyncMock(side_effect=FinancialAidValidationError("split it"))
-    writes.return_value.load_dispositions = AsyncMock(side_effect=FinancialAidValidationError("split it"))
     client = _client(PERSONA_FINANCE)
     missing = client.get("/api/financial-aid/households/100", params={"year": 2026})
     refused = client.post("/api/financial-aid/household-links", json=LINK_BODY)
-    gone = client.delete("/api/financial-aid/flag-dispositions/d9", params={"reason": "r"})
     too_big = client.post("/api/financial-aid/overrides/bulk", json=OVERRIDE_BODY)
-    too_many = client.post("/api/financial-aid/flag-dispositions/bulk", json=DISPOSITION_BODY)
     assert missing.status_code == 404
     assert (refused.status_code, refused.json()["detail"]) == (422, "already linked")
-    assert gone.status_code == 404
-    assert (too_big.status_code, too_many.status_code) == (422, 422)  # a load over one batch is refused whole
+    assert too_big.status_code == 422  # a load over one batch is refused whole
 
 
 @pytest.mark.parametrize(
@@ -212,7 +187,6 @@ def test_service_errors_map_to_404_and_422() -> None:
         "/api/financial-aid/ledger?year=1999",
         "/api/financial-aid/summary",
         "/api/financial-aid/summary?year=2026&as_of=not-a-date",
-        "/api/financial-aid/flag-dispositions",
     ],
 )
 def test_bad_query_parameters_are_422(url: str) -> None:
@@ -227,13 +201,6 @@ def test_household_link_delete_blank_reason_is_422_and_never_writes() -> None:
     response = _client(PERSONA_FINANCE).delete("/api/financial-aid/household-links/l1?reason=%20%20%20")
     assert response.status_code == 422
     writes.return_value.delete_link.assert_not_called()
-
-
-def test_flag_disposition_delete_blank_reason_is_422_and_never_writes() -> None:
-    _, writes = _stub_services()
-    response = _client(PERSONA_FINANCE).delete("/api/financial-aid/flag-dispositions/d1?reason=%20%20%20")
-    assert response.status_code == 422
-    writes.return_value.delete_disposition.assert_not_called()
 
 
 def test_a_household_link_that_lost_a_race_with_the_sync_is_409() -> None:

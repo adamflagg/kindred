@@ -1,5 +1,5 @@
 """Campership ledger writes (sub-project 4): source classifications, staff
-household links, reviewed attribution overrides and flag dispositions.
+household links and reviewed attribution overrides.
 
 Every write goes through sub-project 4a's commit_aid_writes, which sends the
 record write and its aid_change_log row in ONE PocketBase batch: they commit
@@ -13,8 +13,7 @@ A reason is required on every write (spec §14.4: overrides and exceptions; a
 classification and a delete already require one at the API).
 
 Classifications, links and overrides take effect on the next aid_postings run
-(POST /api/custom/sync/aid-postings?year= runs it on demand); dispositions take
-effect on the next read. The Go sync never comes here: spec §14.4 does not log
+(POST /api/custom/sync/aid-postings?year= runs it on demand). The Go sync never comes here: spec §14.4 does not log
 the CampMinder sync.
 """
 
@@ -26,7 +25,6 @@ from typing import Any
 
 from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
-    AID_FLAG_DISPOSITIONS,
     AID_HOUSEHOLD_LINKS,
     AID_SOURCES,
 )
@@ -34,7 +32,6 @@ from api.schemas.financial_aid import (
     AidSourceRow,
     AidSourceUpdate,
     BulkLoadResult,
-    DispositionBulkLoad,
     HouseholdLinkCreate,
     HouseholdLinkRow,
     LoadRejection,
@@ -74,8 +71,6 @@ SOURCE_FIELDS = (
 LINK_FIELDS = ("year", "household_cm_id", "family_key", "source", "excluded", "note", "actor")
 OVERRIDE_NUMBERS = ("transaction_cm_id", "year", "attributed_person_cm_id", "attributed_session_cm_id")
 OVERRIDE_TEXT = ("program_family", "source_key_override", "source", "note")
-DISPOSITION_NUMBERS = ("transaction_cm_id", "year")
-DISPOSITION_TEXT = ("flag", "disposition", "note")
 
 
 def _snapshot(record: Any, fields: tuple[str, ...]) -> dict[str, Any]:
@@ -119,8 +114,8 @@ def _stage_upsert(
     ``payload``, skip a no-op via ``changed_fields``, and stage the create or
     update ``AidWrite``, recording it in ``result`` and ``writes``.
 
-    Shared by ``load_overrides`` and ``load_dispositions``: both upsert a row
-    by a key, log only the placement (not who loaded it), and count
+    Used by ``load_overrides``: it upserts a row
+    by a key, logs only the placement (not who loaded it), and count
     created/updated/unchanged the same way.
     """
     if current is None:
@@ -378,60 +373,3 @@ class FinancialAidWriteService:
             )
             result.operation_id = committed.operation_id
         return result
-
-    async def load_dispositions(self, body: DispositionBulkLoad, actor: str) -> BulkLoadResult:
-        postings = await self.repo.fetch_posting_transaction_ids(body.year)
-        existing = {(int(d.transaction_cm_id), str(d.flag)): d for d in await self.repo.fetch_dispositions(body.year)}
-        result = BulkLoadResult(year=body.year, dry_run=body.dry_run)
-        writes: list[AidWrite] = []
-        for row in body.rows:
-            if row.transaction_cm_id not in postings:
-                result.rejected.append(
-                    LoadRejection(
-                        transaction_cm_id=row.transaction_cm_id,
-                        flag=row.flag,
-                        reason=f"no aid posting with this transaction id in {body.year}",
-                    )
-                )
-                continue
-            payload: dict[str, Any] = {
-                "transaction_cm_id": row.transaction_cm_id,
-                "year": body.year,
-                "flag": row.flag,
-                "disposition": row.disposition,
-                "note": row.note,
-            }
-            _stage_upsert(
-                writes=writes,
-                result=result,
-                collection=AID_FLAG_DISPOSITIONS,
-                year=body.year,
-                actor=actor,
-                payload=payload,
-                current=existing.get((row.transaction_cm_id, row.flag)),
-                numbers=DISPOSITION_NUMBERS,
-                text=DISPOSITION_TEXT,
-                reason=row.note or None,
-            )
-        _refuse_oversized_load(result)
-        if writes and not body.dry_run:
-            committed = await asyncio.to_thread(
-                commit_aid_writes, self.repo.pb, writes, actor=actor, require_reason=True
-            )
-            result.operation_id = committed.operation_id
-        return result
-
-    async def delete_disposition(self, disposition_id: str, actor: str, reason: str) -> None:
-        current = await self.repo.get_disposition(disposition_id)
-        if current is None:
-            raise FinancialAidNotFoundError(f"flag disposition {disposition_id} not found")
-        write = AidWrite(
-            collection=AID_FLAG_DISPOSITIONS,
-            action="delete",
-            year=int(current.year),
-            record_id=str(current.id),
-            before=_typed_snapshot(current, DISPOSITION_NUMBERS, DISPOSITION_TEXT),
-        )
-        await asyncio.to_thread(
-            commit_aid_writes, self.repo.pb, [write], actor=actor, reason=reason, require_reason=True
-        )

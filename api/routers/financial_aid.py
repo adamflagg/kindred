@@ -48,8 +48,6 @@ from api.schemas.financial_aid import (
     AttributionLevel,
     BulkLoadResult,
     DataQualityResponse,
-    DispositionBulkLoad,
-    DispositionsResponse,
     HouseholdDetailResponse,
     HouseholdLinkCreate,
     HouseholdLinkRow,
@@ -614,32 +612,6 @@ async def load_overrides(body: OverrideBulkLoad, user: AuthUser = _RULES) -> Bul
         return await _writes().load_overrides(body, user.email)
     except FinancialAidValidationError as exc:
         raise _http(exc) from exc
-
-
-@router.get("/flag-dispositions", response_model=DispositionsResponse)
-async def list_flag_dispositions(
-    year: int = Query(..., ge=2017, le=2100), user: AuthUser = _VIEW
-) -> DispositionsResponse:
-    return await _ledger().dispositions(year)
-
-
-@router.post("/flag-dispositions/bulk", response_model=BulkLoadResult)
-async def load_flag_dispositions(body: DispositionBulkLoad, user: AuthUser = _RULES) -> BulkLoadResult:
-    """Record finance's decisions on posting flags ("accepted: let stand", "accepted: late grant"). One atomic operation."""
-    try:
-        return await _writes().load_dispositions(body, user.email)
-    except FinancialAidValidationError as exc:
-        raise _http(exc) from exc
-
-
-@router.delete("/flag-dispositions/{disposition_id}", status_code=204, response_class=Response)
-async def delete_flag_disposition(disposition_id: str, reason: _Reason, user: AuthUser = _RULES) -> Response:
-    """Reopen a flag."""
-    try:
-        await _writes().delete_disposition(disposition_id, user.email, reason)
-    except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
-        raise _http(exc) from exc
-    return Response(status_code=204)
 
 
 @router.get("/rules/{year}", response_model=RulesVersionOut)

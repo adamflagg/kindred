@@ -454,19 +454,6 @@ async def test_net_totals_keep_each_posting_household_and_name_the_family() -> N
     ]
 
 
-# --- dispositions ----------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_dispositions_list_the_season() -> None:
-    got = await FinancialAidLedgerService(
-        _repo(fetch_dispositions=[_disposition(9001, "implied_program_mismatch", "accepted_late_grant")])
-    ).dispositions(2026)
-    assert [(d.transaction_cm_id, d.flag, d.disposition) for d in got.dispositions] == [
-        (9001, "implied_program_mismatch", "accepted_late_grant")
-    ]
-
-
 # --- data quality -------------------------------------------------------------
 
 
