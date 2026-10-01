@@ -2010,7 +2010,7 @@ export type CancellationSessionBreakdown = {
 /**
  * CandidateOut
  *
- * A request the line's family holds (D26). still_due is what CampMinder should still hold for it:
+ * A request the line's family holds (D26). not_yet_in_campminder is the part of it not yet in CampMinder:
  * its locked total and its decided rounds waiting to be ticked, less the money already placed on it.
  */
 export type CandidateOut = {
@@ -2043,9 +2043,9 @@ export type CandidateOut = {
    */
   session: string
   /**
-   * Still Due
+   * Not Yet In Campminder
    */
-  still_due: number
+  not_yet_in_campminder: number
   /**
    * Cancelled
    */

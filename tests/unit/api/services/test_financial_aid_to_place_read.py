@@ -41,7 +41,11 @@ async def test_the_read_groups_the_open_lines_by_reason_with_their_names() -> No
         date(2027, 3, 8),
     )
     (candidate,) = line.candidates
-    assert (candidate.camper, candidate.session, candidate.still_due) == ("Camper 1000011", "Session 2", 1500.0)
+    assert (candidate.camper, candidate.session, candidate.not_yet_in_campminder) == (
+        "Camper 1000011",
+        "Session 2",
+        1500.0,
+    )
     assert line.suggestion is not None
     assert [(p.request_id, p.amount) for p in line.suggestion.parts] == [(EMMA, 1500.0)]
     # §4.10: what confirming it would lock, worked out as the write works it out
@@ -67,3 +71,14 @@ async def test_a_household_page_sees_only_its_own_scope() -> None:
     out = await to_place_service(store).read(YEAR, household_cm_id=1000001)
     assert out.household_cm_id == 1000001
     assert [ln.transaction_cm_id for g in out.groups for ln in g.lines] == [9001]
+
+
+def test_candidate_figure_is_called_not_yet_in_campminder():
+    """Owner ruling 2026-10-01: staff read the figure as "not yet in CampMinder", never "still due"."""
+    from api.schemas.financial_aid_to_place import CandidateOut
+
+    assert "not_yet_in_campminder" in CandidateOut.model_fields
+    assert "still_due" not in CandidateOut.model_fields
+    description = CandidateOut.__doc__ or ""
+    assert "not yet in CampMinder" in description
+    assert "still due" not in description.lower()

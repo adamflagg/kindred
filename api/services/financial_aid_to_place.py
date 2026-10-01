@@ -135,8 +135,8 @@ class SourceRow:
 
 @dataclass(frozen=True)
 class Candidate:
-    """A request the line's household has a stake in. `still_due` is what CampMinder should still hold
-    for it: its locked total plus the decided amounts of the rounds waiting to be ticked, less the live
+    """A request the line's household has a stake in. `not_yet_in_campminder` is the part of it not yet in
+    CampMinder: its locked total plus the decided amounts of the rounds waiting to be ticked, less the live
     money already placed on it (main spec §11's net total). `weight` is the same before that money: the
     request's decided amounts, a locked round's at the amount it locked (D12). `ticked_on` holds the days
     its posted rounds were ticked. A cancelled request (10b-2) is still a candidate: its family-level
@@ -147,7 +147,7 @@ class Candidate:
     person_cm_id: int
     session_cm_id: int
     program_family: str
-    still_due: Decimal
+    not_yet_in_campminder: Decimal
     weight: Decimal
     ticked_on: frozenset[date]
     cancelled: bool
@@ -221,7 +221,7 @@ def _candidate(season: Season, request_id: str) -> Candidate:
         person_cm_id=request.person_cm_id,
         session_cm_id=request.session_cm_id,
         program_family=program_family_for_session_type(session.session_type) if session is not None else "",
-        still_due=weight - live_net(season.ledger.lines(request_id)),
+        not_yet_in_campminder=weight - live_net(season.ledger.lines(request_id)),
         weight=weight,
         ticked_on=ticked,
         cancelled=request_id in season.cancellations,
@@ -268,7 +268,7 @@ def _dollars(amount: Decimal) -> str:
 def _facts(line: CampLine, candidate: Candidate, alone: bool) -> tuple[Evidence, ...]:
     """Every fact that ties `line` to `candidate`, in the fixed order the module docstring gives."""
     facts: list[Evidence] = []
-    if candidate.still_due > 0 and candidate.still_due == line.amount:
+    if candidate.not_yet_in_campminder > 0 and candidate.not_yet_in_campminder == line.amount:
         facts.append(
             Evidence("amount", f"exactly what this request still needs in CampMinder ({_dollars(line.amount)})")
         )
@@ -294,7 +294,7 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
     if not found:
         return None
     alone = len(found) == 1
-    matches = [c for c in found if c.still_due > 0 and c.still_due == line.amount]
+    matches = [c for c in found if c.not_yet_in_campminder > 0 and c.not_yet_in_campminder == line.amount]
     if len(matches) > 1:  # equal amounts: only the person or the day can tell them apart
         by_person = _one([c for c in matches if line.person_cm_id > 0 and c.person_cm_id == line.person_cm_id])
         by_day = _one([c for c in matches if any(e.kind == "date" for e in _facts(line, c, False))])
@@ -305,7 +305,9 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
     if matches:
         return _whole(line, matches[0], alone)
     by_person = _one([c for c in found if line.person_cm_id > 0 and c.person_cm_id == line.person_cm_id])
-    by_day = _one([c for c in found if c.still_due > 0 and any(e.kind == "date" for e in _facts(line, c, False))])
+    by_day = _one(
+        [c for c in found if c.not_yet_in_campminder > 0 and any(e.kind == "date" for e in _facts(line, c, False))]
+    )
     if by_person is not None and by_day is not None and by_person is not by_day:
         return None  # the person and the day point at different requests: Kindred never guesses (D12)
     chosen_one = by_person or by_day
@@ -313,9 +315,9 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
         return _whole(line, chosen_one, alone)
     if alone:
         return _whole(line, found[0], alone)
-    due = [c for c in found if c.still_due > 0]
-    if len(due) > 1 and sum((c.still_due for c in due), ZERO) == line.amount:
-        parts = tuple(Part(c.request_id, c.still_due) for c in due)
+    due = [c for c in found if c.not_yet_in_campminder > 0]
+    if len(due) > 1 and sum((c.not_yet_in_campminder for c in due), ZERO) == line.amount:
+        parts = tuple(Part(c.request_id, c.not_yet_in_campminder) for c in due)
         what = f"together exactly what these requests still need in CampMinder ({_dollars(line.amount)})"
         return Suggestion(parts, (Evidence("amount", what),))
     weighted = [c for c in found if c.weight > 0 and not c.cancelled]

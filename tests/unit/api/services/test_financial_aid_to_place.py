@@ -73,7 +73,7 @@ async def test_two_requests_needing_the_same_amount_get_no_suggestion() -> None:
     seed_line(store, 9001, "1500", person=0, posted=MAR8)
     (item,) = to_place(await _season(store), {})
     assert [c.request_id for c in item.candidates] == [EMMA, LIAM]
-    assert [c.still_due for c in item.candidates] == [Decimal(1500), Decimal(1500)]
+    assert [c.not_yet_in_campminder for c in item.candidates] == [Decimal(1500), Decimal(1500)]
     assert item.suggestion is None
 
 

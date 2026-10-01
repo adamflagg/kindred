@@ -319,7 +319,7 @@ class ToPlaceService:
             camper=persons.get(c.person_cm_id, "") if c.person_cm_id > 0 else "",
             session_cm_id=c.session_cm_id,
             session=session.name if session is not None else "",
-            still_due=money(c.still_due),
+            not_yet_in_campminder=money(c.not_yet_in_campminder),
             cancelled=c.cancelled,
         )
 

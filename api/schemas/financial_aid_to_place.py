@@ -60,7 +60,7 @@ class SuggestionOut(BaseModel):
 
 
 class CandidateOut(BaseModel):
-    """A request the line's family holds (D26). still_due is what CampMinder should still hold for it:
+    """A request the line's family holds (D26). not_yet_in_campminder is the part of it not yet in CampMinder:
     its locked total and its decided rounds waiting to be ticked, less the money already placed on it."""
 
     request_id: str
@@ -70,7 +70,7 @@ class CandidateOut(BaseModel):
     camper: str
     session_cm_id: int
     session: str
-    still_due: float
+    not_yet_in_campminder: float
     cancelled: bool
 
 
