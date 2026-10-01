@@ -220,4 +220,46 @@ describe('RequestsGrid', () => {
     expect(within(footer).getByText('5 requests · 4 families')).toBeInTheDocument()
     expect(within(footer).getByText('$4,720')).toBeInTheDocument()
   })
+
+  describe("Waiting on the family: Posted is the waiting round's own (owner ruling I2)", () => {
+    // Round 1 posted and accepted ($1,000); Round 2 posted, not accepted ($500).
+    const split = gridRow({
+      request_id: 'reqwaiting00007',
+      camper_name: 'Samuel Johnson',
+      rounds: [
+        roundOut(1, 'posted', {
+          decided: 1000,
+          posted: 1000,
+          posted_on: '2027-03-01',
+          accepted: true,
+        }),
+        roundOut(2, 'posted', { decided: 500, posted: 500, posted_on: '2027-03-20' }),
+      ],
+      total_decided: 1500,
+      total_posted: 1500,
+      queues: ['waiting_on_family'],
+    })
+
+    it("shows the round's $500 and a $500 footer, not the $1,500 across rounds", () => {
+      render(<Grid slug="waiting" rows={[split]} />)
+      const footer = screen.getAllByRole('row').at(-1) as HTMLElement
+      expect(within(footer).getByText('$500')).toBeInTheDocument()
+      expect(within(rowOf('Samuel Johnson')).getByText('$500')).toBeInTheDocument()
+      expect(screen.queryByText('$1,500')).toBeNull()
+    })
+
+    it("writes the round's $500 to the CSV", async () => {
+      render(<Grid slug="waiting" rows={[split]} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+      const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+      const [header, row] = content.split('\n')
+      const at = csvCells(header ?? '').indexOf('Posted')
+      expect(csvCells(row ?? '')[at]).toBe('500')
+    })
+
+    it('leaves All showing the all-rounds Posted', () => {
+      render(<Grid slug="all" rows={[split]} />)
+      expect(within(rowOf('Samuel Johnson')).getAllByText('$1,500').length).toBeGreaterThan(0)
+    })
+  })
 })

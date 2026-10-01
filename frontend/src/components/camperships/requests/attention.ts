@@ -190,7 +190,7 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
         codeWords('unmatched_session'),
         'The requested session is not matched: resolve it on the household page.',
         'session_not_settled',
-        ACTION_BY_CODE.unmatched_session ?? null
+        ACTION_BY_CODE['unmatched_session'] ?? null
       )
     )
   }

@@ -146,6 +146,11 @@ export default function AidRequestsPage() {
         showIds={showIds}
         onChange={setParam}
       />
+      {view.key === 'waiting_on_family' && (
+        <p className="text-muted-foreground text-xs">
+          Posted is the amount posted in this round, not yet accepted.
+        </p>
+      )}
       {view.key === 'needs_offer' && (
         // ⚠ Decision 39's interim: grid rows can't say which requests are split yet.
         <p className="text-muted-foreground text-xs">

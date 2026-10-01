@@ -34,6 +34,7 @@ export type GridColumnKey =
   | 'r3Ask'
   | 'total'
   | 'posted'
+  | 'roundPosted'
   | 'confirmed'
   | 'round'
   | 'decided'
@@ -103,7 +104,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'waiting',
     label: 'Waiting on the family',
     groupBy: 'one',
-    columns: ['session', 'round', 'posted', 'daysWaiting', 'attention'],
+    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'attention'],
   },
   {
     key: 'appeals',
@@ -270,6 +271,15 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     align: 'right',
     money: true,
     value: (r) => r.total_posted,
+  },
+  // Waiting on the family: the waiting round's own posted amount (owner ruling I2), so the footer is
+  // the money posted and not yet accepted; the Round column names the same round.
+  roundPosted: {
+    header: 'Posted',
+    width: 78,
+    align: 'right',
+    money: true,
+    value: (r) => viewRound(r, 'waiting_on_family')?.posted ?? null,
   },
   confirmed: {
     header: 'Confirmed by the ledger',
