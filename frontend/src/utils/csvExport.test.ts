@@ -231,3 +231,15 @@ describe('downloadCsv', () => {
     expect(callOrder.indexOf('click')).toBeLessThan(callOrder.indexOf('removeChild'))
   })
 })
+
+// Ruling 2026-10-01 (plan review): its own fix PR. A plain number can't carry a formula, and
+// prefixing it turns a spreadsheet's number into text (Camperships app spec §11).
+describe('escapeField — a plain number is not a formula', () => {
+  it('writes a negative number as a number, so spreadsheets read it', () => {
+    expect(buildCsvContent(['Change'], [['-1200'], ['-0.28']])).toBe('Change\n-1200\n-0.28')
+  })
+
+  it('still neutralises a minus that starts anything else', () => {
+    expect(buildCsvContent(['x'], [['-1+1'], ['-Alice'], ['-']])).toBe("x\n'-1+1\n'-Alice\n'-")
+  })
+})

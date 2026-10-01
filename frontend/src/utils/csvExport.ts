@@ -12,7 +12,9 @@
 function escapeField(value: string): string {
   // OWASP formula-injection guard: neutralize leading =, +, -, @, \t, \r
   // by prefixing with a literal apostrophe so spreadsheets treat it as text.
-  if (value.length > 0 && /^[=+\-@\t\r]/.test(value)) {
+  // A plain number (-1200, -0.28) is not a formula, and must stay a number in a
+  // spreadsheet; prefixing it turned every negative figure into text.
+  if (value.length > 0 && !/^-?\d+(\.\d+)?$/.test(value) && /^[=+\-@\t\r]/.test(value)) {
     value = `'${value}`
   }
   // RFC 4180: wrap in double-quotes if the value contains commas, double-quotes,
