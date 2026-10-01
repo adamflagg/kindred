@@ -568,12 +568,11 @@ class ToPlaceService:
         # only that round's automatic tick is withheld (no Posted row, no rules lock), named per line for a person.
         since = await self._since(season, outcome.ticks)
         ticks, held = self._withhold(season, outcome.ticks, since)
-        not_ticked = [
-            not_ticked_out(row.transaction_cm_id, tick, reasons)
-            for row in body.lines
-            for tick, reasons in held
-            if tick.request_id in {p.request_id for p in row.parts}
-        ]
+        first_line: dict[str, int] = {}  # each withheld round named once, against the first line on its request
+        for row in body.lines:
+            for part in row.parts:
+                first_line.setdefault(part.request_id, row.transaction_cm_id)
+        not_ticked = [not_ticked_out(first_line[tick.request_id], tick, reasons) for tick, reasons in held]
         locking = sum((t.amount for t in ticks), ZERO)
         if body.expected_locked is not None and locking != body.expected_locked:
             raise DecisionRefusedError(

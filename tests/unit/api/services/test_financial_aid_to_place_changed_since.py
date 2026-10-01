@@ -519,6 +519,28 @@ async def test_a_bulk_confirm_places_every_line_and_withholds_only_the_changed_l
 
 
 @pytest.mark.asyncio
+async def test_a_bulk_confirm_of_two_lines_on_one_request_names_its_withheld_round_once() -> None:
+    """Two family-level lines both placed on Emma cover her Round 1 together; that one round's tick is withheld
+    once, so the response names it once, against the first line that reaches her request (like `ticked`)."""
+    store = FakeToPlaceStore()
+    seed_request(store, EMMA)
+    seed_request(store, "reqliam00000001", person=1000012)  # Emma's brother: both lines are family level
+    seed_line(store, 9001, "750", person=0, posted=MAR8)
+    seed_line(store, 9002, "750", person=0, posted=MAR8)
+    _correction(store)
+    body = PlaceLinesIn(
+        lines=[
+            PlaceLinesRow(transaction_cm_id=9001, parts=[PlacePartIn(request_id=EMMA, amount=Decimal(750))]),
+            PlaceLinesRow(transaction_cm_id=9002, parts=[PlacePartIn(request_id=EMMA, amount=Decimal(750))]),
+        ]
+    )
+    out = await to_place_service(store).place_lines(YEAR, body, ACTOR)
+    assert out.placed == [9001, 9002]
+    assert out.ticked == []
+    assert _not_ticked(out.not_ticked) == [NOT_TICKED_9001]
+
+
+@pytest.mark.asyncio
 async def test_the_read_previews_the_round_as_won_t_tick_from_the_same_check_the_write_runs() -> None:
     """Preview = write (§4.10): the same function on the same loads. would_tick and would_lock leave the round
     out; would_not_tick carries it with the reasons, exactly as the write returns it in not_ticked."""
