@@ -700,3 +700,29 @@ describe('a row kept on screen under a search', () => {
     expect(groupHeading('Johnson')).toHaveTextContent('2 in group')
   })
 })
+
+describe('AidTable CSV columns (§11; M16)', () => {
+  it('leaves an action column out of the file, and adds the columns only the file carries', async () => {
+    const columns: Array<AidColumn<Row>> = [
+      ...COLUMNS.slice(0, 2),
+      { key: 'act', header: 'Act', width: 60, value: () => null, inCsv: false },
+    ]
+    render(
+      <MemoryRouter initialEntries={['/aid/requests']}>
+        <AidTable<Row>
+          rows={ROWS.slice(0, 1)}
+          columns={columns}
+          rowKey={(r) => r.id}
+          csvFilename="camperships-requests-all-2027.csv"
+          csvExtra={[{ header: 'Household id', value: (r) => String(r.householdCmId) }]}
+        />
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls[0] as [string, string]
+    expect(content.split('\n').slice(0, 2)).toEqual([
+      'Family,Camper,Household id',
+      'Johnson,Emma Johnson,1000001',
+    ])
+  })
+})
