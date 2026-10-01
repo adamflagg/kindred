@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useMemo, useState } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -56,6 +56,29 @@ function Grid({
   )
 }
 
+/** One CSV line into its cells, honouring quoted cells that hold commas or doubled quotes. */
+function csvCells(line: string): string[] {
+  const cells: string[] = []
+  let cell = ''
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line.charAt(i)
+    if (quoted) {
+      if (ch === '"' && line.charAt(i + 1) === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else cell += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',') {
+      cells.push(cell)
+      cell = ''
+    } else cell += ch
+  }
+  cells.push(cell)
+  return cells
+}
+
 const rowOf = (camper: string) => {
   const row = screen.getByText(camper).closest('tr')
   if (row === null) throw new Error(`no row for ${camper}`)
@@ -97,6 +120,23 @@ describe('RequestsGrid', () => {
     await userEvent.click(link)
     expect(open).toHaveBeenCalledWith(ROW_LIAM, '/aid/households/1000003?from=all&year=2027')
     expect(highlights).toEqual([])
+  })
+
+  it('does not highlight the row on a modified click on a name; the new tab opens alone', async () => {
+    render(<Grid />)
+    const link = screen.getByRole('link', { name: 'The Garcia Family' })
+    fireEvent.click(link, { ctrlKey: true })
+    fireEvent.click(link, { metaKey: true })
+    expect(highlights).toEqual([])
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('gives the camper name the same href shape as the family name', () => {
+    render(<Grid />)
+    expect(screen.getByRole('link', { name: 'Liam Garcia' })).toHaveAttribute(
+      'href',
+      '/aid/households/1000003?from=all&year=2027'
+    )
   })
 
   it('highlights a row on a click anywhere else', async () => {
@@ -170,8 +210,8 @@ describe('RequestsGrid', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
     const [header, row] = content.split('\n')
-    expect(header?.split(',').at(-1)).toBe('R3 pending approval')
-    expect(row?.split(',').at(-1)).toBe('450')
+    expect(csvCells(header ?? '').at(-1)).toBe('R3 pending approval')
+    expect(csvCells(row ?? '').at(-1)).toBe('450')
   })
 
   it('counts requests and families in the footer, and totals Posted', () => {
