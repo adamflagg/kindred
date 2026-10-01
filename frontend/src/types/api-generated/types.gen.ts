@@ -5194,7 +5194,7 @@ export type GridRowOut = {
   /**
    * Payer Count
    */
-  payer_count?: number
+  payer_count?: number | null
   /**
    * Payer Shares
    */
