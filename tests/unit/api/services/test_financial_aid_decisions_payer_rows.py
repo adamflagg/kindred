@@ -52,3 +52,16 @@ async def test_a_one_payer_row_counts_one_and_lists_no_split() -> None:
     seed_request(store, EMMA, household=JOHNSON)  # a 100% share of its own
     (row,) = (await _service(store).grid(YEAR)).rows
     assert (row.payer_count, row.payer_shares) == (1, [])
+
+
+@pytest.mark.asyncio
+async def test_a_past_dates_grid_names_a_payer_that_applied_for_nothing_too() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, household=JOHNSON)
+    store.shares = [share_row(EMMA, JOHNSON, "50"), share_row(EMMA, GARCIA, "50")]
+    (row,) = (await _service(store).grid(YEAR, as_of=date(2027, 3, 25))).rows
+    assert row.payer_count == 2
+    assert [(s.household_cm_id, s.family_name) for s in row.payer_shares] == [
+        (JOHNSON, "Family 1000001"),
+        (GARCIA, "Family 1000002"),
+    ]
