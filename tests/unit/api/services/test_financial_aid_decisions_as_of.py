@@ -807,3 +807,17 @@ async def test_a_gapped_split_row_hides_each_payers_decided_and_needs_offer_with
     assert row.payer_count == 2
     assert [(s.decided, s.needs_offer) for s in row.payer_shares] == [(None, None), (None, None)]
     assert [s.posted for s in row.payer_shares] == [750.0, 750.0]  # the posted total is still known
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_whose_payer_shares_cant_be_replayed_has_no_payer_count_and_no_split_rows() -> None:
+    """One share replays; the other exists today with no log row. Counting the replayable one alone would read the
+    request as paid by one household, so the count and the split are left out (None / [])."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, household=1000001)
+    store.shares = [share_row(EMMA, 1000001, "50")]
+    log_seeded(store, SEEDED)
+    store.shares.append(share_row(EMMA, 1000002, "50"))  # exists today, never logged
+    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
+    assert row.payer_count is None
+    assert row.payer_shares == []

@@ -338,6 +338,7 @@ class Season:
     shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
     undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
     posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
+    shares_unknown: frozenset[str] = frozenset()  # past read: requests whose payer shares can't be replayed (⚠39)
     # 3c-2, past read: request -> the gap that keeps it to 3c-1's figures (_PRICING_GAPS), and whether a
     # grant by then has no logged placement (its household's pools, and money off requests, stay empty).
     gapped: Mapping[str, str] = field(default_factory=dict)
@@ -1490,6 +1491,7 @@ class FinancialAidDecisionsService:
             unrebuilt=unrebuilt,
             posted_unknown=posted_unknown,
             gapped=gapped,
+            shares_unknown=bad_shares,
             grants_unplaced=grants_unplaced,
             deleted=deleted,
         )
@@ -1649,6 +1651,12 @@ class FinancialAidDecisionsService:
                 for row in rows
             ]
             rows = [_decided_unknown(row) if row.request_id in season.gapped else row for row in rows]
+            rows = [
+                row.model_copy(update={"payer_count": None, "payer_shares": []})
+                if row.request_id in season.shares_unknown
+                else row
+                for row in rows
+            ]
             rows = [_posted_unknown(row) if row.request_id in season.posted_unknown else row for row in rows]
         rows.sort(key=lambda r: (r.family_name.lower(), r.household_cm_id, r.camper_name.lower(), r.request_id))
         rules_version = season.rules.version if season.rules is not None else None

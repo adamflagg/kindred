@@ -210,8 +210,9 @@ class GridRowOut(BaseModel):
     # Slice 1: the views the row is in. None on a past read: membership reads figures a past date leaves empty.
     queues: list[QueueOut] | None = Field(default_factory=list)
     # ⚠39 (owner ruling 2026-10-01): how many households pay the request (1 with no share row), and each payer's part
-    # when two or more do ([] for one payer, as the editor preview's shares).
-    payer_count: int = 1
+    # when two or more do ([] for one payer, as the editor preview's shares). On a past read payer_count is None
+    # (and payer_shares []) for a request whose payer shares couldn't be replayed for that date.
+    payer_count: int | None = 1
     payer_shares: list[GridShareOut] = Field(default_factory=list)
 
 
