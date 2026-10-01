@@ -207,9 +207,10 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
   if (reconcile !== null) items.push(reconcile)
   const since = waitingSince(row)
   if (since !== null && (row.queues?.includes('waiting_on_family') ?? false)) {
+    const waited = daysBetween(since, today) ?? 0
     items.push(
       note(
-        `Waiting ${String(daysBetween(since, today) ?? 0)} days`,
+        `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
         `Posted ${formatShortDate(since)}; the family hasn't replied. Follow up, then tick Accepted.`,
         'waiting_on_family',
         'Mark accepted'

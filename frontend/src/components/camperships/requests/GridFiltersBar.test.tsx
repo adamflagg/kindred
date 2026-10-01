@@ -1,0 +1,53 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { GridFiltersBar } from './GridFiltersBar'
+
+function bar(props: {
+  program?: string | null
+  pool?: string | null
+  round?: 1 | 2 | 3 | null
+  tick?: 'posted' | 'accepted' | null
+}) {
+  const onChange = vi.fn()
+  render(
+    <GridFiltersBar
+      programs={[{ value: 'summer', label: 'Summer' }]}
+      pools={[{ value: 'general', label: 'General' }]}
+      program={props.program ?? null}
+      pool={props.pool ?? null}
+      round={props.round ?? null}
+      tick={props.tick ?? null}
+      showIds={false}
+      onChange={onChange}
+    />
+  )
+  return onChange
+}
+
+describe('GridFiltersBar out-of-list values', () => {
+  it('shows a program the options do not hold, and choosing All clears it', async () => {
+    const onChange = bar({ program: 'nosuch' })
+    const select = screen.getByLabelText('Program') as HTMLSelectElement
+    expect(select.value).toBe('nosuch')
+    expect(screen.getByRole('option', { name: 'nosuch' })).toBeTruthy()
+    await userEvent.selectOptions(select, '')
+    expect(onChange).toHaveBeenCalledWith('program', null)
+  })
+
+  it('shows a pool the options do not hold', () => {
+    bar({ pool: 'gone' })
+    expect((screen.getByLabelText('Pool') as HTMLSelectElement).value).toBe('gone')
+  })
+
+  it('shows a checklist value the options do not hold', () => {
+    bar({ tick: 'bogus' as 'posted' })
+    expect((screen.getByLabelText('Checklist') as HTMLSelectElement).value).toBe('bogus')
+  })
+
+  it('adds no extra option for an in-list value', () => {
+    bar({ program: 'summer' })
+    expect(screen.getAllByRole('option', { name: 'Summer' })).toHaveLength(1)
+  })
+})
