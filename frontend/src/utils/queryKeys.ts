@@ -722,6 +722,7 @@ export const queryKeys = {
   // (SYNC_DEPENDENT_PREFIXES, useAidSyncInvalidation) or a money write can invalidate by
   // prefix (spec §10). Each slice adds its reads here, under the same root.
   aidPrefix: () => ['financial-aid'] as const,
+  aidJumpIndex: (year: number) => ['financial-aid', 'jump-index', year] as const,
   aidRemainingPrefix: () => ['financial-aid', 'remaining'] as const,
   aidRemaining: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
     ['financial-aid', 'remaining', year, asOf ?? 'live', axis ?? 'campminder'] as const,

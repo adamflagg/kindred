@@ -35,6 +35,8 @@ import type {
   CamperJourneyResponse,
   CamperJourneyRow,
   CrossScopeEdge,
+  JumpIndexHousehold,
+  JumpIndexResponse,
   RemainingResponse,
   SocialGraphEdge,
   SocialGraphNode,
@@ -73,3 +75,7 @@ export type ApiCamperJourneyCounts = CamperJourneyCounts
 
 /** The Remaining line's read (D48). Mirrors Python `RemainingResponse`. */
 export type ApiAidRemaining = RemainingResponse
+
+/** The jump box's index (§3.5, slice 1's read). Mirrors Python `JumpIndexResponse`. */
+export type ApiAidJumpIndex = JumpIndexResponse
+export type ApiAidJumpHousehold = JumpIndexHousehold
