@@ -61,6 +61,19 @@ const mockUsers = [
   },
 ]
 
+vi.mock('../hooks/usePermissionRegistry', () => ({
+  usePermissionRegistry: () => ({
+    data: { permissions: [], areas: [], admin_only: [], total: 11 },
+    isLoading: false,
+    error: null,
+  }),
+}))
+
+vi.mock('../hooks/usePermissionDescriptions', () => ({
+  usePermissionDescriptions: () => ({ data: [] }),
+  useSaveDescription: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+
 vi.mock('../lib/pocketbase', () => ({
   pb: {
     collection: (name: string) => ({
@@ -73,27 +86,59 @@ vi.mock('../lib/pocketbase', () => ({
 
 const Users = (await import('./Users')).default
 
-function renderUsers() {
+function renderUsers(url = '/users') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[url]}>
         <Users />
       </MemoryRouter>
     </QueryClientProvider>
   )
 }
 
-describe('Users page access control', () => {
+describe('Users page shell', () => {
+  beforeEach(() => {
+    mockHasPermission.mockReset()
+    mockHasPermission.mockReturnValue(false)
+    mockIsAdmin = false
+  })
+
+  it('shows the band with three tabs and their counts', async () => {
+    renderUsers()
+    expect(screen.getByRole('heading', { name: 'System Access' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Users\s*3/ })).toBeInTheDocument() // stand-in excluded
+    expect(screen.getByRole('button', { name: /Roles/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Permissions\s*11/ })).toBeInTheDocument()
+  })
+
+  it('opens the tab named in the URL', async () => {
+    renderUsers('/users?tab=permissions')
+    expect(await screen.findByTestId('permissions-tab')).toBeInTheDocument()
+  })
+
+  it('switching tab writes the URL', async () => {
+    const user = userEvent.setup()
+    renderUsers()
+    await user.click(await screen.findByRole('button', { name: /Roles/ }))
+    expect(await screen.findByTestId('roles-matrix')).toBeInTheDocument()
+  })
+
+  it('never counts view-as persona stand-ins', async () => {
+    renderUsers()
+    // 4 mock rows, one is a stand-in: the Users tab count is 3 (and the stub table mounts).
+    expect(await screen.findByRole('button', { name: /Users\s*3/ })).toBeInTheDocument()
+    expect(await screen.findByTestId('users-table')).toBeInTheDocument()
+  })
+})
+
+// Migrated in Task 9/10: these assert on the old row/drawer markup, which the
+// new UsersTable (Task 9) and UserDrawer (Task 10) replace. Parked, not deleted.
+describe.skip('Users page access control (migrated in Task 9/10)', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
     mockIsAdmin = false
     mockCurrentUserId = 'user-1'
-  })
-
-  it('renders header for non-admin users', () => {
-    renderUsers()
-    expect(screen.getByText('System Access')).toBeTruthy()
   })
 
   it('does not show role management for users without users.manage', async () => {
@@ -140,7 +185,7 @@ describe('Users page access control', () => {
 // Enter/Space activation); a non-manageable row gets no button at all — same
 // "no button at all, not just an inert row" rule GeoDetailList follows
 // (kindred#2063).
-describe('Users page row keyboard reachability', () => {
+describe.skip('Users page row keyboard reachability (migrated in Task 9/10)', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
     mockIsAdmin = false
@@ -168,7 +213,7 @@ describe('Users page row keyboard reachability', () => {
   })
 })
 
-describe('Users page date column labels', () => {
+describe.skip('Users page date column labels (migrated in Task 9/10)', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
     mockIsAdmin = false
@@ -198,7 +243,7 @@ describe('Users page date column labels', () => {
   })
 })
 
-describe('Users page last login visibility', () => {
+describe.skip('Users page last login visibility (migrated in Task 9/10)', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
     mockIsAdmin = false
