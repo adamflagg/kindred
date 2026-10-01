@@ -109,7 +109,7 @@ func TestRecordWritesAreAudited(t *testing.T) {
 			},
 		},
 		{
-			Name: "a permission description override is labelled by its codename", Method: http.MethodPost,
+			Name: "a permission description override is labeled by its codename", Method: http.MethodPost,
 			URL:            "/api/collections/permission_descriptions/records",
 			Body:           strings.NewReader(`{"codename":"financial_aid.view","description":"See aid awards"}`),
 			TestAppFactory: factory, BeforeTestFunc: as("admin"), Headers: headers,

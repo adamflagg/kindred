@@ -50,7 +50,7 @@ func TestBatchRefusesSuperusersCollection(t *testing.T) {
 		}
 	}
 
-	var scenarios []tests.ApiScenario
+	scenarios := make([]tests.ApiScenario, 0, 6)
 	for _, spelling := range []string{
 		core.CollectionNameSuperusers, "_SUPERUSERS", "pbc_3142635823", "%5Fsuperusers",
 	} {
