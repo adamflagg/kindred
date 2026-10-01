@@ -420,3 +420,77 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
     expect(root).toHaveClass('flex', 'flex-col', 'items-start')
   })
 })
+
+describe('draft and onDraftChange (owner rulings A and B, 2026-10-01)', () => {
+  it('opens on a draft as typed: its text shows, and ↓ saves it', async () => {
+    const { onMove } = setup({
+      initialAmount: 300,
+      draft: { raw: '450', reason: 'Family emailed (Apr 8)' },
+    })
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('450')
+    expect(screen.getByLabelText('Note')).toHaveValue('Family emailed (Apr 8)')
+    await userEvent.keyboard('{ArrowDown}')
+    expect(onMove).toHaveBeenCalledWith(1, { amount: 450, reason: 'Family emailed (Apr 8)' })
+  })
+
+  it('reports nothing typed, then the save it would make, then why it can’t', async () => {
+    const onDraftChange = vi.fn()
+    setup({ initialAmount: null, onDraftChange })
+    expect(onDraftChange).toHaveBeenLastCalledWith(null)
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '500')
+    expect(onDraftChange).toHaveBeenLastCalledWith({
+      raw: '500',
+      reason: 'Family emailed (Apr 9)',
+      save: { amount: 500, reason: 'Family emailed (Apr 9)' },
+      problem: null,
+    })
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), ',5')
+    expect(onDraftChange).toHaveBeenLastCalledWith({
+      raw: '500,5',
+      reason: 'Family emailed (Apr 9)',
+      save: null,
+      problem: 'Not an amount',
+    })
+  })
+
+  it('reports nothing typed again once the amount is back where it opened', async () => {
+    const onDraftChange = vi.fn()
+    setup({ initialAmount: 300, onDraftChange })
+    const input = screen.getByLabelText('Round 2 ask')
+    await userEvent.clear(input)
+    await userEvent.type(input, '350')
+    expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ raw: '350' }))
+    await userEvent.clear(input)
+    await userEvent.type(input, '300')
+    expect(onDraftChange).toHaveBeenLastCalledWith(null)
+  })
+
+  it('names a required reason left empty as the problem, with no save', async () => {
+    const onDraftChange = vi.fn()
+    setup({ policy: REASON_POLICY.round3_ask, amountLabel: 'Round 3 ask', onDraftChange })
+    await userEvent.type(screen.getByLabelText('Round 3 ask'), '450')
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ save: null, problem: 'Statement of need is required' })
+    )
+  })
+
+  it('shows its own problem when the surface asks, once, and not as a save error (M9)', () => {
+    const { rerender, ...props } = setup({
+      policy: REASON_POLICY.round3_ask,
+      amountLabel: 'Round 3 ask',
+      initialAmount: 450,
+    })
+    expect(screen.queryByText('Statement of need is required')).toBeNull()
+    rerender(<RequestEditor {...props} showProblem />)
+    expect(screen.getAllByText('Statement of need is required')).toHaveLength(1)
+  })
+
+  it('does not report again when only the callback is new', () => {
+    const first = vi.fn()
+    const { rerender, ...props } = setup({ onDraftChange: first })
+    const second = vi.fn()
+    rerender(<RequestEditor {...props} onDraftChange={second} />)
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).not.toHaveBeenCalled()
+  })
+})

@@ -64,7 +64,6 @@ const ManageRegistrationPage = lazy(() =>
 const AidHome = lazy(() => import('./pages/camperships/AidHome'))
 const AidSectionPage = lazy(() => import('./pages/camperships/AidSectionPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
-const AidKitPage = lazy(() => import('./pages/camperships/AidKitPage'))
 const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
 const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
@@ -702,19 +701,6 @@ function App() {
                                     </Suspense>
                                   </ErrorBoundary>
                                 </RequirePermission>
-                              }
-                            />
-                            {/* The finance kit gallery (Decision 3): admin only, not in the nav. */}
-                            <Route
-                              path="kit"
-                              element={
-                                <AdminRoute>
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <AidKitPage />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                </AdminRoute>
                               }
                             />
                           </Route>
