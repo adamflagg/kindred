@@ -63,6 +63,7 @@ const ManageRegistrationPage = lazy(() =>
 )
 const AidHome = lazy(() => import('./pages/camperships/AidHome'))
 const AidSectionPage = lazy(() => import('./pages/camperships/AidSectionPage'))
+const AidRequestsPage = lazy(() => import('./pages/camperships/AidRequestsPage'))
 const AidHouseholdPage = lazy(() => import('./pages/camperships/AidHouseholdPage'))
 const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
 const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
@@ -637,7 +638,7 @@ function App() {
                                 <RequirePermission permission={Permission.FINANCIAL_AID_VIEW}>
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
-                                      <AidSectionPage section="requests" />
+                                      <AidRequestsPage />
                                     </Suspense>
                                   </ErrorBoundary>
                                 </RequirePermission>
