@@ -189,7 +189,9 @@ def placements_as_of(
     line CampMinder deleted outright before the log began is invisible here.
 
     A key two of today's register rows share (shared_keys) is unplaced whatever the log holds: every row
-    carrying it, and the requests its logged placement then named."""
+    carrying it, and the requests its logged placement then named. Whether a key is shared is decided from
+    today's register, so a key shared in the past but single again today replays its old placement for that
+    window (theoretical: none is shared on prod)."""
     logged = newest(records, at)
     latest = newest(records)
     shared = shared_keys(register_now)

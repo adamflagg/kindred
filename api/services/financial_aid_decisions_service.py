@@ -104,6 +104,7 @@ from api.services.financial_aid_cancellations import (
     EnrollmentState,
     cancellations_by_request,
     enrollment_cancelled,
+    first_cancelled_on,
     fold_cancellations,
     needs_reason,
     withdrawn_on_cancelled_enrollments,
@@ -830,16 +831,23 @@ def _cancelled_in_campminder(
     today: Sequence[RequestRecord],
     enrollments: Sequence[EnrollmentState],
     sessions: Sequence[SessionRow],
+    day: date,
 ) -> frozenset[str]:
-    """The requests live on a past date whose enrollment CampMinder has cancelled, its registrations read as
-    they are today, as the live read reads them (cancellations_by_request); under the record as it stood then
-    or as it is now, since intake may have re-resolved its session since. Wide on purpose: CampMinder's
-    cancellations aren't dated, so one cancelled after the date is caught too. It only ever empties."""
-    live = [r for r in requests.values() if r.status in _LIVE]
+    """The requests live on `day` whose registration CampMinder had cancelled by then, as its registrations
+    read today: a cancelled registration's enrollment_date is CampMinder's date for its current status, and
+    the earliest one counts (live on that day already saw it); an undated one counts too. Under the record
+    as it stood then or as it is now, since intake may have re-resolved its session since. One axis-free
+    comparison: CampMinder dates the status, and Kindred records no time for it. A registration whose status
+    changed after the day can't be seen (PAST_DATE_GAPS["cancellation"])."""
+    session_types = {s.cm_id: s.session_type for s in sessions}
     now = {r.id: r for r in today}
-    as_now = [replace(now[r.id], status=r.status) for r in live if r.id in now]
-    return frozenset(cancellations_by_request(live, (), enrollments, sessions)) | frozenset(
-        cancellations_by_request(as_now, (), enrollments, sessions)
+
+    def by_then(record: RequestRecord) -> bool:
+        cancelled, on = first_cancelled_on(record, enrollments, session_types)
+        return cancelled and (on is None or on <= day)
+
+    return frozenset(
+        rid for rid, r in requests.items() if r.status in _LIVE and (by_then(r) or (rid in now and by_then(now[rid])))
     )
 
 
@@ -857,8 +865,8 @@ def _pricing_gap(
     """Which undated or unreplayable input keeps this request from being priced as of the date, if any.
     A request that wasn't live then (its status) shows only its posted rounds, exactly as live does, so none
     reaches it. One cancelled in Kindred by then also shows only those, but Decision 19 still counts the
-    grants on it in its pool, so a grant with no logged placement reaches it. One whose enrollment CampMinder
-    has cancelled today (`cancelled_now`) may have been cancelled by then, so it can't be priced as live."""
+    grants on it in its pool, so a grant with no logged placement reaches it. One whose registration CampMinder
+    had cancelled by then (`cancelled_now`) can't be priced as live."""
     if not rules_known:
         return "rules_history"
     if unrebuilt:
@@ -1290,8 +1298,9 @@ class FinancialAidDecisionsService:
         or unreplayable input reaches (_PRICING_GAPS) keeps 3c-1's figures (as_of.price_as_of) and is
         named. On the campminder axis the Posted ticks and grant lines CampMinder dated by `day` count too
         (posted_by); everything with no CampMinder date cuts on when Kindred recorded it, on both axes.
-        CampMinder's cancellations aren't dated (10b-2 Decision 21): a request whose enrollment CampMinder has
-        cancelled today keeps 3c-1's figures and its pool is left empty (the cancellation gap)."""
+        CampMinder dates only a registration's current status (10b-2 Decision 21): a request whose registration
+        CampMinder had cancelled by `day`, by that date, keeps 3c-1's figures and its pool is left empty (the
+        cancellation gap); one whose status changed since can't be seen."""
         at = as_of_instant(day)
         posted_by = day if axis == "campminder" else None
         rules_read = asyncio.create_task(self._rules_as_of(year, at))
@@ -1326,7 +1335,7 @@ class FinancialAidDecisionsService:
                     self._store.fetch_cancellations(year),
                     self._store.fetch_grant_placements(year),
                     self._register(year),  # today's, only to find the grants the log can't place
-                    self._store.fetch_enrollment_states(  # today's: CampMinder's cancellations aren't dated
+                    self._store.fetch_enrollment_states(  # today's: CampMinder dates only the current status
                         year,
                         {r.person_cm_id for r in today if r.person_cm_id > 0},
                         {r.household_cm_id for r in today if r.person_cm_id <= 0},
@@ -1347,10 +1356,11 @@ class FinancialAidDecisionsService:
         rounds = fold_rounds(events, as_of=at, posted_by=posted_by)
         holds = fold_holds(hold_events, as_of=at)
         # Decision 21: a cancellation in Kindred is dated, so it applies as of the date (on created, on
-        # both axes); CampMinder's is not rebuilt: a request whose enrollment CampMinder has cancelled today
-        # isn't priced as live then (the cancellation gap), and one re-enrolled since can't be seen.
+        # both axes). CampMinder's is read from today's registrations, dated by their current status: a request
+        # whose registration CampMinder had cancelled by the day isn't priced as live then (the cancellation
+        # gap); one whose status changed since (re-enrolled, cancelled again, removed) can't be seen.
         in_kindred = {rid for rid, state in fold_cancellations(cancel_events, as_of=at).items() if state.in_kindred}
-        cancelled_now = _cancelled_in_campminder(requests, today, enrollments, sessions)
+        cancelled_now = _cancelled_in_campminder(requests, today, enrollments, sessions, day)
         session_map = {s.cm_id: s for s in sessions}
         own: dict[str, list[CorrectionRecord]] = defaultdict(list)
         for correction in _dated_by(corrections, at):

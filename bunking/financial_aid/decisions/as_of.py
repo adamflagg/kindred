@@ -49,15 +49,14 @@ _POOL_EMPTY: Final = (
     "strip's Needs an offer, Pending approval and Held"
 )
 _CANCELLED: Final = (
-    "CampMinder's cancellations aren't dated: registration statuses are read as they are today (10b-2), so a "
-    "past date shows no cancellation by CampMinder. A request live then whose enrollment CampMinder has "
-    "cancelled today may have been cancelled by then, so its pricing then can't be rebuilt: only its posted "
-    "rounds, asks and manual hold show" + _POOL_EMPTY + ". A request CampMinder had cancelled by then but "
-    "re-enrolled since reads as enrolled today, so it is priced and counted as if live then"
+    "CampMinder keeps only each registration's current status, dated (its enrollment date), so a past date "
+    "shows no cancellation by CampMinder. A request live then whose registration CampMinder had cancelled on "
+    "or before that day, by that status date, can't be priced as live: only its posted rounds, asks and "
+    "manual hold show" + _POOL_EMPTY + ". A registration whose status changed after that day (re-enrolled, "
+    "back to waitlisted or applied, cancelled again later, which re-dates it, or removed from CampMinder) "
+    "reads by today's status, so its request is priced and counted as live then"
 )
-_CANCELLED_TODAY: Final = (
-    "Reads CampMinder's cancellations, which are read as they are today, not as of that date (see cancellation)"
-)
+_CANCELLED_TODAY: Final = "Reads CampMinder's cancellations, which a past date doesn't show (see cancellation)"
 
 
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
@@ -131,8 +130,8 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     ),
 }
 # Named on every past read: what 3c-2 can't price from dated records (the ledger's sync time, and
-# CampMinder's cancellations, 10b-2 Decision 21; cancellation lists the requests it keeps unpriced). A gap
-# request names what it empties itself.
+# CampMinder's cancellations, whose earlier statuses are overwritten, 10b-2 Decision 21; cancellation lists
+# the requests it keeps unpriced). A gap request names what it empties itself.
 GRID_GAPS: Final[tuple[str, ...]] = ("confirmation", "cancellation", "to_reverse", "todos", "queues")
 BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 REMAINING_GAPS: Final[tuple[str, ...]] = ("cancellation",)

@@ -369,12 +369,23 @@ async def test_a_row_whose_posted_money_is_unknown_loses_its_notes_and_the_gap_s
 
 
 @pytest.mark.asyncio
-async def test_a_request_campminder_has_cancelled_today_is_not_priced_as_live_then_and_its_pool_is_left_empty() -> None:
-    """Final review I1: CampMinder's cancellations are undated, so Emma's enrollment, cancelled as it reads
-    today, may have been cancelled by the date. Her row keeps 3c-1's figures, only her pool is left empty,
-    and the gap names her and the case a past read can't see (cancelled by then, re-enrolled since)."""
+async def test_a_request_campminder_cancelled_after_the_date_is_priced_as_live_then() -> None:
+    """Final review I1, re-reviewed: the spec changed (build lead, 2026-10-01). A cancelled registration's
+    enrollment_date is CampMinder's date for its current status, so a request CampMinder cancelled after the
+    date was live then and is priced exactly; nothing is masked."""
     store = _two_families()
     store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, date(2027, 3, 20)))
+    service = _service(store)
+    grid = await service.grid(YEAR, as_of=MAR_9)
+    assert (_row(grid, EMMA).rounds[0].status, _row(grid, EMMA).rounds[0].decided) == ("needs_offer", 1500.0)
+    assert next(g for g in grid.not_rebuilt if g.figure == "cancellation").requests == []
+    camp = _pool(await service.budget(YEAR, as_of=MAR_9), "camp_pool")
+    assert (camp.total.needs_offer, camp.total.remaining) == (3000.0, 397000.0)
+
+
+async def _assert_emma_masked(store: FakeDecisionsStore) -> None:
+    """Emma's registration reads cancelled by Mar 9: her row keeps 3c-1's figures, only her pool is left
+    empty, and the gap names her and the case a past read can't see (its status changed since)."""
     service = _service(store)
     grid = await service.grid(YEAR, as_of=MAR_9)
     emma, liam = _row(grid, EMMA), _row(grid, LIAM)
@@ -405,6 +416,29 @@ async def test_a_request_campminder_has_cancelled_today_is_not_priced_as_live_th
     ]
     assert [g.figure for g in remaining.not_rebuilt] == list(REMAINING_GAPS)
     assert all(g.requests == [] for g in remaining.not_rebuilt)  # D75
+
+
+@pytest.mark.asyncio
+async def test_a_request_campminder_cancelled_on_the_day_is_not_priced_as_live_then() -> None:
+    store = _two_families()
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, MAR_9))
+    await _assert_emma_masked(store)
+
+
+@pytest.mark.asyncio
+async def test_the_earliest_cancelled_registration_dates_the_cancellation() -> None:
+    """Live on Mar 9 already saw the Mar 5 cancellation, so the later one doesn't move it past the date."""
+    store = _two_families()
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, date(2027, 3, 5)))
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 256, date(2027, 3, 20)))
+    await _assert_emma_masked(store)
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_registration_with_no_date_is_not_priced_as_live_then() -> None:
+    store = _two_families()
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 32, None))
+    await _assert_emma_masked(store)
 
 
 @pytest.mark.asyncio
