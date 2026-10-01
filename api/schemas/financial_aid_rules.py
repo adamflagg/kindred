@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
@@ -30,6 +30,14 @@ class RulesApproveIn(BaseModel):
     sections: list[SectionName] = Field(min_length=1)
     # D39: an approval names the approving body ("Finance, Oct 7 meeting"); stored as the log row's reason.
     note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    # Each ticked section's fingerprint as the approver saw it (the Rules tab's draft read): a section saved since is a 409.
+    fingerprints: dict[SectionName, str]
+
+    @model_validator(mode="after")
+    def _fingerprints_match_sections(self) -> RulesApproveIn:
+        if set(self.fingerprints) != set(self.sections):
+            raise ValueError("fingerprints must name exactly the sections being approved")
+        return self
 
 
 class RulesVersionOut(BaseModel):
@@ -51,6 +59,8 @@ class SectionSaveIn(BaseModel):
 
     base_version: int = Field(ge=1)
     content: dict[str, Any]
+    # The section's fingerprint as the editor opened it (DraftSectionOut.fingerprint): saved since is a 409.
+    expected_fingerprint: str = Field(min_length=1)
 
 
 class NewVersionIn(BaseModel):
@@ -81,6 +91,7 @@ class DraftSectionOut(BaseModel):
     changes: list[FieldChangeOut]  # against the approved rules pricing the season: "Draft · n changes"
     errors: int
     warnings: int
+    fingerprint: str  # sha256 of the section's stored content; saves and approvals send it back
 
 
 class RulesDraftOut(BaseModel):

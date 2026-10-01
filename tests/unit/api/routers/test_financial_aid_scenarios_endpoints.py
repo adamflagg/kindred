@@ -168,7 +168,10 @@ VERSION = RulesVersion(
     parent_version=1,
 )
 RULES_DRAFT = RulesDraft(
-    VERSION, None, ValidationReport(), tuple(DraftSection(name, SectionStatus(), ()) for name in SECTION_NAMES)
+    VERSION,
+    None,
+    ValidationReport(),
+    tuple(DraftSection(name, SectionStatus(), (), "0" * 64) for name in SECTION_NAMES),
 )
 DOC_BODY = {"document": DOC.model_dump(mode="json")}
 

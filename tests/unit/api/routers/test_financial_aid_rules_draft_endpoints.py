@@ -19,8 +19,10 @@ from api.services.financial_aid_rules_service import (
     RulesDraft,
     RulesNotFoundError,
     RulesVersion,
+    SectionChangedError,
     SectionInvalidError,
     SectionSaveResult,
+    section_fingerprint,
 )
 from bunking.financial_aid.change_diff import FieldChange
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
@@ -55,6 +57,7 @@ DRAFT = RulesDraft(
             name,
             VERSION.section_status[name],
             (FieldChange(("minimum",), "changed", Decimal(100), Decimal(150)),) if name == "awards" else (),
+            section_fingerprint(VERSION.document, name),
         )
         for name in SECTION_NAMES
     ),
@@ -63,7 +66,7 @@ APPROVED = ApprovedRules(
     year=2031, version=1, sections=tuple(ApprovedSection(name, SectionStatus(), None, None) for name in SECTION_NAMES)
 )
 AWARDS = fictional_rules_json()["awards"] | {"minimum": "150"}
-SAVE_BODY = {"base_version": 2, "content": AWARDS}
+SAVE_BODY = {"base_version": 2, "content": AWARDS, "expected_fingerprint": "f" * 64}
 
 ROUTES: list[tuple[str, str, dict[str, Any] | None, int, str]] = [
     ("GET", "/api/financial-aid/rules/2031/draft", None, 200, Permission.FINANCIAL_AID_RULES),
@@ -126,6 +129,7 @@ def test_a_section_save_sends_the_section_and_its_raw_content_and_reports_the_br
     call = service.save_section.await_args
     assert call.args == (2031, 2, "awards", SAVE_BODY["content"])
     assert call.kwargs["actor"] == persona_user(PERSONA_FINANCE).email
+    assert call.kwargs["expected_fingerprint"] == "f" * 64
     service.load.assert_not_called()  # the service loads the draft itself, so a save in between is never reverted
     assert body["branched_from"] == 1
     awards = next(s for s in body["sections"] if s["section"] == "awards")
@@ -137,7 +141,7 @@ def test_section_content_that_does_not_parse_is_422() -> None:
     service.save_section = AsyncMock(
         side_effect=SectionInvalidError("awards is not a valid section: awards.minimum: x")
     )
-    bad = {"base_version": 2, "content": fictional_rules_json()["awards"] | {"minimum": "-5"}}
+    bad = SAVE_BODY | {"content": fictional_rules_json()["awards"] | {"minimum": "-5"}}
     response = _client().put("/api/financial-aid/rules/2031/sections/awards", json=bad)
     assert response.status_code == 422
     assert "awards.minimum" in response.json()["detail"]
@@ -179,3 +183,24 @@ def test_the_approved_read_passes_a_receipts_version_and_404s_without_approved_r
     assert service.approved_view.await_args.args == (2031, 3)
     service.approved_view = AsyncMock(side_effect=RulesNotFoundError("2031 has no approved rules yet"))
     assert _client().get("/api/financial-aid/rules/2031/approved").status_code == 404
+
+
+def test_a_section_save_without_its_opening_fingerprint_is_422() -> None:
+    service = _stub()
+    body = {"base_version": 2, "content": AWARDS}
+    assert _client().put("/api/financial-aid/rules/2031/sections/awards", json=body).status_code == 422
+    service.save_section.assert_not_called()
+
+
+def test_a_section_changed_since_it_was_opened_is_409_naming_it() -> None:
+    service = _stub()
+    message = "Someone else saved awards since you opened it; reload to see their change"
+    service.save_section = AsyncMock(side_effect=SectionChangedError(["awards"], message))
+    response = _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY)
+    assert (response.status_code, response.json()["detail"]) == (409, message)
+
+
+def test_the_draft_read_gives_each_section_its_fingerprint() -> None:
+    _stub()
+    body = _client().get("/api/financial-aid/rules/2031/draft").json()
+    assert all(len(s["fingerprint"]) == 64 for s in body["sections"])

@@ -137,6 +137,21 @@ class NotLatestVersionError(FinancialAidError, ValueError):
     """
 
 
+class SectionChangedError(FinancialAidError, ValueError):
+    """A section save or approval named a fingerprint that is no longer the section's: someone changed it since the
+    editor opened it. Names every stale section; nothing is written."""
+
+    def __init__(self, sections: Sequence[str], message: str | None = None) -> None:
+        self.sections = list(sections)
+        super().__init__(
+            message
+            or (
+                f"Someone else saved {', '.join(self.sections)} since you opened "
+                f"{'it' if len(self.sections) == 1 else 'them'}; reload to see their change"
+            )
+        )
+
+
 class NoSectionsNamedError(FinancialAidError, ValueError):
     """An approval must name at least one section."""
 
@@ -214,6 +229,7 @@ class DraftSection:
     section: SectionName
     status: SectionStatus
     changes: tuple[FieldChange, ...]
+    fingerprint: str  # of the section's stored content: a save or approval names the one the editor opened
 
 
 @dataclass(frozen=True)
@@ -581,6 +597,7 @@ class FinancialAidRulesService:
                 section=name,
                 status=current.section_status[name],
                 changes=tuple(field_changes(base[name], now[name])) if base is not None else (),
+                fingerprint=section_fingerprint(current.document, name),
             )
             for name in SECTION_NAMES
         )
@@ -731,7 +748,14 @@ class FinancialAidRulesService:
         return await self.load(year, current.version), report
 
     async def save_sections(
-        self, year: int, base_version: int, candidate: AidRules, *, actor: str, via: str | None = None
+        self,
+        year: int,
+        base_version: int,
+        candidate: AidRules,
+        *,
+        actor: str,
+        via: str | None = None,
+        expected_fingerprints: Mapping[SectionName, str] | None = None,
     ) -> SectionSaveResult:
         """Save `candidate` over the rules draft (the latest version), which the editor opened as `base_version`.
 
@@ -749,15 +773,26 @@ class FinancialAidRulesService:
         if candidate.year != year:
             raise YearMismatchError(f"The document is for {candidate.year}, not {year}")
         current = await self._rules_draft(year, base_version)
+        _assert_unchanged(current, expected_fingerprints or {})
         return await self._save_over(current, candidate, actor=actor, via=via)
 
     async def save_section(
-        self, year: int, base_version: int, section: SectionName, content: Mapping[str, Any], *, actor: str
+        self,
+        year: int,
+        base_version: int,
+        section: SectionName,
+        content: Mapping[str, Any],
+        *,
+        actor: str,
+        expected_fingerprint: str | None = None,
     ) -> SectionSaveResult:
         """One section editor's save: `content` (that section's JSON) merged into the rules draft this call loads,
         then saved as `save_sections` does. Parsing against the version loaded here, not one a caller loaded
-        earlier, means a save that landed in between is never silently reverted."""
+        earlier, means a save that landed in between is never silently reverted. `expected_fingerprint` (the router
+        always sends it) is the section's fingerprint as the editor opened it: a section saved since is refused."""
         current = await self._rules_draft(year, base_version)
+        if expected_fingerprint is not None:
+            _assert_unchanged(current, {section: expected_fingerprint})
         return await self._save_over(current, parse_section(current.document, section, content), actor=actor, via=None)
 
     async def _rules_draft(self, year: int, base_version: int) -> RulesVersion:
@@ -905,17 +940,28 @@ class FinancialAidRulesService:
         return await self.approve_sections(year, version, [section], actor=actor, note=note)
 
     async def approve_sections(
-        self, year: int, version: int, sections: Sequence[SectionName], *, actor: str, note: str | None
+        self,
+        year: int,
+        version: int,
+        sections: Sequence[SectionName],
+        *,
+        actor: str,
+        note: str | None,
+        fingerprints: Mapping[SectionName, str] | None = None,
     ) -> tuple[RulesVersion, ValidationReport]:
         """Approve `sections` as ONE operation: a log row per section, the note (naming the
         approving body, D39) as each row's reason. All or nothing: every approval is checked
         before anything is sent, so one section that cannot be approved stops them all.
-        The report comes back so its warnings (no_sessions_to_check) reach the approver."""
+        The report comes back so its warnings (no_sessions_to_check) reach the approver. `fingerprints` (the router
+        always sends them) are the ticked sections' fingerprints as the approver saw them: one changed since is
+        refused, naming it, before anything is approved."""
         named = list(dict.fromkeys(sections))
         if not named:
             raise NoSectionsNamedError("Name at least one section to approve")
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
+        if fingerprints is not None:
+            _assert_unchanged(current, {name: fingerprints[name] for name in named if name in fingerprints})
         report = await self.validate_document(current.document)
         at = self._clock()
         status = current.section_status
@@ -1083,3 +1129,22 @@ class FinancialAidRulesService:
 
 def _dump(document: AidRules) -> dict[str, Any]:
     return document.model_dump(mode="json")
+
+
+def section_fingerprint(document: AidRules, section: SectionName) -> str:
+    """sha256 of one section's stored content as canonical JSON (sorted keys, no spaces): stable across key order,
+    and it moves only when that section's content does, so a save to another section never invalidates it."""
+    canonical = json.dumps(_dump(document)[section], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _assert_unchanged(current: RulesVersion, expected: Mapping[SectionName, str]) -> None:
+    """Refuse when any section named in `expected` no longer has the fingerprint the caller opened. Run on the same
+    read the write is built from and guarded with the revision of (G6), so a save landing after it is refused there."""
+    stale = [
+        name
+        for name in SECTION_NAMES
+        if name in expected and section_fingerprint(current.document, name) != expected[name]
+    ]
+    if stale:
+        raise SectionChangedError(stale)
