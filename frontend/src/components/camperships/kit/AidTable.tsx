@@ -176,31 +176,43 @@ export function AidTable<Row>({
       matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], query),
     [searchable, searchExtra, query]
   )
-  // The row you are on stays through a search, as if it matched: its editor, its typing and its
-  // failure are on it. Only a highlight the search would hide changes `kept`, so ↑/↓ over matching
-  // rows never re-sorts.
+  // The row you are on stays on screen through a search: its editor, its typing and its failure are
+  // on it. It is display only (owner ruling 2026-10-01): totals, group counts and the CSV always
+  // mean the rows matching the search. Only a highlight the search would hide changes `kept`, so
+  // ↑/↓ over matching rows never re-sorts.
   const kept = useMemo(() => {
     if (highlighted === null) return null
     const row = rows.find((r) => rowKey(r) === highlighted)
     return row !== undefined && !matches(row) ? highlighted : null
   }, [rows, rowKey, highlighted, matches])
 
-  const visible = useMemo(() => {
-    const filtered = rows.filter((row) => (kept !== null && rowKey(row) === kept) || matches(row))
-    const column = sort ? columns.find((c) => c.key === sort.key) : undefined
-    return column && sort ? sortRows(filtered, column.value, sort.dir) : filtered
-  }, [rows, columns, rowKey, matches, kept, sort])
+  const sorted = useCallback(
+    (list: readonly Row[]) => {
+      const column = sort ? columns.find((c) => c.key === sort.key) : undefined
+      return column && sort ? sortRows(list, column.value, sort.dir) : [...list]
+    },
+    [columns, sort]
+  )
+  // The rows matching the search: what the totals, the counts and the CSV are of.
+  const visible = useMemo(() => sorted(rows.filter(matches)), [rows, matches, sorted])
+  // What is drawn: those, plus the kept row.
+  const shown = useMemo(
+    () =>
+      kept === null ? visible : sorted(rows.filter((row) => rowKey(row) === kept || matches(row))),
+    [kept, visible, rows, rowKey, matches, sorted]
+  )
 
   const grouping = groupings.find((g) => g.key === group)
   const groups: Array<RowGroup<Row>> = useMemo(
     () =>
-      grouping
-        ? groupRows(visible, grouping.groupOf)
-        : [{ id: '', heading: '', rows: [...visible] }],
-    [visible, grouping]
+      grouping ? groupRows(shown, grouping.groupOf) : [{ id: '', heading: '', rows: [...shown] }],
+    [shown, grouping]
   )
   const ordered = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   const order = useMemo(() => ordered.map(rowKey), [ordered, rowKey])
+  // Without the kept row: a group's count and the CSV are of matching rows only.
+  const counted = (list: readonly Row[]) =>
+    kept === null ? list : list.filter((row) => rowKey(row) !== kept)
 
   useEffect(() => {
     if (!arrowKeys) return
@@ -264,7 +276,7 @@ export function AidTable<Row>({
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
   const download = () => {
-    const data = ordered.map((row) =>
+    const data = counted(ordered).map((row) =>
       columns.map((c) =>
         c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
       )
@@ -363,7 +375,7 @@ export function AidTable<Row>({
                     <td colSpan={columns.length} className={GROUP_ROW} data-group-heading="">
                       <span className="sticky left-2">{g.heading}</span>
                       {groupCount ? (
-                        <span className="ml-2 font-normal">{groupCount(g.rows)}</span>
+                        <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
                       ) : null}
                     </td>
                   </tr>

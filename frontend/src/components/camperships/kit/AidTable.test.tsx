@@ -511,7 +511,13 @@ describe('AidTable', () => {
 // is typed before a row changes, and put the highlight back on a row whose save failed.
 let asked: Array<string | null> = []
 
-function Controlled({ agree }: { agree: boolean }) {
+function Controlled({
+  agree,
+  extra = {},
+}: {
+  agree: boolean
+  extra?: Partial<Parameters<typeof AidTable<Row>>[0]>
+}) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
   return (
     <MemoryRouter initialEntries={['/aid/requests']}>
@@ -527,6 +533,7 @@ function Controlled({ agree }: { agree: boolean }) {
           if (agree) setHighlighted(key)
         }}
         renderBelowHighlighted={(r) => <div>Editing {r.camper}</div>}
+        {...extra}
       />
     </MemoryRouter>
   )
@@ -638,4 +645,58 @@ describe('AidTable with a controlled highlight', () => {
       expect(screen.getByText('Editing Olivia Chen')).toBeInTheDocument()
     }
   )
+})
+
+// Owner ruling R1 (2026-10-01): the row you are on stays on screen under a search that hides it,
+// but totals, group counts and the CSV always mean the rows matching the search.
+describe('a row kept on screen under a search', () => {
+  const COUNTED = {
+    groupings: GROUPINGS,
+    defaultGrouping: 'family',
+    groupCount: (rows: readonly Row[]) => `${String(rows.length)} in group`,
+    footerLabel: (rows: readonly Row[]) => `${String(rows.length)} requests`,
+  }
+  const groupHeading = (name: string) =>
+    [...document.querySelectorAll('[data-group-heading]')].find((td) =>
+      td.textContent.startsWith(name)
+    )
+  const search = (text: string) =>
+    userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), text)
+
+  async function check() {
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    await search('johnson')
+    // (1) still rendered
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    // (2) the footer excludes it: 2 requests, $1,800 + $1,200, not $950 more
+    expect(screen.getByText('2 requests')).toBeInTheDocument()
+    expect(screen.getByText('$3,000')).toBeInTheDocument()
+    expect(screen.queryByText('$3,950')).toBeNull()
+    // (3) its group counts nothing
+    expect(groupHeading('Chen')).toHaveTextContent('0 in group')
+    expect(groupHeading('Johnson')).toHaveTextContent('2 in group')
+    // (4) the CSV excludes it
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls[0] as [string, string]
+    expect(content).not.toContain('Olivia Chen')
+    expect(content).toContain('Samuel Johnson')
+  }
+
+  it('is drawn but not counted (uncontrolled)', async () => {
+    renderTable('/aid/requests', COUNTED)
+    await check()
+  })
+
+  it('is drawn but not counted (controlled)', async () => {
+    render(<Controlled agree extra={COUNTED} />)
+    await check()
+  })
+
+  it('changes nothing when the highlighted row matches the search anyway', async () => {
+    renderTable('/aid/requests', COUNTED)
+    await userEvent.click(screen.getByText('Samuel Johnson'))
+    await search('johnson')
+    expect(screen.getByText('2 requests')).toBeInTheDocument()
+    expect(groupHeading('Johnson')).toHaveTextContent('2 in group')
+  })
 })
