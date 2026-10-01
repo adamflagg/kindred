@@ -150,6 +150,7 @@ from api.schemas.financial_aid_scenarios import (
     ViewIn,
     WorkspaceOut,
 )
+from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -209,7 +210,9 @@ from api.services.financial_aid_scenarios_service import (
 )
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
+from bunking.branding import get_branding, get_camp_name
 from bunking.financial_aid.change_log import AidWriteConflictError
+from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
@@ -1387,3 +1390,31 @@ async def set_request_cancellation(
         return await _decisions().set_cancellation(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
+
+
+# --- slice 1's reads (clean spec §12.2) -------------------------------------------------------------
+
+
+def camp_label() -> str:
+    """The camp's name in staff copy: branding's short name, else its full name."""
+    short = str(get_branding().get("camp_name_short") or "").strip()
+    return short or get_camp_name()
+
+
+@router.get("/definitions", response_model=DefinitionsResponse)
+async def get_definitions(
+    surface: Annotated[str, Query(min_length=1, max_length=64)], user: AuthUser = _VIEW_OR_SUMMARY
+) -> DefinitionsResponse:
+    """A surface's numbered definition notes (§4.8, D20): §5's signed meanings, shared with Reports ›
+    Development. An unknown surface is 404."""
+    keys = SURFACES.get(surface)
+    if keys is None:
+        raise HTTPException(status_code=404, detail=f"no definitions for surface {surface!r}")
+    camp = camp_label()
+    return DefinitionsResponse(
+        surface=surface,
+        notes=[
+            DefinitionNoteOut(key=key, n=n, text=render(BY_KEY[key], camp=camp).text)
+            for n, key in enumerate(keys, start=1)
+        ],
+    )

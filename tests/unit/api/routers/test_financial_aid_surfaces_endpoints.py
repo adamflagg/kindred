@@ -1,0 +1,79 @@
+"""Slice 1's reads (clean spec §12.2 "Slice 1's own reads"): the definitions registry, the jump-box
+index, Today, the household page and the request editor's preview. The permission matrix over SP2's
+personas, and what each route passes to its service. Builds a bare FastAPI app (persona_client); never
+imports api.main."""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from bunking.rbac.permissions import Permission
+from tests.unit.rbac.permission_personas import (
+    PERSONA_DEVELOPMENT,
+    PERSONA_FINANCE,
+    PERSONAS,
+    persona_client,
+)
+
+VIEW, SUMMARY, CASEWORK = (
+    Permission.FINANCIAL_AID_VIEW,
+    Permission.FINANCIAL_AID_SUMMARY,
+    Permission.FINANCIAL_AID_CASEWORK,
+)
+
+
+def _client(persona: str = PERSONA_FINANCE) -> TestClient:
+    from api.routers.financial_aid import router
+
+    return persona_client(router, persona)
+
+
+@pytest.fixture(autouse=True)
+def _stop_patches() -> Any:
+    yield
+    patch.stopall()
+
+
+# --- the definitions registry (§4.8, D20) ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_definitions_open_to_view_or_summary(persona: str) -> None:
+    """Shared with Reports › Development (D20), so development's summary reads it too (D65)."""
+    response = _client(persona).get("/api/financial-aid/definitions?surface=household")
+    expected = 200 if {VIEW, SUMMARY} & set(PERSONAS[persona]) else 403
+    assert response.status_code == expected, persona
+
+
+def test_a_surfaces_notes_are_numbered_from_1_with_the_camp_name_filled_in() -> None:
+    with patch("api.routers.financial_aid.camp_label", return_value="Camp Fictional"):
+        body = _client(PERSONA_DEVELOPMENT).get("/api/financial-aid/definitions?surface=household").json()
+    assert body["surface"] == "household"
+    assert [(n["n"], n["key"]) for n in body["notes"]] == [
+        (1, "cost"),
+        (2, "decided"),
+        (3, "grants"),
+        (4, "family_share"),
+        (5, "posted"),
+        (6, "confirmation"),
+        (7, "would_change_by"),
+    ]
+    assert body["notes"][3] == {
+        "key": "family_share",
+        "n": 4,
+        "text": (
+            "Family's share = cost − Camp Fictional aid (decided) − grants, over the family's included requests. "
+            "It is not a balance: CampMinder's balance also holds payments, deposits and other charges. For a "
+            "split family it is the family total."
+        ),
+    }
+    assert "{camp}" not in str(body)
+
+
+def test_an_unknown_surface_is_404_and_a_missing_one_422() -> None:
+    assert _client().get("/api/financial-aid/definitions?surface=nowhere").status_code == 404
+    assert _client().get("/api/financial-aid/definitions").status_code == 422
