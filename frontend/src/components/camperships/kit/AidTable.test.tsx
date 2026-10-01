@@ -574,4 +574,50 @@ describe('AidTable with a controlled highlight', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Back to Emma' }))
     expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
   })
+
+  // The editor row's nav in a controlled table: every method goes through `onHighlight` and moves
+  // nothing by itself (the surface keeps the highlight, here fixed on r3). Regression guards.
+  it.each([
+    ['highlight(key)', 'Jump to Emma', 'r1'],
+    ['next', 'Next', 'r4'],
+    ['previous', 'Previous', 'r2'],
+    ['close', 'Close', null],
+  ])(
+    'sends nav.%s through onHighlight and moves nothing itself',
+    async (_name, label, expected) => {
+      render(
+        <MemoryRouter initialEntries={['/aid/requests']}>
+          <AidTable<Row>
+            rows={ROWS}
+            columns={COLUMNS}
+            rowKey={rowKeyOf}
+            csvFilename="camperships-requests-all-2027.csv"
+            highlighted="r3"
+            onHighlight={(key) => asked.push(key)}
+            renderBelowHighlighted={(r, nav) => (
+              <div>
+                <span>Editing {r.camper}</span>
+                <button type="button" onClick={() => nav.highlight('r1')}>
+                  Jump to Emma
+                </button>
+                <button type="button" onClick={nav.next}>
+                  Next
+                </button>
+                <button type="button" onClick={nav.previous}>
+                  Previous
+                </button>
+                <button type="button" onClick={nav.close}>
+                  Close
+                </button>
+              </div>
+            )}
+          />
+        </MemoryRouter>
+      )
+      await userEvent.click(screen.getByRole('button', { name: label }))
+      expect(asked).toEqual([expected])
+      expect(highlightedCamper()).toBe('Olivia Chen')
+      expect(screen.getByText('Editing Olivia Chen')).toBeInTheDocument()
+    }
+  )
 })
