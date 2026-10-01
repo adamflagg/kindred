@@ -24,23 +24,38 @@ before FIRST_TICKED_SEASON: 2026's money was never ticked (SP10b Decision 9).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import UTC, date, datetime
-from typing import Final, Protocol
+from decimal import Decimal
+from typing import Any, Final, Protocol
 
+from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOSITIONS
 from api.schemas.financial_aid_to_place import (
     CandidateOut,
     EvidenceOut,
+    LeaveLineIn,
     LeftToTickOut,
     PartOut,
+    PlaceLineIn,
+    PlaceLinesIn,
+    PlaceLinesRow,
+    PlaceOut,
+    ReclassifyLineIn,
     SuggestionOut,
     TickedOut,
     ToPlaceGroupOut,
     ToPlaceLineOut,
     ToPlaceResponse,
+    ToPlaceWriteOut,
 )
 from api.services.camp_calendar import CAMP_TZ
-from api.services.financial_aid_decisions_service import FIRST_TICKED_SEASON, FinancialAidDecisionsService, Season
+from api.services.financial_aid_decisions_service import (
+    FIRST_TICKED_SEASON,
+    DecisionNotFoundError,
+    DecisionRefusedError,
+    FinancialAidDecisionsService,
+    Season,
+)
 from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_reconciliation import (
@@ -52,7 +67,9 @@ from api.services.financial_aid_reconciliation import (
     locked_total,
 )
 from api.services.financial_aid_to_place import (
+    LEFT_DISPOSITION,
     REASONS,
+    TO_PLACE_FLAG,
     Candidate,
     LeftLine,
     LineDetail,
@@ -66,15 +83,19 @@ from api.services.financial_aid_to_place import (
     placement_outcome,
     to_place,
 )
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite
+from bunking.financial_aid.change_diff import changed_fields
+from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.decisions import PricedRequest
 from bunking.financial_aid.money import ZERO
+from bunking.pocketbase_batch import BatchLimitError, BatchRequestFailedError
 
 GROUP_LABELS: Final[dict[Reason, str]] = {
     "several": "Several requests could take this",
     "no_request": "No request behind it",
     "program_mismatch": "The description names a program this camper isn't in",
 }
+
+PENDING_RECLASS: Final = "its reclassification waits for tonight's ledger sync"
 
 
 class ToPlaceStore(Protocol):
@@ -164,6 +185,11 @@ def _suggested(
     if len(suggestion.parts) == 1:
         return {txn: by_id[suggestion.parts[0].request_id].placement(txn)}, {}
     return {}, {txn: tuple(by_id[p.request_id].part(p.amount) for p in suggestion.parts)}
+
+
+def _raced(exc: BatchRequestFailedError) -> bool:
+    """Someone created the same row first (a unique index) or removed it first (404): a race, not a refusal."""
+    return exc.status == 404 or any("unique" in message.lower() for message in exc.field_errors.values())
 
 
 class ToPlaceService:
@@ -294,4 +320,330 @@ class ToPlaceService:
             session=session.name if session is not None else "",
             still_due=money(c.still_due),
             cancelled=c.cancelled,
+        )
+
+    # --- the writes ---------------------------------------------------------------------------------
+
+    @staticmethod
+    def _pool_item(
+        season: Season, transaction_cm_id: int, pool: Mapping[int, ToPlaceItem] | None = None
+    ) -> ToPlaceItem:
+        """The line's To place item, or why it has none."""
+        items = pool if pool is not None else {i.line.transaction_cm_id: i for i in to_place(season, {})}
+        item = items.get(transaction_cm_id)
+        if item is not None:
+            return item
+        if any(line.transaction_cm_id == transaction_cm_id and line.live() for line in season.camp_lines):
+            raise DecisionRefusedError(f"line {transaction_cm_id} is already on a request")
+        raise DecisionNotFoundError(f"no live camp-aid line {transaction_cm_id} in {season.year}")
+
+    async def _commit(
+        self, writes: Sequence[AidWrite], *, actor: str, reason: str | None, require_reason: bool = False
+    ) -> AidOperationResult:
+        """One operation. Nothing is written when PocketBase refuses the batch: a row someone created or removed
+        first (a double click, two staff) is a race, AidWriteConflictError (409, G6's wording); anything else
+        is a refusal (422). G6's own stale-revision refusal arrives as AidWriteConflictError already."""
+        try:
+            return await self._store.commit(writes, actor=actor, reason=reason, require_reason=require_reason)
+        except BatchRequestFailedError as exc:
+            if _raced(exc):
+                url = exc.request.url.strip("/").split("/") if exc.request is not None else []
+                collection = url[2] if len(url) > 2 else ""
+                record_id = url[4] if len(url) > 4 else ""
+                raise AidWriteConflictError(collection=collection, record_id=record_id) from exc
+            raise DecisionRefusedError(f"nothing was written: {exc.message}") from exc
+
+    async def place(self, year: int, transaction_cm_id: int, body: PlaceLineIn, actor: str) -> PlaceOut:
+        """Confirm (one part) or Split (several) one line."""
+        row = PlaceLinesRow(transaction_cm_id=transaction_cm_id, parts=body.parts)
+        lines = PlaceLinesIn(lines=[row], note=body.note, expected_locked=body.expected_locked)
+        return await self.place_lines(year, lines, actor)
+
+    def _staged(
+        self,
+        year: int,
+        item: ToPlaceItem,
+        current: OverrideRow | None,
+        detail: LineDetail | None,
+        row: PlaceLinesRow,
+        note: str,
+        actor: str,
+    ) -> tuple[Placement | None, tuple[SplitPart, ...], AidWrite]:
+        """One line's placement (or split) and its override write, checked against the line and its family.
+        A reclassification Go already applied stays on the override (D104)."""
+        txn = row.transaction_cm_id
+        if pending_reclass(current, detail):
+            raise DecisionRefusedError(PENDING_RECLASS)
+        by_id = {c.request_id: c for c in item.candidates}
+        for part in row.parts:
+            if part.request_id not in by_id:
+                raise DecisionRefusedError(f"{part.request_id} is not a request this family holds")
+        total = sum((p.amount for p in row.parts), ZERO)
+        if total != item.line.amount:
+            raise DecisionRefusedError(f"the parts add up to {dollars(total)}; the line is {dollars(item.line.amount)}")
+        whole = by_id[row.parts[0].request_id].placement(txn) if len(row.parts) == 1 else None
+        split = () if whole is not None else tuple(by_id[p.request_id].part(p.amount) for p in row.parts)
+        payload: dict[str, Any] = {
+            "transaction_cm_id": txn,
+            "year": year,
+            "attributed_person_cm_id": whole.person_cm_id if whole is not None else 0,
+            "attributed_session_cm_id": whole.session_cm_id if whole is not None else 0,
+            "program_family": whole.program_family if whole is not None else "",
+            "source_key_override": current.source_key_override if current is not None else "",
+            "source": "staff",
+            "note": note or (current.note if current is not None else ""),
+            "split": [part.fields() for part in split],
+        }
+        write = self._override_write(year, current, payload, actor, "place_line", reason=note or None)
+        if write is None:
+            raise DecisionRefusedError("it is already placed that way")
+        return whole, split, write
+
+    async def place_lines(self, year: int, body: PlaceLinesIn, actor: str) -> PlaceOut:
+        """Confirm or Split one line, or confirm a whole class of them (D16), all or nothing: each line's
+        override, the Posted ticks the placed money makes, and the end of any Leave at family level on those
+        lines, as ONE operation (D12, D81)."""
+        if skipped := _gate(year):
+            raise DecisionRefusedError(skipped)
+        season, overrides, details, left = await asyncio.gather(
+            self._decisions.season(year),
+            self._store.fetch_override_rows(year),
+            self._store.fetch_line_details(year),
+            self._store.fetch_left_lines(year),
+        )
+        pool = {i.line.transaction_cm_id: i for i in to_place(season, {})}
+        whole: dict[int, Placement] = {}
+        splits: dict[int, tuple[SplitPart, ...]] = {}
+        writes: list[AidWrite] = []
+        problems: list[str] = []
+        for row in body.lines:
+            txn = row.transaction_cm_id
+            try:
+                item = self._pool_item(season, txn, pool)
+                placement, split, write = self._staged(
+                    year, item, overrides.get(txn), details.get(txn), row, body.note, actor
+                )
+            except DecisionRefusedError as exc:
+                problems.append(f"line {txn}: {exc}")
+                continue
+            if placement is not None:
+                whole[txn] = placement
+            else:
+                splits[txn] = split
+            writes.append(write)
+            if txn in left:
+                writes.append(self._left_delete(year, txn, left[txn]))
+        if problems:
+            raise DecisionRefusedError("; ".join(problems))
+        targets = [p.request_id for row in body.lines for p in row.parts]
+        outcome = placement_outcome(season, whole, splits, targets, today=self._today())
+        for row in body.lines:
+            for part in row.parts:
+                landed = sum(
+                    (
+                        ln.amount
+                        for ln in outcome.ledger.lines(part.request_id)
+                        if ln.transaction_cm_id == row.transaction_cm_id
+                    ),
+                    ZERO,
+                )
+                if landed != part.amount:
+                    problems.append(
+                        f"line {row.transaction_cm_id}: it would not land on {part.request_id} (its camper has "
+                        "another request and this one's session is not known yet): resolve the request's session "
+                        "first"
+                    )
+        if problems:
+            raise DecisionRefusedError("; ".join(problems))
+        locking = sum((t.amount for t in outcome.ticks), ZERO)
+        if body.expected_locked is not None and locking != body.expected_locked:
+            raise DecisionRefusedError(
+                f"this now locks {dollars(locking)}, not the {dollars(Decimal(body.expected_locked))} you confirmed: "
+                "reload To place and check it again"
+            )
+        posts: list[AidWrite] = []
+        locks: list[AidWrite] = []
+        not_locked: list[str] = []
+        if outcome.ticks:
+            posts, locks, sections = await self._decisions.tick_writes(
+                season,
+                outcome.ticks,
+                actor,
+                lock_source="placement",
+                note=lambda tick: (
+                    f"Ticked by placing family-level money: CampMinder shows {dollars(tick.in_campminder)} "
+                    "on this request"
+                ),
+            )
+            not_locked = list(sections)
+        try:
+            result = await self._commit([*writes, *posts, *locks], actor=actor, reason=body.note or None)
+        except BatchLimitError as exc:
+            raise DecisionRefusedError(
+                f"{len(body.lines)} lines are too many to place at once; place them in smaller groups"
+            ) from exc
+        return PlaceOut(
+            year=year,
+            operation_id=result.operation_id,
+            placed=[row.transaction_cm_id for row in body.lines],
+            ticked=_ticked_out(outcome),
+            left_to_tick=_left_out(outcome, season),
+            sections_not_locked=not_locked,
+        )
+
+    @staticmethod
+    def _override_write(
+        year: int, current: OverrideRow | None, payload: dict[str, Any], actor: str, action: str, reason: str | None
+    ) -> AidWrite | None:
+        """The override's create or update and its log row; None when it would change nothing. The record
+        also stores who wrote it; the log row's actor column says that, so the logged diff is the payload."""
+        if current is None:
+            return AidWrite(
+                collection=AID_ATTRIBUTION_OVERRIDES,
+                action="create",
+                year=year,
+                data={**payload, "actor": actor},
+                after=payload,
+                log_action=action,
+                reason=reason,
+            )
+        before = current.snapshot(year)
+        if changed_fields(before, payload) == ({}, {}):
+            return None
+        return AidWrite(
+            collection=AID_ATTRIBUTION_OVERRIDES,
+            action="update",
+            year=year,
+            record_id=current.id,
+            before=before,
+            data={**payload, "actor": actor},
+            after=payload,
+            log_action=action,
+            reason=reason,
+        )
+
+    @staticmethod
+    def _left_snapshot(year: int, transaction_cm_id: int, note: str) -> dict[str, Any]:
+        return {
+            "transaction_cm_id": transaction_cm_id,
+            "year": year,
+            "flag": TO_PLACE_FLAG,
+            "disposition": LEFT_DISPOSITION,
+            "note": note,
+        }
+
+    def _left_delete(self, year: int, transaction_cm_id: int, current: LeftLine, action: str = "placed") -> AidWrite:
+        return AidWrite(
+            collection=AID_FLAG_DISPOSITIONS,
+            action="delete",
+            year=year,
+            record_id=current.id,
+            before=self._left_snapshot(year, transaction_cm_id, current.note),
+            log_action=action,
+        )
+
+    def _unchanged(self, year: int, transaction_cm_id: int) -> ToPlaceWriteOut:
+        return ToPlaceWriteOut(year=year, transaction_cm_id=transaction_cm_id, written=0, operation_id="")
+
+    async def leave(self, year: int, transaction_cm_id: int, body: LeaveLineIn, actor: str) -> ToPlaceWriteOut:
+        """Leave at family level, with a note (D58): the line leaves the open count; the Note on the family's
+        requests stays (D81), since CampMinder still holds the money. Refused while a reclassification of the
+        line waits for the sync: it is already out of the open count."""
+        if skipped := _gate(year):
+            raise DecisionRefusedError(skipped)
+        season, left, overrides, details = await asyncio.gather(
+            self._decisions.season(year),
+            self._store.fetch_left_lines(year),
+            self._store.fetch_override_rows(year),
+            self._store.fetch_line_details(year),
+        )
+        self._pool_item(season, transaction_cm_id)
+        if pending_reclass(overrides.get(transaction_cm_id), details.get(transaction_cm_id)):
+            raise DecisionRefusedError(PENDING_RECLASS)
+        current = left.get(transaction_cm_id)
+        if current is not None and current.note == body.note:
+            return self._unchanged(year, transaction_cm_id)
+        payload = self._left_snapshot(year, transaction_cm_id, body.note)
+        write = (
+            AidWrite(
+                collection=AID_FLAG_DISPOSITIONS,
+                action="create",
+                year=year,
+                data=payload,
+                log_action="leave_at_family_level",
+            )
+            if current is None
+            else AidWrite(
+                collection=AID_FLAG_DISPOSITIONS,
+                action="update",
+                year=year,
+                record_id=current.id,
+                before=self._left_snapshot(year, transaction_cm_id, current.note),
+                data={"note": body.note},
+                log_action="leave_at_family_level",
+            )
+        )
+        result = await self._commit([write], actor=actor, reason=body.note, require_reason=True)
+        return ToPlaceWriteOut(
+            year=year, transaction_cm_id=transaction_cm_id, written=1, operation_id=result.operation_id
+        )
+
+    async def reopen(self, year: int, transaction_cm_id: int, reason: str, actor: str) -> ToPlaceWriteOut:
+        """Undo Leave at family level: the line is open in To place again."""
+        if skipped := _gate(year):
+            raise DecisionRefusedError(skipped)
+        current = (await self._store.fetch_left_lines(year)).get(transaction_cm_id)
+        if current is None:
+            return self._unchanged(year, transaction_cm_id)
+        write = self._left_delete(year, transaction_cm_id, current, action="reopen")
+        result = await self._commit([write], actor=actor, reason=reason, require_reason=True)
+        return ToPlaceWriteOut(
+            year=year, transaction_cm_id=transaction_cm_id, written=1, operation_id=result.operation_id
+        )
+
+    async def reclassify(
+        self, year: int, transaction_cm_id: int, body: ReclassifyLineIn, actor: str
+    ) -> ToPlaceWriteOut:
+        """Reclassify (D104, `rules`): the line's money is really another source's. Writes the override's
+        source_key_override (keeping any placement it holds), with a reason. Go applies it on the next
+        aid_postings run, which is when the line leaves camp aid (or moves within it). The target must be a
+        classified aid source: this plan's choice, D104 doesn't make it."""
+        if skipped := _gate(year):
+            raise DecisionRefusedError(skipped)
+        season, details, overrides, sources = await asyncio.gather(
+            self._decisions.season(year),
+            self._store.fetch_line_details(year),
+            self._store.fetch_override_rows(year),
+            self._store.fetch_source_rows(),
+        )
+        self._pool_item(season, transaction_cm_id)
+        key = body.source_key
+        target = sources.get(key)
+        if target is None:
+            raise DecisionRefusedError(f"source {key!r} is not in aid_sources")
+        if not target.classified or not target.counts_as_aid:
+            raise DecisionRefusedError(f"source {key!r} is not classified as aid")
+        detail = details.get(transaction_cm_id)
+        current = overrides.get(transaction_cm_id)
+        if not pending_reclass(current, detail) and detail is not None and detail.description_key == key:
+            raise DecisionRefusedError(f"line {transaction_cm_id} is already {target.description}")
+        base = (
+            current.snapshot(year)
+            if current is not None
+            else {
+                "transaction_cm_id": transaction_cm_id,
+                "year": year,
+                "attributed_person_cm_id": 0,
+                "attributed_session_cm_id": 0,
+                "program_family": "",
+                "split": [],
+            }
+        )
+        payload = {**base, "source_key_override": key, "source": "staff", "note": body.reason}
+        write = self._override_write(year, current, payload, actor, "reclassify", reason=body.reason)
+        if write is None:
+            return self._unchanged(year, transaction_cm_id)
+        result = await self._commit([write], actor=actor, reason=body.reason, require_reason=True)
+        return ToPlaceWriteOut(
+            year=year, transaction_cm_id=transaction_cm_id, written=1, operation_id=result.operation_id
         )
