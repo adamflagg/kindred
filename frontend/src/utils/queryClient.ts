@@ -111,6 +111,10 @@ const SYNC_DEPENDENT_PREFIXES = [
   // kindred#2759: a completed Jotform pull changes the admin tab's forms
   // (last pull status, questions) and queue.
   'jotform',
+  // Camperships (spec §10): the ledger sync can tick and lock a round (D52) and frees
+  // clawed-back money (D54), and the FA-applications sync brings new families, so every
+  // aid read refreshes when a sync completes.
+  'financial-aid',
 ] as const
 
 /**

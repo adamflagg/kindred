@@ -718,6 +718,13 @@ export const queryKeys = {
    */
   rosterExport: (year: number, sessionCmId: number) =>
     ['roster-export', year, sessionCmId] as const,
+  // Camperships (financial aid). Every read sits under 'financial-aid', so a sync completion
+  // (SYNC_DEPENDENT_PREFIXES, useAidSyncInvalidation) or a money write can invalidate by
+  // prefix (spec §10). Each slice adds its reads here, under the same root.
+  aidPrefix: () => ['financial-aid'] as const,
+  aidRemainingPrefix: () => ['financial-aid', 'remaining'] as const,
+  aidRemaining: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
+    ['financial-aid', 'remaining', year, asOf ?? 'live', axis ?? 'campminder'] as const,
 }
 
 /**
@@ -841,6 +848,17 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   // this helper -- moves the live board's write-ins and the link keys they
   // carry. Free where no Jotform query is mounted: Family Camp enables none.
   void queryClient.invalidateQueries({ queryKey: queryKeys.jotformPrefix() })
+}
+
+/**
+ * Every Camperships money write calls this (spec §7.3, §10; D48): saving an ask puts it in Needs
+ * an offer, which moves Remaining at once. Each slice adds the reads its writes move (Rounds &
+ * budget, the grid, the household page), so a writer never needs to know every key.
+ */
+export function invalidateAidMoneyQueries(queryClient: {
+  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+}): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.aidRemainingPrefix() })
 }
 
 /**
