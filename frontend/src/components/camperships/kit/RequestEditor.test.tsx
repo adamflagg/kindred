@@ -239,6 +239,24 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
       return { onMove, onSave }
     }
 
+    it('keeps the typed value when the error arrives a render after saving ends', async () => {
+      const { onMove, onSave, rerender, ...props } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{Enter}')
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} saving />)
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} saving={false} />)
+      rerender(
+        <RequestEditor
+          {...props}
+          onMove={onMove}
+          onSave={onSave}
+          saving={false}
+          saveError="Could not save"
+        />
+      )
+      await userEvent.keyboard('{ArrowDown}')
+      expect(onMove).toHaveBeenCalledWith(1, SAVE)
+    })
+
     it('shows the error and keeps what was typed', async () => {
       await failedSave()
       expect(screen.getByText('Could not save')).toBeInTheDocument()
@@ -268,6 +286,23 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
       expect(onMove).not.toHaveBeenCalled()
       expect(onSave).not.toHaveBeenCalled()
       expect(onCancel).not.toHaveBeenCalled()
+    })
+
+    it('ignores Meta and Alt on ↓ and Enter (M1)', async () => {
+      const { onMove, onSave } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
+      await userEvent.keyboard('{Meta>}{ArrowDown}{Enter}{/Meta}')
+      await userEvent.keyboard('{Alt>}{ArrowDown}{Enter}{/Alt}')
+      expect(onMove).not.toHaveBeenCalled()
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('does not save and move on a held ↓ once something is typed (M2)', async () => {
+      const { onMove, onSave } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
+      fireEvent.keyDown(screen.getByLabelText('Round 2 ask'), { key: 'ArrowDown', repeat: true })
+      expect(onMove).not.toHaveBeenCalled()
+      expect(onSave).not.toHaveBeenCalled()
     })
 
     it('ignores a key that confirms an IME composition (M1)', async () => {

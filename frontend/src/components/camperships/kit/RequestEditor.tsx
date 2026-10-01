@@ -66,7 +66,9 @@ interface RequestEditorProps {
   /**
    * Surfaces must pass `saveError` for a failed save to be retryable. Set when `saving` goes
    * true→false and the write failed: the typed value and baseline are kept, the message shows,
-   * and Enter or ↓ saves again. Leave it empty on success.
+   * and Enter or ↓ saves again. Leave it empty on success. An error that arrives a render after
+   * `saving` falls is tolerated. The surface should clear it on the next save attempt
+   * (`useMutation` does this on mutate): it stays on screen while set.
    */
   readonly saveError?: string | null | undefined
   /** 'row' under the highlighted grid row; 'card' in place on the household page's request card (D22). */
@@ -107,6 +109,11 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
   )
 }
 
+interface Baseline {
+  amount: number | null
+  note: string
+}
+
 /**
  * The one shared request editor (§4.6; D22): an editor row under the highlighted grid row, or in
  * place on the household page's request card.
@@ -133,7 +140,10 @@ export function RequestEditor(props: RequestEditorProps) {
   // ignored, re-render or not.
   const submitted = useRef(false)
   const wasSaving = useRef(false)
-  const lastSaved = useRef<{ amount: number; note: string } | null>(null)
+  const lastSaved = useRef<{ saved: Baseline; before: Baseline } | null>(null)
+  // The baseline a finished save replaced, kept so a failure that is reported a render late can
+  // put it back.
+  const advanced = useRef<{ saved: Baseline; before: Baseline } | null>(null)
   const parsed = parseMoneyInput(raw)
 
   const untouched =
@@ -159,8 +169,17 @@ export function RequestEditor(props: RequestEditorProps) {
       submitted.current = false
       // A finished save moves the baseline; a failed one keeps it, so what was typed still counts
       // as unsaved and ↓ or Enter retries it.
-      if (lastSaved.current && !props.saveError) setBase(lastSaved.current)
+      if (lastSaved.current && !props.saveError) {
+        setBase(lastSaved.current.saved)
+        advanced.current = lastSaved.current
+      }
       lastSaved.current = null
+    }
+    // The error arrived after `saving` fell (an onError callback, a caught mutateAsync): the save
+    // failed, so what was typed is unsaved again.
+    if (props.saveError && advanced.current) {
+      setBase(advanced.current.before)
+      advanced.current = null
     }
     wasSaving.current = props.saving === true
   }, [props.saving, props.saveError])
@@ -180,7 +199,8 @@ export function RequestEditor(props: RequestEditorProps) {
     if (problem !== null || parsed.kind !== 'ok' || props.saving === true || submitted.current)
       return null
     submitted.current = true
-    lastSaved.current = { amount: parsed.amount, note: reason }
+    advanced.current = null
+    lastSaved.current = { saved: { amount: parsed.amount, note: reason }, before: base }
     return { amount: parsed.amount, reason: reason.trim() }
   }
 
