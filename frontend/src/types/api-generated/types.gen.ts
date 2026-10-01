@@ -5203,6 +5203,10 @@ export type GridRowOut = {
    * Payer Shares
    */
   payer_shares?: Array<GridShareOut>
+  /**
+   * Appeal Refusal
+   */
+  appeal_refusal?: string | null
 }
 
 /**
@@ -12365,6 +12369,10 @@ export type RoundOut = {
    * Clawed Back
    */
   clawed_back?: boolean
+  /**
+   * Status Label
+   */
+  status_label?: string
 }
 
 /**
