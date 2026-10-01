@@ -174,7 +174,6 @@ const INCENTIVE_NOTE = /^Reduced by an incentive of (\d+(?:\.\d+)?)/
  * `_round1` does) and fall back to the note only when the step carries no inputs.
  */
 function incentiveOf(step: AidTraceStep): number {
-  if (!INCENTIVE_NOTE.test(step.note ?? '')) return 0
   const i = step.inputs ?? {}
   const before = step.bound === 'ask' ? i['ask'] : i['potential']
   if (!isBlank(before) && Number.isFinite(Number(before)) && !isBlank(step.value)) {
@@ -188,7 +187,7 @@ function incentiveOf(step: AidTraceStep): number {
 const CEILING_HOW = 'adjusted income is above the income ceiling, so there is no award'
 
 /** How a line was worked out, shown when the line is clicked (D33). The engine's note is kept. */
-export function stepHow(step: AidTraceStep, trace: readonly AidTraceStep[] = []): string {
+export function stepHow(step: AidTraceStep, trace: readonly AidTraceStep[]): string {
   const { base, skipNote } = howBase(step, trace)
   const note = skipNote || isBlank(step.note) ? '' : noteText(String(step.note))
   return [base, note].filter(Boolean).join('; ')
@@ -345,14 +344,19 @@ function howBase(
         const minimum = Number(i['minimum'])
         const lessGrants = Math.abs(value - (minimum - grants)) < 0.005 && grants !== 0
         const full = Math.abs(value - minimum) < 0.005
+        const uncapped = Number(i['minimum_uncapped'])
+        // `minimum_capped_at_share`: the configured minimum is more than the family still owes.
+        const capped = full && Number.isFinite(uncapped) && uncapped - minimum >= 0.005
         return {
           base:
             body +
-            (full
-              ? `, raised to the ${money(minimum)} minimum`
-              : lessGrants
-                ? `, raised to the ${money(minimum)} minimum less grants ${money(grants)}`
-                : ', raised to the minimum'),
+            (capped
+              ? `, raised to ${money(minimum)} (the ${money(uncapped)} minimum, capped at what the family owes)`
+              : full
+                ? `, raised to the ${money(minimum)} minimum`
+                : lessGrants
+                  ? `, raised to the ${money(minimum)} minimum less grants ${money(grants)}`
+                  : ', raised to the minimum'),
         }
       }
       return { base: body }

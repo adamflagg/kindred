@@ -18,6 +18,7 @@ import {
   REAL_GRANTS_COVER_NO_MINIMUM,
   REAL_INCENTIVE_ASK,
   REAL_INCENTIVE_CLAMPED,
+  REAL_MINIMUM_CAPPED_AT_SHARE,
   REAL_MINIMUM_LESS_GRANTS,
   REAL_REDUCE_COST_BASIS,
   REAL_ROUND2_CAP_NEGATIVE,
@@ -78,7 +79,7 @@ describe('receiptSentence (D33; the editor row and the household page say the sa
           : s
     )
     expect(sentenceText(receiptSentence(shifted))).toContain('→ tier 5 +1 equity → tier 4.')
-    expect(stepHow(find(shifted, 'final_tier'))).toBe(`tier 5 ${MINUS} 1`)
+    expect(stepHow(find(shifted, 'final_tier'), shifted)).toBe(`tier 5 ${MINUS} 1`)
   })
 
   it('marks the binding limit, so it can be inked amber', () => {
@@ -172,43 +173,51 @@ describe('each line', () => {
   })
 
   it('says how a line was worked out', () => {
-    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'weighted_income'))).toBe(
+    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'weighted_income'), TRACE_CAPPED_BY_ASK)).toBe(
       '75% of prior year $120,000 + 25% of current year $120,000 (gross)'
     )
-    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'adjusted_income'))).toBe(
+    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'adjusted_income'), TRACE_CAPPED_BY_ASK)).toBe(
       'after adjustments and dependents; floor $0; floor tested after deductions'
     )
-    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'grants'))).toBe(
+    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'grants'), TRACE_CAPPED_BY_ASK)).toBe(
       'outside grants counted when committed; taken off the award dollar for dollar'
     )
-    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'r1'))).toBe(
+    expect(stepHow(find(TRACE_CAPPED_BY_ASK, 'r1'), TRACE_CAPPED_BY_ASK)).toBe(
       "the family's ask $1,500, under the potential $2,000"
     )
-    expect(stepHow(find(TRACE_ROUND1_LOCKED, 'r1_locked'))).toBe(
+    expect(stepHow(find(TRACE_ROUND1_LOCKED, 'r1_locked'), TRACE_ROUND1_LOCKED)).toBe(
       'worked out $1,500 now; locked at what was posted, and later rounds build on it'
     )
-    expect(stepHow(find(TRACE_ROUND2_CAPPED, 'total'))).toBe('Round 1 $3,500 + Round 2 $1,000')
+    expect(stepHow(find(TRACE_ROUND2_CAPPED, 'total'), TRACE_ROUND2_CAPPED)).toBe(
+      'Round 1 $3,500 + Round 2 $1,000'
+    )
     expect(
-      stepHow({ key: 'mystery', label: 'Mystery', value: 1, inputs: { some_input: 'x' } })
+      stepHow({ key: 'mystery', label: 'Mystery', value: 1, inputs: { some_input: 'x' } }, [])
     ).toBe('some input: x')
   })
 
   it("reads the floor from the trace, and the grants method from the season's offset_mode (D137)", () => {
     expect(
-      stepHow({
-        key: 'adjusted_income',
-        label: 'Adjusted',
-        value: '500.00',
-        inputs: { floor: '500.00' },
-      })
+      stepHow(
+        {
+          key: 'adjusted_income',
+          label: 'Adjusted',
+          value: '500.00',
+          inputs: { floor: '500.00' },
+        },
+        []
+      )
     ).toBe('after adjustments and dependents; floor $500')
     expect(
-      stepHow({
-        key: 'grants',
-        label: 'Outside grants',
-        value: '0.00',
-        inputs: { count_when: 'received', offset_mode: 'reduce_cost_basis' },
-      })
+      stepHow(
+        {
+          key: 'grants',
+          label: 'Outside grants',
+          value: '0.00',
+          inputs: { count_when: 'received', offset_mode: 'reduce_cost_basis' },
+        },
+        []
+      )
     ).toBe('outside grants counted when received; taken off the cost before the percentage')
   })
 })
@@ -216,17 +225,20 @@ describe('each line', () => {
 describe('lines the engine emits without inputs', () => {
   it('reads a program with no equity class and grants that do not offset', () => {
     expect(
-      stepHow({
-        key: 'grants',
-        label: 'Outside grants',
-        value: '0.00',
-        note: "Grants do not offset 'x' this season",
-      })
+      stepHow(
+        {
+          key: 'grants',
+          label: 'Outside grants',
+          value: '0.00',
+          note: "Grants do not offset 'x' this season",
+        },
+        []
+      )
     ).toBe("grants do not offset 'x' this season")
-    expect(stepHow({ key: 'equity_shift', label: 'Equity shift', value: 0 })).toBe(
+    expect(stepHow({ key: 'equity_shift', label: 'Equity shift', value: 0 }, [])).toBe(
       'this program has no equity class'
     )
-    expect(stepHow({ key: 'grants', label: 'Outside grants', value: '0.00' })).toBe(
+    expect(stepHow({ key: 'grants', label: 'Outside grants', value: '0.00' }, [])).toBe(
       'outside grants do not offset this program this season'
     )
   })
@@ -414,55 +426,68 @@ describe('fix round 1: limits on every line that can carry one (I4a, M9)', () =>
 
 describe('fix round 1: the how-lines agree with the figures beside them', () => {
   it('I5: a Round 1 line says what decided it', () => {
-    expect(stepHow(find(TRACE_MINIMUM_RAISED, 'r1'))).toBe('the potential $100')
-    expect(stepHow(find(TRACE_GRANTS_DOLLAR, 'r1'))).toBe('the potential $1,500')
-    expect(stepHow(find(TRACE_INCOME_CEILING, 'r1'))).toBe(
+    expect(stepHow(find(TRACE_MINIMUM_RAISED, 'r1'), TRACE_MINIMUM_RAISED)).toBe(
+      'the potential $100'
+    )
+    expect(stepHow(find(TRACE_GRANTS_DOLLAR, 'r1'), TRACE_GRANTS_DOLLAR)).toBe(
+      'the potential $1,500'
+    )
+    expect(stepHow(find(TRACE_INCOME_CEILING, 'r1'), TRACE_INCOME_CEILING)).toBe(
       'adjusted income is above the income ceiling, so there is no award'
     )
   })
 
   it('I5: an incentive shows in the cost and award lines', () => {
-    expect(stepHow(find(TRACE_INCENTIVE_AWARD, 'r1'))).toBe(
+    expect(stepHow(find(TRACE_INCENTIVE_AWARD, 'r1'), TRACE_INCENTIVE_AWARD)).toBe(
       "the family's ask $1,500, under the potential $2,000; reduced by an incentive of $100"
     )
-    expect(stepHow(find(TRACE_INCENTIVE_COST, 'cost'))).toBe('catalog price less incentive $100')
+    expect(stepHow(find(TRACE_INCENTIVE_COST, 'cost'), TRACE_INCENTIVE_COST)).toBe(
+      'catalog price less incentive $100'
+    )
   })
 
   it('I5: Round 2 and Round 3 lines read their bound', () => {
-    expect(stepHow(find(TRACE_ROUND2_CAPPED, 'r2'))).toBe('the cap $1,000, under the appeal $2,500')
-    expect(stepHow(find(TRACE_TOTAL_CAP, 'r2'))).toBe('cut from $1,000 to fit the total-aid cap')
+    expect(stepHow(find(TRACE_ROUND2_CAPPED, 'r2'), TRACE_ROUND2_CAPPED)).toBe(
+      'the cap $1,000, under the appeal $2,500'
+    )
+    expect(stepHow(find(TRACE_TOTAL_CAP, 'r2'), TRACE_TOTAL_CAP)).toBe(
+      'cut from $1,000 to fit the total-aid cap'
+    )
     expect(
-      stepHow(traceStep('r2', 'R2', '1800.00', { appeal: '1800.00', cap: '2000.00' }, 'appeal'))
+      stepHow(traceStep('r2', 'R2', '1800.00', { appeal: '1800.00', cap: '2000.00' }, 'appeal'), [])
     ).toBe('the appeal $1,800, under the cap $2,000')
-    expect(stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'not_allowed'))).toBe(
+    expect(stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'not_allowed'), [])).toBe(
       'this decision type does not allow an appeal, so Round 2 is $0'
     )
     expect(
-      stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'no_table', 'No Round 2 table'))
+      stepHow(
+        traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'no_table', 'No Round 2 table'),
+        []
+      )
     ).toBe('no Round 2 table, so Round 2 is $0')
-    expect(stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'income_ceiling'))).toBe(
+    expect(stepHow(traceStep('r2', 'R2', '0.00', { appeal: '500.00' }, 'income_ceiling'), [])).toBe(
       'adjusted income is above the income ceiling, so there is no award'
     )
-    expect(stepHow(traceStep('r3', 'R3', '300.00', { requested: '300.00' }, 'request'))).toBe(
+    expect(stepHow(traceStep('r3', 'R3', '300.00', { requested: '300.00' }, 'request'), [])).toBe(
       'the amount requested, $300'
     )
-    expect(stepHow(traceStep('r3', 'R3', '200.00', { requested: '300.00' }, 'max_amount'))).toBe(
-      'the Round 3 maximum $200, under the $300 requested'
-    )
-    expect(stepHow(traceStep('r3', 'R3', '150.00', { requested: '300.00' }, 'cap'))).toBe(
+    expect(
+      stepHow(traceStep('r3', 'R3', '200.00', { requested: '300.00' }, 'max_amount'), [])
+    ).toBe('the Round 3 maximum $200, under the $300 requested')
+    expect(stepHow(traceStep('r3', 'R3', '150.00', { requested: '300.00' }, 'cap'), [])).toBe(
       'the Round 3 share of the cost, $150, under the $300 requested'
     )
-    expect(stepHow(traceStep('r3', 'R3', '0.00', { requested: '300.00' }, 'not_eligible'))).toBe(
-      'not eligible for Round 3: it needs a Round 2 decision or a statement of need'
-    )
+    expect(
+      stepHow(traceStep('r3', 'R3', '0.00', { requested: '300.00' }, 'not_eligible'), [])
+    ).toBe('not eligible for Round 3: it needs a Round 2 decision or a statement of need')
   })
 
   it('I5: a note the engine attaches is never dropped', () => {
-    expect(stepHow(traceStep('mystery', 'M', 1, {}, null, 'Staff-entered income'))).toBe(
+    expect(stepHow(traceStep('mystery', 'M', 1, {}, null, 'Staff-entered income'), [])).toBe(
       'staff-entered income'
     )
     expect(
-      stepHow(traceStep('cost', 'Cost', '0.00', { source: 'unknown' }, null, 'Cost unknown'))
+      stepHow(traceStep('cost', 'Cost', '0.00', { source: 'unknown' }, null, 'Cost unknown'), [])
     ).toBe('cost not known; cost unknown')
   })
 
@@ -476,33 +501,40 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
           { kind: 'top_up' },
           'income_ceiling',
           'Adjusted income is above the income ceiling'
-        )
+        ),
+        []
       )
     ).toBe('the named top-up is withheld above the income ceiling')
     expect(
-      stepHow(traceStep('discretionary', 'Disc', '0.00', { withheld: '500.00' }, 'income_ceiling'))
+      stepHow(
+        traceStep('discretionary', 'Disc', '0.00', { withheld: '500.00' }, 'income_ceiling'),
+        []
+      )
     ).toBe('$500 typed; withheld above the income ceiling')
-    expect(stepHow(find(TRACE_TOP_UP, 'top_up'))).toBe('a fixed top-up from the decision type')
+    expect(stepHow(find(TRACE_TOP_UP, 'top_up'), TRACE_TOP_UP)).toBe(
+      'a fixed top-up from the decision type'
+    )
   })
 
   it('I4c: the floor is held or merely stated, never "never below"', () => {
-    expect(stepHow(traceStep('adjusted_income', 'A', '500.00', { floor: '500.00' }, 'floor'))).toBe(
-      'held at the $500 floor'
-    )
+    expect(
+      stepHow(traceStep('adjusted_income', 'A', '500.00', { floor: '500.00' }, 'floor'), [])
+    ).toBe('held at the $500 floor')
     expect(
       stepHow(
         traceStep('adjusted_income', 'A', '1000.00', {
           base: '1200.00',
           after_dependents: '1000.00',
           floor: '500.00',
-        })
+        }),
+        []
       )
     ).toBe('after adjustments and dependents (less $200); floor $500')
   })
 
   it('M1: a locked top-up or discretionary line reads like a locked round', () => {
     expect(
-      stepHow(traceStep('top_up_locked', 'T', '300.00', { worked_out: '400.00' }, 'locked'))
+      stepHow(traceStep('top_up_locked', 'T', '300.00', { worked_out: '400.00' }, 'locked'), [])
     ).toBe('worked out $400 now; locked at what was posted')
   })
 
@@ -516,17 +548,18 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
           { override_mode: 'staff_entered' },
           null,
           'Staff-entered income'
-        )
+        ),
+        []
       )
     ).toBe('entered by staff')
   })
 
   it('M3: the Round 1 percentage names where it came from', () => {
     expect(
-      stepHow(traceStep('r1_pct', 'p', '100.00', { table: null, tier: 5, source: 'full_cost' }))
+      stepHow(traceStep('r1_pct', 'p', '100.00', { table: null, tier: 5, source: 'full_cost' }), [])
     ).toBe('full cost (decision type)')
     expect(
-      stepHow(traceStep('r1_pct', 'p', '0.00', { table: null, tier: 5, source: 'no_table' }))
+      stepHow(traceStep('r1_pct', 'p', '0.00', { table: null, tier: 5, source: 'no_table' }), [])
     ).toBe('no Round 1 table')
   })
 
@@ -539,7 +572,8 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
           '500.00',
           { total_pct: '90.00', cost: '5000.00', r1: '1500.00' },
           'original_ask'
-        )
+        ),
+        []
       )
     ).toBe('the original ask $2,000 less Round 1 $1,500')
   })
@@ -547,7 +581,8 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
   it('M5: per-person cost', () => {
     expect(
       stepHow(
-        traceStep('cost', 'C', '5000.00', { source: 'per_person', incentive_reduction: '0.00' })
+        traceStep('cost', 'C', '5000.00', { source: 'per_person', incentive_reduction: '0.00' }),
+        []
       )
     ).toBe('family-camp headcount price')
   })
@@ -561,14 +596,18 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
           savings_excess: '100.00',
           extra_terms: '0.00',
           dependent_reduction: '200.00',
-        })
+        }),
+        []
       )
     ).toBe(`medical excess ${MINUS}$300 · savings excess $100`)
   })
 
   it('M4b: a held tier and a capped shift read in words', () => {
     expect(
-      stepHow(traceStep('final_tier', 'F', 1, { income_tier: 2, equity_shift: 3 }, 'tier_floor'))
+      stepHow(
+        traceStep('final_tier', 'F', 1, { income_tier: 2, equity_shift: 3 }, 'tier_floor'),
+        []
+      )
     ).toBe(`tier 2 ${MINUS} 3, held at tier 1, the lowest tier`)
     expect(
       stepHow(
@@ -578,7 +617,8 @@ describe('fix round 1: the how-lines agree with the figures beside them', () => 
           2,
           { equity_class: 'summer', criteria_met: 'a', weight_sum: '3', aggregation: 'sum' },
           'max_shift'
-        )
+        ),
+        []
       )
     ).toBe('summer class · criteria met: a · weight 3 · capped at +2, the most a shift can be')
     expect(bindingPhrase(traceStep('final_tier', 'F', 1, {}, 'tier_floor'))).toBeNull()
@@ -590,7 +630,7 @@ describe('fix round 2: real engine traces', () => {
     expect(sentenceText(receiptSentence(REAL_INCENTIVE_CLAMPED))).toContain(
       'Round 1: 2% of $2,000, raised to the minimum award → $100, less an incentive of $100 → $0. Total $0.'
     )
-    expect(stepHow(find(REAL_INCENTIVE_CLAMPED, 'r1'))).toBe(
+    expect(stepHow(find(REAL_INCENTIVE_CLAMPED, 'r1'), REAL_INCENTIVE_CLAMPED)).toBe(
       'the potential $100; reduced by an incentive of $100'
     )
   })
@@ -647,8 +687,33 @@ describe('fix round 2: real engine traces', () => {
   })
 
   it('5: a negative Round 2 cap holds the award at $0', () => {
-    expect(stepHow(find(REAL_ROUND2_CAP_NEGATIVE, 'r2'))).toBe(
+    expect(stepHow(find(REAL_ROUND2_CAP_NEGATIVE, 'r2'), REAL_ROUND2_CAP_NEGATIVE)).toBe(
       'the cap −$100 is below zero, so Round 2 is held at $0'
+    )
+  })
+})
+
+describe('fix round 3', () => {
+  const reworded = (note: string | null) =>
+    REAL_INCENTIVE_ASK.map((s) => (s.key === 'r1' ? { ...s, note } : s))
+
+  it.each([
+    ['reworded', 'An incentive was applied'],
+    ['removed', null],
+  ])('1: an incentive is read from the amounts, with the note %s', (_name, note) => {
+    expect(sentenceText(receiptSentence(reworded(note)))).toContain(
+      "limited by the family's ask to $1,500, less an incentive of $100 → $1,400. Total $1,400."
+    )
+  })
+
+  it('1: a step with no incentive says none', () => {
+    expect(sentenceText(receiptSentence(TRACE_CAPPED_BY_ASK))).not.toContain('incentive')
+  })
+
+  it('3: a minimum capped at what the family owes says both figures', () => {
+    const trace = REAL_MINIMUM_CAPPED_AT_SHARE
+    expect(stepHow(find(trace, 'r1_potential'), trace)).toBe(
+      '2% × $2,000 less grants $1,950, raised to $50 (the $100 minimum, capped at what the family owes)'
     )
   })
 })
