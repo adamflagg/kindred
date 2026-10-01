@@ -14,6 +14,11 @@
   "platformAutomerge": true,
   "packageRules": [
     {
+      "description": "config:recommended's semantic-prefix preset is a package rule that types every update `chore`, and package rules beat the top-level semanticCommitType. Re-assert `ci` for the workflow tool pins, or the title check (every file is CI machinery) refuses them.",
+      "matchManagers": ["custom.regex"],
+      "semanticCommitType": "ci"
+    },
+    {
       "description": "Linters break CI by design when a release adds checks. Own PR, never automerge.",
       "matchDepNames": ["golangci/golangci-lint", "rhysd/actionlint", "gitleaks/gitleaks", "zizmor"],
       "automerge": false,

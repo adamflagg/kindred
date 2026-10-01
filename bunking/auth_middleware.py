@@ -366,17 +366,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Process the request and add authentication context."""
 
-        # Skip authentication for health check and config endpoints
-        # /solver/config and /api/config are both used by frontend to determine auth mode
-        # /health and /api/health are used by Docker/load balancers
-        if request.url.path in ["/health", "/api/health", "/api/config", "/solver/config"]:
-            response = await call_next(request)
-            return response
-
-        # Skip auth for metrics cache invalidation (safe, idempotent operation).
-        # Called with no user context by PocketBase: the registration-config hook, and the
-        # sync orchestrator after every finished job (`afterRunPublished`, with `?sync_type=`).
-        if request.url.path == "/api/metrics/cache/invalidate" and request.method == "POST":
+        # Skip authentication for health check and config endpoints.
+        # /api/config is used by the frontend to determine auth mode; /health by
+        # Docker/load balancers. Only paths that have a route belong here: a route
+        # added later at a dead entry would silently be public.
+        if request.url.path in ["/health", "/api/config"]:
             response = await call_next(request)
             return response
 

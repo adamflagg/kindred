@@ -4,6 +4,7 @@
  */
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -185,6 +186,14 @@ const bodyCampers = () =>
 beforeEach(() => downloadSpy.mockClear())
 
 describe('AidTable', () => {
+  it('keeps the row you are on through a search that does not match it (uncontrolled)', async () => {
+    renderTable('/aid/requests', { renderBelowHighlighted: (r) => <div>Editing {r.camper}</div> })
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'garcia')
+    expect(bodyCampers()).toEqual(['Emma Johnson', 'Liam Garcia'])
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
+  })
+
   it('sorts on a header click, ascending then descending, keeping "—" last, and keeps it in the URL', async () => {
     renderTable()
     await userEvent.click(screen.getByRole('button', { name: 'Decided' }))
@@ -495,5 +504,199 @@ describe('AidTable', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content] = downloadSpy.mock.calls[0] as [string, string]
     expect(content.split('\n')[1]).toMatch(/^Johnson,Emma Johnson,0\.30,/)
+  })
+})
+
+// Slice 1 (owner rulings A and B, 2026-10-01): a surface owns the highlight, so it can save what
+// is typed before a row changes, and put the highlight back on a row whose save failed.
+let asked: Array<string | null> = []
+
+function Controlled({
+  agree,
+  extra = {},
+}: {
+  agree: boolean
+  extra?: Partial<Parameters<typeof AidTable<Row>>[0]>
+}) {
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+  return (
+    <MemoryRouter initialEntries={['/aid/requests']}>
+      <AidTable<Row>
+        rows={ROWS}
+        columns={COLUMNS}
+        rowKey={rowKeyOf}
+        csvFilename="camperships-requests-all-2027.csv"
+        arrowKeys
+        highlighted={highlighted}
+        onHighlight={(key) => {
+          asked.push(key)
+          if (agree) setHighlighted(key)
+        }}
+        renderBelowHighlighted={(r) => <div>Editing {r.camper}</div>}
+        {...extra}
+      />
+    </MemoryRouter>
+  )
+}
+
+const rowKeyOf = (r: Row) => r.id
+const highlightedCamper = () =>
+  screen
+    .getAllByRole('row')
+    .find((row) => row.getAttribute('data-highlighted') === 'true')
+    ?.querySelectorAll('td')[1]?.textContent ?? null
+
+describe('AidTable with a controlled highlight', () => {
+  beforeEach(() => {
+    asked = []
+  })
+
+  it('keeps the highlighted row through a search that does not match it, so its editor stays', async () => {
+    render(<Controlled agree />)
+    await userEvent.click(screen.getByText('Emma Johnson'))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'chen')
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Liam Garcia')).toBeNull()
+  })
+
+  it('asks the surface before a click moves the highlight, and moves only when it agrees', async () => {
+    render(<Controlled agree={false} />)
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(asked).toEqual(['r3'])
+    expect(highlightedCamper()).toBeNull()
+  })
+
+  it('shows the highlight the surface keeps, and sends the table’s ↓ through it too', async () => {
+    render(<Controlled agree />)
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(highlightedCamper()).toBe('Olivia Chen')
+    await userEvent.keyboard('{ArrowDown}')
+    expect(asked).toEqual(['r3', 'r4'])
+    expect(screen.getByText('Editing Samuel Johnson')).toBeInTheDocument()
+  })
+
+  it('asks nothing for a click on the row already highlighted', async () => {
+    render(<Controlled agree />)
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    expect(asked).toEqual(['r3'])
+  })
+
+  it('lets the editor row put the highlight on any row (ruling A jumps back with it)', async () => {
+    renderTable('/aid/requests', {
+      renderBelowHighlighted: (r, nav) => (
+        <div>
+          <span>Editing {r.camper}</span>
+          <button type="button" onClick={() => nav.highlight('r1')}>
+            Back to Emma
+          </button>
+        </div>
+      ),
+    })
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Emma' }))
+    expect(screen.getByText('Editing Emma Johnson')).toBeInTheDocument()
+  })
+
+  // The editor row's nav in a controlled table: every method goes through `onHighlight` and moves
+  // nothing by itself (the surface keeps the highlight, here fixed on r3). Regression guards.
+  it.each([
+    ['highlight(key)', 'Jump to Emma', 'r1'],
+    ['next', 'Next', 'r4'],
+    ['previous', 'Previous', 'r2'],
+    ['close', 'Close', null],
+  ])(
+    'sends nav.%s through onHighlight and moves nothing itself',
+    async (_name, label, expected) => {
+      render(
+        <MemoryRouter initialEntries={['/aid/requests']}>
+          <AidTable<Row>
+            rows={ROWS}
+            columns={COLUMNS}
+            rowKey={rowKeyOf}
+            csvFilename="camperships-requests-all-2027.csv"
+            highlighted="r3"
+            onHighlight={(key) => asked.push(key)}
+            renderBelowHighlighted={(r, nav) => (
+              <div>
+                <span>Editing {r.camper}</span>
+                <button type="button" onClick={() => nav.highlight('r1')}>
+                  Jump to Emma
+                </button>
+                <button type="button" onClick={nav.next}>
+                  Next
+                </button>
+                <button type="button" onClick={nav.previous}>
+                  Previous
+                </button>
+                <button type="button" onClick={nav.close}>
+                  Close
+                </button>
+              </div>
+            )}
+          />
+        </MemoryRouter>
+      )
+      await userEvent.click(screen.getByRole('button', { name: label }))
+      expect(asked).toEqual([expected])
+      expect(highlightedCamper()).toBe('Olivia Chen')
+      expect(screen.getByText('Editing Olivia Chen')).toBeInTheDocument()
+    }
+  )
+})
+
+// Owner ruling R1 (2026-10-01): the row you are on stays on screen under a search that hides it,
+// but totals, group counts and the CSV always mean the rows matching the search.
+describe('a row kept on screen under a search', () => {
+  const COUNTED = {
+    groupings: GROUPINGS,
+    defaultGrouping: 'family',
+    groupCount: (rows: readonly Row[]) => `${String(rows.length)} in group`,
+    footerLabel: (rows: readonly Row[]) => `${String(rows.length)} requests`,
+  }
+  const groupHeading = (name: string) =>
+    [...document.querySelectorAll('[data-group-heading]')].find((td) =>
+      td.textContent.startsWith(name)
+    )
+  const search = (text: string) =>
+    userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), text)
+
+  async function check() {
+    await userEvent.click(screen.getByText('Olivia Chen'))
+    await search('johnson')
+    // (1) still rendered
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    // (2) the footer excludes it: 2 requests, $1,800 + $1,200, not $950 more
+    expect(screen.getByText('2 requests')).toBeInTheDocument()
+    expect(screen.getByText('$3,000')).toBeInTheDocument()
+    expect(screen.queryByText('$3,950')).toBeNull()
+    // (3) its group counts nothing
+    expect(groupHeading('Chen')).toHaveTextContent('0 in group')
+    expect(groupHeading('Johnson')).toHaveTextContent('2 in group')
+    // (4) the CSV excludes it
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls[0] as [string, string]
+    expect(content).not.toContain('Olivia Chen')
+    expect(content).toContain('Samuel Johnson')
+  }
+
+  it('is drawn but not counted (uncontrolled)', async () => {
+    renderTable('/aid/requests', COUNTED)
+    await check()
+  })
+
+  it('is drawn but not counted (controlled)', async () => {
+    render(<Controlled agree extra={COUNTED} />)
+    await check()
+  })
+
+  it('changes nothing when the highlighted row matches the search anyway', async () => {
+    renderTable('/aid/requests', COUNTED)
+    await userEvent.click(screen.getByText('Samuel Johnson'))
+    await search('johnson')
+    expect(screen.getByText('2 requests')).toBeInTheDocument()
+    expect(groupHeading('Johnson')).toHaveTextContent('2 in group')
   })
 })

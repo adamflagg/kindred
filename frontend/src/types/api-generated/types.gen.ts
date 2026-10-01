@@ -22730,6 +22730,44 @@ export type RejectSuggestedApiGeoCanonicalsCanonicalNameRejectPostResponses = {
 export type RejectSuggestedApiGeoCanonicalsCanonicalNameRejectPostResponse =
   RejectSuggestedApiGeoCanonicalsCanonicalNameRejectPostResponses[keyof RejectSuggestedApiGeoCanonicalsCanonicalNameRejectPostResponses]
 
+export type InvalidateCachesApiInternalMetricsCacheInvalidatePostData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Sync Type
+     *
+     * The sync job that just finished; scopes the lodging and social graph cache clears.
+     */
+    sync_type?: string | null
+  }
+  url: '/api/internal/metrics/cache/invalidate'
+}
+
+export type InvalidateCachesApiInternalMetricsCacheInvalidatePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type InvalidateCachesApiInternalMetricsCacheInvalidatePostError =
+  InvalidateCachesApiInternalMetricsCacheInvalidatePostErrors[keyof InvalidateCachesApiInternalMetricsCacheInvalidatePostErrors]
+
+export type InvalidateCachesApiInternalMetricsCacheInvalidatePostResponses = {
+  /**
+   * Response Invalidate Caches Api Internal Metrics Cache Invalidate Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: number
+  }
+}
+
+export type InvalidateCachesApiInternalMetricsCacheInvalidatePostResponse =
+  InvalidateCachesApiInternalMetricsCacheInvalidatePostResponses[keyof InvalidateCachesApiInternalMetricsCacheInvalidatePostResponses]
+
 export type GeoNormalizeApiInternalGeoNormalizePostData = {
   body: GeoNormalizeRequest
   path?: never

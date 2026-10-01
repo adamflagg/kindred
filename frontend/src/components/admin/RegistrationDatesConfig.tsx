@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { pb } from '../../lib/pocketbase'
 import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
+import { invalidateServerCaches } from '../../utils/queryClient'
 import type { ConfigRecord } from '../../types/pocketbase-types'
 
 interface RegDateConfig {
@@ -106,7 +107,7 @@ export function RegistrationDatesConfig() {
         queryKey: queryKeys.registrationDatesConfig(currentYear),
       })
       // Invalidate server-side metrics cache so velocity graph picks up new phase dates
-      fetch('/api/metrics/cache/invalidate', { method: 'POST' }).catch(() => {})
+      await invalidateServerCaches()
       // Invalidate client-side metrics queries for immediate UI refresh
       await queryClient.invalidateQueries({ queryKey: ['metrics'] })
       toast.success('Registration dates saved')

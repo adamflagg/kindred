@@ -147,8 +147,8 @@ func TestNotifyMetricsCacheInvalidation(t *testing.T) {
 			if r.Method != http.MethodPost {
 				t.Errorf("expected POST, got %s", r.Method)
 			}
-			if r.URL.Path != "/api/metrics/cache/invalidate" {
-				t.Errorf("expected /api/metrics/cache/invalidate, got %s", r.URL.Path)
+			if r.URL.Path != "/api/internal/metrics/cache/invalidate" {
+				t.Errorf("expected /api/internal/metrics/cache/invalidate, got %s", r.URL.Path)
 			}
 			called.Add(1)
 			w.WriteHeader(http.StatusOK)

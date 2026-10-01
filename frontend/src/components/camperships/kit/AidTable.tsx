@@ -1,6 +1,7 @@
 import { Download, Search } from 'lucide-react'
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -55,12 +56,16 @@ export interface CellContext {
 
 /**
  * Handed to the editor row (Ruling 2026-10-01 (plan review)): while the editor holds focus the
- * table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside the editor row, so a focused Save or Cancel button never lets ↓ unmount the editor with unsaved input), so the editor moves the highlight through these.
+ * table's own ↑/↓ stand aside (`isPageKey`, and anywhere inside the editor row, so a focused Save or
+ * Cancel button never lets ↓ unmount the editor with unsaved input), so the editor moves the
+ * highlight through these. `highlight` puts it on any row: owner ruling A (2026-10-01) jumps back to
+ * a row whose save failed.
  */
 export interface AidRowNav {
   readonly next: () => void
   readonly previous: () => void
   readonly close: () => void
+  readonly highlight: (key: string | null) => void
 }
 
 export interface AidColumn<Row> {
@@ -100,6 +105,13 @@ export interface AidTableProps<Row> {
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
+  /**
+   * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor row's
+   * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
+   * and keep the row in its URL. Without them the table keeps the highlight itself.
+   */
+  readonly highlighted?: string | null | undefined
+  readonly onHighlight?: ((key: string | null) => void) | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
@@ -132,6 +144,8 @@ export function AidTable<Row>({
   onOpenTotal,
   renderBelowHighlighted,
   arrowKeys = false,
+  highlighted: highlightedProp,
+  onHighlight,
   footerLabel,
   groupCount,
   emptyText = 'No rows match.',
@@ -145,28 +159,60 @@ export function AidTable<Row>({
     defaultGrouping
   )
   const [query, setQuery] = useState('')
-  const [highlighted, setHighlighted] = useState<string | null>(null)
+  const [ownHighlight, setOwnHighlight] = useState<string | null>(null)
+  const highlighted = onHighlight ? (highlightedProp ?? null) : ownHighlight
+  const setHighlight = useCallback(
+    (key: string | null) => {
+      if (onHighlight) onHighlight(key)
+      else setOwnHighlight(key)
+    },
+    [onHighlight]
+  )
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>())
 
-  const visible = useMemo(() => {
-    const searchable = columns.filter((c) => c.searchable)
-    const filtered = rows.filter((row) =>
-      matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], query)
-    )
-    const column = sort ? columns.find((c) => c.key === sort.key) : undefined
-    return column && sort ? sortRows(filtered, column.value, sort.dir) : filtered
-  }, [rows, columns, searchExtra, query, sort])
+  const searchable = useMemo(() => columns.filter((c) => c.searchable), [columns])
+  const matches = useCallback(
+    (row: Row) =>
+      matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], query),
+    [searchable, searchExtra, query]
+  )
+  // The row you are on stays on screen through a search: its editor, its typing and its failure are
+  // on it. It is display only (owner ruling 2026-10-01): totals, group counts and the CSV always
+  // mean the rows matching the search. Only a highlight the search would hide changes `kept`, so
+  // ↑/↓ over matching rows never re-sorts.
+  const kept = useMemo(() => {
+    if (highlighted === null) return null
+    const row = rows.find((r) => rowKey(r) === highlighted)
+    return row !== undefined && !matches(row) ? highlighted : null
+  }, [rows, rowKey, highlighted, matches])
+
+  const sorted = useCallback(
+    (list: readonly Row[]) => {
+      const column = sort ? columns.find((c) => c.key === sort.key) : undefined
+      return column && sort ? sortRows(list, column.value, sort.dir) : [...list]
+    },
+    [columns, sort]
+  )
+  // The rows matching the search: what the totals, the counts and the CSV are of.
+  const visible = useMemo(() => sorted(rows.filter(matches)), [rows, matches, sorted])
+  // What is drawn: those, plus the kept row.
+  const shown = useMemo(
+    () =>
+      kept === null ? visible : sorted(rows.filter((row) => rowKey(row) === kept || matches(row))),
+    [kept, visible, rows, rowKey, matches, sorted]
+  )
 
   const grouping = groupings.find((g) => g.key === group)
   const groups: Array<RowGroup<Row>> = useMemo(
     () =>
-      grouping
-        ? groupRows(visible, grouping.groupOf)
-        : [{ id: '', heading: '', rows: [...visible] }],
-    [visible, grouping]
+      grouping ? groupRows(shown, grouping.groupOf) : [{ id: '', heading: '', rows: [...shown] }],
+    [shown, grouping]
   )
   const ordered = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   const order = useMemo(() => ordered.map(rowKey), [ordered, rowKey])
+  // Without the kept row: a group's count and the CSV are of matching rows only.
+  const counted = (list: readonly Row[]) =>
+    kept === null ? list : list.filter((row) => rowKey(row) !== kept)
 
   useEffect(() => {
     if (!arrowKeys) return
@@ -179,23 +225,26 @@ export function AidTable<Row>({
         return
       if (!isPageKey(event) || order.length === 0) return
       event.preventDefault()
-      setHighlighted((current) => stepHighlight(order, current, event.key === 'ArrowDown' ? 1 : -1))
+      setHighlight(stepHighlight(order, highlighted, event.key === 'ArrowDown' ? 1 : -1))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [arrowKeys, order])
+  }, [arrowKeys, order, highlighted, setHighlight])
 
   useEffect(() => {
     if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
   }, [highlighted])
 
+  // Each move is worked out from the highlight this render shows, so two moves in one tick can't
+  // step twice.
   const nav: AidRowNav = useMemo(
     () => ({
-      next: () => setHighlighted((current) => stepHighlight(order, current, 1)),
-      previous: () => setHighlighted((current) => stepHighlight(order, current, -1)),
-      close: () => setHighlighted(null),
+      next: () => setHighlight(stepHighlight(order, highlighted, 1)),
+      previous: () => setHighlight(stepHighlight(order, highlighted, -1)),
+      close: () => setHighlight(null),
+      highlight: setHighlight,
     }),
-    [order]
+    [order, highlighted, setHighlight]
   )
 
   const pinnedLeft = useMemo(() => {
@@ -227,7 +276,7 @@ export function AidTable<Row>({
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
   const download = () => {
-    const data = ordered.map((row) =>
+    const data = counted(ordered).map((row) =>
       columns.map((c) =>
         c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
       )
@@ -326,7 +375,7 @@ export function AidTable<Row>({
                     <td colSpan={columns.length} className={GROUP_ROW} data-group-heading="">
                       <span className="sticky left-2">{g.heading}</span>
                       {groupCount ? (
-                        <span className="ml-2 font-normal">{groupCount(g.rows)}</span>
+                        <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
                       ) : null}
                     </td>
                   </tr>
@@ -343,7 +392,9 @@ export function AidTable<Row>({
                           if (element) rowRefs.current.set(key, element)
                           else rowRefs.current.delete(key)
                         }}
-                        onClick={() => setHighlighted(key)}
+                        onClick={() => {
+                          if (key !== highlighted) setHighlight(key)
+                        }}
                         className="cursor-pointer"
                       >
                         {columns.map((c, index) => (
