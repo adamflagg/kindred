@@ -168,6 +168,9 @@ def _accepted_index(dispositions: Iterable[Any]) -> dict[tuple[int, str], str]:
     return {(int(d.transaction_cm_id), str(d.flag)): str(d.disposition) for d in dispositions}
 
 
+accepted_index = _accepted_index  # public for the household page's posting lines (slice 1)
+
+
 def _flags_of(posting: Any, accepted: Mapping[tuple[int, str], str]) -> tuple[list[str], dict[str, str]]:
     txn = int(posting.transaction_cm_id)
     flags = [str(f) for f in (posting.flags or [])]

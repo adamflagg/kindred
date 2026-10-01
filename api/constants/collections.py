@@ -135,6 +135,7 @@ DEBUG_PIPELINE_TRACES = "debug_pipeline_traces"
 
 # Auth
 SUPERUSERS = "_superusers"
+USERS = "users"  # Kindred's staff accounts; the campership receipt reads display names by email (slice 1)
 
 # Admin audit log (migration 1500000206). Superuser-only in PocketBase, written
 # only by PocketBase's Go hooks; FastAPI reads it for admins and never writes.

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from api.services.financial_aid_change_log_reads import fetch_change_log, log_row
+from api.services.financial_aid_change_log_reads import fetch_change_log, fetch_entity_log, log_row
 
 
 def test_a_create_row_has_no_before_and_json_text_is_parsed() -> None:
@@ -52,3 +52,53 @@ async def test_the_log_is_read_by_season_and_entity_in_recorded_order() -> None:
 async def test_only_an_aid_collection_name_is_read() -> None:
     with pytest.raises(ValueError, match="entity"):
         await fetch_change_log(MagicMock(), 2027, 'aid_requests" || year > 0 || "')
+
+
+# --- the household page's timeline (slice 1) ------------------------------------------------------------
+
+
+def _log_pb(rows: list[object]) -> tuple[MagicMock, list[dict[str, object]]]:
+    calls: list[dict[str, object]] = []
+    pb = MagicMock()
+
+    def get_full_list(batch: int, query_params: dict[str, object]) -> list[object]:
+        calls.append(query_params)
+        return list(rows)
+
+    pb.collection.return_value.get_full_list.side_effect = get_full_list
+    return pb, calls
+
+
+@pytest.mark.asyncio
+async def test_the_entity_log_matches_request_ids_inside_entity_ids_and_other_ids_exactly() -> None:
+    """A request's own rows are entity_id = the request id, or "<request id>:<round|code|household>"."""
+    pb, calls = _log_pb([])
+    await fetch_entity_log(pb, 2027, exact=["app000001000001"], containing=["reqemma00000001"])
+    (call,) = calls
+    assert call["filter"] == "year = 2027 && (entity_id ~ 'reqemma00000001' || entity_id = 'app000001000001')"
+    assert call["sort"] == "created,id"
+
+
+@pytest.mark.asyncio
+async def test_the_entity_log_chunks_a_long_filter_and_merges_the_rows_once_each() -> None:
+    row = SimpleNamespace(id="log000000000001", created="2027-03-01 17:00:00.000Z")
+    pb, calls = _log_pb([row])
+    ids = [f"req{n:012d}" for n in range(200)]
+    out = await fetch_entity_log(pb, 2027, exact=[], containing=ids)
+    assert len(calls) > 1
+    assert all(len(str(c["filter"])) <= 3000 for c in calls)
+    assert out == [row]
+
+
+@pytest.mark.asyncio
+async def test_no_ids_reads_nothing() -> None:
+    pb, calls = _log_pb([])
+    assert await fetch_entity_log(pb, 2027, exact=[], containing=[]) == []
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_an_entity_id_is_escaped_into_the_filter() -> None:
+    pb, calls = _log_pb([])
+    await fetch_entity_log(pb, 2027, exact=["x' || year > 0 || '"], containing=[])
+    assert "\\'" in str(calls[0]["filter"])

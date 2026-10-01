@@ -155,6 +155,16 @@ async def test_fa_requests_take_the_household_cm_id_from_the_expanded_relation()
     assert [(r.household_cm_id, r.summer, r.family_camp, r.bmitzvah) for r in got] == [(100, 1200.0, 0.0, 0.0)]
 
 
+@pytest.mark.asyncio
+async def test_user_names_read_only_people_and_only_their_names() -> None:
+    pb, calls = _pb([SimpleNamespace(email="registrar@example.com", name="Test User")])
+    out = await FinancialAidRepository(pb).fetch_user_names({"registrar@example.com", "system:ledger", ""})
+    assert out == {"registrar@example.com": "Test User"}
+    (call,) = calls
+    assert call["filter"] == "email = 'registrar@example.com'"
+    assert call["fields"] == "email,name"
+
+
 def _person_row(pid: str, cm: int, household: int, primary: int = 0, alternate: int = 0) -> SimpleNamespace:
     expand: dict[str, object] = {"household": SimpleNamespace(cm_id=household)}
     if primary:

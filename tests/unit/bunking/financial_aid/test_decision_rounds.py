@@ -212,3 +212,29 @@ def test_a_back_dated_re_tick_on_a_posted_round_does_not_inherit_the_old_accepta
     ]
     state = fold_rounds(events, as_of=CUT, posted_by=D)["req-emma"][1]
     assert (state.posted, state.locked_amount, state.accepted, state.accepted_at) == (True, Decimal(2500), False, None)
+
+
+def test_a_round_remembers_who_ticked_it_and_forgets_on_undo() -> None:
+    """Slice 1's receipt label (§4.7): "locked Mar 9 by <the person>'s Posted tick"."""
+    posted = fold_rounds([ev("post", 1, amount=Decimal(3000), lock_source="tick", actor="registrar@example.com")])
+    assert posted["req-emma"][1].posted_by == "registrar@example.com"
+    undone = fold_rounds(
+        [
+            ev("post", 1, hour=0, amount=Decimal(3000), lock_source="tick", actor="registrar@example.com"),
+            ev("unpost", 1, hour=1, actor="registrar@example.com"),
+        ]
+    )
+    assert undone["req-emma"][1].posted_by == ""
+
+
+def test_a_round_3_amount_names_who_decided_it_finance_once_it_approves() -> None:
+    """§4.7: staff-decided money names who decided it; above the registrar's limit that is finance (D79)."""
+    keyed = fold_rounds([ev("award", 3, amount=Decimal(900), needs_approval=True, actor="registrar@example.com")])
+    assert keyed["req-emma"][3].decided_by == "registrar@example.com"
+    approved = fold_rounds(
+        [
+            ev("award", 3, hour=0, amount=Decimal(900), needs_approval=True, actor="registrar@example.com"),
+            ev("approve", 3, hour=1, actor="finance@example.com"),
+        ]
+    )
+    assert approved["req-emma"][3].decided_by == "finance@example.com"

@@ -32,6 +32,7 @@ from api.constants.collections import (
     FINANCIAL_TRANSACTIONS,
     HOUSEHOLDS,
     PERSONS,
+    USERS,
 )
 from api.services.lodging_repository import STABLE_SORT
 from api.utils.pb_filters import pb_escape
@@ -42,6 +43,8 @@ ID_CHUNK = 100
 # 1,200 characters, well under the 3,500-character limit below; 25 go over it and PocketBase answers
 # 400. One query per household instead cost ~65 ms each (SP6-core T7).
 HOUSEHOLD_CHUNK = 8
+# An email term is under 100 characters, so 25 keep a filter well below the 3,500-character limit below.
+USER_CHUNK = 25
 _PERSON_HOUSEHOLD_RELATIONS = ("household", "primary_childhood_household", "alternate_childhood_household")
 # PocketBase v0.40.4 refuses any filter over 3500 characters
 # (tools/search/provider.go:31); keep a margin below it and a cap on term count
@@ -262,6 +265,19 @@ class FinancialAidRepository:
                     bmitzvah=float(r.tbm_amount_requested or 0),
                 )
             )
+        return out
+
+    async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
+        """Kindred users' display names by email, for the receipt label (§4.7): who ticked Posted, who
+        decided a Round 3 amount. An actor that isn't a person (system:ledger) or has no name is left out."""
+        wanted = sorted({e for e in emails if "@" in e})
+        out: dict[str, str] = {}
+        for start in range(0, len(wanted), USER_CHUNK):
+            terms = " || ".join(f"email = '{pb_escape(e)}'" for e in wanted[start : start + USER_CHUNK])
+            for user in await self._page(USERS, {"filter": terms, "fields": "email,name", "sort": STABLE_SORT}):
+                name = str(getattr(user, "name", "") or "").strip()
+                if name:
+                    out[str(user.email)] = name
         return out
 
     # --- raw transactions (data quality only) --------------------------------
