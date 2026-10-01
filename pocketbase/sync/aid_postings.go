@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -671,14 +672,51 @@ func (s *AidPostingsSync) syncHouseholdLinks(year int, auto []aidHouseholdLink) 
 		if wanted[key] {
 			continue
 		}
-		if err := s.App.Delete(rec); err != nil {
+		deleted, err := s.deleteIfStillAuto(rec.Id)
+		if err != nil {
 			slog.Error("Error deleting stale household link", "key", key, "error", err)
 			s.Stats.Errors++
+			continue
+		}
+		if !deleted {
+			s.Stats.Skipped++
 			continue
 		}
 		s.Stats.Deleted++
 	}
 	return effective, nil
+}
+
+// deleteIfStillAuto deletes a stale automatic link on a FRESH copy of the row,
+// inside a transaction, and only while it is still automatic. The sweep's copy
+// was read before the loop, and a person may have turned that very row into a
+// staff exclusion since (FastAPI's create_link updates it in place to source
+// "staff"): deleting by the old copy's id would delete the exclusion
+// (Ruling 2026-10-01 (plan review), campership G6). A row already gone is not
+// an error: there is nothing left to sweep.
+func (s *AidPostingsSync) deleteIfStillAuto(recordID string) (bool, error) {
+	deleted := false
+	err := s.App.RunInTransaction(func(tx core.App) error {
+		fresh, err := tx.FindRecordById(colAidHouseholdLinks, recordID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("re-reading: %w", err)
+		}
+		if fresh.GetString("source") != aidLinkSourceAuto {
+			return nil
+		}
+		if err := tx.Delete(fresh); err != nil {
+			return fmt.Errorf("deleting: %w", err)
+		}
+		deleted = true
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("in transaction: %w", err)
+	}
+	return deleted, nil
 }
 
 func (s *AidPostingsSync) loadFAAnswers(year int) (map[int][]string, error) {

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -833,5 +834,66 @@ func TestAidPostingsSyncNoStaleWarningWhenTransactionsLastRunSucceeded(t *testin
 
 	if got := s.GetStats().AidLedgerWarnings; got != 0 {
 		t.Errorf("a successful last transactions run must not warn about staleness, got AidLedgerWarnings=%d", got)
+	}
+}
+
+// Ruling 2026-10-01 (plan review): the sweep deletes stale automatic links by
+// record id from a read it took earlier. A person who turns one of them into a
+// staff exclusion meanwhile (FastAPI's create_link updates the row in place:
+// source "staff", excluded) must keep it: the sweep deletes only a row that is
+// STILL automatic when it deletes.
+func TestAidPostingsSweepKeepsALinkStaffExcludedDuringTheSync(t *testing.T) {
+	t.Parallel()
+	f := newAidFixture(t)
+	f.session(11, "Session 2", "main", 2026)
+	for _, h := range []int{100, 200} {
+		f.household(h, 2026)
+	}
+	f.person(1001, 2026, 100, 100, 200) // camper: primary 100, alternate 200 -> auto links 100 and 200
+	f.attend(1001, 11, 2, 2026)
+	f.txn(9001, 2026, -500, aidCategoryFinancialAssistance, aidTestCampAid, 200, 0, 0, false)
+	for _, h := range []int{500, 700} { // two stale automatic links: the sweep deletes both
+		saveRecord(t, f.app, colAidHouseholdLinks, map[string]any{"year": 2026, "household_cm_id": h,
+			"family_key": fmt.Sprintf("hh-%d", h), "source": aidLinkSourceAuto})
+	}
+
+	// When the sweep deletes the first stale row, a person excludes the OTHER one,
+	// which the sweep read as automatic and has not deleted yet.
+	excluded := 0
+	f.app.OnRecordDelete(colAidHouseholdLinks).BindFunc(func(e *core.RecordEvent) error {
+		if excluded != 0 {
+			return e.Next()
+		}
+		excluded = 500
+		if e.Record.GetInt("household_cm_id") == 500 {
+			excluded = 700
+		}
+		other, err := e.App.FindFirstRecordByFilter(colAidHouseholdLinks,
+			"year = 2026 && household_cm_id = {:h}", map[string]any{"h": excluded})
+		if err != nil {
+			return fmt.Errorf("finding the link to exclude: %w", err)
+		}
+		other.Set("source", aidLinkSourceStaff)
+		other.Set("excluded", true)
+		if err := e.App.Save(other); err != nil {
+			return fmt.Errorf("excluding: %w", err)
+		}
+		return e.Next()
+	})
+
+	f.run("", 2026)
+
+	if excluded == 0 {
+		t.Fatal("the hook never fired, so this test exercised nothing")
+	}
+	var kept []string
+	for _, r := range f.rows(colAidHouseholdLinks, 2026) {
+		if h := r.GetInt("household_cm_id"); h == 500 || h == 700 {
+			kept = append(kept, fmt.Sprintf("%d %s excluded=%v", h, r.GetString("source"), r.GetBool("excluded")))
+		}
+	}
+	want := []string{fmt.Sprintf("%d staff excluded=true", excluded)}
+	if !slices.Equal(kept, want) {
+		t.Errorf("stale links after the sweep = %v, want %v: the staff exclusion was deleted", kept, want)
 	}
 }
