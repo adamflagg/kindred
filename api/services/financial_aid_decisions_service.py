@@ -1747,8 +1747,8 @@ class FinancialAidDecisionsService:
         """The Posted rows for ticks worked out from CampMinder's money (the ledger's own, D78, or a
         registrar's placement, D81): each locks its round at the decided amount with its receipt, dated
         the posting's day. Also the rules-section locks a first lock reads (SP10a Decision 11), and the
-        sections that could not be locked. The caller commits them as one operation. (ledger_ticks builds
-        the same rows inline; G6 restructures it, so it is left alone here.)"""
+        sections that could not be locked. The caller commits them as one operation. (The ledger sync builds
+        its rows here too.)"""
         if season.rules is None:
             raise DecisionRefusedError(f"{season.year}'s pricing rules are not approved yet")
         writes = [
@@ -1809,21 +1809,15 @@ class FinancialAidDecisionsService:
         ticks = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=season.undone)
         if not ticks:
             return LedgerTicksOut(year=year, ticked=0, operation_id="")
-        writes = [
-            self._post_write(
-                season,
-                season.priced[tick.request_id],
-                tick.round,
-                tick.amount,
-                LEDGER_ACTOR,
-                posted_on=tick.posted_on,
-                lock_source="ledger",
-                note=f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request",
-            )
-            for tick in ticks
-        ]
-        sections = sorted({section for tick in ticks for section in ROUND_SECTIONS[tick.round]})
-        locks, not_locked = await self._rules.lock_writes(year, season.rules.version, sections)
+        writes, locks, not_locked = await self.tick_writes(
+            season,
+            ticks,
+            LEDGER_ACTOR,
+            lock_source="ledger",
+            note=lambda tick: (
+                f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request"
+            ),
+        )
         # Locks first: March's bulk import can pass one batch, so this may commit in chunks, and the
         # sections then lock in the first one. A chunk that fails leaves its rounds for the next run.
         try:
