@@ -28,6 +28,9 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
   // undefined = closed, null = creating, string = editing that role
   const [drawer, setDrawer] = useState<string | null | undefined>(undefined)
   const [scrolled, setScrolled] = useState(false)
+  // A role just created: until the refetch lands it is not in data.roles, and the
+  // drawer would render nothing. Keep showing the editor, then switch in place.
+  const [createdId, setCreatedId] = useState<string | null>(null)
 
   const reg = registry.data
   const groups: Array<{ area: string | null; rows: Row[] }> = []
@@ -143,12 +146,19 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
       </div>
       {drawer !== undefined && (
         <RoleDrawer
-          roleId={drawer}
+          roleId={
+            drawer !== null && drawer === createdId && !data.roles.some((r) => r.id === drawer)
+              ? null
+              : drawer
+          }
           data={data}
           registry={registry}
           url={url}
           onClose={() => setDrawer(undefined)}
-          onCreated={(id) => setDrawer(id)}
+          onCreated={(id) => {
+            setCreatedId(id)
+            setDrawer(id)
+          }}
         />
       )}
     </div>

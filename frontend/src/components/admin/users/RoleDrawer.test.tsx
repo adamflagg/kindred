@@ -37,8 +37,12 @@ const { RoleDrawer } = await import('./RoleDrawer')
 
 type Props = ReturnType<typeof makeProps>
 
-function renderRoleDrawer(roleId: string | null, opts: { noRegistry?: boolean } = {}) {
+function renderRoleDrawer(
+  roleId: string | null,
+  opts: { noRegistry?: boolean; mutate?: (p: Props) => void } = {}
+) {
   const props = makeProps()
+  opts.mutate?.(props)
   const registry = opts.noRegistry
     ? ({ data: undefined, isLoading: true, error: null } as unknown as Props['registry'])
     : props.registry
@@ -206,7 +210,7 @@ describe('RoleDrawer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
     await userEvent.click(screen.getByRole('button', { name: /Delete this role/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Delete role' }))
-    expect(await screen.findByText(/Couldn't save: Still in use/)).toBeInTheDocument()
+    expect(await screen.findByText(/Couldn't delete: Still in use/)).toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByText(/Delete Finance\?/)).toBeInTheDocument()
   })
@@ -223,5 +227,40 @@ describe('RoleDrawer', () => {
       'r-exec',
       expect.objectContaining({ permissions: ['bunking.manage', 'metrics.geo', 'users.manage'] })
     )
+  })
+
+  it('counts only permissions the registry knows, so n never exceeds the total', async () => {
+    renderRoleDrawer('r-exec', {
+      mutate: (p) => {
+        p.data.roles.find((r) => r.id === 'r-exec')!.permissions.push('legacy.gone')
+      },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    expect(screen.getByText('3 of 7')).toBeInTheDocument()
+  })
+
+  it('names three people and then "and N more" in an impact line', async () => {
+    renderRoleDrawer('r-exec', {
+      mutate: (p) => {
+        const exec = p.data.roleLikes.find((r) => r.id === 'r-exec')!
+        for (const id of ['u-p1', 'u-p2', 'u-p3', 'u-p4']) p.data.held.set(id, [exec])
+      },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Geographic data/ }))
+    expect(screen.getByTestId('role-footer')).toHaveTextContent(
+      'Geographic data: Emma Johnson, Person 01, Person 02 and 2 more lose it'
+    )
+  })
+
+  it('footer uses one background at a time', async () => {
+    renderRoleDrawer('r-exec')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    const footer = screen.getByTestId('role-footer')
+    expect(footer.className).toContain('bg-card')
+    expect(footer.className).not.toContain('bg-primary/5')
+    await userEvent.click(screen.getByRole('checkbox', { name: /Google Sheets export/ }))
+    expect(footer.className).toContain('bg-primary/5')
+    expect(footer.className).not.toContain('bg-card')
   })
 })

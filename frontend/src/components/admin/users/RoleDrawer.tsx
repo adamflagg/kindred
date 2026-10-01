@@ -127,8 +127,9 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
       role
         ? pb.collection('roles').update(role.id, form)
         : pb.collection('roles').create({ ...form, is_system: false }),
-    onSuccess: (rec) => {
-      void invalidateRoles()
+    onSuccess: async (rec) => {
+      // Await the refetch: the drawer renders nothing until the new role is in data.roles.
+      await invalidateRoles()
       if (role) setEditing(false)
       else onCreated(rec.id)
     },
@@ -365,6 +366,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
     })
 
   const error = saveMutation.error ?? deleteMutation.error
+  const errorVerb = deleteMutation.error && !saveMutation.error ? 'delete' : 'save'
   const busy = saveMutation.isPending || deleteMutation.isPending
   const fieldCls = 'border-border bg-background w-full rounded-md border px-2 py-1 text-sm'
 
@@ -427,7 +429,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
           <h4 className="mb-2 text-sm font-semibold">
             Permissions{' '}
             <span className="text-muted-foreground font-normal">
-              {perms.size} of {universe.length}
+              {[...perms].filter((c) => universe.includes(c)).length} of {universe.length}
             </span>
           </h4>
           {reg
@@ -496,7 +498,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
 
       <div
         data-testid="role-footer"
-        className={`border-border bg-card sticky bottom-0 space-y-2 border-t p-3 ${ok ? 'bg-primary/5' : ''}`}
+        className={`border-border sticky bottom-0 space-y-2 border-t p-3 ${ok ? 'bg-primary/5' : 'bg-card'}`}
       >
         <div className="text-xs">{summary}</div>
         {impact.length > 0 && (
@@ -517,7 +519,8 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
         )}
         {error && (
           <div className="text-xs text-red-600">
-            Couldn&apos;t save: {error.message}. Nothing was changed; your edits are still here.
+            Couldn&apos;t {errorVerb}: {error.message}. Nothing was changed; your edits are still
+            here.
           </div>
         )}
         <div className="flex justify-end gap-2">
