@@ -29,6 +29,9 @@ Sub-project 9b adds the scenario routes (`/scenarios/...`, financial_aid.rules):
 freeze the season, the per-person draft and its trail, keep, compare, fit to
 budget, the one-step sensitivity, a request set (requests received through a
 date), and making a kept option the rules draft.
+Sub-project 9c adds what the committee compares: compare's tables by tier and
+last season's posted money (RPT-17, RPT-32), and a starting point from last
+season's rules (RPT-18).
 """
 
 from datetime import date
@@ -116,6 +119,7 @@ from api.schemas.financial_aid_rules import (
     field_change_out,
 )
 from api.schemas.financial_aid_scenarios import (
+    CommitteeOut,
     CompareColumnOut,
     CompareOut,
     DocumentIn,
@@ -124,6 +128,7 @@ from api.schemas.financial_aid_scenarios import (
     EvaluateOut,
     FitOut,
     KeepIn,
+    LastSeasonOut,
     LeverEffectOut,
     LoadIn,
     MakeRulesDraftIn,
@@ -135,8 +140,10 @@ from api.schemas.financial_aid_scenarios import (
     ReplacementWarningOut,
     RequestSetOut,
     ResultsOut,
+    Round2CompareOut,
     SensitivityOut,
     SnapshotOut,
+    TierCompareOut,
     TierRowOut,
     TrailPageOut,
     TrailRowOut,
@@ -194,6 +201,7 @@ from api.services.financial_aid_scenarios_service import (
     Evaluation,
     FinancialAidScenariosService,
     KeptOption,
+    LastSeason,
     RequestSetChoice,
     ScenarioConflictError,
     ScenarioNotFoundError,
@@ -203,7 +211,7 @@ from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
-from bunking.financial_aid.scenarios import ScenarioResults
+from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
 from bunking.rbac.dependencies import require_any_permission, require_permission
 from bunking.rbac.permissions import Permission
 
@@ -937,7 +945,7 @@ def _scenarios() -> FinancialAidScenariosService:
             FinancialAidDecisionsRepository(pb), GrantsService(GrantsRepository(pb)).register_rows, _rules(), year
         )
 
-    return FinancialAidScenariosService(ScenarioRepository(pb), _rules(), capture)
+    return FinancialAidScenariosService(ScenarioRepository(pb), _rules(), capture, season_read=_decisions().season)
 
 
 def _scenarios_http(exc: FinancialAidError) -> HTTPException:
@@ -997,6 +1005,67 @@ def _results_out(r: ScenarioResults) -> ResultsOut:
         ],
         not_in_tiers=money(r.not_in_tiers),
         request_set=RequestSetOut(**r.request_set.model_dump()) if r.request_set is not None else None,
+        round2_allocated=_cents(r.round2_allocated),
+        round2_remaining=_cents(r.round2_remaining),
+    )
+
+
+def _pct(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
+
+
+def _committee_out(view: CommitteeView) -> CommitteeOut:
+    return CommitteeOut(
+        budget_total=_cents(view.budget_total),
+        round1=money(view.round1),
+        round1_pct_of_budget=_pct(view.round1_pct_of_budget),
+        round2=money(view.round2),
+        round1_by_tier=[
+            TierCompareOut(
+                table=r.table,
+                tier=r.tier,
+                requests=r.requests,
+                families=r.families,
+                asked=money(r.asked),
+                average_ask=_cents(r.average_ask),
+                fee_pct=_pct(r.fee_pct),
+                pct_of_ask=_pct(r.pct_of_ask),
+                round1=money(r.round1),
+                average_round1=_cents(r.average_round1),
+                held=r.held,
+                held_asked=money(r.held_asked),
+                no_ask=r.no_ask,
+            )
+            for r in view.round1_by_tier
+        ],
+        round2_by_tier=[
+            Round2CompareOut(
+                table=r.table,
+                tier=r.tier,
+                appeals=r.appeals,
+                asked=money(r.asked),
+                max_pct=_pct(r.max_pct),
+                priced=r.priced,
+                priced_asked=money(r.priced_asked),
+                round2=money(r.round2),
+                average_round2=_cents(r.average_round2),
+                pct_of_ask=_pct(r.pct_of_ask),
+                held_asked=money(r.held_asked),
+            )
+            for r in view.round2_by_tier
+        ],
+        not_in_tiers=money(view.not_in_tiers),
+        round2_not_in_tiers=money(view.round2_not_in_tiers),
+    )
+
+
+def _last_season_out(last: LastSeason) -> LastSeasonOut:
+    return LastSeasonOut(
+        year=last.year,
+        loaded=last.loaded,
+        label=last.label,
+        rules_version=last.rules_version,
+        view=_committee_out(last.view) if last.view is not None else None,
     )
 
 
@@ -1062,6 +1131,7 @@ def _column_out(column: CompareColumn) -> CompareColumnOut:
         results=_results_out(column.results),
         up=column.up,
         down=column.down,
+        committee=_committee_out(column.committee) if column.committee is not None else None,
     )
 
 
@@ -1118,6 +1188,16 @@ async def start_scenarios_from_rules(year: _Year, user: AuthUser = _RULES) -> Wo
     """A starting point from the rules draft, loaded into your draft."""
     try:
         return _workspace_out(await _scenarios().start_from_rules(year, user.email))
+    except FinancialAidError as exc:
+        raise _scenarios_http(exc) from exc
+
+
+@router.post("/scenarios/{year}/starting-points/last-season", response_model=WorkspaceOut)
+async def start_scenarios_from_last_season(year: _Year, user: AuthUser = _RULES) -> WorkspaceOut:
+    """RPT-18: a starting point from the rules draft with last season's approved criteria copied in, loaded into
+    your draft. 422 when last season has no approved rules, or its criteria don't fit this season's programs."""
+    try:
+        return _workspace_out(await _scenarios().start_from_last_season(year, user.email))
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
 
@@ -1182,19 +1262,26 @@ async def compare_scenarios(
     codes: Annotated[list[OptionCode], Query(max_length=4)] = [],  # noqa: B006
     through_round1_deadline: bool = Query(default=False),
     received_through: date | None = Query(default=None),
+    last_season: bool = Query(default=False),
     user: AuthUser = _RULES,
 ) -> CompareOut:
     """Your draft first, beside up to 4 kept options, all on the current snapshot, on a request set when asked
-    (D138: the Round 1 deadline switch or a received-through date, not both)."""
+    (D138: the Round 1 deadline switch or a received-through date, not both). Each column carries what the committee
+    compares (RPT-17, RPT-32); `last_season` adds last season's posted money beside them."""
     if through_round1_deadline and received_through is not None:
         raise HTTPException(status_code=422, detail="Choose the Round 1 deadline or a received-through date, not both")
     request_set: RequestSetChoice | None = "round1_deadline" if through_round1_deadline else received_through
     try:
-        comparison = await _scenarios().compare(year, user.email, codes, request_set=request_set)
+        comparison = await _scenarios().compare(
+            year, user.email, codes, request_set=request_set, last_season=last_season
+        )
     except FinancialAidError as exc:
         raise _scenarios_http(exc) from exc
     return CompareOut(
-        year=year, snapshot=_snapshot_out(comparison.snapshot), columns=[_column_out(c) for c in comparison.columns]
+        year=year,
+        snapshot=_snapshot_out(comparison.snapshot),
+        columns=[_column_out(c) for c in comparison.columns],
+        last_season=_last_season_out(comparison.last_season) if comparison.last_season is not None else None,
     )
 
 
