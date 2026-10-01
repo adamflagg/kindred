@@ -55,6 +55,7 @@ class SuggestionOut(BaseModel):
     parts: list[PartOut]
     evidence: list[EvidenceOut]
     would_tick: list[TickedOut] = Field(default_factory=list)
+    would_lock: float = 0  # the server's sum of would_tick: the client never adds floats (expected_locked, §4.10)
     would_leave: list[LeftToTickOut] = Field(default_factory=list)
 
 

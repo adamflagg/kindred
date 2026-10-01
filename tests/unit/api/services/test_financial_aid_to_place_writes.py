@@ -5,6 +5,7 @@ gives a tier-2 family Round 1 = 1,500; Emma (1000011) and Liam (1000012) are sib
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -22,8 +23,9 @@ from api.schemas.financial_aid_to_place import (
 )
 from api.services.financial_aid_decisions_service import DecisionNotFoundError, DecisionRefusedError
 from api.services.financial_aid_to_place import LEFT_DISPOSITION, TO_PLACE_FLAG, LeftLine, LineDetail, OverrideRow
-from bunking.financial_aid.change_log import AidWriteConflictError
+from bunking.financial_aid.change_log import AidWrite, AidWriteConflictError
 from bunking.financial_aid.decisions import DecisionEvent
+from bunking.pocketbase_batch import BatchLimitError, BatchRequestFailedError
 from tests.unit.api.services.decisions_fakes import ACTOR, RULES_ID, seed_line, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import LIAM, _posted
@@ -42,6 +44,11 @@ MAY1 = datetime(2027, 5, 1, 18, 0, tzinfo=UTC)
 JUN1 = datetime(2027, 6, 1, 18, 0, tzinfo=UTC)
 
 
+def _without_locks(operation: Sequence[AidWrite]) -> list[AidWrite]:
+    """An operation's writes apart from the leading aid_rules locks a first tick adds (G6 puts them first)."""
+    return [w for w in operation if w.collection != "aid_rules"]
+
+
 def _place(*parts: tuple[str, str], note: str = "") -> PlaceLineIn:
     return PlaceLineIn(parts=[PlacePartIn(request_id=r, amount=Decimal(a)) for r, a in parts], note=note)
 
@@ -57,6 +64,8 @@ async def test_confirming_places_the_line_and_ticks_the_round_it_covers_in_one_o
     assert [(t.request_id, t.round, t.amount) for t in out.ticked] == [(EMMA, 1, 1500.0)]
     assert out.left_to_tick == []
     (operation,) = store.operations
+    assert operation[0].collection == "aid_rules"  # G6: the rules locks lead the operation
+    operation = _without_locks(operation)
     assert [w.collection for w in operation[:2]] == ["aid_attribution_overrides", "aid_decisions"]
     override = operation[0]
     assert override.data is not None
@@ -86,7 +95,7 @@ async def test_a_split_places_each_part_and_ticks_each_request() -> None:
     seed_line(store, 9001, "3000", person=0, posted=MAR8)
     out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500"), (LIAM, "1500")), ACTOR)
     assert sorted((t.request_id, t.amount) for t in out.ticked) == [(EMMA, 1500.0), (LIAM, 1500.0)]
-    override = store.operations[0][0]
+    override = _without_locks(store.operations[0])[0]
     assert override.data is not None
     assert (override.data["attributed_person_cm_id"], override.data["attributed_session_cm_id"]) == (0, 0)
     assert override.data["split"] == [
@@ -232,7 +241,7 @@ async def test_a_line_whose_reclassification_the_sync_applied_is_placed_and_keep
     store.details[9001] = LineDetail(9001, QUEST_KEY)  # tonight's sync applied it
     assert (await service.read(YEAR)).open_count == 1
     await service.place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
-    placed = store.operations[-1][0]
+    placed = _without_locks(store.operations[-1])[0]
     assert placed.data is not None
     assert (placed.action, placed.data["source_key_override"], placed.data["attributed_person_cm_id"]) == (
         "update",
@@ -299,7 +308,7 @@ async def test_placing_a_line_left_at_family_level_ends_the_leave_in_the_same_op
     service = to_place_service(store)
     await service.leave(YEAR, 9001, LeaveLineIn(note="Waiting for the family"), ACTOR)
     await service.place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
-    placed = store.operations[-1]
+    placed = _without_locks(store.operations[-1])
     assert [(w.collection, w.action) for w in placed[:2]] == [
         ("aid_attribution_overrides", "create"),
         ("aid_flag_dispositions", "delete"),
@@ -609,3 +618,137 @@ async def test_a_write_that_changes_nothing_never_reaches_the_change_log() -> No
     assert (await service.reclassify(YEAR, 9002, body, ACTOR)).operation_id == ""
     assert (await service.reopen(YEAR, 9999, "nothing there", ACTOR)).operation_id == ""
     assert (len(store.operations), len(store.log)) == (operations, log)
+
+
+# --- fix round 1 ------------------------------------------------------------------------------------
+
+
+def _two_ambiguous_lines() -> FakeToPlaceStore:
+    """Emma and Liam in one household: both 750 lines are family level ("several"), and both go on Emma."""
+    store = FakeToPlaceStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, person=1000012)
+    seed_line(store, 9001, "750", person=0, posted=MAR8)
+    seed_line(store, 9002, "750", person=0, posted=MAR8)
+    return store
+
+
+def _both_on_emma(expected: str | None = None) -> PlaceLinesIn:
+    return PlaceLinesIn(
+        lines=[
+            PlaceLinesRow(transaction_cm_id=9001, parts=[PlacePartIn(request_id=EMMA, amount=Decimal(750))]),
+            PlaceLinesRow(transaction_cm_id=9002, parts=[PlacePartIn(request_id=EMMA, amount=Decimal(750))]),
+        ],
+        expected_locked=Decimal(expected) if expected is not None else None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_class_of_lines_on_one_request_locks_its_round_once() -> None:
+    store = _two_ambiguous_lines()
+    out = await to_place_service(store).place_lines(YEAR, _both_on_emma(), ACTOR)
+    assert [(t.request_id, t.round, t.amount) for t in out.ticked] == [(EMMA, 1, 1500.0)]
+    assert len(store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_class_confirm_does_not_take_an_expected_total() -> None:
+    """The bulk total is an estimate: two lines each showing Round 1 would sum to twice what the one write locks."""
+    store = _two_ambiguous_lines()
+    with pytest.raises(DecisionRefusedError, match="confirm lines one by one to check the exact total"):
+        await to_place_service(store).place_lines(YEAR, _both_on_emma("3000"), ACTOR)
+    assert store.operations == []
+
+
+@pytest.mark.asyncio
+async def test_a_single_line_confirm_still_checks_its_exact_total() -> None:
+    store = one_line()
+    body = PlaceLinesIn(
+        lines=[PlaceLinesRow(transaction_cm_id=9001, parts=[PlacePartIn(request_id=EMMA, amount=Decimal(1500))])],
+        expected_locked=Decimal(1400),
+    )
+    with pytest.raises(DecisionRefusedError, match="now locks"):
+        await to_place_service(store).place_lines(YEAR, body, ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_the_suggestion_carries_the_total_it_would_lock() -> None:
+    (line,) = (await to_place_service(one_line()).read(YEAR)).groups[0].lines
+    assert line.suggestion is not None
+    assert line.suggestion.would_lock == 1500.0
+
+
+@pytest.mark.asyncio
+async def test_a_partly_placed_line_says_so_when_its_parts_do_not_cover_the_whole() -> None:
+    store = FakeToPlaceStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, person=1000012)
+    seed_line(store, 9001, "2500", person=0, posted=MAR8)
+    service = to_place_service(store)
+    await service.place(YEAR, 9001, _place((EMMA, "1500"), (LIAM, "1000")), ACTOR)
+    store.requests[LIAM] = replace(store.requests[LIAM], status="withdrawn")
+    with pytest.raises(DecisionRefusedError, match="partly placed; a placement replaces all of it"):
+        await service.place(YEAR, 9001, _place((EMMA, "1000")), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_the_session_cause_is_named_only_when_it_is_the_known_cause() -> None:
+    store = FakeToPlaceStore()
+    seed_request(store, EMMA, session=0, status="unmatched_session")
+    seed_request(store, "reqemmab0000001", session=1000102)
+    seed_line(store, 9001, "1500", person=0, posted=MAR8)
+    with pytest.raises(DecisionRefusedError, match="its session is not known yet"):
+        await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_the_rules_locks_lead_the_operation_and_a_stale_lock_writes_nothing() -> None:
+    """G6's convention: aid_rules locks first. Sections left unlocked are locked by the first tick, so make the
+    first lock stale and check the whole batch is refused."""
+    store = one_line()
+    store.rules_revision[RULES_ID] = 1
+    with pytest.raises(AidWriteConflictError):
+        await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+    assert (store.override_rows, store.events, store.log) == ({}, [], [])
+
+
+def _failing_commit(store: FakeToPlaceStore, error: Exception) -> None:
+    async def commit(*args: object, **kwargs: object) -> None:
+        raise error
+
+    store.commit = commit  # type: ignore[method-assign,assignment]
+
+
+@pytest.mark.asyncio
+async def test_a_batch_refused_for_another_reason_is_a_nothing_was_written_refusal() -> None:
+    store = one_line()
+    _failing_commit(
+        store,
+        BatchRequestFailedError(
+            index=0, total=1, request=None, status=400, message="Something is wrong.", field_errors={}, response=None
+        ),
+    )
+    with pytest.raises(DecisionRefusedError, match="nothing was written"):
+        await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_a_class_too_big_for_one_batch_is_refused_to_place_in_smaller_groups() -> None:
+    store = one_line()
+    _failing_commit(store, BatchLimitError("too many"))
+    with pytest.raises(DecisionRefusedError, match="too many to place at once"):
+        await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+
+
+@pytest.mark.asyncio
+async def test_reclassifying_a_left_line_ends_its_leave_in_the_same_operation() -> None:
+    store = one_line()
+    service = to_place_service(store)
+    await service.leave(YEAR, 9001, LeaveLineIn(note="Waiting"), ACTOR)
+    await service.reclassify(YEAR, 9001, ReclassifyLineIn(source_key=GRANT_KEY, reason="Outside grant"), ACTOR)
+    operation = store.operations[-1]
+    assert [(w.collection, w.action) for w in operation] == [
+        ("aid_attribution_overrides", "create"),
+        ("aid_flag_dispositions", "delete"),
+    ]
+    assert store.left == {}

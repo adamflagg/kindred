@@ -247,6 +247,7 @@ class ToPlaceService:
                 parts=[PartOut(request_id=p.request_id, amount=money(p.amount)) for p in item.suggestion.parts],
                 evidence=[EvidenceOut(kind=e.kind, text=e.text) for e in item.suggestion.evidence],
                 would_tick=_ticked_out(outcome),
+                would_lock=money(sum((t.amount for t in outcome.ticks), ZERO)),
                 would_leave=_left_out(outcome, season),
             )
 
@@ -380,7 +381,15 @@ class ToPlaceService:
                 raise DecisionRefusedError(f"{part.request_id} is not a request this family holds")
         total = sum((p.amount for p in row.parts), ZERO)
         if total != item.line.amount:
-            raise DecisionRefusedError(f"the parts add up to {dollars(total)}; the line is {dollars(item.line.amount)}")
+            partly = (
+                "; this line is partly placed; a placement replaces all of it, so its parts must add up to the "
+                "whole line."
+                if item.unplaced != item.line.amount
+                else ""
+            )
+            raise DecisionRefusedError(
+                f"the parts add up to {dollars(total)}; the line is {dollars(item.line.amount)}{partly}"
+            )
         whole = by_id[row.parts[0].request_id].placement(txn) if len(row.parts) == 1 else None
         split = () if whole is not None else tuple(by_id[p.request_id].part(p.amount) for p in row.parts)
         payload: dict[str, Any] = {
@@ -405,6 +414,10 @@ class ToPlaceService:
         lines, as ONE operation (D12, D81)."""
         if skipped := _gate(year):
             raise DecisionRefusedError(skipped)
+        if len(body.lines) > 1 and body.expected_locked is not None:
+            raise DecisionRefusedError(
+                "a confirm of several lines shows an estimate; confirm lines one by one to check the exact total"
+            )
         season, overrides, details, left = await asyncio.gather(
             self._decisions.season(year),
             self._store.fetch_override_rows(year),
@@ -448,11 +461,16 @@ class ToPlaceService:
                     ZERO,
                 )
                 if landed != part.amount:
-                    problems.append(
-                        f"line {row.transaction_cm_id}: it would not land on {part.request_id} (its camper has "
-                        "another request and this one's session is not known yet): resolve the request's session "
-                        "first"
+                    cause = next(
+                        (c for c in pool[row.transaction_cm_id].candidates if c.request_id == part.request_id), None
                     )
+                    why = (
+                        " (its session is not known yet and its camper has another request): resolve the "
+                        "request's session first"
+                        if cause is not None and cause.session_cm_id == 0
+                        else ""
+                    )
+                    problems.append(f"line {row.transaction_cm_id}: this part would not land on {part.request_id}{why}")
         if problems:
             raise DecisionRefusedError("; ".join(problems))
         locking = sum((t.amount for t in outcome.ticks), ZERO)
@@ -477,7 +495,7 @@ class ToPlaceService:
             )
             not_locked = list(sections)
         try:
-            result = await self._commit([*writes, *posts, *locks], actor=actor, reason=body.note or None)
+            result = await self._commit([*locks, *writes, *posts], actor=actor, reason=body.note or None)
         except BatchLimitError as exc:
             raise DecisionRefusedError(
                 f"{len(body.lines)} lines are too many to place at once; place them in smaller groups"
@@ -610,11 +628,12 @@ class ToPlaceService:
         classified aid source: this plan's choice, D104 doesn't make it."""
         if skipped := _gate(year):
             raise DecisionRefusedError(skipped)
-        season, details, overrides, sources = await asyncio.gather(
+        season, details, overrides, sources, left = await asyncio.gather(
             self._decisions.season(year),
             self._store.fetch_line_details(year),
             self._store.fetch_override_rows(year),
             self._store.fetch_source_rows(),
+            self._store.fetch_left_lines(year),
         )
         self._pool_item(season, transaction_cm_id)
         key = body.source_key
@@ -643,7 +662,10 @@ class ToPlaceService:
         write = self._override_write(year, current, payload, actor, "reclassify", reason=body.reason)
         if write is None:
             return self._unchanged(year, transaction_cm_id)
-        result = await self._commit([write], actor=actor, reason=body.reason, require_reason=True)
+        writes = [write]
+        if transaction_cm_id in left:  # a reclassified line is out of the count; its leave ends with it
+            writes.append(self._left_delete(year, transaction_cm_id, left[transaction_cm_id], action="reclassified"))
+        result = await self._commit(writes, actor=actor, reason=body.reason, require_reason=True)
         return ToPlaceWriteOut(
             year=year, transaction_cm_id=transaction_cm_id, written=1, operation_id=result.operation_id
         )
