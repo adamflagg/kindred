@@ -309,300 +309,304 @@ export const AppLayout = () => {
 
   return (
     <div className="bg-background min-h-screen">
-      {/* Primary Navigation */}
-      <nav className="backdrop-lodge border-border/50 sticky top-0 z-50 border-b">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 justify-between">
-            <div className="flex items-center gap-2 sm:gap-4">
-              {/* Logo with subtle white outline for visibility on dark nav */}
-              <Link
-                to={
-                  activeProgram === 'aid'
-                    ? '/aid'
-                    : activeProgram === 'analytics'
-                      ? '/analytics'
-                      : activeProgram === 'weekend'
-                        ? '/weekend/'
-                        : '/summer/sessions'
-                }
-                className="flex flex-shrink-0 items-center"
-              >
-                <BrandedLogo
-                  size="small"
-                  className="drop-shadow-[0_0_1px_rgba(255,255,255,0.9)] drop-shadow-[0_0_2px_rgba(255,255,255,0.6)]"
-                />
-              </Link>
-
-              {/* Program Switcher */}
-              <div className="relative" ref={programMenuRef}>
-                <button
-                  onClick={() => setIsProgramMenuOpen(!isProgramMenuOpen)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
+      {/* One sticky block: the admin preview strip (only while previewing) sits
+          above the nav and never scrolls away or overlaps it. */}
+      <div className="sticky top-0 z-50">
+        {/* Admin "View as": the strip above the nav while previewing, plus its
+            menu, opened from the user menu's "View as…" item. */}
+        <ViewAsSwitcher open={isViewAsOpen} onOpenChange={setIsViewAsOpen} />
+        {/* Primary Navigation */}
+        <nav className="backdrop-lodge border-border/50 relative border-b">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex h-16 justify-between">
+              <div className="flex items-center gap-2 sm:gap-4">
+                {/* Logo with subtle white outline for visibility on dark nav */}
+                <Link
+                  to={
+                    activeProgram === 'aid'
+                      ? '/aid'
+                      : activeProgram === 'analytics'
+                        ? '/analytics'
+                        : activeProgram === 'weekend'
+                          ? '/weekend/'
+                          : '/summer/sessions'
+                  }
+                  className="flex flex-shrink-0 items-center"
                 >
-                  {(() => {
-                    const active = PROGRAM_BUTTONS.find((b) => b.program === activeProgram)
-                    if (!active) return null
-                    const Icon = active.icon
-                    return (
-                      <>
-                        <Icon className={`h-4 w-4 ${active.triggerColorClass}`} />
-                        <span>{active.label}</span>
-                      </>
-                    )
-                  })()}
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`}
+                  <BrandedLogo
+                    size="small"
+                    className="drop-shadow-[0_0_1px_rgba(255,255,255,0.9)] drop-shadow-[0_0_2px_rgba(255,255,255,0.6)]"
                   />
-                </button>
+                </Link>
 
-                {isProgramMenuOpen && (
-                  <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full left-0 z-50 mt-2 w-52 p-2">
-                    {programButtons.map((btn) => {
-                      const Icon = btn.icon
-                      return (
-                        <button
-                          key={btn.program}
-                          onClick={() => handleProgramSwitch(btn.program)}
-                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                            activeProgram === btn.program ? btn.activeClass : btn.inactiveClass
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                          {btn.dropdownLabel}
-                        </button>
-                      )
-                    })}
-                    <div className="bg-border my-2 h-px" />
-                    <button
-                      onClick={() => {
-                        clearProgram()
-                        setIsProgramMenuOpen(false)
-                        void navigate('/')
-                      }}
-                      className="hover:bg-muted/50 text-muted-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
-                    >
-                      <ChevronDown className="h-4 w-4 rotate-90" />
-                      Switch Programs
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Desktop navigation */}
-              <div className="flex gap-1">
-                {activeProgram === 'summer' && (
-                  <Link
-                    to="/summer/sessions"
-                    className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
-                  >
-                    Sessions
-                  </Link>
-                )}
-                {activeProgram === 'analytics' && (
-                  <Link
-                    to="/analytics"
-                    className={`nav-link-lodge ${isActiveRoute('/analytics') ? 'active' : ''}`}
-                  >
-                    Dashboard
-                  </Link>
-                )}
-                {activeProgram === 'aid' ? (
-                  <AidNavLinks />
-                ) : (
-                  <Link
-                    to="/campers"
-                    className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
-                  >
-                    Campers
-                  </Link>
-                )}
-                {activeProgram === 'summer' && isAdmin && (
-                  <Link
-                    to="/summer/debug"
-                    className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
-                  >
-                    Debug
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {/* Right side items */}
-            <div className="flex items-center gap-2">
-              {/* Admin "View as": the bar shows only the amber pill while previewing;
-                  the menu is opened from the user menu's "View as…" item. */}
-              <ViewAsSwitcher open={isViewAsOpen} onOpenChange={setIsViewAsOpen} />
-              {/* User Menu Dropdown */}
-              {isAuthenticated && user && (
-                <div className="relative" ref={userMenuRef}>
+                {/* Program Switcher */}
+                <div className="relative" ref={programMenuRef}>
                   <button
-                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition-all hover:bg-white/10"
+                    onClick={() => setIsProgramMenuOpen(!isProgramMenuOpen)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
                   >
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/20">
-                      {user['avatar'] ? (
-                        <img
-                          src={pb.files.getURL(user, user['avatar'])}
-                          alt={(user['name'] ?? user['email']) as string}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <User className="h-4 w-4 text-white" />
-                      )}
-                    </div>
-                    <div className="hidden text-left lg:block">
-                      <div className="text-sm leading-tight font-semibold text-white">
-                        {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
-                        {(user['name'] as string) ||
-                          (user['email'] as string).split('@')[0] ||
-                          'User'}
-                        {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
-                      </div>
-                      <div className="text-xs leading-tight text-white/70">
-                        {typeof user['email'] === 'string' ? user['email'] : 'Profile'}
-                      </div>
-                    </div>
+                    {(() => {
+                      const active = PROGRAM_BUTTONS.find((b) => b.program === activeProgram)
+                      if (!active) return null
+                      const Icon = active.icon
+                      return (
+                        <>
+                          <Icon className={`h-4 w-4 ${active.triggerColorClass}`} />
+                          <span>{active.label}</span>
+                        </>
+                      )
+                    })()}
                     <ChevronDown
-                      className={`h-3 w-3 text-white/70 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                      className={`h-3 w-3 transition-transform ${isProgramMenuOpen ? 'rotate-180' : ''}`}
                     />
                   </button>
 
-                  {isUserMenuOpen && (
-                    <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-64 p-2">
-                      {/* User info header */}
-                      <div className="border-border mb-2 border-b px-3 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-primary/10 border-primary/20 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border">
-                            {user['avatar'] ? (
-                              <img
-                                src={pb.files.getURL(user, user['avatar'])}
-                                alt={(user['name'] ?? user['email']) as string}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <User className="text-primary h-5 w-5" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-foreground truncate font-semibold">
-                              {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
-                              {(user['name'] as string) ||
-                                (user['email'] as string).split('@')[0] ||
-                                'User'}
-                              {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
-                            </p>
-                            <p className="text-muted-foreground truncate text-xs">
-                              {user['email']}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Menu items */}
-                      <Link
-                        to="/user"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
-                      >
-                        <Settings className="text-muted-foreground h-4 w-4" />
-                        My Account
-                      </Link>
-                      <Link
-                        to="/users"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className={userMenuItemClass(isActiveRoute('/users'))}
-                      >
-                        <Users className="text-muted-foreground h-4 w-4" />
-                        Users
-                      </Link>
-                      {canAccessManage && (
-                        <Link
-                          to="/manage"
-                          onClick={() => setIsUserMenuOpen(false)}
-                          className={userMenuItemClass(isActiveRoute('/manage'))}
-                        >
-                          <Wrench className="text-muted-foreground h-4 w-4" />
-                          Manage
-                        </Link>
-                      )}
-                      {canViewAs && (
-                        <button
-                          onClick={() => {
-                            setIsUserMenuOpen(false)
-                            setIsViewAsOpen(true)
-                          }}
-                          className={userMenuItemClass(false)}
-                        >
-                          <Eye className="text-muted-foreground h-4 w-4" />
-                          View as…
-                        </button>
-                      )}
-
+                  {isProgramMenuOpen && (
+                    <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full left-0 z-50 mt-2 w-52 p-2">
+                      {programButtons.map((btn) => {
+                        const Icon = btn.icon
+                        return (
+                          <button
+                            key={btn.program}
+                            onClick={() => handleProgramSwitch(btn.program)}
+                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                              activeProgram === btn.program ? btn.activeClass : btn.inactiveClass
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                            {btn.dropdownLabel}
+                          </button>
+                        )
+                      })}
                       <div className="bg-border my-2 h-px" />
-
                       <button
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        onClick={() => {
+                          clearProgram()
+                          setIsProgramMenuOpen(false)
+                          void navigate('/')
+                        }}
+                        className="hover:bg-muted/50 text-muted-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
                       >
-                        <LogOut className="h-4 w-4" />
-                        Sign Out
+                        <ChevronDown className="h-4 w-4 rotate-90" />
+                        Switch Programs
                       </button>
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* Help Menu */}
-              <div className="relative" ref={helpMenuRef}>
-                <button
-                  onClick={() => setIsHelpMenuOpen(!isHelpMenuOpen)}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl p-0 text-white/70 transition-all hover:bg-white/10 hover:text-white"
-                  aria-label="Help menu"
-                >
-                  <HelpCircle className="h-5 w-5" />
-                </button>
-
-                {isHelpMenuOpen && (
-                  <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-56 p-2">
-                    <button
-                      onClick={() => {
-                        setIsHelpMenuOpen(false)
-                        setIsFeedbackOpen(true)
-                      }}
-                      className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                {/* Desktop navigation */}
+                <div className="flex gap-1">
+                  {activeProgram === 'summer' && (
+                    <Link
+                      to="/summer/sessions"
+                      className={`nav-link-lodge ${isActiveRoute('/session') ? 'active' : ''}`}
                     >
-                      <MessageSquareWarning className="text-muted-foreground h-4 w-4" />
-                      Report a Problem
+                      Sessions
+                    </Link>
+                  )}
+                  {activeProgram === 'analytics' && (
+                    <Link
+                      to="/analytics"
+                      className={`nav-link-lodge ${isActiveRoute('/analytics') ? 'active' : ''}`}
+                    >
+                      Dashboard
+                    </Link>
+                  )}
+                  {activeProgram === 'aid' ? (
+                    <AidNavLinks />
+                  ) : (
+                    <Link
+                      to="/campers"
+                      className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
+                    >
+                      Campers
+                    </Link>
+                  )}
+                  {activeProgram === 'summer' && isAdmin && (
+                    <Link
+                      to="/summer/debug"
+                      className={`nav-link-lodge ${isActiveRoute('/debug') ? 'active' : ''}`}
+                    >
+                      Debug
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {/* Right side items */}
+              <div className="flex items-center gap-2">
+                {/* User Menu Dropdown */}
+                {isAuthenticated && user && (
+                  <div className="relative" ref={userMenuRef}>
+                    <button
+                      onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                      className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition-all hover:bg-white/10"
+                    >
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/30 bg-white/20">
+                        {user['avatar'] ? (
+                          <img
+                            src={pb.files.getURL(user, user['avatar'])}
+                            alt={(user['name'] ?? user['email']) as string}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <User className="h-4 w-4 text-white" />
+                        )}
+                      </div>
+                      <div className="hidden text-left lg:block">
+                        <div className="text-sm leading-tight font-semibold text-white">
+                          {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
+                          {(user['name'] as string) ||
+                            (user['email'] as string).split('@')[0] ||
+                            'User'}
+                          {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
+                        </div>
+                        <div className="text-xs leading-tight text-white/70">
+                          {typeof user['email'] === 'string' ? user['email'] : 'Profile'}
+                        </div>
+                      </div>
+                      <ChevronDown
+                        className={`h-3 w-3 text-white/70 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`}
+                      />
                     </button>
 
-                    {tourId && (
-                      <button
-                        onClick={() => {
-                          setIsHelpMenuOpen(false)
-                          replay()
-                        }}
-                        className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
-                      >
-                        <HelpCircle className="text-muted-foreground h-4 w-4" />
-                        Tour This Page
-                      </button>
+                    {isUserMenuOpen && (
+                      <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-64 p-2">
+                        {/* User info header */}
+                        <div className="border-border mb-2 border-b px-3 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-primary/10 border-primary/20 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border">
+                              {user['avatar'] ? (
+                                <img
+                                  src={pb.files.getURL(user, user['avatar'])}
+                                  alt={(user['name'] ?? user['email']) as string}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <User className="text-primary h-5 w-5" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-foreground truncate font-semibold">
+                                {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
+                                {(user['name'] as string) ||
+                                  (user['email'] as string).split('@')[0] ||
+                                  'User'}
+                                {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
+                              </p>
+                              <p className="text-muted-foreground truncate text-xs">
+                                {user['email']}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Menu items */}
+                        <Link
+                          to="/user"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                        >
+                          <Settings className="text-muted-foreground h-4 w-4" />
+                          My Account
+                        </Link>
+                        <Link
+                          to="/users"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className={userMenuItemClass(isActiveRoute('/users'))}
+                        >
+                          <Users className="text-muted-foreground h-4 w-4" />
+                          Users
+                        </Link>
+                        {canAccessManage && (
+                          <Link
+                            to="/manage"
+                            onClick={() => setIsUserMenuOpen(false)}
+                            className={userMenuItemClass(isActiveRoute('/manage'))}
+                          >
+                            <Wrench className="text-muted-foreground h-4 w-4" />
+                            Manage
+                          </Link>
+                        )}
+                        {canViewAs && (
+                          <button
+                            onClick={() => {
+                              setIsUserMenuOpen(false)
+                              setIsViewAsOpen(true)
+                            }}
+                            className={userMenuItemClass(false)}
+                          >
+                            <Eye className="text-muted-foreground h-4 w-4" />
+                            View as…
+                          </button>
+                        )}
+
+                        <div className="bg-border my-2 h-px" />
+
+                        <button
+                          onClick={handleLogout}
+                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Sign Out
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
-              </div>
 
-              {/* Theme toggle */}
-              <button
-                onClick={toggleTheme}
-                className="flex h-10 w-10 items-center justify-center rounded-xl p-0 text-white/70 transition-all hover:bg-white/10 hover:text-white"
-                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              >
-                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </button>
+                {/* Help Menu */}
+                <div className="relative" ref={helpMenuRef}>
+                  <button
+                    onClick={() => setIsHelpMenuOpen(!isHelpMenuOpen)}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl p-0 text-white/70 transition-all hover:bg-white/10 hover:text-white"
+                    aria-label="Help menu"
+                  >
+                    <HelpCircle className="h-5 w-5" />
+                  </button>
+
+                  {isHelpMenuOpen && (
+                    <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full right-0 z-50 mt-2 w-56 p-2">
+                      <button
+                        onClick={() => {
+                          setIsHelpMenuOpen(false)
+                          setIsFeedbackOpen(true)
+                        }}
+                        className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                      >
+                        <MessageSquareWarning className="text-muted-foreground h-4 w-4" />
+                        Report a Problem
+                      </button>
+
+                      {tourId && (
+                        <button
+                          onClick={() => {
+                            setIsHelpMenuOpen(false)
+                            replay()
+                          }}
+                          className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                        >
+                          <HelpCircle className="text-muted-foreground h-4 w-4" />
+                          Tour This Page
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Theme toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl p-0 text-white/70 transition-all hover:bg-white/10 hover:text-white"
+                  aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Secondary Navigation Bar */}
       <div className="bg-muted/20 border-border/30 border-b">

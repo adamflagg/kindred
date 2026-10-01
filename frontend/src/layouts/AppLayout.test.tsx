@@ -189,15 +189,16 @@ describe('View as switcher', () => {
     syncStatusSpy.mockImplementation(() => ({ data: null }))
   })
 
-  it('mounts the View as switcher in the header, left of the user menu', () => {
+  // Owner ruling 2026-10-01: the preview strip sits above the nav, inside the
+  // same sticky block, never in the nav bar itself.
+  it('mounts the View as switcher above the nav, in the same sticky block', () => {
     renderAppLayout()
     const switcher = screen.getByTestId('view-as-switcher')
-    const userName = screen.getByText('Jane Smith')
-    expect(switcher.closest('nav')).not.toBeNull()
-    // DOCUMENT_POSITION_FOLLOWING: the user menu comes after the switcher.
-    expect(
-      switcher.compareDocumentPosition(userName) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy()
+    const nav = document.querySelector('nav')!
+    expect(nav.contains(switcher)).toBe(false)
+    expect(switcher.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(switcher.parentElement).toBe(nav.parentElement)
+    expect(switcher.parentElement).toHaveClass('sticky')
   })
 
   // Owner ruling 2026-10-01: "View as" lives in the user menu; the bar shows it
