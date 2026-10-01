@@ -59,6 +59,12 @@ vi.mock('../components/BrandedLogo', () => ({ BrandedLogo: () => <div>Logo</div>
 vi.mock('../components/VersionInfo', () => ({ VersionInfo: () => null }))
 vi.mock('../components/FeedbackModal', () => ({ FeedbackModal: () => null }))
 vi.mock('../components/ViewAsSwitcher', () => ({ ViewAsSwitcher: () => null }))
+vi.mock('../components/camperships/shell/AidFreshness', () => ({
+  AidFreshness: () => <div data-testid="aid-freshness" />,
+}))
+vi.mock('../components/camperships/shell/AidSecondaryBarRight', () => ({
+  AidSecondaryBarRight: () => <div data-testid="aid-bar-right" />,
+}))
 
 import { AppLayout } from './AppLayout'
 
@@ -122,6 +128,24 @@ describe('AppLayout on a Camperships page', () => {
     renderAt('/aid/money/ledger')
 
     expect(screen.getByText('Logo').closest('a')).toHaveAttribute('href', '/aid')
+  })
+  it('puts the season, the freshness chips and the Remaining line in the secondary bar (§3.4)', () => {
+    granted = [VIEW]
+    renderAt('/aid/requests')
+
+    expect(screen.getByTestId('year-selector')).toBeInTheDocument()
+    expect(screen.getByTestId('aid-freshness')).toBeInTheDocument()
+    expect(screen.getByTestId('aid-bar-right')).toBeInTheDocument()
+  })
+
+  // Regression guard, not red-first (Ruling 2026-10-01 (plan review)): nothing renders them on
+  // main yet; this pins that summer stays clean once they exist.
+  it('keeps them off the other programs', () => {
+    granted = [VIEW]
+    renderAt('/summer/sessions')
+
+    expect(screen.queryByTestId('aid-freshness')).toBeNull()
+    expect(screen.queryByTestId('aid-bar-right')).toBeNull()
   })
 })
 

@@ -47,24 +47,10 @@ import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
 import { ViewAsSwitcher } from '../components/ViewAsSwitcher'
-import type { SyncStatus, SyncStatusResponse } from '../hooks/useSyncStatusAPI'
-
-function buildSyncTooltip(kind: string, status: SyncStatus): string {
-  const parts = [`Last ${kind} sync`]
-  if (status.end_time) {
-    parts.push(new Date(status.end_time).toISOString())
-  }
-  if (status.status) {
-    parts.push(`status: ${status.status}`)
-  }
-  const s = status.summary
-  if (s) {
-    parts.push(
-      `created ${s.created}, updated ${s.updated}, skipped ${s.skipped}, errors ${s.errors}`
-    )
-  }
-  return parts.join(' • ')
-}
+import type { SyncStatusResponse } from '../hooks/useSyncStatusAPI'
+import { buildSyncTooltip } from '../utils/syncTooltip'
+import { AidFreshness } from '../components/camperships/shell/AidFreshness'
+import { AidSecondaryBarRight } from '../components/camperships/shell/AidSecondaryBarRight'
 
 /**
  * The weekend surface's freshness pair — kindred#2570 (`Bunk notes uploaded`)
@@ -616,6 +602,7 @@ export const AppLayout = () => {
               {activeProgram === 'weekend' && canSeeSync && syncStatus && (
                 <WeekendFreshness syncStatus={syncStatus} session={weekendSession} />
               )}
+              {activeProgram === 'aid' && <AidFreshness />}
               {/*
                 SUMMER'S PAIR. `Assignments synced` reads `bunk_assignments`
                 and NOT the last job of GetRefreshBunkingJobs, even though that
@@ -701,6 +688,7 @@ export const AppLayout = () => {
 
             {/* Right side: Program-specific actions */}
             <div className="flex items-center gap-2">
+              {activeProgram === 'aid' && <AidSecondaryBarRight />}
               {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
                 <>
                   <CsvPipelineIndicator />
