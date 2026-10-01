@@ -150,6 +150,19 @@ describe('AppLayout on a Camperships page', () => {
     expect(screen.getByRole('link', { name: 'Today' })).not.toHaveClass('active')
   })
 
+  it('carries the season and the as-of on section links; Today is always live (D15, D20)', () => {
+    granted = [VIEW]
+    renderAt('/aid/requests?year=2025&as_of=2026-04-01')
+
+    const grants = screen.getByRole('link', { name: 'Grants' }).getAttribute('href') ?? ''
+    expect(new URLSearchParams(grants.split('?')[1]).get('year')).toBe('2027')
+    expect(new URLSearchParams(grants.split('?')[1]).get('as_of')).toBe('2026-04-01')
+    expect(grants.startsWith('/aid/grants?')).toBe(true)
+    // useYear is mocked to 2027 in this file.
+    expect(screen.getByRole('link', { name: 'Today' }).getAttribute('href')).not.toContain('as_of')
+    expect(screen.getByRole('link', { name: 'Today' }).getAttribute('href')).toBe('/aid?year=2027')
+  })
+
   it('marks Today only on /aid itself', () => {
     granted = [VIEW]
     renderAt('/aid')

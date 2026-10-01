@@ -10,12 +10,15 @@ const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /** Today on camp time, YYYY-MM-DD. */
 export function campToday(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
+  // Built from parts: a locale's numeric order is CLDR's to change, ISO is ours.
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: CAMP_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now)
+  }).formatToParts(now)
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month').padStart(2, '0')}-${part('day').padStart(2, '0')}`
 }
 
 /** A real calendar day in YYYY-MM-DD, or null (2026-02-30 is not one). */

@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -52,5 +52,21 @@ describe('useAidAsOf', () => {
     vi.setSystemTime(new Date('2026-10-02T05:30:00Z'))
     expect(at('?as_of=2026-10-01')).toEqual({ kind: 'live' })
     expect(at('?as_of=2026-10-02')).toEqual({ kind: 'invalid', raw: '2026-10-02' })
+  })
+
+  it('re-reads camp today when the clock crosses camp midnight with the page mounted', () => {
+    vi.setSystemTime(new Date('2026-10-02T06:59:00Z')) // 23:59 on Oct 1, camp time
+    const { result, rerender } = renderHook(() => useAidAsOf(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <MemoryRouter initialEntries={['/aid/requests?as_of=2026-10-01']}>{children}</MemoryRouter>
+      ),
+    })
+    expect(result.current).toEqual({ kind: 'live' })
+
+    act(() => {
+      vi.setSystemTime(new Date('2026-10-02T07:01:00Z')) // 00:01 on Oct 2
+    })
+    rerender()
+    expect(result.current).toEqual({ kind: 'past', date: '2026-10-01', axis: 'campminder' })
   })
 })

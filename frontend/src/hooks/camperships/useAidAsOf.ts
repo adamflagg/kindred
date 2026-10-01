@@ -9,5 +9,6 @@ export function useAidAsOf(): AidAsOf {
   const [params] = useSearchParams()
   const raw = params.get('as_of')
   const axis = params.get('as_of_axis')
-  return useMemo(() => parseAsOf(raw, axis, campToday()), [raw, axis])
+  const today = campToday()
+  return useMemo(() => parseAsOf(raw, axis, today), [raw, axis, today])
 }

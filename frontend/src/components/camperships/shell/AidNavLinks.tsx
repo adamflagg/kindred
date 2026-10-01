@@ -1,7 +1,12 @@
 import { Link, useLocation } from 'react-router'
 
 import { visibleSections, type AidSection } from '../../../config/aidNav'
+import { useAidAsOf } from '../../../hooks/camperships/useAidAsOf'
+import { useYear } from '../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { aidHref, type AidAsOf } from '../kit/asOf'
+
+const LIVE: AidAsOf = { kind: 'live' }
 
 function isActive(section: AidSection, pathname: string): boolean {
   if (section.key === 'today') return pathname === '/aid' || pathname === '/aid/'
@@ -16,12 +21,15 @@ function isActive(section: AidSection, pathname: string): boolean {
 export function AidNavLinks() {
   const { pathname } = useLocation()
   const { hasPermission } = usePermissions()
+  const year = useYear()
+  const asOf = useAidAsOf()
   return (
     <>
       {visibleSections({ hasPermission }).map((section) => (
         <Link
           key={section.key}
-          to={section.path}
+          // Today is always live (D20): it carries the season, never the as-of.
+          to={aidHref(section.path, { year, asOf: section.key === 'today' ? LIVE : asOf })}
           className={`nav-link-lodge ${isActive(section, pathname) ? 'active' : ''}`}
         >
           {section.label}
