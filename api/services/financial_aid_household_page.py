@@ -53,10 +53,10 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     posting_line,
 )
-from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
+from api.services.financial_aid_share_split import dollars, payers, split
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.errors import FinancialAidError
@@ -67,21 +67,6 @@ _ZERO = Decimal(0)
 REPRODUCED = "reproduced"
 
 
-def _dollars(value: float | None) -> Decimal | None:
-    return Decimal(str(value)) if value is not None else None
-
-
-def _split(total: float | None, shares: Sequence[PayerShareRecord], applicant: int) -> dict[int, Decimal]:
-    """Each payer's whole-dollar part of `total` (split_award); nothing while the shares don't add up."""
-    amount = _dollars(total)
-    if amount is None:
-        return {}
-    try:
-        return split_award(amount, shares, applicant)
-    except PayerShareError:
-        return {}
-
-
 def _share_state(row: GridRowOut, household_cm_id: int) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
     """A payer's money in CampMinder and its state: its own share's when the request is split (main spec
     §11), else the request's (one payer)."""
@@ -89,33 +74,17 @@ def _share_state(row: GridRowOut, household_cm_id: int) -> tuple[Decimal | None,
     if c is None:
         return None, None
     if not c.shares:
-        return _dollars(c.in_campminder), c.status
+        return dollars(c.in_campminder), c.status
     share = next((s for s in c.shares if s.household_cm_id == household_cm_id), None)
     if share is None:
         return None, None
-    return _dollars(share.in_campminder), share.status
-
-
-def _payers(row: GridRowOut, shares: Sequence[PayerShareRecord]) -> Sequence[PayerShareRecord]:
-    """The request's payer shares; with no share row, the applying household pays it all (request_scope's reading)."""
-    if shares:
-        return shares
-    implied = PayerShareRecord(
-        id="",
-        year=0,
-        request_id=row.request_id,
-        household_cm_id=row.household_cm_id,
-        share_pct=Decimal(100),
-        source="implied",
-        actor="",
-    )
-    return (implied,)
+    return dollars(share.in_campminder), share.status
 
 
 def share_lines(row: GridRowOut, shares: Sequence[PayerShareRecord], chips: Mapping[int, int]) -> list[ShareLineOut]:
-    shares = _payers(row, shares)
-    decided = _split(row.total_decided, shares, row.household_cm_id)
-    posted = _split(row.total_posted, shares, row.household_cm_id)
+    shares = payers(row.request_id, row.household_cm_id, shares)
+    decided = split(dollars(row.total_decided), shares, row.household_cm_id)
+    posted = split(dollars(row.total_posted), shares, row.household_cm_id)
     out = []
     for share in sorted(shares, key=lambda s: (chips.get(s.household_cm_id, len(chips) + 1), s.household_cm_id)):
         held, status = _share_state(row, share.household_cm_id)
@@ -183,8 +152,8 @@ def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal])
     real share. The share is "—" until every included request has a cost and a decided total. With no included
     request every figure is "—"."""
     rows = [row for row in rows if included(row)]
-    costs = [_dollars(row.cost) for row in rows]
-    decided = [_dollars(row.total_decided) for row in rows]
+    costs = [dollars(row.cost) for row in rows]
+    decided = [dollars(row.total_decided) for row in rows]
     cost = sum((c for c in costs if c is not None), _ZERO) if rows and None not in costs else None
     aid = _sum(decided)
     grants = sum((grants_by_request.get(row.request_id, _ZERO) for row in rows), _ZERO)
@@ -205,7 +174,7 @@ def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal])
         decided=money(aid) if aid is not None else None,
         grants=money(grants) if rows else None,
         family_share=money(share) if share is not None else None,
-        posted=money(p) if (p := _sum(_dollars(row.total_posted) for row in rows)) is not None else None,
+        posted=money(p) if (p := _sum(dollars(row.total_posted) for row in rows)) is not None else None,
         states=_states(pair for row in rows for pair in _band_states(row)),
     )
 

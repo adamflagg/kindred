@@ -166,6 +166,21 @@ QueueOut = Literal[
 ]
 
 
+class GridShareOut(BaseModel):
+    """One payer of a split request, on its grid row (§6.2: Needs an offer has one row per payer share; ⚠39, owner
+    ruling 2026-10-01). Its whole-dollar part of the request's decided total (`decided`: the household's new total
+    once the open rounds post, ⚠40), of the posted total, and of the rounds that need an offer (`needs_offer`: what
+    is posted to this household when they are ticked). None while the request has no such money, or its shares
+    don't add up to 100%."""
+
+    household_cm_id: int
+    family_name: str
+    share_pct: float
+    decided: float | None
+    posted: float | None
+    needs_offer: float | None
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -194,6 +209,10 @@ class GridRowOut(BaseModel):
     todos: list[TodoOut] | None = Field(default_factory=list)
     # Slice 1: the views the row is in. None on a past read: membership reads figures a past date leaves empty.
     queues: list[QueueOut] | None = Field(default_factory=list)
+    # ⚠39 (owner ruling 2026-10-01): how many households pay the request (1 with no share row), and each payer's part
+    # when two or more do ([] for one payer, as the editor preview's shares).
+    payer_count: int = 1
+    payer_shares: list[GridShareOut] = Field(default_factory=list)
 
 
 class RequestsGridResponse(BaseModel):
