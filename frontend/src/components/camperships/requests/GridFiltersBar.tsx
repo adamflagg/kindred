@@ -22,6 +22,8 @@ function Select({
   options: readonly FilterOption[]
   onChange: (value: string | null) => void
 }) {
+  // A stale URL value (a bookmark, a past as-of date) still filters the grid, so keep it visible and clearable.
+  const stale = value !== null && value !== '' && !options.some((o) => o.value === value)
   return (
     <span className="flex items-center gap-2">
       <label htmlFor={id}>{label}</label>
@@ -32,6 +34,7 @@ function Select({
         className={FIELD_INLINE}
       >
         <option value="">{all}</option>
+        {stale && <option value={value}>{value}</option>}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

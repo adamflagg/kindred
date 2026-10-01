@@ -60,6 +60,15 @@ describe('attentionFor (§4.4; D24, D31)', () => {
     })
   })
 
+  it('says "day" for one day and "days" otherwise on the waiting pill', () => {
+    expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', '2027-03-10')?.item.pill).toBe(
+      'Waiting 1 day'
+    )
+    expect(attentionFor(ROW_SAMUEL, 'waiting_on_family', '2027-03-11')?.item.pill).toBe(
+      'Waiting 2 days'
+    )
+  })
+
   it("says how much CampMinder still holds on a request to reverse, from the ledger's own figure", () => {
     // The server's To reverse means live ledger lines remain: the amount is what CampMinder holds,
     // not the lock (Ruling 2026-10-01 (plan review), number-meaning fix 2).
