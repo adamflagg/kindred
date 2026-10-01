@@ -80,6 +80,14 @@ export interface AidColumn<Row> {
   readonly csv?: ((row: Row) => string) | undefined
   readonly total?: ((rows: readonly Row[]) => number | null) | undefined
   readonly searchable?: boolean | undefined
+  /** False leaves the column out of Download CSV: an action column has nothing to export (M16). */
+  readonly inCsv?: boolean | undefined
+}
+
+/** A column only the CSV carries: a figure the screen draws inside another cell (M16). */
+export interface AidCsvExtra<Row> {
+  readonly header: string
+  readonly value: (row: Row) => string
 }
 
 export interface AidGrouping<Row> {
@@ -102,6 +110,7 @@ export interface AidTableProps<Row> {
   readonly defaultGrouping?: string | undefined
   readonly urlPrefix?: string | undefined
   readonly csvFilename: string
+  readonly csvExtra?: ReadonlyArray<AidCsvExtra<Row>> | undefined
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
@@ -141,6 +150,7 @@ export function AidTable<Row>({
   defaultGrouping,
   urlPrefix = '',
   csvFilename,
+  csvExtra,
   onOpenTotal,
   renderBelowHighlighted,
   arrowKeys = false,
@@ -276,14 +286,18 @@ export function AidTable<Row>({
     column.align === 'right' ? 'text-right tabular-nums' : ''
 
   const download = () => {
-    const data = counted(ordered).map((row) =>
-      columns.map((c) =>
+    const csvColumns = columns.filter((c) => c.inCsv !== false)
+    const extra = csvExtra ?? []
+    // counted(): the kept row (shown only because it is highlighted) stays out of the file.
+    const data = counted(ordered).map((row) => [
+      ...csvColumns.map((c) =>
         c.csv ? c.csv(row) : c.total ? moneyCsv(moneyValue(c.value(row))) : csvCell(c.value(row))
-      )
-    )
+      ),
+      ...extra.map((e) => e.value(row)),
+    ])
     downloadCsv(
       buildCsvContent(
-        columns.map((c) => c.header),
+        [...csvColumns.map((c) => c.header), ...extra.map((e) => e.header)],
         withLinkLine(data, window.location.href)
       ),
       csvFilename
