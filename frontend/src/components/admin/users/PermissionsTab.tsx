@@ -49,7 +49,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
 
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<{ code: string; msg: string } | null>(null)
 
   const boxRef = useRef<HTMLDivElement>(null)
   const focusRef = useRef<HTMLDivElement>(null)
@@ -75,7 +75,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
   const startEdit = (m: MergedPermission<Entry>) => {
     setEditing(m.entry.codename)
     setDraft(m.description)
-    setSaveError(null)
+    setRowError(null)
   }
   const commit = (m: MergedPermission<Entry>) => {
     const write = overrideWriteFor(m.entry, m.overrideId, draft)
@@ -83,14 +83,26 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
       setEditing(null)
       return
     }
-    setSaveError(null)
+    setRowError(null)
     save.mutate(write, {
       onSuccess: () => setEditing(null),
-      onError: (e: Error) => setSaveError(e.message),
+      onError: (e: Error) =>
+        setRowError({
+          code: m.entry.codename,
+          msg: `Couldn't save: ${e.message}. Your wording is still here.`,
+        }),
     })
   }
   const reset = (m: MergedPermission<Entry>) => {
-    if (m.overrideId) save.mutate({ kind: 'delete', id: m.overrideId }, { onError: () => {} })
+    if (!m.overrideId) return
+    setRowError(null)
+    save.mutate(
+      { kind: 'delete', id: m.overrideId },
+      {
+        onError: (e: Error) =>
+          setRowError({ code: m.entry.codename, msg: `Couldn't reset: ${e.message}.` }),
+      }
+    )
   }
 
   const areas = [...new Set([...reg.areas, ...reg.permissions.map((p) => p.area)])]
@@ -174,7 +186,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                               className="rounded-md border px-3 py-1 text-xs"
                               onClick={() => {
                                 setEditing(null)
-                                setSaveError(null)
+                                setRowError(null)
                               }}
                             >
                               Cancel
@@ -183,11 +195,6 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                               Shown to everyone on this tab and in the user drawer.
                             </span>
                           </div>
-                          {saveError && (
-                            <div className="text-xs text-red-600">
-                              Couldn&apos;t save: {saveError}. Your wording is still here.
-                            </div>
-                          )}
                         </div>
                       ) : (
                         <div className="flex items-start gap-1.5 text-[13px]">
@@ -206,6 +213,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                             <button
                               type="button"
                               aria-label="Reset to default"
+                              disabled={save.isPending}
                               title="Reset to default"
                               className="text-muted-foreground hover:text-foreground"
                               onClick={() => reset(m)}
@@ -225,6 +233,9 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                             </button>
                           )}
                         </div>
+                      )}
+                      {rowError?.code === code && (
+                        <div className="mt-1 text-xs text-red-600">{rowError.msg}</div>
                       )}
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t border-dashed pt-1.5">
                         <span className="text-muted-foreground text-[10.5px] font-bold tracking-wider uppercase">

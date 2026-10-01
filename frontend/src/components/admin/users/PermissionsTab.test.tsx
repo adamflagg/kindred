@@ -13,6 +13,7 @@ let mockOverrides: Array<{
   base_description: string
 }> = []
 let mockOverridesError = false
+let mockPending = false
 const mutate = vi.fn()
 
 vi.mock('../../../hooks/usePermissions', () => ({
@@ -28,7 +29,7 @@ vi.mock('../../../hooks/usePermissionDescriptions', () => ({
     data: mockOverridesError ? undefined : mockOverrides,
     isError: mockOverridesError,
   }),
-  useSaveDescription: () => ({ mutate, isPending: false }),
+  useSaveDescription: () => ({ mutate, isPending: mockPending }),
 }))
 
 const { PermissionsTab } = await import('./PermissionsTab')
@@ -53,6 +54,7 @@ beforeEach(() => {
   mockIsAdmin = true
   mockOverrides = []
   mockOverridesError = false
+  mockPending = false
   mutate.mockReset()
 })
 
@@ -200,6 +202,44 @@ describe('PermissionsTab', () => {
     await userEvent.click(within(row).getByRole('button', { name: 'Save' }))
     expect(within(row).getByRole('textbox')).toHaveValue('Plain words.')
     expect(row).toHaveTextContent("Couldn't save: rule refused")
+  })
+
+  it('a failed reset shows an error on that row and clears on the next attempt', async () => {
+    mutate.mockImplementation((_w, opts) => opts.onError(new Error('rule refused')))
+    renderPerms({}, [
+      { id: 'o1', codename: 'metrics.geo', description: 'Edited.', base_description: 'x' },
+    ])
+    const row = screen.getByTestId('perm-metrics.geo')
+    await userEvent.click(within(row).getByRole('button', { name: 'Reset to default' }))
+    expect(row).toHaveTextContent("Couldn't reset: rule refused.")
+    expect(screen.getByTestId('perm-bunking.manage')).not.toHaveTextContent("Couldn't")
+    mutate.mockImplementation(() => {})
+    await userEvent.click(within(row).getByRole('button', { name: 'Reset to default' }))
+    expect(row).not.toHaveTextContent("Couldn't reset")
+  })
+
+  it('opening the editor clears a row error', async () => {
+    mutate.mockImplementation((_w, opts) => opts.onError(new Error('boom')))
+    renderPerms({}, [
+      { id: 'o1', codename: 'metrics.geo', description: 'Edited.', base_description: 'x' },
+    ])
+    const row = screen.getByTestId('perm-metrics.geo')
+    await userEvent.click(within(row).getByRole('button', { name: 'Reset to default' }))
+    expect(row).toHaveTextContent("Couldn't reset: boom.")
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit description' }))
+    expect(row).not.toHaveTextContent("Couldn't reset")
+  })
+
+  it('reset is disabled while a save is pending', () => {
+    mockPending = true
+    renderPerms({}, [
+      { id: 'o1', codename: 'metrics.geo', description: 'Edited.', base_description: 'x' },
+    ])
+    expect(
+      within(screen.getByTestId('perm-metrics.geo')).getByRole('button', {
+        name: 'Reset to default',
+      })
+    ).toBeDisabled()
   })
 
   it('reset icon removes an override', async () => {
