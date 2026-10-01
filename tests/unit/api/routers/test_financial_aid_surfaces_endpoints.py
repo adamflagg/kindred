@@ -167,3 +167,56 @@ def test_a_household_with_no_aid_activity_is_404() -> None:
 def test_a_household_id_that_isnt_positive_is_422() -> None:
     _stub_page()
     assert _client().get("/api/financial-aid/household-page/2031/0").status_code == 422
+
+
+# --- the request editor's preview (§4.6, D22) ---------------------------------------------------------------
+
+REQ = "reqemma00000001"
+
+
+def _stub_preview() -> Any:
+    from api.schemas.financial_aid_decisions import EditorPreviewOut
+
+    service = patch("api.routers.financial_aid.FinancialAidDecisionsService").start().return_value
+    service.preview = AsyncMock(
+        return_value=EditorPreviewOut(
+            award=300.0,
+            trace=[],
+            stage_after="needs_offer",
+            stage_after_label="Needs an offer",
+            shares=[],
+            pending_approval=False,
+        )
+    )
+    return service
+
+
+@pytest.mark.parametrize("persona", sorted(PERSONAS))
+def test_the_preview_is_casework_only(persona: str) -> None:
+    _stub_preview()
+    response = _client(persona).post(f"/api/financial-aid/requests/{REQ}/preview", json={"round": 2, "amount": "400"})
+    assert response.status_code == (200 if CASEWORK in PERSONAS[persona] else 403), persona
+
+
+@pytest.mark.parametrize(("persona", "can_approve"), [(PERSONA_FINANCE, True), (PERSONA_REGISTRAR, False)])
+def test_the_preview_knows_whether_the_typist_can_approve_their_own_round_3(persona: str, can_approve: bool) -> None:
+    service = _stub_preview()
+    _client(persona).post(f"/api/financial-aid/requests/{REQ}/preview", json={"round": 3, "amount": "900"})
+    assert service.preview.call_args.kwargs["can_approve"] is can_approve
+
+
+@pytest.mark.parametrize(("refusal", "status"), [("not_found", 404), ("refused", 422)])
+def test_a_preview_refusal_maps_like_the_write(refusal: str, status: int) -> None:
+    from api.services.financial_aid_decisions_service import DecisionNotFoundError, DecisionRefusedError
+
+    service = _stub_preview()
+    error = DecisionNotFoundError("no such request") if refusal == "not_found" else DecisionRefusedError("on hold")
+    service.preview = AsyncMock(side_effect=error)
+    response = _client().post(f"/api/financial-aid/requests/{REQ}/preview", json={"round": 2, "amount": "400"})
+    assert response.status_code == status
+
+
+def test_a_preview_of_round_1_is_422() -> None:
+    _stub_preview()
+    response = _client().post(f"/api/financial-aid/requests/{REQ}/preview", json={"round": 1, "amount": "400"})
+    assert response.status_code == 422

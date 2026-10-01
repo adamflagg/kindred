@@ -59,6 +59,7 @@ from api.schemas.financial_aid_decisions import (
     ConfirmationOut,
     CountOut,
     DecisionWriteOut,
+    EditorPreviewOut,
     ForwardDemandOut,
     GridRowOut,
     HoldReleaseIn,
@@ -67,6 +68,8 @@ from api.schemas.financial_aid_decisions import (
     NotRebuiltOut,
     PoolBudgetOut,
     PostedIn,
+    PreviewIn,
+    PreviewShareOut,
     ReleasedHoldOut,
     RemainingPoolOut,
     RemainingResponse,
@@ -124,7 +127,8 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
-from api.services.financial_aid_queues import row_queues
+from api.services.financial_aid_payer_shares import PayerShareError, split_award
+from api.services.financial_aid_queues import ROUND_STATUS_LABELS, row_queues
 from api.services.financial_aid_reconciliation import (
     CampLine,
     Confirmation,
@@ -175,6 +179,7 @@ from bunking.financial_aid.decisions import (
     RequestToPrice,
     RoundState,
     SeasonBudget,
+    apply_event,
     fold_holds,
     fold_rounds,
     lock_snapshot,
@@ -317,6 +322,9 @@ class Season:
     # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
     # with posted camp aid still live (D54's forgotten reversal). Empty on a past read.
     to_reverse: frozenset[str] = frozenset()
+    # Slice 1: each request as pricing read it, so the editor's preview re-prices one request with a typed
+    # amount on exactly the inputs the season used. Empty on a past read.
+    inputs: Mapping[str, RequestToPrice] = field(default_factory=dict)
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -841,6 +849,40 @@ def past_budget(out: BudgetResponse, season: Season) -> BudgetResponse:
     )
 
 
+def _refuse(reason: str | None) -> None:
+    if reason is not None:
+        raise DecisionRefusedError(reason)
+
+
+def _ask_refusal(rounds: Mapping[int, RoundState], n: int) -> str | None:
+    """Why a Round n ask can't be keyed now, or None. The write and the editor's preview share it (plan review I2)."""
+    if rounds.get(n, RoundState(round=n)).posted:
+        return f"Round {n} is posted; its ask can't change"
+    if n == 2 and not rounds.get(1, RoundState(round=1)).posted:
+        return "An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask"
+    later = next((m for m in range(n + 1, 4) if rounds.get(m, RoundState(round=m)).posted), None)
+    if later is not None:
+        return f"Round {later} is posted and builds on Round {n}: its ask can't change now"
+    return None
+
+
+def _round3_refusal(rounds: Mapping[int, RoundState]) -> str | None:
+    """Why a Round 3 amount can't be keyed yet, before the rules are read; shared with the preview."""
+    state = rounds.get(3, RoundState(round=3))
+    if state.posted:
+        return "Round 3 is posted; its amount can't change"
+    if state.ask is None:
+        return "Key the family's Round 3 ask and statement of need first"
+    return None
+
+
+def _round3_rules_refusal(rounds: Mapping[int, RoundState], rules: AidRules, year: int) -> str | None:
+    """Why the season's rules refuse a Round 3 amount (an appeal first); shared with the preview."""
+    if rules.round3.require_round2 and rounds.get(2, RoundState(round=2)).ask is None:
+        return f"The {year} rules give Round 3 only after a Round 2 appeal: key the family's Round 2 ask first"
+    return None
+
+
 class FinancialAidDecisionsService:
     def __init__(
         self,
@@ -1008,6 +1050,7 @@ class FinancialAidDecisionsService:
             undone=undone_rounds(events),
             cancellations=cancellations,
             to_reverse=to_reverse,
+            inputs=items,
         )
         return season, side.names
 
@@ -1448,15 +1491,7 @@ class FinancialAidDecisionsService:
         request, rounds = await self._live(request_id)
         n = body.round
         state = rounds.get(n, RoundState(round=n))
-        if state.posted:
-            raise DecisionRefusedError(f"Round {n} is posted; its ask can't change")
-        if n == 2 and not rounds.get(1, RoundState(round=1)).posted:
-            raise DecisionRefusedError(
-                "An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask"
-            )
-        later = next((m for m in range(n + 1, 4) if rounds.get(m, RoundState(round=m)).posted), None)
-        if later is not None:
-            raise DecisionRefusedError(f"Round {later} is posted and builds on Round {n}: its ask can't change now")
+        _refuse(_ask_refusal(rounds, n))
         if (state.ask, state.asked_on, state.statement_of_need) == (body.amount, body.asked_on, body.statement_of_need):
             return self._unchanged(request.year)
         write = self._write(
@@ -1480,15 +1515,9 @@ class FinancialAidDecisionsService:
         limit, it waits as Pending approval (D22, D79); finance's own is approved at once."""
         request, rounds = await self._live(request_id)
         state = rounds.get(3, RoundState(round=3))
-        if state.posted:
-            raise DecisionRefusedError("Round 3 is posted; its amount can't change")
-        if state.ask is None:
-            raise DecisionRefusedError("Key the family's Round 3 ask and statement of need first")
+        _refuse(_round3_refusal(rounds))
         rules = await self._approved_rules(request.year)
-        if rules.document.round3.require_round2 and rounds.get(2, RoundState(round=2)).ask is None:
-            raise DecisionRefusedError(
-                f"The {request.year} rules give Round 3 only after a Round 2 appeal: key the family's Round 2 ask first"
-            )
+        _refuse(_round3_rules_refusal(rounds, rules.document, request.year))
         if state.award == body.amount and state.approval != "refused":
             return self._unchanged(request.year)
         pending = not can_approve and needs_finance(body.amount, rules.document)
@@ -1512,6 +1541,61 @@ class FinancialAidDecisionsService:
         write = self._write(request, 3, "approve" if body.approve else "refuse", actor, note=body.note)
         result = await self._store.commit([write], actor=actor, reason=body.note, require_reason=True)
         return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def preview(self, request_id: str, body: PreviewIn, *, can_approve: bool) -> EditorPreviewOut:
+        """The editor's line while typing (§4.6, D22): the request re-priced with the typed Round 2 ask or Round 3
+        amount on the season's own inputs. The same refusals as the write; nothing is written or logged."""
+        request, rounds = await self._live(request_id)
+        n = body.round
+        _refuse(_ask_refusal(rounds, n) if n == 2 else _round3_refusal(rounds))
+        rules = await self._approved_rules(request.year)
+        if n == 3:
+            _refuse(_round3_rules_refusal(rounds, rules.document, request.year))
+        pending = n == 3 and not can_approve and needs_finance(body.amount, rules.document)
+        season = await self.season(request.year)
+        item = season.inputs.get(request.id)
+        if item is None:
+            raise DecisionNotFoundError("no such request")
+        typed = DecisionEvent(
+            id="preview",
+            request_id=request.id,
+            round=n,
+            kind="ask" if n == 2 else "award",
+            created=self._clock(),
+            amount=body.amount,
+            effective_on=self._today() if n == 2 else None,
+            needs_approval=pending,
+        )
+        after_rounds = {**item.rounds, n: apply_event(item.rounds.get(n, RoundState(round=n)), typed)}
+        before = price_request(item, rules.document).view(n)
+        after = price_request(replace(item, rounds=after_rounds), rules.document)
+        view = after.view(n)
+        decided = [v.decided for v in after.rounds if v.decided is not None]
+        shares = season.shares.get(request.id, ())
+        split: dict[int, Decimal] = {}
+        if len(shares) > 1 and decided:
+            try:
+                split = split_award(sum(decided, ZERO), shares, request.household_cm_id)
+            except PayerShareError:
+                split = {}
+        award = None if view is None else view.decided if view.decided is not None else view.pending
+        before_status = before.status if before is not None else None
+        after_status = view.status if view is not None else None
+        moved = after_status if after_status != before_status else None
+        return EditorPreviewOut(
+            award=_money(award),
+            trace=list(after.result.trace) if after.result is not None else [],
+            stage_after=moved,
+            stage_after_label=ROUND_STATUS_LABELS[moved] if moved is not None else None,
+            shares=[
+                PreviewShareOut(
+                    household_cm_id=s.household_cm_id, pct=float(s.share_pct), amount=money(split[s.household_cm_id])
+                )
+                for s in sorted(shares, key=lambda s: s.household_cm_id)
+                if s.household_cm_id in split
+            ],
+            pending_approval=pending,
+        )
 
     async def tick_posted(self, year: int, body: PostedIn, actor: str) -> DecisionWriteOut:
         """The registrar entered these awards in CampMinder: tick Posted, locking each round at its

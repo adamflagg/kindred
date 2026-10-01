@@ -24,6 +24,7 @@ from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_
 
 from api.schemas.financial_aid_intake import IssueOut
 from api.services.camp_calendar import CAMP_TZ
+from bunking.financial_aid.calculator.result import TraceStep
 
 
 def today() -> date:
@@ -378,6 +379,35 @@ class CancellationIn(BaseModel):
         if not self.cancelled and not self.note:
             raise ValueError("reopening needs a note saying why")
         return self
+
+
+class PreviewIn(BaseModel):
+    """What the request editor is typing (D22): a Round 2 ask (the award is computed) or a Round 3 amount.
+    Priced as the write would price it; never written or logged."""
+
+    round: Literal[2, 3]
+    amount: _Amount
+
+
+class PreviewShareOut(BaseModel):
+    """One payer's whole-dollar part of the request's decided total once the typed amount stands (§6.3)."""
+
+    household_cm_id: int
+    pct: float
+    amount: float
+
+
+class EditorPreviewOut(BaseModel):
+    """The editor's line while typing (§4.6): the round's computed award (None: held, or nothing computable),
+    the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
+    move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for finance (D79)."""
+
+    award: float | None
+    trace: list[TraceStep]
+    stage_after: RoundStatusOut | None
+    stage_after_label: str | None  # its words (ROUND_STATUS_LABELS), so the screen keeps no map of its own
+    shares: list[PreviewShareOut]
+    pending_approval: bool
 
 
 class AcceptedIn(BaseModel):

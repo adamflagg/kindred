@@ -68,9 +68,11 @@ from api.schemas.financial_aid_decisions import (
     BudgetResponse,
     CancellationIn,
     DecisionWriteOut,
+    EditorPreviewOut,
     HoldReleaseIn,
     ManualHoldIn,
     PostedIn,
+    PreviewIn,
     RemainingResponse,
     RequestsGridResponse,
     Round3AmountIn,
@@ -1469,3 +1471,15 @@ async def get_household_page(
         return await service.read(year, household_cm_id)
     except HouseholdNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/requests/{request_id}/preview", response_model=EditorPreviewOut)
+async def preview_request_edit(
+    request_id: _RequestIdPath, body: PreviewIn, user: AuthUser = _CASEWORK
+) -> EditorPreviewOut:
+    """The request editor's line while typing (§4.6, D22): priced as the write would price it; writes nothing."""
+    can_approve = _holds(user, Permission.FINANCIAL_AID_RULES)
+    try:
+        return await _decisions().preview(request_id, body, can_approve=can_approve)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
