@@ -20,13 +20,17 @@
 # out), refs/backup/*, and refs/remotes/<name>/* for a <name> that is not a
 # configured remote (ad-hoc `git fetch origin pull/N/head:refs/remotes/pr/N`
 # leftovers -- nothing else ever prunes them). Configured remotes are left to
-# `fetch.prune`.
+# `git fetch --prune`, which a manual run does first.
 #
 # Stashes are never dropped: they are shared by every worktree, so one agent's
 # old stash may be another's parked work. Old ones are listed with their files.
 #
-# Every deleted SHA is appended to <git-common-dir>/git-tidy-recovery.log;
-# `git branch <name> <sha>` restores one until gc prunes it (~90 days).
+# Every SHA is appended to <git-common-dir>/git-tidy-recovery.log (the main
+# clone's .git) BEFORE its ref is deleted; a ref whose line cannot be written is
+# not deleted. `git branch <name> <sha>` restores one while the commit is still
+# local -- once nothing references it, gc prunes it after gc.pruneExpire (2 weeks
+# by default). A ref deleted as safe by a PR can always be re-fetched with
+# `git fetch origin refs/pull/N/head`.
 
 set -uo pipefail
 
@@ -35,19 +39,27 @@ NOTICE=0
 GRACE_DAYS=14
 BASE=origin/main
 
+# The hook must never fail a pull: in notice mode every exit is 0. NOTICE is
+# found before parsing, so an argument error is covered whatever its position.
+for arg in "$@"; do
+    [ "$arg" = --notice ] && NOTICE=1
+done
+die() { echo "git-tidy: $*" >&2; [ "$NOTICE" -eq 1 ] && exit 0; exit 1; }
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --apply) APPLY=1 ;;
-        --notice) NOTICE=1 ;;
-        --grace-days) GRACE_DAYS="$2"; shift ;;
+        --notice) ;;
+        --grace-days)
+            [[ "${2:-}" =~ ^[0-9]+$ ]] || die "--grace-days needs a whole number of days"
+            GRACE_DAYS="$2"; shift ;;
         -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *) echo "git-tidy: unknown argument: $1" >&2; exit 2 ;;
+        *) die "unknown argument: $1" ;;
     esac
     shift
 done
-
-# The hook must never fail a pull: in notice mode every exit is 0.
-die() { echo "git-tidy: $*" >&2; [ "$NOTICE" -eq 1 ] && exit 0; exit 1; }
+# The hook path reports; deleting is only ever a deliberate manual run.
+[ "$NOTICE" -eq 1 ] && [ "$APPLY" -eq 1 ] && die "--notice only reports; run --apply on its own"
 
 git rev-parse --git-dir >/dev/null 2>&1 || die "not inside a git repository"
 for tool in gh jq; do
@@ -57,7 +69,8 @@ git rev-parse --verify --quiet "$BASE" >/dev/null || die "$BASE not found"
 COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir)"
 RECOVERY_LOG="$COMMON_DIR/git-tidy-recovery.log"
 
-# A post-merge hook has just fetched; a manual run should see current state.
+# A post-merge hook usually follows a fetch; a manual run should see current
+# state. A stale origin/main only keeps more, it never deletes more.
 [ "$NOTICE" -eq 1 ] || git fetch -q --prune origin 2>/dev/null || true
 
 CUTOFF=$(( $(date +%s) - GRACE_DAYS * 86400 ))
@@ -175,7 +188,7 @@ fi
 if [ "$APPLY" -eq 0 ]; then
     if [ ${#SAFE[@]} -gt 0 ]; then
         echo ""
-        echo "Run: scripts/git-tidy.sh --apply   (deletes only the safe list; SHAs logged to .git/git-tidy-recovery.log)"
+        echo "Run: scripts/git-tidy.sh --apply   (deletes only the safe list; SHAs logged to $RECOVERY_LOG)"
     fi
     echo ""
     exit 0
@@ -184,12 +197,19 @@ fi
 echo ""
 for row in "${SAFE[@]}"; do
     read -r ref sha reason <<<"$row"
+    # Judging made network calls; a ref that moved since holds commits nobody judged.
+    if [ "$(git rev-parse -q --verify "$ref")" != "$sha" ]; then
+        echo "skipped $(display "$ref") -- it moved after it was judged"; continue
+    fi
+    # Record first: a deletion the recovery log cannot hold does not happen.
+    if ! { echo "$(date -u +%FT%TZ) $sha $ref  # $reason" >>"$RECOVERY_LOG"; } 2>/dev/null; then
+        echo "skipped $(display "$ref") -- could not write $RECOVERY_LOG" >&2; continue
+    fi
     if [[ "$ref" == refs/heads/* ]]; then
         git branch -q -D "${ref#refs/heads/}" || continue
     else
         git update-ref -d "$ref" "$sha" || continue
     fi
-    echo "$(date -u +%FT%TZ) $sha $ref  # $reason" >>"$RECOVERY_LOG"
     echo "deleted $(display "$ref")"
 done
 echo "Recovery SHAs: $RECOVERY_LOG"

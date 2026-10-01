@@ -86,6 +86,7 @@ class Gh:
         self.bin = root / "stubbin"
         (root / "gh-head").mkdir(parents=True)
         (root / "gh-search").mkdir(parents=True)
+        (root / "gh-side").mkdir(parents=True)
         self.bin.mkdir(parents=True)
         gh = self.bin / "gh"
         gh.write_text(
@@ -100,6 +101,8 @@ class Gh:
             "  esac\n"
             "  shift\n"
             "done\n"
+            'side="$root/gh-side/$kind-$(printf %s "$key" | tr / _)"\n'
+            '[ -f "$side" ] && bash "$side" </dev/null >/dev/null\n'
             'f="$root/gh-$kind/$(printf %s "$key" | tr / _)"\n'
             'if [ -f "$f" ]; then cat "$f"; else echo "[]"; fi\n'
         )
@@ -114,6 +117,10 @@ class Gh:
             (self.root / "gh-head" / branch.replace("/", "_")).write_text(payload)
         for sha in {head, *commits}:
             (self.root / "gh-search" / sha).write_text(payload)
+
+    def on_search(self, sha: str, script: str) -> None:
+        """Run `script` (bash) whenever the stub is asked `--search sha`, before it answers."""
+        (self.root / "gh-side" / f"search-{sha}").write_text(script)
 
     def fail(self) -> None:
         (self.root / "gh-fail").write_text("")
@@ -257,8 +264,40 @@ def test_an_open_pr_is_left_alone(repo: Path, gh: Gh) -> None:
     assert "feature/in-flight" in _branches(repo)
 
 
+def test_a_branch_that_moves_after_it_was_judged_is_not_deleted(repo: Path, gh: Gh) -> None:
+    """Deletion is tied to the SHA that was judged, not to whatever the name holds by then.
+
+    Judging every ref makes network calls before anything is deleted, so a branch
+    can gain a commit in between. That commit is in no PR and not on main; deleting
+    the name would lose the only copy, and the recovery log would hold the old SHA.
+    """
+    sha = _branch_with_commit(repo, "pr-19-review", "reviewed")
+    _git("checkout", "-q", "-b", "scratch", "pr-19-review", cwd=repo)
+    newer = _commit(repo, "landed-mid-run")
+    _git("checkout", "-q", "main", cwd=repo)
+    _git("branch", "-q", "-D", "scratch", cwd=repo)
+    gh.pr(19, "MERGED", sha)
+    gh.on_search(sha, f"git -C '{repo}' update-ref refs/heads/pr-19-review {newer}\n")
+
+    _run(repo, gh, "--apply")
+
+    assert "pr-19-review" in _branches(repo), "deleted a branch that moved after it was judged"
+    assert _git("rev-parse", "pr-19-review", cwd=repo) == newer
+
+
+def test_a_ref_is_not_deleted_when_its_recovery_line_cannot_be_written(repo: Path, gh: Gh) -> None:
+    """The recovery log is the undo; a deletion it cannot record does not happen."""
+    _branch_with_commit(repo, "feature/landed", "landed")
+    _land_on_main(repo, "feature/landed")
+    (Path(_git("rev-parse", "--absolute-git-dir", cwd=repo)) / "git-tidy-recovery.log").mkdir()
+
+    _run(repo, gh, "--apply")
+
+    assert "feature/landed" in _branches(repo)
+
+
 def test_a_failed_github_lookup_keeps_the_ref(repo: Path, gh: Gh) -> None:
-    """No answer is not a "no PR" answer -- and it must not fail a git hook."""
+    """No answer is not a "no PR" answer: the ref is kept, and the run still succeeds."""
     sha = _branch_with_commit(repo, "pr-17-review", "reviewed")
     gh.pr(17, "MERGED", sha)
     gh.fail()
@@ -389,6 +428,44 @@ def test_notice_exits_zero_when_github_is_unreachable(repo: Path, gh: Gh) -> Non
     result = _run(repo, gh, "--notice")
 
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("--notice", "--grace-days"),
+        ("--notice", "--grace-days", "abc"),
+        ("--grace-days", "abc", "--notice"),
+        ("--notice", "--bogus"),
+    ],
+)
+def test_notice_exits_zero_on_a_bad_argument(repo: Path, gh: Gh, args: tuple[str, ...]) -> None:
+    """In notice mode EVERY exit is 0 -- argument errors included, whatever the order."""
+    result = _run(repo, gh, *args)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_non_numeric_grace_days_is_refused(repo: Path, gh: Gh) -> None:
+    _branch_with_commit(repo, "feature/landed", "landed")
+    _land_on_main(repo, "feature/landed")
+
+    result = _run(repo, gh, "--apply", "--grace-days", "abc")
+
+    assert result.returncode != 0
+    assert "--grace-days" in result.stderr
+    assert "feature/landed" in _branches(repo)
+
+
+def test_notice_never_deletes_even_when_given_apply(repo: Path, gh: Gh) -> None:
+    """The hook path reports; deletion is only ever a deliberate manual run."""
+    _branch_with_commit(repo, "feature/landed", "landed")
+    _land_on_main(repo, "feature/landed")
+
+    result = _run(repo, gh, "--notice", "--apply")
+
+    assert result.returncode == 0, result.stderr
+    assert "feature/landed" in _branches(repo)
 
 
 def test_the_post_merge_hook_runs_the_notice() -> None:

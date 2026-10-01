@@ -104,7 +104,8 @@ The same hook runs `scripts/git-tidy.sh --notice`, which reports local refs olde
 than 14 days and prints nothing when there are none. It considers local branches
 (never `main`, never one a worktree has checked out), `refs/backup/*`, and
 `refs/remotes/<name>/*` for any `<name>` that is not a configured remote. Remote
-branches deleted on GitHub are handled by `fetch.prune`, not by this script.
+branches deleted on GitHub are handled by `git fetch --prune` (a manual run does
+one first), not by this script.
 
 ```bash
 scripts/git-tidy.sh            # dry run
@@ -125,8 +126,12 @@ Stashes are listed and never dropped. Every worktree shares one stash stack, so
 an old stash may be another agent's parked work. Prefer a WIP commit on your
 branch to a stash.
 
-Every SHA that `--apply` deletes goes to `.git/git-tidy-recovery.log`.
-`git branch <name> <sha>` restores one until `git gc` prunes it (about 90 days).
+Every SHA that `--apply` deletes goes to the main clone's
+`.git/git-tidy-recovery.log` first; a ref whose line cannot be written is not
+deleted, and neither is one that moved after it was judged. `git branch <name> <sha>`
+restores one while the commit is still local. Once nothing references it, `git gc`
+prunes it after `gc.pruneExpire` (2 weeks by default). A ref deleted as safe by a
+PR can always be re-fetched with `git fetch origin refs/pull/N/head`.
 
 ## Git Hooks — Escape Hatches & Manual Runs
 
