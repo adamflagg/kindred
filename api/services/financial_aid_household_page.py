@@ -16,7 +16,6 @@ import asyncio
 import json
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -46,7 +45,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_grants_register import RegisterRow, outside_grants_by_request
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
-from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord
+from api.services.financial_aid_intake_types import PayerShareRecord
 from api.services.financial_aid_ledger_service import (
     accepted_index,
     household_display_name,
@@ -55,6 +54,9 @@ from api.services.financial_aid_ledger_service import (
     posting_line,
 )
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
+from api.services.financial_aid_reconciliation import (
+    page_scope as page_scope,  # re-exported: it lives in the light module
+)
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.errors import FinancialAidError
@@ -63,33 +65,6 @@ _ZERO = Decimal(0)
 # The lock_source the 2026 decision-year load (D67) is to write on its reproduced rounds: the receipt then
 # reads "2026, reproduced from the repaired sheet". Nothing writes it yet; the load's plan owns it.
 REPRODUCED = "reproduced"
-
-
-@dataclass(frozen=True)
-class PageScope:
-    request_ids: tuple[str, ...]  # chip order of the applying household, then request id
-    households: tuple[int, ...]  # the opened household first, then by id
-
-
-def page_scope(
-    household_cm_id: int,
-    requests: Mapping[str, RequestRecord],
-    shares: Mapping[str, Sequence[PayerShareRecord]],
-) -> PageScope:
-    mine = [
-        rid
-        for rid, request in requests.items()
-        if request.household_cm_id == household_cm_id
-        or any(s.household_cm_id == household_cm_id for s in shares.get(rid, ()))
-    ]
-    others = {requests[rid].household_cm_id for rid in mine} | {
-        s.household_cm_id for rid in mine for s in shares.get(rid, ())
-    }
-    households = (household_cm_id, *sorted(others - {household_cm_id}))
-    chip = {h: i for i, h in enumerate(households)}
-    shown = [rid for rid, request in requests.items() if request.household_cm_id in chip]
-    ordered = sorted(shown, key=lambda rid: (chip[requests[rid].household_cm_id], rid))
-    return PageScope(request_ids=tuple(ordered), households=households)
 
 
 def _dollars(value: float | None) -> Decimal | None:

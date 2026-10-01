@@ -38,7 +38,6 @@ from api.services.financial_aid_grants_register import (
     Placement,
     program_family_for_session_type,
 )
-from api.services.financial_aid_household_page import page_scope as _page_scope
 from api.services.financial_aid_reconciliation import (
     CampLine,
     LedgerTick,
@@ -52,6 +51,9 @@ from api.services.financial_aid_reconciliation import (
     locked_total,
     placeable,
     request_scope,
+)
+from api.services.financial_aid_reconciliation import (
+    page_scope as _page_scope,
 )
 from bunking.financial_aid.decisions import PricedRequest
 from bunking.financial_aid.money import ZERO
@@ -245,6 +247,8 @@ def proportional(amount: Decimal, weights: Sequence[tuple[str, Decimal]]) -> tup
     cent, and the cents left over go one each to the largest remainders (then the larger weight, then the
     earlier request). The parts add up to `amount`."""
     total = sum((w for _, w in weights), ZERO)
+    if total <= 0:
+        raise ValueError("proportional needs at least one positive weight")
     cents = int((amount / _CENT).to_integral_value())
     raw = [(rid, w, Decimal(cents) * w / total) for rid, w in weights]
     floors = {rid: int(share.to_integral_value(rounding=ROUND_FLOOR)) for rid, _, share in raw}
@@ -297,11 +301,12 @@ def suggest(line: CampLine, found: Sequence[Candidate]) -> Suggestion | None:
     if matches:
         return _whole(line, matches[0], alone)
     by_person = _one([c for c in found if line.person_cm_id > 0 and c.person_cm_id == line.person_cm_id])
-    if by_person is not None:
-        return _whole(line, by_person, alone)
     by_day = _one([c for c in found if c.still_due > 0 and any(e.kind == "date" for e in _facts(line, c, False))])
-    if by_day is not None:
-        return _whole(line, by_day, alone)
+    if by_person is not None and by_day is not None and by_person is not by_day:
+        return None  # the person and the day point at different requests: Kindred never guesses (D12)
+    chosen_one = by_person or by_day
+    if chosen_one is not None:
+        return _whole(line, chosen_one, alone)
     if alone:
         return _whole(line, found[0], alone)
     due = [c for c in found if c.still_due > 0]

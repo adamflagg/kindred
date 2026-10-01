@@ -6,20 +6,24 @@ household 1000001."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import subprocess
+import sys
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from api.services.financial_aid_decisions_service import Season
-from api.services.financial_aid_reconciliation import SplitPart
+from api.services.financial_aid_reconciliation import CampLine, SplitPart
 from api.services.financial_aid_to_place import (
     MISMATCH_FLAG,
+    Candidate,
     LineDetail,
     Part,
     page_scope,
     proportional,
     simulate,
+    suggest,
     to_place,
 )
 from tests.unit.api.services.decisions_fakes import (
@@ -192,3 +196,61 @@ async def test_simulate_shows_where_a_placement_or_a_split_would_land() -> None:
     assert [ln.amount for ln in ledger.lines(LIAM)] == [Decimal(2000)]
     assert ledger.family_unplaced([1000001]) == 0
     assert season.ledger.family_unplaced([1000001]) == Decimal(3000)  # the season itself is untouched
+
+
+def test_the_pure_core_does_not_load_the_decisions_service() -> None:
+    """The repository imports this module and the service imports the repository's neighbours: the core
+    must stay light (Season is a TYPE_CHECKING import) so no cycle can form."""
+    code = (
+        "import sys, api.services.financial_aid_to_place;"
+        "sys.exit(1 if 'api.services.financial_aid_decisions_service' in sys.modules else 0)"
+    )
+    done = subprocess.run([sys.executable, "-c", code], check=False, capture_output=True)
+    assert done.returncode == 0, done.stderr.decode()
+
+
+def _cand(
+    rid: str, person: int, *, due: str, weight: str, ticked: frozenset[date] = frozenset(), cancelled: bool = False
+) -> Candidate:
+    return Candidate(rid, 1000001, person, 1000101, "summer", Decimal(due), Decimal(weight), ticked, cancelled)
+
+
+def _line(amount: str, person: int = 0) -> CampLine:
+    return CampLine(9001, 1000001, person, Decimal(amount), MAR8, False, None)
+
+
+def test_a_person_and_a_day_pointing_at_different_requests_get_no_suggestion() -> None:
+    """D12: CampMinder posted it to Emma, but the day it posted is the day Liam's round was ticked."""
+    found = [
+        _cand("a", 1000011, due="900", weight="900"),
+        _cand("b", 1000012, due="800", weight="800", ticked=frozenset({date(2027, 3, 8)})),
+    ]
+    assert suggest(_line("1500", person=1000011), found) is None
+
+
+def test_a_cancelled_request_is_left_out_of_a_proportional_split() -> None:
+    found = [
+        _cand("a", 1000011, due="900", weight="900"),
+        _cand("b", 1000012, due="600", weight="600"),
+        _cand("c", 1000013, due="500", weight="500", cancelled=True),
+    ]
+    suggestion = suggest(_line("1000"), found)
+    assert suggestion is not None
+    assert suggestion.parts == (Part("a", Decimal(600)), Part("b", Decimal(400)))
+
+
+def test_a_request_with_nothing_decided_gets_no_proportional_share() -> None:
+    found = [
+        _cand("a", 1000011, due="900", weight="900"),
+        _cand("b", 1000012, due="600", weight="600"),
+        _cand("c", 1000013, due="0", weight="0"),
+    ]
+    suggestion = suggest(_line("1000"), found)
+    assert suggestion is not None
+    assert [p.request_id for p in suggestion.parts] == ["a", "b"]
+
+
+@pytest.mark.parametrize("weights", [[], [("a", Decimal(0))]])
+def test_proportional_refuses_weights_that_cannot_share_anything(weights: list[tuple[str, Decimal]]) -> None:
+    with pytest.raises(ValueError, match="positive weight"):
+        proportional(Decimal(100), weights)

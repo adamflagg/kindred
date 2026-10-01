@@ -245,6 +245,33 @@ def request_scope(request: RequestRecord, shares: Iterable[PayerShareRecord]) ->
 
 
 @dataclass(frozen=True)
+class PageScope:
+    request_ids: tuple[str, ...]  # chip order of the applying household, then request id
+    households: tuple[int, ...]  # the opened household first, then by id
+
+
+def page_scope(
+    household_cm_id: int,
+    requests: Mapping[str, RequestRecord],
+    shares: Mapping[str, Sequence[PayerShareRecord]],
+) -> PageScope:
+    mine = [
+        rid
+        for rid, request in requests.items()
+        if request.household_cm_id == household_cm_id
+        or any(s.household_cm_id == household_cm_id for s in shares.get(rid, ()))
+    ]
+    others = {requests[rid].household_cm_id for rid in mine} | {
+        s.household_cm_id for rid in mine for s in shares.get(rid, ())
+    }
+    households = (household_cm_id, *sorted(others - {household_cm_id}))
+    chip = {h: i for i, h in enumerate(households)}
+    shown = [rid for rid, request in requests.items() if request.household_cm_id in chip]
+    ordered = sorted(shown, key=lambda rid: (chip[requests[rid].household_cm_id], rid))
+    return PageScope(request_ids=tuple(ordered), households=households)
+
+
+@dataclass(frozen=True)
 class SeasonLedger:
     """The season's camp-aid lines, placed. `read` is False for a season read that loaded no ledger
     (a past date), so nothing is reconciled on it."""
