@@ -1,0 +1,94 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  CANCEL_REASON_OPTIONS,
+  REASON_POLICY,
+  choiceProblem,
+  initialReason,
+  parseMoneyInput,
+  reasonMissing,
+} from './editor'
+
+describe('parseMoneyInput', () => {
+  it.each([
+    ['1200', 1200],
+    ['1,200', 1200],
+    ['$1,200.50', 1200.5],
+    ['  $ 900 ', 900],
+    ['0', 0],
+  ])('reads %j as %s', (raw, amount) => {
+    expect(parseMoneyInput(raw)).toEqual({ kind: 'ok', amount })
+  })
+
+  it('is empty when nothing is typed', () => {
+    expect(parseMoneyInput('  ')).toEqual({ kind: 'empty' })
+  })
+
+  it.each([
+    ['-5', 'Not an amount'],
+    ['twelve', 'Not an amount'],
+    ['12.345', 'Cents go to two places'],
+    ['1000001', 'More than $1,000,000'],
+  ])('refuses %j: %s', (raw, reason) => {
+    expect(parseMoneyInput(raw)).toEqual({ kind: 'invalid', reason })
+  })
+})
+
+describe('the reason policy (D22)', () => {
+  it('pre-fills an appeal note with the day the family emailed', () => {
+    expect(initialReason(REASON_POLICY.appeal_ask, '2027-04-09')).toBe('Family emailed (Apr 9)')
+  })
+
+  it('requires a statement of need for Round 3, and a reason for Include overrides, corrections and holds', () => {
+    for (const kind of ['round3_ask', 'include_override', 'income_correction', 'hold'] as const) {
+      expect(REASON_POLICY[kind].kind).toBe('required')
+    }
+    expect(REASON_POLICY.round3_ask).toEqual({ kind: 'required', label: 'Statement of need' })
+  })
+
+  it('asks no reason for stage moves and ticks: who and when are logged', () => {
+    expect(REASON_POLICY.stage_move.kind).toBe('none')
+    expect(REASON_POLICY.tick.kind).toBe('none')
+  })
+
+  it('treats a blank required reason as missing, and an optional one as fine', () => {
+    expect(reasonMissing(REASON_POLICY.hold, '  ')).toBe(true)
+    expect(reasonMissing(REASON_POLICY.hold, 'Waiting on a tax return')).toBe(false)
+    expect(reasonMissing(REASON_POLICY.appeal_ask, '')).toBe(false)
+  })
+
+  // Ruling 2026-10-01 (plan review), finding 5: no reason-code list exists yet
+  // (HeadcountSet.reason is free text; there is no cost-override write), so slice 1 decides.
+  it('leaves cost overrides and headcounts to slice 1', () => {
+    expect(Object.keys(REASON_POLICY)).not.toContain('cost_override')
+    expect(Object.keys(REASON_POLICY)).not.toContain('headcount')
+  })
+})
+
+describe('the cancel reason (D101 as amended by D141; finding 5)', () => {
+  it("offers the server's nine reasons, worded as spec §6.3 shows them", () => {
+    expect(CANCEL_REASON_OPTIONS.map((o) => o.value)).toEqual([
+      'aid_not_enough',
+      'medical',
+      'schedule',
+      'not_ready',
+      'did_not_want_to_appeal',
+      'not_financially_related',
+      'early_cancel',
+      'another_reason',
+      'not_known',
+    ])
+    expect(CANCEL_REASON_OPTIONS[0]?.label).toBe('declined: aid not enough / financial constraints')
+    expect(REASON_POLICY.cancel.kind).toBe('choice')
+  })
+
+  it('needs a reason picked, and a note only for "another reason"', () => {
+    expect(choiceProblem(REASON_POLICY.cancel, null, '')).toBe('Pick a cancel reason')
+    expect(choiceProblem(REASON_POLICY.cancel, 'bogus', '')).toBe('Pick a cancel reason')
+    expect(choiceProblem(REASON_POLICY.cancel, 'medical', '')).toBeNull()
+    expect(choiceProblem(REASON_POLICY.cancel, 'another_reason', ' ')).toBe(
+      '"another reason" needs a note'
+    )
+    expect(choiceProblem(REASON_POLICY.cancel, 'another_reason', 'Moved away')).toBeNull()
+  })
+})
