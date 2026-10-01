@@ -2,8 +2,9 @@
 
   Round 1 by tier (RPT-17)   per award table and final tier, then All: requests, families, the tier's Round 1
                              ask and its average, the fee % (the table's Round 1 % for the tier, read from the
-                             document, never computed), % of ask (Round 1 ÷ ask), and the average Round 1 (Round 1 ÷
-                             requests: the requests the row counts, D80's population); and the tier's held requests,
+                             document, never computed), % of ask (the Round 1 of the requests with an ask ÷ their
+                             ask), and the average Round 1 (Round 1 ÷ requests: the requests the row counts, D80's
+                             population); and the tier's held requests,
                              counted apart (a check's hold has a tier, but no Round 1). A counted request with no ask
                              is counted apart too (`no_ask`): in the requests and Round 1, out of the ask-based
                              figures (average ask, % of ask), which stay like for like.
@@ -21,7 +22,8 @@
                              `not_in_tiers`. Only posted money counts: a season with no posted Round 1 is not loaded,
                              never estimated (D67). `as_of` is its newest lock.
   Last season's rules        this season's rules with last season's criteria copied in (RPT-18): income, tiers, equity,
-                             award tables, and the Round 2 and Round 3 policy settings, never their routing.
+                             award tables, the Round 2 and Round 3 policy settings, and the award settings, never
+                             their routing (Round 2's program tables) or the decision types.
 
 Every % is Kindred's (§9.7), to one decimal place; an average is to the cent. A row whose denominator is 0 has no
 %, never 0%. All's fee % and Round 2 max % are None: each table has its own.

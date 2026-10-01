@@ -55,8 +55,8 @@ class TierRow(_Result):
     requests: int
     families: int
     round1: Decimal
-    # SP9c (RPT-17's by-tier compare) fills it with the tier's Round 1 asks; None until then. Defaulted so kept
-    # options stored by SP9b still load.
+    # The tier's Round 1 asks (RPT-17's by-tier compare, SP9c). None only on results stored by SP9b: defaulted so
+    # its kept options still load.
     asked: Decimal | None = None
     held: int = 0  # SP9c: the tier's live requests whose Round 1 is held, in none of the figures above
     # SP9c: counted requests with no Round 1 ask, and their Round 1. In `requests` and `round1`, but not in `asked`,

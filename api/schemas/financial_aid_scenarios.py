@@ -178,7 +178,7 @@ class TierCompareOut(BaseModel):
     asked: float  # the Round 1 asks of the requests the row counts
     average_ask: float | None
     fee_pct: float | None  # the table's Round 1 % for the tier: a rules value, never computed; None for All
-    pct_of_ask: float | None  # Round 1 ÷ asked, one decimal; None when nothing was asked
+    pct_of_ask: float | None  # Round 1 of the requests with an ask ÷ asked, one decimal; None when nothing was asked
     round1: float
     average_round1: float | None  # Round 1 ÷ requests (the requests the row counts)
     held: int  # the tier's live requests whose Round 1 is held (a check's hold has a tier): in none of the above

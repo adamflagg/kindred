@@ -382,6 +382,22 @@ async def test_a_plain_start_from_the_rules_keeps_its_name_when_last_seasons_cri
 
 
 @pytest.mark.asyncio
+async def test_a_plain_start_from_the_rules_keeps_its_name_after_an_edit_in_place_when_the_criteria_match() -> None:
+    # A season started from last year's rules carries their criteria (start_from_last_year), so a plain start from
+    # the rules matches last season's criteria; an edit in place to the draft must not rename it a last-season start.
+    world = await _world()
+    await world.service.freeze(YEAR, FINANCE)
+    await _last_rules_approved(world, with_levers(intake_rules(), {"year": LAST}))
+    await world.service.start_from_rules(YEAR, FINANCE)
+    saved = await world.rules.save_sections(
+        YEAR, 1, with_levers(intake_rules(), {"budget.total": "450000"}), actor=FINANCE
+    )
+    assert (saved.branched_from, saved.version.version) == (None, 1)  # in place: the option's origin moved
+    workspace = await world.service.workspace(YEAR, FINANCE)
+    assert workspace.options[0].label == "rules draft v1 as they were"
+
+
+@pytest.mark.asyncio
 async def test_a_start_from_last_season_keeps_its_name_after_the_rules_draft_is_edited_in_place() -> None:
     world = await _world()
     await world.service.freeze(YEAR, FINANCE)

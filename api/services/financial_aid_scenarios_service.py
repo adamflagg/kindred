@@ -364,8 +364,14 @@ class FinancialAidScenariosService:
             if origin.document == option.document:
                 return f"{_rules_name(origin)} as they were"  # SP9b's name first: exactly the rules
             # RPT-18's start, recognised by its criteria alone: the rules draft it was made from can be edited in
-            # place after the start, and that must not rename it.
-            if last is not None and has_last_seasons_criteria(option.document, last.document):
+            # place after the start, and that must not rename it. Only when the draft's own criteria are not last
+            # season's: a season started from last year's rules carries them, and a plain start from those rules,
+            # edited in place, stays "as they were" (a start from last season would have been that same start).
+            if (
+                last is not None
+                and has_last_seasons_criteria(option.document, last.document)
+                and not has_last_seasons_criteria(origin.document, last.document)
+            ):
                 return _last_season_name(last, option.year, origin)
             return f"rules draft v{origin.version} as they were"
         return describe(await self._reference(option, options), option.document)
