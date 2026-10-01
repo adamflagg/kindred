@@ -806,3 +806,32 @@ async def test_a_new_staff_link_that_fails_for_another_reason_is_not_dressed_as_
             ),
             ACTOR,
         )
+
+
+@pytest.mark.asyncio
+async def test_a_new_staff_link_whose_row_the_sync_just_created_is_a_conflict_not_a_500() -> None:
+    """The mirror of the sweep race: create_link read no row, then the aid_postings sync created the automatic
+    one, so the staff create hits the (household, family key, year) unique index. Refused whole, like every
+    other G6 conflict: the person reloads and sees the automatic link."""
+    service, _ = _service(_link_repo([]))
+
+    def raced(pb: Any, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+        raise BatchRequestFailedError(
+            index=0,
+            total=len(requests),
+            request=requests[0],
+            status=400,
+            message="Failed to create record.",
+            field_errors={"household_cm_id": "Value must be unique."},
+            response=None,
+        )
+
+    patch("bunking.financial_aid.change_log.send_batch", side_effect=raced).start()
+    with pytest.raises(AidWriteConflictError) as refused:
+        await service.create_link(
+            HouseholdLinkCreate(
+                year=2026, household_cm_id=400, family_key="hh-100", excluded=False, note="Same family"
+            ),
+            ACTOR,
+        )
+    assert (refused.value.collection, str(refused.value)) == ("aid_household_links", CONFLICT_MESSAGE)

@@ -277,6 +277,15 @@ class FinancialAidWriteService:
             # in-place conversion found nothing (404). Refused whole, like every other G6 conflict: reload.
             if write.action == "update" and exc.status == 404:
                 raise AidWriteConflictError(collection=AID_HOUSEHOLD_LINKS, record_id=str(write.record_id)) from exc
+            # The mirror race: the sync created the automatic row after we read none, so the staff create hits the
+            # (household, family key, year) unique index. Same refusal: reload.
+            if (
+                write.action == "create"
+                and exc.index == 0
+                and exc.status == 400
+                and any("unique" in message.lower() for message in exc.field_errors.values())
+            ):
+                raise AidWriteConflictError(collection=AID_HOUSEHOLD_LINKS, record_id="") from exc
             raise
         return HouseholdLinkRow(id=result.record_ids[0], **payload)
 
