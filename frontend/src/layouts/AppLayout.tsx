@@ -42,6 +42,7 @@ import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
 import { MANAGE_TABS, canSeeTab } from '../config/manageTabs'
+import { AidNavLinks } from '../components/camperships/shell/AidNavLinks'
 import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
@@ -190,10 +191,17 @@ export const AppLayout = () => {
   // pathname. Costs no request: `WeekendRosterPage` already holds this query.
   const { session: weekendSession, isAdultWeekend } = useWeekendShellSession()
 
-  // Determine current program from URL if not set
+  // Determine current program from URL if not set. A saved program the user can no longer open
+  // (Camperships after a role is removed) doesn't steer the shell (spec §3.1).
   const urlProgram = getProgramFromPath(location.pathname)
+  const savedProgram =
+    currentProgram && canOpenProgram(currentProgram, { hasPermission }) ? currentProgram : null
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- intentional || to fall through on empty string
-  const activeProgram = urlProgram || currentProgram || 'summer'
+  const activeProgram = urlProgram || savedProgram || 'summer'
+  // The switcher lists only the programs this user can open (D5, D65).
+  const programButtons = PROGRAM_BUTTONS.filter((btn) =>
+    canOpenProgram(btn.program, { hasPermission })
+  )
 
   // Close program menu on click outside
   useEffect(() => {
@@ -310,11 +318,13 @@ export const AppLayout = () => {
               {/* Logo with subtle white outline for visibility on dark nav */}
               <Link
                 to={
-                  activeProgram === 'analytics'
-                    ? '/analytics'
-                    : activeProgram === 'weekend'
-                      ? '/weekend/'
-                      : '/summer/sessions'
+                  activeProgram === 'aid'
+                    ? '/aid'
+                    : activeProgram === 'analytics'
+                      ? '/analytics'
+                      : activeProgram === 'weekend'
+                        ? '/weekend/'
+                        : '/summer/sessions'
                 }
                 className="flex flex-shrink-0 items-center"
               >
@@ -348,9 +358,7 @@ export const AppLayout = () => {
 
                 {isProgramMenuOpen && (
                   <div className="card-lodge shadow-lodge-lg animate-scale-in absolute top-full left-0 z-50 mt-2 w-52 p-2">
-                    {PROGRAM_BUTTONS.filter((btn) =>
-                      canOpenProgram(btn.program, { hasPermission })
-                    ).map((btn) => {
+                    {programButtons.map((btn) => {
                       const Icon = btn.icon
                       return (
                         <button
@@ -399,12 +407,16 @@ export const AppLayout = () => {
                     Dashboard
                   </Link>
                 )}
-                <Link
-                  to="/campers"
-                  className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
-                >
-                  Campers
-                </Link>
+                {activeProgram === 'aid' ? (
+                  <AidNavLinks />
+                ) : (
+                  <Link
+                    to="/campers"
+                    className={`nav-link-lodge ${isActiveRoute('/camper') ? 'active' : ''}`}
+                  >
+                    Campers
+                  </Link>
+                )}
                 <Link
                   to="/users"
                   className={`nav-link-lodge ${isActiveRoute('/users') ? 'active' : ''}`}
