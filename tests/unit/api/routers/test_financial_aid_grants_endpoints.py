@@ -69,8 +69,10 @@ COMMITMENT_BODY = {
 }
 
 # (method, url, json body, permission required, success status)
-ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
-    ("GET", "/api/financial-aid/grantors", None, VIEW, 200),
+# `needs` is one permission, or a tuple of any-of permissions (owner ruling 2026-10-01: the grantor list).
+ROUTES: list[tuple[str, str, dict[str, Any] | None, str | tuple[str, ...], int]] = [
+    ("GET", "/api/financial-aid/grantors", None, (VIEW, GRANTORS), 200),
+    ("GET", "/api/financial-aid/grantors?include_retired=true", None, (VIEW, GRANTORS), 200),
     ("POST", "/api/financial-aid/grantors", GRANTOR_BODY, GRANTORS, 201),
     ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, GRANTORS, 200),
     ("POST", "/api/financial-aid/grantors/regional_fund/retire", RETIRE_BODY, GRANTORS, 200),
@@ -123,17 +125,21 @@ def _stop_patches() -> Any:
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 @pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), ROUTES)
 def test_permission_matrix(
-    persona: str, method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
+    persona: str, method: str, url: str, body: dict[str, Any] | None, needs: str | tuple[str, ...], ok: int
 ) -> None:
     _stub()
     response = _client(persona).request(method, url, json=body)
-    expected = ok if needs in PERSONAS[persona] else 403
+    accepted = (needs,) if isinstance(needs, str) else needs
+    expected = ok if any(n in PERSONAS[persona] for n in accepted) else 403
     assert response.status_code == expected, (persona, method, url, response.text)
 
 
-@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), [r for r in ROUTES if r[3] != GRANTORS])
+@pytest.mark.parametrize(
+    ("method", "url", "body", "needs", "ok"),
+    [r for r in ROUTES if GRANTORS not in ((r[3],) if isinstance(r[3], str) else r[3])],
+)
 def test_development_reaches_no_family_level_grants_route(
-    method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
+    method: str, url: str, body: dict[str, Any] | None, needs: str | tuple[str, ...], ok: int
 ) -> None:
     """D57: development sees aggregates only, never a family's grants. The directory's writes are the one
     exception (owner ruling 2026-10-01: financial_aid.grantors), proven below."""
@@ -142,6 +148,29 @@ def test_development_reaches_no_family_level_grants_route(
 
 
 GRANTOR_WRITES = [r for r in ROUTES if r[3] == GRANTORS]
+GRANTOR_READS = [r for r in ROUTES if r[3] == (VIEW, GRANTORS)]
+
+
+@pytest.mark.parametrize("persona", [PERSONA_DEVELOPMENT, "grantors_only"])
+@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), GRANTOR_READS)
+def test_grantors_without_view_read_the_grantor_list(
+    persona: str, method: str, url: str, body: dict[str, Any] | None, needs: Any, ok: int
+) -> None:
+    """Owner ruling 2026-10-01: financial_aid.grantors alone reads the list it edits, contacts included."""
+    _stub()
+    if persona == "grantors_only":
+        from api.routers.financial_aid import router
+
+        app = FastAPI()
+        app.include_router(router)
+        user = persona_user(PERSONA_DEVELOPMENT)
+        user.permissions = {GRANTORS}
+        app.dependency_overrides[get_current_user] = lambda: user
+        client = TestClient(app, raise_server_exceptions=False)
+    else:
+        assert VIEW not in PERSONAS[persona]
+        client = _client(persona)
+    assert client.request(method, url, json=body).status_code == ok
 
 
 def test_the_grantor_writes_are_create_save_retire_and_unretire() -> None:

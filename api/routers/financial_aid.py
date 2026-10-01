@@ -250,6 +250,9 @@ _RULES = Depends(require_permission(Permission.FINANCIAL_AID_RULES))
 # Owner ruling 2026-10-01: the grantor directory's writes (create, save, retire, unretire, mapping a description to
 # a grantor) are their own permission, held by development and finance; not rules.
 _GRANTORS = Depends(require_permission(Permission.FINANCIAL_AID_GRANTORS))
+# Owner ruling 2026-10-01: the grantor list and the source list are readable with view OR grantors, so the
+# development role (grantors, no view) sees what it edits. No other read widens.
+_VIEW_OR_GRANTORS = Depends(require_any_permission(Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_GRANTORS))
 
 # A DELETE reason: whitespace-only would otherwise reach commit_aid_writes
 # (4a's helper), which raises ValueError on a blank reason -> an unhandled 500.
@@ -576,7 +579,7 @@ async def get_data_quality(year: int = Query(..., ge=2017, le=2100), user: AuthU
 
 
 @router.get("/sources", response_model=AidSourcesResponse)
-async def list_sources(user: AuthUser = _VIEW) -> AidSourcesResponse:
+async def list_sources(user: AuthUser = _VIEW_OR_GRANTORS) -> AidSourcesResponse:
     return await _ledger().sources()
 
 
@@ -753,8 +756,8 @@ async def get_approved_aid_rules(
 
 
 @router.get("/grantors", response_model=GrantorsResponse)
-async def list_grantors(include_retired: bool = Query(False), user: AuthUser = _VIEW) -> GrantorsResponse:
-    # D57: everyone with view access sees the directory, contacts included; edits are financial_aid.grantors.
+async def list_grantors(include_retired: bool = Query(False), user: AuthUser = _VIEW_OR_GRANTORS) -> GrantorsResponse:
+    # D57: view or grantors sees the directory, contacts included; edits are financial_aid.grantors.
     # A retired grantor is left out (pickers never offer one) unless include_retired.
     return await _grants().list_grantors(include_retired=include_retired)
 

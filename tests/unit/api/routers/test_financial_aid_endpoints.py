@@ -71,13 +71,14 @@ OVERRIDE_BODY = {
 }
 
 # (method, url, json body, permission required, success status)
-ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
+ROUTES: list[tuple[str, str, dict[str, Any] | None, str | tuple[str, ...], int]] = [
     ("GET", "/api/financial-aid/ledger?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/households/100?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/summary?year=2026&as_of=2026-03-10", None, VIEW, 200),
     ("GET", "/api/financial-aid/net-totals?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/data-quality?year=2026", None, VIEW, 200),
-    ("GET", "/api/financial-aid/sources", None, VIEW, 200),
+    # Owner ruling 2026-10-01: view OR grantors may read the source list (development edits its mappings).
+    ("GET", "/api/financial-aid/sources", None, (VIEW, Permission.FINANCIAL_AID_GRANTORS), 200),
     ("PATCH", "/api/financial-aid/sources/src1", SOURCE_BODY, RULES, 200),
     ("POST", "/api/financial-aid/household-links", LINK_BODY, CASEWORK, 201),
     ("DELETE", "/api/financial-aid/household-links/l1?reason=merged%20by%20mistake", None, CASEWORK, 204),
@@ -158,11 +159,12 @@ def _stop_patches() -> Any:
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 @pytest.mark.parametrize(("method", "url", "body", "required", "ok"), ROUTES)
 def test_permission_matrix(
-    persona: str, method: str, url: str, body: dict[str, Any] | None, required: str, ok: int
+    persona: str, method: str, url: str, body: dict[str, Any] | None, required: str | tuple[str, ...], ok: int
 ) -> None:
     _stub_services()
     response = _client(persona).request(method, url, json=body)
-    expected = ok if required in PERSONAS[persona] else 403
+    accepted = (required,) if isinstance(required, str) else required
+    expected = ok if any(r in PERSONAS[persona] for r in accepted) else 403
     assert response.status_code == expected, (persona, method, url, response.text)
 
 
@@ -253,3 +255,19 @@ def test_a_household_link_that_lost_a_race_with_the_sync_is_409() -> None:
     )
     response = _client(PERSONA_FINANCE).post("/api/financial-aid/household-links", json=LINK_BODY)
     assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
+
+
+def test_a_grantors_only_user_reads_the_source_list() -> None:
+    """Owner ruling 2026-10-01: financial_aid.grantors alone (no view) may read the source list."""
+    from fastapi import FastAPI
+
+    from api.routers.financial_aid import router
+    from bunking.auth_middleware import get_current_user
+
+    _stub_services()
+    user = persona_user(PERSONA_DEVELOPMENT)
+    user.permissions = {Permission.FINANCIAL_AID_GRANTORS}
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: user
+    assert TestClient(app, raise_server_exceptions=False).get("/api/financial-aid/sources").status_code == 200
