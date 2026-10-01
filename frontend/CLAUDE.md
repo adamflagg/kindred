@@ -38,7 +38,7 @@ The user base is **three people**, on laptops and desktop monitors, with a mouse
 - `aria-live` regions or `role="status"` announcements
 - `aria-hidden` on lucide icons — lucide already emits it when you pass no a11y prop
 - `role=` that merely restates the tag (`role="list"` on a `<ul>`, `role="img"` on an `<svg>`)
-- keyboard handlers on non-controls, or roving-tabindex / arrow-key navigation
+- keyboard handlers on non-controls, or roving-tabindex / arrow-key navigation. Exception: Camperships' `/` jump box, ↑/↓ row highlight and `[`/`]` (D13, D31) are product features, not accessibility work, so add no other page keys on their strength.
 
 **DO prefer** converting `<div role="button" tabIndex={0} onKeyDown={…}>` into a plain `<button>`. That deletes three things and is the shape we want. Never go the other way.
 
