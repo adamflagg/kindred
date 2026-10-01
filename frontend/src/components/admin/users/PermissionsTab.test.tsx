@@ -112,12 +112,12 @@ describe('PermissionsTab', () => {
     expect(screen.getByTestId('perm-bunking.manage')).toHaveTextContent('2 people')
   })
 
-  it('role chips open the Roles tab', async () => {
+  it("a role chip opens the Roles tab with that role's drawer", async () => {
     const props = renderPerms()
     await userEvent.click(
       within(screen.getByTestId('perm-bunking.manage')).getByRole('button', { name: 'Executive' })
     )
-    expect(props.url.setTab).toHaveBeenCalledWith('roles')
+    expect(props.url.setTab).toHaveBeenCalledWith('roles', 'r-exec')
   })
 
   it('scrolls inside its own box with sticky area headings (M2)', () => {

@@ -24,8 +24,11 @@ vi.mock('../../../contexts/AuthContext', () => ({
   }),
 }))
 vi.mock('./RoleDrawer', () => ({
-  RoleDrawer: ({ roleId }: { roleId: string | null }) => (
-    <div data-testid="role-drawer">{roleId ?? 'new'}</div>
+  RoleDrawer: ({ roleId, onClose }: { roleId: string | null; onClose: () => void }) => (
+    <div data-testid="role-drawer">
+      {roleId ?? 'new'}
+      <button type="button" data-testid="close-drawer" onClick={onClose} />
+    </div>
   ),
 }))
 
@@ -90,6 +93,22 @@ describe('RolesMatrix', () => {
     renderMatrix()
     await userEvent.click(screen.getByTestId('role-open-r-fin'))
     expect(screen.getByTestId('role-drawer')).toHaveTextContent('r-fin')
+  })
+
+  it('opens the drawer for the role named by url.focus', () => {
+    renderMatrix({ tab: 'roles', focus: 'r-fin' })
+    expect(screen.getByTestId('role-drawer')).toHaveTextContent('r-fin')
+  })
+
+  it.each(['metrics.geo', 'r-gone'])('a focus of %s that is not a role opens nothing', (focus) => {
+    renderMatrix({ tab: 'roles', focus })
+    expect(screen.queryByTestId('role-drawer')).not.toBeInTheDocument()
+  })
+
+  it('closing a focus-opened drawer clears the focus from the URL', async () => {
+    const url = renderMatrix({ tab: 'roles', focus: 'r-fin' }).url
+    await userEvent.click(screen.getByTestId('close-drawer'))
+    expect(url.setTab).toHaveBeenCalledWith('roles')
   })
 
   it('flags a permission no screen checks', () => {

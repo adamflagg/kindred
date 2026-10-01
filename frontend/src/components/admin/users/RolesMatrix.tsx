@@ -58,7 +58,16 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
 
   const adminCount = data.users.filter((u) => Boolean(u['is_admin'])).length
   const colSpan = data.roles.length + 2
-  const selected = drawer ?? null
+  // A role chip on the Permissions tab arrives as `focus`. Derived in render (R10):
+  // local state wins once set; a focus that is not a role id opens nothing.
+  const focusRole = url.focus && data.roles.some((r) => r.id === url.focus) ? url.focus : undefined
+  const open = drawer !== undefined ? drawer : focusRole
+  const selected = open ?? null
+  const closeDrawer = () => {
+    setDrawer(undefined)
+    // Drop the URL focus too, or a reload would reopen the drawer.
+    if (url.focus) url.setTab('roles')
+  }
 
   return (
     <div data-testid="roles-matrix">
@@ -144,17 +153,17 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
           </table>
         </div>
       </div>
-      {drawer !== undefined && (
+      {open !== undefined && (
         <RoleDrawer
           roleId={
-            drawer !== null && drawer === createdId && !data.roles.some((r) => r.id === drawer)
+            open !== null && open === createdId && !data.roles.some((r) => r.id === open)
               ? null
-              : drawer
+              : open
           }
           data={data}
           registry={registry}
           url={url}
-          onClose={() => setDrawer(undefined)}
+          onClose={closeDrawer}
           onCreated={(id) => {
             setCreatedId(id)
             setDrawer(id)

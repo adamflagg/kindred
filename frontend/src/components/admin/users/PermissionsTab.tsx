@@ -266,7 +266,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                           key={r.id}
                           type="button"
                           className="bg-muted hover:bg-muted/70 rounded-full px-2 py-px text-[11.5px] font-medium"
-                          onClick={() => url.setTab('roles')}
+                          onClick={() => url.setTab('roles', r.id)}
                         >
                           {r.name}
                         </button>
