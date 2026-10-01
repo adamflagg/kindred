@@ -41,6 +41,7 @@ from tests.unit.api.services.decisions_fakes import (
     log_update,
     seed_line,
     seed_request,
+    share_row,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.bunking.financial_aid.fixtures import with_lever
@@ -776,3 +777,18 @@ async def test_a_back_dated_tick_on_a_request_recorded_after_the_date_is_named_n
     for read in (service.grid, service.budget, service.remaining):
         recorded = await read(YEAR, as_of=MAR_9, as_of_axis="recorded")
         assert "posted_before_request" not in [g.figure for g in recorded.not_rebuilt]
+
+
+@pytest.mark.asyncio
+async def test_a_past_dates_grid_names_a_payer_that_applied_for_nothing() -> None:
+    """⚠39: the past-date grid names every paying household, one that applied for nothing included."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA, household=1000001)
+    store.shares = [share_row(EMMA, 1000001, "50"), share_row(EMMA, 1000002, "50")]
+    log_seeded(store, SEEDED)
+    (row,) = (await _service(store).grid(YEAR, as_of=MAR_9)).rows
+    assert row.payer_count == 2
+    assert [(s.household_cm_id, s.family_name) for s in row.payer_shares] == [
+        (1000001, "Family 1000001"),
+        (1000002, "Family 1000002"),
+    ]

@@ -1474,6 +1474,7 @@ class FinancialAidDecisionsService:
             register=placed.rows,
             sessions=session_map,
             holds=holds,
+            shares=shares_of,  # the replayed payer shares: a past row's split rows and payer names read them (⚠39)
             as_of=day,
             axis=axis,
             gaps=gaps,
