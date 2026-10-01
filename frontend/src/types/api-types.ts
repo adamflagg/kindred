@@ -30,6 +30,7 @@
  */
 
 import type {
+  AskIn,
   BunkGraphResponse,
   CamperJourneyCounts,
   CamperJourneyResponse,
@@ -37,13 +38,16 @@ import type {
   CancellationOut,
   ConfirmationOut,
   CrossScopeEdge,
+  DecisionWriteOut,
   DefinitionsResponse,
+  EditorPreviewOut,
   GridRowOut,
   JumpIndexHousehold,
   JumpIndexResponse,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
+  PreviewIn,
   RemainingResponse,
   RequestsGridResponse,
   RoundOut,
@@ -106,3 +110,10 @@ export type ApiAidQueue = NonNullable<GridRowOut['queues']>[number]
 /** A request's confirmation state (D59) and its cancellation (D101). Mirror Python's models (M4). */
 export type ApiAidConfirmation = ConfirmationOut
 export type ApiAidCancellation = CancellationOut
+/** The request editor's live preview (§4.6, D22). Mirrors Python `EditorPreviewOut`. */
+export type ApiAidPreview = EditorPreviewOut
+export type ApiAidPreviewIn = PreviewIn
+/** A family's Round 2 or Round 3 ask. Mirrors Python `AskIn`. */
+export type ApiAidAskIn = AskIn
+/** What a decisions write did. Mirrors Python `DecisionWriteOut`. */
+export type ApiAidWriteOut = DecisionWriteOut
