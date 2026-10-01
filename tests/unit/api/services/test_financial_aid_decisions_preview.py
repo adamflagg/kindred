@@ -184,3 +184,41 @@ async def test_an_ask_under_a_later_posted_round_is_refused_like_the_write() -> 
     with pytest.raises(DecisionRefusedError) as written:
         await service.key_ask(EMMA, AskIn(round=2, amount=Decimal(450), asked_on=date(2027, 5, 2)), ACTOR)
     assert str(previewed.value) == str(written.value)
+
+
+# Fix round 1: retyping what is already keyed is the write's no-op, so the preview moves nothing either.
+
+
+def _round3_keyed(store: FakeDecisionsStore, approval: str) -> FakeRules:
+    seed_request(store, EMMA, session=1000102)
+    _posted_round_1(store)
+    _event(store, 2, "ask", amount=Decimal(400))
+    _event(store, 3, "ask", amount=Decimal(500), statement_of_need="A parent lost their job")
+    _event(store, 3, "award", amount=Decimal(500), needs_approval=approval == "pending")
+    return FakeRules(approved(with_lever(intake_rules(), "round3.registrar_limit", "400")))
+
+
+@pytest.mark.asyncio
+async def test_retyping_the_round_2_ask_already_keyed_is_the_writes_no_op() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted_round_1(store)
+    _event(store, 2, "ask", amount=Decimal(400), effective_on=date(2027, 3, 20))
+    out = await _service(store).preview(EMMA, PreviewIn(round=2, amount=Decimal(400)), can_approve=False)
+    assert (out.stage_after, out.stage_after_label, out.pending_approval) == (None, None, False)
+    written = await _service(store).key_ask(
+        EMMA, AskIn(round=2, amount=Decimal(400), asked_on=date(2027, 3, 20)), ACTOR
+    )
+    assert written.unchanged == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("approval", "can_approve"), [("approved", False), ("pending", True), ("pending", False)])
+async def test_retyping_the_round_3_amount_already_keyed_is_the_writes_no_op(approval: str, can_approve: bool) -> None:
+    store = FakeDecisionsStore()
+    rules = _round3_keyed(store, approval)
+    service = _service(store, rules)
+    out = await service.preview(EMMA, PreviewIn(round=3, amount=Decimal(500)), can_approve=can_approve)
+    assert (out.stage_after, out.stage_after_label, out.pending_approval) == (None, None, False)
+    written = await service.key_round3_amount(EMMA, Round3AmountIn(amount=Decimal(500)), ACTOR, can_approve=can_approve)
+    assert (written.unchanged, written.pending_approval) == (1, False)

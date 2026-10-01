@@ -876,6 +876,11 @@ def _round3_refusal(rounds: Mapping[int, RoundState]) -> str | None:
     return None
 
 
+def _round3_unchanged(state: RoundState, amount: Decimal) -> bool:
+    """Retyping the Round 3 amount already keyed is the write's no-op (a refused one may be keyed again)."""
+    return state.award == amount and state.approval != "refused"
+
+
 def _round3_rules_refusal(rounds: Mapping[int, RoundState], rules: AidRules, year: int) -> str | None:
     """Why the season's rules refuse a Round 3 amount (an appeal first); shared with the preview."""
     if rules.round3.require_round2 and rounds.get(2, RoundState(round=2)).ask is None:
@@ -1518,7 +1523,7 @@ class FinancialAidDecisionsService:
         _refuse(_round3_refusal(rounds))
         rules = await self._approved_rules(request.year)
         _refuse(_round3_rules_refusal(rounds, rules.document, request.year))
-        if state.award == body.amount and state.approval != "refused":
+        if _round3_unchanged(state, body.amount):
             return self._unchanged(request.year)
         pending = not can_approve and needs_finance(body.amount, rules.document)
         write = self._write(
@@ -1551,7 +1556,10 @@ class FinancialAidDecisionsService:
         rules = await self._approved_rules(request.year)
         if n == 3:
             _refuse(_round3_rules_refusal(rounds, rules.document, request.year))
-        pending = n == 3 and not can_approve and needs_finance(body.amount, rules.document)
+        current = rounds.get(n, RoundState(round=n))
+        # The write's no-op: the amount already keyed stands as it is, so nothing moves and nothing waits.
+        unchanged = current.ask == body.amount if n == 2 else _round3_unchanged(current, body.amount)
+        pending = not unchanged and n == 3 and not can_approve and needs_finance(body.amount, rules.document)
         season = await self.season(request.year)
         item = season.inputs.get(request.id)
         if item is None:
@@ -1566,7 +1574,11 @@ class FinancialAidDecisionsService:
             effective_on=self._today() if n == 2 else None,
             needs_approval=pending,
         )
-        after_rounds = {**item.rounds, n: apply_event(item.rounds.get(n, RoundState(round=n)), typed)}
+        after_rounds = (
+            dict(item.rounds)
+            if unchanged
+            else {**item.rounds, n: apply_event(item.rounds.get(n, RoundState(round=n)), typed)}
+        )
         before = price_request(item, rules.document).view(n)
         after = price_request(replace(item, rounds=after_rounds), rules.document)
         view = after.view(n)
