@@ -82,6 +82,7 @@ from api.schemas.financial_aid_grants import (
     CommitmentOut,
     GrantorCreate,
     GrantorOut,
+    GrantorRetireIn,
     GrantorSave,
     GrantorsResponse,
     GrantsResponse,
@@ -176,7 +177,12 @@ from api.services.financial_aid_decisions_service import (
     FinancialAidDecisionsService,
 )
 from api.services.financial_aid_grants_repository import GrantsRepository
-from api.services.financial_aid_grants_service import GrantorKeyTakenError, GrantsService
+from api.services.financial_aid_grants_service import (
+    GrantorInUseError,
+    GrantorKeyTakenError,
+    GrantorStateError,
+    GrantsService,
+)
 from api.services.financial_aid_household_page import HouseholdNotFoundError, HouseholdPageService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
@@ -241,6 +247,9 @@ router = APIRouter(prefix="/api/financial-aid", tags=["financial-aid"])
 _VIEW = Depends(require_permission(Permission.FINANCIAL_AID_VIEW))
 _CASEWORK = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK))
 _RULES = Depends(require_permission(Permission.FINANCIAL_AID_RULES))
+# Owner ruling 2026-10-01: the grantor directory's writes (create, save, retire, unretire, mapping a description to
+# a grantor) are their own permission, held by development and finance; not rules.
+_GRANTORS = Depends(require_permission(Permission.FINANCIAL_AID_GRANTORS))
 
 # A DELETE reason: whitespace-only would otherwise reach commit_aid_writes
 # (4a's helper), which raises ValueError on a blank reason -> an unhandled 500.
@@ -371,7 +380,10 @@ def _grants() -> GrantsService:
 def _grants_http(exc: FinancialAidError) -> HTTPException:
     if isinstance(exc, FinancialAidNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, GrantorKeyTakenError):
+    if isinstance(exc, GrantorInUseError):
+        detail = {"message": str(exc), "descriptions": exc.descriptions, "grants": exc.grants}
+        return HTTPException(status_code=409, detail=detail)
+    if isinstance(exc, (GrantorKeyTakenError, GrantorStateError)):
         return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
@@ -577,7 +589,7 @@ async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser 
 
 
 @router.put("/sources/{source_id}/grantor", response_model=AidSourceRow)
-async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _RULES) -> AidSourceRow:
+async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _GRANTORS) -> AidSourceRow:
     try:
         return await _writes().map_source_grantor(source_id, body, user.email)
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
@@ -741,13 +753,14 @@ async def get_approved_aid_rules(
 
 
 @router.get("/grantors", response_model=GrantorsResponse)
-async def list_grantors(user: AuthUser = _VIEW) -> GrantorsResponse:
-    # D57: everyone with view access sees the directory, contacts included; edits are finance's.
-    return await _grants().list_grantors()
+async def list_grantors(include_retired: bool = Query(False), user: AuthUser = _VIEW) -> GrantorsResponse:
+    # D57: everyone with view access sees the directory, contacts included; edits are financial_aid.grantors.
+    # A retired grantor is left out (pickers never offer one) unless include_retired.
+    return await _grants().list_grantors(include_retired=include_retired)
 
 
 @router.post("/grantors", response_model=GrantorOut, status_code=201)
-async def create_grantor(body: GrantorCreate, user: AuthUser = _RULES) -> GrantorOut:
+async def create_grantor(body: GrantorCreate, user: AuthUser = _GRANTORS) -> GrantorOut:
     try:
         return await _grants().create_grantor(body, user.email)
     except FinancialAidError as exc:
@@ -755,9 +768,28 @@ async def create_grantor(body: GrantorCreate, user: AuthUser = _RULES) -> Granto
 
 
 @router.put("/grantors/{key}", response_model=GrantorOut)
-async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser = _RULES) -> GrantorOut:
+async def save_grantor(key: _GrantorKeyPath, body: GrantorSave, user: AuthUser = _GRANTORS) -> GrantorOut:
     try:
         return await _grants().save_grantor(key, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.post("/grantors/{key}/retire", response_model=GrantorOut)
+async def retire_grantor(key: _GrantorKeyPath, body: GrantorRetireIn, user: AuthUser = _GRANTORS) -> GrantorOut:
+    """409 while a description maps to it or an open grant names it (the detail counts each), or when it is
+    already retired; nothing is written or logged then."""
+    try:
+        return await _grants().retire_grantor(key, body, user.email)
+    except FinancialAidError as exc:
+        raise _grants_http(exc) from exc
+
+
+@router.post("/grantors/{key}/unretire", response_model=GrantorOut)
+async def unretire_grantor(key: _GrantorKeyPath, body: GrantorRetireIn, user: AuthUser = _GRANTORS) -> GrantorOut:
+    """409 when it isn't retired."""
+    try:
+        return await _grants().unretire_grantor(key, body, user.email)
     except FinancialAidError as exc:
         raise _grants_http(exc) from exc
 

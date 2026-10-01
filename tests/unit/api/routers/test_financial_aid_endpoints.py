@@ -26,7 +26,14 @@ from api.schemas.financial_aid import (
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.rbac.permissions import Permission
-from tests.unit.rbac.permission_personas import PERSONA_FINANCE, PERSONAS, persona_client, persona_user
+from tests.unit.rbac.permission_personas import (
+    PERSONA_DEVELOPMENT,
+    PERSONA_FINANCE,
+    PERSONA_REGISTRAR,
+    PERSONAS,
+    persona_client,
+    persona_user,
+)
 
 VIEW, CASEWORK, RULES = Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_CASEWORK, Permission.FINANCIAL_AID_RULES
 
@@ -75,7 +82,14 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("POST", "/api/financial-aid/household-links", LINK_BODY, CASEWORK, 201),
     ("DELETE", "/api/financial-aid/household-links/l1?reason=merged%20by%20mistake", None, CASEWORK, 204),
     ("POST", "/api/financial-aid/overrides/bulk", OVERRIDE_BODY, RULES, 200),
-    ("PUT", "/api/financial-aid/sources/src1/grantor", {"grantor_key": "regional_fund", "note": "n"}, RULES, 200),
+    # Owner ruling 2026-10-01: remapping a description to a grantor is the grantor directory's permission.
+    (
+        "PUT",
+        "/api/financial-aid/sources/src1/grantor",
+        {"grantor_key": "regional_fund", "note": "n"},
+        Permission.FINANCIAL_AID_GRANTORS,
+        200,
+    ),
 ]
 
 
@@ -150,6 +164,18 @@ def test_permission_matrix(
     response = _client(persona).request(method, url, json=body)
     expected = ok if required in PERSONAS[persona] else 403
     assert response.status_code == expected, (persona, method, url, response.text)
+
+
+def test_development_remaps_a_description_but_never_classifies_one() -> None:
+    """Owner ruling 2026-10-01: development holds financial_aid.grantors, not rules. Mapping a description to its
+    grantor is the directory's; classifying a description (what counts as aid) stays with rules."""
+    _stub_services()
+    client = _client(PERSONA_DEVELOPMENT)
+    mapping = {"grantor_key": "regional_fund", "note": "Development true-up"}
+    assert client.put("/api/financial-aid/sources/src1/grantor", json=mapping).status_code == 200
+    assert client.patch("/api/financial-aid/sources/src1", json=SOURCE_BODY).status_code == 403
+    assert client.post("/api/financial-aid/overrides/bulk", json=OVERRIDE_BODY).status_code == 403
+    assert _client(PERSONA_REGISTRAR).put("/api/financial-aid/sources/src1/grantor", json=mapping).status_code == 403
 
 
 def test_the_actor_is_the_callers_email() -> None:

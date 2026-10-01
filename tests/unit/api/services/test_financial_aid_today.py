@@ -134,6 +134,7 @@ def _grantor(key: str, *, full: bool, after: bool = False) -> GrantorOut:
         pays_after_camp_aid=after,
         eligibility="",
         contacts="",
+        retired_at="",
         descriptions=[],
     )
 
@@ -430,12 +431,14 @@ class _Grants:
     def __init__(self, grants: GrantsResponse) -> None:
         self.grants = grants
         self.loads = 0
+        self.include_retired: bool | None = None
 
     async def read_with_rows(self, year: int) -> tuple[GrantsResponse, list[Any]]:
         self.loads += 1
         return self.grants, []
 
-    async def list_grantors(self) -> GrantorsResponse:
+    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse:
+        self.include_retired = include_retired
         return GrantorsResponse(grantors=[])
 
 
@@ -506,3 +509,12 @@ async def test_a_user_with_neither_section_reads_nothing() -> None:
         YEAR, casework=False, finance=False
     )
     assert (out.casework, out.finance, grants.loads) == (None, None, 0)
+
+
+@pytest.mark.asyncio
+async def test_today_reads_retired_grantors_too() -> None:
+    """A retired grantor is hidden from pickers, not from history: Today resolves a grant's grantor through the
+    whole directory, so a grantor retired later still answers for grants that named it."""
+    grants = _Grants(_grants(year=YEAR))
+    await _service(FakeDecisionsStore(), grants, _Drafts(None), _Ledger()).read(YEAR, casework=True, finance=False)
+    assert grants.include_retired is True

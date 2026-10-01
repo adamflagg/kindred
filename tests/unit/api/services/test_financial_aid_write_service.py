@@ -613,6 +613,17 @@ async def test_mapping_to_an_unknown_grantor_is_not_found() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mapping_to_a_retired_grantor_is_refused() -> None:
+    """Owner ruling 2026-10-01: a retired grantor is hidden from pickers and has no descriptions; mapping one to it
+    would undo what retiring it checked. Unmapping a description is unaffected."""
+    retired = SimpleNamespace(**vars(_GRANTOR), retired_at="2031-02-01 18:30:00.000Z")
+    service, spy = _service(_mapping_repo(_source(funder_type="outside"), retired))
+    with pytest.raises(FinancialAidValidationError, match=r"^Regional Fund is retired; unretire it first$"):
+        await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
+    assert not spy.commit.called
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("funder", ["camp", "unknown"])
 async def test_only_an_outside_or_incentive_description_names_a_grantor(funder: str) -> None:
     service, spy = _service(_mapping_repo(_source(funder_type=funder), _GRANTOR))

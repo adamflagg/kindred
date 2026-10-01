@@ -9,21 +9,25 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.schemas.financial_aid_grants import CommitmentOut, GrantorOut, GrantorsResponse, GrantsResponse, PlaceGrantsOut
-from api.services.financial_aid_grants_service import GrantorKeyTakenError
+from api.services.financial_aid_grants_service import GrantorInUseError, GrantorKeyTakenError, GrantorStateError
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
+from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import (
     PERSONA_DEVELOPMENT,
     PERSONA_FINANCE,
+    PERSONA_REGISTRAR,
     PERSONAS,
     persona_client,
     persona_user,
 )
 
-VIEW, CASEWORK, RULES = Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_CASEWORK, Permission.FINANCIAL_AID_RULES
+VIEW, CASEWORK = Permission.FINANCIAL_AID_VIEW, Permission.FINANCIAL_AID_CASEWORK
+GRANTORS = Permission.FINANCIAL_AID_GRANTORS
 
 GRANTOR = GrantorOut(
     key="regional_fund",
@@ -34,10 +38,12 @@ GRANTOR = GrantorOut(
     pays_after_camp_aid=False,
     eligibility="",
     contacts="",
+    retired_at="",
     descriptions=[],
 )
 GRANTOR_BODY = {"key": "regional_fund", "name": "Regional Fund", "note": "New grantor"}
 SAVE_BODY = {"name": "Regional Fund", "note": "Finance review"}
+RETIRE_BODY = {"reason": "Merged into the regional fund's new name"}
 PLACE_BODY = {"placements": [{"transaction_cm_id": 9001, "person_cm_id": 1001}]}
 
 COMMITMENT = CommitmentOut(
@@ -65,8 +71,10 @@ COMMITMENT_BODY = {
 # (method, url, json body, permission required, success status)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str, int]] = [
     ("GET", "/api/financial-aid/grantors", None, VIEW, 200),
-    ("POST", "/api/financial-aid/grantors", GRANTOR_BODY, RULES, 201),
-    ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, RULES, 200),
+    ("POST", "/api/financial-aid/grantors", GRANTOR_BODY, GRANTORS, 201),
+    ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, GRANTORS, 200),
+    ("POST", "/api/financial-aid/grantors/regional_fund/retire", RETIRE_BODY, GRANTORS, 200),
+    ("POST", "/api/financial-aid/grantors/regional_fund/unretire", RETIRE_BODY, GRANTORS, 200),
     ("GET", "/api/financial-aid/grants/2031", None, VIEW, 200),
     ("POST", "/api/financial-aid/grants/2031/placements", PLACE_BODY, CASEWORK, 200),
     ("POST", "/api/financial-aid/grants/2031/commitments", COMMITMENT_BODY, CASEWORK, 201),
@@ -92,6 +100,10 @@ def _stub() -> Any:
     service.list_grantors = AsyncMock(return_value=GrantorsResponse(grantors=[GRANTOR]))
     service.create_grantor = AsyncMock(return_value=GRANTOR)
     service.save_grantor = AsyncMock(return_value=GRANTOR)
+    service.retire_grantor = AsyncMock(
+        return_value=GRANTOR.model_copy(update={"retired_at": "2031-02-01 10:00:00.000Z"})
+    )
+    service.unretire_grantor = AsyncMock(return_value=GRANTOR)
     service.read = AsyncMock(
         return_value=GrantsResponse(year=2031, grants=[], needs_camper=[], unmapped=[], waiting=[], expected=[])
     )
@@ -119,13 +131,135 @@ def test_permission_matrix(
     assert response.status_code == expected, (persona, method, url, response.text)
 
 
-@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), ROUTES)
-def test_a_summary_only_user_reaches_no_grants_route(
+@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), [r for r in ROUTES if r[3] != GRANTORS])
+def test_development_reaches_no_family_level_grants_route(
     method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
 ) -> None:
-    """D57: development sees aggregates only, never a family's grants or the directory."""
+    """D57: development sees aggregates only, never a family's grants. The directory's writes are the one
+    exception (owner ruling 2026-10-01: financial_aid.grantors), proven below."""
     _stub()
     assert _client(PERSONA_DEVELOPMENT).request(method, url, json=body).status_code == 403
+
+
+GRANTOR_WRITES = [r for r in ROUTES if r[3] == GRANTORS]
+
+
+def test_the_grantor_writes_are_create_save_retire_and_unretire() -> None:
+    assert [(m, u.rsplit("/", 1)[-1]) for m, u, *_ in GRANTOR_WRITES] == [
+        ("POST", "grantors"),
+        ("PUT", "regional_fund"),
+        ("POST", "retire"),
+        ("POST", "unretire"),
+    ]
+
+
+@pytest.mark.parametrize("persona", [PERSONA_DEVELOPMENT, PERSONA_FINANCE])
+@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), GRANTOR_WRITES)
+def test_development_and_finance_edit_the_directory(
+    persona: str, method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
+) -> None:
+    """Owner ruling 2026-10-01: create, save, retire (and unretire) are financial_aid.grantors, which the
+    development and finance roles hold; finance keeps it through this permission, not through rules."""
+    _stub()
+    assert _client(persona).request(method, url, json=body).status_code == ok
+
+
+@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), GRANTOR_WRITES)
+def test_the_registrar_cannot_edit_the_directory(
+    method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
+) -> None:
+    _stub()
+    assert _client(PERSONA_REGISTRAR).request(method, url, json=body).status_code == 403
+
+
+@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), GRANTOR_WRITES)
+def test_rules_alone_no_longer_edits_the_directory(
+    method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
+) -> None:
+    from api.routers.financial_aid import router
+
+    _stub()
+    user = persona_user(PERSONA_FINANCE)
+    user.permissions = {VIEW, Permission.FINANCIAL_AID_RULES}
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: user
+    response = TestClient(app, raise_server_exceptions=False).request(method, url, json=body)
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(("method", "url", "body", "needs", "ok"), GRANTOR_WRITES)
+def test_an_admin_edits_the_directory_without_the_permission(
+    method: str, url: str, body: dict[str, Any] | None, needs: str, ok: int
+) -> None:
+    from api.routers.financial_aid import router
+
+    _stub()
+    admin = AuthUser(username="admin", email="admin@example.com", display_name="Admin", groups=[], is_admin=True)
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: admin
+    assert TestClient(app, raise_server_exceptions=False).request(method, url, json=body).status_code == ok
+
+
+def test_the_directory_hides_retired_grantors_unless_asked() -> None:
+    service = _stub()
+    client = _client()
+    assert client.get("/api/financial-aid/grantors").status_code == 200
+    assert service.list_grantors.call_args.kwargs == {"include_retired": False}
+    assert client.get("/api/financial-aid/grantors", params={"include_retired": "true"}).status_code == 200
+    assert service.list_grantors.call_args.kwargs == {"include_retired": True}
+
+
+def test_a_retire_reaches_the_service_with_its_reason_and_actor() -> None:
+    service = _stub()
+    response = _client(PERSONA_DEVELOPMENT).post("/api/financial-aid/grantors/regional_fund/retire", json=RETIRE_BODY)
+    assert response.status_code == 200
+    assert response.json()["retired_at"] == "2031-02-01 10:00:00.000Z"
+    key, body, actor = service.retire_grantor.call_args.args
+    assert key == "regional_fund"
+    assert body.reason == RETIRE_BODY["reason"]
+    assert actor == persona_user(PERSONA_DEVELOPMENT).email
+
+
+@pytest.mark.parametrize("action", ["retire", "unretire"])
+@pytest.mark.parametrize("reason", ["", "   "])
+def test_a_retire_or_unretire_needs_a_reason(action: str, reason: str) -> None:
+    service = _stub()
+    url = f"/api/financial-aid/grantors/regional_fund/{action}"
+    assert _client().post(url, json={"reason": reason}).status_code == 422
+    assert _client().post(url, json={}).status_code == 422
+    assert not service.retire_grantor.called
+    assert not service.unretire_grantor.called
+
+
+def test_a_grantor_still_in_use_is_a_409_that_says_what_to_fix() -> None:
+    service = _stub()
+    service.retire_grantor = AsyncMock(
+        side_effect=GrantorInUseError("Regional Fund", descriptions=2, grants=1),
+    )
+    response = _client().post("/api/financial-aid/grantors/regional_fund/retire", json=RETIRE_BODY)
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["descriptions"] == 2
+    assert detail["grants"] == 1
+    assert "2 CampMinder descriptions" in detail["message"]
+    assert "1 open grant" in detail["message"]
+
+
+@pytest.mark.parametrize("action", ["retire", "unretire"])
+def test_retiring_twice_or_unretiring_an_active_grantor_is_a_409(action: str) -> None:
+    service = _stub()
+    setattr(service, f"{action}_grantor", AsyncMock(side_effect=GrantorStateError("Regional Fund is already retired")))
+    response = _client().post(f"/api/financial-aid/grantors/regional_fund/{action}", json=RETIRE_BODY)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Regional Fund is already retired"
+
+
+def test_retiring_an_unknown_grantor_is_a_404() -> None:
+    service = _stub()
+    service.retire_grantor = AsyncMock(side_effect=FinancialAidNotFoundError("grantor 'nobody' not found"))
+    assert _client().post("/api/financial-aid/grantors/nobody/retire", json=RETIRE_BODY).status_code == 404
 
 
 def test_the_actor_is_the_callers_email() -> None:
