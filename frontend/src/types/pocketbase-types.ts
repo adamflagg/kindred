@@ -280,7 +280,7 @@ export const AidAttributionOverridesSourceOptions = {
 } as const
 export type AidAttributionOverridesSourceOptions =
   (typeof AidAttributionOverridesSourceOptions)[keyof typeof AidAttributionOverridesSourceOptions]
-export type AidAttributionOverridesRecord = {
+export type AidAttributionOverridesRecord<Tsplit = unknown> = {
   actor?: string
   attributed_person_cm_id?: number
   attributed_session_cm_id?: number
@@ -290,6 +290,7 @@ export type AidAttributionOverridesRecord = {
   program_family?: AidAttributionOverridesProgramFamilyOptions
   source: AidAttributionOverridesSourceOptions
   source_key_override?: string
+  split?: null | Tsplit
   transaction_cm_id: number
   updated: IsoAutoDateString
   year: number
@@ -357,6 +358,7 @@ export type AidDecisionsEventOptions =
 export const AidDecisionsLockSourceOptions = {
   tick: 'tick',
   ledger: 'ledger',
+  placement: 'placement',
 } as const
 export type AidDecisionsLockSourceOptions =
   (typeof AidDecisionsLockSourceOptions)[keyof typeof AidDecisionsLockSourceOptions]
@@ -2558,8 +2560,10 @@ export type AidApplicationsResponse<
   Texpand = unknown,
 > = Required<AidApplicationsRecord<Tanswers, Tflags, Tmember_person_cm_ids>> &
   BaseSystemFields<Texpand>
-export type AidAttributionOverridesResponse<Texpand = unknown> =
-  Required<AidAttributionOverridesRecord> & BaseSystemFields<Texpand>
+export type AidAttributionOverridesResponse<Tsplit = unknown, Texpand = unknown> = Required<
+  AidAttributionOverridesRecord<Tsplit>
+> &
+  BaseSystemFields<Texpand>
 export type AidCancellationsResponse<Texpand = unknown> = Required<AidCancellationsRecord> &
   BaseSystemFields<Texpand>
 export type AidChangeLogResponse<Tafter = unknown, Tbefore = unknown, Texpand = unknown> = Required<
