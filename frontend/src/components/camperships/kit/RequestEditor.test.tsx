@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -12,8 +12,8 @@ const READY: EditorPreview = {
   trace: TRACE_ROUND2_CAPPED,
   stageChange: 'Needs an offer',
   shares: [
-    { householdIndex: 1, householdName: 'Johnson', pct: 60, amount: 600 },
-    { householdIndex: 2, householdName: 'Garcia', pct: 40, amount: 400 },
+    { householdCmId: 1000001, chip: 1, householdName: 'Johnson', pct: 60, amount: 600 },
+    { householdCmId: 1000003, chip: 2, householdName: 'Garcia', pct: 40, amount: 400 },
   ],
 }
 
@@ -54,7 +54,7 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
 
   it('shows the computed award, the limit that bound it, the stage change and the payer shares (D22)', () => {
     setup()
-    expect(screen.getByText('$1,000', { selector: 'span.font-semibold' })).toBeInTheDocument()
+    expect(screen.getByText('Award')).toHaveTextContent('Award $1,000')
     expect(screen.getByText('limited by the Round 2 cap')).toBeInTheDocument()
     expect(screen.getByText('Stage → Needs an offer')).toBeInTheDocument()
     expect(screen.getByText('1 · Johnson')).toBeInTheDocument()
@@ -115,7 +115,7 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
   })
 
   // Ruling 2026-10-01 (plan review), finding 4: once, with no re-render in between.
-  it('saves once when Enter is pressed twice before anything re-renders (Review Focus 5)', async () => {
+  it('saves once when Enter is pressed twice in a row (Review Focus 5)', async () => {
     const { onSave } = setup()
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{Enter}{Enter}')
     expect(onSave).toHaveBeenCalledTimes(1)
@@ -126,6 +126,21 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
     await userEvent.keyboard('{Enter>3/}')
     expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a repeated Enter even after a save has finished', async () => {
+    const { onSave, rerender, ...props } = setup()
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{Enter}')
+    rerender(<RequestEditor {...props} onSave={onSave} saving />)
+    rerender(<RequestEditor {...props} onSave={onSave} saving={false} />)
+    fireEvent.keyDown(screen.getByLabelText('Round 2 ask'), { key: 'Enter', repeat: true })
+    expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
+  it('will not save while a save is on its way', async () => {
+    const { onSave } = setup({ saving: true })
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{Enter}')
+    expect(onSave).not.toHaveBeenCalled()
   })
 
   it('saves again once the person edits after a save', async () => {
@@ -146,5 +161,129 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
       <RequestEditor {...props} preview={{ status: 'error', error: 'This request is on hold' }} />
     )
     expect(screen.getByText('This request is on hold')).toBeInTheDocument()
+  })
+
+  it('shows a payer with no chip or name as "Another household", never a raw id', () => {
+    setup({
+      preview: { ...READY, shares: [{ householdCmId: 1000009, pct: 100, amount: 1000 }] },
+    })
+    expect(screen.getByText('Another household')).toBeInTheDocument()
+    expect(screen.queryByText(/1000009/)).toBeNull()
+  })
+
+  it('shows a name without a chip as plain text', () => {
+    setup({
+      preview: {
+        ...READY,
+        shares: [{ householdCmId: 1000009, householdName: 'Chen', pct: 100, amount: 1000 }],
+      },
+    })
+    expect(screen.getByText('Chen')).toBeInTheDocument()
+  })
+
+  describe('what counts as typed (Decision 6; the baseline)', () => {
+    it('follows a refetched amount while untouched, so ↓ just moves (I1a)', async () => {
+      const { onMove, onSave, rerender, ...props } = setup({ initialAmount: 1200 })
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} initialAmount={1500} />)
+      expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1500')
+      await userEvent.keyboard('{ArrowDown}')
+      expect(onMove).toHaveBeenCalledWith(1, null)
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('keeps what was typed when the amount is refetched under it', async () => {
+      const { onMove, onSave, rerender, ...props } = setup({ initialAmount: 1200 })
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '0')
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} initialAmount={1500} />)
+      expect(screen.getByLabelText('Round 2 ask')).toHaveValue('12000')
+      await userEvent.keyboard('{ArrowDown}')
+      expect(onMove).toHaveBeenCalledWith(1, { amount: 12000, reason: 'Family emailed (Apr 9)' })
+    })
+
+    it('reads "1,200" over 1200 as nothing typed (I1b)', async () => {
+      const { onMove, onSave } = setup({ initialAmount: 1200 })
+      const field = screen.getByLabelText('Round 2 ask')
+      await userEvent.clear(field)
+      await userEvent.type(field, '1,200{ArrowDown}')
+      expect(onMove).toHaveBeenCalledWith(1, null)
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('after a save finishes, ↓ moves without writing it again (I1c)', async () => {
+      const { onMove, onSave, rerender, ...props } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{Enter}')
+      expect(onSave).toHaveBeenCalledTimes(1)
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} saving />)
+      rerender(<RequestEditor {...props} onMove={onMove} onSave={onSave} saving={false} />)
+      await userEvent.keyboard('{ArrowDown}')
+      expect(onMove).toHaveBeenCalledWith(1, null)
+      expect(onSave).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('keys', () => {
+    it('ignores keys pressed with a modifier (M1)', async () => {
+      const { onMove, onSave, onCancel } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
+      await userEvent.keyboard('{Shift>}{ArrowDown}{Enter}{Escape}{/Shift}')
+      await userEvent.keyboard('{Control>}{Enter}{/Control}')
+      expect(onMove).not.toHaveBeenCalled()
+      expect(onSave).not.toHaveBeenCalled()
+      expect(onCancel).not.toHaveBeenCalled()
+    })
+
+    it('ignores a key that confirms an IME composition (M1)', async () => {
+      const { onSave } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
+      fireEvent.keyDown(screen.getByLabelText('Round 2 ask'), { key: 'Enter', isComposing: true })
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('does not walk rows while ↓ or ↑ is held down (M2)', () => {
+      const { onMove } = setup()
+      const field = screen.getByLabelText('Round 2 ask')
+      fireEvent.keyDown(field, { key: 'ArrowDown', repeat: true })
+      fireEvent.keyDown(field, { key: 'ArrowUp', repeat: true })
+      expect(onMove).not.toHaveBeenCalled()
+    })
+
+    it('keeps the typed value and says why when ↓ meets an amount it cannot read (M4)', async () => {
+      const { onMove, onSave } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '12.345{ArrowDown}')
+      expect(onMove).not.toHaveBeenCalled()
+      expect(onSave).not.toHaveBeenCalled()
+      expect(screen.getByLabelText('Round 2 ask')).toHaveValue('12.345')
+      expect(screen.getByText('Cents go to two places')).toBeInTheDocument()
+    })
+
+    it('reports null for an amount it cannot read (M4)', async () => {
+      const { onAmountChange } = setup()
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '1x')
+      expect(onAmountChange).toHaveBeenLastCalledWith(null)
+    })
+
+    it('keys the same from the note field (M4)', async () => {
+      const { onMove, onSave } = setup()
+      const note = screen.getByLabelText('Note')
+      await userEvent.click(note)
+      await userEvent.keyboard('{ArrowDown}')
+      expect(onMove).toHaveBeenLastCalledWith(1, null)
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
+      await userEvent.type(note, '!{ArrowUp}')
+      expect(onMove).toHaveBeenCalledTimes(1)
+      await userEvent.type(note, '{Enter}')
+      expect(onSave).toHaveBeenCalledWith({ amount: 2500, reason: 'Family emailed (Apr 9)!' })
+    })
+  })
+
+  it('limits the note to what the server accepts (M6)', () => {
+    setup()
+    expect(screen.getByLabelText('Note')).toHaveAttribute('maxlength', '2000')
+  })
+
+  it('stacks its parts in the card layout (M3)', () => {
+    setup({ layout: 'card' })
+    const root = screen.getByText(/^Johnson · household/).parentElement
+    expect(root).toHaveClass('flex', 'flex-col', 'items-start')
   })
 })

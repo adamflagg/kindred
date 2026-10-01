@@ -20,8 +20,14 @@ describe('parseMoneyInput', () => {
     expect(parseMoneyInput(raw)).toEqual({ kind: 'ok', amount })
   })
 
-  it('is empty when nothing is typed', () => {
+  it('is empty when nothing is typed, or only a dollar sign is', () => {
     expect(parseMoneyInput('  ')).toEqual({ kind: 'empty' })
+    expect(parseMoneyInput('$')).toEqual({ kind: 'empty' })
+  })
+
+  it('takes commas only as thousands groups', () => {
+    expect(parseMoneyInput('1,000,000')).toEqual({ kind: 'ok', amount: 1_000_000 })
+    expect(parseMoneyInput('999,999.99')).toEqual({ kind: 'ok', amount: 999999.99 })
   })
 
   it.each([
@@ -29,6 +35,10 @@ describe('parseMoneyInput', () => {
     ['twelve', 'Not an amount'],
     ['12.345', 'Cents go to two places'],
     ['1000001', 'More than $1,000,000'],
+    ['1,2,3', 'Not an amount'],
+    ['12,50', 'Not an amount'],
+    ['1.2,5', 'Not an amount'],
+    [',', 'Not an amount'],
   ])('refuses %j: %s', (raw, reason) => {
     expect(parseMoneyInput(raw)).toEqual({ kind: 'invalid', reason })
   })
@@ -43,12 +53,30 @@ describe('the reason policy (D22)', () => {
     for (const kind of ['round3_ask', 'include_override', 'income_correction', 'hold'] as const) {
       expect(REASON_POLICY[kind].kind).toBe('required')
     }
-    expect(REASON_POLICY.round3_ask).toEqual({ kind: 'required', label: 'Statement of need' })
+    expect(REASON_POLICY.round3_ask).toEqual({
+      kind: 'required',
+      label: 'Statement of need',
+      maxLength: 4000,
+    })
   })
 
   it('asks no reason for stage moves and ticks: who and when are logged', () => {
     expect(REASON_POLICY.stage_move.kind).toBe('none')
     expect(REASON_POLICY.tick.kind).toBe('none')
+  })
+
+  // The server's limits: a statement of need is 4000 (`_Statement`), a note or reason 2000.
+  it('limits the reason field to what the server accepts', () => {
+    expect(REASON_POLICY.round3_ask).toMatchObject({ maxLength: 4000 })
+    for (const kind of [
+      'appeal_ask',
+      'round3_amount',
+      'include_override',
+      'income_correction',
+      'hold',
+    ] as const) {
+      expect(REASON_POLICY[kind]).toMatchObject({ maxLength: 2000 })
+    }
   })
 
   it('treats a blank required reason as missing, and an optional one as fine', () => {

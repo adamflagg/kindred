@@ -10,23 +10,25 @@ export type MoneyInput =
   | { readonly kind: 'ok'; readonly amount: number }
   | { readonly kind: 'invalid'; readonly reason: string }
 
+/** The server's text limits (`_Note`/`_Reason` 2000, `_Statement` 4000). */
+const NOTE_MAX = 2000
+const STATEMENT_MAX = 4000
+
 /** The server's limit on an aid amount (api/schemas/financial_aid_decisions.py `_Amount`). */
 const MAX_AMOUNT = 1_000_000
 
 /** "1,200", "$1,200.50", " 900 " → a non-negative amount, at most two places of cents. */
 export function parseMoneyInput(raw: string): MoneyInput {
-  const text = raw
-    .trim()
-    .replace(/^\$\s*/, '')
-    .replaceAll(',', '')
+  const text = raw.trim().replace(/^\$\s*/, '')
   if (text === '') return { kind: 'empty' }
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) {
-    return {
-      kind: 'invalid',
-      reason: /^\d+\.\d{3,}$/.test(text) ? 'Cents go to two places' : 'Not an amount',
-    }
-  }
-  const amount = Number(text)
+  // Commas are thousands groups only: "12,50" is not twelve-fifty, and "1,2,3" is not 123.
+  const grouped = /^\d{1,3}(,\d{3})*(\.\d+)?$/.test(text)
+  const plain = /^\d+(\.\d+)?$/.test(text)
+  if (!grouped && !plain) return { kind: 'invalid', reason: 'Not an amount' }
+  const digits = text.replaceAll(',', '')
+  if (!/^\d+(\.\d{1,2})?$/.test(digits))
+    return { kind: 'invalid', reason: 'Cents go to two places' }
+  const amount = Number(digits)
   if (amount > MAX_AMOUNT) return { kind: 'invalid', reason: 'More than $1,000,000' }
   return { kind: 'ok', amount }
 }
@@ -77,8 +79,9 @@ export type TextReasonPolicy =
       readonly kind: 'optional'
       readonly label: string
       readonly prefill: (today: string) => string
+      readonly maxLength: number
     }
-  | { readonly kind: 'required'; readonly label: string }
+  | { readonly kind: 'required'; readonly label: string; readonly maxLength: number }
 
 /** A reason picked from a fixed list, with a note where one needs it (the cancel form, slice 1). */
 export interface ChoiceReasonPolicy {
@@ -103,12 +106,13 @@ export const REASON_POLICY = {
     kind: 'optional',
     label: 'Note',
     prefill: (today: string) => `Family emailed (${formatShortDate(today)})`,
+    maxLength: NOTE_MAX,
   },
-  round3_ask: { kind: 'required', label: 'Statement of need' },
-  round3_amount: { kind: 'optional', label: 'Note', prefill: () => '' },
-  include_override: { kind: 'required', label: 'Reason' },
-  income_correction: { kind: 'required', label: 'Reason' },
-  hold: { kind: 'required', label: 'Reason' },
+  round3_ask: { kind: 'required', label: 'Statement of need', maxLength: STATEMENT_MAX },
+  round3_amount: { kind: 'optional', label: 'Note', prefill: () => '', maxLength: NOTE_MAX },
+  include_override: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
+  income_correction: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
+  hold: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
   cancel: {
     kind: 'choice',
     label: 'Cancel reason',

@@ -8,9 +8,15 @@ import { HouseholdChip, StatusPill } from './Pills'
 import { ReceiptSentence } from './Receipt'
 import type { AidTraceStep } from './receiptModel'
 
+/**
+ * One payer's share, as the preview response carries it (household, pct, amount). The chip is
+ * page-relative, so the surface supplies it; a share with neither chip nor name shows as "Another
+ * household", never a raw CampMinder id.
+ */
 export interface EditorShare {
-  readonly householdIndex: 1 | 2 | 3
-  readonly householdName: string
+  readonly householdCmId: number
+  readonly chip?: 1 | 2 | 3 | null | undefined
+  readonly householdName?: string | null | undefined
   readonly pct: number
   readonly amount: number
 }
@@ -77,12 +83,15 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
       {preview.stageChange ? (
         <span className="text-muted-foreground text-xs">Stage → {preview.stageChange}</span>
       ) : null}
-      {preview.shares?.map((share) => (
-        <span key={share.householdIndex} className="inline-flex items-center gap-1 text-xs">
-          <HouseholdChip index={share.householdIndex} name={share.householdName} /> {share.pct}% ·{' '}
-          <Money value={share.amount} />
-        </span>
-      ))}
+      {preview.shares?.map((share) => {
+        const name = share.householdName ?? 'Another household'
+        return (
+          <span key={share.householdCmId} className="inline-flex items-center gap-1 text-xs">
+            {share.chip ? <HouseholdChip index={share.chip} name={name} /> : <span>{name}</span>}{' '}
+            {share.pct}% · <Money value={share.amount} />
+          </span>
+        )
+      })}
     </span>
   )
 }
@@ -96,28 +105,55 @@ function EditorResult({ preview }: { preview: EditorPreview }) {
  * - A Round 3 above the registrar's limit says it goes to finance (D79).
  */
 export function RequestEditor(props: RequestEditorProps) {
-  const initialRaw = props.initialAmount === null ? '' : String(props.initialAmount)
-  const [raw, setRaw] = useState(initialRaw)
-  const [reason, setReason] = useState(() => initialReason(props.policy, props.today))
-  const [initialNote] = useState(() => initialReason(props.policy, props.today))
+  const noteStart = initialReason(props.policy, props.today)
+  const [raw, setRaw] = useState(props.initialAmount === null ? '' : String(props.initialAmount))
+  const [reason, setReason] = useState(noteStart)
+  // What "nothing typed" means: the amount and note the editor opened with, moved forward when a
+  // save finishes or an untouched field's amount is refetched. Amounts compare PARSED, so "1,200"
+  // over 1200 is not an edit.
+  const [base, setBase] = useState<{ amount: number | null; note: string }>({
+    amount: props.initialAmount,
+    note: noteStart,
+  })
+  const [seenInitial, setSeenInitial] = useState(props.initialAmount)
   const [tried, setTried] = useState(false)
   const amountRef = useRef<HTMLInputElement>(null)
   // Set by a save; cleared by an edit or by a save finishing. A second Enter before either is
   // ignored, re-render or not.
   const submitted = useRef(false)
   const wasSaving = useRef(false)
+  const lastSaved = useRef<{ amount: number; note: string } | null>(null)
   const parsed = parseMoneyInput(raw)
+
+  const untouched =
+    reason === base.note &&
+    (parsed.kind === 'ok'
+      ? parsed.amount === base.amount
+      : parsed.kind === 'empty' && base.amount === null)
+
+  if (props.initialAmount !== seenInitial) {
+    setSeenInitial(props.initialAmount)
+    if (untouched) {
+      setRaw(props.initialAmount === null ? '' : String(props.initialAmount))
+      setBase({ amount: props.initialAmount, note: base.note })
+    }
+  }
 
   useEffect(() => {
     amountRef.current?.focus()
   }, [])
 
   useEffect(() => {
-    if (wasSaving.current && props.saving !== true) submitted.current = false
+    if (wasSaving.current && props.saving !== true) {
+      submitted.current = false
+      if (lastSaved.current) {
+        setBase(lastSaved.current)
+        lastSaved.current = null
+      }
+    }
     wasSaving.current = props.saving === true
   }, [props.saving])
 
-  const untouched = raw === initialRaw && reason === initialNote
   const problem =
     parsed.kind === 'invalid'
       ? parsed.reason
@@ -133,27 +169,39 @@ export function RequestEditor(props: RequestEditorProps) {
     if (problem !== null || parsed.kind !== 'ok' || props.saving === true || submitted.current)
       return null
     submitted.current = true
+    lastSaved.current = { amount: parsed.amount, note: reason }
     return { amount: parsed.amount, reason: reason.trim() }
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // Not a modified key, nor one that confirms an IME composition (AidTable does the same).
+    if (
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    )
+      return
     if (event.key === 'Enter') {
       event.preventDefault()
       if (event.repeat) return
       const save = takeSave()
       if (save) props.onSave(save)
-    } else if (event.key === 'ArrowDown' && props.onMove) {
+    } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && props.onMove) {
       event.preventDefault()
-      if (untouched) {
-        props.onMove(1, null)
-        return
-      }
+      // A held arrow must not walk the table.
       if (event.repeat) return
-      const save = takeSave()
-      if (save) props.onMove(1, save)
-    } else if (event.key === 'ArrowUp' && props.onMove && untouched) {
-      event.preventDefault()
-      props.onMove(-1, null)
+      if (event.key === 'ArrowDown') {
+        if (untouched) {
+          props.onMove(1, null)
+          return
+        }
+        const save = takeSave()
+        if (save) props.onMove(1, save)
+      } else if (untouched) {
+        props.onMove(-1, null)
+      }
     } else if (event.key === 'Escape') {
       event.preventDefault()
       props.onCancel()
@@ -164,7 +212,7 @@ export function RequestEditor(props: RequestEditorProps) {
     <div
       className={
         props.layout === 'card'
-          ? 'space-y-2 text-sm'
+          ? 'flex flex-col items-start gap-2 text-sm'
           : 'flex flex-wrap items-center gap-x-5 gap-y-2 text-sm'
       }
     >
@@ -190,10 +238,17 @@ export function RequestEditor(props: RequestEditorProps) {
       </label>
       <EditorResult preview={props.preview} />
       {props.policy.kind !== 'none' && (
-        <label className="flex min-w-[16rem] flex-1 items-center gap-2">
+        <label
+          className={
+            props.layout === 'card'
+              ? 'flex items-center gap-2'
+              : 'flex min-w-[16rem] flex-1 items-center gap-2'
+          }
+        >
           {props.policy.label}
           <input
             type="text"
+            maxLength={props.policy.maxLength}
             value={reason}
             onChange={(event) => {
               submitted.current = false
