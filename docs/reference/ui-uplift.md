@@ -93,3 +93,13 @@ Four across is the shortest, keeps every program visible, and takes a fifth prog
 - **Filter by permission:** both `PROGRAM_BUTTONS` and `PROGRAM_CARDS` list only the programs the user can open, and `RootRedirect` (`App.tsx`) falls back when a saved program is no longer permitted.
 - **The landing card itself:** the mockup used a berry colour (`hsl(330 55% 42%)` light, `hsl(330 65% 72%)` dark — needs adding as a theme token), lucide's `HandHeart` icon, and "Financial aid applications and awards" with the features *Application review*, *Award rounds against the budget* and *Grantor ledger*. All proposals, not decisions.
 - **The grid:** cards are a fixed 295px with 20px gaps (the mockup's size), so four across is 1240px — wider than the `lg` breakpoint leaves room for. Use `lg:grid-cols-[repeat(2,295px)]` and `xl:grid-cols-[repeat(4,295px)]`. Because cards are filtered by permission, a user who cannot open Camperships still sees three.
+
+### 2026-10-01 — Users page (System Access)
+
+**Surface:** `/users` — a working admin page, so no house effect (rule 6).
+
+**Mocked:** an interactive mock with a knob per open choice (header, row density, page size, filter buckets, avatars, manage style, roles layout, permissions layout, wording, screen-link placement, pager placement, drawer behaviours) and live fold arithmetic at 1920×1080, 1440×900 and 1366×768.
+
+**Chosen:** tabs inside the forest band (counts in the tab labels, no big number); a compact one-line-per-person table, 15 per page, pager in the toolbar so a page fits 1440×900; bucket filters (All · Admin · Executive · Other roles · No role) instead of one button per role, so the toolbar never widens; a permissions × roles matrix with the permission column pinned for horizontal scroll; permissions as cards per area in their own scroll box, plain verb-first wording, screen links in a ruled "Find it in" subsection; review-then-save drawers that show who gains and loses what before anything is written.
+
+**Rejected:** role cards (asymmetric, and the per-permission detail belongs on the Permissions tab); roles-as-rows hybrid matrix (cleaner as permissions-as-rows); per-role filter buttons; the glow card (working surface); avatars as a way to tell people apart (in prod nearly everyone shares Pocket ID's default).
