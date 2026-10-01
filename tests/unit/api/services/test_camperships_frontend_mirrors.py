@@ -31,3 +31,29 @@ def test_the_appeal_refusals_are_the_writes_own() -> None:
     assert _ask_refusal({1: RoundState(round=1)}, 2) == words["round1_not_posted"]
     assert _ask_refusal({1: posted, 3: RoundState(round=3, posted=True)}, 2) == words["round3_posted"]
     assert CANCELLED_IN_KINDRED == words["cancelled_in_kindred"]
+
+
+def test_the_live_request_statuses_and_their_refusal_are_the_writes_own() -> None:
+    """A request not in a live status takes no ask; the grid's editor row says so in the write's words."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from api.services.financial_aid_decisions_service import (
+        LIVE_STATUSES,
+        DecisionRefusedError,
+        FinancialAidDecisionsService,
+    )
+
+    assert sorted(MIRRORS["live_request_statuses"]) == sorted(LIVE_STATUSES)
+
+    async def fetch_request(_request_id: str) -> Any:
+        return SimpleNamespace(status="withdrawn")
+
+    service = object.__new__(FinancialAidDecisionsService)
+    service._store = SimpleNamespace(fetch_request=fetch_request)  # type: ignore[assignment]
+    try:
+        asyncio.run(service._live("reqx"))
+    except DecisionRefusedError as refusal:
+        assert str(refusal) == MIRRORS["ask_refusals"]["not_live"].replace("{status}", "withdrawn")
+    else:
+        raise AssertionError("a withdrawn request must be refused")

@@ -1,5 +1,5 @@
 import { ListChecks } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { ACTION_LINK, AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
@@ -66,8 +66,11 @@ export default function AidRequestsPage() {
   const [highlighted, setHighlighted] = useState<string | null>(rowParam)
   // The URL follows each highlight move directly (replace); nothing mirrors it in an effect, so
   // nothing can race a navigation that follows.
+  // The last key `onHighlight` set, so "Go back" can tell whether the walk really moved there.
+  const lastMoved = useRef<string | null>(null)
   const onHighlight = useCallback(
     (key: string | null) => {
+      lastMoved.current = key
       setHighlighted(key)
       setParam('row', key)
     },
@@ -148,8 +151,21 @@ export default function AidRequestsPage() {
   // A row the table's search hides needs nothing: AidTable keeps the highlighted row through a
   // search (PR 1), out of the totals, group counts and CSV.
   const goBack = (key: string) => {
-    if (!visibleKeys.has(key)) void navigate(aidHref('/aid/requests', viewState, { view: 'all' }))
+    lastMoved.current = null
+    // Move first: the walk's own `?row=` replace reads the URL as rendered, so a navigation made
+    // before it would be overwritten. The push after it carries `row` itself and wins.
     walk.onHighlight(key)
+    // Read through a function: TypeScript would narrow the ref to the null just written above.
+    const movedTo = (): string | null => lastMoved.current
+    if (movedTo() === key && !visibleKeys.has(key)) {
+      void navigate(
+        aidHref('/aid/requests', viewState, {
+          view: 'all',
+          row: key,
+          ...(showIds ? { ids: '1' } : {}),
+        })
+      )
+    }
   }
 
   // The filters and Show IDs travel with every link out (view links, and the household page and
@@ -238,7 +254,7 @@ export default function AidRequestsPage() {
               ? failedRow.camper_name
               : failedRow.family_name
         return (
-          <p key={key} className={`${AMBER_NOTE} flex flex-wrap items-center gap-2 text-sm`}>
+          <p key={key} className={`${AMBER_NOTE} flex flex-wrap items-center gap-2`}>
             {`Couldn't save ${name}'s Round 2 ask: ${message}`}
             <button type="button" className={ACTION_LINK} onClick={() => goBack(key)}>
               Go back

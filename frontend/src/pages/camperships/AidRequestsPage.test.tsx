@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
+import { GRID_ROWS, roundOut } from '../../components/camperships/requests/gridFixtures'
 import type { ApiAidGrid, ApiAidRemaining } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
@@ -375,7 +375,7 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
       data: { ...LIVE, rows: LIVE.rows.filter((r) => r.request_id !== 'reqolivia000003') },
     }
     await userEvent.click(sessionCell('Emma Johnson'))
-    expect(screen.queryByText(/Couldn't save Olivia Chen/)).toBeNull()
+    expect(screen.queryByText(/Couldn't save/)).toBeNull()
     await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
     await waitFor(() =>
       expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000003')
@@ -391,5 +391,102 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
       'data-highlighted',
       'true'
     )
+  })
+
+  it('lets staff dismiss a refusal on a row that can no longer be keyed, and every exit works again (C1)', async () => {
+    keyAsk.mockImplementationOnce(() => {
+      // Meanwhile Round 2 was posted elsewhere: the refetch has the row un-keyable.
+      grid = {
+        ...grid,
+        data: {
+          ...LIVE,
+          rows: LIVE.rows.map((r) =>
+            r.request_id === 'reqolivia000003'
+              ? { ...r, rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 1300 })] }
+              : r
+          ),
+        },
+      }
+      return Promise.reject(new Error("Round 2 is posted; its ask can't change"))
+    })
+    renderAt('/aid/requests')
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300{ArrowDown}')
+    const dismiss = await screen.findByRole('button', { name: 'Dismiss' })
+    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+    await userEvent.click(dismiss)
+    expect(screen.queryByText(/Couldn't save/)).toBeNull()
+    await userEvent.click(viewLink('Appeals'))
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('view=appeals'))
+    await userEvent.click(screen.getByRole('link', { name: 'The Chen Family' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005')
+    )
+  })
+
+  it('goes back to a failed row a filter now hides, on All, keeping Show IDs (I2, M5)', async () => {
+    let fail: ((error: Error) => void) | undefined
+    keyAsk.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject: (error: Error) => void) => {
+          fail = reject
+        })
+    )
+    renderAt('/aid/requests?pool=pool_a&ids=1')
+    await userEvent.click(sessionCell('Samuel Johnson'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    await userEvent.click(sessionCell('Riley Sam'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1')
+    // A refetch moves Samuel out of pool A while his save is refused.
+    grid = {
+      ...grid,
+      data: {
+        ...LIVE,
+        rows: LIVE.rows.map((r) =>
+          r.request_id === 'reqsamuel000005' ? { ...r, pool: 'pool_b' } : r
+        ),
+      },
+    }
+    await act(async () => fail?.(new Error('The server is down')))
+    expect(screen.queryByText('Samuel Johnson')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
+    )
+    expect(screen.getByTestId('where')).not.toHaveTextContent('pool=')
+    expect(screen.getByTestId('where')).toHaveTextContent('ids=1')
+    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+    // Saved, the failure clears and the exits work.
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(screen.queryByText(/Couldn't save/)).toBeNull())
+    await userEvent.click(
+      within(screen.getByText('Samuel Johnson').closest('tr') as HTMLElement).getByRole('link', {
+        name: 'The Johnson Family',
+      })
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000001')
+    )
+  })
+
+  it('goes back to a failed row that is still on screen, with its typed amount (regression guard)', async () => {
+    let fail: ((error: Error) => void) | undefined
+    keyAsk.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject: (error: Error) => void) => {
+          fail = reject
+        })
+    )
+    renderAt('/aid/requests')
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300{ArrowDown}1')
+    await act(async () => fail?.(new Error('The server is down')))
+    await userEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
   })
 })
