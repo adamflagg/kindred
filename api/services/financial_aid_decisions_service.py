@@ -291,6 +291,9 @@ class PricingRules(Protocol):
     async def approved_as_of(
         self, year: int, sections: Collection[SectionName], at: datetime
     ) -> RulesVersion | None: ...
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]: ...
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
     ) -> tuple[list[AidWrite], list[SectionName]]: ...
@@ -1090,6 +1093,15 @@ class FinancialAidDecisionsService:
             return await self._rules.approved_as_of(year, PRICING_SECTIONS, at), ()
         except RulesHistoryIncompleteError:
             return None, tuple(_gaps(["rules_history"]))
+
+    async def rules_on(
+        self, year: int, days: Collection[date]
+    ) -> tuple[dict[date, RulesVersion | None], frozenset[date]]:
+        """The rules version that priced the season at the end of each day (camp time), from one read of the
+        rules history (D16b), and apart, the days whose history can't be replayed."""
+        ends = {as_of_instant(day): day for day in days}
+        found, unknown = await self._rules.approved_as_of_each(year, PRICING_SECTIONS, ends.keys())
+        return {ends[at]: version for at, version in found.items()}, frozenset(ends[at] for at in unknown)
 
     async def past_season(self, year: int, day: date, axis: AsOfAxis = "campminder") -> Season:
         """The season by the end of `day`, camp time (3c-1): the events and hold events recorded by

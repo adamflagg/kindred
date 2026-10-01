@@ -3,6 +3,7 @@ overrides in full, the lines left at family level, and the source registry. Fict
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -12,7 +13,19 @@ import pytest
 
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_reconciliation import SplitPart
-from api.services.financial_aid_to_place import LeftLine, LineDetail, OverrideRow, SourceRow
+from api.services.financial_aid_to_place import (
+    GrantLineRow,
+    LeftLine,
+    LineDetail,
+    LinkRow,
+    OverrideRow,
+    SinceCorrection,
+    SinceLog,
+    SinceRecords,
+    SourceRow,
+    Synced,
+    SyncRemoval,
+)
 
 YEAR = 2027
 
@@ -134,3 +147,126 @@ async def test_source_rows_say_whether_each_description_is_classified_aid() -> N
         ),
     }
     pb.collection.assert_called_with("aid_sources")
+
+
+# --- D16b: what changed since a posting day -------------------------------------------------------------------
+
+FLOOR = datetime(2027, 3, 9, 7, 59, 59, 999999, tzinfo=UTC)  # the end of Mar 8, camp time
+LATER = "2027-03-09 17:00:00.000Z"
+EARLIER = "2027-02-01 17:00:00.000Z"
+
+
+def _by_collection(
+    rows: dict[str, list[Any]],
+) -> tuple[FinancialAidDecisionsRepository, dict[str, list[dict[str, Any]]]]:
+    """A PocketBase whose every collection answers its own rows, recording each read's query."""
+    queries: dict[str, list[dict[str, Any]]] = {}
+    pb = MagicMock()
+
+    def collection(name: str) -> MagicMock:
+        handle = MagicMock()
+
+        def get_full_list(*args: Any, query_params: dict[str, Any], **kwargs: Any) -> list[Any]:
+            queries.setdefault(name, []).append(query_params)
+            return rows.get(name, [])
+
+        handle.get_full_list.side_effect = get_full_list
+        return handle
+
+    pb.collection.side_effect = collection
+    return FinancialAidDecisionsRepository(pb), queries
+
+
+def _row(**fields: Any) -> SimpleNamespace:
+    return SimpleNamespace(**fields)
+
+
+@pytest.mark.asyncio
+async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_after_the_floor() -> None:
+    repo, queries = _by_collection(
+        {
+            "aid_change_log": [
+                _row(entity="aid_requests", entity_id="reqemma00000001", action="update", created=LATER),
+            ],
+            "aid_application_corrections": [_row(application="app000001000001", request="", created=LATER)],
+            "attendees": [
+                _row(
+                    person_id=1000011,
+                    created=EARLIER,
+                    updated=LATER,
+                    expand={"person": _row(household_id=1000001), "session": _row(cm_id=1000101)},
+                )
+            ],
+            "person_custom_values": [_row(created=LATER, updated=LATER, expand={"person": _row(cm_id=1000011)})],
+            "camp_sessions": [_row(cm_id=1000101, created=EARLIER, updated=LATER)],
+            "aid_postings": [
+                _row(
+                    transaction_cm_id=7001,
+                    household_cm_id=1000001,
+                    person_cm_id=1000011,
+                    attributed_person_cm_id=0,
+                    effective_source_key="regional grant",
+                    created=EARLIER,
+                    updated=LATER,
+                )
+            ],
+            "aid_sources": [_row(description_key="regional grant", created=EARLIER, updated=LATER)],
+            "aid_household_links": [
+                _row(household_cm_id=1000001, family_key="fam-a", excluded=False, created=EARLIER, updated=EARLIER)
+            ],
+            "sync_runs": [_row(service="persons", ended=LATER)],
+        }
+    )
+    records = await repo.fetch_changed_since(YEAR, FLOOR, persons=False)
+    at = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
+    before = datetime(2027, 2, 1, 17, 0, tzinfo=UTC)
+    assert records == SinceRecords(
+        log=(SinceLog("aid_requests", "reqemma00000001", "update", at),)
+        * 2,  # the plain read and the before/after read
+        corrections=(SinceCorrection("app000001000001", "", at),),
+        synced=(
+            Synced("attendees", at, person_cm_id=1000011, household_cm_id=1000001, session_cm_id=1000101),
+            Synced("person_custom_values", at, person_cm_id=1000011),
+            Synced("camp_sessions", at, session_cm_id=1000101),
+            Synced("aid_sources", at, key="regional grant"),
+        ),
+        grant_lines=(GrantLineRow(7001, 1000001, 1000011, 0, "regional grant", before, at),),
+        links=(LinkRow(1000001, "fam-a", False, before),),
+        removals=(SyncRemoval("persons", at),),
+    )
+    assert "persons" not in queries  # the rules read no person field: persons' daily churn is not read at all
+    since = "'2027-03-09 07:59:59.999Z'"
+    for name, reads in queries.items():
+        for query in reads:
+            assert len(query["filter"]) < 3500, name
+            if name not in ("aid_sources", "sync_runs"):
+                assert f"year = {YEAR}" in query["filter"], name
+            if name != "aid_household_links":  # every link is read: the family is today's
+                assert since in query["filter"], name
+    assert "field_definition.cm_id" in queries["person_custom_values"][0]["filter"]  # equity fields only
+    assert "funder_type != 'camp'" in queries["aid_postings"][0]["filter"]  # camp aid never prices
+    runs = queries["sync_runs"][0]["filter"]
+    assert "deleted_count > 0" in runs
+    for service in (
+        "attendees",
+        "persons",
+        "person_custom_values",
+        "person_custom_values_family_camp",
+        "sessions",
+        "aid_postings",
+    ):
+        assert f"service = '{service}'" in runs
+    logs = [q["filter"] for q in queries["aid_change_log"]]
+    assert all("aid_rules" not in f for f in logs)
+    assert sorted("before" in q["fields"] for q in queries["aid_change_log"]) == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_persons_are_read_only_when_the_rules_read_a_person_field() -> None:
+    repo, queries = _by_collection(
+        {"persons": [_row(cm_id=1000011, household_id=1000001, created=EARLIER, updated=LATER)]}
+    )
+    records = await repo.fetch_changed_since(YEAR, FLOOR, persons=True)
+    at = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
+    assert records.synced == (Synced("persons", at, person_cm_id=1000011, household_cm_id=1000001),)
+    assert len(queries["persons"]) == 1

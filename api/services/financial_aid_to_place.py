@@ -27,17 +27,18 @@ amount it locked (D12). Two candidates the evidence can't tell apart get no sugg
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import ROUND_FLOOR, Decimal
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
 from api.services.financial_aid_grants_register import (
     LIVE_REQUEST_STATUSES,
     Placement,
     program_family_for_session_type,
 )
+from api.services.financial_aid_ledger_service import as_of_cutoff, family_household_set, parse_pb_datetime
 from api.services.financial_aid_reconciliation import (
     CampLine,
     LedgerTick,
@@ -60,6 +61,7 @@ from bunking.financial_aid.money import ZERO
 
 if TYPE_CHECKING:  # annotations only: the repository imports this module, and must not import the service
     from api.services.financial_aid_decisions_service import Season
+    from api.services.financial_aid_rules_service import RulesVersion
 
 # Go's posting flag for a description naming a program the camper isn't in (pocketbase/sync/aid_flags.go).
 MISMATCH_FLAG: Final = "implied_program_mismatch"
@@ -434,3 +436,363 @@ def placement_outcome(
     priced = reclaw(season, ledger, list(dict.fromkeys(request_ids)))
     ticks = ledger_ticks(priced, ledger, today=today, undone=season.undone)
     return Outcome(ledger, tuple(priced), tuple(ticks))
+
+
+# --- D16 option (b): a placement locks at the posting day's amount, or refuses -----------------------------------
+
+ChangedCode = Literal[
+    "rules",
+    "rules_history",
+    "request",
+    "application",
+    "correction",
+    "payer_shares",
+    "decision",
+    "hold",
+    "cancellation",
+    "grant",
+    "enrollment",
+    "equity",
+    "session",
+    "removed_by_sync",
+    "too_long_ago",
+]
+# The CampMinder syncs that delete rows pricing reads (sync_runs.service): registrations, people and their
+# households, the equity custom field (both scopes), sessions, and the grant lines with Go's household links.
+REMOVAL_SERVICES: Final = frozenset(
+    {"attendees", "persons", "person_custom_values", "person_custom_values_family_camp", "sessions", "aid_postings"}
+)
+
+
+@dataclass(frozen=True)
+class ChangedReason:
+    """Why Kindred can't be sure a round's amount is what it was decided at on the posting day."""
+
+    code: ChangedCode
+    text: str
+
+
+@dataclass(frozen=True)
+class SinceLog:
+    """One aid_change_log row recorded after the floor. `before`/`after` are read only for the entities whose
+    records name a grant's household or person (overrides, commitments, household links)."""
+
+    entity: str
+    entity_id: str
+    action: str
+    created: datetime
+    before: Mapping[str, Any] | None = None
+    after: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class SinceCorrection:
+    """An aid_application_corrections row made after the floor (its own `created`)."""
+
+    application_id: str
+    request_id: str
+    created: datetime
+
+
+@dataclass(frozen=True)
+class Synced:
+    """A CampMinder-synced record created or changed after the floor, at the later of its created and
+    updated: attendees, persons, person_custom_values (equity fields only), camp_sessions, aid_sources."""
+
+    collection: str
+    at: datetime
+    person_cm_id: int = 0
+    household_cm_id: int = 0
+    session_cm_id: int = 0
+    key: str = ""  # aid_sources: the description key
+
+
+@dataclass(frozen=True)
+class GrantLineRow:
+    """A non-camp aid_postings row (an outside grant line) created or changed after the floor."""
+
+    transaction_cm_id: int
+    household_cm_id: int
+    person_cm_id: int
+    attributed_person_cm_id: int
+    source_key: str
+    created: datetime | None
+    updated: datetime | None
+
+
+@dataclass(frozen=True)
+class LinkRow:
+    """An aid_household_links row: every one of the season's, as family_household_set reads them."""
+
+    household_cm_id: int
+    family_key: str
+    excluded: bool
+    at: datetime | None  # the later of its created and updated
+
+
+@dataclass(frozen=True)
+class SyncRemoval:
+    """A sync run that deleted records and ended after the floor."""
+
+    service: str
+    ended: datetime
+
+
+@dataclass(frozen=True)
+class SinceRecords:
+    """What the store reads once per To place read or write: everything recorded after a floor."""
+
+    log: tuple[SinceLog, ...] = ()
+    corrections: tuple[SinceCorrection, ...] = ()
+    synced: tuple[Synced, ...] = ()
+    grant_lines: tuple[GrantLineRow, ...] = ()
+    links: tuple[LinkRow, ...] = ()
+    removals: tuple[SyncRemoval, ...] = ()
+
+
+@dataclass(frozen=True)
+class SinceInputs:
+    """changed_since's loads: the records after the earliest posting day in hand, the rules that priced the
+    season at the end of each posting day (`rules_unknown`: the days whose rules history can't be replayed),
+    when the sync history starts (sync_runs is pruned), and now."""
+
+    now: datetime
+    history_from: datetime
+    records: SinceRecords
+    rules_at: Mapping[date, RulesVersion | None]
+    rules_unknown: frozenset[date] = frozenset()
+
+
+_INSTANT: Final = timedelta(microseconds=1)
+_PERSON_FIELDS: Final = frozenset({"gender_identity", "pronouns"})  # camper equity answers read from `persons`
+_NOT_PRICING: Final = frozenset({"accept", "unaccept"})  # Accepted is recorded, never priced (pricing.py)
+_TEXT: Final[Mapping[ChangedCode, str]] = {
+    "rules": "the pricing rules changed",
+    "rules_history": "Kindred can't replay the pricing rules' history to that day",
+    "request": "a request in this family was changed",
+    "application": "the application was changed",
+    "correction": "a correction was entered",
+    "payer_shares": "the payer shares were changed",
+    "decision": "a round's ask, amount or decision was recorded",
+    "hold": "a hold was placed or released",
+    "cancellation": "the request was cancelled or reopened in Kindred",
+    "grant": "an outside grant was posted, reversed or moved",
+    "enrollment": "a registration changed in CampMinder",
+    "equity": "the camper's equity answers changed in CampMinder",
+    "session": "the session changed in CampMinder",
+    "removed_by_sync": "CampMinder records were removed by a sync since",
+    "too_long_ago": "the posting is older than Kindred's 90-day sync history",
+}
+
+
+def _end_of(day: date) -> datetime:
+    """The last instant of `day` in camp time, as the decisions service's as_of_instant (3c Decision 5)."""
+    return as_of_cutoff(day) - _INSTANT
+
+
+def _day(moment: datetime) -> str:
+    on = camp_date(moment)
+    return f"{on:%b} {on.day}"
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except TypeError, ValueError:
+        return 0
+
+
+def reads_person_fields(rules: RulesVersion | None) -> bool:
+    """Whether the rules weigh a camper answer read from `persons` (gender identity, pronouns), whose
+    `updated` CampMinder touches daily; only then does a persons change count."""
+    if rules is None:
+        return False
+    return any(
+        c.source == "camper" and ({c.field, *c.also_fields} & _PERSON_FIELDS) for c in rules.document.equity.criteria
+    )
+
+
+def _named(record: Mapping[str, Any] | None, field: str) -> set[int]:
+    """The ids a logged record names in `field`, and in each part of its split."""
+    if not record:
+        return set()
+    found = {_int(record.get(field))}
+    split = record.get("split")
+    if isinstance(split, list):
+        found |= {_int(part.get(field)) for part in split if isinstance(part, Mapping)}
+    return found - {0}
+
+
+def _names_grant(
+    log: SinceLog,
+    camp: Collection[int],
+    lines: Collection[int],
+    commitments: Collection[str],
+    grantors: Collection[str],
+    households: Collection[int],
+    people: Collection[int],
+    keys: Collection[str],
+) -> bool:
+    """Whether a logged staff write moved a grant in this family: a placement or split of an outside grant line
+    (never a camp-aid line's: camp aid doesn't price), a commitment, a grantor, a household link."""
+    before, after = log.before, log.after
+
+    def named(field: str) -> set[int]:
+        return _named(before, field) | _named(after, field)
+
+    if log.entity == "aid_attribution_overrides":
+        txns = named("transaction_cm_id")
+        moved = named("attributed_person_cm_id") | named("person_cm_id")
+        return not txns <= set(camp) and bool(txns & set(lines) or moved & set(people))
+    if log.entity == "aid_grants":
+        return log.entity_id in commitments or bool(
+            named("household_cm_id") & set(households) or named("person_cm_id") & set(people)
+        )
+    if log.entity == "aid_grantors":
+        return log.entity_id in grantors
+    if log.entity == "aid_household_links":
+        linked = {str(r.get("family_key")) for r in (before, after) if r and r.get("family_key")}
+        return bool(named("household_cm_id") & set(households) or linked & set(keys))
+    return False
+
+
+def _grant_moments(
+    season: Season,
+    request_id: str,
+    households: frozenset[int],
+    people: frozenset[int],
+    cut: datetime,
+    since: SinceInputs,
+) -> list[datetime]:
+    """When anything that places an outside grant on this request changed after `cut`. One function, so 3c-2's
+    logged grant placements can replace it in place with one exact comparison (d16b design §7)."""
+    rows = [
+        r
+        for r in season.register
+        if r.household_cm_id in households
+        or r.person_cm_id in people
+        or any(s.request_id == request_id for s in r.requests)
+    ]
+    lines = {r.transaction_cm_id for r in rows if r.kind == "ledger"} | {
+        g.transaction_cm_id
+        for g in since.records.grant_lines
+        if g.household_cm_id in households or ({g.person_cm_id, g.attributed_person_cm_id} & people)
+    }
+    commitments = {r.commitment_id for r in rows if r.kind == "commitment"}
+    grantors = {r.grantor_key for r in rows if r.grantor_key}
+    sources = {r.source_key for r in rows if r.source_key} | {
+        g.source_key for g in since.records.grant_lines if g.transaction_cm_id in lines
+    }
+    camp = {line.transaction_cm_id for line in season.camp_lines}
+    keys = {link.family_key for link in since.records.links if link.household_cm_id in households}
+    moments: list[datetime] = []
+    for grant in rows:  # CampMinder's own dates (the campminder axis): posted or reversed after the posting day
+        if grant.recorded_at is not None and grant.recorded_at > cut:
+            moments.append(grant.recorded_at)
+        reversed_at = parse_pb_datetime(grant.reversal_date) if grant.reversal_date else None
+        if reversed_at is not None and camp_date(reversed_at) > camp_date(cut):
+            moments.append(reversed_at)
+    moments.extend(  # Go rewrote the row (reclassified, re-attributed, re-amounted), not merely created it
+        g.updated
+        for g in since.records.grant_lines
+        if g.transaction_cm_id in lines and g.updated is not None and g.updated > cut and g.updated != g.created
+    )
+    moments.extend(
+        log.created
+        for log in since.records.log
+        if log.created > cut and _names_grant(log, camp, lines, commitments, grantors, households, people, keys)
+    )
+    moments.extend(  # a link created, re-keyed or excluded since: the family itself moved
+        link.at
+        for link in since.records.links
+        if link.at is not None and link.at > cut and (link.household_cm_id in households or link.family_key in keys)
+    )
+    moments.extend(
+        synced.at
+        for synced in since.records.synced
+        if synced.collection == "aid_sources" and synced.at > cut and synced.key in sources
+    )
+    return moments
+
+
+def changed_since(season: Season, tick: LedgerTick, since: SinceInputs) -> tuple[ChangedReason, ...]:
+    """Why Kindred can't be sure `tick.amount` is what the round was decided at on tick.posted_on (D16b,
+    owner ruling 2026-10-01): every input that prices the request recorded or changed after the end of that
+    day (camp time), a sync that removed records since, or a posting older than the sync history. Empty:
+    nothing that prices the request moved, and pricing reads no clock, so today's amount is the posting day's.
+    The read's preview and the write both run this, on one load (§4.10). Conservative by design: a false
+    "changed" costs one hand tick; a false "unchanged" is what the ruling forbids."""
+    cut = _end_of(tick.posted_on)
+    if cut >= since.now:
+        return ()  # posted today: nothing can be after it (3c: today or later is live)
+    request = season.requests[tick.request_id]
+    person, household = request.person_cm_id, request.household_cm_id
+    households = frozenset(
+        {
+            *family_household_set(since.records.links, household),
+            *request_scope(request, season.shares.get(request.id, ())),
+        }
+    )
+    people = frozenset({person} - {0})
+    family = {
+        rid
+        for rid, r in season.requests.items()
+        if (person > 0 and r.person_cm_id == person) or (r.person_cm_id == 0 and r.household_cm_id in households)
+    } | {request.id}
+    found: dict[ChangedCode, list[datetime]] = defaultdict(list)
+    texts: dict[ChangedCode, str] = {}
+
+    rules_now = season.rules
+    if tick.posted_on in since.rules_unknown:
+        texts["rules_history"] = _TEXT["rules_history"]
+    else:
+        then = since.rules_at.get(tick.posted_on)
+        if then is None or rules_now is None:
+            texts["rules"] = f"{_TEXT['rules']} (no approved rules priced it that day)"
+        elif then.version != rules_now.version or then.document != rules_now.document:
+            texts["rules"] = f"{_TEXT['rules']} (version {then.version} then, {rules_now.version} now)"
+
+    for row in since.records.log:
+        if row.created <= cut:
+            continue
+        head = row.entity_id.split(":", 1)[0]
+        if row.entity == "aid_requests" and row.entity_id in family:
+            found["request"].append(row.created)
+        elif row.entity == "aid_applications" and row.entity_id == request.application_id:
+            found["application"].append(row.created)
+        elif row.entity == "aid_payer_shares" and head == request.id:
+            found["payer_shares"].append(row.created)
+        elif row.entity == "aid_decisions" and head == request.id and row.action not in _NOT_PRICING:
+            found["decision"].append(row.created)
+        elif row.entity == "aid_hold_events" and head == request.id:
+            found["hold"].append(row.created)
+        elif row.entity == "aid_cancellations" and row.entity_id == request.id:
+            found["cancellation"].append(row.created)
+    for correction in since.records.corrections:
+        if correction.created > cut and (
+            correction.application_id == request.application_id or correction.request_id == request.id
+        ):
+            found["correction"].append(correction.created)
+    found["grant"].extend(_grant_moments(season, request.id, households, people, cut, since))
+    person_fields = reads_person_fields(rules_now)
+    for synced in since.records.synced:
+        if synced.at <= cut:
+            continue
+        if synced.collection == "attendees" and (synced.person_cm_id in people or synced.household_cm_id in households):
+            found["enrollment"].append(synced.at)
+        elif (synced.collection == "person_custom_values" and synced.person_cm_id in people) or (
+            synced.collection == "persons" and person_fields and synced.person_cm_id in people
+        ):
+            found["equity"].append(synced.at)
+        elif synced.collection == "camp_sessions" and synced.session_cm_id == request.session_cm_id > 0:
+            found["session"].append(synced.at)
+    found["removed_by_sync"] = [
+        r.ended for r in since.records.removals if r.service in REMOVAL_SERVICES and r.ended > cut
+    ]
+    if cut < since.history_from:
+        texts["too_long_ago"] = _TEXT["too_long_ago"]
+
+    for code, moments in found.items():
+        if moments:
+            texts[code] = f"{_TEXT[code]} ({_day(min(moments))})"
+    return tuple(ChangedReason(code, texts[code]) for code in get_args(ChangedCode) if code in texts)

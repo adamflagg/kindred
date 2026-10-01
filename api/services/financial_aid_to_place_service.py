@@ -25,13 +25,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Collection, Mapping, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Final, Protocol
 
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOSITIONS
 from api.schemas.financial_aid_to_place import (
     CandidateOut,
+    ChangedSinceOut,
     EvidenceOut,
     LeaveLineIn,
     LeftToTickOut,
@@ -55,10 +56,12 @@ from api.services.financial_aid_decisions_service import (
     DecisionRefusedError,
     FinancialAidDecisionsService,
     Season,
+    as_of_instant,
 )
 from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_reconciliation import (
+    LedgerTick,
     SeasonLedger,
     SplitPart,
     camp_date,
@@ -71,16 +74,21 @@ from api.services.financial_aid_to_place import (
     REASONS,
     TO_PLACE_FLAG,
     Candidate,
+    ChangedReason,
     LeftLine,
     LineDetail,
     Outcome,
     OverrideRow,
     Reason,
+    SinceInputs,
+    SinceRecords,
     SourceRow,
     Suggestion,
     ToPlaceItem,
+    changed_since,
     page_scope,
     placement_outcome,
+    reads_person_fields,
     to_place,
 )
 from bunking.financial_aid.change_diff import changed_fields
@@ -97,12 +105,17 @@ GROUP_LABELS: Final[dict[Reason, str]] = {
 
 PENDING_RECLASS: Final = "its reclassification waits for tonight's ledger sync"
 
+# sync_runs keeps 90 days (pocketbase/sync/sync_runs.go SyncRunRetentionDays); a day's margin, so a posting near
+# the edge refuses rather than trusting a removal record that may already be pruned (D16b).
+SYNC_HISTORY: Final = timedelta(days=89)
+
 
 class ToPlaceStore(Protocol):
     async def fetch_line_details(self, year: int) -> dict[int, LineDetail]: ...
     async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]: ...
     async def fetch_left_lines(self, year: int) -> dict[int, LeftLine]: ...
     async def fetch_source_rows(self) -> dict[str, SourceRow]: ...
+    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
@@ -187,6 +200,20 @@ def _suggested(
     return {}, {txn: tuple(by_id[p.request_id].part(p.amount) for p in suggestion.parts)}
 
 
+def _joined(texts: Sequence[str]) -> str:
+    return texts[0] if len(texts) == 1 else f"{', '.join(texts[:-1])} and {texts[-1]}"
+
+
+def changed_text(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[ChangedReason]) -> str:
+    """D16b's refusal for one line and one round (owner ruling 2026-10-01): the registrar ticks it by hand."""
+    n, day = tick.round, f"{tick.posted_on:%b} {tick.posted_on.day}"
+    return (
+        f"line {transaction_cm_id}: Round {n} of {tick.request_id} isn't ticked by placing it: since CampMinder "
+        f"posted it on {day}, {_joined([r.text for r in reasons])}, so Kindred can't tell what Round {n} was decided "
+        f"at that day. Tick Round {n} Posted by hand at the amount that was right then, then place the line"
+    )
+
+
 def _raced(exc: BatchRequestFailedError) -> bool:
     """Someone created the same row first (a unique index) or removed it first (404): a race, not a refusal."""
     return exc.status == 404 or any("unique" in message.lower() for message in exc.field_errors.values())
@@ -206,6 +233,28 @@ class ToPlaceService:
 
     def _today(self) -> date:
         return self._clock().astimezone(CAMP_TZ).date()
+
+    async def _since(self, season: Season, ticks: Sequence[LedgerTick]) -> SinceInputs | None:
+        """D16b's loads for these ticks, once: everything recorded after the end of the earliest posting day,
+        and the rules at the end of each. None when every tick is dated today (nothing can be after it)."""
+        now = self._clock()
+        days = sorted({t.posted_on for t in ticks if as_of_instant(t.posted_on) < now})
+        if not days:
+            return None
+        records, (rules_at, unknown) = await asyncio.gather(
+            self._store.fetch_changed_since(
+                season.year, as_of_instant(days[0]), persons=reads_person_fields(season.rules)
+            ),
+            self._decisions.rules_on(season.year, days),
+        )
+        return SinceInputs(
+            now=now, history_from=now - SYNC_HISTORY, records=records, rules_at=rules_at, rules_unknown=unknown
+        )
+
+    @staticmethod
+    def _changed(season: Season, tick: LedgerTick, since: SinceInputs | None) -> tuple[ChangedReason, ...]:
+        """The one check the preview and the write both run (§4.10)."""
+        return changed_since(season, tick, since) if since is not None else ()
 
     # --- the read ---------------------------------------------------------------------------------
 
@@ -237,18 +286,32 @@ class ToPlaceService:
             source = sources.get(key)
             return source.description if source is not None else key
 
+        outcomes: dict[int, Outcome] = {}
+        for item in items:
+            txn = item.line.transaction_cm_id
+            if item.suggestion is not None and not pending_reclass(overrides.get(txn), details.get(txn)):
+                placements, splits = _suggested(item, item.suggestion)
+                targets = [p.request_id for p in item.suggestion.parts]
+                outcomes[txn] = placement_outcome(season, placements, splits, targets, today=today)
+        since = await self._since(season, [t for outcome in outcomes.values() for t in outcome.ticks])
+
         def suggestion_out(item: ToPlaceItem) -> SuggestionOut | None:
-            if item.suggestion is None:
+            outcome = outcomes.get(item.line.transaction_cm_id)
+            if item.suggestion is None or outcome is None:
                 return None
-            placements, splits = _suggested(item, item.suggestion)
-            targets = [p.request_id for p in item.suggestion.parts]
-            outcome = placement_outcome(season, placements, splits, targets, today=today)
+            refused = [(t, reasons) for t in outcome.ticks if (reasons := self._changed(season, t, since))]
             return SuggestionOut(
                 parts=[PartOut(request_id=p.request_id, amount=money(p.amount)) for p in item.suggestion.parts],
                 evidence=[EvidenceOut(kind=e.kind, text=e.text) for e in item.suggestion.evidence],
                 would_tick=_ticked_out(outcome),
                 would_lock=money(sum((t.amount for t in outcome.ticks), ZERO)),
                 would_leave=_left_out(outcome, season),
+                changed_since=[
+                    ChangedSinceOut(
+                        request_id=t.request_id, round=t.round, posted_on=t.posted_on, reasons=[r.text for r in reasons]
+                    )
+                    for t, reasons in refused
+                ],
             )
 
         def line_out(item: ToPlaceItem, pending: str, note: str) -> ToPlaceLineOut:
@@ -471,6 +534,17 @@ class ToPlaceService:
                         else ""
                     )
                     problems.append(f"line {row.transaction_cm_id}: this part would not land on {part.request_id}{why}")
+        if problems:
+            raise DecisionRefusedError("; ".join(problems))
+        # D16 option (b), owner ruling 2026-10-01: each round locks at its decided amount as of its posting day,
+        # so a tick whose request something re-priced since that day is refused, all or nothing, line by line.
+        since = await self._since(season, outcome.ticks)
+        problems.extend(
+            changed_text(row.transaction_cm_id, tick, reasons)
+            for row in body.lines
+            for tick in outcome.ticks
+            if tick.request_id in {p.request_id for p in row.parts} and (reasons := self._changed(season, tick, since))
+        )
         if problems:
             raise DecisionRefusedError("; ".join(problems))
         locking = sum((t.amount for t in outcome.ticks), ZERO)

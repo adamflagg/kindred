@@ -2187,6 +2187,32 @@ export type CellOut = {
 }
 
 /**
+ * ChangedSinceOut
+ *
+ * A round the money would tick that confirming refuses (D16 option b, owner ruling 2026-10-01): something
+ * that prices the request was recorded after the day CampMinder posted it, so Kindred can't tell what the round
+ * was decided at that day. The registrar ticks it Posted by hand at the amount that was right then.
+ */
+export type ChangedSinceOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Posted On
+   */
+  posted_on: string
+  /**
+   * Reasons
+   */
+  reasons: Array<string>
+}
+
+/**
  * CityBreakdown
  *
  * Breakdown of metrics by city.
@@ -14105,7 +14131,9 @@ export type SubjectNotesResponse = {
  *
  * Kindred's suggestion (D12): one part places the whole line, two or more split it. would_tick is what
  * confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
- * it locks); would_leave names the rounds it leaves for a person to tick, and why.
+ * it locks); would_leave names the rounds it leaves for a person to tick, and why. changed_since names the
+ * ticks confirming would refuse, from the same check the write runs: while it is not empty, confirming this
+ * line is refused, and so is any bulk confirm that includes it (all or nothing).
  */
 export type SuggestionOut = {
   /**
@@ -14128,6 +14156,10 @@ export type SuggestionOut = {
    * Would Leave
    */
   would_leave?: Array<LeftToTickOut>
+  /**
+   * Changed Since
+   */
+  changed_since?: Array<ChangedSinceOut>
 }
 
 /**

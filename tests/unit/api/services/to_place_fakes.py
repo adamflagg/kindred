@@ -14,8 +14,18 @@ import httpx
 from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOSITIONS
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import Placement, RegisterRow
+from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_reconciliation import override_split
-from api.services.financial_aid_to_place import TO_PLACE_FLAG, LeftLine, LineDetail, OverrideRow, SourceRow
+from api.services.financial_aid_to_place import (
+    TO_PLACE_FLAG,
+    LeftLine,
+    LineDetail,
+    OverrideRow,
+    SinceCorrection,
+    SinceLog,
+    SinceRecords,
+    SourceRow,
+)
 from api.services.financial_aid_to_place_service import ToPlaceService
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_line, seed_request
 
@@ -66,6 +76,8 @@ class FakeToPlaceStore(FakeDecisionsStore):
         self.left: dict[int, LeftLine] = {}
         self.sources: dict[str, SourceRow] = _sources()
         self.pending_reclass: dict[int, str] = {}  # every reclassification written, until "the sync" applies it
+        self.since = SinceRecords()  # D16b: synced records, grant lines, links and sync removals a test seeds
+        self.since_reads: list[datetime] = []  # each fetch_changed_since call's floor
 
     async def fetch_line_details(self, year: int) -> dict[int, LineDetail]:
         """Every camp-aid line: its description (Camp FA unless a test says otherwise) and Go's flags."""
@@ -84,6 +96,34 @@ class FakeToPlaceStore(FakeDecisionsStore):
 
     async def fetch_source_rows(self) -> dict[str, SourceRow]:
         return dict(self.sources)
+
+    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords:
+        """As the repository reads them, after `floor`: the decision, hold and cancellation rows this twin
+        records (each logged in the same batch, at its created), its seeded change log and corrections, and
+        whatever a test seeds in `since`."""
+        self.since_reads.append(floor)
+        log = [
+            *(SinceLog("aid_decisions", f"{e.request_id}:{e.round}", e.kind, e.created) for e in self.events),
+            *(SinceLog("aid_hold_events", f"{e.request_id}:{e.code}", e.kind, e.created) for e in self.hold_events),
+            *(SinceLog("aid_cancellations", e.request_id, e.kind, e.created) for e in self.cancel_events),
+            *(SinceLog(r.entity, r.entity_id, "", r.created, r.before, r.after) for r in self.change_log),
+            *self.since.log,
+        ]
+        corrections = [
+            SinceCorrection(c.application_id, c.request_id, created)
+            for c in self.corrections
+            if (created := parse_pb_datetime(c.created)) is not None
+        ]
+        return SinceRecords(
+            log=tuple(row for row in log if row.created > floor),
+            corrections=tuple(c for c in (*corrections, *self.since.corrections) if c.created > floor),
+            synced=tuple(s for s in self.since.synced if s.at > floor and (persons or s.collection != "persons")),
+            grant_lines=tuple(
+                g for g in self.since.grant_lines if any(t is not None and t > floor for t in (g.created, g.updated))
+            ),
+            links=self.since.links,
+            removals=tuple(r for r in self.since.removals if r.ended > floor),
+        )
 
     def apply_batch(self, requests: list[dict[str, Any]]) -> httpx.Response:
         """One transaction, as PocketBase runs a batch: every check runs before anything applies. This fake's

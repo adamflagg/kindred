@@ -97,6 +97,7 @@ export type {
   CapacityOut,
   CapacitySet,
   CellOut,
+  ChangedSinceOut,
   CityBreakdown,
   CityEnrollment,
   ClassifySourceApiFinancialAidSourcesSourceIdPatchData,

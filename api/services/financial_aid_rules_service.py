@@ -502,6 +502,44 @@ def _status_write(
     )
 
 
+def _approved_at(
+    sections: Collection[SectionName], at: datetime, current: Mapping[str, dict[str, Any]], log: Sequence[LogRow]
+) -> RulesVersion | None:
+    """approved_as_of's replay over one read: the newest version whose `sections` were approved or locked at
+    `at`. Raises RulesHistoryIncompleteError for a version whose history can't be replayed to `at`."""
+    made = {_version_key(row) for row in log if row.before is None and row.entity_id == _version_key(row)}
+    replayed = replay(log, as_of=at, key=_version_key, current=current)
+    for name in sorted({*replayed, *current}, key=lambda k: int(k.split(":")[1]), reverse=True):
+        version = replayed.get(name)
+        if version is None:
+            # No row by `at`: legitimately made later, unless its create row is missing altogether.
+            if name in made:
+                continue
+            raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history has no create to replay from")
+        if not version.complete:
+            raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
+        state = version.state
+        if state is None:
+            continue  # deleted by `at`
+        try:
+            status = status_from_json(state.get("section_status"))
+            if not all(status[section].state in ("approved", "locked") for section in sections):
+                continue
+            return RulesVersion(
+                record_id="",  # rebuilt from the log; read-only
+                year=int(state["year"]),
+                version=int(state["version"]),
+                document=AidRules.model_validate(state.get("document") or {}),
+                section_status=status,
+                parent_year=int(state.get("parent_year") or 0) or None,
+                parent_version=int(state.get("parent_version") or 0) or None,
+            )
+        except (SectionStatusMissingError, KeyError, TypeError, ValueError) as exc:
+            # ValueError covers pydantic's ValidationError
+            raise RulesHistoryIncompleteError(f"aid_rules {name}: its replayed state is malformed") from exc
+    return None
+
+
 class FinancialAidRulesService:
     def __init__(self, store: AidRulesStore, *, clock: Callable[[], datetime] | None = None) -> None:
         self._store = store
@@ -582,6 +620,26 @@ class FinancialAidRulesService:
         approval and lock is logged with its before and after, 4a), then latest_approved's rule. A
         later edit, re-approval or new version changes nothing earlier. A version whose history
         can't be replayed raises rather than letting an older version answer in its place."""
+        current, log = await self._replay_inputs(year)
+        return _approved_at(sections, at, current, log)
+
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]:
+        """approved_as_of at several instants from ONE read of the versions and the log (D16b: the rules at the
+        end of each posting day To place checks), and the instants whose history can't be replayed, apart."""
+        current, log = await self._replay_inputs(year)
+        found: dict[datetime, RulesVersion | None] = {}
+        unknown: set[datetime] = set()
+        for at in ats:
+            try:
+                found[at] = _approved_at(sections, at, current, log)
+            except RulesHistoryIncompleteError:
+                unknown.add(at)
+        return found, frozenset(unknown)
+
+    async def _replay_inputs(self, year: int) -> tuple[dict[str, dict[str, Any]], list[LogRow]]:
+        """Each version as it stands now (the replay's `current`) and the season's rules log."""
         # `current` settles two same-instant rows that changed the same field with nothing after them.
         # list_versions is read BEFORE fetch_log, so `current` never runs ahead of the log.
         current = {
@@ -591,38 +649,7 @@ class FinancialAidRulesService:
             }
             for row in await self._store.list_versions(year)
         }
-        log = await self._store.fetch_log(year)
-        made = {_version_key(row) for row in log if row.before is None and row.entity_id == _version_key(row)}
-        replayed = replay(log, as_of=at, key=_version_key, current=current)
-        for name in sorted({*replayed, *current}, key=lambda k: int(k.split(":")[1]), reverse=True):
-            version = replayed.get(name)
-            if version is None:
-                # No row by `at`: legitimately made later, unless its create row is missing altogether.
-                if name in made:
-                    continue
-                raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history has no create to replay from")
-            if not version.complete:
-                raise RulesHistoryIncompleteError(f"aid_rules {name}: its change history can't be replayed to {at}")
-            state = version.state
-            if state is None:
-                continue  # deleted by `at`
-            try:
-                status = status_from_json(state.get("section_status"))
-                if not all(status[section].state in ("approved", "locked") for section in sections):
-                    continue
-                return RulesVersion(
-                    record_id="",  # rebuilt from the log; read-only
-                    year=int(state["year"]),
-                    version=int(state["version"]),
-                    document=AidRules.model_validate(state.get("document") or {}),
-                    section_status=status,
-                    parent_year=int(state.get("parent_year") or 0) or None,
-                    parent_version=int(state.get("parent_version") or 0) or None,
-                )
-            except (SectionStatusMissingError, KeyError, TypeError, ValueError) as exc:
-                # ValueError covers pydantic's ValidationError
-                raise RulesHistoryIncompleteError(f"aid_rules {name}: its replayed state is malformed") from exc
-        return None
+        return current, await self._store.fetch_log(year)
 
     async def validate_document(self, document: AidRules) -> ValidationReport:
         """Validation against the season's synced sessions. A season with none synced

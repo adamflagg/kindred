@@ -47,16 +47,30 @@ class LeftToTickOut(BaseModel):
     why: str
 
 
+class ChangedSinceOut(BaseModel):
+    """A round the money would tick that confirming refuses (D16 option b, owner ruling 2026-10-01): something
+    that prices the request was recorded after the day CampMinder posted it, so Kindred can't tell what the round
+    was decided at that day. The registrar ticks it Posted by hand at the amount that was right then."""
+
+    request_id: str
+    round: int
+    posted_on: date
+    reasons: list[str]
+
+
 class SuggestionOut(BaseModel):
     """Kindred's suggestion (D12): one part places the whole line, two or more split it. would_tick is what
     confirming it locks, worked out by the same code the write runs (§4.10: the confirmation shows the total
-    it locks); would_leave names the rounds it leaves for a person to tick, and why."""
+    it locks); would_leave names the rounds it leaves for a person to tick, and why. changed_since names the
+    ticks confirming would refuse, from the same check the write runs: while it is not empty, confirming this
+    line is refused, and so is any bulk confirm that includes it (all or nothing)."""
 
     parts: list[PartOut]
     evidence: list[EvidenceOut]
     would_tick: list[TickedOut] = Field(default_factory=list)
     would_lock: float = 0  # the server's sum of would_tick: the client never adds floats (expected_locked, §4.10)
     would_leave: list[LeftToTickOut] = Field(default_factory=list)
+    changed_since: list[ChangedSinceOut] = Field(default_factory=list)
 
 
 class CandidateOut(BaseModel):

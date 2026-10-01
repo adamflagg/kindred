@@ -269,6 +269,15 @@ class FakeRules:
             raise self.as_of_version
         return self.as_of_version
 
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]:
+        """approved_as_of at each instant, from one call (as the rules service reads its history once)."""
+        self.as_of_calls.extend(ats)
+        if isinstance(self.as_of_version, Exception):
+            return {}, frozenset(ats)
+        return dict.fromkeys(ats, self.as_of_version), frozenset()
+
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
     ) -> tuple[list[AidWrite], list[SectionName]]:
