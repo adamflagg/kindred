@@ -5694,6 +5694,36 @@ export type HouseholdLinkRow = {
 }
 
 /**
+ * HouseholdMatchOut
+ *
+ * One household the Add-a-link picker can name (owner F3 #27; §6.3 †): its CampMinder id and name, the people on
+ * its record this season, the family keys it is linked under (aid_household_links, excluded rows left out), and the
+ * other households those keys join.
+ */
+export type HouseholdMatchOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * People
+   */
+  people: Array<string>
+  /**
+   * Family Keys
+   */
+  family_keys: Array<string>
+  /**
+   * Linked Household Cm Ids
+   */
+  linked_household_cm_ids: Array<number>
+}
+
+/**
  * HouseholdMedicalResponse
  *
  * Narrative medical text and the gate answers beside it. Served by ONE
@@ -5868,6 +5898,24 @@ export type HouseholdRequestOut = {
    * Grants Beyond Owed
    */
   grants_beyond_owed?: number | null
+}
+
+/**
+ * HouseholdSearchResponse
+ */
+export type HouseholdSearchResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Matches
+   */
+  matches: Array<HouseholdMatchOut>
+  /**
+   * Truncated
+   */
+  truncated: boolean
 }
 
 /**
@@ -22501,6 +22549,43 @@ export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponses = {
 
 export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponse =
   GetJumpIndexApiFinancialAidJumpIndexYearGetResponses[keyof GetJumpIndexApiFinancialAidJumpIndexYearGetResponses]
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query: {
+    /**
+     * Q
+     */
+    q: string
+  }
+  url: '/api/financial-aid/household-search/{year}'
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetError =
+  SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors[keyof SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors]
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdSearchResponse
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponse =
+  SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses[keyof SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses]
 
 export type GetTodayApiFinancialAidTodayYearGetData = {
   body?: never
