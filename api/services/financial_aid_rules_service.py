@@ -152,6 +152,10 @@ class SectionChangedError(FinancialAidError, ValueError):
         )
 
 
+class FingerprintsMismatchError(FinancialAidError, ValueError):
+    """An approval's fingerprints do not name exactly the sections being approved."""
+
+
 class NoSectionsNamedError(FinancialAidError, ValueError):
     """An approval must name at least one section."""
 
@@ -755,7 +759,6 @@ class FinancialAidRulesService:
         *,
         actor: str,
         via: str | None = None,
-        expected_fingerprints: Mapping[SectionName, str] | None = None,
     ) -> SectionSaveResult:
         """Save `candidate` over the rules draft (the latest version), which the editor opened as `base_version`.
 
@@ -773,7 +776,6 @@ class FinancialAidRulesService:
         if candidate.year != year:
             raise YearMismatchError(f"The document is for {candidate.year}, not {year}")
         current = await self._rules_draft(year, base_version)
-        _assert_unchanged(current, expected_fingerprints or {})
         return await self._save_over(current, candidate, actor=actor, via=via)
 
     async def save_section(
@@ -961,7 +963,9 @@ class FinancialAidRulesService:
         current = await self.load(year, version)
         await self._assert_latest(year, current.version)
         if fingerprints is not None:
-            _assert_unchanged(current, {name: fingerprints[name] for name in named if name in fingerprints})
+            if set(fingerprints) != set(named):
+                raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
+            _assert_unchanged(current, fingerprints)
         report = await self.validate_document(current.document)
         at = self._clock()
         status = current.section_status

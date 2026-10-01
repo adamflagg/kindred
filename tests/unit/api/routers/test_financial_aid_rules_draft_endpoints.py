@@ -197,7 +197,7 @@ def test_a_section_changed_since_it_was_opened_is_409_naming_it() -> None:
     message = "Someone else saved awards since you opened it; reload to see their change"
     service.save_section = AsyncMock(side_effect=SectionChangedError(["awards"], message))
     response = _client().put("/api/financial-aid/rules/2031/sections/awards", json=SAVE_BODY)
-    assert (response.status_code, response.json()["detail"]) == (409, message)
+    assert (response.status_code, response.json()["detail"]) == (409, {"message": message, "sections": ["awards"]})
 
 
 def test_the_draft_read_gives_each_section_its_fingerprint() -> None:

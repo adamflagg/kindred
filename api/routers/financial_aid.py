@@ -307,6 +307,8 @@ def _rules() -> FinancialAidRulesService:
 
 
 def _rules_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, SectionChangedError):  # structured, so the editor can mark the stale sections
+        return HTTPException(status_code=409, detail={"message": str(exc), "sections": exc.sections})
     if isinstance(exc, RulesNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(
@@ -316,7 +318,6 @@ def _rules_http(exc: FinancialAidError) -> HTTPException:
             NotLatestVersionError,
             PricingVersionInUseError,
             ReplacementNotAcknowledgedError,
-            SectionChangedError,
             AidWriteConflictError,
         ),
     ):

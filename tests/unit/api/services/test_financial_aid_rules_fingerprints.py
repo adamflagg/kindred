@@ -4,6 +4,7 @@ Per section, so staff working on DIFFERENT sections never conflict. Fictional se
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,9 +12,11 @@ import pytest
 
 from api.services.financial_aid_rules_service import (
     FinancialAidRulesService,
+    FingerprintsMismatchError,
     SectionChangedError,
     section_fingerprint,
 )
+from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.schema import SECTION_NAMES
 from tests.unit.api.services.rules_fakes import FakeStore
 from tests.unit.bunking.financial_aid.fixtures import fictional_rules, fictional_rules_json
@@ -42,11 +45,22 @@ def _income(floor: str) -> dict[str, Any]:
     return {**fictional_rules_json()["income"], "floor": floor}
 
 
+def _reversed(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _reversed(v) for k, v in reversed(list(value.items()))}
+    if isinstance(value, list):
+        return [_reversed(v) for v in value]
+    return value
+
+
 def test_a_fingerprint_is_stable_across_key_order() -> None:
     doc = fictional_rules()
-    reordered = fictional_rules().model_copy()
-    assert section_fingerprint(doc, "awards") == section_fingerprint(reordered, "awards")
-    assert len(section_fingerprint(doc, "awards")) == 64
+    raw = json.loads(json.dumps(doc.model_dump(mode="json")))
+    flipped = AidRules.model_validate(_reversed(raw))
+    assert list(_reversed(raw)) != list(raw)  # the keys really are reordered
+    for name in SECTION_NAMES:
+        assert section_fingerprint(flipped, name) == section_fingerprint(doc, name)
+        assert len(section_fingerprint(doc, name)) == 64
 
 
 @pytest.mark.asyncio
@@ -81,20 +95,6 @@ async def test_saves_of_two_different_sections_from_the_same_opening_state_both_
     await service.save_section(2031, 1, "income", _income("500"), actor=FINANCE, expected_fingerprint=opened["income"])
     doc = (await service.load(2031)).document
     assert (str(doc.awards.minimum), str(doc.income.floor)) == ("150", "500")
-
-
-@pytest.mark.asyncio
-async def test_the_multi_section_save_checks_each_named_fingerprint() -> None:
-    service, _ = await _draft()
-    opened = await _opening(service)
-    await service.save_section(
-        2031, 1, "awards", _awards("150"), actor=TREASURER, expected_fingerprint=opened["awards"]
-    )
-    candidate = (await service.load(2031)).document
-    with pytest.raises(SectionChangedError, match="awards"):
-        await service.save_sections(
-            2031, 1, candidate, actor=FINANCE, expected_fingerprints={"awards": opened["awards"]}
-        )
 
 
 @pytest.mark.asyncio
@@ -155,3 +155,21 @@ async def test_approve_names_every_stale_section() -> None:
 def test_every_section_has_a_fingerprint() -> None:
     doc = fictional_rules()
     assert len({section_fingerprint(doc, s) for s in SECTION_NAMES}) == len(SECTION_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_an_approval_whose_fingerprints_do_not_name_exactly_the_sections_is_refused() -> None:
+    service, _ = await _draft()
+    opened = await _opening(service)
+    with pytest.raises(FingerprintsMismatchError):
+        await service.approve_sections(
+            2031, 1, ["awards", "income"], actor=FINANCE, note="Board", fingerprints={"awards": opened["awards"]}
+        )
+    status = (await service.load(2031)).section_status
+    assert (status["awards"].state, status["income"].state) == ("draft", "draft")
+
+
+def test_the_stale_sections_are_carried_as_keys_beside_the_message() -> None:
+    error = SectionChangedError(["awards", "income"])
+    assert error.sections == ["awards", "income"]
+    assert "awards, income" in str(error)

@@ -207,4 +207,4 @@ def test_an_approval_of_a_section_changed_since_it_was_opened_is_409_naming_it()
     message = "Someone else saved programs since you opened it; reload to see their change"
     service.approve_sections = AsyncMock(side_effect=SectionChangedError(["programs"], message))
     response = _client().post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
-    assert (response.status_code, response.json()["detail"]) == (409, message)
+    assert (response.status_code, response.json()["detail"]) == (409, {"message": message, "sections": ["programs"]})
