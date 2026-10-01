@@ -37,10 +37,17 @@ export const STATUS_TONE = {
 const CHIP_SHAPE =
   'inline-flex items-center rounded-md px-1.5 py-px text-xs font-bold whitespace-nowrap'
 
-export const HOUSEHOLD_CHIP: Record<1 | 2 | 3, string> = {
+export const HOUSEHOLD_CHIP: Record<number, string> = {
   1: `${CHIP_SHAPE} bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200`,
   2: `${CHIP_SHAPE} bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200`,
   3: `${CHIP_SHAPE} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200`,
+}
+
+/** The page-relative index is unbounded server-side: the fourth household onward wears the neutral chip. */
+export const HOUSEHOLD_CHIP_NEUTRAL = `${CHIP_SHAPE} bg-muted text-muted-foreground`
+
+export function householdChipClass(index: number): string {
+  return HOUSEHOLD_CHIP[index] ?? HOUSEHOLD_CHIP_NEUTRAL
 }
 
 /** A matched CampMinder id under a name (D27). */

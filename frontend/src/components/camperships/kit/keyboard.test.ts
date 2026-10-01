@@ -11,7 +11,14 @@ function input(type: string): HTMLInputElement {
   return el
 }
 
-const plain = { ctrlKey: false, metaKey: false, altKey: false }
+const plain = {
+  ctrlKey: false,
+  metaKey: false,
+  altKey: false,
+  defaultPrevented: false,
+  repeat: false,
+  isComposing: false,
+}
 
 beforeEach(() => {
   modalOpen = false
@@ -67,6 +74,13 @@ describe('isPageKey', () => {
     'stands aside while %s is held',
     (modifier) => {
       expect(isPageKey({ target: document.body, ...plain, [modifier]: true })).toBe(false)
+    }
+  )
+
+  it.each(['defaultPrevented', 'repeat', 'isComposing'] as const)(
+    'stands aside for a key already handled, held down, or composing (%s)',
+    (flag) => {
+      expect(isPageKey({ target: document.body, ...plain, [flag]: true })).toBe(false)
     }
   )
 

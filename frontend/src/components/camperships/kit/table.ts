@@ -55,16 +55,21 @@ export function sortRows<Row>(
     .map((entry) => entry.row)
 }
 
-/** Every term must appear in some field, ignoring case: names and CampMinder ids alike (D27). */
+/** Lower-cased with accents dropped, so "jose" finds "José" (and the other way round). */
+export function fold(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
+/** Every term must appear in some field, ignoring case and accents: names and CampMinder ids alike (D27). */
 export function matchesSearch(
   fields: ReadonlyArray<string | number | null>,
   query: string
 ): boolean {
-  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const terms = fold(query.trim()).split(/\s+/).filter(Boolean)
   if (terms.length === 0) return true
   const haystack = fields
     .filter((f): f is string | number => f !== null)
-    .map((f) => String(f).toLowerCase())
+    .map((f) => fold(String(f)))
   return terms.every((term) => haystack.some((field) => field.includes(term)))
 }
 
@@ -73,8 +78,7 @@ export function matchesSearch(
  * grid shows that id as a highlighted chip under the name. Null when the search matched on a name.
  */
 export function matchedId(ids: readonly number[], query: string): number | null {
-  const terms = query
-    .trim()
+  const terms = fold(query.trim())
     .split(/\s+/)
     .filter((term) => /^\d+$/.test(term))
   if (terms.length === 0) return null

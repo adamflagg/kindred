@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatSort,
   groupRows,
+  fold,
   matchedId,
   matchesSearch,
   nextSort,
@@ -81,6 +82,19 @@ describe('matchesSearch (D18, D27: names and CampMinder ids)', () => {
 })
 
 // Ruling 2026-10-01 (plan review): D27's matched-id chip is built, not dropped.
+describe('fold and accent-insensitive search (I3)', () => {
+  it('folds case and accents', () => {
+    expect(fold('José')).toBe('jose')
+    expect(fold('ÉLODIE Çelik')).toBe('elodie celik')
+  })
+
+  it('finds an accented name from the unaccented spelling, and the other way round', () => {
+    expect(matchesSearch(['José Garcia', 1000002], 'jose')).toBe(true)
+    expect(matchesSearch(['Jose Garcia', 1000002], 'josé')).toBe(true)
+    expect(matchesSearch(['José Garcia'], 'jose chen')).toBe(false)
+  })
+})
+
 describe('matchedId (D27: which id a search matched, for the chip under the name)', () => {
   it('names the id an all-digit term found', () => {
     expect(matchedId([1000001, 1000002], '1000002')).toBe(1000002)

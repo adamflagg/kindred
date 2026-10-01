@@ -167,9 +167,8 @@ export function AidTable<Row>({
     if (!arrowKeys) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-      // Not while a field (the search box, the editor) owns the key, a modifier is held or a modal is open.
-      // Nor a key already handled, held down, or part of an IME composition.
-      if (event.defaultPrevented || event.repeat || event.isComposing) return
+      // Not while a field (the search box, the editor) owns the key, a modifier is held, a modal is
+      // open, or the key was already handled, held down or part of an IME composition (isPageKey).
       // Nor while focus is anywhere in the editor row (a Save button is not a typing target).
       if (event.target instanceof Element && event.target.closest('[data-aid-editor]') !== null)
         return

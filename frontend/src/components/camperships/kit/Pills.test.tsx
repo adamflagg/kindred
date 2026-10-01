@@ -111,4 +111,14 @@ describe('HouseholdChip (D32)', () => {
     render(<HouseholdChip index={index} name={name} />)
     expect(screen.getByText(`${index} · ${name}`)).toHaveClass(hue)
   })
+
+  it.each([4, 7, 12])(
+    'shows a fourth-or-later household %i in a neutral chip, not unstyled',
+    (index) => {
+      render(<HouseholdChip index={index} name="Sam" />)
+      const chip = screen.getByText(`${String(index)} · Sam`)
+      expect(chip).toHaveClass('bg-muted', 'rounded-md')
+      expect(chip.className).not.toContain('undefined')
+    }
+  )
 })

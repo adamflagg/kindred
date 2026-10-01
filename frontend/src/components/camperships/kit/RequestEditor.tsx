@@ -15,7 +15,7 @@ import type { AidTraceStep } from './receiptModel'
  */
 export interface EditorShare {
   readonly householdCmId: number
-  readonly chip?: 1 | 2 | 3 | null | undefined
+  readonly chip?: number | null | undefined
   readonly householdName?: string | null | undefined
   readonly pct: number
   readonly amount: number

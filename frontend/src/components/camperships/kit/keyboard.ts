@@ -31,10 +31,17 @@ export interface PageKeyEvent {
   readonly ctrlKey: boolean
   readonly metaKey: boolean
   readonly altKey: boolean
+  readonly defaultPrevented: boolean
+  readonly repeat: boolean
+  readonly isComposing: boolean
 }
 
-/** A key the page may act on: no modifier held, no field typing, no modal open. */
+/**
+ * A key the page may act on: no modifier held, not already handled, held down or part of an IME
+ * composition, no field typing, no modal open.
+ */
 export function isPageKey(event: PageKeyEvent): boolean {
+  if (event.defaultPrevented || event.repeat || event.isComposing) return false
   if (event.ctrlKey || event.metaKey || event.altKey) return false
   return !isTypingTarget(event.target) && !hasOpenModal()
 }

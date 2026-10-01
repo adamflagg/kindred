@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { ConfirmationOut } from '../../../types/api-generated'
-import { HOUSEHOLD_CHIP, ID_CHIP, PILL, type PillTone } from './kitStyles'
+import { householdChipClass, ID_CHIP, PILL, type PillTone } from './kitStyles'
 import { formatShortDate } from './dates'
 import { formatGap, formatMoney } from './money'
 
@@ -41,9 +41,9 @@ export function ConfirmationState({ confirmation }: { confirmation: Confirmation
 }
 
 /** "1 · Johnson" (D32), whenever more than one household is on a page. */
-export function HouseholdChip({ index, name }: { index: 1 | 2 | 3; name: string }) {
+export function HouseholdChip({ index, name }: { index: number; name: string }) {
   return (
-    <span className={HOUSEHOLD_CHIP[index]}>
+    <span className={householdChipClass(index)}>
       {index} · {name}
     </span>
   )
