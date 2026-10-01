@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 export type SortDirection = 'ascending' | 'descending'
 
@@ -16,6 +16,8 @@ export interface SortableColumnHeaderProps {
   as?: 'th' | 'div'
   /** Classes on the host cell — grid sizing, responsive hiding, borders. */
   className?: string
+  /** Inline style on the host cell (a pinned column's left offset). */
+  style?: CSSProperties | undefined
   /** Classes on the inner button — padding, hover, focus ring. */
   buttonClassName?: string
 }
@@ -40,13 +42,19 @@ export function SortableColumnHeader({
   indicator,
   as = 'th',
   className,
+  style,
   buttonClassName,
 }: SortableColumnHeaderProps) {
   const Host = as
   const defaultIndicator = direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : null
 
   return (
-    <Host role="columnheader" aria-sort={direction ?? undefined} className={className}>
+    <Host
+      role="columnheader"
+      aria-sort={direction ?? undefined}
+      className={className}
+      style={style}
+    >
       <button
         type="button"
         onClick={onSort}

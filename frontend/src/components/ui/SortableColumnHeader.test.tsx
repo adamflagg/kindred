@@ -94,4 +94,21 @@ describe('SortableColumnHeader', () => {
     expect(screen.getByTestId('ind').parentElement).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('button', { name: 'Status' })).toBeInTheDocument()
   })
+  it("passes a style to its host cell (a pinned column's left offset)", () => {
+    render(
+      <table>
+        <thead>
+          <tr>
+            <SortableColumnHeader
+              label="Family"
+              direction={null}
+              onSort={vi.fn()}
+              style={{ left: 110 }}
+            />
+          </tr>
+        </thead>
+      </table>
+    )
+    expect(screen.getByRole('columnheader', { name: 'Family' })).toHaveStyle({ left: '110px' })
+  })
 })
