@@ -401,7 +401,12 @@ class GrantsService:
     async def retire_grantor(self, key: str, body: GrantorRetireIn, actor: str) -> GrantorOut:
         """Owner ruling 2026-10-01: only once no description maps to the grantor and no open grant names it
         (GrantorInUseError says how many of each). Retiring a retired grantor is refused (GrantorStateError)
-        before any write, so the helper never sees a no-op."""
+        before any write, so the helper never sees a no-op.
+
+        Known limit: the in-use counts are read before the write batch, and aid_sources/aid_grants carry no
+        revision to guard on, so a remap or new grant racing a retire can leave a retired grantor still named.
+        Nothing is lost (history still resolves it) and unretire repairs it; with a handful of staff the window
+        is tiny, so it is accepted rather than adding revision fields."""
         current = await self.repo.get_grantor(key)
         if current is None:
             raise FinancialAidNotFoundError(f"grantor {key!r} not found")
