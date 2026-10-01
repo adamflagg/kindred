@@ -729,6 +729,9 @@ export const queryKeys = {
   aidRemainingPrefix: () => ['financial-aid', 'remaining'] as const,
   aidRemaining: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
     ['financial-aid', 'remaining', year, asOf ?? 'live', axis ?? 'campminder'] as const,
+  aidGridPrefix: () => ['financial-aid', 'grid'] as const,
+  aidGrid: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
+    ['financial-aid', 'grid', year, asOf ?? 'live', axis ?? 'campminder'] as const,
 }
 
 /**

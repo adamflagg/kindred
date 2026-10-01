@@ -34,14 +34,19 @@ import type {
   CamperJourneyCounts,
   CamperJourneyResponse,
   CamperJourneyRow,
+  CancellationOut,
+  ConfirmationOut,
   CrossScopeEdge,
   DefinitionsResponse,
+  GridRowOut,
   JumpIndexHousehold,
   JumpIndexResponse,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
   RemainingResponse,
+  RequestsGridResponse,
+  RoundOut,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
@@ -91,3 +96,13 @@ export type ApiAidDefinitions = DefinitionsResponse
 export type ApiPermissionRegistry = PermissionRegistryResponse
 export type ApiPermissionEntry = PermissionEntry
 export type ApiPermissionScreen = PermissionScreen
+
+/** The Requests grid's read (§6.1). Mirrors Python `RequestsGridResponse`. */
+export type ApiAidGrid = RequestsGridResponse
+export type ApiAidGridRow = GridRowOut
+export type ApiAidRound = RoundOut
+/** A Requests view a row is in (#2924's `QueueOut`). */
+export type ApiAidQueue = NonNullable<GridRowOut['queues']>[number]
+/** A request's confirmation state (D59) and its cancellation (D101). Mirror Python's models (M4). */
+export type ApiAidConfirmation = ConfirmationOut
+export type ApiAidCancellation = CancellationOut
