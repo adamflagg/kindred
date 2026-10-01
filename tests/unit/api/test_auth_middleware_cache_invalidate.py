@@ -7,6 +7,7 @@ could clear every server cache and trigger a lodging cache warm. Service callers
 edge); the browser path is authenticated and gated on `bunking.manage`.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,13 +25,13 @@ def production_middleware():
                     return AuthMiddleware(app, "production", "admin")
 
 
-async def _dispatch(middleware, path: str, method: str = "POST"):
+async def _dispatch(middleware: AuthMiddleware, path: str, method: str = "POST") -> tuple[Any, AsyncMock]:
     request = MagicMock()
     request.url.path = path
     request.method = method
     request.headers = {}
     call_next = AsyncMock(return_value=MagicMock())
-    middleware._extract_user_from_jwt = AsyncMock(return_value=None)
+    middleware._extract_user_from_jwt = AsyncMock(return_value=None)  # type: ignore[method-assign]
     response = await middleware.dispatch(request, call_next)
     return response, call_next
 
