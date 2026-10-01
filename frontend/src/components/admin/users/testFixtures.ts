@@ -188,6 +188,6 @@ export function makeProps(
       setRole: vi.fn(),
       setPage: vi.fn(),
       ...url,
-    } as UsersPageProps['url'],
+    },
   }
 }
