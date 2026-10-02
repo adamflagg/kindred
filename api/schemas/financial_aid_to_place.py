@@ -178,7 +178,9 @@ class PlacePreviewIn(_Parts):
 class PlacePreviewOut(BaseModel):
     """What placing these parts would do, worked out by the plan the write runs (§4.10), as SuggestionOut.would_* is
     for Kindred's suggestion. would_lock is the server's sum of would_tick: the place call sends it as expected_locked,
-    so a change between the preview and the click is refused rather than written."""
+    so a change in the total it locks between the preview and the click is refused rather than written. That is the
+    one figure re-checked (as for Confirm, §4.10): a change that leaves the total alone, such as a new decided amount
+    on a round the placement leaves short (would_leave), is written as it now stands."""
 
     year: int
     transaction_cm_id: int

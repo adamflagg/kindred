@@ -128,7 +128,7 @@ class RequestShareOut(BaseModel):
     Round 1 posted and no appeal subtracts grants, or known after the appeal: the offer stands, D43),
     not_offset_program, not_received (the rules count received grants only), pays_after_camp_aid (D143), incentive
     (D88), not_priced (the request can't be priced now). None on reads that don't price the season (Today, the
-    household page)."""
+    household page, and GET /grants/{year}?offsets=false)."""
 
     request_id: str
     amount: float
