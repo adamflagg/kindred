@@ -2184,6 +2184,8 @@ export type CellOut = {
    * Remaining
    */
   remaining: number | null
+  needs_offer_count?: CountOut | null
+  pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null
 }
 
@@ -12393,6 +12395,8 @@ export type RoundCellOut = {
    * Remaining
    */
   remaining: number | null
+  needs_offer_count?: CountOut | null
+  pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null
   /**
    * Round
