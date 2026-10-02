@@ -455,12 +455,18 @@ class _Drafts:
 
 
 class _Ledger:
-    def __init__(self) -> None:
+    def __init__(self, needs_group: list[str] | None = None) -> None:
         self.calls = 0
+        self.needs_group = needs_group or []
+        self.group_calls = 0
 
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]:
         self.calls += 1
         return []
+
+    async def needs_group_sources(self, year: int) -> list[str]:
+        self.group_calls += 1
+        return list(self.needs_group)
 
 
 def _service(store: FakeDecisionsStore, grants: _Grants, drafts: _Drafts, ledger: _Ledger) -> TodayService:

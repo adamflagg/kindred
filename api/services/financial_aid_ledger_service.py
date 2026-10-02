@@ -48,6 +48,7 @@ from api.schemas.financial_aid import (
     SummaryCell,
     SummaryResponse,
     UnclassifiedSource,
+    WhoPaid,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_repository import FaRequestRow, FinancialAidRepository
@@ -62,6 +63,21 @@ _DASHES = str.maketrans({"–": "-", "—": "-", "−": "-"})  # en, em, minus
 # The funder types whose aid_postings lines are grants (D55): outside grants and funds, and
 # family incentives (JFAM). The camp's own aid is "camp"; an unclassified line is "unknown".
 GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
+
+
+def needs_group(source: Any) -> bool:
+    """D100: an outside (or still-incentive) source with no reporting group (no implied program family), so the ledger
+    has no program to place its household-level lines with. The same rule as Funding sources' needs_group (#2967)."""
+    return str(source.funder_type) in GRANT_FUNDER_TYPES and not list(source.implied_program_families or [])
+
+
+def who_paid(funder_type: str) -> WhoPaid | None:
+    """D88's "who paid": the camp's own money, or another funder's; None while the description is unclassified."""
+    if funder_type == "camp":
+        return "the camp"
+    if funder_type in GRANT_FUNDER_TYPES:
+        return "another funder"
+    return None
 
 
 class FinancialAidNotFoundError(FinancialAidError, LookupError):
@@ -245,6 +261,8 @@ def source_row(s: Any) -> AidSourceRow:
         implied_program_families=list(s.implied_program_families or []),
         classified_by=str(s.classified_by),
         note=str(s.note or ""),
+        needs_group=needs_group(s),
+        who_paid=who_paid(str(s.funder_type)),
     )
 
 
@@ -523,6 +541,13 @@ class FinancialAidLedgerService:
             undated_postings=undated,
             rows=rows,
         )
+
+    async def needs_group_sources(self, year: int) -> list[str]:
+        """The descriptions that need a reporting group and classify a live line this season (Today's finance line,
+        D100), by key. A line counts under the description that classifies it now (effective_source_key)."""
+        postings, sources = await asyncio.gather(self.repo.fetch_postings(year), self._sources_by_key())
+        used = {str(p.effective_source_key or p.source_key) for p in postings}
+        return sorted(key for key in used if key in sources and needs_group(sources[key]))
 
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]:
         """Data quality's unclassified descriptions alone (slice 1's Today), from two reads."""

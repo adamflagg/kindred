@@ -75,6 +75,7 @@ class TodayInputs:
     today: date
     never_true: Sequence[str] = ()  # weighted yes/no fields no applicant answered yes (finance only)
     to_place: OpenToPlace | None = None  # casework: Money › To place's open lines; None: not read
+    needs_group: Sequence[str] = ()  # finance: descriptions with a live line this season that need a group (D100)
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -262,6 +263,25 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
     return [lines[key] for key in CASEWORK_LINES]
 
 
+def _sources_line(inputs: TodayInputs) -> TodayLineOut:
+    """§6.4, §8.1: the descriptions finance must act on: unmapped (no grantor), unclassified, and outside sources
+    that need a reporting group (D100). Items count each description once; a description with two reasons is under
+    each (TodayLineOut: reasons need not sum to items)."""
+    unmapped = [u.description_key for u in inputs.grants.unmapped]
+    unclassified = [u.source_key for u in inputs.unclassified]
+    return TodayLineOut(
+        key="sources",
+        families=None,
+        items=len({*unmapped, *unclassified, *inputs.needs_group}),
+        item_kind="descriptions",
+        reasons=_reasons(
+            [("no_grantor", 0) for _ in unmapped]
+            + [("unclassified", 0) for _ in unclassified]
+            + [("needs_group", 0) for _ in inputs.needs_group]
+        ),
+    )
+
+
 def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
     rows = inputs.rows
     pending = _in(rows, "pending_approval")
@@ -285,15 +305,7 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
             reasons=_reasons((name, 0) for name in sections),
         ),
         "would_change": _line("would_change", would_change, listed=True),
-        "sources": TodayLineOut(
-            key="sources",
-            families=None,
-            items=len(inputs.grants.unmapped) + len(inputs.unclassified),
-            item_kind="descriptions",
-            reasons=_reasons(
-                [("no_grantor", 0) for _ in inputs.grants.unmapped] + [("unclassified", 0) for _ in inputs.unclassified]
-            ),
-        ),
+        "sources": _sources_line(inputs),
         "intake": _line(
             "intake",
             intake,
@@ -331,6 +343,7 @@ class RulesDrafts(Protocol):
 
 class LedgerReads(Protocol):
     async def unclassified_sources(self, year: int) -> list[UnclassifiedSource]: ...
+    async def needs_group_sources(self, year: int) -> list[str]: ...
 
 
 async def _draft_sections(rules: RulesDrafts, year: int) -> list[str] | None:
@@ -386,13 +399,13 @@ class TodayService:
             return TodayResponse(year=year, casework=None, finance=None)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
-        season, (grants, register), grantors, draft, unclassified, never_true = await asyncio.gather(
+        season, (grants, register), grantors, draft, (unclassified, needs_group), never_true = await asyncio.gather(
             decisions.season(year),
             shared.read(),
             # Retired grantors too: hidden from pickers, never from the grants that named them.
             self._grants.list_grantors(include_retired=True) if casework else _no_grantors(),
             _draft_sections(self._rules, year) if finance else _none(),
-            self._ledger.unclassified_sources(year) if finance else _no_sources(),
+            _descriptions(self._ledger, year) if finance else _no_descriptions(),
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
@@ -408,6 +421,7 @@ class TodayService:
             today=self._clock().astimezone(CAMP_TZ).date(),
             never_true=never_true,
             to_place=open_lines,
+            needs_group=needs_group,
         )
         return build_today(inputs, casework=casework, finance=finance)
 
@@ -420,5 +434,13 @@ async def _none() -> None:
     return None
 
 
-async def _no_sources() -> list[UnclassifiedSource]:
-    return []
+async def _descriptions(ledger: LedgerReads, year: int) -> tuple[list[UnclassifiedSource], list[str]]:
+    """Finance's two description reads: the unclassified ones, and those that need a group (D100)."""
+    unclassified, needs_group = await asyncio.gather(
+        ledger.unclassified_sources(year), ledger.needs_group_sources(year)
+    )
+    return unclassified, needs_group
+
+
+async def _no_descriptions() -> tuple[list[UnclassifiedSource], list[str]]:
+    return [], []

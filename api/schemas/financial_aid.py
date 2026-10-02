@@ -59,6 +59,8 @@ SourceFamily = Literal[
     "unclassified",
 ]
 FunderType = Literal["camp", "outside", "incentive"]
+# D88's first fact, in the words Reports' Development sources use (DevelopmentSourceOut.who_paid).
+WhoPaid = Literal["the camp", "another funder"]
 OverrideSource = Literal["sheet_2026_match", "staff"]
 
 
@@ -279,6 +281,9 @@ class AidSourceRow(BaseModel):
     implied_program_families: list[str]
     classified_by: str
     note: str
+    # Slice 3 PR-B (ask 2). The record's own facts, on every read and write echo:
+    needs_group: bool = False  # D100: an outside or incentive source with no reporting group
+    who_paid: WhoPaid | None = None  # D88: the camp's own money or another funder's; None while unclassified
 
 
 class AidSourcesResponse(BaseModel):

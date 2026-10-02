@@ -9,10 +9,11 @@ from decimal import Decimal
 
 import pytest
 
+from api.schemas.financial_aid_grants import UnmappedDescriptionOut
 from api.services.financial_aid_to_place import LeftLine
 from api.services.financial_aid_to_place_service import OpenToPlace, open_to_place
 from api.services.financial_aid_today import TodayService, build_today
-from tests.unit.api.services.decisions_fakes import T0, FakeRules, approved, seed_line
+from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_line
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import _service as _decisions
 from tests.unit.api.services.test_financial_aid_today import _Drafts, _Grants, _grants, _inputs, _Ledger, _line
@@ -76,3 +77,48 @@ async def test_before_to_place_began_there_is_nothing_to_count_and_the_line_says
     assert found == OpenToPlace(lines=0, households=0, total=Decimal(0), skipped=reason)
     line = _line(build_today(_inputs([], to_place=found), casework=True, finance=False).casework, "to_place")
     assert (line.items, line.amount, line.item_kind, line.skipped) == (0, 0.0, "lines", reason)
+
+
+# --- the needs-a-group reason (finance) -----------------------------------------------------------------
+
+
+def test_finance_sees_an_outside_source_that_needs_a_group() -> None:
+    """§8.1: "An outside source with no group is a 'needs a group' line here and on Today"."""
+    grants = _grants(
+        unmapped=[
+            UnmappedDescriptionOut(
+                source_id="src000000000001",
+                description_key="regional grant",
+                description="Regional Grant",
+                lines=3,
+                amount=900.0,
+            )
+        ]
+    )
+    out = build_today(
+        _inputs([], grants=grants, needs_group=["regional grant", "valley grant"]), casework=False, finance=True
+    )
+    sources = _line(out.finance, "sources")
+    assert [(r.code, r.families, r.items) for r in sources.reasons] == [
+        ("needs_group", None, 2),
+        ("no_grantor", None, 1),
+    ]
+    assert sources.items == 2  # the regional grant names no grantor AND needs a group: one description, counted once
+
+
+@pytest.mark.asyncio
+async def test_finance_reads_the_descriptions_that_need_a_group_and_casework_does_not() -> None:
+    ledger = _Ledger(needs_group=["valley grant"])
+    service = TodayService(
+        store=FakeDecisionsStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=ledger,
+        clock=lambda: T0,
+    )
+    await service.read(YEAR, casework=True, finance=False)
+    assert ledger.group_calls == 0
+    out = await service.read(YEAR, casework=False, finance=True)
+    assert [(r.code, r.items) for r in _line(out.finance, "sources").reasons] == [("needs_group", 1)]
+    assert ledger.group_calls == 1
