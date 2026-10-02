@@ -37,3 +37,8 @@ def zero_if_blank(value: Decimal | None) -> Decimal:
     principle 5); the income module reports it as missing instead.
     """
     return ZERO if value is None else value
+
+
+def dollars(amount: Decimal) -> str:
+    """$1,800 for whole dollars, $1,800.50 otherwise (D74: exact to the cent)."""
+    return f"${amount:,.0f}" if amount == amount.to_integral_value() else f"${amount:,.2f}"

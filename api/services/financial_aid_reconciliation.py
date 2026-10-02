@@ -69,7 +69,7 @@ from api.services.financial_aid_intake_types import (
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundLedger, RoundState
-from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.money import ZERO, dollars
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -78,11 +78,6 @@ logger = get_logger(__name__)
 def camp_date(moment: datetime) -> date:
     """A UTC instant as its camp-time (Pacific) calendar day (main spec §6.2)."""
     return moment.astimezone(CAMP_TZ).date()
-
-
-def dollars(amount: Decimal) -> str:
-    """$1,800 for whole dollars, $1,800.50 otherwise (D74: exact to the cent)."""
-    return f"${amount:,.0f}" if amount == amount.to_integral_value() else f"${amount:,.2f}"
 
 
 @dataclass(frozen=True)

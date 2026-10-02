@@ -44,8 +44,7 @@ def grants_offset(request: RequestInputs, rules: AidRules) -> tuple[Decimal, lis
                     CalcIssue(
                         code="late_grant",
                         severity="warn",
-                        message="A grant recorded after the Round 1 decision was left out of Round 1; "
-                        "the award already offered stands",
+                        message="A grant recorded after Round 1 was left out of it; the offer stands",
                         step="grants",
                     )
                 )

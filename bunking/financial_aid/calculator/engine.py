@@ -156,11 +156,13 @@ def calculate(application: ApplicationInputs, request: RequestInputs, rules: Aid
         # (all of them absent lands on tier 1, the most generous). A reported 0 is a real
         # answer and is priced normally. See income.py for which figures are "needed".
         if nothing_reported(application):
-            message = "No income figure was reported and there is no income override, so the request cannot be priced"
+            message = "No income figure reported and no income override"
         else:
+            plural = len(income.missing_figures) > 1
             message = (
-                f"The {describe_missing(income.missing_figures)} income figure is needed by the {rules.year} "
-                "rules but was not reported, so the request cannot be priced"
+                f"The {describe_missing(income.missing_figures)} income "
+                f"{'figures are' if plural else 'figure is'} needed but "
+                f"{'were' if plural else 'was'} not reported"
             )
         work.issue("income_missing", "needs_input", message, "adjusted_income")
         return work.result()
@@ -282,6 +284,11 @@ def _tier_value[V: (R1Percent, TotalPercent)](
     return None
 
 
+def _capitalised(text: str) -> str:
+    """A cost-unknown cause (\"no tuition for session 1\") as the start of a sentence."""
+    return text[:1].upper() + text[1:]
+
+
 def _round1(
     work: _Work,
     request: RequestInputs,
@@ -310,8 +317,7 @@ def _round1(
             work.issue(
                 "no_round1_table",
                 "needs_input",
-                f"Program '{request.program_key}' has no Round 1 table and the minimum does not apply without "
-                "one; the request holds until finance names a table",
+                f"Program '{request.program_key}' has no Round 1 table: finance names one",
                 "r1",
             )
             return
@@ -326,12 +332,10 @@ def _round1(
     grants = work.grants_offset or ZERO  # set by the grants step, which always runs before Round 1
     if work.cost is None:
         if not awards.minimum_when_cost_unknown:
-            work.issue(
-                "cost_unknown", "needs_input", f"Cost is unknown ({cost.missing}); Round 1 cannot be computed", "r1"
-            )
+            work.issue("cost_unknown", "needs_input", f"{_capitalised(cost.missing)}; Round 1 cannot be computed", "r1")
             work.r1_bound = "cost_unknown"
             return
-        work.issue("cost_unknown", "warn", f"Cost is unknown ({cost.missing}); the minimum award was used", "r1")
+        work.issue("cost_unknown", "warn", f"{_capitalised(cost.missing)}; the minimum award was used", "r1")
         potential, bound = awards.minimum, "minimum"
         minimum = awards.minimum
     else:
@@ -374,7 +378,7 @@ def _round1(
             work.issue(
                 "ask_missing",
                 "needs_input",
-                "No ask was entered, and the ask caps Round 1 this season; Round 1 cannot be computed",
+                "Enter the ask: it caps Round 1 this season",
                 "r1",
             )
             work.r1_bound = "ask_missing"
@@ -451,7 +455,7 @@ def _round2(
             work.issue(
                 "ask_missing",
                 "needs_input",
-                "No ask was entered, and the original ask caps Round 2 this season; Round 2 cannot be computed",
+                "Enter the original ask: it caps Round 2 this season",
                 "r2_cap",
             )
             work.r2_bound = "ask_missing"

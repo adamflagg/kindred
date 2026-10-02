@@ -56,10 +56,11 @@ from api.schemas.financial_aid_history import (
 from api.schemas.financial_aid_rules import field_change_out
 from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_ledger_service import money, parse_pb_datetime
-from api.services.financial_aid_reconciliation import camp_date, dollars
+from api.services.financial_aid_reconciliation import camp_date
 from api.services.financial_aid_rules_effect import RULES_EFFECT_ENTITY
 from bunking.financial_aid.change_diff import field_changes
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.money import dollars
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.rules.lifecycle import SectionStatusMissingError, status_from_json, status_to_json
 
