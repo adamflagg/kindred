@@ -10,6 +10,7 @@ import {
 } from '../../components/camperships/season/scenarios/scenarioFixtures'
 import {
   evaluateAidScenario,
+  fetchAidScenarioSensitivity,
   freezeAidScenarioSeason,
   keepAidScenario,
   loadAidScenarioDraft,
@@ -21,8 +22,9 @@ import { useAidScenarioSensitivity, useAidScenarios } from './useAidScenarios'
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
+let authLoading = false
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+  useAuth: () => ({ isLoading: authLoading, user: { id: 'u1' } }),
 }))
 let granted: string[] = []
 vi.mock('../usePermissions', () => ({
@@ -41,6 +43,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
   granted = ['financial_aid.view', 'financial_aid.rules']
+  authLoading = false
   fetchSpy = vi
     .spyOn(globalThis, 'fetch')
     .mockImplementation(() =>
@@ -60,6 +63,13 @@ describe('useAidScenarios (D38, D76)', () => {
 
   it('reads nothing without rules (D76 hides Scenarios)', async () => {
     granted = ['financial_aid.view']
+    renderHook(() => useAidScenarios(), { wrapper })
+    await settle()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('reads nothing while auth is still loading', async () => {
+    authLoading = true
     renderHook(() => useAidScenarios(), { wrapper })
     await settle()
     expect(fetchSpy).not.toHaveBeenCalled()
@@ -96,6 +106,29 @@ describe('useAidScenarioSensitivity (§7.4)', () => {
     renderHook(() => useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot), { wrapper })
     await settle()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('reads nothing while auth is still loading', async () => {
+    authLoading = true
+    renderHook(() => useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot), { wrapper })
+    await settle()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('sends the request set (D138) with the document, as the server reads it', async () => {
+    renderHook(
+      () =>
+        useAidScenarioSensitivity(scenarioDraft(), workspace().snapshot, {
+          through_round1_deadline: true,
+        }),
+      { wrapper }
+    )
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(options.body))).toEqual({
+      document: scenarioDraft().document,
+      through_round1_deadline: true,
+    })
   })
 
   it('waits for a snapshot too', async () => {
@@ -139,6 +172,16 @@ describe('the scenario writes (wire; every route is finance-only on the server)'
     expect(last()[1].method).toBe('POST')
     expect(last()[1].signal).toBe(controller.signal)
     expect(JSON.parse(String(last()[1].body))).toEqual(doc)
+  })
+
+  it("asks each setting's step by POST, the request set riding along", async () => {
+    await fetchAidScenarioSensitivity(fetchWithAuth, 2027, {
+      ...doc,
+      received_through: '2026-04-01',
+    })
+    expect(last()[0]).toBe('/api/financial-aid/scenarios/2027/sensitivity')
+    expect(last()[1].method).toBe('POST')
+    expect(JSON.parse(String(last()[1].body))).toEqual({ ...doc, received_through: '2026-04-01' })
   })
 
   it('saves the draft by PUT, and loads into it by POST', async () => {
