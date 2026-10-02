@@ -29,7 +29,8 @@ vi.mock('../../../../hooks/camperships/useAidRules', () => ({
 vi.mock('../../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: () => true }),
 }))
-vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let year = 2027
+vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => year }))
 vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
   useAidSessionNames: () => undefined,
 }))
@@ -117,6 +118,7 @@ beforeEach(() => {
   server = [rulesDraft()]
   calls.length = 0
   pending = false
+  year = 2027
 })
 
 describe('editing a section (D39; Decisions 14–16)', () => {
@@ -530,6 +532,7 @@ describe('the approval form is busy until it is done (review I1)', () => {
     await openAndApprove()
     expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Award tables (Round 1 %)' })).toBeDisabled()
     expect(calls).toHaveLength(0)
     held.release(rulesDraft())
     await waitFor(() => expect(calls).toHaveLength(1))
@@ -658,7 +661,7 @@ describe('the approval notice follows what moved (S8-⚠1 interim, review ⚠1)'
     await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
     const notice = await screen.findByTestId('rules-notice')
     expect(notice).toHaveTextContent(
-      'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.'
+      'Approved. The sections that price the season were already approved: nothing is re-priced.'
     )
     expect(notice).not.toHaveTextContent(/Requests not yet posted/)
   })
@@ -680,5 +683,108 @@ describe('the tab holds still while editing or approving (review m1, m2)', () =>
     expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+  })
+})
+
+describe('the other ways out of busy (round 2, m2)', () => {
+  async function approveOnce() {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+  }
+
+  it("shows a refusal that isn't a 409 in the server's words, and the form is live again", async () => {
+    outcome = { kind: 'refused', status: 422, message: 'A section has errors' }
+    await approveOnce()
+    expect(await screen.findByText('A section has errors')).toBeInTheDocument()
+    expect(calls).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Approve 1 section' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+
+  it("lets go when a 409's re-read fails too", async () => {
+    outcome = { kind: 'refused', status: 409, message: CONFLICT }
+    server = [rulesDraft(), rulesDraft(), new Error('offline')]
+    await approveOnce()
+    expect(await screen.findByText(/couldn't be read again: offline/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Approve 1 section' })).toBeEnabled()
+  })
+
+  it('lets go when the approval body cannot be built (a section without a fingerprint)', async () => {
+    const base = rulesDraft()
+    const bare = {
+      ...base,
+      sections: base.sections.map((x) =>
+        x.section === 'award_tables' ? { ...x, fingerprint: '' } : x
+      ),
+    }
+    server = [bare]
+    await approveOnce()
+    expect(
+      await screen.findByText("Couldn't send this approval: reload the rules and try again.")
+    ).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+})
+
+describe('the notice reads the pre-send draft, not the opening one (round 2, m3)', () => {
+  it('says the pricing sections were already approved when the check read already had the version', async () => {
+    // Opened on approved v3; by the check read v4 is the pricing version (someone else's approval).
+    server = [
+      rulesDraft(),
+      { ...rulesDraft(), approved_version: 4 },
+      { ...rulesDraft(), approved_version: 4 },
+    ]
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    expect(await screen.findByTestId('rules-notice')).toHaveTextContent(
+      'Approved. The sections that price the season were already approved: nothing is re-priced.'
+    )
+  })
+})
+
+describe('a year change resets the editor (round 2, m1, m3c)', () => {
+  const tree = () => (
+    <MemoryRouter initialEntries={['/aid/season/rules?section=awards']}>
+      <RulesTab />
+    </MemoryRouter>
+  )
+
+  it('drops what was typed when the season changes', async () => {
+    const view = renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    const box = await screen.findByRole('textbox', { name: 'Minimum award' })
+    await userEvent.clear(box)
+    await userEvent.type(box, '150')
+    year = 2028
+    view.rerender(tree())
+    expect(await screen.findByRole('textbox', { name: 'Minimum award' })).toHaveValue('100')
+  })
+
+  it('leaves no dead pills and no editor behind when the new season has no rules', async () => {
+    const view = renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await screen.findByRole('textbox', { name: 'Minimum award' })
+    year = 2028
+    draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
+    view.rerender(tree())
+    expect(await screen.findByText('No rules for 2028 yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+    expect(screen.queryByText('Save or cancel the edit first.')).toBeNull()
+    // Starting the season brings the draft back: the editor must not open unasked.
+    await userEvent.click(screen.getByRole('button', { name: "Start 2028 from 2027's rules" }))
+    draft = { data: rulesDraft(), isLoading: false, error: null }
+    view.rerender(tree())
+    expect(await screen.findByRole('button', { name: 'Edit…' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Editing /)).toBeNull()
   })
 })

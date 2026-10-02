@@ -6,6 +6,7 @@ import {
 } from '../../../../hooks/camperships/useAidRulesWrites'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import type {
+  ApiAidRulesApproveIn,
   ApiAidRulesDraft,
   ApiAidRulesSection,
   ApiAidRulesVersion,
@@ -34,12 +35,12 @@ interface Recheck {
 /** What an approval left behind, for the tab's notice. */
 export interface Approved {
   /**
-   * Whether this approval made the version just approved the one pricing the season: the draft's
-   * `approved_version` was not that version before and is after. Approving only some sections re-prices nothing (the server prices by the newest
-   * version in which every pricing section is approved or locked). `false` too when the refreshed
-   * draft couldn't be read: the cautious sentence.
+   * What the approval did to the pricing (interim, S8-⚠1): `moved`, this approval made the version
+   * just approved the one pricing the season (`approved_version` was not it before, and is after);
+   * `already`, it was the pricing version before (only sections that price nothing were waiting);
+   * `waiting`, neither (or the refreshed draft couldn't be read): the cautious case.
    */
-  readonly pricesSeason: boolean
+  readonly pricing: 'moved' | 'already' | 'waiting'
   /** The approval report's warnings, so they reach the approver. */
   readonly warnings: readonly string[]
 }
@@ -156,16 +157,18 @@ export function ApproveForm({
     before: number | null,
     report: ApiAidRulesVersion['report']
   ) => {
-    let pricesSeason = false
-    try {
-      pricesSeason = before !== version && (await fetchFresh()).approved_version === version
-    } catch {
-      // The notice takes the cautious sentence: it claims no re-pricing it couldn't see.
+    let pricing: Approved['pricing'] = before === version ? 'already' : 'waiting'
+    if (pricing === 'waiting') {
+      try {
+        if ((await fetchFresh()).approved_version === version) pricing = 'moved'
+      } catch {
+        // The notice takes the cautious sentence: it claims no re-pricing it couldn't see.
+      }
     }
     if (!alive.current) return
     setBusy(false)
     onDone({
-      pricesSeason,
+      pricing,
       warnings: (report.issues ?? []).filter((i) => i.severity === 'warning').map((i) => i.message),
     })
   }
@@ -196,15 +199,17 @@ export function ApproveForm({
       return
     }
     const before = fresh.approved_version
+    let body: ApiAidRulesApproveIn
+    try {
+      body = { sections, note: note.trim(), ...approvePrecondition(seen, sections) }
+    } catch {
+      // A section without a fingerprint: nothing can be sent, and the form must not stay busy.
+      setBusy(false)
+      setError("Couldn't send this approval: reload the rules and try again.")
+      return
+    }
     approve.mutate(
-      {
-        version: seen.version,
-        body: {
-          sections,
-          note: note.trim(),
-          ...approvePrecondition(seen, sections),
-        },
-      },
+      { version: seen.version, body },
       {
         onSuccess: (approved) => void finish(seen.version, before, approved.report),
         onError: (caught) => {
