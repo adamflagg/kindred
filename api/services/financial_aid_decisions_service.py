@@ -1852,16 +1852,20 @@ class FinancialAidDecisionsService:
         rows = [self.row_of(season, (families, campers), rid) for rid in season.priced]
         if season.as_of is not None:
             # 3c-2: a row is exact unless a gap reaches its request; then it keeps 3c-1's figures. Every past
-            # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS).
+            # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS). Included
+            # and the to-do read the row's cancellation as of the day (Decision 11), so they are filled, except for
+            # a request whose status can't be replayed (request_history), where they stay empty with its status.
             rows = [
                 row.model_copy(
                     update={
                         "queues": None,
                         "to_reverse": None,
                         "appeal_refusal": None,
-                        "included": None,
-                        "todos": None,
-                        "request_status": None if row.request_id in season.unrebuilt else row.request_status,
+                        **(
+                            {"included": None, "todos": None, "request_status": None}
+                            if row.request_id in season.unrebuilt
+                            else {}
+                        ),
                     }
                 )
                 for row in rows

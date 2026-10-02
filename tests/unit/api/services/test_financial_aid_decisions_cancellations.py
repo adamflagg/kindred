@@ -29,7 +29,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundRef,
 )
-from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent, EnrollmentState
+from api.services.financial_aid_cancellations import CANCEL_REASONS, TODO_CANCEL_REASON, CancelEvent, EnrollmentState
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     cancel_event,
@@ -40,7 +40,7 @@ from api.services.financial_aid_decisions_service import (
     DecisionRefusedError,
     FinancialAidDecisionsService,
 )
-from bunking.financial_aid.decisions import PAST_DATE_GAPS, DecisionEvent
+from bunking.financial_aid.decisions import GRID_GAPS, PAST_DATE_GAPS, DecisionEvent
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -281,18 +281,38 @@ async def test_a_season_before_2027_counts_the_cancellation_but_asks_for_no_reas
 
 
 @pytest.mark.asyncio
-async def test_a_past_read_names_the_cancellation_fields_it_leaves_empty() -> None:
+async def test_a_past_row_fills_included_and_the_to_dos_as_of_the_day_and_names_to_reverse_by_the_ledger() -> None:
+    """A past row carries its cancellation as of the day (Decision 11), so Included and the to-do ("Cancelled: give
+    a reason") are rebuilt from it. To reverse reads the ledger, which a past date doesn't, so it stays empty with
+    its own reason."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
     log_seeded(store, T0 - timedelta(days=30))
-    _enrol(store, 32)
-    out = await _service(store).grid(YEAR, as_of=date(2027, 3, 1))
+    _enrol(store, 32, on=date(2027, 3, 5))
+    out = await _service(store).grid(YEAR, as_of=date(2027, 3, 8))
     row = next(r for r in out.rows if r.request_id == EMMA)
-    assert (row.cancellation, row.to_reverse, row.todos) == (None, None, None)
+    assert row.cancellation is not None
+    assert (row.included, row.to_reverse) == (False, None)
+    assert [t.code for t in row.todos or []] == [TODO_CANCEL_REASON]
+    assert row.todos == (await _row(store)).todos  # the same to-do today's row carries
     named = {g.figure: g.reason for g in out.not_rebuilt}
-    assert {f: named[f] for f in ("cancellation", "to_reverse", "todos")} == {
-        f: PAST_DATE_GAPS[f] for f in ("cancellation", "to_reverse", "todos")
+    assert "included" not in named
+    assert "todos" not in named
+    assert not {"included", "todos"} & set(GRID_GAPS)
+    assert {f: named[f] for f in ("cancellation", "to_reverse")} == {
+        f: PAST_DATE_GAPS[f] for f in ("cancellation", "to_reverse")
     }
+    assert "ledger" in PAST_DATE_GAPS["to_reverse"]
+    assert PAST_DATE_GAPS["to_reverse"] != PAST_DATE_GAPS["cancellation"]
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_of_an_uncancelled_request_is_included_with_no_to_do() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    log_seeded(store, T0 - timedelta(days=30))
+    row = next(r for r in (await _service(store).grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    assert (row.included, row.todos) == (True, [])
 
 
 @pytest.mark.asyncio
