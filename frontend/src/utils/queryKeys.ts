@@ -734,6 +734,8 @@ export const queryKeys = {
     ['financial-aid', 'grid', year, asOf ?? 'live', axis ?? 'campminder'] as const,
   aidTodayPrefix: () => ['financial-aid', 'today'] as const,
   aidHouseholdPagePrefix: () => ['financial-aid', 'household-page'] as const,
+  aidHouseholdPage: (year: number, householdCmId: number) =>
+    ['financial-aid', 'household-page', year, householdCmId] as const,
   aidApplicationPrefix: () => ['financial-aid', 'application'] as const,
   aidJumpIndexPrefix: () => ['financial-aid', 'jump-index'] as const,
 }

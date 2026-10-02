@@ -28,6 +28,7 @@ import {
   viewCount,
   viewCounts,
 } from './views'
+import { offerRound } from './ticks'
 
 const TODAY = '2027-04-01'
 
@@ -308,5 +309,16 @@ describe("Needs an offer's new total (⚠ Decision 40, ruled)", () => {
       total_decided: 1500,
     })
     expect(GRID_COLUMNS.newTotal.value(reversed, CTX)).toBe(1500)
+  })
+
+  // PR 4 re-scan: the cell and the Posted dialog must name the same round, the one the tick would post.
+  it('names the round the tick would post, so a Round 1 with no decided amount is skipped', () => {
+    const row = gridRow({
+      request_id: 'reqnodecided001',
+      rounds: [roundOut(1, 'needs_offer', {}), roundOut(2, 'needs_offer', { decided: 500 })],
+      total_decided: 500,
+    })
+    expect(offerRound(row)?.round).toBe(2)
+    expect(GRID_COLUMNS.newTotal.value(row, CTX)).toBe(500)
   })
 })
