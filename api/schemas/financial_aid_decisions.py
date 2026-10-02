@@ -229,6 +229,8 @@ class GridRowOut(BaseModel):
     # a past read names it in not_rebuilt.
     appeal_refusal: str | None = None
     session_candidates: list[SessionCandidateOut] = Field(default_factory=list)  # read 4: an unmatched request's
+    # Read 2 (§6.2 Needs an offer): the description to post the program's aid under, from the rules; None: none named.
+    campminder_description: str | None = None
 
 
 class RequestsGridResponse(BaseModel):

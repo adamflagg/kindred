@@ -12,9 +12,18 @@ import pytest
 import api.schemas.financial_aid_decisions as schemas
 from api.schemas.financial_aid_decisions import AskIn, CancellationIn
 from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED, DecisionRefusedError
-from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore, log_seeded, seed_request
-from tests.unit.api.services.financial_aid_fakes import YEAR
+from bunking.financial_aid.rules.schema import AidRules
+from tests.unit.api.services.decisions_fakes import (
+    ACTOR,
+    FakeDecisionsStore,
+    FakeRules,
+    approved,
+    log_seeded,
+    seed_request,
+)
+from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _posted, _service
+from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 SEEDED = datetime(2027, 2, 1, 18, 0, tzinfo=UTC)
 
@@ -131,3 +140,27 @@ async def test_a_settled_request_lists_no_candidates_even_if_its_old_flag_stays(
     store.requests[EMMA] = replace(request, flags=({"code": "unmatched_session", "detail": {"candidates": [1000101]}},))
     (row,) = (await _service(store).grid(YEAR)).rows
     assert row.session_candidates == []
+
+
+@pytest.mark.asyncio
+async def test_a_row_names_its_programs_campminder_description() -> None:
+    """§6.2 Needs an offer: "the CampMinder description to use (per program from 2027)"; Decision 7."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    rules = with_levers(intake_rules(), {"programs.summer.campminder_description": "Summer financial assistance"})
+    (row,) = (await _service(store, FakeRules(approved(rules))).grid(YEAR)).rows
+    assert row.campminder_description == "Summer financial assistance"
+
+
+@pytest.mark.asyncio
+async def test_a_program_naming_no_description_leaves_it_empty() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.campminder_description is None
+
+
+def test_a_rules_document_from_before_the_field_still_loads() -> None:
+    doc = intake_rules().model_dump(mode="json")
+    del doc["programs"]["summer"]["campminder_description"]
+    assert AidRules.model_validate(doc).programs["summer"].campminder_description == ""

@@ -1739,12 +1739,16 @@ class FinancialAidDecisionsService:
             ),
         )
         request = season.requests[request_id]
+        rules = season.rules.document if season.rules is not None else None
+        program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None
+        description = (program.campminder_description or None) if program is not None else None
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
         return row.model_copy(
             update={
                 "queues": row_queues(row),
                 "payer_count": len(paying),
                 "payer_shares": grid_shares(row, paying, families),
+                "campminder_description": description,
             }
         )
 
