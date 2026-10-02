@@ -661,13 +661,16 @@ export function requestsCsvName(
   view: RequestView,
   filters: Pick<GridFilters, 'program' | 'pool' | 'round' | 'tick'>,
   season: number,
-  asOf: string | null
+  asOf: string | null,
+  /** An active Today line (Decision 10), so its partial export is not named like the season's. */
+  todayKey: string | null = null
 ): string {
   const words = [
     filters.program,
     filters.pool,
     filters.round === null ? null : `round ${String(filters.round)}`,
     filters.tick,
+    todayKey === null ? null : `today ${todayKey.replaceAll('_', ' ')}`,
   ]
   return aidCsvFilename({
     surface: 'requests',

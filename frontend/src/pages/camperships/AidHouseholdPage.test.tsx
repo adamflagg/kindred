@@ -33,7 +33,7 @@ const gridAsked: Array<{ enabled?: boolean; live?: boolean }> = []
 // What the grid read is doing: loaded (the default), still loading, or failed.
 let gridState: { rows: typeof GRID_ROWS | null; isError: boolean }
 vi.mock('../../hooks/camperships/useAidToday', () => ({
-  useAidToday: () => ({ data: undefined }),
+  useAidToday: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 vi.mock('../../hooks/camperships/useAidGrid', () => ({
   useAidGrid: (options: { enabled?: boolean; live?: boolean }) => {
