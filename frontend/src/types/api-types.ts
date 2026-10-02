@@ -46,6 +46,10 @@ import type {
   CamperJourneyRow,
   CancellationIn,
   CancellationOut,
+  CandidateOut,
+  CapacityListOut,
+  CapacityOut,
+  CapacitySet,
   CellOut,
   CommitteeOut,
   CompareColumnOut,
@@ -95,14 +99,20 @@ import type {
   JumpIndexResponse,
   KeepIn,
   LastSeasonOut,
+  LeaveLineIn,
+  LeftToTickOut,
   LeverEffectOut,
   LoadIn,
   MakeRulesDraftIn,
   ManualHoldIn,
+  NotTickedOut,
   OptionOut,
   PermissionEntry,
   PermissionRegistryResponse,
   PermissionScreen,
+  PlaceLineIn,
+  PlaceLinesIn,
+  PlaceOut,
   PostedIn,
   PreviewIn,
   ProgramProfile,
@@ -113,6 +123,7 @@ import type {
   PromotionSectionOut,
   ReceiptOut,
   PoolBudgetOut,
+  ReclassifyLineIn,
   RemainingResponse,
   RenameIn,
   ResultsOut,
@@ -124,6 +135,14 @@ import type {
   SnapshotOut,
   TierRowOut,
   TierCompareOut,
+  SuggestionOut,
+  TickedOut,
+  ToPlaceGroupOut,
+  ToPlaceLineOut,
+  ToPlaceResponse,
+  ToPlaceWriteOut,
+  TodayLineOut,
+  TodayResponse,
   RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
@@ -363,3 +382,21 @@ export type ApiAidSectionsSaveIn = SectionsSaveIn
 export type ApiAidRulesApproveIn = RulesApproveIn
 export type ApiAidStartFromLastYearIn = StartFromLastYearIn
 export type ApiAidRulesVersion = RulesVersionOut
+
+/** Money › To place (spec §8.1; SP11; D12, D58, D151, D152). Mirrors Python `ToPlaceResponse` and its parts. */
+export type ApiAidToPlace = ToPlaceResponse
+export type ApiAidToPlaceGroup = ToPlaceGroupOut
+export type ApiAidToPlaceLine = ToPlaceLineOut
+export type ApiAidToPlaceCandidate = CandidateOut
+export type ApiAidToPlaceSuggestion = SuggestionOut
+/** A round a placement ticked, left for a person, or withheld its tick on (D152). */
+export type ApiAidTicked = TickedOut
+export type ApiAidLeftToTick = LeftToTickOut
+export type ApiAidNotTicked = NotTickedOut
+/** To place's writes. Each mirrors its Python model. */
+export type ApiAidPlaceLineIn = PlaceLineIn
+export type ApiAidPlaceLinesIn = PlaceLinesIn
+export type ApiAidPlaceOut = PlaceOut
+export type ApiAidLeaveLineIn = LeaveLineIn
+export type ApiAidReclassifyLineIn = ReclassifyLineIn
+export type ApiAidToPlaceWriteOut = ToPlaceWriteOut

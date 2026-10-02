@@ -778,6 +778,13 @@ export const queryKeys = {
     ['financial-aid', 'scenarios', year, 'compare', query] as const,
   aidPromotionPreview: (year: number, code: string) =>
     ['financial-aid', 'scenarios', year, 'promotion', code] as const,
+  aidToPlacePrefix: () => ['financial-aid', 'to-place'] as const,
+  aidToPlace: (year: number, householdCmId: number | null) =>
+    ['financial-aid', 'to-place', year, householdCmId ?? 'season'] as const,
+  aidGrantsPrefix: () => ['financial-aid', 'grants'] as const,
+  aidLedgerPrefix: () => ['financial-aid', 'ledger'] as const,
+  aidSourcesPrefix: () => ['financial-aid', 'sources'] as const,
+  aidGrantorsPrefix: () => ['financial-aid', 'grantors'] as const,
 }
 
 /**
@@ -924,6 +931,17 @@ export function invalidateLodgingRegistryQueries(queryClient: {
 }
 
 /**
+ * What a Camperships write moves beyond the base reads (slice 3):
+ * - `jumpIndex`: which households have aid activity (payer shares);
+ * - `registry`: the sources registry and the grantor directory (a source's classification or
+ *   grantor, a grantor's record).
+ */
+export interface AidRefresh {
+  readonly jumpIndex?: boolean
+  readonly registry?: boolean
+}
+
+/**
  * Every Camperships write calls this on settle (spec §10; #2924's invalidation table):
  * - the Remaining line and Rounds & budget (spec §10: every money write moves both);
  * - the Requests grid and Today;
@@ -934,7 +952,15 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  * - Season › History: every write logs a row;
  * - the scenario reads but each step's effect: a Posted tick's lock changes the promotion preview's
  *   token.
+ * - To place: a tick or a decided amount moves each candidate's "not yet in CampMinder" and what
+ *   Confirm would tick (slice 3);
+ * - Grants: a cancellation or a decided amount moves the Register's Cancelled, the round a grant
+ *   offsets and Needs attention's waiting reasons (slice 3);
+ * - the Ledger: its family rows, their lines and `/summary` read Kindred's placements and the priced
+ *   season, so a payer share, a tick, a To place write or a grant placement can each move them
+ *   (D26, D151).
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
+ * A write to the sources registry or the grantor directory passes `registry`.
  * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
  * Definitions are static and never invalidated.
  */
@@ -942,7 +968,7 @@ export function invalidateAidMoneyQueries(
   queryClient: {
     invalidateQueries: (args: ScenarioRefresh) => unknown
   },
-  options: { readonly jumpIndex?: boolean } = {}
+  options: AidRefresh = {}
 ): Promise<void> {
   const keys: Array<readonly unknown[]> = [
     queryKeys.aidRemainingPrefix(),
@@ -959,7 +985,13 @@ export function invalidateAidMoneyQueries(
   const filters: ScenarioRefresh[] = [
     ...keys.map((queryKey) => ({ queryKey })),
     SCENARIO_REFRESH,
+    { queryKey: queryKeys.aidToPlacePrefix() },
+    { queryKey: queryKeys.aidGrantsPrefix() },
+    { queryKey: queryKeys.aidLedgerPrefix() },
     ...(options.jumpIndex === true ? [{ queryKey: queryKeys.aidJumpIndexPrefix() }] : []),
+    ...(options.registry === true
+      ? [{ queryKey: queryKeys.aidSourcesPrefix() }, { queryKey: queryKeys.aidGrantorsPrefix() }]
+      : []),
   ]
   // A Posted tick's lock changes the promotion preview's confirm token (it hashes the section's
   // status), and posted money feeds compare's last-season column. Each step's effect can't move

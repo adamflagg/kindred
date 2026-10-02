@@ -21,11 +21,19 @@ import type {
   ApiAidHouseholdPage,
   ApiAidHouseholdShareIn,
   ApiAidJumpIndex,
+  ApiAidLeaveLineIn,
   ApiAidManualHoldIn,
   ApiAidPreview,
+  ApiAidPlaceLineIn,
+  ApiAidPlaceLinesIn,
+  ApiAidPlaceOut,
   ApiAidPostedIn,
   ApiAidPreviewIn,
+  ApiAidReclassifyLineIn,
   ApiAidRemaining,
+  ApiAidToday,
+  ApiAidToPlace,
+  ApiAidToPlaceWriteOut,
   ApiAidRequestOut,
   ApiAidHistoryOperationDetail,
   ApiAidHistoryPage,
@@ -216,10 +224,13 @@ async function toWriteError(response: Response, fallback: string): Promise<AidWr
   return error
 }
 
-/** One JSON write (or the preview's POST). A refusal becomes an AidWriteError in the server's words. */
+/**
+ * One write (or the preview's POST). A refusal becomes an AidWriteError in the server's words.
+ * `body` undefined sends none (a DELETE whose reason rides in the query, slice 3).
+ */
 async function send<T>(
   fetchWithAuth: FetchWithAuth,
-  method: 'POST' | 'PUT' | 'PATCH',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   body: unknown,
   fallback: string,
@@ -227,8 +238,9 @@ async function send<T>(
 ): Promise<T> {
   const response = await fetchWithAuth(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    ...(body === undefined
+      ? {}
+      : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     ...(signal ? { signal } : {}),
   })
   if (!response.ok) throw await toWriteError(response, fallback)
@@ -868,5 +880,100 @@ export function startAidRulesFromLastYear(
     `${BASE}/rules/${String(year)}/start-from-last-year`,
     withReason({}, pastSeasonReason),
     "Couldn't start the season's rules"
+  )
+}
+
+/** Money › To place (spec §8.1; D12, D58): the camp-aid lines no single request takes, by reason; one household page's part of it (D26). */
+export async function fetchAidToPlace(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  householdCmId: number | null
+): Promise<ApiAidToPlace> {
+  const params: Record<string, string> =
+    householdCmId === null ? {} : { household_cm_id: String(householdCmId) }
+  const response = await fetchWithAuth(withQuery(`${BASE}/money/${String(year)}/to-place`, params))
+  if (!response.ok) throw await toApiError(response, 'Failed to load To place', AidApiError)
+  return (await response.json()) as ApiAidToPlace
+}
+
+const toPlaceLine = (year: number, transactionCmId: number) =>
+  `${BASE}/money/${String(year)}/to-place/${String(transactionCmId)}`
+
+/** Confirm (one part) or Split (several) one line, with the Posted ticks it makes, as one operation (D12, D81). */
+export function placeAidLine(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  transactionCmId: number,
+  body: ApiAidPlaceLineIn
+): Promise<ApiAidPlaceOut> {
+  return send<ApiAidPlaceOut>(
+    fetchWithAuth,
+    'POST',
+    `${toPlaceLine(year, transactionCmId)}/place`,
+    body,
+    "Couldn't place the line"
+  )
+}
+
+/** Confirm several lines at once (D16), all or nothing, as one operation. At most 200 lines. */
+export function placeAidLines(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidPlaceLinesIn
+): Promise<ApiAidPlaceOut> {
+  return send<ApiAidPlaceOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/money/${String(year)}/to-place/place`,
+    body,
+    "Couldn't place the lines"
+  )
+}
+
+/** Leave a line at family level, with a note (D58). */
+export function leaveAidLine(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  transactionCmId: number,
+  body: ApiAidLeaveLineIn
+): Promise<ApiAidToPlaceWriteOut> {
+  return send<ApiAidToPlaceWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${toPlaceLine(year, transactionCmId)}/leave`,
+    body,
+    "Couldn't leave the line at family level"
+  )
+}
+
+/** Reopen a line left at family level; the reason rides in the query (the route's DELETE). */
+export function reopenAidLine(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  transactionCmId: number,
+  reason: string
+): Promise<ApiAidToPlaceWriteOut> {
+  return send<ApiAidToPlaceWriteOut>(
+    fetchWithAuth,
+    'DELETE',
+    withQuery(`${toPlaceLine(year, transactionCmId)}/leave`, { reason }),
+    undefined,
+    "Couldn't reopen the line"
+  )
+}
+
+/** Reclassify a line as another aid source, with a reason (D104; `rules`). Tonight's ledger sync applies it. */
+export function reclassifyAidLine(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  transactionCmId: number,
+  body: ApiAidReclassifyLineIn
+): Promise<ApiAidToPlaceWriteOut> {
+  return send<ApiAidToPlaceWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${toPlaceLine(year, transactionCmId)}/reclassify`,
+    body,
+    "Couldn't reclassify the line"
   )
 }
