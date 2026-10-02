@@ -389,7 +389,7 @@ class Season:
     # amount on exactly the inputs the season used. Empty on a past read.
     inputs: Mapping[str, RequestToPrice] = field(default_factory=dict)
     # Reports: a cancelled request is priced as not live (no result), so its income tier is read by pricing it live
-    # once, tier only. Never an award or a round view. Live read only; empty on a past read.
+    # once, tier only. Never an award or a round view. On a past read: the cancelled requests with no pricing gap.
     live_tiers: Mapping[str, int] = field(default_factory=dict)
     # SP11-rest: what the live ledger was built from, so To place can re-place a line and see where it lands.
     # Empty on a past read.
@@ -1623,6 +1623,7 @@ class FinancialAidDecisionsService:
         rules_known = not any(gap.figure == "rules_history" for gap in gaps)
         priced: dict[str, PricedRequest] = {}
         gapped: dict[str, str] = {}
+        live_tiers: dict[str, int] = {}
         for request_id, request in requests.items():
             cancelled = request_id in in_kindred
             gap = _pricing_gap(
@@ -1661,6 +1662,19 @@ class FinancialAidDecisionsService:
                         # Decision 19, as live: a cancelled request keeps the program and pool live pricing gives it.
                         key, pool = _home(request, session_map, document)
                         full = replace(full, program_key=key, pool=pool)
+                        # Reports, as live: the income tier of a cancelled request, read by pricing it live once.
+                        tier = _live_tier(
+                            request,
+                            applications,
+                            own,
+                            session_map,
+                            shares,
+                            {request.person_cm_id: request.equity} if request.equity is not None else {},
+                            grants,
+                            document,
+                        )
+                        if tier is not None:
+                            live_tiers[request_id] = tier
                     priced[request_id] = full
                     continue
             gapped[request_id] = gap
@@ -1739,6 +1753,7 @@ class FinancialAidDecisionsService:
             deleted=deleted,
             cost_overrides=cost_overrides,
             cancelled_in_campminder=cancelled_now,
+            live_tiers=live_tiers,
             cancellations=_past_cancellations(
                 requests, today, enrollments, sessions, day, kindred_states, cancelled_now
             ),

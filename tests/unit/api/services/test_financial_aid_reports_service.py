@@ -135,6 +135,26 @@ async def test_a_cancelled_request_with_no_posted_round_keeps_its_income_tier() 
     assert all(row.tier is not None for row in out.rows)
 
 
+async def test_a_cancelled_request_with_no_posted_round_keeps_its_income_tier_on_a_past_date() -> None:
+    """The past read fills the cancelled request's tier the way the live read does: it never drops into "no tier"."""
+    store = report_season()
+    store.cancel_events.append(
+        CancelEvent(
+            "can000000000002",
+            LIAM,
+            "cancel",
+            NOW - timedelta(days=1),
+            reason="aid_not_enough",
+            in_kindred=True,
+            actor=ACTOR,
+        )
+    )
+    out = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
+    three = _tier(out.rows, 3)
+    assert (three.apps, three.cancelled, three.amount, three.awarded_count) == (1, 1, 0.0, 0)
+    assert all(row.tier is not None for row in out.rows)
+
+
 async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_replayed_and_leaves_it_out() -> None:
     """The grid and budget blank a request's posted money when its clawback can't be replayed (3c-2). Reports does the
     same for its awarded: the request stays in apps and asks, its posted money is out of awarded, and a `posted` gap
