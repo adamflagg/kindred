@@ -30,6 +30,26 @@ func TestAidReportsSourcesMigrationAddsTheIncentiveFlag(t *testing.T) {
 	}
 }
 
+// Owner ruling 2026-10-02: a source whose funder type is "incentive" starts with the flag set (96 live 2026 lines
+// would otherwise read need-based until staff set it); every other source keeps the false default. The backfill
+// sets only the new field, and never a row that already reads true.
+func TestAidReportsSourcesMigrationSeedsTheFlagFromTheIncentiveFunderType(t *testing.T) {
+	up := readAidMigrationUp(t, aidReportsSourcesMigration(t))
+	for _, want := range []string{
+		`app.findRecordsByFilter("aid_sources", "funder_type = 'incentive' && incentive = false", "", 0, 0)`,
+		`row.set("incentive", true)`,
+		`app.saveNoValidate(row)`,
+	} {
+		if !strings.Contains(up, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	// Non-destructive: the only field the backfill touches is the new one.
+	if strings.Count(up, "row.set(") != 1 {
+		t.Errorf("the backfill must set exactly one field (incentive), got %d row.set calls", strings.Count(up, "row.set("))
+	}
+}
+
 func TestAidReportsSourcesMigrationLocksTheReportDefinitions(t *testing.T) {
 	up := readAidMigrationUp(t, aidReportsSourcesMigration(t))
 	if !strings.Contains(up, `name: "aid_report_definitions"`) {

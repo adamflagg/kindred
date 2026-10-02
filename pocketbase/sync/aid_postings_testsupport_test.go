@@ -81,6 +81,7 @@ func newAidTestApp(t *testing.T) core.App {
 	}
 	sources.Fields.Add(&core.BoolField{Name: "counts_as_aid"})
 	sources.Fields.Add(&core.BoolField{Name: "counts_toward_budget"})
+	sources.Fields.Add(&core.BoolField{Name: "incentive"})
 	sources.Fields.Add(&core.TextField{Name: "grantor_key"})
 	sources.Fields.Add(&core.JSONField{Name: "implied_program_families", MaxSize: 2000})
 	sources.Indexes = []string{"CREATE UNIQUE INDEX `idx_aid_sources_description_key` " +
