@@ -491,8 +491,8 @@ def _correction(store: FakeToPlaceStore, at: datetime = T0) -> None:
 
 NOT_TICKED_WHY = (
     "Round 1 was not ticked automatically: after CampMinder posted it on Mar 8, a correction was entered (Mar 9). "
-    "Ticking it, by hand or by the next ledger sync, locks today's decided amount. Check it against what the "
-    "family was offered before it ticks."
+    "The nightly ledger sync leaves it too: tick it by hand. That locks the higher of its decided amount on Mar 8 "
+    "(where Kindred can rebuild that day) and today's. Check it against what the family was offered first."
 )
 NOT_TICKED_9001 = (9001, EMMA, 1, POSTED, ["a correction was entered (Mar 9)"], NOT_TICKED_WHY)
 
@@ -517,6 +517,30 @@ async def test_money_placed_tick_withheld_and_the_response_names_the_round() -> 
     assert [w.collection for w in operation] == ["aid_attribution_overrides"]  # no Posted row, no aid_rules lock
     assert [e.kind for e in store.events if e.request_id == EMMA and e.kind == "post"] == []
     assert (await to_place_service(store).read(YEAR)).open_count == 0  # the line is on Emma's request
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_include_override_row_entered_after_the_posting_withholds_nothing_at_the_placement() -> None:
+    """The store's read carries each correction's field, so the placement skips a legacy include_override row as
+    `changed_since` does (owner ruling: the Include override is gone) and ticks the round."""
+    store = one_line()
+    store.corrections.append(
+        CorrectionRecord(
+            id="cor000000000002",
+            year=YEAR,
+            application_id=APPLICATION,
+            request_id="",
+            field="include_override",
+            new_value="excluded",
+            original_value="",
+            reason="Legacy row",
+            actor=ACTOR,
+            created=T0.isoformat(),
+        )
+    )
+    out = await to_place_service(store).place(YEAR, 9001, _place((EMMA, "1500")), ACTOR)
+    assert (out.placed, out.not_ticked) == ([9001], [])
+    assert [(e.request_id, e.round) for e in store.events if e.kind == "post"] == [(EMMA, 1)]
 
 
 @pytest.mark.asyncio

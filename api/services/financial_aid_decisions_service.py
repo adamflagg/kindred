@@ -186,6 +186,14 @@ from api.services.financial_aid_rules_service import (
     RulesVersion,
 )
 from api.services.financial_aid_share_split import grid_shares, payers
+from api.services.financial_aid_to_place import (
+    SYNC_HISTORY,
+    SinceInputs,
+    SinceRecords,
+    on_placed_money,
+    reads_person_fields,
+    withhold,
+)
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.change_replay import LogRow, Replayed, replay
@@ -313,6 +321,7 @@ class DecisionsStore(Protocol):
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
+    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
     async def fetch_grant_placements(self, year: int) -> list[PlacementRecord]: ...
@@ -865,6 +874,16 @@ def budget_out(year: int, rules: RulesVersion | None, budget: SeasonBudget) -> B
 
 # Main spec §6.2: an as-of date is the whole of that day in camp time. The ledger's cutoff is the
 # first instant after it; the folds and the replay keep what was recorded at or before theirs.
+@dataclass(frozen=True)
+class _PostingDay:
+    """A withheld round's price at the end of its posting day (3c-2's past pricing): the season then, the request as
+    priced then, and the amount, which is higher than today's decided (owner question 1's default)."""
+
+    season: Season
+    priced: PricedRequest
+    amount: Decimal
+
+
 _INSTANT: Final = timedelta(microseconds=1)
 
 
@@ -1546,6 +1565,86 @@ class FinancialAidDecisionsService:
         ends = {as_of_instant(day): day for day in days}
         found, unknown = await self._rules.approved_as_of_each(year, PRICING_SECTIONS, ends.keys())
         return {ends[at]: version for at, version in found.items()}, frozenset(ends[at] for at in unknown)
+
+    async def since_inputs(self, season: Season, ticks: Sequence[LedgerTick]) -> SinceInputs | None:
+        """D16b's loads for these ticks, once (moved here from To place, so the placement, the overnight tick and a
+        person's tick read the same): everything recorded after the end of the earliest posting day, and the rules
+        at the end of each. None when every tick is dated today (nothing can be after it)."""
+        now = self._clock()
+        days = sorted({t.posted_on for t in ticks if as_of_instant(t.posted_on) < now})
+        if not days:
+            return None
+        records, (rules_at, unknown) = await asyncio.gather(
+            self._store.fetch_changed_since(
+                season.year, as_of_instant(days[0]), persons=reads_person_fields(season.rules)
+            ),
+            self.rules_on(season.year, days),
+        )
+        return SinceInputs(
+            now=now, history_from=now - SYNC_HISTORY, records=records, rules_at=rules_at, rules_unknown=unknown
+        )
+
+    async def _without_withheld(self, season: Season, ticks: Sequence[LedgerTick]) -> list[LedgerTick]:
+        """D152 (owner, B1 Q1 2026-10-02): money a person placed is the placement's to tick, so a round D16 withholds
+        there stays withheld at night too, for a person to tick at its posting-day price. The rest (money CampMinder
+        posted to the camper) is the overnight tick's own, priced at the sync (SP10b-1 Decision 2). Withheld is per
+        request and as broad as D16's check: a later camper-posted round, or a top-up of a short placement, on a
+        request with a placed line waits too."""
+        placed = on_placed_money(season, ticks)
+        if not placed:
+            return list(ticks)
+        _, held = withhold(season, placed, await self.since_inputs(season, placed))
+        left = {(tick.request_id, tick.round) for tick, _ in held}
+        return [tick for tick in ticks if (tick.request_id, tick.round) not in left]
+
+    async def _posting_day_locks(
+        self, season: Season, keys: Collection[tuple[str, int]]
+    ) -> dict[tuple[str, int], _PostingDay]:
+        """A withheld round keeps its posting-day price (D152; owner, B1 Q1 2026-10-02; Group 3a Q5; S1 Q1). Among
+        `keys`, the rounds D16 withholds (the ledger's own tick on money a person placed, with something that prices
+        the request recorded after its posting day), each priced as of the end of that day. Kept only where 3c-2
+        rebuilds the request exactly then, the round was decided then, and that is higher than today's: an award that
+        rose since locks today's (owner question 1), and one Kindred can't rebuild locks today's (owner question 2).
+        One withheld round per request per tick, whose earlier rounds stand as they did on the posting day; otherwise
+        today's, as before. One past pricing per distinct posting day (concurrently), only when a ticked round is
+        withheld."""
+        # a person is ticking it, so their own earlier undo doesn't matter here
+        everything = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=frozenset())
+        ticks = [t for t in on_placed_money(season, everything) if (t.request_id, t.round) in keys]
+        if not ticks:
+            return {}
+        _, held = withhold(season, ticks, await self.since_inputs(season, ticks))
+        by_request: dict[str, list[LedgerTick]] = defaultdict(list)
+        for tick, _ in held:
+            by_request[tick.request_id].append(tick)
+        days = sorted({mine[0].posted_on for mine in by_request.values()})
+        pasts = dict(zip(days, await asyncio.gather(*(self.past_season(season.year, d) for d in days)), strict=True))
+        found: dict[tuple[str, int], _PostingDay] = {}
+        for request_id, mine in by_request.items():
+            if len(mine) != 1:
+                continue  # several rounds at once: today's for all, so each prices against the lock before it
+            (tick,) = mine
+            past = pasts[tick.posted_on]
+            then, now = past.priced.get(request_id), season.priced[request_id]
+            view = then.view(tick.round) if then is not None else None
+            if (
+                then is None
+                or view is None
+                or past.rules is None
+                or request_id in past.gapped
+                or view.status != "needs_offer"
+                or view.decided is None
+                or view.decided <= tick.amount
+                or any(  # an earlier round must stand as it did then, so this round prices against the same lock
+                    (a := then.view(m)) is None
+                    or (b := now.view(m)) is None
+                    or (a.status, a.locked) != (b.status, b.locked)
+                    for m in range(1, tick.round)
+                )
+            ):
+                continue
+            found[(request_id, tick.round)] = _PostingDay(past, then, view.decided)
+        return found
 
     async def past_season(self, year: int, day: date, axis: AsOfAxis = "campminder") -> Season:
         """The season by the end of `day`, camp time, priced (3c-2): applications, requests and payer
@@ -2341,7 +2440,9 @@ class FinancialAidDecisionsService:
     async def tick_posted(self, year: int, body: PostedIn, actor: str) -> DecisionWriteOut:
         """The registrar entered these awards in CampMinder: tick Posted, locking each round at its
         decided amount with its receipt and rules version (D51, D52), and lock the rules sections a
-        round's first lock reads (Decision 11). All or nothing (Decision 9)."""
+        round's first lock reads (Decision 11). All or nothing (Decision 9). A round whose automatic tick D16
+        withheld keeps its posting-day price where that is higher than today's and Kindred rebuilds it, with that
+        day's receipt and rules version (D152; owner, B1 Q1 2026-10-02): `_posting_day_locks`."""
         season = await self.season(year)
         if season.rules is None:
             raise DecisionRefusedError(f"{year}'s pricing rules are not approved yet")
@@ -2350,9 +2451,10 @@ class FinancialAidDecisionsService:
             key = (row.request_id, row.round)
             if confirmed.setdefault(key, row.amount) != row.amount:
                 raise DecisionRefusedError(f"{row.request_id}: Round {row.round} appears twice with different amounts")
+        posting_day = await self._posting_day_locks(season, confirmed.keys())
         problems: list[str] = []
         changed: list[ChangedRowOut] = []
-        to_post: list[tuple[PricedRequest, int, Decimal]] = []
+        to_post: list[tuple[Season, PricedRequest, int, Decimal]] = []
         unchanged = 0
         for (request_id, n), amount in confirmed.items():
             priced = season.priced.get(request_id)
@@ -2383,14 +2485,14 @@ class FinancialAidDecisionsService:
             if unposted is not None:
                 problems.append(f"{request_id}: tick Round {unposted} Posted before Round {n}")
                 continue
-            if view.decided != amount:
+            then = posting_day.get((request_id, n))
+            lock = then.amount if then is not None else view.decided
+            if lock != amount:
                 changed.append(
-                    ChangedRowOut(
-                        request_id=request_id, round=n, confirmed=money(amount), decided_now=money(view.decided)
-                    )
+                    ChangedRowOut(request_id=request_id, round=n, confirmed=money(amount), decided_now=money(lock))
                 )
                 continue
-            to_post.append((priced, n, view.decided))
+            to_post.append((then.season, then.priced, n, lock) if then is not None else (season, priced, n, lock))
         if problems:
             raise DecisionRefusedError("; ".join(problems))
         if changed:
@@ -2400,10 +2502,10 @@ class FinancialAidDecisionsService:
         version = season.rules.version
         posted_on = body.posted_on or self._today()
         writes = [
-            self._post_write(season, priced, n, amount, actor, posted_on=posted_on, lock_source="tick")
-            for priced, n, amount in to_post
+            self._post_write(priced_on, priced, n, amount, actor, posted_on=posted_on, lock_source="tick")
+            for priced_on, priced, n, amount in to_post
         ]
-        sections = sorted({section for _, n, _ in to_post for section in ROUND_SECTIONS[n]})
+        sections = sorted({section for _, _, n, _ in to_post for section in ROUND_SECTIONS[n]})
         locks, not_locked = await self._rules.lock_writes(year, version, sections)
         try:
             result = await self._store.commit([*writes, *locks], actor=actor)
@@ -2416,7 +2518,7 @@ class FinancialAidDecisionsService:
             written=len(writes),
             unchanged=unchanged,
             operation_id=result.operation_id,
-            total_locked=money(sum((amount for _, _, amount in to_post), ZERO)),
+            total_locked=money(sum((amount for _, _, _, amount in to_post), ZERO)),
             sections_not_locked=list(not_locked),
         )
 
@@ -2495,7 +2597,9 @@ class FinancialAidDecisionsService:
         """D78: after the overnight ledger sync, tick Posted where CampMinder holds camp aid on a request
         beyond what its posted rounds lock: the oldest decided round first, locked at its decided amount
         with its receipt, as a person's tick would have done, dated the posting's day (never after today).
-        A family-level line never ticks (D81), nor a round a person un-ticked. One operation for the
+        A family-level line never ticks (D81), nor a round a person un-ticked. Nor does a round on a
+        request holding money a person placed, when D16 finds something that prices the request recorded
+        after its posting day: it waits for a person (D152). One operation for the
         season, as system:ledger, with the rules sections a first lock reads (SP10a Decision 11).
         Idempotent: a round it ticked is posted, so the next run finds nothing beyond the locks. Two runs
         at once could each write a post for one round; the fold is idempotent, so that is left alone.
@@ -2513,6 +2617,7 @@ class FinancialAidDecisionsService:
                 year=year, ticked=0, operation_id="", skipped=f"{year}'s pricing rules are not approved yet"
             )
         ticks = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=season.undone)
+        ticks = await self._without_withheld(season, ticks)
         if not ticks:
             return LedgerTicksOut(year=year, ticked=0, operation_id="")
         writes, locks, not_locked = await self.tick_writes(
