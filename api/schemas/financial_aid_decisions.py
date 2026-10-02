@@ -277,6 +277,8 @@ class CellOut(BaseModel):
     needs_offer: float | None
     pending_approval: float | None
     remaining: float | None
+    needs_offer_count: CountOut | None = None  # None with its figure: a past read masks both together
+    pending_approval_count: CountOut | None = None
     unconfirmed: UnconfirmedOut | None = None  # None: no ledger read (a past date), or before 2027
 
 

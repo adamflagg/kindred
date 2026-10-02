@@ -410,3 +410,17 @@ def test_a_request_unconfirmed_in_two_rounds_is_one_request_in_the_total_cell() 
     budget = season_budget([emma], RULES, outside_grants={}, ledger=ledger)
     assert budget.total.total.unconfirmed_count == Count(1, 1)
     assert budget.total.total.unconfirmed == Decimal(2000)
+
+
+def test_each_cell_counts_who_needs_an_offer_and_who_waits_for_approval() -> None:
+    rows = [
+        priced("a", 1000001, view(1, "needs_offer", decided="1500"), view(2, "needs_offer", ask="900", decided="400")),
+        priced("b", 1000001, view(1, "needs_offer", decided="1200")),  # a sibling: same family
+        priced("c", 1000002, view(1, "posted", locked="1500"), view(3, "pending_approval", pending="650")),
+    ]
+    camp = pool_of(season_budget(rows, RULES, outside_grants={}), "camp_pool")
+    assert (camp.rounds[1].needs_offer, camp.rounds[1].needs_offer_count) == (Decimal(2700), Count(1, 2))
+    assert camp.rounds[2].needs_offer_count == Count(1, 1)
+    assert (camp.rounds[3].pending_approval, camp.rounds[3].pending_approval_count) == (Decimal(650), Count(1, 1))
+    assert camp.total.needs_offer_count == Count(1, 2)  # request "a" is counted once across its two rounds
+    assert camp.total.pending_approval_count == Count(1, 1)

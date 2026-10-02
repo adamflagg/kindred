@@ -749,6 +749,8 @@ def _cell(cell: Cell) -> CellOut:
         needs_offer=money(cell.needs_offer),
         pending_approval=money(cell.pending_approval),
         remaining=_money(cell.remaining),
+        needs_offer_count=_count(cell.needs_offer_count),
+        pending_approval_count=_count(cell.pending_approval_count),
         unconfirmed=_unconfirmed(cell),
     )
 
@@ -1057,7 +1059,11 @@ def _masked(pool: str, gapped: frozenset[str] | None) -> bool:
 
 
 def _past_cell[C: CellOut](cell: C, *, priced: bool, posted: bool) -> C:
-    update: dict[str, Any] = {} if priced else {"needs_offer": None, "pending_approval": None}
+    update: dict[str, Any] = (
+        {}
+        if priced
+        else {"needs_offer": None, "pending_approval": None, "needs_offer_count": None, "pending_approval_count": None}
+    )
     if not (priced and posted):
         update["remaining"] = None
     return cell.model_copy(update=update)

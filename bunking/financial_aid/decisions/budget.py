@@ -73,6 +73,8 @@ class Cell:
     accepted: Decimal
     needs_offer: Decimal
     pending_approval: Decimal
+    needs_offer_count: Count = Count()
+    pending_approval_count: Count = Count()
     # Owner ruling ⚠10: the part of Posted CampMinder hasn't confirmed. None: the read loaded no ledger.
     unconfirmed: Decimal | None = None
     unconfirmed_count: Count | None = None
@@ -276,6 +278,9 @@ def _pool_budget(
     def amount(n: int, measure: str) -> Decimal:
         return _tally_of(tallies, pool, n, measure).amount
 
+    def count(n: int, measure: str) -> Count:
+        return _tally_of(tallies, pool, n, measure).count()
+
     rounds = {
         n: Cell(
             allocated=by_round[n] if by_round is not None else None,
@@ -283,6 +288,8 @@ def _pool_budget(
             accepted=amount(n, "accepted"),
             needs_offer=amount(n, "needs_offer"),
             pending_approval=amount(n, "pending_approval"),
+            needs_offer_count=count(n, "needs_offer"),
+            pending_approval_count=count(n, "pending_approval"),
             unconfirmed=amount(n, "unconfirmed") if confirmed else None,
             unconfirmed_count=_tally_of(tallies, pool, n, "unconfirmed").count() if confirmed else None,
         )
@@ -295,6 +302,8 @@ def _pool_budget(
         accepted=sum((c.accepted for c in cells), ZERO),
         needs_offer=sum((c.needs_offer for c in cells), ZERO),
         pending_approval=sum((c.pending_approval for c in cells), ZERO),
+        needs_offer_count=_merged(_tally_of(tallies, pool, n, "needs_offer") for n in ROUNDS).count(),
+        pending_approval_count=_merged(_tally_of(tallies, pool, n, "pending_approval") for n in ROUNDS).count(),
         unconfirmed=sum((amount(n, "unconfirmed") for n in ROUNDS), ZERO) if confirmed else None,
         unconfirmed_count=(
             _merged(_tally_of(tallies, pool, n, "unconfirmed") for n in ROUNDS).count() if confirmed else None
