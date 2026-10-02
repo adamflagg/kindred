@@ -12,12 +12,15 @@ def _text(key: str) -> str:
     return definition.text
 
 
-def test_percent_of_ask_including_grants_shares_percent_of_asks_denominator_and_says_round_1_only() -> None:
+def test_percent_of_ask_including_grants_keeps_outside_funded_asks_in_its_denominator_and_says_round_1_only() -> None:
     """§9.2 left its definition to the slice 4 plan; it is the server's (statistics.py), now signed in words."""
     text = _text("pct_of_ask_with_grants")
     assert text.startswith("% of ask incl. grants: ")
     assert "the counting outside grants placed on the live requests" in text
-    assert "÷ the live requests' in-budget asks (the same denominator as % of ask)" in text
+    # Owner A11 (APPROVED): unlike % of ask, the denominator keeps the rounds an outside funder pays in full.
+    assert "÷ the live requests' asks, including rounds an outside funder pays in full" in text
+    assert "outside-funded asks stay in its denominator" in text
+    assert "in-budget" not in text
     assert "Round 1 and All rounds only" in text
     assert '"% of ask incl. grants (posted + decided)"' in text
 
