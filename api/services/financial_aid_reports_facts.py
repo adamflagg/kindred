@@ -173,7 +173,7 @@ def report_requests(
             rounds = [replace(r, locked=None) for r in rounds]
         cancellation = season.cancellations.get(request_id)
         standing = _standing(request, cancellation is not None, rounds)
-        cancel_reason = cancellation.reason if cancellation is not None else None
+        cancel_reason: str | None = cancellation.reason if cancellation is not None else None
         if cancel_reason is None and standing == "cancelled" and request.status == STATUS_WITHDRAWN:
             cancel_reason = WITHDRAWN_REASON  # a withdrawal is named, never read as a missing reason
         out.append(
