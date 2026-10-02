@@ -323,6 +323,17 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§9.7",
         rulings=("D155",),
     ),
+    Definition(
+        key="appeals",
+        term="Appeals",
+        text=(
+            "Appeals: the appeal rate and each tier's appeals count every request with a Round 2 or later ask, "
+            "cancelled ones included, because the rate divides by applications, which include cancellations (D131). "
+            "The outcomes table and the Season screen's Round 2 asks leave cancelled requests out."
+        ),
+        spec="§9.7",
+        rulings=("D131",),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -350,9 +361,10 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "pct_of_ask",
         "decided_not_offered",
         "recipients_cancelled",
+        "appeals",
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
-    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases"),
+    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
 }
 
 BY_KEY: Final[Mapping[str, Definition]] = {d.key: d for d in DEFINITIONS}

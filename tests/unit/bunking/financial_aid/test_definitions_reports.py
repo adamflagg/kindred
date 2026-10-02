@@ -15,9 +15,17 @@ def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
         "pct_of_ask",
         "decided_not_offered",
         "recipients_cancelled",
+        "appeals",
     )
     assert SURFACES["reports-programs"] == ("apps", "awarded", "average_award", "pct_of_ask")
-    assert SURFACES["reports-committee"] == ("finance_budget", "awarded", "apps", "as_reported", "round1_phases")
+    assert SURFACES["reports-committee"] == (
+        "finance_budget",
+        "awarded",
+        "apps",
+        "as_reported",
+        "round1_phases",
+        "appeals",
+    )
 
 
 def test_awarded_is_posted_on_live_requests_never_total_awards_granted() -> None:
@@ -68,3 +76,13 @@ def test_round_1_phases_carry_their_signed_boundary() -> None:
     assert "received by the application deadline" in note.text
     assert "stays in phase 1" in note.text
     assert note.key in SURFACES["reports-committee"]
+
+
+def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applications() -> None:
+    """D131 / OWNER ITEM NOT RULED (appeals and cancellations): the appeal rate and the per-tier appeals count every
+    request with a Round 2 or later ask, cancelled ones included; RPT-23's outcomes exclude them."""
+    note = BY_KEY["appeals"]
+    assert note.text.startswith(note.term)
+    assert "every request with a Round 2 or later ask, cancelled ones included" in note.text
+    assert "the rate divides by applications, which include cancellations" in note.text
+    assert note.key in SURFACES["reports-committee"] and note.key in SURFACES["reports-statistics"]

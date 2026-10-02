@@ -648,6 +648,7 @@ def typed_budget(year: int, typed: _Typed) -> list[BudgetRow]:
 
 def native_appeals(season: NativeSeason) -> AppealsRow:
     applications = len(season.requests)
+    # OWNER ITEM NOT RULED (appeals and cancellations): cancelled requests' Round 2/3 asks count, see `appeals`.
     appealed = len(appeals(season.requests))
     return AppealsRow(season.year, "P", applications, appealed, pct(Decimal(appealed), Decimal(applications)))
 

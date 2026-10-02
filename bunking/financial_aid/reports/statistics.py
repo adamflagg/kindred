@@ -273,6 +273,8 @@ def tier_appeals(
     round3: dict[int | None, Decimal] = defaultdict(lambda: ZERO)
     for request in population:
         round1[_tier(request, 1)].append(request)
+        # OWNER ITEM NOT RULED (appeals and cancellations): a cancelled request's Round 2 ask counts as an appeal,
+        # because the rate divides by applications, which include cancellations (D131). RPT-23 leaves them out.
         if in_round(request, 2):
             round2[_tier(request, 2)] += 1
         round3[_tier(request, 3)] += request.awarded((3,))

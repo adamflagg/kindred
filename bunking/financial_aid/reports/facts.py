@@ -133,4 +133,6 @@ def in_round(request: ReportRequest, n: int | None) -> bool:
 
 def appeals(requests: Sequence[ReportRequest]) -> list[ReportRequest]:
     """Requests with any Round 2 or later ask (RPT-8's appeals, finance's version): cancelled ones included."""
+    # OWNER ITEM NOT RULED (appeals and cancellations): the rate divides by applications, which include cancellations
+    # (D131), so the numerator keeps them; RPT-23's outcomes and the Season screen's Round 2 asks exclude them.
     return [r for r in requests if any((f := r.round(n)) is not None and f.ask is not None for n in (2, 3))]
