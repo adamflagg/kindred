@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,9 +12,10 @@ const accepted = vi.fn()
 const undo = vi.fn()
 const decide = vi.fn()
 let failWith: Error | null = null
+let pending = false
 // Typed as a plain function: vitest 5's `Mock` type isn't callable under tsc (I1).
 const mutation = (spy: (vars: unknown) => unknown) => ({
-  isPending: false,
+  isPending: pending,
   mutate: (vars: unknown, options?: { onError?: (error: Error) => void }) => {
     spy(vars)
     if (failWith !== null) options?.onError?.(failWith)
@@ -34,6 +35,7 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
 beforeEach(() => {
   for (const spy of [posted, accepted, undo, decide]) spy.mockReset()
   failWith = null
+  pending = false
 })
 
 const emma = householdRequest(ROW_EMMA)
@@ -55,11 +57,15 @@ describe('RoundNextAction (D51; Decision 22)', () => {
   })
 
   it("shows the server's refusal", async () => {
-    failWith = new Error('reqemma00000001: Round 1 is on hold: release the hold first')
+    failWith = new Error(
+      'A decided amount moved since it was shown, so nothing was posted: check the rows and tick again'
+    )
     render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
     await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
     expect(
-      screen.getByText('reqemma00000001: Round 1 is on hold: release the hold first')
+      screen.getByText(
+        'A decided amount moved since it was shown, so nothing was posted: check the rows and tick again'
+      )
     ).toBeInTheDocument()
   })
 
@@ -110,6 +116,70 @@ describe('RoundNextAction (D51; Decision 22)', () => {
       body: { approve: true, note: 'Within the reserve' },
     })
   })
+
+  it('disables Mark posted while its write is pending', () => {
+    pending = true
+    render(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
+    expect(screen.getByRole('button', { name: 'Mark posted · locks $1,420' })).toBeDisabled()
+  })
+
+  it('closes the Round 3 form after a successful decision', async () => {
+    const pendingRound = householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'posted', { posted: 1420 }),
+          roundOut(3, 'pending_approval', { pending_approval: 450 }),
+        ],
+      })
+    )
+    render(
+      <RoundNextAction
+        request={pendingRound}
+        line={lineOf(pendingRound, 3)}
+        year={2027}
+        canApprove
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await userEvent.type(screen.getByLabelText('Approval note'), 'Within the reserve{Enter}')
+    await waitFor(() => expect(screen.queryByLabelText('Approval note')).not.toBeInTheDocument())
+  })
+
+  it('clears a Mark posted refusal when the line changes under it', async () => {
+    failWith = new Error('A decided amount moved since it was shown, so nothing was posted')
+    const { rerender } = render(
+      <RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Mark posted · locks $1,420' }))
+    expect(screen.getByText(/A decided amount moved/)).toBeInTheDocument()
+    const postedRow = householdRequest(
+      gridRow({ rounds: [roundOut(1, 'posted', { posted: 1420, decided: 1420 })] })
+    )
+    rerender(
+      <RoundNextAction
+        request={postedRow}
+        line={lineOf(postedRow)}
+        year={2027}
+        canApprove={false}
+      />
+    )
+    rerender(<RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} />)
+    expect(screen.queryByText(/A decided amount moved/)).not.toBeInTheDocument()
+  })
+
+  it('offers no Mark posted on a round whose earlier round is not posted yet', () => {
+    const two = householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'needs_offer', { decided: 1420 }),
+          roundOut(2, 'needs_offer', { decided: 300 }),
+        ],
+      })
+    )
+    render(<RoundNextAction request={two} line={lineOf(two, 2)} year={2027} canApprove={false} />)
+    expect(screen.queryByRole('button', { name: /Mark posted/ })).not.toBeInTheDocument()
+    expect(screen.getByText('after Round 1 is posted')).toBeInTheDocument()
+  })
 })
 
 describe('RoundChecklist (§5.2; D47)', () => {
@@ -157,23 +227,67 @@ describe('RoundChecklist (§5.2; D47)', () => {
   })
 
   it("shows the server's refusal of an undo and keeps the form", async () => {
-    failWith = new Error('Round 1 is accepted: untick Accepted first')
+    failWith = new Error('Untick Accepted on Round 1 first')
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
     await userEvent.type(screen.getByLabelText('Why undo Posted'), 'Ticked the wrong family{Enter}')
-    expect(
-      await screen.findByText('Round 1 is accepted: untick Accepted first')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Untick Accepted on Round 1 first')).toBeInTheDocument()
     expect(screen.getByLabelText('Why undo Posted')).toHaveValue('Ticked the wrong family')
   })
 
   it('shows an Accepted refusal once and clears it on the next try', async () => {
-    failWith = new Error('Round 1 is not posted')
+    failWith = new Error('reqsamuel000005: Round 1 is not posted')
     render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
     await userEvent.click(screen.getByRole('checkbox', { name: 'Accepted' }))
-    expect(screen.getAllByText('Round 1 is not posted')).toHaveLength(1)
+    expect(screen.getAllByText('reqsamuel000005: Round 1 is not posted')).toHaveLength(1)
     failWith = null
     await userEvent.click(screen.getByRole('checkbox', { name: 'Accepted' }))
-    expect(screen.queryByText('Round 1 is not posted')).not.toBeInTheDocument()
+    expect(screen.queryByText('reqsamuel000005: Round 1 is not posted')).not.toBeInTheDocument()
+  })
+
+  it('says only "a tick made by mistake" on a reversed round', async () => {
+    const reversed = householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'posted', { posted: 1800, posted_on: '2027-03-09', clawed_back: true }),
+        ],
+      })
+    )
+    render(<RoundChecklist request={reversed} line={lineOf(reversed)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
+  })
+
+  it('drops "a posted amount stands" when undoing would re-price to a different figure', async () => {
+    const moved = householdRequest(
+      gridRow({
+        rounds: [
+          roundOut(1, 'posted', {
+            decided: 1600,
+            posted: 1800,
+            posted_on: '2027-03-09',
+            would_change_by: -200,
+          }),
+        ],
+      })
+    )
+    render(<RoundChecklist request={moved} line={lineOf(moved)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    expect(screen.getByText('For a tick made by mistake.')).toBeInTheDocument()
+    expect(screen.queryByText(/A posted amount stands/)).not.toBeInTheDocument()
+  })
+
+  it('disables Accepted while its write is pending', () => {
+    pending = true
+    render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+    expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+  })
+
+  it('closes the undo form after a successful undo', async () => {
+    render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /^Posted/ }))
+    await userEvent.type(screen.getByLabelText('Why undo Posted'), 'Ticked the wrong family{Enter}')
+    await waitFor(() => expect(screen.queryByLabelText('Why undo Posted')).not.toBeInTheDocument())
   })
 })
