@@ -5,20 +5,28 @@
  */
 import type {
   ApiAidAcceptedIn,
+  ApiAidApplication,
   ApiAidAskIn,
   ApiAidCancellationIn,
+  ApiAidCorrectionIn,
+  ApiAidCorrectionOut,
   ApiAidDefinitions,
+  ApiAidDuplicateIn,
   ApiAidGrid,
+  ApiAidHeadcountIn,
   ApiAidHoldReleaseIn,
   ApiAidHouseholdPage,
+  ApiAidHouseholdShareIn,
   ApiAidJumpIndex,
   ApiAidManualHoldIn,
   ApiAidPreview,
   ApiAidPostedIn,
   ApiAidPreviewIn,
   ApiAidRemaining,
+  ApiAidRequestOut,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
+  ApiAidSessionIn,
   ApiAidUnpostIn,
   ApiAidWriteOut,
 } from '../../types/api-types'
@@ -338,5 +346,95 @@ export function setAidCancellation(
     `${BASE}/requests/${requestId}/cancellation`,
     body,
     "Couldn't save the cancellation"
+  )
+}
+
+/** A household's application, with its intake requests (§6.3 casework forms). 404: no application. */
+export async function fetchAidApplication(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  householdCmId: number
+): Promise<ApiAidApplication> {
+  const response = await fetchWithAuth(
+    `${BASE}/applications/${String(year)}/${String(householdCmId)}`
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the application', AidApiError)
+  return (await response.json()) as ApiAidApplication
+}
+
+/** Correct an answer (main spec §9.3). `new_value: null` (or left out) goes back to the form's figure; an empty string is refused (422). */
+export function addAidCorrection(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  householdCmId: number,
+  body: ApiAidCorrectionIn
+): Promise<ApiAidCorrectionOut> {
+  return send<ApiAidCorrectionOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/applications/${String(year)}/${String(householdCmId)}/corrections`,
+    body,
+    "Couldn't save the correction"
+  )
+}
+
+/** One household's share, as a percentage (the form sends no dollar amount; the server fills the other of two shares; main spec §9.2). */
+export function setAidHouseholdShare(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  householdCmId: number,
+  body: ApiAidHouseholdShareIn
+): Promise<ApiAidRequestOut> {
+  return send<ApiAidRequestOut>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/requests/${requestId}/payer-shares/${String(householdCmId)}`,
+    body,
+    "Couldn't set the share"
+  )
+}
+
+/** Settle a request's session (main spec §9.1). */
+export function resolveAidSession(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidSessionIn
+): Promise<ApiAidRequestOut> {
+  return send<ApiAidRequestOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/session`,
+    body,
+    "Couldn't settle the session"
+  )
+}
+
+/** Mark a request the duplicate of the one kept (main spec §9.2). */
+export function markAidDuplicate(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidDuplicateIn
+): Promise<ApiAidRequestOut> {
+  return send<ApiAidRequestOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/duplicate`,
+    body,
+    "Couldn't mark the duplicate"
+  )
+}
+
+/** A Family Camp headcount (main spec §8). */
+export function setAidHeadcount(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidHeadcountIn
+): Promise<ApiAidRequestOut> {
+  return send<ApiAidRequestOut>(
+    fetchWithAuth,
+    'PUT',
+    `${BASE}/requests/${requestId}/headcount`,
+    body,
+    "Couldn't set the headcount"
   )
 }
