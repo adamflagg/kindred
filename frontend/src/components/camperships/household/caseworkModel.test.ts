@@ -178,4 +178,19 @@ describe('which casework buttons a request takes (the server’s own refusals)',
     expect(offers({ person_cm_id: 0, program_key: 'summer' }).headcount).toBe(false)
     expect(offers({ program_key: 'family_camp' }).headcount).toBe(false)
   })
+
+  // Lead call (m6): parity with Payer shares… — a cancelled request's reversal follows its figures.
+  it('headcount and settle session are hidden on a cancelled request, either side (reopen first)', () => {
+    const kindred = { by: 'kindred', on: '2027-06-02', reason: 'medical', note: '' } as const
+    const campminder = { by: 'campminder', on: null, reason: null, note: '' } as const
+    const family = { person_cm_id: 0, program_key: 'family_camp' }
+    expect(offers({ ...family, cancellation: kindred }).headcount).toBe(false)
+    expect(offers({ ...family, cancellation: campminder }).headcount).toBe(false)
+    expect(offers({ request_status: 'unmatched_session', cancellation: kindred }).session).toBe(
+      false
+    )
+    expect(offers({ request_status: 'unmatched_session', cancellation: campminder }).session).toBe(
+      false
+    )
+  })
 })
