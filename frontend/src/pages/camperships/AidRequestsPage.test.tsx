@@ -162,6 +162,18 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
   })
 
+  it("shows a label the key could not spell: the server's Women's weekend, not Womens weekend", () => {
+    grid = {
+      data: { ...LIVE, rows: [...GRID_ROWS, { ...GRID_ROWS[0]!, program_key: 'womens_weekend' }] },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/requests')
+    const program = within(screen.getByLabelText('Program'))
+    expect(program.getByRole('option', { name: "Women's weekend" })).toBeInTheDocument()
+    expect(program.queryByRole('option', { name: 'Womens weekend' })).toBeNull()
+  })
+
   it('spells the keys out when the rules read has no answer (404, loading, failed), and still filters', async () => {
     approved = { data: undefined }
     renderAt('/aid/requests')
