@@ -71,6 +71,8 @@ export default function AidRequestsPage() {
     round,
     tick,
     showIds,
+    sort,
+    group,
     row: rowParam,
     setParam,
     setParams,
@@ -327,6 +329,9 @@ export default function AidRequestsPage() {
           from,
           ...lensKeep,
           ...keep,
+          // The table's order, so the walk steps through, and Back restores, what is on screen (I1).
+          ...(sort !== null ? { sort } : {}),
+          ...(group !== null ? { group } : {}),
         }),
       open: (r: ApiAidGridRow, href: string) => {
         // Back lands on this row (§3.5). With the editor open, what is typed is saved first, and
@@ -339,7 +344,7 @@ export default function AidRequestsPage() {
         })
       },
     }),
-    [viewState, from, lensKeep, keep, setParam, navigate, leaveThen]
+    [viewState, from, lensKeep, keep, sort, group, setParam, navigate, leaveThen]
   )
 
   const csvFilename = stripCsvName(

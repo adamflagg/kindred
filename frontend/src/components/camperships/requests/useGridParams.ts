@@ -24,6 +24,9 @@ export interface GridParams {
   readonly round: RoundFilter | null
   readonly tick: TickFilter | null
   readonly showIds: boolean
+  /** The table's `?sort=` and `?group=` as written (AidTable owns them); the household link carries them (I1). */
+  readonly sort: string | null
+  readonly group: string | null
   /** The highlighted request as the URL has it: the page seeds its state from it, once (Decision 2). */
   readonly row: string | null
   /** A Today line whose requests the grid shows (Decision 10). */
@@ -78,6 +81,8 @@ export function useGridParams(): GridParams {
     round: parseRoundFilter(params.get('round')),
     tick: parseTickFilter(params.get('tick')),
     showIds: params.get('ids') === '1',
+    sort: params.get('sort'),
+    group: params.get('group'),
     row: params.get('row'),
     today: params.get('today'),
     setParam,

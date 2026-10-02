@@ -17,7 +17,10 @@ import {
 
 export interface QueueWalk {
   readonly view: RequestView
-  readonly position: WalkPosition
+  /** Null while the grid read is loading or failed, or when the family is not among the view's stops. */
+  readonly position: WalkPosition | null
+  /** True only once the grid has loaded and the family is not in the view (I2): the strip says so. */
+  readonly absent: boolean
   readonly backHref: string
   readonly hrefOf: (stop: WalkStop) => string
 }
@@ -44,10 +47,13 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
   const rows = grid.data?.rows
   // The grid's filters ride along on the link (M5): same rows, and Back lands on the same view.
   const search = params.toString()
-  const { filters, keep } = useMemo(() => gridFiltersFrom(new URLSearchParams(search)), [search])
+  const { filters, keep, order } = useMemo(
+    () => gridFiltersFrom(new URLSearchParams(search)),
+    [search]
+  )
   const stops = useMemo(
-    () => (rows && walkView ? walkStops(rows, walkView, today, filters) : []),
-    [rows, walkView, today, filters]
+    () => (rows && walkView ? walkStops(rows, walkView, today, filters, order) : []),
+    [rows, walkView, today, filters, order]
   )
   const position = useMemo(() => walkPosition(stops, householdCmId), [stops, householdCmId])
   const slug = walkView?.slug ?? null
@@ -84,11 +90,13 @@ export function useQueueWalk(householdCmId: number, view: AidView): QueueWalk | 
     return () => window.removeEventListener('keydown', onKey)
   }, [position, hrefOf])
 
-  if (walkView === null || position === null) return null
-  const here = stops[position.index]
+  if (walkView === null) return null
+  const here = position === null ? undefined : stops[position.index]
   return {
     view: walkView,
     position,
+    // Only a loaded read can say the family left the view: loading and failed claim nothing.
+    absent: rows !== undefined && position === null,
     backHref: aidHref('/aid/requests', view, {
       view: walkView.slug,
       ...keep,

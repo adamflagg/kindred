@@ -34,13 +34,26 @@ function Neighbour({
  */
 export function QueueWalkStrip({ walk }: { walk: QueueWalk }) {
   const { position, view } = walk
+  const back = (
+    <Link to={walk.backHref} className="text-primary font-medium hover:underline">
+      {`← Back to ${view.label}`}
+    </Link>
+  )
+  // No place in the view (the read is loading or failed, or the family has left it): Back alone,
+  // and `[`/`]` do nothing (I2).
+  if (position === null) {
+    return (
+      <div className="bg-muted flex flex-wrap items-center gap-3 rounded-lg px-3 py-1.5 text-sm">
+        {back}
+        {walk.absent && <span className="text-muted-foreground">{`not in ${view.label} now`}</span>}
+      </div>
+    )
+  }
   return (
     <div className="bg-muted flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-sm">
       <Neighbour stop={position.previous} side="previous" hrefOf={walk.hrefOf} />
       <span className="text-muted-foreground">
-        <Link to={walk.backHref} className="text-primary font-medium hover:underline">
-          {`← Back to ${view.label}`}
-        </Link>
+        {back}
         {` · ${String(position.index + 1)} of ${String(position.total)} families`}
       </span>
       <Neighbour stop={position.next} side="next" hrefOf={walk.hrefOf} />
