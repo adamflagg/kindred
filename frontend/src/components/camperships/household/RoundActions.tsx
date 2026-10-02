@@ -17,6 +17,20 @@ const asRound = (n: number): 1 | 2 | 3 | null => (n === 1 || n === 2 || n === 3 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Couldn't save")
 
 /**
+ * What the undo form says first. "A posted amount stands" is true only while the tick stands: on a
+ * reversed round, or one whose posted amount differs from today's decided figure, undoing re-prices
+ * it, so that clause goes and (owner-approved wording) the figure it returns to is named.
+ */
+function undoHint(line: RoundLine): string {
+  const mistake = 'For a tick made by mistake.'
+  if (line.decided !== null && line.amount !== null && line.decided !== line.amount) {
+    return `${mistake} Undoing returns Round ${String(line.round)} to today's ${formatMoney(line.decided)}; ticking Posted again locks that.`
+  }
+  if (line.clawedBack || line.wouldChangeBy !== null) return mistake
+  return `${mistake} A posted amount stands: a later change to the award never lowers it.`
+}
+
+/**
  * A round's checklist on the household page (§5.2, §6.3; D47, D51; Decision 22). Posted is ticked by
  * "Mark posted" (the next action); here its box unticks, with the reason the undo needs. Accepted
  * ticks a posted round only.
@@ -76,11 +90,7 @@ export function RoundChecklist({
         // Owner ruling 2026-10-01 S1 Q1: once posted, an amount stands. That sentence is true only
         // while the tick stands: on a reversed round, or one whose posted amount differs from today's
         // decided one, undoing re-prices it, so only the first clause is honest (lead ruling, fix round 1).
-        <span className="text-muted-foreground text-xs">
-          {line.clawedBack || line.wouldChangeBy !== null
-            ? 'For a tick made by mistake.'
-            : 'For a tick made by mistake. A posted amount stands: a later change to the award never lowers it.'}
-        </span>
+        <span className="text-muted-foreground text-xs">{undoHint(line)}</span>
       )}
       {undoing && (
         <ReasonForm
