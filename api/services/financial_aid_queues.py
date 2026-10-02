@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Final, get_args
 
-from api.schemas.financial_aid_decisions import GridRowOut, QueueOut, RoundStatusOut
+from api.schemas.financial_aid_decisions import GridRowOut, QueueOut, RoundOut, RoundStatusOut, UntickedReasonOut
 from api.services.financial_aid_cancellations import TODO_CANCEL_REASON
 from api.services.financial_aid_intake_types import (
     FLAG_DUPLICATE_SURVIVOR_WITHDRAWN,
@@ -31,8 +31,29 @@ ROUND_STATUS_LABELS: Final[dict[RoundStatusOut, str]] = {
     "not_rebuilt": "Not rebuilt for that date",
 }
 # The states a request or a payer share is in while Not reconciled (D59): not yet confirmed by the
-# ledger, or disagreeing with it. A row is off the view once ConfirmationOut.reconciled.
+# ledger, or disagreeing with it. A row is off direction (a) once ConfirmationOut.reconciled; direction (b) is
+# GridRowOut.unticked (D162).
 UNRECONCILED: Final = frozenset({"awaiting_sync", "short", "over", "not_in_campminder"})
+
+
+# D162: Not reconciled's direction (b) reasons, in the words Today's breakdown shows (D21: one map, on the server).
+UNTICKED_LABELS: Final[dict[UntickedReasonOut, str]] = {
+    "awaiting_tick": "awaiting tonight's tick",
+    "withheld": "withheld: priced since the posting",
+    "short_posting": "short posting",
+    "shares_short": "payer shares not covering",
+    "family_level": "family-level money",
+    "not_decided": "not decided yet",
+    "undone": "un-ticked by hand",
+}
+
+
+def offer_rounds(row: GridRowOut) -> list[RoundOut]:
+    """The rounds Needs an offer holds (§6.2): decided, not posted, and with no money in CampMinder the tick passed
+    over. A round CampMinder holds money for is Not reconciled's only (D162, Q1): it has money in CampMinder, and
+    leaving it in Needs an offer invites posting the family twice."""
+    unticked = {u.round for u in row.unticked or []}
+    return [r for r in row.rounds if r.status == "needs_offer" and r.round not in unticked]
 
 
 def _waiting_on_family(row: GridRowOut) -> bool:
@@ -49,12 +70,14 @@ def row_queues(row: GridRowOut) -> list[QueueOut]:
     """The views `row` belongs to, in the views' order (QUEUES)."""
     hold_codes = {issue.code for issue in row.holds}
     member: dict[QueueOut, bool] = {
-        "needs_offer": any(r.status == "needs_offer" for r in row.rounds),
+        "needs_offer": bool(offer_rounds(row)),
         "holds": bool(row.holds),
         "pending_approval": any(r.status == "pending_approval" for r in row.rounds),
         "waiting_on_family": _waiting_on_family(row),
         "appeals": any(r.round == 2 and r.ask is not None for r in row.rounds),
-        "not_reconciled": row.confirmation is not None and not row.confirmation.reconciled,
+        # D162: both directions. (a) posted rounds the ledger hasn't confirmed, or disagrees with; (b) money CampMinder
+        # holds for a round with no Posted tick.
+        "not_reconciled": (row.confirmation is not None and not row.confirmation.reconciled) or bool(row.unticked),
         "to_reverse": bool(row.to_reverse),
         "session_not_settled": row.request_status == STATUS_UNMATCHED,
         "duplicates": row.request_status == STATUS_DUPLICATE_PENDING or FLAG_DUPLICATE_SURVIVOR_WITHDRAWN in hold_codes,

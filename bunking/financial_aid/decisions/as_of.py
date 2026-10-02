@@ -75,6 +75,8 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "cancellation": _CANCELLED,
     "to_reverse": _TO_REVERSE,
     "queues": "Which Requests views a row is in reads its confirmation and cancellation",
+    "unticked": "Why CampMinder's money for a round has no Posted tick reads the overnight tick, which a past date "
+    "doesn't rebuild",
     "round2_asks": _ROUND2,
     "round2_asked": _ROUND2,
     "pool_unknown": "The request's session and program couldn't be resolved under the rules as of that date, so it sits in No pool",
@@ -149,6 +151,7 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "cancellation",
     "to_reverse",
     "queues",
+    "unticked",
     "appeal_refusal",
 )
 # A past budget never rebuilds the ledger figures either (no ledger is read for a past day).

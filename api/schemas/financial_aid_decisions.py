@@ -122,6 +122,27 @@ class ConfirmationOut(BaseModel):
     shares: list[ShareConfirmationOut]
 
 
+# D162: why CampMinder holds money for a round that has no Posted tick (Requests › Not reconciled, direction b).
+# api.services.financial_aid_reconciliation.UntickedCode; a test pins the labels to these.
+UntickedReasonOut = Literal[
+    "awaiting_tick", "withheld", "short_posting", "shares_short", "family_level", "not_decided", "undone"
+]
+
+
+class UntickedMoneyOut(BaseModel):
+    """One round CampMinder holds money for with no Posted tick, and why (D162; app spec §6.2): the overnight tick
+    stopped there (short posting, family-level money, a round not decided yet, un-ticked by hand, payer shares not
+    covering it), D152 withheld it (priced since the posting), or tonight's tick will make it. `message` is a whole
+    sentence (the household page shows it without a pill). `mark_posted`: a hand tick ("Mark posted",
+    POST /decisions/{year}/posted) is the way through; family-level money is placed in Money › To place instead,
+    and a round not decided yet has nothing to lock. A round here is never in Needs an offer (Q1)."""
+
+    round: int
+    code: UntickedReasonOut
+    message: str
+    mark_posted: bool
+
+
 # D141's nine cancel reasons (api.services.financial_aid_cancellations.CancelReason; a test pins them equal).
 CancelReasonOut = Literal[
     "aid_not_enough",
@@ -224,6 +245,8 @@ class GridRowOut(BaseModel):
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
     confirmation: ConfirmationOut | None = None
+    # D162: Not reconciled's direction (b), from the first ticked season. None on a past read (not_rebuilt names it).
+    unticked: list[UntickedMoneyOut] | None = Field(default_factory=list)
     # Sub-project 10b-2. On a past read, as of the day (Decision 11); a registration whose status changed since
     # reads by today's status (not_rebuilt's cancellation).
     cancellation: CancellationOut | None = None
