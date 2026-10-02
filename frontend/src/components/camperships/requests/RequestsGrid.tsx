@@ -216,9 +216,10 @@ function buildColumns(
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
       sortValue: spec.sortValue,
       render: renderFor(key, ctx, links, onTick),
-      total: spec.money
-        ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
-        : undefined,
+      total:
+        spec.money && spec.noTotal !== true
+          ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
+          : undefined,
     }
   })
 }

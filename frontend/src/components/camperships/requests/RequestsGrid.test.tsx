@@ -815,4 +815,14 @@ describe("Needs an offer's new total column (⚠ Decision 40, ruled)", () => {
     expect(olivia[at('New total')]).toHaveTextContent('$2,200')
     expect(cells('Emma Johnson')[at('New total')]).toHaveTextContent('—')
   })
+
+  // Review I1 (owner call): the ruling covered the per-row cell only, and a sum of whole-season
+  // totals over just the appeal rows is a new figure nobody ruled. Decided's total is unchanged.
+  it('totals Decided in the footer but shows no total under New total', () => {
+    const { container } = render(<Grid slug="needs-offer" />)
+    const footer = Array.from(container.querySelectorAll('tfoot td'))
+    // The footer ends ... Decided, New total, Needs attention.
+    expect(footer.at(-3)).toHaveTextContent('$2,200')
+    expect(footer.at(-2)?.textContent).toBe('')
+  })
 })
