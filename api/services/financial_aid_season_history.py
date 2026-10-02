@@ -27,6 +27,7 @@ from api.constants.collections import (
     AID_HOUSEHOLD_LINKS,
     AID_PAYER_SHARES,
     AID_POSTINGS,
+    AID_REPORTED_HISTORY,
     AID_REQUESTS,
     AID_RULES,
     AID_SCENARIO_OPTIONS,
@@ -67,6 +68,7 @@ ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_ATTRIBUTION_OVERRIDES: "money",
     AID_HOUSEHOLD_LINKS: "money",
     AID_SOURCES: "money",
+    AID_REPORTED_HISTORY: "money",
     AID_POSTINGS: "money",
     AID_FLAG_DISPOSITIONS: "money",
 }
