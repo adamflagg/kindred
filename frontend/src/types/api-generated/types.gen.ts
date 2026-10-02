@@ -5979,6 +5979,7 @@ export type HouseholdRequestOut = {
    * Grants Beyond Owed
    */
   grants_beyond_owed?: number | null
+  round3_context?: Round3ContextOut | null
 }
 
 /**
@@ -12306,6 +12307,36 @@ export type Round3ApprovalIn = {
    * Note
    */
   note: string
+}
+
+/**
+ * Round3ContextOut
+ *
+ * A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
+ * status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
+ * None: not entered).
+ */
+export type Round3ContextOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Enrolled
+   */
+  enrolled: number
+  /**
+   * Waitlisted
+   */
+  waitlisted: number
+  /**
+   * Capacity
+   */
+  capacity: number | null
+  /**
+   * Capacity Note
+   */
+  capacity_note: string
 }
 
 /**

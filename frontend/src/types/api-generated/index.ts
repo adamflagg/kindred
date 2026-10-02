@@ -1106,6 +1106,7 @@ export type {
   Round2TableOutput,
   Round3AmountIn,
   Round3ApprovalIn,
+  Round3ContextOut,
   Round3SectionInput,
   Round3SectionOutput,
   RoundCellOut,
