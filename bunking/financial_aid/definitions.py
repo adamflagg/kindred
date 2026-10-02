@@ -220,6 +220,97 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§7.2",
         rulings=("D59", "D153"),
     ),
+    # Reports (slice 4's back end, Part A): finance's report words (§5.6). "Awarded" labels money here only.
+    Definition(
+        key="apps",
+        term="Applications",
+        text=(
+            "Applications: individual requests (camper × session; household × session for Family Camp). Received = "
+            "every intake request except refused duplicates, cancelled requests included."
+        ),
+        spec="§5.6",
+        rulings=("D72", "D131"),
+    ),
+    Definition(
+        key="cancelled_applicants",
+        term="Cancelled applicants",
+        text=(
+            "Cancelled applicants: received requests later cancelled, shown as their own line beside applications; "
+            "applications keep their meaning."
+        ),
+        spec="§5.6",
+        rulings=("D131",),
+    ),
+    Definition(
+        key="awarded",
+        term="Awarded",
+        text=(
+            "Awarded = offered = Posted: a round counts as awarded once it is posted (ticked or auto-ticked), net of "
+            "any clawback, on a live request (not cancelled). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
+            "from the request's status: a cancelled request leaves it at once, while Rounds & budget's Posted keeps "
+            "its money until the reversal posts."
+        ),
+        spec="§5.6",
+        rulings=("D80", "D106", "D129", "D131"),
+    ),
+    Definition(
+        key="average_award",
+        term="Average award",
+        text=(
+            "Average award: awarded $ ÷ the awarded count. The 2026 sheet and the committee decks divide by all apps, "
+            "$0 included, so this figure reads higher."
+        ),
+        spec="§5.6",
+        rulings=("D80",),
+    ),
+    Definition(
+        key="pct_of_ask",
+        term="% of ask",
+        text="% of ask: awarded $ ÷ asked $, each round's ask as keyed.",
+        spec="§5.6",
+        rulings=("D80",),
+    ),
+    Definition(
+        key="decided_not_offered",
+        term="Decided (not yet offered)",
+        text=(
+            "Decided (not yet offered): behind an off-by-default switch, the amounts decided but not yet posted are "
+            "added, one basis at a time. They are never called awarded, and each moves until posted: rules versions "
+            "and income corrections can change it."
+        ),
+        spec="§5.1",
+        rulings=("D43", "D130"),
+    ),
+    Definition(
+        key="recipients_cancelled",
+        term="Aid recipients who cancelled",
+        text=(
+            "Aid recipients who cancelled: requests with a posted award later cancelled, by cancel reason, pool and "
+            "round. Once cancelled a request is out of awarded already."
+        ),
+        spec="§5.6",
+        rulings=("D101", "D131", "D141"),
+    ),
+    Definition(
+        key="finance_budget",
+        term="Budget",
+        text=(
+            "Budget: {camp}'s own Total FA budget, the one finance and the board approved. Only the total is hard; "
+            "the pool split is finance's soft setting."
+        ),
+        spec="§5.6",
+        rulings=("D106", "D119"),
+    ),
+    Definition(
+        key="as_reported",
+        term="As reported (r)",
+        text=(
+            "As reported (r): finance's own history from before Kindred had the data, typed once as dollars and "
+            "counts with an as-of date. Kindred computes every percentage."
+        ),
+        spec="§5.6",
+        rulings=("D132", "D133"),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -239,6 +330,17 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "unconfirmed",
     ),
     "money-ledger": ("in_campminder_net", "posted"),
+    "reports-statistics": (
+        "apps",
+        "cancelled_applicants",
+        "awarded",
+        "average_award",
+        "pct_of_ask",
+        "decided_not_offered",
+        "recipients_cancelled",
+    ),
+    "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
+    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported"),
 }
 
 BY_KEY: Final[Mapping[str, Definition]] = {d.key: d for d in DEFINITIONS}
