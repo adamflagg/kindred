@@ -27,13 +27,62 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.facts import ReportRequest, average, in_round
 from bunking.financial_aid.scenarios.committee import pct
 
 UNMATCHED_SESSION: Final = 0
+ProgramsCount = Literal["apps", "asks", "awarded"]
+ProgramsPart = Literal["session", "subtotal", "total"]
+
+
+def block_counts_in(request: ReportRequest, n: int) -> frozenset[ProgramsCount]:
+    """The Programs counts a request is in, in round `n`'s block (none when it isn't in that round): one definition
+    for the block's counts and the requests behind them (slice 4 ask 1). Awards: awarded above $0 (D80, D157), which
+    is 0 on a request that isn't live (D129)."""
+    if not in_round(request, n):
+        return frozenset()
+    found: set[ProgramsCount] = {"apps"}
+    if request.asked((n,)) is not None:
+        found.add("asks")
+    if request.awarded((n,)) > 0:
+        found.add("awarded")
+    return frozenset(found)
+
+
+def _slot(request: ReportRequest, sessions: Mapping[int, str | None]) -> tuple[str | None, int]:
+    """The (pool, session) row a request counts in: its own rules session under that session's pool, else its home
+    pool's "session not matched" row."""
+    session = request.session_cm_id if request.session_cm_id in sessions else UNMATCHED_SESSION
+    # A rules session sits in its own program's pool, so a request never splits it across two pools.
+    pool = sessions[session] if session != UNMATCHED_SESSION else request.pool
+    return pool, session
+
+
+def program_members(
+    requests: Iterable[ReportRequest],
+    sessions: Mapping[int, str | None],
+    *,
+    part: ProgramsPart,
+    pool: str | None,
+    session: int,
+    block: int,
+    count: ProgramsCount,
+) -> tuple[str, ...]:
+    """The requests behind one count of one Programs row: a session's row in `pool` (`session` 0: that group's
+    "session not matched"), a pool's subtotal, or the total; in round `block`'s block. Sorted."""
+
+    def in_row(request: ReportRequest) -> bool:
+        if part == "total":
+            return True
+        slot_pool, slot_session = _slot(request, sessions)
+        if slot_pool != pool:
+            return False
+        return part == "subtotal" or slot_session == session
+
+    return tuple(sorted(r.request_id for r in requests if in_row(r) and count in block_counts_in(r, block)))
 
 
 @dataclass(frozen=True)
@@ -75,15 +124,14 @@ def _block(requests: Sequence[ReportRequest], n: int) -> RoundBlock:
     requested = live_asked = awarded = ZERO
     asks = awarded_count = 0
     for request in members:
-        ask = request.asked((n,))
-        if ask is not None:
+        found = block_counts_in(request, n)
+        asks += "asks" in found
+        awarded_count += "awarded" in found
+        if (ask := request.asked((n,))) is not None:
             requested += ask
-            asks += 1
         if request.live and (in_budget := request.asked_in_budget((n,))) is not None:
             live_asked += in_budget
-        money = request.awarded((n,))
-        awarded += money
-        awarded_count += money > 0
+        awarded += request.awarded((n,))
     return RoundBlock(
         apps=len(members),
         requested=requested,
@@ -111,10 +159,7 @@ def programs(requests: Iterable[ReportRequest], sessions: Mapping[int, str | Non
     every = list(requests)
     by_session: dict[tuple[str | None, int], list[ReportRequest]] = defaultdict(list)
     for request in every:
-        session = request.session_cm_id if request.session_cm_id in sessions else UNMATCHED_SESSION
-        # A rules session sits in its own program's pool, so a request never splits it across two pools.
-        pool = sessions[session] if session != UNMATCHED_SESSION else request.pool
-        by_session[(pool, session)].append(request)
+        by_session[_slot(request, sessions)].append(request)
     slots: dict[str | None, set[int]] = defaultdict(set)
     for session, pool in sessions.items():
         slots[pool].add(session)
