@@ -17,6 +17,7 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_money_ledger import LedgerLine
+from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_reconciliation import CampLine, override_split
 from api.services.financial_aid_to_place import (
     TO_PLACE_FLAG,
@@ -298,6 +299,18 @@ def to_place_service(store: FakeToPlaceStore, rules: FakeRules | None = None) ->
 
     decisions = FinancialAidDecisionsService(store, rules or FakeRules(approved()), no_grants, clock=lambda: T0)
     return ToPlaceService(decisions, store, clock=lambda: T0)
+
+
+def money_ledger_service(
+    store: FakeToPlaceStore, *, clock: datetime = T0, register: Sequence[RegisterRow] = ()
+) -> MoneyLedgerService:
+    """Money > Ledger's reads over `store`, pricing with every section approved; today is `clock` (Mar 9 by default)."""
+
+    async def rows(year: int) -> Sequence[RegisterRow]:
+        return register
+
+    decisions = FinancialAidDecisionsService(store, FakeRules(approved()), rows, clock=lambda: clock)
+    return MoneyLedgerService(decisions, store, clock=lambda: clock)
 
 
 def one_line(amount: str = "1500") -> FakeToPlaceStore:
