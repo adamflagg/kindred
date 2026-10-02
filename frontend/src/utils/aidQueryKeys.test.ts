@@ -75,6 +75,9 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       // Every write logs a row (spec §4.11), so every write moves Season › History (D49).
       ['financial-aid', 'history'],
       ['financial-aid', 'scenarios'],
+      ['financial-aid', 'to-place'],
+      ['financial-aid', 'grants'],
+      ['financial-aid', 'ledger'],
     ])
   })
 
@@ -91,6 +94,9 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'rules'],
       ['financial-aid', 'history'],
       ['financial-aid', 'scenarios'],
+      ['financial-aid', 'to-place'],
+      ['financial-aid', 'grants'],
+      ['financial-aid', 'ledger'],
       ['financial-aid', 'jump-index'],
     ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
@@ -269,5 +275,24 @@ describe("each step's effect is a pure function of its key (lead ruling, review 
         JSON.stringify(queryKeys.aidScenariosPrefix())
     )
     expect(scenarioCalls).toHaveLength(1)
+  })
+})
+
+describe('slice 3: what a Money or Grants write moves (spec §10; the invalidation map)', () => {
+  const keysOf = (spy: ReturnType<typeof vi.fn>) =>
+    spy.mock.calls.map(([args]) => (args as { queryKey: unknown[] }).queryKey)
+
+  it('refreshes the sources registry and the grantor directory for a registry write, last', () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidMoneyQueries({ invalidateQueries }, { registry: true })
+    expect(keysOf(invalidateQueries).slice(-2)).toEqual([
+      ['financial-aid', 'sources'],
+      ['financial-aid', 'grantors'],
+    ])
+  })
+
+  it('keeps To place apart per season and per household scope (D26)', () => {
+    expect(queryKeys.aidToPlace(2027, null).slice(0, 2)).toEqual(queryKeys.aidToPlacePrefix())
+    expect(queryKeys.aidToPlace(2027, null)).not.toEqual(queryKeys.aidToPlace(2027, 1000001))
   })
 })

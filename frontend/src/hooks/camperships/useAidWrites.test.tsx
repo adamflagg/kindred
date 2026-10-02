@@ -277,6 +277,8 @@ describe('the casework forms’ writes (§6.3)', () => {
       auth: 'Bearer test-jwt',
     })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'jump-index'] })
+    // Payer shares join D26 families, which the Ledger's rows follow (#2972).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'ledger'] })
   })
 
   it('settles a session, marks a duplicate and sets a headcount', async () => {
