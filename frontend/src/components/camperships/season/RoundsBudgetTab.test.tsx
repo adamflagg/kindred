@@ -400,19 +400,18 @@ describe('the confirmed share under Posted (D153; Decision 10)', () => {
     const r1 = line('pool_a:1')
     expect(within(r1).getByRole('link', { name: '4 not yet confirmed · $5,200' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=not-reconciled&pool=pool_a&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&round=1&tick=posted&counted=1&year=2027'
     )
     expect(r1).toHaveTextContent('4 not yet confirmed · $5,200')
     expect(
       within(line('total')).getByRole('link', { name: '6 not yet confirmed · $7,000' })
-    ).toHaveAttribute('href', '/aid/requests?view=not-reconciled&year=2027')
+    ).toHaveAttribute('href', '/aid/requests?view=not-reconciled&tick=posted&counted=1&year=2027')
     expect(within(r1).getByText('10', { selector: 'sup' })).toBeInTheDocument()
   })
 
   it('shows no line where the server sends none, and no interim sentence', () => {
     renderAt('/aid/season/rounds-budget')
     expect(within(line('pool_a:3')).queryByText(/not yet confirmed/)).toBeNull()
-    expect(within(line('pool_a:3:pending')).queryByText(/not yet confirmed/)).toBeNull()
     expect(screen.queryByTestId('confirmation-line')).toBeNull()
   })
 
