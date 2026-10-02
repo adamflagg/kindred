@@ -907,10 +907,10 @@ describe('ticks (§4.10, §5.2)', () => {
   it('lists exactly what was ticked, and keeps the selection of rows it did not tick', async () => {
     tickPosted.mockResolvedValue({
       year: 2027,
-      written: 1,
+      written: 2,
       unchanged: 0,
       operation_id: 'op1',
-      total_locked: 1420,
+      total_locked: 2200,
     })
     renderAt('/aid/requests')
     await selectBoth()
@@ -918,11 +918,88 @@ describe('ticks (§4.10, §5.2)', () => {
     await userEvent.click(within(liam).getByRole('checkbox', { name: 'Select' }))
     await userEvent.click(screen.getByRole('button', { name: 'Tick Posted…' }))
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(await screen.findByText(/Ticked Posted on 1 request/)).toBeInTheDocument()
+    expect(await screen.findByText(/Ticked Posted on 2 requests/)).toBeInTheDocument()
     expect(screen.getByText(/Emma Johnson R1/)).toBeInTheDocument()
     expect(screen.getByText(/Olivia Chen R2/)).toBeInTheDocument()
     expect(screen.queryByText('Tick Posted on 2 requests · 2 families · $2,200 locked')).toBeNull()
     // Liam had nothing to tick, so he stays selected for the next action.
     expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
+
+  it('says so when the server found some already ticked: the list is what was sent, not what was ticked (M1)', async () => {
+    tickPosted.mockResolvedValue({
+      year: 2027,
+      written: 1,
+      unchanged: 1,
+      operation_id: 'op1',
+      total_locked: 1420,
+    })
+    renderAt('/aid/requests')
+    await selectBoth()
+    await userEvent.click(screen.getByRole('button', { name: 'Tick Posted…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByText(/\(1 was already ticked\)\. Sent: /)).toBeInTheDocument()
+  })
+
+  describe('a tick on the row being edited (review I2; F2-4)', () => {
+    const typeAppeal = async () => {
+      renderAt('/aid/requests?view=needs-offer')
+      await userEvent.click(
+        screen.getByText('Olivia Chen').closest('tr')?.querySelectorAll('td')[3] as HTMLElement
+      )
+      await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+      await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    }
+
+    it('saves the typed ask first, and only then opens the tick', async () => {
+      await typeAppeal()
+      await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $780' }))
+      expect(keyAsk).toHaveBeenCalledTimes(1)
+      expect(
+        await screen.findByText('Tick Posted on 1 request · 1 family · $780 locked')
+      ).toBeInTheDocument()
+    })
+
+    it('opens nothing when that save fails, and the failure stays listed', async () => {
+      keyAsk.mockImplementationOnce(() => Promise.reject(new Error('The server is down')))
+      await typeAppeal()
+      await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $780' }))
+      expect(await screen.findByText(/Couldn't save Olivia Chen's Round 2 ask/)).toBeInTheDocument()
+      expect(screen.queryByText(/^Tick Posted on/)).toBeNull()
+      expect(tickPosted).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('ticks persist when rows leave the screen (owner ruling 2026-10-02)', () => {
+    it('keeps a tick through a search, counts it on the bar, and lists it in the dialog, marked', async () => {
+      renderAt('/aid/requests')
+      await selectBoth()
+      await userEvent.type(screen.getByLabelText('Search'), 'Olivia')
+      expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Tick Posted…' }))
+      expect(
+        screen.getByText('Tick Posted on 2 requests · 2 families · $2,200 locked')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(/Emma Johnson · Round 1 · \$1,420 \(hidden by the search or filters\)/)
+      ).toBeInTheDocument()
+    })
+
+    it('keeps a tick through a filter change', async () => {
+      renderAt('/aid/requests')
+      await selectBoth()
+      await userEvent.selectOptions(screen.getByLabelText('Program'), 'quest')
+      expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+    })
+
+    it("keeps a tick through a view change: the bar's action is chosen at the bar, not by the view", async () => {
+      renderAt('/aid/requests')
+      const samuel = screen.getByText('Samuel Johnson').closest('tr') as HTMLElement
+      await userEvent.click(within(samuel).getByRole('checkbox', { name: 'Select' }))
+      await userEvent.click(viewLink('Needs an offer'))
+      expect(screen.getByText('1 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Tick Accepted…' }))
+      expect(screen.getByText('Tick Accepted on 1 request · 1 family')).toBeInTheDocument()
+    })
   })
 })

@@ -50,7 +50,7 @@ import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useAidKeyAsk } from '../../hooks/camperships/useAidWrites'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useYear } from '../../hooks/useCurrentYear'
-import type { ApiAidGridRow } from '../../types/api-types'
+import type { ApiAidGridRow, ApiAidWriteOut } from '../../types/api-types'
 
 /**
  * `/aid/requests` (§6.1, §6.2): the spine. One read, every view filtered from it in memory (D21,
@@ -140,32 +140,6 @@ export default function AidRequestsPage() {
       }),
     [keyAsk]
   )
-  // Bulk ticks (§4.10). The plan is computed at the click from the rows as they stand then and
-  // frozen in `plan`; a refetch after it never rewrites what the person is confirming.
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
-  const [plan, setPlan] = useState<TickPlan | null>(null)
-  const [result, setResult] = useState<TickResult | null>(null)
-  // Only rows still on screen count: a filter or view change can hide a selected row.
-  const selectedRows = useMemo(
-    () => visible.filter((r) => selected.has(r.request_id)),
-    [visible, selected]
-  )
-  const onTick = useCallback((r: ApiAidGridRow, action: TickAction) => {
-    setResult(null)
-    setPlan(tickPlan([r], action))
-  }, [])
-  const closePlan = useCallback(() => setPlan(null), [])
-  const tickDone = useCallback(
-    (words: string) => {
-      // Only the rows this tick wrote leave the selection: the person may have changed it while
-      // the write was in flight, and a row that had nothing to tick stays selected.
-      const ticked = new Set((plan?.rows ?? []).map((r) => r.requestId))
-      setSelected((current) => new Set([...current].filter((key) => !ticked.has(key))))
-      setResult({ words, ticked: (plan?.rows ?? []).map(tickedLine) })
-      setPlan(null)
-    },
-    [plan]
-  )
   // Build ruling 2: a failure on a row the read no longer has is pruned, so it can't block a leave.
   const rowKeys = useMemo(() => new Set((rows ?? []).map((r) => r.request_id)), [rows])
   // The page's own `onHighlight`, never the bare setter: every walk move (↓, a jump back, Go back,
@@ -184,6 +158,80 @@ export default function AidRequestsPage() {
     },
     [canWork, leave, onHighlight]
   )
+  // Bulk ticks (§4.10). Ticks persist across a search, a view and a filter (owner ruling
+  // 2026-10-02): the selection is request ids, and what a tick does is chosen at the bar, not by the
+  // view, so a row ticked anywhere means the same thing everywhere.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [plan, setPlan] = useState<TickPlan | null>(null)
+  const [result, setResult] = useState<TickResult | null>(null)
+  // The rows the table's search matches, told by the table (it owns the search); null until it has.
+  const [matching, setMatching] = useState<ReadonlySet<string> | null>(null)
+  const onMatchingChange = useCallback(
+    (keys: ReadonlySet<string>) =>
+      setMatching((prev) =>
+        prev !== null && prev.size === keys.size && [...keys].every((k) => prev.has(k))
+          ? prev
+          : keys
+      ),
+    []
+  )
+  // Every ticked row the read still has, on screen or not.
+  const selectedRows = useMemo(
+    () => (rows ? rows.filter((r) => selected.has(r.request_id)) : []),
+    [rows, selected]
+  )
+  // Ticked, but not on screen: the search, the view or a filter hides it.
+  const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
+  const hiddenKeys = useMemo(() => {
+    const onScreen = matching ?? visibleKeys
+    return new Set(selectedRows.filter((r) => !onScreen.has(r.request_id)).map((r) => r.request_id))
+  }, [selectedRows, matching, visibleKeys])
+  // A tick leaves through the walk's save-first exit like every page-owned exit (Decision 4; F2-4):
+  // a typed ask on the row is saved first, a failed save opens nothing. The plan is then built in the
+  // next render from the rows as they stand after that save, never from the click's stale closure.
+  const [tickRequest, setTickRequest] = useState<{
+    keys: readonly string[]
+    action: TickAction
+  } | null>(null)
+  const startTick = useCallback(
+    (keys: readonly string[], action: TickAction) =>
+      leaveThen(null, () => {
+        setResult(null)
+        setTickRequest({ keys, action })
+      }),
+    [leaveThen]
+  )
+  if (tickRequest !== null) {
+    const asked = new Set(tickRequest.keys)
+    setTickRequest(null)
+    setPlan(
+      tickPlan(
+        (rows ?? []).filter((r) => asked.has(r.request_id)),
+        tickRequest.action,
+        new Set([...asked].filter((k) => hiddenKeys.has(k)))
+      )
+    )
+  }
+  const onTick = useCallback(
+    (r: ApiAidGridRow, action: TickAction) => startTick([r.request_id], action),
+    [startTick]
+  )
+  const closePlan = useCallback(() => setPlan(null), [])
+  const tickDone = useCallback(
+    (words: string, out: ApiAidWriteOut) => {
+      // Only the rows this tick wrote leave the selection: the person may have changed it while
+      // the write was in flight, and a row that had nothing to tick stays selected.
+      const ticked = new Set((plan?.rows ?? []).map((r) => r.requestId))
+      setSelected((current) => new Set([...current].filter((key) => !ticked.has(key))))
+      setResult({
+        words,
+        lines: (plan?.rows ?? []).map(tickedLine),
+        someAlreadyTicked: out.unchanged > 0,
+      })
+      setPlan(null)
+    },
+    [plan]
+  )
   const changeFilter = useCallback(
     (name: GridParamName, value: string | null) => leaveThen(null, () => setParam(name, value)),
     [leaveThen, setParam]
@@ -197,7 +245,6 @@ export default function AidRequestsPage() {
     (href: string) => leaveThen(null, () => void navigate(href)),
     [leaveThen, navigate]
   )
-  const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
   const byKey = useMemo(() => new Map((rows ?? []).map((r) => [r.request_id, r] as const)), [rows])
   // "Go back" (Decision 3): a click on that row (ruling B). A row the view or a filter hides is
   // brought back on All (no `view` param: All is its absence) with no filters first (the PR 1 final review: `keep` would leave it hidden).
@@ -349,10 +396,13 @@ export default function AidRequestsPage() {
       {canWork && (
         <BulkBar
           count={selectedRows.length}
-          onTick={(action) => {
-            setResult(null)
-            setPlan(tickPlan(selectedRows, action))
-          }}
+          hidden={hiddenKeys.size}
+          onTick={(action) =>
+            startTick(
+              selectedRows.map((r) => r.request_id),
+              action
+            )
+          }
           onClear={() => setSelected(new Set())}
           result={result}
         />
@@ -400,6 +450,7 @@ export default function AidRequestsPage() {
               filters={filtersBar}
               selected={canWork ? selected : undefined}
               onSelectedChange={canWork ? setSelected : undefined}
+              onMatchingChange={canWork ? onMatchingChange : undefined}
               onTick={canWork ? onTick : undefined}
             />
           )

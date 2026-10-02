@@ -87,3 +87,61 @@ describe('tickPlan (§4.10; Decision 17)', () => {
     ).toBe('Ticked Accepted on 1 request')
   })
 })
+
+describe('a Posted tick the server would refuse (fix round: M4, M7, M8, M6, M1)', () => {
+  const EARLIER_UNPOSTED = gridRow({
+    request_id: 'reqearlier00001',
+    camper_name: 'Samuel Johnson',
+    rounds: [
+      roundOut(1, 'pending_approval', { ask: 2000 }),
+      roundOut(2, 'needs_offer', { ask: 900, decided: 700 }),
+    ],
+  })
+
+  it('skips a row whose earlier round is not posted, with the reason, as the server would refuse it', () => {
+    expect(postedTarget(EARLIER_UNPOSTED)).toBeNull()
+    const plan = tickPlan([ROW_EMMA, EARLIER_UNPOSTED], 'posted')
+    expect(plan.rows.map((r) => r.requestId)).toEqual(['reqemma00000001'])
+    expect(plan.blocked).toEqual([{ label: 'Samuel Johnson', why: "Round 1 isn't posted yet" }])
+  })
+
+  it('ticks a later round once the earlier ones are posted', () => {
+    expect(postedTarget(ROW_OLIVIA)).toEqual({ round: 2, amount: 780 })
+  })
+
+  it('tells two requests of one camper apart by session, and leaves a unique name plain', () => {
+    const second = gridRow({ request_id: 'reqemma00000002', session_name: 'Session 3' })
+    const plan = tickPlan([ROW_EMMA, second, ROW_OLIVIA], 'posted')
+    expect(plan.rows.map((r) => r.label)).toEqual([
+      'Emma Johnson (Session 2)',
+      'Emma Johnson (Session 3)',
+      'Olivia Chen',
+    ])
+  })
+
+  it('marks the rows a search, view or filter hides', () => {
+    const plan = tickPlan([ROW_EMMA, ROW_OLIVIA], 'posted', new Set(['reqemma00000001']))
+    expect(plan.rows.map((r) => [r.label, r.hidden])).toEqual([
+      ['Emma Johnson', true],
+      ['Olivia Chen', false],
+    ])
+  })
+
+  it('says in plain words which rules sections the server did not lock, and that nothing changed when all were ticked', () => {
+    expect(
+      doneWords('posted', {
+        year: 2027,
+        written: 1,
+        unchanged: 0,
+        operation_id: 'op1',
+        total_locked: 1420,
+        sections_not_locked: ['income', 'award_tables'],
+      })
+    ).toBe(
+      'Ticked Posted on 1 request · $1,420 locked · rules not locked yet: income, award tables'
+    )
+    expect(doneWords('posted', { year: 2027, written: 0, unchanged: 2, operation_id: '' })).toBe(
+      'Nothing changed: 2 were already ticked'
+    )
+  })
+})
