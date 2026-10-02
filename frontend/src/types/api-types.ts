@@ -120,6 +120,7 @@ import type {
   SocialGraphResponse,
   UnpostIn,
   ValidationIssue,
+  ViewIn,
   WorkspaceOut,
 } from './api-generated'
 
@@ -280,4 +281,5 @@ export type ApiAidScenarioDocumentIn = DocumentIn
 export type ApiAidScenarioLoadIn = LoadIn
 export type ApiAidScenarioKeepIn = KeepIn
 export type ApiAidScenarioSensitivity = SensitivityOut
+export type ApiAidScenarioViewIn = ViewIn
 export type ApiAidLeverEffect = LeverEffectOut

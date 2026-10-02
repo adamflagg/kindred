@@ -755,8 +755,14 @@ export const queryKeys = {
     ['financial-aid', 'history', year, 'operation', operationId] as const,
   aidScenariosPrefix: () => ['financial-aid', 'scenarios'] as const,
   aidScenarios: (year: number) => ['financial-aid', 'scenarios', year, 'workspace'] as const,
-  aidScenarioSensitivity: (year: number, trailId: string, snapshotId: string) =>
-    ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId] as const,
+  /** `requestSet`: 'all' (the whole season), 'round1_deadline', or the received-through date (D138). */
+  aidScenarioSensitivity: (
+    year: number,
+    trailId: string,
+    snapshotId: string,
+    requestSet: string = 'all'
+  ) =>
+    ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId, requestSet] as const,
 }
 
 /**
@@ -799,6 +805,22 @@ export function invalidateRequestQueries(
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
   }
+}
+
+/** What a scenario refresh hands `invalidateQueries`: the prefix, minus each step's effect. */
+interface ScenarioRefresh {
+  readonly queryKey: readonly unknown[]
+  readonly predicate?: (query: { readonly queryKey: readonly unknown[] }) => boolean
+}
+
+/**
+ * Every scenario refresh skips the sensitivity read: its answer is a pure function of its key (year,
+ * trail row, snapshot, request set), so a changed draft already has a new key, and refetching the old
+ * one costs the server five season replays for a figure that cannot move (lead ruling, review I1).
+ */
+const SCENARIO_REFRESH: ScenarioRefresh = {
+  queryKey: queryKeys.aidScenariosPrefix(),
+  predicate: (query) => query.queryKey[3] !== 'sensitivity',
 }
 
 /**
@@ -897,7 +919,7 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  */
 export function invalidateAidMoneyQueries(
   queryClient: {
-    invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+    invalidateQueries: (args: ScenarioRefresh) => unknown
   },
   options: { readonly jumpIndex?: boolean } = {}
 ): Promise<void> {
@@ -912,13 +934,18 @@ export function invalidateAidMoneyQueries(
     queryKeys.aidRulesPrefix(),
     // Every write logs a row (spec §4.11): Season › History (D49).
     queryKeys.aidHistoryPrefix(),
-    // The promotion preview reads which rules sections a Posted tick has locked.
-    queryKeys.aidScenariosPrefix(),
   ]
-  if (options.jumpIndex === true) keys.push(queryKeys.aidJumpIndexPrefix())
+  const filters: ScenarioRefresh[] = [
+    ...keys.map((queryKey) => ({ queryKey })),
+    SCENARIO_REFRESH,
+    ...(options.jumpIndex === true ? [{ queryKey: queryKeys.aidJumpIndexPrefix() }] : []),
+  ]
+  // A Posted tick's lock changes the promotion preview's confirm token (it hashes the section's
+  // status), and posted money feeds compare's last-season column. The workspace and each step's
+  // effect don't move, so this refreshes the scenario reads by the shared filter, not by prefix.
   // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
   // awaits a promise returned from onSettled before mutateAsync resolves.
-  return Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey }))).then(
+  return Promise.all(filters.map((filter) => queryClient.invalidateQueries(filter))).then(
     () => undefined
   )
 }
@@ -934,22 +961,20 @@ export function invalidateAidMoneyQueries(
  */
 export function invalidateAidRulesQueries(
   queryClient: {
-    invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+    invalidateQueries: (args: ScenarioRefresh) => unknown
   },
   options: { readonly priced?: boolean } = {}
 ): Promise<void> {
-  // An approval's money refresh already covers the rules, Today and scenario prefixes, so it stands
+  // An approval's money refresh already covers the rules, Today and scenario reads, so it stands
   // alone: invalidating them twice would cancel and restart each active read's refetch.
   if (options.priced === true) return invalidateAidMoneyQueries(queryClient)
   // The scenario workspace names the rules draft's version and the version pricing the season.
-  return Promise.all(
-    [
-      queryKeys.aidRulesPrefix(),
-      queryKeys.aidTodayPrefix(),
-      queryKeys.aidHistoryPrefix(),
-      queryKeys.aidScenariosPrefix(),
-    ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
-  ).then(() => undefined)
+  return Promise.all([
+    ...[queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix(), queryKeys.aidHistoryPrefix()].map(
+      (queryKey) => queryClient.invalidateQueries({ queryKey })
+    ),
+    queryClient.invalidateQueries(SCENARIO_REFRESH),
+  ]).then(() => undefined)
 }
 
 /**
@@ -958,11 +983,9 @@ export function invalidateAidRulesQueries(
  * Returns a promise like the other aid helpers, so an onSettled can wait for the refetch.
  */
 export function invalidateAidScenarioQueries(queryClient: {
-  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+  invalidateQueries: (args: ScenarioRefresh) => unknown
 }): Promise<void> {
-  return Promise.resolve(
-    queryClient.invalidateQueries({ queryKey: queryKeys.aidScenariosPrefix() })
-  ).then(() => undefined)
+  return Promise.resolve(queryClient.invalidateQueries(SCENARIO_REFRESH)).then(() => undefined)
 }
 
 /**

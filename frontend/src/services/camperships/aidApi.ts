@@ -41,6 +41,7 @@ import type {
   ApiAidScenarioOption,
   ApiAidScenarioSensitivity,
   ApiAidScenarioSnapshot,
+  ApiAidScenarioViewIn,
   ApiAidScenarioWorkspace,
   ApiAidSessionIn,
   ApiAidUnpostIn,
@@ -640,11 +641,14 @@ export function keepAidScenario(
   )
 }
 
-/** What one step of each sizing setting moves Round 1 by (§7.4), the dollar-for-dollar switch included (D137). */
+/**
+ * What one step of each sizing setting moves Round 1 by (§7.4), the dollar-for-dollar switch included
+ * (D137). The body is the server's `ViewIn`: the document, and optionally a request set (D138).
+ */
 export function fetchAidScenarioSensitivity(
   fetchWithAuth: FetchWithAuth,
   year: number,
-  body: ApiAidScenarioDocumentIn
+  body: ApiAidScenarioViewIn
 ): Promise<ApiAidScenarioSensitivity> {
   return send<ApiAidScenarioSensitivity>(
     fetchWithAuth,
