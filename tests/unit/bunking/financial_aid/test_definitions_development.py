@@ -52,3 +52,11 @@ def test_appeals_note_says_every_cancel_reason_includes_campers_who_did_not_atte
     assert "the one count" not in text
     assert "every cancel-reason line" in text
     assert "didn't attend" in text
+
+
+def test_who_counts_names_the_aid_eligible_population() -> None:
+    """Owner rule (item 28): development counts only attendees of aid-eligible sessions; someone who attended only
+    a session that is not aid-eligible is not counted anywhere (that is a metrics question, not a grants one)."""
+    text = BY_KEY["dev_recipients"].text
+    assert "aid-eligible" in text
+    assert "only" in text and "not counted anywhere" in text

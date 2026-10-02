@@ -375,7 +375,9 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Who counts: campers who attended (CampMinder status 2) and got money from any source, including campers "
             "who never applied. A cancelled camper, or one who got nothing, is not counted. A camper counts once per "
-            "program; Weekend counts families."
+            "program; Weekend counts families. Only attendees of aid-eligible sessions (those a program open to aid claims "
+            "this season) are in these groups: someone who attended only a session that is not aid-eligible is not "
+            "counted anywhere."
         ),
         spec="§5.11",
         rulings=("D92",),
