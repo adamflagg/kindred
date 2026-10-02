@@ -139,8 +139,6 @@ export type ApiCamperJourneyCounts = CamperJourneyCounts
 /** The Remaining line's read (D48). Mirrors Python `RemainingResponse`. */
 export type ApiAidRemaining = RemainingResponse
 
-/** Season › Rules (spec §7.5; D76). Mirrors Python `ApprovedRulesOut`. */
-export type ApiAidApprovedRules = ApprovedRulesOut
 /** Today (§6.4). Mirrors Python `TodayResponse` and `TodayLineOut`. */
 export type ApiAidToday = TodayResponse
 export type ApiAidTodayLine = TodayLineOut
