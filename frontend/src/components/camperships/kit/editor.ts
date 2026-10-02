@@ -65,7 +65,6 @@ export type EditKind =
   | 'appeal_ask'
   | 'round3_ask'
   | 'round3_amount'
-  | 'include_override'
   | 'income_correction'
   | 'hold'
   | 'cancel'
@@ -110,7 +109,6 @@ export const REASON_POLICY = {
   },
   round3_ask: { kind: 'required', label: 'Statement of need', maxLength: STATEMENT_MAX },
   round3_amount: { kind: 'optional', label: 'Note', prefill: () => '', maxLength: NOTE_MAX },
-  include_override: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
   income_correction: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
   hold: { kind: 'required', label: 'Reason', maxLength: NOTE_MAX },
   cancel: {

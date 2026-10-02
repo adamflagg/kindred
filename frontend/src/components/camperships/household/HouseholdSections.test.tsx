@@ -46,14 +46,17 @@ describe('IncomeSection (§6.3 item 5; main spec §9.3)', () => {
 describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
   it('lists the grants, the Expected chip, and every posting with reversals struck through', () => {
     render(<GrantsPostingsSection page={PAGE} />)
-    expect(screen.getByText('Grantor A')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('table', { name: 'Grants' })).getByText('Grantor A')
+    ).toBeInTheDocument()
     expect(screen.getByText('Expected: synagogue grant · Emma Johnson')).toBeInTheDocument()
-    expect(screen.getByText('reversed Mar 20')).toBeInTheDocument()
-    expect(screen.getByText('$1,800').tagName).toBe('S')
-    expect(screen.getByText('$1,590')).toBeInTheDocument()
+    const postings = within(screen.getByRole('table', { name: 'Postings' }))
+    expect(postings.getByText('reversed Mar 20')).toBeInTheDocument()
+    expect(postings.getByText('$1,800').tagName).toBe('S')
+    expect(postings.getByText('$1,590')).toBeInTheDocument()
   })
 
-  it("marks a grant that doesn't count or is cancelled, so the table reads against the band's grants", () => {
+  it('marks a grant that is cancelled, and one the band does not count', () => {
     const grant = PAGE.grants[0]!
     render(
       <GrantsPostingsSection
@@ -67,6 +70,51 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
     )
     expect(screen.getByText('not counted')).toBeInTheDocument()
     expect(screen.getByText('cancelled')).toBeInTheDocument()
+  })
+
+  // The band counts a grant only when counts, funder_type is outside, and a request has a share
+  // (outside_grants_by_request).
+  it('puts no mark on a grant the band counts (outside, counted, with a request share)', () => {
+    render(<GrantsPostingsSection page={PAGE} />)
+    const grants = screen.getByRole('table', { name: 'Grants' })
+    expect(within(grants).queryByText('not counted')).toBeNull()
+    expect(within(grants).queryByText('cancelled')).toBeNull()
+  })
+
+  it.each([['incentive'], ['other']])(
+    'marks a counted %s grant "not counted": the band takes outside grants only',
+    (funder) => {
+      const grant = PAGE.grants[0]!
+      render(
+        <GrantsPostingsSection
+          page={householdPage({ grants: [{ ...grant, funder_type: funder }] })}
+        />
+      )
+      expect(screen.getByText('not counted')).toBeInTheDocument()
+    }
+  )
+
+  it('marks a counted outside grant with no request share "not counted"', () => {
+    const grant = PAGE.grants[0]!
+    render(<GrantsPostingsSection page={householdPage({ grants: [{ ...grant, requests: [] }] })} />)
+    expect(screen.getByText('not counted')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['household', 1000002, 'the household'],
+    ['none', 0, 'needs a camper'],
+  ] as const)('names an unplaced grant line (basis %s, person %s) "%s"', (basis, person, words) => {
+    const grant = PAGE.grants[0]!
+    render(
+      <GrantsPostingsSection
+        page={householdPage({
+          grants: [{ ...grant, camper_basis: basis, person_cm_id: person, camper_name: '' }],
+        })}
+      />
+    )
+    expect(
+      within(screen.getByRole('table', { name: 'Grants' })).getByText(words)
+    ).toBeInTheDocument()
   })
 
   it('downloads the posting history, numbers plain, with the page link last (§11)', async () => {
@@ -91,6 +139,26 @@ describe('HistorySection (§6.3 item 7)', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Download history' }))
     expect(downloadSpy.mock.calls[0]?.[1]).toBe('camperships-household-1000001-history-2027.csv')
+  })
+})
+
+describe('HistorySection, empty', () => {
+  it('offers no download when nothing is recorded', () => {
+    render(<HistorySection page={householdPage({ history: [] })} />)
+    expect(screen.getByText('Nothing recorded yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Download history' })).toBeNull()
+  })
+
+  it('does not repeat a key for two entries of one operation and record', () => {
+    const entry = PAGE.history[0]!
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    render(
+      <HistorySection
+        page={householdPage({ history: [entry, { ...entry, entity: 'aid_other' }, { ...entry }] })}
+      />
+    )
+    expect(spy.mock.calls.filter((c) => String(c[0]).includes('same key'))).toHaveLength(0)
+    spy.mockRestore()
   })
 })
 
