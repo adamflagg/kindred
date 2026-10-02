@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import {
   useAidRound3Decision,
@@ -34,8 +34,6 @@ export function RoundChecklist({
   const accept = useAidTickAccepted()
   const [undoing, setUndoing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Only the latest tick may show an error: a superseded write failing late must not overwrite it.
-  const latest = useRef(0)
   const round = asRound(line.round)
   const requestId = request.row.request_id
   if (round === null) return null
@@ -59,7 +57,6 @@ export function RoundChecklist({
             disabled={!line.posted || accept.isPending}
             onChange={(event) => {
               setError(null)
-              const mine = ++latest.current
               accept.mutate(
                 {
                   year,
@@ -68,11 +65,7 @@ export function RoundChecklist({
                     accepted: event.target.checked,
                   },
                 },
-                {
-                  onError: (caught) => {
-                    if (mine === latest.current) setError(messageOf(caught))
-                  },
-                }
+                { onError: (caught) => setError(messageOf(caught)) }
               )
             }}
           />
@@ -80,10 +73,13 @@ export function RoundChecklist({
         </label>
       </div>
       {undoing && (
-        // Owner ruling 2026-10-01 S1 Q1: once posted, an amount stands.
+        // Owner ruling 2026-10-01 S1 Q1: once posted, an amount stands. That sentence is true only
+        // while the tick stands: on a reversed round, or one whose posted amount differs from today's
+        // decided one, undoing re-prices it, so only the first clause is honest (lead ruling, fix round 1).
         <span className="text-muted-foreground text-xs">
-          For a tick made by mistake. A posted amount stands: a later change to the award never
-          lowers it.
+          {line.clawedBack || line.wouldChangeBy !== null
+            ? 'For a tick made by mistake.'
+            : 'For a tick made by mistake. A posted amount stands: a later change to the award never lowers it.'}
         </span>
       )}
       {undoing && (
@@ -123,12 +119,28 @@ export function RoundNextAction({
   const decide = useAidRound3Decision()
   const [deciding, setDeciding] = useState<'approve' | 'refuse' | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const latest = useRef(0)
   const round = asRound(line.round)
   const requestId = request.row.request_id
+  // A refusal belongs to the line it was made on: a changed status or decided amount clears it.
+  // Reset during render (React's documented pattern), not in an effect: no extra render pass.
+  const lineKey = `${line.status}:${String(line.decided)}`
+  const [seenKey, setSeenKey] = useState(lineKey)
+  if (seenKey !== lineKey) {
+    setSeenKey(lineKey)
+    setError(null)
+  }
 
   if (line.status === 'needs_offer' && line.decided !== null && round !== null) {
     const amount = line.decided
+    // The server posts rounds in order: a later round waits on the first one not yet posted.
+    const blocking = request.row.rounds
+      .filter((r) => r.round < line.round && r.status !== 'posted')
+      .sort((a, b) => a.round - b.round)[0]
+    if (blocking !== undefined) {
+      return (
+        <span className="text-muted-foreground text-xs">{`after Round ${String(blocking.round)} is posted`}</span>
+      )
+    }
     return (
       <div className="flex flex-col items-start gap-1">
         <button
@@ -137,14 +149,9 @@ export function RoundNextAction({
           disabled={posted.isPending}
           onClick={() => {
             setError(null)
-            const mine = ++latest.current
             posted.mutate(
               { year, body: { rows: [{ request_id: requestId, round, amount }] } },
-              {
-                onError: (caught) => {
-                  if (mine === latest.current) setError(messageOf(caught))
-                },
-              }
+              { onError: (caught) => setError(messageOf(caught)) }
             )
           }}
         >
