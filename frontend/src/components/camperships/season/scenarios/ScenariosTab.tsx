@@ -5,7 +5,7 @@ import {
 } from '../../../../hooks/camperships/useAidScenarios'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { hasStatus } from '../../../../services/camperships/aidApi'
-import type { ApiAidScenarioWorkspace } from '../../../../types/api-types'
+import type { ApiAidLeverEffect, ApiAidScenarioWorkspace } from '../../../../types/api-types'
 import {
   AMBER_NOTE,
   BUTTON_PRIMARY,
@@ -22,6 +22,9 @@ import { changedLevers, hasPending, startingPointOf } from './scenarioModel'
 import { CHANGED_NAME, DRAFT_CHIP, DRAFT_ROW } from './scenarioStyles'
 
 type Draft = ReturnType<typeof useAidScenarioDraft>
+
+/** One empty list for every render while the step read is out, never a new one each time. */
+const NO_EFFECTS: readonly ApiAidLeverEffect[] = []
 
 const STEPS_FAILED = "Couldn't work out each setting's step"
 
@@ -195,7 +198,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 from={draft.from_code}
                 pending={work.pending}
                 changed={changedLevers(draft.changes, work.pending)}
-                effects={sensitivity.data?.levers ?? []}
+                effects={sensitivity.data?.levers ?? NO_EFFECTS}
                 disabled={work.busy !== null}
                 onMove={work.move}
                 onRelease={() => void work.release()}

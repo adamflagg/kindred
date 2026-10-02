@@ -21,8 +21,9 @@ const STATE_WORDS = {
 } as const
 
 /**
- * A scenario's figures (spec §7.4; results.py): the strip's one line, then where Round 1 lands by
- * pool and by tier. `state` says whether these are the draft as recorded or a slider still moving.
+ * A scenario's figures (spec §7.4; results.py): the strip's one line; then by pool, Rounds 1-3,
+ * Round 1 remaining and Remaining (every round); then Round 1 by tier. `state` says whether these
+ * are the draft as recorded or a slider still moving.
  */
 export function ScenarioResults({
   results,

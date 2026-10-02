@@ -12,6 +12,7 @@ import {
   scenarioDraft,
   workspace,
 } from '../../components/camperships/season/scenarios/scenarioFixtures'
+import { RULES_DOCUMENT } from '../../components/camperships/season/rules/rulesFixtures'
 import type { ApiAidScenarioWorkspace } from '../../types/api-types'
 import { queryKeys } from '../../utils/queryKeys'
 import { useAidScenarioDraft } from './useAidScenarioDraft'
@@ -217,6 +218,38 @@ describe('useAidScenarioDraft (Decision 19)', () => {
     const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
     await act(() => result.current.freeze())
     expect(result.current.nothingToFreeze).toBe(false)
+  })
+
+  it('records nothing for a minimum typed back to the stored amount, by value (scan #1)', async () => {
+    const stored = workspace({
+      draft: scenarioDraft({
+        document: { ...RULES_DOCUMENT, awards: { ...RULES_DOCUMENT.awards, minimum: '250.00' } },
+      }),
+    })
+    const { result } = renderHook(() => useAidScenarioDraft(stored), { wrapper })
+    act(() => result.current.move({ minimum: '250' }))
+    expect(result.current.pending.minimum).toBeNull()
+    expect(result.current.live).toEqual({ status: 'idle' })
+    await act(() => result.current.release())
+    expect(calls).toEqual([])
+  })
+
+  it('records nothing for the switch toggled back to where it was (scan #1)', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    act(() => result.current.move({ dollar: false }))
+    act(() => result.current.move({ dollar: true }))
+    expect(result.current.pending.dollar).toBeNull()
+    await act(() => result.current.release())
+    expect(calls).toEqual([])
+  })
+
+  it('records nothing for a slider dragged back to zero (scan #1)', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    act(() => result.current.move({ tierShift: -1, bandDelta: 500 }))
+    act(() => result.current.move({ tierShift: 0, bandDelta: 0 }))
+    await act(() => result.current.release())
+    await flush(300)
+    expect(calls).toEqual([])
   })
 
   it('sends every call through fetchWithAuth', async () => {

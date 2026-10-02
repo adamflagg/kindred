@@ -5,6 +5,7 @@ import {
   NO_PENDING,
   hasPending,
   sizingDocument,
+  unmoved,
   type Pending,
 } from '../../components/camperships/season/scenarios/scenarioModel'
 import {
@@ -84,12 +85,14 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
   /** A slider or box moved: the figures follow, nothing is recorded. */
   const move = useCallback(
     (patch: Partial<Pending>) => {
-      const next = { ...pendingRef.current, ...patch }
+      const draft = draftRef.current
+      // A setting moved back to the draft's own value is not moved: nothing to price or record.
+      const merged = { ...pendingRef.current, ...patch }
+      const next = draft === null ? merged : unmoved(merged, draft.document)
       pendingRef.current = next
       setPending(next)
       if (timer.current !== null) clearTimeout(timer.current)
       inFlight.current?.abort()
-      const draft = draftRef.current
       if (!hasPending(next) || draft === null) {
         setLive({ status: 'idle' })
         return

@@ -11,6 +11,7 @@ import {
   hasPending,
   isDollarForDollar,
   keptGroups,
+  unmoved,
   readStep,
   resultLines,
   shiftWords,
@@ -107,6 +108,27 @@ describe('a typed step the slider cannot take (residue 12)', () => {
   })
 })
 
+describe("a setting moved back to the draft's own value is not moved (scan #1)", () => {
+  const stored = { ...RULES_DOCUMENT, awards: { ...RULES_DOCUMENT.awards, minimum: '250.00' } }
+
+  it('drops a minimum equal by value and a switch equal to the draft, and keeps the rest', () => {
+    expect(unmoved({ ...NO_PENDING, minimum: '250', dollar: true }, stored)).toEqual(NO_PENDING)
+    expect(unmoved({ ...NO_PENDING, minimum: '250.5', dollar: false }, stored)).toEqual({
+      ...NO_PENDING,
+      minimum: '250.5',
+      dollar: false,
+    })
+    expect(unmoved({ ...NO_PENDING, tierShift: -1 }, stored)).toEqual({
+      ...NO_PENDING,
+      tierShift: -1,
+    })
+  })
+
+  it('so its name is not amber', () => {
+    expect(changedLevers([], unmoved({ ...NO_PENDING, minimum: '250' }, stored)).size).toBe(0)
+  })
+})
+
 describe('which settings differ from where the draft came from (residue 7)', () => {
   const change = (...path: string[]) => ({ path, kind: 'changed' as const, before: 1, after: 2 })
 
@@ -165,6 +187,14 @@ describe('the results (results.py)', () => {
       ['held', 'Held', '9 requests'],
       ['round1_unmet', 'Round 1 unmet ask (below the line)', '$50,920'],
     ])
+  })
+
+  it('never inks a figure that rounds to $0 as negative (scan #5)', () => {
+    const line = resultLines(results(735000, { remaining: -0.004 })).find(
+      (l) => l.key === 'remaining'
+    )
+    expect(line?.value).toBe('$0')
+    expect(line?.negative).toBe(false)
   })
 
   it('marks an overspent Remaining negative', () => {
