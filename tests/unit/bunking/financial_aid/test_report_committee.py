@@ -4,7 +4,7 @@ b'mitzvah 5%), families and figures only."""
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from bunking.financial_aid.reports.committee import (
@@ -222,3 +222,23 @@ def test_a_request_with_no_pool_gets_a_no_pool_row_so_the_pool_rows_sum_to_the_h
     assert (nopool.pool, nopool.awarded, nopool.asked) == (None, Decimal(1000), Decimal(2000))
     headline_pct = next(r for r in pct_rows if r.kind == "headline")
     assert sum(r.awarded for r in pct_rows if r.kind in ("pool", "no_pool")) == headline_pct.awarded
+
+
+def test_the_cutoff_is_strict_less_than_on_the_boundary_instant() -> None:
+    """RPT-2: received before the cutoff instant counts at the cutoff; received at it is since."""
+    season = _season(
+        req("reqemma00000001", rnd(1, ask="4000"), received_at=CUTOFF - timedelta(seconds=1)),
+        req("reqliam00000001", rnd(1, ask="2000"), household=1000002, received_at=CUTOFF),
+    )
+    headline = next(r for r in committee_tables([season], []).applications if r.kind == "headline")
+    assert headline.at_cutoff is not None
+    assert headline.since is not None
+    assert (headline.at_cutoff.apps, headline.since.apps) == (1, 1)
+
+
+def test_the_budget_and_cancelled_recipients_use_the_rounds_lock_pool_not_the_home_pool() -> None:
+    """A request whose home pool is camp but whose round locked in the weekend pool counts money in the weekend pool."""
+    season = _season(req("reqemma00000001", rnd(1, ask="4000", posted="1500", pool="weekend_pool"), pool="camp_pool"))
+    budget = {r.pool: r.awarded for r in committee_tables([season], []).budget if r.basis == "P" and r.kind == "pool"}
+    assert budget.get("weekend_pool") == Decimal(1500)
+    assert budget.get("camp_pool", Decimal(0)) == Decimal(0)

@@ -144,6 +144,49 @@ async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_repla
     assert gap.requests == [EMMA]
 
 
+async def test_a_closed_request_is_neither_awarded_nor_cancelled() -> None:
+    """Standing is the request's status: a pending duplicate still counts in apps but is never awarded, even with a
+    posted lock, and is not a cancellation."""
+    store = report_season()
+    store.requests[EMMA] = replace(store.requests[EMMA], status="duplicate_pending")
+    out = await _service(store).statistics(YEAR, table="camp", round_=1)
+    assert (out.total.apps, out.total.cancelled, out.total.amount) == (2, 0, 0.0)
+    assert out.recipients_cancelled == []
+
+
+async def test_a_withdrawn_request_with_a_posted_lock_reads_zero_in_reports() -> None:
+    """OWNER ITEM (a) NOT RULED: the budget still shows the lock as Posted; Reports reads $0 (closed, not cancelled)."""
+    store = report_season()
+    store.requests[EMMA] = replace(store.requests[EMMA], status="withdrawn")
+    out = await _service(store).statistics(YEAR, table="camp", round_=1)
+    assert (out.total.apps, out.total.cancelled, out.total.amount, out.total.awarded_count) == (2, 0, 0.0, 0)
+    assert out.recipients_cancelled == []
+
+
+async def test_an_outside_funders_full_cost_round_keeps_its_ask_and_awards_nothing() -> None:
+    """D121 / OWNER ITEM (c) NOT RULED: the round does not count toward the budget, so it is never awarded, and its
+    ask stays in the % of ask denominator."""
+    store = report_season()
+    store.events[:] = [
+        replace(ev, snapshot={**(ev.snapshot or {}), "counts_toward_budget": False}) if ev.request_id == EMMA else ev
+        for ev in store.events
+    ]
+    out = await _service(store).statistics(YEAR, table="camp", round_=1)
+    two = _tier(out.rows, 2)
+    assert (two.apps, two.asked, two.amount, two.awarded_count, two.pct_of_ask) == (1, 4000.0, 0.0, 0, 0.0)
+
+
+async def test_the_committee_cuts_applications_at_the_received_through_date() -> None:
+    """Liam was received Feb 20: through Feb 1 he is "since" the cutoff, through Mar 1 he is at it."""
+    service = _service(report_season(liam_late=True))
+    early = await service.committee(YEAR, through=date(2027, 2, 1))
+    camp = next(r for r in early.applications if r.year == YEAR and r.kind == "headline")
+    assert (camp.cutoff, camp.at_cutoff.apps, camp.since.apps) == (date(2027, 2, 1), 1, 1)  # type: ignore[union-attr]
+    late = await service.committee(YEAR, through=date(2027, 3, 1))
+    camp = next(r for r in late.applications if r.year == YEAR and r.kind == "headline")
+    assert (camp.cutoff, camp.at_cutoff.apps, camp.since.apps) == (date(2027, 3, 1), 2, 0)  # type: ignore[union-attr]
+
+
 async def test_an_edited_answer_is_one_application_and_a_refused_duplicate_is_none() -> None:
     """D72: received = every intake request except refused duplicates; an edit replaces, never adds."""
     store = report_season()

@@ -61,6 +61,9 @@ def received_ids(requests: Mapping[str, RequestRecord]) -> frozenset[str]:
 
 
 def _standing(request: RequestRecord, cancelled: bool) -> Standing:
+    # OWNER ITEM (a) NOT RULED: a posted lock on a withdrawn request is dropped (closed). Flip deliberately.
+    # A withdrawn request is "closed": not awarded, not cancelled, not in recipients-who-cancelled, so Reports reads
+    # $0 where the budget still shows the lock as Posted.
     if cancelled:
         return "cancelled"
     return "live" if request.status in _LIVE else "closed"
@@ -105,6 +108,8 @@ def _round(
     else:
         ask = r1_ask if n == 1 else (state.ask if state is not None else None)
     tier = _snapshot_tier(state) if posted else None
+    # OWNER ITEM (c) NOT RULED: a round outside the budget (D121's outside funder's full-cost type) is never awarded
+    # here (`locked` None), yet its ask stays in `ask`, so it still sits in % of ask's denominator at $0 awarded.
     return RoundFacts(
         round=n,
         ask=ask,

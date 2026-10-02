@@ -182,6 +182,8 @@ def _row(
         decided_count += money - posted > 0
         grants += request.grants
     shows_grants = round_ in (None, 1)
+    # OWNER ITEM (b) NOT RULED: pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by the
+    # live requests' asks, so a request still waiting on an offer sits in the denominator at $0. Flip deliberately.
     return StatisticsRow(
         tier=tier,
         income_from=band[0] if band is not None else None,

@@ -200,3 +200,16 @@ def test_outcomes_count_accepted_appealed_and_waiting_per_pool_and_overall() -> 
     assert (camp.appealed, camp.appealed_asked, camp.waiting) == (1, Decimal(600), 1)
     assert (weekend.pool, weekend.waiting) == ("weekend_pool", 1)
     assert (every.pool, every.accepted, every.appealed, every.waiting) == (None, 1, 1, 2)
+
+
+def test_recipients_who_cancelled_are_grouped_by_the_rounds_lock_pool_not_the_home_pool() -> None:
+    requests = [
+        req(
+            "reqemma00000001",
+            rnd(1, ask="4000", posted="1500", pool="weekend_pool"),
+            pool="camp_pool",
+            standing="cancelled",
+            reason="medical",
+        )
+    ]
+    assert recipients_cancelled(requests) == (CancelledRow("medical", "weekend_pool", 1, 1, Decimal(1500)),)
