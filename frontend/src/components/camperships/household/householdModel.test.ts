@@ -266,6 +266,7 @@ describe('words', () => {
     expect(answerWords('total_adjusted_income')).toBe('Adjusted income')
     expect(answerValue('total_adjusted_income', '84200.00')).toBe('$84,200')
     expect(answerValue('num_children', '3')).toBe('3')
+    expect(answerWords('income_confirmed')).toBe('Prior-year confirmed income')
     expect(answerValue('income_confirmed', 'true')).toBe('Yes')
     expect(answerValue('total_rent', '')).toBe('—')
   })
