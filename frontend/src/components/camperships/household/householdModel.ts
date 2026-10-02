@@ -180,7 +180,7 @@ export interface RoundLine {
    */
   readonly clawedBack: boolean
   /**
-   * A locked round's "would change by $X" (D43); null when nothing would, and on a clawed-back
+   * A locked round's a would-change figure (D43); null when nothing would, and on a clawed-back
    * round, where "the posted amount stands" is false.
    */
   readonly wouldChangeBy: number | null
@@ -239,7 +239,7 @@ export function earlierReceipts(request: ApiAidHouseholdRequest): ApiAidReceipt[
   return request.receipts.filter((r) => r !== latest).sort((a, b) => a.round - b.round)
 }
 
-/** D34: the receipt opens by itself on a hold, or while a "would change by" flag shows. */
+/** D34: the receipt opens by itself on a hold, or while a would-change flag shows. */
 export function opensByItself(request: ApiAidHouseholdRequest): boolean {
   return (
     request.row.holds.length > 0 ||
