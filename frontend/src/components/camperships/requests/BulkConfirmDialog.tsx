@@ -53,7 +53,7 @@ export function BulkConfirmDialog({
     onClose()
   }
   // `only` re-sends one row at the amount the server named (#2981); otherwise the whole plan.
-  const confirm = async (only?: { requestId: string; round: number; amount: number }) => {
+  const confirm = async (only?: { requestId: string; round: 1 | 2 | 3; amount: number }) => {
     if (busy || tooMany) return
     setSending(true)
     setError(null)
@@ -161,28 +161,34 @@ export function BulkConfirmDialog({
               <ul>
                 {error.rows.map((r) => {
                   const offer = r.decided_now
+                  const planRow = plan.rows.find(
+                    (p) => p.requestId === r.request_id && p.round === r.round
+                  )
                   return (
                     // One text node, so the line reads (and is found) whole.
                     <li key={`${r.request_id}:${String(r.round)}`}>
                       {`${named(r.request_id)} R${String(r.round)}: now ${formatMoney(r.decided_now)}, you confirmed ${formatMoney(r.confirmed)}`}
                       {/* A withheld round's decided_now is what the tick WOULD lock: refreshing can
                         only be refused again, so tick at it directly. */}
-                      {plan.action === 'posted' && offer !== null && offer !== r.confirmed && (
-                        <button
-                          type="button"
-                          className={`${BUTTON_SECONDARY} ml-2`}
-                          disabled={busy}
-                          onClick={() =>
-                            void confirm({
-                              requestId: r.request_id,
-                              round: r.round,
-                              amount: offer,
-                            })
-                          }
-                        >
-                          {`Tick at ${formatMoney(offer)}`}
-                        </button>
-                      )}
+                      {plan.action === 'posted' &&
+                        offer !== null &&
+                        offer !== r.confirmed &&
+                        planRow !== undefined && (
+                          <button
+                            type="button"
+                            className={`${BUTTON_SECONDARY} ml-2`}
+                            disabled={busy}
+                            onClick={() =>
+                              void confirm({
+                                requestId: r.request_id,
+                                round: planRow.round,
+                                amount: offer,
+                              })
+                            }
+                          >
+                            {`Tick at ${formatMoney(offer)}`}
+                          </button>
+                        )}
                     </li>
                   )
                 })}
