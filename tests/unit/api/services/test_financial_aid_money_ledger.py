@@ -26,7 +26,7 @@ from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_lin
 from tests.unit.api.services.financial_aid_fakes import SESSIONS
 
 EMMA = "reqemma00000001"  # Emma Johnson (1000011), household 1000001
-SAM = "reqsamu00000001"  # Samuel Johnson (1000012), the same household
+SAMUEL = "reqsamu00000001"  # Samuel Johnson (1000012), the same household
 LIAM = "reqliam00000001"  # Liam Garcia (1000021), household 1000002
 MAR8 = datetime(2027, 3, 8, 18, 0, tzinfo=UTC)
 MAR20 = datetime(2027, 3, 20, 18, 0, tzinfo=UTC)
@@ -38,7 +38,7 @@ SESSION_MAP = {s.cm_id: s for s in SESSIONS}
 def _johnsons() -> FakeDecisionsStore:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    seed_request(store, SAM, person=1000012)
+    seed_request(store, SAMUEL, person=1000012)
     return store
 
 
@@ -135,7 +135,7 @@ def test_a_split_line_placed_in_full_wears_no_level() -> None:
     store = _johnsons()
     line = seed_line(store, 9006, "3000", person=0)
     placed = SeasonLedger(
-        by_request={EMMA: (replace(line, amount=Decimal(1800)),), SAM: (replace(line, amount=Decimal(1200)),)},
+        by_request={EMMA: (replace(line, amount=Decimal(1800)),), SAMUEL: (replace(line, amount=Decimal(1200)),)},
         read=True,
     )
     pieces = _pieces(store, [_camp(line)], placed)
@@ -241,7 +241,7 @@ def test_the_lines_behind_a_total_sum_a_split_lines_parts_and_keep_a_reversed_li
     line = seed_line(store, 9006, "3000", person=0)
     gone = seed_line(store, 9007, "300", person=0, reversed_at=JUN1)
     placed = SeasonLedger(
-        by_request={EMMA: (replace(line, amount=Decimal(1800)),), SAM: (replace(line, amount=Decimal(1200)),)},
+        by_request={EMMA: (replace(line, amount=Decimal(1800)),), SAMUEL: (replace(line, amount=Decimal(1200)),)},
         read=True,
     )
     pieces = _pieces(store, [_camp(line), _camp(gone), _other(9101, "250")], placed)

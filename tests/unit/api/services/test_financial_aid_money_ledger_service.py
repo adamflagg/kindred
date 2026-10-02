@@ -17,7 +17,7 @@ from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.to_place_fakes import FakeToPlaceStore, money_ledger_service, seed_grant_line
 
 EMMA = "reqemma00000001"  # Emma Johnson (1000011), household 1000001
-SAM = "reqsamu00000001"  # Samuel Johnson (1000012), the same household
+SAMUEL = "reqsamu00000001"  # Samuel Johnson (1000012), the same household
 LIAM = "reqliam00000001"  # Liam Garcia (1000021), household 1000002
 SEEDED = datetime(2027, 2, 1, 18, 0, tzinfo=UTC)
 JUL1 = datetime(2027, 7, 1, 18, 0, tzinfo=UTC)
@@ -29,7 +29,7 @@ def _families() -> FakeToPlaceStore:
     household with no request (1000009)."""
     store = FakeToPlaceStore()
     seed_request(store, EMMA)
-    seed_request(store, SAM, person=1000012)
+    seed_request(store, SAMUEL, person=1000012)
     seed_request(store, LIAM, household=1000002, person=1000021)
     store.shares = [
         *(s for s in store.shares if s.request_id != EMMA),
