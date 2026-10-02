@@ -210,9 +210,19 @@ async def test_a_withdrawn_request_with_a_posted_award_reads_exactly_like_a_canc
     twin = await _service(cancelled).statistics(YEAR, table="camp", round_=1)
     out = await _service(withdrawn).statistics(YEAR, table="camp", round_=1)
     assert (out.total.apps, out.total.cancelled, out.cancelled_applicants, out.total.amount) == (2, 1, 1, 0.0)
-    assert [r.model_dump() for r in out.recipients_cancelled] == [r.model_dump() for r in twin.recipients_cancelled]
-    assert len(out.recipients_cancelled) == 1
-    assert out.recipients_cancelled[0].posted == 1500.0
+    # Same count, pool, round and money; only the reason line differs by design: a withdrawal is named, never read as
+    # missing data ("no reason recorded" stays the cancelled twin's).
+    assert len(out.recipients_cancelled) == len(twin.recipients_cancelled) == 1
+    line, twin_line = out.recipients_cancelled[0], twin.recipients_cancelled[0]
+    assert (line.pool, line.round, line.requests, line.posted) == (
+        twin_line.pool,
+        twin_line.round,
+        twin_line.requests,
+        twin_line.posted,
+    )
+    assert line.posted == 1500.0
+    assert (twin_line.reason, twin_line.reason_label) == ("not_recorded", "no reason recorded")
+    assert (line.reason, line.reason_label) == ("withdrawn_in_kindred", "Withdrawn in Kindred")
     assert out.total.model_dump() == twin.total.model_dump()
     assert [r.model_dump() for r in out.rows] == [r.model_dump() for r in twin.rows]
 

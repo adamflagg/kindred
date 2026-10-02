@@ -101,6 +101,7 @@ from bunking.financial_aid.reports.statistics import (
     NO_REASON,
     PCT_OF_ASK_DECIDED_LABEL,
     PCT_OF_ASK_LABEL,
+    WITHDRAWN_REASON,
     RoundChip,
     StatisticsRow,
     outcomes,
@@ -120,6 +121,7 @@ POSTED_GAP: Final = "posted money a past date can't replay: left out of awarded;
 CANCELLATION_CAVEAT: Final = (
     "counted as of the day; a registration CampMinder changed since then reads as it stands now"
 )
+WITHDRAWN_LABEL: Final = "Withdrawn in Kindred"
 NO_POOL_LABEL: Final = "No pool"
 UNMATCHED_LABEL: Final = "Session not matched"
 ALL_POOLS_LABEL: Final = "All pools"
@@ -609,6 +611,8 @@ def rules_sessions(season: Season, document: AidRules | None) -> dict[int, str |
 def _reason_label(reason: str) -> str:
     if reason == NO_REASON:
         return "no reason recorded"
+    if reason == WITHDRAWN_REASON:
+        return WITHDRAWN_LABEL
     for key, label in CANCEL_REASON_LABELS.items():
         if key == reason:
             return label

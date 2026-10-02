@@ -46,6 +46,9 @@ from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_p
 Basis = Literal["posted", "posted_and_decided"]
 RoundChip = Literal[1, 2, 3] | None
 NO_REASON: Final = "not_recorded"  # a cancellation with no reason: before 2027, or not given yet (D101)
+# A withdrawn request that holds a posted award counts as a cancellation (owner (a), RULED 2026-10-02); it has no
+# cancel reason, so it gets its own line rather than reading as missing data.
+WITHDRAWN_REASON: Final = "withdrawn_in_kindred"
 
 
 PCT_OF_ASK_LABEL: Final = "% of ask"

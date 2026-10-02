@@ -49,6 +49,7 @@ from bunking.financial_aid.decisions import PricedRequest, RoundState, RoundView
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import edit_predecessors
 from bunking.financial_aid.reports.facts import REPORT_ROUNDS, AsksBasis, ReportRequest, RoundFacts, Standing
+from bunking.financial_aid.reports.statistics import WITHDRAWN_REASON
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.results import round1_table, round2_table
 
@@ -171,6 +172,10 @@ def report_requests(
         if request_id in season.posted_unknown:  # a past read can't replay its clawback: like the grid, leave it out
             rounds = [replace(r, locked=None) for r in rounds]
         cancellation = season.cancellations.get(request_id)
+        standing = _standing(request, cancellation is not None, rounds)
+        cancel_reason = cancellation.reason if cancellation is not None else None
+        if cancel_reason is None and standing == "cancelled" and request.status == STATUS_WITHDRAWN:
+            cancel_reason = WITHDRAWN_REASON  # a withdrawal is named, never read as a missing reason
         out.append(
             ReportRequest(
                 request_id=request_id,
@@ -181,8 +186,8 @@ def report_requests(
                 pool=home_pool,
                 table=round1_table(document, program) if document is not None else "",
                 round2_table=round2_table(document, program) if document is not None else "",
-                standing=_standing(request, cancellation is not None, rounds),
-                cancel_reason=cancellation.reason if cancellation is not None else None,
+                standing=standing,
+                cancel_reason=cancel_reason,
                 received_at=received.get(request_id),
                 rounds=tuple(rounds),
                 grants=grants.get(request_id, ZERO),
