@@ -25,6 +25,9 @@ vi.mock('../../hooks/camperships/useAidBudget', () => ({
 vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
   RoundsBudgetTab: () => <div>Rounds and budget body</div>,
 }))
+vi.mock('../../components/camperships/season/rules/RulesTab', () => ({
+  RulesTab: () => <div>Rules tab body</div>,
+}))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules']
@@ -95,6 +98,11 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     first.unmount()
     renderAt('/aid/season/scenarios')
     expect(screen.getByText('Permission denied')).toBeInTheDocument()
+  })
+
+  it("mounts the Rules tab's body at /aid/season/rules (Task 11 m5)", () => {
+    renderAt('/aid/season/rules')
+    expect(screen.getByText('Rules tab body')).toBeInTheDocument()
   })
 
   it('shows finance every tab', () => {
