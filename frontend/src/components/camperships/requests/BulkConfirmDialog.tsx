@@ -127,6 +127,9 @@ export function BulkConfirmDialog({
             <li key={`${r.requestId}:${String(r.round)}`}>
               {r.label} · Round {r.round}
               {r.amount !== null ? ` · ${formatMoney(r.amount)}` : ''}
+              {r.action === 'posted' && r.newTotal !== null
+                ? ` (new total ${formatMoney(r.newTotal)})`
+                : ''}
               {r.hidden ? ' (hidden by the search or filters)' : ''}
             </li>
           ))}

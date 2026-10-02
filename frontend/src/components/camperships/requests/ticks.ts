@@ -25,6 +25,8 @@ interface TickRowBase {
 export interface PostedTick extends TickRowBase {
   readonly action: 'posted'
   readonly amount: number
+  /** An appeal (Round 2/3): the request's total_decided, what CampMinder holds after a repost. Else null. */
+  readonly newTotal: number | null
 }
 
 export interface AcceptedTick extends TickRowBase {
@@ -143,7 +145,13 @@ export function tickPlan(
     if (action === 'posted') {
       const target = postedTarget(row)
       if (target !== null) {
-        ticks.push({ ...base, action: 'posted', round: target.round, amount: target.amount })
+        ticks.push({
+          ...base,
+          action: 'posted',
+          round: target.round,
+          amount: target.amount,
+          newTotal: target.round > 1 ? row.total_decided : null,
+        })
         continue
       }
       const why = postedBlock(row)
