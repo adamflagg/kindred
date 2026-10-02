@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router'
 import { resolveStrip, shownView, type RequestLens } from './strip'
 import { parseRoundFilter, type RequestView, type RoundFilter } from './views'
 
-export type GridParamName = 'program' | 'pool' | 'round' | 'ids' | 'row'
+export type GridParamName = 'program' | 'pool' | 'round' | 'counted' | 'live' | 'ids' | 'row'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
@@ -16,6 +16,8 @@ export interface GridParams {
   readonly program: string | null
   readonly pool: string | null
   readonly round: RoundFilter | null
+  readonly counted: boolean
+  readonly live: boolean
   readonly showIds: boolean
   /** The table's `?sort=` and `?group=` as written (AidTable owns them); the household link carries them (I1). */
   readonly sort: string | null
@@ -74,6 +76,8 @@ export function useGridParams(): GridParams {
     program: params.get('program'),
     pool: params.get('pool'),
     round: parseRoundFilter(params.get('round')),
+    counted: params.get('counted') === '1',
+    live: params.get('live') === '1',
     showIds: params.get('ids') === '1',
     sort: params.get('sort'),
     group: params.get('group'),

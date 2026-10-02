@@ -15,6 +15,7 @@ import { formatGap, formatMoney, toCents } from '../kit/money'
 import type { PillTone } from '../kit/kitStyles'
 import type { CellValue, FitContent } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
+import { LIVE_REQUEST_STATUSES } from './gridEditor'
 import { latestRound, requestStage, roundOf } from './stage'
 
 export type RequestViewKey = 'all' | ApiAidQueue
@@ -525,6 +526,19 @@ export interface GridFilters {
   readonly round: RoundFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
   readonly ids: ReadonlySet<string> | null
+  /** Only rounds whose money counts toward the budget (Rounds & budget's figures; plan review I5). */
+  readonly counted: boolean
+  /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
+  readonly live: boolean
+}
+
+/** A live request, as the budget's demand counts one: a live status and not cancelled (`request.live`). */
+export function isLiveRow(row: ApiAidGridRow): boolean {
+  return (
+    row.request_status !== null &&
+    LIVE_REQUEST_STATUSES.includes(row.request_status) &&
+    (row.cancellation ?? null) === null
+  )
 }
 
 export const NO_FILTERS: GridFilters = {
@@ -532,6 +546,8 @@ export const NO_FILTERS: GridFilters = {
   pool: null,
   round: null,
   ids: null,
+  counted: false,
+  live: false,
 }
 
 /** The round a request is in now (GridFilters.round): the Stage's, or a cancelled one's last round. */
@@ -546,6 +562,15 @@ function matchesRound(row: ApiAidGridRow, round: RoundFilter | null): boolean {
   return round === null || currentRound(row) === round
 }
 
+/**
+ * `counted` (slice 2): the row has a round whose money counts toward the budget; with `round=`, that
+ * round (the one it is in now, as matchesRound reads it) is the one that must count.
+ */
+function matchesCounted(row: ApiAidGridRow, round: RoundFilter | null, counted: boolean): boolean {
+  if (!counted) return true
+  return row.rounds.some((r) => r.counts_toward_budget && (round === null || r.round === round))
+}
+
 export function filterRows(
   rows: readonly ApiAidGridRow[],
   view: RequestViewKey,
@@ -556,7 +581,9 @@ export function filterRows(
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
+      (!filters.live || isLiveRow(row)) &&
       matchesRound(row, filters.round) &&
+      matchesCounted(row, filters.round, filters.counted) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }

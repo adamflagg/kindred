@@ -55,14 +55,18 @@ export function gridFiltersFrom(params: URLSearchParams): {
   const sort = params.get('sort')
   const group = params.get('group')
   const showIds = params.get('ids') === '1'
+  const counted = params.get('counted') === '1'
+  const live = params.get('live') === '1'
   return {
-    filters: { program, pool, round, ids: null },
+    filters: { program, pool, round, counted, live, ids: null },
     keep: {
       // The lens (T4) rides along with the filters: a step and Back stay under it.
       ...(lens === 'appeals' ? { lens } : {}),
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
+      ...(counted ? { counted: '1' } : {}),
+      ...(live ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(sort !== null ? { sort } : {}),
       ...(group !== null ? { group } : {}),

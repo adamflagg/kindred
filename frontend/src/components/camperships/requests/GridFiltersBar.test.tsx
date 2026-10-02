@@ -20,7 +20,12 @@ const GROUPS: readonly ProgramGroup[] = [
   { pool: null, programs: [{ value: 'not_aided', label: 'Not aided' }] },
 ]
 
-function bar(props: { program?: string | null; pool?: string | null; round?: 1 | 2 | 3 | null }) {
+function bar(props: {
+  program?: string | null
+  pool?: string | null
+  round?: 1 | 2 | 3 | null
+  counted?: boolean
+}) {
   const onChange = vi.fn()
   const onProgramPool = vi.fn()
   render(
@@ -29,6 +34,7 @@ function bar(props: { program?: string | null; pool?: string | null; round?: 1 |
       program={props.program ?? null}
       pool={props.pool ?? null}
       round={props.round ?? null}
+      counted={props.counted ?? false}
       onChange={onChange}
       onProgramPool={onProgramPool}
     />
@@ -160,5 +166,21 @@ describe('GridFiltersBar: Round chips', () => {
     const { onChange } = bar({ round: 1 })
     await userEvent.click(screen.getByRole('button', { name: 'R2' }))
     expect(onChange).toHaveBeenLastCalledWith('round', '2')
+  })
+})
+
+describe('GridFiltersBar counted filter', () => {
+  it('toggles Counting toward the budget through onChange', async () => {
+    const { onChange } = bar({})
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Counting toward the budget' }))
+    expect(onChange).toHaveBeenCalledWith('counted', '1')
+  })
+
+  it('clears it when unticked', async () => {
+    const { onChange } = bar({ counted: true })
+    const box = screen.getByRole('checkbox', { name: 'Counting toward the budget' })
+    expect(box).toBeChecked()
+    await userEvent.click(box)
+    expect(onChange).toHaveBeenCalledWith('counted', null)
   })
 })

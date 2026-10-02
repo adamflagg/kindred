@@ -69,6 +69,8 @@ export default function AidRequestsPage() {
     program,
     pool,
     round,
+    counted,
+    live: liveOnly,
     showIds,
     sort,
     group,
@@ -102,8 +104,8 @@ export default function AidRequestsPage() {
   // A past-date read carries `as_of`; its rows' queues are null (Decision 11).
   const live = !grid.data?.as_of
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, ids: null }),
-    [program, pool, round]
+    (): GridFilters => ({ program, pool, round, counted, live: liveOnly, ids: null }),
+    [program, pool, round, counted, liveOnly]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -298,9 +300,11 @@ export default function AidRequestsPage() {
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
+      ...(counted ? { counted: '1' } : {}),
+      ...(liveOnly ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, showIds]
+    [program, pool, round, counted, liveOnly, showIds]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -359,6 +363,7 @@ export default function AidRequestsPage() {
       program={program}
       pool={pool}
       round={round}
+      counted={counted}
       onChange={changeFilter}
       onProgramPool={onProgramPool}
     />
@@ -388,6 +393,14 @@ export default function AidRequestsPage() {
         lensHrefOf={lensHrefOf}
         onOpen={openView}
       />
+      {liveOnly && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          Live requests only ·
+          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('live', null)}>
+            Show all
+          </button>
+        </p>
+      )}
       {!gridShown && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           {filtersBar}
