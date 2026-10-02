@@ -123,6 +123,31 @@ export function aidSection(key: AidSectionKey): AidSection {
   return section
 }
 
+/**
+ * What a tabbed section shows for the URL's `:tab` (§3.6; D76): a bare or unknown tab goes to the
+ * first tab this user may see; a known tab they may not see is refused, never redirected away;
+ * a section with no tab this user may see is refused too.
+ */
+export type AidTabResolution =
+  | { readonly kind: 'show'; readonly tab: AidTab | undefined; readonly tabs: AidTab[] }
+  | { readonly kind: 'first'; readonly tab: AidTab }
+  | { readonly kind: 'denied' }
+
+export function resolveAidTab(
+  section: AidSection,
+  slug: string | undefined,
+  can: PermissionCheck
+): AidTabResolution {
+  const tabs = visibleTabs(section, can)
+  const current = section.tabs.find((t) => t.slug === slug)
+  if (section.tabs.length > 0 && current === undefined) {
+    const first = tabs[0]
+    return first === undefined ? { kind: 'denied' } : { kind: 'first', tab: first }
+  }
+  if (current !== undefined && !tabs.includes(current)) return { kind: 'denied' }
+  return { kind: 'show', tab: current, tabs }
+}
+
 /** Where `/aid` lands: Today for view holders; Reports › Development for summary-only (D65). */
 export function aidHomePath(can: PermissionCheck): string {
   return canAccess(VIEW, can) ? '/aid' : '/aid/reports/development'
