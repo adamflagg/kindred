@@ -1,0 +1,165 @@
+import { useRef, useState } from 'react'
+import { Link } from 'react-router'
+
+import { useAidLeaveLine, useAidPlaceLine } from '../../../hooks/camperships/useAidToPlaceWrites'
+import type { ApiAidToPlaceLine } from '../../../types/api-types'
+import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
+import { ReasonForm } from '../household/ReasonForm'
+import { aidHref, type AidView } from '../kit/asOf'
+import {
+  candidateDetail,
+  candidateLabel,
+  confirmBody,
+  confirmLines,
+  evidenceWords,
+  lineWords,
+  placedWords,
+  requestLabels,
+  suggestionWords,
+  unplacedWords,
+} from './toPlaceModel'
+import { inStaffWords, refusalWords } from './refusal'
+import { PANEL_BLOCK, PANEL_LABEL, TICK_TEXT } from './toPlaceStyles'
+
+export interface LinePanelAccess {
+  /** `casework`: Confirm, Split, Place on another request, Leave (spec §3.2). */
+  readonly casework: boolean
+  /** `rules`: Reclassify (D104). */
+  readonly rules: boolean
+}
+
+type Mode = 'none' | 'leave'
+
+/**
+ * The panel under a highlighted To place line (§8.1; money-v2.html): the line as CampMinder holds it,
+ * the requests it could belong to with what each still lacks, Kindred's suggestion and its evidence,
+ * and what Confirm will tick before the click (§4.10). Confirm sends what it showed it would lock; if
+ * the season moved, the server refuses and the panel shows the new preview, never a stuck state.
+ */
+export function ToPlaceLinePanel({
+  line,
+  year,
+  view,
+  access,
+  onDone,
+}: {
+  line: ApiAidToPlaceLine
+  year: number
+  view: AidView
+  access: LinePanelAccess
+  onDone: (words: string) => void
+}) {
+  const place = useAidPlaceLine()
+  const leave = useAidLeaveLine()
+  const [mode, setMode] = useState<Mode>('none')
+  const [error, setError] = useState<string | null>(null)
+  const inFlight = useRef(false)
+  const unplaced = unplacedWords(line)
+  const body = confirmBody(line)
+
+  const confirm = async () => {
+    // A second press while one is in flight is ignored (slice 1's ReasonForm pattern; plan review
+    // m5): `isPending` from the render closure lags a fast double click, and a second POST would
+    // come back "already placed" and paint an error over the success.
+    if (body === null || inFlight.current) return
+    inFlight.current = true
+    setError(null)
+    try {
+      const out = await place.mutateAsync({
+        year,
+        transactionCmId: line.transaction_cm_id,
+        body,
+      })
+      onDone(placedWords(out, [line], requestLabels([line])))
+    } catch (caught) {
+      // The reads refreshed before this rejection (onSettled is awaited): the preview above is
+      // already the new one, so Confirm stays on and confirms what it now shows.
+      setError(refusalWords(caught))
+    } finally {
+      inFlight.current = false
+    }
+  }
+
+  return (
+    <div className="space-y-3" data-testid="to-place-panel">
+      <div className={PANEL_BLOCK}>
+        <p className={PANEL_LABEL}>The line in CampMinder</p>
+        <p>
+          {lineWords(line)}
+          {unplaced !== null && <span className="text-muted-foreground"> · {unplaced}</span>}
+        </p>
+      </div>
+      <div className={PANEL_BLOCK}>
+        <p className={PANEL_LABEL}>Requests it could belong to</p>
+        {line.candidates.length === 0 ? (
+          <p className="text-muted-foreground">No application this season.</p>
+        ) : (
+          <ul>
+            {line.candidates.map((c) => (
+              <li key={c.request_id}>
+                {candidateLabel(c)}{' '}
+                <span className="text-muted-foreground text-xs">{candidateDetail(c)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className={PANEL_BLOCK}>
+        <p className={PANEL_LABEL}>Kindred&apos;s suggestion</p>
+        <p>{suggestionWords(line)}</p>
+        {evidenceWords(line) !== '' && (
+          <p className="text-muted-foreground text-xs">{evidenceWords(line)}</p>
+        )}
+      </div>
+      {line.suggestion !== null && (
+        <div className={PANEL_BLOCK}>
+          <p className={PANEL_LABEL}>What Confirm does</p>
+          <ul>
+            {confirmLines(line).map((words) => (
+              <li key={words} className={words.startsWith('Ticks') ? TICK_TEXT : undefined}>
+                {words}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {error !== null && <p className={AMBER_NOTE}>{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        {access.casework && body !== null && (
+          <button
+            type="button"
+            className={BUTTON_PRIMARY}
+            disabled={place.isPending}
+            onClick={() => void confirm()}
+          >
+            {place.isPending ? 'Placing…' : 'Confirm'}
+          </button>
+        )}
+        {access.casework && mode === 'none' && (
+          <button type="button" className={BUTTON_SECONDARY} onClick={() => setMode('leave')}>
+            {line.reason === 'several' ? 'Leave at family level…' : 'Leave with a note…'}
+          </button>
+        )}
+        <Link
+          to={aidHref(`/aid/households/${String(line.household_cm_id)}`, view)}
+          className="text-primary text-xs font-medium hover:underline"
+        >
+          Open the household ›
+        </Link>
+      </div>
+      {mode === 'leave' && (
+        <ReasonForm
+          label="Why"
+          submitLabel="Leave it"
+          onCancel={() => setMode('none')}
+          onSubmit={async (note) => {
+            await inStaffWords(
+              leave.mutateAsync({ year, transactionCmId: line.transaction_cm_id, note })
+            )
+            onDone(`${line.family}: left at family level with your note. Reopen needs a reason.`)
+          }}
+        />
+      )}
+    </div>
+  )
+}
