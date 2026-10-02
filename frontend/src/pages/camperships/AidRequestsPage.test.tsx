@@ -489,4 +489,78 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('row=reqolivia000003')
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
   })
+
+  it('goes back to a failed row the walk jumped back to and a refetch now hides (I1)', async () => {
+    keyAsk.mockImplementationOnce(() => {
+      // The refusal comes with a change that moves Samuel out of pool A.
+      grid = {
+        ...grid,
+        data: {
+          ...LIVE,
+          rows: LIVE.rows.map((r) =>
+            r.request_id === 'reqsamuel000005' ? { ...r, pool: 'pool_b' } : r
+          ),
+        },
+      }
+      return Promise.reject(new Error('The server is down'))
+    })
+    renderAt('/aid/requests?pool=pool_a')
+    await userEvent.click(sessionCell('Samuel Johnson'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300{ArrowDown}')
+    // Ruling A put the highlight back on Samuel, who a filter now hides.
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
+    )
+    expect(screen.queryByText('Samuel Johnson')).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Go back' }))
+    await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('pool='))
+    expect(screen.getByTestId('where')).toHaveTextContent('row=reqsamuel000005')
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(screen.queryByText(/Couldn't save/)).toBeNull())
+    await userEvent.click(
+      within(screen.getByText('Samuel Johnson').closest('tr') as HTMLElement).getByRole('link', {
+        name: 'The Johnson Family',
+      })
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000001')
+    )
+  })
+
+  it('dismisses one of two listed failures and leaves the other (re-review nit)', async () => {
+    const fails: Array<(error: Error) => void> = []
+    const hold = () =>
+      new Promise<never>((_resolve, reject: (error: Error) => void) => {
+        fails.push(reject)
+      })
+    keyAsk.mockImplementationOnce(hold).mockImplementationOnce(hold)
+    renderAt('/aid/requests')
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    await userEvent.click(sessionCell('Samuel Johnson'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1400')
+    await userEvent.click(sessionCell('Riley Sam'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1')
+    // Both asks were posted elsewhere meanwhile: neither row can be keyed any more.
+    grid = {
+      ...grid,
+      data: {
+        ...LIVE,
+        rows: LIVE.rows.map((r) =>
+          r.request_id === 'reqolivia000003' || r.request_id === 'reqsamuel000005'
+            ? { ...r, rounds: [...r.rounds.slice(0, 1), roundOut(2, 'posted', { ask: 900 })] }
+            : r
+        ),
+      },
+    }
+    await act(async () => fails[0]?.(new Error('Round 2 is posted')))
+    await act(async () => fails[1]?.(new Error('Round 2 is posted')))
+    expect(screen.getAllByRole('button', { name: 'Go back' })).toHaveLength(2)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Go back' })[1] as HTMLElement)
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    expect(screen.getAllByRole('button', { name: 'Go back' })).toHaveLength(1)
+  })
 })

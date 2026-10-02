@@ -157,7 +157,8 @@ export default function AidRequestsPage() {
     walk.onHighlight(key)
     // Read through a function: TypeScript would narrow the ref to the null just written above.
     const movedTo = (): string | null => lastMoved.current
-    if (movedTo() === key && !visibleKeys.has(key)) {
+    // Already highlighted counts too: a failed ↓ jumps back to its row before Go back is clicked.
+    if ((movedTo() === key || highlighted === key) && !visibleKeys.has(key)) {
       void navigate(
         aidHref('/aid/requests', viewState, {
           view: 'all',
