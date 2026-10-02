@@ -81,10 +81,11 @@ function groupOf(pool: ApiAidBudgetPool, view: AidView, onPool: boolean): Demand
   }
 }
 
+// Only a real zero is empty: a figure a past date masks (null) is unknown, so its line stays and reads "—".
 const empty = (pool: ApiAidBudgetPool) =>
-  (pool.demand.round2_asks?.requests ?? 0) === 0 &&
-  (pool.demand.round1_unmet ?? 0) === 0 &&
-  (pool.demand.round2_asked ?? 0) === 0
+  pool.demand.round2_asks?.requests === 0 &&
+  pool.demand.round1_unmet === 0 &&
+  pool.demand.round2_asked === 0
 
 /**
  * Each pool's demand in the server's order (one pool when the page is on it), then the total when
