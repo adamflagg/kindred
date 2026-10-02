@@ -264,8 +264,8 @@ async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_af
 
 @pytest.mark.asyncio
 async def test_a_correction_since_the_floor_is_read_with_its_field() -> None:
-    """The trimmed read fetches `field`: PocketBase returns only the fields asked for, and a missing one reads
-    as "" here."""
+    """changed_since skips a legacy include_override row by its field, so the trimmed read must fetch `field`:
+    PocketBase returns only the fields asked for, and a missing one reads as "" here."""
     repo, queries = _by_collection(
         {
             "aid_application_corrections": [

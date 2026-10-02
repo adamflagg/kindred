@@ -571,6 +571,8 @@ _INSTANT: Final = timedelta(microseconds=1)
 _SAME_WRITE: Final = timedelta(seconds=1)
 _PERSON_FIELDS: Final = frozenset({"gender_identity", "pronouns"})  # camper equity answers read from `persons`
 _NOT_PRICING: Final = frozenset({"accept", "unaccept"})  # Accepted is recorded, never priced (pricing.py)
+# A correction row written before the owner removed the Include override: no reader reads it, so it refuses nothing.
+_LEGACY_INCLUDE_OVERRIDE: Final = "include_override"
 _TEXT: Final[Mapping[ChangedCode, str]] = {
     "rules": "the pricing rules changed",
     "rules_history": "Kindred can't replay the pricing rules' history to that day",
@@ -818,6 +820,8 @@ def changed_since(season: Season, tick: LedgerTick, since: SinceInputs) -> tuple
         elif row.entity == "aid_cancellations" and row.entity_id == request.id:
             found["cancellation"].append(row.created)
     for correction in since.records.corrections:
+        if correction.field == _LEGACY_INCLUDE_OVERRIDE:
+            continue
         if correction.created > cut and (
             correction.application_id == request.application_id or correction.request_id == request.id
         ):

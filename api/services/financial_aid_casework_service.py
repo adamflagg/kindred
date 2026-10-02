@@ -175,8 +175,9 @@ _ANSWER_FIELDS: Final = frozenset(APPLICATION_CORRECTABLE) | frozenset(REQUEST_C
 
 
 def _live_correction_count(corrections: Sequence[CorrectionRecord]) -> int:
-    """The family's corrected intake answers. A request override (cost, Include) is a correction row too
-    (financial_aid_request_overrides) but no corrected answer, so it never counts here."""
+    """The family's corrected intake answers. The request cost override is a correction row too
+    (financial_aid_request_overrides) but no corrected answer, so it never counts here; nor does a legacy
+    include_override row, which nothing reads."""
     latest: dict[tuple[str, str], CorrectionRecord] = {}
     for c in sorted(corrections, key=lambda c: (c.created, c.id)):
         if c.field in _ANSWER_FIELDS:

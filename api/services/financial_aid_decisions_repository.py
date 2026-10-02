@@ -465,7 +465,8 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
                 f"{season} && {after} && ({entities(_SINCE_NAMED)})",
                 "entity,entity_id,action,created,before,after",
             ),
-            # `field` too: PocketBase returns only the fields asked for, and SinceCorrection carries it.
+            # `field` too: changed_since skips a legacy include_override row by it, and PocketBase returns only the
+            # fields asked for.
             page(AID_APPLICATION_CORRECTIONS, f"{season} && {after}", "application,request,field,created"),
             page(
                 ATTENDEES,
