@@ -268,6 +268,7 @@ describe('ViewAsSwitcher', () => {
       source: 'custom',
       permissions: [
         'financial_aid.casework',
+        'financial_aid.funding_sources',
         'financial_aid.grantors',
         'financial_aid.rules',
         'financial_aid.summary',

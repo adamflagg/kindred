@@ -114,16 +114,18 @@ func TestBootedRolesCarryFinancialAidGrants(t *testing.T) {
 
 	registrar := get("registrar")
 	holds("registrar", registrar, "financial_aid.view", "financial_aid.casework", "metrics.geo", "registration.manage")
-	lacks("registrar", registrar, "financial_aid.rules", "financial_aid.summary", "financial_aid.grantors", "financial_aid.funding_sources")
+	lacks("registrar", registrar,
+		"financial_aid.rules", "financial_aid.summary", "financial_aid.grantors", "financial_aid.funding_sources")
 
 	development := get("development")
 	if !development.IsSystem {
 		t.Error("development must be a system role")
 	}
-	if !slices.Equal(development.Permissions, []string{"financial_aid.funding_sources", "financial_aid.grantors", "financial_aid.summary"}) {
-		t.Errorf("development (%q) = %v, want exactly [financial_aid.funding_sources financial_aid.grantors financial_aid.summary] (never "+
+	wantDevelopment := []string{"financial_aid.funding_sources", "financial_aid.grantors", "financial_aid.summary"}
+	if !slices.Equal(development.Permissions, wantDevelopment) {
+		t.Errorf("development (%q) = %v, want exactly %v (never "+
 			"sheets.export, bunking.manage, users.manage or rules -- analysis §9.3, owner ruling 2026-10-01)",
-			development.Name, development.Permissions)
+			development.Name, development.Permissions, wantDevelopment)
 	}
 
 	for slug, r := range roles {
