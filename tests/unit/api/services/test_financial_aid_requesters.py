@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -10,7 +11,14 @@ from api.services.financial_aid_decisions_service import FinancialAidDecisionsSe
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import RequestRecord
 from api.services.financial_aid_requesters import FaContact, contact_name, requester_names
-from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_request
+from tests.unit.api.services.decisions_fakes import (
+    T0,
+    FakeDecisionsStore,
+    FakeRules,
+    approved,
+    log_seeded,
+    seed_request,
+)
 from tests.unit.api.services.financial_aid_fakes import YEAR
 
 HOME = 1000001
@@ -30,6 +38,13 @@ def _c(person: int, first: str, last: str, household: int = HOME) -> FaContact:
 def test_the_campers_own_row_wins_even_when_the_household_has_other_names() -> None:
     reqs = _requests((EMMA, HOME, EMMA_CM))
     contacts = [_c(LIAM_CM, "David", "Chen"), _c(EMMA_CM, "Maria", "Garcia")]
+    assert requester_names(contacts, reqs) == {EMMA: "Maria Garcia"}
+
+
+def test_the_campers_own_row_wins_over_a_different_household_unique_name() -> None:
+    # The own row's household is unstamped (0), so this household's only name is someone else's: own still wins.
+    reqs = _requests((EMMA, HOME, EMMA_CM))
+    contacts = [_c(EMMA_CM, "Maria", "Garcia", household=0), _c(LIAM_CM, "David", "Chen")]
     assert requester_names(contacts, reqs) == {EMMA: "Maria Garcia"}
 
 
@@ -120,10 +135,12 @@ async def test_the_grid_rows_carry_requested_by_from_one_contact_read() -> None:
 
 @pytest.mark.asyncio
 async def test_a_past_date_grid_carries_requested_by_too() -> None:
-    from datetime import date
-
     store = FakeDecisionsStore()
     seed_request(store, EMMA, household=HOME, person=EMMA_CM)
+    log_seeded(store, T0 - timedelta(days=30))
     store.fa_contacts = [_c(EMMA_CM, "Maria", "Garcia")]
-    (row,) = (await _service(store).grid(YEAR, as_of=date(2027, 12, 31))).rows
+    past = T0.date() - timedelta(days=1)  # before the service's today, so the past-date read runs, not the live one
+    out = await _service(store).grid(YEAR, as_of=past)
+    assert out.as_of == past
+    (row,) = out.rows
     assert row.requested_by == "Maria Garcia"
