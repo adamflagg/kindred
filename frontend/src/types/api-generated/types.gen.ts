@@ -3927,6 +3927,10 @@ export type ExpectedOut = {
    * Camper Names
    */
   camper_names: Array<string>
+  /**
+   * Display Name
+   */
+  display_name?: string | null
 }
 
 /**
