@@ -10,7 +10,11 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from bunking.financial_aid.rules.schema import SectionName
+
+from .bound_sections import bound_section
 
 TraceValue = Decimal | int | str | bool | None
 IssueSeverity = Literal["error", "needs_input", "hold", "warn"]
@@ -26,6 +30,13 @@ class TraceStep(BaseModel):
     inputs: dict[str, TraceValue] = Field(default_factory=dict)
     bound: str | None = None
     note: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def section(self) -> SectionName | None:
+        """The rules section whose setting bound this step (D76), derived from `key` and `bound`; None when none did.
+        Derived, never stored: a stored trace reads back with today's mapping, and a retrace re-derives it."""
+        return bound_section(self.key, self.bound)
 
 
 class CalcIssue(BaseModel):
