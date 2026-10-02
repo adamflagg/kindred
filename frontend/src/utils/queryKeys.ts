@@ -736,6 +736,7 @@ export const queryKeys = {
   aidRulesApproved: (year: number, version: number | null) =>
     ['financial-aid', 'rules', year, 'approved', version ?? 'pricing'] as const,
   aidTodayPrefix: () => ['financial-aid', 'today'] as const,
+  aidToday: (year: number) => ['financial-aid', 'today', year] as const,
   aidHouseholdPagePrefix: () => ['financial-aid', 'household-page'] as const,
   aidHouseholdPage: (year: number, householdCmId: number) =>
     ['financial-aid', 'household-page', year, householdCmId] as const,
