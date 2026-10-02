@@ -433,6 +433,18 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§5.11",
         rulings=("D92",),
     ),
+    # Reports › Development › Funding sources (Part C).
+    Definition(
+        key="source_facts",
+        term="Three facts",
+        text=(
+            "Three facts: every source is listed by name with who paid ({camp} or another funder), whether it is an "
+            "incentive or need-based (a per-source flag, never funder_type), and the source itself. Each outside "
+            "source names its reporting group, one of the season's budget pools."
+        ),
+        spec="§5.7",
+        rulings=("D88", "D100"),
+    ),
     Definition(
         key="zip_who_counts",
         term="Who counts",
@@ -543,6 +555,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
     "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
     "reports-development-zip": ("zip_who_counts",),
+    "reports-funding-sources": ("source_facts",),
     "reports-development": (
         "total_awards_granted",
         "need",
