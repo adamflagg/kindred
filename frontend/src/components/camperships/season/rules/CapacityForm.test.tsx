@@ -23,13 +23,14 @@ let stored: Array<{
 }> = []
 const sent: unknown[] = []
 let pending = false
+let readError: Error | null = null
 let saveError: Error | null = null
 let resets = 0
 vi.mock('../../../../hooks/camperships/useAidCapacity', () => ({
   useAidSessionCapacities: () => ({
     data: { year: 2027, sessions: stored },
     isLoading: false,
-    error: null,
+    error: readError,
   }),
   useAidSetCapacity: () => ({
     isPending: pending,
@@ -59,6 +60,7 @@ beforeEach(() => {
   granted = ['financial_aid.view', 'financial_aid.rules']
   stored = []
   pending = false
+  readError = null
   saveError = null
   resets = 0
   names = new Map([
@@ -191,5 +193,16 @@ describe('CapacityForm', () => {
     rerender(<CapacityForm />)
     const rows = within(screen.getByTestId('capacity-stored')).getAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual(['Session 1 · 1 places', 'Session 2 · 2 places'])
+  })
+
+  it('says so when the stored list could not be refreshed, and not otherwise', () => {
+    stored = [{ year: 2027, session_cm_id: 1000101, capacity: 80, note: '', actor: 'A' }]
+    const { unmount } = render(<CapacityForm />)
+    expect(screen.queryByText(/Couldn.t refresh this list/)).not.toBeInTheDocument()
+    unmount()
+    readError = new Error('boom')
+    render(<CapacityForm />)
+    expect(screen.getByText(/Couldn.t refresh this list/)).toBeInTheDocument()
+    expect(screen.getByTestId('capacity-stored')).toHaveTextContent('Session 1 · 80 places')
   })
 })
