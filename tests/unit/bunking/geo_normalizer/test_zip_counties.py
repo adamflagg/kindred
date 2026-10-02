@@ -17,9 +17,20 @@ def _table(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.usefixtures("_table")
 @pytest.mark.parametrize(
     ("code", "county"),
-    [("94612", "Alameda County"), (" 94612-1234 ", "Alameda County"), ("94613", None), ("", None), ("K1A 0B1", None)],
+    [
+        ("94612", "Alameda County"),
+        (" 94612-1234 ", "Alameda County"),
+        ("94613", None),
+        ("", None),
+        ("K1A 0B1", None),
+        # A longer all-digit code is a foreign one (seven digits) or a typo, never a US ZIP: no county, not a wrong one
+        ("9461234", None),
+        ("946123", None),
+        ("94612x", None),
+        ("94612-12", None),
+    ],
 )
-def test_a_postal_code_reads_its_county_by_its_first_five_digits(code: str, county: str | None) -> None:
+def test_a_postal_code_reads_its_county_only_when_it_is_a_us_zip(code: str, county: str | None) -> None:
     assert county_for_postal_code(code) == county
 
 

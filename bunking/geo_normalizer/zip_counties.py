@@ -5,6 +5,7 @@ of, or one with no ZCTA, isn't in it."""
 from __future__ import annotations
 
 import json
+import re
 from functools import cache
 from importlib.resources import files
 
@@ -16,6 +17,11 @@ def _table() -> dict[str, str]:
     return table
 
 
+# A US ZIP or ZIP+4, whole: a longer all-digit code is a foreign one (households hold six- and seven-digit codes) or a
+# typo, and its first five digits would name a wrong county.
+_US_ZIP = re.compile(r"(\d{5})(?:-\d{4})?", re.ASCII)
+
+
 def county_for_postal_code(postal_code: str) -> str | None:
-    digits = postal_code.strip()[:5]
-    return _table().get(digits) if len(digits) == 5 and digits.isdecimal() else None
+    zip_code = _US_ZIP.fullmatch(postal_code.strip())
+    return _table().get(zip_code.group(1)) if zip_code is not None else None
