@@ -212,17 +212,18 @@ def test_payer_shares_reach_the_service_as_percentages_with_the_callers_email() 
     )
 
 
-def test_one_households_share_can_be_given_in_dollars_and_reaches_the_service_as_typed() -> None:
+def test_one_households_share_is_a_percent_only_and_a_dollar_amount_is_ignored() -> None:
+    # Owner ruling 2026-10-02: payer shares are percent only. The schema keeps pydantic's default
+    # (extra fields ignored), so an old client's `amount` is dropped unread and the % applies;
+    # an amount with no % is a missing share_pct, a 422.
     stub = _stub()
     user = persona_user(PERSONA_REGISTRAR)
+    url = f"/api/financial-aid/requests/{RID}/payer-shares/1000009"
     with _client(user, stub) as client:
-        response = client.put(
-            f"/api/financial-aid/requests/{RID}/payer-shares/1000009", json={"amount": "880.00", "reason": "r"}
-        )
-    assert response.status_code == 200
-    stub.set_household_share.assert_awaited_once_with(
-        RID, 1000009, share_pct=None, amount=Decimal("880.00"), reason="r", actor=user.email
-    )
+        both = client.put(url, json={"share_pct": "40", "amount": "880.00", "reason": "r"})
+        amount_only = client.put(url, json={"amount": "880.00", "reason": "r"})
+    assert (both.status_code, amount_only.status_code) == (200, 422)
+    stub.set_household_share.assert_awaited_once_with(RID, 1000009, share_pct=Decimal(40), reason="r", actor=user.email)
 
 
 def test_resolving_a_session_no_longer_remembers_anything() -> None:

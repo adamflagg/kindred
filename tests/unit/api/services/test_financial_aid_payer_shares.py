@@ -18,7 +18,6 @@ from api.services.financial_aid_payer_shares import (
     PayerShareError,
     ShareSpec,
     fill_remainder,
-    pct_from_dollars,
     share_status,
     split_award,
     validate_shares,
@@ -105,20 +104,6 @@ def test_split_award_refuses_shares_that_do_not_add_up() -> None:
         split_award(Decimal(2201), [pct(HOME, "60")], HOME)
 
 
-def test_a_typed_dollar_amount_becomes_a_percentage_that_round_trips() -> None:
-    share = pct_from_dollars(Decimal(880), Decimal(2201))
-    assert share == Decimal("39.9818")
-    shares = fill_remainder([pct(HOME, "100")], OTHER, share)
-    assert shares == [pct(HOME, "60.0182"), pct(OTHER, "39.9818")]
-    assert split_award(Decimal(2201), shares, HOME) == {HOME: Decimal(1321), OTHER: Decimal(880)}
-
-
-@pytest.mark.parametrize(("amount", "award"), [("0", "2201"), ("2202", "2201"), ("100", "0")])
-def test_a_dollar_amount_outside_the_award_is_refused(amount: str, award: str) -> None:
-    with pytest.raises(PayerShareError):
-        pct_from_dollars(Decimal(amount), Decimal(award))
-
-
 async def built(
     awards: dict[str, Decimal] | None = None,
 ) -> tuple[FakeAidStore, FinancialAidCaseworkService]:
@@ -164,7 +149,7 @@ async def test_setting_one_households_share_fills_the_remainder_in_one_operation
     store, casework = await built()
     summer = store.request_for(person=1000011, program="summer")
     out = await casework.set_household_share(
-        summer.id, OTHER, share_pct=Decimal(40), amount=None, reason="Other parent pays 40%.", actor=ACTOR
+        summer.id, OTHER, share_pct=Decimal(40), reason="Other parent pays 40%.", actor=ACTOR
     )
     assert [(s.household_cm_id, s.share_pct) for s in out.payer_shares] == [(HOME, Decimal(60)), (OTHER, Decimal(40))]
     assert out.payer_share_status == "complete"
@@ -184,38 +169,10 @@ async def test_a_two_household_split_commits_both_shares_or_neither() -> None:
     store.fail_on = ("aid_payer_shares", "POST")  # the new household's share is refused
     with pytest.raises(BatchRequestFailedError):
         await casework.set_household_share(
-            summer.id, OTHER, share_pct=Decimal(40), amount=None, reason="Other parent pays 40%.", actor=ACTOR
+            summer.id, OTHER, share_pct=Decimal(40), reason="Other parent pays 40%.", actor=ACTOR
         )
     assert shares_of(store, summer.id) == [(HOME, Decimal(100))]  # the remainder update rolled back too
     assert store.change_log == []
-
-
-@pytest.mark.asyncio
-async def test_a_dollar_share_needs_a_priced_amount_and_is_stored_as_a_percentage() -> None:
-    awards: dict[str, Decimal] = {}
-    store, casework = await built(awards)
-    summer = store.request_for(person=1000011, program="summer")
-    with pytest.raises(CaseworkValidationError, match="no priced amount"):
-        await casework.set_household_share(
-            summer.id, OTHER, share_pct=None, amount=Decimal(880), reason="r", actor=ACTOR
-        )
-    assert store.operations == []
-
-    awards[summer.id] = Decimal(2201)  # the request now has a priced amount
-    out = await casework.set_household_share(
-        summer.id, OTHER, share_pct=None, amount=Decimal(880), reason="Other parent pays $880.", actor=ACTOR
-    )
-    assert [(s.household_cm_id, s.share_pct, s.amount) for s in out.payer_shares] == [
-        (HOME, Decimal("60.0182"), Decimal(1321)),
-        (OTHER, Decimal("39.9818"), Decimal(880)),
-    ]
-    (entered,) = [row for row in store.change_log if row["entity_id"] == f"{summer.id}:{OTHER}"]
-    assert entered["after"]["entered"] == {
-        "household_cm_id": OTHER,
-        "amount": "880.00",
-        "award": "2201.00",
-        "share_pct": "39.9818",
-    }
 
 
 def test_dollars_are_read_only_and_follow_the_current_award() -> None:
@@ -268,12 +225,8 @@ async def test_bad_share_writes_are_refused_and_nothing_is_written() -> None:
     summer = store.request_for(person=1000011, program="summer")
     with pytest.raises(CaseworkValidationError):
         await casework.set_payer_shares(summer.id, [pct(HOME, "100")], "  ", ACTOR)
-    with pytest.raises(CaseworkValidationError):  # both a % and dollars
-        await casework.set_household_share(
-            summer.id, OTHER, share_pct=Decimal(40), amount=Decimal(10), reason="r", actor=ACTOR
-        )
-    with pytest.raises(CaseworkValidationError):  # neither
-        await casework.set_household_share(summer.id, OTHER, share_pct=None, amount=None, reason="r", actor=ACTOR)
+    with pytest.raises(CaseworkValidationError):  # no reason
+        await casework.set_household_share(summer.id, OTHER, share_pct=Decimal(40), reason=" ", actor=ACTOR)
     store.requests[summer.id] = replace(summer, status="withdrawn")
     with pytest.raises(CaseworkValidationError):
         await casework.set_payer_shares(summer.id, [pct(HOME, "100")], "r", ACTOR)

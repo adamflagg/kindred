@@ -6447,18 +6447,14 @@ export type HouseholdSearchResponse = {
 /**
  * HouseholdShareSet
  *
- * One household's share, as a % or (once the request has a priced amount) as dollars,
- * exactly one. The other share of a two-way split gets the remainder.
+ * One household's share, as a % only (owner ruling 2026-10-02). The other share of a
+ * two-way split gets the remainder. An old client's `amount` is ignored unread.
  */
 export type HouseholdShareSet = {
   /**
    * Share Pct
    */
-  share_pct?: number | string | null
-  /**
-   * Amount
-   */
-  amount?: number | string | null
+  share_pct: number | string
   /**
    * Reason
    */

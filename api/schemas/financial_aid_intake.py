@@ -169,9 +169,8 @@ class PayerSharesSet(BaseModel):
 
 
 class HouseholdShareSet(BaseModel):
-    """One household's share, as a % or (once the request has a priced amount) as dollars,
-    exactly one. The other share of a two-way split gets the remainder."""
+    """One household's share, as a % only (owner ruling 2026-10-02). The other share of a
+    two-way split gets the remainder. An old client's `amount` is ignored unread."""
 
-    share_pct: Decimal | None = Field(default=None, gt=0, le=100, decimal_places=4)
-    amount: Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    share_pct: Decimal = Field(gt=0, le=100, decimal_places=4)
     reason: str = Field(min_length=1, max_length=2000)
