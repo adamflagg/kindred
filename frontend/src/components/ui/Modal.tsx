@@ -17,6 +17,13 @@ interface ModalProps {
   isOpen: boolean
   onClose: () => void
   /**
+   * A write is running and the dialog must not be left: the header X is disabled and dimmed with no
+   * hover, and Escape and the backdrop do nothing. Default false: every caller renders as before.
+   * A native `disabled` is safe for focus here: the X never takes initial focus (`data-modal-close`
+   * is skipped), and `getFocusable` already leaves disabled buttons out of the Tab cycle.
+   */
+  closeDisabled?: boolean | undefined
+  /**
    * Fires when the leave transition COMPLETES (not when it is interrupted by
    * a reopen). For parents holding a retained snapshot (kindred#2529) this is
    * the moment the data can be safely dropped — the DOM is already gone.
@@ -169,6 +176,9 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ')
 
+/** The X while the dialog can't be left: dimmed, no hover, not-allowed cursor. */
+const CLOSE_HELD = 'disabled:opacity-50 disabled:cursor-not-allowed'
+
 function getFocusable(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
 }
@@ -221,6 +231,7 @@ export function Modal({
   initialFocusRef,
   headerOnDark = false,
   closeAlign = 'center',
+  closeDisabled = false,
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
@@ -244,6 +255,7 @@ export function Modal({
         // Modal).
         const token = overlayTokenRef.current
         if (token !== null && !isTopOverlay(token)) return
+        if (closeDisabled) return
         onClose()
         return
       }
@@ -274,7 +286,7 @@ export function Modal({
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, closeDisabled])
 
   // Initial focus, background inert, and focus restoration on close. Kept
   // separate from the keydown effect above — this one only needs to run on
@@ -318,6 +330,7 @@ export function Modal({
   const handleBackdropClick = () => {
     const token = overlayTokenRef.current
     if (token !== null && !isTopOverlay(token)) return
+    if (closeDisabled) return
     onClose()
   }
 
@@ -459,12 +472,13 @@ export function Modal({
               {header}
               <button
                 onClick={onClose}
+                disabled={closeDisabled}
                 className={`absolute ${
                   closeAlign === 'center' ? 'top-1/2 -translate-y-1/2' : 'top-4'
                 } right-4 z-20 rounded-lg p-2 transition-colors ${
                   headerOnDark
-                    ? 'text-white/70 hover:bg-white/10 hover:text-white'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-black/10'
+                    ? `text-white/70 ${closeDisabled ? CLOSE_HELD : 'hover:bg-white/10 hover:text-white'}`
+                    : `text-muted-foreground ${closeDisabled ? CLOSE_HELD : 'hover:text-foreground hover:bg-black/10'}`
                 }`}
                 data-modal-close
                 aria-label="Close modal"
@@ -482,7 +496,12 @@ export function Modal({
               </h2>
               <button
                 onClick={onClose}
-                className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
+                disabled={closeDisabled}
+                className={
+                  closeDisabled
+                    ? `text-muted-foreground rounded-lg p-2 transition-colors ${CLOSE_HELD}`
+                    : 'hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors'
+                }
                 data-modal-close
                 aria-label="Close modal"
               >
@@ -496,7 +515,12 @@ export function Modal({
             <div className="absolute top-4 right-4">
               <button
                 onClick={onClose}
-                className="hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors"
+                disabled={closeDisabled}
+                className={
+                  closeDisabled
+                    ? `text-muted-foreground rounded-lg p-2 transition-colors ${CLOSE_HELD}`
+                    : 'hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg p-2 transition-colors'
+                }
                 data-modal-close
                 aria-label="Close modal"
               >
