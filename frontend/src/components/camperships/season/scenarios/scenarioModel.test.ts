@@ -41,6 +41,8 @@ describe("the draft's settings (§7.4; D37, D137)", () => {
     expect(readStep('11', SHIFT_RANGE)).toBeNull()
     expect(readStep('5000', BAND_RANGE)).toBe(5000)
     expect(readStep('5050', BAND_RANGE)).toBeNull()
+    expect(readStep('+2', SHIFT_RANGE)).toBe(2)
+    expect(readStep('+11', SHIFT_RANGE)).toBeNull()
   })
 
   it('says each move in words', () => {
@@ -69,6 +71,18 @@ describe("the draft's settings (§7.4; D37, D137)", () => {
     )
     expect(stepWords(undefined)).toBeNull()
   })
+
+  it('words the switch from its state, a rise without a plus, and an unstated switch as nothing', () => {
+    const effect = (on: boolean | null, change: number) => ({
+      lever: 'dollar_for_dollar',
+      label: 'x',
+      step: null,
+      on,
+      round1_change: change,
+    })
+    expect(stepWords(effect(false, 8000))).toBe('Turning it on moves Round 1 by $8,000')
+    expect(stepWords(effect(null, 8000))).toBeNull()
+  })
 })
 
 describe('kept options in two levels (D38)', () => {
@@ -80,17 +94,51 @@ describe('kept options in two levels (D38)', () => {
     expect(startingPointOf(OPTIONS, 'A1')).toBe('A')
     expect(startingPointOf(OPTIONS, 'B')).toBe('B')
   })
+
+  it('leaves an orphan variant out of the list rather than inventing a group', () => {
+    const orphan = { ...OPTIONS[1]!, code: 'C1', starting_point: 'C' }
+    expect(keptGroups([...OPTIONS, orphan]).map((g) => g.start.code)).toEqual(['A', 'B'])
+    expect(keptGroups([...OPTIONS, orphan]).flatMap((g) => g.variants.map((v) => v.code))).toEqual([
+      'A1',
+    ])
+  })
 })
 
 describe('the results (results.py)', () => {
-  it('names each figure by its meaning, Round 2 as the appeals keyed so far', () => {
-    const lines = resultLines(results(735000, { remaining: -1200 }))
-    expect(lines.map((l) => l.label)).toContain('Round 2, appeals keyed so far')
-    expect(lines.find((l) => l.key === 'remaining')).toEqual({
+  it('lists every figure in order, each under its meaning', () => {
+    expect(resultLines(results(735000)).map((l) => [l.key, l.label, l.value])).toEqual([
+      ['round1', 'Round 1', '$735,000'],
+      ['round2', 'Round 2, appeals keyed so far', '$20,500'],
+      ['round3', 'Round 3', '$950'],
+      ['round1_remaining', 'Round 1 remaining', '$65,000'],
+      ['remaining', 'Remaining, every round', '$243,550'],
+      ['at_minimum', 'At the minimum', '12 requests'],
+      ['held', 'Held', '9 requests'],
+      ['round1_unmet', 'Round 1 unmet ask (below the line)', '$50,920'],
+    ])
+  })
+
+  it('marks an overspent Remaining negative', () => {
+    expect(
+      resultLines(results(735000, { remaining: -1200 })).find((l) => l.key === 'remaining')
+    ).toEqual({
       key: 'remaining',
       label: 'Remaining, every round',
       value: '−$1,200',
       negative: true,
     })
+  })
+
+  it('shows nothing where the server has nothing, and never calls it negative', () => {
+    const lines = resultLines(results(735000, { remaining: null, round1_remaining: null }))
+    for (const key of ['remaining', 'round1_remaining']) {
+      expect(lines.find((l) => l.key === key)).toMatchObject({ value: '—', negative: false })
+    }
+  })
+
+  it('says "1 request" in the singular', () => {
+    const lines = resultLines(results(735000, { at_minimum: 1, held: 0 }))
+    expect(lines.find((l) => l.key === 'at_minimum')?.value).toBe('1 request')
+    expect(lines.find((l) => l.key === 'held')?.value).toBe('0 requests')
   })
 })
