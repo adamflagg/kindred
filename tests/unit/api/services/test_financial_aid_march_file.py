@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +18,9 @@ from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, seed_req
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import _posted, _service
 from tests.unit.bunking.financial_aid.test_decision_budget import priced, view
+
+if TYPE_CHECKING:
+    from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 
 EMMA = "reqemma00000001"  # Emma Johnson, household 1000001
 LIAM = "reqliam00000001"  # Liam Garcia, household 1000002
@@ -218,7 +221,7 @@ async def _fc_rows(store: FakeDecisionsStore, decided: str = "800") -> list[tupl
         return _season(store, priced_by_id)
 
     service = SimpleNamespace(season=season)
-    out = await MarchFileService(service, store).read(YEAR)
+    out = await MarchFileService(cast("FinancialAidDecisionsService", service), store).read(YEAR)
     return [(r.camper_first, r.camper_last, r.total_award, r.primary_childhood_id, r.personal_id) for r in out.rows]
 
 

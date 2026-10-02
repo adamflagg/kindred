@@ -180,7 +180,7 @@ def oldest_child(
         and a.birthdate is not None
         and _age_on(a.birthdate, first_day) < 18
     ]
-    return min(kids)[1] if kids else None  # type: ignore[type-var]  # a None birthdate was filtered out above
+    return min(kids)[1] if kids else None
 
 
 class MarchFileService:
