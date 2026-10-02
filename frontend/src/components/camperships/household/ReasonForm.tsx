@@ -34,9 +34,8 @@ export function ReasonForm({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const field = useRef<HTMLInputElement>(null)
-  // The latest submit's number and whether one is in flight: a submit while busy is ignored, and
-  // only the latest submit may show an error (a stale one landing late must not).
-  const latest = useRef(0)
+  // A submit while one is in flight is ignored, so a stale submit's error can never land after a
+  // newer one: there is only ever one submit outstanding.
   const inFlight = useRef(false)
   useEffect(() => {
     field.current?.focus()
@@ -49,21 +48,16 @@ export function ReasonForm({
       setError(`${label} is required`)
       return
     }
-    const mine = ++latest.current
     inFlight.current = true
     setBusy(true)
     setError(null)
     try {
       await onSubmit(trimmed)
     } catch (caught) {
-      if (mine === latest.current) {
-        setError(caught instanceof Error ? caught.message : "Couldn't save")
-      }
+      setError(caught instanceof Error ? caught.message : "Couldn't save")
     } finally {
-      if (mine === latest.current) {
-        inFlight.current = false
-        setBusy(false)
-      }
+      inFlight.current = false
+      setBusy(false)
     }
   }
 
