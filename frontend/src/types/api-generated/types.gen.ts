@@ -8023,8 +8023,9 @@ export type JumpIndexHousehold = {
 /**
  * JumpIndexPerson
  *
- * A camper (with a request, a posting or a commitment in the household) or a parent its records name.
- * A parent has no CampMinder id here (the camper record's parent names carry none): person_cm_id None.
+ * A camper (with a request, a posting or a commitment in the household), a parent its records name, or a
+ * requester: the person who filed the aid form for a camper here (they may live in ANOTHER household, which is
+ * the point: searching their name finds this one). A parent or requester has no CampMinder id here: None.
  */
 export type JumpIndexPerson = {
   /**
@@ -8038,7 +8039,7 @@ export type JumpIndexPerson = {
   /**
    * Role
    */
-  role: 'camper' | 'parent'
+  role: 'camper' | 'parent' | 'requester'
 }
 
 /**
