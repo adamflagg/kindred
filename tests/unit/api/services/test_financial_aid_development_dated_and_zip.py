@@ -120,6 +120,7 @@ async def test_saving_columns_writes_once_and_a_repeat_writes_nothing() -> None:
     [
         (DatedColumn(season=2026, as_of=date(2026, 4, 12)), "needs dated decisions"),
         (DatedColumn(season=YEAR, as_of=date(2027, 5, 1)), "not a past day"),
+        (DatedColumn(season=YEAR, as_of=date(2027, 4, 1)), "not a past day"),  # today: not past yet, never shown
         (DatedColumn(season=YEAR, as_of=date(2025, 5, 1)), "not a past day"),
     ],
 )

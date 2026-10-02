@@ -475,7 +475,8 @@ class FinancialAidDevelopmentService:
                 raise ReportsRefusedError(
                     f"A dated column needs dated decisions: {season} has none (only {FIRST_TICKED_SEASON} on, D67)"
                 )
-            if not season - 1 <= day.year <= season or day > today:
+            # Today is not past: development shows a column only once its day is.
+            if not season - 1 <= day.year <= season or day >= today:
                 raise ReportsRefusedError(f"{day} is not a past day of the {season} season")
         stored = await self._development.report_columns(REPORT)
         if tuple(wanted) == stored.columns:
