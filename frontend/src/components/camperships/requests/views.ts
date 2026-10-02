@@ -87,7 +87,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'needs-offer',
     label: 'Needs an offer',
     groupBy: 'round',
-    columns: ['session', 'stage', 'round', 'decided', 'newTotal', 'tick', 'attention'],
+    columns: ['session', 'stage', 'round', 'decided', 'newTotal', 'attention'],
   },
   {
     key: 'holds',

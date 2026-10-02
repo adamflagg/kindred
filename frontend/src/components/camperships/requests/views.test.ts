@@ -557,10 +557,10 @@ describe('Not reconciled groups for money with no Posted tick (#2996)', () => {
 })
 
 describe('the Tick column (Decision 8, 15)', () => {
-  it('shows only for someone who can tick, on Needs an offer and Waiting on the family', () => {
-    expect(viewColumns(requestView('needs-offer'), false, true, true)).toContain('tick')
-    expect(viewColumns(requestView('needs-offer'), false, true, false)).not.toContain('tick')
+  it('shows only for someone who can tick, and only on Waiting on the family (Posted is not ticked here)', () => {
+    expect(viewColumns(requestView('needs-offer'), false, true, true)).not.toContain('tick')
     expect(viewColumns(requestView('waiting'), false, true, true)).toContain('tick')
+    expect(viewColumns(requestView('waiting'), false, true, false)).not.toContain('tick')
     expect(viewColumns(requestView('all'), false, true, true)).not.toContain('tick')
   })
 
@@ -574,7 +574,7 @@ describe("Needs an offer's new total (⚠ Decision 40, ruled)", () => {
 
   it("shows the request's new total beside a Round 2 or 3 amount, and nothing on a Round 1 row", () => {
     expect(viewColumns(requestView('needs-offer'), false, true, true)).toEqual(
-      expect.arrayContaining(['decided', 'newTotal', 'tick'])
+      expect.arrayContaining(['decided', 'newTotal'])
     )
     expect(GRID_COLUMNS.newTotal.value(ROW_OLIVIA, CTX)).toBe(2200)
     expect(GRID_COLUMNS.newTotal.value(ROW_EMMA, CTX)).toBeNull()

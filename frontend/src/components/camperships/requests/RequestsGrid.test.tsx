@@ -29,7 +29,7 @@ function Grid({
   showIds?: boolean
   rows?: readonly ApiAidGridRow[]
   tickedSeason?: boolean
-  onTick?: (row: ApiAidGridRow, action: 'posted' | 'accepted') => void
+  onTick?: (row: ApiAidGridRow, action: 'accepted') => void
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -753,19 +753,13 @@ describe('ticks in the grid (§4.10; Decision 15)', () => {
 
   it('draws no Tick column without a tick handler', () => {
     render(<Grid slug="needs-offer" />)
-    expect(screen.queryByRole('button', { name: /^Posted · locks/ })).toBeNull()
     expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
   })
 
-  it('ticks Posted at the decided amount on Needs an offer, without highlighting the row', async () => {
-    const onTick = vi.fn()
-    render(<Grid slug="needs-offer" onTick={onTick} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $780' }))
-    expect(onTick).toHaveBeenCalledWith(
-      expect.objectContaining({ request_id: 'reqolivia000003' }),
-      'posted'
-    )
-    expect(highlights).toEqual([])
+  it('draws no Posted button and no Tick column on Needs an offer, even with a tick handler', () => {
+    render(<Grid slug="needs-offer" onTick={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /^Posted/ })).toBeNull()
+    expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
   })
 
   it('ticks Accepted from Waiting on the family, and from Mark accepted on All', async () => {

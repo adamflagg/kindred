@@ -19,7 +19,7 @@ import { attentionFor } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import { RequestDetailLine } from './RequestDetailLine'
 import { requestStage, roundOf } from './stage'
-import { acceptedTarget, postedTarget, type TickAction } from './ticks'
+import { acceptedTarget, type TickAction } from './ticks'
 import {
   cmChip,
   countWords,
@@ -146,21 +146,6 @@ function renderFor(
     case 'tick':
       return (row) => {
         if (onTick === undefined) return null
-        if (ctx.view === 'needs_offer') {
-          const target = postedTarget(row)
-          return target ? (
-            <button
-              type="button"
-              className={TICK_BUTTON}
-              onClick={(event) => {
-                event.stopPropagation()
-                onTick(row, 'posted')
-              }}
-            >
-              Posted · locks {formatMoney(target.amount)}
-            </button>
-          ) : null
-        }
         return acceptedTarget(row) ? (
           <button
             type="button"

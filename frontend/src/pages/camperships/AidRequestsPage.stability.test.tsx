@@ -40,7 +40,6 @@ vi.mock('../../hooks/usePermissions', () => ({
 const mutateAsync = vi.fn()
 vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidKeyAsk: () => ({ mutateAsync }),
-  useAidTickPosted: () => ({ mutateAsync, isPending: false }),
   useAidTickAccepted: () => ({ mutateAsync, isPending: false }),
 }))
 

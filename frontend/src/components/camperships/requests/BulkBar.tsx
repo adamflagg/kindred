@@ -14,7 +14,7 @@ export interface TickResult {
 
 const LISTED = 12
 
-/** The bulk actions over selected rows (§4.10; Decision 16: Posted and Accepted; there's no stage to move). */
+/** The bulk actions over selected rows (§4.10; Decision 16: Accepted only, since Posted is the ledger's and the exception rows'; there's no stage to move). */
 export function BulkBar({
   count,
   hidden,
@@ -38,9 +38,6 @@ export function BulkBar({
             {count} selected
             {hidden > 0 ? ` · ${String(hidden)} hidden by the search or filters` : ''}
           </span>
-          <button type="button" className={BUTTON_SECONDARY} onClick={() => onTick('posted')}>
-            Tick Posted…
-          </button>
           <button type="button" className={BUTTON_SECONDARY} onClick={() => onTick('accepted')}>
             Tick Accepted…
           </button>
