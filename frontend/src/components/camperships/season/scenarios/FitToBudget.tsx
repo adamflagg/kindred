@@ -15,6 +15,7 @@ export function FitToBudget({
   document,
   trailId,
   disabled,
+  editing,
   onUse,
 }: {
   document: ApiAidRulesDocumentIn
@@ -22,6 +23,8 @@ export function FitToBudget({
   trailId: string
   /** A write is running, or a slider has moved and not been let go. */
   disabled: boolean
+  /** An All settings editor holds typing: no fitted draft may land under it (Decision 15). */
+  editing: boolean
   /** Resolves true once the record landed; the fitted answer is kept until then. */
   onUse: (fitted: ApiAidRulesDocumentIn, askedOn: string) => Promise<boolean>
 }) {
@@ -59,7 +62,7 @@ export function FitToBudget({
               <button
                 type="button"
                 className={BUTTON_PRIMARY}
-                disabled={disabled}
+                disabled={disabled || editing}
                 onClick={() => {
                   void onUse(answer.document, askedOn).then((landed) => {
                     if (landed) fit.reset()
@@ -72,6 +75,11 @@ export function FitToBudget({
             <button type="button" className={BUTTON_SECONDARY} onClick={() => fit.reset()}>
               Not now
             </button>
+            {editing && answer.outcome === 'fits' && (
+              <span className="text-muted-foreground self-center text-xs">
+                Save or cancel the edit first.
+              </span>
+            )}
           </div>
         </div>
       )}

@@ -385,6 +385,24 @@ describe('the Fit answer belongs to the draft it was fitted on (m5)', () => {
   })
 })
 
+describe('Fit waits for an open All settings editor (Decision 15)', () => {
+  it('holds "Use it" with the cue while a section is open, and releases it on Cancel', async () => {
+    fitAnswer = FITS
+    renderAt()
+    const fit = screen.getByTestId('fit-to-budget')
+    await userEvent.click(within(fit).getByRole('button', { name: /^Fit to budget/ }))
+    expect(within(fit).getByRole('button', { name: 'Use it' })).toBeEnabled()
+    const all = screen.getByTestId('all-settings')
+    await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
+    expect(within(fit).getByRole('button', { name: 'Use it' })).toBeDisabled()
+    expect(within(fit).getByText('Save or cancel the edit first.')).toBeInTheDocument()
+    expect(within(fit).getByRole('button', { name: /^Fit to budget/ })).toBeEnabled()
+    await userEvent.click(within(all).getByRole('button', { name: 'Cancel' }))
+    expect(within(fit).getByRole('button', { name: 'Use it' })).toBeEnabled()
+    expect(within(fit).queryByText('Save or cancel the edit first.')).toBeNull()
+  })
+})
+
 describe('while a write runs (m7)', () => {
   it('holds Fit, "Use it" and All settings Save', async () => {
     fitAnswer = FITS
@@ -532,6 +550,15 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
   it('says "Nothing was changed" on a refusal, and not when it cannot tell', async () => {
     promoteRefusal = 'No such option'
     promoteStatus = 422
+    await open()
+    await userEvent.click(within(screen.getByTestId('promotion-preview')).getByRole('checkbox'))
+    await userEvent.click(screen.getByRole('button', { name: 'Make it the rules draft' }))
+    expect(screen.getByTestId('promotion-refused')).toHaveTextContent('Nothing was changed.')
+  })
+
+  it('says "Nothing was changed" on a 404 too: nothing was written', async () => {
+    promoteRefusal = 'No such option'
+    promoteStatus = 404
     await open()
     await userEvent.click(within(screen.getByTestId('promotion-preview')).getByRole('checkbox'))
     await userEvent.click(screen.getByRole('button', { name: 'Make it the rules draft' }))
