@@ -126,6 +126,9 @@ export interface AidTableProps<Row> {
    * without rebuilding columns. Pass a memoised Set.
    */
   readonly markedKeys?: ReadonlySet<string> | undefined
+  /** Bulk actions (§4.10): the selected row keys. Pass both; a checkbox column then leads the table. */
+  readonly selected?: ReadonlySet<string> | undefined
+  readonly onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
@@ -136,6 +139,8 @@ const moneyValue = (value: CellValue): number | null => (typeof value === 'numbe
 
 const NO_GROUPINGS: readonly never[] = []
 const FLEX_MIN = 250
+/** The selection's checkbox column (§4.10). */
+const SELECT_WIDTH = 32
 
 const join = (...classes: Array<string | false | undefined>) => classes.filter(Boolean).join(' ')
 
@@ -163,6 +168,8 @@ export function AidTable<Row>({
   onHighlight,
   footerLabel,
   markedKeys,
+  selected,
+  onSelectedChange,
   groupCount,
   emptyText = 'No rows match.',
 }: AidTableProps<Row>) {
@@ -230,6 +237,35 @@ export function AidTable<Row>({
   const counted = (list: readonly Row[]) =>
     kept === null ? list : list.filter((row) => rowKey(row) !== kept)
 
+  const selection =
+    selected !== undefined && onSelectedChange !== undefined
+      ? { selected, onChange: onSelectedChange }
+      : null
+  const selectable = selection !== null
+  const span = columns.length + (selectable ? 1 : 0)
+  // The rows the search matches, without the kept row (`counted`): what Select all takes.
+  const selectableKeys = counted(ordered).map(rowKey)
+  const allSelected =
+    selection !== null &&
+    selectableKeys.length > 0 &&
+    selectableKeys.every((key) => selection.selected.has(key))
+  const toggleAll = () => {
+    if (selection === null) return
+    const next = new Set(selection.selected)
+    for (const key of selectableKeys) {
+      if (allSelected) next.delete(key)
+      else next.add(key)
+    }
+    selection.onChange(next)
+  }
+  const toggleOne = (key: string) => {
+    if (selection === null) return
+    const next = new Set(selection.selected)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    selection.onChange(next)
+  }
+
   useEffect(() => {
     if (!arrowKeys) return
     const onKey = (event: KeyboardEvent) => {
@@ -265,16 +301,18 @@ export function AidTable<Row>({
 
   const pinnedLeft = useMemo(() => {
     const out = new Map<string, number>()
-    let left = 0
+    let left = selectable ? SELECT_WIDTH : 0
     for (const column of columns) {
       if (!column.pinned) break
       out.set(column.key, left)
       left += column.width ?? 0
     }
     return out
-  }, [columns])
+  }, [columns, selectable])
   const lastPinned = [...pinnedLeft.keys()].at(-1)
-  const minWidth = columns.reduce((sum, c) => sum + (c.flex ? FLEX_MIN : (c.width ?? 0)), 0)
+  const minWidth =
+    columns.reduce((sum, c) => sum + (c.flex ? FLEX_MIN : (c.width ?? 0)), 0) +
+    (selectable ? SELECT_WIDTH : 0)
 
   const pinStyle = (column: AidColumn<Row>): CSSProperties | undefined =>
     pinnedLeft.has(column.key) ? { left: pinnedLeft.get(column.key) } : undefined
@@ -289,7 +327,8 @@ export function AidTable<Row>({
     isHighlighted: boolean,
     isMarked: boolean
   ) => {
-    const highlightEdge = (isHighlighted || isMarked) && index === 0
+    // With a checkbox column the bar belongs to that cell instead.
+    const highlightEdge = (isHighlighted || isMarked) && index === 0 && !selectable
     const pinnedEdge = column.key === lastPinned
     if (highlightEdge && pinnedEdge) return HIGHLIGHT_PINNED_EDGE
     return highlightEdge ? HIGHLIGHT_EDGE : pinnedEdge ? PINNED_EDGE : ''
@@ -371,12 +410,23 @@ export function AidTable<Row>({
       <div className={TABLE_CARD}>
         <table className={TABLE} style={{ minWidth }}>
           <colgroup>
+            {selectable && <col style={{ width: SELECT_WIDTH }} />}
             {columns.map((c) => (
               <col key={c.key} style={c.flex ? undefined : { width: c.width }} />
             ))}
           </colgroup>
           <thead>
             <tr>
+              {selection && (
+                <th className={join(TH, 'sticky left-0 z-20')}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                  />
+                </th>
+              )}
               {columns.map((c) => (
                 <SortableColumnHeader
                   key={c.key}
@@ -396,7 +446,7 @@ export function AidTable<Row>({
             {visible.length === 0 && (
               <tr>
                 <td
-                  colSpan={columns.length}
+                  colSpan={span}
                   className={join(TD, CELL_BG, 'text-muted-foreground whitespace-nowrap')}
                 >
                   {emptyText}
@@ -407,7 +457,7 @@ export function AidTable<Row>({
               <Fragment key={g.id || 'all'}>
                 {grouping && g.rows.length > 0 && (
                   <tr>
-                    <td colSpan={columns.length} className={GROUP_ROW} data-group-heading="">
+                    <td colSpan={span} className={GROUP_ROW} data-group-heading="">
                       <span className="sticky left-2">{g.heading}</span>
                       {groupCount ? (
                         <span className="ml-2 font-normal">{groupCount(counted(g.rows))}</span>
@@ -434,6 +484,25 @@ export function AidTable<Row>({
                         }}
                         className="cursor-pointer"
                       >
+                        {selection && (
+                          <td
+                            className={join(
+                              TD,
+                              isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
+                              'sticky left-0 z-10 whitespace-nowrap',
+                              (isHighlighted || isMarked) && HIGHLIGHT_EDGE
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              aria-label="Select"
+                              checked={selection.selected.has(key)}
+                              // A tick is not a click on the row: no highlight, so no save-then-move.
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={() => toggleOne(key)}
+                            />
+                          </td>
+                        )}
                         {columns.map((c, index) => (
                           <td
                             key={c.key}
@@ -457,7 +526,7 @@ export function AidTable<Row>({
                       </tr>
                       {isHighlighted && renderBelowHighlighted && (
                         <tr>
-                          <td colSpan={columns.length} className={EDITOR_ROW} data-aid-editor="">
+                          <td colSpan={span} className={EDITOR_ROW} data-aid-editor="">
                             {/* Sticky-left like the group headings, so focus doesn't snap a right-scrolled table back. */}
                             <div className="sticky left-3 w-fit max-w-5xl">
                               {renderBelowHighlighted(row, nav)}
@@ -479,12 +548,14 @@ export function AidTable<Row>({
                   // sticky cell after it can't paint over it (I1).
                   if (index > 0 && index < labelSpan) return null
                   const spans = index === 0 && labelSpan > 1
+                  // The checkbox column has no footer cell: the first one covers it too.
+                  const leadsSelect = index === 0 && selectable
                   const total = c.total ? c.total(visible) : null
                   return (
                     <td
                       key={c.key}
-                      colSpan={spans ? labelSpan : undefined}
-                      style={pinStyle(c)}
+                      colSpan={(spans ? labelSpan : 1) + (leadsSelect ? 1 : 0) || undefined}
+                      style={leadsSelect ? { left: 0 } : pinStyle(c)}
                       className={join(
                         TFOOT_CELL,
                         pinClasses(c, 'z-10'),
