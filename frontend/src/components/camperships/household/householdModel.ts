@@ -106,10 +106,12 @@ export function cardShares(card: ApiAidHouseholdCard, page: ApiAidHouseholdPage)
           ? 'the household request'
           : firstName(request.row.camper_name)
       const share = request.shares.find((s) => s.household_cm_id === card.household_cm_id)
-      const pct =
-        share?.share_pct ?? (request.row.household_cm_id === card.household_cm_id ? 100 : null)
-      if (pct === null) return null
-      return pct === 100 ? `all of ${who}` : `${String(pct)}% of ${who}`
+      // A household with no payer-share line pays nothing: if it applied, say so and claim no share.
+      // (The server already supplies an implied 100% line when a request has no shares at all.)
+      if (share === undefined) {
+        return request.row.household_cm_id === card.household_cm_id ? `applied for ${who}` : null
+      }
+      return share.share_pct === 100 ? `all of ${who}` : `${String(share.share_pct)}% of ${who}`
     })
     .filter((words): words is string => words !== null)
     .join(', ')
@@ -275,6 +277,7 @@ const ANSWER_WORDS: Readonly<Record<string, string>> = {
   total_rent: 'Rent',
   non_retirement_savings: 'Savings (not retirement)',
   num_children: 'Children',
+  // Correction-only: the server sends it once staff correct it (APPLICATION_CORRECTABLE).
   income_override: 'Income override',
 }
 
@@ -285,11 +288,25 @@ export function answerWords(field: string): string {
 const COUNT_FIELDS = new Set(['num_children'])
 const NUMBER = /^-?\d+(\.\d+)?$/
 
+const OVERRIDE_MODE_WORDS: Readonly<Record<string, string>> = {
+  prior_year_only: 'Prior year only',
+  current_year_only: 'Current year only',
+  confirmed_prior_year: 'Confirmed from prior year',
+}
+
+/** The server's four override values: three modes, and "staff_entered:<amount>" (financial_aid_corrections.py). */
+function incomeOverrideWords(value: string): string {
+  const entered = /^staff_entered:(-?\d+(\.\d+)?)$/.exec(value)
+  if (entered?.[1] !== undefined) return `Staff entered ${formatMoney(Number(entered[1]))}`
+  return OVERRIDE_MODE_WORDS[value] ?? value
+}
+
 /** An answer as staff read it: money, a count, Yes/No, or "—" when blank (spec principle 5). */
 export function answerValue(field: string, value: string): string {
   if (value === '') return '—'
   if (value === 'true') return 'Yes'
   if (value === 'false') return 'No'
+  if (field === 'income_override') return incomeOverrideWords(value)
   if (COUNT_FIELDS.has(field) || !NUMBER.test(value)) return value
   return formatMoney(Number(value))
 }
@@ -346,8 +363,8 @@ export function postingsCsv(page: ApiAidHouseholdPage): CsvTable {
       'Amount',
       'Reversed on',
       'Source',
-      'Person',
-      'Session',
+      'Person id',
+      'Session id',
       'Program',
       'Note',
     ],
