@@ -1,18 +1,49 @@
 /** Season › History's filters and paging (spec §7.6; D15, D49, D76). Pure. */
 import { describe, expect, it } from 'vitest'
 
-import { PAGE } from './historyFixtures'
+import type { ApiAidHistoryRow } from '../../../types/api-types'
+import type { AidView } from '../kit/asOf'
 import {
+  DETAIL_POSTED,
+  DETAIL_RELEASE,
+  DETAIL_RULES_APPROVE,
+  DETAIL_RULES_CREATE,
+  DETAIL_RULES_SAVE,
+  DETAIL_SHARE,
+  OP_INTAKE,
+  OP_POSTED,
+  OP_POSTED_LOCKING,
+  OP_POSTED_LOCKING_REGISTRAR,
+  OP_RELEASE,
+  OP_RULES_APPROVE,
+  OP_RULES_SAVE,
+  OP_SHARE,
+  PAGE,
+  REGISTRAR_EMAIL,
+  ROW_ROUND3_AWARD,
+} from './historyFixtures'
+import {
+  KIND_TONE,
   PER_PAGE,
+  actionWords,
+  actorWords,
   chipKinds,
+  codeText,
   historyQuery,
+  householdHref,
   lastPage,
+  operationWords,
   pageWords,
   parseHistoryFilters,
   parseOpen,
+  recordWords,
+  rowView,
+  rulesLines,
+  rulesLink,
   toggleOpen,
   withFilter,
 } from './historyModel'
+import { changeWords, SECTION_TITLES } from './rules/rulesModel'
 
 const parse = (search: string, rules = true) =>
   parseHistoryFilters(new URLSearchParams(search), rules)
@@ -156,5 +187,303 @@ describe('the count line and paging', () => {
     expect(lastPage({ ...PAGE, total: 101 })).toBe(3)
     expect(lastPage({ ...PAGE, total: 100 })).toBe(2)
     expect(lastPage({ ...PAGE, total: 0 })).toBe(1)
+  })
+})
+
+const VIEW: AidView = { year: 2027, asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' } }
+
+const first = <T>(rows: readonly T[]): T => {
+  const row = rows[0]
+  if (row === undefined) throw new Error('fixture')
+  return row
+}
+
+describe('who, what kind, and the action words', () => {
+  it("names the system's runs, and shows a person by the sign-in the log records", () => {
+    expect(actorWords('system:intake')).toBe('Intake')
+    expect(actorWords('system:ledger')).toBe('Ledger sync')
+    expect(actorWords('system:grant-placement')).toBe('Grant placement')
+    expect(actorWords('system:something_new')).toBe('Something new')
+    expect(actorWords(REGISTRAR_EMAIL)).toBe(REGISTRAR_EMAIL)
+  })
+
+  it('gives each kind its pill tone (history.html B)', () => {
+    expect(KIND_TONE).toEqual({
+      rules: 'emerald',
+      offers: 'sky',
+      money: 'amber',
+      holds: 'red',
+      grants: 'purple',
+      intake: 'muted',
+    })
+  })
+
+  it('words a logged code in sentence case', () => {
+    expect(codeText('leave_at_family_level')).toBe('Leave at family level')
+    expect(codeText('set_capacity')).toBe('Set capacity')
+  })
+
+  it("words the server's own action codes, per collection (⚠ Decision 4)", () => {
+    expect(actionWords('aid_decisions', 'post')).toBe('Posted')
+    expect(actionWords('aid_decisions', 'unpost')).toBe('Posted undone')
+    expect(actionWords('aid_decisions', 'ask')).toBe('Ask entered')
+    expect(actionWords('aid_decisions', 'award')).toBe('Round 3 amount entered')
+    expect(actionWords('aid_decisions', 'approve')).toBe('Round 3 approved')
+    expect(actionWords('aid_rules', 'approve')).toBe('Approved')
+    expect(actionWords('aid_hold_events', 'release')).toBe('Released')
+    expect(actionWords('aid_payer_shares', 'set_household_share')).toBe('Household share set')
+    // An unknown code reads as its own words.
+    expect(actionWords('aid_attribution_overrides', 'leave_at_family_level')).toBe(
+      'Leave at family level'
+    )
+  })
+
+  it('never words a decision "award" or "awarded": a Round 3 amount is Decided (D80)', () => {
+    for (const code of [
+      'ask',
+      'award',
+      'approve',
+      'refuse',
+      'post',
+      'unpost',
+      'accept',
+      'unaccept',
+    ]) {
+      expect(actionWords('aid_decisions', code)).not.toMatch(/award/i)
+    }
+  })
+
+  it('names records in the singular and the plural, and an unknown collection by its own words', () => {
+    expect(recordWords('aid_decisions', 1)).toBe('decision')
+    expect(recordWords('aid_decisions', 7)).toBe('decisions')
+    expect(recordWords('aid_application_corrections', 2)).toBe('income corrections')
+    expect(recordWords('aid_new_thing', 2)).toBe('new thing')
+  })
+})
+
+describe("an operation's line (D49: one readable line per operation)", () => {
+  it('says what was done to how many records, with the reason as recorded', () => {
+    expect(operationWords(OP_POSTED)).toEqual({
+      when: 'Apr 9 16:05',
+      who: REGISTRAR_EMAIL,
+      what: 'Posted · 30 decisions',
+      reason: null,
+    })
+    expect(operationWords(OP_RELEASE).what).toBe('Released · 1 hold')
+    expect(operationWords(OP_RELEASE).reason).toBe('Income confirmed by phone')
+    expect(operationWords(OP_SHARE).what).toBe('Household share set · 2 payer shares')
+  })
+
+  it('lists each count of an operation that wrote several kinds of record', () => {
+    expect(operationWords(OP_INTAKE).what).toBe('Create · 3 applications; Update · 5 requests')
+    expect(operationWords(OP_INTAKE).who).toBe('Intake')
+  })
+
+  it('names a rules operation by its version and sections, as the Rules tab names them', () => {
+    expect(operationWords(OP_RULES_APPROVE).what).toBe(
+      `Rules v3 · ${SECTION_TITLES.awards}, ${SECTION_TITLES.budget} · Approved`
+    )
+    expect(operationWords(OP_RULES_APPROVE).reason).toBe('Finance committee')
+    expect(operationWords(OP_RULES_SAVE).what).toBe('Rules v4 · Saved')
+    expect(
+      operationWords({
+        ...OP_RULES_APPROVE,
+        rules_sections: ['income', 'tiers', 'equity', 'awards'],
+        counts: [{ entity: 'aid_rules', action: 'approve', rows: 4 }],
+      }).what
+    ).toBe('Rules v3 · 4 sections · Approved')
+  })
+
+  it('words a Posted tick that locked rules sections by both: its decisions, then its locks (I1)', () => {
+    expect(operationWords(OP_POSTED_LOCKING).what).toBe(
+      `Posted · 380 decisions; Rules v3 · ${SECTION_TITLES.income}, ${SECTION_TITLES.tiers} · Locked`
+    )
+  })
+
+  it("words a registrar's view of the first Posted tick: its decisions alone, no rules part (H6)", () => {
+    expect(operationWords(OP_POSTED_LOCKING_REGISTRAR).what).toBe('Posted · 380 decisions')
+  })
+
+  it('words a capacity operation (a rules kind with no version) by its count', () => {
+    expect(
+      operationWords({
+        ...OP_RULES_SAVE,
+        rules_versions: [],
+        counts: [{ entity: 'aid_session_capacity', action: 'set_capacity', rows: 1 }],
+      }).what
+    ).toBe('Capacity set · 1 session capacity')
+  })
+})
+
+describe("a rules row's lines (the Rules tab's words; D49)", () => {
+  it("lists a setting change in the section's words, and a section's status move", () => {
+    expect(rulesLines(first(DETAIL_RULES_SAVE.rows))).toEqual([
+      `${SECTION_TITLES.awards} › ${changeWords({ path: ['minimum'], kind: 'changed', before: '250', after: '300' })}`,
+      `${SECTION_TITLES.awards}: Approved → Draft`,
+    ])
+  })
+
+  it('says an approval in one line per section, leaving out who and when (the line says them)', () => {
+    expect(DETAIL_RULES_APPROVE.rows.map(rulesLines)).toEqual([
+      [`${SECTION_TITLES.awards}: Draft → Approved`],
+      [`${SECTION_TITLES.budget}: Draft → Approved`],
+    ])
+  })
+
+  it('says a created version in one line, never its every setting as "added" (Decision 3)', () => {
+    const created = first(DETAIL_RULES_CREATE.rows)
+    expect(created.changes.length).toBeGreaterThan(100)
+    expect(rulesLines(created)).toEqual(['New version v5, from v4: its settings open in Rules'])
+    expect(rulesLines({ ...created, after: { version: 1, parent_version: 0 } })).toEqual([
+      'New version v1: its settings open in Rules',
+    ])
+  })
+})
+
+describe("a row's view in an opened line", () => {
+  it("lists a record's own recorded fields, money and percent formatted, bookkeeping left out", () => {
+    expect(rowView(first(DETAIL_SHARE.rows))).toEqual({
+      head: 'Household share set · payer share req000000000009:1000001 · Family emailed',
+      lines: [
+        'Note: — → Family emailed',
+        'Share pct: 100% → 60%',
+        'Source: intake_default → staff',
+      ],
+      hidden: 0,
+      householdCmId: 1000001,
+    })
+    expect(rowView(DETAIL_SHARE.rows[1] as ApiAidHistoryRow)).toEqual({
+      head: 'Household share set · payer share req000000000009:1000002 · Family emailed',
+      lines: [
+        'Household cm id: 1000002',
+        'Note: Family emailed',
+        'Request: req000000000009',
+        'Share pct: 40%',
+        'Source: staff',
+      ],
+      // The nested `entered` copy (two values) is counted, not listed.
+      hidden: 2,
+      householdCmId: 1000002,
+    })
+  })
+
+  it('reads an amount as the row recorded it, under the action word (⚠ Decision 4)', () => {
+    expect(rowView(first(DETAIL_POSTED.rows))).toEqual({
+      head: 'Posted · decision req000000000001:1',
+      lines: [
+        'Amount: $1,420',
+        'Effective on: 2027-04-09',
+        'Lock source: tick',
+        'Request: req000000000001',
+        'Round: 1',
+        'Rules version: 3',
+      ],
+      hidden: 0,
+      householdCmId: null,
+    })
+  })
+
+  it('never shows "award" on a Round 3 amount, which is Decided, not posted (D80)', () => {
+    const view = rowView(ROW_ROUND3_AWARD)
+    expect(view.head).toBe('Round 3 amount entered · decision req000000000011:3')
+    expect(view.lines).toContain('Amount: $500')
+    expect(view.lines).toContain('Needs approval: yes')
+    expect(JSON.stringify(view)).not.toMatch(/award/i)
+  })
+
+  it('words a hold code as the grid does, and keeps the note', () => {
+    expect(rowView(first(DETAIL_RELEASE.rows))).toEqual({
+      head: 'Released · hold req000000000004:placeholder_income · Income confirmed by phone',
+      lines: [
+        'Code: Placeholder income',
+        'Note: Income confirmed by phone',
+        'Request: req000000000004',
+      ],
+      hidden: 0,
+      householdCmId: null,
+    })
+  })
+
+  it('counts the nested details it does not list', () => {
+    const posted = first(DETAIL_POSTED.rows)
+    expect(
+      rowView({
+        ...posted,
+        changes: [...posted.changes, { path: ['snapshot', 'tier'], kind: 'added', after: 3 }],
+      }).hidden
+    ).toBe(1)
+  })
+
+  it('words a change and a removal, the log holding decimals as strings', () => {
+    expect(
+      rowView({
+        ...first(DETAIL_SHARE.rows),
+        before: { share_pct: '40', amount: '1200' },
+        after: { share_pct: '60' },
+        changes: [
+          { path: ['amount'], kind: 'removed', before: '1200' },
+          { path: ['share_pct'], kind: 'changed', before: '40', after: '60' },
+        ],
+      }).lines
+    ).toEqual(['Amount: removed (was $1,200)', 'Share pct: 40% → 60%'])
+  })
+
+  it('still formats a number, and prints a value that is not a finite number as recorded', () => {
+    const lines = (changes: ApiAidHistoryRow['changes']) =>
+      rowView({ ...first(DETAIL_SHARE.rows), changes }).lines
+    expect(lines([{ path: ['amount'], kind: 'added', after: 1420 }])).toEqual(['Amount: $1,420'])
+    expect(lines([{ path: ['share_pct'], kind: 'added', after: 40 }])).toEqual(['Share pct: 40%'])
+    expect(lines([{ path: ['amount'], kind: 'added', after: 'n/a' }])).toEqual(['Amount: n/a'])
+    expect(lines([{ path: ['amount'], kind: 'added', after: 'NaN' }])).toEqual(['Amount: NaN'])
+    expect(lines([{ path: ['amount'], kind: 'added', after: 'Infinity' }])).toEqual([
+      'Amount: Infinity',
+    ])
+    expect(lines([{ path: ['amount'], kind: 'added', after: ' ' }])).toEqual(['Amount: ' + ' '])
+    expect(lines([{ path: ['share_pct'], kind: 'added', after: 'lots' }])).toEqual([
+      'Share pct: lots',
+    ])
+    expect(lines([{ path: ['amount'], kind: 'added', after: '1420.50' }])).toEqual([
+      'Amount: $1,420.50',
+    ])
+  })
+
+  it('reads an ask as the amount of an ask action: there is no ask field in the log', () => {
+    const view = rowView({
+      ...ROW_ROUND3_AWARD,
+      entity_id: 'req000000000011:1',
+      action: 'ask',
+      after: { amount: '1800', event: 'ask', request: 'req000000000011', round: 1 },
+      changes: [
+        { path: ['amount'], kind: 'added', after: '1800' },
+        { path: ['event'], kind: 'added', after: 'ask' },
+        { path: ['request'], kind: 'added', after: 'req000000000011' },
+        { path: ['round'], kind: 'added', after: 1 },
+      ],
+    })
+    expect(view.head).toBe('Ask entered · decision req000000000011:1')
+    expect(view.lines).toEqual(['Amount: $1,800', 'Request: req000000000011', 'Round: 1'])
+  })
+
+  it('heads a rules row with its version and section', () => {
+    expect(rowView(first(DETAIL_RULES_APPROVE.rows)).head).toBe(
+      `Approved · v3 · ${SECTION_TITLES.awards} · Finance committee`
+    )
+  })
+})
+
+describe("links (D148: the season; D15: the page's as-of, as the Rules tab keeps it)", () => {
+  it("opens the operation's newest rules version, at its first section when it touched any", () => {
+    expect(rulesLink(OP_RULES_SAVE, VIEW)).toEqual({
+      label: 'Open v4 in Rules ›',
+      href: '/aid/season/rules?version=4&year=2027&as_of=2027-03-15',
+    })
+    expect(rulesLink(OP_RULES_APPROVE, VIEW)?.href).toBe(
+      '/aid/season/rules?version=3&section=awards&year=2027&as_of=2027-03-15'
+    )
+    expect(rulesLink(OP_POSTED, VIEW)).toBeNull()
+  })
+
+  it("opens a household on the season, keeping the page's as-of", () => {
+    expect(householdHref(1000002, VIEW)).toBe('/aid/households/1000002?year=2027&as_of=2027-03-15')
   })
 })
