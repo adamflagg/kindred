@@ -250,4 +250,11 @@ describe('AidHouseholdPage: a link to a place on the page (H1)', () => {
     renderWithHash('#request-nosuchrequest')
     expect(scrolled).toEqual([])
   })
+
+  it('shows the income, the grants and postings, and the history below the cards', () => {
+    renderAt('/aid/households/1000001')
+    expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
+  })
 })
