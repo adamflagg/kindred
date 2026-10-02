@@ -22,7 +22,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Final, Literal, Protocol
 
 from api.schemas.financial_aid_reports import (
@@ -69,7 +69,7 @@ from bunking.financial_aid.reports.development import (
     gender_label,
     rebuilt_ages,
 )
-from bunking.financial_aid.reports.facts import ReportRequest
+from bunking.financial_aid.reports.facts import ReportRequest, average
 from bunking.financial_aid.reports.history import ReportedFigure
 from bunking.financial_aid.rules import AidRules, resolve_program
 
@@ -306,7 +306,7 @@ def _total_value(key: str, column: DevelopmentColumn) -> Decimal | int | None:
     if key == "shared_campers":
         return column.shared_campers
     if key == "average_award":
-        return (column.total_awards / column.awards).quantize(Decimal("0.01")) if column.awards else None
+        return average(column.total_awards, column.awards)
     if key in {"need_met", "teens", "youth", "adults", "age_unknown", "teen_programs"}:
         return None  # a summer-group line: its group row is the figure
     outside_groups: dict[str, Decimal | int] = {
@@ -560,7 +560,12 @@ def _rows(
                     elif spec.key == "average_award":
                         total = _typed_value(data, "total_awards", pool)
                         count = _typed_value(data, "awards", pool)
-                        value = (total / count).quantize(Decimal("0.01")) if total is not None and count else None
+                        # facts.average's rule (ROUND_HALF_UP), kept inline: a typed count is a Decimal.
+                        value = (
+                            (total / count).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                            if total is not None and count
+                            else None
+                        )
                     else:
                         value = _typed_value(data, spec.typed, pool)
                 values.append(_number(value, spec.unit))

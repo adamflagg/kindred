@@ -397,6 +397,29 @@ async def test_the_average_award_is_all_money_over_the_number_of_awards_and_says
     assert _row(out, "average_award", None).values == [2000.0]
 
 
+async def test_every_average_award_rounds_a_half_cent_up_as_the_group_rows_do() -> None:
+    """§9.7's rule (facts.average, ROUND_HALF_UP) on every average row: the every-group total and a typed column's,
+    not only a group's. 1,500.01 / 2 awards and 1,000.01 / 2 land on a half cent."""
+    line = replace(
+        grant_row("reqemma00000001", "0.01", on_request=False),
+        person_cm_id=0,
+        session_cm_id=0,
+        program_family="other",
+        camper_basis="none",
+        counts=False,
+    )
+    history = FakeReportsStore()
+    for metric, value in (("total_awards", "1000.01"), ("awards", "2")):
+        history.seed(
+            ReportedFigure(
+                2025, "development", metric, "camp_pool", 0, 0, "season_end", date(2025, 9, 29), Decimal(value)
+            )
+        )
+    out = await _service(_development(), history, register=[line]).development(YEAR)
+    assert _row(out, "average_award", None).values[-1] == 750.01  # (1,500 + 0.01) / 2, the P column
+    assert _row(out, "average_award", "camp_pool").values[0] == 500.01  # the typed 2025 pair
+
+
 async def test_a_column_with_no_p_column_counts_its_ages_by_age_from_the_ledger() -> None:
     """D158: 2025's "as reported" column shows teens and youth by age, rebuilt from 2025's ledger, with no mark."""
     history = FakeReportsStore()
