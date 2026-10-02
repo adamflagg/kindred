@@ -9,5 +9,15 @@
     "posted": "Posted",
     "not_rebuilt": "Not rebuilt for that date"
   },
-  "live_request_statuses": ["active", "unmatched_session"]
+  "live_request_statuses": ["active", "unmatched_session"],
+  "unreleasable": [
+    "award_above_cost",
+    "awaiting_approved_rules",
+    "household_income_conflict",
+    "manual_hold",
+    "no_approved_rules",
+    "not_priceable",
+    "payer_shares_incomplete",
+    "unmatched_session"
+  ]
 }
