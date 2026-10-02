@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  MONEY_SECTIONS,
+  SECTION_TITLES,
+  SEASON_SECTIONS,
   changeWords,
   formatSetting,
   isChanged,
@@ -73,6 +76,29 @@ describe("a section's status (D39)", () => {
     expect(issues.map((i) => i.message)).toEqual(['e', 'w'])
   })
 
+  it('reads an evening approval on its camp-time day, not its UTC day', () => {
+    // 8pm Pacific on Jan 20 is stored as 04:00Z on Jan 21.
+    expect(statusWords({ state: 'approved', approved_at: '2027-01-21T04:00:00Z' }, 0).meta).toBe(
+      'Jan 20, 2027'
+    )
+    expect(statusWords({ state: 'locked', locked_at: '2027-01-21T04:00:00Z' }, 0).meta).toBe(
+      'in use since Jan 20, 2027'
+    )
+    expect(statusWords({ state: 'draft', edited_at: '2027-01-21T04:00:00Z' }, 0).meta).toBe(
+      'Jan 20, 2027'
+    )
+  })
+
+  it('pluralises a draft change count', () => {
+    expect(statusWords({ state: 'draft' }, 3).pill).toBe('Draft · 3 changes')
+  })
+
+  it('lists every section exactly once, each with a title', () => {
+    const listed = [...MONEY_SECTIONS, ...SEASON_SECTIONS]
+    expect(new Set(listed).size).toBe(listed.length)
+    expect([...listed].sort()).toEqual(Object.keys(SECTION_TITLES).sort())
+  })
+
   it('knows a section name from any other word in the URL', () => {
     expect(isRulesSection('award_tables')).toBe(true)
     expect(isRulesSection('bogus')).toBe(false)
@@ -100,9 +126,32 @@ describe('how each setting reads (rules/schema.py)', () => {
     expect(formatSetting([], ['offset_programs'])).toBe('none')
   })
 
+  it('labels the 0-to-1 fractions and the names that fell back to ugly words', () => {
+    for (const key of ['medical_rate', 'education_rate', 'savings_inclusion_rate', 'rate'])
+      expect(labelOf([key])).toMatch(/\(0 to 1\)$/)
+    expect(labelOf(['weights', 'prior_year'])).toMatch(/\(0 to 1\)$/)
+    expect(labelOf(['weights', 'current_year'])).toMatch(/\(0 to 1\)$/)
+    expect(labelOf(['campminder_description'])).toBe('CampMinder description')
+    expect(labelOf(['tables'])).toBe('Round 2 tables')
+  })
+
+  it('counts a list entry from 1, as a table row does', () => {
+    expect(labelOf(['bands', '0'])).toBe('1')
+    expect(labelOf(['bands', '2'])).toBe('3')
+    expect(labelOf(['extra_terms', '0'])).toBe('1')
+  })
+
+  it("reads an extra term's threshold as money, and a decimal exactly", () => {
+    expect(formatSetting('5000', ['extra_terms', '0', 'threshold'])).toBe('$5,000')
+    expect(formatSetting('2399.72', ['minimum'])).toBe('$2,399.72')
+  })
+
   it("tells an income term's money threshold from a check's plain one", () => {
     expect(unitOf(['extra_terms', '1', 'threshold'])).toBe('money')
-    expect(unitOf(['checks', 'income_above', 'threshold'])).toBe('plain')
+    expect(unitOf(['checks', 'income_above', 'threshold'])).toBe('money')
+    expect(unitOf(['checks', 'expense_above', 'threshold'])).toBe('money')
+    expect(unitOf(['checks', 'placeholder_income', 'threshold'])).toBe('money')
+    expect(unitOf(['checks', 'implausible_dependents', 'threshold'])).toBe('plain')
   })
 })
 

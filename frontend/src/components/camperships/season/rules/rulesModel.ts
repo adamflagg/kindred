@@ -12,7 +12,7 @@ import type {
   ApiAidValidationIssue,
 } from '../../../../types/api-types'
 import type { PillTone } from '../../kit/kitStyles'
-import { formatLongDate } from '../../kit/dates'
+import { campToday, formatLongDate } from '../../kit/dates'
 import { formatMoney } from '../../kit/money'
 
 // ── Sections ──────────────────────────────────────────────────────────────────
@@ -71,7 +71,12 @@ export interface StatusWords {
   readonly meta: string
 }
 
-const when = (iso: string | null | undefined) => (iso ? formatLongDate(iso) : null)
+/** A stored timestamp as its camp-time day: 8pm Pacific on Jan 20 is stored as Jan 21 in UTC. */
+const when = (iso: string | null | undefined) => {
+  if (!iso) return null
+  const at = new Date(iso)
+  return formatLongDate(Number.isNaN(at.getTime()) ? iso : campToday(at))
+}
 const joined = (parts: ReadonlyArray<string | null | undefined>) =>
   parts.filter((part): part is string => typeof part === 'string' && part !== '').join(' · ')
 
@@ -138,21 +143,21 @@ export function sectionIssues(
 /** Each field's name, from the schema (rules/schema.py). An unknown field reads as its own words. */
 const LABELS: Readonly<Record<string, string>> = {
   weights: 'Weights',
-  prior_year: 'Prior-year weight',
-  current_year: 'Current-year weight',
+  prior_year: 'Prior-year weight (0 to 1)',
+  current_year: 'Current-year weight (0 to 1)',
   basis: 'Prior-year income measure',
   current_year_zero_fallback: 'When current-year income is $0',
   medical_threshold: 'Medical expenses counted above',
-  medical_rate: 'Medical deduction rate',
+  medical_rate: 'Medical deduction rate (0 to 1)',
   education_threshold: 'Education expenses counted above',
-  education_rate: 'Education deduction rate',
+  education_rate: 'Education deduction rate (0 to 1)',
   savings_threshold: 'Savings counted above',
-  savings_inclusion_rate: 'Savings inclusion rate',
+  savings_inclusion_rate: 'Savings inclusion rate (0 to 1)',
   extra_terms: 'Extra income terms',
   figure: 'Figure',
   direction: 'Direction',
   threshold: 'Threshold',
-  rate: 'Rate',
+  rate: 'Rate (0 to 1)',
   dependents_mode: 'Dependents',
   per_dependent_reduction: 'Reduction per dependent',
   floor: 'Income floor',
@@ -218,6 +223,8 @@ const LABELS: Readonly<Record<string, string>> = {
   cap_subtracts_grants: 'The appeal cap subtracts grants',
   cap_by_original_ask: 'Capped by the original ask',
   total_pct: 'Total %',
+  campminder_description: 'CampMinder description',
+  tables: 'Round 2 tables',
   program_tables: 'Round 2 table by program',
   total_cap: 'Total-aid cap',
   pct_of_cost: '% of cost',
@@ -303,12 +310,24 @@ export function unitOf(path: readonly string[]): SettingUnit {
   const last = path.at(-1) ?? ''
   if (path[0] === 'tuition' && path.length === 2) return 'money'
   if (path[0] === 'reserves' && path.length === 3) return 'percent'
-  if (last === 'threshold') return path[0] === 'extra_terms' ? 'money' : 'plain'
+  if (last === 'threshold') {
+    // Income terms and three of the four quality checks compare dollars; only the dependents
+    // check compares a count (calculator/quality.py).
+    return path.at(-2) === 'implausible_dependents' ? 'plain' : 'money'
+  }
   if (MONEY_KEYS.has(last)) return 'money'
   if (PERCENT_KEYS.has(last)) return 'percent'
   if (DATE_KEYS.has(last)) return 'date'
   return 'plain'
 }
+
+const LIST_PARENTS: ReadonlySet<string> = new Set([
+  'bands',
+  'extra_terms',
+  'criteria',
+  'family_rates',
+  'stages',
+])
 
 const words = (value: string) => value.replaceAll('_', ' ')
 
@@ -319,6 +338,8 @@ export function labelOf(path: readonly string[]): string {
   if (/^\d+$/.test(key)) {
     if (parent === 'tiers' || parent === 'overrides') return `Tier ${key}`
     if (parent === 'tuition') return `Session ${key}`
+    // A list entry counts from 1, as a table row does.
+    if (parent !== undefined && LIST_PARENTS.has(parent)) return String(Number(key) + 1)
     return key
   }
   const label = LABELS[key] ?? words(key)
