@@ -3675,6 +3675,158 @@ export type DefinitionsResponse = {
 }
 
 /**
+ * DevelopmentColumnOut
+ */
+export type DevelopmentColumnOut = {
+  /**
+   * Season
+   */
+  season: number
+  /**
+   * Basis
+   */
+  basis: 'P' | 'r'
+  /**
+   * As Of
+   */
+  as_of: string | null
+  /**
+   * Basis Unconfirmed
+   */
+  basis_unconfirmed: boolean
+  /**
+   * Label
+   */
+  label: string
+}
+
+/**
+ * DevelopmentGroupOut
+ */
+export type DevelopmentGroupOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Kind
+   */
+  kind: 'summer' | 'families' | 'campers'
+}
+
+/**
+ * DevelopmentResponse
+ */
+export type DevelopmentResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Figures On
+   */
+  figures_on: string
+  /**
+   * Groups
+   */
+  groups: Array<DevelopmentGroupOut>
+  /**
+   * Columns
+   */
+  columns: Array<DevelopmentColumnOut>
+  /**
+   * Rows
+   */
+  rows: Array<DevelopmentRowOut>
+  /**
+   * Sources
+   */
+  sources: Array<DevelopmentSourceOut>
+  /**
+   * Not Built
+   */
+  not_built: Array<NotBuiltOut>
+}
+
+/**
+ * DevelopmentRowOut
+ */
+export type DevelopmentRowOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Section
+   */
+  section: 'money' | 'counts' | 'appeals'
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Group
+   */
+  group: string | null
+  /**
+   * Unit
+   */
+  unit: 'dollars' | 'count' | 'percent'
+  /**
+   * Definition
+   */
+  definition: string
+  /**
+   * Values
+   */
+  values: Array<number | null>
+}
+
+/**
+ * DevelopmentSourceOut
+ *
+ * One source by name with its three facts (D88): who paid, incentive or need-based, the source.
+ */
+export type DevelopmentSourceOut = {
+  /**
+   * Source Key
+   */
+  source_key: string
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Who Paid
+   */
+  who_paid: 'the camp' | 'another funder'
+  /**
+   * Incentive
+   */
+  incentive: boolean
+  /**
+   * Group
+   */
+  group: string
+  /**
+   * Group Label
+   */
+  group_label: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Awards
+   */
+  awards: number
+}
+
+/**
  * DocumentIn
  */
 export type DocumentIn = {
@@ -24515,6 +24667,38 @@ export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDel
 
 export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponse =
   DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses[keyof DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses]
+
+export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/reports/{year}/development'
+}
+
+export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetError =
+  GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetErrors[keyof GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetErrors]
+
+export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: DevelopmentResponse
+}
+
+export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponse =
+  GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponses[keyof GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
