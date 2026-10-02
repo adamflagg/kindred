@@ -5,7 +5,17 @@ import { toEditorPreview } from './editorPreview'
 
 const OUT: ApiAidPreview = {
   award: 780,
-  trace: [{ key: 'r2', label: 'Round 2 award', value: '780', inputs: {}, bound: null, note: null }],
+  trace: [
+    {
+      key: 'r2',
+      label: 'Round 2 award',
+      value: '780',
+      inputs: {},
+      bound: null,
+      note: null,
+      section: null,
+    },
+  ],
   stage_after: 'needs_offer',
   stage_after_label: 'Needs an offer',
   shares: [
