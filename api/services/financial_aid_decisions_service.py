@@ -1902,7 +1902,11 @@ class FinancialAidDecisionsService:
         n = body.round
         state = rounds.get(n, RoundState(round=n))
         _refuse(_ask_refusal(rounds, n))
-        if (state.ask, state.asked_on, state.statement_of_need) == (body.amount, body.asked_on, body.statement_of_need):
+        if (state.ask, state.asked_on, state.statement_of_need) == (
+            body.amount,
+            body.asked_on,
+            body.statement_of_need,
+        ) and not await self._ask_note_changed(request.id, n, body.note):
             return self._unchanged(request.year)
         write = self._write(
             request,
@@ -1917,6 +1921,16 @@ class FinancialAidDecisionsService:
         reason = body.statement_of_need if n == 3 else (body.note or None)
         result = await self._store.commit([write], actor=actor, reason=reason, require_reason=n == 3)
         return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def _ask_note_changed(self, request_id: str, n: int, note: str | None) -> bool:
+        """Whether a resent ask carries a note the round's latest ask doesn't. The screen shows the save, so a
+        new note is written as one more ask event with the same amount and day: the round reads as it did,
+        and the note and its change row persist. A blank note adds nothing to keep."""
+        if not note:
+            return False
+        asks = [e for e in await self._store.fetch_request_events(request_id) if e.kind == "ask" and e.round == n]
+        latest = max(asks, key=lambda e: (e.created, e.id), default=None)
+        return latest is None or (latest.note or "") != note
 
     async def key_round3_amount(
         self, request_id: str, body: Round3AmountIn, actor: str, *, can_approve: bool
