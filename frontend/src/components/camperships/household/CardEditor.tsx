@@ -5,6 +5,7 @@ import { useAidKeyAsk, useAidRound3Amount } from '../../../hooks/camperships/use
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { campToday } from '../kit/dates'
 import { REASON_POLICY } from '../kit/editor'
+import { formatMoney } from '../kit/money'
 import type { PreviewHousehold } from '../kit/editorPreview'
 import {
   RequestEditor,
@@ -30,7 +31,8 @@ const ignore = () => undefined
  * Round 3's ask with its statement of need, or Round 3's amount. While typing, the appeal and the
  * Round 3 amount show the preview (an ask alone prices nothing). Enter saves; Esc closes. A failed
  * save keeps the editor open with what was typed (the kit's editor holds it) and shows the error.
- *
+ * Under the editor, the card says what the edit makes the round and the request's new total
+ * (Decision 40): the card's own line, the grid has its New total cell.
  */
 export interface CardEditorHandle {
   /**
@@ -143,6 +145,19 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
     }
   }
 
+  // Only a ready preview of a priced edit (an ask alone prices nothing) with both figures. A Round 3
+  // amount waiting on finance is not the award yet, and its total leaves it out: say so.
+  const shown = preview.preview
+  const totalLine =
+    kind !== 'round3_ask' &&
+    shown.status === 'ready' &&
+    shown.award != null &&
+    shown.totalDecided != null
+      ? shown.pendingApproval === true
+        ? `Round 3 would be ${formatMoney(shown.award)} once finance approves · total stays ${formatMoney(shown.totalDecided)}`
+        : `Round ${kind === 'appeal' ? '2' : '3'} now ${formatMoney(shown.award)} (new total ${formatMoney(shown.totalDecided)})`
+      : null
+
   return (
     <div data-aid-editor="" className="border-border rounded-lg border p-3">
       <RequestEditor
@@ -166,7 +181,7 @@ function CardEditorBody({ request, page, kind, onClose, onDraftChange, ref }: Ca
         saveError={writing.error?.message ?? null}
         layout="card"
       />
-      {/* The after-edit "new total" (Decision 40) needs the preview to carry it: a back-end field, requested. Until then only the preview's award shows, never the pre-edit figures. */}
+      {totalLine !== null && <p className="text-muted-foreground mt-2 text-xs">{totalLine}</p>}
     </div>
   )
 }

@@ -21,6 +21,7 @@ export function toEditorPreview(
     trace: out.trace,
     stageChange: out.stage_after_label,
     pendingApproval: out.pending_approval,
+    totalDecided: out.total_decided ?? null,
     shares: out.shares.map((share) => {
       const household = householdOf(share.household_cm_id)
       return {
