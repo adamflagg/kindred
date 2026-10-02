@@ -610,9 +610,21 @@ async def test_money_by_source_groups_descriptions_of_one_funder_into_one_line_w
     out = await _service(
         _by_funder(), register=[_line("regional grant", "500"), _line("regional grant 2", "250")]
     ).development(YEAR)
-    assert [(s.name, s.who_paid, s.amount, s.group) for s in out.sources] == [
-        ("The camp's awards", "the camp", 1500.0, "camp_pool"),
-        ("Regional Camp Fund", "another funder", 750.0, "camp_pool"),
+    assert [(s.name, s.who_paid, s.amount, s.group, s.awards) for s in out.sources] == [
+        ("The camp's awards", "the camp", 1500.0, "camp_pool", 1),
+        ("Regional Camp Fund", "another funder", 750.0, "camp_pool", 2),  # a line count per source (item 32)
+    ]
+
+
+async def test_one_funders_money_in_two_groups_is_one_line_per_group() -> None:
+    """The grouping folds descriptions, never groups: a funder paying a summer line and a Family Camp line shows both."""
+    weekend = replace(_line("regional grant 2", "250"), session_cm_id=1000201, program_family="family_camp")
+    store = _by_funder()
+    store.registrations.append(went(0, 1000001, 1000201, session_type="family"))
+    out = await _service(store, register=[_line("regional grant", "500"), weekend]).development(YEAR)
+    assert [(s.name, s.group, s.amount) for s in out.sources[1:]] == [
+        ("Regional Camp Fund", "camp_pool", 500.0),
+        ("Regional Camp Fund", "weekend_pool", 250.0),
     ]
 
 
@@ -627,6 +639,15 @@ async def test_an_unclassified_source_keeps_its_own_line_and_is_never_folded_int
         ("Mystery Fund", 100.0),
         ("Regional Camp Fund", 500.0),
     ]
+
+
+async def test_an_unclassified_source_is_not_folded_even_if_it_still_names_a_funder() -> None:
+    """N3: only an outside description joins a funder's line, whatever its stored grantor says."""
+    stray = replace(UNCLASSIFIED, grantor_key="regional_fund")
+    out = await _service(
+        _by_funder(stray), register=[_line("regional grant", "500"), _line("mystery fund", "100")]
+    ).development(YEAR)
+    assert [(s.name, s.amount) for s in out.sources[1:]] == [("Mystery Fund", 100.0), ("Regional Camp Fund", 500.0)]
 
 
 async def test_a_funders_incentive_and_need_based_money_stay_on_separate_lines() -> None:

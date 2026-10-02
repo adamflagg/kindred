@@ -1076,7 +1076,9 @@ def _sources(
     by_key = {s.description_key: s for s in sources}
     funder_of = {
         d.description_key: row
-        for row in funder_rows(sources, grantors, grouping_, "outside")
+        for row in funder_rows(
+            [s for s in sources if s.funder_type in GRANT_FUNDER_TYPES], grantors, grouping_, "outside"
+        )
         if row.kind == "funder"
         for d in row.descriptions
     }
