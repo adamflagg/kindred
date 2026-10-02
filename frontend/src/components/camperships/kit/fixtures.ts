@@ -13,12 +13,18 @@ export function traceStep(
   value: TraceValue,
   inputs: Record<string, TraceValue> = {},
   bound: string | null = null,
-  note: string | null = null
+  note: string | null = null,
+  section: AidTraceStep['section'] = null
 ): AidTraceStep {
-  return { key, label, value, inputs, bound, note }
+  return { key, label, value, inputs, bound, note, section }
 }
 
 const step = traceStep
+
+/** The section bound_sections.py maps a Round 1 limit to (the three the fixtures use). */
+function roundOneSection(bound: string): AidTraceStep['section'] {
+  return bound === 'table' ? 'award_tables' : 'awards'
+}
 
 function income(adjusted: string, tier: number, shift = 0): AidTraceStep[] {
   return [
@@ -97,7 +103,9 @@ function r1Steps(opts: {
         minimum: opts.minimum,
         minimum_uncapped: opts.minimum,
       },
-      opts.potentialBound
+      opts.potentialBound,
+      null,
+      roundOneSection(opts.potentialBound)
     ),
     step(
       'r1',
@@ -105,7 +113,8 @@ function r1Steps(opts: {
       opts.r1,
       { ask: opts.ask, potential: opts.potential },
       opts.r1Bound,
-      opts.r1Note ?? null
+      opts.r1Note ?? null,
+      roundOneSection(opts.r1Bound)
     ),
   ]
 }
@@ -168,9 +177,19 @@ export const TRACE_ROUND2_CAPPED: readonly AidTraceStep[] = [
       grants_subtracted: false,
       grants_since_round1: '0.00',
     },
-    'cap'
+    'cap',
+    null,
+    'round2'
   ),
-  step('r2', 'Round 2 award', '1000.00', { appeal: '2500.00', cap: '1000.00' }, 'cap'),
+  step(
+    'r2',
+    'Round 2 award',
+    '1000.00',
+    { appeal: '2500.00', cap: '1000.00' },
+    'cap',
+    null,
+    'round2'
+  ),
   total('3500.00', '1000.00'),
 ]
 
@@ -201,7 +220,8 @@ export const TRACE_INCOME_CEILING: readonly AidTraceStep[] = [
     '0.00',
     {},
     'income_ceiling',
-    'Adjusted income is above the income ceiling'
+    'Adjusted income is above the income ceiling',
+    'tiers'
   ),
   total('0.00', null),
 ]
@@ -356,7 +376,9 @@ export const TRACE_TOTAL_CAP: readonly AidTraceStep[] = [
       grants_subtracted: false,
       grants_since_round1: '0.00',
     },
-    'cap'
+    'cap',
+    null,
+    'round2'
   ),
   step(
     'r2',
@@ -364,7 +386,8 @@ export const TRACE_TOTAL_CAP: readonly AidTraceStep[] = [
     '700.00',
     { appeal: '2500.00', cap: '1000.00', before_total_cap: '1000.00' },
     'total_cap',
-    'Cut to fit the total-aid cap'
+    'Cut to fit the total-aid cap',
+    'round2'
   ),
   step('total_cap', 'Total-aid cap', '4200.00', {
     pct_of_cost: '84.00',
@@ -396,6 +419,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -410,6 +434,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -418,6 +443,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '250000',
     inputs: { base: '250000.0', after_dependents: '250000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -426,6 +452,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: 6,
     inputs: { adjusted_income: '250000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -434,6 +461,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -442,6 +470,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: 6,
     inputs: { income_tier: 6, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -450,6 +479,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '2000',
     inputs: { source: 'catalog', resolved: '2000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -458,6 +488,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '0',
     inputs: { count_when: 'committed', offset_mode: 'dollar', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -466,6 +497,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '2',
     inputs: { table: 'camp', tier: 6, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -474,6 +506,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '100',
     inputs: { pct: '2', cost: '2000', grants: '0', minimum: '100', minimum_uncapped: '100' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -482,6 +515,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '0',
     inputs: { ask: '4000', potential: '100' },
     bound: 'minimum',
+    section: 'awards',
     note: 'Reduced by an incentive of 150',
   },
   {
@@ -490,6 +524,7 @@ export const REAL_INCENTIVE_CLAMPED: readonly AidTraceStep[] = [
     value: '0',
     inputs: { r1: '0', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -508,6 +543,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -522,6 +558,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -530,6 +567,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '60000',
     inputs: { base: '60000.0', after_dependents: '60000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -538,6 +576,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: 2,
     inputs: { adjusted_income: '60000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -546,6 +585,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -554,6 +594,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: 2,
     inputs: { income_tier: 2, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -562,6 +603,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '4000',
     inputs: { source: 'catalog', resolved: '4000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -570,6 +612,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '0',
     inputs: { count_when: 'committed', offset_mode: 'dollar', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -578,6 +621,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '75',
     inputs: { table: 'camp', tier: 2, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -586,6 +630,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '3000',
     inputs: { pct: '75', cost: '4000', grants: '0', minimum: '100', minimum_uncapped: '100' },
     bound: 'table',
+    section: 'award_tables',
     note: null,
   },
   {
@@ -594,6 +639,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '1400',
     inputs: { ask: '1500', potential: '3000' },
     bound: 'ask',
+    section: 'awards',
     note: 'Reduced by an incentive of 100',
   },
   {
@@ -602,6 +648,7 @@ export const REAL_INCENTIVE_ASK: readonly AidTraceStep[] = [
     value: '1400',
     inputs: { r1: '1400', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -620,6 +667,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -634,6 +682,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -642,6 +691,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '100000',
     inputs: { base: '100000.0', after_dependents: '100000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -650,6 +700,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: 3,
     inputs: { adjusted_income: '100000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -658,6 +709,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -666,6 +718,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: 3,
     inputs: { income_tier: 3, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -674,6 +727,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '4000',
     inputs: { source: 'catalog', resolved: '4000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -682,6 +736,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '500',
     inputs: { count_when: 'committed', offset_mode: 'reduce_cost_basis', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -690,6 +745,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '55',
     inputs: { table: 'camp', tier: 3, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -698,6 +754,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '1925',
     inputs: { pct: '55', cost: '4000', grants: '500', minimum: '100', minimum_uncapped: '100' },
     bound: 'table',
+    section: 'award_tables',
     note: null,
   },
   {
@@ -706,6 +763,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '1925',
     inputs: { ask: '4000', potential: '1925' },
     bound: 'table',
+    section: 'award_tables',
     note: null,
   },
   {
@@ -714,6 +772,7 @@ export const REAL_REDUCE_COST_BASIS: readonly AidTraceStep[] = [
     value: '1925',
     inputs: { r1: '1925', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -732,6 +791,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -746,6 +806,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -754,6 +815,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '60000',
     inputs: { base: '60000.0', after_dependents: '60000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -762,6 +824,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: 2,
     inputs: { adjusted_income: '60000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -770,6 +833,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -778,6 +842,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: 2,
     inputs: { income_tier: 2, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -786,6 +851,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '4000',
     inputs: { source: 'catalog', resolved: '4000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -794,6 +860,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '5000',
     inputs: { count_when: 'committed', offset_mode: 'dollar', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -802,6 +869,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '75',
     inputs: { table: 'camp', tier: 2, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -810,6 +878,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '0',
     inputs: { pct: '75', cost: '4000', grants: '5000', minimum: '100', minimum_uncapped: '100' },
     bound: 'grants_cover',
+    section: 'grants',
     note: null,
   },
   {
@@ -818,6 +887,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '0',
     inputs: { ask: '4000', potential: '0' },
     bound: 'grants_cover',
+    section: 'grants',
     note: null,
   },
   {
@@ -826,6 +896,7 @@ export const REAL_GRANTS_COVER_NO_MINIMUM: readonly AidTraceStep[] = [
     value: '0',
     inputs: { r1: '0', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -844,6 +915,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -858,6 +930,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -866,6 +939,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '250000',
     inputs: { base: '250000.0', after_dependents: '250000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -874,6 +948,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: 6,
     inputs: { adjusted_income: '250000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -882,6 +957,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -890,6 +966,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: 6,
     inputs: { income_tier: 6, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -898,6 +975,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '2000',
     inputs: { source: 'catalog', resolved: '2000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -906,6 +984,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '60',
     inputs: { count_when: 'committed', offset_mode: 'dollar', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -914,6 +993,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '2',
     inputs: { table: 'camp', tier: 6, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -922,6 +1002,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '40',
     inputs: { pct: '2', cost: '2000', grants: '60', minimum: '100', minimum_uncapped: '100' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -930,6 +1011,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '40',
     inputs: { ask: '4000', potential: '40' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -938,6 +1020,7 @@ export const REAL_MINIMUM_LESS_GRANTS: readonly AidTraceStep[] = [
     value: '40',
     inputs: { r1: '40', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -956,6 +1039,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -970,6 +1054,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -978,6 +1063,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: '60000',
     inputs: { base: '60000.0', after_dependents: '60000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -986,6 +1072,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: 2,
     inputs: { adjusted_income: '60000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -994,6 +1081,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: 0,
     inputs: {},
     bound: null,
+    section: null,
     note: 'This program has no equity class',
   },
   {
@@ -1002,6 +1090,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: 2,
     inputs: { income_tier: 2, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1010,6 +1099,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: null,
     inputs: { source: 'unknown', resolved: null, incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: 'this program has no price; staff must type the cost',
   },
   {
@@ -1018,6 +1108,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: '0',
     inputs: {},
     bound: null,
+    section: null,
     note: "Grants do not offset 'family_school' this season",
   },
   {
@@ -1026,6 +1117,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: '0',
     inputs: { table: null, tier: 2, source: 'no_table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1034,6 +1126,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: '100',
     inputs: { pct: '0', cost: null, grants: '0', minimum: '100', minimum_uncapped: '100' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -1042,6 +1135,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: '100',
     inputs: { ask: '4000', potential: '100' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -1050,6 +1144,7 @@ export const REAL_COST_UNKNOWN_MINIMUM: readonly AidTraceStep[] = [
     value: '100',
     inputs: { r1: '100', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -1068,6 +1163,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1082,6 +1178,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1090,6 +1187,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '60000',
     inputs: { base: '60000.0', after_dependents: '60000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -1098,6 +1196,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: 2,
     inputs: { adjusted_income: '60000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1106,6 +1205,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1114,6 +1214,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: 2,
     inputs: { income_tier: 2, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1122,6 +1223,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '4000',
     inputs: { source: 'catalog', resolved: '4000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1130,6 +1232,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '0',
     inputs: { count_when: 'committed', offset_mode: 'dollar', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1138,6 +1241,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '75',
     inputs: { table: 'camp', tier: 2, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1146,6 +1250,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '3000',
     inputs: { pct: '75', cost: '4000', grants: '0', minimum: '100', minimum_uncapped: '100' },
     bound: 'table',
+    section: 'award_tables',
     note: null,
   },
   {
@@ -1154,6 +1259,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '3000',
     inputs: { ask: '4000', potential: '3000' },
     bound: 'table',
+    section: 'award_tables',
     note: null,
   },
   {
@@ -1162,6 +1268,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '3700',
     inputs: { worked_out: '3000' },
     bound: 'locked',
+    section: null,
     note: 'Locked when it was posted; later rounds build on this amount',
   },
   {
@@ -1176,6 +1283,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
       grants_since_round1: '0',
     },
     bound: 'cap',
+    section: 'round2',
     note: null,
   },
   {
@@ -1184,6 +1292,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '0',
     inputs: { appeal: '500', cap: '-100' },
     bound: 'cap',
+    section: 'round2',
     note: null,
   },
   {
@@ -1192,6 +1301,7 @@ export const REAL_ROUND2_CAP_NEGATIVE: readonly AidTraceStep[] = [
     value: '3700',
     inputs: { r1: '3700', r2: '0', r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]
@@ -1210,6 +1320,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
       override_mode: null,
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1224,6 +1335,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
       dependent_reduction: '0',
     },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1232,6 +1344,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '250000',
     inputs: { base: '250000.0', after_dependents: '250000.0', floor: '0' },
     bound: null,
+    section: null,
     note: 'floor tested after all reductions',
   },
   {
@@ -1240,6 +1353,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: 6,
     inputs: { adjusted_income: '250000' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1248,6 +1362,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: 0,
     inputs: { equity_class: 'camp', criteria_met: '', weight_sum: '0', aggregation: 'ceil' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1256,6 +1371,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: 6,
     inputs: { income_tier: 6, equity_shift: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1264,6 +1380,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '2000',
     inputs: { source: 'catalog', resolved: '2000', incentive_reduction: '0' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1272,6 +1389,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '1950',
     inputs: { count_when: 'committed', offset_mode: 'dollar', late_left_out: 0 },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1280,6 +1398,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '2',
     inputs: { table: 'camp', tier: 6, source: 'table' },
     bound: null,
+    section: null,
     note: null,
   },
   {
@@ -1288,6 +1407,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '50',
     inputs: { pct: '2', cost: '2000', grants: '1950', minimum: '50', minimum_uncapped: '100' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -1296,6 +1416,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '50',
     inputs: { ask: '4000', potential: '50' },
     bound: 'minimum',
+    section: 'awards',
     note: null,
   },
   {
@@ -1304,6 +1425,7 @@ export const REAL_MINIMUM_CAPPED_AT_SHARE: readonly AidTraceStep[] = [
     value: '50',
     inputs: { r1: '50', r2: null, r3: null, top_up: '0', discretionary: '0' },
     bound: null,
+    section: null,
     note: null,
   },
 ]

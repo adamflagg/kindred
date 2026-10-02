@@ -110,17 +110,17 @@ describe('bindingPhrase: every limit engine.py reports for a round', () => {
     ['r2', 'ask_missing', 'no ask entered'],
     ['r3', 'r1_unknown', 'Round 1 not worked out'],
   ])('%s bound by %s reads "%s"', (key, bound, phrase) => {
-    expect(bindingPhrase({ key, label: key, bound })).toBe(phrase)
+    expect(bindingPhrase({ section: null, key, label: key, bound })).toBe(phrase)
   })
 
   it.each(['table', 'full_cost'])('treats %s as no limit', (bound) => {
-    expect(bindingPhrase({ key: 'r1', label: 'Round 1 award', bound })).toBeNull()
+    expect(bindingPhrase({ section: null, key: 'r1', label: 'Round 1 award', bound })).toBeNull()
   })
 
   it('reads a limit it does not know in plain words, never dropping it', () => {
-    expect(bindingPhrase({ key: 'r1', label: 'Round 1 award', bound: 'something_new' })).toBe(
-      'something new'
-    )
+    expect(
+      bindingPhrase({ section: null, key: 'r1', label: 'Round 1 award', bound: 'something_new' })
+    ).toBe('something new')
   })
 
   it('only names limits on the award lines', () => {
@@ -149,7 +149,7 @@ describe('the line receipt (§6.5: Income → Tier → Cost → Round 1 → Roun
   it('never drops a step it does not know: it shows it before the total', () => {
     const trace = [
       ...TRACE_CAPPED_BY_ASK.slice(0, -1),
-      { key: 'future_step', label: 'Something new', value: '25.00' },
+      { section: null, key: 'future_step', label: 'Something new', value: '25.00' },
       ...TRACE_CAPPED_BY_ASK.slice(-1),
     ]
     expect(
@@ -169,8 +169,10 @@ describe('each line', () => {
     expect(stepValue(find(TRACE_CAPPED_BY_ASK, 'final_tier'))).toBe('5')
     expect(stepValue(find(TRACE_CAPPED_BY_ASK, 'r1_pct'))).toBe('40%')
     expect(stepValue(find(TRACE_CAPPED_BY_ASK, 'r1'))).toBe('$1,500')
-    expect(stepValue({ key: 'equity_shift', label: 'Equity shift', value: 1 })).toBe('+1')
-    expect(stepValue({ key: 'mystery', label: 'Mystery', value: 'n/a' })).toBe('n/a')
+    expect(stepValue({ section: null, key: 'equity_shift', label: 'Equity shift', value: 1 })).toBe(
+      '+1'
+    )
+    expect(stepValue({ section: null, key: 'mystery', label: 'Mystery', value: 'n/a' })).toBe('n/a')
   })
 
   it('says how a line was worked out', () => {
@@ -193,7 +195,10 @@ describe('each line', () => {
       'Round 1 $3,500 + Round 2 $1,000'
     )
     expect(
-      stepHow({ key: 'mystery', label: 'Mystery', value: 1, inputs: { some_input: 'x' } }, [])
+      stepHow(
+        { section: null, key: 'mystery', label: 'Mystery', value: 1, inputs: { some_input: 'x' } },
+        []
+      )
     ).toBe('some input: x')
   })
 
@@ -201,6 +206,7 @@ describe('each line', () => {
     expect(
       stepHow(
         {
+          section: null,
           key: 'adjusted_income',
           label: 'Adjusted',
           value: '500.00',
@@ -212,6 +218,7 @@ describe('each line', () => {
     expect(
       stepHow(
         {
+          section: null,
           key: 'grants',
           label: 'Outside grants',
           value: '0.00',
@@ -228,6 +235,7 @@ describe('lines the engine emits without inputs', () => {
     expect(
       stepHow(
         {
+          section: null,
           key: 'grants',
           label: 'Outside grants',
           value: '0.00',
@@ -236,12 +244,12 @@ describe('lines the engine emits without inputs', () => {
         []
       )
     ).toBe("grants do not offset 'x' this season")
-    expect(stepHow({ key: 'equity_shift', label: 'Equity shift', value: 0 }, [])).toBe(
-      'this program has no equity class'
-    )
-    expect(stepHow({ key: 'grants', label: 'Outside grants', value: '0.00' }, [])).toBe(
-      'outside grants do not offset this program this season'
-    )
+    expect(
+      stepHow({ section: null, key: 'equity_shift', label: 'Equity shift', value: 0 }, [])
+    ).toBe('this program has no equity class')
+    expect(
+      stepHow({ section: null, key: 'grants', label: 'Outside grants', value: '0.00' }, [])
+    ).toBe('outside grants do not offset this program this season')
   })
 })
 
@@ -431,11 +439,15 @@ describe('fix round 1: limits on every line that can carry one (I4a, M9)', () =>
     ['top_up', 'income_ceiling'],
     ['discretionary', 'income_ceiling'],
   ])('%s bound by %s reads "above the income ceiling"', (key, bound) => {
-    expect(bindingPhrase({ key, label: key, bound })).toBe('above the income ceiling')
+    expect(bindingPhrase({ section: null, key, label: key, bound })).toBe(
+      'above the income ceiling'
+    )
   })
 
   it('does not call a lock a limit', () => {
-    expect(bindingPhrase({ key: 'top_up_locked', label: 'x', bound: 'locked' })).toBeNull()
+    expect(
+      bindingPhrase({ section: null, key: 'top_up_locked', label: 'x', bound: 'locked' })
+    ).toBeNull()
   })
 })
 
