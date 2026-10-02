@@ -107,6 +107,17 @@ def test_a_campers_own_rows_that_disagree_name_nobody_rather_than_fall_back() ->
     assert requester_names(contacts, reqs) == {EMMA: None}
 
 
+def test_own_rows_that_disagree_never_fall_back_even_to_a_unique_household_name() -> None:
+    # The own rows sit in another household; this household's only name is someone else's, and still isn't used.
+    reqs = _requests((EMMA, HOME, EMMA_CM))
+    contacts = [
+        _c(EMMA_CM, "Maria", "Garcia", household=2000002),
+        _c(EMMA_CM, "David", "Chen", household=2000002),
+        _c(LIAM_CM, "Pat", "Johnson"),
+    ]
+    assert requester_names(contacts, reqs) == {EMMA: None}
+
+
 def test_a_household_level_request_with_no_camper_takes_only_the_household_chain() -> None:
     reqs = [replace(r, person_cm_id=0) for r in _requests((EMMA, HOME, EMMA_CM))]
     contacts = [_c(0, "Ignored", "Person"), _c(LIAM_CM, "David", "Chen")]

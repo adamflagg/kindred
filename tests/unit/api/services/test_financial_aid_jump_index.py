@@ -236,6 +236,29 @@ async def test_the_contacts_are_read_once_per_index_read() -> None:
     assert store.contact_reads == 1
 
 
+@pytest.mark.asyncio
+async def test_the_contacts_are_read_once_across_several_households() -> None:
+    store = _req_store(
+        [Touch(1000001, 1000011), Touch(1000002, 1000012)], [FaContact(1000011, 1000001, "Maria", "Garcia")]
+    )
+    await JumpIndexService(store).read(YEAR)
+    assert store.contact_reads == 1
+
+
+@pytest.mark.asyncio
+async def test_a_campers_disagreeing_own_rows_list_nobody_even_when_the_household_has_one_name() -> None:
+    """The camper's own rows (filed from household 1000002) disagree: no fallback to this household's one name."""
+    store = _req_store(
+        [Touch(1000001, 1000011)],
+        [
+            FaContact(1000011, 1000002, "Maria", "Garcia"),
+            FaContact(1000011, 1000002, "David", "Chen"),
+            FaContact(1000012, 1000001, "Pat", "Johnson"),
+        ],
+    )
+    assert _requesters(await JumpIndexService(store).read(YEAR)) == []
+
+
 # --- the repository ---------------------------------------------------------------------------------
 
 
