@@ -1326,7 +1326,8 @@ class FinancialAidDecisionsService:
         log_placements: bool = True,
     ) -> None:
         """`log_placements` False: this service's live pricing neither reads nor writes the grant placement
-        log (3c-2). Only a scenario's frozen season passes it, because a scenario never writes (spec §7.4)."""
+        log (3c-2). Only a scenario's frozen season and a rules approval's effect measurement (H3) pass it; neither
+        is a read staff see, and neither writes."""
         self._store = store
         self._rules = rules
         self._register = register

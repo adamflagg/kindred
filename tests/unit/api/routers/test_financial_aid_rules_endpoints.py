@@ -208,3 +208,17 @@ def test_an_approval_of_a_section_changed_since_it_was_opened_is_409_naming_it()
     service.approve_sections = AsyncMock(side_effect=SectionChangedError(["programs"], message))
     response = _client().post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
     assert (response.status_code, response.json()["detail"]) == (409, {"message": message, "sections": ["programs"]})
+
+
+def test_only_the_approve_route_builds_the_rules_service_that_records_an_effect() -> None:
+    from api.routers import financial_aid as r
+    from api.services.financial_aid_rules_effect_pricing import SeasonApprovalEffects
+
+    _stub()
+    built: Any = r.FinancialAidRulesService  # type: ignore[attr-defined]  # patched by _stub
+    _client().post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
+    assert any(isinstance(c.kwargs.get("effects"), SeasonApprovalEffects) for c in built.call_args_list)
+    built.reset_mock()
+    _client().put("/api/financial-aid/rules/2031/versions/1", json=DOC_BODY)
+    assert built.call_args_list
+    assert all(c.kwargs.get("effects") is None for c in built.call_args_list)

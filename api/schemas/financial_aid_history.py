@@ -30,6 +30,15 @@ class HistoryFiguresOut(BaseModel):
     asked: float | None  # its asks entered: what the family asked for, not aid
 
 
+class HistoryEffectOut(BaseModel):
+    """A rules approval's effect on the season's pricing, as recorded when it was approved (H3; D49)."""
+
+    from_version: int | None  # the rules version pricing the season before; None: none did
+    to_version: int | None  # the one pricing it after; equal to from_version when the approval moved no pricing
+    repriced: int  # live requests with an unsent round whose decided amount moved
+    flagged: int  # sent offers (posted, not clawed-back rounds) whose "would change by" moved to a new non-zero amount
+
+
 class HistoryOperationOut(BaseModel):
     operation_id: str
     at: datetime  # when its last row was recorded
@@ -40,8 +49,11 @@ class HistoryOperationOut(BaseModel):
     counts: list[HistoryCountOut]  # by entity, then action
     rules_versions: list[int]  # the rules versions it touched ("Open vN in Rules")
     rules_sections: list[str]  # the rules sections it approved or locked
-    summary: str  # "7 requests · 6 families · $9,840 locked"; "" when it names no request, family or money
+    # "7 requests · 6 families · $9,840 locked", then a rules approval's effect words when it has one
+    # ("v4 now prices the season · 41 unsent requests re-priced · 12 sent offers flagged"); "" when it has neither
+    summary: str
     figures: HistoryFiguresOut
+    effect: HistoryEffectOut | None  # a rules approval's recorded effect; None on every other line
 
 
 class HistoryKindCountOut(BaseModel):

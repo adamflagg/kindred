@@ -47,6 +47,8 @@ class FakeStore:
         self.rows: list[SimpleNamespace] = []
         self.sessions = sessions if sessions is not None else [SessionRef(cm_id=s) for s in FICTIONAL_SESSION_IDS]
         self.operations: list[list[dict[str, Any]]] = []
+        self.recorded: list[dict[str, Any]] = []  # log-only rows (record_change); never part of the aid_rules log
+        self.fail_record = False
         self._interleaved: list[Callable[[], Awaitable[object]]] = []
         self._after_read: list[Callable[[], Awaitable[object]]] = []
 
@@ -77,7 +79,47 @@ class FakeStore:
         return list(self.sessions)
 
     async def fetch_log(self, year: int) -> list[LogRow]:
-        return [r for r in self.log_rows if r.entity_id.startswith(f"{year}:")]
+        return [r for r in self.log_rows if r.entity == "aid_rules" and r.entity_id.startswith(f"{year}:")]
+
+    async def record(
+        self,
+        *,
+        entity: str,
+        entity_id: str,
+        year: int,
+        action: str,
+        after: dict[str, Any],
+        actor: str,
+        operation_id: str,
+    ) -> None:
+        """A log-only row, built with the same change_row record_change uses."""
+        if self.fail_record:
+            raise RuntimeError("the log write failed")
+        self.recorded.append(
+            change_row(
+                entity=entity,
+                entity_id=entity_id,
+                year=year,
+                action=action,
+                before=None,
+                after=after,
+                actor=actor,
+                reason=None,
+                operation_id=operation_id,
+            )
+        )
+        # Production writes it to the SAME table the rules replay reads (aid_change_log), so the fake does too.
+        row = self.recorded[-1]
+        self.log_rows.append(
+            LogRow(
+                id=new_record_id(),
+                entity=row["entity"],
+                entity_id=row["entity_id"],
+                before=None,
+                after=row["after"],
+                created=self._now(),
+            )
+        )
 
     async def commit(
         self,

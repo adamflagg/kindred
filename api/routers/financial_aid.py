@@ -203,6 +203,8 @@ from api.services.financial_aid_decisions_service import (
     DecisionChangedError,
     DecisionNotFoundError,
     FinancialAidDecisionsService,
+    PricingRules,
+    Season,
 )
 from api.services.financial_aid_development_repository import DevelopmentRepository
 from api.services.financial_aid_development_service import FinancialAidDevelopmentService
@@ -238,6 +240,7 @@ from api.services.financial_aid_reports_service import (
 )
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
+from api.services.financial_aid_rules_effect_pricing import SeasonApprovalEffects
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS,
     AidRulesRepository,
@@ -811,7 +814,7 @@ async def approve_aid_rules_sections(
 ) -> RulesVersionOut:
     """Approve sections as one logged operation; the note names the approving body (D39)."""
     try:
-        approved, report = await _rules().approve_sections(
+        approved, report = await _rules_approving().approve_sections(
             year, version, body.sections, actor=user.email, note=body.note, fingerprints=body.fingerprints
         )
     except FinancialAidError as exc:
@@ -986,6 +989,20 @@ def _decisions() -> FinancialAidDecisionsService:
     return FinancialAidDecisionsService(
         FinancialAidDecisionsRepository(pb), _rules(), GrantsService(GrantsRepository(pb)).register_rows
     )
+
+
+def _rules_approving() -> FinancialAidRulesService:
+    """The rules service for the approve route: its approvals record their effect on the season's pricing (H3),
+    measured on the version before and after with a pricing that writes nothing (no grant placement log)."""
+    register = GrantsService(GrantsRepository(pb)).register_rows
+
+    async def season_on(pricing: PricingRules, year: int) -> Season:
+        service = FinancialAidDecisionsService(
+            FinancialAidDecisionsRepository(pb), pricing, register, log_placements=False
+        )
+        return await service.season(year)
+
+    return FinancialAidRulesService(AidRulesRepository(pb), effects=SeasonApprovalEffects(_rules(), season_on))
 
 
 def _decisions_http(exc: FinancialAidError) -> HTTPException:

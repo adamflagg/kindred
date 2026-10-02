@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
+import time
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from api.services.financial_aid_rules_effect import ApprovalEffect
 from api.services.financial_aid_rules_service import (
     PAGE_SIZE,
+    PRICING_SECTIONS,
     AidRulesRepository,
     FinancialAidRulesService,
     NoSectionsNamedError,
@@ -895,3 +899,143 @@ async def test_a_date_whose_rules_history_cannot_be_replayed_is_named_not_answer
     store.log_rows = [r for r in store.log_rows if r.before is not None]  # lose the create
     found, unknown = await service.approved_as_of_each(2031, _PRICING, (FEB + DAY,))
     assert (found, unknown) == ({}, frozenset({FEB + DAY}))
+
+
+# --- An approval's recorded effect (Season › History back-end ask H3) --------------------------------------------
+
+
+class _Effects:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.calls: list[tuple[int, int, int]] = []
+        self.error = error
+
+    async def measure(self, year: int, before: int, after: int) -> ApprovalEffect:
+        self.calls.append((year, before, after))
+        if self.error is not None:
+            raise self.error
+        return ApprovalEffect(before, after, 41 if before != after else 0, 12 if before != after else 0)
+
+
+def _ticking_clock() -> Any:
+    """Each log row one second after the last, as production's writes are: the effect row lands after the approval."""
+    ticks = iter(AT + timedelta(seconds=n) for n in range(1, 1000))
+    return lambda: next(ticks)
+
+
+@pytest.mark.asyncio
+async def test_an_approval_that_makes_a_version_price_the_season_records_its_effect_on_its_own_operation() -> None:
+    store, effects = FakeStore(clock=_ticking_clock()), _Effects()
+    service = FinancialAidRulesService(store, clock=lambda: AT, effects=effects)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board, Jan 8")
+    assert effects.calls == [(2031, 0, 1)]
+    (row,) = store.recorded
+    assert (row["entity"], row["entity_id"], row["action"], row["actor"], row["reason"]) == (
+        "aid_rules_effect",
+        "2031:1",
+        "effect",
+        FINANCE,
+        "",
+    )
+    assert row["after"] == {"from_version": 0, "to_version": 1, "repriced": 41, "flagged": 12}
+    assert row["operation_id"] == store.operations[-1][0]["operation_id"]  # the approval's own operation
+    assert any(r.entity == "aid_rules_effect" for r in store.log_rows)  # it IS in the shared table...
+    assert (
+        await service.approved_as_of(2031, PRICING_SECTIONS, AT + timedelta(days=1))
+    ) is not None  # ...the replay skips it
+
+
+@pytest.mark.asyncio
+async def test_an_approval_that_moves_no_pricing_records_a_zero_effect() -> None:
+    store, effects = FakeStore(), _Effects()
+    service = FinancialAidRulesService(store, clock=lambda: AT, effects=effects)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, ["programs"], actor=FINANCE, note="Finance")
+    assert effects.calls == [(2031, 0, 0)]
+    assert store.recorded[0]["after"] == {"from_version": 0, "to_version": 0, "repriced": 0, "flagged": 0}
+
+
+@pytest.mark.asyncio
+async def test_an_effect_that_fails_never_undoes_the_approval() -> None:
+    """Review Focus 6: the approval has committed; a failed measure or record is logged, never raised."""
+    for store, effects in (
+        (FakeStore(), _Effects(error=RuntimeError("pricing failed"))),
+        (FakeStore(), _Effects()),
+    ):
+        store.fail_record = effects.error is None
+        service = FinancialAidRulesService(store, clock=lambda: AT, effects=effects)
+        await service.create_version(fictional_rules(), actor=FINANCE)
+        approved, _ = await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
+        assert approved.section_status["budget"].state == "approved"
+        assert store.recorded == []
+    # The before-read runs BEFORE the commit: a failure there must never fail the approval either.
+    store, effects = FakeStore(), _Effects()
+    service = FinancialAidRulesService(store, clock=lambda: AT, effects=effects)
+    service._pricing_version = AsyncMock(side_effect=RuntimeError("read failed"))  # type: ignore[method-assign]
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    approved, _ = await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
+    assert approved.section_status["budget"].state == "approved"
+    assert (store.recorded, effects.calls) == ([], [])  # no effect, and nothing measured
+
+
+class _SlowEffects(_Effects):
+    async def measure(self, year: int, before: int, after: int) -> ApprovalEffect:
+        await asyncio.sleep(1.0)
+        return await super().measure(year, before, after)
+
+
+@pytest.mark.asyncio
+async def test_an_effect_that_measures_too_slowly_is_dropped_and_the_approval_answers_promptly(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The request waits on the effect, so a slow measure must not hold the answer to an approval that has committed."""
+    from api.services import financial_aid_rules_service as module
+
+    monkeypatch.setattr(module, "EFFECT_TIMEOUT_SECONDS", 0.05, raising=False)
+    store, effects = FakeStore(), _SlowEffects()
+    service = FinancialAidRulesService(store, clock=lambda: AT, effects=effects)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    started = time.monotonic()
+    with caplog.at_level("WARNING"):
+        approved, _ = await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
+    assert time.monotonic() - started < 0.5  # not the full second the measure takes
+    assert approved.section_status["budget"].state == "approved"
+    assert store.recorded == []
+    assert "took too long" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_without_effects_an_approval_measures_and_records_nothing() -> None:
+    store = FakeStore()
+    service = _service(store)
+    await service.create_version(fictional_rules(), actor=FINANCE)
+    await service.approve_sections(2031, 1, list(PRICING_SECTIONS), actor=FINANCE, note="Board")
+    assert store.recorded == []
+
+
+@pytest.mark.asyncio
+async def test_the_repository_records_a_log_only_row_and_a_read_only_one_refuses() -> None:
+    pb = MagicMock()
+    with patch("api.services.financial_aid_rules_service.record_change") as recorded:
+        await AidRulesRepository(pb).record(
+            entity="aid_rules_effect",
+            entity_id="2031:1",
+            year=2031,
+            action="effect",
+            after={"from_version": 0, "to_version": 1, "repriced": 0, "flagged": 0},
+            actor=FINANCE,
+            operation_id="a" * 15,
+        )
+    recorded.assert_called_once()
+    assert recorded.call_args.kwargs["before"] is None
+    assert recorded.call_args.kwargs["operation_id"] == "a" * 15
+    with pytest.raises(RuntimeError, match="only reads"):
+        await AidRulesRepository(pb, read_only=True).record(
+            entity="aid_rules_effect",
+            entity_id="2031:1",
+            year=2031,
+            action="effect",
+            after={},
+            actor=FINANCE,
+            operation_id="a" * 15,
+        )

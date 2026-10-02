@@ -59,9 +59,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
+from api.services.financial_aid_rules_effect import EFFECT_ACTION, RULES_EFFECT_ENTITY, ApprovalEffects
 from api.services.pb_precise_datetime import aid_collection
 from bunking.financial_aid.change_diff import FieldChange, field_changes
-from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes
+from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes, record_change
 from bunking.financial_aid.change_replay import LogRow, replay
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import (
@@ -90,10 +91,18 @@ from bunking.financial_aid.rules.lifecycle import (
     status_to_json,
 )
 from bunking.financial_aid.rules.schema import SECTION_NAMES, MilestonesSection
+from bunking.logging_config import get_logger
 from bunking.pocketbase_batch import BatchRequestFailedError
+
+logger = get_logger(__name__)
 
 # Rows per request for every paged read; PocketBase clamps anything above 1000.
 PAGE_SIZE = 1000
+
+# How long an approval's request waits on measuring and recording its effect. The approval has already committed, so a
+# slow pricing read must not hold the answer (and time the client out) for the sake of a note about it.
+EFFECT_TIMEOUT_SECONDS = 15.0
+
 # Every paged read ends its sort on the record id: LIMIT/OFFSET paging without a
 # total order can skip or repeat a row.
 STABLE_SORT = "id"
@@ -351,6 +360,18 @@ class AidRulesStore(Protocol):
 
     async def fetch_log(self, year: int) -> list[LogRow]: ...
 
+    async def record(
+        self,
+        *,
+        entity: str,
+        entity_id: str,
+        year: int,
+        action: str,
+        after: dict[str, Any],
+        actor: str,
+        operation_id: str,
+    ) -> None: ...
+
     async def commit(
         self,
         writes: Sequence[AidWrite],
@@ -400,6 +421,35 @@ class AidRulesRepository:
 
     async def fetch_log(self, year: int) -> list[LogRow]:
         return await fetch_change_log(self.pb, year, AID_RULES)
+
+    async def record(
+        self,
+        *,
+        entity: str,
+        entity_id: str,
+        year: int,
+        action: str,
+        after: dict[str, Any],
+        actor: str,
+        operation_id: str,
+    ) -> None:
+        """A log-only aid_change_log row in an operation already committed (record_change: a change with no aid_*
+        record write). H3's approval effect is the one caller."""
+        if self._read_only:
+            raise RuntimeError("this repository only reads aid_rules")
+        await asyncio.to_thread(
+            record_change,
+            self.pb,
+            entity=entity,
+            entity_id=entity_id,
+            year=year,
+            action=action,
+            before=None,
+            after=after,
+            actor=actor,
+            reason=None,
+            operation_id=operation_id,
+        )
 
     async def commit(
         self,
@@ -562,8 +612,15 @@ def _approved_at(
 
 
 class FinancialAidRulesService:
-    def __init__(self, store: AidRulesStore, *, clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        store: AidRulesStore,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        effects: ApprovalEffects | None = None,
+    ) -> None:
         self._store = store
+        self._effects = effects  # H3: only the approve route passes it; every other caller measures nothing
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
     async def load(self, year: int, version: int | None = None) -> RulesVersion:
@@ -967,6 +1024,7 @@ class FinancialAidRulesService:
             if set(fingerprints) != set(named):
                 raise FingerprintsMismatchError("fingerprints must name exactly the sections being approved")
             _assert_unchanged(current, fingerprints)
+        before = await self._pricing_version_safely(year) if self._effects is not None else None
         report = await self.validate_document(current.document)
         at = self._clock()
         status = current.section_status
@@ -975,8 +1033,53 @@ class FinancialAidRulesService:
             updated = approve(status, section, by=actor, at=at, note=note, report=report)
             writes.append(_status_write(current, status, updated, section, log_action="approve", reason=note))
             status = updated
-        await self._store.commit(writes, actor=actor, reason=note)
+        result = await self._store.commit(writes, actor=actor, reason=note)
+        if self._effects is not None and before is not None:
+            await self._record_effect(
+                self._effects, year, current.version, before, actor=actor, operation_id=result.operation_id
+            )
         return await self.load(year, current.version), report
+
+    async def _pricing_version(self, year: int) -> int:
+        found = await self.latest_approved(year, PRICING_SECTIONS)
+        return found.version if found is not None else 0
+
+    async def _pricing_version_safely(self, year: int) -> int | None:
+        """H3's before-read. It runs before the approval commits, so it must never fail the approval: on any error it
+        logs, and the approval goes ahead without an effect."""
+        try:
+            return await self._pricing_version(year)
+        except Exception:
+            logger.exception("rules approval for %s: the pricing version before it could not be read; no effect", year)
+            return None
+
+    async def _record_effect(
+        self, effects: ApprovalEffects, year: int, version: int, before: int, *, actor: str, operation_id: str
+    ) -> None:
+        """H3: what this approval did to the season's pricing, recorded on its own operation as one log-only row
+        (classed rules in History). The approval has committed, so a failure here is logged and never raised: the
+        approval stands, without an effect. Measuring and recording are bounded by EFFECT_TIMEOUT_SECONDS, so a slow
+        measure gives up the same way instead of holding the request."""
+        try:
+            async with asyncio.timeout(EFFECT_TIMEOUT_SECONDS):
+                effect = await effects.measure(year, before, await self._pricing_version(year))
+                await self._store.record(
+                    entity=RULES_EFFECT_ENTITY,
+                    entity_id=_entity_id(year, version),
+                    year=year,
+                    action=EFFECT_ACTION,
+                    after=effect.log(),
+                    actor=actor,
+                    operation_id=operation_id,
+                )
+        except TimeoutError:
+            logger.warning(
+                "rules approval %s:%s committed; its effect was not recorded because measuring took too long",
+                year,
+                version,
+            )
+        except Exception:
+            logger.exception("rules approval %s:%s committed; its effect on pricing was not recorded", year, version)
 
     async def lock_section(self, year: int, version: int, section: SectionName, *, actor: str) -> RulesVersion:
         """Lock an approved section; refused while the document has any validation error."""

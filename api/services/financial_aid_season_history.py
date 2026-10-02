@@ -42,6 +42,7 @@ from api.constants.collections import (
 )
 from api.schemas.financial_aid_history import (
     HistoryCountOut,
+    HistoryEffectOut,
     HistoryFiguresOut,
     HistoryKind,
     HistoryKindCountOut,
@@ -55,6 +56,7 @@ from api.schemas.financial_aid_rules import field_change_out
 from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_ledger_service import money, parse_pb_datetime
 from api.services.financial_aid_reconciliation import camp_date, dollars
+from api.services.financial_aid_rules_effect import RULES_EFFECT_ENTITY
 from bunking.financial_aid.change_diff import field_changes
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.rules import AidRules
@@ -64,6 +66,7 @@ INTAKE_ACTOR: Final = "system:intake"
 ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_RULES: "rules",
     AID_SESSION_CAPACITY: "rules",
+    RULES_EFFECT_ENTITY: "rules",  # H3: an approval's effect, rules readers only
     AID_DECISIONS: "offers",
     AID_CANCELLATIONS: "offers",
     AID_REQUESTS: "offers",
@@ -216,8 +219,8 @@ def row_subject(
 
 # --- What an operation adds up to, as recorded (back-end ask H1) ---------------------------------------------------
 
-# The rows whose recorded `after` History reads for a line's figures (decisions carry `amount`).
-AMOUNT_ENTITIES: Final[tuple[str, ...]] = (AID_DECISIONS,)
+# The rows whose recorded `after` History reads: a line's figures (decisions carry `amount`) and an approval's effect.
+AMOUNT_ENTITIES: Final[tuple[str, ...]] = (AID_DECISIONS, RULES_EFFECT_ENTITY)
 # A decision's logged action -> the basis its `amount` is (Note 6: D49, D20/D74, D80/D130). Never added across bases.
 _AMOUNT_BASIS: Final[Mapping[str, str]] = {"post": "locked", "award": "round3_entered", "ask": "asked"}
 _ZERO: Final = Decimal(0)
@@ -284,6 +287,31 @@ def summary_words(f: Figures) -> str:
     if f.asked is not None:
         parts.append(f"{dollars(f.asked)} asked")
     return " · ".join(parts)
+
+
+def effect_out(after: Mapping[str, Any] | None) -> HistoryEffectOut | None:
+    """An approval's recorded effect row; None when it is malformed (History shows no effect rather than fail)."""
+    values = {key: (after or {}).get(key) for key in ("from_version", "to_version", "repriced", "flagged")}
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in values.values()):
+        return None
+    return HistoryEffectOut(
+        from_version=values["from_version"] or None,
+        to_version=values["to_version"] or None,
+        repriced=int(values["repriced"] or 0),
+        flagged=int(values["flagged"] or 0),
+    )
+
+
+def effect_words(effect: HistoryEffectOut | None) -> str:
+    if effect is None:
+        return ""
+    if effect.to_version is None:
+        return "no approved rules price the season yet: nothing re-priced"
+    if effect.to_version == effect.from_version:
+        return f"v{effect.to_version} still prices the season: nothing re-priced"
+    repriced = _count(effect.repriced, "unsent request", "unsent requests")
+    flagged = _count(effect.flagged, "sent offer", "sent offers")
+    return f"v{effect.to_version} now prices the season · {repriced} re-priced · {flagged} flagged"
 
 
 def _money_or_none(value: Decimal | None) -> float | None:
@@ -456,21 +484,25 @@ def operation_out(
     subjects: Subjects = NO_SUBJECTS,
     recorded: Mapping[str, Mapping[str, Any] | None] | None = None,
 ) -> HistoryOperationOut:
-    counts = Counter((e.entity, e.action) for e in op.entries)
+    shown = [e for e in op.entries if e.entity != RULES_EFFECT_ENTITY]  # the effect is a read-out, not a record write
+    counts = Counter((e.entity, e.action) for e in shown)
     versions, sections = _rules_parts(op)
     found = figures(op, subjects, recorded or {})
+    effect_rows = [e for e in op.entries if e.entity == RULES_EFFECT_ENTITY]
+    effect = effect_out((recorded or {}).get(effect_rows[-1].id)) if effect_rows else None
     return HistoryOperationOut(
         operation_id=op.operation_id,
         at=op.at,
         actor=op.actor,
         kind=op.kind,
         reason=op.reason,
-        rows=len(op.entries),
+        rows=len(shown),
         counts=[HistoryCountOut(entity=e, action=a, rows=n) for (e, a), n in sorted(counts.items())],
         rules_versions=versions,
         rules_sections=sections,
-        summary=summary_words(found),
+        summary=" · ".join(part for part in (summary_words(found), effect_words(effect)) if part),
         figures=figures_out(found),
+        effect=effect,
     )
 
 
@@ -593,6 +625,7 @@ class SeasonHistoryService:
         details = [
             (e, log_detail(getattr(by_id[e.id], "before", None)), log_detail(getattr(by_id[e.id], "after", None)))
             for e in op.entries
+            if e.entity != RULES_EFFECT_ENTITY
         ]
         about = {e.id: row_subject(e, subjects, before, after) for e, before, after in details}
         households, persons = await self._names(year, [s for s in about.values() if s is not None])
@@ -615,5 +648,7 @@ class SeasonHistoryService:
             )
             for e, before, after in details
         ]
-        recorded = {e.id: after for e, _, after in details if e.entity in AMOUNT_ENTITIES}
-        return HistoryOperationDetailOut(year=year, operation=operation_out(op, subjects, recorded), rows=rows)
+        whole = {
+            e.id: log_detail(getattr(by_id[e.id], "after", None)) for e in op.entries if e.entity in AMOUNT_ENTITIES
+        }
+        return HistoryOperationDetailOut(year=year, operation=operation_out(op, subjects, whole), rows=rows)
