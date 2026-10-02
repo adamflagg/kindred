@@ -302,7 +302,7 @@ class _Tally:
 
 def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
     # Money is RULED as built (R2b): one basis, all money (the camp's awards plus every live outside grant line).
-    # Total Requests counts attended requests only: NOT RULED (Decision 29b / I7).
+    # RULED (owner 2026-10-02), item 29b: Total Requests counts attended requests only.
     groups = {g.key: g for g in inputs.groups}
     attended_people: dict[str, set[int]] = defaultdict(set)
     attended_households: dict[str, set[int]] = defaultdict(set)
