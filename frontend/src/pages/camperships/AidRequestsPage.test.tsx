@@ -146,6 +146,31 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText('Emma Johnson')).toBeNull()
   })
 
+  it('names the programs in words, not by their rules keys', () => {
+    renderAt('/aid/requests')
+    const program = within(screen.getByLabelText('Program'))
+    expect(program.getByRole('option', { name: 'Summer camp' })).toBeInTheDocument()
+    expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+    expect(program.queryByRole('option', { name: 'summer' })).toBeNull()
+  })
+
+  it('stays on the URL it was opened at for a queue view on a past date (A8)', () => {
+    grid = {
+      data: {
+        ...LIVE,
+        as_of: '2026-04-01',
+        rows: GRID_ROWS.map((row) => ({ ...row, queues: null })),
+      },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/requests?view=holds&as_of=2026-04-01')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/requests?view=holds&as_of=2026-04-01'
+    )
+    expect(screen.getByText(/isn't rebuilt for a past date/)).toBeInTheDocument()
+  })
+
   it('narrows to a round and a checklist state, kept in the URL (Decision 9)', async () => {
     renderAt('/aid/requests')
     await userEvent.selectOptions(screen.getByLabelText('Checklist'), 'accepted')

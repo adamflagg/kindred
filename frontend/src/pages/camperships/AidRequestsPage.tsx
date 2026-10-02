@@ -13,6 +13,7 @@ import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
+import { programLabel } from '../../components/camperships/requests/programLabel'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
 import { useGridParams } from '../../components/camperships/requests/useGridParams'
 import {
@@ -80,7 +81,10 @@ export default function AidRequestsPage() {
   )
   const programs = useMemo(
     (): FilterOption[] =>
-      distinct((rows ?? []).map((r) => r.program_key)).map((value) => ({ value, label: value })),
+      distinct((rows ?? []).map((r) => r.program_key)).map((value) => ({
+        value,
+        label: programLabel(value),
+      })),
     [rows]
   )
   const pools = useMemo((): FilterOption[] => {
