@@ -56,7 +56,11 @@ async def test_an_appeal_before_round_1_is_posted_is_refused_on_the_row_in_the_w
     with pytest.raises(DecisionRefusedError) as refused:
         await service.key_ask(EMMA, _appeal(), ACTOR)
     assert row.appeal_refusal == str(refused.value)
-    assert row.appeal_refusal.startswith("An appeal answers a posted offer")
+    assert row.appeal_refusal == (
+        "Round 1 needs to show as posted before you can start an appeal. Once it's posted in CampMinder, this updates"
+        " overnight. If it's waiting under Not reconciled, mark it posted there. If you meant to fix the original"
+        " request, edit the Round 1 ask instead."
+    )
 
 
 @pytest.mark.asyncio

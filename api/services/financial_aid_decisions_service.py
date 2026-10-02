@@ -1285,7 +1285,11 @@ def _ask_refusal(rounds: Mapping[int, RoundState], n: int) -> str | None:
     if rounds.get(n, RoundState(round=n)).posted:
         return f"Round {n} is posted; its ask can't change"
     if n == 2 and not rounds.get(1, RoundState(round=1)).posted:
-        return "An appeal answers a posted offer: tick Round 1 Posted first, or correct the Round 1 ask"
+        return (
+            "Round 1 needs to show as posted before you can start an appeal. Once it's posted in CampMinder, this"
+            " updates overnight. If it's waiting under Not reconciled, mark it posted there. If you meant to fix the"
+            " original request, edit the Round 1 ask instead."
+        )
     later = next((m for m in range(n + 1, 4) if rounds.get(m, RoundState(round=m)).posted), None)
     if later is not None:
         return f"Round {later} is posted and builds on Round {n}: its ask can't change now"
