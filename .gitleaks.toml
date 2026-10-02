@@ -35,6 +35,10 @@ regexes = [
     '''your[-_]?password''',
     '''changeme''',
     '''placeholder''',
+
+    # Definition-note keys (bunking/financial_aid/definitions.py, key="..."): snake_case identifiers the
+    # generic-api-key rule's entropy check trips on once a digit is in them. Exact keys only, never a pattern.
+    '''\bround1_phases\b''',
 ]
 
 # Allowlist paths that contain intentional test/example secrets
