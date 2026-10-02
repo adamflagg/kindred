@@ -36,11 +36,13 @@ import type {
   ApiAidScenarioDraft,
   ApiAidScenarioEvaluateIn,
   ApiAidScenarioEvaluation,
+  ApiAidScenarioCompare,
   ApiAidScenarioKeepIn,
   ApiAidScenarioLoadIn,
   ApiAidScenarioOption,
   ApiAidScenarioSensitivity,
   ApiAidScenarioSnapshot,
+  ApiAidScenarioTrailPage,
   ApiAidScenarioViewIn,
   ApiAidScenarioWorkspace,
   ApiAidSessionIn,
@@ -667,4 +669,45 @@ export function fetchAidScenarioSensitivity(
     body,
     "Couldn't work out each setting's step"
   )
+}
+
+/** Which requests a compare counts (D138): every frozen one, those by the Round 1 deadline, or by a date. */
+export type AidRequestSet =
+  | { readonly kind: 'all' }
+  | { readonly kind: 'deadline' }
+  | { readonly kind: 'date'; readonly date: string }
+
+/**
+ * Your draft first, beside up to four kept options, on the current snapshot (spec §7.4; D38), on a
+ * request set when asked (D138); with last season's posted money beside them on `lastSeason` (RPT-17).
+ */
+export async function fetchAidScenarioCompare(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  codes: readonly string[],
+  requestSet: AidRequestSet,
+  lastSeason: boolean
+): Promise<ApiAidScenarioCompare> {
+  const query = new URLSearchParams()
+  for (const code of codes) query.append('codes', code)
+  if (requestSet.kind === 'deadline') query.set('through_round1_deadline', 'true')
+  if (requestSet.kind === 'date') query.set('received_through', requestSet.date)
+  if (lastSeason) query.set('last_season', 'true')
+  const search = query.toString()
+  const response = await fetchWithAuth(`${scenarios(year)}/compare${search ? `?${search}` : ''}`)
+  if (!response.ok) throw await toApiError(response, 'Failed to compare', AidApiError)
+  return (await response.json()) as ApiAidScenarioCompare
+}
+
+/** Every released setting, everyone's, newest first (D38), a page at a time. */
+export async function fetchAidScenarioTrail(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  page: number
+): Promise<ApiAidScenarioTrailPage> {
+  const response = await fetchWithAuth(
+    withQuery(`${scenarios(year)}/trail`, { page: String(page), per_page: '50' })
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the trail', AidApiError)
+  return (await response.json()) as ApiAidScenarioTrailPage
 }

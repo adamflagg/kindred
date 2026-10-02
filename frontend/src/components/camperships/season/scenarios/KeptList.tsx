@@ -98,10 +98,10 @@ export function KeptList({
           </div>
         </div>
       ))}
-      {/* The mock's note, less "tick up to 4 to compare", which comes with the compare (PR 5). */}
       <p className="text-muted-foreground px-3 pt-1 pb-1 text-xs">
         Click one to load it into your draft. Kept options never change; to vary one, load it,
         slide, keep again.
+        {compare !== undefined && ' Tick up to four to compare beside your draft.'}
       </p>
     </div>
   )

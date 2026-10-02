@@ -5,9 +5,13 @@
  * Every figure is invented; pools are "Pool A" and "Pool B".
  */
 import type {
+  ApiAidCommittee,
+  ApiAidCompareColumn,
+  ApiAidScenarioCompare,
   ApiAidScenarioDraft,
   ApiAidScenarioOption,
   ApiAidScenarioResults,
+  ApiAidScenarioTrailPage,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
 import { RULES_DOCUMENT } from '../rules/rulesFixtures'
@@ -141,4 +145,171 @@ export function workspace(over: Partial<ApiAidScenarioWorkspace> = {}): ApiAidSc
     options: [...OPTIONS],
     ...over,
   }
+}
+
+/**
+ * `posted` is last season's view: posted money holds no requests, so its held counts are zero (the
+ * server's `posted_season` never holds one, committee.py 305-352).
+ */
+function committee(round1: number, posted = false): ApiAidCommittee {
+  const out: ApiAidCommittee = {
+    budget_total: 1000000,
+    round1,
+    round1_pct_of_budget: Math.round((round1 / 1000000) * 1000) / 10,
+    round2: 20500,
+    round1_by_tier: [
+      {
+        table: 'general',
+        tier: 1,
+        requests: 200,
+        families: 180,
+        asked: 500000,
+        average_ask: 2500,
+        fee_pct: 90,
+        pct_of_ask: 70,
+        round1: 350000,
+        average_round1: 1750,
+        held: 3,
+        held_asked: 6000,
+        no_ask: 0,
+      },
+      {
+        table: null,
+        tier: 1,
+        requests: 200,
+        families: 180,
+        asked: 500000,
+        average_ask: 2500,
+        fee_pct: null,
+        pct_of_ask: 70,
+        round1: 350000,
+        average_round1: 1750,
+        held: 3,
+        held_asked: 6000,
+        no_ask: 0,
+      },
+      {
+        table: null,
+        tier: 2,
+        requests: 150,
+        families: 140,
+        asked: 600000,
+        average_ask: 4000,
+        fee_pct: null,
+        // The server's definition: Round 1 of the requests WITH an ask over asked. The 2 no-ask requests
+        // hold $5,000 of the tier's Round 1 and stay out of the percentage.
+        pct_of_ask: Math.round(((round1 - 351200 - 5000) / 600000) * 1000) / 10,
+        round1: round1 - 351200,
+        average_round1: 2500,
+        held: 1,
+        held_asked: 1500,
+        no_ask: 2,
+      },
+    ],
+    round2_by_tier: [
+      {
+        table: null,
+        tier: 1,
+        appeals: 20,
+        asked: 30000,
+        max_pct: null,
+        priced: 18,
+        priced_asked: 28000,
+        round2: 20500,
+        average_round2: 1139,
+        pct_of_ask: 73.2,
+        held_asked: 2000,
+      },
+    ],
+    // A withdrawn request's posted round: in no tier row; All's rows + this = round1.
+    not_in_tiers: 1200,
+    round2_not_in_tiers: 0,
+  }
+  if (!posted) return out
+  return {
+    ...out,
+    round1_by_tier: out.round1_by_tier.map((row) => ({ ...row, held: 0, held_asked: 0 })),
+    round2_by_tier: out.round2_by_tier.map((row) => ({ ...row, held_asked: 0 })),
+  }
+}
+
+function column(
+  code: string,
+  label: string,
+  round1: number,
+  over: Partial<ApiAidCompareColumn> = {}
+): ApiAidCompareColumn {
+  return {
+    code,
+    label,
+    document: RULES_DOCUMENT,
+    changes: [],
+    results: results(round1),
+    up: 12,
+    down: 3,
+    committee: committee(round1),
+    ...over,
+  }
+}
+
+/** The draft beside A1; the draft's minimum changed against its reference. */
+export function compareOut(over: Partial<ApiAidScenarioCompare> = {}): ApiAidScenarioCompare {
+  return {
+    year: 2027,
+    snapshot: {
+      id: 'snap00000000001',
+      taken_at: '2027-01-12T18:00:00Z',
+      taken_by: 'Test User',
+      requests: 420,
+      awaiting_rules: 0,
+    },
+    columns: [
+      column('draft', 'from B: minimum $150', 735000, {
+        document: { ...RULES_DOCUMENT, awards: { ...RULES_DOCUMENT.awards, minimum: '150' } },
+        changes: [{ path: ['awards', 'minimum'], kind: 'changed', before: '100', after: '150' }],
+      }),
+      column('A1', 'Round 1 % −2 pts', 760000, { up: 0, down: 40 }),
+    ],
+    last_season: {
+      year: 2026,
+      loaded: true,
+      // The server's wording (_posted_label): its basis and as-of date, printed with its figures.
+      label: '2026, posted (as of Jan 3, 2027)',
+      rules_version: 7,
+      view: committee(649247, true),
+    },
+    ...over,
+  }
+}
+
+export const TRAIL: ApiAidScenarioTrailPage = {
+  page: 1,
+  per_page: 50,
+  total: 2,
+  rows: [
+    {
+      id: 'trail0000000002',
+      recorded_at: '2027-01-15T17:03:00Z',
+      actor: 'Test User',
+      from_code: 'B',
+      change: 'shift every tier 0 pts → −5 pts',
+      kept_code: null,
+      round1: 735000,
+      round1_remaining: 65000,
+      at_minimum: 12,
+      stale: false,
+    },
+    {
+      id: 'trail0000000001',
+      recorded_at: '2027-01-14T17:20:00Z',
+      actor: 'Test User',
+      from_code: 'A',
+      change: 'band width $24k → $29k',
+      kept_code: 'B',
+      round1: 740000,
+      round1_remaining: 60000,
+      at_minimum: 10,
+      stale: true,
+    },
+  ],
 }
