@@ -167,16 +167,28 @@ export function ToPlaceLinePanel({
           submitLabel="Leave it"
           onCancel={() => setMode('none')}
           onSubmit={async (note) => {
-            if (!inFlight.begin(txn)) return
+            // The form shows a thrown message itself, so this one is not also sent up.
+            if (!inFlight.begin(txn)) {
+              throw new Error(
+                'Nothing was written: this line is still saving. Try again when it finishes.'
+              )
+            }
+            let written: number
             try {
-              await inStaffWords(leave.mutateAsync({ year, transactionCmId: txn, note }))
+              ;({ written } = await inStaffWords(
+                leave.mutateAsync({ year, transactionCmId: txn, note })
+              ))
             } catch (caught) {
               if (caught instanceof Error) onRefused(caught.message)
               throw caught
             } finally {
               inFlight.end(txn)
             }
-            onDone(`${line.family}: left at family level with your note. Reopen needs a reason.`)
+            onDone(
+              written === 0
+                ? `${line.family}: already left at family level with this note; nothing changed.`
+                : `${line.family}: left at family level with your note. Reopen needs a reason.`
+            )
           }}
         />
       )}

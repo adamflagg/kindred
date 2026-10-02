@@ -56,21 +56,26 @@ export function LeftLines({
                         submitLabel="Reopen"
                         onCancel={() => setReopening(null)}
                         onSubmit={async (reason) => {
+                          let written: number
                           try {
-                            await inStaffWords(
+                            ;({ written } = await inStaffWords(
                               reopen.mutateAsync({
                                 year,
                                 transactionCmId: line.transaction_cm_id,
                                 reason,
                               })
-                            )
+                            ))
                           } catch (caught) {
                             // Up to the tab: the refresh can drop this row and its form with it.
                             if (caught instanceof Error) onRefused(caught.message)
                             throw caught
                           }
                           setReopening(null)
-                          onDone(`${line.family}: reopened; the line is open again.`)
+                          onDone(
+                            written === 0
+                              ? `${line.family}: already open; nothing changed.`
+                              : `${line.family}: reopened; the line is open again.`
+                          )
                         }}
                       />
                     </div>

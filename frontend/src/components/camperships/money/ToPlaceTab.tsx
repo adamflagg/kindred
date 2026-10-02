@@ -33,10 +33,22 @@ export function ToPlaceTab({ view }: { view: AidView }) {
   )
   // The outcome of the last write lives here, not in a panel: a refusal that drops its line from the
   // table would otherwise unmount the only place it was shown (review I1).
-  const [note, setNote] = useState<{ tone: 'done' | 'refused'; words: string } | null>(null)
-  const onDone = useCallback((words: string) => setNote({ tone: 'done', words }), [])
-  const onRefused = useCallback((words: string) => setNote({ tone: 'refused', words }), [])
+  const [note, setNote] = useState<{
+    tone: 'done' | 'refused'
+    words: string
+    year: number
+  } | null>(null)
+  const onDone = useCallback(
+    (words: string) => setNote({ tone: 'done', words, year: view.year }),
+    [view.year]
+  )
+  const onRefused = useCallback(
+    (words: string) => setNote({ tone: 'refused', words, year: view.year }),
+    [view.year]
+  )
   const inFlight = useInFlightLines()
+  // Another season is another page: its last write's note is not shown (no reset effect needed).
+  const shown = note !== null && note.year === view.year ? note : null
   const renderPanel = useCallback(
     (line: ApiAidToPlaceLine) => (
       <ToPlaceLinePanel
@@ -64,12 +76,12 @@ export function ToPlaceTab({ view }: { view: AidView }) {
       {(data) =>
         data.skipped ? (
           <div className="card-lodge text-muted-foreground p-6 text-sm">
-            Nothing to place for {data.year}: {data.skipped}.
+            Nothing to place: {data.skipped}.
           </div>
         ) : (
           <div className="space-y-3">
-            {note?.tone === 'done' && <p className={DONE_NOTE}>✓ {note.words}</p>}
-            {note?.tone === 'refused' && <p className={AMBER_NOTE}>{note.words}</p>}
+            {shown?.tone === 'done' && <p className={DONE_NOTE}>✓ {shown.words}</p>}
+            {shown?.tone === 'refused' && <p className={AMBER_NOTE}>{shown.words}</p>}
             <p className="text-sm">
               <span className="font-medium">
                 {`${String(data.open_count)} ${data.open_count === 1 ? 'line' : 'lines'} open · ${formatMoney(data.open_total)}`}
