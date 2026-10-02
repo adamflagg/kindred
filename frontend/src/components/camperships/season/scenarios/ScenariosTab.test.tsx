@@ -79,6 +79,14 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   },
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+vi.mock('../../../../hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => true }),
+}))
+// PR 5's panels: an idle compare and trail unless a test reads them (CompareAndTrail.test.tsx).
+vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
+  useAidScenarioCompare: () => ({ data: undefined, isLoading: true, error: null }),
+  useAidScenarioTrail: () => ({ data: undefined, isLoading: true, error: null }),
+}))
 
 function renderTab() {
   return render(

@@ -1,9 +1,18 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
+
+import { Permission } from '../../../../constants/permissions'
+import {
+  useAidScenarioCompare,
+  useAidScenarioTrail,
+} from '../../../../hooks/camperships/useAidScenarioCompare'
 import { useAidScenarioDraft } from '../../../../hooks/camperships/useAidScenarioDraft'
 import {
   useAidScenarioSensitivity,
   useAidScenarios,
 } from '../../../../hooks/camperships/useAidScenarios'
 import { useYear } from '../../../../hooks/useCurrentYear'
+import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import type { ApiAidLeverEffect, ApiAidScenarioWorkspace } from '../../../../types/api-types'
 import {
@@ -11,13 +20,18 @@ import {
   BUTTON_PRIMARY,
   BUTTON_SECONDARY,
   GROUP_HEADING,
+  TAB_PILL_ACTIVE,
+  TAB_PILL_IDLE,
 } from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { campToday, formatLongDate, formatShortDate } from '../../kit/dates'
 import { SEASON_CARD } from '../seasonStyles'
+import { parseCodes, parseRequestSet, requestSetParam, toggleCode } from './compareModel'
 import { KeptList } from './KeptList'
+import { ScenarioCompare } from './ScenarioCompare'
 import { ScenarioLevers } from './ScenarioLevers'
 import { ScenarioResults } from './ScenarioResults'
+import { ScenarioTrail } from './ScenarioTrail'
 import { changedLevers, hasPending, startingPointOf } from './scenarioModel'
 import { CHANGED_NAME, DRAFT_CHIP, DRAFT_ROW } from './scenarioStyles'
 
@@ -48,6 +62,45 @@ function rulesName(workspace: ApiAidScenarioWorkspace): string {
   return workspace.pricing_version === workspace.rules_version
     ? `Rules (v${version})`
     : `Rules Draft (v${version})`
+}
+
+/**
+ * The compare's and the trail's view state, in the URL (D15): `panel=trail`, `compare=A1,B2`,
+ * `through=deadline|<date>` (D138), `last=1` (RPT-17), `tiers=1`, `trail_page=2`. Replaced, never
+ * pushed: Back leaves Scenarios rather than stepping through every tick. `set` is stable (the router's
+ * setter sits behind a ref), so a memo or effect that holds it never re-runs for a URL change.
+ */
+function useScenarioView() {
+  const [params, setParams] = useSearchParams()
+  const setter = useRef(setParams)
+  useEffect(() => {
+    setter.current = setParams
+  })
+  const set = useCallback((name: string, value: string | null) => {
+    setter.current(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        if (value === null) next.delete(name)
+        else next.set(name, value)
+        return next
+      },
+      { replace: true }
+    )
+  }, [])
+  const codesRaw = params.get('compare')
+  const throughRaw = params.get('through')
+  const codes = useMemo(() => parseCodes(codesRaw), [codesRaw])
+  const requestSet = useMemo(() => parseRequestSet(throughRaw), [throughRaw])
+  const page = Number(params.get('trail_page') ?? '1')
+  return {
+    panel: params.get('panel') === 'trail' ? ('trail' as const) : ('compare' as const),
+    codes,
+    requestSet,
+    lastSeason: params.get('last') === '1',
+    byTier: params.get('tiers') === '1',
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    set,
+  }
 }
 
 function SnapshotLine({ workspace, work }: { workspace: ApiAidScenarioWorkspace; work: Draft }) {
@@ -110,6 +163,16 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const liveError =
     work.live.status === 'error' && work.live.error !== work.error ? work.live.error : null
   const unkeepable = work.busy !== null || moving || (draft?.changes.length ?? 0) === 0
+  const view = useScenarioView()
+  const { hasPermission } = usePermissions()
+  // Finance only, as every scenario route (D76): the registrar never fires either read.
+  const canRules = hasPermission(Permission.FINANCIAL_AID_RULES)
+  const compare = useAidScenarioCompare(view.codes, view.requestSet, view.lastSeason, {
+    enabled: canRules && draft !== null && view.panel === 'compare',
+  })
+  const trail = useAidScenarioTrail(view.page, { enabled: canRules && view.panel === 'trail' })
+  // The code a fifth tick was refused for, said under the list until the next tick.
+  const [refused, setRefused] = useState<string | null>(null)
   const keepButtons = (
     <>
       <button
@@ -194,7 +257,21 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 options={workspace.options}
                 current={draft?.from_code ?? null}
                 onLoad={(code) => void work.load({ option: code })}
+                compare={{
+                  ticked: new Set(view.codes),
+                  onToggle: (code) => {
+                    const next = toggleCode(view.codes, code)
+                    setRefused(next === view.codes ? code : null)
+                    if (next !== view.codes)
+                      view.set('compare', next.length === 0 ? null : next.join(','))
+                  },
+                }}
               />
+              {refused !== null && (
+                <p className={`${AMBER_NOTE} mx-3 mb-2`}>
+                  {`Four are already ticked: untick one to compare ${refused}.`}
+                </p>
+              )}
             </div>
             {draft !== null && (
               <ScenarioLevers
@@ -236,6 +313,57 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   actions={keepButtons}
                   liveError={liveError}
                 />
+              )}
+              <div className="flex gap-1 print:hidden">
+                <button
+                  type="button"
+                  className={view.panel === 'compare' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+                  onClick={() => view.set('panel', null)}
+                >
+                  {`Compare (draft + ${String(view.codes.length)})`}
+                </button>
+                <button
+                  type="button"
+                  className={view.panel === 'trail' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+                  onClick={() => view.set('panel', 'trail')}
+                >
+                  {trail.data ? `Trail (${String(trail.data.total)} changes)` : 'Trail'}
+                </button>
+              </div>
+              {view.panel === 'compare' ? (
+                <QueryGuard
+                  isLoading={compare.isLoading}
+                  error={compare.data ? null : compare.error}
+                  data={compare.data}
+                  label="the compare"
+                >
+                  {(data) => (
+                    <ScenarioCompare
+                      compare={data}
+                      requestSet={view.requestSet}
+                      onRequestSet={(next) => view.set('through', requestSetParam(next))}
+                      lastSeason={view.lastSeason}
+                      onLastSeason={(on) => view.set('last', on ? '1' : null)}
+                      byTier={view.byTier}
+                      onByTier={(on) => view.set('tiers', on ? '1' : null)}
+                    />
+                  )}
+                </QueryGuard>
+              ) : (
+                <QueryGuard
+                  isLoading={trail.isLoading}
+                  error={trail.data ? null : trail.error}
+                  data={trail.data}
+                  label="the trail"
+                >
+                  {(data) => (
+                    <ScenarioTrail
+                      trail={data}
+                      onLoad={(id) => void work.load({ trail_row: id })}
+                      onPage={(next) => view.set('trail_page', next === 1 ? null : String(next))}
+                    />
+                  )}
+                </QueryGuard>
               )}
             </div>
           )}
