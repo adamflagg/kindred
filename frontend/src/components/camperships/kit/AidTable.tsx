@@ -129,6 +129,12 @@ export interface AidTableProps<Row> {
   /** Bulk actions (§4.10): the selected row keys. Pass both; a checkbox column then leads the table. */
   readonly selected?: ReadonlySet<string> | undefined
   readonly onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
+  /**
+   * The keys of the rows the search matches (never the kept row), fired when they change. The table
+   * owns the search, so this is how a page learns which ticks the search hides (ticks persist across
+   * searches; owner ruling 2026-10-02). Stable (useCallback or a state setter).
+   */
+  readonly onMatchingChange?: ((keys: ReadonlySet<string>) => void) | undefined
   readonly footerLabel?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly groupCount?: ((rows: readonly Row[]) => ReactNode) | undefined
   readonly emptyText?: string | undefined
@@ -170,6 +176,7 @@ export function AidTable<Row>({
   markedKeys,
   selected,
   onSelectedChange,
+  onMatchingChange,
   groupCount,
   emptyText = 'No rows match.',
 }: AidTableProps<Row>) {
@@ -219,6 +226,14 @@ export function AidTable<Row>({
   )
   // The rows matching the search: what the totals, the counts and the CSV are of.
   const visible = useMemo(() => sorted(rows.filter(matches)), [rows, matches, sorted])
+  // Their keys, for the page: independent of the sort, so only a change of match fires the callback.
+  const matchingKeys = useMemo(
+    () => new Set(rows.filter(matches).map(rowKey)),
+    [rows, matches, rowKey]
+  )
+  useEffect(() => {
+    onMatchingChange?.(matchingKeys)
+  }, [matchingKeys, onMatchingChange])
   // What is drawn: those, plus the kept row.
   const shown = useMemo(
     () =>
@@ -258,16 +273,6 @@ export function AidTable<Row>({
       else next.add(key)
     }
     selection.onChange(next)
-  }
-  // The selection means the rows matching the search (R1, as the totals and the CSV do): typing a
-  // search drops ticks it hides. Event-driven, and silent when nothing is dropped.
-  const search = (text: string) => {
-    setQuery(text)
-    if (selection === null) return
-    const keep = new Set(
-      rows.filter((r) => selection.selected.has(rowKey(r)) && matchesQuery(r, text)).map(rowKey)
-    )
-    if (keep.size < selection.selected.size) selection.onChange(keep)
   }
   const toggleOne = (key: string) => {
     if (selection === null) return
@@ -387,7 +392,7 @@ export function AidTable<Row>({
             aria-label="Search"
             placeholder="Search names or CampMinder ids"
             value={query}
-            onChange={(event) => search(event.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             className={SEARCH_INPUT}
           />
         </div>
@@ -507,12 +512,15 @@ export function AidTable<Row>({
                               (isHighlighted || isMarked) && HIGHLIGHT_EDGE
                             )}
                           >
-                            <input
-                              type="checkbox"
-                              aria-label="Select"
-                              checked={selection.selected.has(key)}
-                              onChange={() => toggleOne(key)}
-                            />
+                            {/* The kept row is on screen only for its highlight: it isn't a match, so it can't be ticked (R1). */}
+                            {key !== kept && (
+                              <input
+                                type="checkbox"
+                                aria-label="Select"
+                                checked={selection.selected.has(key)}
+                                onChange={() => toggleOne(key)}
+                              />
+                            )}
                           </td>
                         )}
                         {columns.map((c, index) => (
