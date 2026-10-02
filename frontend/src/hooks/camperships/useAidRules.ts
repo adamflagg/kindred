@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 
 import { Permission } from '../../constants/permissions'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchAidApprovedRules, hasStatus } from '../../services/camperships/aidApi'
+import {
+  fetchAidApprovedRules,
+  fetchAidRulesDraft,
+  hasStatus,
+} from '../../services/camperships/aidApi'
 import { queryKeys } from '../../utils/queryKeys'
 import { useApiWithAuth } from '../useApiWithAuth'
 import { useYear } from '../useCurrentYear'
@@ -30,6 +34,20 @@ export function useAidApprovedRules(version: number | null, { enabled = true } =
     queryKey: queryKeys.aidRulesApproved(year, version),
     queryFn: () => fetchAidApprovedRules(fetchWithAuth, year, version),
     enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_VIEW),
+    retry: retryUnlessMissing,
+  })
+}
+
+/** The rules draft with its changes against the approved rules (spec §7.5; D39): `rules` only. */
+export function useAidRulesDraft({ enabled = true } = {}) {
+  const year = useYear()
+  const { fetchWithAuth } = useApiWithAuth()
+  const { isLoading: authLoading } = useAuth()
+  const { hasPermission } = usePermissions()
+  return useQuery({
+    queryKey: queryKeys.aidRulesDraft(year),
+    queryFn: () => fetchAidRulesDraft(fetchWithAuth, year),
+    enabled: enabled && year > 0 && !authLoading && hasPermission(Permission.FINANCIAL_AID_RULES),
     retry: retryUnlessMissing,
   })
 }
