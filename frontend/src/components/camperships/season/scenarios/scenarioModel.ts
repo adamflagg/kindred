@@ -6,6 +6,7 @@
  * bunking/financial_aid/scenarios/results.py.
  */
 import type {
+  ApiAidFieldChange,
   ApiAidLeverEffect,
   ApiAidRulesDocument,
   ApiAidScenarioOption,
@@ -92,6 +93,62 @@ export function readStep(
   const value = Number(text)
   if (value < range.min || value > range.max) return null
   return Math.abs(value / range.step - Math.round(value / range.step)) < 1e-9 ? value : null
+}
+
+/**
+ * Why a typed step can't be taken, briefly (residue 12), or null when it can, or while the box holds
+ * only a start ('' or a sign). The box then leaves the draft as it is.
+ */
+export function stepNote(
+  raw: string,
+  range: { min: number; max: number; step: number },
+  unit: 'points' | 'money'
+): string | null {
+  const text = raw.trim().replace('−', '-').replace(/^\+/, '')
+  if (text === '' || text === '-') return null
+  if (readStep(raw, range) !== null) return null
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return 'not a number'
+  const value = Number(text)
+  const amount = (n: number) =>
+    unit === 'money' ? formatMoney(n) : `${n < 0 ? '−' : ''}${String(Math.abs(n))}`
+  if (value < range.min || value > range.max) {
+    const top = unit === 'money' ? amount(range.max) : `+${String(range.max)}`
+    return `from ${amount(range.min)} to ${top}${unit === 'points' ? ' pts' : ''}`
+  }
+  return unit === 'money'
+    ? `in steps of ${amount(range.step)}`
+    : `in steps of ${String(range.step)} pts`
+}
+
+/** The four sizing settings, by the server's lever keys (sizing.SIZING_LEVERS). */
+export type LeverKey = 'tier_shift' | 'band_width' | 'minimum' | 'dollar_for_dollar'
+
+/** The part of the rules document each setting moves (sizing.py), as `FieldChangeOut` paths start. */
+const LEVER_PATHS: ReadonlyArray<readonly [LeverKey, readonly string[]]> = [
+  ['tier_shift', ['award_tables']],
+  ['band_width', ['tiers', 'bands']],
+  ['minimum', ['awards', 'minimum']],
+  ['dollar_for_dollar', ['grants', 'offset_mode']],
+]
+
+/**
+ * The settings that differ from where the draft came from (the mock's amber names): the draft's
+ * recorded changes against its source option, and whatever is moving and not yet recorded.
+ */
+export function changedLevers(
+  changes: readonly ApiAidFieldChange[],
+  pending: Pending
+): ReadonlySet<LeverKey> {
+  const changed = new Set<LeverKey>()
+  for (const [lever, prefix] of LEVER_PATHS) {
+    if (changes.some((change) => prefix.every((part, i) => change.path[i] === part)))
+      changed.add(lever)
+  }
+  if (pending.tierShift !== 0) changed.add('tier_shift')
+  if (pending.bandDelta !== 0) changed.add('band_width')
+  if (pending.minimum !== null) changed.add('minimum')
+  if (pending.dollar !== null) changed.add('dollar_for_dollar')
+  return changed
 }
 
 /**

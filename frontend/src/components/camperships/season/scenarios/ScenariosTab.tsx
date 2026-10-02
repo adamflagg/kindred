@@ -6,14 +6,20 @@ import {
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { hasStatus } from '../../../../services/camperships/aidApi'
 import type { ApiAidScenarioWorkspace } from '../../../../types/api-types'
-import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
+import {
+  AMBER_NOTE,
+  BUTTON_PRIMARY,
+  BUTTON_SECONDARY,
+  GROUP_HEADING,
+} from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { campToday, formatLongDate, formatShortDate } from '../../kit/dates'
 import { SEASON_CARD } from '../seasonStyles'
 import { KeptList } from './KeptList'
 import { ScenarioLevers } from './ScenarioLevers'
 import { ScenarioResults } from './ScenarioResults'
-import { hasPending, startingPointOf } from './scenarioModel'
+import { changedLevers, hasPending, startingPointOf } from './scenarioModel'
+import { CHANGED_NAME, DRAFT_CHIP, DRAFT_ROW } from './scenarioStyles'
 
 type Draft = ReturnType<typeof useAidScenarioDraft>
 
@@ -22,6 +28,12 @@ const STEPS_FAILED = "Couldn't work out each setting's step"
 /** The sensitivity read's fault, said once: the client's own fallback already names it. */
 function stepsFailed(words: string): string {
   return words.startsWith(STEPS_FAILED) ? words : `${STEPS_FAILED}: ${words}`
+}
+
+/** "6 kept · 2 levels deep" (the mock's count): variants make the second level, never deeper (D38). */
+function keptCount(workspace: ApiAidScenarioWorkspace): string {
+  const levels = workspace.options.some((option) => option.starting_point !== null) ? 2 : 1
+  return `${String(workspace.options.length)} kept · ${String(levels)} level${levels === 1 ? '' : 's'} deep`
 }
 
 /** A server timestamp's day on camp time: a freeze at 6 pm Pacific is that day, not the UTC next. */
@@ -86,11 +98,32 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   // Held while anything moves or runs, and while the draft is the same as where it came from: the
   // server would only answer "nothing new to keep" (as the mock disables it).
   const unkeepable = work.busy !== null || moving || (draft?.changes.length ?? 0) === 0
+  const keepButtons = (
+    <>
+      <button
+        type="button"
+        className={BUTTON_PRIMARY}
+        disabled={unkeepable}
+        onClick={() => void work.keep(false)}
+      >
+        {`Keep as a variant of ${head ?? ''}`}
+      </button>
+      <button
+        type="button"
+        className={BUTTON_SECONDARY}
+        disabled={unkeepable}
+        onClick={() => void work.keep(true)}
+      >
+        Keep as a new starting point
+      </button>
+    </>
+  )
 
   return (
     <div className="space-y-3">
       <SnapshotLine workspace={workspace} work={work} />
-      {work.busy !== null && <p className="text-muted-foreground text-sm">{work.busy}</p>}
+      {/* Its line is always there, so nothing jumps under the pointer on every release. */}
+      <p className="text-muted-foreground h-5 text-sm">{work.busy}</p>
       {work.error !== null && <p className={AMBER_NOTE}>{work.error}</p>}
       {/* A refused release says its words once: as the write's error, not again as the live one. */}
       {work.live.status === 'error' && work.live.error !== work.error && (
@@ -123,17 +156,29 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
       {workspace.snapshot !== null && (
         <div className="grid gap-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <div className="space-y-3">
-            {draft !== null && (
-              <div className={SEASON_CARD} data-testid="scenario-draft">
-                <span className="bg-forest-700 mr-2 rounded px-1.5 text-xs font-bold text-white">
-                  Draft
-                </span>
-                {`from ${draft.from_code}: ${draft.label}`}
-              </div>
-            )}
+            {/* One card, as the mock has it: your draft, then what's kept. */}
             <div className="card-lodge">
-              <div className="text-muted-foreground px-3 pt-2 text-xs font-semibold tracking-wide uppercase">
-                Kept (locked)
+              {draft !== null && (
+                <>
+                  <div className={`${GROUP_HEADING} px-3 pt-2`}>Your draft</div>
+                  <div className="px-3 pt-1" data-testid="scenario-draft">
+                    <div className={DRAFT_ROW}>
+                      <span className={`${DRAFT_CHIP} mr-2`}>Draft</span>
+                      {`from ${draft.from_code}: `}
+                      <span className={draft.changes.length > 0 ? CHANGED_NAME : ''}>
+                        {draft.label}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+              <div className={`${GROUP_HEADING} flex justify-between gap-2 px-3 pt-2`}>
+                <span>Kept (locked)</span>
+                {workspace.options.length > 0 && (
+                  <span className="font-medium tracking-normal normal-case">
+                    {keptCount(workspace)}
+                  </span>
+                )}
               </div>
               {/* Never held while a write runs: the hook queues a load after it, so a click while a
                   box still holds typing records the typing first (Decision 19). */}
@@ -146,7 +191,9 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
             {draft !== null && (
               <ScenarioLevers
                 document={draft.document}
+                from={draft.from_code}
                 pending={work.pending}
+                changed={changedLevers(draft.changes, work.pending)}
                 effects={sensitivity.data?.levers ?? []}
                 disabled={work.busy !== null}
                 onMove={work.move}
@@ -168,28 +215,13 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
           </div>
           {draft !== null && (
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={BUTTON_PRIMARY}
-                  disabled={unkeepable}
-                  onClick={() => void work.keep(false)}
-                >
-                  {`Keep as a variant of ${head ?? ''}`}
-                </button>
-                <button
-                  type="button"
-                  className={BUTTON_SECONDARY}
-                  disabled={unkeepable}
-                  onClick={() => void work.keep(true)}
-                >
-                  Keep as a new starting point
-                </button>
-              </div>
               {results === null ? (
-                <p className="text-muted-foreground text-sm">No figures for this draft yet.</p>
+                <>
+                  <div className="flex flex-wrap gap-2">{keepButtons}</div>
+                  <p className="text-muted-foreground text-sm">No figures for this draft yet.</p>
+                </>
               ) : (
-                <ScenarioResults results={results} state={state} />
+                <ScenarioResults results={results} state={state} actions={keepButtons} />
               )}
             </div>
           )}

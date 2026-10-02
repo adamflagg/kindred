@@ -235,7 +235,7 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
         )?.snapshot
         const frozen = await freezeAidScenarioSeason(fetchWithAuth, year)
         // The server hands back the snapshot it already had when the season hasn't moved.
-        if (before !== null && before !== undefined && frozen.id === before.id) {
+        if (before?.id !== undefined && frozen.id === before.id) {
           setNothingToFreeze(true)
           return
         }

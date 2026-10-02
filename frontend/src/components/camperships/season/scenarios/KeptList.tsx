@@ -1,9 +1,8 @@
 import type { ApiAidScenarioOption } from '../../../../types/api-types'
 import { campToday, formatShortDate } from '../../kit/dates'
+import { HIGHLIGHT_EDGE, ROW_HIGHLIGHT } from '../../kit/kitStyles'
 import { keptGroups } from './scenarioModel'
-
-const CODE =
-  'bg-muted inline-flex min-w-8 justify-center rounded px-1.5 font-mono text-xs font-bold'
+import { START_CHIP, VARIANT_CHIP } from './scenarioStyles'
 
 function Row({
   option,
@@ -18,7 +17,7 @@ function Row({
 }) {
   return (
     <div
-      className={`flex items-start gap-2 px-3 py-1 ${current ? 'bg-muted' : ''}`}
+      className={`flex items-start gap-2 px-3 py-1 ${current ? `${ROW_HIGHLIGHT} ${HIGHLIGHT_EDGE}` : ''}`}
       data-kept={option.code}
     >
       {compare && (
@@ -34,7 +33,9 @@ function Row({
         className="flex flex-1 items-start gap-2 text-left hover:underline"
         onClick={() => onLoad(option.code)}
       >
-        <span className={CODE}>{option.code}</span>
+        <span className={option.starting_point === null ? START_CHIP : VARIANT_CHIP}>
+          {option.code}
+        </span>
         <span className="flex-1 text-sm">
           {option.label}
           <span className="text-muted-foreground block text-xs">
@@ -97,6 +98,11 @@ export function KeptList({
           </div>
         </div>
       ))}
+      {/* The mock's note, less "tick up to 4 to compare", which comes with the compare (PR 5). */}
+      <p className="text-muted-foreground px-3 pt-1 pb-1 text-xs">
+        Click one to load it into your draft. Kept options never change; to vary one, load it,
+        slide, keep again.
+      </p>
     </div>
   )
 }
