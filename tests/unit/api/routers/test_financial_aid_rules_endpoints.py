@@ -59,7 +59,6 @@ ROUTES: list[tuple[str, str, dict[str, Any] | None, int]] = [
     ("POST", "/api/financial-aid/rules/2031/validate", DOC_BODY, 200),
     ("POST", "/api/financial-aid/rules/2031/versions", DOC_BODY, 201),
     ("POST", "/api/financial-aid/rules/2032/start-from-last-year", None, 201),
-    ("PUT", "/api/financial-aid/rules/2031/versions/1", DOC_BODY, 200),
     ("POST", "/api/financial-aid/rules/2031/versions/1/approve", APPROVE_BODY, 200),
 ]
 
@@ -101,10 +100,9 @@ def test_the_actor_is_the_callers_email() -> None:
     client = _client()
     client.post("/api/financial-aid/rules/2031/versions", json=DOC_BODY)
     client.post("/api/financial-aid/rules/2032/start-from-last-year")
-    client.put("/api/financial-aid/rules/2031/versions/1", json=DOC_BODY)
     client.post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
     email = persona_user(PERSONA_FINANCE).email
-    for mock in (service.bootstrap, service.start_from_last_year, service.save, service.approve_sections):
+    for mock in (service.bootstrap, service.start_from_last_year, service.approve_sections):
         assert mock.await_args.kwargs["actor"] == email
 
 
@@ -140,7 +138,6 @@ def test_a_bad_approval_is_422_and_never_reaches_the_service(body: dict[str, Any
     ("method", "url", "call"),
     [
         ("POST", "/api/financial-aid/rules/2030/versions", "bootstrap"),
-        ("PUT", "/api/financial-aid/rules/2030/versions/1", "save"),
         ("POST", "/api/financial-aid/rules/2030/validate", "validate_document"),
     ],
 )
@@ -219,6 +216,18 @@ def test_only_the_approve_route_builds_the_rules_service_that_records_an_effect(
     _client().post("/api/financial-aid/rules/2031/versions/1/approve", json=APPROVE_BODY)
     assert any(isinstance(c.kwargs.get("effects"), SeasonApprovalEffects) for c in built.call_args_list)
     built.reset_mock()
-    _client().put("/api/financial-aid/rules/2031/versions/1", json=DOC_BODY)
+    _client().post("/api/financial-aid/rules/2031/validate", json=DOC_BODY)
     assert built.call_args_list
     assert all(c.kwargs.get("effects") is None for c in built.call_args_list)
+
+
+def test_the_whole_document_save_route_is_retired() -> None:
+    """Staff edit rules through the section editor, which branches a new version (queue 23).
+
+    No other method is routed on `/rules/{year}/versions/{version}` (reads use `GET /rules/{year}?version=`),
+    so with the PUT gone FastAPI answers 404, not 405.
+    """
+    service = _stub()
+    response = _client().put("/api/financial-aid/rules/2031/versions/1", json=DOC_BODY)
+    assert response.status_code == 404
+    service.save.assert_not_called()
