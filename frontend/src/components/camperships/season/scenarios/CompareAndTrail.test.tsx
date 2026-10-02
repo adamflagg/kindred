@@ -2,7 +2,7 @@
  * Scenarios' compare and trail on screen (spec §7.4; D38, D138; RPT-17). The reads are mocked with
  * scenarioFixtures; the URL holds which panel, which options, the request set and last season.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -147,6 +147,8 @@ describe('the compare (D38)', () => {
     expect(chip(heads[2] as HTMLElement)).toContain(VARIANT_CHIP)
     expect(chip(heads[3] as HTMLElement)).toContain(START_CHIP)
     expect(heads[2]).toHaveTextContent('Round 1 % −2 pts')
+    // The label sits under its chip, at the column's right edge (the th is right-aligned).
+    expect(within(heads[2] as HTMLElement).getByText('Round 1 % −2 pts')).toHaveClass('ml-auto')
     const minimum = document.querySelector('[data-compare-row="minimum"]') as HTMLElement
     const [, draft, other] = within(minimum).getAllByRole('cell')
     expect(draft?.className).toContain(DRAFT_COLUMN)
@@ -198,7 +200,9 @@ describe('the compare (D38)', () => {
 
   it("shows last season as posted beside them, and the committee's by-tier rows (RPT-17, RPT-32)", () => {
     renderAt('/aid/season/scenarios?compare=A1&last=1&tiers=1')
-    expect(screen.getByRole('columnheader', { name: '2026 as posted' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: '2026, posted (as of Jan 3, 2027)' })
+    ).toBeInTheDocument()
     expect(screen.getByText('Round 1 by tier, against what was asked')).toBeInTheDocument()
     // The fixture's last season holds $649,247: tier 2 is $298,047, 48.8% of what was asked.
     const tier2 = document.querySelector('[data-compare-row="r1:2"]') as HTMLElement
@@ -228,6 +232,8 @@ describe('the compare (D38)', () => {
     expect(askedTrail.every((a) => a.enabled === false)).toBe(true)
   })
 })
+
+const withRequestSet2 = (): CompareState => ({ ...settled(), data: withRequestSet() })
 
 function withRequestSet(): ApiAidScenarioCompare {
   const out = compareOut()
@@ -298,7 +304,18 @@ describe('the compare keeps its controls whatever the read does (I1)', () => {
     renderAt('/aid/season/scenarios?compare=A1')
     const table = screen.getByTestId('scenario-compare-table')
     expect(table).toHaveAttribute('data-stale')
-    expect(screen.getByText(/Updating/)).toBeInTheDocument()
+    expect(screen.getByText('Updating…')).not.toHaveClass('invisible')
+  })
+
+  it('keeps the Updating slot reserved, so nothing jumps, and dims the sentence with the table', () => {
+    compareState = { ...withRequestSet2(), isPlaceholderData: true }
+    renderAt('/aid/season/scenarios?compare=A1&through=2027-02-01')
+    expect(screen.getByText(/^Every scenario figure counts/)).toHaveClass('opacity-60')
+    cleanup()
+    compareState = withRequestSet2()
+    renderAt('/aid/season/scenarios?compare=A1&through=2027-02-01')
+    expect(screen.getByText('Updating…')).toHaveClass('invisible')
+    expect(screen.getByText(/^Every scenario figure counts/)).not.toHaveClass('opacity-60')
   })
 
   it('does not mark a settled table stale', () => {
@@ -310,9 +327,18 @@ describe('the compare keeps its controls whatever the read does (I1)', () => {
     renderAt('/aid/season/scenarios?compare=A1,Z9')
     expect(asked.at(-1)?.codes).toEqual(['A1'])
     expect(params().get('compare')).toBe('A1')
-    expect(screen.getByText(/Z9 isn't kept in 2027/)).toBeInTheDocument()
+    expect(
+      screen.getByText("Z9 isn't kept in 2027, so it was left out of the compare.")
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Compare (draft + 1)' })).toBeInTheDocument()
     expect(screen.getByTestId('nav')).toHaveTextContent('REPLACE')
+  })
+
+  it('says it in the plural for several dropped codes', () => {
+    renderAt('/aid/season/scenarios?compare=A1,Z9,Y8')
+    expect(
+      screen.getByText("Z9, Y8 aren't kept in 2027, so they were left out of the compare.")
+    ).toBeInTheDocument()
   })
 
   it('clears the compare param when every code is gone', () => {
@@ -329,6 +355,22 @@ describe("last season's column (I2)", () => {
     expect(held.getAllByRole('cell').at(-1)).toHaveTextContent('—')
     const none = within(document.querySelector('[data-compare-row="r1:none"]') as HTMLElement)
     expect(none.getAllByRole('cell').at(-1)).toHaveTextContent('$1,200')
+  })
+
+  it('heads the column with the server\'s label, which says "every request" while a set is on', () => {
+    const out = compareOut()
+    if (!out.last_season) throw new Error('the fixture has last season')
+    compareState = {
+      ...settled(),
+      data: {
+        ...out,
+        last_season: { ...out.last_season, label: `${out.last_season.label}, every request` },
+      },
+    }
+    renderAt('/aid/season/scenarios?compare=A1&last=1&through=deadline')
+    expect(
+      screen.getByRole('columnheader', { name: '2026, posted (as of Jan 3, 2027), every request' })
+    ).toBeInTheDocument()
   })
 
   it('reads its label, and — in every by-tier cell, when it is not loaded', () => {

@@ -232,14 +232,15 @@ export function ScenarioCompare({
         <p className="text-muted-foreground text-sm">Loading the compare…</p>
       )}
       {set !== null && (
-        <p className="text-sm font-medium">
+        <p className={`text-sm font-medium ${stale ? 'opacity-60' : ''}`}>
           {`Every scenario figure counts ${set.label}: ${String(set.left_out)} left out`}
           {set.unknown > 0 && `, ${String(set.unknown)} with no received date left out too`}
           {last === null ? '' : '; last season is as posted'}
           {'.'}
         </p>
       )}
-      {stale && <p className="text-muted-foreground text-xs">Updating…</p>}
+      {/* Its slot is always there, so the table never jumps when it appears. */}
+      <p className={`text-muted-foreground text-xs ${stale ? '' : 'invisible'}`}>Updating…</p>
       {compare !== undefined && (
         <div
           className={`${TABLE_CARD} ${stale ? 'opacity-60' : ''}`}
@@ -258,7 +259,7 @@ export function ScenarioCompare({
                       className={`${TH_MONEY_TEXT} align-bottom ${index === 0 ? DRAFT_COLUMN : 'bg-muted'}`}
                     >
                       <span className={chip.style}>{chip.text}</span>
-                      <div className="text-muted-foreground max-w-48 text-xs font-normal">
+                      <div className="text-muted-foreground ml-auto max-w-48 text-xs font-normal">
                         {column.label}
                       </div>
                     </th>

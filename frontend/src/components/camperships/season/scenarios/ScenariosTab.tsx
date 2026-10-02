@@ -291,7 +291,9 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
               />
               {droppedNote !== null && (
                 <p className={`${AMBER_NOTE} mx-3 mb-2`}>
-                  {`${droppedNote} ${droppedNote.includes(',') ? "aren't" : "isn't"} kept in ${String(workspace.year)}, so it was left out of the compare.`}
+                  {droppedNote.includes(',')
+                    ? `${droppedNote} aren't kept in ${String(workspace.year)}, so they were left out of the compare.`
+                    : `${droppedNote} isn't kept in ${String(workspace.year)}, so it was left out of the compare.`}
                 </p>
               )}
               {refused !== null && (

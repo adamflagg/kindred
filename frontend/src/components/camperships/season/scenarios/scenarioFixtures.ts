@@ -273,7 +273,8 @@ export function compareOut(over: Partial<ApiAidScenarioCompare> = {}): ApiAidSce
     last_season: {
       year: 2026,
       loaded: true,
-      label: '2026 as posted',
+      // The server's wording (_posted_label): its basis and as-of date, printed with its figures.
+      label: '2026, posted (as of Jan 3, 2027)',
       rules_version: 7,
       view: committee(649247, true),
     },
