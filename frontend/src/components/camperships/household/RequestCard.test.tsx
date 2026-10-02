@@ -79,7 +79,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(screen.getByText('rules now $67 higher · posted stands')).toBeInTheDocument()
     expect(
       screen.getByText(
-        "Today's rules would change Round 1 by $67. The posted $1,420 stands; this is information only."
+        "Today's rules would raise Round 1 by $67. The posted $1,420 stands; this is information only."
       )
     ).toBeInTheDocument()
   })
