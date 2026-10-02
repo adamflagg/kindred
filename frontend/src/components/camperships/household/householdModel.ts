@@ -23,6 +23,7 @@ import { CANCEL_REASON_OPTIONS } from '../kit/editor'
 import type { PillTone } from '../kit/kitStyles'
 import { formatMoney, moneyCsv, toCents } from '../kit/money'
 import { codeWords } from '../requests/attention'
+import { LIVE_REQUEST_STATUSES } from '../requests/gridEditor'
 import { ROUND_STATUS_WORDS, roundTone } from '../requests/stage'
 
 const nonEmpty = (text: string) => text.trim() !== ''
@@ -284,6 +285,22 @@ const HOLD_WORDS: Readonly<Record<string, string>> = {
 
 export function holdWords(code: string): string {
   return HOLD_WORDS[code] ?? codeWords(code)
+}
+
+/**
+ * A request that isn't live says so (the page shows every request of its households, and a
+ * non-live one keeps only its posted rounds). "Possible duplicate" is the grid's own phrase for
+ * duplicate_pending (requests/attention.ts); the others name the server's status.
+ */
+const STATUS_WORDS: Readonly<Record<string, string>> = {
+  duplicate_pending: 'Possible duplicate',
+  duplicate: 'Duplicate',
+  withdrawn: 'Withdrawn',
+}
+
+export function requestStatusWords(status: string | null): string | null {
+  if (status === null || LIVE_REQUEST_STATUSES.includes(status)) return null
+  return STATUS_WORDS[status] ?? codeWords(status)
 }
 
 const CANCEL_WORDS = new Map(CANCEL_REASON_OPTIONS.map((o) => [o.value, o.label] as const))
