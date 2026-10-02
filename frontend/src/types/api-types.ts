@@ -36,14 +36,17 @@ import type {
   ApplicationDetailResponse,
   ApprovedRulesOut,
   AskIn,
+  BudgetResponse,
   BunkGraphResponse,
   CamperJourneyCounts,
   CamperJourneyResponse,
   CamperJourneyRow,
   CancellationIn,
   CancellationOut,
+  CellOut,
   ConfirmationOut,
   ConfirmationStateOut,
+  CountOut,
   CorrectionCreate,
   CorrectionOut,
   CrossScopeEdge,
@@ -74,7 +77,9 @@ import type {
   PostedIn,
   PreviewIn,
   ReceiptOut,
+  PoolBudgetOut,
   RemainingResponse,
+  RoundCountsOut,
   TodayLineOut,
   TodayResponse,
   RequestOut,
@@ -203,3 +208,11 @@ export type ApiAidHeadcountIn = HeadcountSet
 export type ApiAidHouseholdLink = HouseholdLinkRow
 /** A hold, note or check on a request. Mirrors Python `IssueOut`. */
 export type ApiAidIssue = IssueOut
+
+/** Rounds & budget (spec §7.2; slice 2). Mirrors Python `BudgetResponse` and its parts. */
+export type ApiAidBudget = BudgetResponse
+export type ApiAidBudgetPool = PoolBudgetOut
+export type ApiAidBudgetCell = CellOut
+export type ApiAidRoundCounts = RoundCountsOut
+/** "3 families · 4 requests" (principle 7). Mirrors Python `CountOut`. */
+export type ApiAidCount = CountOut
