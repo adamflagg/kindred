@@ -172,6 +172,8 @@ describe('BulkConfirmDialog (§4.10)', () => {
     expect(screen.getByText(/Nothing to tick on Liam Garcia/)).toBeInTheDocument()
   })
 
+  // Two guards stop a double submit (`disabled={busy}` and `if (busy) return` in confirm), so dropping
+  // either alone is an equivalent mutant; dropping BOTH makes this fail (checked in the PR 4 fix wave).
   it('sends one write for a double click (the button is disabled once it is in flight)', async () => {
     let finish: (v: unknown) => void = () => undefined
     posted.mockImplementation(() => new Promise((resolve) => (finish = resolve)))
@@ -316,5 +318,19 @@ describe('BulkConfirmDialog (§4.10)', () => {
     expect(
       screen.getByText('Tick Posted on 2 requests · 2 families · $2,200 locked')
     ).toBeInTheDocument()
+  })
+
+  it('reads "Nothing to tick" for an empty plan, not a $0 lock (PR 4 review M2)', () => {
+    render(
+      <BulkConfirmDialog
+        plan={tickPlan([ROW_LIAM], 'posted')}
+        year={2027}
+        onClose={() => undefined}
+        onDone={onDone}
+      />
+    )
+    expect(screen.getByText('Nothing to tick')).toBeInTheDocument()
+    expect(screen.queryByText(/0 requests/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   })
 })

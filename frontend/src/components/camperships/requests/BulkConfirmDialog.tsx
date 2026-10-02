@@ -114,7 +114,9 @@ export function BulkConfirmDialog({
       }
     >
       <div className="space-y-2 text-sm">
-        <p className="font-medium">{tickWords(plan)}</p>
+        <p className="font-medium">
+          {plan.rows.length === 0 ? 'Nothing to tick' : tickWords(plan)}
+        </p>
         {plan.action === 'posted' && (
           <p className="text-muted-foreground text-xs">
             Tick what is already entered in CampMinder: posting there is the offer, and each tick

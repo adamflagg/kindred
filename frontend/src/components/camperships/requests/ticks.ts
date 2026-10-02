@@ -213,3 +213,18 @@ export const tickedLine = (row: TickRow) => `${row.label} R${String(row.round)}`
  * or nothing), so any 4xx answer means nothing moved. A dropped connection or a 5xx doesn't say.
  */
 export const wroteNothing = (status: number) => status >= 400 && status < 500
+
+/**
+ * The ticked keys not on screen: not in the table's matching rows AND the page's visible rows. The
+ * table's set lags a render behind a view or filter change, so it is never trusted past the page's
+ * own (null: the table hasn't spoken yet).
+ */
+export function hiddenTicks(
+  tickedKeys: readonly string[],
+  matching: ReadonlySet<string> | null,
+  visibleKeys: ReadonlySet<string>
+): ReadonlySet<string> {
+  return new Set(
+    tickedKeys.filter((key) => !visibleKeys.has(key) || (matching !== null && !matching.has(key)))
+  )
+}
