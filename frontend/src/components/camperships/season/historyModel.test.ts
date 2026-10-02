@@ -305,6 +305,16 @@ describe("an operation's line (D49: one readable line per operation)", () => {
     )
     expect(operationWords(OP_RULES_APPROVE).reason).toBe('Finance committee')
     expect(operationWords(OP_RULES_SAVE).what).toBe('Rules v4 · Saved')
+    // A created version reads as one (V10): what the server logs for it is create / new_version.
+    for (const action of ['create', 'new_version']) {
+      expect(
+        operationWords({
+          ...OP_RULES_SAVE,
+          rules_versions: [5],
+          counts: [{ entity: 'aid_rules', action, rows: 1 }],
+        }).what
+      ).toBe('Rules v5 · New version')
+    }
     expect(
       operationWords({
         ...OP_RULES_APPROVE,

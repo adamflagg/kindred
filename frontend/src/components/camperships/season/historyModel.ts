@@ -222,7 +222,7 @@ const ACTION_WORDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
   },
   aid_grant_placements: { place: 'Placed', remove: 'Removed' },
   aid_rules: {
-    create: 'Created',
+    create: 'New version',
     save: 'Saved',
     approve: 'Approved',
     lock: 'Locked',
@@ -492,8 +492,8 @@ export function rowView(row: ApiAidHistoryRow): RowView {
 }
 
 /**
- * "Open v4 in Rules ›" (D49): the newest version the operation touched, at the first section it
- * touched (an approval of two opens on the first, not the tab's default). The link keeps the page's
+ * "Open v4 in Rules ›" (D49): the newest version the operation touched, at its first section (the server
+ * lists them sorted by key, so an approval of two opens on the first of those, not the tab's default). The link keeps the page's
  * as-of (D15; PR 3's I6 fix on the Rules tab).
  */
 export function rulesLink(
