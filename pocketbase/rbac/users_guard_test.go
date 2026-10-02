@@ -434,8 +434,9 @@ func TestUsersAuthHardening(t *testing.T) {
 			},
 		},
 		{
-			// Re-login goes through the admin-sync + last-login hooks, which
-			// save with app.Save (a model save, no request hooks). Role-derived
+			// Re-login goes through the admin-sync hook, which saves is_admin with
+			// app.Save (a model save, no request hooks), and the last-login hook's
+			// column-only stamps. Role-derived
 			// permissions must survive it; is_admin follows the IdP group.
 			Name:           "OAuth2 re-login: admin sync still applies and existing permissions survive",
 			Method:         http.MethodPost,
