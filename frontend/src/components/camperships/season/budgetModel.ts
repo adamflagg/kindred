@@ -408,25 +408,25 @@ export function belowTheLine(
 export interface TypeLine {
   readonly key: string
   readonly label: string
-  /** The type's `own`: what its own requests posted, which is what the line leads with. */
+  /**
+   * The type's `own`, which the line leads with (owner ⚠2): its own top-up and discretionary money
+   * inside its rounds, posted or not (budget.py DecisionTypeLine.own). Often small or $0; always $0
+   * on the "No named decision type" line, which the server sends as it is.
+   */
   readonly lead: number | null
-  /** The type's `amount`: all the money in the rounds it touches. */
+  /** The type's `amount`, the Rounds total column: all the money in the rounds it touches. */
   readonly amount: number | null
   /** Requests, not families. */
   readonly count: ApiAidCount | null
-  readonly note: string | null
 }
 
 function typeLine(type: ApiAidDecisionTypeLine): TypeLine {
-  const differs =
-    type.own !== null && type.amount !== null && toCents(type.own) !== toCents(type.amount)
   return {
     key: `type:${type.key ?? 'none'}`,
     label: type.label,
     lead: type.own,
     amount: type.amount,
     count: type.requests,
-    note: differs ? `in rounds totalling ${formatMoney(type.amount)}` : null,
   }
 }
 

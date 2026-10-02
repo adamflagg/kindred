@@ -200,19 +200,31 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(within(held).getByText(/amount unknown until resolved/)).toBeInTheDocument()
   })
 
-  it("shows the budget by decision type, leading with the type's own money (owner ⚠2)", () => {
+  it("shows the budget by decision type, leading with the type's own money (owner ⚠2; final review ⚠1)", () => {
     renderAt('/aid/season/rounds-budget')
     expect(screen.getByText('In the budget, by decision type')).toBeInTheDocument()
+    for (const name of ['Decision type', 'Requests', 'Own money', 'Rounds total']) {
+      expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
+    }
     expect(keys('data-type-line')).toEqual(['type:standard', 'type:appeal', 'type:none'])
     const standard = typeLine('type:standard')
-    expect(standard).toHaveTextContent('Standard award')
-    expect(within(standard).getByText('324 fam · 345 req')).toBeInTheDocument()
-    expect(within(standard).getByText('$737,400')).toBeInTheDocument()
-    expect(standard).toHaveTextContent('in rounds totalling $752,510')
-    expect(within(typeLine('type:appeal')).getByText('$95,540')).toBeInTheDocument()
+    expect(
+      within(standard)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['Standard award', '324 fam · 345 req', '$14,400', '$751,970'])
+    expect(standard).not.toHaveTextContent('in rounds totalling')
+    expect(
+      within(typeLine('type:appeal'))
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['Appeal', '40 fam · 44 req', '$4,200', '$95,540'])
     const none = typeLine('type:none')
-    expect(none).toHaveTextContent('No named decision type')
-    expect(within(none).getByText('$0')).toBeInTheDocument()
+    expect(
+      within(none)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['No named decision type', '1 fam · 1 req', '$0', '$1,200'])
     // The outside-budget type is below the line, not in this block.
     expect(document.querySelector('[data-type-line="type:outside"]')).toBeNull()
   })
@@ -220,8 +232,11 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
   it('scopes the decision types to one pool, and shows no block when it has none', () => {
     renderAt('/aid/season/rounds-budget?pool=pool_b')
     expect(keys('data-type-line')).toEqual(['type:standard'])
-    expect(typeLine('type:standard')).not.toHaveTextContent('in rounds totalling')
-    expect(within(typeLine('type:standard')).getByText('$52,400')).toBeInTheDocument()
+    expect(
+      within(typeLine('type:standard'))
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['Standard award', '24 fam · 25 req', '$2,400', '$52,400'])
   })
 
   it('shows no decision-type block when the read has no lines', () => {
@@ -240,7 +255,8 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(screen.getByText(/never an estimate/)).toBeInTheDocument()
     expect(within(line('total')).getAllByText('—').length).toBeGreaterThan(0)
     const standard = typeLine('type:standard')
-    expect(within(standard).getAllByText('—')).toHaveLength(2)
+    // Requests, Own money and Rounds total: the past date masks all three.
+    expect(within(standard).getAllByText('—')).toHaveLength(3)
     // The server keeps `posted`, so an outside type reads "—" with its posted note.
     const outside = below('outside_type:outside')
     expect(within(outside).getByText('—')).toBeInTheDocument()
