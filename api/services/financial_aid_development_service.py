@@ -1078,7 +1078,7 @@ def _funding_source(
         incentive=source.incentive,
         group=group,
         group_label=labels.get(group, group) if group is not None else ("several groups" if pools else ""),
-        needs_group=needs_group(source),  # the ledger's rule (D100): an outside source with no group, never the camp's
+        needs_group=needs_group(source),  # the ledger's rule (D100): outside or incentive with no group, never camp's
         families=list(source.implied_program_families),
         lines=counted[0] if counted is not None else None,
         amount=money(counted[1]) if counted is not None else None,

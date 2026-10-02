@@ -413,7 +413,7 @@ class FundingSourceOut(BaseModel):
     incentive: bool
     group: str | None  # the season's pool its program families fund; None: none set, or several
     group_label: str
-    needs_group: bool  # D100's "needs a group" line: no program family set
+    needs_group: bool  # D100's "needs a group" line: an outside or incentive source with no program family set
     families: list[str]  # the stored program families (implied_program_families)
     lines: int | None = None  # the season's live lines this classifies now; None: not counted (a save's answer)
     amount: float | None = None  # their net, in aid dollars
