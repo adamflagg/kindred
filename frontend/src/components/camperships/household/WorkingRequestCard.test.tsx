@@ -337,3 +337,84 @@ describe('WorkingRequestCard exits (F2 4/5: every page-owned exit goes through t
     expect(screen.getByText('Statement of need is required')).toBeInTheDocument()
   })
 })
+
+describe('WorkingRequestCard: round actions beside an open money editor (I2)', () => {
+  const R2_OFFER = gridRow({
+    ...ROW_OLIVIA,
+    rounds: [
+      roundOut(1, 'posted', { ask: 2500, decided: 1420, posted: 1420, posted_on: '2027-03-09' }),
+      roundOut(2, 'needs_offer', { ask: 1200, decided: 900 }),
+    ],
+  })
+
+  it('takes Mark posted away while an edit is open, and brings it back on Esc', async () => {
+    renderCards([R2_OFFER])
+    expect(screen.getByRole('button', { name: 'Mark posted · locks $900' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300')
+    expect(screen.queryByRole('button', { name: /Mark posted/ })).toBeNull()
+    expect(screen.getByText('save or close the edit first')).toBeInTheDocument()
+    for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'Mark posted · locks $900' })).toBeInTheDocument()
+  })
+})
+
+describe('WorkingRequestCard: an editor the row stops offering closes (m1)', () => {
+  it('drops the Round 3 ask editor once Round 1 is no longer posted', async () => {
+    const { rerender } = renderCards([ROW_OLIVIA])
+    await userEvent.click(screen.getByRole('button', { name: 'Round 3 ask…' }))
+    expect(screen.getByLabelText('Round 3 ask')).toBeInTheDocument()
+    const undone = gridRow({
+      ...ROW_OLIVIA,
+      rounds: [roundOut(1, 'needs_offer', { ask: 2500, decided: 1800 })],
+    })
+    rerender(<Cards rows={[undone]} />)
+    expect(screen.queryByLabelText('Round 3 ask')).toBeNull()
+  })
+})
+
+describe('WorkingRequestCard: a non-live request takes no cancellation write (m2)', () => {
+  it('offers no reason on a withdrawn CampMinder cancellation', () => {
+    renderCards([gridRow({ ...ROW_RILEY, request_status: 'withdrawn' })])
+    expect(screen.queryByRole('button', { name: 'Give a reason…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Change the reason…' })).toBeNull()
+  })
+
+  it('offers no reopen or change on a withdrawn Kindred cancellation', () => {
+    renderCards([gridRow({ ...KINDRED_CANCELLED, request_status: 'withdrawn' })])
+    expect(screen.queryByRole('button', { name: 'Reopen…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Change the reason…' })).toBeNull()
+  })
+
+  it('offers no Put back on a withdrawn request with a released hold', () => {
+    renderCards([
+      gridRow({
+        ...ROW_EMMA,
+        request_status: 'withdrawn',
+        released_holds: [
+          {
+            code: 'py_confirm_tier_change',
+            note: 'ok',
+            released_by: 'Emma Johnson',
+            released_at: '2027-03-01T10:00:00Z',
+          },
+        ],
+      }),
+    ])
+    expect(screen.queryByRole('button', { name: 'Put back…' })).toBeNull()
+  })
+})
+
+describe('WorkingRequestCard: the open editor’s own button (m3)', () => {
+  it('is a no-op: nothing is saved and the draft stays', async () => {
+    renderCards()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    expect(ask).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+  })
+})

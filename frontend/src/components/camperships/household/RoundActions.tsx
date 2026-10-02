@@ -10,9 +10,11 @@ import type { ApiAidHouseholdRequest } from '../../../types/api-types'
 import { AMBER_NOTE, BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { formatShortDate } from '../kit/dates'
 import { formatMoney } from '../kit/money'
+import { cancelledInKindred } from '../requests/ticks'
 import type { RoundLine } from './householdModel'
 import { ReasonForm } from './ReasonForm'
 
+const MUTED = 'text-muted-foreground text-xs'
 const asRound = (n: number): 1 | 2 | 3 | null => (n === 1 || n === 2 || n === 3 ? n : null)
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Couldn't save")
 
@@ -39,10 +41,13 @@ export function RoundChecklist({
   request,
   line,
   year,
+  editing = false,
 }: {
   request: ApiAidHouseholdRequest
   line: RoundLine
   year: number
+  /** This card has a money editor open: the round's writes wait for it (the tick would lock its figure). */
+  editing?: boolean | undefined
 }) {
   const undo = useAidUndoPosted()
   const accept = useAidTickAccepted()
@@ -59,7 +64,7 @@ export function RoundChecklist({
           <input
             type="checkbox"
             checked={line.posted}
-            disabled={!line.posted}
+            disabled={!line.posted || editing}
             onChange={() => setUndoing(true)}
           />
           {postedText}
@@ -68,7 +73,13 @@ export function RoundChecklist({
           <input
             type="checkbox"
             checked={line.accepted}
-            disabled={!line.posted || accept.isPending}
+            // The server refuses ticking Accepted on a Kindred cancellation, never unticking it.
+            disabled={
+              !line.posted ||
+              accept.isPending ||
+              editing ||
+              (cancelledInKindred(request.row) && !line.accepted)
+            }
             onChange={(event) => {
               setError(null)
               accept.mutate(
@@ -119,11 +130,14 @@ export function RoundNextAction({
   line,
   year,
   canApprove,
+  editing = false,
 }: {
   request: ApiAidHouseholdRequest
   line: RoundLine
   year: number
   canApprove: boolean
+  /** This card has a money editor open: Mark posted and the decision wait for it. */
+  editing?: boolean | undefined
 }) {
   const posted = useAidTickPosted()
   const decide = useAidRound3Decision()
@@ -140,6 +154,7 @@ export function RoundNextAction({
     setError(null)
   }
 
+  const cancelled = cancelledInKindred(request.row)
   if (line.status === 'needs_offer' && line.decided !== null && round !== null) {
     const amount = line.decided
     // The server posts rounds in order: a later round waits on the first one not yet posted.
@@ -151,6 +166,8 @@ export function RoundNextAction({
         <span className="text-muted-foreground text-xs">{`after Round ${String(blocking.round)} is posted`}</span>
       )
     }
+    if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
+    if (editing) return <span className={MUTED}>save or close the edit first</span>
     return (
       <div className="flex flex-col items-start gap-1">
         <button
@@ -172,6 +189,8 @@ export function RoundNextAction({
     )
   }
   if (line.status === 'pending_approval' && canApprove) {
+    if (cancelled) return <span className={MUTED}>Cancelled in Kindred: reopen it first</span>
+    if (editing) return <span className={MUTED}>save or close the edit first</span>
     if (deciding === null) {
       return (
         <div className="flex gap-2">
