@@ -15,6 +15,7 @@ import { formatGap, formatMoney, toCents } from '../kit/money'
 import type { PillTone } from '../kit/kitStyles'
 import type { CellValue, FitContent } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
+import { LIVE_REQUEST_STATUSES } from './gridEditor'
 import { latestRound, requestStage, roundOf } from './stage'
 
 export type RequestViewKey = 'all' | ApiAidQueue
@@ -534,6 +535,19 @@ export interface GridFilters {
   readonly tick: TickFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
   readonly ids: ReadonlySet<string> | null
+  /** Only rounds whose money counts toward the budget (Rounds & budget's figures; plan review I5). */
+  readonly counted: boolean
+  /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
+  readonly live: boolean
+}
+
+/** A live request, as the budget's demand counts one: a live status and not cancelled (`request.live`). */
+export function isLiveRow(row: ApiAidGridRow): boolean {
+  return (
+    row.request_status !== null &&
+    LIVE_REQUEST_STATUSES.includes(row.request_status) &&
+    (row.cancellation ?? null) === null
+  )
 }
 
 export const NO_FILTERS: GridFilters = {
@@ -542,15 +556,20 @@ export const NO_FILTERS: GridFilters = {
   round: null,
   tick: null,
   ids: null,
+  counted: false,
+  live: false,
 }
 
 function matchesRound(
   row: ApiAidGridRow,
   round: RoundFilter | null,
-  tick: TickFilter | null
+  tick: TickFilter | null,
+  counted: boolean
 ): boolean {
-  if (round === null && tick === null) return true
-  const rounds = round === null ? row.rounds : row.rounds.filter((r) => r.round === round)
+  if (round === null && tick === null && !counted) return true
+  const rounds = row.rounds.filter(
+    (r) => (round === null || r.round === round) && (!counted || r.counts_toward_budget)
+  )
   if (tick === null) return rounds.length > 0
   return rounds.some(
     (r) => r.status === 'posted' && r.clawed_back !== true && (tick === 'posted' || r.accepted)
@@ -567,7 +586,8 @@ export function filterRows(
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
-      matchesRound(row, filters.round, filters.tick) &&
+      (!filters.live || isLiveRow(row)) &&
+      matchesRound(row, filters.round, filters.tick, filters.counted) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }

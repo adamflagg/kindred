@@ -60,10 +60,12 @@ export function gridFiltersFrom(params: URLSearchParams): {
   const sort = params.get('sort')
   const group = params.get('group')
   const showIds = params.get('ids') === '1'
+  const counted = params.get('counted') === '1'
+  const live = params.get('live') === '1'
   const todayParam = params.get('today')
   const todayKey = todayParam !== null && isListedTodayKey(todayParam) ? todayParam : null
   return {
-    filters: { program, pool, round, tick, ids: null },
+    filters: { program, pool, round, tick, counted, live, ids: null },
     keep: {
       // The lens (T4) rides along with the filters: a step and Back stay under it.
       ...(lens === 'appeals' ? { lens } : {}),
@@ -71,6 +73,8 @@ export function gridFiltersFrom(params: URLSearchParams): {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(tick !== null ? { tick } : {}),
+      ...(counted ? { counted: '1' } : {}),
+      ...(live ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(todayKey !== null ? { today: todayKey } : {}),
       ...(sort !== null ? { sort } : {}),

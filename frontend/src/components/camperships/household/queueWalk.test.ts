@@ -34,8 +34,27 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
     const { filters, keep } = gridFiltersFrom(
       new URLSearchParams('from=all&program=quest&round=2&tick=posted&ids=1&year=2027')
     )
-    expect(filters).toEqual({ program: 'quest', pool: null, round: 2, tick: 'posted', ids: null })
+    expect(filters).toEqual({
+      program: 'quest',
+      pool: null,
+      round: 2,
+      tick: 'posted',
+      counted: false,
+      live: false,
+      ids: null,
+    })
     expect(keep).toEqual({ program: 'quest', round: '2', tick: 'posted', ids: '1' })
+  })
+
+  it("carries the grid's counted and live filters, so the walk and Back stay on its rows", () => {
+    const { filters, keep } = gridFiltersFrom(
+      new URLSearchParams('from=all&counted=1&live=1&year=2027')
+    )
+    expect(filters).toMatchObject({ counted: true, live: true })
+    expect(keep).toEqual({ counted: '1', live: '1' })
+    const none = gridFiltersFrom(new URLSearchParams('from=all&counted=0'))
+    expect(none.filters).toMatchObject({ counted: false, live: false })
+    expect(none.keep).toEqual({})
   })
 
   it('keeps a Today line on the household link, so Back and the walk stay on it', () => {
