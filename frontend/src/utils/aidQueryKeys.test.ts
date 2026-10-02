@@ -66,6 +66,8 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'household-page'],
       ['financial-aid', 'application'],
       ['financial-aid', 'rules'],
+      // Every write logs a row (spec §4.11), so every write moves Season › History (D49).
+      ['financial-aid', 'history'],
     ])
   })
 
@@ -80,6 +82,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
       ['financial-aid', 'household-page'],
       ['financial-aid', 'application'],
       ['financial-aid', 'rules'],
+      ['financial-aid', 'history'],
       ['financial-aid', 'jump-index'],
     ])
     expect(queryKeys.aidJumpIndex(2027).slice(0, 2)).toEqual(queryKeys.aidJumpIndexPrefix())
@@ -125,6 +128,8 @@ describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
     expect(keysOf(invalidateQueries)).toEqual([
       ['financial-aid', 'rules'],
       ['financial-aid', 'today'],
+      // A draft save logs a rules row too (D49), though it prices nothing.
+      ['financial-aid', 'history'],
     ])
   })
 
@@ -135,6 +140,8 @@ describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
     expect(keys).toContainEqual(['financial-aid', 'budget'])
     expect(keys).toContainEqual(['financial-aid', 'grid'])
     expect(keys).toContainEqual(['financial-aid', 'household-page'])
+    // History once, through the money helper: a second invalidation would restart the first refetch.
+    expect(keys.filter((key) => key[1] === 'history')).toHaveLength(1)
     expect(queryKeys.aidRulesDraft(2027).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
     expect(queryKeys.aidRulesApproved(2027, 3).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
   })
@@ -144,5 +151,20 @@ describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
     void invalidateAidRulesQueries({ invalidateQueries }, { priced: true })
     const keys = keysOf(invalidateQueries).map((k) => JSON.stringify(k))
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe("Season › History's keys (D49)", () => {
+  it('sit under the history prefix, apart per season, query and operation', () => {
+    const query = { kind: 'holds', per_page: '50' }
+    expect(queryKeys.aidHistory(2027, query).slice(0, 2)).toEqual(queryKeys.aidHistoryPrefix())
+    expect(queryKeys.aidHistoryOperation(2027, 'op0000000000003').slice(0, 2)).toEqual(
+      queryKeys.aidHistoryPrefix()
+    )
+    expect(queryKeys.aidHistory(2027, query)).not.toEqual(queryKeys.aidHistory(2028, query))
+    expect(queryKeys.aidHistory(2027, query)).not.toEqual(
+      queryKeys.aidHistory(2027, { per_page: '50' })
+    )
+    expect(queryKeys.aidHistoryPrefix()[0]).toBe(queryKeys.aidPrefix()[0])
   })
 })
