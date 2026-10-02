@@ -5982,6 +5982,49 @@ export type HistoryEntryOut = {
 }
 
 /**
+ * HistoryFiguresOut
+ *
+ * What an operation's rows add up to, as recorded (D49; back-end ask H1). Each money figure keeps its basis and
+ * none is added to another (D20). None: the operation has no row of that kind; 0 is a real zero (D74).
+ */
+export type HistoryFiguresOut = {
+  /**
+   * Requests
+   */
+  requests: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Locked
+   */
+  locked: number | null
+  /**
+   * Round3 Entered
+   */
+  round3_entered: number | null
+  /**
+   * Asked
+   */
+  asked: number | null
+}
+
+/**
+ * HistoryKindCountOut
+ */
+export type HistoryKindCountOut = {
+  /**
+   * Kind
+   */
+  kind: 'rules' | 'offers' | 'money' | 'holds' | 'grants' | 'intake'
+  /**
+   * Operations
+   */
+  operations: number
+}
+
+/**
  * HistoryOperationDetailOut
  */
 export type HistoryOperationDetailOut = {
@@ -6036,6 +6079,11 @@ export type HistoryOperationOut = {
    * Rules Sections
    */
   rules_sections: Array<string>
+  /**
+   * Summary
+   */
+  summary: string
+  figures: HistoryFiguresOut
 }
 
 /**
@@ -6066,6 +6114,30 @@ export type HistoryPageOut = {
    * Actors
    */
   actors: Array<string>
+  /**
+   * Kind Counts
+   */
+  kind_counts: Array<HistoryKindCountOut>
+}
+
+/**
+ * HistoryParentDiffOut
+ *
+ * A created rules version against the version it was copied from (H4), as that version is stored.
+ */
+export type HistoryParentDiffOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Version
+   */
+  version: number
+  /**
+   * Changes
+   */
+  changes: Array<FieldChangeOut>
 }
 
 /**
@@ -6112,6 +6184,19 @@ export type HistoryRowOut = {
    * Changes
    */
   changes: Array<FieldChangeOut>
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number | null
+  /**
+   * Household Name
+   */
+  household_name: string | null
+  /**
+   * Camper Name
+   */
+  camper_name: string | null
+  against_parent: HistoryParentDiffOut | null
 }
 
 /**

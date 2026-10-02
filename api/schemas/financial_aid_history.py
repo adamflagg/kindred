@@ -19,6 +19,17 @@ class HistoryCountOut(BaseModel):
     rows: int
 
 
+class HistoryFiguresOut(BaseModel):
+    """What an operation's rows add up to, as recorded (D49; back-end ask H1). Each money figure keeps its basis and
+    none is added to another (D20). None: the operation has no row of that kind; 0 is a real zero (D74)."""
+
+    requests: int  # the distinct requests its rows name
+    families: int  # the distinct households those rows are about
+    locked: float | None  # its Posted ticks: the sum of the amounts they locked (D51, D52)
+    round3_entered: float | None  # its Round 3 amounts entered: Decided, maybe pending approval, never "awarded" (D80)
+    asked: float | None  # its asks entered: what the family asked for, not aid
+
+
 class HistoryOperationOut(BaseModel):
     operation_id: str
     at: datetime  # when its last row was recorded
@@ -29,6 +40,13 @@ class HistoryOperationOut(BaseModel):
     counts: list[HistoryCountOut]  # by entity, then action
     rules_versions: list[int]  # the rules versions it touched ("Open vN in Rules")
     rules_sections: list[str]  # the rules sections it approved or locked
+    summary: str  # "7 requests · 6 families · $9,840 locked"; "" when it names no request, family or money
+    figures: HistoryFiguresOut
+
+
+class HistoryKindCountOut(BaseModel):
+    kind: HistoryKind
+    operations: int  # what `total` would be with this chip alone picked, every other filter kept (H5)
 
 
 class HistoryPageOut(BaseModel):
@@ -38,6 +56,15 @@ class HistoryPageOut(BaseModel):
     total: int  # operations matching the filters
     operations: list[HistoryOperationOut]  # newest first
     actors: list[str]  # everyone with an operation this reader can see: the person filter's choices
+    kind_counts: list[HistoryKindCountOut]  # the reader's chips, in the mock's order; Rules only with rules
+
+
+class HistoryParentDiffOut(BaseModel):
+    """A created rules version against the version it was copied from (H4), as that version is stored."""
+
+    year: int  # the parent's season (last season's for "Start from last year")
+    version: int
+    changes: list[FieldChangeOut]  # paths start ["document", <section>, ...] or ["section_status", <section>, ...]
 
 
 class HistoryRowOut(BaseModel):
@@ -50,6 +77,10 @@ class HistoryRowOut(BaseModel):
     before: dict[str, Any] | None
     after: dict[str, Any] | None
     changes: list[FieldChangeOut]  # the field-level diff ("Round 1 %, tier 3: 74.5 -> 72")
+    household_cm_id: int | None  # the household the row is about (H2); None when it names none (rules, grantors, ...)
+    household_name: str | None  # None when the household has no record this season (the grid would say "Household N")
+    camper_name: str | None  # None for a family-level row (an application, a household's own request)
+    against_parent: HistoryParentDiffOut | None  # only on a row that created a rules version with a parent (H4)
 
 
 class HistoryOperationDetailOut(BaseModel):

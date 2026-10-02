@@ -137,3 +137,85 @@ async def test_one_operation_is_read_whole_and_only_by_a_well_formed_id() -> Non
     assert query == {"filter": 'year = 2027 && operation_id = "abc123def456ghi"', "sort": "created,id"}
     with pytest.raises(ValueError, match="operation"):
         await fetch_operation(pb, 2027, 'x" || year > 0 || "')
+
+
+@pytest.mark.asyncio
+async def test_the_subject_reads_are_five_light_season_lists() -> None:
+    from api.services.financial_aid_change_log_reads import fetch_subject_records
+
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    assert await fetch_subject_records(pb, 2027) == ([], [], [], [], [])
+    assert {c.args[0] for c in pb.collection.call_args_list} == {
+        "aid_requests",
+        "aid_applications",
+        "aid_application_corrections",
+        "aid_grants",
+        "aid_household_links",
+    }
+    queries = [c.kwargs["query_params"] for c in pb.collection.return_value.get_full_list.call_args_list]
+    assert {q["filter"] for q in queries} == {"year = 2027"}
+    assert sorted(q["fields"] for q in queries) == sorted(
+        [
+            "id,application,household_cm_id,person_cm_id",
+            "id,household_cm_id",  # applications
+            "id,application",
+            "id,household_cm_id",  # grants
+            "id,household_cm_id",  # household links
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_recorded_rows_are_read_a_chunk_of_operations_at_a_time() -> None:
+    from api.services.financial_aid_change_log_reads import fetch_recorded
+
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    ids = [f"{i:015d}" for i in range(60)]
+    await fetch_recorded(pb, 2027, ids, ["aid_decisions"])
+    queries = [c.kwargs["query_params"] for c in pb.collection.return_value.get_full_list.call_args_list]
+    assert 1 < len(queries) < len(ids)  # chunked: never one read per operation
+    assert all(len(q["filter"]) <= 3000 for q in queries)
+    assert all(q["filter"].startswith('year = 2027 && (entity = "aid_decisions") && (') for q in queries)
+    assert sum(q["filter"].count("operation_id =") for q in queries) == 60
+    assert set(queries[0]["fields"].split(",")) == {"id", "operation_id", "entity", "action", "after"}
+    assert await fetch_recorded(pb, 2027, [], ["aid_decisions"]) == []
+    with pytest.raises(ValueError, match="operation"):
+        await fetch_recorded(pb, 2027, ['x" || year > 0 || "'], ["aid_decisions"])
+    with pytest.raises(ValueError, match="entity"):
+        await fetch_recorded(pb, 2027, ids[:1], ['aid_x" || "'])
+
+
+@pytest.mark.asyncio
+async def test_a_rules_version_is_read_by_season_and_number() -> None:
+    from api.services.financial_aid_change_log_reads import fetch_rules_version
+
+    pb = MagicMock()
+    stored = SimpleNamespace(id="rules0000000003")
+    pb.collection.return_value.get_full_list.return_value = [stored]
+    assert await fetch_rules_version(pb, 2027, 3) is stored
+    pb.collection.assert_called_with("aid_rules")
+    query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert query["filter"] == "year = 2027 && version = 3"
+    pb.collection.return_value.get_full_list.return_value = []
+    assert await fetch_rules_version(pb, 2027, 9) is None
+
+
+@pytest.mark.asyncio
+async def test_names_are_read_in_id_chunks_and_named_as_the_grid_names_them() -> None:
+    from api.services.financial_aid_change_log_reads import HistoryLogReads
+
+    households, persons = MagicMock(), MagicMock()
+    households.get_full_list.return_value = [
+        SimpleNamespace(cm_id=1000001, mailing_title="The Johnson Family", greeting="")
+    ]
+    persons.get_full_list.return_value = [
+        SimpleNamespace(cm_id=1000011, preferred_name="", first_name="Emma", last_name="Johnson")
+    ]
+    pb = MagicMock()
+    pb.collection.side_effect = {"households": households, "persons": persons}.__getitem__
+    out = await HistoryLogReads(pb).fetch_names(2027, range(1000001, 1000151), {1000011})
+    assert out == ({1000001: "The Johnson Family"}, {1000011: "Emma Johnson"})
+    assert households.get_full_list.call_count == 2  # 150 households, 100 a read: never one read per family
+    assert persons.get_full_list.call_count == 1

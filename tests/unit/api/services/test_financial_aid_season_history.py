@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import replace
 from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -11,16 +16,24 @@ import api.constants.collections as collections
 from api.services.financial_aid_season_history import (
     ENTITY_KINDS,
     NOT_IN_HISTORY,
+    Figures,
     HistoryFilter,
     HistoryNotFoundError,
     Operation,
     SeasonHistoryService,
+    Subject,
     entry_of,
+    figures,
     for_reader,
     operation_out,
     operations,
+    row_subject,
+    subjects_from,
+    summary_words,
     visible,
 )
+from bunking.financial_aid.rules.lifecycle import initial_status, status_to_json
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
 REG, FIN = "registrar@example.com", "finance@example.com"
 
@@ -163,8 +176,30 @@ def test_a_row_with_no_created_time_has_no_place_in_the_order() -> None:
 
 
 class _Reads:
-    def __init__(self, *records: SimpleNamespace) -> None:
+    """Season › History's reads over in-memory log rows. `subjects` is the season's (requests, applications,
+    corrections, grants, household links) light rows; `versions` the stored rules versions by (year, version). Each
+    read that History must batch counts its calls, and each year-scoped read records the season it was asked for
+    (`years`), so a test can pin "one read, never one per row" and "the right season"."""
+
+    def __init__(
+        self,
+        *records: SimpleNamespace,
+        subjects: tuple[Sequence[Any], Sequence[Any], Sequence[Any], Sequence[Any], Sequence[Any]] = (
+            (),
+            (),
+            (),
+            (),
+            (),
+        ),
+        versions: Mapping[tuple[int, int], SimpleNamespace] | None = None,
+    ) -> None:
         self.records = records
+        self.subjects = subjects
+        self.versions = dict(versions or {})
+        self.name_calls: list[tuple[frozenset[int], frozenset[int]]] = []
+        self.recorded_calls: list[tuple[list[str], list[str]]] = []
+        self.version_calls: list[tuple[int, int]] = []
+        self.years: set[int] = set()  # the seasons the year-scoped reads were asked for
 
     async def fetch_season_log(self, year: int) -> list[SimpleNamespace]:
         return [
@@ -173,6 +208,32 @@ class _Reads:
 
     async def fetch_operation(self, year: int, operation_id: str) -> list[SimpleNamespace]:
         return [r for r in self.records if r.operation_id == operation_id]
+
+    async def fetch_subject_records(self, year: int) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+        self.years.add(year)
+        requests, applications, corrections, grants, links = self.subjects
+        return list(requests), list(applications), list(corrections), list(grants), list(links)
+
+    async def fetch_recorded(
+        self, year: int, operation_ids: Collection[str], entities: Collection[str]
+    ) -> list[SimpleNamespace]:
+        self.years.add(year)
+        self.recorded_calls.append((sorted(operation_ids), sorted(entities)))
+        return [r for r in self.records if r.operation_id in set(operation_ids) and r.entity in set(entities)]
+
+    async def fetch_names(
+        self, year: int, households: Collection[int], persons: Collection[int]
+    ) -> tuple[dict[int, str], dict[int, str]]:
+        self.years.add(year)
+        self.name_calls.append((frozenset(households), frozenset(persons)))
+        return (
+            {h: n for h, n in HOUSEHOLD_NAMES.items() if h in households},
+            {p: n for p, n in PERSON_NAMES.items() if p in persons},
+        )
+
+    async def fetch_rules_version(self, year: int, version: int) -> SimpleNamespace | None:
+        self.version_calls.append((year, version))
+        return self.versions.get((year, version))
 
 
 def _rules_save() -> SimpleNamespace:
@@ -285,3 +346,442 @@ async def test_a_search_for_a_stripped_rows_entity_id_finds_nothing_for_a_reader
     assert quiet.total == 0
     loud = await service.page(2027, HistoryFilter(text="2027:3:budget", rules=True), page=1, per_page=10)
     assert loud.total == 1
+
+
+# --- Back-end asks H1, H2, H4, H5 (fictional families only) -------------------------------------------------------
+
+EMMA, SAMUEL, LIAM = "reqemma00000001", "reqsamuel000001", "reqliam00000001"
+APP_JOHNSON, APP_GARCIA, COR_JOHNSON = "appjohnson00001", "appgarcia000001", "corjohnson00001"
+JOHNSON, GARCIA = 1000001, 1000002
+P_EMMA, P_SAMUEL, P_LIAM = 1000011, 1000012, 1000021
+OP_T = "t" * 15
+REQUEST_ROWS = (
+    SimpleNamespace(id=EMMA, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_EMMA),
+    SimpleNamespace(id=SAMUEL, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_SAMUEL),
+    SimpleNamespace(id=LIAM, application=APP_GARCIA, household_cm_id=GARCIA, person_cm_id=P_LIAM),
+)
+APPLICATION_ROWS = (
+    SimpleNamespace(id=APP_JOHNSON, household_cm_id=JOHNSON),
+    SimpleNamespace(id=APP_GARCIA, household_cm_id=GARCIA),
+)
+CORRECTION_ROWS = (SimpleNamespace(id=COR_JOHNSON, application=APP_JOHNSON),)
+GRANT_GARCIA, LINK_JOHNSON = "grantgarcia0001", "linkjohnson0001"
+GRANT_ROWS = (SimpleNamespace(id=GRANT_GARCIA, household_cm_id=GARCIA),)
+LINK_ROWS = (SimpleNamespace(id=LINK_JOHNSON, household_cm_id=JOHNSON),)
+SEASON = (REQUEST_ROWS, APPLICATION_ROWS, CORRECTION_ROWS, GRANT_ROWS, LINK_ROWS)
+HOUSEHOLD_NAMES = {JOHNSON: "The Johnson Family", GARCIA: "The Garcia Family"}
+PERSON_NAMES = {P_EMMA: "Emma Johnson", P_SAMUEL: "Samuel Johnson", P_LIAM: "Liam Garcia"}
+SUBJECTS = subjects_from(*SEASON)
+
+
+def _row(
+    rid: str,
+    entity: str,
+    entity_id: str,
+    op: str,
+    *,
+    action: str = "update",
+    actor: str = REG,
+    reason: str = "",
+    at: str = "2027-03-09 17:00:00.000Z",
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+) -> SimpleNamespace:
+    row = _rec(rid, entity, entity_id, op, actor=actor, action=action, reason=reason, at=at)
+    row.before, row.after = before, after
+    return row
+
+
+def _tick() -> list[SimpleNamespace]:
+    """The March Posted tick in small: three requests of two families, one of them a real $0 (D74)."""
+    return [
+        _row("t1", "aid_decisions", f"{EMMA}:1", OP_T, action="post", reason="March offers", after={"amount": "1420"}),
+        _row("t2", "aid_decisions", f"{SAMUEL}:1", OP_T, action="post", after={"amount": "980.50"}),
+        _row("t3", "aid_decisions", f"{LIAM}:1", OP_T, action="post", after={"amount": "0"}),
+    ]
+
+
+def test_a_row_is_about_the_request_or_application_its_id_names() -> None:
+    about = SUBJECTS.of
+    assert about("aid_decisions", f"{EMMA}:1") == Subject(JOHNSON, P_EMMA, EMMA)
+    assert about("aid_hold_events", f"{LIAM}:placeholder_income") == Subject(GARCIA, P_LIAM, LIAM)
+    assert about("aid_cancellations", SAMUEL) == Subject(JOHNSON, P_SAMUEL, SAMUEL)
+    assert about("aid_requests", EMMA) == Subject(JOHNSON, P_EMMA, EMMA)
+    # A payer share's id names the request and the PAYING household; the row is about the camper's family.
+    assert about("aid_payer_shares", f"{LIAM}:{JOHNSON}") == Subject(GARCIA, P_LIAM, LIAM)
+    assert about("aid_application_corrections", f"{EMMA}:income") == Subject(JOHNSON, P_EMMA, EMMA)  # an override
+    assert about("aid_application_corrections", COR_JOHNSON) == Subject(JOHNSON, 0, "")  # casework's correction
+    assert about("aid_applications", APP_GARCIA) == Subject(GARCIA, 0, "")
+    # Grants and household links are keyed by their own id; a commitment's placement by its grant's.
+    assert about("aid_grants", GRANT_GARCIA) == Subject(GARCIA, 0, "")
+    assert about("aid_household_links", LINK_JOHNSON) == Subject(JOHNSON, 0, "")
+    assert about("aid_grant_placements", f"commitment:{GRANT_GARCIA}") == Subject(GARCIA, 0, "")
+    assert about("aid_grant_placements", "ledger:9001") is None  # a ledger line's household is only in its own JSON
+    assert about("aid_decisions", "reqnobody000001:1") is None  # not a request of this season
+    assert about("aid_grantors", "regional_fund") is None
+
+
+def test_a_rules_row_is_about_no_one_even_with_a_request_shaped_id() -> None:
+    """Review Focus 1: a rules-class row never names a family, so stripping it (for_reader) leaves no name behind."""
+    for entity in ("aid_rules", "aid_session_capacity"):
+        assert SUBJECTS.of(entity, EMMA) is None
+        assert SUBJECTS.of(entity, f"{EMMA}:1") is None
+    entry = entry_of(_row("x1", "aid_session_capacity", EMMA, OP_R, actor=FIN))
+    assert entry is not None
+    assert row_subject(entry, SUBJECTS, None, {"household_cm_id": JOHNSON}) is None
+
+
+def test_a_row_naming_no_request_is_about_the_household_it_recorded() -> None:
+    entry = entry_of(_row("g1", "aid_grant_placements", "ledger:9001", OP_A, action="place"))
+    assert entry is not None
+    recorded = {"household_cm_id": GARCIA, "grant": "ledger:9001"}
+    assert row_subject(entry, SUBJECTS, None, recorded) == Subject(GARCIA, 0, "")
+    assert row_subject(entry, SUBJECTS, recorded, None) == Subject(GARCIA, 0, "")  # a delete records only `before`
+    assert row_subject(entry, SUBJECTS, None, {"household_cm_id": True}) is None  # never a bool
+    assert row_subject(entry, SUBJECTS, None, None) is None
+
+
+def test_a_posted_tick_reads_its_requests_families_and_the_total_it_locked() -> None:
+    rows = _tick()
+    (op,) = _ops(*rows)
+    f = figures(op, SUBJECTS, {r.id: r.after for r in rows})
+    assert f == Figures(requests=3, families=2, locked=Decimal("2400.50"), round3_entered=None, asked=None)
+    assert summary_words(f) == "3 requests · 2 families · $2,400.50 locked"
+
+
+def test_each_amount_keeps_its_own_basis_and_none_is_added_to_another() -> None:
+    """⚠ Number meaning (Note 6: D49, D20/D74, D80/D130): a lock, a Round 3 amount and an ask are three figures,
+    never one. An `award` row counts as entered for Round 3 only when it is a staff Round 3 amount."""
+    rows = [
+        _row("a1", "aid_decisions", f"{EMMA}:3", OP_A, action="award", after={"amount": "780", "round": 3}),
+        _row("a2", "aid_decisions", f"{EMMA}:2", OP_A, action="ask", after={"amount": "1200"}),
+        _row("a3", "aid_decisions", f"{SAMUEL}:1", OP_A, action="post", after={"amount": "1500"}),
+        # An `award` that is not a staff Round 3 amount (round 1, a discretionary decision type) adds no money.
+        _row(
+            "a4",
+            "aid_decisions",
+            f"{LIAM}:1",
+            OP_A,
+            action="award",
+            after={"amount": "50", "round": 1, "decision_type": "x"},
+        ),
+    ]
+    (op,) = _ops(*rows)
+    f = figures(op, SUBJECTS, {r.id: r.after for r in rows})
+    assert (f.locked, f.round3_entered, f.asked) == (Decimal(1500), Decimal(780), Decimal(1200))
+    assert summary_words(f) == ("3 requests · 2 families · $1,500 locked · $780 entered for Round 3 · $1,200 asked")
+
+
+def test_a_zero_lock_is_a_real_zero_and_an_operation_without_money_says_none() -> None:
+    zero = _row("z1", "aid_decisions", f"{LIAM}:1", OP_A, action="post", after={"amount": "0"})
+    (op,) = _ops(zero)
+    assert summary_words(figures(op, SUBJECTS, {"z1": zero.after})) == "1 request · 1 family · $0 locked"
+    unpost = _row("u1", "aid_decisions", f"{LIAM}:1", OP_B, action="unpost", after={"note": "wrong family"})
+    (op,) = _ops(unpost)
+    f = figures(op, SUBJECTS, {"u1": unpost.after})
+    assert (f.locked, summary_words(f)) == (None, "1 request · 1 family")
+    (rules_op,) = _ops(_rec("r1", "aid_rules", "2027:3:budget", OP_R, actor=FIN, action="approve"))
+    assert summary_words(figures(rules_op, SUBJECTS, {})) == ""
+
+
+def test_a_recorded_amount_that_is_not_a_number_adds_no_money() -> None:
+    rows = [
+        _row("m1", "aid_decisions", f"{EMMA}:1", OP_A, action="post", after={"amount": "n/a"}),
+        _row("m2", "aid_decisions", f"{SAMUEL}:1", OP_A, action="post", after={"amount": True}),
+        _row("m3", "aid_decisions", f"{LIAM}:1", OP_A, action="post", after=None),
+    ]
+    (op,) = _ops(*rows)
+    f = figures(op, SUBJECTS, {r.id: r.after for r in rows})
+    assert (f.requests, f.families, f.locked) == (3, 2, None)
+
+
+@pytest.mark.asyncio
+async def test_the_list_and_the_opened_line_say_the_same_figures() -> None:
+    reads = _Reads(*_tick(), _rules_save(), subjects=SEASON)
+    page = await SeasonHistoryService(reads).page(2027, HistoryFilter(rules=True), page=1, per_page=50)
+    line = next(o for o in page.operations if o.operation_id == OP_T)
+    assert line.summary == "3 requests · 2 families · $2,400.50 locked"
+    assert (line.figures.requests, line.figures.families, line.figures.locked) == (3, 2, 2400.5)
+    assert next(o for o in page.operations if o.operation_id == OP_R).summary == ""
+    # One recorded read for the whole page, and only for the lines that carry money rows.
+    assert [ids for ids, _ in reads.recorded_calls] == [[OP_T]]
+    detail = await SeasonHistoryService(reads).operation(2027, OP_T, rules=False)
+    assert detail.operation.summary == line.summary
+    assert detail.operation.figures == line.figures
+    assert reads.years == {2027}  # every year-scoped read was for the season asked about
+
+
+@pytest.mark.asyncio
+async def test_a_registrar_reads_the_tick_with_its_locks_by_its_decisions_alone() -> None:
+    """Regression guard: a rules row adds no family, request or money even unstripped, so what a registrar can't
+    see never shows in the line's words or figures."""
+    lock = _row("t4", "aid_rules", "2027:3:budget", OP_T, action="lock", after={"section_status": {}})
+    service = SeasonHistoryService(_Reads(*_tick(), lock, subjects=SEASON))
+    (registrar,) = (await service.page(2027, HistoryFilter(), page=1, per_page=50)).operations
+    (finance,) = (await service.page(2027, HistoryFilter(rules=True), page=1, per_page=50)).operations
+    assert registrar.summary == finance.summary == "3 requests · 2 families · $2,400.50 locked"
+    assert (registrar.rows, finance.rows) == (3, 4)
+
+
+@pytest.mark.asyncio
+async def test_every_opened_row_names_its_family_and_camper_in_one_name_read() -> None:
+    rows = [
+        *_tick(),
+        _row("t5", "aid_applications", APP_GARCIA, OP_T, after={"status": "complete"}),
+        _row("t6", "aid_grant_placements", "ledger:9001", OP_T, action="place", after={"household_cm_id": GARCIA}),
+        _row("t7", "aid_grantors", "regional_fund", OP_T, after={"note": "new address"}),
+        _row("t8", "aid_grants", GRANT_GARCIA, OP_T, action="create", after={"household_cm_id": GARCIA}),
+    ]
+    reads = _Reads(*rows, subjects=SEASON)
+    detail = await SeasonHistoryService(reads).operation(2027, OP_T, rules=False)
+    named = {r.entity_id: (r.household_cm_id, r.household_name, r.camper_name) for r in detail.rows}
+    assert named == {
+        f"{EMMA}:1": (JOHNSON, "The Johnson Family", "Emma Johnson"),
+        f"{SAMUEL}:1": (JOHNSON, "The Johnson Family", "Samuel Johnson"),
+        f"{LIAM}:1": (GARCIA, "The Garcia Family", "Liam Garcia"),
+        APP_GARCIA: (GARCIA, "The Garcia Family", None),
+        "ledger:9001": (GARCIA, "The Garcia Family", None),  # from the row's own recorded household
+        GRANT_GARCIA: (GARCIA, "The Garcia Family", None),  # from the grant's id
+        "regional_fund": (None, None, None),
+    }
+    assert reads.name_calls == [(frozenset({JOHNSON, GARCIA}), frozenset({P_EMMA, P_SAMUEL, P_LIAM}))]
+    assert reads.years == {2027}  # the name and subject reads were for the season asked about
+
+
+@pytest.mark.asyncio
+async def test_a_search_finds_a_family_or_a_camper_by_name() -> None:
+    hold = _row("h1", "aid_hold_events", f"{LIAM}:income", OP_B, action="release", at="2027-03-10 17:00:00.000Z")
+    reads = _Reads(*_tick(), hold, subjects=SEASON)
+    service = SeasonHistoryService(reads)
+
+    async def found(text: str) -> list[str]:
+        page = await service.page(2027, HistoryFilter(text=text), page=1, per_page=50)
+        return [o.operation_id for o in page.operations]
+
+    # Each needle is in a name only, never in a reason, actor or entity id ("reqsamuel000001" holds no "johnson").
+    assert await found("samuel johnson") == [OP_T]
+    assert await found("GARCIA") == [OP_B, OP_T]  # Liam's hold, and his $0 lock in the tick
+    assert await found("johnson family") == [OP_T]
+    assert await found("olivia") == []
+    assert len(reads.name_calls) == 4  # one batched read per search: never one per row or operation
+
+
+@pytest.mark.asyncio
+async def test_no_search_reads_no_names() -> None:
+    reads = _Reads(*_tick(), subjects=SEASON)
+    service = SeasonHistoryService(reads)
+    await service.page(2027, HistoryFilter(), page=1, per_page=50)
+    await service.page(2027, HistoryFilter(kinds=frozenset({"offers"})), page=1, per_page=50)
+    assert reads.name_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_name_search_never_surfaces_an_operation_the_reader_cannot_see() -> None:
+    """Review Focus 1: a hidden intake run and a rules-only operation stay hidden whatever the name."""
+    intake = _row("i1", "aid_requests", EMMA, OP_I, actor="system:intake", action="create")
+    capacity = _row("c1", "aid_session_capacity", EMMA, OP_R, actor=FIN, action="set_capacity")  # no reason
+    service = SeasonHistoryService(_Reads(intake, capacity, subjects=SEASON))
+    needle = "johnson family"  # in a name only: never in a reason, actor, entity id or collection
+    assert (await service.page(2027, HistoryFilter(text=needle), page=1, per_page=50)).total == 0
+    shown = await service.page(2027, HistoryFilter(text=needle, include_intake=True), page=1, per_page=50)
+    assert [o.operation_id for o in shown.operations] == [OP_I]  # the name channel is live for a visible op
+    finance = await service.page(2027, HistoryFilter(text=needle, rules=True, include_intake=True), page=1, per_page=50)
+    assert [o.operation_id for o in finance.operations] == [OP_I]  # a capacity row names no one, even for finance
+
+
+@pytest.mark.asyncio
+async def test_each_chip_counts_what_picking_it_alone_would_show() -> None:
+    rows = [
+        *_tick(),
+        _row("h1", "aid_hold_events", f"{LIAM}:income", OP_B, action="release"),
+        _rec("r1", "aid_rules", "2027:3", OP_R, actor=FIN, action="save"),
+        _rec("i1", "aid_requests", EMMA, OP_I, actor="system:intake", action="create"),  # intake is no chip
+    ]
+    service = SeasonHistoryService(_Reads(*rows, subjects=SEASON))
+
+    async def chips(f: HistoryFilter) -> list[tuple[str, int]]:
+        return [(c.kind, c.operations) for c in (await service.page(2027, f, page=1, per_page=50)).kind_counts]
+
+    everything = HistoryFilter(rules=True)
+    assert await chips(everything) == [("rules", 1), ("offers", 1), ("money", 0), ("holds", 1), ("grants", 0)]
+    # Picking a chip changes no chip's count; every other filter does.
+    assert await chips(replace(everything, kinds=frozenset({"holds"}))) == await chips(everything)
+    assert await chips(replace(everything, actor=FIN)) == [
+        ("rules", 1),
+        ("offers", 0),
+        ("money", 0),
+        ("holds", 0),
+        ("grants", 0),
+    ]
+    assert await chips(replace(everything, include_intake=True)) == await chips(everything)
+    assert await chips(replace(everything, text="emma")) == [
+        ("rules", 0),
+        ("offers", 1),
+        ("money", 0),
+        ("holds", 0),
+        ("grants", 0),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_registrar_has_no_rules_chip_and_nothing_hidden_counts_anywhere() -> None:
+    """Review Focus 1: no rules count, and neither a rules-only operation nor a stripped rules row counts anywhere."""
+    rows = [
+        *_tick(),
+        _rec("t4", "aid_rules", "2027:3:budget", OP_T, action="lock"),
+        _rec("r1", "aid_rules", "2027:3", OP_R, actor=FIN, action="save"),
+    ]
+    service = SeasonHistoryService(_Reads(*rows, subjects=SEASON))
+    page = await service.page(2027, HistoryFilter(), page=1, per_page=50)
+    assert [(c.kind, c.operations) for c in page.kind_counts] == [
+        ("offers", 1),
+        ("money", 0),
+        ("holds", 0),
+        ("grants", 0),
+    ]
+    searched = await service.page(2027, HistoryFilter(text="2027:3"), page=1, per_page=50)
+    assert [c.operations for c in searched.kind_counts] == [0, 0, 0, 0]
+
+
+def _doc(pct: str) -> dict[str, Any]:
+    return {"award_tables": {"camp": {"tiers": {"3": {"r1_pct": pct}}}}}
+
+
+def _created(rid: str, op: str, after: dict[str, Any], action: str = "save") -> SimpleNamespace:
+    """A rules row that CREATED a version: no `before`, and the whole new version as `after`."""
+    return _row(rid, "aid_rules", f"{after['year']}:{after['version']}", op, actor=FIN, action=action, after=after)
+
+
+DRAFT = {"award_tables": {"state": "draft"}}
+# The schema-drift test's defaulted key: `IncomeSection.basis` (default "gross"), a real field of today's AidRules.
+SECTION, KEY = "income", "basis"
+
+
+@pytest.mark.asyncio
+async def test_a_created_version_lists_its_changes_against_the_version_it_came_from() -> None:
+    v4 = _created(
+        "v4",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 4,
+            "document": _doc("72"),
+            "section_status": DRAFT,
+            "parent_year": 2027,
+            "parent_version": 3,
+        },
+    )
+    v3 = SimpleNamespace(
+        id="rules0000000003",
+        year=2027,
+        version=3,
+        document=_doc("74.5"),
+        section_status={"award_tables": {"state": "approved"}},
+    )
+    reads = _Reads(v4, versions={(2027, 3): v3})
+    service = SeasonHistoryService(reads)
+    with pytest.raises(HistoryNotFoundError):
+        await service.operation(2027, OP_R, rules=False)  # a registrar can't open it, and nothing more is read
+    assert reads.version_calls == []
+    (row,) = (await service.operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert (row.against_parent.year, row.against_parent.version) == (2027, 3)
+    assert [(c.path, c.kind, c.before, c.after) for c in row.against_parent.changes] == [
+        (["document", "award_tables", "camp", "tiers", "3", "r1_pct"], "changed", "74.5", "72"),
+        (["section_status", "award_tables", "state"], "changed", "approved", "draft"),
+    ]
+    assert len(row.changes) > len(row.against_parent.changes)  # `changes` still lists the new version, all added
+    assert reads.version_calls == [(2027, 3)]
+
+
+@pytest.mark.asyncio
+async def test_a_season_started_from_last_year_diffs_against_last_years_version() -> None:
+    started = _created(
+        "s1",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 1,
+            "document": _doc("72"),
+            "section_status": DRAFT,
+            "parent_year": 2026,
+            "parent_version": 6,
+        },
+        action="start_from_last_year",
+    )
+    last = SimpleNamespace(
+        id="rules2026000006",
+        year=2026,
+        version=6,
+        document=_doc("72"),
+        section_status={"award_tables": {"state": "locked"}},
+    )
+    reads = _Reads(started, versions={(2026, 6): last})
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert (row.against_parent.year, row.against_parent.version) == (2026, 6)
+    assert [(c.path, c.before, c.after) for c in row.against_parent.changes] == [
+        (["section_status", "award_tables", "state"], "locked", "draft")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_first_version_a_save_in_place_and_a_lost_parent_have_no_parent_diff() -> None:
+    first = _created(
+        "v1",
+        OP_A,
+        {
+            "year": 2027,
+            "version": 1,
+            "document": _doc("70"),
+            "section_status": DRAFT,
+            "parent_year": 0,
+            "parent_version": 0,
+        },
+        action="create",
+    )
+    lost = _created(
+        "v5",
+        OP_B,
+        {
+            "year": 2027,
+            "version": 5,
+            "document": _doc("70"),
+            "section_status": DRAFT,
+            "parent_year": 2027,
+            "parent_version": 2,
+        },
+    )
+    reads = _Reads(first, lost, _rules_save())
+    service = SeasonHistoryService(reads)
+    for op in (OP_A, OP_B, OP_R):
+        (row,) = (await service.operation(2027, op, rules=True)).rows
+        assert row.against_parent is None
+    assert reads.version_calls == [(2027, 2)]  # only a created version with a parent asks for one
+
+
+@pytest.mark.asyncio
+async def test_a_field_the_model_added_since_the_parent_was_stored_is_no_change() -> None:
+    """The parent was stored under an older schema: it lacks a key the model has since added with a default. Diffed
+    raw against the child's dump, that key would read "added" on every version made from it."""
+    full = fictional_rules().model_dump(mode="json")
+    stored = copy.deepcopy(full)
+    del stored[SECTION][KEY]  # a defaulted key the parent predates (see below)
+    status = status_to_json(initial_status())
+    child = _created(
+        "v4",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 4,
+            "document": full,
+            "section_status": status,
+            "parent_year": 2027,
+            "parent_version": 3,
+        },
+    )
+    parent = SimpleNamespace(id="rules0000000003", year=2027, version=3, document=stored, section_status=status)
+    reads = _Reads(child, versions={(2027, 3): parent})
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert row.against_parent.changes == []
