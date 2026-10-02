@@ -375,6 +375,10 @@ export type AidSourceRow = {
    */
   who_paid?: 'the camp' | 'another funder' | null
   /**
+   * Incentive
+   */
+  incentive?: boolean
+  /**
    * Grantor Name
    */
   grantor_name?: string
@@ -4990,6 +4994,15 @@ export type FundingSourceOut = {
    * Families
    */
   families: Array<string>
+  /**
+   * Lines
+   */
+  lines?: number | null
+  /**
+   * Amount
+   */
+  amount?: number | null
+  last_change?: SourceChangeOut | null
 }
 
 /**
@@ -5047,6 +5060,15 @@ export type FundingSourceRowOut = {
    * Families Changed
    */
   families_changed?: boolean
+  /**
+   * Lines
+   */
+  lines?: number | null
+  /**
+   * Amount
+   */
+  amount?: number | null
+  last_change?: SourceChangeOut | null
 }
 
 /**
