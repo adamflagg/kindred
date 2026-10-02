@@ -48,7 +48,7 @@ export interface RequestView {
   /** The URL's `?view=` (D15). */
   readonly slug: string
   readonly label: string
-  /** Beyond Family and Camper, which every view pins (D25). */
+  /** Beyond the Camper, which every view pins, and the Family, which sits before Needs attention (D25, T2). */
   readonly columns: readonly GridColumnKey[]
   /** How it opens: by the reason, by round, all one group, or flat (null: All, D23). */
   readonly groupBy: 'reason' | 'round' | 'one' | null
@@ -200,12 +200,11 @@ const CONFIRMATION_WORDS: Readonly<Record<ApiAidConfirmation['status'], string>>
 }
 
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
-  family: { header: 'Family', width: 110, pinned: true, value: (r) => r.family_name },
+  family: { header: 'Family', width: 110, value: (r) => r.family_name },
   camper: { header: 'Camper', width: 130, pinned: true, value: (r) => r.camper_name },
   householdId: {
     header: 'Household',
     width: 84,
-    pinned: true,
     align: 'right',
     value: (r) => r.household_cm_id,
   },
@@ -330,11 +329,15 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   },
 }
 
-const IDENTITY: readonly GridColumnKey[] = ['family', 'camper']
-const IDS: readonly GridColumnKey[] = ['householdId', 'personId']
-
+/**
+ * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; the Family and Household id sit
+ * just left of Needs attention, where Requested by will go (T3).
+ */
 export function viewColumns(view: RequestView, showIds: boolean): GridColumnKey[] {
-  return [...IDENTITY, ...(showIds ? IDS : []), ...view.columns]
+  const tail: GridColumnKey[] = ['family', ...(showIds ? (['householdId'] as const) : [])]
+  const middle = view.columns.filter((key) => key !== 'attention')
+  const attention = view.columns.filter((key) => key === 'attention')
+  return ['camper', ...(showIds ? (['personId'] as const) : []), ...middle, ...tail, ...attention]
 }
 
 export type RoundFilter = 1 | 2 | 3

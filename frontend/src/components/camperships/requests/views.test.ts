@@ -52,7 +52,6 @@ describe('REQUEST_VIEWS (§6.2)', () => {
     const all = requestView('all')
     const keys = viewColumns(all, false)
     expect(keys.map((k) => GRID_COLUMNS[k].header)).toEqual([
-      'Family',
       'Camper',
       'Session',
       'Stage',
@@ -66,20 +65,30 @@ describe('REQUEST_VIEWS (§6.2)', () => {
       'Total',
       'Posted',
       'Confirmed by the ledger',
+      'Family',
       'Needs attention',
     ])
     const fixed = keys.reduce((sum, k) => sum + (GRID_COLUMNS[k].width ?? 0), 0)
     expect(fixed + 250).toBe(1508)
   })
 
-  it('brings the two id columns back, pinned after the names, with Show IDs (D27)', () => {
-    expect(viewColumns(requestView('holds'), true).slice(0, 4)).toEqual([
-      'family',
-      'camper',
-      'householdId',
-      'personId',
-    ])
-    expect(GRID_COLUMNS.householdId.pinned).toBe(true)
+  it('brings the id columns back with Show IDs: Person pinned after the Camper, Household beside Family (D27, T2)', () => {
+    const keys = viewColumns(requestView('holds'), true)
+    expect(keys.slice(0, 2)).toEqual(['camper', 'personId'])
+    expect(keys.slice(-3)).toEqual(['family', 'householdId', 'attention'])
+    expect(GRID_COLUMNS.personId.pinned).toBe(true)
+    expect(GRID_COLUMNS.camper.pinned).toBe(true)
+    expect(GRID_COLUMNS.householdId.pinned).toBeUndefined()
+    expect(GRID_COLUMNS.family.pinned).toBeUndefined()
+  })
+
+  it('puts Family just left of Needs attention in every view (interim until Requested by)', () => {
+    for (const view of REQUEST_VIEWS) {
+      const keys = viewColumns(view, false)
+      expect(keys.at(-1)).toBe('attention')
+      expect(keys.at(-2)).toBe('family')
+      expect(keys[0]).toBe('camper')
+    }
   })
 
   it('opens a queue view grouped, All flat, and an unknown slug on All', () => {

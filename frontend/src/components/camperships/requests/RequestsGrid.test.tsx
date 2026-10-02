@@ -95,7 +95,6 @@ describe('RequestsGrid', () => {
   it("shows All's columns in D27's order", () => {
     render(<Grid />)
     expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
-      'Family',
       'Camper',
       'Session',
       'Stage',
@@ -109,8 +108,48 @@ describe('RequestsGrid', () => {
       'Total',
       'Posted',
       'Confirmed by the ledger',
+      'Family',
       'Needs attention',
     ])
+  })
+
+  it('pins the Camper and lets the Family scroll (grid layout T2, L3 d)', () => {
+    render(<Grid />)
+    // Every header cell is held at the top in the screen box; only a pinned one is also held at the left.
+    const pinnedLeft = (name: string) =>
+      screen.getByRole('columnheader', { name }).style.left !== ''
+    expect(pinnedLeft('Camper')).toBe(true)
+    expect(pinnedLeft('Family')).toBe(false)
+    expect(pinnedLeft('Session')).toBe(false)
+  })
+
+  it('opens the household from a camper name too, without highlighting the row, and not on a modified click', async () => {
+    render(<Grid />)
+    const link = screen.getByRole('link', { name: 'Liam Garcia' })
+    fireEvent.click(link, { ctrlKey: true })
+    expect(highlights).toEqual([])
+    expect(open).not.toHaveBeenCalled()
+    await userEvent.click(link)
+    expect(open).toHaveBeenCalledWith(ROW_LIAM, '/aid/households/1000003?from=all&year=2027')
+    expect(highlights).toEqual([])
+  })
+
+  it('writes the CSV in the on-screen order: Camper first, Family before Needs attention (Q-L3)', async () => {
+    render(<Grid />)
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    const header = csvCells(content.split('\n')[0] ?? '')
+    expect(header[0]).toBe('Camper')
+    expect(header.indexOf('Family')).toBe(header.indexOf('Needs attention') - 1)
+    expect(header).not.toContain('Household')
+  })
+
+  it('still groups by family and finds a row by the family name', async () => {
+    render(<Grid />)
+    await userEvent.click(screen.getByRole('button', { name: 'By family' }))
+    expect(document.querySelectorAll('[data-group-heading]').length).toBeGreaterThan(0)
+    await userEvent.type(screen.getByLabelText('Search'), 'garcia')
+    expect(screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key'))).toHaveLength(1)
   })
 
   it('opens the household from a family name, without highlighting the row (Decision 1)', async () => {
@@ -141,7 +180,7 @@ describe('RequestsGrid', () => {
 
   it('highlights a row on a click anywhere else', async () => {
     render(<Grid />)
-    await userEvent.click(within(rowOf('Liam Garcia')).getAllByRole('cell')[2] as HTMLElement)
+    await userEvent.click(within(rowOf('Liam Garcia')).getAllByRole('cell')[1] as HTMLElement)
     expect(highlights).toEqual(['reqliam00000002'])
     expect(rowOf('Liam Garcia')).toHaveAttribute('data-highlighted', 'true')
   })
@@ -149,7 +188,8 @@ describe('RequestsGrid', () => {
   it('brings the household and person ids back as columns with Show IDs (D27)', () => {
     render(<Grid showIds />)
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
-    expect(headers.slice(0, 4)).toEqual(['Family', 'Camper', 'Household', 'Person'])
+    expect(headers.slice(0, 2)).toEqual(['Camper', 'Person'])
+    expect(headers.slice(-3)).toEqual(['Family', 'Household', 'Needs attention'])
     expect(within(rowOf('Liam Garcia')).getByText('1000004')).toBeInTheDocument()
   })
 
