@@ -61,9 +61,16 @@ def _weekend_grant() -> RegisterRow:
     )
 
 
-def _service(development: FakeDevelopmentStore, rules: Any = None) -> FinancialAidDevelopmentService:
+def _summer_household_line() -> RegisterRow:
+    """An outside grant of 100 on Liam's household, on no camper (household-level), in a summer session."""
+    return replace(grant_row("", "100", on_request=False), household_cm_id=1000002, person_cm_id=0)
+
+
+def _service(
+    development: FakeDevelopmentStore, rules: Any = None, extra: Sequence[RegisterRow] = ()
+) -> FinancialAidDevelopmentService:
     async def rows(year: int) -> Sequence[RegisterRow]:
-        return [grant_row("reqemma00000001", "500"), _weekend_grant()] if year == YEAR else []
+        return [grant_row("reqemma00000001", "500"), _weekend_grant(), *extra] if year == YEAR else []
 
     return FinancialAidDevelopmentService(
         report_season(),
@@ -168,3 +175,19 @@ async def test_zip_group_membership_is_developments_for_every_pool() -> None:
         wanted = {a.person_cm_id for a in attended if a.group == pool.key}
         out = await service.zip_codes(YEAR, pool.key)
         assert out.every_camper.total.campers == len(wanted), pool.key
+
+
+async def test_a_household_level_line_counts_once_in_its_group_and_once_in_all() -> None:
+    service = _service(_development(), extra=[_summer_household_line()])
+    summer = await service.zip_codes(YEAR)
+    assert summer.with_aid is not None
+    assert sorted((r.zip, r.dollars) for r in summer.with_aid.rows) == [(NO_ZIP, 100.0), (ZIP_A, 2000.0)]
+    everything = await service.zip_codes(YEAR, "all")
+    assert everything.with_aid is not None
+    assert everything.with_aid.total.dollars == 2400.0  # 2,000 + 300 + 100, each line once
+
+
+async def test_a_group_does_not_carry_another_groups_dollars() -> None:
+    out = await _service(_development()).zip_codes(YEAR, "bmitzvah_pool")
+    assert out.with_aid is not None
+    assert out.with_aid.total.dollars == 0.0
