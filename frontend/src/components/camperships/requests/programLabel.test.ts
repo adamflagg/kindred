@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { APPROVED_RULES_2026 } from './approvedRulesFixtures'
-import { programLabel, programLabels } from './programLabel'
+import { programGroups, programLabel, programLabels, poolLabels } from './programLabel'
 
 describe('programLabels (the rules name their own programs)', () => {
   it("reads each program's label from the approved rules' programs section", () => {
@@ -59,5 +59,82 @@ describe('programLabel', () => {
     expect(programLabel({}, 'summer')).toBe('Summer')
     expect(programLabel(labels, 'quest')).toBe('Quest')
     expect(programLabel({}, 'winter_retreat')).toBe('Winter retreat')
+  })
+})
+
+describe('poolLabels (the rules name their budget pools)', () => {
+  it("reads each pool's label from the approved rules' budget section", () => {
+    expect(poolLabels(APPROVED_RULES_2026)).toEqual({
+      pool_a: 'Camp & Quest',
+      pool_b: 'Weekend Programs',
+    })
+  })
+
+  it('is empty while the read has no answer, or the budget is not approved', () => {
+    expect(poolLabels(undefined)).toEqual({})
+    const noBudget = {
+      ...APPROVED_RULES_2026,
+      sections: APPROVED_RULES_2026.sections.map((s) =>
+        s.section === 'budget' ? { ...s, content: null } : s
+      ),
+    }
+    expect(poolLabels(noBudget)).toEqual({})
+  })
+})
+
+describe('programGroups (T6: one Program dropdown, pools as headings)', () => {
+  const seen = [
+    { program: 'family_camp', pool: 'pool_b' },
+    { program: 'summer', pool: 'pool_a' },
+    { program: 'quest', pool: 'pool_a' },
+    { program: 'summer', pool: 'pool_a' },
+  ]
+
+  it("puts each pool's programs under its heading, in the rules' pool order, with the rules' words", () => {
+    expect(programGroups(seen, APPROVED_RULES_2026)).toEqual([
+      {
+        pool: { value: 'pool_a', label: 'Camp & Quest' },
+        programs: [
+          { value: 'quest', label: 'Quest' },
+          { value: 'summer', label: 'Summer' },
+        ],
+      },
+      {
+        pool: { value: 'pool_b', label: 'Weekend Programs' },
+        programs: [{ value: 'family_camp', label: 'Family camp' }],
+      },
+    ])
+  })
+
+  it("files a program under the rules' budget pool, before the row's own", () => {
+    const moved = [{ program: 'tbm', pool: 'pool_b' }]
+    expect(programGroups(moved, APPROVED_RULES_2026)[0]?.pool?.value).toBe('pool_a')
+  })
+
+  it("groups by the rows' own pools, keys spelled out, while the read has no answer (no blocking)", () => {
+    expect(programGroups(seen, undefined)).toEqual([
+      {
+        pool: { value: 'pool_a', label: 'Pool a' },
+        programs: [
+          { value: 'quest', label: 'Quest' },
+          { value: 'summer', label: 'Summer' },
+        ],
+      },
+      {
+        pool: { value: 'pool_b', label: 'Pool b' },
+        programs: [{ value: 'family_camp', label: 'Family camp' }],
+      },
+    ])
+  })
+
+  it('lists a program in no pool last, under no heading', () => {
+    const groups = programGroups(
+      [...seen, { program: 'not_aided', pool: null }],
+      APPROVED_RULES_2026
+    )
+    expect(groups.at(-1)).toEqual({
+      pool: null,
+      programs: [{ value: 'not_aided', label: 'Not aided' }],
+    })
   })
 })

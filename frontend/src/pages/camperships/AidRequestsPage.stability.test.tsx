@@ -25,9 +25,6 @@ vi.mock('../../hooks/camperships/useAidGrid', () => ({
     error: null,
   }),
 }))
-vi.mock('../../hooks/camperships/useAidRemaining', () => ({
-  useAidRemaining: () => ({ data: { year: 2027, pools: [], total: 0 } }),
-}))
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => ({ data: undefined }),
 }))

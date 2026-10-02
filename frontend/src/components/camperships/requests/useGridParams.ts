@@ -29,6 +29,8 @@ export interface GridParams {
   /** A Today line whose requests the grid shows (Decision 10). */
   readonly today: string | null
   readonly setParam: (name: GridParamName, value: string | null) => void
+  /** Several at once, in one replace (the Program dropdown sets one of pool/program and clears the other). */
+  readonly setParams: (changes: Partial<Record<GridParamName, string | null>>) => void
 }
 
 /**
@@ -44,17 +46,23 @@ export function useGridParams(): GridParams {
   useEffect(() => {
     setParamsRef.current = setParams
   }, [setParams])
-  const setParam = useCallback((name: GridParamName, value: string | null) => {
+  const setMany = useCallback((changes: Partial<Record<GridParamName, string | null>>) => {
     setParamsRef.current(
       (previous) => {
         const next = new URLSearchParams(previous)
-        if (value === null) next.delete(name)
-        else next.set(name, value)
+        for (const [name, value] of Object.entries(changes)) {
+          if (value === null) next.delete(name)
+          else next.set(name, value)
+        }
         return next
       },
       { replace: true }
     )
   }, [])
+  const setParam = useCallback(
+    (name: GridParamName, value: string | null) => setMany({ [name]: value }),
+    [setMany]
+  )
   const viewParam = params.get('view')
   const lensParam = params.get('lens')
   const { lens, stage } = useMemo(() => resolveStrip(viewParam, lensParam), [viewParam, lensParam])
@@ -73,5 +81,6 @@ export function useGridParams(): GridParams {
     row: params.get('row'),
     today: params.get('today'),
     setParam,
+    setParams: setMany,
   }
 }

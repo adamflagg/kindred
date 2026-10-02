@@ -5,15 +5,12 @@ import { useNavigate } from 'react-router'
 import { QueryGuard } from '../../components/QueryGuard'
 import { aidHref } from '../../components/camperships/kit/asOf'
 import { campToday } from '../../components/camperships/kit/dates'
-import {
-  GridFiltersBar,
-  type FilterOption,
-} from '../../components/camperships/requests/GridFiltersBar'
+import { GridFiltersBar } from '../../components/camperships/requests/GridFiltersBar'
 import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
-import { programLabel, programLabels } from '../../components/camperships/requests/programLabel'
+import { programGroups } from '../../components/camperships/requests/programLabel'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
 import {
   lensCounts,
@@ -32,14 +29,9 @@ import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefini
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useAidGrid } from '../../hooks/camperships/useAidGrid'
-import { useAidRemaining } from '../../hooks/camperships/useAidRemaining'
 import { useAidApprovedRules } from '../../hooks/camperships/useAidRules'
 import { useYear } from '../../hooks/useCurrentYear'
 import type { ApiAidGridRow } from '../../types/api-types'
-
-function distinct(values: ReadonlyArray<string | null>): string[] {
-  return [...new Set(values.filter((v): v is string => v !== null))].sort()
-}
 
 /**
  * `/aid/requests` (§6.1, §6.2): the spine. One read, every view filtered from it in memory (D21,
@@ -61,10 +53,10 @@ export default function AidRequestsPage() {
     showIds,
     row: rowParam,
     setParam,
+    setParams,
   } = useGridParams()
   const grid = useAidGrid()
-  const remaining = useAidRemaining()
-  // The rules name their programs. A failed or missing read never blocks the grid: keys spelled out.
+  // The rules name their programs and pools. A failed or missing read never blocks the grid: keys spelled out.
   const approvedRules = useAidApprovedRules(null)
   const today = campToday()
   const viewState = useMemo(() => ({ year, asOf }), [year, asOf])
@@ -103,20 +95,20 @@ export default function AidRequestsPage() {
     () => (rows ? lensCounts(rows, filters, live) : null),
     [rows, filters, live]
   )
-  const programs = useMemo((): FilterOption[] => {
-    const labels = programLabels(approvedRules.data)
-    return distinct((rows ?? []).map((r) => r.program_key)).map((value) => ({
-      value,
-      label: programLabel(labels, value),
-    }))
-  }, [rows, approvedRules.data])
-  const pools = useMemo((): FilterOption[] => {
-    const labels = new Map((remaining.data?.pools ?? []).map((p) => [p.pool, p.label] as const))
-    return distinct((rows ?? []).map((r) => r.pool)).map((value) => ({
-      value,
-      label: labels.get(value) ?? value,
-    }))
-  }, [rows, remaining.data])
+  // T6: one Program dropdown, each budget pool a heading over its programs.
+  const groups = useMemo(
+    () =>
+      programGroups(
+        (rows ?? []).map((r) => ({ program: r.program_key, pool: r.pool })),
+        approvedRules.data
+      ),
+    [rows, approvedRules.data]
+  )
+  const onProgramPool = useCallback(
+    (nextPool: string | null, nextProgram: string | null) =>
+      setParams({ pool: nextPool, program: nextProgram }),
+    [setParams]
+  )
 
   // The filters and Show IDs travel with every link out (view links, and the household page and
   // back: M5). Built with spreads: the index-signature dot form is a tsc error here (I1).
@@ -191,14 +183,14 @@ export default function AidRequestsPage() {
         lensHrefOf={lensHrefOf}
       />
       <GridFiltersBar
-        programs={programs}
-        pools={pools}
+        groups={groups}
         program={program}
         pool={pool}
         round={round}
         tick={tick}
         showIds={showIds}
         onChange={setParam}
+        onProgramPool={onProgramPool}
       />
       {view.key === 'waiting_on_family' && (
         <p className="text-muted-foreground text-xs">

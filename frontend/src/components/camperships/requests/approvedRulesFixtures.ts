@@ -1,6 +1,7 @@
 /**
  * An approved-rules read in the shape the server sends (`ApprovedRulesOut`): the `programs` section's
- * content is the rules' `programs` map of `ProgramProfile`s, each naming itself with a `label`.
+ * content is the rules' `programs` map of `ProgramProfile`s, each naming itself with a `label`; the
+ * `budget` section's `pools` name the budget pools the same way.
  * Program keys and labels are the 2026 rules'; every figure is invented.
  */
 import type { ApiAidApprovedRules } from '../../../types/api-types'
@@ -44,6 +45,25 @@ export const APPROVED_RULES_2026: ApiAidApprovedRules = {
         family_camp: profile('Family camp', 'pool_b'),
         womens_weekend: profile("Women's weekend", 'pool_b'),
         mens_weekend: profile("Men's weekend", 'pool_b'),
+      },
+    },
+    {
+      section: 'budget',
+      version: 3,
+      state: 'approved',
+      approved_by: 'Test User',
+      approved_at: '2026-01-10T12:00:00Z',
+      note: null,
+      locked_at: null,
+      content: {
+        total: 100000,
+        pools: {
+          pool_a: { label: 'Camp & Quest', share_pct: 80, amount: null },
+          pool_b: { label: 'Weekend Programs', share_pct: 20, amount: null },
+        },
+        reserves: {},
+        spillover: 'none',
+        commit_on: 'offered',
       },
     },
     {

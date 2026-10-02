@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { APPROVED_RULES_2026 } from '../../components/camperships/requests/approvedRulesFixtures'
 import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
-import type { ApiAidApprovedRules, ApiAidGrid, ApiAidRemaining } from '../../types/api-types'
+import type { ApiAidApprovedRules, ApiAidGrid } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
 interface GridResult {
@@ -15,17 +15,6 @@ interface GridResult {
 }
 let grid: GridResult
 vi.mock('../../hooks/camperships/useAidGrid', () => ({ useAidGrid: () => grid }))
-const REMAINING: ApiAidRemaining = {
-  year: 2027,
-  pools: [
-    { pool: 'pool_a', label: 'Pool A', remaining: 1000 },
-    { pool: 'pool_b', label: 'Pool B', remaining: 500 },
-  ],
-  total: 1500,
-}
-vi.mock('../../hooks/camperships/useAidRemaining', () => ({
-  useAidRemaining: () => ({ data: REMAINING }),
-}))
 let approved: { data: ApiAidApprovedRules | undefined } = { data: APPROVED_RULES_2026 }
 vi.mock('../../hooks/camperships/useAidRules', () => ({
   useAidApprovedRules: () => approved,
@@ -80,6 +69,12 @@ function renderAt(path: string) {
       </Routes>
     </MemoryRouter>
   )
+}
+
+const openProgram = () => userEvent.click(screen.getByLabelText('Program'))
+const pickProgram = async (name: string) => {
+  await openProgram()
+  await userEvent.click(await screen.findByRole('option', { name }))
 }
 
 const viewLink = (label: string) => screen.getByRole('link', { name: new RegExp(`^${label} `) })
@@ -143,46 +138,59 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     )
   })
 
-  it('narrows to a program, kept in the URL, and names the pools from the Remaining read', async () => {
+  // T6 spec change: Program and Pool are one grouped dropdown; pool names come from the rules' read.
+  it("narrows to a program, kept in the URL, under its pool's heading from the rules' read", async () => {
     renderAt('/aid/requests')
-    expect(
-      within(screen.getByLabelText('Pool')).getByRole('option', { name: 'Pool B' })
-    ).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Program'), 'quest')
+    await openProgram()
+    expect(screen.getByRole('option', { name: 'Weekend Programs' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Pool B' })).toBeNull()
+    await pickProgram('Quest')
     expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Emma Johnson')).toBeNull()
   })
 
-  it("names the programs with the server's labels, not by their rules keys", () => {
-    renderAt('/aid/requests')
-    const program = within(screen.getByLabelText('Program'))
-    expect(program.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
-    expect(program.queryByRole('option', { name: 'summer' })).toBeNull()
-    expect(program.queryByRole('option', { name: 'Summer camp' })).toBeNull()
-    // The rules do not name Quest: its key spelled out.
-    expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+  it('narrows to a pool by its heading, clearing the program, and back (T6)', async () => {
+    renderAt('/aid/requests?program=summer')
+    await pickProgram('Weekend Programs')
+    expect(screen.getByTestId('where')).toHaveTextContent('pool=pool_b')
+    expect(screen.getByTestId('where')).not.toHaveTextContent('program=')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+    await pickProgram('Summer')
+    expect(screen.getByTestId('where')).toHaveTextContent('program=summer')
+    expect(screen.getByTestId('where')).not.toHaveTextContent('pool=')
   })
 
-  it("shows a label the key could not spell: the server's Women's weekend, not Womens weekend", () => {
+  it("names the programs with the server's labels, not by their rules keys", async () => {
+    renderAt('/aid/requests')
+    await openProgram()
+    expect(screen.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'summer' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'Summer camp' })).toBeNull()
+    // The rules do not name Quest: its key spelled out.
+    expect(screen.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
+  })
+
+  it("shows a label the key could not spell: the server's Women's weekend, not Womens weekend", async () => {
     grid = {
       data: { ...LIVE, rows: [...GRID_ROWS, { ...GRID_ROWS[0]!, program_key: 'womens_weekend' }] },
       isLoading: false,
       error: null,
     }
     renderAt('/aid/requests')
-    const program = within(screen.getByLabelText('Program'))
-    expect(program.getByRole('option', { name: "Women's weekend" })).toBeInTheDocument()
-    expect(program.queryByRole('option', { name: 'Womens weekend' })).toBeNull()
+    await openProgram()
+    expect(screen.getByRole('option', { name: "Women's weekend" })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Womens weekend' })).toBeNull()
   })
 
   it('spells the keys out when the rules read has no answer (404, loading, failed), and still filters', async () => {
     approved = { data: undefined }
     renderAt('/aid/requests')
-    const program = within(screen.getByLabelText('Program'))
-    expect(program.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
-    expect(program.getByRole('option', { name: 'Quest' })).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Program'), 'quest')
+    await openProgram()
+    expect(screen.getByRole('option', { name: 'Summer' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Pool b' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('option', { name: 'Quest' }))
     expect(screen.getByTestId('where')).toHaveTextContent('program=quest')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
   })
