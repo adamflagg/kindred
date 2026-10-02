@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
@@ -158,11 +158,13 @@ function ApprovedBody({
  * only when the refreshed draft's approved version is the one just approved (interim, S8-⚠1). A
  * posted amount stands either way (S1 Q1); it never quotes a change in a posted amount.
  */
-function approvedNotice({ pricesSeason, warnings }: Approved): string {
+function approvedNotice({ pricing, warnings }: Approved): string {
   return [
-    pricesSeason
+    pricing === 'moved'
       ? 'Approved. Requests not yet posted are priced on the new rules; a posted amount stands.'
-      : 'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.',
+      : pricing === 'already'
+        ? 'Approved. The sections that price the season were already approved: nothing is re-priced.'
+        : 'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.',
     ...warnings,
   ].join(' ')
 }
@@ -186,6 +188,9 @@ function DraftBody({
 }) {
   const href = useRulesHref()
   const year = useYear()
+  // The mode lives in the tab so its pills can hold; it ends with this body (a year change, a
+  // 404 season, ?show=approved), never carried to a later one.
+  useEffect(() => () => setMode('read'), [setMode])
   const items: SectionItem[] = draft.sections.map((s) => ({
     section: s.section,
     status: statusWords(s.status, s.changes.length),
