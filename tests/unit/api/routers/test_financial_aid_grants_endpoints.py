@@ -74,6 +74,7 @@ COMMITMENT_BODY = {
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str | tuple[str, ...], int]] = [
     ("GET", "/api/financial-aid/grantors", None, (VIEW, GRANTORS), 200),
     ("GET", "/api/financial-aid/grantors?include_retired=true", None, (VIEW, GRANTORS), 200),
+    ("GET", "/api/financial-aid/grantors?year=2031", None, (VIEW, GRANTORS), 200),
     ("POST", "/api/financial-aid/grantors", GRANTOR_BODY, GRANTORS, 201),
     ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, GRANTORS, 200),
     ("POST", "/api/financial-aid/grantors/regional_fund/retire", RETIRE_BODY, GRANTORS, 200),
@@ -368,3 +369,11 @@ def test_a_grants_write_that_lost_a_race_is_409_in_g6s_words(
     )
     response = _client().request(method, url, json=body)
     assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)
+
+
+def test_the_directory_counts_a_season_only_when_asked() -> None:
+    service = _stub()
+    client = _client()
+    assert client.get("/api/financial-aid/grantors", params={"year": "2031"}).status_code == 200
+    assert service.list_grantors.call_args.kwargs == {"include_retired": False, "year": 2031}
+    assert client.get("/api/financial-aid/grantors", params={"year": "1999"}).status_code == 422

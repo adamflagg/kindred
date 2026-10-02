@@ -79,6 +79,14 @@ class GrantorDescription(BaseModel):
     source_family: str
 
 
+class GrantorSeasonOut(BaseModel):
+    """A grantor's grants in one season (Grants › Grantors' "grants / $ this season")."""
+
+    year: int
+    count: int  # its live CampMinder grant lines this season (a line still waiting for its camper included)
+    amount: float  # their net, in aid dollars
+
+
 class GrantorOut(BaseModel):
     key: str
     name: str
@@ -92,6 +100,7 @@ class GrantorOut(BaseModel):
     # directory list (GET /grantors?include_retired=true shows it), and kept for history.
     retired_at: str
     descriptions: list[GrantorDescription]
+    season: GrantorSeasonOut | None = None  # set on every grantor when GET /grantors is asked ?year=; None otherwise
 
 
 class GrantorsResponse(BaseModel):

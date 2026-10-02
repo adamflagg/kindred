@@ -35,6 +35,7 @@ from api.schemas.financial_aid_grants import (
     GrantorOut,
     GrantorRetireIn,
     GrantorSave,
+    GrantorSeasonOut,
     GrantorsResponse,
     GrantRowOut,
     GrantsResponse,
@@ -171,6 +172,20 @@ def _descriptions_by_grantor(sources: list[Any]) -> dict[str, list[GrantorDescri
                 )
             )
     return {k: sorted(v, key=lambda d: d.description_key) for k, v in out.items()}
+
+
+def grantor_seasons(year: int, rows: Sequence[RegisterRow]) -> dict[str, GrantorSeasonOut]:
+    """Grants › Grantors' "grants / $ this season" (owner question 3, default): each grantor's live CampMinder grant
+    lines this season and their net. A reversed line is out (D74). A line still waiting for its camper is in: the
+    money is given (D87). A hand-entered commitment is not, until CampMinder posts it (D55)."""
+    count: dict[str, int] = defaultdict(int)
+    amount: dict[str, Decimal] = defaultdict(Decimal)
+    for row in rows:
+        if row.kind != "ledger" or row.is_reversed or not row.grantor_key:
+            continue
+        count[row.grantor_key] += 1
+        amount[row.grantor_key] += row.amount
+    return {key: GrantorSeasonOut(year=year, count=count[key], amount=money(amount[key])) for key in count}
 
 
 def _grantor_out(
@@ -362,12 +377,22 @@ class GrantsService:
 
     # --- the grantor directory (financial_aid.grantors) ------------------------------
 
-    async def list_grantors(self, *, include_retired: bool = False) -> GrantorsResponse:
-        """The directory. Retired grantors are left out (pickers never offer one) unless include_retired."""
+    async def list_grantors(self, *, include_retired: bool = False, year: int | None = None) -> GrantorsResponse:
+        """The directory. Retired grantors are left out (pickers never offer one) unless include_retired. With `year`,
+        each grantor carries its season's grant lines (grantor_seasons); without it the register is never read."""
         grantors = [g for g in await self.repo.fetch_grantors() if include_retired or not grantor_retired_at(g)]
         descriptions = _descriptions_by_grantor(await self.repo.fetch_sources())
+        seasons = grantor_seasons(year, await self.register_rows(year)) if year is not None else {}
+
+        def season(key: str) -> GrantorSeasonOut | None:
+            if year is None:
+                return None
+            return seasons.get(key, GrantorSeasonOut(year=year, count=0, amount=0.0))
+
         rows = [
-            _grantor_out(str(g.key), _grantor_snapshot(g), descriptions.get(str(g.key), []), grantor_retired_at(g))
+            _grantor_out(
+                str(g.key), _grantor_snapshot(g), descriptions.get(str(g.key), []), grantor_retired_at(g)
+            ).model_copy(update={"season": season(str(g.key))})
             for g in grantors
         ]
         return GrantorsResponse(grantors=sorted(rows, key=lambda g: (g.name.lower(), g.key)))

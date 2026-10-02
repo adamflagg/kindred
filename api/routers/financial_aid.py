@@ -876,10 +876,17 @@ async def get_approved_aid_rules(
 
 
 @router.get("/grantors", response_model=GrantorsResponse)
-async def list_grantors(include_retired: bool = Query(False), user: AuthUser = _VIEW_OR_GRANTORS) -> GrantorsResponse:
+async def list_grantors(
+    include_retired: bool = Query(False),
+    year: int | None = Query(None, ge=2017, le=2100),
+    user: AuthUser = _VIEW_OR_GRANTORS,
+) -> GrantorsResponse:
     # D57: view or grantors sees the directory, contacts included; edits are financial_aid.grantors.
-    # A retired grantor is left out (pickers never offer one) unless include_retired.
-    return await _grants().list_grantors(include_retired=include_retired)
+    # A retired grantor is left out (pickers never offer one) unless include_retired. `year` adds each grantor's
+    # live grant lines that season (Grants › Grantors' "grants / $ this season").
+    if year is None:
+        return await _grants().list_grantors(include_retired=include_retired)
+    return await _grants().list_grantors(include_retired=include_retired, year=year)
 
 
 @router.post("/grantors", response_model=GrantorOut, status_code=201)
