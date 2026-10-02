@@ -9,6 +9,7 @@ function bar(props: {
   pool?: string | null
   round?: 1 | 2 | 3 | null
   tick?: 'posted' | 'accepted' | null
+  counted?: boolean
 }) {
   const onChange = vi.fn()
   render(
@@ -19,6 +20,7 @@ function bar(props: {
       pool={props.pool ?? null}
       round={props.round ?? null}
       tick={props.tick ?? null}
+      counted={props.counted ?? false}
       showIds={false}
       onChange={onChange}
     />
@@ -49,5 +51,21 @@ describe('GridFiltersBar out-of-list values', () => {
   it('adds no extra option for an in-list value', () => {
     bar({ program: 'summer' })
     expect(screen.getAllByRole('option', { name: 'Summer' })).toHaveLength(1)
+  })
+})
+
+describe('GridFiltersBar counted filter', () => {
+  it('toggles Counting toward the budget through onChange', async () => {
+    const onChange = bar({})
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Counting toward the budget' }))
+    expect(onChange).toHaveBeenCalledWith('counted', '1')
+  })
+
+  it('clears it when unticked', async () => {
+    const onChange = bar({ counted: true })
+    const box = screen.getByRole('checkbox', { name: 'Counting toward the budget' })
+    expect(box).toBeChecked()
+    await userEvent.click(box)
+    expect(onChange).toHaveBeenCalledWith('counted', null)
   })
 })

@@ -95,6 +95,8 @@ export default function AidRequestsPage() {
     pool,
     round,
     tick,
+    counted,
+    live: liveOnly,
     showIds,
     sort,
     group,
@@ -140,8 +142,8 @@ export default function AidRequestsPage() {
   const todayIds = todayState.state === 'ready' ? todayState.ids : null
   const todayUnknown = todayState.state === 'pending' || todayState.state === 'failed'
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, tick, ids: todayIds }),
-    [program, pool, round, tick, todayIds]
+    (): GridFilters => ({ program, pool, round, tick, counted, live: liveOnly, ids: todayIds }),
+    [program, pool, round, tick, counted, liveOnly, todayIds]
   )
   const visible = useMemo(
     () => (rows ? filterRows(rows, view.key, filters) : []),
@@ -314,10 +316,12 @@ export default function AidRequestsPage() {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(tick !== null ? { tick } : {}),
+      ...(counted ? { counted: '1' } : {}),
+      ...(liveOnly ? { live: '1' } : {}),
       ...(todayKey !== null ? { today: todayKey } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, tick, todayKey, showIds]
+    [program, pool, round, tick, counted, liveOnly, todayKey, showIds]
   )
   const hrefOf = useCallback(
     (v: RequestView) => aidHref('/aid/requests', viewState, { view: v.slug, ...keep }),
@@ -380,6 +384,14 @@ export default function AidRequestsPage() {
           </button>
         </p>
       )}
+      {liveOnly && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          Live requests only ·
+          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('live', null)}>
+            Show all
+          </button>
+        </p>
+      )}
       <GridFiltersBar
         programs={programs}
         pools={pools}
@@ -387,6 +399,7 @@ export default function AidRequestsPage() {
         pool={pool}
         round={round}
         tick={tick}
+        counted={counted}
         showIds={showIds}
         onChange={changeFilter}
       />
