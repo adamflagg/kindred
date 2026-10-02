@@ -258,6 +258,8 @@ class RequestsGridResponse(BaseModel):
     as_of: date | None = None  # None: live. Else the past date shown (end of that day, camp time).
     as_of_axis: AsOfAxis | None = None  # the axis a past read cut on; None: live
     not_rebuilt: list[NotRebuiltOut] = Field(default_factory=list)
+    # the season has Posted ticks and CampMinder confirmation (FIRST_TICKED_SEASON); the frontend hides CM ✓ when False
+    ticked_season: bool
 
 
 class CountOut(BaseModel):

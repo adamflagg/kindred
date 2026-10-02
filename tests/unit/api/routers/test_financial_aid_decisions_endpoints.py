@@ -116,7 +116,7 @@ def _client(persona: str = PERSONA_FINANCE) -> TestClient:
 
 def _stub() -> Any:
     service = patch("api.routers.financial_aid.FinancialAidDecisionsService").start().return_value
-    service.grid = AsyncMock(return_value=RequestsGridResponse(year=2031, rules_version=1, rows=[]))
+    service.grid = AsyncMock(return_value=RequestsGridResponse(year=2031, rules_version=1, rows=[], ticked_season=True))
     service.budget = AsyncMock(
         return_value=BudgetResponse(
             year=2031, rules_version=1, pools=[], total=_TOTAL, strip=[], outside_grants_off_requests=0

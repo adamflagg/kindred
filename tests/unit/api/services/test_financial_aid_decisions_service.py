@@ -171,6 +171,18 @@ async def test_the_grid_prices_every_request_with_its_names_and_rounds() -> None
 
 
 @pytest.mark.asyncio
+async def test_the_grid_says_the_season_is_not_ticked_before_the_first_ticked_season() -> None:
+    assert (await _service(FakeDecisionsStore()).grid(2026)).ticked_season is False
+
+
+@pytest.mark.asyncio
+async def test_the_grid_says_the_first_ticked_season_is_ticked_live_and_on_a_past_date() -> None:
+    service = _service(FakeDecisionsStore())
+    assert (await service.grid(2027)).ticked_season is True
+    assert (await service.grid(2027, as_of=date(2027, 3, 9))).ticked_season is True
+
+
+@pytest.mark.asyncio
 async def test_each_grid_row_names_the_requests_views_it_is_in() -> None:
     """Slice 1 (D21): queue membership is the server's; Today counts the same memberships."""
     store = FakeDecisionsStore()
