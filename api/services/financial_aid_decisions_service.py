@@ -371,6 +371,10 @@ class Season:
     shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
     undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
     posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
+    # Slice 3 ask 1 (Money > Ledger's family rows): a past read's camp-aid lines placed as of the day, as
+    # _ledger_as_of built them. None on the live read (`ledger` is that) and on a past read with no camp-aid line.
+    # Nothing else reads it: a past read reconciles nothing, so `ledger` stays empty there.
+    past_ledger: SeasonLedger | None = None
     shares_unknown: frozenset[str] = frozenset()  # past read: requests whose payer shares can't be replayed (⚠39)
     # 3c-2, past read: request -> the gap that keeps it to 3c-1's figures (_PRICING_GAPS), and whether a
     # grant by then has no logged placement (its household's pools, and money off requests, stay empty).
@@ -1701,8 +1705,9 @@ class FinancialAidDecisionsService:
         # can't be replayed keeps its posted money empty, and is named. D81's Note reads the same dated
         # lines. Undated, still today's: a line's funder-type reclassification and Go's attribution.
         posted_unknown: frozenset[str] = frozenset()
+        past_ledger: SeasonLedger | None = None
         if ledger_in is not None:
-            ledger_gaps, posted_unknown = self._ledger_as_of(
+            ledger_gaps, posted_unknown, past_ledger = self._ledger_as_of(
                 ledger_in,
                 at,
                 axis,
@@ -1753,6 +1758,7 @@ class FinancialAidDecisionsService:
             deleted=deleted,
             cost_overrides=cost_overrides,
             cancelled_in_campminder=cancelled_now,
+            past_ledger=past_ledger,
             live_tiers=live_tiers,
             cancellations=_past_cancellations(
                 requests, today, enrollments, sessions, day, kindred_states, cancelled_now
@@ -1772,13 +1778,14 @@ class FinancialAidDecisionsService:
         *,
         cancelled: frozenset[str],
         notes: bool = False,
-    ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
+    ) -> tuple[list[NotRebuiltOut], frozenset[str], SeasonLedger]:
         """Clawbacks as of `at` (only a cancelled-by-then or closed request is clawed back, `clawback_eligible`;
         `cancelled` is the requests cancelled by the day, in Kindred or CampMinder), and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
         to `priced` in place; the gaps and the requests whose posted money is left empty (their shares or
         placements can't be replayed). On the campminder axis the lines cut on CampMinder's post and reversal
         dates; on recorded, also on when Kindred had recorded each line and its reversal (as_recorded, ruling
-        C), so everything below reads that set."""
+        C), so everything below reads that set. It also returns the ledger it placed, which `past_season` keeps as
+        `Season.past_ledger`."""
         camp_lines = inputs.camp_lines if axis == "campminder" else as_recorded(inputs.camp_lines, at)
         shares_of, bad_shares, bad_share_households = shares_as_of
         placements, splits, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
@@ -1835,7 +1842,7 @@ class FinancialAidDecisionsService:
                 if ids
             ),
         ]
-        return gaps, unknown
+        return gaps, unknown, ledger
 
     @staticmethod
     def _unresolved(

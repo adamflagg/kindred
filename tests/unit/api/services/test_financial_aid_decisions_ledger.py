@@ -1042,3 +1042,22 @@ async def test_a_line_reclassified_outside_never_counts_toward_posted_or_the_con
     assert (row.confirmation.status, row.confirmation.in_campminder) == ("not_in_campminder", 0.0)
     assert row.total_posted == 1500.0
     assert _notes(row) == []
+
+
+@pytest.mark.asyncio
+async def test_a_past_read_keeps_its_ledger_as_placed_that_day_and_still_reconciles_nothing() -> None:
+    """Slice 3 ask 1: Money > Ledger reads Kindred's placements as of the day (D151). The ledger is kept on its own
+    field; the season's `ledger` stays empty on a past read, so nothing a past read shows moves."""
+    store = FakeDecisionsStore()
+    _emma_posted(store)
+    seed_line(store, 9001, "1500", person=0, posted=T0)  # the household's: a person places it on Jun 10
+    seed_override(store, 9001, 1000011, datetime(2027, 6, 10, 18, 0, tzinfo=UTC))
+    service = _past_service(store)
+    early = await service.past_season(YEAR, date(2027, 6, 5))
+    later = await service.past_season(YEAR, date(2027, 6, 12))
+    assert early.past_ledger is not None
+    assert later.past_ledger is not None
+    assert [line.transaction_cm_id for line in early.past_ledger.family_lines([1000001])] == [9001]
+    assert [line.transaction_cm_id for line in later.past_ledger.lines(EMMA)] == [9001]
+    assert later.ledger.read is False
+    assert (await service.season(YEAR)).past_ledger is None
