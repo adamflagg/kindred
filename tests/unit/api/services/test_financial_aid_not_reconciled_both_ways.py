@@ -433,7 +433,7 @@ def test_the_schemas_reasons_are_the_walks_codes() -> None:
     from api.services.financial_aid_reconciliation import MARK_POSTED, UntickedCode
 
     assert get_args(UntickedReasonOut) == get_args(UntickedCode)
-    assert MARK_POSTED <= set(get_args(UntickedCode))
+    assert set(get_args(UntickedCode)) >= MARK_POSTED
 
 
 def test_a_row_with_a_reason_is_out_of_needs_an_offer_even_on_its_own() -> None:
