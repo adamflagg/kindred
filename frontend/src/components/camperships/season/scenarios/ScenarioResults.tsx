@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react'
+
 import type { ApiAidScenarioResults } from '../../../../types/api-types'
 import { NEGATIVE_INK } from '../../kit/aidStyles'
 import { TABLE_CARD } from '../../kit/kitStyles'
 import { Money } from '../../kit/MoneyText'
 import { TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from '../seasonStyles'
 import { resultLines } from './scenarioModel'
+import { DRAFT_CHIP, STRIP_CARD } from './scenarioStyles'
 
 /**
  * What the figures shown are. While the live answer is on its way, or failed, they are the draft as
@@ -23,13 +26,17 @@ const STATE_WORDS = {
 export function ScenarioResults({
   results,
   state,
+  actions,
 }: {
   results: ApiAidScenarioResults
   state: 'recorded' | 'moving' | 'updating' | 'failed'
+  /** The Keep buttons, right-aligned in the strip as the mock has them. */
+  actions?: ReactNode
 }) {
   return (
     <div className="space-y-2" data-testid="scenario-results">
-      <div className="card-lodge flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 text-sm">
+      <div className={STRIP_CARD}>
+        <span className={DRAFT_CHIP}>Draft</span>
         <span className="text-muted-foreground text-xs">{STATE_WORDS[state]}</span>
         {state === 'updating' && <span className="text-muted-foreground text-xs">updating…</span>}
         {resultLines(results).map((line) => (
@@ -40,6 +47,7 @@ export function ScenarioResults({
             </b>
           </span>
         ))}
+        {actions !== undefined && <span className="ml-auto flex flex-wrap gap-2">{actions}</span>}
       </div>
       <div className={TABLE_CARD}>
         <table className="w-full border-separate border-spacing-0 text-sm">

@@ -7,6 +7,7 @@ import {
   NO_PENDING,
   SHIFT_RANGE,
   bandWords,
+  changedLevers,
   hasPending,
   isDollarForDollar,
   keptGroups,
@@ -15,6 +16,7 @@ import {
   shiftWords,
   sizingDocument,
   startingPointOf,
+  stepNote,
   stepWords,
 } from './scenarioModel'
 
@@ -82,6 +84,50 @@ describe("the draft's settings (§7.4; D37, D137)", () => {
     })
     expect(stepWords(effect(false, 8000))).toBe('Turning it on moves Round 1 by $8,000')
     expect(stepWords(effect(null, 8000))).toBeNull()
+  })
+})
+
+describe('a typed step the slider cannot take (residue 12)', () => {
+  it('says what the box takes, briefly, for an off-step or out-of-range value', () => {
+    expect(stepNote('1200', BAND_RANGE, 'money')).toBe('in steps of $500')
+    expect(stepNote('20000', BAND_RANGE, 'money')).toBe('from −$10,000 to $10,000')
+    expect(stepNote('-2.25', SHIFT_RANGE, 'points')).toBe('in steps of 0.5 pts')
+    expect(stepNote('11', SHIFT_RANGE, 'points')).toBe('from −15 to +10 pts')
+    expect(stepNote('abc', SHIFT_RANGE, 'points')).toBe('not a number')
+  })
+
+  it('says nothing for a step it takes, or while the box is still being typed into', () => {
+    expect(stepNote('1500', BAND_RANGE, 'money')).toBeNull()
+    expect(stepNote('−2.5', SHIFT_RANGE, 'points')).toBeNull()
+    expect(stepNote('', SHIFT_RANGE, 'points')).toBeNull()
+    expect(stepNote('-', SHIFT_RANGE, 'points')).toBeNull()
+  })
+})
+
+describe('which settings differ from where the draft came from (residue 7)', () => {
+  const change = (...path: string[]) => ({ path, kind: 'changed' as const, before: 1, after: 2 })
+
+  it("reads the draft's recorded changes by the part of the document each setting moves", () => {
+    expect(
+      changedLevers(
+        [
+          change('award_tables', 'general', 'tiers', '1', 'r1_pct'),
+          change('tiers', 'bands'),
+          change('awards', 'minimum'),
+          change('grants', 'offset_mode'),
+        ],
+        NO_PENDING
+      )
+    ).toEqual(new Set(['tier_shift', 'band_width', 'minimum', 'dollar_for_dollar']))
+    expect(changedLevers([change('milestones', 'application_deadline')], NO_PENDING)).toEqual(
+      new Set()
+    )
+  })
+
+  it('counts what is moving and not yet recorded too', () => {
+    expect(changedLevers([], { ...NO_PENDING, bandDelta: 500, dollar: false })).toEqual(
+      new Set(['band_width', 'dollar_for_dollar'])
+    )
   })
 })
 

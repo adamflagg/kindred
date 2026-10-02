@@ -408,4 +408,13 @@ describe('ScenariosTab (§7.4; D38)', () => {
     expect(headers).not.toContain('Round 2')
     expect(headers).not.toContain('Remaining')
   })
+  it('says what a step box takes, and leaves the draft be, for a value off its step (residue 12)', () => {
+    renderTab()
+    const band = screen.getByRole('textbox', { name: 'Widen every band, dollars' })
+    fireEvent.change(band, { target: { value: '1200' } })
+    expect(screen.getByText('in steps of $500')).toBeInTheDocument()
+    fireEvent.change(band, { target: { value: '20000' } })
+    expect(screen.getByText('from −$10,000 to $10,000')).toBeInTheDocument()
+    expect(work.move).not.toHaveBeenCalled()
+  })
 })

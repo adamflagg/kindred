@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
 
 import type { ApiAidLeverEffect, ApiAidRulesDocument } from '../../../../types/api-types'
-import { FIELD_INLINE } from '../../../admin/lodging/lodgingStyles'
-import { formatSetting } from '../rules/rulesModel'
+import { AMBER_NOTE, FIELD_INLINE, GROUP_HEADING } from '../../../admin/lodging/lodgingStyles'
+import { SECTION_TITLES, formatSetting } from '../rules/rulesModel'
 import { parseSetting } from '../rules/sectionEdit'
 import {
   BAND_RANGE,
@@ -12,13 +12,20 @@ import {
   isDollarForDollar,
   readStep,
   shiftWords,
+  stepNote,
   stepWords,
+  type LeverKey,
   type Pending,
 } from './scenarioModel'
+import { CHANGED_NAME } from './scenarioStyles'
 
 interface LeversProps {
   readonly document: ApiAidRulesDocument
+  /** The kept option the draft comes from: "Settings · draft from B". */
+  readonly from: string
   readonly pending: Pending
+  /** The settings that differ from `from`, recorded or moving: their names are amber. */
+  readonly changed: ReadonlySet<LeverKey>
   readonly effects: readonly ApiAidLeverEffect[]
   /** A write is running: the sliders stand still (useAidScenarioDraft). */
   readonly disabled: boolean
@@ -27,30 +34,53 @@ interface LeversProps {
 }
 
 const MINIMUM_SPEC = { kind: 'number', unit: 'money', whole: false, nullable: false } as const
+const SLIDER = 'accent-primary w-full'
+const WORDS = 'text-muted-foreground w-24 text-xs'
 
+/**
+ * One setting, as the mock lays it out: its section (named as the Rules tab names it), then its name with the typed box on one row,
+ * the slider full width beneath, and what one step moves Round 1 by.
+ */
 function Lever({
+  section,
   title,
   effect,
+  changed,
+  box,
   children,
 }: {
+  section: string
   title: string
   effect: ApiAidLeverEffect | undefined
+  changed: boolean
+  box: ReactNode
   children: ReactNode
 }) {
   return (
     <div className="space-y-1 py-1.5">
-      <div className="text-sm font-medium">{effect?.label ?? title}</div>
+      <div className={GROUP_HEADING}>{section}</div>
+      <div className="flex items-center gap-2 text-sm">
+        <span className={changed ? `flex-1 ${CHANGED_NAME}` : 'flex-1 font-medium'}>
+          {effect?.label ?? title}
+        </span>
+        {box}
+      </div>
       {children}
       <div className="text-muted-foreground text-xs">{stepWords(effect) ?? ' '}</div>
     </div>
   )
 }
 
-/** A typed box beside a slider (D37): the box takes what a step allows; Enter or leaving it records. */
+/**
+ * A typed box beside a slider (D37): the box takes what a step allows; Enter or leaving it records.
+ * Anything else it says briefly, in amber, and leaves the draft as it is (residue 12).
+ */
 function StepBox({
   label,
   value,
   range,
+  unit,
+  words,
   disabled,
   onMove,
   onRelease,
@@ -58,36 +88,41 @@ function StepBox({
   label: string
   value: number
   range: { min: number; max: number; step: number }
+  unit: 'points' | 'money'
+  words: string
   disabled: boolean
   onMove: (value: number) => void
   onRelease: () => void
 }) {
   const [text, setText] = useState<string | null>(null)
-  const shown = text ?? String(value)
+  const note = text === null ? null : stepNote(text, range, unit)
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      aria-label={label}
-      className={`${FIELD_INLINE} w-20 text-right tabular-nums`}
-      value={shown}
-      disabled={disabled}
-      onChange={(event) => {
-        setText(event.target.value)
-        const read = readStep(event.target.value, range)
-        if (read !== null) onMove(read)
-      }}
-      onBlur={() => {
-        setText(null)
-        onRelease()
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
+    <>
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        className={`${FIELD_INLINE} w-20 text-right tabular-nums`}
+        value={text ?? String(value)}
+        disabled={disabled}
+        onChange={(event) => {
+          setText(event.target.value)
+          const read = readStep(event.target.value, range)
+          if (read !== null) onMove(read)
+        }}
+        onBlur={() => {
           setText(null)
           onRelease()
-        }
-      }}
-    />
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            setText(null)
+            onRelease()
+          }
+        }}
+      />
+      <span className={note === null ? WORDS : `${AMBER_NOTE} w-24`}>{note ?? words}</span>
+    </>
   )
 }
 
@@ -99,7 +134,9 @@ function StepBox({
  */
 export function ScenarioLevers({
   document,
+  from,
   pending,
+  changed,
   effects,
   disabled,
   onMove,
@@ -115,13 +152,31 @@ export function ScenarioLevers({
   const releaseOnLetGo = { onPointerUp: onRelease, onKeyUp: onRelease, onBlur: onRelease }
 
   return (
-    <div className="card-lodge divide-border divide-y px-3 py-1" data-testid="scenario-levers">
-      <Lever title="Shift every tier (Round 1 %)" effect={effect('tier_shift')}>
-        <div className="flex items-center gap-2">
+    <div className="card-lodge" data-testid="scenario-levers">
+      <div className={`${GROUP_HEADING} px-3 pt-2`}>{`Settings · draft from ${from}`}</div>
+      <div className="divide-border divide-y px-3 py-1">
+        <Lever
+          section={SECTION_TITLES.award_tables}
+          title="Shift every tier (Round 1 %)"
+          effect={effect('tier_shift')}
+          changed={changed.has('tier_shift')}
+          box={
+            <StepBox
+              label="Shift every tier, points"
+              value={pending.tierShift}
+              range={SHIFT_RANGE}
+              unit="points"
+              words={shiftWords(pending.tierShift)}
+              disabled={disabled}
+              onMove={(tierShift) => onMove({ tierShift })}
+              onRelease={onRelease}
+            />
+          }
+        >
           <input
             type="range"
             aria-label="Shift every tier, slider"
-            className="flex-1"
+            className={SLIDER}
             min={SHIFT_RANGE.min}
             max={SHIFT_RANGE.max}
             step={SHIFT_RANGE.step}
@@ -130,25 +185,29 @@ export function ScenarioLevers({
             onChange={(event) => onMove({ tierShift: Number(event.target.value) })}
             {...releaseOnLetGo}
           />
-          <StepBox
-            label="Shift every tier, points"
-            value={pending.tierShift}
-            range={SHIFT_RANGE}
-            disabled={disabled}
-            onMove={(tierShift) => onMove({ tierShift })}
-            onRelease={onRelease}
-          />
-          <span className="text-muted-foreground w-20 text-xs">
-            {shiftWords(pending.tierShift)}
-          </span>
-        </div>
-      </Lever>
-      <Lever title="Band width" effect={effect('band_width')}>
-        <div className="flex items-center gap-2">
+        </Lever>
+        <Lever
+          section={SECTION_TITLES.tiers}
+          title="Band width"
+          effect={effect('band_width')}
+          changed={changed.has('band_width')}
+          box={
+            <StepBox
+              label="Widen every band, dollars"
+              value={pending.bandDelta}
+              range={BAND_RANGE}
+              unit="money"
+              words={bandWords(pending.bandDelta)}
+              disabled={disabled}
+              onMove={(bandDelta) => onMove({ bandDelta })}
+              onRelease={onRelease}
+            />
+          }
+        >
           <input
             type="range"
             aria-label="Widen every band, slider"
-            className="flex-1"
+            className={SLIDER}
             min={BAND_RANGE.min}
             max={BAND_RANGE.max}
             step={BAND_RANGE.step}
@@ -157,23 +216,49 @@ export function ScenarioLevers({
             onChange={(event) => onMove({ bandDelta: Number(event.target.value) })}
             {...releaseOnLetGo}
           />
-          <StepBox
-            label="Widen every band, dollars"
-            value={pending.bandDelta}
-            range={BAND_RANGE}
-            disabled={disabled}
-            onMove={(bandDelta) => onMove({ bandDelta })}
-            onRelease={onRelease}
-          />
-          <span className="text-muted-foreground w-24 text-xs">{bandWords(pending.bandDelta)}</span>
-        </div>
-      </Lever>
-      <Lever title="Minimum award" effect={effect('minimum')}>
-        <div className="flex items-center gap-2">
+        </Lever>
+        <Lever
+          section={SECTION_TITLES.awards}
+          title="Minimum award"
+          effect={effect('minimum')}
+          changed={changed.has('minimum')}
+          box={
+            <>
+              <span className="text-muted-foreground text-sm">$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                aria-label="Minimum award, dollars"
+                className={`${FIELD_INLINE} w-20 text-right tabular-nums`}
+                value={minimumText ?? minimum}
+                disabled={disabled}
+                onChange={(event) => {
+                  setMinimumText(event.target.value)
+                  const read = parseSetting(event.target.value, MINIMUM_SPEC)
+                  if (read.kind === 'ok' && typeof read.value === 'string')
+                    onMove({ minimum: read.value })
+                }}
+                onBlur={() => {
+                  setMinimumText(null)
+                  onRelease()
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setMinimumText(null)
+                    onRelease()
+                  }
+                }}
+              />
+              <span className={minimumProblem === true ? `${AMBER_NOTE} w-24` : WORDS}>
+                {minimumProblem === true ? 'not an amount' : formatSetting(minimum, ['minimum'])}
+              </span>
+            </>
+          }
+        >
           <input
             type="range"
             aria-label="Minimum award, slider"
-            className="flex-1"
+            className={SLIDER}
             min={MINIMUM_RANGE.min}
             max={MINIMUM_RANGE.max}
             step={MINIMUM_RANGE.step}
@@ -182,52 +267,32 @@ export function ScenarioLevers({
             onChange={(event) => onMove({ minimum: event.target.value })}
             {...releaseOnLetGo}
           />
-          <span className="text-muted-foreground">$</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            aria-label="Minimum award, dollars"
-            className={`${FIELD_INLINE} w-20 text-right tabular-nums`}
-            value={minimumText ?? minimum}
-            disabled={disabled}
-            onChange={(event) => {
-              setMinimumText(event.target.value)
-              const read = parseSetting(event.target.value, MINIMUM_SPEC)
-              if (read.kind === 'ok' && typeof read.value === 'string')
-                onMove({ minimum: read.value })
-            }}
-            onBlur={() => {
-              setMinimumText(null)
-              onRelease()
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                setMinimumText(null)
+        </Lever>
+        <Lever
+          section={SECTION_TITLES.grants}
+          title="Grants offset dollar-for-dollar"
+          effect={effect('dollar_for_dollar')}
+          changed={changed.has('dollar_for_dollar')}
+          box={null}
+        >
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={dollar}
+              disabled={disabled}
+              onChange={(event) => {
+                onMove({ dollar: event.target.checked })
                 onRelease()
-              }
-            }}
-          />
-          <span className="text-muted-foreground w-24 text-xs">
-            {minimumProblem === true ? 'not an amount' : formatSetting(minimum, ['minimum'])}
-          </span>
-        </div>
-      </Lever>
-      <Lever title="Grants offset dollar-for-dollar" effect={effect('dollar_for_dollar')}>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={dollar}
-            disabled={disabled}
-            onChange={(event) => {
-              onMove({ dollar: event.target.checked })
-              onRelease()
-            }}
-          />
-          {dollar
-            ? 'on: each counted grant dollar lowers the award a dollar'
-            : 'off: the award is priced on cost less grants'}
-        </label>
-      </Lever>
+              }}
+            />
+            {dollar
+              ? 'on: each counted grant dollar lowers the award a dollar'
+              : 'off: the award is priced on cost less grants'}
+          </label>
+        </Lever>
+      </div>
+      <p className="text-muted-foreground px-3 pb-2 text-xs">{`Type a number or drag. Amber = differs from ${from}.`}</p>
     </div>
   )
 }
