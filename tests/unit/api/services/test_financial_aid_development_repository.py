@@ -71,3 +71,17 @@ def test_a_person_record_reads_the_gender_write_in_field() -> None:
     out = person_record(record)
     assert (out.gender_identity_name, out.gender_identity_write_in) == ("", "their own words")
     assert (out.person_cm_id, out.household_cm_id, out.birthdate) == (1000021, 1000002, date(2012, 1, 1))
+
+
+def test_an_attendee_reads_the_day_it_registered() -> None:
+    """A dated column leaves out campers who registered after its day (attendees.effective_date)."""
+    record = SimpleNamespace(
+        person_id=1000011,
+        status_id=2,
+        enrollment_date="",
+        effective_date="2026-11-20 08:00:00.000Z",
+        year=2027,
+        expand={},
+    )
+    assert attendance_record(record).registered_on == date(2026, 11, 20)
+    assert attendance_record(SimpleNamespace(person_id=1, status_id=2, year=2027, expand={})).registered_on is None

@@ -774,3 +774,46 @@ async def test_a_grantor_mapping_whose_source_vanished_is_a_conflict_not_a_500()
     with pytest.raises(AidWriteConflictError) as refused:
         await service.map_source_grantor(SOURCE_ID, _mapping(), ACTOR)
     assert (refused.value.collection, refused.value.record_id) == ("aid_sources", SOURCE_ID)
+
+
+@pytest.mark.asyncio
+async def test_classifying_an_unclassified_source_as_incentive_sets_its_incentive_flag() -> None:
+    """The sync creates a source unclassified; classifying it as an incentive funder must flag it in the same
+    logged write, or its money reads as need-based."""
+    repo = MagicMock()
+    repo.get_source = AsyncMock(return_value=_source(incentive=False))
+    service, spy = _service(repo)
+
+    await service.classify_source(SOURCE_ID, _classification(funder_type="incentive"), ACTOR)
+
+    [write] = spy.writes
+    assert write.data is not None
+    assert write.data["incentive"] is True
+    [log] = spy.log_rows()
+    assert (log["before"]["incentive"], log["after"]["incentive"]) == (False, True)
+
+
+@pytest.mark.asyncio
+async def test_classifying_away_from_incentive_leaves_the_incentive_flag_to_funding_sources() -> None:
+    repo = MagicMock()
+    repo.get_source = AsyncMock(return_value=_source(funder_type="incentive", incentive=True))
+    service, spy = _service(repo)
+
+    await service.classify_source(SOURCE_ID, _classification(funder_type="outside"), ACTOR)
+
+    [write] = spy.writes
+    assert write.data is not None
+    assert "incentive" not in write.data
+
+
+@pytest.mark.asyncio
+async def test_classifying_outside_to_outside_writes_no_incentive_change() -> None:
+    repo = MagicMock()
+    repo.get_source = AsyncMock(return_value=_source(funder_type="outside", incentive=True))
+    service, spy = _service(repo)
+
+    await service.classify_source(SOURCE_ID, _classification(funder_type="outside"), ACTOR)
+
+    [write] = spy.writes
+    assert write.data is not None
+    assert "incentive" not in write.data

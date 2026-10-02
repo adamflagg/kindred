@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -358,6 +358,7 @@ class DevelopmentColumnOut(BaseModel):
     as_of: date | None  # the day it is as of: an r column's typed date, a P column's read date
     basis_unconfirmed: bool  # D96's premise is contested (O-930-1): a 2022–2025 column is noted
     label: str  # "2026 (as reported)", "2027"
+    not_rebuilt: list[str] = []  # a dated column's row keys a past read can't rebuild: their cells are null
 
 
 class DevelopmentRowOut(BaseModel):
@@ -390,4 +391,118 @@ class DevelopmentResponse(BaseModel):
     columns: list[DevelopmentColumnOut]
     rows: list[DevelopmentRowOut]
     sources: list[DevelopmentSourceOut]  # this season's P column, by source
+    not_built: list[NotBuiltOut]
+
+
+# --- Funding sources (§9.4, D88, D100; Part C) --------------------------------------------------------------------
+
+
+GROUP_CHANGE_WARNING: Final = "Changing this re-places household-level lines on tonight's sync."  # D43, D159
+
+
+class FundingSourceOut(BaseModel):
+    """One outside funding source with its three facts (D88) and its reporting group (D100). No family data."""
+
+    source_id: str
+    description_key: str
+    name: str
+    funder_type: Literal["outside", "incentive", "camp", "unknown"]
+    editable: bool = True  # False: the camp's own aid or an unclassified source (D159, N3: listed read-only)
+    families_changed: bool = False  # a save's answer: the families changed, so tonight's sync re-places (D43)
+    incentive: bool
+    group: str | None  # the season's pool its program families fund; None: none set, or several
+    group_label: str
+    needs_group: bool  # D100's "needs a group" line: no program family set
+    families: list[str]  # the stored program families (implied_program_families)
+
+
+class FundingSourceRowOut(BaseModel):
+    """One Funding sources row (D159): a funder the grantor directory groups descriptions under, or one description.
+    `group` / `incentive` show only when every description agrees (else None: "several groups" / mixed)."""
+
+    kind: Literal["funder", "description"]
+    section: Literal["outside", "camp", "unclassified"]  # N3: an unknown funder type is listed, read-only
+    grantor_key: str  # "" for a description row
+    name: str  # the grantor's name, or the description's source name
+    retired: bool  # a retired grantor, kept for history
+    editable: bool  # False for the camp's own sources and the unclassified (read-only)
+    incentive: bool | None
+    group: str | None
+    group_label: str
+    needs_group: bool  # every description lacks a group (D100's "needs a group")
+    descriptions: list[FundingSourceOut]
+    families_changed: bool = False  # a funder save's answer
+
+
+class FundingSourcesResponse(BaseModel):
+    year: int
+    groups: list[DevelopmentGroupOut]
+    sources: list[FundingSourceOut]
+    rows: list[FundingSourceRowOut] = Field(default_factory=list)
+    group_change_warning: str = GROUP_CHANGE_WARNING
+
+
+class FundingSourceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # a pool of the season's rules. ABSENT keeps each description's program families as they are; an explicit null
+    # clears the group; a value sets it (the group shown unchanged also keeps its families: several groups stay
+    # several). The service tells absent from null by `model_fields_set`.
+    group: str | None = Field(default=None, max_length=60)
+    # None keeps each description's own flag (a group-only save never flattens a funder that mixes incentive and
+    # need-based descriptions); True/False sets it on every description the save reaches
+    incentive: bool | None = None
+    note: str = Field(default="", max_length=2000)
+
+
+# --- Development's dated columns and ZIP codes (§9.4, D90; Part C) -------------------------------------------------
+
+
+class DatedColumn(BaseModel):
+    """ "+ Add a dated column": a season as of a day (a query over dated records, never a frozen copy)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    season: int = Field(ge=2017, le=2100)
+    as_of: date
+
+
+class ReportColumnsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[DatedColumn] = Field(max_length=24)
+
+
+class ReportColumnsResponse(BaseModel):
+    report: Literal["development"]
+    columns: list[DatedColumn]
+
+
+class ZipRowOut(BaseModel):
+    zip: str  # five digits, "Outside the US", "No ZIP on file"; "" on the totals row
+    kind: Literal["us", "outside_us", "none"]
+    campers: int
+    families: int
+    dollars: float | None  # None on the every-camper table
+
+
+class ZipTableOut(BaseModel):
+    rows: list[ZipRowOut]
+    total: ZipRowOut
+    zips: int
+
+
+class ZipGroupOut(BaseModel):
+    key: str  # a pool key from the season's rules, or "all" (last)
+    label: str
+
+
+class ZipResponse(BaseModel):
+    year: int
+    figures_on: date
+    group: str | None  # the group the tables count: a pool key, or "all"; the summer group when none was asked for
+    group_label: str
+    groups: list[ZipGroupOut] = Field(default_factory=list)  # every group the read takes, "all" last
+    every_camper: ZipTableOut
+    with_aid: ZipTableOut | None  # None until the season's decisions exist (2026: D67's load)
     not_built: list[NotBuiltOut]

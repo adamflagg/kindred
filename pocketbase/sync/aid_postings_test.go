@@ -129,7 +129,7 @@ func aidSourceSnapshot(t *testing.T, rec *core.Record) map[string]string {
 		"note", "grantor_key"} {
 		out[f] = rec.GetString(f)
 	}
-	for _, f := range []string{"counts_as_aid", "counts_toward_budget"} {
+	for _, f := range []string{"counts_as_aid", "counts_toward_budget", "incentive"} {
 		out[f] = strconv.FormatBool(rec.GetBool(f))
 	}
 	out["implied_program_families"] = strings.Join(aidJSON(t, rec, "implied_program_families"), ",")
@@ -151,15 +151,16 @@ func TestAidPostingsSyncSeedsNewDescriptionsFromTheConfigFile(t *testing.T) {
 	want := map[string]map[string]string{
 		"example camp financial assistance": {"description": aidTestCampAid, "source_name": "Camp aid",
 			"source_family": "camp_fa", "funder_type": "camp", "classified_by": aidClassifiedConfigFile, "note": "",
-			"grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "true", "implied_program_families": ""},
+			"grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "true", "incentive": "false",
+			"implied_program_families": ""},
 		"family incentive grant": {"description": aidTestIncentive, "source_name": "Family incentive",
 			"source_family": "jfam_incentive", "funder_type": "incentive", "classified_by": aidClassifiedConfigFile,
 			"note": "", "grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "false",
-			"implied_program_families": programFamilyFamilyCamp},
+			"incentive": "true", "implied_program_families": programFamilyFamilyCamp},
 		"legacy regional grant": {"description": aidTestLegacy, "source_name": "Legacy grant",
 			"source_family": "other_outside", "funder_type": "outside", "classified_by": aidClassifiedConfigFile,
 			"note": "", "grantor_key": "", "counts_as_aid": "true", "counts_toward_budget": "false",
-			"implied_program_families": ""},
+			"incentive": "false", "implied_program_families": ""},
 	}
 	if got := len(f.rows(colAidSources, 0)); got != len(want) {
 		t.Fatalf("expected %d seeded sources, got %d", len(want), got)
@@ -436,7 +437,8 @@ func TestAidTestFixtureFieldsAreDeclaredInMigrations(t *testing.T) {
 	t.Parallel()
 	app := newAidTestApp(t)
 	files := map[string][]string{
-		colAidSources:        {"1500000196_aid_sources.js", "1500000210_aid_grantors_and_grants.js"},
+		colAidSources: {"1500000196_aid_sources.js", "1500000210_aid_grantors_and_grants.js",
+			"1500000229_aid_reports_sources.js"},
 		colAidHouseholdLinks: {"1500000197_aid_household_links.js"},
 		colAidPostings:       {"1500000198_aid_postings.js"},
 		colAidOverrides:      {"1500000199_aid_overrides_and_dispositions.js"},

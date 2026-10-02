@@ -26,6 +26,7 @@ export const Collections = {
   AidHouseholdLinks: 'aid_household_links',
   AidPayerShares: 'aid_payer_shares',
   AidPostings: 'aid_postings',
+  AidReportDefinitions: 'aid_report_definitions',
   AidReportedHistory: 'aid_reported_history',
   AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
@@ -635,6 +636,14 @@ export type AidPostingsRecord<Tcandidate_program_families = unknown, Tflags = un
   year: number
 }
 
+export type AidReportDefinitionsRecord<Tcolumns = unknown> = {
+  columns?: null | Tcolumns
+  created: IsoAutoDateString
+  id: string
+  report: string
+  updated: IsoAutoDateString
+}
+
 export const AidReportedHistoryViewOptions = {
   finance: 'finance',
   development: 'development',
@@ -834,6 +843,7 @@ export type AidSourcesRecord<Timplied_program_families = unknown> = {
   grantor_key?: string
   id: string
   implied_program_families?: null | Timplied_program_families
+  incentive?: boolean
   note?: string
   source_family: AidSourcesSourceFamilyOptions
   source_name?: string
@@ -2661,6 +2671,10 @@ export type AidPostingsResponse<
   Tflags = unknown,
   Texpand = unknown,
 > = Required<AidPostingsRecord<Tcandidate_program_families, Tflags>> & BaseSystemFields<Texpand>
+export type AidReportDefinitionsResponse<Tcolumns = unknown, Texpand = unknown> = Required<
+  AidReportDefinitionsRecord<Tcolumns>
+> &
+  BaseSystemFields<Texpand>
 export type AidReportedHistoryResponse<Texpand = unknown> = Required<AidReportedHistoryRecord> &
   BaseSystemFields<Texpand>
 export type AidRequestsResponse<Tequity = unknown, Tflags = unknown, Texpand = unknown> = Required<
@@ -2935,6 +2949,7 @@ export type CollectionRecords = {
   aid_household_links: AidHouseholdLinksRecord
   aid_payer_shares: AidPayerSharesRecord
   aid_postings: AidPostingsRecord
+  aid_report_definitions: AidReportDefinitionsRecord
   aid_reported_history: AidReportedHistoryRecord
   aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
@@ -3042,6 +3057,7 @@ export type CollectionResponses = {
   aid_household_links: AidHouseholdLinksResponse
   aid_payer_shares: AidPayerSharesResponse
   aid_postings: AidPostingsResponse
+  aid_report_definitions: AidReportDefinitionsResponse
   aid_reported_history: AidReportedHistoryResponse
   aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse

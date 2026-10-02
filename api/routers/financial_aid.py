@@ -119,13 +119,20 @@ from api.schemas.financial_aid_money_ledger import LedgerLevelOut, LedgerTotalOu
 from api.schemas.financial_aid_reports import (
     CommitteeResponse,
     DevelopmentResponse,
+    FundingSourceIn,
+    FundingSourceOut,
+    FundingSourceRowOut,
+    FundingSourcesResponse,
     ProgramsResponse,
+    ReportColumnsIn,
+    ReportColumnsResponse,
     ReportedHistoryResponse,
     ReportedLoadIn,
     ReportedLoadOut,
     ReportRequestIdsOut,
     StatisticsBasis,
     StatisticsResponse,
+    ZipResponse,
 )
 from api.schemas.financial_aid_rules import (
     ApprovedRulesOut,
@@ -207,7 +214,11 @@ from api.services.financial_aid_decisions_service import (
     Season,
 )
 from api.services.financial_aid_development_repository import DevelopmentRepository
-from api.services.financial_aid_development_service import FinancialAidDevelopmentService
+from api.services.financial_aid_development_service import (
+    FinancialAidDevelopmentService,
+    FunderNotFoundError,
+    FundingSourceNotFoundError,
+)
 from api.services.financial_aid_grant_offsets import GrantsRegisterService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
@@ -1840,7 +1851,7 @@ def _reports() -> FinancialAidReportsService:
 
 
 def _reports_http(exc: FinancialAidError) -> HTTPException:
-    if isinstance(exc, ReportedFigureNotFoundError):
+    if isinstance(exc, (ReportedFigureNotFoundError, FundingSourceNotFoundError, FunderNotFoundError)):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, (ReportedFigureTakenError, AidWriteConflictError)):
         return HTTPException(status_code=409, detail=str(exc))
@@ -2060,5 +2071,73 @@ async def get_report_development(year: _Year, user: AuthUser = _VIEW_OR_SUMMARY)
     Kindred's), all money (D87). Aggregates only: development's summary permission reads it (D65)."""
     try:
         return await _development().development(year)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+# --- Reports › Development: ZIP codes, dated columns, Funding sources (Part C) ----------------------------------
+
+# D100: development and finance edit a funding source's group and incentive flag; the registrar may not.
+_FUNDING_SOURCES_EDIT = Depends(
+    require_any_permission(Permission.FINANCIAL_AID_FUNDING_SOURCES, Permission.FINANCIAL_AID_RULES)
+)
+
+
+@router.get("/reports/{year}/development/zip", response_model=ZipResponse)
+async def get_report_development_zip(
+    year: _Year,
+    group: Annotated[str | None, Query(max_length=60)] = None,
+    user: AuthUser = _VIEW_OR_SUMMARY,
+) -> ZipResponse:
+    """ZIP codes (§9.4, D90): every camper, and campers who got aid with their dollars, by billing ZIP. `group` is
+    one of the season's pool keys or `all`; omitted, it is the summer group. Anything else is a 422."""
+    try:
+        return await _development().zip_codes(year, group)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/development/columns", response_model=ReportColumnsResponse)
+async def get_report_development_columns(user: AuthUser = _VIEW_OR_SUMMARY) -> ReportColumnsResponse:
+    """Development's saved dated columns ("+ Add a dated column", §9.4)."""
+    return await _development().report_columns()
+
+
+@router.put("/reports/development/columns", response_model=ReportColumnsResponse)
+async def save_report_development_columns(
+    body: ReportColumnsIn, user: AuthUser = _VIEW_OR_SUMMARY
+) -> ReportColumnsResponse:
+    """Replace development's dated columns: a season as of a past day, from 2027 (dated decisions, D67)."""
+    try:
+        return await _development().save_report_columns(body.columns, actor=user.email)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/{year}/funding-sources", response_model=FundingSourcesResponse)
+async def get_funding_sources(year: _Year, user: AuthUser = _VIEW_OR_SUMMARY) -> FundingSourcesResponse:
+    """Funding sources (D100): every outside source with its three facts (D88) and reporting group. No family data."""
+    return await _development().funding_sources(year)
+
+
+@router.put("/reports/{year}/funding-sources/{source_id}", response_model=FundingSourceOut)
+async def save_funding_source(
+    year: _Year, source_id: _RecordIdPath, body: FundingSourceIn, user: AuthUser = _FUNDING_SOURCES_EDIT
+) -> FundingSourceOut:
+    """Set a source's reporting group (one of `year`'s pools) and incentive flag (D88, D100), logged."""
+    try:
+        return await _development().save_funding_source(year, source_id, body, actor=user.email)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.put("/reports/{year}/funding-sources/funders/{grantor_key}", response_model=FundingSourceRowOut)
+async def save_funding_source_funder(
+    year: _Year, grantor_key: _GrantorKeyPath, body: FundingSourceIn, user: AuthUser = _FUNDING_SOURCES_EDIT
+) -> FundingSourceRowOut:
+    """Set a funder row's reporting group and incentive flag on each of its descriptions, in one logged operation
+    (D159; Decision 48)."""
+    try:
+        return await _development().save_funder(year, grantor_key, body, actor=user.email)
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc

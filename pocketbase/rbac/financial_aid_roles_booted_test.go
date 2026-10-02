@@ -17,6 +17,7 @@ import (
 // the spec.
 var financialAidPermissions = []string{
 	"financial_aid.casework",
+	"financial_aid.funding_sources",
 	"financial_aid.grantors",
 	"financial_aid.rules",
 	"financial_aid.summary",
@@ -74,10 +75,11 @@ func loadBootedRoles(t *testing.T) map[string]bootedRole {
 }
 
 // TestBootedRolesCarryFinancialAidGrants proves migrations 1500000185 and
-// 1500000227 against the booted database: finance holds all five, registrar
-// view+casework only, a system development role holds summary and grantors
-// alone, and no other seeded role picked any of them up. (A fresh database has no exec role; that exec is
-// untouched is proven by pocketbase/pb_sp2/check-role-migration.sh and pinned
+// 1500000227 and the funding-sources permission migration (D100) against the
+// booted database: finance holds all six, registrar view+casework only, a system
+// development role holds summary, grantors and funding_sources alone, and no
+// other seeded role picked any of them up. (A fresh database has no exec role;
+// that exec is untouched is proven by pocketbase/pb_sp2/check-role-migration.sh and pinned
 // by TestFinancialAidPermissionsMigrationNeverNamesExec.)
 func TestBootedRolesCarryFinancialAidGrants(t *testing.T) {
 	roles := loadBootedRoles(t)
@@ -112,16 +114,18 @@ func TestBootedRolesCarryFinancialAidGrants(t *testing.T) {
 
 	registrar := get("registrar")
 	holds("registrar", registrar, "financial_aid.view", "financial_aid.casework", "metrics.geo", "registration.manage")
-	lacks("registrar", registrar, "financial_aid.rules", "financial_aid.summary", "financial_aid.grantors")
+	lacks("registrar", registrar,
+		"financial_aid.rules", "financial_aid.summary", "financial_aid.grantors", "financial_aid.funding_sources")
 
 	development := get("development")
 	if !development.IsSystem {
 		t.Error("development must be a system role")
 	}
-	if !slices.Equal(development.Permissions, []string{"financial_aid.grantors", "financial_aid.summary"}) {
-		t.Errorf("development (%q) = %v, want exactly [financial_aid.grantors financial_aid.summary] (never "+
+	wantDevelopment := []string{"financial_aid.funding_sources", "financial_aid.grantors", "financial_aid.summary"}
+	if !slices.Equal(development.Permissions, wantDevelopment) {
+		t.Errorf("development (%q) = %v, want exactly %v (never "+
 			"sheets.export, bunking.manage, users.manage or rules -- analysis §9.3, owner ruling 2026-10-01)",
-			development.Name, development.Permissions)
+			development.Name, development.Permissions, wantDevelopment)
 	}
 
 	for slug, r := range roles {

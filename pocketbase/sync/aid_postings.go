@@ -309,6 +309,8 @@ func (s *AidPostingsSync) seedSourceClasses(
 			"source_family": c.SourceFamily, "funder_type": c.FunderType, "counts_as_aid": c.CountsAsAid,
 			"counts_toward_budget": c.CountsTowardBudget, "implied_program_families": c.ImpliedFamilies,
 			"classified_by": aidClassifiedConfigFile,
+			// The incentive flag starts from the funder type (owner ruling 2026-10-02); staff change it afterwards.
+			"incentive": c.FunderType == "incentive",
 		} {
 			rec.Set(k, v)
 		}

@@ -323,7 +323,8 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             key = (a.group, a.person_cm_id)
             first_start[key] = min(first_start.get(key, a.start), a.start)
     tallies: dict[str, _Tally] = {key: _Tally() for key in groups}
-    # RULED: group by funder, done in Part C (C7); until then money by source is one line per source description.
+    # RULED: group by funder (owner item 52), DONE in Part C (C7): this is per source description; the service's
+    # `_sources` folds a funder's descriptions into one line through Funding sources' `funder_rows`.
     by_source: dict[tuple[str, str], tuple[Decimal, int]] = defaultdict(lambda: (ZERO, 0))
     outside_groups = _Tally()  # NOT_REPORTED's money
 
@@ -403,6 +404,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         source(line.source_key, group.key, line.amount)
         if group.kind == "families":
             tally.recipients.add(line.household_cm_id)
+            tally.camper_money[line.household_cm_id] += line.amount  # the ZIP read's dollars; a family group's key
         elif line.person_cm_id > 0:
             tally.recipients.add(line.person_cm_id)
             tally.camper_money[line.person_cm_id] += line.amount
