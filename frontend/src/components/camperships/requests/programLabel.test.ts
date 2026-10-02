@@ -137,4 +137,9 @@ describe('programGroups (T6: one Program dropdown, pools as headings)', () => {
       programs: [{ value: 'not_aided', label: 'Not aided' }],
     })
   })
+
+  it('lists a program in no pool last while the read has no answer too', () => {
+    const groups = programGroups([{ program: 'not_aided', pool: null }, ...seen], undefined)
+    expect(groups.map((g) => g.pool?.value ?? null)).toEqual(['pool_a', 'pool_b', null])
+  })
 })
