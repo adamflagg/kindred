@@ -27,12 +27,17 @@ vi.mock('../../hooks/camperships/useAidHouseholdPage', () => ({
   },
 }))
 const gridAsked: Array<{ enabled?: boolean; live?: boolean }> = []
+// What the grid read is doing: loaded (the default), still loading, or failed.
+let gridState: { rows: typeof GRID_ROWS | null; isError: boolean }
 vi.mock('../../hooks/camperships/useAidGrid', () => ({
   useAidGrid: (options: { enabled?: boolean; live?: boolean }) => {
     gridAsked.push(options)
     return {
       data:
-        options.enabled === false ? undefined : { year: 2027, rules_version: 1, rows: GRID_ROWS },
+        options.enabled === false || gridState.rows === null
+          ? undefined
+          : { year: 2027, rules_version: 1, rows: gridState.rows },
+      isError: gridState.isError,
     }
   },
 }))
@@ -82,6 +87,7 @@ beforeEach(() => {
   asked.length = 0
   prefetched.length = 0
   gridAsked.length = 0
+  gridState = { rows: GRID_ROWS, isError: false }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
 })
@@ -145,10 +151,10 @@ describe('the queue walk (§3.5; D14)', () => {
     )
     expect(screen.getByText(/3 of 4 families/)).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: '‹ The Garcia Family · placeholder income' })
+      screen.getByRole('link', { name: '‹ The Garcia Family · Placeholder income' })
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'The Sam Family · reverse posting ›' })
+      screen.getByRole('link', { name: 'The Sam Family · Reverse posting ›' })
     ).toBeInTheDocument()
     expect(gridAsked.at(-1)).toEqual({ enabled: true, live: true })
   })
@@ -267,6 +273,62 @@ describe('the queue walk (§3.5; D14)', () => {
     expect(screen.queryByText(/families$/)).toBeNull()
     expect(screen.queryByRole('link', { name: /Back to/ })).toBeNull()
     expect(gridAsked.every((options) => options.enabled === false)).toBe(true)
+  })
+
+  it("keeps the grid's sort and grouping on Back, and steps in that order (I1)", async () => {
+    // Total decided, largest first: Chen, Johnson, Sam, Garcia.
+    renderAt('/aid/households/1000005?from=all&sort=total:desc&group=family')
+    const back = screen.getByRole('link', { name: '← Back to All' }).getAttribute('href') ?? ''
+    const params = new URL(back, 'http://x').searchParams
+    expect(params.get('sort')).toBe('total:desc')
+    expect(params.get('group')).toBe('family')
+    await userEvent.keyboard(']')
+    const where = new URL(String(screen.getByTestId('where').textContent), 'http://x')
+    expect(where.pathname).toBe('/aid/households/1000001')
+    expect(where.searchParams.get('sort')).toBe('total:desc')
+    expect(where.searchParams.get('group')).toBe('family')
+  })
+})
+
+describe('Back when the walk has no place for the family (I2)', () => {
+  const noWalk = () => {
+    expect(screen.queryByText(/ of \d+ families/)).toBeNull()
+    expect(screen.queryByRole('link', { name: /[‹›]/ })).toBeNull()
+  }
+
+  it('shows Back alone while the grid read is loading, claiming nothing', () => {
+    gridState = { rows: null, isError: false }
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=all&year=2027'
+    )
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+    noWalk()
+  })
+
+  it('shows Back alone when the grid read failed', () => {
+    gridState = { rows: null, isError: true }
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toBeInTheDocument()
+    expect(screen.queryByText(/not in All now/)).toBeNull()
+    noWalk()
+  })
+
+  it('says the family is not in the view now, once the read has landed without it', async () => {
+    gridState = { rows: GRID_ROWS.filter((row) => row.household_cm_id !== 1000005), isError: false }
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.getByRole('link', { name: '← Back to All' })).toBeInTheDocument()
+    expect(screen.getByText(/not in All now/)).toBeInTheDocument()
+    noWalk()
+    await userEvent.keyboard(']')
+    await userEvent.keyboard('[[')
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+  })
+
+  it('has no "not in" words when the family is in the view', () => {
+    renderAt('/aid/households/1000005?from=all')
+    expect(screen.queryByText(/not in All now/)).toBeNull()
   })
 })
 
