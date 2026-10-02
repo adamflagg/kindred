@@ -1,10 +1,10 @@
 import { Users } from 'lucide-react'
-import { useEffect, useMemo, useRef, type MouseEvent } from 'react'
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
+import { useEffect, useMemo, useRef } from 'react'
+import { useLocation, useParams } from 'react-router'
 
 import { QueryGuard } from '../../components/QueryGuard'
-import { ACTION_LINK, AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
-import { aidHref, type AidAsOf, type AidView } from '../../components/camperships/kit/asOf'
+import { AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
+import { type AidAsOf, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
 import { HoldBanners } from '../../components/camperships/household/HoldBanners'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
@@ -16,7 +16,9 @@ import {
   IncomeSection,
   LinksSection,
 } from '../../components/camperships/household/HouseholdSections'
+import { QueueWalkStrip } from '../../components/camperships/household/QueueWalkStrip'
 import { RequestCard } from '../../components/camperships/household/RequestCard'
+import { useQueueWalk } from '../../components/camperships/household/useQueueWalk'
 import { AidDefinitionNotes } from '../../components/camperships/shell/AidDefinitionNotes'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
@@ -42,46 +44,6 @@ function HouseholdBody({ page, view }: { page: ApiAidHouseholdPage; view: AidVie
       <LinksSection page={page} />
       <HistorySection page={page} />
     </>
-  )
-}
-
-/** What the grid keeps in its URL besides the view (the lens too); a household link carries them back (M5). */
-const GRID_FILTERS = ['lens', 'program', 'pool', 'round', 'tick', 'ids'] as const
-
-/**
- * "← Back to Requests": the grid's view and filters, rebuilt from the link that opened this page.
- * When the grid opened this entry (it marks it `aidFromGrid`) the click goes back through history,
- * so the grid lands on the row it left (§3.5: the grid wrote `?row=` onto its own entry first).
- * Anything else (a new tab, a jump, a queue step) follows the href, whose view carries the as-of.
- */
-function BackToRequests({ view }: { view: AidView }) {
-  const [params] = useSearchParams()
-  const navigate = useNavigate()
-  const { state } = useLocation()
-  const fromGrid = (state as { aidFromGrid?: boolean } | null)?.aidFromGrid === true
-  const from = params.get('from')
-  if (from === null) return null
-  // One URL scheme (owner ruling 10-03, T4): `from=all` is All, which has no `view`.
-  const extra: Record<string, string> = from === 'all' ? {} : { view: from }
-  for (const name of GRID_FILTERS) {
-    const value = params.get(name)
-    if (value !== null) extra[name] = value
-  }
-  const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (!fromGrid) return
-    event.preventDefault()
-    void navigate(-1)
-  }
-  return (
-    <div>
-      <Link
-        to={aidHref('/aid/requests', view, extra)}
-        onClick={onClick}
-        className={`text-primary ${ACTION_LINK}`}
-      >
-        ← Back to Requests
-      </Link>
-    </div>
   )
 }
 
@@ -117,12 +79,16 @@ export default function AidHouseholdPage() {
   const page = useAidHouseholdPage(valid ? id : 0)
   const definitions = useAidDefinitions('household')
   const view = useMemo((): AidView => ({ year, asOf: LIVE }), [year])
+  // The links carry the as-of the grid's link did, so Back returns to the same view.
+  const linkView = useMemo((): AidView => ({ year, asOf }), [year, asOf])
+  const walk = useQueueWalk(valid ? id : 0, linkView)
   const data = page.data
   const missing = !valid || hasStatus(page.error, 404)
   useScrollToHash()
 
   return (
     <div className="space-y-3 sm:space-y-4">
+      {walk && <QueueWalkStrip walk={walk} />}
       <AidPageBand
         icon={Users}
         title={data ? bandTitle(data) : `Household ${householdCmId ?? ''}`}
@@ -134,7 +100,6 @@ export default function AidHouseholdPage() {
           ) : undefined
         }
       />
-      <BackToRequests view={{ year, asOf }} />
       {asOf.kind === 'past' && (
         <p className={AMBER_NOTE}>
           {`The household page shows today's figures only. Requests can show ${formatLongDate(asOf.date)}.`}

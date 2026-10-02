@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 import { householdPage } from '../../components/camperships/household/householdFixtures'
-import { useAidHouseholdPage } from './useAidHouseholdPage'
+import { useAidHouseholdPage, usePrefetchHousehold } from './useAidHouseholdPage'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -56,6 +56,22 @@ describe('useAidHouseholdPage', () => {
 
   it('reads nothing for household 0', async () => {
     renderHook(() => useAidHouseholdPage(0), { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('usePrefetchHousehold (§3.5, §10: Next under 200 ms)', () => {
+  it('loads the next family in the background, through fetchWithAuth', async () => {
+    renderHook(() => usePrefetchHousehold(1000005), { wrapper })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/financial-aid/household-page/2027/1000005')
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
+  })
+
+  it('loads nothing with no next family', async () => {
+    renderHook(() => usePrefetchHousehold(null), { wrapper })
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(fetchSpy).not.toHaveBeenCalled()
   })
