@@ -127,7 +127,7 @@ describe('an applicant household that pays nothing (review I1)', () => {
 })
 
 describe('the decision panel (§6.3 item 4; D50, D52; Decision 22)', () => {
-  it('gives each round its award, words, lock and ticks', () => {
+  it('gives each round its amount, words, lock and ticks', () => {
     const [samuel] = roundLines(PAGE.requests[1]!)
     expect(samuel).toMatchObject({
       round: 1,
