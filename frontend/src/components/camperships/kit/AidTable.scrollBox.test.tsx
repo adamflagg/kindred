@@ -168,6 +168,56 @@ describe('AidTable scrollBox: its height', () => {
   })
 })
 
+describe('AidTable scrollBox: content above the box changes height', () => {
+  const realInner = window.innerHeight
+  let top = 200
+  beforeEach(() => {
+    top = 200
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return {
+        top: this.className.includes('overscroll-contain') ? top : 0,
+        height: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        width: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }
+    })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    Object.defineProperty(window, 'innerHeight', { value: realInner, configurable: true })
+  })
+
+  // A view change (a note appearing above the box) re-renders the table with other columns and
+  // fires no resize: the box must still be measured again.
+  it('measures again on a re-render, without a resize', () => {
+    Object.defineProperty(window, 'innerHeight', { value: 900, configurable: true })
+    const tree = (columns: Array<AidColumn<Row>>) => (
+      <MemoryRouter>
+        <AidTable<Row>
+          rows={ROWS}
+          columns={columns}
+          rowKey={(r) => r.id}
+          csvFilename="x.csv"
+          footerLabel={() => 'label'}
+          scrollBox
+        />
+      </MemoryRouter>
+    )
+    const { rerender } = render(tree(COLUMNS))
+    expect(box().style.maxHeight).toBe('688px')
+    top = 232
+    rerender(tree(COLUMNS.slice(0, 2)))
+    expect(box().style.maxHeight).toBe('656px')
+  })
+})
+
 describe('AidTable scrollBox: the highlighted row stays clear of the held header and totals', () => {
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (

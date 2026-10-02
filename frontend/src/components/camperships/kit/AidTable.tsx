@@ -262,19 +262,20 @@ export function AidTable<Row>({
   const headRef = useRef<HTMLTableSectionElement>(null)
   const footRef = useRef<HTMLTableSectionElement>(null)
   const [margins, setMargins] = useState({ top: 0, bottom: 0 })
+  const measure = useCallback(() => {
+    const element = boxRef.current
+    if (!scrollBox || element === null) return
+    const top = element.getBoundingClientRect().top + window.scrollY
+    element.style.maxHeight = `${String(Math.max(BOX_MIN_HEIGHT, window.innerHeight - top - BOX_GAP))}px`
+    const next = {
+      top: headRef.current?.getBoundingClientRect().height ?? 0,
+      bottom: footRef.current?.getBoundingClientRect().height ?? 0,
+    }
+    setMargins((was) => (was.top === next.top && was.bottom === next.bottom ? was : next))
+  }, [scrollBox])
   useLayoutEffect(() => {
     const element = boxRef.current
     if (!scrollBox || element === null) return
-    const measure = () => {
-      const top = element.getBoundingClientRect().top + window.scrollY
-      element.style.maxHeight = `${String(Math.max(BOX_MIN_HEIGHT, window.innerHeight - top - BOX_GAP))}px`
-      const next = {
-        top: headRef.current?.getBoundingClientRect().height ?? 0,
-        bottom: footRef.current?.getBoundingClientRect().height ?? 0,
-      }
-      setMargins((was) => (was.top === next.top && was.bottom === next.bottom ? was : next))
-    }
-    measure()
     window.addEventListener('resize', measure)
     // Whatever sits above the box (the views row, the filters, this table's own toolbar) moves it
     // when it changes height.
@@ -290,7 +291,10 @@ export function AidTable<Row>({
       observer?.disconnect()
       element.style.maxHeight = ''
     }
-  }, [scrollBox])
+  }, [scrollBox, measure])
+  // Every render measures too: a note inserted above the box (a view change re-renders this table)
+  // resizes no element the observer was handed, and the setState above is a no-op when unchanged.
+  useLayoutEffect(measure)
 
   useEffect(() => {
     if (highlighted !== null) rowRefs.current.get(highlighted)?.scrollIntoView({ block: 'nearest' })
