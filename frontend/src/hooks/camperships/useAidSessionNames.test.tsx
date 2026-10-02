@@ -28,8 +28,15 @@ describe('useAidSessionNames (Decision 28; M6)', () => {
     expect(getFullList).toHaveBeenCalledWith({
       filter: 'year = 2027',
       fields: 'cm_id,name',
-      sort: 'start_date',
+      sort: 'start_date,cm_id',
     })
+  })
+
+  it('breaks start-date ties by cm_id so the picker order is stable', async () => {
+    getFullList.mockClear()
+    renderHook(() => useAidSessionNames(2028), { wrapper })
+    await waitFor(() => expect(getFullList).toHaveBeenCalled())
+    expect(getFullList).toHaveBeenCalledWith(expect.objectContaining({ sort: 'start_date,cm_id' }))
   })
 
   it('asks nothing until there is a season', () => {
