@@ -22,6 +22,7 @@ import {
   firstCamperOf,
   historyLine,
   householdCsvName,
+  householdName,
   latestReceipt,
   linkWords,
   noteWords,
@@ -44,6 +45,24 @@ describe('the band (§6.3 item 1; D32, D77; Decision 18)', () => {
     expect(bandSubtitle(PAGE)).toBe('Samuel Johnson · household 1000001 · 555-0100 · Riverside, CA')
     expect(bandSubtitle(SPLIT_PAGE)).toBe(
       '2 households with a financial stake · opened from The Johnson Family'
+    )
+  })
+
+  // Guard: the server never sends a blank family_name today.
+  it('reads a blank family name as missing, in one place', () => {
+    const blank = householdPage({
+      households: [householdCard({ household_cm_id: 1000001, family_name: '  ' })],
+    })
+    expect(householdName(blank, 1000001)).toBe('Household 1000001')
+    expect(householdName(PAGE, 1000001)).toBe('The Johnson Family')
+    const several = householdPage({
+      households: [
+        householdCard({ household_cm_id: 1000001, family_name: '' }),
+        householdCard({ household_cm_id: 1000002, family_name: 'The Garcia Family', chip: 2 }),
+      ],
+    })
+    expect(bandSubtitle(several)).toBe(
+      '2 households with a financial stake · opened from Household 1000001'
     )
   })
 

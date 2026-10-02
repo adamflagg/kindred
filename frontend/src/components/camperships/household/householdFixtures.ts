@@ -142,7 +142,7 @@ export function householdPage(over: Partial<ApiAidHouseholdPage> = {}): ApiAidHo
         grantor_name: 'Grantor A',
         description: 'Outside grant',
         source_family: 'outside',
-        funder_type: 'other',
+        funder_type: 'outside',
         amount: 1000,
         recorded_on: '2027-02-01',
         is_reversed: false,
