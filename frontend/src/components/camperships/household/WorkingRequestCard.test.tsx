@@ -85,7 +85,7 @@ function Cards({
   rows,
   canWork = true,
 }: {
-  rows: Parameters<typeof householdRequest>[0][]
+  rows: Array<Parameters<typeof householdRequest>[0]>
   canWork?: boolean
 }) {
   const exits = useEditorExits()
