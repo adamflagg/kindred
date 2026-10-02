@@ -88,9 +88,11 @@ function DayBox({
 }) {
   const current = value ?? ''
   const [text, setText] = useDraft(current)
-  const commit = () => {
+  const commit = (badInput: boolean) => {
     if (text === current) return
-    if (text === '') onDay(null)
+    // A partly erased box reads '' too, but it is a half-edited day, not "no date": back to the URL's.
+    if (text === '' && badInput) setText(current)
+    else if (text === '') onDay(null)
     else if (isSeasonDay(text)) onDay(text)
     else setText(current)
   }
@@ -102,9 +104,9 @@ function DayBox({
         aria-label={label}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        onBlur={commit}
+        onBlur={(event) => commit(event.currentTarget.validity.badInput)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') commit()
+          if (event.key === 'Enter') commit(event.currentTarget.validity.badInput)
         }}
         className={COMPACT_FIELD}
       />

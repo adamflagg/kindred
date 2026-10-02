@@ -60,10 +60,14 @@ function Where() {
 }
 
 /** A URL change from elsewhere (Back, a pasted link): fired without moving focus. */
-function Jump({ to }: { to: string }) {
+function Jump({ to, testId = 'jump' }: { to: string; testId?: string }) {
   const navigate = useNavigate()
   return (
-    <button type="button" data-testid="jump" onClick={() => void navigate(to, { replace: true })} />
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={() => void navigate(to, { replace: true })}
+    />
   )
 }
 
@@ -73,6 +77,7 @@ function renderAt(path = '/aid/season/history?year=2027') {
       <HistoryTab />
       <Where />
       <Jump to="/aid/season/history?since=2027-02-01" />
+      <Jump to="/aid/season/history?q=emailed" testId="jump-q" />
     </MemoryRouter>
   )
 }
@@ -349,5 +354,35 @@ describe('HistoryTab', () => {
     renderAt()
     expect(screen.queryByText(/Updating/)).toBeNull()
     expect(document.querySelector('[data-stale]')).toBeNull()
+  })
+
+  it('puts a partly erased date box back to the URL day, and clears only a truly empty one', () => {
+    renderAt('/aid/season/history?since=2027-02-01')
+    const box = screen.getByLabelText('From')
+    // A browser reports value '' with badInput while a segment is erased: not "no date".
+    Object.defineProperty(box, 'validity', { value: { badInput: true }, configurable: true })
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.blur(box)
+    expect(where().get('since')).toBe('2027-02-01')
+    expect(box).toHaveValue('2027-02-01')
+    Object.defineProperty(box, 'validity', { value: { badInput: false }, configurable: true })
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.blur(box)
+    expect(where().has('since')).toBe(false)
+  })
+
+  it('does not mark a page stale just because a read is in flight', () => {
+    read = { data: PAGE, isLoading: false, isFetching: true, isPlaceholderData: false, error: null }
+    renderAt()
+    expect(screen.queryByText(/Updating/)).toBeNull()
+    expect(document.querySelector('[data-stale]')).toBeNull()
+  })
+
+  it('shows a URL change in the search box and keeps the same box', () => {
+    renderAt()
+    const box = screen.getByRole('searchbox', { name: 'Search' })
+    fireEvent.click(screen.getByTestId('jump-q'))
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBe(box)
+    expect(box).toHaveValue('emailed')
   })
 })
