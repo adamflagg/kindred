@@ -61,3 +61,10 @@ def test_who_counts_names_the_aid_eligible_population() -> None:
     assert "aid-eligible" in text
     assert "only attendees" in text.lower()
     assert "not counted anywhere" in text
+
+
+def test_who_counts_names_the_closed_session_grant_that_still_counts() -> None:
+    """Owner (item 28, 2026-10-02): leave the edge case as built, and say so. An outside grant on a session that is
+    not aid-eligible still counts when the same person also attended an aid-eligible session in that group."""
+    text = BY_KEY["dev_recipients"].text
+    assert "grant on a session that is not aid-eligible still counts" in text

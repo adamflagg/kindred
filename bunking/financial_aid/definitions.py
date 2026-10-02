@@ -377,7 +377,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "who never applied. A cancelled camper, or one who got nothing, is not counted. A camper counts once per "
             "program; Weekend counts families. Only attendees of aid-eligible sessions (those a program open to aid claims "
             "this season) are in these groups: someone who attended only a session that is not aid-eligible is not "
-            "counted anywhere."
+            "counted anywhere. An outside grant on a session that is not aid-eligible still counts when the same "
+            "person also attended an aid-eligible session in that group."
         ),
         spec="§5.11",
         rulings=("D92",),
