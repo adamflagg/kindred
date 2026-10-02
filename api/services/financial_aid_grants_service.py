@@ -242,6 +242,7 @@ def _commitment(c: Any) -> Commitment:
         committed_on=date.fromisoformat(str(c.committed_on)[:10]),
         created=parse_pb_datetime(getattr(c, "created", "")),
         status=str(c.status),
+        note=str(getattr(c, "note", "") or ""),
     )
 
 
@@ -661,8 +662,11 @@ class GrantsService:
         def family_of(cm: int) -> str:
             return household_display_name(household_names.get(cm), cm)
 
+        commitments = {c.id: c for c in inputs.commitments}
+
         def row_out(row: RegisterRow) -> GrantRowOut:
             source = descriptions.get(row.source_key)
+            commitment = commitments.get(row.commitment_id)
             return GrantRowOut(
                 kind=row.kind,
                 transaction_cm_id=row.transaction_cm_id,
@@ -688,6 +692,8 @@ class GrantsService:
                 counts=row.counts,
                 fulfils_commitment_id=row.fulfils_commitment_id,
                 requests=[RequestShareOut(request_id=s.request_id, amount=money(s.amount)) for s in row.requests],
+                committed_on=commitment.committed_on.isoformat() if commitment is not None else "",
+                commitment_note=commitment.note if commitment is not None else "",
             )
 
         grants = sorted(

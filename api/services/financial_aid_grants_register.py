@@ -120,6 +120,7 @@ class Commitment:
     committed_on: date
     created: datetime | None  # when Kindred recorded it
     status: str  # open | withdrawn
+    note: str = ""  # the stored note (slice 3 ask 9: the Register row carries it for the edit form)
 
 
 @dataclass(frozen=True)

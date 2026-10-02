@@ -152,6 +152,11 @@ class GrantRowOut(BaseModel):
     counts: bool
     fulfils_commitment_id: str
     requests: list[RequestShareOut]
+    # Slice 3 ask 9: a commitment row's own committed date (YYYY-MM-DD; recorded_on already holds it there) and its
+    # stored note, so the edit form opens on what is stored (PUT replaces the whole record). "" on a ledger line,
+    # which is not a commitment, even one that fulfils a commitment.
+    committed_on: str = ""
+    commitment_note: str = ""
 
 
 class CamperSuggestionOut(BaseModel):
