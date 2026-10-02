@@ -96,7 +96,7 @@ def _writer(
         return lambda: casework.set_payer_shares(summer.id, shares, "Two parents.", ACTOR)
     assert name == "set_household_share"
     return lambda: casework.set_household_share(
-        summer.id, 1000009, share_pct=Decimal(40), amount=None, reason="Other parent.", actor=ACTOR
+        summer.id, 1000009, share_pct=Decimal(40), reason="Other parent.", actor=ACTOR
     )
 
 

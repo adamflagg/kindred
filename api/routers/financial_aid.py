@@ -527,14 +527,12 @@ async def set_aid_request_household_share(
     household_cm_id: int = Path(gt=0),
     user: AuthUser = Depends(require_permission(Permission.FINANCIAL_AID_CASEWORK)),
 ) -> RequestOut:
-    """One household's share as a % or, once the request has a priced amount, as dollars
-    (stored as a %); the other share of a two-way split gets the remainder."""
+    """One household's share as a %; the other share of a two-way split gets the remainder."""
     try:
         return await _casework().set_household_share(
             request_id,
             household_cm_id,
             share_pct=body.share_pct,
-            amount=body.amount,
             reason=body.reason,
             actor=user.email,
         )

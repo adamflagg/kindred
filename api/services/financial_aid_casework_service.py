@@ -81,7 +81,6 @@ from api.services.financial_aid_payer_shares import (
     PayerShareError,
     ShareSpec,
     fill_remainder,
-    pct_from_dollars,
     share_status,
     split_award,
     validate_shares,
@@ -216,8 +215,8 @@ def payer_share_out(share: PayerShareRecord, amount: Decimal | None = None) -> P
 
 class AwardSource(Protocol):
     """A request's current priced amount: its decided award, or a calculator result.
-    Sub-project 10 supplies it. Until then there is none, so only a % can be entered and
-    no dollars are shown."""
+    Sub-project 10 supplies it. Until then there is none and no dollars are shown.
+    It only decides what is displayed: shares are entered as a % (owner ruling 2026-10-02)."""
 
     async def __call__(self, request: RequestRecord) -> Decimal | None: ...
 
@@ -472,28 +471,16 @@ class FinancialAidCaseworkService:
         request_id: str,
         household_cm_id: int,
         *,
-        share_pct: Decimal | None,
-        amount: Decimal | None,
+        share_pct: Decimal,
         reason: str,
         actor: str,
     ) -> RequestOut:
         async with self._locked(request_id) as request:
             self._require_live(request, reason)
-            entered: dict[str, Any] = {"household_cm_id": household_cm_id}
+            entered: dict[str, Any] = {"household_cm_id": household_cm_id, "share_pct": _pct_text(share_pct)}
             try:
-                if amount is not None and share_pct is None:
-                    award = await self._award(request)
-                    if award is None:
-                        raise CaseworkValidationError("this request has no priced amount yet: enter a percentage")
-                    pct = pct_from_dollars(amount, award)
-                    entered.update({"amount": f"{amount:.2f}", "award": f"{award:.2f}"})
-                elif share_pct is not None and amount is None:
-                    pct = share_pct
-                else:
-                    raise CaseworkValidationError("enter a percentage or a dollar amount, exactly one")
-                entered["share_pct"] = _pct_text(pct)
                 existing = await self._store.fetch_payer_shares(request.year, [request.id])
-                shares = fill_remainder(existing, household_cm_id, pct)
+                shares = fill_remainder(existing, household_cm_id, share_pct)
             except PayerShareError as exc:
                 raise CaseworkValidationError(str(exc)) from exc
             return await self._replace_shares(

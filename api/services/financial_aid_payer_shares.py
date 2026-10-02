@@ -9,11 +9,9 @@ percentages stay. Sub-projects 10 and 11 reuse split_award for decisions and pos
 * A request's shares must add to exactly 100%, or it holds ("incomplete").
 * Setting one household's % beside exactly one other share sets that share to the
   remainder (fill_remainder). With three or more, staff balance them.
-* Once a request has a priced amount, staff may type dollars for one household; they
-  become a % of that amount (pct_from_dollars) and only the % is stored.
+* Shares are entered as a % only (owner ruling 2026-10-02); there is no dollar entry.
 
-Percentages carry up to four decimals, so a typed amount round-trips: $880 of $2,201 is
-39.9818%, which split_award turns back into $880.
+Percentages carry up to four decimals, so split_award's dollars are stable to the cent.
 """
 
 from __future__ import annotations
@@ -85,17 +83,6 @@ def fill_remainder(existing: Sequence[_Share], household_cm_id: int, pct: Decima
         remainder = HUNDRED - pct
         others = [ShareSpec(others[0].household_cm_id, remainder)] if remainder > 0 else []
     return sorted([*others, ShareSpec(household_cm_id, pct)], key=lambda s: s.household_cm_id)
-
-
-def pct_from_dollars(amount: Decimal, award: Decimal) -> Decimal:
-    """A typed dollar amount as a % of the request's current priced amount (four decimals, half-up)."""
-    if award <= 0:
-        raise PayerShareError("there is no priced amount to take a share of")
-    if not (0 < amount <= award):
-        raise PayerShareError("a dollar share is above $0 and at most the award")
-    pct = (amount * HUNDRED / award).quantize(PCT_PLACES, rounding=ROUND_HALF_UP)
-    _check_pct(pct)
-    return pct
 
 
 def split_award(award: Decimal, shares: Sequence[_Share], application_household_cm_id: int) -> dict[int, Decimal]:
