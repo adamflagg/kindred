@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { useAidApplication } from '../../../hooks/camperships/useAidApplication'
-import { useAidSessionNames } from '../../../hooks/camperships/useAidSessionNames'
 import {
   useAidCorrection,
   useAidDuplicate,
@@ -24,16 +23,14 @@ import {
   FIELD,
   FIELD_INLINE,
 } from '../../admin/lodging/lodgingStyles'
-import { parseMoneyInput } from '../kit/editor'
 import {
   correctionValue,
   duplicateSurvivors,
   fieldKind,
   headcountOf,
+  namedHolder,
   parseCount,
   parsePercent,
-  sessionCandidates,
-  sessionName,
 } from './caseworkModel'
 import type { EditorExits } from './editorExits'
 import { answerWords, camperOf } from './householdModel'
@@ -262,9 +259,9 @@ export function IncomeCorrection({
 }
 
 /**
- * "Payer shares…" (main spec §9.2): one household's share, as a % or in dollars. With two shares the
- * server fills the other, and a dollar amount becomes a % of the current award. A household not on
- * the page is added by its CampMinder id.
+ * "Payer shares…" (main spec §9.2): one household's share, as a percentage. With two shares the
+ * server fills the other. A household not on the page is added by its CampMinder id. Percent only:
+ * the server's dollar path needs an award source it is not wired with (review I2).
  */
 export function ShareForm({
   request,
@@ -278,7 +275,6 @@ export function ShareForm({
   const share = useAidHouseholdShare()
   const [household, setHousehold] = useState(String(request.row.household_cm_id))
   const [otherId, setOtherId] = useState('')
-  const [mode, setMode] = useState<'pct' | 'amount'>('pct')
   const [value, setValue] = useState('')
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
@@ -287,19 +283,9 @@ export function ShareForm({
     attempt(() => {
       const id = parseCount(household === 'other' ? otherId : household, Number.MAX_SAFE_INTEGER)
       if (id.kind === 'invalid' || id.value <= 0) return "Enter the other household's CampMinder id"
-      let body: ApiAidHouseholdShareIn
-      if (mode === 'pct') {
-        const pct = parsePercent(value)
-        if (pct.kind === 'invalid') return pct.reason
-        body = { share_pct: pct.value, reason: reason.trim() }
-      } else {
-        const amount = parseMoneyInput(value)
-        if (amount.kind === 'invalid') return amount.reason
-        if (amount.kind === 'empty') return 'Enter the amount'
-        // The server's `gt=0`.
-        if (amount.amount <= 0) return 'More than $0'
-        body = { amount: String(amount.amount), reason: reason.trim() }
-      }
+      const pct = parsePercent(value)
+      if (pct.kind === 'invalid') return pct.reason
+      const body: ApiAidHouseholdShareIn = { share_pct: pct.value, reason: reason.trim() }
       if (reason.trim() === '') return REASON_REQUIRED
       return () =>
         share
@@ -355,43 +341,27 @@ export function ShareForm({
           className={`${FIELD_INLINE} w-24 text-right tabular-nums`}
         />
       </label>
-      <select
-        aria-label="Share as"
-        value={mode}
-        onChange={(event) => setMode(event.target.value === 'amount' ? 'amount' : 'pct')}
-        className={FIELD_INLINE}
-      >
-        <option value="pct">%</option>
-        <option value="amount">$ of the award</option>
-      </select>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )
 }
 
-/** "Settle session…" (main spec §9.1; Decision 28): one of the candidates intake recorded. */
+/**
+ * "Settle session…" (main spec §9.1): one of the candidates intake recorded, named by the server on
+ * the row (`GridRowOut.session_candidates`, set while the request is unmatched).
+ */
 export function SessionForm({
   request,
-  page,
   onDone,
 }: {
   request: ApiAidHouseholdRequest
-  page: ApiAidHouseholdPage
   onDone: () => void
 }) {
-  const application = useAidApplication(request.row.household_cm_id)
-  const names = useAidSessionNames(page.year)
   const resolve = useAidSessionResolve()
   const [session, setSession] = useState('')
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
-  const candidates = sessionCandidates(application.data, request.row.request_id)
-  if (application.isLoading) {
-    return <span className="text-muted-foreground text-xs">Loading the candidates…</span>
-  }
-  if (application.data === undefined) {
-    return <Note onBack={onDone}>Couldn&apos;t load this request&apos;s candidate sessions.</Note>
-  }
+  const candidates = request.row.session_candidates ?? []
   if (candidates.length === 0) {
     return <Note onBack={onDone}>No candidate sessions are recorded for this request.</Note>
   }
@@ -424,9 +394,9 @@ export function SessionForm({
           className={FIELD_INLINE}
         >
           <option value="">Pick a session</option>
-          {candidates.map((id) => (
-            <option key={id} value={String(id)}>
-              {sessionName(page, id, names)}
+          {candidates.map((candidate) => (
+            <option key={candidate.session_cm_id} value={String(candidate.session_cm_id)}>
+              {candidate.name}
             </option>
           ))}
         </select>
@@ -446,20 +416,36 @@ export function DuplicateForm({
   page: ApiAidHouseholdPage
   onDone: () => void
 }) {
+  const application = useAidApplication(request.row.household_cm_id)
   const mark = useAidDuplicate()
-  const survivors = duplicateSurvivors(page, request)
-  const [kept, setKept] = useState(survivors[0]?.row.request_id ?? '')
+  const onPage = duplicateSurvivors(page, request)
+  // The holder intake named can be on another household's page (the second parent's request): offer
+  // it too. The server checks it is active and the same camper, program and session.
+  const holder = namedHolder(application.data, request.row.request_id)
+  const options = [
+    ...onPage.map((other) => ({
+      id: other.row.request_id,
+      label: `${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`,
+    })),
+    ...(holder !== '' && !onPage.some((other) => other.row.request_id === holder)
+      ? [{ id: holder, label: `the request intake named · ${holder}` }]
+      : []),
+  ]
+  const [kept, setKept] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
-  if (survivors.length === 0) {
+  if (options.length === 0) {
+    if (application.isLoading) {
+      return <span className="text-muted-foreground text-xs">Looking for the request to keep…</span>
+    }
     return (
       <Note onBack={onDone}>
         No other active request for this camper and session is on this page.
       </Note>
     )
   }
-  // The kept request can leave the page on a refetch: send only one that is still offered.
-  const keptNow = survivors.find((other) => other.row.request_id === kept)?.row.request_id
+  // The kept request can leave the options on a refetch: send only one that is still offered.
+  const keptNow = options.find((option) => option.id === (kept ?? options[0]?.id))?.id
   const submit = () =>
     attempt(() => {
       if (keptNow === undefined) return 'Pick the request to keep'
@@ -489,9 +475,9 @@ export function DuplicateForm({
           className={FIELD_INLINE}
         >
           {keptNow === undefined && <option value="">Pick a request</option>}
-          {survivors.map((other) => (
-            <option key={other.row.request_id} value={other.row.request_id}>
-              {`${camperOf(other)} · ${other.row.session_name} · ${other.row.request_id}`}
+          {options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
             </option>
           ))}
         </select>
@@ -501,12 +487,19 @@ export function DuplicateForm({
   )
 }
 
-/** "Headcount…" on a Family Camp request (main spec §8): a reason, typed (Decision 26: no code list exists). */
+/**
+ * "Headcount…" on a Family Camp request (main spec §8): a reason code from the season's list (the
+ * page's `override_reasons`, shown as the server sends them; the server has no label map) and a
+ * typed reason. The code is optional on the server; it is required here whenever the season offers
+ * any, since Decision 6 has the log keep it.
+ */
 export function HeadcountForm({
   request,
+  page,
   onDone,
 }: {
   request: ApiAidHouseholdRequest
+  page: ApiAidHouseholdPage
   onDone: () => void
 }) {
   const application = useAidApplication(request.row.household_cm_id)
@@ -514,14 +507,20 @@ export function HeadcountForm({
   const current = headcountOf(application.data, request.row.request_id)
   const [nonInfant, setNonInfant] = useState<string | null>(null)
   const [infant, setInfant] = useState<string | null>(null)
+  const [reasonCode, setReasonCode] = useState('')
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
     return <span className="text-muted-foreground text-xs">Loading the headcount…</span>
   }
+  // Fields over figures that never loaded would be typed blind.
+  if (current === null) {
+    return <Note onBack={onDone}>Couldn&apos;t load this request&apos;s headcount.</Note>
+  }
+  const codes = page.override_reasons ?? []
   // Until the person types, the fields show what the application holds.
-  const shownNonInfant = nonInfant ?? (current ? String(current.nonInfant) : '')
-  const shownInfant = infant ?? (current ? String(current.infant) : '')
+  const shownNonInfant = nonInfant ?? String(current.nonInfant)
+  const shownInfant = infant ?? String(current.infant)
   const submit = () =>
     attempt(() => {
       // The server's own limits (HeadcountSet): 0–50 and 0–20, and at least one person.
@@ -530,6 +529,7 @@ export function HeadcountForm({
       if (adults.kind === 'invalid') return `Not infants: ${adults.reason}`
       if (babies.kind === 'invalid') return `Infants: ${babies.reason}`
       if (adults.value + babies.value === 0) return 'A family needs at least one person'
+      if (codes.length > 0 && reasonCode === '') return 'Pick a reason code'
       if (reason.trim() === '') return REASON_REQUIRED
       return () =>
         set
@@ -540,6 +540,7 @@ export function HeadcountForm({
               infant: babies.value,
               source: 'override',
               reason: reason.trim(),
+              ...(reasonCode === '' ? {} : { reason_code: reasonCode }),
             },
           })
           .then(onDone)
@@ -574,6 +575,24 @@ export function HeadcountForm({
           className={`${FIELD_INLINE} w-16 text-right`}
         />
       </label>
+      {codes.length > 0 && (
+        <label className="flex items-center gap-2">
+          Reason code
+          <select
+            aria-label="Reason code"
+            value={reasonCode}
+            onChange={(event) => setReasonCode(event.target.value)}
+            className={FIELD_INLINE}
+          >
+            <option value="">Pick a code</option>
+            {codes.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )
