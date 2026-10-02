@@ -25,6 +25,7 @@ import {
   CELL_BG,
   EDITOR_ROW,
   GROUP_ROW,
+  HELP_HEADER,
   HIGHLIGHT_EDGE,
   HIGHLIGHT_PINNED_EDGE,
   PINNED_EDGE,
@@ -448,7 +449,7 @@ export function AidTable<Row>({
                     style={pinStyle(c)}
                     className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
                   >
-                    <Tooltip content={c.help} className="cursor-help text-left">
+                    <Tooltip content={c.help} className={HELP_HEADER}>
                       {c.header}
                     </Tooltip>
                   </th>

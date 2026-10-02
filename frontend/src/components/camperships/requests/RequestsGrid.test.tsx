@@ -424,6 +424,22 @@ describe('RequestsGrid: the CM ✓ column', () => {
     ).toEqual(['reqc1', 'reqc2', 'reqc3', 'reqc4'])
   })
 
+  // Owner 2026-10-02: no ⓘ; the text itself says it explains itself (the dotted underline the
+  // journey rows use for a Tooltip trigger) and the cursor says help.
+  it('marks the header text as explained: dotted underline, help cursor, no icon', () => {
+    render(<Grid rows={ROWS} />)
+    const header = screen.getByRole('columnheader', { name: 'CM ✓' })
+    const trigger = header.firstElementChild as HTMLElement
+    expect(trigger).toHaveClass(
+      'underline',
+      'decoration-dotted',
+      'underline-offset-2',
+      'cursor-help'
+    )
+    expect(header.querySelector('svg')).toBeNull()
+    expect(header).toHaveTextContent(/^CM ✓$/)
+  })
+
   it('is there from the first ticked season and gone before it', () => {
     const { unmount } = render(<Grid rows={ROWS} year={2027} />)
     expect(screen.getByRole('columnheader', { name: 'CM ✓' })).toBeInTheDocument()
