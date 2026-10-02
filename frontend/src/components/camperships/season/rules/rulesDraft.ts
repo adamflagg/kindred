@@ -20,16 +20,18 @@ export function draftSections(draft: ApiAidRulesDraft): ApiAidRulesSection[] {
   )
 }
 
-/** Whether a section reads the same in two reads of the draft: its settings and its status. */
+/**
+ * Whether a section reads the same in two reads of the draft: the server's fingerprint of its stored
+ * content (what a save's 409 compares) and its status.
+ */
 export function sameSection(
   a: ApiAidRulesDraft,
   b: ApiAidRulesDraft,
   section: ApiAidRulesSection
 ): boolean {
-  const statusOf = (d: ApiAidRulesDraft) => d.sections.find((s) => s.section === section)?.status
+  const rowOf = (d: ApiAidRulesDraft) => d.sections.find((s) => s.section === section)
   return (
-    JSON.stringify(sectionContent(a.document, section)) ===
-      JSON.stringify(sectionContent(b.document, section)) &&
-    JSON.stringify(statusOf(a)) === JSON.stringify(statusOf(b))
+    rowOf(a)?.fingerprint === rowOf(b)?.fingerprint &&
+    JSON.stringify(rowOf(a)?.status) === JSON.stringify(rowOf(b)?.status)
   )
 }

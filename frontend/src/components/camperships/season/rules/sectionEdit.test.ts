@@ -9,6 +9,7 @@ import {
   parseSetting,
   sectionChanges,
   setAt,
+  touches,
   valueAt,
 } from './sectionEdit'
 
@@ -120,7 +121,7 @@ describe("what someone else changed (G6's answer)", () => {
     const after = { minimum: '120', ask_cap: true, decision_types: {}, extra: 1 }
     expect(sectionChanges(before, after)).toEqual([
       { path: ['minimum'], kind: 'changed', before: '100', after: '120' },
-      { path: ['extra'], kind: 'added', after: 1 },
+      { path: ['extra'], kind: 'added', before: null, after: 1 },
     ])
     expect(sectionChanges({ minimum: '100' }, { minimum: '100.00' })).toEqual([])
   })
@@ -154,7 +155,7 @@ describe("reading a box as the server's schema validates it", () => {
     expect(parseSetting('1.00', fraction)).toEqual({ kind: 'ok', value: '1.00' })
     expect(parseSetting('1.5', fraction)).toEqual({ kind: 'invalid', reason: 'Between 0 and 1' })
     expect(parseSetting('1.0001', fraction)).toEqual({ kind: 'invalid', reason: 'Between 0 and 1' })
-    expect(parseSetting('72%', fraction)).toEqual({ kind: 'invalid', reason: 'Between 0 and 1' })
+    expect(parseSetting('72%', fraction)).toEqual({ kind: 'invalid', reason: 'No % in this box' })
   })
 
   it('takes money to two places only, as a string, with no float maths', () => {
@@ -196,13 +197,90 @@ describe("reading a box as the server's schema validates it", () => {
   })
 
   it('compares as the server does, lists whole and decimals by value', () => {
-    expect(sectionChanges({ a: ['1.0'] }, { a: ['1'] })).toEqual([])
+    // A list of plain values is compared exactly: the server never parses a string (I2).
+    expect(sectionChanges({ values: ['10'] }, { values: ['10.0'] })).toHaveLength(1)
+    expect(sectionChanges({ label: '2024' }, { label: '2024.0' })).toHaveLength(1)
+    expect(sectionChanges({ bands: [{ lower: '0' }] }, { bands: [{ lower: '0.00' }] })).toEqual([])
     expect(sectionChanges({ a: ['x'] }, { a: ['x', 'y'] })).toEqual([
       { path: ['a'], kind: 'changed', before: ['x'], after: ['x', 'y'] },
     ])
     expect(sectionChanges({}, { pools: { a: { total: '5' } } })).toEqual([
-      { path: ['pools', 'a', 'total'], kind: 'added', after: '5' },
+      { path: ['pools', 'a', 'total'], kind: 'added', before: null, after: '5' },
     ])
     expect(sectionChanges({ a: true }, { a: 1 })).toHaveLength(1)
+  })
+})
+
+describe('what is never a box, however it looks', () => {
+  it('never boxes a CampMinder session reference (I1)', () => {
+    expect(fieldSpec(['family_rates', '0', 'session_cm_id'], 1234)).toBeNull()
+    expect(fieldSpec(['programs', 'summer', 'session_cm_id'], 1234)).toBeNull()
+  })
+
+  it('reads a user-named key as a user-named key, not as the field it spells (m3)', () => {
+    const weight = fieldSpec(['weights', 'class_a', 'child'], '2')
+    expect(weight).toEqual({ kind: 'number', unit: 'plain', whole: false, nullable: false })
+    expect(fieldSpec(['weights', 'class_a', 'child'], null)).toBeNull()
+    expect(fieldSpec(['weights', 'class_a', 'prior_year'], '2')).not.toHaveProperty('fraction')
+    expect(fieldSpec(['weights', 'class_a', 'round'], 2)).not.toHaveProperty('max')
+    expect(fieldSpec(['program_tables', 'child'], null)).toBeNull()
+    // The income weights are still fractions.
+    expect(fieldSpec(['weights', 'prior_year'], '0.5')).toMatchObject({ fraction: true })
+  })
+
+  it('offers only the kind switches that can save (m5)', () => {
+    expect(fieldSpec(['decision_types', 'd', 'kind'], 'discretionary')).toEqual({
+      kind: 'choice',
+      options: ['full_cost', 'discretionary'],
+    })
+    expect(fieldSpec(['decision_types', 'd', 'kind'], 'top_up')).toBeNull()
+  })
+})
+
+describe('a symbol only in its own box (m1)', () => {
+  const money = { kind: 'number', unit: 'money', whole: false, nullable: false } as const
+  const percent = { kind: 'number', unit: 'percent', whole: false, nullable: false } as const
+  it('refuses a % in money and a $ in a percent, instead of stripping it', () => {
+    expect(parseSetting('5%', money)).toEqual({ kind: 'invalid', reason: 'No % in this box' })
+    expect(parseSetting('$50', percent)).toEqual({ kind: 'invalid', reason: 'No $ in this box' })
+    expect(
+      parseSetting('$2', { kind: 'number', unit: 'plain', whole: true, nullable: false })
+    ).toEqual({ kind: 'invalid', reason: 'No $ in this box' })
+    expect(parseSetting('$5', money)).toEqual({ kind: 'ok', value: '5' })
+    expect(parseSetting('50%', percent)).toEqual({ kind: 'ok', value: '50' })
+  })
+})
+
+describe('where an edit and a change meet (I3)', () => {
+  it('touches when either path is a prefix of the other', () => {
+    expect(touches(['bands', '1', 'upper'], ['bands'])).toBe(true)
+    expect(touches(['bands'], ['bands', '1', 'upper'])).toBe(true)
+    expect(touches(['bands', '1', 'upper'], ['bands', '1', 'upper'])).toBe(true)
+    expect(touches(['bands', '1', 'upper'], ['bands', '2'])).toBe(false)
+    expect(touches(['minimum'], ['minimum_when_cost_unknown'])).toBe(false)
+  })
+
+  it('flags a typed row that is gone after a rebase, instead of dropping it', () => {
+    const tiers = contentOf('tiers')
+    const rebased = { ...tiers, bands: [{ lower: '0', upper: '40000' }] }
+    const specOf = (path: readonly string[]) => fieldSpec(path, valueAt(rebased, path))
+    const applied = applyEdits(
+      rebased,
+      new Map([[editKey(['bands', '2', 'lower']), '80000']]),
+      specOf
+    )
+    expect(applied.problems.get(editKey(['bands', '2', 'lower']))).toBe(
+      'Row 3 of Income bands is gone; retype it'
+    )
+    expect(applied.gone.has(editKey(['bands', '2', 'lower']))).toBe(true)
+    expect(applied.content).toEqual(rebased)
+  })
+})
+
+describe('the null side of a change (m4)', () => {
+  it('carries null before an add and after a remove, as the server does', () => {
+    expect(sectionChanges({ a: 1 }, {})).toEqual([
+      { path: ['a'], kind: 'removed', before: 1, after: null },
+    ])
   })
 })
