@@ -132,6 +132,10 @@ def _round(
         tier=tier if tier is not None else tier_now,
         pool=view.pool if view is not None and view.pool is not None else home_pool,
         outside_budget=outside,
+        # Owner A1 carried through (RULED 2026-10-02): an outside-budget round's money is the outside funder's, kept
+        # apart so "% of ask incl. grants" counts it as grants while the camp's columns never do.
+        outside_posted=view.locked if posted and outside and view is not None else None,
+        outside_decided=view.decided if view is not None and view.status == "needs_offer" and outside else None,
     )
 
 

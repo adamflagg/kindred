@@ -12,12 +12,15 @@ def _text(key: str) -> str:
     return definition.text
 
 
-def test_percent_of_ask_including_grants_shares_percent_of_asks_denominator_and_says_round_1_only() -> None:
+def test_percent_of_ask_including_grants_keeps_outside_funded_asks_in_its_denominator_and_says_round_1_only() -> None:
     """§9.2 left its definition to the slice 4 plan; it is the server's (statistics.py), now signed in words."""
     text = _text("pct_of_ask_with_grants")
     assert text.startswith("% of ask incl. grants: ")
     assert "the counting outside grants placed on the live requests" in text
-    assert "÷ the live requests' in-budget asks (the same denominator as % of ask)" in text
+    # Owner A11 (APPROVED): unlike % of ask, the denominator keeps the rounds an outside funder pays in full.
+    assert "÷ the live requests' asks, including rounds an outside funder pays in full" in text
+    assert "outside-funded asks stay in its denominator" in text
+    assert "in-budget" not in text
     assert "Round 1 and All rounds only" in text
     assert '"% of ask incl. grants (posted + decided)"' in text
 
@@ -48,3 +51,13 @@ def test_basis_unconfirmed_is_the_interim_default_until_d96_is_re_ruled() -> Non
     assert "{camp}'s own aid only" in definition.text
     assert "may compare two bases" in definition.text
     assert "Kindred's interim default, not a ruling" in definition.text
+
+
+def test_percent_of_ask_including_grants_counts_an_outside_funded_rounds_money_as_grants() -> None:
+    """Owner A1 carried through (RULED 2026-10-02): the numerator's grants include the money of a round an outside
+    funder pays in full, not only the Grants register's lines."""
+    text = _text("pct_of_ask_with_grants")
+    assert (
+        "the counting outside grants placed on the live requests and the money of the rounds an outside funder pays in full"
+        in text
+    )
