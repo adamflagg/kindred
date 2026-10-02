@@ -36,4 +36,11 @@ describe('cardEdits (§4.6; Decisions 13, 23)', () => {
     })
     expect(cardEdits(r2Posted)).toEqual(['round3_ask'])
   })
+
+  it('offers nothing on a withdrawn or duplicate request, even with Round 1 posted', () => {
+    for (const request_status of ['withdrawn', 'duplicate']) {
+      const dead = gridRow({ request_status, rounds: [roundOut(1, 'posted')] })
+      expect(cardEdits(dead)).toEqual([])
+    }
+  })
 })
