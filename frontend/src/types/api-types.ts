@@ -221,7 +221,6 @@ export type ApiAidRoundCounts = RoundCountsOut
 /** "3 families · 4 requests" (principle 7). Mirrors Python `CountOut`. */
 export type ApiAidCount = CountOut
 /** One decision-type line of a pool's budget. Mirrors Python `DecisionTypeLineOut`. */
-/** Mirrors Python `DecisionType`. */
 export type ApiAidDecisionTypeLine = DecisionTypeLineOut
 
 /** Season › Rules (spec §7.5; D39, D76). Mirrors Python `ApprovedRulesOut`, `RulesDraftOut` and their parts. */
@@ -238,8 +237,7 @@ export type ApiAidRulesSection = DraftSectionOut['section']
 export type ApiAidRulesDocument = AidRulesOutput
 export type ApiAidRulesDocumentIn = AidRulesInput
 
-/** Rules records the document holds by key (`{[key]: unknown | T}`), named so the editor can read their choices. */
-/** Mirrors Python `ProgramProfile`. */
+/** Rules records the document holds by key (`{[key]: unknown | T}`), named so the editor can read their choices. Mirrors Python `ProgramProfile`. */
 export type ApiAidProgramProfile = ProgramProfile
 /** Mirrors Python `IncentiveRule`. */
 export type ApiAidIncentiveRule = IncentiveRule

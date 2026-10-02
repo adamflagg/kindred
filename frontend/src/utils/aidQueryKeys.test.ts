@@ -138,4 +138,11 @@ describe('invalidateAidRulesQueries (slice 2; spec §10)', () => {
     expect(queryKeys.aidRulesDraft(2027).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
     expect(queryKeys.aidRulesApproved(2027, 3).slice(0, 2)).toEqual(queryKeys.aidRulesPrefix())
   })
+
+  it('invalidates each prefix once on an approval, so no active read is cancelled and refetched twice', () => {
+    const invalidateQueries = vi.fn()
+    void invalidateAidRulesQueries({ invalidateQueries }, { priced: true })
+    const keys = keysOf(invalidateQueries).map((k) => JSON.stringify(k))
+    expect(new Set(keys).size).toBe(keys.length)
+  })
 })
