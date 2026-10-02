@@ -10,7 +10,8 @@ import type {
   ApiAidRound,
 } from '../../../types/api-types'
 import { aidCsvFilename } from '../kit/csv'
-import { toCents } from '../kit/money'
+import { formatShortDate } from '../kit/dates'
+import { formatGap, toCents } from '../kit/money'
 import type { CellValue } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
 import { latestRound, requestStage, roundOf } from './stage'
@@ -169,8 +170,19 @@ export interface GridColumnSpec {
   readonly money?: true
   /** False keeps an action column out of the CSV (M16). */
   readonly inCsv?: false
+  /** What the header says on hover and on click; the header then does not sort. */
+  readonly help?: string
+  /** The CSV's own, fuller header name when the screen's is short. */
+  readonly csvHeader?: string
   readonly value: (row: ApiAidGridRow, ctx: ColumnContext) => CellValue
 }
+
+/**
+ * The first season whose rounds carry Posted ticks, so the first with anything to confirm against
+ * CampMinder's ledger. Mirrors `FIRST_TICKED_SEASON` in api/services/financial_aid_decisions_service.py;
+ * the API does not send it, so keep the two together.
+ */
+export const FIRST_TICKED_SEASON = 2027
 
 function lowest(rounds: readonly ApiAidRound[]): ApiAidRound | undefined {
   return rounds.reduce<ApiAidRound | undefined>(
@@ -190,14 +202,29 @@ export function viewRound(row: ApiAidGridRow, view: RequestViewKey): ApiAidRound
   return latestRound(row)
 }
 
-const CONFIRMATION_WORDS: Readonly<Record<ApiAidConfirmation['status'], string>> = {
-  awaiting_sync: "awaiting tonight's sync",
-  confirmed: 'confirmed',
-  short: 'short',
-  over: 'over',
-  not_in_campminder: 'not in CampMinder',
-  reversed: 'reversed',
+/**
+ * CM ✓'s short words (owner ruling 2026-10-02): "✓ Mar 10", "short $50" / "over $50", "tonight".
+ * "not in CM" is interim wording (lead, 2026-10-02); reversed has no ruled word and keeps its old wording.
+ */
+export function confirmationWord(confirmation: ApiAidConfirmation): string {
+  const on = confirmation.on ? formatShortDate(confirmation.on) : ''
+  switch (confirmation.status) {
+    case 'awaiting_sync':
+      return 'tonight'
+    case 'confirmed':
+      return on === '' ? '✓' : `✓ ${on}`
+    case 'short':
+    case 'over':
+      return formatGap(confirmation.locked, confirmation.in_campminder) ?? ''
+    case 'not_in_campminder':
+      return 'not in CM'
+    case 'reversed':
+      return on === '' ? 'reversed' : `reversed ${on}`
+  }
 }
+
+const CM_CHECK_HELP =
+  "CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched on that date; short/over = CampMinder's ledger differs; tonight = waiting for tonight's sync."
 
 export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   family: { header: 'Family', width: 130, value: (r) => r.family_name },
@@ -281,9 +308,11 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     value: (r) => viewRound(r, 'waiting_on_family')?.posted ?? null,
   },
   confirmed: {
-    header: 'Confirmed by the ledger',
-    width: 132,
-    value: (r) => (r.confirmation ? CONFIRMATION_WORDS[r.confirmation.status] : null),
+    header: 'CM ✓',
+    csvHeader: 'Confirmed by CampMinder',
+    help: CM_CHECK_HELP,
+    width: 90,
+    value: (r) => (r.confirmation ? confirmationWord(r.confirmation) : null),
   },
   round: {
     header: 'Round',
@@ -333,9 +362,12 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
  * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; the Family and Household id sit
  * just left of Needs attention, where Requested by will go (T3).
  */
-export function viewColumns(view: RequestView, showIds: boolean): GridColumnKey[] {
+export function viewColumns(view: RequestView, showIds: boolean, year: number): GridColumnKey[] {
   const tail: GridColumnKey[] = ['family', ...(showIds ? (['householdId'] as const) : [])]
-  const middle = view.columns.filter((key) => key !== 'attention')
+  // Before the first ticked season there is nothing to confirm, so no CM ✓ (and no CSV column).
+  const middle = view.columns.filter(
+    (key) => key !== 'attention' && (key !== 'confirmed' || year >= FIRST_TICKED_SEASON)
+  )
   const attention = view.columns.filter((key) => key === 'attention')
   return ['camper', ...(showIds ? (['personId'] as const) : []), ...middle, ...tail, ...attention]
 }

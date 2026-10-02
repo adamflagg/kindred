@@ -20,6 +20,7 @@ import {
 } from '../../admin/audit/auditStyles'
 import { BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { SortableColumnHeader } from '../../ui/SortableColumnHeader'
+import { Tooltip } from '../../ui/Tooltip'
 import {
   CELL_BG,
   EDITOR_ROW,
@@ -74,6 +75,10 @@ export interface AidRowNav {
 export interface AidColumn<Row> {
   readonly key: string
   readonly header: string
+  /** Explains the header on hover and click (the `Tooltip`); such a header does not sort. */
+  readonly help?: string | undefined
+  /** The CSV's own header name, when it is fuller than the screen's. */
+  readonly csvHeader?: string | undefined
   readonly width?: number | undefined
   readonly flex?: boolean | undefined
   readonly align?: 'left' | 'right' | undefined
@@ -366,7 +371,7 @@ export function AidTable<Row>({
     ])
     downloadCsv(
       buildCsvContent(
-        [...csvColumns.map((c) => c.header), ...extra.map((e) => e.header)],
+        [...csvColumns.map((c) => c.csvHeader ?? c.header), ...extra.map((e) => e.header)],
         withLinkLine(data, window.location.href)
       ),
       csvFilename
@@ -436,19 +441,31 @@ export function AidTable<Row>({
           </colgroup>
           <thead ref={headRef}>
             <tr>
-              {columns.map((c) => (
-                <SortableColumnHeader
-                  key={c.key}
-                  label={c.header}
-                  direction={
-                    sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
-                  }
-                  onSort={() => toggleSort(c.key)}
-                  style={pinStyle(c)}
-                  className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
-                  {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
-                />
-              ))}
+              {columns.map((c) =>
+                c.help ? (
+                  <th
+                    key={c.key}
+                    style={pinStyle(c)}
+                    className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
+                  >
+                    <Tooltip content={c.help} className="cursor-help text-left">
+                      {c.header}
+                    </Tooltip>
+                  </th>
+                ) : (
+                  <SortableColumnHeader
+                    key={c.key}
+                    label={c.header}
+                    direction={
+                      sort?.key === c.key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null
+                    }
+                    onSort={() => toggleSort(c.key)}
+                    style={pinStyle(c)}
+                    className={join(TH, heldClasses(c, 'top-0', 'z-20'))}
+                    {...(c.align === 'right' ? { buttonClassName: 'justify-end' } : {})}
+                  />
+                )
+              )}
             </tr>
           </thead>
           <tbody>

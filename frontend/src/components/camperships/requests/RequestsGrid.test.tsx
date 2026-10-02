@@ -11,7 +11,7 @@ vi.mock('../../../utils/csvExport', async (importActual) => ({
 }))
 
 import type { ApiAidGridRow } from '../../../types/api-types'
-import { GRID_ROWS, gridRow, roundOut, ROW_LIAM } from './gridFixtures'
+import { confirmationOut, GRID_ROWS, gridRow, roundOut, ROW_LIAM } from './gridFixtures'
 import { RequestsGrid } from './RequestsGrid'
 import { filterRows, GRID_COLUMNS, NO_FILTERS, requestView } from './views'
 
@@ -22,10 +22,12 @@ function Grid({
   slug = 'all',
   showIds = false,
   rows = GRID_ROWS,
+  year = 2027,
 }: {
   slug?: string
   showIds?: boolean
   rows?: readonly ApiAidGridRow[]
+  year?: number
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -43,6 +45,7 @@ function Grid({
         rows={filterRows(rows, view.key, NO_FILTERS)}
         view={view}
         showIds={showIds}
+        year={year}
         today="2027-04-01"
         csvFilename="camperships-requests-all-2027.csv"
         highlighted={highlighted}
@@ -107,7 +110,7 @@ describe('RequestsGrid', () => {
       'R3',
       'Total',
       'Posted',
-      'Confirmed by the ledger',
+      'CM ✓',
       'Family',
       'Needs attention',
     ])
@@ -317,7 +320,7 @@ describe('RequestsGrid', () => {
 describe('RequestsGrid fits its labels (sitting A, A2)', () => {
   it('lets a column header wrap, so two long headers never print over each other', () => {
     render(<Grid />)
-    const header = screen.getByRole('columnheader', { name: 'Confirmed by the ledger' })
+    const header = screen.getByRole('columnheader', { name: 'CM ✓' })
     expect(header.className).not.toContain('whitespace-nowrap')
     expect(header.className).toContain('whitespace-normal')
   })
@@ -339,5 +342,114 @@ describe('RequestsGrid in the screen box (grid layout T1)', () => {
     const table = screen.getByRole('table')
     expect(table.parentElement?.className).toContain('overscroll-contain')
     expect(screen.getByRole('columnheader', { name: 'Session' }).className).toContain('top-0')
+  })
+})
+
+// Owner ruling 2026-10-02: the ledger-confirmation column is "CM ✓", in short words.
+describe('RequestsGrid: the CM ✓ column', () => {
+  const withConfirmation = (
+    id: string,
+    camper: string,
+    over: Parameters<typeof confirmationOut>[0]
+  ) =>
+    gridRow({
+      request_id: id,
+      camper_name: camper,
+      confirmation: confirmationOut(over),
+    })
+  const ROWS = [
+    withConfirmation('reqc1', 'Emma Johnson', { status: 'confirmed', on: '2027-03-10' }),
+    withConfirmation('reqc2', 'Liam Garcia', {
+      status: 'short',
+      locked: 1800,
+      in_campminder: 1750,
+      on: null,
+    }),
+    withConfirmation('reqc3', 'Olivia Chen', {
+      status: 'over',
+      locked: 1800,
+      in_campminder: 1850,
+      on: null,
+    }),
+    withConfirmation('reqc4', 'Riley Sam', { status: 'awaiting_sync', on: null }),
+  ]
+  const cmCell = (camper: string) => {
+    const at = screen.getAllByRole('columnheader').findIndex((th) => th.textContent === 'CM ✓')
+    return within(rowOf(camper)).getAllByRole('cell')[at]
+  }
+  const hoverHeader = () =>
+    userEvent.hover(
+      screen.getByRole('columnheader', { name: 'CM ✓' }).firstElementChild as HTMLElement
+    )
+  const EXPLAIN =
+    "CampMinder check: did the money posted in CampMinder match what was ticked Posted? ✓ = matched on that date; short/over = CampMinder's ledger differs; tonight = waiting for tonight's sync."
+
+  it('says "✓ Mar 10", "short $50", "over $50" and "tonight"', () => {
+    render(<Grid rows={ROWS} />)
+    expect(cmCell('Emma Johnson')).toHaveTextContent(/^✓ Mar 10$/)
+    expect(cmCell('Liam Garcia')).toHaveTextContent(/^short \$50$/)
+    expect(cmCell('Olivia Chen')).toHaveTextContent(/^over \$50$/)
+    expect(cmCell('Riley Sam')).toHaveTextContent(/^tonight$/)
+  })
+
+  // Interim wording (lead, 2026-10-02): a posting with no matching ledger line.
+  it('says "not in CM" for a posting the ledger has no line for, on screen and in the CSV', async () => {
+    const rows = [
+      withConfirmation('reqc5', 'Emma Johnson', { status: 'not_in_campminder', on: null }),
+    ]
+    render(<Grid rows={rows} />)
+    expect(cmCell('Emma Johnson')).toHaveTextContent(/^not in CM$/)
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    const lines = content.split('\n')
+    const at = csvCells(lines[0] ?? '').indexOf('Confirmed by CampMinder')
+    expect(csvCells(lines[1] ?? '')[at]).toBe('not in CM')
+  })
+
+  it('explains itself on hover and on click, and a click does not sort', async () => {
+    render(<Grid rows={ROWS} />)
+    const header = screen.getByRole('columnheader', { name: 'CM ✓' })
+    await hoverHeader()
+    expect(screen.getByRole('tooltip')).toHaveTextContent(EXPLAIN)
+    await userEvent.unhover(header.firstElementChild as HTMLElement)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    await userEvent.click(header.firstElementChild as HTMLElement)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(EXPLAIN)
+    expect(header).not.toHaveAttribute('aria-sort')
+    expect(
+      screen
+        .getAllByRole('row')
+        .filter((r) => r.hasAttribute('data-row-key'))
+        .map((r) => r.getAttribute('data-row-key'))
+    ).toEqual(['reqc1', 'reqc2', 'reqc3', 'reqc4'])
+  })
+
+  it('is there from the first ticked season and gone before it', () => {
+    const { unmount } = render(<Grid rows={ROWS} year={2027} />)
+    expect(screen.getByRole('columnheader', { name: 'CM ✓' })).toBeInTheDocument()
+    unmount()
+    render(<Grid rows={ROWS} year={2026} />)
+    expect(screen.queryByRole('columnheader', { name: 'CM ✓' })).toBeNull()
+  })
+
+  it("writes the CSV with the full header name and the screen's words, and drops the column before 2027", async () => {
+    const { unmount } = render(<Grid rows={ROWS} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [content] = downloadSpy.mock.calls.at(-1) as [string, string]
+    const lines = content.split('\n')
+    const at = csvCells(lines[0] ?? '').indexOf('Confirmed by CampMinder')
+    expect(at).toBeGreaterThan(-1)
+    expect(csvCells(lines[0] ?? '')).not.toContain('CM ✓')
+    expect(lines.slice(1, 5).map((l) => csvCells(l)[at])).toEqual([
+      '✓ Mar 10',
+      'short $50',
+      'over $50',
+      'tonight',
+    ])
+    unmount()
+    render(<Grid rows={ROWS} year={2026} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    const [older] = downloadSpy.mock.calls.at(-1) as [string, string]
+    expect(csvCells(older.split('\n')[0] ?? '')).not.toContain('Confirmed by CampMinder')
   })
 })

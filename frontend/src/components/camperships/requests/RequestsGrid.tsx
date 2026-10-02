@@ -13,7 +13,7 @@ import { formatShortDate } from '../kit/dates'
 import { formatMoney, moneyCsv } from '../kit/money'
 import { Money } from '../kit/MoneyText'
 import { NeedsAttentionCell } from '../kit/NeedsAttentionCell'
-import { ConfirmationState, IdChip, StatusPill } from '../kit/Pills'
+import { IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
 import { requestStage, roundOf } from './stage'
@@ -41,6 +41,8 @@ interface RequestsGridProps {
   readonly rows: readonly ApiAidGridRow[]
   readonly view: RequestView
   readonly showIds: boolean
+  /** The season: CM ✓ only exists from the first ticked season. */
+  readonly year: number
   readonly today: string
   readonly csvFilename: string
   readonly highlighted: string | null
@@ -145,9 +147,6 @@ function renderFor(
         }
         return <Money value={r3?.decided ?? null} />
       }
-    case 'confirmed':
-      return (row) =>
-        row.confirmation ? <ConfirmationState confirmation={row.confirmation} /> : '—'
     case 'cancelledOn':
       return (row) => (row.cancellation?.on ? formatShortDate(row.cancellation.on) : '—')
     case 'attention':
@@ -172,15 +171,18 @@ function renderFor(
 function buildColumns(
   view: RequestView,
   showIds: boolean,
+  year: number,
   today: string,
   links: HouseholdLinks
 ): Array<AidColumn<ApiAidGridRow>> {
   const ctx: ColumnContext = { view: view.key, today }
-  return viewColumns(view, showIds).map((key) => {
+  return viewColumns(view, showIds, year).map((key) => {
     const spec = GRID_COLUMNS[key]
     return {
       key,
       header: spec.header,
+      help: spec.help,
+      csvHeader: spec.csvHeader,
       width: spec.width,
       align: spec.align,
       flex: spec.flex,
@@ -205,6 +207,7 @@ export function RequestsGrid({
   rows,
   view,
   showIds,
+  year,
   today,
   csvFilename,
   highlighted,
@@ -214,8 +217,8 @@ export function RequestsGrid({
   renderBelowHighlighted,
 }: RequestsGridProps) {
   const columns = useMemo(
-    () => buildColumns(view, showIds, today, links),
-    [view, showIds, today, links]
+    () => buildColumns(view, showIds, year, today, links),
+    [view, showIds, year, today, links]
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [

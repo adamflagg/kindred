@@ -231,6 +231,7 @@ export default function AidRequestsPage() {
               rows={visible}
               view={view}
               showIds={showIds}
+              year={year}
               today={today}
               csvFilename={csvFilename}
               highlighted={highlighted}
