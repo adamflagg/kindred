@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState } from 'react'
 
 type Leave = (go: () => void) => void
 
@@ -38,5 +38,6 @@ export function createEditorExits(): EditorExits {
 
 /** One stable coordinator for the page. */
 export function useEditorExits(): EditorExits {
-  return useMemo(createEditorExits, [])
+  // Lazy state, not a memo: React may drop a memo, and this is the page's one open-editor registry.
+  return useState(createEditorExits)[0]
 }
