@@ -60,6 +60,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
     void invalidateAidMoneyQueries({ invalidateQueries })
     expect(keysOf(invalidateQueries)).toEqual([
       ['financial-aid', 'remaining'],
+      ['financial-aid', 'budget'],
       ['financial-aid', 'grid'],
       ['financial-aid', 'today'],
       ['financial-aid', 'household-page'],
@@ -72,6 +73,7 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
     void invalidateAidMoneyQueries({ invalidateQueries }, { jumpIndex: true })
     expect(keysOf(invalidateQueries)).toEqual([
       ['financial-aid', 'remaining'],
+      ['financial-aid', 'budget'],
       ['financial-aid', 'grid'],
       ['financial-aid', 'today'],
       ['financial-aid', 'household-page'],
@@ -90,6 +92,18 @@ describe('the Requests grid key', () => {
     )
     expect(queryKeys.aidGrid(2027, '2026-04-01', 'campminder')).not.toEqual(
       queryKeys.aidGrid(2027, '2026-04-01', 'recorded')
+    )
+  })
+})
+
+describe('the Rounds & budget key (slice 2)', () => {
+  it('sits under the budget prefix, apart per season, as-of and axis', () => {
+    expect(queryKeys.aidBudget(2027, null, null).slice(0, 2)).toEqual(queryKeys.aidBudgetPrefix())
+    expect(queryKeys.aidBudget(2027, null, null)).not.toEqual(
+      queryKeys.aidBudget(2027, '2026-04-01', null)
+    )
+    expect(queryKeys.aidBudget(2027, '2026-04-01', 'campminder')).not.toEqual(
+      queryKeys.aidBudget(2027, '2026-04-01', 'recorded')
     )
   })
 })
