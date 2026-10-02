@@ -352,3 +352,12 @@ describe('the casework forms’ writes (§6.3)', () => {
     })
   })
 })
+
+describe('every money write refreshes Rounds & budget too (slice 2; spec §10)', () => {
+  it("invalidates the budget's prefix on settle, through invalidateAidMoneyQueries", async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidKeyAsk(), { wrapper })
+    await act(() => result.current.mutateAsync(ASK))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'budget'] })
+  })
+})

@@ -729,6 +729,9 @@ export const queryKeys = {
   aidRemainingPrefix: () => ['financial-aid', 'remaining'] as const,
   aidRemaining: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
     ['financial-aid', 'remaining', year, asOf ?? 'live', axis ?? 'campminder'] as const,
+  aidBudgetPrefix: () => ['financial-aid', 'budget'] as const,
+  aidBudget: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
+    ['financial-aid', 'budget', year, asOf ?? 'live', axis ?? 'campminder'] as const,
   aidGridPrefix: () => ['financial-aid', 'grid'] as const,
   aidGrid: (year: number, asOf: string | null, axis: 'campminder' | 'recorded' | null) =>
     ['financial-aid', 'grid', year, asOf ?? 'live', axis ?? 'campminder'] as const,
@@ -874,12 +877,14 @@ export function invalidateLodgingRegistryQueries(queryClient: {
 
 /**
  * Every Camperships write calls this on settle (spec §10; #2924's invalidation table):
- * - the Remaining line, the Requests grid and Today;
+ * - the Remaining line and Rounds & budget (spec §10: every money write moves both);
+ * - the Requests grid and Today;
  * - every household page (a split request sits on both homes' pages, and a rules or grants change
  *   re-prices them all);
  * - the application read.
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
- * Rounds & budget joins with slice 2's read. Definitions are static and never invalidated.
+ * A rules approval re-prices the season, so it calls this too (`invalidateAidRulesQueries`).
+ * Definitions are static and never invalidated.
  */
 export function invalidateAidMoneyQueries(
   queryClient: {
@@ -889,6 +894,7 @@ export function invalidateAidMoneyQueries(
 ): Promise<void> {
   const keys: Array<readonly unknown[]> = [
     queryKeys.aidRemainingPrefix(),
+    queryKeys.aidBudgetPrefix(),
     queryKeys.aidGridPrefix(),
     queryKeys.aidTodayPrefix(),
     queryKeys.aidHouseholdPagePrefix(),
