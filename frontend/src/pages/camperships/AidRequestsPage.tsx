@@ -64,7 +64,18 @@ export default function AidRequestsPage() {
   const year = useYear()
   const asOf = useAidAsOf()
   const navigate = useNavigate()
-  const { view, program, pool, round, tick, showIds, row: rowParam, setParam } = useGridParams()
+  const {
+    view,
+    program,
+    pool,
+    round,
+    tick,
+    showIds,
+    sort,
+    group,
+    row: rowParam,
+    setParam,
+  } = useGridParams()
   const grid = useAidGrid()
   const remaining = useAidRemaining()
   const today = campToday()
@@ -279,6 +290,9 @@ export default function AidRequestsPage() {
         aidHref(`/aid/households/${String(r.household_cm_id)}`, viewState, {
           from: view.slug,
           ...keep,
+          // The table's order, so the walk steps through, and Back restores, what is on screen (I1).
+          ...(sort !== null ? { sort } : {}),
+          ...(group !== null ? { group } : {}),
         }),
       open: (r: ApiAidGridRow, href: string) => {
         // Back lands on this row (§3.5). With the editor open, what is typed is saved first, and
@@ -291,7 +305,7 @@ export default function AidRequestsPage() {
         })
       },
     }),
-    [viewState, view.slug, keep, setParam, navigate, leaveThen]
+    [viewState, view.slug, keep, sort, group, setParam, navigate, leaveThen]
   )
 
   const csvFilename = requestsCsvName(view, filters, year, asOf.kind === 'past' ? asOf.date : null)

@@ -4,14 +4,18 @@
  * family with two held requests is one stop.
  */
 import type { ApiAidGridRow } from '../../../types/api-types'
-import { groupRows } from '../kit/table'
+import { groupRows, parseSort, sortRows } from '../kit/table'
 import { attentionFor } from '../requests/attention'
 import {
+  familyGroup,
   filterRows,
+  GRID_COLUMNS,
   NO_FILTERS,
   parseRoundFilter,
   parseTickFilter,
   reasonGroup,
+  viewColumns,
+  type GridColumnKey,
   type GridFilters,
   type RequestView,
 } from '../requests/views'
@@ -25,7 +29,17 @@ export interface WalkStop {
   readonly firstRequestId: string
 }
 
-const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
+/**
+ * How the grid ordered its rows, as the household link carried it (I1): the URL's `sort` and
+ * `group` as written, and Show IDs (which adds the id columns a sort may name).
+ */
+export interface WalkOrder {
+  readonly sort: string | null
+  readonly group: string | null
+  readonly showIds: boolean
+}
+
+export const DEFAULT_ORDER: WalkOrder = { sort: null, group: null, showIds: false }
 
 /**
  * The grid's filters and Show IDs as the household link carried them (M5), so the walk steps through
@@ -34,11 +48,15 @@ const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1
 export function gridFiltersFrom(params: URLSearchParams): {
   filters: GridFilters
   keep: Record<string, string>
+  order: WalkOrder
 } {
   const program = params.get('program')
   const pool = params.get('pool')
   const round = parseRoundFilter(params.get('round'))
   const tick = parseTickFilter(params.get('tick'))
+  const sort = params.get('sort')
+  const group = params.get('group')
+  const showIds = params.get('ids') === '1'
   return {
     filters: { program, pool, round, tick, ids: null },
     keep: {
@@ -46,8 +64,11 @@ export function gridFiltersFrom(params: URLSearchParams): {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(tick !== null ? { tick } : {}),
-      ...(params.get('ids') === '1' ? { ids: '1' } : {}),
+      ...(showIds ? { ids: '1' } : {}),
+      ...(sort !== null ? { sort } : {}),
+      ...(group !== null ? { group } : {}),
     },
+    order: { sort, group, showIds },
   }
 }
 
@@ -55,21 +76,43 @@ export function walkStops(
   rows: readonly ApiAidGridRow[],
   view: RequestView,
   today: string,
-  filters: GridFilters = NO_FILTERS
+  filters: GridFilters = NO_FILTERS,
+  order: WalkOrder = DEFAULT_ORDER
 ): WalkStop[] {
   const inView = filterRows(rows, view.key, filters)
-  const grouping = reasonGroup(view, today)
+  const reason = reasonGroup(view, today)
+  // What AidTable does with the same URL: sort first (a column the view lacks is no sort; tick is
+  // taken as present), then group in the order the rows now stand. `group=flat` is no grouping, and
+  // an unset one is the view's own (by reason for a queue, flat for All).
+  const columnKeys = viewColumns(view, order.showIds, true)
+  const sort = parseSort(order.sort, columnKeys)
+  const sorted = sort
+    ? sortRows(
+        inView,
+        (row) => GRID_COLUMNS[sort.key as GridColumnKey].value(row, { view: view.key, today }),
+        sort.dir
+      )
+    : inView
+  const choice =
+    order.group === 'flat'
+      ? null
+      : order.group === 'reason' || order.group === 'family'
+        ? order.group
+        : view.groupBy === null
+          ? null
+          : 'reason'
+  const grouping = choice === 'family' ? familyGroup : choice === 'reason' ? reason : null
   const ordered =
-    view.groupBy === null ? inView : groupRows(inView, grouping).flatMap((group) => group.rows)
+    grouping === null ? sorted : groupRows(sorted, grouping).flatMap((group) => group.rows)
   const stops = new Map<number, WalkStop>()
   for (const row of ordered) {
     if (stops.has(row.household_cm_id)) continue
     const pill = attentionFor(row, view.key, today)?.item.pill
-    const reason = pill ?? (view.groupBy === null ? '' : grouping(row).heading)
+    const why = pill ?? (view.groupBy === null ? '' : reason(row).heading)
     stops.set(row.household_cm_id, {
       householdCmId: row.household_cm_id,
       familyName: row.family_name,
-      reason: lowerFirst(reason),
+      reason: why,
       firstRequestId: row.request_id,
     })
   }

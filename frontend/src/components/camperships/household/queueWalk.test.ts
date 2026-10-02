@@ -18,7 +18,8 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
 
   it("names each stop's reason as the view words it", () => {
     const [garcia] = walkStops(GRID_ROWS, requestView('holds'), TODAY)
-    expect(garcia).toMatchObject({ householdCmId: 1000003, reason: 'placeholder income' })
+    // Verbatim: the grid's own casing, so a name inside it ("Family Camp cost") is never mangled.
+    expect(garcia).toMatchObject({ householdCmId: 1000003, reason: 'Placeholder income' })
   })
 
   it('walks only the rows the grid showed: its filters come along (M5)', () => {
@@ -40,6 +41,53 @@ describe('walkStops (§3.5; D14; Decision 29)', () => {
   it("follows a grouped view's groups: Needs an offer's Round 1 before its Round 2", () => {
     const stops = walkStops(GRID_ROWS, requestView('needs-offer'), TODAY)
     expect(stops.map((s) => s.familyName)).toEqual(['The Johnson Family', 'The Chen Family'])
+  })
+})
+
+describe("the grid's sort and grouping (I1)", () => {
+  const ids = (key: string, order: { sort: string | null; group: string | null }) =>
+    walkStops(GRID_ROWS, requestView(key), TODAY, NO_FILTERS, { ...order, showIds: false }).map(
+      (s) => s.householdCmId
+    )
+
+  it('reads sort and group back from the household link, and keeps them for the links', () => {
+    const { keep, order } = gridFiltersFrom(
+      new URLSearchParams('from=all&sort=total:desc&group=family&ids=1')
+    )
+    expect(keep).toEqual({ ids: '1', sort: 'total:desc', group: 'family' })
+    expect(order).toEqual({ sort: 'total:desc', group: 'family', showIds: true })
+  })
+
+  it('steps in the sorted order, as the grid listed it', () => {
+    // Total decided, largest first: Chen 2,200, Johnson 1,800, Sam 1,500, Garcia (nothing) last.
+    expect(ids('all', { sort: 'total:desc', group: null })).toEqual([
+      1000005, 1000001, 1000007, 1000003,
+    ])
+  })
+
+  it('ignores a sort on a column the view does not have', () => {
+    expect(ids('all', { sort: 'newTotal:desc', group: null })).toEqual([
+      1000001, 1000003, 1000005, 1000007,
+    ])
+  })
+
+  it("follows the grid's grouping choice: by reason pulls a reason together, flat and By family do not", () => {
+    // All opens flat; By reason groups Johnson and Chen (nothing waiting) ahead of Garcia.
+    expect(ids('all', { sort: null, group: null })).toEqual([1000001, 1000003, 1000005, 1000007])
+    expect(ids('all', { sort: null, group: 'reason' })).toEqual([
+      1000001, 1000005, 1000003, 1000007,
+    ])
+    expect(ids('all', { sort: null, group: 'family' })).toEqual([
+      1000001, 1000003, 1000005, 1000007,
+    ])
+  })
+
+  it("follows a queue view's groups in the order the sorted rows first reach them, and group=flat drops them", () => {
+    // Needs an offer by decided amount: Chen's R2 (780) sorts ahead of Johnson's R1 (1,420), so
+    // the grid shows R2's group first, exactly as groupRows does.
+    expect(ids('needs-offer', { sort: 'decided:asc', group: null })).toEqual([1000005, 1000001])
+    expect(ids('needs-offer', { sort: 'decided:asc', group: 'flat' })).toEqual([1000005, 1000001])
+    expect(ids('needs-offer', { sort: null, group: 'flat' })).toEqual([1000001, 1000005])
   })
 })
 
