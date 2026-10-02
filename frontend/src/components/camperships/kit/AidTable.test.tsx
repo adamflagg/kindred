@@ -764,3 +764,86 @@ describe('marked rows (Decision 3: a save that failed)', () => {
     expect(rowOf('Liam Garcia')).not.toHaveAttribute('data-marked')
   })
 })
+
+let selections: Array<ReadonlySet<string>> = []
+
+function Selectable({ highlightedKey = null }: { highlightedKey?: string | null }) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [highlighted, setHighlighted] = useState<string | null>(highlightedKey)
+  return (
+    <MemoryRouter initialEntries={['/aid/requests']}>
+      <AidTable<Row>
+        rows={ROWS}
+        columns={COLUMNS}
+        rowKey={(r) => r.id}
+        searchExtra={(r) => [r.householdCmId, r.personCmId]}
+        csvFilename="camperships-requests-all-2027.csv"
+        footerLabel={(rows) => `${String(rows.length)} requests`}
+        arrowKeys
+        highlighted={highlighted}
+        onHighlight={setHighlighted}
+        selected={selected}
+        onSelectedChange={(next) => {
+          selections.push(next)
+          setSelected(next)
+        }}
+      />
+    </MemoryRouter>
+  )
+}
+
+describe('AidTable with a selection (§4.10)', () => {
+  beforeEach(() => {
+    selections = []
+  })
+
+  it('leads with a checkbox; ticking one selects it without highlighting the row', async () => {
+    render(<Selectable />)
+    const row = screen.getByText('Olivia Chen').closest('tr') as HTMLElement
+    const box = within(row).getByRole('checkbox', { name: 'Select' })
+    await userEvent.click(box)
+    expect(box).toBeChecked()
+    expect([...(selections.at(-1) ?? [])]).toEqual(['r3'])
+    expect(row).not.toHaveAttribute('data-highlighted')
+  })
+
+  it('selects every row the search matches with Select all, and clears them with it again', async () => {
+    render(<Selectable />)
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect([...(selections.at(-1) ?? [])].sort()).toEqual(['r1', 'r4'])
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect(selections.at(-1)?.size).toBe(0)
+  })
+
+  it('leaves the row kept only by the highlight out of Select all, as it is out of the totals', async () => {
+    render(<Selectable highlightedKey="r3" />)
+    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    expect([...(selections.at(-1) ?? [])].sort()).toEqual(['r1', 'r4'])
+  })
+
+  it('spans the footer label over the checkbox and the pinned columns (PR 2 I1)', () => {
+    const { container } = render(<Selectable />)
+    const label = container.querySelector('tfoot td') as HTMLElement
+    expect(label).toHaveAttribute('colspan', '3')
+    expect(label).toHaveStyle({ left: '0px' })
+  })
+
+  it('pins the identity columns after the checkbox column', () => {
+    render(<Selectable />)
+    const [, family, camper] = screen.getAllByRole('columnheader')
+    expect(family).toHaveStyle({ left: '32px' })
+    expect(camper).toHaveStyle({ left: '142px' })
+  })
+
+  it('moves the highlight edge to the checkbox cell', () => {
+    render(<Selectable highlightedKey="r3" />)
+    const cells = (screen.getByText('Olivia Chen').closest('tr') as HTMLElement).querySelectorAll(
+      'td'
+    )
+    expect(cells[0]?.className).toContain('shadow-[inset_3px_0_0')
+    expect(cells[1]?.className).not.toContain('shadow-[inset_3px_0_0')
+  })
+})
