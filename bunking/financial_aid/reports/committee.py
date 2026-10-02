@@ -332,9 +332,10 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
             (p, m, "pool")
             for p, m in sorted(((p, m) for p, m in pools.items() if p is not None), key=lambda pm: pm[0] or "")
         ),
-        *([(None, pools[None], "no_pool")] if None in pools else []),
-        (None, list(season.requests), "headline"),
     ]
+    if None in pools:
+        groups.append((None, pools[None], "no_pool"))
+    groups.append((None, list(season.requests), "headline"))
     for pool, members, kind in groups:
         cut = season.cutoff_instant
         before = [r for r in members if cut is not None and r.received_at is not None and r.received_at < cut]

@@ -221,7 +221,10 @@ def test_a_request_with_no_pool_gets_a_no_pool_row_so_the_pool_rows_sum_to_the_h
     nopool = next(r for r in pct_rows if r.kind == "no_pool")
     assert (nopool.pool, nopool.awarded, nopool.asked) == (None, Decimal(1000), Decimal(2000))
     headline_pct = next(r for r in pct_rows if r.kind == "headline")
-    assert sum(r.awarded for r in pct_rows if r.kind in ("pool", "no_pool")) == headline_pct.awarded
+    assert (
+        sum((r.awarded or Decimal(0) for r in pct_rows if r.kind in ("pool", "no_pool")), Decimal(0))
+        == headline_pct.awarded
+    )
 
 
 def test_the_cutoff_is_strict_less_than_on_the_boundary_instant() -> None:
