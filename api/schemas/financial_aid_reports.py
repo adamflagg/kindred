@@ -88,7 +88,8 @@ class TierAppealsRowOut(BaseModel):
 
 
 class OutcomeRowOut(BaseModel):
-    pool: str | None  # None: all pools
+    pool: str | None  # None: no pool or all pools; see kind
+    kind: RowKind  # "pool", "no_pool" or "headline" (the every-request row)
     pool_label: str
     accepted: int
     accepted_amount: float

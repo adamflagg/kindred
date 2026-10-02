@@ -39,6 +39,7 @@ from decimal import Decimal
 from typing import Final, Literal
 
 from bunking.financial_aid.money import ZERO
+from bunking.financial_aid.reports.committee import RowKind
 from bunking.financial_aid.reports.facts import REPORT_ROUNDS, ReportRequest, average, in_round, in_table
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_pct
@@ -116,6 +117,7 @@ class OutcomeRow:
     appealed: int
     appealed_asked: Decimal
     waiting: int
+    kind: RowKind = "pool"  # "pool", "no_pool" (requests with no home pool) or "headline" (every live request)
 
 
 @dataclass(frozen=True)
@@ -315,7 +317,7 @@ def tier_appeals(
 
 
 def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
-    """RPT-23 per home pool, then all pools (pool None): accepted (Round 1 posted and accepted: count and the posted
+    """RPT-23 per home pool, then the requests with no pool (kind no_pool), then every request (kind headline): accepted (Round 1 posted and accepted: count and the posted
     amount), appealed (a Round 2 ask: count and the asks), waiting (Round 1 posted, not accepted, no Round 2 ask).
     Live requests only: a cancelled family is no longer waiting."""
     pools: dict[str | None, list[ReportRequest]] = defaultdict(list)
@@ -325,7 +327,7 @@ def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
             pools[request.pool].append(request)
             every.append(request)
 
-    def row(pool: str | None, members: Sequence[ReportRequest]) -> OutcomeRow:
+    def row(pool: str | None, members: Sequence[ReportRequest], kind: RowKind) -> OutcomeRow:
         accepted = appealed = waiting = 0
         accepted_amount = appealed_asked = ZERO
         for request in members:
@@ -341,7 +343,10 @@ def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
                 appealed_asked += asked2
             elif posted is not None and first is not None and not first.accepted:
                 waiting += 1
-        return OutcomeRow(pool, accepted, accepted_amount, appealed, appealed_asked, waiting)
+        return OutcomeRow(pool, accepted, accepted_amount, appealed, appealed_asked, waiting, kind)
 
     ordered = sorted(pools, key=lambda p: (p is None, p or ""))
-    return (*(row(pool, pools[pool]) for pool in ordered), row(None, every))
+    return (
+        *(row(pool, pools[pool], "pool" if pool is not None else "no_pool") for pool in ordered),
+        row(None, every, "headline"),
+    )

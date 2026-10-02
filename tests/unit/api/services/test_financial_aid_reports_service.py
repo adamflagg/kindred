@@ -558,6 +558,17 @@ async def test_statistics_carries_rpt_9_and_rpt_23_for_the_samereport_season() -
     assert (every.pool, every.pool_label, every.waiting) == (None, "All pools", 1)
 
 
+async def test_outcomes_label_unpooled_requests_no_pool_apart_from_all_pools() -> None:
+    """A season whose requests have no home pool sends a "No pool" row, then the "All pools" headline: the two never
+    read alike (RPT-23)."""
+    unpooled = with_levers(RULES, {"programs.summer.budget_pool": None})
+    out = await _service(report_season(), rules=FakeRules(approved(unpooled))).statistics(YEAR, table="camp", round_=1)
+    assert [(row.kind, row.pool, row.pool_label) for row in out.outcomes] == [
+        ("no_pool", None, "No pool"),
+        ("headline", None, "All pools"),
+    ]
+
+
 # --- Programs ---------------------------------------------------------------------------------------------------
 
 
