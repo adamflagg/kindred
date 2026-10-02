@@ -32,9 +32,12 @@
 import type {
   AcceptedIn,
   AidPostingLine,
+  AidRulesInput,
+  AidRulesOutput,
   AnswerOut,
   ApplicationDetailResponse,
   ApprovedRulesOut,
+  ApprovedSectionOut,
   AskIn,
   BudgetResponse,
   BunkGraphResponse,
@@ -53,9 +56,11 @@ import type {
   CrossScopeEdge,
   DecisionWriteOut,
   DefinitionsResponse,
+  DraftSectionOut,
   DuplicateMark,
   EditorPreviewOut,
   ExpectedOut,
+  FieldChangeOut,
   GrantRowOut,
   GridRowOut,
   HeadcountSet,
@@ -89,6 +94,8 @@ import type {
   Round3ApprovalIn,
   RoundOut,
   RowStageOut,
+  RulesDraftOut,
+  SectionStatus,
   SessionResolve,
   ShareLineOut,
   SocialGraphEdge,
@@ -96,6 +103,7 @@ import type {
   SocialGraphResponse,
   UnpostIn,
   UntickedMoneyOut,
+  ValidationIssue,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -219,3 +227,17 @@ export type ApiAidRoundCounts = RoundCountsOut
 export type ApiAidCount = CountOut
 /** One decision-type line of a pool's budget. Mirrors Python `DecisionTypeLineOut`. */
 export type ApiAidDecisionTypeLine = DecisionTypeLineOut
+
+/** Season › Rules (spec §7.5; D39, D76). Mirrors Python `ApprovedRulesOut`, `RulesDraftOut` and their parts. */
+export type ApiAidApprovedRules = ApprovedRulesOut
+export type ApiAidApprovedSection = ApprovedSectionOut
+export type ApiAidRulesDraft = RulesDraftOut
+export type ApiAidDraftSection = DraftSectionOut
+export type ApiAidSectionStatus = SectionStatus
+export type ApiAidFieldChange = FieldChangeOut
+export type ApiAidValidationIssue = ValidationIssue
+/** One of the rules document's fourteen sections (Python `SectionName`). */
+export type ApiAidRulesSection = DraftSectionOut['section']
+/** The rules document as the server sends it (decimals as strings), and as a write sends it back. */
+export type ApiAidRulesDocument = AidRulesOutput
+export type ApiAidRulesDocumentIn = AidRulesInput
