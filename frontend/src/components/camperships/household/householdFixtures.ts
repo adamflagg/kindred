@@ -149,7 +149,8 @@ export function householdPage(over: Partial<ApiAidHouseholdPage> = {}): ApiAidHo
         reversal_date: '',
         cancelled: false,
         counts: true,
-        in_band: false,
+        // The server's per-grant flag: counted outside money on a live request, so the band takes it.
+        in_band: true,
         fulfils_commitment_id: '',
         requests: [{ request_id: 'reqemma00000001', amount: 1000 }],
       },
