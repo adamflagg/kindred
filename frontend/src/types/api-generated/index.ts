@@ -50,7 +50,6 @@ export type {
   ApproveSuggestedApiGeoCanonicalsCanonicalNameApprovePostResponse,
   ApproveSuggestedApiGeoCanonicalsCanonicalNameApprovePostResponses,
   AskIn,
-  AsksBasisOut,
   AttributionCandidate,
   AttributionOccupant,
   AuditLogActor,

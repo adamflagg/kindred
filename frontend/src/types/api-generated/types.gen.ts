@@ -802,32 +802,6 @@ export type AskIn = {
 }
 
 /**
- * AsksBasisOut
- *
- * D155: a received-through figure's Round 1 asks are frozen as they stood on `day`. On "now" that couldn't be
- * exact, so every ask is as it stands now; `reason` says why and `unrebuilt` how many requests caused it (a count,
- * never ids).
- */
-export type AsksBasisOut = {
-  /**
-   * Day
-   */
-  day: string
-  /**
-   * Basis
-   */
-  basis: 'as_of_cutoff' | 'now'
-  /**
-   * Reason
-   */
-  reason: string | null
-  /**
-   * Unrebuilt
-   */
-  unrebuilt: number
-}
-
-/**
  * AttributionCandidate
  *
  * One candidate weekend's verdict, with the evidence behind it.
@@ -10895,7 +10869,6 @@ export type ProgramsResponse = {
   pools: Array<PoolGroupOut>
   total: ProgramRowOut
   request_set: RequestSetNote | null
-  asks: AsksBasisOut | null
   /**
    * Not Rebuilt
    */
@@ -15212,6 +15185,10 @@ export type StatisticsResponse = {
    */
   basis: 'posted' | 'posted_and_decided'
   /**
+   * Pct Of Ask Label
+   */
+  pct_of_ask_label: string
+  /**
    * Table
    */
   table: string | null
@@ -15245,7 +15222,6 @@ export type StatisticsResponse = {
    */
   outcomes: Array<OutcomeRowOut>
   request_set: RequestSetNote | null
-  asks: AsksBasisOut | null
   /**
    * Not Rebuilt
    */
