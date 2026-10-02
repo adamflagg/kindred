@@ -136,3 +136,13 @@ def test_shares_not_adding_to_100_are_read_as_one_payer() -> None:
     broken = (share_row("emma", 1000001, "60"), share_row("emma", 1000002, "30"))
     lines = [line(1, "1500", posted=MAR8), line(2, "500", household=1000002, posted=APR1)]
     assert _ledger(lines, shares=broken) == {1: RoundLedger(ZERO, False), 2: RoundLedger(ZERO, False)}
+
+
+def test_a_round_outside_the_budget_still_takes_its_part_of_the_net() -> None:
+    """CampMinder's net doesn't know which round counts toward the budget: the $900 outside round fills first, so
+    the in-budget $500 round is the unconfirmed one."""
+    request = priced("emma", 1000001, view(1, "posted", locked="900", counts=False), view(2, "posted", locked="500"))
+    assert _ledger([line(1, "900", posted=MAR8)], request=request) == {
+        1: RoundLedger(ZERO, False),
+        2: RoundLedger(Decimal(500), False),
+    }

@@ -57,7 +57,7 @@ _CANCELLED: Final = (
     "reads by today's status, so its request is priced and counted as live then. A request CampMinder had "
     "cancelled by that day is left out of Round 2 asks so far, as today's read leaves it out"
 )
-_CANCELLED_TODAY: Final = "Reads CampMinder's cancellations, which a past date doesn't show (see cancellation)"
+_CANCELLED_TODAY: Final = "Reads today's cancellations and ledger, which a past date doesn't rebuild (see cancellation)"
 
 
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {

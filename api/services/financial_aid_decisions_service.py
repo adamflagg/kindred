@@ -106,6 +106,7 @@ from api.services.financial_aid_cancellations import (
     CancelState,
     EnrollmentState,
     cancellations_by_request,
+    cancelled_days,
     enrollment_cancelled,
     first_cancelled_on,
     fold_cancellations,
@@ -922,7 +923,7 @@ def _past_cancellations(
 ) -> dict[str, Cancellation]:
     """Decision 11: each request's cancellation as of `day`, built by the rule the past figures use, so 6(b)'s
     Appeals list (which reads the row's cancellation) agrees with Round 2 asks so far. CampMinder's first, dated by
-    its earliest cancelled registration on or before the day (`_cancelled_in_campminder`'s rule, under the record as
+    its latest cancelled registration on or before the day (`_cancelled_in_campminder`'s rule, under the record as
     it stood then or as it is now); else Kindred's as recorded by then. As cancellations_by_request orders them."""
     session_types = {s.cm_id: s.session_type for s in sessions}
     now = {r.id: r for r in today}
@@ -934,10 +935,11 @@ def _past_cancellations(
                 on
                 for r in (record, now.get(request_id))
                 if r is not None
-                for cancelled, on in (first_cancelled_on(r, enrollments, session_types),)
-                if cancelled and on is not None and on <= day
+                for on in cancelled_days(r, enrollments, session_types)
+                if on is not None and on <= day
             ]
-            out[request_id] = Cancellation("campminder", min(days) if days else None, state.reason, state.note)
+            # The latest, as today's row shows (enrollment_cancelled), so a past read and today's agree.
+            out[request_id] = Cancellation("campminder", max(days) if days else None, state.reason, state.note)
         elif state.in_kindred and record.status in _LIVE:
             on = camp_date(state.at) if state.at is not None else None
             out[request_id] = Cancellation("kindred", on, state.reason, state.note)

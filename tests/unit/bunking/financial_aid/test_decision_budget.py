@@ -402,3 +402,11 @@ def test_with_no_ledger_read_the_figures_are_not_computed() -> None:
     budget = season_budget([priced("e", 1000001, view(1, "posted", locked="1500"))], RULES, outside_grants={})
     assert (budget.total.rounds[1].unconfirmed, budget.total.total.unconfirmed_count) == (None, None)
     assert (budget.strip[1].awaiting_sync, budget.strip[1].not_reconciled) == (None, None)
+
+
+def test_a_request_unconfirmed_in_two_rounds_is_one_request_in_the_total_cell() -> None:
+    emma = priced("e", 1000001, view(1, "posted", locked="1500"), view(2, "posted", locked="500"))
+    ledger = {"e": {1: RoundLedger(Decimal(1500), False), 2: RoundLedger(Decimal(500), False)}}
+    budget = season_budget([emma], RULES, outside_grants={}, ledger=ledger)
+    assert budget.total.total.unconfirmed_count == Count(1, 1)
+    assert budget.total.total.unconfirmed == Decimal(2000)

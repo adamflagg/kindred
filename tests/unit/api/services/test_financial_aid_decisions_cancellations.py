@@ -789,3 +789,33 @@ async def test_a_past_grid_row_carries_a_kindred_cancellation_recorded_by_then()
         "schedule",
     )
     assert await _asked(store, date(2027, 3, 8)) == 0.0  # and the figure leaves it out too (not live then)
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_with_two_cancelled_registrations_shows_the_latest_date_on_or_before_the_day() -> None:
+    """Lead ruling: a past read and today's agree (enrollment_cancelled shows the latest cancel date)."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=date(2027, 3, 5))
+    _enrol(store, 32, on=date(2027, 3, 7))
+    service = _service(store)
+    then = next(r for r in (await service.grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    now = next(r for r in (await service.grid(YEAR)).rows if r.request_id == EMMA)
+    assert then.cancellation is not None
+    assert now.cancellation is not None
+    assert then.cancellation.on == now.cancellation.on == date(2027, 3, 7)
+
+
+@pytest.mark.asyncio
+async def test_a_past_row_never_shows_a_cancel_date_after_the_day() -> None:
+    """An undated cancelled registration counts as cancelled by the day; one dated after it adds no date."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _appeal(store)
+    _enrol(store, 32, on=None)
+    _enrol(store, 32, on=date(2027, 3, 20))
+    row = next(r for r in (await _service(store).grid(YEAR, as_of=date(2027, 3, 8))).rows if r.request_id == EMMA)
+    assert row.cancellation is not None
+    assert row.cancellation.by == "campminder"
+    assert row.cancellation.on is None

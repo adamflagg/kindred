@@ -181,6 +181,14 @@ def first_cancelled_on(
     return True, None if None in days else min(d for d in days if d is not None)
 
 
+def cancelled_days(
+    request: RequestRecord, enrollments: Sequence[EnrollmentState], session_types: Mapping[int, str]
+) -> list[date | None]:
+    """The date of each registration CampMinder cancelled for this request (None: undated), the registrations
+    enrollment_cancelled and first_cancelled_on read."""
+    return [e.changed_on for e in _scope(request, enrollments, session_types) if e.status_id in CANCELLED_STATUS_IDS]
+
+
 @dataclass(frozen=True)
 class Cancellation:
     by: Literal["campminder", "kindred"]
