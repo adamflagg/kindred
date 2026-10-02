@@ -195,6 +195,28 @@ async def test_retyping_the_standing_cost_override_writes_nothing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retyping_a_standing_override_with_a_new_note_writes_the_note() -> None:
+    """The same value with a changed note is a real edit (the reason is the audit trail); identical value and note
+    stay a no-op. Cost override and the Include override alike."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    service = _service(store)
+    await service.set_cost_override(EMMA, OVERRIDE, ACTOR)
+    rows = len(store.corrections)
+    reworded = OVERRIDE.model_copy(update={"note": "A clearer reason for the same price"})
+    assert (await service.set_cost_override(EMMA, reworded, ACTOR)).written == 1
+    assert len(store.corrections) == rows + 1
+    assert (await service.set_cost_override(EMMA, reworded, ACTOR)).written == 0
+    assert len(store.corrections) == rows + 1
+    out = IncludeIn(included=False, note="Left out for now")
+    await service.set_include(EMMA, out, ACTOR)
+    rows = len(store.corrections)
+    assert (await service.set_include(EMMA, out, ACTOR)).written == 0
+    assert (await service.set_include(EMMA, IncludeIn(included=False, note="Left out, see call"), ACTOR)).written == 1
+    assert len(store.corrections) == rows + 1
+
+
+@pytest.mark.asyncio
 async def test_a_reason_code_the_season_doesnt_list_is_refused_naming_its_codes() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)

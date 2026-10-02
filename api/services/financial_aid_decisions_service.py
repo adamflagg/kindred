@@ -227,7 +227,6 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
-LIVE_STATUSES: Final = _LIVE  # public: the household page's "included" reads the budget's own set (slice 1)
 
 
 def is_included(status: str | None, *, cancelled: bool, excluded: bool) -> bool:
@@ -237,7 +236,9 @@ def is_included(status: str | None, *, cancelled: bool, excluded: bool) -> bool:
 
     OWNER ITEM 5 IS NOT RULED YET: this is the plan's recommendation (exclude-only, band and card money only). To flip
     it, change this function; test_an_exclusion_moves_no_budget_figure pins the budget half, and
-    test_a_request_staff_excluded_leaves_the_band and ..._leaves_each_households_card_money_too pin the page half."""
+    test_a_request_staff_excluded_leaves_the_band and ..._leaves_each_households_card_money_too pin the page half.
+    financial_aid_to_place.changed_since also treats an exclusion as no price input; if item 5 flips, both move
+    together."""
     return status in _LIVE and not cancelled and not excluded
 
 
@@ -2532,8 +2533,10 @@ class FinancialAidDecisionsService:
     ) -> DecisionWriteOut:
         corrections = await self._store.fetch_corrections(request.year, request.application_id)
         standing = latest(corrections, request.id, field_name)
-        if value == (standing.new_value if standing is not None else REVERT):
-            return self._unchanged(request.year)
+        if value == (standing.new_value if standing is not None else REVERT) and (
+            standing is None or standing.new_value == REVERT or standing.reason == note
+        ):
+            return self._unchanged(request.year)  # same value and same note; a new note on it is a real edit
         result = await self._store.commit(
             [override_write(request, field_name, value, actor, note)], actor=actor, reason=note, require_reason=True
         )
