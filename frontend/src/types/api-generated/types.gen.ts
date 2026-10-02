@@ -1158,6 +1158,7 @@ export type BelowTheLineOut = {
    * Outside Budget Posted
    */
   outside_budget_posted: number | null
+  outside_grants_requests?: CountOut | null
 }
 
 /**
@@ -3290,6 +3291,40 @@ export type DecisionTypeOutput = {
    * Ceiling Exempt
    */
   ceiling_exempt?: boolean
+}
+
+/**
+ * DecisionTypeLineOut
+ *
+ * Main spec §12.1: one line per named decision type, in or out of the budget, and one for rounds with none.
+ * The lines add up to the pool's Posted + Needs an offer + Pending approval (in) and outside the budget (out).
+ */
+export type DecisionTypeLineOut = {
+  /**
+   * Key
+   */
+  key: string | null
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Counts Toward Budget
+   */
+  counts_toward_budget: boolean
+  /**
+   * Amount
+   */
+  amount: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * Own
+   */
+  own: number | null
+  requests: CountOut | null
 }
 
 /**
@@ -9752,6 +9787,10 @@ export type PoolBudgetOut = {
   total: CellOut
   below: BelowTheLineOut
   demand: ForwardDemandOut
+  /**
+   * Decision Types
+   */
+  decision_types?: Array<DecisionTypeLineOut>
 }
 
 /**

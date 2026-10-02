@@ -206,6 +206,7 @@ export type {
   DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostResponse,
   DecideRound3AmountApiFinancialAidRequestsRequestIdRound3ApprovalPostResponses,
   DecisionTypeInput,
+  DecisionTypeLineOut,
   DecisionTypeOutput,
   DecisionWriteOut,
   DefinitionNoteOut,
