@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -73,6 +73,17 @@ vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidRound3Decision: () => idle,
   useAidKeyAsk: () => ({ ...idle, mutate: keyAskMutate }),
   useAidRound3Amount: () => idle,
+  useAidCorrection: () => idle,
+  useAidHouseholdShare: () => idle,
+  useAidSessionResolve: () => idle,
+  useAidDuplicate: () => idle,
+  useAidHeadcount: () => idle,
+}))
+vi.mock('../../hooks/camperships/useAidApplication', () => ({
+  useAidApplication: () => ({ data: undefined, isLoading: false, error: null }),
+}))
+vi.mock('../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: () => undefined,
 }))
 vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
@@ -157,6 +168,17 @@ describe('AidHouseholdPage (§6.3)', () => {
     renderAt('/aid/households/1000001')
     expect(screen.getByRole('button', { name: 'Cancel request…' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
+  })
+
+  it('puts Correct… on the income answers for casework only, never on the income override (§9.3)', () => {
+    renderAt('/aid/households/1000001')
+    expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
+    cleanup()
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    renderAt('/aid/households/1000001')
+    const answers = householdPage().incomes.flatMap((i) => i.answers)
+    const correctable = answers.filter((a) => a.field !== 'income_override')
+    expect(screen.getAllByRole('button', { name: 'Correct…' })).toHaveLength(correctable.length)
   })
 
   it("shows each request's card", () => {
@@ -462,5 +484,34 @@ describe('the walk stands aside for an open editor (F2 4)', () => {
     expect(screen.getByText('Statement of need is required')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('link', { name: '← Back to All' }))
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/households/1000005?from=all')
+  })
+})
+
+describe('Correct… and the open editor (one open editor per page)', () => {
+  beforeEach(() => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    result = {
+      data: householdPage({ household_cm_id: 1000005, requests: [householdRequest(ROW_OLIVIA)] }),
+      isLoading: false,
+      error: null,
+    }
+    keyAskMutate.mockReset()
+    keyAskMutate.mockImplementation((_vars: unknown, options?: { onSuccess?: () => void }) => {
+      options?.onSuccess?.()
+    })
+  })
+
+  it("saves what is typed in the card's editor before the correction form opens", async () => {
+    renderAt('/aid/households/1000005')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.keyboard('1300')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Correct…' })[0]!)
+    expect(keyAskMutate).toHaveBeenCalledWith(
+      { requestId: 'reqolivia000003', body: expect.objectContaining({ round: 2, amount: 1300 }) },
+      expect.anything()
+    )
+    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+    expect(screen.getByLabelText('Reason')).toBeInTheDocument()
   })
 })

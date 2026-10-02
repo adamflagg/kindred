@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { gridRow, roundOut, ROW_EMMA, ROW_OLIVIA, ROW_RILEY } from '../requests/gridFixtures'
 import { useEditorExits, type EditorExits } from './editorExits'
-import { householdPage, householdRequest } from './householdFixtures'
+import { applicationOut, householdPage, householdRequest } from './householdFixtures'
 import { WorkingRequestCard } from './WorkingRequestCard'
 
 const cancel = vi.fn()
@@ -67,6 +67,17 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidUndoPosted: () => quiet,
   useAidRound3Decision: () => quiet,
   useAidRound3Amount: () => quiet,
+  useAidHouseholdShare: () => quiet,
+  useAidSessionResolve: () => quiet,
+  useAidDuplicate: () => quiet,
+  useAidHeadcount: () => quiet,
+  useAidCorrection: () => quiet,
+}))
+vi.mock('../../../hooks/camperships/useAidApplication', () => ({
+  useAidApplication: () => ({ data: applicationOut(), isLoading: false, error: null }),
+}))
+vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: () => undefined,
 }))
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
   useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
@@ -416,5 +427,90 @@ describe('WorkingRequestCard: the open editor’s own button (m3)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
     expect(ask).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Round 2 ask')).toHaveValue('1300')
+  })
+})
+
+describe('WorkingRequestCard: the casework forms', () => {
+  const FAMILY = gridRow({
+    request_id: 'reqfamily000010',
+    person_cm_id: 0,
+    camper_name: '',
+    program_key: 'family_camp',
+  })
+
+  it('offers payer shares on a live request, and each intake fix only where it applies', () => {
+    renderCards([ROW_EMMA])
+    expect(screen.getByRole('button', { name: 'Payer shares…' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Settle session…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Keep the other request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
+  })
+
+  it('offers Settle session… on a request whose session is not settled', () => {
+    renderCards([{ ...ROW_EMMA, request_status: 'unmatched_session' }])
+    expect(screen.getByRole('button', { name: 'Settle session…' })).toBeInTheDocument()
+  })
+
+  it('offers Keep the other request… only on a pending duplicate', () => {
+    renderCards([{ ...ROW_EMMA, request_status: 'duplicate_pending' }])
+    expect(screen.getByRole('button', { name: 'Keep the other request…' })).toBeInTheDocument()
+  })
+
+  it('offers Headcount… on a Family Camp household request only', () => {
+    renderCards([FAMILY])
+    expect(screen.getByRole('button', { name: 'Headcount…' })).toBeInTheDocument()
+  })
+
+  it('offers no headcount on a summer request that merely has no camper', () => {
+    renderCards([{ ...FAMILY, program_key: 'summer' }])
+    expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
+  })
+
+  it('offers none of them where the server refuses the write (a duplicate or withdrawn request)', () => {
+    renderCards([{ ...ROW_EMMA, request_status: 'withdrawn' }])
+    expect(screen.queryByRole('button', { name: 'Payer shares…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Headcount…' })).toBeNull()
+  })
+
+  it('is the plain card, with none of them, without casework permission', () => {
+    renderCards([{ ...ROW_EMMA, request_status: 'unmatched_session' }], false)
+    expect(screen.queryByRole('button', { name: 'Payer shares…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Settle session…' })).toBeNull()
+  })
+
+  it('opens a form in place, and Back closes it', async () => {
+    renderCards([ROW_EMMA])
+    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.queryByLabelText('Household')).toBeNull()
+  })
+
+  it("leaves the card's money editor before opening a form: one open editor", async () => {
+    renderCards([ROW_OLIVIA])
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    expect(screen.getByLabelText('Round 2 ask')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+  })
+
+  it('closes the money editor of another card when a form opens on this one', async () => {
+    renderCards([ROW_OLIVIA, ROW_EMMA])
+    await userEvent.click(screen.getByRole('button', { name: 'Edit the appeal…' }))
+    const shares = screen.getAllByRole('button', { name: 'Payer shares…' })
+    await userEvent.click(shares[1]!)
+    expect(screen.queryByLabelText('Round 2 ask')).toBeNull()
+    expect(screen.getByLabelText('Household')).toBeInTheDocument()
+  })
+
+  it('drops a form once the request no longer takes it (a refetch moved the status)', async () => {
+    const { rerender } = render(
+      <Cards rows={[{ ...ROW_EMMA, request_status: 'unmatched_session' }]} />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Settle session…' }))
+    expect(screen.getByLabelText('Session')).toBeInTheDocument()
+    rerender(<Cards rows={[{ ...ROW_EMMA, request_status: 'active' }]} />)
+    expect(screen.queryByLabelText('Session')).toBeNull()
   })
 })
