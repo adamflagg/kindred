@@ -35,6 +35,16 @@ pytestmark = pytest.mark.asyncio
 NOW = datetime(2027, 4, 1, 17, 0, tzinfo=UTC)
 EMMA, LIAM = 1000011, 1000021
 REGIONAL = SourceRecord("src000000000001", "regional grant", "Regional Camp Fund", "outside", False, ("summer",))
+CAMP_SUMMER = SourceRecord("src000000000002", "camp fa summer", "Camp aid, summer", "camp", False, ("summer",))
+CAMP_QUEST = SourceRecord("src000000000003", "camp fa quest", "Camp aid, Quest", "camp", False, ("quest",))
+CAMP_TEEN = SourceRecord("src000000000004", "camp fa teen", "Camp aid, teen", "camp", False, ("teen",))
+CAMP_WEEKEND = SourceRecord(
+    "src000000000005", "camp fa family", "Camp aid, Family Camp", "camp", False, ("family_camp",)
+)
+CAMP_ADULT = SourceRecord(
+    "src000000000006", "camp fa adult", "Camp aid, adult weekend", "camp", False, ("adult_weekend",)
+)
+CAMP_NO_FAMILY = SourceRecord("src000000000007", "camp fa none", "Camp aid, unclassified", "camp", False, ())
 
 
 def _development(**change: Any) -> FakeDevelopmentStore:
@@ -387,14 +397,16 @@ async def test_a_column_with_no_p_column_counts_its_ages_by_age_from_the_ledger(
     )
     store = report_season()
     seed_line(store, 7001, "800", household=1000002, person=LIAM)  # on Liam: 13 on June 20 2025
-    seed_line(store, 7002, "600", household=1000001, person=0)  # Emma's household-level line: 10 that day
+    # Emma's household-level line, from a summer-aid source: 10 that day
+    seed_line(store, 7002, "600", household=1000001, person=0, description_key=CAMP_SUMMER.description_key)
     development = _development(
+        source_rows=[REGIONAL, CAMP_SUMMER],
         registrations=[
             went(EMMA, 1000001),
             went(LIAM, 1000002),
             went(EMMA, 1000001, year=2025, start=date(2025, 6, 20)),
             went(LIAM, 1000002, year=2025, start=date(2025, 6, 20)),
-        ]
+        ],
     )
     out = await _service(development, history, store=store).development(YEAR)
     assert [(c.season, c.basis) for c in out.columns] == [(2025, "r"), (2027, "P")]
@@ -438,3 +450,40 @@ async def test_the_blank_ages_reason_names_the_real_condition_not_only_the_backf
     assert "2025" in gap.reason
     assert "backfill" in gap.reason
     assert "no aid lines in Kindred yet" not in gap.reason
+
+
+@pytest.mark.parametrize(
+    ("description_key", "counted"),
+    [
+        (CAMP_SUMMER.description_key, True),
+        (CAMP_QUEST.description_key, True),
+        (CAMP_TEEN.description_key, True),
+        (CAMP_WEEKEND.description_key, False),
+        (CAMP_ADULT.description_key, False),
+        (CAMP_NO_FAMILY.description_key, False),
+        ("camp fa no source row", False),
+        ("", False),
+    ],
+)
+async def test_the_rebuilt_ages_count_a_household_level_line_only_when_its_source_implies_summer_aid(
+    description_key: str, counted: bool
+) -> None:
+    """RULED (owner 2026-10-02), item 1: a household-level camp line counts its household's attended summer campers
+    only when its aid_sources row implies the summer, Quest or teen family; a Family Camp or adult-weekend line, a
+    source implying no family, and a line with no source row don't count a summer sibling."""
+    store = report_season()
+    seed_line(store, 7001, "800", household=1000002, person=LIAM)  # a camper line: always counts Liam (teen)
+    seed_line(store, 7002, "600", household=1000001, person=0, description_key=description_key)  # Emma's household
+    development = _stayed_2025()
+    development.source_rows = [
+        REGIONAL,
+        CAMP_SUMMER,
+        CAMP_QUEST,
+        CAMP_TEEN,
+        CAMP_WEEKEND,
+        CAMP_ADULT,
+        CAMP_NO_FAMILY,
+    ]
+    out = await _service(development, _backfilled_2025(), store=store).development(YEAR)
+    assert _row(out, "teens", "camp_pool").values[0] == 1.0  # Liam either way
+    assert _row(out, "youth", "camp_pool").values[0] == (1.0 if counted else 0.0)  # Emma only on a summer source

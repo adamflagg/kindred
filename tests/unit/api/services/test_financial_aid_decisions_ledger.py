@@ -84,8 +84,10 @@ def test_a_camp_aid_record_becomes_a_line_in_aid_dollars() -> None:
         attributed_person_cm_id=1000011,
         attributed_session_cm_id=1000101,
         program_family="summer",
+        effective_source_key="camp fa",
     )
     line = camp_line(record)
+    assert line.description_key == "camp fa"  # the source classification the line joins to (Development's rebuilt ages)
     assert (line.amount, line.post_date, line.reversal_date, line.is_reversed) == (
         Decimal(1800),
         datetime(2027, 3, 9, 17, 0, tzinfo=UTC),
@@ -126,6 +128,7 @@ async def test_camp_aid_lines_are_read_live_and_reversed_by_their_funder_type() 
         "attributed_person_cm_id",
         "attributed_session_cm_id",
         "program_family",
+        "effective_source_key",
     }
 
 

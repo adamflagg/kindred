@@ -488,6 +488,7 @@ def seed_line(
     reversed_at: datetime | None = None,
     recorded: datetime | None = None,
     rewritten: datetime | None = None,
+    description_key: str = "",
 ) -> CampLine:
     """One camp-aid line in the ledger: CampMinder posted it to `person` (0 = the household). Kindred
     recorded it (the aid_postings row's created) when it posted unless `recorded` says otherwise, and
@@ -504,6 +505,7 @@ def seed_line(
         reversal_date=reversed_at,
         recorded_at=recorded,
         updated_at=rewritten or (max(written) if written else None),
+        description_key=description_key,
     )
     store.camp_lines.append(line)
     return line

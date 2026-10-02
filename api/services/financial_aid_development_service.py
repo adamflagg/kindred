@@ -77,6 +77,9 @@ FIRST_DEVELOPMENT_SEASON: Final = 2022  # §9.4: columns are seasons from 2022
 FIRST_REQUEST_SEASON: Final = 2026
 LAST_UNCONFIRMED_SEASON: Final = 2025  # O-930-1: D96's premise (2022–2025's basis) is contested
 SUMMER_TYPES: Final = frozenset({"main", "embedded", "ag", "quest", "scit", "tli", "teen"})
+# The aid families whose camp aid a rebuilt age line counts (item 1): a source implying one of these is summer,
+# Quest or teen aid; Family Camp, adult-weekend and other families (or none) are not.
+SUMMER_AID_FAMILIES: Final = frozenset({"summer", "quest", "teen"})
 TEEN_PROGRAM_TYPES: Final = frozenset({"scit", "tli"})  # §5.11: "TLI + SCIT stays a program line"
 # Not camper programs development reports (queue "Known limits": B*Mitzvah is; Family School and "other" aren't).
 NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
@@ -393,7 +396,7 @@ class FinancialAidDevelopmentService:
         )
         return development_column(inputs), grouping_
 
-    async def _rebuilt_ages(self, year: int) -> dict[str, int] | None:
+    async def _rebuilt_ages(self, year: int, sources: Sequence[SourceRecord] = ()) -> dict[str, int] | None:
         """D158: the summer recipients of a season with no P column, by age, rebuilt from that season's ledger. None
         when the season has no live aid line at all (2022-2024 until the 2017-2024 backfill)."""
         # RULED (owner 2026-10-02), item 51: a season with no ledger lines yet is blank (named once in not_built), never zero.
@@ -405,6 +408,8 @@ class FinancialAidDevelopmentService:
         ]
         if not camp and not outside:
             return None
+        # RULED (owner 2026-10-02), item 1: a household-level camp line counts only when its source implies summer aid.
+        summer_sources = {s.description_key for s in sources if SUMMER_AID_FAMILIES & set(s.implied_program_families)}
         stays = [
             r for r in await self._development.attendances(year) if r.status_id == 2 and r.session_type in SUMMER_TYPES
         ]
@@ -414,7 +419,11 @@ class FinancialAidDevelopmentService:
             {p.person_cm_id: Person(p.person_cm_id, p.birthdate, "") for p in people},
             {line.person_cm_id for line in camp if line.person_cm_id > 0}
             | {row.person_cm_id for row in outside if row.person_cm_id > 0},
-            {line.household_cm_id for line in camp if line.person_cm_id <= 0},
+            {
+                line.household_cm_id
+                for line in camp
+                if line.person_cm_id <= 0 and line.description_key in summer_sources
+            },
         )
 
     async def development(self, year: int) -> DevelopmentResponse:
@@ -439,7 +448,10 @@ class FinancialAidDevelopmentService:
             document = season.rules.document if season.rules is not None else None
             latest = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
         columns = _columns(typed, natives, today)
-        ages = {season: await self._rebuilt_ages(season) for season in sorted({f.year for f in typed} - set(natives))}
+        ages = {
+            season: await self._rebuilt_ages(season, sources)
+            for season in sorted({f.year for f in typed} - set(natives))
+        }
         not_built = [NotBuiltOut(figure=k, reason=v) for k, v in NOT_BUILT.items()]
         if waiting := sorted(season for season, found in ages.items() if found is None):
             not_built.append(

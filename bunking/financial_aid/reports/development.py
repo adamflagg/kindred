@@ -218,7 +218,7 @@ def rebuilt_ages(
     """D158: a season with no P column counts its summer recipients by age all the same. `stays` are the season's
     attended summer-type registrations (person, household, session start). A recipient is a camper a live aid line
     names (`money_people`: the camp's or an outside funder's), or any summer camper of a household that a
-    household-level line of the camp's own aid names (`money_households`). Age is on the first day of the camper's
+    household-level line of the camp's own summer, Quest or teen aid names (`money_households`). Age is on the first day of the camper's
     first summer session (D103), as in a P column."""
     first: dict[int, date | None] = {}
     homes: dict[int, set[int]] = defaultdict(set)
