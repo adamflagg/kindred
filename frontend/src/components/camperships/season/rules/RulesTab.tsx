@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import { Permission } from '../../../../constants/permissions'
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
+import { useAidStartRulesFromLastYear } from '../../../../hooks/camperships/useAidRulesWrites'
 import { useAidSessionNames } from '../../../../hooks/camperships/useAidSessionNames'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
@@ -15,6 +16,7 @@ import type {
 } from '../../../../types/api-types'
 import {
   AMBER_NOTE,
+  BUTTON_PRIMARY,
   BUTTON_SECONDARY,
   TAB_PILL_ACTIVE,
   TAB_PILL_IDLE,
@@ -37,8 +39,9 @@ import {
   type RulesNames,
   type StatusWords,
 } from './rulesModel'
+import { ApproveForm, type Approved } from './ApproveForm'
 import { CapacityForm } from './CapacityForm'
-import { sectionContent } from './rulesDraft'
+import { draftSections, sectionContent } from './rulesDraft'
 import { RulesSectionEditor } from './RulesSectionEditor'
 import { SectionView } from './SectionView'
 
@@ -170,6 +173,20 @@ function ApprovedBody({
 
 /** A draft every section of which is approved, and so the version pricing the season. */
 const pricesTheSeason = (draft: ApiAidRulesDraft) => draft.approved_version === draft.version
+/**
+ * What an approval says follows. The season is priced by the newest version in which every pricing
+ * section is approved or locked, so approving some sections re-prices nothing: the first sentence
+ * only when the refreshed draft's approved version is the one just approved (interim, S8-⚠1). A
+ * posted amount stands either way (S1 Q1); it never quotes a change in a posted amount.
+ */
+function approvedNotice({ pricesSeason, warnings }: Approved): string {
+  return [
+    pricesSeason
+      ? 'Approved. Requests not yet posted are priced on the new rules; a posted amount stands.'
+      : 'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.',
+    ...warnings,
+  ].join(' ')
+}
 
 function DraftBody({
   draft,
@@ -183,7 +200,7 @@ function DraftBody({
   onNotice: (notice: string | null) => void
 }) {
   const href = useRulesHref()
-  const [mode, setMode] = useState<'read' | 'edit'>('read')
+  const [mode, setMode] = useState<'read' | 'edit' | 'approve'>('read')
   const sessions = useSessionNames()
   const names: RulesNames = {
     section: selected,
@@ -200,16 +217,39 @@ function DraftBody({
   const editing = mode === 'edit'
   return (
     <div className="space-y-2">
-      <p className="text-muted-foreground text-sm">
-        {draft.approved_version === null
-          ? `Rules draft v${String(draft.version)}: no version prices the season yet.`
-          : pricesTheSeason(draft)
-            ? `${versionWords(
-                draft.version,
-                draft.sections.map((s) => s.status)
-              )}: it prices the season.`
-            : `Rules draft v${String(draft.version)}, against the approved v${String(draft.approved_version)}.`}
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-muted-foreground text-sm">
+          {draft.approved_version === null
+            ? `Rules draft v${String(draft.version)}: no version prices the season yet.`
+            : pricesTheSeason(draft)
+              ? `${versionWords(
+                  draft.version,
+                  draft.sections.map((s) => s.status)
+                )}: it prices the season.`
+              : `Rules draft v${String(draft.version)}, against the approved v${String(draft.approved_version)}.`}
+        </p>
+        {finance && mode === 'read' && draftSections(draft).length > 0 && (
+          <button
+            type="button"
+            className={`${BUTTON_SECONDARY} ml-auto`}
+            onClick={() => {
+              onNotice(null)
+              setMode('approve')
+            }}
+          >
+            Approve…
+          </button>
+        )}
+      </div>
+      {mode === 'approve' && (
+        <ApproveForm
+          initial={selected}
+          onDone={(approved) => {
+            setMode('read')
+            if (approved !== null) onNotice(approvedNotice(approved))
+          }}
+        />
+      )}
       <div className="grid gap-3 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <RulesSectionList
           items={items}
@@ -289,6 +329,50 @@ function DraftBody({
   )
 }
 
+/** A season with no rules: finance can start it from last season's (§7.5), every section a draft. */
+function NoRulesYet({
+  year,
+  finance,
+  onNotice,
+}: {
+  year: number
+  finance: boolean
+  onNotice: (notice: string | null) => void
+}) {
+  const start = useAidStartRulesFromLastYear()
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className={`${SEASON_CARD} text-muted-foreground space-y-2 p-4`}>
+      <p>{`No rules for ${String(year)} yet.`}</p>
+      {finance && (
+        <button
+          type="button"
+          className={BUTTON_PRIMARY}
+          disabled={start.isPending}
+          onClick={() => {
+            setError(null)
+            start.mutate(undefined, {
+              onSuccess: (created) =>
+                onNotice(
+                  [
+                    `Started ${String(year)} from ${String(year - 1)}'s rules: every section is a draft until approved.`,
+                    ...(created.report.issues ?? [])
+                      .filter((issue) => issue.severity === 'warning')
+                      .map((issue) => issue.message),
+                  ].join(' ')
+                ),
+              onError: (caught) => setError(caught.message),
+            })
+          }}
+        >
+          {start.isPending ? 'Starting…' : `Start ${String(year)} from ${String(year - 1)}'s rules`}
+        </button>
+      )}
+      {error !== null && <p className={AMBER_NOTE}>{error}</p>}
+    </div>
+  )
+}
+
 function Missing({ text, children }: { text: string; children?: ReactNode }) {
   return (
     <div className={`${SEASON_CARD} text-muted-foreground space-y-1 p-4`}>
@@ -358,7 +442,7 @@ export function RulesTab() {
       )}
       {show === 'draft' ? (
         hasStatus(draft.error, 404) && !draft.data ? (
-          <Missing text={`No rules for ${String(year)} yet.`} />
+          <NoRulesYet year={year} finance={finance} onNotice={setNotice} />
         ) : (
           <QueryGuard
             isLoading={draft.isLoading}

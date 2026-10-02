@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AidWriteError } from '../../../../services/camperships/aidApi'
 import type { ApiAidRulesDraft } from '../../../../types/api-types'
-import { savePrecondition } from './precondition'
+import { approvePrecondition, savePrecondition } from './precondition'
 import { RULES_DOCUMENT, rulesDraft } from './rulesFixtures'
 import { RulesTab } from './RulesTab'
 
@@ -87,6 +87,24 @@ function movedDraft(): ApiAidRulesDraft {
       s.section === 'awards' ? { ...s, fingerprint: 'fp-awards-v5' } : s
     ),
     document: { ...base.document, awards: { ...RULES_DOCUMENT.awards, minimum: '120' } },
+  }
+}
+
+/** The draft with the general award table's Round 1 % changed: someone else's edit to award_tables. */
+function movedTableDraft(): ApiAidRulesDraft {
+  const moved = rulesDraft()
+  const table = {
+    inherits: null,
+    tiers: { '1': { r1_pct: '90' }, '2': { r1_pct: '50' }, '3': { r1_pct: '20' } },
+    overrides: {},
+  }
+  return {
+    ...moved,
+    // The server's fingerprint moves with the content: sameSection compares it, not the document.
+    sections: moved.sections.map((s) =>
+      s.section === 'award_tables' ? { ...s, fingerprint: 'fp-award_tables-moved' } : s
+    ),
+    document: { ...moved.document, award_tables: { general: table } },
   }
 }
 
@@ -269,5 +287,199 @@ describe('someone else changed the section (Decision 16; owner ruling 2026-10-02
       'You both changed Income bands: saving puts yours in place of theirs.'
     )
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('approving sections (D39; Decision 17; owner ruling 2026-10-02)', () => {
+  async function fillApproval() {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    expect(
+      await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    ).toBeChecked()
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+  }
+
+  it('approves the ticked draft sections with the note naming the body', async () => {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    expect(
+      await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    ).toBeChecked()
+    expect(within(form).getByRole('button', { name: 'Approve 1 section' })).toBeDisabled()
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]).toEqual({
+      hook: 'approve',
+      vars: {
+        version: 4,
+        body: {
+          sections: ['award_tables'],
+          note: 'Finance, Jan 22 meeting',
+          ...approvePrecondition(rulesDraft(), ['award_tables']),
+        },
+      },
+    })
+    expect(calls[0]).toMatchObject({
+      vars: { body: { fingerprints: { award_tables: 'fp-award_tables-v4' } } },
+    })
+  })
+
+  it('does not pre-tick a section that has errors', async () => {
+    const base = rulesDraft()
+    server = [
+      {
+        ...base,
+        sections: base.sections.map((s) =>
+          s.section === 'award_tables' ? { ...s, errors: 1 } : s
+        ),
+      },
+    ]
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const box = await screen.findByRole('checkbox', { name: /Award tables \(Round 1 %\)/ })
+    expect(box).not.toBeChecked()
+    expect(box).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve 0 sections' })).toBeDisabled()
+  })
+
+  it('says what follows when the approval now prices the season', async () => {
+    // The refreshed draft: v4 is now the version pricing the season.
+    server = [rulesDraft(), rulesDraft(), { ...rulesDraft(), approved_version: 4 }]
+    await fillApproval()
+    const notice = await screen.findByTestId('rules-notice')
+    expect(notice).toHaveTextContent(
+      'Approved. Requests not yet posted are priced on the new rules; a posted amount stands.'
+    )
+    expect(notice).not.toHaveTextContent(/would change by/)
+    expect(notice).not.toHaveTextContent(/Nothing is re-priced/)
+  })
+
+  it('says nothing is re-priced when sections that price the season still wait', async () => {
+    // The refreshed draft still reads against the approved v3.
+    server = [rulesDraft(), rulesDraft(), { ...rulesDraft(), approved_version: 3 }]
+    await fillApproval()
+    const notice = await screen.findByTestId('rules-notice')
+    expect(notice).toHaveTextContent(
+      'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.'
+    )
+    expect(notice).not.toHaveTextContent(/Requests not yet posted/)
+    expect(notice).not.toHaveTextContent(/would change by/)
+  })
+
+  it('carries the approval report warnings into the notice', async () => {
+    outcome = {
+      kind: 'ok',
+      value: {
+        report: {
+          issues: [
+            {
+              section: 'budget',
+              code: 'x',
+              severity: 'warning',
+              path: 'budget.total',
+              message: 'The budget is below last season',
+            },
+            {
+              section: 'budget',
+              code: 'y',
+              severity: 'info',
+              path: 'budget.total',
+              message: 'An aside nobody needs',
+            },
+          ],
+        },
+      },
+    }
+    await fillApproval()
+    const notice = await screen.findByTestId('rules-notice')
+    expect(notice).toHaveTextContent(/The budget is below last season/)
+    expect(notice).not.toHaveTextContent(/An aside nobody needs/)
+  })
+
+  it('sends nothing when a ticked section moved since the form opened, and unticks and names it', async () => {
+    server = [rulesDraft(), movedTableDraft()]
+    await fillApproval()
+    expect(await screen.findByTestId('approve-conflict')).toHaveTextContent(
+      'Changed since you looked, so unticked: Award tables (Round 1 %).'
+    )
+    expect(calls).toHaveLength(0)
+    expect(screen.getByRole('checkbox', { name: 'Award tables (Round 1 %)' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: 'Approve 0 sections' })).toBeDisabled()
+  })
+
+  it("on the server's 409 reads the draft again, and unticks what moved, so nothing is approved unseen", async () => {
+    outcome = { kind: 'refused', status: 409, message: CONFLICT }
+    server = [rulesDraft(), rulesDraft(), { ...movedTableDraft(), version: 5 }]
+    await fillApproval()
+    const conflict = await screen.findByTestId('approve-conflict')
+    expect(conflict).toHaveTextContent(CONFLICT)
+    expect(conflict).toHaveTextContent('The rules draft is v5 now.')
+    expect(conflict).toHaveTextContent(
+      'Changed since you looked, so unticked: Award tables (Round 1 %).'
+    )
+    expect(calls).toHaveLength(1)
+    expect(screen.getByRole('checkbox', { name: 'Award tables (Round 1 %)' })).not.toBeChecked()
+  })
+
+  it("keeps the form when the check before sending can't read the draft", async () => {
+    server = [rulesDraft(), new Error('Network down'), rulesDraft()]
+    await fillApproval()
+    expect(
+      await screen.findByText(
+        "Couldn't check the rules draft is unchanged: Network down. Nothing was approved."
+      )
+    ).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+    await userEvent.click(screen.getByRole('button', { name: 'Approve 1 section' }))
+    await waitFor(() => expect(calls).toHaveLength(1))
+  })
+})
+
+describe('starting a season (§7.5)', () => {
+  it("starts an empty season from last season's rules, saying what wasn't carried", async () => {
+    draft = {
+      data: undefined,
+      isLoading: false,
+      error: new AidWriteError('No rules for 2027', 404),
+    }
+    outcome = {
+      kind: 'ok',
+      value: {
+        ...rulesDraft(),
+        report: {
+          issues: [
+            {
+              section: 'cost',
+              code: 'prices_cleared_for_new_season',
+              severity: 'warning',
+              path: 'cost.tuition',
+              message:
+                "Tuition and family-camp rates were not carried from 2026: session ids are reused across years, so enter 2027's prices",
+            },
+          ],
+        },
+      },
+    }
+    renderAt('/aid/season/rules')
+    expect(screen.getByText('No rules for 2027 yet.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
+    expect(calls[0]?.hook).toBe('start')
+    expect(screen.getByTestId('rules-notice')).toHaveTextContent(
+      /every section is a draft until approved/
+    )
+    expect(screen.getByTestId('rules-notice')).toHaveTextContent(/enter 2027's prices/)
+  })
+
+  it('shows the server refusal when the season already has rules', async () => {
+    draft = { data: undefined, isLoading: false, error: new AidWriteError('No rules', 404) }
+    outcome = { kind: 'refused', status: 409, message: 'The season already has rules' }
+    renderAt('/aid/season/rules')
+    await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
+    expect(await screen.findByText('The season already has rules')).toBeInTheDocument()
   })
 })
