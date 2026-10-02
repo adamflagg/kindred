@@ -415,7 +415,10 @@ export function RulesTab() {
     finance && version === null && params.get('show') !== 'approved' ? 'draft' : 'approved'
   const approved = useAidApprovedRules(version, { enabled: show === 'approved' })
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
-  const [notice, setNotice] = useState<string | null>(null)
+  // The notice belongs to the season it was about: it shows only while that year is selected.
+  const [noticeFor, setNoticeFor] = useState<{ year: number; text: string } | null>(null)
+  const notice = noticeFor?.year === year ? noticeFor.text : null
+  const setNotice = (text: string | null) => setNoticeFor(text === null ? null : { year, text })
   // Lifted so the tab's own pills hold still while an edit or an approval is open.
   const [mode, setMode] = useState<Mode>('read')
   const holding = show === 'draft' && mode !== 'read'
@@ -437,7 +440,7 @@ export function RulesTab() {
               <span className={TAB_PILL_ACTIVE}>{draftPill}</span>
               <span className={TAB_PILL_IDLE}>Approved</span>
               <span className="text-muted-foreground px-2 text-xs">
-                Save or cancel the edit first.
+                {mode === 'edit' ? 'Save or cancel the edit first.' : 'Approve or cancel first.'}
               </span>
             </>
           ) : (
@@ -474,7 +477,7 @@ export function RulesTab() {
       )}
       {show === 'draft' ? (
         hasStatus(draft.error, 404) && !draft.data ? (
-          <NoRulesYet year={year} finance={finance} onNotice={setNotice} />
+          <NoRulesYet key={year} year={year} finance={finance} onNotice={setNotice} />
         ) : (
           <QueryGuard
             isLoading={draft.isLoading}

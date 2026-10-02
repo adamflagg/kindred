@@ -5,7 +5,11 @@ import {
   useFreshAidRulesDraft,
 } from '../../../../hooks/camperships/useAidRulesWrites'
 import { hasStatus } from '../../../../services/camperships/aidApi'
-import type { ApiAidRulesDraft, ApiAidRulesSection } from '../../../../types/api-types'
+import type {
+  ApiAidRulesDraft,
+  ApiAidRulesSection,
+  ApiAidSectionSaveIn,
+} from '../../../../types/api-types'
 import { AMBER_NOTE, BUTTON_SECONDARY } from '../../../admin/lodging/lodgingStyles'
 import { savePrecondition } from './precondition'
 import { sectionContent } from './rulesDraft'
@@ -126,15 +130,20 @@ export function RulesSectionEditor({
       setRefusal({ kind: 'loaded', server: null, fresh })
       return
     }
+    let body: ApiAidSectionSaveIn
+    try {
+      body = {
+        base_version: opened.draft.version,
+        content,
+        ...savePrecondition(opened.draft, section),
+      }
+    } catch {
+      // A section without a fingerprint: nothing can be sent, and the person is told.
+      setError("Couldn't send this save: reload the rules and try again.")
+      return
+    }
     save.mutate(
-      {
-        section,
-        body: {
-          base_version: opened.draft.version,
-          content,
-          ...savePrecondition(opened.draft, section),
-        },
-      },
+      { section, body },
       {
         onSuccess: (saved) => onDone(saved),
         onError: (caught) => {
