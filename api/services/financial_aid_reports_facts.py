@@ -20,7 +20,8 @@ Where each field comes from:
   ask           the view's (Round 1: the request's ask as corrected); else Round 1's corrected ask, or the state's.
   locked        a posted round that counts toward the budget: the amount its lock stored.
   tier          a posted round's tier at its lock (its snapshot, D43), else the request's final tier (now, or as
-                priced on a past read); None when neither is known.
+                priced on a past read); None when neither is known (a past read that 3c-2 can't price for the date,
+                named in its gaps).
   grants        the counting outside grants on the request (the budget's below-the-line money, D125, D143).
 """
 
@@ -166,6 +167,10 @@ def report_requests(
             if n > 1 and view is None and (state is None or not round_exists(state)):
                 continue
             rounds.append(_round(n, view, state, r1_ask=r1_ask, tier_now=tier_now, home_pool=home_pool))
+        if request_id in season.gapped:  # 3c-2 kept it to 3c-1's figures: no decided amount is an estimate (D154)
+            rounds = [replace(r, decided=None) for r in rounds]
+        if request_id in season.posted_unknown:  # a past read can't replay its clawback: like the grid, leave it out
+            rounds = [replace(r, locked=None) for r in rounds]
         cancellation = season.cancellations.get(request_id)
         out.append(
             ReportRequest(

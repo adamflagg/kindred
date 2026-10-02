@@ -3,8 +3,8 @@ D21, D63, D72, D80, D129–D133, D138).
 
 Three reads, one per surface (D21), all `financial_aid.view`:
 
-  Statistics  one season, live or as of a past day (3c-1), chips (award table × round), the "Decided (not yet
-              offered)" basis (D130, live only), the reporting controls (D138), RPT-9's per-tier table and RPT-23's
+  Statistics  one season, live or as of a past day (3c-2), chips (award table × round), the "Decided (not yet
+              offered)" basis (D130), the reporting controls (D138), RPT-9's per-tier table and RPT-23's
               outcomes beside it, and D131's cancellations.
   Programs    one season by session (RPT-11), live or as of a past day, with the reporting controls.
   Committee   the year-over-year tables (RPT-1, 2, 6, 7, 8, 13, 24): every season Kindred priced (P) beside finance's
@@ -17,15 +17,17 @@ And finance's typed history (`aid_reported_history`, O-930-13's default): a bulk
 by their natural key, skipping the unchanged ones (a no-op never reaches 4a), and a delete with a reason. Every
 write commits with its aid_change_log row (4a), one operation per load.
 
-Past dates: a request cancelled (CampMinder or Kindred) on or before the day is cancelled then (the decisions
-service's past read lists those, Decision 11), so the cancellation lines are real counts. Reports do not yet read the
-grant placement or the decided amounts of a past day (the as-of reads' priced past, task A6c): the Decided basis is
-refused, and the grants figures are left empty and named in `not_rebuilt`.
+Past dates (3c-2 prices them, D154): a request cancelled (CampMinder or Kindred) on or before the day is cancelled then
+(the decisions service's past read lists those, Decision 11), so the cancellation lines are real counts; tiers, the
+Decided basis and grants (the grant placement log as it stood) are shown. What 3c-2 can't rebuild for a request is named
+in `not_rebuilt` with its request ids (`Season.gaps`), and a request kept to 3c-1's figures adds no decided amount (never
+an estimate). A request whose posted money can't be replayed (`Season.posted_unknown`) has that money left out of
+awarded, as the Requests grid and the budget blank it, and a `posted` gap names it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -118,15 +120,6 @@ NO_POOL_LABEL: Final = "No pool"
 UNMATCHED_LABEL: Final = "Session not matched"
 ALL_POOLS_LABEL: Final = "All pools"
 RECONCILIATION_LABEL: Final = "headline − Σ pools"
-# Past-date gaps a Reports read names (3c-1's PAST_DATE_GAPS wording), and Reports' own.
-STATISTICS_PAST_GAPS: Final = ("grants",)
-PROGRAMS_PAST_GAPS: Final = ()
-REPORTS_PAST_GAPS: Final[Mapping[str, str]] = {
-    "grants": (
-        "Grants on a request aren't read for a past date yet (the grant placement log's as-of read is task A6c), so "
-        "grants and % of ask including grants are left empty"
-    ),
-}
 NOT_BUILT: Final[Mapping[str, str]] = {
     PHASE_BOUNDARY_GAP: (
         "Round 1 by the deadline and Round 1 rolling wait for the phase boundary (O-930-10, the owner's sign-off): "
@@ -297,15 +290,14 @@ class FinancialAidReportsService:
             requests = with_frozen_asks(requests, asks)
         return _Read(season, requests, note, as_of if past and as_of is not None else today, asks)
 
-    def _gaps(self, read: _Read, figures: Iterable[str]) -> list[NotRebuiltOut]:
+    def _gaps(self, read: _Read) -> list[NotRebuiltOut]:
+        """What a past read can't rebuild: the requests whose posted money can't be replayed (left out of awarded in
+        `report_requests`, as the grid and the budget blank it), then 3c-2's own gaps with their request ids."""
         if read.season.as_of is None:
             return []
-        named = [NotRebuiltOut(figure=f, reason=REPORTS_PAST_GAPS.get(f) or PAST_DATE_GAPS[f]) for f in figures]
-        # Posted money that can't be replayed is blanked by the grid and the budget; Reports still counts it as
-        # awarded, so it is named here until A6c decides whether to blank it too.
         ids = sorted(rid for rid in read.season.posted_unknown if any(r.request_id == rid for r in read.requests))
         posted = [NotRebuiltOut(figure="posted", reason=PAST_DATE_GAPS["posted"], requests=ids)] if ids else []
-        return [*named, *posted, *read.season.gaps]
+        return [*posted, *read.season.gaps]
 
     # --- Statistics -------------------------------------------------------------------------------------------
 
@@ -321,18 +313,12 @@ class FinancialAidReportsService:
         as_of: date | None = None,
         axis: AsOfAxis = "campminder",
     ) -> StatisticsResponse:
-        if basis == "posted_and_decided" and as_of is not None and as_of < self._today():
-            raise ReportsRefusedError(
-                "Decided (not yet offered) works on the live read only for now: Reports don't read a past date's "
-                "decided amounts yet (task A6c)"
-            )
         read = await self._read(
             year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
         )
         document = read.season.rules.document if read.season.rules is not None else None
         if table is not None and (document is None or table not in document.award_tables):
             raise ReportsRefusedError(f"{table!r} is not one of {year}'s award tables")
-        past = read.season.as_of is not None
         result = statistics(read.requests, document, table=table, round_=round_, basis=basis)
         return StatisticsResponse(
             year=year,
@@ -344,8 +330,8 @@ class FinancialAidReportsService:
             table=table,
             round=round_,
             tables=table_chips(document),
-            rows=[_statistics_row(row, past=past) for row in result.rows],
-            total=_statistics_row(result.total, past=past),
+            rows=[_statistics_row(row) for row in result.rows],
+            total=_statistics_row(result.total),
             cancelled_applicants=result.total.cancelled,
             recipients_cancelled=[
                 CancelledRowOut(
@@ -386,7 +372,7 @@ class FinancialAidReportsService:
             ],
             request_set=read.note,
             asks=_asks_out(read.asks),
-            not_rebuilt=self._gaps(read, STATISTICS_PAST_GAPS),
+            not_rebuilt=self._gaps(read),
         )
 
     # --- Programs ---------------------------------------------------------------------------------------------
@@ -441,7 +427,7 @@ class FinancialAidReportsService:
             total=row_out(table.total, ALL_POOLS_LABEL),
             request_set=read.note,
             asks=_asks_out(read.asks),
-            not_rebuilt=self._gaps(read, PROGRAMS_PAST_GAPS),
+            not_rebuilt=self._gaps(read),
         )
 
     # --- the committee's year-over-year tables ---------------------------------------------------------------
@@ -627,7 +613,7 @@ def _reason_label(reason: str) -> str:
     return reason
 
 
-def _statistics_row(row: StatisticsRow, *, past: bool) -> StatisticsRowOut:
+def _statistics_row(row: StatisticsRow) -> StatisticsRowOut:
     return StatisticsRowOut(
         tier=row.tier,
         income_from=_money(row.income_from),
@@ -645,8 +631,8 @@ def _statistics_row(row: StatisticsRow, *, past: bool) -> StatisticsRowOut:
         average_award=_money(row.average_award),
         live_asked=money(row.live_asked),
         pct_of_ask=_pct(row.pct_of_ask),
-        grants=None if past else _money(row.grants),
-        pct_of_ask_with_grants=None if past else _pct(row.pct_of_ask_with_grants),
+        grants=_money(row.grants),
+        pct_of_ask_with_grants=_pct(row.pct_of_ask_with_grants),
     )
 
 

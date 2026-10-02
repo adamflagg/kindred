@@ -15,8 +15,9 @@ import pytest
 
 from api.constants.collections import AID_REPORTED_HISTORY
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
+from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
 from api.services.financial_aid_grants_register import Placement, RegisterRow
-from api.services.financial_aid_intake_types import CorrectionRecord
+from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
     ReportedFigureNotFoundError,
@@ -31,11 +32,12 @@ from tests.unit.api.services.decisions_fakes import (
     FakeRules,
     approved,
     grant_row,
+    log_seeded,
     seed_line,
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
-from tests.unit.api.services.reports_fakes import EMMA, LIAM, FakeReportsStore, posted, report_season
+from tests.unit.api.services.reports_fakes import EARLY, EMMA, LIAM, FakeReportsStore, posted, report_season
 from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 pytestmark = pytest.mark.asyncio
@@ -134,14 +136,19 @@ async def test_a_cancelled_request_with_no_posted_round_keeps_its_income_tier() 
     assert all(row.tier is not None for row in out.rows)
 
 
-async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_replayed() -> None:
-    """The grid and budget blank them; Reports does not yet (A6c decides), so it names a `posted` gap instead."""
+async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_replayed_and_leaves_it_out() -> None:
+    """The grid and budget blank a request's posted money when its clawback can't be replayed (3c-2). Reports does the
+    same for its awarded: the request stays in apps and asks, its posted money is out of awarded, and a `posted` gap
+    names it. (A6c: the same answer as the Requests grid and the budget, never a guess.)"""
     store = report_season()
     store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged: Emma's posted is unknown
     seed_line(store, 9001, "1500", person=0, posted=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
     out = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
     gap = next(g for g in out.not_rebuilt if g.figure == "posted")
     assert gap.requests == [EMMA]
+    two = _tier(out.rows, 2)
+    assert (two.apps, two.amount, two.awarded_count, out.total.amount) == (1, 0.0, 0, 0.0)
+    assert two.asked == 4000.0  # the ask is not money posted: it stays
 
 
 async def test_a_closed_request_is_neither_awarded_nor_cancelled() -> None:
@@ -227,32 +234,66 @@ async def test_the_controls_refuse_both_at_once_and_a_season_before_2027() -> No
         await service.statistics(2026, through=date(2026, 2, 1))
 
 
-async def test_a_past_date_refuses_the_decided_basis_and_names_the_grants_it_does_not_read_yet() -> None:
-    """Until A6c reads 3c-2's priced past: Decided is refused and grants are left empty and named. The fake season
-    records no equity answers, so 3c-2 keeps Liam to 3c-1's figures (named by the decisions service, with his id):
-    his unposted round has no tier and counts in the "no tier" row."""
-    store = report_season()
-    store.events = [posted("ev0000000000001", EMMA, 1, "1500", 2, on=date(2027, 3, 5))]
-    service = _service(store)
-    with pytest.raises(ReportsRefusedError, match="live read only"):
-        await service.statistics(YEAR, basis="posted_and_decided", as_of=date(2027, 3, 8))
-    out = await service.statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 8))
-    assert (out.as_of, out.as_of_axis, out.figures_on) == (date(2027, 3, 8), "campminder", date(2027, 3, 8))
-    assert (_tier(out.rows, 2).amount, _tier(out.rows, None).apps) == (1500.0, 1)
-    assert "grants" in {gap.figure for gap in out.not_rebuilt}
-    assert (out.total.cancelled, out.cancelled_applicants) == (0, 0)  # counted, not nulled: a past read lists them
+def _equity_recorded(store: FakeDecisionsStore) -> FakeDecisionsStore:
+    """Intake's recorded equity copy on every camper request, logged, so 3c-2 prices them (else equity_not_recorded)."""
+    for request_id, request in store.requests.items():
+        store.requests[request_id] = replace(request, equity=UNKNOWN_EQUITY)
+    store.change_log = []
+    log_seeded(store, EARLY)  # report_season logged everything at EARLY too; re-log with the equity copy
+    return store
 
 
-async def test_a_past_date_leaves_grants_empty_never_a_silent_zero() -> None:
-    """The past read carries no grants register: grants and % of ask with grants are null and named, not $0."""
-    store = report_season()
-    out = await _service(store, register=[grant_row(EMMA, "500")]).statistics(
-        YEAR, table="camp", round_=1, as_of=date(2027, 3, 10)
+def _placed(store: FakeDecisionsStore, row: RegisterRow, at: datetime) -> None:
+    """One grant placement logged at `at`, as live pricing logs it (3c-2's own test helper)."""
+    store.grant_placements.append(
+        PlacementRecord(
+            id=f"gpl{len(store.grant_placements):012d}",
+            grant=grant_key(row),
+            household_cm_id=row.household_cm_id,
+            event="place",
+            placement=placement_json(row),
+            created=at,
+        )
     )
+
+
+async def test_a_past_date_prices_tiers_and_decided_and_names_only_what_it_cannot_rebuild() -> None:
+    """3c-2 (D154): a past date is priced, so an unposted round has its tier and Decided works. Nothing is named as a
+    standing gap: CampMinder's cancellations are rebuilt too (counted, never nulled)."""
+    store = _equity_recorded(report_season())
+    store.events = [posted("ev0000000000001", EMMA, 1, "1500", 2, on=date(2027, 3, 5))]
+    out = await _service(store).statistics(
+        YEAR, table="camp", round_=1, basis="posted_and_decided", as_of=date(2027, 3, 8)
+    )
+    three = _tier(out.rows, 3)
+    assert (three.apps, three.decided) == (1, 1100.0)  # Liam: tier 3, decided and not posted, priced as of Mar 8
+    assert all(row.tier is not None for row in out.rows if row.apps)  # nobody is "no tier"
+    figures = {gap.figure for gap in out.not_rebuilt}
+    assert not figures & {"tier", "decided", "grants", "cancellation"}
+    assert (out.total.cancelled, out.cancelled_applicants) == (0, 0)  # real counts, not nulled
+
+
+async def test_a_past_date_reads_grants_where_the_placement_log_had_them() -> None:
+    """3c-2: grants on a past date come from the grant placement log as it stood, never a silent $0 or a blank."""
+    store = _equity_recorded(report_season())
+    row = grant_row(EMMA, "500")  # recorded Feb 10 (decisions_fakes.grant_row)
+    _placed(store, row, datetime(2027, 3, 1, 18, 0, tzinfo=UTC))
+    out = await _service(store, register=[row]).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 10))
     two = _tier(out.rows, 2)
-    assert (two.grants, two.pct_of_ask_with_grants, two.pct_of_ask) == (None, None, 37.5)
-    gap = next(g for g in out.not_rebuilt if g.figure == "grants")
-    assert "left empty" in gap.reason
+    assert (two.grants, two.pct_of_ask_with_grants) == (500.0, 50.0)
+    assert "grants" not in {g.figure for g in out.not_rebuilt}
+
+
+async def test_a_request_3c2_cannot_price_adds_no_decided_amount_and_is_named() -> None:
+    """D154: never an estimate. Without intake's equity copy Liam can't be priced for the date (equity_not_recorded):
+    he adds nothing to Decided and is named with his request id."""
+    store = report_season()  # no equity copy: 3c-2 keeps Liam to 3c-1's figures
+    out = await _service(store).statistics(
+        YEAR, table="camp", round_=1, basis="posted_and_decided", as_of=date(2027, 3, 8)
+    )
+    assert out.total.decided == 0.0
+    gap = next(g for g in out.not_rebuilt if g.figure == "equity_not_recorded")
+    assert LIAM in gap.requests
 
 
 async def test_a_cancellation_in_kindred_before_the_date_takes_its_request_out_of_awarded() -> None:
