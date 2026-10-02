@@ -34,7 +34,7 @@ from tests.unit.api.services.decisions_fakes import (
     seed_request,
 )
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
-from tests.unit.api.services.reports_fakes import EMMA, FakeReportsStore, posted, report_season
+from tests.unit.api.services.reports_fakes import EMMA, LIAM, FakeReportsStore, posted, report_season
 from tests.unit.bunking.financial_aid.fixtures import with_levers
 
 pytestmark = pytest.mark.asyncio
@@ -111,6 +111,26 @@ async def test_a_cancelled_request_stays_in_apps_and_leaves_the_money_at_once() 
         1,
         1500.0,
     )
+
+
+async def test_a_cancelled_request_with_no_posted_round_keeps_its_income_tier() -> None:
+    """Cancelled pricing has no result, so the tier comes from pricing the request live (tier only: no award)."""
+    store = report_season()
+    store.cancel_events.append(
+        CancelEvent(
+            "can000000000002",
+            LIAM,
+            "cancel",
+            NOW - timedelta(days=1),
+            reason="aid_not_enough",
+            in_kindred=True,
+            actor=ACTOR,
+        )
+    )
+    out = await _service(store).statistics(YEAR, table="camp", round_=1)
+    three = _tier(out.rows, 3)
+    assert (three.apps, three.cancelled, three.amount, three.awarded_count) == (1, 1, 0.0, 0)
+    assert all(row.tier is not None for row in out.rows)
 
 
 async def test_an_edited_answer_is_one_application_and_a_refused_duplicate_is_none() -> None:

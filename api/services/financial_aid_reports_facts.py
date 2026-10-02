@@ -148,6 +148,9 @@ def report_requests(
             profile.budget_pool if profile is not None else None
         )
         tier_now = priced.result.final_tier if priced is not None and priced.result is not None else None
+        if tier_now is None:
+            # A cancelled request prices as not live (no result): its tier comes from pricing it live (tier only).
+            tier_now = season.live_tiers.get(request_id)
         r1_ask = _r1_ask(request, corrections)
         rounds: list[RoundFacts] = []
         for n in REPORT_ROUNDS:

@@ -388,6 +388,9 @@ class Season:
     # Slice 1: each request as pricing read it, so the editor's preview re-prices one request with a typed
     # amount on exactly the inputs the season used. Empty on a past read.
     inputs: Mapping[str, RequestToPrice] = field(default_factory=dict)
+    # Reports: a cancelled request is priced as not live (no result), so its income tier is read by pricing it live
+    # once, tier only. Never an award or a round view. Live read only; empty on a past read.
+    live_tiers: Mapping[str, int] = field(default_factory=dict)
     # SP11-rest: what the live ledger was built from, so To place can re-place a line and see where it lands.
     # Empty on a past read.
     camp_lines: tuple[CampLine, ...] = ()
@@ -476,6 +479,35 @@ def _to_price(
         return build(to_application_inputs(application.household_cm_id, answers), None, "", issues)
     converted = calculator_inputs(request, application, answers, corrections, sessions, shares, equity, rules)
     return build(converted.application, converted.request, converted.blocked, converted.issues)
+
+
+def _live_tier(
+    request: RequestRecord,
+    applications: Mapping[str, ApplicationRecord],
+    corrections: Mapping[str, list[CorrectionRecord]],
+    sessions: Mapping[int, SessionRow],
+    shares: Sequence[PayerShareRecord],
+    equity: Mapping[int, EquityAnswers],
+    grants: Mapping[str, Any],
+    rules: AidRules | None,
+) -> int | None:
+    """A cancelled request's income tier: the request priced as if live, read for its tier alone."""
+    priced = price_request(
+        _to_price(
+            request,
+            applications.get(request.application_id),
+            corrections.get(request.application_id, []),
+            sessions,
+            shares,
+            equity.get(request.person_cm_id),
+            {},
+            tuple(grants.get(request.id, [])),
+            rules,
+            cancelled=False,
+        ),
+        rules,
+    )
+    return priced.result.final_tier if priced.result is not None else None
 
 
 def _money(value: Decimal | None) -> float | None:
@@ -1405,8 +1437,12 @@ class FinancialAidDecisionsService:
             for r in side.requests
         }
         priced = {r.id: price_request(items[r.id], document) for r in side.requests}
+        live_tiers: dict[str, int] = {}
         for request in side.requests:
             if request.id in cancellations:
+                tier = _live_tier(request, by_id, own, session_map, shares, side.equity, grants, document)
+                if tier is not None:
+                    live_tiers[request.id] = tier
                 # Decision 19: a cancelled request keeps the program and pool live pricing gives it, so
                 # the grid still names them and its outside grants stay in its pool, not in No pool.
                 key, pool = _home(request, session_map, document)
@@ -1465,6 +1501,7 @@ class FinancialAidDecisionsService:
             cancelled_in_campminder=frozenset(rid for rid, c in cancellations.items() if c.by == "campminder"),
             to_reverse=to_reverse,
             inputs=items,
+            live_tiers=live_tiers,
             camp_lines=tuple(camp_lines),
             placements=placements,
             splits=splits,
