@@ -1233,6 +1233,7 @@ export type {
   SessionAvailability,
   SessionAvailabilityResponse,
   SessionBreakdown,
+  SessionCandidateOut,
   SessionFlowItem,
   SessionForecast,
   SessionGenderBreakdown,
