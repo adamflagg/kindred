@@ -10,7 +10,8 @@ amount, its Accepted tick, its asks and the request's holds fold exactly for any
   not_rebuilt  every other round a live request had: its ask, and nothing decided.
 
 A request that wasn't live then (withdrawn, duplicate) shows only its posted rounds, as live does.
-3c-2 prices these rounds from the change log; figures left empty are named in PAST_DATE_GAPS.
+3c-2 prices past dates from the change log; this module keeps the rounds of a request a gap reaches (the
+service's _PRICING_GAPS), and names what each gap leaves empty (PAST_DATE_GAPS).
 
 The fold is not the whole past Posted figure: the decisions service then applies sub-project 10b's
 clawback as of the date (D54), so a posted round whose money CampMinder had reversed by then counts
@@ -37,54 +38,71 @@ from bunking.financial_aid.decisions.rounds import ROUNDS, RoundState
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.rules.schema import AidRules, DecisionType
 
-_PRICED: Final = (
-    "Priced from the family's answers as they stood then; this read rebuilds dated records only "
-    "(the rebuilt pricing is the next PR, 3c-2)"
-)
-_PLACED: Final = (
-    "Grant lines carry their own dates (recorded_on, recorded_at, reversal_date), but which "
-    "request, and so which pool, a line sits on is today's placement"
-)
 _ROUND2: Final = (
     "Some requests' status on that date can't be replayed (see request_history), so Round 2 asks "
     "aren't counted season-wide"
 )
-_CANCELLED: Final = (
-    "A cancellation in Kindred applies as of the date, but CampMinder's aren't rebuilt: registration statuses are "
-    "read as they are today, so a request CampMinder had cancelled by then shows its rounds as if live (10b-2)"
+# What a pool-masking gap empties (past_budget's _past_pool, and the season's total and strip with it).
+_POOL_EMPTY: Final = (
+    "; its pool's Needs an offer, Pending approval, Remaining, Held and the Held asks, outside grants, outside "
+    "the budget and computed demand (Round 2 computed, Round 1 unmet) stay empty, and so do the total's and the "
+    "strip's Needs an offer, Pending approval and Held"
 )
+_CANCELLED: Final = (
+    "CampMinder keeps only each registration's current status, dated (its enrollment date), so a past date "
+    "shows no cancellation by CampMinder. A request live then whose registration CampMinder had cancelled on "
+    "or before that day, by that status date, can't be priced as live: only its posted rounds, asks and "
+    "manual hold show" + _POOL_EMPTY + ". A registration whose status changed after that day (re-enrolled, "
+    "back to waitlisted or applied, cancelled again later, which re-dates it, or removed from CampMinder) "
+    "reads by today's status, so its request is priced and counted as live then"
+)
+_CANCELLED_TODAY: Final = "Reads CampMinder's cancellations, which a past date doesn't show (see cancellation)"
 
 
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
-    "decided": _PRICED,
-    "pending_approval": "It counts only while no hold covers the request, and the data checks are priced (3c-2)",
-    "would_change_by": _PRICED,
-    "tier": _PRICED,
-    "cost": _PRICED,
-    "total_decided": _PRICED,
-    "holds": "Only the manual hold is listed: the data checks run on the family's answers (3c-2)",
-    "notes": _PRICED,
     "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
     "cancellation": _CANCELLED,
-    "to_reverse": _CANCELLED,
-    "todos": _CANCELLED,
-    "queues": "Which Requests views a row is in reads its holds, notes, confirmation and cancellation",
-    "needs_offer": _PRICED,
-    "held": _PRICED,
-    "remaining": "Remaining subtracts Needs an offer and Pending approval",
-    "held_asked": _PRICED,
-    "outside_grants_off_requests": _PLACED,
+    "to_reverse": _CANCELLED_TODAY,
+    "todos": _CANCELLED_TODAY,
+    "queues": "Which Requests views a row is in reads its confirmation and cancellation",
     "round2_asks": _ROUND2,
     "round2_asked": _ROUND2,
-    "outside_grants": _PLACED,
-    "outside_budget": "It includes decided money not yet posted; the posted part is outside_budget_posted",
-    "round2_computed": _PRICED,
-    "round1_unmet": _PRICED,
     "pool_unknown": "The request's session and program couldn't be resolved under the rules as of that date, so it sits in No pool",
-    "request_history": "These requests' change history can't be replayed to that date, so only their posted rounds show",
-    "request_deleted": "Deleted since; its history can't be replayed, so it isn't shown",
+    "request_history": (
+        "These requests' change history can't be replayed to that date, so only their posted rounds show, and "
+        "every pool's Needs an offer, Pending approval, Remaining, Held and the Held asks, outside grants, outside "
+        "the budget and computed demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the "
+        "strip's Needs an offer, Pending approval and Held, and Round 2 asks so far (round2_asks)"
+    ),
+    "request_deleted": (
+        "Deleted since; its history can't be replayed, so it isn't shown, and every pool's Needs an offer, "
+        "Pending approval, Remaining, Held and the Held asks, outside grants, outside the budget and computed "
+        "demand (Round 2 computed, Round 1 unmet) stay empty, as do the total's and the strip's Needs an offer, "
+        "Pending approval and Held"
+    ),
     "posted_before_request": "Posted in CampMinder by this date, but the request was recorded in Kindred after it",
-    "rules_history": "The rules' change history for this season can't be replayed to that date",
+    "rules_history": (
+        "The rules' change history for this season can't be replayed to that date, so nothing is priced: only "
+        "posted rounds show"
+    ),
+    "application_history": (
+        "The family's application answers can't be replayed to that date, so this request's pricing then can't "
+        "be rebuilt: only its posted rounds, asks and manual hold show" + _POOL_EMPTY
+    ),
+    "pricing_shares_history": (
+        "The request's payer shares can't be replayed to that date, so its pricing then can't be rebuilt: only "
+        "its posted rounds, asks and manual hold show" + _POOL_EMPTY
+    ),
+    "equity_not_recorded": (
+        "The camper's equity answers weren't recorded by then (intake records them from 3c-2 on), so its "
+        "pricing then can't be rebuilt: only its posted rounds, asks and manual hold show" + _POOL_EMPTY
+    ),
+    "grant_placement": (
+        "The family had a grant by then whose placement on a request wasn't logged by then (grant placement is "
+        "logged from 3c-2 on), so its requests show their tier, cost, posted rounds, asks and manual hold only"
+        + _POOL_EMPTY
+        + ", and so does money on no request. A grant line CampMinder deleted before the log began can't be seen"
+    ),
     "ledger_classification": (
         "Which CampMinder lines count as the camp's own aid (a line's funder-type reclassification) and Go's "
         "session attribution are read as they are today, not as of that date"
@@ -92,7 +110,7 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "posted": (
         "Posted, as a request's round and in the budget's cells and strip counts, is left empty where a "
         "request's payer shares or line placements can't be replayed (see payer_shares_history and "
-        "line_placements_history)"
+        "line_placements_history); the row's Notes are left empty with it (its ledger Note can't be built)"
     ),
     "accepted": (
         "Accepted, in the budget's cells and strip counts, is left empty with Posted (see payer_shares_history "
@@ -111,35 +129,12 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         "had reversed these requests' posted money is unknown and it is left empty"
     ),
 }
-GRID_GAPS: Final[tuple[str, ...]] = (
-    "decided",
-    "pending_approval",
-    "would_change_by",
-    "tier",
-    "cost",
-    "total_decided",
-    "holds",
-    "notes",
-    "confirmation",
-    "cancellation",
-    "to_reverse",
-    "todos",
-    "queues",
-)
-BUDGET_GAPS: Final[tuple[str, ...]] = (
-    "needs_offer",
-    "pending_approval",
-    "held",
-    "remaining",
-    "outside_grants",
-    "outside_budget",
-    "held_asked",
-    "outside_grants_off_requests",
-    "round2_computed",
-    "round1_unmet",
-    "cancellation",  # 10b-2: Round 2 asks still count a request CampMinder had cancelled by then (D21)
-)
-REMAINING_GAPS: Final[tuple[str, ...]] = ("remaining",)
+# Named on every past read: what 3c-2 can't price from dated records (the ledger's sync time, and
+# CampMinder's cancellations, whose earlier statuses are overwritten, 10b-2 Decision 21; cancellation lists
+# the requests it keeps unpriced). A gap request names what it empties itself.
+GRID_GAPS: Final[tuple[str, ...]] = ("confirmation", "cancellation", "to_reverse", "todos", "queues")
+BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation",)
+REMAINING_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 # Named only when a past read empties them (a request's posted money can't be replayed): not always-on.
 POSTED_GAPS: Final[tuple[str, ...]] = ("posted", "accepted", "outside_budget_posted")
 

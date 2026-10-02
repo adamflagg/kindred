@@ -17,6 +17,7 @@ from api.services.financial_aid_cancellations import (
     EnrollmentState,
     cancellations_by_request,
     enrollment_cancelled,
+    first_cancelled_on,
     fold_cancellations,
     needs_reason,
     parse_reason,
@@ -247,3 +248,17 @@ def test_a_withdrawn_request_on_a_cancelled_enrollment_is_found_for_to_reverse()
     ]
     enrollments = [row(32), row(2, person=1000012), row(32, person=1000014)]
     assert withdrawn_on_cancelled_enrollments(requests, enrollments, SESSIONS) == {"emma"}
+
+
+def test_a_past_read_dates_a_cancellation_by_its_earliest_cancelled_registration() -> None:
+    """3c-2 final review: a past date masks a request live then whose registration CampMinder had cancelled
+    by that day, so the earliest cancelled row dates it (live on that day already saw it). An undated
+    cancelled row dates it unknown."""
+    may20 = date(2027, 5, 20)
+    assert first_cancelled_on(request(), [row(32), row(256, on=may20)], TYPES) == (True, MAY2)
+    assert first_cancelled_on(request(), [row(32, on=may20), row(256, on=None)], TYPES) == (True, None)
+    assert first_cancelled_on(request(), [row(32), row(2)], TYPES) == (False, None)
+    staff = request(session=1000104, resolution="staff")
+    assert first_cancelled_on(staff, [row(32, session=1000101)], TYPES) == enrollment_cancelled(
+        staff, [row(32, session=1000101)], TYPES
+    )

@@ -137,10 +137,10 @@ class EnrollmentState:
     changed_on: date | None
 
 
-def enrollment_cancelled(
+def _scope(
     request: RequestRecord, enrollments: Sequence[EnrollmentState], session_types: Mapping[int, str]
-) -> tuple[bool, date | None]:
-    """Whether CampMinder cancelled this request's enrollment, and the day (None if unknown)."""
+) -> list[EnrollmentState]:
+    """The registrations that say whether CampMinder cancelled this request's enrollment."""
     if request.person_cm_id > 0:
         mine = [e for e in enrollments if e.person_cm_id == request.person_cm_id]
     else:
@@ -149,17 +149,36 @@ def enrollment_cancelled(
     in_program = [e for e in mine if session_types.get(e.session_cm_id, "") in program]
     in_session = [e for e in mine if e.session_cm_id == request.session_cm_id]
     if request.session_cm_id <= 0:
-        scope = in_program
-    elif request.session_resolution == RESOLUTION_STAFF:
+        return in_program
+    if request.session_resolution == RESOLUTION_STAFF:
         # Intake keeps a staff session on every run, so the program counts both ways (final review,
         # ruled): an enrolment elsewhere in it is a switch, a cancellation elsewhere in it still cancels.
-        scope = [*in_program, *(e for e in in_session if e not in in_program)]
-    else:
-        scope = in_session
+        return [*in_program, *(e for e in in_session if e not in in_program)]
+    return in_session
+
+
+def enrollment_cancelled(
+    request: RequestRecord, enrollments: Sequence[EnrollmentState], session_types: Mapping[int, str]
+) -> tuple[bool, date | None]:
+    """Whether CampMinder cancelled this request's enrollment, and the day (None if unknown)."""
+    scope = _scope(request, enrollments, session_types)
     if not registrations_cancelled(e.status_id for e in scope):
         return False, None
     days = [e.changed_on for e in scope if e.status_id in CANCELLED_STATUS_IDS and e.changed_on is not None]
     return True, max(days) if days else None
+
+
+def first_cancelled_on(
+    request: RequestRecord, enrollments: Sequence[EnrollmentState], session_types: Mapping[int, str]
+) -> tuple[bool, date | None]:
+    """Whether CampMinder cancelled this request's enrollment, and the EARLIEST cancelled registration's
+    date (None when a cancelled one has none): a past read (3c-2) masks the request on any day by which
+    the live read would already have seen a cancelled registration."""
+    scope = _scope(request, enrollments, session_types)
+    if not registrations_cancelled(e.status_id for e in scope):
+        return False, None
+    days = [e.changed_on for e in scope if e.status_id in CANCELLED_STATUS_IDS]
+    return True, None if None in days else min(d for d in days if d is not None)
 
 
 @dataclass(frozen=True)

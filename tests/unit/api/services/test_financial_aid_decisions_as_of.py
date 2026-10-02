@@ -21,7 +21,7 @@ from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService, _requests_as_of, as_of_instant
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_plan import request_fields
-from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, CorrectionRecord
+from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, UNKNOWN_EQUITY, CorrectionRecord, EquityAnswers
 from api.services.financial_aid_rules_service import RulesHistoryIncompleteError
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import (
@@ -29,6 +29,7 @@ from bunking.financial_aid.decisions import (
     GRID_GAPS,
     MANUAL_HOLD,
     PAST_DATE_GAPS,
+    REMAINING_GAPS,
     DecisionEvent,
     HoldEvent,
 )
@@ -57,21 +58,19 @@ def _day(month: int, day: int) -> datetime:
     return datetime(2027, month, day, 18, 0, tzinfo=UTC)
 
 
-def _service(
-    store: FakeDecisionsStore, rules: FakeRules | None = None, register_calls: list[int] | None = None
-) -> FinancialAidDecisionsService:
+def _service(store: FakeDecisionsStore, rules: FakeRules | None = None) -> FinancialAidDecisionsService:
     async def rows(year: int) -> Sequence[RegisterRow]:
-        if register_calls is not None:
-            register_calls.append(year)
         return []
 
     return FinancialAidDecisionsService(store, rules or FakeRules(approved()), rows, clock=lambda: NOW)
 
 
-def _seeded(*ids: str) -> FakeDecisionsStore:
+def _seeded(*ids: str, equity: EquityAnswers | None = None) -> FakeDecisionsStore:
+    """Requests logged on SEEDED; `equity` is the copy intake had recorded on each (None: none yet)."""
     store = FakeDecisionsStore()
     for n, request_id in enumerate(ids):
         seed_request(store, request_id, household=1000001 + n, person=1000011 + 10 * n)
+        store.requests[request_id] = replace(store.requests[request_id], equity=equity)
     log_seeded(store, SEEDED)
     return store
 
@@ -232,7 +231,8 @@ async def test_released_and_manual_holds_are_as_they_stood() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_past_date_decides_nothing_else_and_names_what_it_left_empty() -> None:
+async def test_a_request_with_no_recorded_equity_answers_then_keeps_3c1s_figures_and_is_named() -> None:
+    """3c-2: _seeded records no equity copy, as every date before intake's first 3c-2 run."""
     store = _seeded(EMMA)
     out = await _service(store).grid(YEAR, as_of=MAR_9)
     (row,) = out.rows
@@ -244,7 +244,10 @@ async def test_a_past_date_decides_nothing_else_and_names_what_it_left_empty() -
         None,
         None,
     )
-    assert [(g.figure, g.reason) for g in out.not_rebuilt] == [(f, PAST_DATE_GAPS[f]) for f in GRID_GAPS]
+    assert [(g.figure, g.reason, g.requests) for g in out.not_rebuilt] == [
+        *[(f, PAST_DATE_GAPS[f], []) for f in GRID_GAPS],
+        ("equity_not_recorded", PAST_DATE_GAPS["equity_not_recorded"], [EMMA]),
+    ]
     assert row.queues is None
     assert "queues" in GRID_GAPS
 
@@ -258,7 +261,7 @@ async def test_the_budget_on_a_past_date() -> None:
     _at(store, LIAM, 2, "ask", _day(3, 8), amount=Decimal(700), effective_on=date(2027, 3, 8))
     service = _service(store)
     out = await service.budget(YEAR, as_of=MAR_9)
-    assert (out.as_of, out.rules_version, out.outside_grants_off_requests) == (MAR_9, 1, None)
+    assert (out.as_of, out.rules_version, out.outside_grants_off_requests) == (MAR_9, 1, 0.0)
     camp = next(p for p in out.pools if p.pool == "camp_pool")
     r1 = next(c for c in camp.rounds if c.round == 1)
     assert (r1.allocated, r1.posted, r1.accepted) == (340000.0, 1500.0, 1500.0)
@@ -269,7 +272,7 @@ async def test_the_budget_on_a_past_date() -> None:
     strip = next(s for s in out.strip if s.round == 1)
     assert strip.posted is not None
     assert (strip.posted.requests, strip.needs_offer, strip.held) == (1, None, None)
-    assert [g.figure for g in out.not_rebuilt] == list(BUDGET_GAPS)
+    assert [g.figure for g in out.not_rebuilt] == [*BUDGET_GAPS, "equity_not_recorded"]
     grid = await service.grid(YEAR, as_of=MAR_9)
     assert sum(row.total_posted or 0 for row in grid.rows) == camp.total.posted  # every total opens its rows
 
@@ -310,33 +313,18 @@ async def test_a_request_whose_history_cannot_be_replayed_shows_posted_rounds_on
 
 
 @pytest.mark.asyncio
-async def test_the_remaining_line_on_a_past_date_names_its_pools_and_no_figure() -> None:
+async def test_the_remaining_line_on_a_past_date_empties_only_the_pool_a_gap_reaches() -> None:
     out = await _service(_seeded(EMMA)).remaining(YEAR, as_of=MAR_9)
     assert [(p.pool, p.remaining) for p in out.pools] == [
         ("camp_pool", None),
-        ("weekend_pool", None),
-        ("bmitzvah_pool", None),
+        ("weekend_pool", 75000.0),
+        ("bmitzvah_pool", 25000.0),
     ]
-    assert (out.total, out.as_of, [g.figure for g in out.not_rebuilt]) == (None, MAR_9, ["remaining"])
-
-
-@pytest.mark.asyncio
-async def test_a_past_read_reads_only_dated_records(monkeypatch: pytest.MonkeyPatch) -> None:
-    store = _seeded(EMMA)
-
-    async def refuse(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError(
-            "3c-1's past read reads no answers or equity, and no payer shares while the ledger has no lines"
-        )
-
-    for name in ("fetch_applications", "fetch_payer_shares", "fetch_equity_answers"):
-        monkeypatch.setattr(store, name, refuse)
-    calls: list[int] = []
-    service = _service(store, register_calls=calls)
-    await service.grid(YEAR, as_of=MAR_9)
-    await service.budget(YEAR, as_of=MAR_9)
-    await service.remaining(YEAR, as_of=MAR_9)
-    assert calls == []
+    assert (out.total, out.as_of, [g.figure for g in out.not_rebuilt]) == (
+        None,
+        MAR_9,
+        [*REMAINING_GAPS, "equity_not_recorded"],
+    )
 
 
 @pytest.mark.asyncio
@@ -531,7 +519,7 @@ async def test_the_requests_read_completes_before_the_change_log_read_starts() -
     store.fetch_requests = requests  # type: ignore[method-assign]
     store.fetch_change_log = log  # type: ignore[method-assign]
     await _service(store).grid(YEAR, as_of=MAR_9)
-    assert order == ["requests-start", "requests-done", "log-start"]
+    assert order == ["requests-start", "requests-done", *["log-start"] * 4]  # requests, applications, shares, grants
 
 
 @pytest.mark.asyncio
@@ -598,21 +586,17 @@ def _changed(store: FakeDecisionsStore, request_id: str, at: datetime, **fields:
     log_update(store, AID_REQUESTS, request_id, {k: was[k] for k in fields}, {k: now[k] for k in fields}, at)
 
 
-def _live_round_as_past(round_: dict[str, Any]) -> dict[str, Any]:
-    """A live round as 3c-1 shows it: posted as posted, every other state not_rebuilt."""
-    return round_ if round_["status"] == "posted" else {**round_, "status": "not_rebuilt"}
-
-
 @pytest.mark.asyncio
-async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_gaps() -> None:
-    """Yesterday recorded everything live shows, so outside the figures a past read names as gaps the
-    two reads agree, field by field: across posted and unposted rounds, a request no longer live, a
+async def test_a_past_read_of_yesterday_equals_the_live_read_field_by_field() -> None:
+    """Yesterday recorded everything live prices with (the equity copy included), so the two reads agree
+    field by field outside what every past read names (the ledger's confirmation, and CampMinder's
+    cancellations): across posted and unposted rounds, a request no longer live, a
     Round 2 ask, posted money outside the budget, requests changed before the date, and a request
     cancelled in Kindred before the date (SP10b-2 Decision 21: priced not live on both reads)."""
     rules = FakeRules(
         approved(with_lever(intake_rules(), "awards.decision_types.discretionary.counts_toward_budget", False))
     )
-    store = _seeded(EMMA, LIAM, OLIVIA, NOAH, AVA, MIA)
+    store = _seeded(EMMA, LIAM, OLIVIA, NOAH, AVA, MIA, equity=UNKNOWN_EQUITY)
     _post_at(store, EMMA, _day(3, 5), on=date(2027, 3, 5))
     _at(store, EMMA, 1, "accept", _day(3, 6))
     _post_at(store, LIAM, _day(3, 7), on=date(2027, 3, 7))
@@ -674,19 +658,13 @@ async def test_a_past_read_of_yesterday_equals_the_live_read_outside_its_named_g
         return _without_gaps({k: v for k, v in model.model_dump().items() if k not in ignored})
 
     past_rows = [_without_gaps(row) for row in past_grid.model_dump()["rows"]]
-    live_rows = [
-        _without_gaps({**row, "rounds": [_live_round_as_past(r) for r in row["rounds"]]})
-        for row in live_grid.model_dump()["rows"]
-    ]
+    live_rows = [_without_gaps(row) for row in live_grid.model_dump()["rows"]]
     assert past_rows == live_rows
     by_id = {row.request_id: row for row in live_grid.rows}
-    for past in past_grid.rows:  # the past lists only the manual hold, and only where live holds it
-        live_codes = {h.code for h in by_id[past.request_id].holds}
-        assert {h.code for h in past.holds} <= live_codes, past.request_id
     # The scenario reaches what it names.
     rows = {row.request_id: row for row in past_grid.rows}
     assert (rows[OLIVIA].request_status, rows[OLIVIA].program_key, rows[OLIVIA].pool) == ("withdrawn", None, None)
-    assert [r.status for r in rows[NOAH].rounds] == ["not_rebuilt", "not_rebuilt"]
+    assert [r.status for r in rows[NOAH].rounds] == ["needs_offer", "needs_offer"]
     assert (rows[NOAH].rounds[0].ask, rows[AVA].pool, rows[MIA].program_key) == (3500.0, "bmitzvah_pool", None)
     assert [r.round for r in rows[AVA].rounds] == [3]  # not live as of the date: its unposted Round 1 is gone
     assert by_id[OLIVIA].holds == []

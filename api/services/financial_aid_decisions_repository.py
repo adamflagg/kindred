@@ -21,6 +21,7 @@ from api.constants.collections import (
     AID_ATTRIBUTION_OVERRIDES,
     AID_CANCELLATIONS,
     AID_DECISIONS,
+    AID_GRANT_PLACEMENTS,
     AID_GRANTORS,
     AID_GRANTS,
     AID_HOLD_EVENTS,
@@ -37,6 +38,7 @@ from api.constants.collections import (
 )
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState, parse_reason
 from api.services.financial_aid_change_log_reads import fetch_change_log
+from api.services.financial_aid_grant_placements import PlacementRecord, placement_record
 from api.services.financial_aid_grants_register import Placement
 from api.services.financial_aid_intake_repository import (
     EQUITY_FIELD_CM_IDS,
@@ -285,6 +287,11 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {"filter": f"year = {int(year)}", "fields": _HOLD_SEASON_FIELDS, "sort": "created,id"},
         )
         return [hold_event(row) for row in rows]
+
+    async def fetch_grant_placements(self, year: int) -> list[PlacementRecord]:
+        """The season's grant placement log (3c-2), in recorded order."""
+        rows = await self._page(AID_GRANT_PLACEMENTS, {"filter": f"year = {int(year)}", "sort": "created,id"})
+        return [placement_record(row) for row in rows]
 
     async def fetch_request_hold_events(self, request_id: str) -> list[HoldEvent]:
         if not _PB_ID.fullmatch(request_id):

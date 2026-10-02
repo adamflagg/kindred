@@ -678,8 +678,8 @@ def _awaiting(state: RoundState | None, synced_at: datetime | None) -> bool:
     return synced_at is None or state.locked_at is None or state.locked_at > synced_at
 
 
-def _live_net(lines: Iterable[CampLine]) -> Decimal:
-    return sum((line.amount for line in lines if line.live()), ZERO)
+def _live_net(lines: Iterable[CampLine], at: datetime | None = None) -> Decimal:
+    return sum((line.amount for line in lines if line.live(at)), ZERO)
 
 
 def live_net(lines: Iterable[CampLine]) -> Decimal:
@@ -758,14 +758,17 @@ def confirmation(
     )
 
 
-def ledger_note(priced: PricedRequest, lines: Sequence[CampLine], family_unplaced: Decimal) -> CalcIssue | None:
+def ledger_note(
+    priced: PricedRequest, lines: Sequence[CampLine], family_unplaced: Decimal, *, at: datetime | None = None
+) -> CalcIssue | None:
     """D81's amber Note, on a live request with a round not yet ticked, when CampMinder already holds
     money for the family beyond what the request's ticks lock: placed on it, or at family level. A
     Note never stops anything (§4.4); it is there so the registrar doesn't post the family twice.
-    The season gate (no Note before the first ticked season) is the caller's."""
+    The season gate (no Note before the first ticked season) is the caller's. `at`: a past instant
+    (3c-2), when only the lines live then count, as `family_unplaced` was built."""
     if not priced.live or all(view.status == "posted" for view in priced.rounds):
         return None
-    extra = max(ZERO, _live_net(lines) - _locked(priced)) + family_unplaced
+    extra = max(ZERO, _live_net(lines, at) - _locked(priced)) + family_unplaced
     if extra <= 0:
         return None
     return CalcIssue(
