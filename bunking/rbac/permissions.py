@@ -46,7 +46,7 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
         "It only adds these to the Camperships screens that family-detail access opens."
     ),
     Permission.FINANCIAL_AID_SUMMARY: (
-        "See Camperships totals for reporting. Small groups are hidden, so no family can be picked out."
+        "See Camperships totals by ZIP and program for reporting, without any one family's records."
     ),
     Permission.FINANCIAL_AID_VIEW: "See each family's aid: applications, requests, awards and postings.",
     Permission.METRICS_FINANCIAL: (
