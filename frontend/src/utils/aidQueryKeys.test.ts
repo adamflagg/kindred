@@ -105,5 +105,10 @@ describe('the Rounds & budget key (slice 2)', () => {
     expect(queryKeys.aidBudget(2027, '2026-04-01', 'campminder')).not.toEqual(
       queryKeys.aidBudget(2027, '2026-04-01', 'recorded')
     )
+    expect(queryKeys.aidBudget(2027, null, null)).not.toEqual(queryKeys.aidBudget(2028, null, null))
+    // The hook passes `past?.axis ?? null`: a null axis must key as the default, 'campminder'.
+    expect(queryKeys.aidBudget(2027, '2026-04-01', null)).toEqual(
+      queryKeys.aidBudget(2027, '2026-04-01', 'campminder')
+    )
   })
 })
