@@ -56,7 +56,7 @@ class StatisticsRowOut(BaseModel):
     income_to: float | None
     fee_pct: float | None  # None: varies (All tables), or no table value (Round 3)
     apps: int
-    cancelled: int | None  # None on a past date: cancellations aren't rebuilt (3c-1)
+    cancelled: int  # received requests cancelled (D131); on a past date, cancelled by that day
     asked: float
     asks: int  # apps with an ask: the average ask's population
     average_ask: float | None
@@ -76,7 +76,11 @@ class CancelledRowOut(BaseModel):
     reason_label: str
     pool: str | None
     round: int
-    requests: int
+    requests: int = Field(
+        description="Requests in THIS reason, pool and round row. Rows are per reason, pool and round, so one request "
+        "that was posted in two rounds is in two rows: never sum `requests` across rows (use the Statistics "
+        "total's `cancelled` for the number of cancelled requests)."
+    )
     posted: float
 
 
@@ -114,7 +118,7 @@ class StatisticsResponse(BaseModel):
     tables: list[ChipOut]  # every award table of the rules, for the chips
     rows: list[StatisticsRowOut]
     total: StatisticsRowOut
-    cancelled_applicants: int | None  # D131's line beside apps (the total's `cancelled`)
+    cancelled_applicants: int  # D131's line beside apps (the total's `cancelled`)
     recipients_cancelled: list[CancelledRowOut]
     tier_appeals: list[TierAppealsRowOut]  # RPT-9, for the same table chip
     outcomes: list[OutcomeRowOut]  # RPT-23, every pool
