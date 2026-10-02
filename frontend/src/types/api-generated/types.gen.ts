@@ -5267,7 +5267,6 @@ export type GridRowOut = {
    * Included
    */
   included?: boolean | null
-  include_override?: IncludeOverrideOut | null
   /**
    * Session Candidates
    */
@@ -6085,40 +6084,6 @@ export type IncentiveRule = {
    * Mode
    */
   mode: 'ignore' | 'reduce_cost' | 'reduce_award'
-}
-
-/**
- * IncludeIn
- *
- * Leave a request out of the household band (included=false) or put it back (true), with a note (D22, Decision 5).
- * It never includes a request derived as not included.
- */
-export type IncludeIn = {
-  /**
-   * Included
-   */
-  included: boolean
-  /**
-   * Note
-   */
-  note: string
-}
-
-/**
- * IncludeOverrideOut
- *
- * A staff exclusion (D22; main spec §10.2's "audited override"): the request is left out of the household band
- * (Decision 5); the note says why.
- */
-export type IncludeOverrideOut = {
-  /**
-   * Note
-   */
-  note: string
-  /**
-   * Actor
-   */
-  actor: string
 }
 
 /**
@@ -22189,38 +22154,6 @@ export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostRespo
 
 export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponse =
   SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses[keyof SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses]
-
-export type SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostData = {
-  body: IncludeIn
-  path: {
-    /**
-     * Request Id
-     */
-    request_id: string
-  }
-  query?: never
-  url: '/api/financial-aid/requests/{request_id}/include'
-}
-
-export type SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostError =
-  SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostErrors[keyof SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostErrors]
-
-export type SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: DecisionWriteOut
-}
-
-export type SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostResponse =
-  SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostResponses[keyof SetRequestIncludeApiFinancialAidRequestsRequestIdIncludePostResponses]
 
 export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostData = {
   body?: never
