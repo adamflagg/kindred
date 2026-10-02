@@ -337,6 +337,20 @@ export const BUDGET: ApiAidBudget = {
 }
 
 /**
+ * The same season as of a past day where no gap request sits in any pool (`past_budget` with
+ * nothing masked): every figure is present, as live, and only the date and the gaps it always
+ * names say it is past. The Requests views a queue figure opens are still refused on that date.
+ */
+export function pastBudgetUnmasked(): ApiAidBudget {
+  return {
+    ...BUDGET,
+    as_of: '2027-03-15',
+    as_of_axis: 'campminder',
+    not_rebuilt: [{ figure: 'needs_offer', reason: 'Priced from the answers as they stood then' }],
+  }
+}
+
+/**
  * The same season read as of a past day (3c): what the server leaves empty there is null
  * (`past_budget`): Needs an offer, Pending approval, Remaining (with the counts that go with the
  * first two), the unconfirmed line, the held counts, and the strip's needs-an-offer, held and

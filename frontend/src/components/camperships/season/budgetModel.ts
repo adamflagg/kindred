@@ -36,6 +36,13 @@ function holds(count: ApiAidCount | null): boolean {
 const requests = (view: AidView, extra: Record<string, string>) =>
   aidHref('/aid/requests', view, extra)
 
+/**
+ * Needs an offer, Holds and Pending approval list today's queues, and a past date rebuilds none, so
+ * the Requests page refuses them there ("…needs today's data"). A figure the server still sends on
+ * a past date opens nothing rather than that refusal; Posted and Accepted open All, which keeps it.
+ */
+const opensQueueViews = (view: AidView) => view.asOf.kind !== 'past'
+
 // ── The strip (§7.2; D153) ────────────────────────────────────────────────────
 
 export type StripMeasure = 'needs_offer' | 'posted' | 'accepted' | 'held' | 'pending_approval'
@@ -65,19 +72,25 @@ const STRIP_LABELS: Readonly<Record<StripMeasure, string>> = {
  * approval open their Requests views; posted and accepted open All filtered to that round and tick,
  * slice 1's `round=` and `tick=`, so the list holds the rows the count counts. Every count but held
  * also carries `counted=1` (Decision 6): only rounds that count toward the budget make these figures.
+ * Null where it opens nothing: a queue view on a past date (`opensQueueViews`).
  */
-function stripTarget(measure: StripMeasure, round: number): Record<string, string> {
+function stripTarget(
+  measure: StripMeasure,
+  round: number,
+  view: AidView
+): Record<string, string> | null {
+  const queues = opensQueueViews(view)
   switch (measure) {
     case 'needs_offer':
-      return { view: viewSlug('needs_offer'), counted: '1' }
+      return queues ? { view: viewSlug('needs_offer'), counted: '1' } : null
     case 'posted':
       return { view: 'all', round: String(round), tick: 'posted', counted: '1' }
     case 'accepted':
       return { view: 'all', round: String(round), tick: 'accepted', counted: '1' }
     case 'held':
-      return { view: viewSlug('holds') }
+      return queues ? { view: viewSlug('holds') } : null
     case 'pending_approval':
-      return { view: viewSlug('pending_approval'), counted: '1' }
+      return queues ? { view: viewSlug('pending_approval'), counted: '1' } : null
   }
 }
 
@@ -93,11 +106,12 @@ export function stripRounds(strip: readonly ApiAidRoundCounts[], view: AidView):
         round: row.round,
         counts: measures.map((measure) => {
           const count = row[measure]
+          const target = stripTarget(measure, row.round, view)
           return {
             measure,
             label: STRIP_LABELS[measure],
             count,
-            href: holds(count) ? requests(view, stripTarget(measure, row.round)) : null,
+            href: holds(count) && target !== null ? requests(view, target) : null,
           }
         }),
       }
@@ -230,7 +244,8 @@ export function overWords(row: BudgetRow, column: BudgetColumn): string | null {
  *   nothing while no version is approved (Decision 6; plan review I1).
  * Every request link but Holds carries `counted=1`, so it opens only rounds that count (Decision 6).
  * - Remaining: nothing; it is the others' arithmetic.
- * A "No pool" figure opens nothing: no request can be filtered to having no pool. Nor does "—" or $0.
+ * A "No pool" figure opens nothing: no request can be filtered to having no pool. Nor does "—" or $0,
+ * nor Needs an offer or Pending approval on a past date (`opensQueueViews`).
  */
 export function cellHref(
   row: BudgetRow,
@@ -242,6 +257,7 @@ export function cellHref(
   const pool: Record<string, string> = row.pool === TOTAL_POOL ? {} : { pool: row.pool }
   const round: Record<string, string> = row.round === null ? {} : { round: String(row.round) }
   if (row.kind === 'pending') {
+    if (!opensQueueViews(view)) return null
     return requests(view, { view: viewSlug('pending_approval'), ...pool, counted: '1' })
   }
   switch (column) {
@@ -250,6 +266,7 @@ export function cellHref(
     case 'accepted':
       return requests(view, { view: 'all', ...pool, ...round, tick: 'accepted', counted: '1' })
     case 'needs_offer':
+      if (!opensQueueViews(view)) return null
       return requests(view, { view: viewSlug('needs_offer'), ...pool, counted: '1' })
     case 'allocated':
       // The version that priced the figure: `?version=` always opens the approved read (Decision 31).
@@ -379,7 +396,7 @@ export function belowTheLine(
     count: below.held,
     note: 'amount unknown until resolved',
     href:
-      holds(below.held) && pool !== NO_POOL
+      holds(below.held) && pool !== NO_POOL && opensQueueViews(view)
         ? requests(view, { view: viewSlug('holds'), ...onPool })
         : null,
   })

@@ -4,11 +4,11 @@
  */
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation } from 'react-router'
+import { MemoryRouter, useLocation, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiAidBudget } from '../../../types/api-types'
-import { BUDGET, pastBudget } from './budgetFixtures'
+import { BUDGET, pastBudget, pastBudgetUnmasked } from './budgetFixtures'
 import { RoundsBudgetTab } from './RoundsBudgetTab'
 
 let read: { data: ApiAidBudget | undefined; isLoading: boolean; error: Error | null }
@@ -32,7 +32,12 @@ vi.mock('../../../utils/csvExport', async (importOriginal) => ({
 
 function Where() {
   const { search } = useLocation()
-  return <div data-testid="where">{search}</div>
+  const navigation = useNavigationType()
+  return (
+    <div data-testid="where" data-nav={navigation}>
+      {search}
+    </div>
+  )
 }
 
 function renderAt(path: string) {
@@ -111,8 +116,10 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
   it('folds a pool in the URL, replacing rather than pushing (D15)', async () => {
     vi.useRealTimers()
     renderAt('/aid/season/rounds-budget?year=2027')
+    expect(screen.getByTestId('where')).toHaveAttribute('data-nav', 'POP')
     await userEvent.click(screen.getByRole('button', { name: '▾ Pool A' }))
     expect(screen.getByTestId('where')).toHaveTextContent('?year=2027&fold=pool_a')
+    expect(screen.getByTestId('where')).toHaveAttribute('data-nav', 'REPLACE')
     expect(document.querySelector('[data-budget-row="pool_a:1"]')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '▸ Pool A' }))
     expect(screen.getByTestId('where')).toHaveTextContent('?year=2027')
@@ -129,6 +136,39 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     )
     expect(document.querySelector('[data-budget-row="total"]')).toBeNull()
     expect(keys('data-below-line')).toEqual(['grants', 'held'])
+  })
+
+  it('labels the strip as the whole season when the page is on one pool (Task 4 I1)', () => {
+    const first = renderAt('/aid/season/rounds-budget?pool=pool_b&year=2027')
+    const strip = screen.getByTestId('budget-strip')
+    expect(within(strip).getByText('All pools · the whole season')).toBeInTheDocument()
+    // The figures are still the season's: Round 1 posted is every pool's.
+    expect(within(strip).getByRole('link', { name: '340 fam · 367 req' })).toBeInTheDocument()
+    first.unmount()
+    renderAt('/aid/season/rounds-budget')
+    expect(
+      within(screen.getByTestId('budget-strip')).queryByText('All pools · the whole season')
+    ).toBeNull()
+  })
+
+  it('on a past date, opens no queue view from its figures, and keeps the date on Posted (final review I1)', () => {
+    read = { data: pastBudgetUnmasked(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?as_of=2027-03-15')
+    const round1 = within(screen.getByTestId('budget-strip')).getByText('Round 1').parentElement
+    if (round1 === null) throw new Error('no Round 1 line')
+    // Round 1: needs an offer 3 · 3 and held 6 · 9 show, and open nothing; posted still opens.
+    expect(within(round1).getByText('3 fam · 3 req')).toBeInTheDocument()
+    expect(within(round1).queryByRole('link', { name: '3 fam · 3 req' })).toBeNull()
+    expect(within(round1).getByText('6 fam · 9 req')).toBeInTheDocument()
+    expect(within(round1).queryByRole('link', { name: '6 fam · 9 req' })).toBeNull()
+    expect(within(round1).getByRole('link', { name: '340 fam · 367 req' })).toBeInTheDocument()
+    expect(within(line('pool_a:1')).getByText('3 · $8,100')).toBeInTheDocument()
+    expect(within(line('pool_a:1')).queryByRole('link', { name: '3 · $8,100' })).toBeNull()
+    expect(within(below('held')).queryByRole('link')).toBeNull()
+    expect(within(line('pool_a:1')).getByRole('link', { name: '$764,540' })).toHaveAttribute(
+      'href',
+      '/aid/requests?view=all&pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+    )
   })
 
   it('says so when the link names a pool this season has none of', () => {
