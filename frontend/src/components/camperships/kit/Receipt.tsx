@@ -72,7 +72,7 @@ interface ReceiptProps {
   view?: AidView | undefined
   /** The household page folds receipts under their sentence (D34). */
   folded?: boolean | undefined
-  /** …except on a hold, or while a "would change by" flag shows (D34), including one that arrives later. */
+  /** …except on a hold, or while a would-change flag shows (D34), including one that arrives later. */
   openByItself?: boolean | undefined
 }
 
