@@ -50,6 +50,8 @@ interface RequestsGridProps {
   /** Stable (useMemo): the columns memo depends on it. */
   readonly links: HouseholdLinks
   readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
+  /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
+  readonly marked?: ReadonlySet<string> | undefined
 }
 
 const requestKey = (row: ApiAidGridRow) => row.request_id
@@ -204,6 +206,7 @@ export function RequestsGrid({
   onHighlight,
   links,
   renderBelowHighlighted,
+  marked,
 }: RequestsGridProps) {
   const columns = useMemo(
     () => buildColumns(view, showIds, today, links),
@@ -232,6 +235,7 @@ export function RequestsGrid({
       highlighted={highlighted}
       onHighlight={onHighlight}
       renderBelowHighlighted={renderBelowHighlighted}
+      markedKeys={marked}
       footerLabel={footer}
       groupCount={groupCount}
       emptyText="No requests in this view."

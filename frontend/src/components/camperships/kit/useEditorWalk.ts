@@ -21,14 +21,21 @@ export interface EditorWalkOptions {
   readonly highlighted: string | null
   /**
    * Moves the highlight with no questions asked: the walk has saved what needed saving. Pass sync
-   * state (a `useState` setter); a surface that keeps the row in its URL mirrors the state there in
-   * an effect, never the other way round (Ruling 2026-10-01 (plan review) I2). It must be STABLE
+   * state (a `useState` setter); a surface that keeps the row in its URL may pass a stable callback
+   * that sets the state and writes the URL with replace in the same call (the Requests page does:
+   * PR 2). It must be STABLE
    * (a state setter or a `useCallback`): `onHighlight`, the table's nav and its key listener
    * follow its identity.
    */
   readonly setHighlighted: (key: string | null) => void
   /** Writes one row's save. Rejects with an Error whose message staff can read. */
   readonly save: (rowKey: string, save: EditorSave) => Promise<unknown>
+  /**
+   * The rows the surface has data for. A failure on any other row (a refetch dropped it, or it was
+   * cancelled elsewhere) leaves `failures` and `failed`, and never holds `leave`: nothing on screen
+   * could clear it. Omit it to keep every failure. Pass a memoised Set.
+   */
+  readonly rowKeys?: ReadonlySet<string> | undefined
 }
 
 export interface WalkEditorProps {
@@ -40,6 +47,12 @@ export interface WalkEditorProps {
   readonly onSave: (save: EditorSave) => void
   readonly onMove: (direction: 1 | -1, save: EditorSave | null) => void
   readonly onCancel: () => void
+  /**
+   * The editor went away (unmounted). Typing it held that could never be saved is dropped, or it
+   * would hold every exit with no editor left to clear it. Saveable typing stays: the next exit
+   * saves it, and a refusal then lists as a failure.
+   */
+  readonly onGone: () => void
 }
 
 export interface EditorWalk {
@@ -97,6 +110,7 @@ export function useEditorWalk({
   highlighted,
   setHighlighted,
   save,
+  rowKeys,
 }: EditorWalkOptions): EditorWalk {
   // Text to put back when the editor next opens on a row: what a moved-away or failed save sent.
   const [stash, setStash] = useState<ReadonlyMap<string, EditorTyped>>(() => new Map())
@@ -124,9 +138,14 @@ export function useEditorWalk({
   const now = useRef(highlighted)
   // False once the surface is gone: nothing moves or sets after that (C1).
   const mounted = useRef(false)
+  // The rows the surface has now, for `leave` (read in handlers, never during render).
+  const known = useRef(rowKeys)
   useEffect(() => {
     now.current = highlighted
   }, [highlighted])
+  useEffect(() => {
+    known.current = rowKeys
+  }, [rowKeys])
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -195,7 +214,8 @@ export function useEditorWalk({
             const open = now.current
             // Ruling A, refined (Decision 3): come back at once only when the row being worked on
             // has nothing typed; else focus stays and the surface's failure line offers Go back.
-            if (jump && open !== rowKey && typedOn(typed.current, open) === null) {
+            const stillThere = known.current === undefined || known.current.has(rowKey)
+            if (jump && stillThere && open !== rowKey && typedOn(typed.current, open) === null) {
               setHighlighted(rowKey)
             }
             return false
@@ -274,6 +294,11 @@ export function useEditorWalk({
         if (rowKey !== null && rowKey !== now.current) setHighlighted(rowKey)
         go()
       }
+      // A failure on a row the surface no longer has can't be cleared there, so it never holds a leave.
+      const firstListed = () =>
+        [...refused.current.keys()].find(
+          (key) => known.current === undefined || known.current.has(key)
+        )
       // Looked at again after every wait: what was typed or saved while it ran counts too.
       const pass = () => {
         if (!mounted.current) {
@@ -296,12 +321,15 @@ export function useEditorWalk({
         const waiting = [...inFlight.current.entries()]
         if (waiting.length === 0) {
           // A failure still listed holds the person here too: its typing would die with the page.
-          conclude([...refused.current.keys()][0])
+          conclude(firstListed())
           return
         }
         void Promise.all(waiting.map(([key, done]) => done.then((ok) => (ok ? null : key)))).then(
           (outcomes) => {
-            const failedNow = outcomes.find((key): key is string => key !== null)
+            const failedNow = outcomes.find(
+              (key): key is string =>
+                key !== null && (known.current === undefined || known.current.has(key))
+            )
             if (failedNow !== undefined) conclude(failedNow)
             else pass()
           }
@@ -341,6 +369,12 @@ export function useEditorWalk({
       onMove: (direction, entry) => {
         moveFrom(rowKey, entry, direction === 1 ? nav.next : nav.previous)
       },
+      onGone: () => {
+        if (typed.current?.rowKey === rowKey && typed.current.report.save === null) {
+          typed.current = null
+          setBlocked((b) => withMember(b, rowKey, false))
+        }
+      },
       onCancel: () => {
         if (typed.current?.rowKey === rowKey) typed.current = null
         putStash(rowKey, undefined)
@@ -358,7 +392,12 @@ export function useEditorWalk({
     [revisions]
   )
 
-  const failed = useMemo(() => new Set(errors.keys()), [errors])
+  const failures = useMemo(
+    () =>
+      rowKeys === undefined ? errors : new Map([...errors].filter(([key]) => rowKeys.has(key))),
+    [errors, rowKeys]
+  )
+  const failed = useMemo(() => new Set(failures.keys()), [failures])
 
-  return { onHighlight, editorFor, editorKey, leave, failures: errors, failed }
+  return { onHighlight, editorFor, editorKey, leave, failures, failed }
 }

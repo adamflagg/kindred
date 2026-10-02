@@ -4,12 +4,16 @@
  * `fetchWithAuth` from `useApiWithAuth()`.
  */
 import type {
+  ApiAidAskIn,
   ApiAidDefinitions,
   ApiAidGrid,
   ApiAidJumpIndex,
+  ApiAidPreview,
+  ApiAidPreviewIn,
   ApiAidRemaining,
+  ApiAidWriteOut,
 } from '../../types/api-types'
-import { ApiError, toApiError } from '../apiError'
+import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
 
 export class AidApiError extends ApiError {}
@@ -67,4 +71,129 @@ export async function fetchAidGrid(
   if (!response.ok)
     throw await toApiError(response, 'Failed to load the Requests grid', AidApiError)
   return (await response.json()) as ApiAidGrid
+}
+
+/**
+ * The rows a 409 names when a decided amount moved under a Posted tick. It mirrors `ChangedRowOut`
+ * (api/schemas/financial_aid_decisions.py), which reaches the browser only inside a 409's detail,
+ * so OpenAPI doesn't generate it.
+ */
+export interface AidChangedRow {
+  readonly request_id: string
+  readonly round: number
+  readonly confirmed: number
+  readonly decided_now: number | null
+}
+
+/** A refused Camperships write: the server's sentence, its status, and a 409's moved rows. */
+export class AidWriteError extends AidApiError {
+  rows: readonly AidChangedRow[] = []
+}
+
+/** Whether an error carries this HTTP status (narrow on `.status`, never `instanceof`: apiError.ts). */
+export function hasStatus(error: unknown, status: number): boolean {
+  return typeof error === 'object' && error !== null && 'status' in error && error.status === status
+}
+
+/** FastAPI's detail as one sentence: a string, a 409's `{message}`, or a 422's first `msg`. */
+export function writeMessage(detail: unknown): string | null {
+  const words = wordsOf(detail)
+  // No words at all (an empty string, a bare "Value error, "): the caller's own fallback speaks.
+  return words === undefined || words === '' ? null : words
+}
+
+function wordsOf(detail: unknown): string | undefined {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const first: unknown = detail[0]
+    // Pydantic prefixes a validator's message with "Value error, ": not staff's words (M15).
+    return typeof first === 'object' &&
+      first !== null &&
+      'msg' in first &&
+      typeof first.msg === 'string'
+      ? first.msg.replace(/^Value error, /, '')
+      : undefined
+  }
+  if (
+    typeof detail === 'object' &&
+    detail !== null &&
+    'message' in detail &&
+    typeof detail.message === 'string'
+  ) {
+    return detail.message
+  }
+  return undefined
+}
+
+function changedRows(detail: unknown): AidChangedRow[] {
+  if (
+    typeof detail === 'object' &&
+    detail !== null &&
+    'rows' in detail &&
+    Array.isArray(detail.rows)
+  ) {
+    return detail.rows as AidChangedRow[]
+  }
+  return []
+}
+
+async function toWriteError(response: Response, fallback: string): Promise<AidWriteError> {
+  const detail = await readErrorDetail(response)
+  const error = new AidWriteError(
+    writeMessage(detail) ?? `${fallback} (HTTP ${String(response.status)})`,
+    response.status
+  )
+  error.rows = changedRows(detail)
+  return error
+}
+
+/** One JSON write (or the preview's POST). A refusal becomes an AidWriteError in the server's words. */
+async function send<T>(
+  fetchWithAuth: FetchWithAuth,
+  method: 'POST' | 'PUT',
+  url: string,
+  body: unknown,
+  fallback: string,
+  signal?: AbortSignal
+): Promise<T> {
+  const response = await fetchWithAuth(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  })
+  if (!response.ok) throw await toWriteError(response, fallback)
+  return (await response.json()) as T
+}
+
+/** The editor's line while typing (§4.6; D22): the request priced with the typed amount. Writes nothing. */
+export function previewAidEdit(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidPreviewIn,
+  signal?: AbortSignal
+): Promise<ApiAidPreview> {
+  return send<ApiAidPreview>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/preview`,
+    body,
+    "Couldn't work out the award",
+    signal
+  )
+}
+
+/** A family's ask for Round 2 (an appeal) or Round 3, dated when it arrived (D91). */
+export function keyAidAsk(
+  fetchWithAuth: FetchWithAuth,
+  requestId: string,
+  body: ApiAidAskIn
+): Promise<ApiAidWriteOut> {
+  return send<ApiAidWriteOut>(
+    fetchWithAuth,
+    'POST',
+    `${BASE}/requests/${requestId}/asks`,
+    body,
+    "Couldn't save the ask"
+  )
 }
