@@ -2066,6 +2066,7 @@ class FinancialAidDecisionsService:
             rows=rows,
             as_of=season.as_of,
             as_of_axis=season.axis,
+            ticked_season=year >= FIRST_TICKED_SEASON,
             not_rebuilt=[
                 *_past_gaps(GRID_GAPS, season),
                 *(_gaps(["posted"]) if season.posted_unknown else []),
