@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -15,10 +17,13 @@ from api.services.financial_aid_season_history import (
     HistoryNotFoundError,
     Operation,
     SeasonHistoryService,
+    Subject,
     entry_of,
     for_reader,
     operation_out,
     operations,
+    row_subject,
+    subjects_from,
     visible,
 )
 
@@ -163,8 +168,30 @@ def test_a_row_with_no_created_time_has_no_place_in_the_order() -> None:
 
 
 class _Reads:
-    def __init__(self, *records: SimpleNamespace) -> None:
+    """Season › History's reads over in-memory log rows. `subjects` is the season's (requests, applications,
+    corrections, grants, household links) light rows; `versions` the stored rules versions by (year, version). Each
+    read that History must batch counts its calls, and each year-scoped read records the season it was asked for
+    (`years`), so a test can pin "one read, never one per row" and "the right season"."""
+
+    def __init__(
+        self,
+        *records: SimpleNamespace,
+        subjects: tuple[Sequence[Any], Sequence[Any], Sequence[Any], Sequence[Any], Sequence[Any]] = (
+            (),
+            (),
+            (),
+            (),
+            (),
+        ),
+        versions: Mapping[tuple[int, int], SimpleNamespace] | None = None,
+    ) -> None:
         self.records = records
+        self.subjects = subjects
+        self.versions = dict(versions or {})
+        self.name_calls: list[tuple[frozenset[int], frozenset[int]]] = []
+        self.recorded_calls: list[tuple[list[str], list[str]]] = []
+        self.version_calls: list[tuple[int, int]] = []
+        self.years: set[int] = set()  # the seasons the year-scoped reads were asked for
 
     async def fetch_season_log(self, year: int) -> list[SimpleNamespace]:
         return [
@@ -173,6 +200,32 @@ class _Reads:
 
     async def fetch_operation(self, year: int, operation_id: str) -> list[SimpleNamespace]:
         return [r for r in self.records if r.operation_id == operation_id]
+
+    async def fetch_subject_records(self, year: int) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+        self.years.add(year)
+        requests, applications, corrections, grants, links = self.subjects
+        return list(requests), list(applications), list(corrections), list(grants), list(links)
+
+    async def fetch_recorded(
+        self, year: int, operation_ids: Collection[str], entities: Collection[str]
+    ) -> list[SimpleNamespace]:
+        self.years.add(year)
+        self.recorded_calls.append((sorted(operation_ids), sorted(entities)))
+        return [r for r in self.records if r.operation_id in set(operation_ids) and r.entity in set(entities)]
+
+    async def fetch_names(
+        self, year: int, households: Collection[int], persons: Collection[int]
+    ) -> tuple[dict[int, str], dict[int, str]]:
+        self.years.add(year)
+        self.name_calls.append((frozenset(households), frozenset(persons)))
+        return (
+            {h: n for h, n in HOUSEHOLD_NAMES.items() if h in households},
+            {p: n for p, n in PERSON_NAMES.items() if p in persons},
+        )
+
+    async def fetch_rules_version(self, year: int, version: int) -> SimpleNamespace | None:
+        self.version_calls.append((year, version))
+        return self.versions.get((year, version))
 
 
 def _rules_save() -> SimpleNamespace:
@@ -285,3 +338,96 @@ async def test_a_search_for_a_stripped_rows_entity_id_finds_nothing_for_a_reader
     assert quiet.total == 0
     loud = await service.page(2027, HistoryFilter(text="2027:3:budget", rules=True), page=1, per_page=10)
     assert loud.total == 1
+
+
+# --- Back-end asks H1, H2, H4, H5 (fictional families only) -------------------------------------------------------
+
+EMMA, SAMUEL, LIAM = "reqemma00000001", "reqsamuel000001", "reqliam00000001"
+APP_JOHNSON, APP_GARCIA, COR_JOHNSON = "appjohnson00001", "appgarcia000001", "corjohnson00001"
+JOHNSON, GARCIA = 1000001, 1000002
+P_EMMA, P_SAMUEL, P_LIAM = 1000011, 1000012, 1000021
+OP_T = "t" * 15
+REQUEST_ROWS = (
+    SimpleNamespace(id=EMMA, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_EMMA),
+    SimpleNamespace(id=SAMUEL, application=APP_JOHNSON, household_cm_id=JOHNSON, person_cm_id=P_SAMUEL),
+    SimpleNamespace(id=LIAM, application=APP_GARCIA, household_cm_id=GARCIA, person_cm_id=P_LIAM),
+)
+APPLICATION_ROWS = (
+    SimpleNamespace(id=APP_JOHNSON, household_cm_id=JOHNSON),
+    SimpleNamespace(id=APP_GARCIA, household_cm_id=GARCIA),
+)
+CORRECTION_ROWS = (SimpleNamespace(id=COR_JOHNSON, application=APP_JOHNSON),)
+GRANT_GARCIA, LINK_JOHNSON = "grantgarcia0001", "linkjohnson0001"
+GRANT_ROWS = (SimpleNamespace(id=GRANT_GARCIA, household_cm_id=GARCIA),)
+LINK_ROWS = (SimpleNamespace(id=LINK_JOHNSON, household_cm_id=JOHNSON),)
+SEASON = (REQUEST_ROWS, APPLICATION_ROWS, CORRECTION_ROWS, GRANT_ROWS, LINK_ROWS)
+HOUSEHOLD_NAMES = {JOHNSON: "The Johnson Family", GARCIA: "The Garcia Family"}
+PERSON_NAMES = {P_EMMA: "Emma Johnson", P_SAMUEL: "Samuel Johnson", P_LIAM: "Liam Garcia"}
+SUBJECTS = subjects_from(*SEASON)
+
+
+def _row(
+    rid: str,
+    entity: str,
+    entity_id: str,
+    op: str,
+    *,
+    action: str = "update",
+    actor: str = REG,
+    reason: str = "",
+    at: str = "2027-03-09 17:00:00.000Z",
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+) -> SimpleNamespace:
+    row = _rec(rid, entity, entity_id, op, actor=actor, action=action, reason=reason, at=at)
+    row.before, row.after = before, after
+    return row
+
+
+def _tick() -> list[SimpleNamespace]:
+    """The March Posted tick in small: three requests of two families, one of them a real $0 (D74)."""
+    return [
+        _row("t1", "aid_decisions", f"{EMMA}:1", OP_T, action="post", reason="March offers", after={"amount": "1420"}),
+        _row("t2", "aid_decisions", f"{SAMUEL}:1", OP_T, action="post", after={"amount": "980.50"}),
+        _row("t3", "aid_decisions", f"{LIAM}:1", OP_T, action="post", after={"amount": "0"}),
+    ]
+
+
+def test_a_row_is_about_the_request_or_application_its_id_names() -> None:
+    about = SUBJECTS.of
+    assert about("aid_decisions", f"{EMMA}:1") == Subject(JOHNSON, P_EMMA, EMMA)
+    assert about("aid_hold_events", f"{LIAM}:placeholder_income") == Subject(GARCIA, P_LIAM, LIAM)
+    assert about("aid_cancellations", SAMUEL) == Subject(JOHNSON, P_SAMUEL, SAMUEL)
+    assert about("aid_requests", EMMA) == Subject(JOHNSON, P_EMMA, EMMA)
+    # A payer share's id names the request and the PAYING household; the row is about the camper's family.
+    assert about("aid_payer_shares", f"{LIAM}:{JOHNSON}") == Subject(GARCIA, P_LIAM, LIAM)
+    assert about("aid_application_corrections", f"{EMMA}:income") == Subject(JOHNSON, P_EMMA, EMMA)  # an override
+    assert about("aid_application_corrections", COR_JOHNSON) == Subject(JOHNSON, 0, "")  # casework's correction
+    assert about("aid_applications", APP_GARCIA) == Subject(GARCIA, 0, "")
+    # Grants and household links are keyed by their own id; a commitment's placement by its grant's.
+    assert about("aid_grants", GRANT_GARCIA) == Subject(GARCIA, 0, "")
+    assert about("aid_household_links", LINK_JOHNSON) == Subject(JOHNSON, 0, "")
+    assert about("aid_grant_placements", f"commitment:{GRANT_GARCIA}") == Subject(GARCIA, 0, "")
+    assert about("aid_grant_placements", "ledger:9001") is None  # a ledger line's household is only in its own JSON
+    assert about("aid_decisions", "reqnobody000001:1") is None  # not a request of this season
+    assert about("aid_grantors", "regional_fund") is None
+
+
+def test_a_rules_row_is_about_no_one_even_with_a_request_shaped_id() -> None:
+    """Review Focus 1: a rules-class row never names a family, so stripping it (for_reader) leaves no name behind."""
+    for entity in ("aid_rules", "aid_session_capacity"):
+        assert SUBJECTS.of(entity, EMMA) is None
+        assert SUBJECTS.of(entity, f"{EMMA}:1") is None
+    entry = entry_of(_row("x1", "aid_session_capacity", EMMA, OP_R, actor=FIN))
+    assert entry is not None
+    assert row_subject(entry, SUBJECTS, None, {"household_cm_id": JOHNSON}) is None
+
+
+def test_a_row_naming_no_request_is_about_the_household_it_recorded() -> None:
+    entry = entry_of(_row("g1", "aid_grant_placements", "ledger:9001", OP_A, action="place"))
+    assert entry is not None
+    recorded = {"household_cm_id": GARCIA, "grant": "ledger:9001"}
+    assert row_subject(entry, SUBJECTS, None, recorded) == Subject(GARCIA, 0, "")
+    assert row_subject(entry, SUBJECTS, recorded, None) == Subject(GARCIA, 0, "")  # a delete records only `before`
+    assert row_subject(entry, SUBJECTS, None, {"household_cm_id": True}) is None  # never a bool
+    assert row_subject(entry, SUBJECTS, None, None) is None

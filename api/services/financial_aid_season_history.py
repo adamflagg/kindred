@@ -10,7 +10,7 @@ left out. Amounts are what the rows recorded at the time, never recomputed."""
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Final, Protocol
@@ -78,6 +78,77 @@ NOT_IN_HISTORY: Final = frozenset({AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_OPTIONS,
 _PRIORITY: Final[tuple[HistoryKind, ...]] = ("rules", "offers", "holds", "grants", "money")
 
 
+# --- Who a row is about (back-end ask H2) ---------------------------------------------------------------------------
+
+# Collections whose log entity id is "<request id>" or "<request id>:<...>": a decision's ":<round>", a hold's
+# ":<code>", a payer share's ":<paying household>" (share_entity_id), a request override's ":<field>".
+# (A grant, a household link and a commitment's grant placement are keyed by their own ids: see Subjects.of.)
+REQUEST_HEADED: Final = frozenset(
+    {AID_REQUESTS, AID_DECISIONS, AID_HOLD_EVENTS, AID_CANCELLATIONS, AID_PAYER_SHARES, AID_APPLICATION_CORRECTIONS}
+)
+
+
+@dataclass(frozen=True)
+class Subject:
+    household_cm_id: int
+    person_cm_id: int  # 0: the row is about the family (an application, a household's own request)
+    request_id: str  # "" when the row names no request
+
+
+@dataclass(frozen=True)
+class Subjects:
+    """Who the season's log rows are about, from its requests, applications, casework corrections, grants and
+    household links. A row is matched by its entity and entity id alone, so the list (which reads no JSON) and the
+    opened line agree. A rules-class collection is in none of the branches: a rules row is about no one."""
+
+    requests: Mapping[str, tuple[int, int]]  # request id -> (household, person)
+    applications: Mapping[str, int]  # application id -> household
+    corrections: Mapping[str, str]  # casework correction id -> application id
+    grants: Mapping[str, int]  # grant id -> household (a commitment's placement is keyed by its grant)
+    links: Mapping[str, int]  # household link id -> household
+
+    def of(self, entity: str, entity_id: str) -> Subject | None:
+        if entity in REQUEST_HEADED:
+            request_id = entity_id.split(":", 1)[0]
+            found = self.requests.get(request_id)
+            if found is not None:
+                return Subject(found[0], found[1], request_id)
+        household: int | None
+        if entity == AID_APPLICATIONS:
+            household = self.applications.get(entity_id)
+        elif entity == AID_APPLICATION_CORRECTIONS:
+            household = self.applications.get(self.corrections.get(entity_id, ""))
+        elif entity == AID_GRANTS:
+            household = self.grants.get(entity_id)
+        elif entity == AID_HOUSEHOLD_LINKS:
+            household = self.links.get(entity_id)
+        elif entity == AID_GRANT_PLACEMENTS and entity_id.startswith("commitment:"):
+            household = self.grants.get(entity_id.removeprefix("commitment:"))
+        else:
+            return None
+        return Subject(household, 0, "") if household is not None else None
+
+
+NO_SUBJECTS: Final = Subjects({}, {}, {}, {}, {})
+
+
+def subjects_from(
+    requests: Iterable[Any],
+    applications: Iterable[Any],
+    corrections: Iterable[Any],
+    grants: Iterable[Any] = (),
+    links: Iterable[Any] = (),
+) -> Subjects:
+    """The season's five light subject reads (fetch_subject_records) as one lookup."""
+    return Subjects(
+        requests={str(r.id): (int(r.household_cm_id), int(r.person_cm_id or 0)) for r in requests},
+        applications={str(a.id): int(a.household_cm_id) for a in applications},
+        corrections={str(c.id): str(c.application or "") for c in corrections},
+        grants={str(g.id): int(g.household_cm_id) for g in grants},
+        links={str(k.id): int(k.household_cm_id) for k in links},
+    )
+
+
 @dataclass(frozen=True)
 class LogEntry:
     id: str
@@ -115,6 +186,23 @@ def entry_of(record: Any) -> LogEntry | None:
         operation_id=str(getattr(record, "operation_id", "") or record.id),
         created=created,
     )
+
+
+def row_subject(
+    entry: LogEntry, subjects: Subjects, before: Mapping[str, Any] | None, after: Mapping[str, Any] | None
+) -> Subject | None:
+    """Who one opened row is about: what its id names, else the household the row itself recorded (a grant
+    placement of a ledger line, `ledger:<txn>`), family-level. A rules row is about no one, whatever it recorded."""
+    if ENTITY_KINDS.get(entry.entity) == "rules":
+        return None
+    found = subjects.of(entry.entity, entry.entity_id)
+    if found is not None:
+        return found
+    for snapshot in (after, before):
+        value = (snapshot or {}).get("household_cm_id")
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return Subject(value, 0, "")
+    return None
 
 
 def _kind(entries: tuple[LogEntry, ...]) -> HistoryKind:
@@ -232,6 +320,16 @@ class HistoryNotFoundError(FinancialAidError):
 class HistoryReads(Protocol):
     async def fetch_season_log(self, year: int) -> list[Any]: ...
     async def fetch_operation(self, year: int, operation_id: str) -> list[Any]: ...
+    async def fetch_subject_records(
+        self, year: int
+    ) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]: ...
+    async def fetch_recorded(
+        self, year: int, operation_ids: Collection[str], entities: Collection[str]
+    ) -> list[Any]: ...
+    async def fetch_names(
+        self, year: int, households: Collection[int], persons: Collection[int]
+    ) -> tuple[dict[int, str], dict[int, str]]: ...
+    async def fetch_rules_version(self, year: int, version: int) -> Any | None: ...
 
 
 class SeasonHistoryService:

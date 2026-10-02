@@ -13,8 +13,16 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from api.services.financial_aid_ledger_service import parse_pb_datetime
-from api.services.financial_aid_repository import chunk_filter_terms
+from api.constants.collections import (
+    AID_APPLICATION_CORRECTIONS,
+    AID_APPLICATIONS,
+    AID_GRANTS,
+    AID_HOUSEHOLD_LINKS,
+    AID_REQUESTS,
+    AID_RULES,
+)
+from api.services.financial_aid_ledger_service import household_display_name, parse_pb_datetime, person_display_name
+from api.services.financial_aid_repository import FinancialAidRepository, chunk_filter_terms
 from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import COLLECTION
@@ -24,6 +32,15 @@ PAGE_SIZE: Final = 1000
 _ENTITY: Final = re.compile(r"^aid_[a-z_]+$")
 _OPERATION: Final = re.compile(r"^[a-z0-9]{15}$")
 _LIST_FIELDS: Final = "id,entity,entity_id,action,actor,reason,operation_id,created"
+_SUBJECT_FIELDS: Final = {
+    AID_REQUESTS: "id,application,household_cm_id,person_cm_id",
+    AID_APPLICATIONS: "id,household_cm_id",
+    AID_APPLICATION_CORRECTIONS: "id,application",
+    AID_GRANTS: "id,household_cm_id",
+    AID_HOUSEHOLD_LINKS: "id,household_cm_id",
+}
+_RECORDED_FIELDS: Final = "id,operation_id,entity,action,after"
+_RULES_VERSION_FIELDS: Final = "id,year,version,document,section_status"
 
 
 def _json_object(value: Any) -> dict[str, Any] | None:
@@ -130,8 +147,69 @@ async def fetch_operation(pb: Any, year: int, operation_id: str) -> list[Any]:
     return rows
 
 
+async def _season_list(pb: Any, collection: str, year: int, fields: str) -> list[Any]:
+    rows: list[Any] = await asyncio.to_thread(
+        aid_collection(pb, collection).get_full_list,
+        batch=PAGE_SIZE,
+        query_params={"filter": f"year = {int(year)}", "sort": "id", "fields": fields},
+    )
+    return rows
+
+
+async def fetch_subject_records(pb: Any, year: int) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+    """Who the season's log rows are about (Season › History, H2): its requests, applications, casework corrections,
+    grants and household links, as five light reads with no JSON."""
+    requests, applications, corrections, grants, links = await asyncio.gather(
+        *(_season_list(pb, collection, year, fields) for collection, fields in _SUBJECT_FIELDS.items())
+    )
+    return requests, applications, corrections, grants, links
+
+
+async def fetch_recorded(pb: Any, year: int, operation_ids: Collection[str], entities: Collection[str]) -> list[Any]:
+    """Some operations' rows of `entities`, with their recorded `after` (Season › History's figures, H1). The
+    operation ids are chunked under PocketBase's filter limit: one read per chunk, never one per operation."""
+    for entity in entities:
+        if not _ENTITY.fullmatch(entity):
+            raise ValueError(f"{entity!r} is not an aid_* entity")
+    for operation_id in operation_ids:
+        if not _OPERATION.fullmatch(operation_id):
+            raise ValueError(f"{operation_id!r} is not an operation id")
+    if not operation_ids or not entities:
+        return []
+    kinds = " || ".join(f'entity = "{e}"' for e in sorted(set(entities)))
+    base = f"year = {int(year)} && ({kinds})"
+    terms = [f'operation_id = "{o}"' for o in sorted(set(operation_ids))]
+    rows: list[Any] = []
+    for chunk in chunk_filter_terms(len(base), terms):
+        found: list[Any] = await asyncio.to_thread(
+            aid_collection(pb, COLLECTION).get_full_list,
+            batch=PAGE_SIZE,
+            query_params={
+                "filter": f"{base} && ({' || '.join(chunk)})",
+                "sort": "created,id",
+                "fields": _RECORDED_FIELDS,
+            },
+        )
+        rows.extend(found)
+    return rows
+
+
+async def fetch_rules_version(pb: Any, year: int, version: int) -> Any | None:
+    """One rules version's stored document and approvals (Season › History's diff of a created version, H4)."""
+    rows: list[Any] = await asyncio.to_thread(
+        aid_collection(pb, AID_RULES).get_full_list,
+        batch=PAGE_SIZE,
+        query_params={
+            "filter": f"year = {int(year)} && version = {int(version)}",
+            "sort": "id",
+            "fields": _RULES_VERSION_FIELDS,
+        },
+    )
+    return rows[0] if rows else None
+
+
 class HistoryLogReads:
-    """The two reads over one PocketBase client: Season > History's HistoryReads."""
+    """Season > History's HistoryReads over one PocketBase client."""
 
     def __init__(self, pb: Any) -> None:
         self.pb = pb
@@ -141,3 +219,26 @@ class HistoryLogReads:
 
     async def fetch_operation(self, year: int, operation_id: str) -> list[Any]:
         return await fetch_operation(self.pb, year, operation_id)
+
+    async def fetch_subject_records(self, year: int) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+        return await fetch_subject_records(self.pb, year)
+
+    async def fetch_recorded(self, year: int, operation_ids: Collection[str], entities: Collection[str]) -> list[Any]:
+        return await fetch_recorded(self.pb, year, operation_ids, entities)
+
+    async def fetch_names(
+        self, year: int, households: Collection[int], persons: Collection[int]
+    ) -> tuple[dict[int, str], dict[int, str]]:
+        """Family and camper names as the Requests grid makes them (FinancialAidDecisionsRepository.fetch_names),
+        read 100 ids a filter: never one read per row."""
+        repo = FinancialAidRepository(self.pb)
+        found_households, found_persons = await asyncio.gather(
+            repo.fetch_households(year, households), repo.fetch_persons(year, persons)
+        )
+        return (
+            {int(h.cm_id): household_display_name(h, int(h.cm_id)) for h in found_households},
+            {int(p.cm_id): person_display_name(p) for p in found_persons},
+        )
+
+    async def fetch_rules_version(self, year: int, version: int) -> Any | None:
+        return await fetch_rules_version(self.pb, year, version)
