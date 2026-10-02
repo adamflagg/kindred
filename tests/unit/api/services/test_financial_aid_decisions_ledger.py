@@ -24,6 +24,7 @@ from api.services.financial_aid_decisions_repository import (
     line_placement,
 )
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_intake_types import UNKNOWN_EQUITY
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_reconciliation import confirmation
 from tests.unit.api.services.decisions_fakes import (
@@ -607,6 +608,26 @@ async def test_emptied_budget_figures_are_named_only_when_they_are_emptied() -> 
         assert "history" in named[figure], figure
     assert emptied.total.below.outside_budget_posted is None
     assert all(row.posted is None and row.accepted is None for row in emptied.strip)
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_posted_part_empties_the_type_lines_whole_not_just_their_amounts() -> None:
+    """A placement CampMinder's history can't replay empties posted money without gapping the pool, so the
+    pool's type lines are priced: their own and requests figures must go with their posted and amount."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.requests[EMMA] = replace(store.requests[EMMA], equity=UNKNOWN_EQUITY)  # intake had recorded it: no gap
+    log_seeded(store, SEEDED)
+    _posted(store, EMMA, 1, "1500")
+    seed_line(store, 9001, "1500", posted=T0)
+    clean = await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5))
+    assert [t.own for t in clean.total.decision_types] == [0.0]  # priced, so there is a figure to empty
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged
+    out = await _past_service(store).budget(YEAR, as_of=date(2027, 6, 5))
+    assert "posted" in {g.figure for g in out.not_rebuilt}
+    lines = [t for pool in (*out.pools, out.total) for t in pool.decision_types]
+    assert lines
+    assert all(t.posted is None and t.amount is None and t.own is None and t.requests is None for t in lines)
 
 
 @pytest.mark.asyncio

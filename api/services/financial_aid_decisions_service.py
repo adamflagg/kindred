@@ -1163,7 +1163,10 @@ def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
                 "rounds": [cell(c) for c in p.rounds],
                 "total": cell(p.total),
                 "below": p.below.model_copy(update={"outside_budget_posted": None}),
-                "decision_types": [t.model_copy(update={"posted": None, "amount": None}) for t in p.decision_types],
+                "decision_types": [
+                    t.model_copy(update={"posted": None, "amount": None, "own": None, "requests": None})
+                    for t in p.decision_types
+                ],
             }
         )
 
