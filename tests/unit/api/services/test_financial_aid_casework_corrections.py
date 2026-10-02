@@ -104,3 +104,12 @@ async def test_staff_can_enter_an_income_taken_by_phone_as_an_income_override() 
         "value": "staff_entered:52000.00",
         "previous_value": "",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["cost_override", "include_override"])
+async def test_the_generic_correction_refuses_the_request_overrides(field: str) -> None:
+    store, casework = await built()
+    request = next(r for r in await store.fetch_requests(YEAR) if r.household_cm_id == 1000001)
+    with pytest.raises(CorrectionError, match=f"{field} cannot be corrected here"):
+        await casework.add_correction(YEAR, 1000001, field, "discount:100.00", "Phone call", ACTOR, request.id)

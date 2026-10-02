@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
@@ -170,10 +170,16 @@ def answer_out(value: EffectiveValue) -> AnswerOut:
 _CONFLICT_CODES = frozenset({"income_conflict", "household_answer_conflict"})
 
 
+_ANSWER_FIELDS: Final = frozenset(APPLICATION_CORRECTABLE) | frozenset(REQUEST_CORRECTABLE)
+
+
 def _live_correction_count(corrections: Sequence[CorrectionRecord]) -> int:
+    """The family's corrected intake answers. A request override (cost, Include) is a correction row too
+    (financial_aid_request_overrides) but no corrected answer, so it never counts here."""
     latest: dict[tuple[str, str], CorrectionRecord] = {}
     for c in sorted(corrections, key=lambda c: (c.created, c.id)):
-        latest[(c.request_id, c.field)] = c
+        if c.field in _ANSWER_FIELDS:
+            latest[(c.request_id, c.field)] = c
     return sum(1 for c in latest.values() if c.new_value != REVERT)
 
 
