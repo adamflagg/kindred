@@ -376,6 +376,38 @@ def test_a_single_payer_card_still_carries_the_requests_whole_figure() -> None:
     assert [(s.status, s.count, s.gap) for s in card.states] == [("short", 1, -210.0)]
 
 
+def test_a_lone_payer_whose_share_is_not_100_shows_no_gap() -> None:
+    """One payer at 60% doesn't add up either: `split` yields it no decided or posted part, so its card never reads
+    the request's whole CampMinder figure as a gap against a posted of nothing."""
+    rows = [
+        _row(
+            LIAM,
+            GARCIA,
+            rounds=[_round(1, "posted", decided=1800.0, posted=1800.0, posted_on=date(2031, 3, 9))],
+            total_decided=1800.0,
+            total_posted=1800.0,
+            confirmation=_confirmation("short", 1800.0, 1590.0, []),
+        )
+    ]
+    shares = {LIAM: (share_row(LIAM, GARCIA, "60"),)}
+    card = household_money(GARCIA, rows, shares, {GARCIA: 1})
+    assert (card.in_campminder, card.states) == (None, [])
+    [line] = share_lines(rows[0], shares[LIAM], {GARCIA: 1})
+    assert (line.in_campminder, line.status) == (None, None)
+
+
+def test_a_reversed_split_request_reads_reversed_for_every_payer() -> None:
+    """A clawed-back request's confirmation carries no per-share lines even when its shares add up: nothing is left
+    in CampMinder for any payer, so each line reads $0 and reversed."""
+    reversed_ = _confirmation("reversed", 0.0, 0.0, [])
+    rows, shares = _split_request("60", "40", reversed_)
+    lines = share_lines(rows[0], shares[EMMA], {JOHNSON: 1, GARCIA: 2})
+    assert [(x.household_cm_id, x.in_campminder, x.status) for x in lines] == [
+        (JOHNSON, 0.0, "reversed"),
+        (GARCIA, 0.0, "reversed"),
+    ]
+
+
 # --- the service: one season, one grants load, the page's own reads ----------------------------------
 
 

@@ -54,6 +54,7 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     posting_line,
 )
+from api.services.financial_aid_payer_shares import share_status
 from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
@@ -73,17 +74,17 @@ REPRODUCED = "reproduced"
 
 
 def _share_state(
-    row: GridRowOut, household_cm_id: int, payer_count: int
+    row: GridRowOut, household_cm_id: int, adds_up: bool
 ) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
     """A payer's money in CampMinder and its state: its own share's when the request is split (main spec
-    §11), else the request's (one payer). A request with several payers but no per-share confirmation (their
-    percentages don't add up to 100%, so `split` yields no parts either) has no share of its own to show: the
-    request's whole figure is never one payer's."""
+    §11), else the request's: one payer, or a reversed request (nothing is left in CampMinder for any payer).
+    Shares that don't add up to 100% (the same test `split` makes, so it yields no parts either) have no share
+    of their own to show, one payer or several: the request's whole figure is never one payer's."""
     c = row.confirmation
     if c is None:
         return None, None
     if not c.shares:
-        return (dollars(c.in_campminder), c.status) if payer_count == 1 else (None, None)
+        return (dollars(c.in_campminder), c.status) if adds_up else (None, None)
     share = next((s for s in c.shares if s.household_cm_id == household_cm_id), None)
     if share is None:
         return None, None
@@ -94,9 +95,10 @@ def share_lines(row: GridRowOut, shares: Sequence[PayerShareRecord], chips: Mapp
     shares = payers(row.request_id, row.household_cm_id, shares)
     decided = split(dollars(row.total_decided), shares, row.household_cm_id)
     posted = split(dollars(row.total_posted), shares, row.household_cm_id)
+    adds_up = share_status(shares) == "complete"
     out = []
     for share in sorted(shares, key=lambda s: (chips.get(s.household_cm_id, len(chips) + 1), s.household_cm_id)):
-        held, status = _share_state(row, share.household_cm_id, len(shares))
+        held, status = _share_state(row, share.household_cm_id, adds_up)
         mine_decided = decided.get(share.household_cm_id)
         mine_posted = posted.get(share.household_cm_id)
         out.append(
@@ -144,7 +146,9 @@ def band_grants_by_request(register: Iterable[RegisterRow]) -> dict[str, Decimal
 
 def _band_states(row: GridRowOut) -> list[tuple[ConfirmationStatusOut, Decimal]]:
     """A request's confirmation for the band: its own state, or, when it is confirmed and split, each payer
-    share's (D59: one payer short is not "confirmed"), as Today and the household cards count it."""
+    share's (D59: one payer short is not "confirmed"), as Today and the household cards count it. A request whose
+    shares don't add up to 100% counts once here, as the request's own state, as Today counts it; no household
+    card counts it, having no share of its own to show (_share_state)."""
     c = row.confirmation
     if c is None:
         return []
