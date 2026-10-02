@@ -7,6 +7,7 @@ from bunking.financial_aid.definitions import BY_KEY, SURFACES
 
 
 def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
+    # Slice 4 ask 4 appends three notes, so notes 1–8 keep the numbers staff already see.
     assert SURFACES["reports-statistics"] == (
         "apps",
         "cancelled_applicants",
@@ -16,6 +17,9 @@ def test_the_three_finance_report_surfaces_have_their_notes_in_order() -> None:
         "decided_not_offered",
         "recipients_cancelled",
         "appeals",
+        "pct_of_ask_with_grants",
+        "round2_max_pct",
+        "appeal_rate",
     )
     assert SURFACES["reports-programs"] == ("apps", "awarded", "average_award", "pct_of_ask")
     assert SURFACES["reports-committee"] == (
@@ -60,9 +64,14 @@ def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_d
     """D80 / §5.6; owner N1, (c) and (b) (RULED 2026-10-02)."""
     note = BY_KEY["pct_of_ask"]
     assert note.spec == "§5.6"
-    assert note.text.startswith("% of ask: awarded $ ÷ asked $, each round's ask as keyed and as it stands today.")
+    # Slice 4 ask 4: the denominator is named, so nobody reads it as the Asked column (owner B4a (c), D121).
+    assert note.text.startswith(
+        "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands today, "
+        "on live requests (not cancelled)."
+    )
+    assert "It is not the asked or requested total" in note.text
     assert "paid wholly by an outside funder" in note.text
-    assert "left out of the asked $" in note.text
+    assert "left out of the in-budget asks" in note.text  # the fourth deliberate assertion change
     assert "Posted + Decided" in note.text
     assert "% of ask (posted + decided)" in note.text
 
