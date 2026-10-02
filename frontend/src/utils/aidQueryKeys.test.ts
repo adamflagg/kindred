@@ -49,6 +49,12 @@ describe("invalidateAidMoneyQueries (spec §10; #2924's invalidation table)", ()
     expect(settled).toBe(true)
   })
 
+  it('keeps the application key under the prefix every write refreshes', () => {
+    expect(queryKeys.aidApplication(2027, 1000001).slice(0, 2)).toEqual(
+      queryKeys.aidApplicationPrefix()
+    )
+  })
+
   it('refreshes every read a write can move, and leaves the definitions and the jump index', () => {
     const invalidateQueries = vi.fn()
     void invalidateAidMoneyQueries({ invalidateQueries })
