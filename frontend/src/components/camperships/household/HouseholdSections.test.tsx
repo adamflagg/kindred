@@ -62,8 +62,8 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
       <GrantsPostingsSection
         page={householdPage({
           grants: [
-            { ...grant, transaction_cm_id: 1000311, counts: false },
-            { ...grant, transaction_cm_id: 1000312, cancelled: true },
+            { ...grant, transaction_cm_id: 1000311, in_band: false },
+            { ...grant, transaction_cm_id: 1000312, cancelled: true, in_band: false },
           ],
         })}
       />
@@ -72,31 +72,53 @@ describe('GrantsPostingsSection (§6.3 item 6; D56, D74, D127)', () => {
     expect(screen.getByText('cancelled')).toBeInTheDocument()
   })
 
-  // The band counts a grant only when counts, funder_type is outside, and a request has a share
-  // (outside_grants_by_request).
-  it('puts no mark on a grant the band counts (outside, counted, with a request share)', () => {
+  // The mark follows the server's per-grant in_band flag alone; the page does not re-derive the band's rule.
+  it('puts no mark on a grant the server says is in the band', () => {
     render(<GrantsPostingsSection page={PAGE} />)
     const grants = screen.getByRole('table', { name: 'Grants' })
     expect(within(grants).queryByText('not counted')).toBeNull()
     expect(within(grants).queryByText('cancelled')).toBeNull()
   })
 
-  it.each([['incentive'], ['other']])(
-    'marks a counted %s grant "not counted": the band takes outside grants only',
-    (funder) => {
-      const grant = PAGE.grants[0]!
-      render(
-        <GrantsPostingsSection
-          page={householdPage({ grants: [{ ...grant, funder_type: funder }] })}
-        />
-      )
-      expect(screen.getByText('not counted')).toBeInTheDocument()
-    }
-  )
-
-  it('marks a counted outside grant with no request share "not counted"', () => {
+  it('puts no mark on a grant split across a live and a withdrawn request (in_band is true)', () => {
     const grant = PAGE.grants[0]!
-    render(<GrantsPostingsSection page={householdPage({ grants: [{ ...grant, requests: [] }] })} />)
+    render(
+      <GrantsPostingsSection
+        page={householdPage({
+          grants: [
+            {
+              ...grant,
+              in_band: true,
+              requests: [
+                { request_id: 'reqemma00000001', amount: 600 },
+                { request_id: 'reqwithdrawn001', amount: 400 },
+              ],
+            },
+          ],
+        })}
+      />
+    )
+    expect(screen.queryByText('not counted')).toBeNull()
+  })
+
+  it('trusts in_band true even where the old derived rule (outside funder only) would have marked it', () => {
+    const grant = PAGE.grants[0]!
+    render(
+      <GrantsPostingsSection
+        page={householdPage({ grants: [{ ...grant, funder_type: 'other', in_band: true }] })}
+      />
+    )
+    expect(screen.queryByText('not counted')).toBeNull()
+  })
+
+  it('marks "not counted" a grant the server says is out of the band, whatever its counts, funder and shares', () => {
+    const grant = PAGE.grants[0]!
+    expect(grant.counts).toBe(true)
+    expect(grant.funder_type).toBe('outside')
+    expect(grant.requests.length).toBeGreaterThan(0)
+    render(
+      <GrantsPostingsSection page={householdPage({ grants: [{ ...grant, in_band: false }] })} />
+    )
     expect(screen.getByText('not counted')).toBeInTheDocument()
   })
 

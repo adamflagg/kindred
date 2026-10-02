@@ -35,10 +35,6 @@ function download(table: CsvTable, filename: string) {
 
 type Grant = ApiAidHouseholdPage['grants'][number]
 
-/** The server's band rule for a grant (outside_grants_by_request): counted, outside, and a request share. */
-const countsInBand = (grant: Grant) =>
-  grant.counts && grant.funder_type === 'outside' && grant.requests.length > 0
-
 /** An unplaced line (person 0) is "the household" only by the household basis; otherwise it needs a camper. */
 function grantCamper(grant: Grant): string {
   if (grant.camper_basis === 'household') return 'the household'
@@ -225,7 +221,7 @@ export function GrantsPostingsSection({ page }: { page: ApiAidHouseholdPage }) {
                   {/* The band counts only live, counted, outside grants with a request share (outside_grants_by_request): say which these aren't. */}
                   {grant.cancelled ? (
                     <StatusPill tone="stone">cancelled</StatusPill>
-                  ) : !countsInBand(grant) ? (
+                  ) : !grant.in_band ? (
                     <StatusPill tone="muted">not counted</StatusPill>
                   ) : null}
                 </td>
