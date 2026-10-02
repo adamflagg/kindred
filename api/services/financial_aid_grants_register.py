@@ -193,6 +193,9 @@ class RegisterRow:
     fulfils_commitment_id: str
     requests: tuple[RequestShare, ...]  # the aid requests it sits on; () = didn't apply
     pays_after_camp_aid: bool = False  # D143: its grantor pays what the camp's award leaves
+    # A ledger line's own CampMinder post instant (recorded_at can be an earlier commitment's); None for a
+    # commitment, or a line with no post date. To place's D16b check reads it.
+    posted_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -496,6 +499,7 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
                     )
                 ),
                 pays_after_camp_aid=grantor in inputs.pays_after_grantors,
+                posted_at=parse_pb_datetime(line.post_date),
             )
         )
     fulfilled_ids = {c.id for c in fulfilled.values()}

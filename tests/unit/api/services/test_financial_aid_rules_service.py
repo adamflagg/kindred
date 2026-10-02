@@ -859,3 +859,39 @@ async def test_a_same_instant_clash_is_settled_from_a_later_row_not_from_the_rec
     now = await service.approved_as_of(2031, _PROGRAMS, day5 + DAY)
     assert now is not None
     assert now.section_status["programs"].approved_at == day5
+
+
+@pytest.mark.asyncio
+async def test_the_rules_as_of_several_dates_come_from_one_read_and_agree_with_each_date() -> None:
+    """D16b: To place asks for the rules at the end of each posting day; one list and one log read answer
+    them all (never a read per day), each exactly as approved_as_of would."""
+    service, store, clock = await _made_jan_approved_feb()
+    clock.now = MAR
+    await service.new_version(2031, 1, actor=FINANCE)
+    ats = (JAN + DAY, FEB + DAY, MAR + DAY)
+    reads: list[str] = []
+    list_versions, fetch_log = store.list_versions, store.fetch_log
+
+    async def counted_list(year: int) -> list[Any]:
+        reads.append("list_versions")
+        return await list_versions(year)
+
+    async def counted_log(year: int) -> list[Any]:
+        reads.append("fetch_log")
+        return await fetch_log(year)
+
+    store.list_versions, store.fetch_log = counted_list, counted_log  # type: ignore[method-assign]
+    found, unknown = await service.approved_as_of_each(2031, _PRICING, ats)
+    assert reads == ["list_versions", "fetch_log"]
+    assert unknown == frozenset()
+    for at in ats:
+        assert found[at] == await service.approved_as_of(2031, _PRICING, at)
+    assert [found[at].version if found[at] is not None else None for at in ats] == [None, 1, 2]  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_a_date_whose_rules_history_cannot_be_replayed_is_named_not_answered() -> None:
+    service, store, _ = await _made_jan_approved_feb()
+    store.log_rows = [r for r in store.log_rows if r.before is not None]  # lose the create
+    found, unknown = await service.approved_as_of_each(2031, _PRICING, (FEB + DAY,))
+    assert (found, unknown) == ({}, frozenset({FEB + DAY}))

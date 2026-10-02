@@ -132,8 +132,10 @@ from api.services.financial_aid_queues import ROUND_STATUS_LABELS, row_queues
 from api.services.financial_aid_reconciliation import (
     CampLine,
     Confirmation,
+    LedgerTick,
     LineOverride,
     SeasonLedger,
+    SplitPart,
     apply_clawback,
     as_recorded,
     build_ledger,
@@ -142,6 +144,7 @@ from api.services.financial_aid_reconciliation import (
     ledger_note,
     ledger_ticks,
     override_placement,
+    override_split,
     placeable,
     request_scope,
     undone_rounds,
@@ -263,6 +266,7 @@ class DecisionsStore(Protocol):
     ) -> tuple[dict[int, str], dict[int, str]]: ...
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
+    async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]: ...
     async def fetch_last_ledger_sync(self, year: int) -> datetime | None: ...
     async def fetch_cancellations(self, year: int) -> list[CancelEvent]: ...
@@ -287,6 +291,9 @@ class PricingRules(Protocol):
     async def approved_as_of(
         self, year: int, sections: Collection[SectionName], at: datetime
     ) -> RulesVersion | None: ...
+    async def approved_as_of_each(
+        self, year: int, sections: Collection[SectionName], ats: Collection[datetime]
+    ) -> tuple[dict[datetime, RulesVersion | None], frozenset[datetime]]: ...
     async def lock_writes(
         self, year: int, version: int, sections: Collection[SectionName]
     ) -> tuple[list[AidWrite], list[SectionName]]: ...
@@ -325,6 +332,11 @@ class Season:
     # Slice 1: each request as pricing read it, so the editor's preview re-prices one request with a typed
     # amount on exactly the inputs the season used. Empty on a past read.
     inputs: Mapping[str, RequestToPrice] = field(default_factory=dict)
+    # SP11-rest: what the live ledger was built from, so To place can re-place a line and see where it lands.
+    # Empty on a past read.
+    camp_lines: tuple[CampLine, ...] = ()
+    placements: Mapping[int, Placement] = field(default_factory=dict)
+    splits: Mapping[int, tuple[SplitPart, ...]] = field(default_factory=dict)
 
 
 Names = tuple[dict[int, str], dict[int, str]]
@@ -481,19 +493,23 @@ def _shares_as_of(
 
 def _placements_as_of(
     current: Sequence[LineOverride], log: Sequence[LogRow], at: datetime
-) -> tuple[dict[int, Placement], set[int], set[int]]:
-    """The staff placements as of `at`, replayed from aid_change_log, and the transactions and camper
+) -> tuple[dict[int, Placement], dict[int, tuple[SplitPart, ...]], set[int], set[int]]:
+    """The staff placements and splits as of `at`, replayed from aid_change_log, and the transactions and camper
     people behind any placement that can't be replayed exactly (an unreplayable one places nothing)."""
     now = {o.id: o for o in current}
     replayed = replay(log, as_of=at, current={o.id: o.fields() for o in current})
     bad = _unreplayable(now.keys(), log, replayed)
     placements: dict[int, Placement] = {}
+    splits: dict[int, tuple[SplitPart, ...]] = {}
     for key, record in replayed.items():
         if key in bad or record.state is None:
             continue
         placement = override_placement(record.state)
         if placement is not None:
             placements[placement.transaction_cm_id] = placement
+        parts = override_split(record.state)
+        if parts:
+            splits[int(record.state.get("transaction_cm_id") or 0)] = parts
     transactions: set[int] = set()
     people: set[int] = set()
     for row in log:
@@ -503,11 +519,15 @@ def _placements_as_of(
                     transactions.add(int(side["transaction_cm_id"]))
                 if side and side.get("attributed_person_cm_id"):
                     people.add(int(side["attributed_person_cm_id"]))
+                if side:
+                    people.update(part.person_cm_id for part in override_split(side) if part.person_cm_id > 0)
     for key in bad & now.keys():
         transactions.add(now[key].transaction_cm_id)
         if now[key].attributed_person_cm_id:
             people.add(now[key].attributed_person_cm_id)
-    return placements, transactions, people
+        # A split override attributes to no one (person 0): the campers it paid are in its parts.
+        people.update(part.person_cm_id for part in now[key].split if part.person_cm_id > 0)
+    return placements, splits, transactions, people
 
 
 def _posted_ids(rounds: Mapping[str, Mapping[int, RoundState]]) -> frozenset[str]:
@@ -929,10 +949,13 @@ class FinancialAidDecisionsService:
             self._register(year),
         )
 
-    async def _ledger_side(self, year: int) -> tuple[list[CampLine], dict[int, Placement], datetime | None]:
+    async def _ledger_side(
+        self, year: int
+    ) -> tuple[list[CampLine], dict[int, Placement], dict[int, tuple[SplitPart, ...]], datetime | None]:
         return await asyncio.gather(
             self._store.fetch_camp_lines(year),
             self._store.fetch_line_placements(year),
+            self._store.fetch_line_splits(year),
             self._store.fetch_last_ledger_sync(year),
         )
 
@@ -964,7 +987,7 @@ class FinancialAidDecisionsService:
         (
             side,
             (sessions, shares, events, hold_events, register),
-            (camp_lines, placements, synced_at),
+            (camp_lines, placements, splits, synced_at),
             cancel_events,
         ) = await asyncio.gather(
             self._request_side(year, names=names),
@@ -1019,6 +1042,7 @@ class FinancialAidDecisionsService:
             [placeable(r, session_map, shares_of.get(r.id, ())) for r in side.requests],
             synced_at,
             _posted_ids(rounds),
+            splits=splits,
         )
         reversed_on: dict[str, date] = {}
         for request in side.requests:
@@ -1056,6 +1080,9 @@ class FinancialAidDecisionsService:
             cancellations=cancellations,
             to_reverse=to_reverse,
             inputs=items,
+            camp_lines=tuple(camp_lines),
+            placements=placements,
+            splits=splits,
         )
         return season, side.names
 
@@ -1070,6 +1097,15 @@ class FinancialAidDecisionsService:
             return await self._rules.approved_as_of(year, PRICING_SECTIONS, at), ()
         except RulesHistoryIncompleteError:
             return None, tuple(_gaps(["rules_history"]))
+
+    async def rules_on(
+        self, year: int, days: Collection[date]
+    ) -> tuple[dict[date, RulesVersion | None], frozenset[date]]:
+        """The rules version that priced the season at the end of each day (camp time), from one read of the
+        rules history (D16b), and apart, the days whose history can't be replayed."""
+        ends = {as_of_instant(day): day for day in days}
+        found, unknown = await self._rules.approved_as_of_each(year, PRICING_SECTIONS, ends.keys())
+        return {ends[at]: version for at, version in found.items()}, frozenset(ends[at] for at in unknown)
 
     async def past_season(self, year: int, day: date, axis: AsOfAxis = "campminder") -> Season:
         """The season by the end of `day`, camp time (3c-1): the events and hold events recorded by
@@ -1167,7 +1203,7 @@ class FinancialAidDecisionsService:
         line and its reversal (as_recorded, ruling C), so everything below reads that set."""
         camp_lines = inputs.camp_lines if axis == "campminder" else as_recorded(inputs.camp_lines, at)
         shares_of, bad_shares, bad_share_households = _shares_as_of(inputs.shares, inputs.share_log, at)
-        placements, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
+        placements, splits, bad_txns, bad_people = _placements_as_of(inputs.overrides, inputs.override_log, at)
         ledger = build_ledger(
             camp_lines,
             placements,
@@ -1175,6 +1211,7 @@ class FinancialAidDecisionsService:
             None,
             _posted_ids(rounds),
             at,
+            splits=splits,
         )
         behind = [line for line in camp_lines if line.transaction_cm_id in bad_txns]
         bad_households = {line.household_cm_id for line in behind}
@@ -1714,6 +1751,39 @@ class FinancialAidDecisionsService:
         result = await self._store.commit([write], actor=actor, reason=body.reason, require_reason=True)
         return DecisionWriteOut(year=year, written=1, unchanged=0, operation_id=result.operation_id)
 
+    async def tick_writes(
+        self,
+        season: Season,
+        ticks: Sequence[LedgerTick],
+        actor: str,
+        *,
+        lock_source: str,
+        note: Callable[[LedgerTick], str],
+    ) -> tuple[list[AidWrite], list[AidWrite], list[SectionName]]:
+        """The Posted rows for ticks worked out from CampMinder's money (the ledger's own, D78, or a
+        registrar's placement, D81): each locks its round at the decided amount with its receipt, dated
+        the posting's day. Also the rules-section locks a first lock reads (SP10a Decision 11), and the
+        sections that could not be locked. The caller commits them as one operation. (The ledger sync builds
+        its rows here too.)"""
+        if season.rules is None:
+            raise DecisionRefusedError(f"{season.year}'s pricing rules are not approved yet")
+        writes = [
+            self._post_write(
+                season,
+                season.priced[tick.request_id],
+                tick.round,
+                tick.amount,
+                actor,
+                posted_on=tick.posted_on,
+                lock_source=lock_source,
+                note=note(tick),
+            )
+            for tick in ticks
+        ]
+        sections = sorted({section for tick in ticks for section in ROUND_SECTIONS[tick.round]})
+        locks, not_locked = await self._rules.lock_writes(season.year, season.rules.version, sections)
+        return writes, locks, list(not_locked)
+
     async def ledger_ticks(self, year: int) -> LedgerTicksOut:
         """`_ledger_ticks_once`, re-run ONCE when a person changed the rules between its read and its write (G6).
 
@@ -1755,21 +1825,15 @@ class FinancialAidDecisionsService:
         ticks = ledger_ticks(season.priced.values(), season.ledger, today=self._today(), undone=season.undone)
         if not ticks:
             return LedgerTicksOut(year=year, ticked=0, operation_id="")
-        writes = [
-            self._post_write(
-                season,
-                season.priced[tick.request_id],
-                tick.round,
-                tick.amount,
-                LEDGER_ACTOR,
-                posted_on=tick.posted_on,
-                lock_source="ledger",
-                note=f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request",
-            )
-            for tick in ticks
-        ]
-        sections = sorted({section for tick in ticks for section in ROUND_SECTIONS[tick.round]})
-        locks, not_locked = await self._rules.lock_writes(year, season.rules.version, sections)
+        writes, locks, not_locked = await self.tick_writes(
+            season,
+            ticks,
+            LEDGER_ACTOR,
+            lock_source="ledger",
+            note=lambda tick: (
+                f"Ticked by the ledger sync: CampMinder shows {dollars(tick.in_campminder)} on this request"
+            ),
+        )
         # Locks first: March's bulk import can pass one batch, so this may commit in chunks, and the
         # sections then lock in the first one. A chunk that fails leaves its rounds for the next run.
         try:

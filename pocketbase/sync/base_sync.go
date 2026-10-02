@@ -386,6 +386,9 @@ func (b *BaseSyncService) deleteOrphans(
 			continue
 		}
 		orphanCount++
+		// Into the run's deleted_count (sync_runs), which campership To place reads as its "records removed
+		// since" tripwire (D16b). A dry run deletes nothing, so it counts nothing there.
+		b.Stats.Deleted++
 	}
 
 	if orphanCount > 0 {
@@ -535,6 +538,7 @@ func (b *BaseSyncService) DeleteOrphansFromPreloaded(
 				continue
 			}
 			orphanCount++
+			b.Stats.Deleted++ // deleted_count, as in deleteOrphans; never on a dry run
 		}
 	}
 

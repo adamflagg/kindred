@@ -93,7 +93,7 @@ class ReceiptLabelOut(BaseModel):
     season: int
     rules_version: int
     locked_on: date | None
-    lock_source: Literal["tick", "ledger"] | None
+    lock_source: Literal["tick", "ledger", "placement"] | None
     ticked_by_name: str | None
     decided_by_name: str | None  # a staff-decided Round 3 amount: who decided it (finance once approved)
 

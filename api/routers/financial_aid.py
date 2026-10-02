@@ -154,6 +154,15 @@ from api.schemas.financial_aid_scenarios import (
     WorkspaceOut,
 )
 from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse, TodayResponse
+from api.schemas.financial_aid_to_place import (
+    LeaveLineIn,
+    PlaceLineIn,
+    PlaceLinesIn,
+    PlaceOut,
+    ReclassifyLineIn,
+    ToPlaceResponse,
+    ToPlaceWriteOut,
+)
 from api.services.financial_aid_casework_service import (
     CaseworkNotFoundError,
     CaseworkValidationError,
@@ -214,6 +223,7 @@ from api.services.financial_aid_scenarios_service import (
     ScenarioNotFoundError,
     Workspace,
 )
+from api.services.financial_aid_to_place_service import ToPlaceService
 from api.services.financial_aid_today import TodayService
 from api.services.financial_aid_write_service import FinancialAidWriteService
 from bunking.auth_middleware import AuthUser
@@ -1481,5 +1491,79 @@ async def preview_request_edit(
     can_approve = _holds(user, Permission.FINANCIAL_AID_RULES)
     try:
         return await _decisions().preview(request_id, body, can_approve=can_approve)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+# --- Money > To place (campership SP11-rest; clean spec §8.1) ----------------------------------
+
+_TransactionId = Annotated[int, Path(ge=1)]
+
+
+def _to_place() -> ToPlaceService:
+    return ToPlaceService(_decisions(), FinancialAidDecisionsRepository(pb))
+
+
+@router.get("/money/{year}/to-place", response_model=ToPlaceResponse)
+async def get_to_place(
+    year: _Year, household_cm_id: int | None = Query(None, ge=1), user: AuthUser = _VIEW
+) -> ToPlaceResponse:
+    """Camp-aid lines no single request takes, by reason, with Kindred's suggestions and their evidence
+    (D12, D16, D58); `household_cm_id` scopes it to one household page (D26)."""
+    try:
+        return await _to_place().read(year, household_cm_id=household_cm_id)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/place", response_model=PlaceOut)
+async def place_lines(year: _Year, body: PlaceLinesIn, user: AuthUser = _CASEWORK) -> PlaceOut:
+    """Confirm a whole class of lines at once (D16), all or nothing, as one operation with the ticks they make."""
+    try:
+        return await _to_place().place_lines(year, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/place", response_model=PlaceOut)
+async def place_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: PlaceLineIn, user: AuthUser = _CASEWORK
+) -> PlaceOut:
+    """Confirm or Split (D12): the staff placement and the Posted ticks it makes, as one operation (D81)."""
+    try:
+        return await _to_place().place(year, transaction_cm_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut)
+async def leave_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: LeaveLineIn, user: AuthUser = _CASEWORK
+) -> ToPlaceWriteOut:
+    """Leave at family level, with a note (D58)."""
+    try:
+        return await _to_place().leave(year, transaction_cm_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.delete("/money/{year}/to-place/{transaction_cm_id}/leave", response_model=ToPlaceWriteOut)
+async def reopen_line(
+    year: _Year, transaction_cm_id: _TransactionId, reason: _Reason, user: AuthUser = _CASEWORK
+) -> ToPlaceWriteOut:
+    """Undo Leave at family level: the line is open in To place again."""
+    try:
+        return await _to_place().reopen(year, transaction_cm_id, reason, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/reclassify", response_model=ToPlaceWriteOut)
+async def reclassify_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: ReclassifyLineIn, user: AuthUser = _RULES
+) -> ToPlaceWriteOut:
+    """Reclassify (D104, finance): the line's money is really another source's; Go applies it on the next sync."""
+    try:
+        return await _to_place().reclassify(year, transaction_cm_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc

@@ -1814,6 +1814,7 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 				s.Stats.Errors++
 			} else {
 				deleted++
+				s.Stats.Deleted++ // the persons run's deleted_count (base_sync's sweeps do the same); never on a dry run
 			}
 		}
 	}

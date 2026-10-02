@@ -859,3 +859,20 @@ def test_the_band_counts_a_confirmed_split_request_under_its_short_share() -> No
     )
     out = totals([row], {})
     assert [(s.status, s.count, s.gap) for s in out.states] == [("confirmed", 1, 200.0), ("short", 1, -200.0)]
+
+
+def test_a_round_ticked_by_a_placement_keeps_its_source_and_names_the_registrar() -> None:
+    from api.services.financial_aid_household_page import receipts
+
+    state = RoundState(
+        round=1,
+        posted=True,
+        posted_on=date(2027, 3, 9),
+        posted_by=ACTOR,
+        lock_source="placement",
+        rules_version=1,
+        snapshot={"result": {"trace": []}},
+    )
+    priced = SimpleNamespace(rounds=[SimpleNamespace(round=1)], result=None)
+    (out,) = receipts(priced, {1: state}, year=YEAR, rules_version=1, names={ACTOR: "Test User"})  # type: ignore[arg-type]
+    assert (out.label.kind, out.label.lock_source, out.label.ticked_by_name) == ("locked", "placement", "Test User")

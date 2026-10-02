@@ -11,30 +11,71 @@ import asyncio
 import json
 import re
 from collections.abc import Collection
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final
 
 from api.constants.collections import (
+    AID_APPLICATION_CORRECTIONS,
+    AID_APPLICATIONS,
+    AID_ATTRIBUTION_OVERRIDES,
     AID_CANCELLATIONS,
     AID_DECISIONS,
+    AID_GRANTORS,
+    AID_GRANTS,
     AID_HOLD_EVENTS,
+    AID_HOUSEHOLD_LINKS,
+    AID_PAYER_SHARES,
     AID_POSTINGS,
+    AID_REQUESTS,
+    AID_SOURCES,
     ATTENDEES,
+    CAMP_SESSIONS,
+    PERSON_CUSTOM_VALUES,
+    PERSONS,
     SYNC_RUNS,
 )
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState, parse_reason
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_grants_register import Placement
-from api.services.financial_aid_intake_repository import PERSON_FILTER_CHUNK, FinancialAidIntakeRepository
+from api.services.financial_aid_intake_repository import (
+    EQUITY_FIELD_CM_IDS,
+    PERSON_FILTER_CHUNK,
+    FinancialAidIntakeRepository,
+    allowlist_filter,
+)
 from api.services.financial_aid_ledger_service import (
     aid_dollars,
     household_display_name,
     parse_pb_datetime,
     person_display_name,
 )
-from api.services.financial_aid_reconciliation import CampLine, LineOverride, camp_date, override_placement
+from api.services.financial_aid_reconciliation import (
+    CampLine,
+    LineOverride,
+    SplitPart,
+    camp_date,
+    override_placement,
+    override_split,
+)
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_to_place import (
+    LEFT_DISPOSITION,
+    REMOVAL_SERVICES,
+    TO_PLACE_FLAG,
+    GrantLineRow,
+    LeftLine,
+    LineDetail,
+    LinkRow,
+    OverrideRow,
+    SinceCorrection,
+    SinceLog,
+    SinceRecords,
+    SourceRow,
+    Synced,
+    SyncRemoval,
+)
+from bunking.financial_aid.change_log import COLLECTION as AID_CHANGE_LOG
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
 
@@ -46,6 +87,12 @@ _PB_ID: Final = re.compile(r"^[a-z0-9]{15}$")
 def _date(value: Any) -> date | None:
     text = str(value or "").strip()
     return date.fromisoformat(text[:10]) if text else None
+
+
+def _json_list(value: Any) -> list[Any]:
+    if isinstance(value, str):
+        value = json.loads(value) if value.strip() else None
+    return list(value) if value else []
 
 
 def _json_object(value: Any) -> dict[str, Any] | None:
@@ -110,13 +157,15 @@ def camp_line(record: Any) -> CampLine:
 
 
 def line_override(record: Any) -> LineOverride:
-    """An aid_attribution_overrides record: what it places, with the id its log rows carry."""
+    """An aid_attribution_overrides record: what it places, with the id its log rows carry, and the
+    parts of a split (SP11-rest)."""
     return LineOverride(
         id=str(getattr(record, "id", "")),
         transaction_cm_id=int(record.transaction_cm_id),
         attributed_person_cm_id=int(record.attributed_person_cm_id or 0),
         attributed_session_cm_id=int(record.attributed_session_cm_id or 0),
         program_family=str(record.program_family or ""),
+        split=override_split({"split": getattr(record, "split", None)}),
     )
 
 
@@ -199,6 +248,20 @@ _LEDGER_SERVICE: Final = "aid_postings"
 _TRANSACTIONS_SERVICE: Final = "financial_transactions"
 _RUN_PAGE = 100
 _HOLD_SEASON_FIELDS = "id,request,event,code,note,actor,created"
+# D16b: the aid_change_log entities whose rows say something that prices a request changed. aid_rules is read
+# apart (approved_as_of_each); aid_sources and auto household links are read from their own `updated`, and so are
+# grantors as well (their log rows carry the season configured when saved, not necessarily the placement's).
+_SINCE_PLAIN: Final = (
+    AID_REQUESTS,
+    AID_APPLICATIONS,
+    AID_PAYER_SHARES,
+    AID_DECISIONS,
+    AID_HOLD_EVENTS,
+    AID_CANCELLATIONS,
+    AID_GRANTORS,
+)
+# ...and those whose rows must be read with their before and after, which name a grant's household or person.
+_SINCE_NAMED: Final = (AID_ATTRIBUTION_OVERRIDES, AID_GRANTS, AID_HOUSEHOLD_LINKS)
 
 
 class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
@@ -301,6 +364,224 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]:
         placements = (line_placement(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
         return {p.transaction_cm_id: p for p in placements if p is not None}
+
+    async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]:
+        """The lines a person split across requests (SP11-rest, D12), each with its parts."""
+        overrides = (line_override(row) for row in await FinancialAidRepository(self.pb).fetch_overrides(year))
+        return {o.transaction_cm_id: o.split for o in overrides if o.split}
+
+    async def fetch_line_details(self, year: int) -> dict[int, LineDetail]:
+        """Each camp-aid line's description after any reclassification, and Go's posting flags (To place)."""
+        rows = await self._page(
+            AID_POSTINGS,
+            {
+                "filter": f"year = {int(year)} && funder_type = 'camp'",
+                "sort": "transaction_cm_id,id",
+                "fields": "transaction_cm_id,effective_source_key,flags",
+            },
+        )
+        details: dict[int, LineDetail] = {}
+        for row in rows:  # one row per transaction today; two would keep the first description, every flag
+            txn = int(row.transaction_cm_id)
+            known = details.get(txn)
+            flags = {str(flag) for flag in _json_list(getattr(row, "flags", None))}
+            details[txn] = LineDetail(
+                txn,
+                known.description_key if known is not None else str(row.effective_source_key or ""),
+                tuple(sorted(flags | set(known.flags if known is not None else ()))),
+            )
+        return details
+
+    async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]:
+        """Every override in full, as To place's writes read and log it. Not `line_override`: that one omits
+        the source, source_key_override and note, which a rewrite must carry."""
+        return {
+            int(row.transaction_cm_id): OverrideRow(
+                id=str(row.id),
+                transaction_cm_id=int(row.transaction_cm_id),
+                attributed_person_cm_id=int(row.attributed_person_cm_id or 0),
+                attributed_session_cm_id=int(row.attributed_session_cm_id or 0),
+                program_family=str(row.program_family or ""),
+                source_key_override=str(row.source_key_override or ""),
+                source=str(row.source or ""),
+                note=str(row.note or ""),
+                split=override_split({"split": getattr(row, "split", None)}),
+            )
+            for row in await FinancialAidRepository(self.pb).fetch_overrides(year)
+        }
+
+    async def fetch_left_lines(self, year: int) -> dict[int, LeftLine]:
+        """The lines left at family level (D58): To place's own aid_flag_dispositions rows."""
+        return {
+            int(row.transaction_cm_id): LeftLine(str(row.id), int(row.transaction_cm_id), str(row.note or ""))
+            for row in await FinancialAidRepository(self.pb).fetch_dispositions(year)
+            if str(row.flag) == TO_PLACE_FLAG and str(row.disposition) == LEFT_DISPOSITION
+        }
+
+    async def fetch_source_rows(self) -> dict[str, SourceRow]:
+        """The description registry, as Reclassify checks it and To place names a line's description."""
+        return {
+            str(row.description_key): SourceRow(
+                description_key=str(row.description_key),
+                description=str(row.description or row.description_key),
+                classified=str(row.classified_by) != "unclassified",
+                counts_as_aid=bool(row.counts_as_aid),
+                funder_type=str(row.funder_type or ""),
+            )
+            for row in await FinancialAidRepository(self.pb).fetch_sources()
+        }
+
+    async def fetch_changed_since(self, year: int, floor: datetime, *, persons: bool) -> SinceRecords:
+        """Everything that prices a request recorded or changed after `floor` (D16b), one bounded read per
+        collection, year-scoped and trimmed to the fields the check reads, run concurrently. `persons` reads
+        the people CampMinder changed too, only when the rules weigh a camper answer kept there (its
+        `updated` churns daily). Every household link of the season is read: the family is today's."""
+        at = floor.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.") + f"{floor.astimezone(UTC).microsecond // 1000:03d}Z"
+        after = f"created > '{at}'"
+        touched = f"(created > '{at}' || updated > '{at}')"
+        season = f"year = {int(year)}"
+
+        def entities(names: Collection[str]) -> str:
+            return " || ".join(f"entity = '{name}'" for name in names)
+
+        def page(collection: str, filter_: str, fields: str, **extra: str) -> Any:
+            return self._page(collection, {"filter": filter_, "fields": fields, "sort": "id", **extra})
+
+        services = " || ".join(f"service = '{name}'" for name in sorted(REMOVAL_SERVICES))
+        reads = [
+            page(
+                AID_CHANGE_LOG, f"{season} && {after} && ({entities(_SINCE_PLAIN)})", "entity,entity_id,action,created"
+            ),
+            page(
+                AID_CHANGE_LOG,
+                f"{season} && {after} && ({entities(_SINCE_NAMED)})",
+                "entity,entity_id,action,created,before,after",
+            ),
+            page(AID_APPLICATION_CORRECTIONS, f"{season} && {after}", "application,request,created"),
+            page(
+                ATTENDEES,
+                f"{season} && {touched}",
+                "person_id,created,updated,expand.person.household_id,expand.session.cm_id",
+                expand="person,session",
+            ),
+            page(
+                PERSON_CUSTOM_VALUES,
+                f"{season} && ({allowlist_filter(EQUITY_FIELD_CM_IDS)}) && {touched}",
+                "created,updated,expand.person.cm_id",
+                expand="person",
+            ),
+            page(CAMP_SESSIONS, f"{season} && {touched}", "cm_id,created,updated"),
+            page(
+                AID_POSTINGS,
+                f"{season} && {touched}",  # every funder type: a line moved into camp aid is a grant that moved
+                "transaction_cm_id,household_cm_id,person_cm_id,attributed_person_cm_id,effective_source_key,"
+                "created,updated",
+            ),
+            page(AID_SOURCES, touched, "description_key,created,updated"),
+            # The grantor directory spans seasons, and its log rows carry the season configured when each was
+            # saved, which a late placement's may not be: the record's own `updated` dates it whatever the season.
+            page(AID_GRANTORS, touched, "key,created,updated"),
+            page(AID_HOUSEHOLD_LINKS, season, "household_cm_id,family_key,excluded,created,updated"),
+            page(
+                SYNC_RUNS,
+                f"year >= {int(year) - 1} && year <= {int(year) + 1} && deleted_count > 0 && ended > '{at}' && "
+                f"({services})",
+                "service,ended",
+            ),
+        ]
+        if persons:
+            reads.append(page(PERSONS, f"{season} && {touched}", "cm_id,household_id,created,updated"))
+        (
+            plain,
+            named,
+            corrections,
+            attendees,
+            equity,
+            sessions,
+            postings,
+            sources,
+            grantors,
+            links,
+            runs,
+            *people,
+        ) = await asyncio.gather(*reads)
+
+        def when(row: Any) -> datetime:
+            stamps = [parse_pb_datetime(getattr(row, f, None)) for f in ("created", "updated")]
+            dated = [s for s in stamps if s is not None]
+            if not dated:  # as log() does: an undated record can't be placed against the floor, so say so
+                raise ValueError(
+                    f"{type(row).__name__} record {getattr(row, 'id', '')!r} has no created or updated time"
+                )
+            return max(dated)
+
+        def expanded(row: Any, name: str) -> Any:
+            expand = getattr(row, "expand", None) or {}
+            return expand.get(name) if isinstance(expand, dict) else None
+
+        def log(row: Any) -> SinceLog:
+            created = parse_pb_datetime(row.created)
+            if created is None:
+                raise ValueError(f"aid_change_log {row.entity_id} has no created time")
+            return SinceLog(
+                str(row.entity),
+                str(row.entity_id),
+                str(row.action or ""),
+                created,
+                _json_object(getattr(row, "before", None)),
+                _json_object(getattr(row, "after", None)),
+            )
+
+        synced = [
+            *(
+                Synced(
+                    "attendees",
+                    when(r),
+                    person_cm_id=int(r.person_id or 0),
+                    household_cm_id=int(getattr(expanded(r, "person"), "household_id", 0) or 0),
+                    session_cm_id=int(getattr(expanded(r, "session"), "cm_id", 0) or 0),
+                )
+                for r in attendees
+            ),
+            *(
+                Synced(
+                    "person_custom_values", when(r), person_cm_id=int(getattr(expanded(r, "person"), "cm_id", 0) or 0)
+                )
+                for r in equity
+            ),
+            *(Synced("camp_sessions", when(r), session_cm_id=int(r.cm_id or 0)) for r in sessions),
+            *(Synced("aid_sources", when(r), key=str(r.description_key)) for r in sources),
+            *(Synced("aid_grantors", when(r), key=str(r.key)) for r in grantors),
+            *(
+                Synced("persons", when(r), person_cm_id=int(r.cm_id or 0), household_cm_id=int(r.household_id or 0))
+                for rows in people
+                for r in rows
+            ),
+        ]
+        return SinceRecords(
+            log=tuple(log(r) for r in (*plain, *named)),
+            corrections=tuple(
+                SinceCorrection(str(r.application or ""), str(getattr(r, "request", "") or ""), when(r))
+                for r in corrections
+            ),
+            synced=tuple(synced),
+            grant_lines=tuple(
+                GrantLineRow(
+                    int(r.transaction_cm_id),
+                    int(r.household_cm_id or 0),
+                    int(r.person_cm_id or 0),
+                    int(r.attributed_person_cm_id or 0),
+                    str(r.effective_source_key or ""),
+                    parse_pb_datetime(getattr(r, "created", None)),
+                    parse_pb_datetime(getattr(r, "updated", None)),
+                )
+                for r in postings
+            ),
+            links=tuple(LinkRow(int(r.household_cm_id), str(r.family_key), bool(r.excluded), when(r)) for r in links),
+            removals=tuple(
+                SyncRemoval(str(r.service), ended) for r in runs if (ended := parse_pb_datetime(r.ended)) is not None
+            ),
+        )
 
     async def fetch_line_overrides(self, year: int) -> list[LineOverride]:
         """Every override as it stands now: the replay's `current` for a past read (3c-1)."""
