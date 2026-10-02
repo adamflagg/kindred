@@ -337,7 +337,7 @@ describe("Needs an offer's new total column (⚠ Decision 40, ruled)", () => {
   it("shows a Round 2 row's total beside its own amount, and a dash on a Round 1 row", () => {
     render(<Grid slug="needs-offer" />)
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
-    const at = (name: string) => headers.findIndex((h) => h?.startsWith(name))
+    const at = (name: string) => headers.findIndex((h) => h.startsWith(name))
     const cells = (camper: string) =>
       Array.from((screen.getByText(camper).closest('tr') as HTMLElement).querySelectorAll('td'))
     const olivia = cells('Olivia Chen')
