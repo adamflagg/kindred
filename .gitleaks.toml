@@ -10,7 +10,7 @@ title = "Kindred Gitleaks Config"
 # Extend the default gitleaks config
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Global allowlist for development and test patterns"
 
 # Allowlist specific secret values that are intentionally public
@@ -85,3 +85,26 @@ stopwords = [
     "localhost",
     "127.0.0.1",
 ]
+
+# Definition-note keys in the financial-aid definitions registry. Each note is registered as
+# `key="snake_case_identifier",` on a line of its own, and the generic-api-key rule's entropy check reads
+# some of them (round1_phases, first, in 6a5e16cf) as API keys. Scoped to that one file AND that exact
+# match shape, so a real credential anywhere else, or any other line in the file, is still caught.
+# (Verified with gitleaks 8.30.1 in `detect` mode, the mode CI runs; `gitleaks dir` skips the AND and
+# allowlists the whole file, so don't rely on this config for `dir` scans of these two files.)
+[[allowlists]]
+description = "Definition-note keys in bunking/financial_aid/definitions.py"
+condition = "AND"
+paths = ['''^bunking/financial_aid/definitions\.py$''']
+regexTarget = "match"
+regexes = ['''^key="[a-z][a-z0-9_]*"$''']
+
+# Hand-written API type aliases in frontend/src/types/api-types.ts: `export type ApiX = X` lines, where the
+# generic-api-key rule reads a digit-bearing alias (ApiAidRound3ApprovalIn, first in 1c2c267d) as a key.
+# Same scoping: that one file AND that exact match shape.
+[[allowlists]]
+description = "Type aliases in frontend/src/types/api-types.ts"
+condition = "AND"
+paths = ['''^frontend/src/types/api-types\.ts$''']
+regexTarget = "match"
+regexes = ['''^Api[A-Za-z0-9]+ = [A-Za-z0-9]+$''']

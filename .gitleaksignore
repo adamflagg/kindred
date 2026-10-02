@@ -1,0 +1,4 @@
+# gitleaks fingerprints of known false positives (commit:file:rule:line). The scoped allowlists in
+# .gitleaks.toml cover these line shapes going forward; these pin the first occurrences exactly.
+6a5e16cf8c06a27cf2207aa3e349ff3f2282fde7:bunking/financial_aid/definitions.py:generic-api-key:315
+1c2c267dee7a3a250cfde0e530cc5b4233ebab56:frontend/src/types/api-types.ts:generic-api-key:148
