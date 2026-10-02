@@ -15,6 +15,7 @@ import pytest
 
 from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED, _ask_refusal
 from api.services.financial_aid_queues import ROUND_STATUS_LABELS
+from bunking.financial_aid.decisions.holds import UNRELEASABLE
 from bunking.financial_aid.decisions.rounds import RoundState
 
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "camperships_frontend_mirrors.json"
@@ -56,3 +57,8 @@ def test_the_live_request_statuses_and_their_refusal_are_the_writes_own() -> Non
     with pytest.raises(DecisionRefusedError) as refusal:
         asyncio.run(service._live("reqx"))
     assert str(refusal.value) == MIRRORS["ask_refusals"]["not_live"].replace("{status}", "withdrawn")
+
+
+def test_the_unreleasable_holds_are_the_servers() -> None:
+    """The household page offers no Release for a hold the server won't release."""
+    assert sorted(MIRRORS["unreleasable"]) == sorted(UNRELEASABLE)
