@@ -231,11 +231,28 @@ export function useAidScenarioDraft(workspace: ApiAidScenarioWorkspace | undefin
     [run, fetchWithAuth, year]
   )
 
-  /** Record a whole document as the draft: a fit's answer, or a section edited under "All settings". */
+  /**
+   * Record a document built from the draft as it stands when this write's turn comes, after any
+   * release or load already queued: a fit's answer, or a section edited under "All settings". The
+   * builder runs then, never at click time, so it can't drop what a queued write recorded. With
+   * `basedOn` (the trail row the document was made from), a draft that has moved on since records
+   * nothing and says so.
+   */
   const adopt = useCallback(
-    (document: ApiAidRulesDocumentIn) =>
-      run('Recording…', async () => {
-        settleDraft(await saveAidScenarioDraft(fetchWithAuth, year, { document }))
+    (
+      label: string,
+      build: (current: ApiAidRulesDocumentIn) => ApiAidRulesDocumentIn,
+      options: { readonly basedOn?: string } = {}
+    ) =>
+      run(label, async () => {
+        const current = draftRef.current
+        if (current === null) throw new Error('Load a kept option into your draft first')
+        if (options.basedOn !== undefined && current.trail_id !== options.basedOn) {
+          throw new Error('The draft moved since: try again')
+        }
+        settleDraft(
+          await saveAidScenarioDraft(fetchWithAuth, year, { document: build(current.document) })
+        )
         clearPending()
       }),
     [run, fetchWithAuth, year, settleDraft, clearPending]

@@ -14,6 +14,7 @@ import type {
 } from '../../../../hooks/camperships/useAidScenarioDraft'
 import { AidApiError } from '../../../../services/camperships/aidApi'
 import type {
+  ApiAidRulesDocumentIn,
   ApiAidScenarioSensitivity,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
@@ -66,6 +67,13 @@ const work = {
     Promise.resolve(true)
   ),
   keep: vi.fn<(startingPoint: boolean) => Promise<boolean>>(() => Promise.resolve(true)),
+  adopt: vi.fn<
+    (
+      label: string,
+      build: (current: ApiAidRulesDocumentIn) => ApiAidRulesDocumentIn,
+      options?: { readonly basedOn?: string }
+    ) => Promise<boolean>
+  >(() => Promise.resolve(true)),
   freeze: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
   start: vi.fn<(from: 'rules' | 'last_season') => Promise<boolean>>(() => Promise.resolve(true)),
 } satisfies ReturnType<typeof useAidScenarioDraft>
