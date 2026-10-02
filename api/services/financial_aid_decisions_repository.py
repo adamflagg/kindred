@@ -160,6 +160,14 @@ def camp_line(record: Any) -> CampLine:
     )
 
 
+def camper_name(record: Any) -> tuple[str, str]:
+    """A persons record's first and last name as CampMinder holds them, never the preferred name (the March file)."""
+    return (
+        str(getattr(record, "first_name", "") or "").strip(),
+        str(getattr(record, "last_name", "") or "").strip(),
+    )
+
+
 def line_override(record: Any) -> LineOverride:
     """An aid_attribution_overrides record: what it places, with the id its log rows carry, and the
     parts of a split (SP11-rest)."""
@@ -355,6 +363,12 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {int(h.cm_id): household_display_name(h, int(h.cm_id)) for h in households},
             {int(p.cm_id): person_display_name(p) for p in persons},
         )
+
+    async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]:
+        """Each camper's first and last name as CampMinder holds them (the March file's columns); a person with no
+        record this season is left out, and reads blank."""
+        persons = await FinancialAidRepository(self.pb).fetch_persons(year, person_cm_ids)
+        return {int(p.cm_id): camper_name(p) for p in persons}
 
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """The season's camp-aid lines, live and reversed (spec §5.5: the camp's own aid, after any

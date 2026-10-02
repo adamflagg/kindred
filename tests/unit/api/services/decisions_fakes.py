@@ -87,6 +87,7 @@ class FakeDecisionsStore:
         self.enrollments: list[EnrollmentState] = []
         self.enrollment_reads: list[tuple[frozenset[int], frozenset[int]]] = []  # each read's (persons, households)
         self.grant_placements: list[PlacementRecord] = []  # the grant placement log (3c-2)
+        self.camper_names: dict[int, tuple[str, str]] = {}  # CampMinder's first and last names (the March file)
         self._clock = T0
 
     async def fetch_applications(self, year: int) -> list[ApplicationRecord]:
@@ -179,6 +180,10 @@ class FakeDecisionsStore:
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]:
         return {h: f"Family {h}" for h in household_cm_ids}, {p: f"Camper {p}" for p in person_cm_ids}
+
+    async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]:
+        """As the repository reads them: CampMinder's first and last names, only for the people asked for."""
+        return {p: self.camper_names[p] for p in person_cm_ids if p in self.camper_names}
 
     async def commit(
         self,
