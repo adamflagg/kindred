@@ -89,7 +89,7 @@ async def test_a_past_date_leaves_the_ledger_figures_empty_and_names_them() -> N
 async def test_remaining_and_the_scenarios_build_no_ledger_figures(monkeypatch: pytest.MonkeyPatch) -> None:
     """Decision 14: only the Rounds & budget read pays for round_ledger."""
     calls: list[str] = []
-    real = decisions_service.round_ledger
+    real = decisions_service.round_ledger  # type: ignore[attr-defined]
 
     def counted(*args: object, **kwargs: object) -> object:
         calls.append("x")
