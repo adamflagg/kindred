@@ -179,6 +179,11 @@ class FinancialAidWriteService:
         if current_grantor_key and body.funder_type not in GRANT_FUNDER_TYPES:
             patch["grantor_key"] = ""
         before = _snapshot(current, SOURCE_FIELDS)
+        before["incentive"] = bool(getattr(current, "incentive", False))
+        # Classifying TO funder type "incentive" flags the source (the sync creates it unclassified, so its money
+        # would otherwise read as need-based). Classifying AWAY leaves the flag alone: staff own it on Funding sources.
+        if body.funder_type == "incentive" and str(current.funder_type) != "incentive":
+            patch["incentive"] = True
         # An unset json field reads back as None; [] is the same classification, not a change to log.
         before["implied_program_families"] = list(before["implied_program_families"] or [])
         before["grantor_key"] = current_grantor_key

@@ -8,7 +8,7 @@
  *   calculator and commitment fulfilment read it as before. Additive. SEEDED (owner ruling 2026-10-02): a source
  *   whose funder_type is "incentive" starts true; every other source starts false (need-based). Staff can change
  *   either in Funding sources. The seed sets only this new field, and runs once, here: a source the sync creates
- *   later is seeded the same way by the aid_postings sync.
+ *   later is flagged when staff classify it as funder type "incentive" (Sources).
  *
  * aid_report_definitions -- a report's saved settings, one row per report (`report`, e.g. "development"):
  *   `columns` is development's dated columns, a JSON list of {season, as_of} (a query over dated records, never a
