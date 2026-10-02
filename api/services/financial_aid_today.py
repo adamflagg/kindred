@@ -4,7 +4,7 @@ as the lists). The casework lines count the queue memberships the Requests grid 
 register's needs-attention groups; the finance lines read the same rows plus the rules draft and the
 season's descriptions. Counts of work carry no basis word and no definition (D20).
 
-Not here yet: To place (SP11-rest builds it).
+To place (SP11): Money › To place's open lines, counted by To place's own code over the season Today priced.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_queues import UNRECONCILED
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
+from api.services.financial_aid_to_place_service import NO_OPEN_LINES, OpenToPlace, ToPlaceCounts, open_to_place
 from bunking.financial_aid.decisions.pricing import NO_APPROVED_RULES
 from bunking.financial_aid.rules.schema import AidRules
 
@@ -47,6 +48,7 @@ CASEWORK_LINES: Final[tuple[TodayKey, ...]] = (
     "session_not_settled",
     "duplicates",
     "cancel_reason",
+    "to_place",
     "grants",
     "late_full_coverage",
 )
@@ -72,6 +74,7 @@ class TodayInputs:
     unclassified: Sequence[UnclassifiedSource]
     today: date
     never_true: Sequence[str] = ()  # weighted yes/no fields no applicant answered yes (finance only)
+    to_place: OpenToPlace | None = None  # casework: Money › To place's open lines; None: not read
 
 
 def _families(rows: Iterable[GridRowOut]) -> int:
@@ -185,6 +188,21 @@ def _late_full_coverage(inputs: TodayInputs) -> list[GridRowOut]:
     return [late[rid] for rid in sorted(late)]
 
 
+def _to_place_line(found: OpenToPlace | None) -> TodayLineOut:
+    """§6.4's To place: Money › To place's open lines, exactly its open_count and open_total, and the households
+    CampMinder posted them to. Lines left at family level or awaiting a reclassification are not counted (SP11).
+    Before the first ticked season the line is empty and says why (`skipped`, SP11 Decision 12)."""
+    found = found or NO_OPEN_LINES
+    return TodayLineOut(
+        key="to_place",
+        families=found.households,
+        items=found.lines,
+        item_kind="lines",
+        amount=money(found.total),
+        skipped=found.skipped,
+    )
+
+
 def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
     rows = inputs.rows
     needs_offer = _in(rows, "needs_offer")
@@ -239,6 +257,7 @@ def _casework(inputs: TodayInputs) -> list[TodayLineOut]:
             ),
         ),
         "late_full_coverage": _line("late_full_coverage", _late_full_coverage(inputs), listed=True),
+        "to_place": _to_place_line(inputs.to_place),
     }
     return [lines[key] for key in CASEWORK_LINES]
 
@@ -350,6 +369,7 @@ class TodayService:
         grants: GrantsReads,
         ledger: LedgerReads,
         intake: IntakeWarningReads | None = None,
+        to_place: ToPlaceCounts | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
@@ -358,6 +378,7 @@ class TodayService:
         self._grants = grants
         self._ledger = ledger
         self._intake = intake
+        self._to_place = to_place
         self._clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
 
     async def read(self, year: int, *, casework: bool, finance: bool) -> TodayResponse:
@@ -375,6 +396,7 @@ class TodayService:
             _never_true(self._intake, year) if finance and self._intake is not None else _no_fields(),
         )
         rows = [decisions.row_of(season, ({}, {}), request_id) for request_id in season.priced]
+        open_lines = await open_to_place(season, self._to_place) if casework and self._to_place is not None else None
         inputs = TodayInputs(
             year=year,
             rows=rows,
@@ -385,6 +407,7 @@ class TodayService:
             unclassified=unclassified,
             today=self._clock().astimezone(CAMP_TZ).date(),
             never_true=never_true,
+            to_place=open_lines,
         )
         return build_today(inputs, casework=casework, finance=finance)
 

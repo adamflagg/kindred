@@ -67,6 +67,7 @@ TodayKey = Literal[
     "session_not_settled",
     "duplicates",
     "cancel_reason",
+    "to_place",
     "grants",
     "late_full_coverage",
     # finance (financial_aid.rules)
@@ -77,7 +78,7 @@ TodayKey = Literal[
     "intake",
     "equity_field_never_true",
 ]
-TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields"]
+TodayItemKind = Literal["requests", "grants", "sections", "descriptions", "fields", "lines"]
 
 
 class TodayReasonOut(BaseModel):
@@ -106,6 +107,7 @@ class TodayLineOut(BaseModel):
     over_14_days: int | None = None  # waiting_on_family: requests waiting more than 14 days
     largest_gap: float | None = None  # not_reconciled: the largest short or over, in dollars (positive)
     request_ids: list[str] = Field(default_factory=list)  # what Open › shows, for a line that is no view
+    skipped: str = ""  # to_place: why To place has nothing this season (before 2027, SP11 Decision 12); else ""
 
 
 class TodayResponse(BaseModel):

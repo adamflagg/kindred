@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Final, Protocol
@@ -147,6 +148,85 @@ def pending_reclass(override: OverrideRow | None, detail: LineDetail | None) -> 
     if detail is not None and detail.description_key == override.source_key_override:
         return ""
     return override.source_key_override
+
+
+@dataclass(frozen=True)
+class SortedLines:
+    """To place's items as its read lists them: the open lines by reason (every reason, in §8.1's order), the lines
+    left at family level (D58), and the lines whose reclassification waits for tonight's sync (D104), each with the
+    source it names. Only the open lines are counted (open_count, open_total, and Today's line)."""
+
+    groups: dict[Reason, list[ToPlaceItem]]
+    left: list[ToPlaceItem]
+    reclassified: list[tuple[ToPlaceItem, str]]
+
+    @property
+    def open(self) -> list[ToPlaceItem]:
+        return [item for found in self.groups.values() for item in found]
+
+
+def sort_lines(
+    items: Sequence[ToPlaceItem],
+    overrides: Mapping[int, OverrideRow],
+    details: Mapping[int, LineDetail],
+    left: Mapping[int, LeftLine],
+) -> SortedLines:
+    """Each item to its list: a pending reclassification first, then a line left at family level, else open."""
+    groups: dict[Reason, list[ToPlaceItem]] = {reason: [] for reason in REASONS}
+    left_items: list[ToPlaceItem] = []
+    reclassified: list[tuple[ToPlaceItem, str]] = []
+    for item in items:
+        txn = item.line.transaction_cm_id
+        pending = pending_reclass(overrides.get(txn), details.get(txn))
+        if pending:
+            reclassified.append((item, pending))
+        elif txn in left:
+            left_items.append(item)
+        else:
+            groups[item.reason].append(item)
+    return SortedLines(groups=groups, left=left_items, reclassified=reclassified)
+
+
+@dataclass(frozen=True)
+class OpenToPlace:
+    """Today's To place line (§6.4, §8.1): the open lines Money › To place counts (open_count, open_total), and the
+    households CampMinder posted them to. `skipped` is To place's reason for an empty season (SP11 Decision 12)."""
+
+    lines: int
+    households: int
+    total: Decimal
+    skipped: str = ""
+
+
+NO_OPEN_LINES: Final = OpenToPlace(lines=0, households=0, total=ZERO)
+
+
+class ToPlaceCounts(Protocol):
+    """The three reads To place's open lines need beyond the priced season (the repository's own)."""
+
+    async def fetch_line_details(self, year: int) -> dict[int, LineDetail]: ...
+    async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]: ...
+    async def fetch_left_lines(self, year: int) -> dict[int, LeftLine]: ...
+
+
+async def open_to_place(season: Season, store: ToPlaceCounts) -> OpenToPlace:
+    """The season's open To place lines, counted exactly as ToPlaceService.read counts open_count and open_total
+    (the same to_place and sort_lines), over a season the caller already priced: Today prices once (D21). Nothing
+    before FIRST_TICKED_SEASON (SP10b Decision 9)."""
+    if skipped := _gate(season.year):
+        return OpenToPlace(lines=0, households=0, total=ZERO, skipped=skipped)
+    details, overrides, left = await asyncio.gather(
+        store.fetch_line_details(season.year),
+        store.fetch_override_rows(season.year),
+        store.fetch_left_lines(season.year),
+    )
+    items = to_place(season, details)
+    found = sort_lines(items, overrides, details, left).open
+    return OpenToPlace(
+        lines=len(found),
+        households=len({item.line.household_cm_id for item in found}),
+        total=sum((item.unplaced for item in found), ZERO),
+    )
 
 
 def _left_to_tick(
@@ -360,18 +440,8 @@ class ToPlaceService:
                 reclassified_to=described(pending) if pending else "",
             )
 
-        groups: dict[Reason, list[ToPlaceItem]] = {reason: [] for reason in REASONS}
-        left_items: list[ToPlaceItem] = []
-        reclassified: list[tuple[ToPlaceItem, str]] = []
-        for item in items:
-            txn = item.line.transaction_cm_id
-            pending = pending_reclass(overrides.get(txn), details.get(txn))
-            if pending:
-                reclassified.append((item, pending))
-            elif txn in left:
-                left_items.append(item)
-            else:
-                groups[item.reason].append(item)
+        sorted_lines = sort_lines(items, overrides, details, left)
+        groups, left_items, reclassified = sorted_lines.groups, sorted_lines.left, sorted_lines.reclassified
 
         def total(found: Sequence[ToPlaceItem]) -> float:
             return money(sum((i.unplaced for i in found), ZERO))

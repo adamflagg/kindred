@@ -1610,13 +1610,15 @@ def _holds(user: AuthUser, permission: str) -> bool:
 @router.get("/today/{year}", response_model=TodayResponse)
 async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
     """Today (§6.4): one dense line per waiting queue; its sections follow the user's permissions."""
+    store = FinancialAidDecisionsRepository(pb)
     service = TodayService(
-        store=FinancialAidDecisionsRepository(pb),
+        store=store,
         pricing=_rules(),
         rules=_rules(),
         grants=GrantsService(GrantsRepository(pb)),
         ledger=_ledger(),
         intake=FinancialAidIntakeRepository(pb),
+        to_place=store,  # To place's own reads (SP11): Today counts its open lines as Money › To place does
     )
     return await service.read(
         year,
