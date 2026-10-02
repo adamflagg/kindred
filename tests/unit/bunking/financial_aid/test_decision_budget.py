@@ -5,8 +5,16 @@ The fixture's budget: 500,000; Camp 80% (reserves: Round 2 10%, Round 3 5%), Wee
 from dataclasses import replace
 from decimal import Decimal
 
-from bunking.financial_aid.decisions import PricedRequest, RoundStatus, RoundView
-from bunking.financial_aid.decisions.budget import NO_POOL, Count, PoolBudget, SeasonBudget, allocations, season_budget
+from bunking.financial_aid.decisions import PricedRequest, RoundLedger, RoundStatus, RoundView
+from bunking.financial_aid.decisions.budget import (
+    NO_POOL,
+    Cell,
+    Count,
+    PoolBudget,
+    SeasonBudget,
+    allocations,
+    season_budget,
+)
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, with_lever, with_levers
 
 ZERO = Decimal(0)
@@ -329,3 +337,68 @@ def test_a_request_left_out_of_demand_adds_no_round_2_ask_and_keeps_its_money() 
     assert (left.total.demand.round2_asks, left.total.demand.round2_asked) == (Count(0, 0), ZERO)
     assert left.total.total.posted == kept.total.total.posted == Decimal(1500)
     assert left.total.total.needs_offer == kept.total.total.needs_offer == Decimal(400)
+
+
+def _cell(budget: SeasonBudget, pool: str, n: int) -> Cell:
+    holder = budget.total if pool == "*" else pool_of(budget, pool)
+    return holder.rounds[n]
+
+
+def test_unconfirmed_posted_sits_in_each_rounds_locked_pool_and_in_the_totals() -> None:
+    """⚠10: per pool × round, using each round's locked pool."""
+    emma = priced(
+        "e",
+        1000001,
+        view(1, "posted", locked="1500", pool="camp_pool"),
+        view(2, "posted", locked="500", pool="weekend_pool"),
+    )
+    ledger = {"e": {1: RoundLedger(ZERO, False), 2: RoundLedger(Decimal(500), True)}}
+    budget = season_budget([emma], RULES, outside_grants={}, ledger=ledger)
+    assert (_cell(budget, "camp_pool", 1).unconfirmed, _cell(budget, "camp_pool", 1).unconfirmed_count) == (
+        ZERO,
+        Count(0, 0),
+    )
+    assert (_cell(budget, "weekend_pool", 2).unconfirmed, _cell(budget, "weekend_pool", 2).unconfirmed_count) == (
+        Decimal(500),
+        Count(1, 1),
+    )
+    assert (budget.total.rounds[2].unconfirmed, budget.total.total.unconfirmed) == (Decimal(500), Decimal(500))
+    assert budget.total.total.unconfirmed_count == Count(1, 1)
+    assert (budget.strip[2].awaiting_sync, budget.strip[2].not_reconciled) == (Count(1, 1), Count(0, 0))
+
+
+def test_the_strips_two_counts_split_each_rounds_unconfirmed_count() -> None:
+    """Decision 3: awaiting sync + not reconciled = the round's amber count, request for request."""
+    rows = [
+        priced("a", 1000001, view(1, "posted", locked="1500")),
+        priced("b", 1000002, view(1, "posted", locked="1500")),
+        priced("c", 1000003, view(1, "posted", locked="1500")),
+    ]
+    ledger = {
+        "a": {1: RoundLedger(Decimal(1500), True)},
+        "b": {1: RoundLedger(Decimal(210), False)},
+        "c": {1: RoundLedger(ZERO, True)},  # ticked after the sync, but CampMinder already holds it: confirmed
+    }
+    budget = season_budget(rows, RULES, outside_grants={}, ledger=ledger)
+    awaiting, unreconciled = budget.strip[1].awaiting_sync, budget.strip[1].not_reconciled
+    amber = budget.total.rounds[1].unconfirmed_count
+    assert (awaiting, unreconciled) == (Count(1, 1), Count(1, 1))
+    assert awaiting is not None
+    assert unreconciled is not None
+    assert amber is not None
+    assert awaiting.requests + unreconciled.requests == amber.requests
+    assert budget.total.rounds[1].unconfirmed == Decimal(1710)
+
+
+def test_a_round_outside_the_budget_or_clawed_back_has_no_unconfirmed_part() -> None:
+    outside = priced("o", 1000001, view(1, "posted", locked="900", counts=False))
+    clawed = priced("c", 1000002, replace(view(1, "posted", locked="1500"), clawed_back=True))
+    ledger = {"o": {1: RoundLedger(Decimal(900), False)}, "c": {1: RoundLedger(Decimal(1500), False)}}
+    budget = season_budget([outside, clawed], RULES, outside_grants={}, ledger=ledger)
+    assert (budget.total.total.unconfirmed, budget.strip[1].not_reconciled) == (ZERO, Count(0, 0))
+
+
+def test_with_no_ledger_read_the_figures_are_not_computed() -> None:
+    budget = season_budget([priced("e", 1000001, view(1, "posted", locked="1500"))], RULES, outside_grants={})
+    assert (budget.total.rounds[1].unconfirmed, budget.total.total.unconfirmed_count) == (None, None)
+    assert (budget.strip[1].awaiting_sync, budget.strip[1].not_reconciled) == (None, None)

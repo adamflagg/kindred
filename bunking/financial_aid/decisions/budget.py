@@ -73,6 +73,9 @@ class Cell:
     accepted: Decimal
     needs_offer: Decimal
     pending_approval: Decimal
+    # Owner ruling ⚠10: the part of Posted CampMinder hasn't confirmed. None: the read loaded no ledger.
+    unconfirmed: Decimal | None = None
+    unconfirmed_count: Count | None = None
 
     @property
     def remaining(self) -> Decimal | None:
@@ -89,6 +92,9 @@ class RoundCounts:
     accepted: Count
     held: Count
     pending_approval: Count
+    # Decision 3: the amber count split by why (None: no ledger read).
+    awaiting_sync: Count | None = None
+    not_reconciled: Count | None = None
 
 
 @dataclass(frozen=True)
@@ -171,7 +177,13 @@ def _home_pool(request: PricedRequest) -> str:
     return request.pool or next((view.pool for view in request.rounds if view.pool), None) or NO_POOL
 
 
-def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: RoundView) -> None:
+def _tally_round(
+    tallies: _Tallies,
+    pool: str,
+    request: PricedRequest,
+    view: RoundView,
+    ledger: Mapping[int, RoundLedger] | None = None,
+) -> None:
     def add(measure: str, amount: Decimal) -> None:
         tallies[(pool, view.round, measure)].add(request, amount)
 
@@ -187,6 +199,10 @@ def _tally_round(tallies: _Tallies, pool: str, request: PricedRequest, view: Rou
             add("posted", locked)
             if view.accepted:
                 add("accepted", locked)
+            part = ledger.get(view.round) if ledger is not None else None
+            if part is not None and part.unconfirmed > 0:  # ⚠10: in the round's locked pool, as Posted
+                add("unconfirmed", part.unconfirmed)
+                add("awaiting_sync" if part.awaiting else "not_reconciled", ZERO)  # Decision 3
         if outside:
             add("outside_budget", outside)
             add("outside_budget_posted", outside)
@@ -255,6 +271,7 @@ def _pool_budget(
     asks2: _Tally,
     computed2: Decimal,
     unmet1: Decimal,
+    confirmed: bool,
 ) -> PoolBudget:
     def amount(n: int, measure: str) -> Decimal:
         return _tally_of(tallies, pool, n, measure).amount
@@ -266,6 +283,8 @@ def _pool_budget(
             accepted=amount(n, "accepted"),
             needs_offer=amount(n, "needs_offer"),
             pending_approval=amount(n, "pending_approval"),
+            unconfirmed=amount(n, "unconfirmed") if confirmed else None,
+            unconfirmed_count=_tally_of(tallies, pool, n, "unconfirmed").count() if confirmed else None,
         )
         for n in ROUNDS
     }
@@ -276,6 +295,10 @@ def _pool_budget(
         accepted=sum((c.accepted for c in cells), ZERO),
         needs_offer=sum((c.needs_offer for c in cells), ZERO),
         pending_approval=sum((c.pending_approval for c in cells), ZERO),
+        unconfirmed=sum((amount(n, "unconfirmed") for n in ROUNDS), ZERO) if confirmed else None,
+        unconfirmed_count=(
+            _merged(_tally_of(tallies, pool, n, "unconfirmed") for n in ROUNDS).count() if confirmed else None
+        ),
     )
     held = _merged(_tally_of(tallies, pool, n, "held") for n in ROUNDS)
     return PoolBudget(
@@ -303,11 +326,13 @@ def season_budget(
     outside_grants: Mapping[str, Decimal],
     outside_grants_off_requests: Decimal = ZERO,
     not_demand: Collection[str] = frozenset(),
+    ledger: Mapping[str, Mapping[int, RoundLedger]] | None = None,
 ) -> SeasonBudget:
     """`outside_grants` is each request's counted outside grants (the grants register's shares,
     summed, a pays-after-camp-aid grant included, D143); `outside_grants_off_requests` the counted
     outside grants on no request (Decision 14). `not_demand` are requests forward demand leaves out although
-    they are live (owner ruling 2026-10-02: CampMinder cancelled them; `live` itself is not changed)."""
+    they are live (owner ruling 2026-10-02: CampMinder cancelled them; `live` itself is not changed). `ledger` is each
+    request's posted rounds against CampMinder's live net (`round_ledger`); None: no ledger read."""
     allocated = allocations(rules) if rules is not None else {}
     labels = {key: pool.label for key, pool in rules.budget.pools.items()} if rules is not None else {}
     tallies: _Tallies = defaultdict(_Tally)
@@ -318,9 +343,10 @@ def season_budget(
     unrebuilt: set[str] = set()
     for request in priced:
         home = _home_pool(request)
+        mine = ledger.get(request.request_id, {}) if ledger is not None else None
         for view in request.rounds:
             for pool in (view.pool or NO_POOL, TOTAL):
-                _tally_round(tallies, pool, request, view)
+                _tally_round(tallies, pool, request, view, mine)
             if view.status == "not_rebuilt":  # a past read's: its status is unknown, but it sits in its pool (3c)
                 unrebuilt.add(view.pool or NO_POOL)
         for pool in (home, TOTAL):
@@ -341,6 +367,7 @@ def season_budget(
             asks2=asks2[pool],
             computed2=computed2[pool],
             unmet1=unmet1[pool],
+            confirmed=ledger is not None,
         )
 
     pools = tuple(
@@ -353,7 +380,12 @@ def season_budget(
         else None
     )
     strip = {
-        n: RoundCounts(**{measure: _tally_of(tallies, TOTAL, n, measure).count() for measure in _STRIP}) for n in ROUNDS
+        n: RoundCounts(
+            **{measure: _tally_of(tallies, TOTAL, n, measure).count() for measure in _STRIP},
+            awaiting_sync=_tally_of(tallies, TOTAL, n, "awaiting_sync").count() if ledger is not None else None,
+            not_reconciled=_tally_of(tallies, TOTAL, n, "not_reconciled").count() if ledger is not None else None,
+        )
+        for n in ROUNDS
     }
     return SeasonBudget(
         pools=pools,
