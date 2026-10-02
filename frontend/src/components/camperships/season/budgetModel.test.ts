@@ -391,6 +391,35 @@ describe('a budget link opens exactly the rows its figure counts (end to end; fi
     expect(opened(strip?.href ?? null, NEEDS_ROWS)).toEqual(['reqround1a0001', 'reqround1b0001'])
   })
 
+  it("a round's amber line opens that round's posted, counted, not-reconciled rows (Task 7 I1)", () => {
+    const unreconciled = (id: string, over: Partial<ApiAidGridRow>) =>
+      gridRow({ request_id: id, queues: ['not_reconciled'], ...over })
+    const rowsOut = [
+      // Posted and counted in Round 1, Pool A: listed on Pool A and on its Round 1 line.
+      unreconciled('reqr1posted0001', { rounds: [roundOut(1, 'posted', { posted: 900 })] }),
+      // Posted in Round 1 outside the budget: the figure never counts it.
+      unreconciled('reqr1outside001', {
+        rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
+      }),
+      // Round 1 posted, Round 2 only needs an offer: not Round 2's unconfirmed.
+      unreconciled('reqr2needs00001', {
+        rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+      }),
+      // Pool B, Round 1 posted and counted.
+      unreconciled('reqpoolb0000001', {
+        pool: 'pool_b',
+        rounds: [roundOut(1, 'posted', { posted: 900 })],
+      }),
+    ]
+    const rows = budgetRows(BUDGET, EVERY)
+    const on = (key: string) => opened(confirmedHref(row(rows, key), LIVE), rowsOut)
+    expect(on('pool_a:1')).toEqual(['reqr1posted0001', 'reqr2needs00001'])
+    expect(on('pool_a:2')).toEqual([])
+    expect(on('pool_a:all')).toEqual(['reqr1posted0001', 'reqr2needs00001'])
+    expect(on('total')).toEqual(['reqr1posted0001', 'reqr2needs00001', 'reqpoolb0000001'])
+    expect(on('pool_a:1')).not.toContain('reqr1outside001')
+  })
+
   it("a round's Pending approval opens that round's counted rows (fix-wave addition)", () => {
     const pendingRows = [
       queued('reqpend3a00001', 'pending_approval', {
@@ -713,13 +742,13 @@ describe('the confirmed share under Posted (D153; owner ruling 2026-10-02)', () 
 
   it("opens Not reconciled on the row's pool, and on none for the total", () => {
     expect(confirmedHref(row(rows, 'pool_a:1'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&pool=pool_a&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&round=1&tick=posted&counted=1&year=2027'
     )
     expect(confirmedHref(row(rows, 'pool_a:all'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&pool=pool_a&year=2027'
+      '/aid/requests?view=not-reconciled&pool=pool_a&tick=posted&counted=1&year=2027'
     )
     expect(confirmedHref(row(rows, 'total'), LIVE)).toBe(
-      '/aid/requests?view=not-reconciled&year=2027'
+      '/aid/requests?view=not-reconciled&tick=posted&counted=1&year=2027'
     )
   })
 

@@ -44,7 +44,7 @@ interface BudgetTableProps {
   readonly numberOf: (key: string) => number | null
 }
 
-function Note({ n }: { n: number | null }) {
+export function Note({ n }: { n: number | null }) {
   return n === null ? null : <DefRef n={n} />
 }
 
