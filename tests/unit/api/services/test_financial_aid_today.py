@@ -24,7 +24,7 @@ from api.schemas.financial_aid_grants import (
 )
 from api.schemas.financial_aid_intake import IssueOut
 from api.services.financial_aid_grants_register import RegisterRow
-from api.services.financial_aid_intake_service import never_true_fields
+from api.services.financial_aid_intake_service import never_true_fields, never_true_labels
 from api.services.financial_aid_queues import row_queues
 from api.services.financial_aid_rules_service import RulesNotFoundError, RulesVersion
 from api.services.financial_aid_today import CASEWORK_LINES, FINANCE_LINES, TodayInputs, TodayService, build_today
@@ -578,3 +578,100 @@ async def test_today_reads_the_intake_warning_for_finance_only() -> None:
     expected = never_true_fields(_weighted_rules(), [fa_row(1000011)])
     assert expected == ("gov_subsidies",)  # weighted, and nobody here answered yes
     assert sorted(r.code for r in _line(out.finance, "equity_field_never_true").reasons) == sorted(expected)
+
+
+def _labelled_rules(*extra: dict[str, Any], weights: dict[str, str]) -> Any:
+    """The fixture rules with `extra` household criteria appended (after the fixture's own) and `weights` on camp."""
+    rules = intake_rules()
+    criteria = [c.model_dump(mode="json") for c in rules.equity.criteria]
+    for key, field, label, also in (("hardship_a", "single_parent", "Single parent", ["unemployment"]),):
+        criteria.append(
+            {
+                "key": key,
+                "label": label,
+                "source": "household",
+                "field": field,
+                "also_fields": also,
+                "match": "equals_any",
+                "values": ["yes"],
+            }
+        )
+    criteria.extend(extra)
+    return with_levers(rules, {"equity.criteria": criteria, "equity.weights.camp": {"bipoc": "0.5", **weights}})
+
+
+def test_never_true_labels_pair_each_field_with_its_weighting_criterion() -> None:
+    rules = _labelled_rules(weights={"gov_subsidies": "1"})
+    assert never_true_labels(rules, [fa_row(1000011)]) == {"gov_subsidies": "Government subsidies"}
+
+
+def test_a_field_reached_only_through_also_fields_gets_that_criterions_label() -> None:
+    rules = _labelled_rules(weights={"hardship_a": "1"})
+    labels = never_true_labels(rules, [fa_row(1000011)])
+    assert labels["single_parent"] == "Single parent"
+    assert labels["unemployment"] == "Single parent"  # unemployment is only an also_field of hardship_a here
+
+
+def test_when_two_criteria_weight_a_field_the_first_in_rules_order_names_it() -> None:
+    rules = _labelled_rules(weights={"hardship_a": "1", "unemployment": "1"})
+    assert never_true_labels(rules, [fa_row(1000011)])["unemployment"] == "Unemployment"
+
+
+def test_the_never_true_line_reasons_carry_labels_and_an_unmatched_field_gets_none() -> None:
+    inputs = _inputs(
+        [], never_true=("gov_subsidies", "orphan"), never_true_labels={"gov_subsidies": "Government subsidies"}
+    )
+    reasons = {
+        r.code: r.label
+        for r in _line(build_today(inputs, casework=False, finance=True).finance, "equity_field_never_true").reasons
+    }
+    assert reasons == {"gov_subsidies": "Government subsidies", "orphan": None}
+
+
+def test_other_lines_reasons_have_no_label() -> None:
+    rows = [
+        _row("reqemma00000001", 1000001, _round(1, "needs_offer", decided=1500.0)),
+        _row("reqliam00000001", 1000002, _round(1, "held"), holds=[_hold("payer_shares_incomplete")]),
+    ]
+    out = build_today(_inputs(rows), casework=True, finance=True)
+    reasons = [r for line in [*(out.casework or []), *(out.finance or [])] for r in line.reasons]
+    assert {r.code for r in reasons} >= {"r1", "payer_shares_incomplete"}  # not vacuous: real reasons exist
+    assert all(r.label is None for r in reasons)
+
+
+def test_labels_walk_only_the_weighted_household_criteria_never_true_reads() -> None:
+    camper = {
+        "key": "camper_subsidy",
+        "label": "Camper subsidy",
+        "source": "camper",
+        "field": "gov_subsidies",
+        "match": "equals_any",
+        "values": ["yes"],
+    }
+    dependents = {
+        "key": "many_dependents",
+        "label": "Many dependents",
+        "source": "household",
+        "field": "dependents",
+        "also_fields": ["single_parent"],
+        "match": "at_least",
+        "min_value": "4",
+    }
+    rules = _labelled_rules(camper, dependents, weights={"camper_subsidy": "1", "many_dependents": "1"})
+    assert never_true_labels(rules, [fa_row(1000011)]) == {}  # a camper or dependents criterion names no field
+
+
+@pytest.mark.asyncio
+async def test_the_service_reads_labels_through_to_the_never_true_line() -> None:
+    service = TodayService(
+        store=FakeDecisionsStore(),
+        pricing=FakeRules(approved()),
+        rules=_Drafts(None),
+        grants=_Grants(_grants(year=YEAR)),
+        ledger=_Ledger(),
+        intake=_Intake(),
+        clock=lambda: T0,
+    )
+    out = await service.read(YEAR, casework=False, finance=True)
+    reasons = _line(out.finance, "equity_field_never_true").reasons
+    assert [(r.code, r.label) for r in reasons] == [("gov_subsidies", "Government subsidies")]

@@ -17213,7 +17213,8 @@ export type TodayLineOut = {
  * TodayReasonOut
  *
  * One reason inside a line ("income conflict 3 · payer shares 1"): a hold code, a round (r1, r2, r3),
- * a confirmation state, a grant's reason, a rules section or a description's state.
+ * a confirmation state, a grant's reason, a rules section or a description's state. `label` is the equity
+ * criterion's name on an equity_field_never_true reason (the code is a yes/no field); None on every other reason.
  */
 export type TodayReasonOut = {
   /**
@@ -17228,6 +17229,10 @@ export type TodayReasonOut = {
    * Items
    */
   items: number
+  /**
+   * Label
+   */
+  label?: string | null
 }
 
 /**
