@@ -325,10 +325,17 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
     for request in season.requests:
         pools[request.pool].append(request)
     out: list[ApplicationsRow] = []
-    for pool, members in [
-        *sorted(((p, m) for p, m in pools.items() if p is not None), key=lambda pm: pm[0] or ""),
-        (None, list(season.requests)),
-    ]:
+    # (pool, members, kind): the named pools, a no-pool row where a request has none (the budget table's way, so the
+    # rows sum to the headline), then the headline.
+    groups: list[tuple[str | None, list[ReportRequest], RowKind]] = [
+        *(
+            (p, m, "pool")
+            for p, m in sorted(((p, m) for p, m in pools.items() if p is not None), key=lambda pm: pm[0] or "")
+        ),
+        *([(None, pools[None], "no_pool")] if None in pools else []),
+        (None, list(season.requests), "headline"),
+    ]
+    for pool, members, kind in groups:
         cut = season.cutoff_instant
         before = [r for r in members if cut is not None and r.received_at is not None and r.received_at < cut]
         after = [r for r in members if cut is not None and r.received_at is not None and r.received_at >= cut]
@@ -345,7 +352,7 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
                 change_apps=None,
                 change_asked=None,
                 unknown_received=sum(1 for r in members if r.received_at is None),
-                kind="headline" if pool is None else "pool",
+                kind=kind,
             )
         )
     return out
@@ -616,15 +623,15 @@ def native_round1_pct(season: NativeSeason) -> list[Round1PctRow]:
             pools[request.pool].append(request)
     every = [r for r in season.requests if r.live]
 
-    def row(pool: str | None, members: Sequence[ReportRequest]) -> Round1PctRow:
+    def row(pool: str | None, members: Sequence[ReportRequest], kind: RowKind) -> Round1PctRow:
         awarded = sum((r.awarded((1,)) for r in members), ZERO)
         asked = sum((a for r in members if (a := r.asked((1,))) is not None), ZERO)
-        return Round1PctRow(
-            season.year, "P", pool, awarded, asked, pct(awarded, asked), "headline" if pool is None else "pool"
-        )
+        return Round1PctRow(season.year, "P", pool, awarded, asked, pct(awarded, asked), kind)
 
     named = sorted(p for p in pools if p is not None)
-    return [*(row(p, pools[p]) for p in named), row(None, every)]
+    # A no-pool row where a live request has none, so the pool rows sum to the headline (as the budget table does).
+    no_pool = [row(None, pools[None], "no_pool")] if None in pools else []
+    return [*(row(p, pools[p], "pool") for p in named), *no_pool, row(None, every, "headline")]
 
 
 def typed_round1_pct(year: int, typed: _Typed) -> list[Round1PctRow]:

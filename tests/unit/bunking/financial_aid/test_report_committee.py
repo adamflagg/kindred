@@ -197,3 +197,28 @@ def test_round_1_percent_of_ask_is_live_awards_over_live_asks() -> None:
 def test_rows_run_by_season_typed_before_priced() -> None:
     tables = committee_tables([SEASON], [_typed("awarded", "460000"), _typed("awarded", "400000", year=2025)])
     assert [(r.year, r.basis) for r in tables.phases] == [(2025, "r"), (2026, "r"), (2027, "P")]
+
+
+def test_a_request_with_no_pool_gets_a_no_pool_row_so_the_pool_rows_sum_to_the_headline() -> None:
+    """RPT-2 / RPT-13: the budget table already names a no-pool row; applications and Round 1 % must too."""
+    season = _season(
+        req("reqemma00000001", rnd(1, ask="4000", posted="1500"), received_at=EARLY),
+        req(
+            "reqliam00000001",
+            rnd(1, ask="2000", posted="1000", pool=None),
+            household=1000002,
+            pool=None,
+            received_at=EARLY,
+        ),
+    )
+    tables = committee_tables([season], [])
+    apps = [r for r in tables.applications if r.basis == "P"]
+    parts = [r for r in apps if r.kind in ("pool", "no_pool")]
+    headline = next(r for r in apps if r.kind == "headline")
+    assert [r.kind for r in parts] == ["pool", "no_pool"]
+    assert sum(r.season_end.apps or 0 for r in parts if r.season_end) == headline.season_end.apps == 2  # type: ignore[union-attr]
+    pct_rows = [r for r in tables.round1_pct if r.basis == "P"]
+    nopool = next(r for r in pct_rows if r.kind == "no_pool")
+    assert (nopool.pool, nopool.awarded, nopool.asked) == (None, Decimal(1000), Decimal(2000))
+    headline_pct = next(r for r in pct_rows if r.kind == "headline")
+    assert sum(r.awarded for r in pct_rows if r.kind in ("pool", "no_pool")) == headline_pct.awarded
