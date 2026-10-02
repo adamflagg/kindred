@@ -426,7 +426,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Appeals: an ask in Round 2 or any later round, for a camper who attended, counted once per request. "
             "Approved = a posted award above $0 in those rounds, in full or in part. Declined due to insufficient aid "
-            "= requests cancelled with that reason, the one count that includes campers who didn't attend."
+            "= requests cancelled with that reason. Since D158 every cancel-reason line includes campers who didn't attend."
         ),
         spec="§5.11",
         rulings=("D101", "D141"),

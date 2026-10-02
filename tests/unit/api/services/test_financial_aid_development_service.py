@@ -16,6 +16,7 @@ from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent
 from api.services.financial_aid_development_repository import PersonRecord, SourceRecord
 from api.services.financial_aid_development_service import (
     AVERAGE_AWARD_DEFINITION,
+    FIRST_TIME_FAMILY,
     FIRST_TIME_SUMMER,
     FinancialAidDevelopmentService,
     grouping,
@@ -403,7 +404,7 @@ async def test_a_column_with_no_p_column_counts_its_ages_by_age_from_the_ledger(
 
 
 async def test_a_season_with_no_ledger_lines_leaves_its_ages_blank_and_names_why() -> None:
-    """OWNER ITEM 51 NOT RULED: 2022-2024 wait on the 2017-2024 backfill; the cells are blank and the wait is named
+    """RULED (owner 2026-10-02), item 51: 2022-2024 wait on the 2017-2024 backfill; the cells are blank and the wait is named
     once."""
     history = FakeReportsStore()
     history.seed(
@@ -415,3 +416,25 @@ async def test_a_season_with_no_ledger_lines_leaves_its_ages_blank_and_names_why
     assert _row(out, "teens", "camp_pool").values[0] is None
     gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
     assert "2024" in gap.reason
+
+
+async def test_a_family_groups_first_time_label_says_any_earlier_family_or_adult_session_counts() -> None:
+    """The label matches the code: an earlier weekend of either kind (family or adult) makes a household returning,
+    not only an earlier season in the same group's programs."""
+    assert "first weekend program" in FIRST_TIME_FAMILY
+    assert "Family or Adult" in FIRST_TIME_FAMILY
+    assert "first season in this group" not in FIRST_TIME_FAMILY
+    out = await _service(_development()).development(YEAR)
+    assert _row(out, "first_time", "weekend_pool").definition == FIRST_TIME_FAMILY
+
+
+async def test_the_blank_ages_reason_names_the_real_condition_not_only_the_backfill() -> None:
+    """A season whose camp lines are unclassified is blank too, so the reason is "no classified camp-aid lines",
+    the 2017–2024 backfill being one cause."""
+    line = grant_row("reqemma00000001", "300", funder_type="unknown")
+    out = await _service(_stayed_2025(), _backfilled_2025(), past_register=[line]).development(YEAR)
+    gap = next(n for n in out.not_built if n.figure == "ages_before_backfill")
+    assert "no classified camp-aid lines" in gap.reason
+    assert "2025" in gap.reason
+    assert "backfill" in gap.reason
+    assert "no aid lines in Kindred yet" not in gap.reason

@@ -82,7 +82,7 @@ TEEN_PROGRAM_TYPES: Final = frozenset({"scit", "tli"})  # §5.11: "TLI + SCIT st
 NOT_REPORTED_FAMILIES: Final = frozenset({"family_school", "other"})
 FAMILY_TYPES: Final = frozenset({"family", "adult"})
 FIRST_TIME_SUMMER: Final = "No Summer Camp or Quest session at camp in any earlier season from 2017 (the default; D99)"
-FIRST_TIME_FAMILY: Final = "The household's first season in this group's programs since 2017 (the default; D99)"
+FIRST_TIME_FAMILY: Final = "The household's first weekend program: no earlier Family or Adult weekend session at camp since 2017 (the default; D99)"
 AVERAGE_AWARD_DEFINITION: Final = "Total Awards Granted (the camp's aid plus outside grants) ÷ Number of awards (D158)"
 # D158: development sees every cancel reason. "aid not enough" keeps its own line (declined_insufficient).
 _CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
@@ -359,8 +359,8 @@ class FinancialAidDevelopmentService:
         return self._clock().astimezone(CAMP_TZ).date()
 
     async def _native(self, season: Season, sources: Sequence[SourceRecord]) -> tuple[DevelopmentColumn, Grouping]:
-        # OWNER ITEM D29 NOT RULED: Development's money is all money (the camp's awards plus every live outside grant
-        # line) on campers who attended, as the plan builds it.
+        # Development's money is all money (the camp's awards plus every live outside grant line) on campers who
+        # attended (D29, ruled as built: R2b).
         document = season.rules.document if season.rules is not None else None
         records = await self._development.attendances(season.year)
         grouping_ = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
@@ -396,7 +396,7 @@ class FinancialAidDevelopmentService:
     async def _rebuilt_ages(self, year: int) -> dict[str, int] | None:
         """D158: the summer recipients of a season with no P column, by age, rebuilt from that season's ledger. None
         when the season has no live aid line at all (2022-2024 until the 2017-2024 backfill)."""
-        # OWNER ITEM 51 NOT RULED: a season with no ledger lines yet is blank (named once in not_built), never zero.
+        # RULED (owner 2026-10-02), item 51: a season with no ledger lines yet is blank (named once in not_built), never zero.
         camp = [line for line in await self._store.fetch_camp_lines(year) if line.live() and line.amount > 0]
         outside = [
             row
@@ -446,8 +446,9 @@ class FinancialAidDevelopmentService:
                 NotBuiltOut(
                     figure="ages_before_backfill",
                     reason=(
-                        f"Teens, youth and the other age lines for {', '.join(map(str, waiting))} wait on the "
-                        "2017–2024 ledger backfill: those seasons have no aid lines in Kindred yet"
+                        f"Teens, youth and the other age lines for {', '.join(map(str, waiting))} are blank: Kindred "
+                        "has no classified camp-aid lines for those seasons (the 2017–2024 ledger backfill is one "
+                        "cause; postings whose funder isn't classified yet are another)"
                     ),
                 )
             )
@@ -604,8 +605,7 @@ def _sources(
 ) -> list[DevelopmentSourceOut]:
     if column is None:
         return []
-    # OWNER ITEM 52 NOT RULED: one line per source description, not grouped by funder; grouping them as the Funding
-    # sources list does is a later change.
+    # RULED: group by funder, done in Part C (C7); until then one line per source description.
     labels = {g.key: g.label for g in grouping_.groups}
     by_key = {s.description_key: s for s in sources}
     out: list[DevelopmentSourceOut] = []

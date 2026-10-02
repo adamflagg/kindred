@@ -374,7 +374,7 @@ def test_every_cancel_reason_counts_every_cancelled_request_attended_or_not() ->
 
 def test_rebuilt_ages_count_recipients_by_age_on_their_first_summer_session() -> None:
     """D158 (B4c): a recipient is a camper a live line names, or a summer camper of a household a household-level camp
-    line names (OWNER ITEM 50 NOT RULED: every such camper counts); age is on the first day of the first summer
+    line names (RULED (owner 2026-10-02), item 50: every such camper counts); age is on the first day of the first summer
     session (D103)."""
     stays = [
         (EMMA, 1000001, date(2025, 6, 20)),

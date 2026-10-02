@@ -43,3 +43,12 @@ def test_who_counts_is_campers_who_attended_and_got_money() -> None:
 def test_household_level_grants_say_how_much_they_leave_out() -> None:
     """D142: camper cuts show them as household-level, and the report says by how much."""
     assert "household-level" in BY_KEY["household_level"].text
+
+
+def test_appeals_note_says_every_cancel_reason_includes_campers_who_did_not_attend() -> None:
+    """D158 amended D101: "declined for insufficient aid" is no longer the one count that includes campers who
+    didn't attend; every cancel-reason line does."""
+    text = BY_KEY["dev_appeals"].text
+    assert "the one count" not in text
+    assert "every cancel-reason line" in text
+    assert "didn't attend" in text

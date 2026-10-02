@@ -230,7 +230,7 @@ def rebuilt_ages(
     households = set(money_households)
     ages: dict[str, int] = defaultdict(int)
     for person, homes_of in homes.items():
-        # OWNER ITEM 50 NOT RULED: a household-level camp-aid line counts every attended summer camper of that
+        # RULED (owner 2026-10-02), item 50: a household-level camp-aid line counts every attended summer camper of that
         # household (the alternative, only a sole summer camper, undercounts siblings who each had aid).
         if person in named or homes_of & households:
             who = persons.get(person)
@@ -276,8 +276,8 @@ class _Tally:
 
 
 def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
-    # OWNER ITEM D29 NOT RULED: Development's money is one basis, all money (the camp's awards plus every live outside
-    # grant line), and Total Requests counts attended requests only; built as the plan has it until the owner confirms.
+    # Money is RULED as built (R2b): one basis, all money (the camp's awards plus every live outside grant line).
+    # Total Requests counts attended requests only: NOT RULED (Decision 29b / I7).
     groups = {g.key: g for g in inputs.groups}
     attended_people: dict[str, set[int]] = defaultdict(set)
     attended_households: dict[str, set[int]] = defaultdict(set)
@@ -298,8 +298,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
             key = (a.group, a.person_cm_id)
             first_start[key] = min(first_start.get(key, a.start), a.start)
     tallies: dict[str, _Tally] = {key: _Tally() for key in groups}
-    # OWNER ITEM 52 NOT RULED: money by source is one line per source description here; grouping by funder (as the
-    # Funding sources list does) is a later change.
+    # RULED: group by funder, done in Part C (C7); until then money by source is one line per source description.
     by_source: dict[tuple[str, str], tuple[Decimal, int]] = defaultdict(lambda: (ZERO, 0))
     outside_groups = _Tally()  # NOT_REPORTED's money
 
