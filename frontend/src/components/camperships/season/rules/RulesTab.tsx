@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
@@ -12,7 +12,12 @@ import type {
   ApiAidRulesDraft,
   ApiAidRulesSection,
 } from '../../../../types/api-types'
-import { AMBER_NOTE, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from '../../../admin/lodging/lodgingStyles'
+import {
+  AMBER_NOTE,
+  BUTTON_SECONDARY,
+  TAB_PILL_ACTIVE,
+  TAB_PILL_IDLE,
+} from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { aidHref } from '../../kit/asOf'
 import { NEGATIVE_INK } from '../../kit/aidStyles'
@@ -30,6 +35,7 @@ import {
 } from './rulesModel'
 import { CapacityForm } from './CapacityForm'
 import { sectionContent } from './rulesDraft'
+import { RulesSectionEditor } from './RulesSectionEditor'
 import { SectionView } from './SectionView'
 
 const PATH = '/aid/season/rules'
@@ -143,8 +149,19 @@ function ApprovedBody({
   )
 }
 
-function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: ApiAidRulesSection }) {
+function DraftBody({
+  draft,
+  selected,
+  finance,
+  onNotice,
+}: {
+  draft: ApiAidRulesDraft
+  selected: ApiAidRulesSection
+  finance: boolean
+  onNotice: (notice: string | null) => void
+}) {
   const href = useRulesHref()
+  const [mode, setMode] = useState<'read' | 'edit'>('read')
   const items: SectionItem[] = draft.sections.map((s) => ({
     section: s.section,
     status: statusWords(s.status, s.changes.length),
@@ -153,6 +170,7 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
   const chosen = draft.sections.find((s) => s.section === selected)
   const item = items.find((i) => i.section === selected)
   const issues = sectionIssues(draft.report.issues, selected)
+  const editing = mode === 'edit'
   return (
     <div className="space-y-2">
       <p className="text-muted-foreground text-sm">
@@ -167,6 +185,7 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
           items={items}
           selected={selected}
           hrefOf={(section) => href({ section })}
+          locked={editing}
         />
         <section className={`${SEASON_CARD} space-y-2 p-4`} data-testid="rules-section">
           <h2 className="flex flex-wrap items-center gap-2 font-semibold">
@@ -175,30 +194,64 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
             {item && item.status.meta !== '' && (
               <span className="text-muted-foreground text-xs font-normal">{item.status.meta}</span>
             )}
+            {finance && mode === 'read' && (
+              <button
+                type="button"
+                className={`${BUTTON_SECONDARY} ml-auto`}
+                onClick={() => {
+                  onNotice(null)
+                  setMode('edit')
+                }}
+              >
+                Edit…
+              </button>
+            )}
           </h2>
-          {chosen && chosen.changes.length > 0 && (
-            <ul className="text-sm" data-testid="section-changes">
-              {chosen.changes.map((change) => (
-                <li key={change.path.join('.')}>{changeWords(change)}</li>
-              ))}
-            </ul>
+          {editing ? (
+            <RulesSectionEditor
+              key={selected}
+              section={selected}
+              draft={draft}
+              onDone={(saved) => {
+                setMode('read')
+                if (saved !== null) {
+                  onNotice(
+                    saved.branched_from === null || saved.branched_from === undefined
+                      ? `Saved to the rules draft v${String(saved.version)}.`
+                      : `Saved as a new version, v${String(saved.version)}: the approved rules in use stay as they are until it is approved.`
+                  )
+                }
+              }}
+            />
+          ) : (
+            <>
+              {chosen && chosen.changes.length > 0 && (
+                <ul className="text-sm" data-testid="section-changes">
+                  {chosen.changes.map((change) => (
+                    <li key={change.path.join('.')}>{changeWords(change)}</li>
+                  ))}
+                </ul>
+              )}
+              {issues.length > 0 && (
+                <ul className="space-y-0.5" data-testid="section-issues">
+                  {issues.map((issue, index) => (
+                    <li
+                      key={`${issue.code}:${issue.path}:${String(index)}`}
+                      className={
+                        issue.severity === 'error' ? `text-xs ${NEGATIVE_INK}` : AMBER_NOTE
+                      }
+                    >
+                      {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <SectionView
+                content={sectionContent(draft.document, selected)}
+                changes={chosen?.changes ?? []}
+              />
+            </>
           )}
-          {issues.length > 0 && (
-            <ul className="space-y-0.5" data-testid="section-issues">
-              {issues.map((issue, index) => (
-                <li
-                  key={`${issue.code}:${issue.path}:${String(index)}`}
-                  className={issue.severity === 'error' ? `text-xs ${NEGATIVE_INK}` : AMBER_NOTE}
-                >
-                  {issue.message}
-                </li>
-              ))}
-            </ul>
-          )}
-          <SectionView
-            content={sectionContent(draft.document, selected)}
-            changes={chosen?.changes ?? []}
-          />
         </section>
       </div>
     </div>
@@ -235,6 +288,7 @@ export function RulesTab() {
   const approved = useAidApprovedRules(version, { enabled: show === 'approved' })
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
   const draftVersion = draft.data?.version ?? null
+  const [notice, setNotice] = useState<string | null>(null)
 
   return (
     <div className="space-y-3">
@@ -256,6 +310,18 @@ export function RulesTab() {
           </Link>
         </div>
       )}
+      {notice !== null && (
+        <p className="text-sm" data-testid="rules-notice">
+          {notice}{' '}
+          <button
+            type="button"
+            className="text-primary text-xs hover:underline"
+            onClick={() => setNotice(null)}
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       {show === 'draft' ? (
         hasStatus(draft.error, 404) && !draft.data ? (
           <Missing text={`No rules for ${String(year)} yet.`} />
@@ -266,7 +332,9 @@ export function RulesTab() {
             data={draft.data}
             label="the rules draft"
           >
-            {(data) => <DraftBody draft={data} selected={selected} />}
+            {(data) => (
+              <DraftBody draft={data} selected={selected} finance={finance} onNotice={setNotice} />
+            )}
           </QueryGuard>
         )
       ) : hasStatus(approved.error, 404) && !approved.data ? (
