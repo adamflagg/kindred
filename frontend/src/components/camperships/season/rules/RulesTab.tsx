@@ -32,6 +32,7 @@ import {
   type RulesNames,
   type StatusWords,
 } from './rulesModel'
+import { CapacityForm } from './CapacityForm'
 import { sectionContent } from './rulesDraft'
 import { SectionView } from './SectionView'
 
@@ -326,6 +327,7 @@ export function RulesTab() {
           {(data) => <ApprovedBody rules={data} selected={selected} version={version} />}
         </QueryGuard>
       )}
+      {finance && <CapacityForm />}
     </div>
   )
 }
