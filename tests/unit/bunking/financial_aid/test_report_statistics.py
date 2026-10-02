@@ -238,7 +238,9 @@ def test_the_round_2_fee_percent_is_null_when_a_chips_programs_use_two_round_2_t
     assert _tier(statistics(requests, split, table="camp", round_=2).rows, 3).fee_pct is None
 
 
-def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_stays_in_asked() -> None:
+def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_stays_in_asked_and_in_the_with_grants_denominator() -> (
+    None
+):
     """Owner (c) (RULED 2026-10-02): D121's full-cost outside-funder round is never awarded, so its ask is not in
     % of ask's denominator; the plain asked column and the average ask still count it."""
     table = statistics(
@@ -253,7 +255,8 @@ def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_st
     two = _tier(table.rows, 2)
     assert (two.asked, two.asks, two.average_ask) == (Decimal(7000), 2, Decimal("3500.00"))
     assert (two.live_asked, two.pct_of_ask) == (Decimal(4000), Decimal("37.5"))
-    assert two.pct_of_ask_with_grants == Decimal("37.5")
+    # owner, RULED 2026-10-02: the with-grants denominator keeps outside-funded asks (1500 / (4000 + 3000)).
+    assert two.pct_of_ask_with_grants == Decimal("21.4")
 
 
 def test_awarded_is_posted_alone_on_either_basis_so_amount_is_awarded_plus_decided() -> None:
@@ -270,3 +273,66 @@ def test_awarded_is_posted_alone_on_either_basis_so_amount_is_awarded_plus_decid
     assert (posted.awarded, posted.amount) == (Decimal(1500), Decimal(1500))
     assert (both.awarded, both.decided, both.amount) == (Decimal(1500), Decimal(1000), Decimal(2500))
     assert both.amount == both.awarded + both.decided
+
+
+def test_percent_of_ask_with_grants_keeps_the_outside_funded_ask_in_its_denominator() -> None:
+    """Owner (RULED 2026-10-02): "an outside funder counts as grants; grants means anything that isn't internal camp
+    money; put them in the denom." The grants numerator holds the outside funder's money, so its ask stays in the
+    denominator; the camp-money % of ask still drops it."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="1000", posted="500")),
+        req("reqliam00000001", rnd(1, ask="2000", outside_budget=True), household=1000002, grants="2000"),
+    ]
+    table = statistics(requests, RULES, table="camp", round_=1)
+    two = _tier(table.rows, 2)
+    assert (two.pct_of_ask, two.grants, two.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal(2000), Decimal("83.3"))
+    # The totals row follows the same rule.
+    assert (table.total.pct_of_ask, table.total.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal("83.3"))
+
+
+def test_an_outside_funded_rounds_own_money_counts_as_grants_on_percent_of_ask_with_grants() -> None:
+    """Owner A1, carried through (RULED 2026-10-02: "grants means anything that isn't internal camp money"): an
+    outside-budget round's Posted money is an outside funder's, so it joins the grants (column and numerator) even with
+    no Grants-register row; the camp-money % of ask still leaves it out."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="1000", posted="500")),
+        req("reqliam00000001", rnd(1, ask="2000", outside_budget=True, outside_posted="2000"), household=1000002),
+    ]
+    table = statistics(requests, RULES, table="camp", round_=1)
+    two = _tier(table.rows, 2)
+    assert (two.amount, two.pct_of_ask) == (Decimal(500), Decimal("50.0"))
+    assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(2000), Decimal("83.3"))
+    assert (table.total.grants, table.total.pct_of_ask_with_grants) == (Decimal(2000), Decimal("83.3"))
+
+
+def test_an_outside_funded_rounds_decided_money_counts_only_on_the_decided_basis() -> None:
+    """Decided and not yet offered money joins the with-grants numerator on the "posted_and_decided" basis alone, as
+    the camp's decided money does (D130); never on the Posted basis."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="1000", posted="500")),
+        req("reqliam00000001", rnd(1, ask="2000", outside_budget=True, outside_decided="2000"), household=1000002),
+    ]
+    posted = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
+    both = _tier(statistics(requests, RULES, table="camp", round_=1, basis="posted_and_decided").rows, 2)
+    assert (posted.grants, posted.pct_of_ask_with_grants) == (Decimal(0), Decimal("16.7"))
+    assert (both.grants, both.pct_of_ask_with_grants, both.decided) == (Decimal(2000), Decimal("83.3"), Decimal(0))
+
+
+def test_an_outside_funded_rounds_money_leaves_with_a_clawback_or_a_cancellation() -> None:
+    """Like the camp's Posted money (D54, D129): reversed or on a request that isn't live, it counts nowhere."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="1000", posted="500")),
+        req(
+            "reqliam00000001",
+            rnd(1, ask="2000", outside_budget=True, outside_posted="2000", clawed_back=True),
+            household=1000002,
+        ),
+        req(
+            "reqnoah00000001",
+            rnd(1, ask="3000", outside_budget=True, outside_posted="3000"),
+            household=1000003,
+            standing="cancelled",
+        ),
+    ]
+    two = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
+    assert (two.grants, two.pct_of_ask_with_grants) == (Decimal(0), Decimal("16.7"))

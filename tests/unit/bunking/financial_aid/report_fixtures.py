@@ -22,6 +22,8 @@ def rnd(
     tier: int | None = 2,
     pool: str | None = "camp_pool",
     outside_budget: bool = False,
+    outside_posted: str | None = None,
+    outside_decided: str | None = None,
 ) -> RoundFacts:
     return RoundFacts(
         round=n,
@@ -34,6 +36,8 @@ def rnd(
         tier=tier,
         pool=pool,
         outside_budget=outside_budget,
+        outside_posted=Decimal(outside_posted) if outside_posted is not None else None,
+        outside_decided=Decimal(outside_decided) if outside_decided is not None else None,
     )
 
 

@@ -246,7 +246,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Awarded",
         text=(
             "Awarded = offered = Posted: a round counts as awarded once it is posted (ticked or auto-ticked), net of "
-            "any clawback, on a live request (not cancelled). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
+            "any clawback, on a live request (not cancelled, withdrawn or a pending duplicate). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
             "from the request's status: a cancelled request leaves it at once, while Rounds & budget's Posted keeps "
             "its money until the reversal posts."
         ),
@@ -268,8 +268,8 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="% of ask",
         text=(
             "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands "
-            "today, on live requests (not cancelled). It is not the asked or requested total, which sums every "
-            "app's ask, cancelled ones included. A round paid wholly by an outside funder is never awarded, so its "
+            "today, on live requests (not cancelled, withdrawn or a pending duplicate). It is not the asked or requested total, which sums every "
+            "app's ask, cancelled and closed ones included. A round paid wholly by an outside funder is never awarded, so its "
             'ask is left out of the in-budget asks this divides by. With "include not yet offered" on, the awarded $ '
             'is Posted + Decided, and the column reads "% of ask (posted + decided)".'
         ),
@@ -354,9 +354,10 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="pct_of_ask_with_grants",
         term="% of ask incl. grants",
         text=(
-            "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests, ÷ the "
-            "live requests' in-budget asks (the same denominator as % of ask). It is the 2026 sheet's total % of "
-            "ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. With "
+            "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests and the "
+            "money of the rounds an outside funder pays in full, ÷ the "
+            "live requests' asks, including rounds an outside funder pays in full (outside-funded asks stay in its "
+            "denominator, unlike % of ask). It is the 2026 sheet's total % of ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. With "
             '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
             'grants (posted + decided)".'
         ),

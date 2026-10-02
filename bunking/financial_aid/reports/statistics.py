@@ -22,7 +22,12 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
                   ask leaves the denominator too (owner (c), RULED 2026-10-02; `asked` keeps it). On the
                   "posted_and_decided" basis amount is Posted + Decided and the column reads
                   PCT_OF_ASK_DECIDED_LABEL (owner (b), RULED 2026-10-02).
-  % with grants   (amount + the counting outside grants on the live requests) ÷ the same asks: the sheet's
+  grants          the live requests' counting outside grants plus each outside-budget round's own money (Posted,
+                  + Decided on the decided basis): "grants means anything that isn't internal camp money" (owner A1,
+                  RULED 2026-10-02).
+  % with grants   (amount + grants) ÷ the live requests' FULL asks, outside-budget rounds kept: an outside funder
+                  counts as grants, so its ask stays in the denominator beside its money (owner, RULED 2026-10-02).
+                  The sheet's
                   "% of Ask Granted in Total". Round 1 and All rounds only: a grant belongs to the request, not a
                   round.
   fee %           Round 1 and All rounds: the chip table's Round 1 % for the tier. Round 2: the Round 2 table the
@@ -237,7 +242,7 @@ def _row(
 ) -> StatisticsRow:
     rounds = _rounds(round_)
     with_decided = basis == "posted_and_decided"
-    asked = live_asked = amount = decided = awarded = ZERO
+    asked = live_asked = live_full_asked = amount = decided = awarded = ZERO
     asks = awarded_count = decided_count = cancelled = 0
     grants = ZERO
     for request in requests:
@@ -246,10 +251,13 @@ def _row(
         cancelled += "cancelled" in found
         awarded_count += "awarded" in found
         decided_count += "decided" in found
-        if request.counts_as_received and (ask := request.asked(rounds)) is not None:
+        ask = request.asked(rounds)  # bound every pass: the live branch below reads it too
+        if request.counts_as_received and ask is not None:
             asked += ask
         if not request.live:
             continue
+        if ask is not None:
+            live_full_asked += ask
         if (in_budget := request.asked_in_budget(rounds)) is not None:
             live_asked += in_budget
         money = request.awarded(rounds, decided=with_decided)
@@ -257,11 +265,14 @@ def _row(
         amount += money
         awarded += posted
         decided += money - posted
-        grants += request.grants
+        # An outside-budget round's own money is an outside funder's: grants, never the camp's amount (owner A1).
+        grants += request.grants + request.outside_funded(rounds, decided=with_decided)
     shows_grants = round_ in (None, 1)
     # Owner (b) (RULED 2026-10-02): pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by
     # the live requests' asks, so a request still waiting on an offer sits in the denominator at $0; the decided
-    # basis's column says so (PCT_OF_ASK_DECIDED_LABEL).
+    # basis's column says so (PCT_OF_ASK_DECIDED_LABEL). The asks differ: pct_of_ask divides by the in-budget asks
+    # (`live_asked`), "% with grants" adds its grants to the numerator and divides by the full asks, outside-funded
+    # rounds kept (`live_full_asked`; owner, RULED 2026-10-02).
     return StatisticsRow(
         tier=tier,
         income_from=band[0] if band is not None else None,
@@ -281,7 +292,7 @@ def _row(
         live_asked=live_asked,
         pct_of_ask=pct(amount, live_asked),
         grants=grants if shows_grants else None,
-        pct_of_ask_with_grants=pct(amount + grants, live_asked) if shows_grants else None,
+        pct_of_ask_with_grants=pct(amount + grants, live_full_asked) if shows_grants else None,
     )
 
 

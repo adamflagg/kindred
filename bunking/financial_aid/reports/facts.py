@@ -65,6 +65,8 @@ class RoundFacts:
     tier: int | None
     pool: str | None
     outside_budget: bool = False  # paid wholly outside the budget (D121), posted or not: never awarded, out of % of ask
+    outside_posted: Decimal | None = None  # an outside-budget round's Posted lock: the outside funder's money
+    outside_decided: Decimal | None = None  # an outside-budget round's decided amount while it needs an offer
 
     @property
     def posted(self) -> Decimal | None:
@@ -116,6 +118,24 @@ class ReportRequest:
             total += facts.posted or ZERO
             if decided:
                 total += facts.decided or ZERO
+        return total
+
+    def outside_funded(self, rounds: Iterable[int] = REPORT_ROUNDS, *, decided: bool = False) -> Decimal:
+        """An outside funder's money on the rounds named: each outside-budget round's Posted lock net of clawback, plus
+        its decided amount while it needs an offer when `decided`. Never the camp's (so never in `awarded`), it counts
+        as grants (owner A1, RULED 2026-10-02: "grants means anything that isn't internal camp money"). Always 0 on a
+        request that is not live, as the camp's money is (D129, D131)."""
+        if not self.live:
+            return ZERO
+        total = ZERO
+        for n in rounds:
+            facts = self.round(n)
+            if facts is None:
+                continue
+            if facts.outside_posted is not None and not facts.clawed_back:
+                total += facts.outside_posted
+            if decided:
+                total += facts.outside_decided or ZERO
         return total
 
     def offered(self, rounds: Iterable[int] = REPORT_ROUNDS) -> Decimal:

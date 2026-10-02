@@ -67,9 +67,10 @@ def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_d
     # Slice 4 ask 4: the denominator is named, so nobody reads it as the Asked column (owner B4a (c), D121).
     assert note.text.startswith(
         "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands today, "
-        "on live requests (not cancelled)."
+        "on live requests (not cancelled, withdrawn or a pending duplicate)."
     )
     assert "It is not the asked or requested total" in note.text
+    assert "every app's ask, cancelled and closed ones included" in note.text
     assert "paid wholly by an outside funder" in note.text
     assert "left out of the in-budget asks" in note.text  # the fourth deliberate assertion change
     assert "Posted + Decided" in note.text
@@ -131,3 +132,8 @@ def test_recipients_who_cancelled_names_a_confirmed_duplicate_that_holds_a_poste
     """Owner ruling, queue 4 (RULED): a confirmed duplicate with a posted award counts on its own Duplicate line."""
     text = BY_KEY["recipients_cancelled"].text
     assert "a confirmed duplicate that holds one, on its own Duplicate line" in text
+
+
+def test_awarded_names_what_liveness_leaves_out() -> None:
+    """Owner A11 (APPROVED): not cancelled, withdrawn or a pending duplicate."""
+    assert "on a live request (not cancelled, withdrawn or a pending duplicate)" in BY_KEY["awarded"].text

@@ -290,6 +290,33 @@ async def test_an_unposted_outside_funders_round_is_never_decided_money_and_leav
     assert (inside.decided, inside.outside_budget) == (Decimal(650), False)
 
 
+async def test_an_outside_funders_round_carries_its_own_money_apart_for_the_with_grants_figure() -> None:
+    """Owner A1 carried through (RULED 2026-10-02): the round's money is the outside funder's, so the facts keep it apart
+    from the camp's (`outside_posted` once posted, `outside_decided` while it needs an offer); a round inside the
+    budget has neither."""
+    view = RoundView(
+        round=1,
+        status="needs_offer",
+        ask=Decimal(900),
+        decided=Decimal(650),
+        locked=None,
+        accepted=False,
+        pending=None,
+        would_change_by=None,
+        counts_toward_budget=False,
+        pool="camp_pool",
+        decision_type="full_cost",
+    )
+    waiting = _round(1, view, None, r1_ask=None, tier_now=2, home_pool="camp_pool")
+    assert (waiting.outside_decided, waiting.outside_posted, waiting.decided) == (Decimal(650), None, None)
+    posted = _round(
+        1, replace(view, status="posted", locked=Decimal(700)), None, r1_ask=None, tier_now=2, home_pool="camp_pool"
+    )
+    assert (posted.outside_posted, posted.outside_decided, posted.locked) == (Decimal(700), None, None)
+    inside = _round(1, replace(view, counts_toward_budget=True), None, r1_ask=None, tier_now=2, home_pool="camp_pool")
+    assert (inside.outside_posted, inside.outside_decided) == (None, None)
+
+
 async def test_a_withdrawn_request_whose_posted_money_a_past_date_cannot_replay_still_counts_as_cancelled() -> None:
     """Owner (a): standing reads the lock, whether or not its money was since reversed. A past read that can't replay
     the clawback leaves the money out of awarded (the `posted` gap), but the request was still a recipient that

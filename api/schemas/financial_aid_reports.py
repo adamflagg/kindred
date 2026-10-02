@@ -56,7 +56,7 @@ class StatisticsRowOut(BaseModel):
     awarded_count: int  # live apps whose AWARDED (Posted) money is above $0: the average award's population
     decided_count: int  # live apps with decided money not yet offered (0 on the posted basis)
     average_award: float | None  # awarded ÷ awarded_count, on either basis (O-930-16; D130)
-    live_asked: float  # the live apps' asks: % of ask's denominator
+    live_asked: float  # the live apps' in-budget asks: % of ask's denominator (not % of ask incl. grants')
     pct_of_ask: float | None
     grants: float | None  # Round 1 and All rounds only
     pct_of_ask_with_grants: float | None
