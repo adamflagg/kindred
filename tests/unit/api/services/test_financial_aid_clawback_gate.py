@@ -27,6 +27,8 @@ from tests.unit.api.services.decisions_fakes import (
 from tests.unit.api.services.financial_aid_fakes import YEAR
 from tests.unit.api.services.test_financial_aid_decisions_service import EMMA, _posted, _service
 from tests.unit.api.services.test_financial_aid_decisions_unconfirmed import _post_at
+from tests.unit.api.services.test_financial_aid_today import _Drafts, _Grants, _grants, _Ledger, _line
+from tests.unit.api.services.test_financial_aid_today import _service as _today
 
 JUN1 = datetime(2027, 6, 1, 18, 0, tzinfo=UTC)
 AFTER = JUN1 + timedelta(hours=12)
@@ -141,3 +143,50 @@ async def test_to_place_re_prices_a_live_request_unclawed_and_a_cancelled_one_cl
         season = await _service(store).season(YEAR)
         (item,) = reclaw(season, season.ledger, [EMMA])
         assert [v.clawed_back for v in item.rounds if v.status == "posted"] == [clawed], how
+
+
+# --- a withdrawn request with live camp aid is To reverse (owner ruling (a)), and agrees with the gate ----------
+
+
+def _withdrawn_emma(store: FakeDecisionsStore, *, reversed_at: datetime | None = None, line: bool = True) -> None:
+    """Emma's request withdrawn, her enrollment still live (status 2), Round 1 posted, and CampMinder holding her aid."""
+    seed_request(store, EMMA, status="withdrawn")
+    _posted(store, EMMA, 1, "1500")
+    store.enrollments.append(EnrollmentState(1000011, 1000001, 1000101, 2, None))
+    if line:
+        seed_line(store, 9001, "1500", posted=T0, reversed_at=reversed_at)
+    store.synced_at = AFTER
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_request_on_a_live_enrollment_with_live_camp_aid_is_to_reverse() -> None:
+    store = FakeDecisionsStore()
+    _withdrawn_emma(store)
+    row = await _row(store)
+    assert row.to_reverse is True
+    assert row.cancellation is None
+    assert "to_reverse" in (row.queues or [])
+    assert "waiting_on_family" not in (row.queues or [])
+    assert (row.rounds[0].status, row.rounds[0].clawed_back) == ("posted", False)  # live money: nothing clawed yet
+    out = await _today(store, _Grants(_grants(year=YEAR)), _Drafts(None), _Ledger()).read(
+        YEAR, casework=True, finance=False
+    )
+    assert _line(out.casework, "to_reverse").items == 1
+
+
+@pytest.mark.asyncio
+async def test_once_campminder_reverses_a_withdrawn_requests_money_it_leaves_to_reverse_and_reads_clawed_back() -> None:
+    """Agrees with the clawback gate: a closed request is clawed back exactly when its money is no longer live."""
+    store = FakeDecisionsStore()
+    _withdrawn_emma(store, reversed_at=JUN1)
+    row = await _row(store)
+    assert row.to_reverse is False
+    assert "to_reverse" not in (row.queues or [])
+    assert (row.rounds[0].status, row.rounds[0].clawed_back) == ("posted", True)
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_request_with_no_camp_aid_lines_is_not_to_reverse() -> None:
+    store = FakeDecisionsStore()
+    _withdrawn_emma(store, line=False)
+    assert (await _row(store)).to_reverse is False

@@ -42,7 +42,7 @@ from api.services.financial_aid_grants_register import (
     LIVE_REQUEST_STATUSES,
     registrations_cancelled,
 )
-from api.services.financial_aid_intake_types import RESOLUTION_STAFF, STATUS_WITHDRAWN, RequestRecord, SessionRow
+from api.services.financial_aid_intake_types import RESOLUTION_STAFF, RequestRecord, SessionRow
 from api.services.financial_aid_reconciliation import camp_date
 from api.services.financial_aid_session_resolver import PROGRAM_SESSION_TYPES
 
@@ -250,17 +250,3 @@ def cancellations_by_request(
                 "kindred", camp_date(state.at) if state.at is not None else None, state.reason, state.note
             )
     return out
-
-
-def withdrawn_on_cancelled_enrollments(
-    requests: Iterable[RequestRecord], enrollments: Iterable[EnrollmentState], sessions: Iterable[SessionRow]
-) -> frozenset[str]:
-    """The WITHDRAWN requests whose enrollment CampMinder cancelled. With posted camp aid still live on
-    one, it is D54's forgotten reversal, and belongs in To reverse (SP10b-2 Decision 15)."""
-    by_person, by_household = _by_person_and_household(enrollments)
-    session_types = {s.cm_id: s.session_type for s in sessions}
-    return frozenset(
-        r.id
-        for r in requests
-        if r.status == STATUS_WITHDRAWN and enrollment_cancelled(r, _rows(r, by_person, by_household), session_types)[0]
-    )

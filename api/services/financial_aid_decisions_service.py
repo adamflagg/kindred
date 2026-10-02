@@ -113,7 +113,6 @@ from api.services.financial_aid_cancellations import (
     first_cancelled_on,
     fold_cancellations,
     needs_reason,
-    withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REVERT, effective_values
 from api.services.financial_aid_grant_placements import (
@@ -381,8 +380,8 @@ class Season:
     # Owner ruling 2026-10-02 (⚠, via the lead): the requests whose registration CampMinder cancelled (by the day, on a
     # past read: 3c-2's rule). Read ONLY by forward demand (season_budget's not_demand); never widens `live`.
     cancelled_in_campminder: frozenset[str] = frozenset()
-    # Decision 15: cancelled with live camp aid placed on it, or withdrawn on a cancelled enrollment
-    # with posted camp aid still live (D54's forgotten reversal). Empty on a past read.
+    # Decision 15, widened by owner ruling (a): cancelled with live camp aid placed on it, or withdrawn with
+    # posted camp aid still live (D54's forgotten reversal). Empty on a past read.
     to_reverse: frozenset[str] = frozenset()
     # Slice 1: each request as pricing read it, so the editor's preview re-prices one request with a typed
     # amount on exactly the inputs the season used. Empty on a past read.
@@ -1433,12 +1432,13 @@ class FinancialAidDecisionsService:
                 reversed_on[request.id] = day
             note = ledger_note(item, lines, unplaced) if year >= FIRST_TICKED_SEASON else None
             priced[request.id] = replace(item, notes=(*item.notes, note)) if note is not None else item
-        withdrawn = withdrawn_on_cancelled_enrollments(side.requests, enrollments, sessions)
+        # Owner ruling (a), 2026-10-02: a withdrawn request whose camp aid is still live in CampMinder is To reverse
+        # whatever its enrollment says (and once that money is reversed it reads clawed back: clawback_eligible).
         to_reverse = frozenset(
             r.id
             for r in side.requests
             if (r.id in cancellations and any(line.live() for line in ledger.lines(r.id)))
-            or (r.id in withdrawn and any(line.live() for line in ledger.closed_lines(r.id)))
+            or (r.status == STATUS_WITHDRAWN and any(line.live() for line in ledger.closed_lines(r.id)))
         )
         season = Season(
             year=year,

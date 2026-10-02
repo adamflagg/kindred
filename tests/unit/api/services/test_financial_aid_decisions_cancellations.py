@@ -234,7 +234,7 @@ async def test_a_withdrawn_request_with_posted_aid_live_on_a_cancelled_enrollmen
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0)
     _enrol(store, 2)
-    assert (await _row(store)).to_reverse is False
+    assert (await _row(store)).to_reverse is True  # owner ruling (a): whatever its enrollment says
     store.enrollments.clear()
     _enrol(store, 32)
     row = await _row(store)

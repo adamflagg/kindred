@@ -21,7 +21,6 @@ from api.services.financial_aid_cancellations import (
     fold_cancellations,
     needs_reason,
     parse_reason,
-    withdrawn_on_cancelled_enrollments,
 )
 from api.services.financial_aid_grants_register import registrations_cancelled
 from api.services.financial_aid_intake_types import RequestRecord, SessionRow
@@ -237,17 +236,6 @@ def test_the_to_do_asks_from_2027_and_only_while_no_reason_is_given() -> None:
     assert (needs_reason(missing, 2027), needs_reason(missing, 2026)) == (True, False)
     assert needs_reason(Cancellation("kindred", MAY2, "medical", ""), 2027) is False
     assert needs_reason(None, 2027) is False
-
-
-def test_a_withdrawn_request_on_a_cancelled_enrollment_is_found_for_to_reverse() -> None:
-    """D54's forgotten reversal: the request was withdrawn and CampMinder cancelled the enrollment."""
-    requests = [
-        request("emma", status="withdrawn"),
-        request("liam", person=1000012, status="withdrawn"),
-        request("olivia", person=1000014),
-    ]
-    enrollments = [row(32), row(2, person=1000012), row(32, person=1000014)]
-    assert withdrawn_on_cancelled_enrollments(requests, enrollments, SESSIONS) == {"emma"}
 
 
 def test_a_past_read_dates_a_cancellation_by_its_earliest_cancelled_registration() -> None:
