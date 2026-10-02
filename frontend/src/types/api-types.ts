@@ -32,8 +32,12 @@
 import type {
   AcceptedIn,
   AidPostingLine,
+  AidRulesInput,
+  AidRulesOutput,
   AnswerOut,
   ApplicationDetailResponse,
+  ApprovedRulesOut,
+  ApprovedSectionOut,
   AskIn,
   BudgetResponse,
   BunkGraphResponse,
@@ -50,11 +54,14 @@ import type {
   CorrectionCreate,
   CorrectionOut,
   CrossScopeEdge,
+  DecisionTypeOutput,
   DecisionWriteOut,
   DefinitionsResponse,
+  DraftSectionOut,
   DuplicateMark,
   EditorPreviewOut,
   ExpectedOut,
+  FieldChangeOut,
   GrantRowOut,
   GridRowOut,
   HeadcountSet,
@@ -66,6 +73,7 @@ import type {
   HouseholdRequestOut,
   HouseholdShareSet,
   HouseholdTotalsOut,
+  IncentiveRule,
   IncomeOut,
   IssueOut,
   JumpIndexHousehold,
@@ -76,6 +84,7 @@ import type {
   PermissionScreen,
   PostedIn,
   PreviewIn,
+  ProgramProfile,
   ReceiptOut,
   PoolBudgetOut,
   RemainingResponse,
@@ -87,12 +96,15 @@ import type {
   Round3AmountIn,
   Round3ApprovalIn,
   RoundOut,
+  RulesDraftOut,
+  SectionStatus,
   SessionResolve,
   ShareLineOut,
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
   UnpostIn,
+  ValidationIssue,
 } from './api-generated'
 
 // ── Social graph types ────────────────────────────────────────────────────────
@@ -210,3 +222,24 @@ export type ApiAidRoundCounts = RoundCountsOut
 export type ApiAidCount = CountOut
 /** One decision-type line of a pool's budget. Mirrors Python `DecisionTypeLineOut`. */
 export type ApiAidDecisionTypeLine = DecisionTypeLineOut
+
+/** Season › Rules (spec §7.5; D39, D76). Mirrors Python `ApprovedRulesOut`, `RulesDraftOut` and their parts. */
+export type ApiAidApprovedRules = ApprovedRulesOut
+export type ApiAidApprovedSection = ApprovedSectionOut
+export type ApiAidRulesDraft = RulesDraftOut
+export type ApiAidDraftSection = DraftSectionOut
+export type ApiAidSectionStatus = SectionStatus
+export type ApiAidFieldChange = FieldChangeOut
+export type ApiAidValidationIssue = ValidationIssue
+/** One of the rules document's fourteen sections (Python `SectionName`). */
+export type ApiAidRulesSection = DraftSectionOut['section']
+/** The rules document as the server sends it (decimals as strings), and as a write sends it back. */
+export type ApiAidRulesDocument = AidRulesOutput
+export type ApiAidRulesDocumentIn = AidRulesInput
+
+/** Rules records the document holds by key (`{[key]: unknown | T}`), named so the editor can read their choices. Mirrors Python `ProgramProfile`. */
+export type ApiAidProgramProfile = ProgramProfile
+/** Mirrors Python `IncentiveRule`. */
+export type ApiAidIncentiveRule = IncentiveRule
+/** Mirrors Python `DecisionType`. */
+export type ApiAidDecisionType = DecisionTypeOutput

@@ -6,6 +6,7 @@
 import type {
   ApiAidAcceptedIn,
   ApiAidApplication,
+  ApiAidApprovedRules,
   ApiAidAskIn,
   ApiAidBudget,
   ApiAidCancellationIn,
@@ -26,6 +27,7 @@ import type {
   ApiAidRemaining,
   ApiAidToday,
   ApiAidRequestOut,
+  ApiAidRulesDraft,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
   ApiAidSessionIn,
@@ -462,4 +464,33 @@ export async function fetchAidBudget(
   )
   if (!response.ok) throw await toApiError(response, 'Failed to load Rounds & budget', AidApiError)
   return (await response.json()) as ApiAidBudget
+}
+
+/**
+ * The approved rules, read only (spec §7.5; D76): for everyone with view. With `version` (a receipt's
+ * link) that version alone; without it, each section as it prices the season. 404: none approved yet.
+ */
+export async function fetchAidApprovedRules(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  version: number | null
+): Promise<ApiAidApprovedRules> {
+  const response = await fetchWithAuth(
+    withQuery(
+      `${BASE}/rules/${String(year)}/approved`,
+      version === null ? {} : { version: String(version) }
+    )
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load the rules', AidApiError)
+  return (await response.json()) as ApiAidApprovedRules
+}
+
+/** The rules draft, section by section with its changes (spec §7.5; D39): `rules` only. 404: no rules yet. */
+export async function fetchAidRulesDraft(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidRulesDraft> {
+  const response = await fetchWithAuth(`${BASE}/rules/${String(year)}/draft`)
+  if (!response.ok) throw await toApiError(response, 'Failed to load the rules draft', AidApiError)
+  return (await response.json()) as ApiAidRulesDraft
 }
