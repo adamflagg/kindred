@@ -270,3 +270,53 @@ async def test_a_funder_whose_descriptions_are_unclassified_is_not_a_funder_to_s
             YEAR, "regional_fund", FundingSourceIn(group="camp_pool", incentive=True), actor=DEVELOPMENT
         )
     assert store.operations == []
+
+
+def _mixed_funder() -> FakeDevelopmentStore:
+    """One funder with an incentive description and a need-based one."""
+    return FakeDevelopmentStore(
+        source_rows=[
+            replace(REGIONAL, grantor_key="regional_fund", incentive=True),
+            replace(SPRING, incentive=False),
+        ],
+        grantor_rows=[FUND],
+    )
+
+
+async def test_a_group_only_funder_save_leaves_each_descriptions_incentive_flag() -> None:
+    """Omitting incentive keeps each description's own flag: a mixed funder is not flattened."""
+    store = _mixed_funder()
+    out = await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn(group="weekend_pool"), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert all("incentive" not in (w.data or {}) for w in operation)
+    assert all("implied_program_families" in (w.data or {}) for w in operation)
+    assert out.incentive is None  # still mixed
+
+
+async def test_an_incentive_flag_on_the_funder_sets_every_description() -> None:
+    store = _mixed_funder()
+    out = await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn(group="camp_pool", incentive=True), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert [str(w.record_id) for w in operation] == [SPRING.id]  # the flagged one is already True: no write
+    assert all((w.data or {}).get("incentive") is True for w in operation)
+    assert out.incentive is True
+
+
+async def test_a_funder_save_that_changes_nothing_writes_nothing() -> None:
+    store = _mixed_funder()
+    await _service(store).save_funder(YEAR, "regional_fund", FundingSourceIn(group="camp_pool"), actor=DEVELOPMENT)
+    assert store.operations == []
+
+
+async def test_the_per_source_save_with_incentive_omitted_keeps_the_flag() -> None:
+    store = FakeDevelopmentStore(source_rows=[replace(REGIONAL, incentive=True)])
+    out = await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn(group="weekend_pool"), actor=DEVELOPMENT
+    )
+    [[write]] = store.operations
+    assert "incentive" not in write.data
+    assert out.incentive is True

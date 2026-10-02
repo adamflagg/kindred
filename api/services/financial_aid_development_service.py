@@ -598,9 +598,10 @@ class FinancialAidDevelopmentService:
             if not families:
                 raise ReportsRefusedError(f"No program of {year} funds {body.group!r}: nothing to point the source at")
         before = {"implied_program_families": list(source.implied_program_families), "incentive": source.incentive}
-        after: dict[str, Any] = {"implied_program_families": families, "incentive": body.incentive}
+        incentive = source.incentive if body.incentive is None else body.incentive  # None: this description's own
+        after: dict[str, Any] = {"implied_program_families": families, "incentive": incentive}
         changed = {key: value for key, value in after.items() if before[key] != value}
-        return before, changed, replace(source, implied_program_families=tuple(families), incentive=body.incentive)
+        return before, changed, replace(source, implied_program_families=tuple(families), incentive=incentive)
 
     async def save_funding_source(
         self, year: int, source_id: str, body: FundingSourceIn, *, actor: str

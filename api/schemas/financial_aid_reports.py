@@ -447,7 +447,9 @@ class FundingSourceIn(BaseModel):
 
     group: str | None = Field(default=None, max_length=60)  # a pool of the season's rules; None clears one group
     # (the group shown unchanged keeps its program families as they are: several groups stay several)
-    incentive: bool
+    # None keeps each description's own flag (a group-only save never flattens a funder that mixes incentive and
+    # need-based descriptions); True/False sets it on every description the save reaches
+    incentive: bool | None = None
     note: str = Field(default="", max_length=2000)
 
 
