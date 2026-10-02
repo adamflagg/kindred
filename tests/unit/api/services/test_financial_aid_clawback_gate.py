@@ -85,7 +85,9 @@ async def test_a_live_request_whose_money_was_fully_reversed_stays_posted_and_re
     assert (row.rounds[0].status, row.rounds[0].clawed_back) == ("posted", False)
     assert row.confirmation is not None
     assert row.confirmation.status != "reversed"
-    assert (await service.remaining(YEAR)).total < 500000.0
+    total = (await service.remaining(YEAR)).total
+    assert total is not None
+    assert total < 500000.0
 
 
 @pytest.mark.asyncio
