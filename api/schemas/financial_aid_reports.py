@@ -319,3 +319,55 @@ class ReportedLoadOut(BaseModel):
 
 class ReportedHistoryResponse(BaseModel):
     figures: list[ReportedFigureOut]
+
+
+# --- Development (§9.4; Part B) ----------------------------------------------------------------------------------
+# Aggregates only (D65, D66, D90): no field here names or identifies a family, a camper or a request. A test walks
+# every model below and fails on one that could (the summary containment test, main spec §14.3).
+
+
+class DevelopmentGroupOut(BaseModel):
+    key: str
+    label: str
+    kind: Literal["summer", "families", "campers"]
+
+
+class DevelopmentColumnOut(BaseModel):
+    season: int
+    basis: BasisCode
+    as_of: date | None  # the day it is as of: an r column's typed date, a P column's read date
+    basis_unconfirmed: bool  # D96's premise is contested (O-930-1): a 2022–2025 column is noted
+    label: str  # "2026 (as reported)", "2027"
+
+
+class DevelopmentRowOut(BaseModel):
+    key: str
+    section: Literal["money", "counts", "appeals"]
+    label: str
+    group: str | None  # a development group (a pool); None: every group
+    unit: Literal["dollars", "count", "percent"]
+    definition: str  # the line's stated definition where it varies by who asks (first-time, D99); else ""
+    values: list[float | None]  # one per column, in `columns` order; None: not available on that basis
+
+
+class DevelopmentSourceOut(BaseModel):
+    """One source by name with its three facts (D88): who paid, incentive or need-based, the source."""
+
+    source_key: str  # "" for the camp's own awards
+    name: str
+    who_paid: Literal["the camp", "another funder"]
+    incentive: bool
+    group: str
+    group_label: str
+    amount: float
+    awards: int
+
+
+class DevelopmentResponse(BaseModel):
+    year: int
+    figures_on: date
+    groups: list[DevelopmentGroupOut]
+    columns: list[DevelopmentColumnOut]
+    rows: list[DevelopmentRowOut]
+    sources: list[DevelopmentSourceOut]  # this season's P column, by source
+    not_built: list[NotBuiltOut]
