@@ -91,6 +91,9 @@ function Figure({
   view: AidView
   rulesVersion: number | null
 }) {
+  // A Pending approval line holds only its Needs an offer figure; its other cells stay blank, as
+  // the mock draws them: "—" here means a past date's unknown (Task 4 m1).
+  if (row.kind === 'pending' && column !== 'needs_offer') return null
   const href = cellHref(row, column, view, rulesVersion)
   // Needs an offer reads "n · $X" (read 2); every other column is its dollars alone.
   const money =

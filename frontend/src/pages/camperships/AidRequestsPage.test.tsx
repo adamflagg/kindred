@@ -363,8 +363,9 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
   it('carries counted and live to the household page (M5)', async () => {
     renderAt('/aid/requests?counted=1&live=1')
     await userEvent.click(screen.getByRole('link', { name: 'Ana Garcia' }))
-    expect(screen.getByTestId('where')).toHaveTextContent('counted=1')
-    expect(screen.getByTestId('where')).toHaveTextContent('live=1')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      /^\/aid\/households\/1000003\?from=all&counted=1&live=1&year=2027$/
+    )
   })
 
   it('carries the filters to the household page, so the walk and Back keep them (M5)', async () => {
