@@ -49,7 +49,7 @@ const TH = 'py-1 text-left font-semibold'
 
 /**
  * The decision panel (§6.3 item 4; D50, D51, D52; decision-panel.html, per-round lines): each round's
- * award, state, lock and checklist (Posted, Accepted), then the total on the decided basis. Without
+ * amount, state, lock and checklist (Posted, Accepted), then the total on the decided basis. Without
  * `checklist` / `nextAction` it only shows; PR 8 hands them in for `casework`.
  */
 export function DecisionPanel({

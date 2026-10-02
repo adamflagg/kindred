@@ -40,7 +40,7 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(screen.getByRole('button', { name: 'Hide the receipt ▴' })).toBeInTheDocument()
   })
 
-  it("shows each round's award, state, lock and ticks", () => {
+  it("shows each round's amount, state, lock and ticks", () => {
     renderCard(PAGE.requests[1])
     const panel = screen.getByRole('table', { name: 'Decision panel' })
     expect(within(panel).getByText('Posted')).toBeInTheDocument()
@@ -383,6 +383,56 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     it('does not name a payer when the applicant pays (M10 regression guard)', () => {
       renderCard()
       expect(screen.queryByText('paid by')).toBeNull()
+    })
+  })
+
+  describe('PR 5 final fix wave', () => {
+    it("shows each of the request's notes as an amber line, in the server's words (I2; D81)", () => {
+      const message = 'CampMinder shows $780 for this family; not yet ticked'
+      const request = householdRequest({
+        ...ROW_EMMA,
+        notes: [{ code: 'ledger_note', severity: 'warn', message }],
+      })
+      renderCard(request)
+      expect(screen.getByText(message)).toBeInTheDocument()
+    })
+
+    it('draws no note line when the request carries none (I2 regression guard)', () => {
+      renderCard()
+      expect(screen.queryByText(/not yet ticked/)).toBeNull()
+    })
+
+    it("keeps a reversed round's receipt folded even with a stale would-change figure (M1)", () => {
+      const row = gridRow({
+        rounds: [
+          roundOut(1, 'posted', {
+            decided: 1420,
+            posted: 1420,
+            posted_on: '2027-03-09',
+            would_change_by: 40,
+            clawed_back: true,
+          }),
+        ],
+      })
+      renderCard(householdRequest(row))
+      expect(screen.getByRole('button', { name: /^Show the receipt/ })).toBeInTheDocument()
+    })
+
+    it.each([
+      ['withdrawn', 'Withdrawn'],
+      ['duplicate', 'Duplicate'],
+      ['duplicate_pending', 'Possible duplicate'],
+    ])('says a %s request is %s, and draws no empty decision panel (M2)', (status, words) => {
+      renderCard(
+        householdRequest(gridRow({ request_status: status, rounds: [], total_decided: null }))
+      )
+      expect(screen.getByText(words)).toBeInTheDocument()
+      expect(screen.queryByRole('table', { name: 'Decision panel' })).toBeNull()
+    })
+
+    it('draws no status word for a live request (M2 regression guard)', () => {
+      renderCard()
+      expect(screen.queryByText(/^(Withdrawn|Duplicate|Possible duplicate)$/)).toBeNull()
     })
   })
 })
