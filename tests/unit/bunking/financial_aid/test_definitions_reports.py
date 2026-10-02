@@ -85,4 +85,5 @@ def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applic
     assert note.text.startswith(note.term)
     assert "every request with a Round 2 or later ask, cancelled ones included" in note.text
     assert "the rate divides by applications, which include cancellations" in note.text
-    assert note.key in SURFACES["reports-committee"] and note.key in SURFACES["reports-statistics"]
+    assert note.key in SURFACES["reports-committee"]
+    assert note.key in SURFACES["reports-statistics"]
