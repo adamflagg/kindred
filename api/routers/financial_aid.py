@@ -60,6 +60,7 @@ from api.schemas.financial_aid import (
     NetTotalsResponse,
     OverrideBulkLoad,
     ProgramBucket,
+    ProgramFamily,
     SourceFamily,
     SourceGrantorIn,
     SummaryResponse,
@@ -117,6 +118,7 @@ from api.schemas.financial_aid_intake import (
     SessionResolve,
 )
 from api.schemas.financial_aid_march_file import MarchFileOut
+from api.schemas.financial_aid_money_ledger import LedgerLevelOut, LedgerTotalOut, MoneyLedgerLinesOut, MoneyLedgerOut
 from api.schemas.financial_aid_reports import (
     CommitteeResponse,
     DevelopmentResponse,
@@ -221,6 +223,8 @@ from api.services.financial_aid_ledger_service import (
     money,
 )
 from api.services.financial_aid_march_file import MarchFileService
+from api.services.financial_aid_money_ledger import LedgerFilters
+from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
@@ -1721,6 +1725,50 @@ async def reclassify_line(
 
 
 # --- Reports (slice 4's back end, Part A: Statistics, Programs, the committee's tables, typed history) ------------
+
+
+def _money_ledger() -> MoneyLedgerService:
+    return MoneyLedgerService(_decisions(), FinancialAidDecisionsRepository(pb))
+
+
+@router.get("/money/{year}/ledger", response_model=MoneyLedgerOut)
+async def get_money_ledger(
+    year: _Year,
+    as_of: date | None = None,
+    as_of_axis: AsOfAxis = "campminder",
+    source: SourceFamily | None = None,
+    program: ProgramFamily | None = None,
+    level: LedgerLevelOut | None = None,
+    user: AuthUser = _VIEW,
+) -> MoneyLedgerOut:
+    """Money > Ledger (§8.1): one row per family (D26), In CampMinder (net) and Outside grants (§5.5, D97), and the
+    level where a line isn't on a request, read from Kindred's placements (D151). Live, or as of a past day."""
+    try:
+        return await _money_ledger().ledger(
+            year, as_of=as_of, axis=as_of_axis, filters=LedgerFilters(source, program, level)
+        )
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.get("/money/{year}/ledger/lines", response_model=MoneyLedgerLinesOut)
+async def get_money_ledger_lines(
+    year: _Year,
+    total: LedgerTotalOut,
+    as_of: date | None = None,
+    as_of_axis: AsOfAxis = "campminder",
+    source: SourceFamily | None = None,
+    program: ProgramFamily | None = None,
+    level: LedgerLevelOut | None = None,
+    user: AuthUser = _VIEW,
+) -> MoneyLedgerLinesOut:
+    """The lines behind one of the Ledger's two totals, with the same filters ("totals open their lines", §8.1)."""
+    try:
+        return await _money_ledger().lines(
+            year, total, as_of=as_of, axis=as_of_axis, filters=LedgerFilters(source, program, level)
+        )
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
 
 
 def _reports() -> FinancialAidReportsService:
