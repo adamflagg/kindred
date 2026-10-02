@@ -62,6 +62,7 @@ from api.schemas.financial_aid_decisions import (
     CostOverrideIn,
     CostOverrideOut,
     CountOut,
+    DecisionTypeLineOut,
     DecisionWriteOut,
     EditorPreviewOut,
     ForwardDemandOut,
@@ -767,6 +768,7 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             outside_grants=money(pool.below.outside_grants),
             outside_budget=money(pool.below.outside_budget),
             outside_budget_posted=money(pool.below.outside_budget_posted),
+            outside_grants_requests=_count(pool.below.outside_grants_requests),
         ),
         demand=ForwardDemandOut(
             round2_asks=_count(pool.demand.round2_asks),
@@ -774,6 +776,18 @@ def _pool_out(pool: PoolBudget) -> PoolBudgetOut:
             round2_computed=money(pool.demand.round2_computed),
             round1_unmet=money(pool.demand.round1_unmet),
         ),
+        decision_types=[
+            DecisionTypeLineOut(
+                key=t.key,
+                label=t.label,
+                counts_toward_budget=t.counts_toward_budget,
+                amount=money(t.amount),
+                posted=money(t.posted),
+                own=money(t.own),
+                requests=_count(t.requests),
+            )
+            for t in pool.decision_types
+        ],
     )
 
 
@@ -1078,7 +1092,20 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
     if not asks:
         demand |= {"round2_asks": None, "round2_asked": None}
     below: dict[str, Any] = (
-        {} if priced else {"held": None, "held_asked": None, "outside_grants": None, "outside_budget": None}
+        {}
+        if priced
+        else {
+            "held": None,
+            "held_asked": None,
+            "outside_grants": None,
+            "outside_grants_requests": None,
+            "outside_budget": None,
+        }
+    )
+    types = (
+        pool.decision_types
+        if priced
+        else [t.model_copy(update={"amount": None, "own": None, "requests": None}) for t in pool.decision_types]
     )
     return pool.model_copy(
         update={
@@ -1086,6 +1113,7 @@ def _past_pool(pool: PoolBudgetOut, *, priced: bool, asks: bool, posted: bool) -
             "total": _past_cell(pool.total, priced=priced, posted=posted),
             "below": pool.below.model_copy(update=below),
             "demand": pool.demand.model_copy(update=demand),
+            "decision_types": types,
         }
     )
 
@@ -1118,6 +1146,7 @@ def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
                 "rounds": [cell(c) for c in p.rounds],
                 "total": cell(p.total),
                 "below": p.below.model_copy(update={"outside_budget_posted": None}),
+                "decision_types": [t.model_copy(update={"posted": None, "amount": None}) for t in p.decision_types],
             }
         )
 

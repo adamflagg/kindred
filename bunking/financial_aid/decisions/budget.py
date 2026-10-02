@@ -106,6 +106,8 @@ class BelowTheLine:
     outside_grants: Decimal
     outside_budget: Decimal
     outside_budget_posted: Decimal  # the posted part of outside_budget: dated on every read (3c)
+    # Decision 13: the requests the outside grants offset ("offsetting awards (41 campers)").
+    outside_grants_requests: Count = Count()
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,7 @@ class PoolBudget:
     total: Cell
     below: BelowTheLine
     demand: ForwardDemand
+    decision_types: tuple[DecisionTypeLine, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -150,6 +153,87 @@ class _Tally:
 
 
 _Tallies = dict[tuple[str, int, str], _Tally]
+
+
+NO_DECISION_TYPE_LABEL: Final = "No named decision type"
+
+
+@dataclass(frozen=True)
+class DecisionTypeLine:
+    """Main spec §12.1, app spec §7.2: one line per named decision type, in or out of the budget, and one for the
+    rounds that carry none. `amount` is the whole rounds' money as the budget counts it (Posted, Needs an offer,
+    Pending approval, or below the line), so the lines add up to the budget's own figures (⚠ Decision 2); `own` is
+    the type's own money inside it (its top-up or discretionary amount)."""
+
+    key: str | None
+    label: str
+    counts_toward_budget: bool
+    amount: Decimal
+    posted: Decimal
+    own: Decimal
+    requests: Count
+
+
+@dataclass
+class _TypeTally:
+    amount: Decimal = ZERO
+    posted: Decimal = ZERO
+    own: Decimal = ZERO
+    families: set[int] = field(default_factory=set)
+    requests: set[str] = field(default_factory=set)
+
+
+_TypeTallies = dict[tuple[str, str | None, bool], _TypeTally]
+
+
+def _round_money(view: RoundView) -> tuple[Decimal, Decimal] | None:
+    """The round's money as _tally_round counts it, and its posted part; None for money it counts nowhere."""
+    if view.status == "posted":
+        return None if view.clawed_back else (view.locked or ZERO, view.locked or ZERO)
+    if view.status == "needs_offer":
+        return view.decided or ZERO, ZERO
+    if view.status == "pending_approval":
+        return view.pending or ZERO, ZERO
+    return None
+
+
+def _tally_type(types: _TypeTallies, pool: str, request: PricedRequest, view: RoundView) -> None:
+    money = _round_money(view)
+    if money is None:
+        return
+    key = view.decision_type
+    tally = types[(pool, key, view.counts_toward_budget)]
+    tally.amount += money[0]
+    tally.posted += money[1]
+    tally.own += view.extra if key is not None else ZERO
+    tally.families.add(request.household_cm_id)
+    tally.requests.add(request.request_id)
+
+
+def _type_lines(types: _TypeTallies, pool: str, rules: AidRules | None) -> tuple[DecisionTypeLine, ...]:
+    named = rules.awards.decision_types if rules is not None else {}
+    order = list(named)
+
+    def rank(item: tuple[str | None, bool]) -> tuple[bool, int, str, bool]:
+        key, counts = item
+        return (key is None, order.index(key) if key in named else len(order), key or "", not counts)
+
+    out: list[DecisionTypeLine] = []
+    for key, counts in sorted(((k, c) for p, k, c in types if p == pool), key=rank):
+        tally = types[(pool, key, counts)]
+        label = NO_DECISION_TYPE_LABEL if key is None else (named[key].label if key in named else key)
+        out.append(
+            DecisionTypeLine(
+                key,
+                label,
+                counts,
+                tally.amount,
+                tally.posted,
+                tally.own,
+                Count(len(tally.families), len(tally.requests)),
+            )
+        )
+    return tuple(out)
 
 
 def _merged(tallies: Iterable[_Tally]) -> _Tally:
@@ -274,6 +358,8 @@ def _pool_budget(
     computed2: Decimal,
     unmet1: Decimal,
     confirmed: bool,
+    decision_types: tuple[DecisionTypeLine, ...],
+    grant_requests: _Tally,
 ) -> PoolBudget:
     def amount(n: int, measure: str) -> Decimal:
         return _tally_of(tallies, pool, n, measure).amount
@@ -321,10 +407,12 @@ def _pool_budget(
             outside_grants=grants,
             outside_budget=sum((amount(n, "outside_budget") for n in ROUNDS), ZERO),
             outside_budget_posted=sum((amount(n, "outside_budget_posted") for n in ROUNDS), ZERO),
+            outside_grants_requests=grant_requests.count(),
         ),
         demand=ForwardDemand(
             round2_asks=asks2.count(), round2_asked=asks2.amount, round2_computed=computed2, round1_unmet=unmet1
         ),
+        decision_types=decision_types,
     )
 
 
@@ -349,6 +437,8 @@ def season_budget(
     asks2: dict[str, _Tally] = defaultdict(_Tally)
     computed2: dict[str, Decimal] = defaultdict(Decimal)
     unmet1: dict[str, Decimal] = defaultdict(Decimal)
+    grant_requests: dict[str, _Tally] = defaultdict(_Tally)
+    types: _TypeTallies = defaultdict(_TypeTally)
     unrebuilt: set[str] = set()
     for request in priced:
         home = _home_pool(request)
@@ -356,10 +446,14 @@ def season_budget(
         for view in request.rounds:
             for pool in (view.pool or NO_POOL, TOTAL):
                 _tally_round(tallies, pool, request, view, mine)
+                _tally_type(types, pool, request, view)
             if view.status == "not_rebuilt":  # a past read's: its status is unknown, but it sits in its pool (3c)
                 unrebuilt.add(view.pool or NO_POOL)
         for pool in (home, TOTAL):
-            grants[pool] += outside_grants.get(request.request_id, ZERO)
+            share = outside_grants.get(request.request_id, ZERO)
+            grants[pool] += share
+            if share > 0:
+                grant_requests[pool].add(request, ZERO)
             if request.live and request.request_id not in not_demand:
                 _tally_demand(request, pool, asks2, computed2, unmet1)
     seen = {pool for pool, _, _ in tallies} | {p for p, v in grants.items() if v} | set(asks2) | set(unmet1) | unrebuilt
@@ -377,6 +471,8 @@ def season_budget(
             computed2=computed2[pool],
             unmet1=unmet1[pool],
             confirmed=ledger is not None,
+            decision_types=_type_lines(types, pool, rules),
+            grant_requests=grant_requests.get(pool) or _Tally(),
         )
 
     pools = tuple(

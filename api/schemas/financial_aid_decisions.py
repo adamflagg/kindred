@@ -292,6 +292,8 @@ class BelowTheLineOut(BaseModel):
     outside_grants: float | None
     outside_budget: float | None
     outside_budget_posted: float | None
+    # Decision 13: the requests the outside grants offset (masked with outside_grants on a past date).
+    outside_grants_requests: CountOut | None = None
 
 
 class ForwardDemandOut(BaseModel):
@@ -301,6 +303,19 @@ class ForwardDemandOut(BaseModel):
     round1_unmet: float | None
 
 
+class DecisionTypeLineOut(BaseModel):
+    """Main spec §12.1: one line per named decision type, in or out of the budget, and one for rounds with none.
+    The lines add up to the pool's Posted + Needs an offer + Pending approval (in) and outside the budget (out)."""
+
+    key: str | None
+    label: str
+    counts_toward_budget: bool
+    amount: float | None  # None: a past date where a gap masks the pool, or posted money can't be replayed
+    posted: float | None
+    own: float | None
+    requests: CountOut | None
+
+
 class PoolBudgetOut(BaseModel):
     pool: str
     label: str
@@ -308,6 +323,7 @@ class PoolBudgetOut(BaseModel):
     total: CellOut
     below: BelowTheLineOut
     demand: ForwardDemandOut
+    decision_types: list[DecisionTypeLineOut] = Field(default_factory=list)
 
 
 class RoundCountsOut(BaseModel):

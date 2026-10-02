@@ -31,6 +31,7 @@ from bunking.financial_aid.decisions.pricing import (
     PricedRequest,
     RoundView,
     named_decision,
+    named_decision_key,
     posted_view,
     round_exists,
 )
@@ -158,11 +159,16 @@ POSTED_GAPS: Final[tuple[str, ...]] = ("posted", "accepted", "outside_budget_pos
 
 
 def _view(
-    n: int, state: RoundState, decision: DecisionType | None, r1_ask: Decimal | None, pool: str | None
+    n: int,
+    state: RoundState,
+    decision: DecisionType | None,
+    r1_ask: Decimal | None,
+    pool: str | None,
+    decision_key: str | None = None,
 ) -> RoundView:
     ask = r1_ask if n == 1 else state.ask
     if state.posted:
-        return posted_view(state, decision, ask, pool)
+        return posted_view(state, decision, ask, pool, decision_key=decision_key)
     counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     return RoundView(
         round=n,
@@ -198,8 +204,9 @@ def price_as_of(
     see PAST_DATE_GAPS["pool_unknown"]); `program_key` the program it resolved to. A posted round keeps its lock's own pool."""
     states = {n: rounds.get(n, RoundState(round=n)) for n in ROUNDS}
     decision = named_decision(rounds, rules) if rules is not None else None
+    decision_key = named_decision_key(rounds) if decision is not None else None
     views = tuple(
-        _view(n, states[n], decision, r1_ask, pool)
+        _view(n, states[n], decision, r1_ask, pool, decision_key)
         for n in ROUNDS
         if round_exists(states[n]) and (states[n].posted or live)
     )

@@ -15,6 +15,7 @@ from bunking.financial_aid.decisions.budget import (
     allocations,
     season_budget,
 )
+from bunking.financial_aid.decisions.pricing import posted_view
 from tests.unit.bunking.financial_aid.fixtures import app, fictional_rules, with_lever, with_levers
 
 ZERO = Decimal(0)
@@ -424,3 +425,80 @@ def test_each_cell_counts_who_needs_an_offer_and_who_waits_for_approval() -> Non
     assert (camp.rounds[3].pending_approval, camp.rounds[3].pending_approval_count) == (Decimal(650), Count(1, 1))
     assert camp.total.needs_offer_count == Count(1, 2)  # request "a" is counted once across its two rounds
     assert camp.total.pending_approval_count == Count(1, 1)
+
+
+def _typed(round_view: RoundView, key: str) -> RoundView:
+    return replace(round_view, decision_type=key)
+
+
+SEASON = [
+    priced("plain", 1000001, view(1, "posted", locked="1500"), view(2, "needs_offer", ask="900", decided="400")),
+    priced(
+        "topped",
+        1000002,
+        view(1, "posted", locked="1500"),
+        _typed(view(2, "posted", locked="650", extra="250"), "appeal_top_up"),
+    ),
+    priced("disc", 1000003, _typed(view(3, "posted", locked="250", counts=False), "discretionary")),
+    priced("pending", 1000004, _typed(view(3, "pending_approval", pending="300"), "discretionary")),
+    priced("held", 1000005, view(1, "held", ask="2000")),
+]
+
+
+def test_one_line_per_decision_type_in_the_rules_order_then_rounds_with_none() -> None:
+    lines = season_budget(SEASON, RULES, outside_grants={}).total.decision_types
+    assert [(t.key, t.label, t.counts_toward_budget) for t in lines] == [
+        ("appeal_top_up", "Appeal top-up", True),
+        ("discretionary", "Discretionary", True),
+        ("discretionary", "Discretionary", False),
+        (None, "No named decision type", True),
+    ]
+    top_up = lines[0]
+    assert (top_up.amount, top_up.posted, top_up.own, top_up.requests) == (
+        Decimal(650),
+        Decimal(650),
+        Decimal(250),
+        Count(1, 1),
+    )
+    none = lines[3]  # plain's Round 1 (posted) and Round 2 (needs an offer), and topped's Round 1 (posted)
+    assert (none.amount, none.posted, none.requests) == (Decimal(3400), Decimal(3000), Count(2, 2))
+
+
+def test_the_lines_add_up_to_the_budgets_own_figures() -> None:
+    """Main spec §12.1: every decision row is counted, in or out of the budget, so nothing goes missing."""
+    budget = season_budget(SEASON, RULES, outside_grants={})
+    for pool in (*budget.pools, budget.total):
+        inside = [t for t in pool.decision_types if t.counts_toward_budget]
+        outside = [t for t in pool.decision_types if not t.counts_toward_budget]
+        total = pool.total
+        assert sum((t.amount for t in inside), ZERO) == total.posted + total.needs_offer + total.pending_approval
+        assert sum((t.posted for t in inside), ZERO) == total.posted
+        assert sum((t.amount for t in outside), ZERO) == pool.below.outside_budget
+        assert sum((t.posted for t in outside), ZERO) == pool.below.outside_budget_posted
+
+
+def test_a_type_the_rules_no_longer_name_keeps_its_line_and_key() -> None:
+    """Decision 12: reachable through a real posted lock (posted_view reads the snapshot)."""
+    from tests.unit.bunking.financial_aid.test_decision_pricing import RETIRED
+
+    gone = priced("g", 1000001, posted_view(RETIRED, None, None, "camp_pool"))
+    (line,) = season_budget([gone], RULES, outside_grants={}).total.decision_types
+    assert (line.key, line.label, line.amount, line.own) == (
+        "retired_program",
+        "retired_program",
+        Decimal(650),
+        Decimal(250),
+    )
+
+
+def test_the_outside_grants_line_counts_the_requests_it_offsets() -> None:
+    """Decision 13: "Outside grants offsetting awards (41 campers)"."""
+    rows = [
+        priced("a", 1000001, view(1, "needs_offer", decided="1500")),
+        priced("b", 1000001, view(1, "needs_offer", decided="1200")),
+        priced("c", 1000002, view(1, "needs_offer", decided="900")),
+    ]
+    below = season_budget(
+        rows, RULES, outside_grants={"a": Decimal(400), "b": Decimal(0), "c": Decimal(250)}
+    ).total.below
+    assert (below.outside_grants, below.outside_grants_requests) == (Decimal(650), Count(2, 2))

@@ -96,6 +96,8 @@ class RoundView:
     pool: str | None
     extra: Decimal = Decimal(0)
     clawed_back: bool = False
+    # The named decision type whose money this round carries (spec §7.2's decision-type lines; Decision 12).
+    decision_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,11 @@ def _decision(states: Mapping[int, RoundState], rules: AidRules) -> tuple[str | 
 def named_decision(rounds: Mapping[int, RoundState], rules: AidRules) -> DecisionType | None:
     """The request's named decision type, whose money `counts_toward_budget` places (spec §7.2)."""
     return _decision(_states(rounds), rules)[1]
+
+
+def named_decision_key(rounds: Mapping[int, RoundState]) -> str | None:
+    """The key of the request's named decision type, as keyed on its rounds (`_decision` reads the same field)."""
+    return next((state.discretionary_type for state in _states(rounds).values() if state.discretionary_type), None)
 
 
 def _amount(value: Any) -> Decimal:
@@ -258,6 +265,7 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     program = rules.programs.get(program_key) if rules is not None and program_key is not None else None
     pool = program.budget_pool if program is not None else None
     decision = _decision(states, rules)[1] if rules is not None else None
+    decision_key = named_decision_key(item.rounds) if decision is not None else None
     issues: list[CalcIssue] = []
     inputs: RequestInputs | None = None
     result: CalcResult | None = None
@@ -277,7 +285,7 @@ def price_request(item: RequestToPrice, rules: AidRules | None) -> PricedRequest
     notes = tuple(i for i in issues if i.severity == "warn")
     stopped = bool(holds) or result is None
     views = tuple(
-        _view(n, states[n], item, rules, decision, result, stopped=stopped, pool=pool)
+        _view(n, states[n], item, rules, decision, result, stopped=stopped, pool=pool, decision_key=decision_key)
         for n in ROUNDS
         if round_exists(states[n]) and (states[n].posted or item.live)
     )
@@ -304,6 +312,7 @@ def posted_view(
     pool: str | None,
     *,
     would_change_by: Decimal | None = None,
+    decision_key: str | None = None,
 ) -> RoundView:
     """A posted round as its lock recorded it (D43): amount, pool and budget treatment from the
     snapshot (`pool` when it has none), and the decision's own money inside. Live and past reads share it."""
@@ -311,6 +320,11 @@ def posted_view(
     snapshot = state.snapshot or {}
     counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     locked_pool = snapshot.get("pool", pool)
+    if "decision_round" in snapshot:  # the lock recorded it (lock_snapshot): it stands whatever the rules say now (D43)
+        recorded = snapshot.get("decision_type")
+        decision_type = recorded if snapshot.get("decision_round") == n and isinstance(recorded, str) else None
+    else:  # an older lock without the record: the rules' type, as its counts_toward_budget already falls back
+        decision_type = decision_key if decision is not None and decision.round == n else None
     return RoundView(
         round=n,
         status="posted",
@@ -323,6 +337,7 @@ def posted_view(
         counts_toward_budget=bool(snapshot.get("counts_toward_budget", counts)),
         pool=locked_pool if isinstance(locked_pool, str) else None,
         extra=extra_locked(state, decision),
+        decision_type=decision_type,
     )
 
 
@@ -336,11 +351,19 @@ def _view(
     *,
     stopped: bool,
     pool: str | None,
+    decision_key: str | None = None,
 ) -> RoundView:
     ask = item.r1_ask if n == 1 else state.ask
     counts = decision.counts_toward_budget if decision is not None and decision.round == n else True
     if state.posted:
-        return posted_view(state, decision, ask, pool, would_change_by=_would_change(n, state, item, rules, decision))
+        return posted_view(
+            state,
+            decision,
+            ask,
+            pool,
+            would_change_by=_would_change(n, state, item, rules, decision),
+            decision_key=decision_key,
+        )
     decided = _worked_out(result, decision, n) if result is not None else None
     pending = state.award if n == 3 and state.approval == "pending" else None
     if stopped or pending is not None:
@@ -368,6 +391,7 @@ def _view(
         counts_toward_budget=counts,
         pool=pool,
         extra=_extra_now(result, decision, n) if decided is not None else ZERO,
+        decision_type=decision_key if decision is not None and decision.round == n else None,
     )
 
 

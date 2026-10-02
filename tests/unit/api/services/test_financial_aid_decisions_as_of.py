@@ -836,3 +836,14 @@ async def test_a_masked_pool_masks_its_counts_with_its_figures() -> None:
     assert live_r1.needs_offer_count is not None
     assert live_r1.needs_offer_count.requests == 1
     assert (past_r1.needs_offer, past_r1.needs_offer_count, past_r1.pending_approval_count) == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_masked_pool_keeps_its_type_lines_posted_part_only() -> None:
+    store = _seeded(EMMA)
+    _post_at(store, EMMA, _day(3, 5))
+    past = await _service(store).budget(YEAR, as_of=MAR_9)
+    camp = next(p for p in past.pools if p.pool == "camp_pool")
+    (line,) = camp.decision_types
+    assert (line.key, line.posted, line.amount, line.own, line.requests) == (None, 1500.0, None, None, None)
+    assert (camp.below.outside_grants, camp.below.outside_grants_requests) == (None, None)
