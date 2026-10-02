@@ -437,7 +437,8 @@ func TestAidTestFixtureFieldsAreDeclaredInMigrations(t *testing.T) {
 	t.Parallel()
 	app := newAidTestApp(t)
 	files := map[string][]string{
-		colAidSources:        {"1500000196_aid_sources.js", "1500000210_aid_grantors_and_grants.js"},
+		colAidSources: {"1500000196_aid_sources.js", "1500000210_aid_grantors_and_grants.js",
+			"1500000229_aid_reports_sources.js"},
 		colAidHouseholdLinks: {"1500000197_aid_household_links.js"},
 		colAidPostings:       {"1500000198_aid_postings.js"},
 		colAidOverrides:      {"1500000199_aid_overrides_and_dispositions.js"},
