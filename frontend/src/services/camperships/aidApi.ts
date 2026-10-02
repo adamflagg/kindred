@@ -382,7 +382,7 @@ export async function fetchAidApplication(
   return (await response.json()) as ApiAidApplication
 }
 
-/** Correct an answer (main spec §9.3). An empty `new_value` goes back to the form's figure. */
+/** Correct an answer (main spec §9.3). `new_value: null` (or left out) goes back to the form's figure; an empty string is refused (422). */
 export function addAidCorrection(
   fetchWithAuth: FetchWithAuth,
   year: number,
