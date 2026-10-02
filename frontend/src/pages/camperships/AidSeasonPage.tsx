@@ -7,6 +7,7 @@ import { formatLongDate } from '../../components/camperships/kit/dates'
 import { Money } from '../../components/camperships/kit/MoneyText'
 import { HistoryTab } from '../../components/camperships/season/HistoryTab'
 import { RoundsBudgetTab } from '../../components/camperships/season/RoundsBudgetTab'
+import { RulesTab } from '../../components/camperships/season/rules/RulesTab'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
 import { aidSection, resolveAidTab } from '../../config/aidNav'
@@ -82,7 +83,8 @@ export default function AidSeasonPage() {
       {slug === 'history' && (
         <HistoryTab canSeeScenarios={hasPermission(Permission.FINANCIAL_AID_RULES)} />
       )}
-      {(slug === 'scenarios' || slug === 'rules') && (
+      {slug === 'rules' && <RulesTab />}
+      {slug === 'scenarios' && (
         <div className="card-lodge text-muted-foreground p-6 text-sm">
           {`Season › ${resolved.tab?.label ?? ''} is built in a later part of slice 2.`}
         </div>
