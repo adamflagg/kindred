@@ -84,7 +84,7 @@ export function JumpBox() {
   }
 
   return (
-    <div className="relative w-56">
+    <div className="relative w-56 min-w-40 shrink">
       <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
       <input
         ref={inputRef}

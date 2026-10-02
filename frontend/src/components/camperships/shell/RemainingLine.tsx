@@ -9,7 +9,8 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import { aidHref } from '../kit/asOf'
 import { MoneyCompact } from '../kit/MoneyText'
 
-const LINE = 'text-muted-foreground flex items-baseline gap-1.5 text-xs whitespace-nowrap'
+// A block of inline figures, not a flex row, so a crowded bar can end it in an ellipsis (a flex row clips mid-figure).
+const LINE = 'text-muted-foreground block min-w-0 truncate text-xs [&>*+*]:ml-1.5'
 
 /**
  * The Remaining line (D48, D75; spec §7.3; mockups/remaining-bar.html B): one figure per pool,

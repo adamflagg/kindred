@@ -99,6 +99,13 @@ describe('RemainingLine (D48, D75; spec §7.3)', () => {
     expect(screen.getByRole('link', { name: 'Pool A —' })).toBeInTheDocument()
   })
 
+  // jsdom has no layout: this pins the classes. The real proof is the 1280px measurement.
+  it('ends in an ellipsis rather than push the page sideways when the bar is crowded', () => {
+    state = { data: { year: 2027, pools: [], total: null }, isPending: false, error: null }
+    renderAt()
+    expect(screen.getByTestId('remaining-line')).toHaveClass('min-w-0', 'truncate')
+  })
+
   it('says "Remaining —" for a season with no approved rules yet (Review Focus 2)', () => {
     state = { data: { year: 2027, pools: [], total: null }, isPending: false, error: null }
     renderAt()

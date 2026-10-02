@@ -12,7 +12,7 @@ export function AidSecondaryBarRight() {
   const { hasPermission } = usePermissions()
   if (!canOpenCamperships({ hasPermission })) return null
   return (
-    <div className="ml-4 flex items-center gap-3.5">
+    <div className="ml-4 flex min-w-0 items-center gap-3.5">
       <RemainingLine />
       {hasPermission(Permission.FINANCIAL_AID_VIEW) && <JumpBox />}
     </div>

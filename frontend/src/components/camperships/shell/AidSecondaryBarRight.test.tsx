@@ -31,6 +31,14 @@ describe('AidSecondaryBarRight (§3.4)', () => {
     expect(screen.getByTestId('remaining').parentElement).toHaveClass('ml-4')
   })
 
+  // jsdom has no layout: this pins the classes. The real proof is the 1280px measurement
+  // (page scrollWidth <= 1280 on /aid/requests), in the A2 round report.
+  it('lets the right side shrink, so a long sync stamp never pushes the page sideways', () => {
+    granted = ['financial_aid.view']
+    render(<AidSecondaryBarRight />)
+    expect(screen.getByTestId('remaining').parentElement).toHaveClass('min-w-0')
+  })
+
   it('draws nothing for someone who cannot open Camperships', () => {
     granted = []
     const { container } = render(<AidSecondaryBarRight />)

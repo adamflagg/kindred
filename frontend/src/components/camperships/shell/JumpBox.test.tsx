@@ -53,6 +53,12 @@ beforeEach(() => {
 })
 
 describe('JumpBox (§3.5; D13)', () => {
+  // jsdom has no layout: this pins the classes. The real proof is the 1280px measurement.
+  it('gives way on a crowded bar, but keeps room to read its placeholder', () => {
+    renderBox()
+    expect(box().parentElement).toHaveClass('shrink', 'min-w-40')
+  })
+
   // Ruling 2026-10-01 (plan review): the four-states rule.
   it('says it is loading, and takes no search until the index is in', () => {
     index = { isPending: true, error: null }
