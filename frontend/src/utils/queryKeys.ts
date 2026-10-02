@@ -925,11 +925,14 @@ export function invalidateAidRulesQueries(
   },
   options: { readonly priced?: boolean } = {}
 ): Promise<void> {
-  const refreshed = [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix()].map((queryKey) =>
-    queryClient.invalidateQueries({ queryKey })
-  )
-  const money = options.priced === true ? invalidateAidMoneyQueries(queryClient) : undefined
-  return Promise.all([...refreshed, money]).then(() => undefined)
+  // An approval's money refresh already covers the rules and Today prefixes, so it stands alone:
+  // invalidating them twice would cancel and restart each active read's refetch.
+  if (options.priced === true) return invalidateAidMoneyQueries(queryClient)
+  return Promise.all(
+    [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix()].map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey })
+    )
+  ).then(() => undefined)
 }
 
 /**
