@@ -88,7 +88,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                 type="button"
                 aria-pressed={active}
                 onClick={() => url.setBucket(active ? null : id)}
-                className={`rounded-lg px-2.5 py-1 text-sm font-medium ${
+                className={`rounded-lg px-2.5 py-1 text-[13px] font-medium ${
                   active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
                 }`}
               >
@@ -126,7 +126,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
         )}
         <div
           data-testid="users-pager"
-          className={`text-muted-foreground flex items-center gap-2 text-sm ${
+          className={`text-muted-foreground flex items-center gap-2 pr-3.5 text-sm ${
             canSeeLastLogin ? 'border-border border-l pl-3' : 'ml-auto'
           }`}
         >
