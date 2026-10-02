@@ -242,7 +242,7 @@ describe('Money › To place (§8.1)', () => {
     renderTab()
     expect(
       await screen.findByText(
-        'Nothing to place for 2026: 2026 predates To place (the first ticked season is 2027).'
+        'Nothing to place: 2026 predates To place (the first ticked season is 2027).'
       )
     ).toBeInTheDocument()
   })
@@ -414,5 +414,83 @@ describe('Money › To place (§8.1)', () => {
     const [header, firstRow] = content.split('\n')
     expect(header).toMatch(/Household,Line$/)
     expect(firstRow).toMatch(/1000001,3000001$/)
+  })
+
+  describe('scan residue (#2990)', () => {
+    const CHEN = '$1,500 · Camp aid · Quest · posted to the household · May 20'
+    const NOTHING_CHANGED = {
+      year: 2027,
+      transaction_cm_id: 3000003,
+      written: 0,
+      operation_id: '',
+    }
+
+    it('A: a Leave submitted while its line is saving says so and sends nothing', async () => {
+      gate = new Promise(() => undefined)
+      renderTab()
+      const panel = await openLine(CHEN)
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+      await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
+      await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+      expect(
+        await screen.findByText(
+          'Nothing was written: this line is still saving. Try again when it finishes.'
+        )
+      ).toBeInTheDocument()
+      expect(writes().filter((w) => w.url.endsWith('/leave'))).toHaveLength(0)
+    })
+
+    it('F: the last write’s note is gone when the season changes', async () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const tree = (year: number) => (
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <ToPlaceTab view={{ year, asOf: { kind: 'live' } }} />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+      const { rerender } = render(tree(2027))
+      const panel = await openLine(CHEN)
+      await userEvent.click(within(panel).getByRole('button', { name: 'Confirm' }))
+      expect(await screen.findByText(/^✓ Chen: \$1,500 placed/)).toBeInTheDocument()
+      rerender(tree(2028))
+      expect(screen.queryByText(/^✓ Chen/)).toBeNull()
+    })
+
+    it('I: the skipped sentence names the year once', async () => {
+      reads = [TO_PLACE_SKIPPED]
+      renderTab()
+      const card = await screen.findByText(/predates To place/)
+      expect(card.textContent).toBe(
+        'Nothing to place: 2026 predates To place (the first ticked season is 2027).'
+      )
+    })
+
+    it('K: Leave says nothing changed when the server wrote nothing', async () => {
+      answers = [json(NOTHING_CHANGED)]
+      renderTab()
+      const panel = await openLine(CHEN)
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave at family level…' }))
+      await userEvent.type(within(panel).getByRole('textbox'), 'Waiting on CampMinder')
+      await userEvent.click(within(panel).getByRole('button', { name: 'Leave it' }))
+      expect(
+        await screen.findByText(
+          '✓ Chen: already left at family level with this note; nothing changed.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('K: Reopen says the line is already open when the server wrote nothing', async () => {
+      answers = [json({ ...NOTHING_CHANGED, transaction_cm_id: 3000006 })]
+      renderTab()
+      const left = await screen.findByTestId('left-lines')
+      await userEvent.click(within(left).getByRole('button', { name: 'Reopen…' }))
+      await userEvent.type(within(left).getByRole('textbox'), 'Fixed in CampMinder')
+      await userEvent.click(within(left).getByRole('button', { name: 'Reopen' }))
+      expect(
+        await screen.findByText('✓ Garcia: already open; nothing changed.')
+      ).toBeInTheDocument()
+    })
   })
 })
