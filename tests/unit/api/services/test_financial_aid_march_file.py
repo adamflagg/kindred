@@ -3,6 +3,7 @@ Prices under financial_aid_fakes.intake_rules(): Session 2 gives a tier-2 family
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -285,10 +286,53 @@ async def test_someone_who_turns_18_on_the_first_day_is_not_a_child() -> None:
 
 
 @pytest.mark.asyncio
+async def test_someone_born_after_the_first_day_is_never_named() -> None:
+    """A birthdate after the first day (2027-05-28) is bad data, not a child at camp: the row stays blank."""
+    store = _fc_store(_member(EMMA_ID, "2027-06-01"))
+    assert await _fc_rows(store) == [("", "", 800.0, HOUSEHOLD, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_session_with_no_start_date_names_no_child() -> None:
+    store = _fc_store(_member(EMMA_ID, "2018-01-10"))
+    store.sessions = [replace(s, start_date="") if s.cm_id == FC_SESSION else s for s in store.sessions]
+    assert await _fc_rows(store) == [("", "", 800.0, HOUSEHOLD, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_session_missing_from_the_season_names_no_child() -> None:
+    store = _fc_store(_member(EMMA_ID, "2018-01-10"))
+    store.sessions = [s for s in store.sessions if s.cm_id != FC_SESSION]
+    assert await _fc_rows(store) == [("", "", 800.0, HOUSEHOLD, None)]
+
+
+@pytest.mark.asyncio
 async def test_the_household_members_are_read_once_for_the_whole_file() -> None:
     store = _fc_store(_member(EMMA_ID, "2018-01-10"))
     await _fc_rows(store)
     assert store.household_attendee_reads == [frozenset({HOUSEHOLD})]
+
+
+@pytest.mark.asyncio
+async def test_two_family_camp_requests_share_one_read_and_each_names_its_own_child() -> None:
+    """Two Family Camp requests in two households: one read naming both, and each row its own household's child."""
+    store = _fc_store(_member(EMMA_ID, "2018-01-10"), _member(LIAM_ID, "2014-03-02", household=1000004))
+    seed_request(store, "reqfam200000001", household=1000004, person=0, session=FC_SESSION)
+    priced_by_id = {
+        FAMILY: priced(FAMILY, HOUSEHOLD, view(1, "needs_offer", decided="800")),
+        "reqfam200000001": priced("reqfam200000001", 1000004, view(1, "needs_offer", decided="500")),
+    }
+
+    async def season(year: int) -> SimpleNamespace:
+        return _season(store, priced_by_id)
+
+    service = SimpleNamespace(season=season)
+    out = await MarchFileService(cast("FinancialAidDecisionsService", service), store).read(YEAR)
+    assert store.household_attendee_reads == [frozenset({HOUSEHOLD, 1000004})]
+    assert sorted((r.primary_childhood_id, r.personal_id) for r in out.rows) == [
+        (HOUSEHOLD, EMMA_ID),
+        (1000004, LIAM_ID),
+    ]
 
 
 @pytest.mark.asyncio

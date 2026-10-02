@@ -27,10 +27,12 @@ ID stays each payer share's household, and every payer share of the request name
     date has no first day, so no child can be chosen.
   * Oldest: the earliest birthdate. A tie on birthdate (twins) goes to the lowest Personal Id, so the file is
     deterministic.
-  * A person with no birthdate can't be ranked, so is never chosen.
+  * A person with no birthdate can't be ranked, so is never chosen; nor is one born after the first day (bad data,
+    not a child at camp).
   * If no child qualifies (an all-adult household, or no dated child), the row stays as it was: blank names and no
     Personal Id, and the request is logged at info.
-The household's members are read in one batch for the whole file (HouseholdAttendeeReads), never per request.
+The household's members are read in one batch for the whole file (the store's fetch_household_attendees), never
+per request.
 
 Names are CampMinder's (persons.first_name and last_name, never the preferred name): CampMinder's staff match on them.
 """
@@ -178,6 +180,7 @@ def oldest_child(
         and a.status_id == ACTIVE_ENROLLED_STATUS_ID
         and a.person_cm_id > 0
         and a.birthdate is not None
+        and a.birthdate <= first_day
         and _age_on(a.birthdate, first_day) < 18
     ]
     return min(kids)[1] if kids else None

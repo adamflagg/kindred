@@ -397,8 +397,8 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
     async def fetch_household_attendees(self, year: int, household_cm_ids: Collection[int]) -> list[HouseholdAttendee]:
         """Every registration this season of the people in these households, with their birthdate (the March file's
         Family Camp child). Membership is Go's attribution rule: a person's own household or their primary or alternate
-        childhood household (fetch_household_persons_by_household). Two batched reads for the whole file: the people,
-        then their registrations."""
+        childhood household (fetch_household_persons_by_household). Two collections read for the whole file, the people
+        then their registrations, each in chunks that keep a filter under PocketBase's length limit."""
         repo = FinancialAidRepository(self.pb)
         by_household = await repo.fetch_household_persons_by_household(year, household_cm_ids)
         people = {int(p.cm_id): p for members in by_household.values() for p in members}
