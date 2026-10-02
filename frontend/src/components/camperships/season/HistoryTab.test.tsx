@@ -371,6 +371,25 @@ describe('HistoryTab', () => {
     expect(where().has('since')).toBe(false)
   })
 
+  it.each([
+    ['blur', (box: HTMLElement) => fireEvent.blur(box)],
+    ['Enter', (box: HTMLElement) => fireEvent.keyDown(box, { key: 'Enter' })],
+  ])('resets the DOM of a partly typed box when the URL has no day, on %s', (_name, leave) => {
+    renderAt('/aid/season/history')
+    const box = screen.getByLabelText('From')
+    // A browser keeps value '' with badInput for a lone month segment; React sees no change to undo.
+    const sets: string[] = []
+    Object.defineProperty(box, 'validity', { value: { badInput: true }, configurable: true })
+    Object.defineProperty(box, 'value', {
+      get: () => sets[sets.length - 1] ?? '',
+      set: (next: string) => sets.push(next),
+      configurable: true,
+    })
+    leave(box)
+    expect(sets).toContain('')
+    expect(where().has('since')).toBe(false)
+  })
+
   it('does not mark a page stale just because a read is in flight', () => {
     read = { data: PAGE, isLoading: false, isFetching: true, isPlaceholderData: false, error: null }
     renderAt()

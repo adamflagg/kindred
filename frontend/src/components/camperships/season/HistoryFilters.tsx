@@ -75,7 +75,8 @@ const orNull = (value: string): string | null => (value === '' ? null : value)
  * A date box. A browser fires `change` on every digit once the box holds a whole day (typing 15 into
  * 04/20 passes through 04/01), and a typed year passes through 0002-…, 0020-…, 0202-…, so nothing is
  * written per change: the day lands on leaving the box or Enter, as the search does (I1). Only an
- * empty box or a day in a season's year is kept (I4); any other day goes back to the URL's.
+ * empty box or a day in a season's year is kept (I4); any other day goes back to the URL's. A partly
+ * typed box reads '' too (badInput): it is reset in the DOM, since with no URL day React sees no change.
  */
 function DayBox({
   label,
@@ -88,11 +89,16 @@ function DayBox({
 }) {
   const current = value ?? ''
   const [text, setText] = useDraft(current)
-  const commit = (badInput: boolean) => {
-    if (text === current) return
+  const commit = (input: HTMLInputElement) => {
     // A partly erased box reads '' too, but it is a half-edited day, not "no date": back to the URL's.
-    if (text === '' && badInput) setText(current)
-    else if (text === '') onDay(null)
+    // Forced in the DOM: with '' on both sides React never rewrites the input's partial segments.
+    if (input.validity.badInput) {
+      input.value = current
+      setText(current)
+      return
+    }
+    if (text === current) return
+    if (text === '') onDay(null)
     else if (isSeasonDay(text)) onDay(text)
     else setText(current)
   }
@@ -104,9 +110,9 @@ function DayBox({
         aria-label={label}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        onBlur={(event) => commit(event.currentTarget.validity.badInput)}
+        onBlur={(event) => commit(event.currentTarget)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') commit(event.currentTarget.validity.badInput)
+          if (event.key === 'Enter') commit(event.currentTarget)
         }}
         className={COMPACT_FIELD}
       />
