@@ -1,5 +1,5 @@
 import type { ApiAidGridRow } from '../../../types/api-types'
-import { appealTarget } from '../requests/gridEditor'
+import { appealTarget, LIVE_REQUEST_STATUSES } from '../requests/gridEditor'
 import { roundOf } from '../requests/stage'
 
 export type CardEditKind = 'appeal' | 'round3_ask' | 'round3_amount'
@@ -16,6 +16,8 @@ export const CARD_EDIT_LABEL: Readonly<Record<CardEditKind, string>> = {
  * A Kindred cancellation takes no new decision (the server's rule).
  */
 export function cardEdits(row: ApiAidGridRow): CardEditKind[] {
+  // The server's `_live`: a withdrawn or duplicate request takes no new asks or amounts.
+  if (row.request_status !== null && !LIVE_REQUEST_STATUSES.includes(row.request_status)) return []
   if (row.cancellation?.by === 'kindred') return []
   const edits: CardEditKind[] = []
   if (appealTarget(row).kind === 'appeal') edits.push('appeal')
