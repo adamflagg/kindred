@@ -130,3 +130,17 @@ async def test_standing_reads_the_lock_not_the_net_posted_for_a_duplicate() -> N
     assert _standing(dup, False, (locked,)) == "cancelled"  # clawed back since: still counted, like withdrawn
     assert _standing(dup, False, (replace(locked, locked=None),)) == "closed"
     assert _standing(replace(dup, status="duplicate_pending"), False, (locked,)) == "closed"
+
+
+def test_development_tallies_no_cancellation_for_a_posted_duplicate() -> None:
+    """Development's cancelled-by-reason lines are its own figures: a duplicate is Finance's Duplicate line alone."""
+    from bunking.financial_aid.reports.development import development_column
+    from tests.unit.bunking.financial_aid.report_fixtures import req, rnd
+    from tests.unit.bunking.financial_aid.test_report_development import _camp, _inputs
+
+    duplicate = req(
+        "reqnoah00000001", rnd(1, ask="2000", posted="1200"), standing="cancelled", reason="duplicate_in_kindred"
+    )
+    duplicate = replace(duplicate, counts_as_received=False)
+    column = development_column(_inputs(requests=(duplicate,)))
+    assert _camp(column).cancelled_by_reason == {}
