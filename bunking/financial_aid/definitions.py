@@ -215,7 +215,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
             "total confirms nothing more and stays in Requests › Not reconciled. Remaining still subtracts all of "
             "Posted."
         ),
-        spec="§5.3",
+        spec="§7.2",
         rulings=("D59", "D153"),
     ),
 )

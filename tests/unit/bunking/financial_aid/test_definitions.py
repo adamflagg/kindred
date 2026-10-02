@@ -32,7 +32,7 @@ def test_the_household_band_cites_its_five_figures() -> None:
 @pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: d.key)
 def test_each_definition_cites_its_spec_section_and_rulings(definition: Definition) -> None:
     assert re.fullmatch(r"[a-z][a-z0-9_]*", definition.key)
-    assert re.fullmatch(r"§5\.\d+", definition.spec)
+    assert re.fullmatch(r"§[57]\.\d+", definition.spec)
     assert definition.rulings
     assert all(re.fullmatch(r"D\d+", r) for r in definition.rulings)
 
@@ -93,3 +93,8 @@ def test_rounds_and_budget_adds_forward_demand_and_the_confirmed_share_after_its
     assert keys[7:] == ("round2_asks", "round1_unmet", "unconfirmed")
     assert "held appeals' asks included" in BY_KEY["round2_asks"].text
     assert "oldest round first" in BY_KEY["unconfirmed"].text
+
+
+def test_the_unconfirmed_note_cites_the_reconciliation_section() -> None:
+    """The confirmed share is spec §7.2's reconciliation, not §5.3's budget posted."""
+    assert BY_KEY["unconfirmed"].spec == "§7.2"
