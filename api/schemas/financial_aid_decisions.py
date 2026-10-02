@@ -192,6 +192,24 @@ class SessionCandidateOut(BaseModel):
     name: str
 
 
+class CostOverrideOut(BaseModel):
+    """A staff cost override (D22): the cost the request is priced at, its reason code from the season's
+    cost.override_reasons, the note and who. The calculator's cost step reads it (calculator/cost.py)."""
+
+    amount: float
+    reason_code: str
+    note: str
+    actor: str
+
+
+class IncludeOverrideOut(BaseModel):
+    """A staff exclusion (D22; main spec §10.2's "audited override"): the request is left out of the household band
+    (Decision 5); the note says why."""
+
+    note: str
+    actor: str
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -228,6 +246,11 @@ class GridRowOut(BaseModel):
     # Read 3: why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words; None when it can;
     # a past read names it in not_rebuilt.
     appeal_refusal: str | None = None
+    cost_override: CostOverrideOut | None = None
+    # D77/D129 and Decision 5: live, not cancelled, and not excluded by staff. None on a past read: it reads the
+    # cancellation, which a past date doesn't rebuild (not_rebuilt names it).
+    included: bool | None = None
+    include_override: IncludeOverrideOut | None = None
     session_candidates: list[SessionCandidateOut] = Field(default_factory=list)  # read 4: an unmatched request's
     # Read 2 (§6.2 Needs an offer): the description to post the program's aid under, from the rules; None: none named.
     campminder_description: str | None = None

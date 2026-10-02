@@ -59,12 +59,14 @@ from api.schemas.financial_aid_decisions import (
     CellOut,
     ChangedRowOut,
     ConfirmationOut,
+    CostOverrideOut,
     CountOut,
     DecisionWriteOut,
     EditorPreviewOut,
     ForwardDemandOut,
     GridRowOut,
     HoldReleaseIn,
+    IncludeOverrideOut,
     LedgerTicksOut,
     ManualHoldIn,
     NotRebuiltOut,
@@ -161,6 +163,8 @@ from api.services.financial_aid_reconciliation import (
     request_scope,
     undone_rounds,
 )
+from api.services.financial_aid_request_overrides import by_request as overrides_by_request
+from api.services.financial_aid_request_overrides import parse_cost_override
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
@@ -214,6 +218,18 @@ from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
 LIVE_STATUSES: Final = _LIVE  # public: the household page's "included" reads the budget's own set (slice 1)
+
+
+def is_included(status: str | None, *, cancelled: bool, excluded: bool) -> bool:
+    """D77's included request: live (the budget's own set), not cancelled (D129) and not excluded by staff (Decision 5
+    of the slice 1 reads part 2 plan). The household band and each card's money line read it; pricing, Rounds & budget,
+    the Remaining line and Today never do.
+
+    OWNER ITEM 5 IS NOT RULED YET: this is the plan's recommendation (exclude-only, band and card money only). To flip
+    it, change this function; test_an_exclusion_moves_no_budget_figure pins the budget half, and
+    test_a_request_staff_excluded_leaves_the_band and ..._leaves_each_households_card_money_too pin the page half."""
+    return status in _LIVE and not cancelled and not excluded
+
 
 # Spec §5.4: 2026 has no ticks and no dated decisions; its decisions are reproduced from the repaired
 # sheet (D67). Before this season the ledger never ticks, and no confirmation or Note is shown.
@@ -359,6 +375,10 @@ class Season:
     # Empty on a past read.
     camp_lines: tuple[CampLine, ...] = ()
     placements: Mapping[int, Placement] = field(default_factory=dict)
+    # Slice 1 part 2 (reads 5-6): each request's standing cost-override and exclusion rows (aid_application_corrections),
+    # dated by the read's day on a past read.
+    cost_overrides: Mapping[str, CorrectionRecord] = field(default_factory=dict)
+    exclusions: Mapping[str, CorrectionRecord] = field(default_factory=dict)
     splits: Mapping[int, tuple[SplitPart, ...]] = field(default_factory=dict)
 
 
@@ -1241,6 +1261,7 @@ class FinancialAidDecisionsService:
         document = rules.document if rules is not None else None
         # Sub-project 10b-2: a cancelled request is not live (spec §5.3, Decision 14), so it is priced that way.
         cancellations = cancellations_by_request(side.requests, cancel_events, enrollments, sessions)
+        cost_overrides, exclusions = overrides_by_request(side.corrections)
         items = {
             r.id: with_holds(
                 _to_price(
@@ -1316,6 +1337,8 @@ class FinancialAidDecisionsService:
             camp_lines=tuple(camp_lines),
             placements=placements,
             splits=splits,
+            cost_overrides=cost_overrides,
+            exclusions=exclusions,
         )
         return season, side.names
 
@@ -1522,6 +1545,7 @@ class FinancialAidDecisionsService:
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None), *named)
         if axis == "campminder":
             gaps = (*gaps, *_posted_before_request(rounds, requests.keys() | deleted))
+        cost_overrides, exclusions = overrides_by_request(_dated_by(corrections, at))
         return Season(
             year=year,
             rules=rules,
@@ -1541,6 +1565,8 @@ class FinancialAidDecisionsService:
             shares_unknown=bad_shares,
             grants_unplaced=grants_unplaced,
             deleted=deleted,
+            cost_overrides=cost_overrides,
+            exclusions=exclusions,
         )
 
     @staticmethod
@@ -1692,6 +1718,7 @@ class FinancialAidDecisionsService:
                         "cancellation": None,
                         "to_reverse": None,
                         "appeal_refusal": None,
+                        "included": None,
                         "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
                     }
@@ -1747,6 +1774,9 @@ class FinancialAidDecisionsService:
         rules = season.rules.document if season.rules is not None else None
         program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None
         description = (program.campminder_description or None) if program is not None else None
+        standing = season.cost_overrides.get(request_id)
+        parsed = parse_cost_override(standing.new_value) if standing is not None else None
+        excluded = season.exclusions.get(request_id)
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
         return row.model_copy(
             update={
@@ -1754,6 +1784,22 @@ class FinancialAidDecisionsService:
                 "payer_count": len(paying),
                 "payer_shares": grid_shares(row, paying, families),
                 "campminder_description": description,
+                "cost_override": (
+                    CostOverrideOut(
+                        amount=money(parsed.amount),
+                        reason_code=parsed.reason,
+                        note=standing.reason,
+                        actor=standing.actor,
+                    )
+                    if standing is not None and parsed is not None
+                    else None
+                ),
+                "included": is_included(
+                    row.request_status, cancelled=row.cancellation is not None, excluded=excluded is not None
+                ),
+                "include_override": (
+                    IncludeOverrideOut(note=excluded.reason, actor=excluded.actor) if excluded is not None else None
+                ),
             }
         )
 

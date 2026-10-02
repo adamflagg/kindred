@@ -19,6 +19,7 @@ from api.schemas.financial_aid_decisions import (
     CancellationOut,
     ConfirmationOut,
     GridRowOut,
+    IncludeOverrideOut,
     PostedIn,
     PostedRow,
     RoundOut,
@@ -318,6 +319,24 @@ def test_a_household_card_carries_its_own_share_of_decided_and_posted() -> None:
     assert [(s.status, s.count) for s in garcia.states] == [("confirmed", 1)]
     johnson = household_money(JOHNSON, rows, shares, chips)
     assert (johnson.decided, johnson.posted, johnson.in_campminder, johnson.states) == (750.0, None, None, [])
+
+
+def test_a_request_staff_excluded_leaves_the_band() -> None:
+    """Decision 5 (⚠): an exclusion takes the request out of the band, as a cancellation does."""
+    excluded = IncludeOverrideOut(note="Counted under a sibling's request", actor=ACTOR)
+    out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA, include_override=excluded)], {})
+    assert (out.cost, out.decided, out.family_share) == (2000.0, 1500.0, 500.0)
+
+
+def test_a_request_staff_excluded_leaves_each_households_card_money_too() -> None:
+    """Decision 5 (⚠, widened by the plan review): household_money reads included() as totals does, so an exclusion
+    moves each card's Decided and Posted as well as the band."""
+    excluded = IncludeOverrideOut(note="Counted under a sibling's request", actor=ACTOR)
+    _, shares = _season()
+    chips = {GARCIA: 1, JOHNSON: 2}
+    kept = household_money(GARCIA, [_row(EMMA, JOHNSON)], shares, chips)
+    left_out = household_money(GARCIA, [_row(EMMA, JOHNSON, include_override=excluded)], shares, chips)
+    assert (kept.decided, left_out.decided) == (750.0, None)
 
 
 # --- the service: one season, one grants load, the page's own reads ----------------------------------

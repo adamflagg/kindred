@@ -99,3 +99,52 @@ async def test_a_past_date_prices_the_cost_override_only_from_its_day() -> None:
     before = (await _service(store).grid(YEAR, as_of=date(2027, 1, 20))).rows[0]
     after = (await _service(store).grid(YEAR, as_of=date(2027, 2, 10))).rows[0]
     assert (before.cost, after.cost) == (2000.0, 3500.0)
+
+
+@pytest.mark.asyncio
+async def test_a_row_shows_its_cost_override_with_the_code_note_and_who() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.corrections.append(_correction(COST_OVERRIDE, "discount:3500.00", "2027-02-01 17:00:00.000Z"))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.cost_override is not None
+    assert (row.cost_override.amount, row.cost_override.reason_code, row.cost_override.actor) == (
+        3500.0,
+        "discount",
+        ACTOR,
+    )
+    assert row.cost_override.note == "Partial session agreed with the family"
+
+
+@pytest.mark.asyncio
+async def test_an_excluded_row_is_not_included_until_it_is_put_back() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    store.corrections.append(_correction(INCLUDE_OVERRIDE, EXCLUDED, "2027-02-01 17:00:00.000Z", n=1))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert (row.included, row.include_override is not None) == (False, True)
+    store.corrections.append(_correction(INCLUDE_OVERRIDE, "", "2027-02-02 17:00:00.000Z", n=2))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert (row.included, row.include_override) == (True, None)
+
+
+@pytest.mark.asyncio
+async def test_an_exclusion_moves_no_budget_figure() -> None:
+    """Decision 5 (⚠): the Include override reaches the household band only, never pricing, Rounds & budget or the
+    Remaining line."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    seed_request(store, LIAM, household=1000002, person=1000021)
+    before = await _service(store).budget(YEAR)
+    store.corrections.append(_correction(INCLUDE_OVERRIDE, EXCLUDED, "2027-02-01 17:00:00.000Z"))
+    assert await _service(store).budget(YEAR) == before
+
+
+@pytest.mark.asyncio
+async def test_a_past_read_leaves_included_empty_and_names_it() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    log_seeded(store, datetime(2027, 1, 5, 17, 0, tzinfo=UTC))
+    grid = await _service(store).grid(YEAR, as_of=date(2027, 3, 1))
+    assert grid.rows[0].included is None
+    assert "included" in [gap.figure for gap in grid.not_rebuilt]
