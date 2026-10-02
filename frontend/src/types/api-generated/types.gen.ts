@@ -366,6 +366,27 @@ export type AidSourceRow = {
    * Note
    */
   note: string
+  /**
+   * Needs Group
+   */
+  needs_group?: boolean
+  /**
+   * Who Paid
+   */
+  who_paid?: 'the camp' | 'another funder' | null
+  /**
+   * Grantor Name
+   */
+  grantor_name?: string
+  /**
+   * Lines
+   */
+  lines?: number | null
+  /**
+   * Amount
+   */
+  amount?: number | null
+  last_change?: SourceChangeOut | null
 }
 
 /**
@@ -457,6 +478,10 @@ export type AidSourceUpdate = {
  * AidSourcesResponse
  */
 export type AidSourcesResponse = {
+  /**
+   * Year
+   */
+  year?: number | null
   /**
    * Sources
    */
@@ -5507,6 +5532,7 @@ export type GrantorOut = {
    * Descriptions
    */
   descriptions: Array<GrantorDescription>
+  season?: GrantorSeasonOut | null
 }
 
 /**
@@ -5559,6 +5585,26 @@ export type GrantorSave = {
    * Note
    */
   note: string
+}
+
+/**
+ * GrantorSeasonOut
+ *
+ * A grantor's grants in one season (Grants › Grantors' "grants / $ this season").
+ */
+export type GrantorSeasonOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Count
+   */
+  count: number
+  /**
+   * Amount
+   */
+  amount: number
 }
 
 /**
@@ -15492,6 +15538,26 @@ export type SolverResponse = {
 }
 
 /**
+ * SourceChangeOut
+ *
+ * A source's last logged edit (D105: logged with who and why), from aid_change_log.
+ */
+export type SourceChangeOut = {
+  /**
+   * By
+   */
+  by: string
+  /**
+   * At
+   */
+  at: string
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
  * SourceGrantorIn
  *
  * Names the description's grantor (D58: descriptions map to grantors through aid_sources, the
@@ -16087,6 +16153,10 @@ export type SummaryResponse = {
   by_level: {
     [key: string]: number
   }
+  /**
+   * By Level Basis
+   */
+  by_level_basis?: 'placements' | 'attribution'
   /**
    * Cells
    */
@@ -16721,6 +16791,7 @@ export type TodayLineOut = {
     | 'session_not_settled'
     | 'duplicates'
     | 'cancel_reason'
+    | 'to_place'
     | 'grants'
     | 'late_full_coverage'
     | 'pending_approval'
@@ -16740,7 +16811,7 @@ export type TodayLineOut = {
   /**
    * Item Kind
    */
-  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields'
+  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields' | 'lines'
   /**
    * Reasons
    */
@@ -16765,6 +16836,10 @@ export type TodayLineOut = {
    * Request Ids
    */
   request_ids?: Array<string>
+  /**
+   * Skipped
+   */
+  skipped?: string
 }
 
 /**
@@ -22951,9 +23026,24 @@ export type GetDataQualityApiFinancialAidDataQualityGetResponse =
 export type ListSourcesApiFinancialAidSourcesGetData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    /**
+     * Year
+     */
+    year?: number | null
+  }
   url: '/api/financial-aid/sources'
 }
+
+export type ListSourcesApiFinancialAidSourcesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListSourcesApiFinancialAidSourcesGetError =
+  ListSourcesApiFinancialAidSourcesGetErrors[keyof ListSourcesApiFinancialAidSourcesGetErrors]
 
 export type ListSourcesApiFinancialAidSourcesGetResponses = {
   /**
@@ -23488,6 +23578,10 @@ export type ListGrantorsApiFinancialAidGrantorsGetData = {
      * Include Retired
      */
     include_retired?: boolean
+    /**
+     * Year
+     */
+    year?: number | null
   }
   url: '/api/financial-aid/grantors'
 }
