@@ -79,6 +79,9 @@ export function CapacityForm() {
       {stored.error !== null && stored.data === undefined && (
         <p className={AMBER_NOTE}>Couldn&apos;t load the stored capacities.</p>
       )}
+      {stored.error !== null && stored.data !== undefined && (
+        <p className={AMBER_NOTE}>Couldn&apos;t refresh this list: reload to see the latest.</p>
+      )}
       {canEdit && (
         <>
           <div className="flex flex-wrap items-end gap-3">
