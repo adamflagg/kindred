@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -24,9 +24,7 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
   })
 
   it("keeps the note and shows the server's refusal", async () => {
-    const onSubmit = vi.fn(() =>
-      Promise.reject(new Error('Round 1 is accepted: untick Accepted first'))
-    )
+    const onSubmit = vi.fn(() => Promise.reject(new Error('Untick Accepted on Round 1 first')))
     render(
       <ReasonForm
         label="Why undo Posted"
@@ -36,9 +34,7 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
       />
     )
     await userEvent.type(screen.getByLabelText('Why undo Posted'), 'Wrong family{Enter}')
-    expect(
-      await screen.findByText('Round 1 is accepted: untick Accepted first')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Untick Accepted on Round 1 first')).toBeInTheDocument()
     expect(screen.getByLabelText('Why undo Posted')).toHaveValue('Wrong family')
   })
 
@@ -47,7 +43,7 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
     const onCancel = vi.fn()
     render(
       <ReasonForm
-        label="Why reopen (optional)"
+        label="Note (optional)"
         required={false}
         submitLabel="Reopen"
         onSubmit={onSubmit}
@@ -56,33 +52,33 @@ describe('ReasonForm (D22: these edits need a reason)', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Reopen' }))
     expect(onSubmit).toHaveBeenCalledWith('')
-    await userEvent.type(screen.getByLabelText('Why reopen (optional)'), '{Escape}')
+    await userEvent.type(screen.getByLabelText('Note (optional)'), '{Escape}')
     expect(onCancel).toHaveBeenCalled()
   })
 
-  it('ignores a second submit while the first is in flight', async () => {
+  it('ignores a second submit while the first is in flight', () => {
     const onSubmit = vi.fn(() => new Promise<void>(() => undefined))
-    render(
+    const { container } = render(
       <ReasonForm label="Why" submitLabel="Send" onSubmit={onSubmit} onCancel={() => undefined} />
     )
-    await userEvent.type(screen.getByLabelText('Why'), 'Because{Enter}')
-    await userEvent.type(screen.getByLabelText('Why'), '{Enter}')
+    fireEvent.change(screen.getByLabelText('Why'), { target: { value: 'Because' } })
+    const form = container.querySelector('form') as HTMLFormElement
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
-  it('does not show an error from an older submit that lands after a newer one', async () => {
-    let rejectFirst: (reason: Error) => void = () => undefined
+  it('a new submit clears the previous refusal', async () => {
     const onSubmit = vi
       .fn<(note: string) => Promise<void>>()
-      .mockImplementationOnce(() => new Promise<void>((_, reject) => (rejectFirst = reject)))
-      .mockImplementation(() => Promise.resolve())
+      .mockRejectedValueOnce(new Error('Late refusal'))
+      .mockResolvedValue(undefined)
     render(
       <ReasonForm label="Why" submitLabel="Send" onSubmit={onSubmit} onCancel={() => undefined} />
     )
     await userEvent.type(screen.getByLabelText('Why'), 'One{Enter}')
-    // The first is still pending; a second submit is ignored while busy, so the late rejection
-    // is the only error to land and it belongs to the current submit, not a stale one.
-    rejectFirst(new Error('Late refusal'))
     expect(await screen.findByText('Late refusal')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(onSubmit).toHaveBeenCalledTimes(2)
