@@ -5929,6 +5929,30 @@ export type HistoryCountOut = {
 }
 
 /**
+ * HistoryEffectOut
+ *
+ * A rules approval's effect on the season's pricing, as recorded when it was approved (H3; D49).
+ */
+export type HistoryEffectOut = {
+  /**
+   * From Version
+   */
+  from_version: number | null
+  /**
+   * To Version
+   */
+  to_version: number | null
+  /**
+   * Repriced
+   */
+  repriced: number
+  /**
+   * Flagged
+   */
+  flagged: number
+}
+
+/**
  * HistoryEntryOut
  *
  * One aid_change_log row about the page's requests, applications, corrections, commitments or links
@@ -6084,6 +6108,7 @@ export type HistoryOperationOut = {
    */
   summary: string
   figures: HistoryFiguresOut
+  effect: HistoryEffectOut | null
 }
 
 /**

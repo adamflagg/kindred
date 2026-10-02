@@ -726,6 +726,7 @@ export type {
   HealthCheckHealthGetResponses,
   HistoricalTrendsResponse,
   HistoryCountOut,
+  HistoryEffectOut,
   HistoryEntryOut,
   HistoryFiguresOut,
   HistoryKindCountOut,
