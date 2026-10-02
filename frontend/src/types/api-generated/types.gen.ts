@@ -4263,6 +4263,17 @@ export type ForwardDemandOut = {
    * Round1 Unmet
    */
   round1_unmet: number | null
+  round1_unmet_requests?: CountOut | null
+  round2_held?: CountOut | null
+  /**
+   * Round2 Held Asked
+   */
+  round2_held_asked?: number | null
+  round1_held?: CountOut | null
+  /**
+   * Round1 Held Asked
+   */
+  round1_held_asked?: number | null
 }
 
 /**
