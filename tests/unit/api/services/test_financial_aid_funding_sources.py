@@ -6,12 +6,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from api.constants.collections import AID_SOURCES
+from api.schemas.financial_aid import SourceChangeOut
 from api.schemas.financial_aid_reports import FundingSourceIn
-from api.services.financial_aid_development_repository import GrantorRecord, SourceRecord
+from api.services.financial_aid_development_repository import DevelopmentRepository, GrantorRecord, SourceRecord
 from api.services.financial_aid_development_service import (
     FinancialAidDevelopmentService,
     FunderNotFoundError,
@@ -19,6 +22,8 @@ from api.services.financial_aid_development_service import (
 )
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_reports_service import ReportsRefusedError
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWrite, AidWriteConflictError
+from bunking.pocketbase_batch import BatchRequest, BatchRequestFailedError, BatchResult
 from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved
 from tests.unit.api.services.development_fakes import FakeDevelopmentStore
 from tests.unit.api.services.financial_aid_fakes import YEAR, intake_rules
@@ -410,3 +415,107 @@ async def test_a_funder_save_with_only_a_note_writes_nothing_and_logs_nothing() 
     )
     assert store.operations == []
     assert store.log == []
+
+
+# --- the season's lines and the last change (slice 4 ask 5, with slice 3 ask 2), and needs_group ---------------
+
+
+def _posting(source_key: str, amount: float, effective: str = "") -> SimpleNamespace:
+    """A live aid_postings row: an aid line posts negative; `effective` is the description after a reclassifying override."""
+    return SimpleNamespace(source_key=source_key, effective_source_key=effective or source_key, amount=amount)
+
+
+def _logged(source_id: str, log_id: str, actor: str, reason: str, created: str) -> SimpleNamespace:
+    return SimpleNamespace(id=log_id, entity_id=source_id, actor=actor, reason=reason, created=created)
+
+
+async def test_a_description_counts_the_lines_reclassified_onto_it_and_carries_its_last_change() -> None:
+    store = _store()
+    store.posting_rows = [
+        _posting(
+            "camp fa", -300.0, effective="regional grant"
+        ),  # reclassified: the grant's description classifies it now
+        _posting("regional grant", -200.0),
+    ]
+    store.change_rows = [
+        _logged(REGIONAL.id, "log000000000001", DEVELOPMENT, "Funds the camp pool", "2027-02-10 10:00:00.000Z")
+    ]
+    out = await _service(store).funding_sources(YEAR)
+    regional = next(s for s in out.sources if s.source_id == REGIONAL.id)
+    assert (regional.lines, regional.amount) == (2, 500.0)
+    assert regional.last_change == SourceChangeOut(
+        by=DEVELOPMENT, at=datetime(2027, 2, 10, 10, 0, tzinfo=UTC), note="Funds the camp pool"
+    )
+    quiet = next(s for s in out.sources if s.source_id == YEARS_AT_CAMP.id)
+    assert (quiet.lines, quiet.amount, quiet.last_change) == (0, 0.0, None)  # no line, never edited in the app
+
+
+async def test_a_funder_row_sums_its_descriptions_lines_and_takes_the_later_change() -> None:
+    """D159: the funder row stands for REGIONAL and SPRING together. Its lines and dollars are theirs summed, and its
+    last change the later of theirs, whichever description it was made on."""
+    store = _by_funder()
+    store.posting_rows = [
+        _posting("regional grant", -300.25),
+        _posting("regional grant 2", -200.0),
+        _posting("regional grant 2", -100.0),
+    ]
+    store.change_rows = [
+        _logged(REGIONAL.id, "log000000000001", DEVELOPMENT, "First grouping", "2027-01-05 10:00:00.000Z"),
+        _logged(SPRING.id, "log000000000002", "finance@example.com", "Later regrouping", "2027-02-10 10:00:00.000Z"),
+    ]
+    out = await _service(store).funding_sources(YEAR)
+    row = next(r for r in out.rows if r.grantor_key == "regional_fund")
+    assert [(d.lines, d.amount) for d in row.descriptions] == [(1, 300.25), (2, 300.0)]
+    assert (row.lines, row.amount) == (3, 600.25)  # summed as Decimals, rounded once
+    assert row.last_change == SourceChangeOut(
+        by="finance@example.com", at=datetime(2027, 2, 10, 10, 0, tzinfo=UTC), note="Later regrouping"
+    )
+
+
+async def test_a_save_echo_leaves_the_season_facts_unset() -> None:
+    """Only the list read counts the season; the PUT's answer carries the record's own facts and the screen re-reads."""
+    store = _store()
+    store.posting_rows = [_posting("regional grant", -200.0)]
+    store.change_rows = [_logged(REGIONAL.id, "log000000000001", DEVELOPMENT, "First", "2027-01-05 10:00:00.000Z")]
+    out = await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn(group="weekend_pool", incentive=False), actor=DEVELOPMENT
+    )
+    assert (out.lines, out.amount, out.last_change) == (None, None, None)
+
+
+async def test_the_camps_own_and_unclassified_rows_never_need_a_group() -> None:
+    """D100's needs-a-group is an outside or incentive source with no group: the ledger's own rule, which the Sources
+    chip and Today share. #2967 set it to `not families` for every section, so the camp's own rows read True."""
+    store = _by_funder()
+    store.source_rows.append(MYSTERY)
+    out = await _service(store).funding_sources(YEAR)
+    by_section = {r.section: r.needs_group for r in out.rows if r.section != "outside"}
+    assert by_section == {"camp": False, "unclassified": False}
+    assert next(r for r in out.rows if r.name == "Years-at-Camp Grant").needs_group is True  # outside, no group
+
+
+def _vanished(pb: object, requests: list[BatchRequest], *, max_requests: int) -> list[BatchResult]:
+    raise BatchRequestFailedError(
+        index=0, total=len(requests), request=requests[0], status=404, message="gone", field_errors={}, response=None
+    )
+
+
+async def test_a_funding_sources_write_that_lost_a_race_is_a_conflict_not_a_500() -> None:
+    """DevelopmentRepository.commit let a refused batch through as BatchRequestFailedError: a 500. _reports_http already
+    maps AidWriteConflictError to 409."""
+    write = AidWrite(
+        collection=AID_SOURCES,
+        action="update",
+        year=YEAR,
+        record_id=REGIONAL.id,
+        before={"implied_program_families": ["quest", "summer"]},
+        data={"implied_program_families": ["summer"]},
+    )
+    with patch("bunking.financial_aid.change_log.send_batch", side_effect=_vanished):
+        with pytest.raises(AidWriteConflictError) as refused:
+            await DevelopmentRepository(MagicMock()).commit([write], actor=DEVELOPMENT)
+    assert (refused.value.collection, refused.value.record_id, str(refused.value)) == (
+        AID_SOURCES,
+        REGIONAL.id,
+        CONFLICT_MESSAGE,
+    )

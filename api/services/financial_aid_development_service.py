@@ -18,6 +18,7 @@ Nothing here is a family's row (D66, D90): the response carries aggregates only.
 
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -26,6 +27,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Final, Literal, Protocol
 
 from api.constants.collections import AID_REPORT_DEFINITIONS, AID_SOURCES
+from api.schemas.financial_aid import SourceChangeOut
 from api.schemas.financial_aid_reports import (
     GROUP_CHANGE_WARNING,
     DatedColumn,
@@ -63,7 +65,13 @@ from api.services.financial_aid_development_repository import (
     StoredColumns,
 )
 from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow
-from api.services.financial_aid_ledger_service import GRANT_FUNDER_TYPES, as_of_cutoff, money, parse_pb_datetime
+from api.services.financial_aid_ledger_service import (
+    GRANT_FUNDER_TYPES,
+    as_of_cutoff,
+    money,
+    needs_group,
+    parse_pb_datetime,
+)
 from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
@@ -149,6 +157,8 @@ class DevelopmentStore(Protocol):
     async def family_keys(self, year: int) -> dict[int, str]: ...
     async def sources(self) -> list[SourceRecord]: ...
     async def grantors(self) -> list[GrantorRecord]: ...
+    async def source_lines(self, year: int) -> dict[str, tuple[int, Decimal]]: ...
+    async def source_changes(self) -> dict[str, SourceChangeOut]: ...
     async def source(self, source_id: str) -> SourceRecord | None: ...
     async def report_columns(self, report: str) -> StoredColumns: ...
     async def commit(
@@ -570,19 +580,27 @@ class FinancialAidDevelopmentService:
         per-description edit list) and the rows by funder (D159). Read-only rows follow: the unclassified (N3: listed,
         so staff can fix the classification) and the camp's own."""
         found = await self._season_grouping(year)
-        every = await self._development.sources()
-        grantors = {g.key: g for g in await self._development.grantors()}
+        every, grantor_rows, counted, changed = await asyncio.gather(
+            self._development.sources(),
+            self._development.grantors(),
+            self._development.source_lines(year),
+            self._development.source_changes(),
+        )
+        grantors = {g.key: g for g in grantor_rows}
         outside = [s for s in every if s.funder_type in GRANT_FUNDER_TYPES]
         unclassified = [s for s in every if s.funder_type not in GRANT_FUNDER_TYPES and s.funder_type != "camp"]
         own = [s for s in every if s.funder_type == "camp"]
         return FundingSourcesResponse(
             year=year,
             groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in found.groups],
-            sources=[_funding_source(s, found) for s in sorted(outside, key=lambda s: (s.source_name.lower(), s.id))],
+            sources=[
+                _funding_source(s, found, counted=counted.get(s.description_key, (0, ZERO)), last=changed.get(s.id))
+                for s in sorted(outside, key=lambda s: (s.source_name.lower(), s.id))
+            ],
             rows=[
-                *funder_rows(outside, grantors, found, "outside"),
-                *funder_rows(unclassified, grantors, found, "unclassified"),
-                *funder_rows(own, grantors, found, "camp"),
+                *funder_rows(outside, grantors, found, "outside", counted=counted, changed=changed),
+                *funder_rows(unclassified, grantors, found, "unclassified", counted=counted, changed=changed),
+                *funder_rows(own, grantors, found, "camp", counted=counted, changed=changed),
             ],
             group_change_warning=GROUP_CHANGE_WARNING,
         )
@@ -1039,7 +1057,14 @@ _FUNDER_TYPES: Final[Mapping[str, Literal["outside", "incentive", "camp", "unkno
 }
 
 
-def _funding_source(source: SourceRecord, found: Grouping, *, families_changed: bool = False) -> FundingSourceOut:
+def _funding_source(
+    source: SourceRecord,
+    found: Grouping,
+    *,
+    families_changed: bool = False,
+    counted: tuple[int, Decimal] | None = None,
+    last: SourceChangeOut | None = None,
+) -> FundingSourceOut:
     pools = {found.by_family[f] for f in source.implied_program_families if f in found.by_family}
     labels = {g.key: g.label for g in found.groups}
     group = next(iter(pools)) if len(pools) == 1 else None
@@ -1053,8 +1078,11 @@ def _funding_source(source: SourceRecord, found: Grouping, *, families_changed: 
         incentive=source.incentive,
         group=group,
         group_label=labels.get(group, group) if group is not None else ("several groups" if pools else ""),
-        needs_group=not source.implied_program_families,
+        needs_group=needs_group(source),  # the ledger's rule (D100): an outside source with no group, never the camp's
         families=list(source.implied_program_families),
+        lines=counted[0] if counted is not None else None,
+        amount=money(counted[1]) if counted is not None else None,
+        last_change=last,
     )
 
 
@@ -1068,8 +1096,21 @@ def _row_of(
     section: RowSection,
     *,
     families_changed: bool = False,
+    counted: Mapping[str, tuple[int, Decimal]] | None = None,
+    changed: Mapping[str, SourceChangeOut] | None = None,
 ) -> FundingSourceRowOut:
-    descriptions = [_funding_source(s, found) for s in sorted(members, key=lambda s: (s.source_name.lower(), s.id))]
+    ordered = sorted(members, key=lambda s: (s.source_name.lower(), s.id))
+    tallies = None if counted is None else [counted.get(s.description_key, (0, ZERO)) for s in ordered]
+    descriptions = [
+        _funding_source(
+            s,
+            found,
+            counted=None if tallies is None else tallies[i],
+            last=None if changed is None else changed.get(s.id),
+        )
+        for i, s in enumerate(ordered)
+    ]
+    latest = max((d.last_change for d in descriptions if d.last_change is not None), key=lambda c: c.at, default=None)
     groups = {d.group for d in descriptions}
     labels = {d.group_label for d in descriptions}
     incentives = {d.incentive for d in descriptions}
@@ -1086,11 +1127,20 @@ def _row_of(
         needs_group=all(d.needs_group for d in descriptions),
         descriptions=descriptions,
         families_changed=families_changed,
+        lines=sum(n for n, _ in tallies) if tallies is not None else None,
+        amount=money(sum((a for _, a in tallies), ZERO)) if tallies is not None else None,  # Decimals, rounded once
+        last_change=latest,
     )
 
 
 def funder_rows(
-    sources: Sequence[SourceRecord], grantors: Mapping[str, GrantorRecord], found: Grouping, section: RowSection
+    sources: Sequence[SourceRecord],
+    grantors: Mapping[str, GrantorRecord],
+    found: Grouping,
+    section: RowSection,
+    *,
+    counted: Mapping[str, tuple[int, Decimal]] | None = None,
+    changed: Mapping[str, SourceChangeOut] | None = None,
 ) -> list[FundingSourceRowOut]:
     """D159: one row per funder where the grantor directory groups descriptions (a retired grantor still names its
     row, for history), else one row per description; by name. Funding sources and Development's money by source both
@@ -1102,8 +1152,11 @@ def funder_rows(
             by_funder[source.grantor_key].append(source)
         else:
             singles.append(source)
-    rows = [_row_of(grantors[key], members, found, section) for key, members in by_funder.items()]
-    rows += [_row_of(None, [source], found, section) for source in singles]
+    rows = [
+        _row_of(grantors[key], members, found, section, counted=counted, changed=changed)
+        for key, members in by_funder.items()
+    ]
+    rows += [_row_of(None, [source], found, section, counted=counted, changed=changed) for source in singles]
     return sorted(rows, key=lambda r: (r.name.lower(), r.grantor_key, r.descriptions[0].source_id))
 
 
