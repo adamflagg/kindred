@@ -99,6 +99,12 @@ describe('UserDrawer', () => {
     expect(document.body.textContent).not.toMatch(/\bpersons\b/)
   })
 
+  it('shows the person avatar in the header and no System badge on role rows', () => {
+    renderDrawer('u-emma')
+    expect(screen.getByTestId('user-drawer')).toContainElement(screen.getByTestId('user-avatar'))
+    expect(screen.queryByText(/^System$/)).not.toBeInTheDocument()
+  })
+
   it('lists their roles first, then one-line "Add a role" rows', () => {
     renderDrawer('u-emma')
     expect(screen.getByRole('heading', { name: /Emma's roles\s*2/ })).toBeInTheDocument()

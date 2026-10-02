@@ -92,6 +92,17 @@ describe('UsersTable', () => {
     expect(screen.getAllByTestId(/^user-row-/)).toHaveLength(15)
   })
 
+  it('rules the pager off from the freshness legend', () => {
+    mockIsAdmin = true
+    renderTable()
+    expect(screen.getByTestId('users-pager')).toHaveClass('border-l')
+  })
+
+  it('shows an initial avatar in each row', () => {
+    renderTable()
+    expect(screen.getAllByTestId('user-avatar')).toHaveLength(15)
+  })
+
   it('clamps the page when a search shrinks the list (Review Focus 1)', async () => {
     renderTable({ page: 2 })
     await userEvent.type(screen.getByPlaceholderText('Search name or email'), 'garcia')

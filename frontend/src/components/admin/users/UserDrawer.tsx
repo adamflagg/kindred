@@ -5,6 +5,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import type { RecordModel } from 'pocketbase'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { Permission } from '../../../constants/permissions'
+import { UserAvatar } from './UserAvatar'
 import { SlideInPanel } from '../../weekend/SlideInPanel'
 import {
   draftDiff,
@@ -52,6 +53,7 @@ export function UserDrawer({ user, data, registry, onClose }: UserDrawerProps) {
           <div>{summary}</div>
         </>
       }
+      leading={<UserAvatar user={user} size={40} />}
       ariaLabel="Manage roles"
       testId="user-drawer"
       backdropTestId="user-drawer-backdrop"
@@ -88,7 +90,6 @@ function DrawerBody({
 
   const [draftIds, setDraftIds] = useState<Set<string>>(() => new Set(heldSaved.map((r) => r.id)))
 
-  const systemById = new Map(data.roles.map((r) => [r.id, Boolean(r.is_system)]))
   // Built from data.roleLikes so draftDiff's by-reference comparison holds.
   const draftRoles = data.roleLikes.filter((r) => draftIds.has(r.id))
   const diff = draftDiff(saved, draftRoles)
@@ -230,11 +231,6 @@ function DrawerBody({
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{r.name}</span>
-                          {systemById.get(r.id) && (
-                            <span className="text-[9.5px] font-bold text-amber-700 uppercase dark:text-amber-400">
-                              System
-                            </span>
-                          )}
                           <span className="text-muted-foreground text-[11px]">
                             {peopleLabel(roleHolders(r.id, data.users, data.held).length)}
                           </span>
@@ -294,41 +290,60 @@ function DrawerBody({
             {dirty && <span className="text-muted-foreground font-normal"> after saving</span>}
           </h4>
           {areas.map(({ area, items }) => (
-            <div key={area} className="mb-2">
-              <div className="text-muted-foreground text-[10.5px] font-bold uppercase">{area}</div>
-              {items.map((p) => {
-                const lost = diff.lost.has(p.codename)
-                const gained = diff.gained.has(p.codename)
-                const via = grantedVia(p.codename, lost ? saved : draftRoles)
-                return (
-                  <div
-                    key={p.codename}
-                    className={`flex flex-wrap items-center gap-x-2 text-xs ${lost ? 'text-muted-foreground line-through' : ''}`}
-                  >
-                    {lost ? <Minus className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-                    <span>{p.short}</span>
-                    {gained && (
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase">new</span>
-                    )}
-                    {lost && (
-                      <span className="text-[10px] font-bold text-red-600 uppercase">removed</span>
-                    )}
-                    <span className="text-muted-foreground">
-                      via {via.map((r) => r.name).join(', ')}
-                    </span>
-                    {p.screens.map((s) => (
-                      <Link
-                        key={s.path}
-                        to={s.path}
-                        className="text-primary inline-flex items-center gap-0.5"
-                      >
-                        {s.name}
-                        <ArrowUpRight className="h-3 w-3" />
-                      </Link>
-                    ))}
-                  </div>
-                )
-              })}
+            <div key={area} className="mb-2.5">
+              <div className="text-muted-foreground mb-1 block text-[10.5px] font-bold tracking-[0.06em] uppercase">
+                {area}
+              </div>
+              <ul className="flex flex-col gap-1.5">
+                {items.map((p) => {
+                  const lost = diff.lost.has(p.codename)
+                  const gained = diff.gained.has(p.codename)
+                  const via = grantedVia(p.codename, lost ? saved : draftRoles)
+                  const Icon = lost ? Minus : Check
+                  return (
+                    <li
+                      key={p.codename}
+                      className={`flex items-start gap-2 text-sm leading-[1.4] ${lost ? 'text-muted-foreground' : ''}`}
+                    >
+                      <Icon
+                        className={`mt-0.5 h-[15px] w-[15px] flex-shrink-0 ${lost ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}
+                      />
+                      <span className="min-w-0">
+                        <span className={`font-semibold ${lost ? 'line-through' : ''}`}>
+                          {p.short}
+                        </span>
+                        {gained && (
+                          <span className="ml-1.5 rounded bg-emerald-600/15 px-1.5 text-[10px] leading-4 font-bold text-emerald-700 uppercase dark:text-emerald-400">
+                            new
+                          </span>
+                        )}
+                        {lost && (
+                          <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 text-[10px] leading-4 font-bold text-amber-700 uppercase dark:text-amber-400">
+                            removed
+                          </span>
+                        )}
+                        <span className="text-muted-foreground block text-xs">
+                          via {via.map((r) => r.name).join(', ')}
+                        </span>
+                        {p.screens.length > 0 && (
+                          <span className="flex flex-wrap gap-x-2.5 gap-y-0.5">
+                            {p.screens.map((s) => (
+                              <Link
+                                key={s.path}
+                                to={s.path}
+                                className="text-primary inline-flex items-center gap-[3px] text-[12.5px] font-medium whitespace-nowrap hover:underline"
+                              >
+                                <ArrowUpRight className="h-[13px] w-[13px]" />
+                                {s.name}
+                              </Link>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
             </div>
           ))}
           {adminOnly !== undefined && (

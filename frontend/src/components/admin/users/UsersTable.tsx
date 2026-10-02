@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Lock, Search, X } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import type { RecordModel } from 'pocketbase'
-import { pb } from '../../../lib/pocketbase'
 import { useAuth } from '../../../contexts/AuthContext'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { Permission } from '../../../constants/permissions'
@@ -14,6 +13,7 @@ import {
 } from '../../ui/paginationParts'
 import { bucketCounts, filterUsers, freshness, pageOf, type Bucket } from './usersPageModel'
 import { UserDrawer } from './UserDrawer'
+import { UserAvatar } from './UserAvatar'
 import type { UsersPageProps } from './types'
 
 export const PER_PAGE = 15
@@ -25,30 +25,6 @@ const BUCKETS: Array<[Bucket | null, string]> = [
   ['other', 'Other roles'],
   ['none', 'No role'],
 ]
-
-const AVATAR_COLORS = [
-  'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-  'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-  'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-  'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-]
-
-/** A consistent avatar background from a string. */
-function getAvatarColor(str: string): string {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i)
-    hash = hash & hash
-  }
-  return (
-    AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ??
-    'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300'
-  )
-}
 
 const FRESH_DOT: Record<string, string> = {
   fresh: 'bg-emerald-500',
@@ -142,11 +118,12 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
           </span>
         )}
         <div
-          className={`text-muted-foreground flex items-center gap-1.5 text-sm ${
-            canSeeLastLogin ? '' : 'ml-auto'
+          data-testid="users-pager"
+          className={`text-muted-foreground flex items-center gap-2 text-sm ${
+            canSeeLastLogin ? 'border-border border-l pl-3' : 'ml-auto'
           }`}
         >
-          <span className="tabular-nums">
+          <span className="font-semibold tabular-nums">
             {paged.items.length === 0
               ? 'Nobody matches'
               : `${String(paged.start + 1)}–${String(paged.start + paged.items.length)} of ${String(filtered.length)}`}
@@ -211,7 +188,6 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                   const email = String(user['email'] ?? '')
                   const rawName = String(user['name'] ?? '')
                   const name = rawName === '' ? (email.split('@')[0] ?? '') : rawName
-                  const avatar = String(user['avatar'] ?? '')
                   const isSelf = user.id === currentUser?.id
                   const isAdminUser = Boolean(user['is_admin'])
                   const manageable = canManage(user)
@@ -230,21 +206,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                     >
                       <td className="px-3.5 py-[7px]">
                         <div className="flex items-center gap-2.5">
-                          <span
-                            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold ${
-                              avatar ? '' : getAvatarColor(email)
-                            }`}
-                          >
-                            {avatar ? (
-                              <img
-                                src={pb.files.getURL(user, avatar, { thumb: '56x56' })}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              (name === '' ? email : name).charAt(0).toUpperCase()
-                            )}
-                          </span>
+                          <UserAvatar user={user} />
                           {manageable ? (
                             <button
                               type="button"

@@ -64,16 +64,7 @@ export function RoleDrawer({ roleId, data, registry, url, onClose, onCreated }: 
   return (
     <SlideInPanel
       identity={roleId ?? 'new'}
-      title={
-        isNew ? (
-          'New role'
-        ) : (
-          <>
-            {role.name}
-            {role.is_system && <SystemPill />}
-          </>
-        )
-      }
+      title={isNew ? 'New role' : role.name}
       subtitle={
         isNew
           ? 'Admins only'
@@ -94,14 +85,6 @@ export function RoleDrawer({ roleId, data, registry, url, onClose, onCreated }: 
         onCreated={onCreated}
       />
     </SlideInPanel>
-  )
-}
-
-function SystemPill() {
-  return (
-    <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-px text-[10.5px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-      System
-    </span>
   )
 }
 

@@ -93,7 +93,11 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
           <table className="w-full min-w-[900px] border-separate border-spacing-0">
             <thead>
               <tr className="bg-muted/55">
-                <th className={`${TH} ${PIN} bg-muted z-10`}>Permission</th>
+                <th
+                  className={`${TH} ${PIN} z-10 bg-[color-mix(in_srgb,hsl(var(--muted))_55%,hsl(var(--card)))]`}
+                >
+                  Permission
+                </th>
                 <th className={`${TH} text-center`}>
                   <div className="flex flex-col items-center gap-[3px]">
                     Admin
@@ -118,11 +122,6 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
                         >
                           {r.name}
                         </button>
-                        {r.is_system && (
-                          <span className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                            System
-                          </span>
-                        )}
                         <button
                           type="button"
                           data-testid={`role-count-${r.id}`}

@@ -63,6 +63,13 @@ describe('RolesMatrix', () => {
     expect(screen.getByRole('row', { name: /Analytics/ })).toBeInTheDocument()
   })
 
+  it('does not mark which roles are system roles', () => {
+    renderMatrix()
+    expect(
+      within(screen.getByTestId('roles-matrix')).queryByText(/^System$/)
+    ).not.toBeInTheDocument()
+  })
+
   it('counts people per role from live links, and links the count to Users', async () => {
     const url = renderMatrix().url
     expect(screen.getByTestId('role-count-r-exec')).toHaveTextContent('2 people') // admin + Emma; orphan l5 ignored

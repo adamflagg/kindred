@@ -31,6 +31,8 @@ export interface SlideInPanelProps {
   identity: string
   title: ReactNode
   subtitle: ReactNode
+  /** Optional element before the title block (the user drawer's avatar). */
+  leading?: ReactNode
   ariaLabel: string
   /** Parent-driven animated close, as the summer board does. */
   requestClose?: boolean
@@ -47,6 +49,7 @@ export function SlideInPanel({
   identity,
   title,
   subtitle,
+  leading,
   ariaLabel,
   requestClose = false,
   onClose,
@@ -173,6 +176,7 @@ export function SlideInPanel({
         onAnimationEnd={handleAnimationEnd}
       >
         <div className="from-forest-700 via-forest-800 to-forest-900 flex flex-shrink-0 items-start gap-3 bg-gradient-to-br p-4 text-white">
+          {leading}
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-bold">{title}</h2>
             <p className="text-forest-100 mt-0.5 text-xs">{subtitle}</p>

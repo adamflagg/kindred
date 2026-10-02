@@ -151,6 +151,11 @@ describe('RoleDrawer', () => {
     expect(screen.getByText("Give and remove other staff's roles.")).toBeInTheDocument()
   })
 
+  it('does not badge a system role in the title', () => {
+    renderRoleDrawer('r-bunk')
+    expect(screen.queryByText(/^System$/)).not.toBeInTheDocument()
+  })
+
   it('locks a system role slug and offers no delete', async () => {
     renderRoleDrawer('r-bunk')
     await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
