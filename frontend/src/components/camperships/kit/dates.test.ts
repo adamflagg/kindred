@@ -70,6 +70,12 @@ describe('formatCampDateTime', () => {
     expect(formatCampDateTime('2027-04-10T07:00:00Z')).toBe('Apr 10 00:00')
   })
 
+  it('reads the instants either side of the spring-forward changeover by camp time', () => {
+    // 2027-03-14: 02:00 PST jumps to 03:00 PDT, at 10:00 UTC.
+    expect(formatCampDateTime('2027-03-14T09:59:00Z')).toBe('Mar 14 01:59')
+    expect(formatCampDateTime('2027-03-14T10:00:00Z')).toBe('Mar 14 03:00')
+  })
+
   it('gives back anything unreadable unchanged', () => {
     expect(formatCampDateTime('not a time')).toBe('not a time')
   })
