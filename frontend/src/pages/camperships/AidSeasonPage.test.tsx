@@ -31,6 +31,10 @@ vi.mock('../../components/camperships/season/HistoryTab', () => ({
 vi.mock('../../components/camperships/season/rules/RulesTab', () => ({
   RulesTab: () => <div>Rules tab body</div>,
 }))
+// Also keeps the real tab's hooks out of this suite.
+vi.mock('../../components/camperships/season/scenarios/ScenariosTab', () => ({
+  ScenariosTab: () => <div>Scenarios tab body</div>,
+}))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules']
@@ -101,11 +105,19 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     first.unmount()
     renderAt('/aid/season/scenarios')
     expect(screen.getByText('Permission denied')).toBeInTheDocument()
+    expect(screen.queryByText('Scenarios tab body')).toBeNull()
   })
 
   it("mounts the Rules tab's body at /aid/season/rules (Task 11 m5)", () => {
     renderAt('/aid/season/rules')
     expect(screen.getByText('Rules tab body')).toBeInTheDocument()
+  })
+
+  it("mounts the Scenarios tab's body at /aid/season/scenarios for finance (D76; T17-m9)", () => {
+    granted = FINANCE
+    renderAt('/aid/season/scenarios')
+    expect(screen.getByText('Scenarios tab body')).toBeInTheDocument()
+    expect(screen.queryByText(/built in a later part/)).toBeNull()
   })
 
   it('shows finance every tab', () => {

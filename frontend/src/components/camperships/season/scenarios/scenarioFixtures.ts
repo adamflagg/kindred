@@ -95,9 +95,29 @@ export function scenarioDraft(over: Partial<ApiAidScenarioDraft> = {}): ApiAidSc
   return {
     trail_id: 'trail0000000001',
     from_code: 'B',
-    label: 'bands $5,000 wider · Round 1 % −5 pts',
+    // Like the server's, the label and changes compare the draft with its source option (B).
+    label: 'Round 1 % −5 pts',
     document: RULES_DOCUMENT,
-    changes: [],
+    changes: [
+      {
+        path: ['award_tables', 'general', 'tiers', '1', 'r1_pct'],
+        kind: 'changed',
+        before: '95',
+        after: '90',
+      },
+      {
+        path: ['award_tables', 'general', 'tiers', '2', 'r1_pct'],
+        kind: 'changed',
+        before: '65',
+        after: '60',
+      },
+      {
+        path: ['award_tables', 'general', 'tiers', '3', 'r1_pct'],
+        kind: 'changed',
+        before: '25',
+        after: '20',
+      },
+    ],
     results: results(735000),
     report: { issues: [] },
     recorded_at: '2027-01-15T17:03:00Z',
