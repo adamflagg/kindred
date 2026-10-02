@@ -10,7 +10,7 @@ The name is the form's contact name, read from the synced financial_aid_applicat
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from api.services.financial_aid_intake_types import RequestRecord
@@ -39,8 +39,9 @@ def _only(names: Iterable[str]) -> str | None:
     return next(iter(distinct.values())) if len(distinct) == 1 else None
 
 
-def requester_names(contacts: Iterable[FaContact], requests: Iterable[RequestRecord]) -> dict[str, str | None]:
-    """Each request's id to who requested it (None: nobody could be named). `contacts` should be in a stable order."""
+def requester_resolver(contacts: Iterable[FaContact]) -> Callable[[int, int], str | None]:
+    """The chain as one function of (camper person_cm_id, household_cm_id): the requester's name, or None.
+    A person id of 0 (or less) is a household-level fact with no camper: only the household step applies."""
     own: dict[int, list[str]] = defaultdict(list)
     household: dict[int, list[str]] = defaultdict(list)
     for contact in contacts:
@@ -49,9 +50,16 @@ def requester_names(contacts: Iterable[FaContact], requests: Iterable[RequestRec
             continue
         own[contact.person_cm_id].append(name)
         household[contact.household_cm_id].append(name)
-    out: dict[str, str | None] = {}
-    for request in requests:
-        camper = own.get(request.person_cm_id) if request.person_cm_id > 0 else None
+
+    def resolve(person_cm_id: int, household_cm_id: int) -> str | None:
+        camper = own.get(person_cm_id) if person_cm_id > 0 else None
         # A camper with own rows is answered by them alone, even when those rows disagree (never fall back).
-        out[request.id] = _only(camper) if camper else _only(household.get(request.household_cm_id, ()))
-    return out
+        return _only(camper) if camper else _only(household.get(household_cm_id, ()))
+
+    return resolve
+
+
+def requester_names(contacts: Iterable[FaContact], requests: Iterable[RequestRecord]) -> dict[str, str | None]:
+    """Each request's id to who requested it (None: nobody could be named). `contacts` should be in a stable order."""
+    resolve = requester_resolver(contacts)
+    return {request.id: resolve(request.person_cm_id, request.household_cm_id) for request in requests}
