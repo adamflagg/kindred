@@ -32,4 +32,35 @@ describe('HouseholdCards (§6.3 item 2; D32)', () => {
     expect(within(garcia).queryByRole('link')).toBeNull()
     expect(within(garcia).getByText('$710')).toBeInTheDocument()
   })
+
+  it('shows each card its Decided and Posted labels, its states line and its stripe', () => {
+    const page = {
+      ...SPLIT_PAGE,
+      households: [
+        {
+          ...SPLIT_PAGE.households[0]!,
+          money: {
+            decided: 710,
+            posted: 500,
+            in_campminder: 290,
+            states: [{ status: 'short' as const, count: 1, gap: -210 }],
+          },
+        },
+        SPLIT_PAGE.households[1]!,
+      ],
+    }
+    render(<HouseholdCards page={page} />)
+    const johnson = screen
+      .getByText('1 · The Johnson Family')
+      .closest('[data-household]') as HTMLElement
+    expect(within(johnson).getByText('1 short $210')).toBeInTheDocument()
+    expect(within(johnson).getByText('Decided', { exact: false })).toHaveTextContent('Decided $710')
+    expect(within(johnson).getByText('Posted', { exact: false })).toHaveTextContent('Posted $500')
+    expect(johnson).toHaveClass('border-l-sky-400')
+    const garcia = screen
+      .getByText('2 · The Garcia Family')
+      .closest('[data-household]') as HTMLElement
+    expect(garcia).toHaveClass('border-l-purple-400')
+    expect(within(garcia).queryByText(/short/)).toBeNull()
+  })
 })
