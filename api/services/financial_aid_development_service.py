@@ -125,6 +125,9 @@ class Grouping:
 
 
 def grouping(document: AidRules | None, session_types: Mapping[int, str]) -> Grouping:
+    """Owner rule (2026-10-02, item 28): development counts only attendees of AID-ELIGIBLE sessions, those a program
+    open to aid claims in the season's rules. A session no program claims, or one a program closed to aid claims, is
+    in no group (and so in `by_session` not at all); an attendee of only those sessions counts nowhere."""
     if document is None:
         return Grouping((), {}, {})
     by_session: dict[int, str] = {}
@@ -132,22 +135,19 @@ def grouping(document: AidRules | None, session_types: Mapping[int, str]) -> Gro
     by_family: dict[str, str] = {}
     for cm_id, session_type in session_types.items():
         family = PROGRAM_FAMILY_BY_SESSION_TYPE.get(session_type, "other")
-        if family in NOT_REPORTED_FAMILIES:
-            by_session[cm_id] = NOT_REPORTED  # attended, counted in no group (queue "Known limits", D107)
+        key = resolve_program(document, cm_id, session_type)
+        program = document.programs[key] if key is not None else None
+        if program is None or not program.open_to_aid:
             continue
-        program = resolve_program(document, cm_id, session_type)
-        pool = document.programs[program].budget_pool if program is not None else None
+        if family in NOT_REPORTED_FAMILIES:
+            by_session[cm_id] = NOT_REPORTED  # an aid-eligible session of a program not reported (queue "Known limits")
+            continue
+        pool = program.budget_pool
         if pool is None:
             continue
         by_session[cm_id] = pool
         types_by_pool[pool].add(session_type)
         by_family.setdefault(family, pool)
-    # A session no rules program claims (one not open to aid) still has campers development reports, so it joins the
-    # pool its program family's claimed sessions use; a family no claimed session uses joins nothing.
-    for cm_id, session_type in session_types.items():
-        family = PROGRAM_FAMILY_BY_SESSION_TYPE.get(session_type, "other")
-        if cm_id not in by_session and family in by_family:
-            by_session[cm_id] = by_family[family]
     groups: list[DevGroup] = []
     for key, budget_pool in document.budget.pools.items():
         types = types_by_pool.get(key, set())

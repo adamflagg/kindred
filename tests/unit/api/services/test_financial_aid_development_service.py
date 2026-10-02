@@ -22,13 +22,16 @@ from api.services.financial_aid_development_service import (
     grouping,
 )
 from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_intake_types import SessionRow
 from bunking.financial_aid.decisions import DecisionEvent
 from bunking.financial_aid.reports.development import NOT_REPORTED
 from bunking.financial_aid.reports.history import ReportedFigure
+from bunking.financial_aid.rules import AidRules
 from tests.unit.api.services.decisions_fakes import FakeDecisionsStore, FakeRules, approved, grant_row, seed_line
 from tests.unit.api.services.development_fakes import FakeDevelopmentStore, went
 from tests.unit.api.services.financial_aid_fakes import SESSIONS, YEAR, intake_rules
 from tests.unit.api.services.reports_fakes import FakeReportsStore, report_season
+from tests.unit.bunking.financial_aid.fixtures import with_lever
 
 pytestmark = pytest.mark.asyncio
 
@@ -67,13 +70,14 @@ def _service(
     register: Sequence[RegisterRow] = (),
     store: FakeDecisionsStore | None = None,
     past_register: Sequence[RegisterRow] = (),
+    rules: AidRules | None = None,
 ) -> FinancialAidDevelopmentService:
     async def rows(year: int) -> Sequence[RegisterRow]:
         return list(register) if year == YEAR else list(past_register)
 
     return FinancialAidDevelopmentService(
         store or report_season(),
-        FakeRules(approved(intake_rules())),
+        FakeRules(approved(rules or intake_rules())),
         rows,
         development,
         history or FakeReportsStore(),
@@ -308,13 +312,18 @@ async def test_a_never_applied_households_unplaced_grant_is_development_money_al
     assert _row(out, "recipients", "camp_pool").values == [1.0]  # never a camper
 
 
-async def test_a_session_no_program_claims_joins_its_program_familys_pool() -> None:
-    """A session not open to aid still has campers development reports (a teen-program session no program claims):
-    it joins the pool its program family's claimed sessions use; "other" is attended but in no group."""
+async def test_only_sessions_of_an_aid_eligible_program_are_in_a_group() -> None:
+    """Owner rule (item 28): development counts only attendees of aid-eligible sessions. A session no program claims,
+    a session of a program closed to aid and an "other" session are in no group; an open one is."""
     sessions = {s.cm_id: s.session_type for s in SESSIONS} | {1000302: "hebrew", 1000999: "other"}
     found = grouping(intake_rules(), sessions)
-    assert found.by_session[1000302] == "bmitzvah_pool"  # B'mitzvah's family, unclaimed
-    assert found.by_session[1000999] == NOT_REPORTED  # "other": attended, counted in no group
+    assert found.by_session[1000301] == "bmitzvah_pool"  # claimed by an open program
+    assert 1000302 not in found.by_session  # B'mitzvah's family, but no program claims it: it was joined before
+    assert 1000999 not in found.by_session  # "other": no longer even attended-but-unreported
+    closed = grouping(with_lever(intake_rules(), "programs.bmitzvah.open_to_aid", False), sessions)
+    assert 1000301 not in closed.by_session  # claimed, but the program is closed to aid
+    assert "bmitzvah" not in closed.by_family
+    assert found.by_family["bmitzvah"] == "bmitzvah_pool"
 
 
 async def test_family_school_is_not_a_camper_program_even_where_a_program_claims_it() -> None:
@@ -487,3 +496,49 @@ async def test_the_rebuilt_ages_count_a_household_level_line_only_when_its_sourc
     out = await _service(development, _backfilled_2025(), store=store).development(YEAR)
     assert _row(out, "teens", "camp_pool").values[0] == 1.0  # Liam either way
     assert _row(out, "youth", "camp_pool").values[0] == (1.0 if counted else 0.0)  # Emma only on a summer source
+
+
+BMITZVAH_KID, BMITZVAH_HOME = 1000031, 1000003
+
+
+def _bmitzvah_grant(session: int) -> RegisterRow:
+    return replace(
+        grant_row("reqemma00000001", "400", on_request=False),
+        household_cm_id=BMITZVAH_HOME,
+        person_cm_id=BMITZVAH_KID,
+        session_cm_id=session,
+        program_family="bmitzvah",
+    )
+
+
+async def _bmitzvah_read(session: int, rules: AidRules | None = None) -> Any:
+    store = report_season()
+    store.sessions.append(SessionRow(1000302, "B'mitzvah Year 2", "hebrew", "2027-01-17"))
+    development = _development(
+        registrations=[went(EMMA, 1000001), went(BMITZVAH_KID, BMITZVAH_HOME, session, session_type="bmitzvah")]
+    )
+    return await _service(development, register=[_bmitzvah_grant(session)], store=store, rules=rules).development(YEAR)
+
+
+async def test_an_attendee_of_an_open_program_session_counts() -> None:
+    out = await _bmitzvah_read(1000301)
+    assert _row(out, "recipients", "bmitzvah_pool").values == [1.0]
+    assert _row(out, "total_awards", "bmitzvah_pool").values == [400.0]
+    assert _row(out, "families", None).values == [2.0]  # Emma's household and this one
+
+
+async def test_an_attendee_of_an_unclaimed_session_counts_nowhere() -> None:
+    """Owner rule (item 28): attended only a session no program claims, so no group, no family, no money line."""
+    out = await _bmitzvah_read(1000302)
+    assert _row(out, "recipients", "bmitzvah_pool").values == [0.0]
+    assert _row(out, "total_awards", "bmitzvah_pool").values == [0.0]
+    assert _row(out, "total_awards", None).values == [1500.0]  # Emma's only
+    assert _row(out, "families", None).values == [1.0]
+
+
+async def test_an_attendee_of_a_closed_to_aid_programs_session_counts_nowhere() -> None:
+    closed = with_lever(intake_rules(), "programs.bmitzvah.open_to_aid", False)
+    out = await _bmitzvah_read(1000301, closed)
+    assert _row(out, "recipients", "bmitzvah_pool").values == [0.0]
+    assert _row(out, "total_awards", None).values == [1500.0]
+    assert _row(out, "families", None).values == [1.0]
