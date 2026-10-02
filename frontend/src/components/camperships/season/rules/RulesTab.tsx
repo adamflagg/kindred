@@ -188,19 +188,25 @@ function approvedNotice({ pricesSeason, warnings }: Approved): string {
   ].join(' ')
 }
 
+type Mode = 'read' | 'edit' | 'approve'
+
 function DraftBody({
   draft,
   selected,
   finance,
+  mode,
+  onMode: setMode,
   onNotice,
 }: {
   draft: ApiAidRulesDraft
   selected: ApiAidRulesSection
   finance: boolean
+  mode: Mode
+  onMode: (mode: Mode) => void
   onNotice: (notice: string | null) => void
 }) {
   const href = useRulesHref()
-  const [mode, setMode] = useState<'read' | 'edit' | 'approve'>('read')
+  const year = useYear()
   const sessions = useSessionNames()
   const names: RulesNames = {
     section: selected,
@@ -243,6 +249,7 @@ function DraftBody({
       </div>
       {mode === 'approve' && (
         <ApproveForm
+          key={year}
           initial={selected}
           onDone={(approved) => {
             setMode('read')
@@ -279,7 +286,7 @@ function DraftBody({
           </h2>
           {editing ? (
             <RulesSectionEditor
-              key={selected}
+              key={`${String(year)}:${selected}`}
               section={selected}
               draft={draft}
               onDone={(saved) => {
@@ -342,7 +349,7 @@ function NoRulesYet({
   const start = useAidStartRulesFromLastYear()
   const [error, setError] = useState<string | null>(null)
   return (
-    <div className={`${SEASON_CARD} text-muted-foreground space-y-2 p-4`}>
+    <div className={`${SEASON_CARD} text-muted-foreground space-y-2`}>
       <p>{`No rules for ${String(year)} yet.`}</p>
       {finance && (
         <button
@@ -403,29 +410,48 @@ export function RulesTab() {
   const approved = useAidApprovedRules(version, { enabled: show === 'approved' })
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
   const [notice, setNotice] = useState<string | null>(null)
+  // Lifted so the tab's own pills hold still while an edit or an approval is open.
+  const [mode, setMode] = useState<Mode>('read')
+  const holding = show === 'draft' && mode !== 'read'
+  // A fully approved draft prices the season, so its pill names the version, not a draft (#23).
+  const draftPill =
+    draft.data === undefined
+      ? 'Rules draft'
+      : pricesTheSeason(draft.data)
+        ? `Rules v${String(draft.data.version)}`
+        : `Rules draft v${String(draft.data.version)}`
 
   return (
     <div className="space-y-3">
       {finance && version === null && (
-        <div className="flex gap-1">
-          <Link
-            to={href({ show: null })}
-            replace
-            className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-          >
-            {draft.data === undefined
-              ? 'Rules draft'
-              : pricesTheSeason(draft.data)
-                ? `Rules v${String(draft.data.version)}`
-                : `Rules draft v${String(draft.data.version)}`}
-          </Link>
-          <Link
-            to={href({ show: 'approved' })}
-            replace
-            className={show === 'approved' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-          >
-            Approved
-          </Link>
+        <div className="flex flex-wrap items-center gap-1">
+          {holding ? (
+            // While an edit or approval is open the tab's own pills hold still too (Decision 15).
+            <>
+              <span className={TAB_PILL_ACTIVE}>{draftPill}</span>
+              <span className={TAB_PILL_IDLE}>Approved</span>
+              <span className="text-muted-foreground px-2 text-xs">
+                Save or cancel the edit first.
+              </span>
+            </>
+          ) : (
+            <>
+              <Link
+                to={href({ show: null })}
+                replace
+                className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+              >
+                {draftPill}
+              </Link>
+              <Link
+                to={href({ show: 'approved' })}
+                replace
+                className={show === 'approved' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+              >
+                Approved
+              </Link>
+            </>
+          )}
         </div>
       )}
       {notice !== null && (
@@ -451,7 +477,14 @@ export function RulesTab() {
             label="the rules draft"
           >
             {(data) => (
-              <DraftBody draft={data} selected={selected} finance={finance} onNotice={setNotice} />
+              <DraftBody
+                draft={data}
+                selected={selected}
+                finance={finance}
+                mode={mode}
+                onMode={setMode}
+                onNotice={setNotice}
+              />
             )}
           </QueryGuard>
         )

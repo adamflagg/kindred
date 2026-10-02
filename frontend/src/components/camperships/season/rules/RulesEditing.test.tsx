@@ -43,9 +43,11 @@ interface Handlers {
   onSuccess?: (value: unknown) => void
   onError?: (error: Error) => void
 }
+/** Set true to render the writes as in flight (the busy holds). */
+let pending = false
 function fakeWrite(hook: string) {
   return {
-    isPending: false,
+    isPending: pending,
     mutate: (vars: unknown, handlers?: Handlers) => {
       calls.push({ hook, vars })
       if (outcome.kind === 'ok') handlers?.onSuccess?.(outcome.value)
@@ -53,11 +55,12 @@ function fakeWrite(hook: string) {
     },
   }
 }
-let server: Array<ApiAidRulesDraft | Error>
+let server: Array<ApiAidRulesDraft | Error | Promise<ApiAidRulesDraft>>
 function freshRead(): Promise<ApiAidRulesDraft> {
   const next = server.length > 1 ? server.shift() : server[0]
   if (next === undefined) return Promise.resolve(rulesDraft())
-  return next instanceof Error ? Promise.reject(next) : Promise.resolve(next)
+  if (next instanceof Error) return Promise.reject(next)
+  return next instanceof Promise ? next : Promise.resolve(next)
 }
 vi.mock('../../../../hooks/camperships/useAidRulesWrites', () => ({
   useAidSaveRulesSection: () => fakeWrite('save'),
@@ -113,6 +116,7 @@ beforeEach(() => {
   outcome = { kind: 'ok', value: rulesDraft() }
   server = [rulesDraft()]
   calls.length = 0
+  pending = false
 })
 
 describe('editing a section (D39; Decisions 14–16)', () => {
@@ -180,13 +184,18 @@ describe('editing a section (D39; Decisions 14–16)', () => {
   it('says a locked section saves into a new version and posted amounts stand', async () => {
     renderAt('/aid/season/rules?section=income')
     await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    expect(await screen.findByText(/Locked: a posted round read it/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'Locked: a posted round read it. Saving may start a new version of it. Posted amounts stand.'
+      )
+    ).toBeInTheDocument()
   })
 
   it('holds the section list still while editing', async () => {
     renderAt('/aid/season/rules?section=awards')
     await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
-    expect(screen.getByText('Save or cancel the edit first.')).toBeInTheDocument()
+    // The list's cue, and the tab's own pills' (review m2).
+    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(2)
     const other = document.querySelector('[data-rules-section="budget"]')
     expect(other?.tagName).toBe('DIV')
   })
@@ -481,5 +490,195 @@ describe('starting a season (§7.5)', () => {
     renderAt('/aid/season/rules')
     await userEvent.click(screen.getByRole('button', { name: "Start 2027 from 2026's rules" }))
     expect(await screen.findByText('The season already has rules')).toBeInTheDocument()
+  })
+})
+
+/** The draft with Award tables and Budget both waiting for approval. */
+function twoDraftsDraft(): ApiAidRulesDraft {
+  const base = rulesDraft()
+  const award = base.sections.find((x) => x.section === 'award_tables')
+  return {
+    ...base,
+    sections: base.sections.map((x) =>
+      x.section === 'budget' && award ? { ...x, status: award.status } : x
+    ),
+  }
+}
+
+function gate() {
+  let release: (value: ApiAidRulesDraft) => void = () => undefined
+  const promise = new Promise<ApiAidRulesDraft>((resolve) => {
+    release = resolve
+  })
+  return { promise, release }
+}
+
+describe('the approval form is busy until it is done (review I1)', () => {
+  async function openAndApprove(view = renderAt) {
+    const rendered = view('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    return rendered
+  }
+
+  it('holds Cancel and Approve through the check read before sending', async () => {
+    const held = gate()
+    server = [rulesDraft(), held.promise]
+    await openAndApprove()
+    expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(calls).toHaveLength(0)
+    held.release(rulesDraft())
+    await waitFor(() => expect(calls).toHaveLength(1))
+  })
+
+  it('sends nothing when the form is gone by the time the check read lands', async () => {
+    const held = gate()
+    server = [rulesDraft(), held.promise]
+    const view = await openAndApprove()
+    view.unmount()
+    held.release(rulesDraft())
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(calls).toHaveLength(0)
+  })
+
+  it('stays busy through the read after a success', async () => {
+    const held = gate()
+    server = [rulesDraft(), rulesDraft(), held.promise]
+    await openAndApprove()
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    held.release({ ...rulesDraft(), approved_version: 4 })
+    expect(await screen.findByTestId('rules-notice')).toBeInTheDocument()
+  })
+
+  it('stays busy through the re-read after a 409', async () => {
+    const held = gate()
+    outcome = { kind: 'refused', status: 409, message: CONFLICT }
+    server = [rulesDraft(), rulesDraft(), held.promise]
+    await openAndApprove()
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    held.release({ ...movedTableDraft(), version: 5 })
+    expect(await screen.findByTestId('approve-conflict')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+
+  it('shows Approving… and holds Cancel while the write is in flight', async () => {
+    pending = true
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await screen.findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+
+  it('shows Saving… and holds Cancel while the save is in flight', async () => {
+    pending = true
+    renderAt('/aid/season/rules?section=awards')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    await screen.findByRole('textbox', { name: 'Minimum award' })
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+})
+
+describe('the approval form keeps its own ticks (review I2, m3)', () => {
+  it('keeps the ticks when another section is clicked in the list', async () => {
+    server = [twoDraftsDraft()]
+    draft = { data: twoDraftsDraft(), isLoading: false, error: null }
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Budget and reserves' }))
+    expect(screen.getByRole('button', { name: 'Approve 2 sections' })).toBeInTheDocument()
+    const other = document.querySelector('[data-rules-section="income"]')
+    if (other === null) throw new Error('no income row')
+    await userEvent.click(other)
+    expect(screen.getByRole('button', { name: 'Approve 2 sections' })).toBeInTheDocument()
+  })
+
+  it('unticks a ticked section that gained errors since it was seen, and says so', async () => {
+    const withErrors = twoDraftsDraft()
+    server = [
+      twoDraftsDraft(),
+      {
+        ...withErrors,
+        sections: withErrors.sections.map((x) =>
+          x.section === 'budget' ? { ...x, errors: 1 } : x
+        ),
+      },
+    ]
+    draft = { data: twoDraftsDraft(), isLoading: false, error: null }
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await userEvent.click(
+      await within(form).findByRole('checkbox', { name: /Budget and reserves/ })
+    )
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 2 sections' }))
+    expect(await screen.findByTestId('approve-conflict')).toHaveTextContent(
+      'Budget and reserves now has errors and was unticked.'
+    )
+    expect(calls).toHaveLength(0)
+    expect(screen.getByRole('checkbox', { name: /Budget and reserves/ })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: 'Approve 1 section' })).toBeInTheDocument()
+  })
+
+  it('limits the note to what the server takes', async () => {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    expect(within(form).getByRole('textbox')).toHaveAttribute('maxlength', '2000')
+  })
+})
+
+describe('the approval notice follows what moved (S8-⚠1 interim, review ⚠1)', () => {
+  it('says nothing is re-priced when the draft already priced the season and only stages are approved', async () => {
+    const base = rulesDraft()
+    const pricing = {
+      ...base,
+      approved_version: 4,
+      sections: base.sections.map((x) =>
+        x.section === 'stages' ? { ...x, status: { state: 'draft' as const } } : x
+      ),
+    }
+    draft = { data: pricing, isLoading: false, error: null }
+    server = [pricing]
+    renderAt('/aid/season/rules?section=stages')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    const form = screen.getByTestId('approve-form')
+    await within(form).findByRole('checkbox', { name: 'Stages' })
+    await userEvent.type(within(form).getByRole('textbox'), 'Finance, Jan 22 meeting')
+    await userEvent.click(within(form).getByRole('button', { name: 'Approve 1 section' }))
+    const notice = await screen.findByTestId('rules-notice')
+    expect(notice).toHaveTextContent(
+      'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.'
+    )
+    expect(notice).not.toHaveTextContent(/Requests not yet posted/)
+  })
+})
+
+describe('the tab holds still while editing or approving (review m1, m2)', () => {
+  it('makes the Approved pill inert while editing, with the same cue', async () => {
+    renderAt('/aid/season/rules?section=awards')
+    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit…' }))
+    expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
+    expect(screen.getAllByText('Save or cancel the edit first.')).toHaveLength(2)
+  })
+
+  it('makes it inert while approving too, and live again after Cancel', async () => {
+    renderAt('/aid/season/rules?section=award_tables')
+    await userEvent.click(screen.getByRole('button', { name: 'Approve…' }))
+    await screen.findByRole('checkbox', { name: 'Award tables (Round 1 %)' })
+    expect(screen.queryByRole('link', { name: 'Approved' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('link', { name: 'Approved' })).toBeInTheDocument()
   })
 })
