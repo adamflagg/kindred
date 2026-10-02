@@ -15,11 +15,15 @@ import {
 } from '../../components/camperships/requests/RequestsGrid'
 import { programLabel, programLabels } from '../../components/camperships/requests/programLabel'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
+import {
+  lensCounts,
+  lensRows,
+  stripCsvName,
+  type RequestLens,
+} from '../../components/camperships/requests/strip'
 import { useGridParams } from '../../components/camperships/requests/useGridParams'
 import {
   filterRows,
-  REQUEST_VIEWS,
-  requestsCsvName,
   viewCounts,
   type GridFilters,
   type RequestView,
@@ -46,7 +50,18 @@ export default function AidRequestsPage() {
   const year = useYear()
   const asOf = useAidAsOf()
   const navigate = useNavigate()
-  const { view, program, pool, round, tick, showIds, row: rowParam, setParam } = useGridParams()
+  const {
+    view,
+    lens,
+    stage,
+    program,
+    pool,
+    round,
+    tick,
+    showIds,
+    row: rowParam,
+    setParam,
+  } = useGridParams()
   const grid = useAidGrid()
   const remaining = useAidRemaining()
   // The rules name their programs. A failed or missing read never blocks the grid: keys spelled out.
@@ -74,12 +89,18 @@ export default function AidRequestsPage() {
     (): GridFilters => ({ program, pool, round, tick, ids: null }),
     [program, pool, round, tick]
   )
+  // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
+  const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
   const visible = useMemo(
-    () => (rows ? filterRows(rows, view.key, filters) : []),
-    [rows, view.key, filters]
+    () => (lensed ? filterRows(lensed, view.key, filters) : []),
+    [lensed, view.key, filters]
   )
   const counts = useMemo(
-    () => (rows ? viewCounts(rows, filters, live) : null),
+    () => (lensed ? viewCounts(lensed, filters, live) : null),
+    [lensed, filters, live]
+  )
+  const countsByLens = useMemo(
+    () => (rows ? lensCounts(rows, filters, live) : null),
     [rows, filters, live]
   )
   const programs = useMemo((): FilterOption[] => {
@@ -109,16 +130,30 @@ export default function AidRequestsPage() {
     }),
     [program, pool, round, tick, showIds]
   )
+  // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
+  // for none. A stage link keeps the lens; a lens link clears the stage.
+  const lensKeep = useMemo(
+    (): Record<string, string> => (lens === 'appeals' ? { lens } : {}),
+    [lens]
+  )
   const hrefOf = useCallback(
-    (v: RequestView) => aidHref('/aid/requests', viewState, { view: v.slug, ...keep }),
+    (v: RequestView) => aidHref('/aid/requests', viewState, { view: v.slug, ...lensKeep, ...keep }),
+    [viewState, lensKeep, keep]
+  )
+  const lensHrefOf = useCallback(
+    (l: RequestLens) =>
+      aidHref('/aid/requests', viewState, { ...(l === 'appeals' ? { lens: l } : {}), ...keep }),
     [viewState, keep]
   )
+  // The household page's walk reads the same pair: `from=<stage slug>` (or `all`) and the lens.
+  const from = stage?.slug ?? 'all'
 
   const links = useMemo(
     (): HouseholdLinks => ({
       href: (r: ApiAidGridRow) =>
         aidHref(`/aid/households/${String(r.household_cm_id)}`, viewState, {
-          from: view.slug,
+          from,
+          ...lensKeep,
           ...keep,
         }),
       open: (r: ApiAidGridRow, href: string) => {
@@ -128,10 +163,16 @@ export default function AidRequestsPage() {
         void navigate(href)
       },
     }),
-    [viewState, view.slug, keep, setParam, navigate]
+    [viewState, from, lensKeep, keep, setParam, navigate]
   )
 
-  const csvFilename = requestsCsvName(view, filters, year, asOf.kind === 'past' ? asOf.date : null)
+  const csvFilename = stripCsvName(
+    lens,
+    view,
+    filters,
+    year,
+    asOf.kind === 'past' ? asOf.date : null
+  )
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -141,7 +182,14 @@ export default function AidRequestsPage() {
         subtitle={`Season ${String(year)}`}
         asOf={asOf}
       />
-      <RequestViewNav views={REQUEST_VIEWS} current={view.key} counts={counts} hrefOf={hrefOf} />
+      <RequestViewNav
+        lens={lens}
+        stage={stage?.key ?? null}
+        counts={counts}
+        lensCounts={countsByLens}
+        hrefOf={hrefOf}
+        lensHrefOf={lensHrefOf}
+      />
       <GridFiltersBar
         programs={programs}
         pools={pools}

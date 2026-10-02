@@ -94,11 +94,13 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('AidRequestsPage (§6.1, §6.2)', () => {
-  it('opens on All, with every view’s families and requests on its link', () => {
+  // T4 spec change: the strip draws each count as its requests alone (the mock's one-line strip).
+  it('opens on All, with every lens’s and stage’s requests on its link', () => {
     renderAt('/aid/requests')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Requests')
-    expect(viewLink('All')).toHaveTextContent('All 4 fam · 5 req')
-    expect(viewLink('Holds')).toHaveTextContent('Holds 1 fam · 1 req')
+    expect(viewLink('All')).toHaveTextContent('All 5')
+    expect(viewLink('All')).toHaveAttribute('href', '/aid/requests?year=2027')
+    expect(viewLink('Holds')).toHaveTextContent('Holds 1')
     expect(viewLink('Holds')).toHaveAttribute('href', '/aid/requests?view=holds&year=2027')
   })
 
@@ -265,5 +267,80 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     grid = { data: undefined, isLoading: false, error: new Error('Network down') }
     renderAt('/aid/requests')
     expect(screen.getByText(/Network down/)).toBeInTheDocument()
+  })
+})
+
+const headers = () => screen.getAllByRole('columnheader').map((th) => th.textContent)
+
+describe('AidRequestsPage views strip (T4; RULED P1, P2, P4)', () => {
+  it('narrows every row and count to appeals under the Appeals lens, with the Appeals columns', () => {
+    renderAt('/aid/requests?lens=appeals')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+    expect(viewLink('Appeals')).toHaveTextContent('Appeals 1')
+    expect(viewLink('All')).toHaveTextContent('All 5')
+    expect(viewLink('Needs an offer')).toHaveTextContent('Needs an offer 1')
+    expect(viewLink('Holds')).toHaveTextContent('Holds 0')
+    expect(headers()).toContain('Appeal ask')
+    expect(screen.getByText('Showing appeals only.')).toBeInTheDocument()
+  })
+
+  it('links each stage under the lens, and each lens with no stage (picking a lens clears the stage)', () => {
+    renderAt('/aid/requests?view=holds&lens=appeals&program=summer')
+    expect(viewLink('Needs an offer')).toHaveAttribute(
+      'href',
+      '/aid/requests?view=needs-offer&lens=appeals&program=summer&year=2027'
+    )
+    expect(viewLink('All')).toHaveAttribute('href', '/aid/requests?program=summer&year=2027')
+    expect(viewLink('Appeals')).toHaveAttribute(
+      'href',
+      '/aid/requests?lens=appeals&program=summer&year=2027'
+    )
+  })
+
+  it("shows a stage's appeals with the Appeals view's column set", () => {
+    renderAt('/aid/requests?view=needs-offer&lens=appeals')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+    expect(headers()).toContain('Appeal ask')
+    expect(headers()).not.toContain('Round')
+  })
+
+  it('shows a stage under All with its own columns, and no appeals-only line', () => {
+    renderAt('/aid/requests?view=needs-offer')
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(headers()).toContain('Round')
+    expect(screen.queryByText('Showing appeals only.')).toBeNull()
+  })
+
+  it('reads the retired ?view=appeals as no stage and no lens, and leaves the URL alone (no fallback)', () => {
+    renderAt('/aid/requests?view=appeals')
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText('Showing appeals only.')).toBeNull()
+    expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?view=appeals')
+  })
+
+  it('carries the lens and the stage to the household page (from=<stage>, or all)', async () => {
+    renderAt('/aid/requests?lens=appeals')
+    await userEvent.click(screen.getByRole('link', { name: 'The Chen Family' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000005?from=all&lens=appeals&year=2027'
+    )
+  })
+
+  it('says the Appeals lens needs today’s data on a past date, and counts only All', () => {
+    grid = {
+      data: {
+        ...LIVE,
+        as_of: '2027-03-01',
+        rows: GRID_ROWS.map((row) => ({ ...row, queues: null })),
+      },
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/requests?lens=appeals&as_of=2027-03-01')
+    expect(screen.getByText(/Appeals needs today's data/)).toBeInTheDocument()
+    expect(viewLink('Appeals')).toHaveTextContent('Appeals —')
+    expect(viewLink('All')).toHaveTextContent('All 5')
   })
 })
