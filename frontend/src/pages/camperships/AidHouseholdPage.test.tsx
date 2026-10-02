@@ -155,4 +155,11 @@ describe('AidHouseholdPage (§6.3)', () => {
     await userEvent.click(screen.getByRole('link', { name: /Back to requests/ }))
     expect(screen.getByTestId('where')).toHaveTextContent('/aid/requests?view=all&year=2027')
   })
+
+  it('shows the income, the grants and postings, and the history below the cards', () => {
+    renderAt('/aid/households/1000001')
+    expect(screen.getByRole('heading', { name: 'Household income' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Grants and postings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'History' })).toBeInTheDocument()
+  })
 })

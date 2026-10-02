@@ -40,7 +40,7 @@ export function bandTitle(page: ApiAidHouseholdPage): string {
 export function bandSubtitle(page: ApiAidHouseholdPage): string {
   const opened = page.households.find((h) => h.household_cm_id === page.household_cm_id)
   if (page.households.length > 1) {
-    return `${String(page.households.length)} households with a financial stake · opened from ${opened?.family_name ?? `household ${String(page.household_cm_id)}`}`
+    return `${String(page.households.length)} households with a financial stake · opened from ${householdName(page, page.household_cm_id)}`
   }
   const card = opened ?? page.households[0]
   if (card === undefined) return `household ${String(page.household_cm_id)}`
@@ -78,11 +78,10 @@ export function postedLabel(states: readonly ApiAidConfirmationState[]): string 
   return states.length === 0 ? 'posted' : `posted · ${states.map(stateWords).join(' · ')}`
 }
 
+/** A blank family name reads as missing here, the one place names come from (the server never sends one today). */
 export function householdName(page: ApiAidHouseholdPage, householdCmId: number): string {
-  return (
-    page.households.find((h) => h.household_cm_id === householdCmId)?.family_name ??
-    `Household ${String(householdCmId)}`
-  )
+  const name = page.households.find((h) => h.household_cm_id === householdCmId)?.family_name
+  return name !== undefined && nonEmpty(name) ? name : `Household ${String(householdCmId)}`
 }
 
 export function householdChip(page: ApiAidHouseholdPage, householdCmId: number): number | null {
@@ -181,7 +180,7 @@ export interface RoundLine {
    */
   readonly clawedBack: boolean
   /**
-   * A locked round's "would change by $X" (D43); null when nothing would, and on a clawed-back
+   * A locked round's a would-change figure (D43); null when nothing would, and on a clawed-back
    * round, where "the posted amount stands" is false.
    */
   readonly wouldChangeBy: number | null
@@ -240,7 +239,7 @@ export function earlierReceipts(request: ApiAidHouseholdRequest): ApiAidReceipt[
   return request.receipts.filter((r) => r !== latest).sort((a, b) => a.round - b.round)
 }
 
-/** D34: the receipt opens by itself on a hold, or while a "would change by" flag shows. */
+/** D34: the receipt opens by itself on a hold, or while a would-change flag shows. */
 export function opensByItself(request: ApiAidHouseholdRequest): boolean {
   return (
     request.row.holds.length > 0 ||
