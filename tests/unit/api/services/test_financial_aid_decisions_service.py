@@ -179,7 +179,10 @@ async def test_the_grid_says_the_season_is_not_ticked_before_the_first_ticked_se
 async def test_the_grid_says_the_first_ticked_season_is_ticked_live_and_on_a_past_date() -> None:
     service = _service(FakeDecisionsStore())
     assert (await service.grid(2027)).ticked_season is True
-    assert (await service.grid(2027, as_of=date(2027, 3, 9))).ticked_season is True
+    # The day before T0's camp date: today (March 9) would be the live read again.
+    past = await service.grid(2027, as_of=date(2027, 3, 8))
+    assert past.as_of == date(2027, 3, 8)
+    assert past.ticked_season is True
 
 
 @pytest.mark.asyncio
