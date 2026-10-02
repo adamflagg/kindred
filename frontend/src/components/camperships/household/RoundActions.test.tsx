@@ -317,3 +317,66 @@ describe('RoundChecklist (§5.2; D47)', () => {
     await waitFor(() => expect(screen.queryByLabelText('Why undo Posted')).not.toBeInTheDocument())
   })
 })
+
+describe('a request cancelled in Kindred takes no tick (the server refuses it: reopen first)', () => {
+  const cancelled = (rounds: Array<ReturnType<typeof roundOut>>) =>
+    householdRequest(
+      gridRow({
+        rounds,
+        cancellation: { by: 'kindred', on: '2027-06-02', reason: 'medical', note: '' },
+      })
+    )
+
+  it('offers no Mark posted, and says to reopen first', () => {
+    const request = cancelled([roundOut(1, 'needs_offer', { ask: 1500, decided: 900 })])
+    render(<RoundNextAction request={request} line={lineOf(request)} year={2027} canApprove />)
+    expect(screen.queryByRole('button', { name: /Mark posted/ })).toBeNull()
+    expect(screen.getByText('Cancelled in Kindred: reopen it first')).toBeInTheDocument()
+  })
+
+  it('offers no Approve or Refuse on a pending Round 3', () => {
+    const request = cancelled([
+      roundOut(1, 'posted', { posted: 1420 }),
+      roundOut(3, 'pending_approval', { pending_approval: 450 }),
+    ])
+    render(<RoundNextAction request={request} line={lineOf(request, 3)} year={2027} canApprove />)
+    expect(screen.queryByRole('button', { name: 'Approve…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Refuse…' })).toBeNull()
+  })
+
+  it('disables Accepted on a posted round not yet accepted', () => {
+    const request = cancelled([roundOut(1, 'posted', { posted: 900, decided: 900 })])
+    render(<RoundChecklist request={request} line={lineOf(request)} year={2027} />)
+    expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+  })
+
+  it('still lets an accepted round be unticked, sending accepted: false', async () => {
+    const request = cancelled([
+      roundOut(1, 'posted', { posted: 900, decided: 900, accepted: true }),
+    ])
+    render(<RoundChecklist request={request} line={lineOf(request)} year={2027} />)
+    const box = screen.getByRole('checkbox', { name: 'Accepted' })
+    expect(box).toBeEnabled()
+    await userEvent.click(box)
+    expect(accepted).toHaveBeenCalledWith({
+      year: 2027,
+      body: { rows: [{ request_id: request.row.request_id, round: 1 }], accepted: false },
+    })
+  })
+})
+
+describe('while the card has a money editor open (editing)', () => {
+  it('hides Mark posted, and says to save or close the edit first', () => {
+    render(
+      <RoundNextAction request={emma} line={lineOf(emma)} year={2027} canApprove={false} editing />
+    )
+    expect(screen.queryByRole('button', { name: /Mark posted/ })).toBeNull()
+    expect(screen.getByText('save or close the edit first')).toBeInTheDocument()
+  })
+
+  it('disables the Posted undo and the Accepted box', () => {
+    render(<RoundChecklist request={samuel} line={lineOf(samuel)} year={2027} editing />)
+    expect(screen.getByRole('checkbox', { name: /^Posted/ })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Accepted' })).toBeDisabled()
+  })
+})
