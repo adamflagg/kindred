@@ -11,8 +11,6 @@ from pydantic import ValidationError
 
 from api.schemas.financial_aid import (
     AidSourceUpdate,
-    DispositionBulkLoad,
-    DispositionRow,
     OverrideBulkLoad,
     OverrideRow,
 )
@@ -283,18 +281,6 @@ def test_the_repository_is_read_only() -> None:
     assert ".create(" not in source
     assert ".update(" not in source
     assert ".delete(" not in source
-
-
-def test_disposition_rows_are_unique_per_flag_and_name_a_real_flag_shape() -> None:
-    row = DispositionRow(
-        transaction_cm_id=9001, flag="implied_program_mismatch", disposition="accepted_late_grant", note="n"
-    )
-    with pytest.raises(ValidationError):
-        DispositionBulkLoad(year=2026, rows=[row, row])
-    with pytest.raises(ValidationError):
-        DispositionRow(transaction_cm_id=9001, flag="Not A Flag", disposition="accepted_other", note="n")
-    with pytest.raises(ValidationError):
-        DispositionRow(transaction_cm_id=9001, flag="implied_program_mismatch", disposition="accepted_other", note="")
 
 
 def test_only_the_camps_own_aid_counts_toward_the_budget() -> None:

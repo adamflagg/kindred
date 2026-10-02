@@ -170,9 +170,6 @@ class FinancialAidRepository:
     async def fetch_dispositions(self, year: int) -> list[Any]:
         return await self._page(AID_FLAG_DISPOSITIONS, {"filter": f"year = {int(year)}", "sort": STABLE_SORT})
 
-    async def get_disposition(self, disposition_id: str) -> Any | None:
-        return await self._one(AID_FLAG_DISPOSITIONS, disposition_id)
-
     # --- people, sessions, applications ------------------------------------
 
     async def fetch_households(self, year: int, cm_ids: Collection[int]) -> list[Any]:

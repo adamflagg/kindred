@@ -34,8 +34,6 @@ from api.schemas.financial_aid import (
     AidSourceTotal,
     DanglingDisposition,
     DataQualityResponse,
-    DispositionOut,
-    DispositionsResponse,
     FaRequested,
     HouseholdDetailResponse,
     HouseholdEnrollment,
@@ -295,25 +293,6 @@ class FinancialAidLedgerService:
 
     async def sources(self) -> AidSourcesResponse:
         return AidSourcesResponse(sources=[source_row(s) for s in await self.repo.fetch_sources()])
-
-    async def dispositions(self, year: int) -> DispositionsResponse:
-        rows = await self.repo.fetch_dispositions(year)
-        return DispositionsResponse(
-            year=year,
-            dispositions=[
-                DispositionOut(
-                    id=str(d.id),
-                    year=int(d.year),
-                    transaction_cm_id=int(d.transaction_cm_id),
-                    flag=str(d.flag),
-                    disposition=str(d.disposition),
-                    note=str(d.note or ""),
-                    actor=str(d.actor or ""),
-                    updated=str(d.updated or ""),
-                )
-                for d in sorted(rows, key=lambda d: (int(d.transaction_cm_id), str(d.flag)))
-            ],
-        )
 
     async def ledger(
         self,

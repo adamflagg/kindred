@@ -60,12 +60,6 @@ SourceFamily = Literal[
 ]
 FunderType = Literal["camp", "outside", "incentive"]
 OverrideSource = Literal["sheet_2026_match", "staff"]
-DispositionKind = Literal["accepted_let_stand", "accepted_late_grant", "accepted_other"]
-# A flag name. Free text in PocketBase (aid_flag_dispositions.flag) so a later
-# sub-project's flags need no migration. The flags this ledger computes:
-#   unclassified_source, positive_amount, live_aid_on_cancelled_enrollment,
-#   implied_program_mismatch
-FlagName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$", min_length=1, max_length=100)]
 
 
 class AidPostingLine(BaseModel):
@@ -387,42 +381,6 @@ class OverrideBulkLoad(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("each transaction_cm_id may appear once per load")
         return self
-
-
-class DispositionRow(BaseModel):
-    transaction_cm_id: int = Field(gt=0)
-    flag: FlagName
-    disposition: DispositionKind
-    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
-
-
-class DispositionBulkLoad(BaseModel):
-    year: int = Field(ge=2017, le=2100)
-    dry_run: bool = False
-    rows: list[DispositionRow] = Field(min_length=1, max_length=5000)
-
-    @model_validator(mode="after")
-    def _unique_flags(self) -> DispositionBulkLoad:
-        keys = [(r.transaction_cm_id, r.flag) for r in self.rows]
-        if len(keys) != len(set(keys)):
-            raise ValueError("each (transaction_cm_id, flag) may appear once per load")
-        return self
-
-
-class DispositionOut(BaseModel):
-    id: str
-    year: int
-    transaction_cm_id: int
-    flag: str
-    disposition: str
-    note: str
-    actor: str
-    updated: str
-
-
-class DispositionsResponse(BaseModel):
-    year: int
-    dispositions: list[DispositionOut]
 
 
 class LoadRejection(BaseModel):
