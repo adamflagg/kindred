@@ -181,7 +181,7 @@ async def test_a_household_level_line_counts_once_in_its_group_and_once_in_all()
     service = _service(_development(), extra=[_summer_household_line()])
     summer = await service.zip_codes(YEAR)
     assert summer.with_aid is not None
-    assert sorted((r.zip, r.dollars) for r in summer.with_aid.rows) == [(NO_ZIP, 100.0), (ZIP_A, 2000.0)]
+    assert sorted((r.zip, r.dollars) for r in summer.with_aid.rows) == [(ZIP_A, 2000.0), (NO_ZIP, 100.0)]
     everything = await service.zip_codes(YEAR, "all")
     assert everything.with_aid is not None
     assert everything.with_aid.total.dollars == 2400.0  # 2,000 + 300 + 100, each line once
