@@ -14,7 +14,11 @@ import {
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
-import type { ApiAidLeverEffect, ApiAidScenarioWorkspace } from '../../../../types/api-types'
+import type {
+  ApiAidLeverEffect,
+  ApiAidRulesSection,
+  ApiAidScenarioWorkspace,
+} from '../../../../types/api-types'
 import {
   AMBER_NOTE,
   BUTTON_PRIMARY,
@@ -25,9 +29,13 @@ import {
 } from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { campToday, formatLongDate, formatShortDate } from '../../kit/dates'
+import { withSection } from '../rules/rulesDraft'
 import { SEASON_CARD } from '../seasonStyles'
+import { AllSettings } from './AllSettings'
 import { parseCodes, parseRequestSet, requestSetParam, toggleCode } from './compareModel'
+import { FitToBudget } from './FitToBudget'
 import { KeptList } from './KeptList'
+import { MakeRulesDraftDialog } from './MakeRulesDraftDialog'
 import { ScenarioCompare } from './ScenarioCompare'
 import { ScenarioLevers } from './ScenarioLevers'
 import { ScenarioResults } from './ScenarioResults'
@@ -204,6 +212,11 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   }, [pageRaw, trailPage, lastPage, setView])
   // The code a fifth tick was refused for, said under the list until the next tick.
   const [refused, setRefused] = useState<string | null>(null)
+  const [setting, setSetting] = useState<ApiAidRulesSection | null>(null)
+  const [promoting, setPromoting] = useState<string | null>(null)
+  // A refused All settings save says its words inside its own editor, once; any other write's error
+  // stays at the top. The hook tags the error with the section that asked (`errorSource`).
+  const editorError = setting !== null && work.errorSource === setting ? work.error : null
   const keepButtons = (
     <>
       <button
@@ -227,10 +240,13 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
 
   return (
     <div className="space-y-3">
+      <MakeRulesDraftDialog code={promoting} onClose={() => setPromoting(null)} />
       <SnapshotLine workspace={workspace} work={work} />
       {/* Its line is always there, so nothing jumps under the pointer on every release. */}
       <p className="text-muted-foreground h-5 text-sm">{work.busy}</p>
-      {work.error !== null && <p className={AMBER_NOTE}>{work.error}</p>}
+      {work.error !== null && work.error !== editorError && (
+        <p className={AMBER_NOTE}>{work.error}</p>
+      )}
       {workspace.snapshot !== null && draft === null && (
         <div className={`${SEASON_CARD} space-y-2`}>
           <p>Start your draft from:</p>
@@ -329,6 +345,37 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 onRelease={() => void work.release()}
               />
             )}
+            {draft !== null && (
+              <FitToBudget
+                document={draft.document}
+                trailId={draft.trail_id}
+                disabled={work.busy !== null || moving}
+                editing={setting !== null}
+                onUse={(fitted, askedOn) =>
+                  work.adopt('Recording…', () => fitted, { basedOn: askedOn })
+                }
+              />
+            )}
+            {draft !== null && (
+              <AllSettings
+                draft={draft}
+                open={setting}
+                busy={work.busy !== null}
+                held={moving}
+                error={editorError}
+                onOpen={setSetting}
+                onSave={(section, content) => {
+                  void work
+                    .adopt('Recording…', (doc) => withSection(doc, section, content), {
+                      source: section,
+                    })
+                    .then((landed) => {
+                      // Closes the section it saved, never whichever is open by the time it lands.
+                      if (landed) setSetting((now) => (now === section ? null : now))
+                    })
+                }}
+              />
+            )}
             {draft !== null && sensitivity.error !== null && sensitivity.data === undefined && (
               <p className={`${AMBER_NOTE} flex flex-wrap items-center gap-2`}>
                 {stepsFailed(sensitivity.error.message)}
@@ -388,6 +435,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                   onLastSeason={(on) => view.set('last', on ? '1' : null)}
                   byTier={view.byTier}
                   onByTier={(on) => view.set('tiers', on ? '1' : null)}
+                  onPromote={setPromoting}
                 />
               ) : (
                 <QueryGuard

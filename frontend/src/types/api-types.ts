@@ -69,6 +69,7 @@ import type {
   EvaluateOut,
   ExpectedOut,
   FieldChangeOut,
+  FitOut,
   GrantRowOut,
   GridRowOut,
   HeadcountSet,
@@ -93,6 +94,7 @@ import type {
   LastSeasonOut,
   LeverEffectOut,
   LoadIn,
+  MakeRulesDraftIn,
   ManualHoldIn,
   OptionOut,
   PermissionEntry,
@@ -101,6 +103,8 @@ import type {
   PostedIn,
   PreviewIn,
   ProgramProfile,
+  PromotionPreviewOut,
+  PromotionSectionOut,
   ReceiptOut,
   PoolBudgetOut,
   RemainingResponse,
@@ -290,6 +294,12 @@ export type ApiAidScenarioLoadIn = LoadIn
 export type ApiAidScenarioKeepIn = KeepIn
 export type ApiAidScenarioSensitivity = SensitivityOut
 export type ApiAidScenarioViewIn = ViewIn
+
+/** Fit to budget and "Make it the rules draft" (spec §7.4, §7.5; D39, D119; SP9b Decision 11). */
+export type ApiAidScenarioFit = FitOut
+export type ApiAidPromotionPreview = PromotionPreviewOut
+export type ApiAidPromotionSection = PromotionSectionOut
+export type ApiAidMakeRulesDraftIn = MakeRulesDraftIn
 
 /** Scenarios' compare and trail (spec §7.4; D38; SP9c's committee tables, RPT-17, RPT-32). */
 export type ApiAidScenarioCompare = CompareOut

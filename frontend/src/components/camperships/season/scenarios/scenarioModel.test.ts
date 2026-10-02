@@ -8,6 +8,7 @@ import {
   SHIFT_RANGE,
   bandWords,
   changedLevers,
+  fitWords,
   hasPending,
   isDollarForDollar,
   keptGroups,
@@ -219,5 +220,69 @@ describe('the results (results.py)', () => {
     const lines = resultLines(results(735000, { at_minimum: 1, held: 0 }))
     expect(lines.find((l) => l.key === 'at_minimum')?.value).toBe('1 request')
     expect(lines.find((l) => l.key === 'held')?.value).toBe('0 requests')
+  })
+})
+
+describe('Fit to budget in words (fit.py; D119)', () => {
+  const fit = (outcome: 'fits' | 'over_at_lowest' | 'under_at_highest', shift: number) => ({
+    tier_shift: shift,
+    outcome,
+    tightest_pool: 'pool_a',
+    tried: 11,
+    document: RULES_DOCUMENT,
+    results: results(800000),
+    report: { issues: [] },
+  })
+
+  it("says the shift that uses Round 1's allocation, and the tightest pool as information", () => {
+    expect(fitWords(fit('fits', -4.5))).toEqual({
+      headline:
+        "Shifting every tier −4.5 pts uses Round 1's allocation: Round 1 $800,000, $0 left.",
+      pool: 'Tightest pool: Pool A, Round 1 remaining −$30,000. Pools are guidance; only the total budget is hard.',
+    })
+  })
+
+  it("says so when even the range's ends don't fit", () => {
+    expect(fitWords(fit('over_at_lowest', -100)).headline).toBe(
+      'Even the lowest shift (−100 pts) leaves Round 1 over its allocation.'
+    )
+    expect(fitWords(fit('under_at_highest', 100)).headline).toBe(
+      "Even the highest shift (+100 pts) leaves part of Round 1's allocation unused."
+    )
+  })
+
+  it('names no pool whose Round 1 has no allocation (null remaining)', () => {
+    const base = fit('fits', 0)
+    const pools = base.results.pools.map((p) => ({ ...p, round1_remaining: null }))
+    expect(fitWords({ ...base, results: { ...base.results, pools } }).pool).toBeNull()
+  })
+
+  it('names no pool when none is tightest, and never calls the figure the pools summed', () => {
+    const none = fitWords({ ...fit('fits', 0), tightest_pool: null })
+    expect(none.pool).toBeNull()
+    expect(none.headline).not.toMatch(/pools/i)
+  })
+})
+
+describe('the Shift-every-tier amber means Round 1 award percentages differ from the start', () => {
+  const change = (path: string[]) => ({ path, kind: 'changed' as const, before: '1', after: '2' })
+  it('lights for a Round 1 % leaf of any tier, the shift or one typed in All settings', () => {
+    for (const tier of ['1', '3']) {
+      expect(
+        changedLevers(
+          [change(['award_tables', 'general', 'tiers', tier, 'r1_pct'])],
+          NO_PENDING
+        ).has('tier_shift')
+      ).toBe(true)
+    }
+  })
+
+  it("stays dark for an award-table change that isn't a Round 1 %", () => {
+    expect(
+      changedLevers(
+        [change(['award_tables', 'general', 'tiers', '1', 'inherits'])],
+        NO_PENDING
+      ).has('tier_shift')
+    ).toBe(false)
   })
 })
