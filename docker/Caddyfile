@@ -97,7 +97,7 @@
 	# PocketBase-specific patterns (explicit)
 	# These /api/* routes go to PocketBase (port 8090)
 	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
-	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
+	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/settings /api/logs /api/logs/* /api/backups /api/backups/* /api/batch
 
 	# PocketBase routes (database, auth, sync, file uploads)
 	handle @pocketbase {

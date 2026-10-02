@@ -3,9 +3,12 @@ package rbac
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 
 	"github.com/camp/kindred/pocketbase/audit"
 )
@@ -55,6 +58,7 @@ func registerLastLoginHook(app core.App) {
 				e.CreateData = map[string]any{}
 			}
 			e.CreateData["last_login"] = buildLastLoginTimestamp()
+			e.CreateData["last_seen"] = buildLastLoginTimestamp()
 			e.CreateData["emailVisibility"] = true
 		}
 
@@ -64,6 +68,7 @@ func registerLastLoginHook(app core.App) {
 		// is_admin, emailVisibility) — the admin-sync hook sets fields but does not save.
 		if e.Record != nil && !e.IsNewRecord {
 			e.Record.Set("last_login", buildLastLoginTimestamp())
+			e.Record.Set("last_seen", buildLastLoginTimestamp())
 			e.Record.Set("emailVisibility", true)
 			if err := e.App.Save(e.Record); err != nil {
 				slog.Error("Failed to update user on login",
@@ -157,4 +162,57 @@ func RegisterOIDCHooks(app core.App) {
 
 	// Always register last_login tracking — saves the record with all field updates
 	registerLastLoginHook(app)
+
+	// Session refreshes stamp last_seen (hourly at most)
+	registerLastSeenHook(app)
+}
+
+// lastSeenEvery is how stale last_seen may get before a session refresh
+// re-stamps it (spec 2026-10-01-users-page-uplift-design §3.5): fine enough for
+// "today", at most one small write per person per hour.
+const lastSeenEvery = time.Hour
+
+// shouldStampLastSeen reports whether a refresh at now should re-stamp prev.
+func shouldStampLastSeen(prev types.DateTime, now time.Time) bool {
+	return prev.IsZero() || now.Sub(prev.Time()) > lastSeenEvery
+}
+
+// registerLastSeenHook stamps users.last_seen when a session is refreshed —
+// which AuthContext does on every app load — because last_login only moves on
+// a full Pocket ID sign-in. A save inside an auth hook is not a record-update
+// request, so the audit log never sees it (and diff.go drops the field anyway).
+// View-as stand-ins are skipped: their refresh is an admin previewing.
+func registerLastSeenHook(app core.App) {
+	app.OnRecordAuthRefreshRequest("users").BindFunc(func(e *core.RecordAuthRefreshRequestEvent) error {
+		if err := e.Next(); err != nil {
+			return err
+		}
+		if e.Record == nil || strings.HasSuffix(strings.ToLower(e.Record.Email()), "@"+viewAsPersonaEmailDomain) {
+			return nil
+		}
+		stampLastSeen(e.App, e.Record, time.Now().UTC())
+		return nil
+	})
+}
+
+// stampLastSeen re-stamps rec's last_seen when the loaded value is stale. The
+// record was loaded when the request started, so a full Save would write every
+// other column back from that snapshot — including cached_permissions, undoing
+// a role recompute that landed in between. The stamp is therefore one column.
+func stampLastSeen(app core.App, rec *core.Record, now time.Time) {
+	if !shouldStampLastSeen(rec.GetDateTime("last_seen"), now) {
+		return
+	}
+	stamp, err := types.ParseDateTime(now)
+	if err != nil {
+		slog.Error("Failed to stamp last_seen", "user_id", rec.Id, "error", err)
+		return
+	}
+	// Raw UPDATE: fires no record hooks, so it stays out of the audit log.
+	if _, err := app.DB().NewQuery("UPDATE users SET last_seen = {:ts} WHERE id = {:id}").
+		Bind(dbx.Params{"ts": stamp.String(), "id": rec.Id}).Execute(); err != nil {
+		slog.Error("Failed to stamp last_seen", "user_id", rec.Id, "error", err)
+		return
+	}
+	rec.Set("last_seen", stamp)
 }

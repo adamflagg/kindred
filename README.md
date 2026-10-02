@@ -56,7 +56,7 @@ CampMinder API  ──►  Go Sync Services  ──┐
 | `kindred-api` | 8000 | Python 3.14 + FastAPI | Solver, analytics, social graph, scenarios |
 | `kindred-init` | — | Go + shell | One-shot admin/OIDC bootstrap |
 
-**Routing** follows an inverse pattern: Caddy routes explicit PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/oauth2-redirect`); all other `/api/*` traffic goes to FastAPI. New FastAPI endpoints work automatically without Caddy config changes.
+**Routing** follows an inverse pattern: Caddy routes explicit PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/batch`, `/api/oauth2-redirect`); all other `/api/*` traffic goes to FastAPI. New FastAPI endpoints work automatically without Caddy config changes.
 
 **Data integrity**: Cross-table relationships use PocketBase expandable relations (`expand=person,session,bunk`) for efficient joins, with CampMinder IDs retained alongside for sync lookups. Every CampMinder-sourced record is year-scoped so reused session IDs across years can never contaminate each other.
 

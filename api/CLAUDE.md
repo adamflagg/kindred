@@ -29,7 +29,7 @@ Routers should be thin. If a router accumulates logic, extract to `bunking/` and
 
 ## Routing
 
-Caddy uses an **inverse routing pattern**: specific PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/oauth2-redirect`) go to PocketBase; everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
+Caddy uses an **inverse routing pattern**: specific PocketBase paths (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/batch`, `/api/oauth2-redirect`) go to PocketBase; everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
 
 Config: `docker/Caddyfile` (prod), `frontend/Caddyfile` (dev).
 

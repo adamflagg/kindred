@@ -11,9 +11,12 @@ import (
 const (
 	fieldIsAdmin           = "is_admin"
 	fieldCachedPermissions = "cached_permissions"
+	fieldLastLogin         = "last_login"
+	fieldLastSeen          = "last_seen"
 )
 
-// registerUsersWriteGuard keeps is_admin and cached_permissions server-owned
+// registerUsersWriteGuard keeps is_admin and cached_permissions (and, on update,
+// last_login and last_seen) server-owned
 // on every non-superuser write to users that arrives as an API request.
 //
 // The collection rules already refuse those writes (create only in the OAuth2
@@ -70,6 +73,13 @@ func registerUsersWriteGuard(app core.App, adminGroup string) {
 		stored := e.Record.Original()
 		e.Record.Set(fieldIsAdmin, stored.Get(fieldIsAdmin))
 		e.Record.Set(fieldCachedPermissions, stored.Get(fieldCachedPermissions))
+		// Sign-in timestamps are server-owned too: users.updateRule is null
+		// (superusers only) since migration 1500000181, and this keeps "last
+		// active" server-owned if that rule is ever loosened. The auth hooks
+		// (registerLastLoginHook and registerLastSeenHook, oidc_hooks.go) write them
+		// with app.Save, not a request.
+		e.Record.Set(fieldLastLogin, stored.Get(fieldLastLogin))
+		e.Record.Set(fieldLastSeen, stored.Get(fieldLastSeen))
 		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
 	})
 }

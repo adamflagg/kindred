@@ -107,9 +107,16 @@ function accessSentence(entry: AuditEntry): SentencePart[] {
   }
 }
 
-/** Role DEFINITIONS only (the `roles` collection) — see the ruling above. */
+/** Role DEFINITIONS (the `roles` collection) and permission-description overrides — see the ruling above. */
 function rolesSentence(entry: AuditEntry): SentencePart[] {
   const target = firstText(entry.target_label, entry.record_id)
+  // Permission-description overrides audit under the same Roles type.
+  if (entry.collection === 'permission_descriptions') {
+    return [
+      t(`${entry.action === 'delete' ? 'reset' : 'reworded'} the description of `),
+      chip(target),
+    ]
+  }
   return [t(`${verb(VERB_DEFINITION, entry.action)} the `), chip(target), t(' role')]
 }
 

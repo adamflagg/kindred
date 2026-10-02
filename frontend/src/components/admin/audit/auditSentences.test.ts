@@ -175,6 +175,37 @@ describe('describeEntry', () => {
       { type: 'roles', action: 'delete', collection: 'roles', target_label: 'Finance' },
       'deleted the [Finance] role',
     ],
+    // Permission description overrides share the Roles type but are not roles
+    [
+      'a description reworded (create)',
+      {
+        type: 'roles',
+        action: 'create',
+        collection: 'permission_descriptions',
+        target_label: 'financial_aid.view',
+      },
+      'reworded the description of [financial_aid.view]',
+    ],
+    [
+      'a description reworded (update)',
+      {
+        type: 'roles',
+        action: 'update',
+        collection: 'permission_descriptions',
+        target_label: 'financial_aid.view',
+      },
+      'reworded the description of [financial_aid.view]',
+    ],
+    [
+      'a description reset',
+      {
+        type: 'roles',
+        action: 'delete',
+        collection: 'permission_descriptions',
+        target_label: 'financial_aid.view',
+      },
+      'reset the description of [financial_aid.view]',
+    ],
     // View as
     [
       'a whole preview',

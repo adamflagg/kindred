@@ -11,7 +11,12 @@
  * checks on example objects.
  */
 import { describe, it, expect } from 'vitest'
-import type { ApiSocialGraphNode, ApiSocialGraphEdge, ApiCrossScopeEdge } from './api-types'
+import type {
+  ApiSocialGraphNode,
+  ApiSocialGraphEdge,
+  ApiCrossScopeEdge,
+  ApiPermissionEntry,
+} from './api-types'
 
 // ── Exhaustiveness assertions (compile-time) ─────────────────────────────────
 // These `Required<T>` literals enumerate every field of the generated type.
@@ -66,6 +71,16 @@ const _exhaustiveCrossScopeEdge: Required<ApiCrossScopeEdge> = {
   reciprocal: false,
   cross_scope: true,
 }
+
+const _permissionEntry: Required<ApiPermissionEntry> = {
+  codename: 'metrics.geo',
+  description: 'See and edit the geographic data behind the maps.',
+  label: 'Geographic data',
+  short: 'Geographic data',
+  area: 'Analytics',
+  screens: [{ name: 'Manage › Geo Data', path: '/manage/geo' }],
+}
+void _permissionEntry
 
 // Reference the unused locals so the linter doesn't complain. The compile-time
 // check above is the actual assertion; runtime use is incidental.

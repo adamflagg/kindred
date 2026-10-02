@@ -69,6 +69,7 @@ var accessCollections = map[string]string{
 	core.CollectionNameSuperusers: TypeAccess,
 	"roles":                       TypeRoles,
 	"user_roles":                  TypeAccess,
+	"permission_descriptions":     TypeRoles,
 }
 
 // managementAllowlist is every collection the Manage menu writes directly

@@ -29,7 +29,7 @@ const (
 //
 // Updates are refused to non-admins outright rather than checked on both the
 // old and the new value: no Kindred client edits an assignment in place (the
-// Users page and UserRolesPanel only create and delete), and no hook recomputes
+// Users page's user drawer only creates and deletes), and no hook recomputes
 // cached_permissions after an update (hooks.go binds create and delete only),
 // so an in-place edit would leave both users' access stale anyway. Remove and
 // re-add goes through the create and delete checks above.

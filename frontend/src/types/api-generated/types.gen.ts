@@ -8834,6 +8834,72 @@ export type PerRequestStatus = {
 }
 
 /**
+ * PermissionEntry
+ */
+export type PermissionEntry = {
+  /**
+   * Codename
+   */
+  codename: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Short
+   */
+  short: string
+  /**
+   * Area
+   */
+  area: string
+  /**
+   * Screens
+   */
+  screens: Array<PermissionScreen>
+}
+
+/**
+ * PermissionRegistryResponse
+ */
+export type PermissionRegistryResponse = {
+  /**
+   * Permissions
+   */
+  permissions: Array<PermissionEntry>
+  /**
+   * Areas
+   */
+  areas: Array<string>
+  /**
+   * Admin Only
+   */
+  admin_only: Array<string>
+  /**
+   * Total
+   */
+  total: number
+}
+
+/**
+ * PermissionScreen
+ */
+export type PermissionScreen = {
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Path
+   */
+  path: string
+}
+
+/**
  * PersonHousingResponse
  *
  * One person's journey cabins that only the server can name.
@@ -23902,13 +23968,9 @@ export type GetPermissionRegistryApiPermissionsGetData = {
 
 export type GetPermissionRegistryApiPermissionsGetResponses = {
   /**
-   * Response Get Permission Registry Api Permissions Get
-   *
    * Successful Response
    */
-  200: {
-    [key: string]: unknown
-  }
+  200: PermissionRegistryResponse
 }
 
 export type GetPermissionRegistryApiPermissionsGetResponse =

@@ -267,6 +267,10 @@ func RegisterHooks(app core.App) {
 	// no admins, no roles carrying users.manage (user_roles_guard.go).
 	registerUserRolesBoundsGuard(app)
 
+	// Keep _superusers out of /api/batch, which Caddy routes past its
+	// ADMIN_ALLOWLIST gate (batch_guard.go).
+	registerBatchSuperusersGuard(app)
+
 	// Register OIDC admin group sync hook
 	RegisterOIDCHooks(app)
 

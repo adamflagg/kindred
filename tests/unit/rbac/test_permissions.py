@@ -3,7 +3,16 @@
 import re
 from pathlib import Path
 
-from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS, Permission
+from bunking.rbac.permissions import (
+    ADMIN_ONLY_AREAS,
+    ALL_PERMISSIONS,
+    PERMISSION_AREAS,
+    PERMISSION_DESCRIPTIONS,
+    PERMISSION_INFO,
+    Permission,
+    PermissionInfo,
+    Screen,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TS_PERMISSIONS = REPO_ROOT / "frontend" / "src" / "constants" / "permissions.ts"
@@ -99,3 +108,79 @@ class TestPermissionConstants:
         """
         assert not hasattr(Permission, "LODGING_PHI")
         assert "lodging.phi" not in ALL_PERMISSIONS
+
+
+class TestPermissionInfo:
+    """The Permissions tab and the drawers read these; a permission without copy
+    would render as a bare codename nobody can assign knowingly."""
+
+    def test_every_permission_has_info(self):
+        assert set(PERMISSION_INFO) == set(ALL_PERMISSIONS)
+        assert all(isinstance(v, PermissionInfo) for v in PERMISSION_INFO.values())
+
+    def test_areas_are_known_and_all_used(self):
+        used = {info.area for info in PERMISSION_INFO.values()}
+        assert used <= set(PERMISSION_AREAS)
+        assert used == set(PERMISSION_AREAS), "an area with no permission renders an empty card"
+
+    def test_labels_and_shorts_are_unique_and_non_empty(self):
+        labels = [i.label for i in PERMISSION_INFO.values()]
+        shorts = [i.short for i in PERMISSION_INFO.values()]
+        assert all(s.strip() for s in labels + shorts)
+        assert len(set(labels)) == len(labels)
+        assert len(set(shorts)) == len(shorts)
+
+    def test_screens_are_routes(self):
+        for code, info in PERMISSION_INFO.items():
+            assert isinstance(info.screens, tuple), code
+            for screen in info.screens:
+                assert isinstance(screen, Screen)
+                assert screen.name.strip(), code
+                assert screen.path.startswith("/"), (code, screen.path)
+                assert " " not in screen.path, (code, screen.path)
+
+    def test_metrics_financial_has_no_screen(self):
+        """Nothing checks it (spec M8); the tab says so instead of inventing a screen."""
+        assert PERMISSION_INFO["metrics.financial"].screens == ()
+
+    def test_descriptions_are_plain_sentences(self):
+        """Plain wording (spec M4): a full sentence, not a developer fragment."""
+        for code, text in PERMISSION_DESCRIPTIONS.items():
+            assert text.endswith("."), code
+            assert text[0].isupper(), code
+
+    def test_admin_only_areas(self):
+        assert ADMIN_ONLY_AREAS == (
+            "Manage › Sync",
+            "Manage › Config",
+            "Manage › Audit log",
+            "Summer › Debug",
+            "Camperships › Kit",
+            "Role editing",
+        )
+
+    def test_aid_view_screens_cover_every_view_gated_section(self):
+        """Every Camperships section financial_aid.view opens (aidNav.ts) is listed."""
+        paths = [s.path for s in PERMISSION_INFO["financial_aid.view"].screens]
+        assert paths == ["/aid", "/aid/requests", "/aid/grants", "/aid/money", "/aid/season", "/aid/reports"]
+
+    def test_descriptions_contain_no_codenames(self):
+        """Staff read descriptions verbatim (spec M4): no `area.action` codenames."""
+        for code, text in PERMISSION_DESCRIPTIONS.items():
+            for codename in ALL_PERMISSIONS:
+                assert codename not in text, (code, codename)
+            assert not re.search(r"\b[a-z_]+\.[a-z_]+\b", text), code
+
+    def test_add_on_permissions_say_they_only_add(self):
+        for code in ("financial_aid.casework", "financial_aid.rules"):
+            assert "only adds" in PERMISSION_DESCRIPTIONS[code], code
+        assert "Scenarios" in PERMISSION_DESCRIPTIONS["financial_aid.rules"]
+
+    def test_bunking_manage_does_not_claim_to_open_the_boards(self):
+        """The Summer and Weekend boards are open to every signed-in user (App.tsx)."""
+        text = PERMISSION_DESCRIPTIONS["bunking.manage"]
+        assert "open to every signed-in user" in text
+        assert "opens the" not in text
+
+    def test_staff_hiring_discloses_admin_only_data(self):
+        assert "admin-only" in PERMISSION_DESCRIPTIONS["staff.hiring"]

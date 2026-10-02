@@ -17,10 +17,10 @@
  *
  * Router middleware does NOT run per sub-request, and neither do Caddy's path
  * gates (the _superusers IP allowlist in docker/Caddyfile): both see only
- * /api/batch. Caddy does not route /api/batch to PocketBase (it is not in the
- * @pocketbase matcher, so it falls through to FastAPI), so only Kindred's
- * services on the internal network reach it. Keep it that way;
- * tests/unit/bunking/test_pocketbase_batch.py pins it.
+ * /api/batch. Caddy routes /api/batch to PocketBase because the Users page
+ * saves a person's role changes in one batch from the browser, so
+ * rbac/batch_guard.go refuses superuser writes inside a batch in place of the
+ * IP gate. tests/unit/bunking/test_pocketbase_batch.py pins both.
  *
  * Limits:
  * - maxRequests 2000: the largest known operation, "make Round 1 offers", is
