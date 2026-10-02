@@ -247,7 +247,7 @@ class GridRowOut(BaseModel):
     # Read 2 (§6.2 Needs an offer): the description to post the program's aid under, from the rules; None: none named.
     campminder_description: str | None = None
     # Who submitted the aid form (the parent or guardian's name, from the form's contact fields); None when it can't
-    # be named, e.g. the household's forms name two different people. The grid links it to the household page.
+    # be named, e.g. the household's forms name two different people. The grid is to link it to the household page.
     requested_by: str | None = None
 
 
