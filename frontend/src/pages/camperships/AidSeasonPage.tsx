@@ -20,11 +20,13 @@ import PermissionDeniedPage from '../PermissionDeniedPage'
 const SEASON = aidSection('season')
 const ROUNDS = 'rounds-budget'
 
-/** Rounds & budget's figures beside the band's title: the season's Allocated and the rules pricing it. */
-function BudgetStats({ enabled }: { enabled: boolean }) {
-  const budget = useAidBudget({ enabled })
-  const data = budget.data
-  if (!enabled || data === undefined) return null
+/**
+ * Rounds & budget's figures beside the band's title: the season's Allocated and the rules pricing
+ * it. Mounted on that tab only, so no other tab shows a cached Allocated (Task 5 m2).
+ */
+function BudgetStats() {
+  const data = useAidBudget().data
+  if (data === undefined) return null
   return (
     <div className="text-forest-200 text-right text-xs sm:text-sm">
       <div>
@@ -68,7 +70,7 @@ export default function AidSeasonPage() {
         subtitle={`Season ${String(year)}`}
         // A past date covers the Remaining line on every tab, so its pill shows on every tab (I6).
         asOf={asOf}
-        stats={<BudgetStats enabled={onRounds} />}
+        stats={onRounds ? <BudgetStats /> : undefined}
       />
       <AidTabNav section={SEASON} tabs={resolved.tabs} view={view} />
       {!onRounds && asOf.kind === 'past' && (

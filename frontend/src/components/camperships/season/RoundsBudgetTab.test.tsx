@@ -113,6 +113,17 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     ).toBeInTheDocument()
   })
 
+  it('leaves the Pending approval line blank outside Needs an offer, not "—" (Task 4 m1)', () => {
+    renderAt('/aid/season/rounds-budget')
+    const pending = line('pool_a:3:pending')
+    expect(within(pending).queryByText('—')).toBeNull()
+    expect(
+      within(pending)
+        .getAllByRole('cell')
+        .map((c) => c.textContent)
+    ).toEqual(['Pending approval', '', '', '', '1 · $650', ''])
+  })
+
   it('folds a pool in the URL, replacing rather than pushing (D15)', async () => {
     vi.useRealTimers()
     renderAt('/aid/season/rounds-budget?year=2027')
@@ -174,6 +185,21 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
   it('says so when the link names a pool this season has none of', () => {
     renderAt('/aid/season/rounds-budget?pool=pool_zz')
     expect(screen.getByText(/No pool "pool_zz" in 2027's budget/)).toBeInTheDocument()
+  })
+
+  it('keeps a past date on "All pools ›", from an unknown pool and from one pool (Task 4 m5)', () => {
+    const first = renderAt('/aid/season/rounds-budget?pool=pool_zz&as_of=2027-03-15')
+    expect(screen.getByRole('link', { name: 'All pools ›' })).toHaveAttribute(
+      'href',
+      '/aid/season/rounds-budget?year=2027&as_of=2027-03-15'
+    )
+    first.unmount()
+    read = { data: pastBudget(), isLoading: false, error: null }
+    renderAt('/aid/season/rounds-budget?pool=pool_b&as_of=2027-03-15')
+    expect(screen.getByRole('link', { name: 'All pools ›' })).toHaveAttribute(
+      'href',
+      '/aid/season/rounds-budget?year=2027&as_of=2027-03-15'
+    )
   })
 
   it('shows below the line: outside grants, decision types outside the budget, held requests', () => {
@@ -276,15 +302,21 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     expect(line('total')).toBeInTheDocument()
   })
 
-  it('downloads exactly the lines on screen, named per D70', async () => {
+  it("downloads the table's lines on screen, named per D70 (Task 4 m3)", async () => {
     vi.useRealTimers()
     renderAt('/aid/season/rounds-budget?pool=pool_b')
     await userEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     const [content, name] = download.mock.calls[0] ?? ['', '']
     expect(name).toBe('camperships-season-rounds-budget-pool-b-2027.csv')
-    expect(content.split('\n').slice(0, 2)).toEqual([
+    // The table's lines on screen, and only those: no other pool, no total, no below-the-line.
+    expect(content.split('\n')).toEqual([
       'Pool,Round,Allocated,Posted,Accepted,Needs an offer,Needs an offer requests,Pending approval,Pending approval requests,Remaining',
       'Pool B,,93600,52400,40000,0,0,0,0,41200',
+      'Pool B,1,93600,52400,40000,0,0,0,0,41200',
+      'Pool B,2,0,0,0,0,0,0,0,0',
+      'Pool B,3,0,0,0,0,0,0,0,0',
+      '',
+      `Link,${window.location.href}`,
     ])
   })
 })
