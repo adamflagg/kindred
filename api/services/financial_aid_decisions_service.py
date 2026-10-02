@@ -178,6 +178,7 @@ from api.services.financial_aid_request_overrides import (
     parse_cost_override,
 )
 from api.services.financial_aid_request_overrides import by_request as overrides_by_request
+from api.services.financial_aid_requesters import FaContact, requester_names
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
@@ -318,6 +319,7 @@ class DecisionsStore(Protocol):
     async def fetch_names(
         self, year: int, household_cm_ids: Collection[int], person_cm_ids: Collection[int]
     ) -> tuple[dict[int, str], dict[int, str]]: ...
+    async def fetch_fa_contacts(self, year: int) -> list[FaContact]: ...
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]: ...
     async def fetch_line_placements(self, year: int) -> dict[int, Placement]: ...
     async def fetch_line_splits(self, year: int) -> dict[int, tuple[SplitPart, ...]]: ...
@@ -2006,20 +2008,27 @@ class FinancialAidDecisionsService:
         self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder"
     ) -> RequestsGridResponse:
         day = self._past_day(as_of)
-        if day is None:
-            season, (families, campers) = await self._season(year, names=True)
-            unnamed = _payer_households(season) - families.keys()
-            if unnamed:  # a household that pays a share but applied for nothing (⚠39)
-                more, _ = await self._store.fetch_names(year, unnamed, set())
-                families = {**families, **more}
-        else:
-            season = await self.past_season(year, day, as_of_axis)
-            families, campers = await self._store.fetch_names(
+
+        async def load() -> tuple[Season, dict[int, str], dict[int, str]]:
+            if day is None:
+                live, (fam, cam) = await self._season(year, names=True)
+                unnamed = _payer_households(live) - fam.keys()
+                if unnamed:  # a household that pays a share but applied for nothing (⚠39)
+                    more, _ = await self._store.fetch_names(year, unnamed, set())
+                    fam = {**fam, **more}
+                return live, fam, cam
+            past = await self.past_season(year, day, as_of_axis)
+            fam, cam = await self._store.fetch_names(
                 year,
-                {r.household_cm_id for r in season.requests.values()} | _payer_households(season),
-                {r.person_cm_id for r in season.requests.values() if r.person_cm_id > 0},
+                {r.household_cm_id for r in past.requests.values()} | _payer_households(past),
+                {r.person_cm_id for r in past.requests.values() if r.person_cm_id > 0},
             )
-        rows = [self.row_of(season, (families, campers), rid) for rid in season.priced]
+            return past, fam, cam
+
+        # The aid form's contact names (Requested by) are read once, beside the season's own loads.
+        (season, families, campers), contacts = await asyncio.gather(load(), self._store.fetch_fa_contacts(year))
+        requesters = requester_names(contacts, season.requests.values())
+        rows = [self.row_of(season, (families, campers), rid, requesters) for rid in season.priced]
         if season.as_of is not None:
             # 3c-2: a row is exact unless a gap reaches its request; then it keeps 3c-1's figures. Every past
             # row leaves out what CampMinder's cancellations and the ledger's sync time feed (GRID_GAPS). Included
@@ -2066,7 +2075,13 @@ class FinancialAidDecisionsService:
             else [],
         )
 
-    def row_of(self, season: Season, names: Names, request_id: str) -> GridRowOut:
+    def row_of(
+        self,
+        season: Season,
+        names: Names,
+        request_id: str,
+        requesters: Mapping[str, str | None] | None = None,
+    ) -> GridRowOut:
         """One request's grid row, with the Requests views it is in (slice 1, D21). The grid and the
         household page build their rows here, so the two always show the same figures."""
         families, campers = names
@@ -2098,6 +2113,7 @@ class FinancialAidDecisionsService:
                 "payer_count": len(paying),
                 "payer_shares": grid_shares(row, paying, families),
                 "campminder_description": description,
+                "requested_by": (requesters or {}).get(request_id),
                 "cost_override": (
                     CostOverrideOut(
                         amount=money(parsed.amount),

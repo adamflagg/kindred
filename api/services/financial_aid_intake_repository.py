@@ -65,6 +65,7 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
     equity_from_json,
 )
+from api.services.financial_aid_requesters import FaContact
 from api.services.financial_aid_rules_service import AidRulesRepository, FinancialAidRulesService
 from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
@@ -110,6 +111,7 @@ FA_READ_FIELDS: Final = ",".join(
         "expand.household.cm_id",
     )
 )
+FA_CONTACT_FIELDS: Final = "id,person_id,contact_first_name,contact_last_name,expand.household.cm_id"
 _BILLING_FIELDS: Final = ",".join(
     (
         "id",
@@ -333,6 +335,28 @@ class FinancialAidIntakeRepository:
             },
         )
         return [_fa_row(r) for r in rows]
+
+    async def fetch_fa_contacts(self, year: int) -> list[FaContact]:
+        """The contact name on every aid form row of the season, not only applicants, with the camper and household it
+        belongs to: the Requests grid's Requested by (financial_aid_requesters). Only those columns are read."""
+        rows = await self._page(
+            FINANCIAL_AID_APPLICATIONS,
+            {
+                "filter": f"year = {int(year)}",
+                "expand": "household",
+                "fields": FA_CONTACT_FIELDS,
+                "sort": STABLE_SORT,
+            },
+        )
+        return [
+            FaContact(
+                _int(getattr(r, "person_id", 0)),
+                _int(getattr(_expanded(r, "household"), "cm_id", 0)),
+                _str(getattr(r, "contact_first_name", "")),
+                _str(getattr(r, "contact_last_name", "")),
+            )
+            for r in rows
+        ]
 
     async def fetch_sessions(self, year: int) -> list[SessionRow]:
         rows = await self._page(
