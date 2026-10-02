@@ -20,7 +20,6 @@ from api.services.financial_aid_ledger_service import (
     normalize_aid_label,
     program_bucket,
 )
-from api.services.financial_aid_repository import FaRequestRow
 
 CAMP = "example camp financial assistance"
 GRANT = "regional grant - north"
@@ -222,71 +221,6 @@ def test_live_at_does_not_count_a_reversal_at_23_59_59_camp_time_on_the_day() ->
         reversal_date="2026-03-11 06:59:59.000Z",  # 23:59:59 PDT on Mar 10
     )
     assert live_at(posting, cutoff) is False
-
-
-# --- ledger -------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_ledger_groups_a_household_and_presents_positive_aid_dollars() -> None:
-    repo = _repo(
-        fetch_postings=[
-            _posting(9001, 100, -750.0, flags=["unclassified_source", "live_aid_on_cancelled_enrollment"]),
-            _grant(
-                9002,
-                100,
-                -250.5,
-                attribution_level="ambiguous",
-                program_family="",
-                attributed_person_cm_id=0,
-                attributed_session_cm_id=0,
-                candidate_program_families=["family_camp", "summer"],
-            ),
-            _posting(9003, 100, -300.0, is_reversed=True, reversal_date="2026-03-20 00:00:00.000Z"),
-        ],
-        fetch_sources=[_source(CAMP, "camp_fa", budget=True), _source(GRANT, "other_outside", budget=False)],
-        fetch_dispositions=[_disposition(9001, "live_aid_on_cancelled_enrollment")],
-        fetch_households=[SimpleNamespace(cm_id=100, mailing_title="The Test Household", greeting="")],
-        fetch_persons=[SimpleNamespace(cm_id=1001, first_name="Emma", last_name="Johnson", preferred_name="")],
-        fetch_links=[_link(100, "hh-100"), _link(200, "hh-100")],
-        fetch_fa_requests=[FaRequestRow(100, 1200.0, 0.0, 0.0), FaRequestRow(200, 1500.0, 300.0, 0.0)],
-    )
-    got = await FinancialAidLedgerService(repo).ledger(2026)
-
-    assert got.total_aid == 1000.5  # the reversed 300 is history, not live aid
-    (row,) = got.rows
-    assert (row.household_cm_id, row.display_name, row.family_households) == (100, "The Test Household", [100, 200])
-    assert [(c.person_cm_id, c.name) for c in row.campers] == [(1001, "Emma Johnson")]
-    assert [(s.source_family, s.amount) for s in row.by_source] == [("camp_fa", 750.0), ("other_outside", 250.5)]
-    assert row.by_program == {"summer": 750.0, "ambiguous": 250.5}
-    assert row.levels == {"session": 1, "ambiguous": 1}
-    assert (row.fa_requested.summer, row.fa_requested.family_camp) == (1500.0, 300.0)
-    assert (row.open_flags, row.accepted_flags) == (["unclassified_source"], ["live_aid_on_cancelled_enrollment"])
-
-
-@pytest.mark.asyncio
-async def test_ledger_filters_by_bucket_effective_source_family_and_level() -> None:
-    postings = [
-        _posting(9001, 100, -750.0),
-        _grant(9002, 200, -300.0, attribution_level="ambiguous", program_family=""),
-        # Reclassified by an override: its own description is camp aid, its class is outside.
-        _posting(
-            9003,
-            300,
-            -400.0,
-            effective_source_key=OUTSIDE,
-            source_family="other_outside",
-            funder_type="outside",
-            counts_toward_budget=False,
-        ),
-    ]
-    service = FinancialAidLedgerService(
-        _repo(fetch_postings=postings, fetch_sources=[_source(CAMP, "camp_fa", budget=True)])
-    )
-    assert [r.household_cm_id for r in (await service.ledger(2026, program_family="ambiguous")).rows] == [200]
-    assert [r.household_cm_id for r in (await service.ledger(2026, source_family="camp_fa")).rows] == [100]
-    assert [r.household_cm_id for r in (await service.ledger(2026, source_family="other_outside")).rows] == [300, 200]
-    assert [r.household_cm_id for r in (await service.ledger(2026, level="session")).rows] == [100, 300]
 
 
 # --- household detail ---------------------------------------------------------

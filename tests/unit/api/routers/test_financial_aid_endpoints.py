@@ -20,7 +20,6 @@ from api.schemas.financial_aid import (
     FaRequested,
     HouseholdDetailResponse,
     HouseholdLinkRow,
-    LedgerResponse,
     NetTotalsResponse,
     SummaryResponse,
 )
@@ -73,7 +72,6 @@ OVERRIDE_BODY = {
 
 # (method, url, json body, permission required, success status)
 ROUTES: list[tuple[str, str, dict[str, Any] | None, str | tuple[str, ...], int]] = [
-    ("GET", "/api/financial-aid/ledger?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/households/100?year=2026", None, VIEW, 200),
     ("GET", "/api/financial-aid/summary?year=2026&as_of=2026-03-10", None, VIEW, 200),
     ("GET", "/api/financial-aid/net-totals?year=2026", None, VIEW, 200),
@@ -103,7 +101,6 @@ def _client(persona: str) -> TestClient:
 
 def _stub_services() -> tuple[Any, Any]:
     ledger = patch("api.routers.financial_aid.FinancialAidLedgerService").start()
-    ledger.return_value.ledger = AsyncMock(return_value=LedgerResponse(year=2026, total_aid=0, rows=[]))
     ledger.return_value.household = AsyncMock(
         return_value=HouseholdDetailResponse(
             year=2026,
@@ -211,9 +208,6 @@ def test_service_errors_map_to_404_and_422() -> None:
 @pytest.mark.parametrize(
     "url",
     [
-        "/api/financial-aid/ledger?year=2026&program_family=space_camp",
-        "/api/financial-aid/ledger?year=2026&level=guess",
-        "/api/financial-aid/ledger?year=1999",
         "/api/financial-aid/summary",
         "/api/financial-aid/summary?year=2026&as_of=not-a-date",
     ],
@@ -221,6 +215,12 @@ def test_service_errors_map_to_404_and_422() -> None:
 def test_bad_query_parameters_are_422(url: str) -> None:
     _stub_services()
     assert _client(PERSONA_FINANCE).get(url).status_code == 422
+
+
+def test_the_old_per_household_ledger_route_is_gone() -> None:
+    """Retired: Money > Ledger (GET /money/{year}/ledger) supersedes it."""
+    _stub_services()
+    assert _client(PERSONA_FINANCE).get("/api/financial-aid/ledger?year=2026").status_code in (404, 405)
 
 
 def test_household_link_delete_blank_reason_is_422_and_never_writes() -> None:

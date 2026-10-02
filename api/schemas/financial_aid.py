@@ -94,43 +94,10 @@ class AidPostingLine(BaseModel):
     accepted_flags: dict[str, str]
 
 
-class AidSourceTotal(BaseModel):
-    source_key: str
-    source_name: str
-    source_family: str
-    amount: float
-    postings: int
-
-
-class LedgerCamper(BaseModel):
-    person_cm_id: int
-    name: str
-
-
 class FaRequested(BaseModel):
     summer: float = 0.0
     family_camp: float = 0.0
     bmitzvah: float = 0.0
-
-
-class LedgerHouseholdRow(BaseModel):
-    household_cm_id: int
-    display_name: str
-    family_households: list[int]
-    campers: list[LedgerCamper]
-    total_aid: float
-    by_source: list[AidSourceTotal]
-    by_program: dict[str, float]
-    levels: dict[str, int]
-    fa_requested: FaRequested
-    open_flags: list[str]
-    accepted_flags: list[str]
-
-
-class LedgerResponse(BaseModel):
-    year: int
-    total_aid: float
-    rows: list[LedgerHouseholdRow]
 
 
 class HouseholdEnrollment(BaseModel):
