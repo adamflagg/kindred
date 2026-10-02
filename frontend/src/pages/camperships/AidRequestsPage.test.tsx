@@ -1228,6 +1228,35 @@ describe("a Today line's rows (Decision 10)", () => {
     expect(screen.getByTestId('where')).not.toHaveTextContent('today=')
   })
 
+  const TWO_LINES: ApiAidToday = {
+    year: 2027,
+    casework: null,
+    finance: [
+      {
+        key: 'would_change',
+        families: 2,
+        items: 2,
+        item_kind: 'requests',
+        reasons: [],
+        request_ids: ['reqolivia000003', 'reqsamuel000005'],
+      },
+    ],
+  }
+
+  it("says Today's own count when no other filter narrows the list", () => {
+    todayRead = loaded(TWO_LINES)
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByText(/From Today: .* · 2 requests/)).toBeInTheDocument()
+  })
+
+  it('says the count the list shows when another filter narrows it', () => {
+    todayRead = loaded(TWO_LINES)
+    renderAt('/aid/requests?view=all&today=would_change&program=quest')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Samuel Johnson')).toBeNull()
+    expect(screen.getByText(/From Today: .* · 1 request(?!s)/)).toBeInTheDocument()
+  })
+
   it('counts the view links over the line only, so the totals match the rows (R1)', () => {
     todayRead = loaded(WOULD_CHANGE)
     renderAt('/aid/requests?view=all&today=would_change')
