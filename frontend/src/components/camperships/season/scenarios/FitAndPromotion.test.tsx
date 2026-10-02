@@ -268,6 +268,7 @@ describe('Make it the rules draft (D39; Decision 21)', () => {
     // Done closes it.
     await userEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByTestId('promotion-done')).toBeNull()
+    expect(screen.queryByTestId('promotion-preview')).toBeNull()
   })
 
   it('has no promote control on the draft column', () => {
