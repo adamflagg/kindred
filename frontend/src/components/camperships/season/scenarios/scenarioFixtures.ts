@@ -1,6 +1,7 @@
 /**
  * Scenario fixtures (slice 2): an invented 2027 workspace in the server's shape (`WorkspaceOut`):
  * a frozen snapshot, starting points A and B with A's variant A1, and Test User's draft from B.
+ * by_tier leaves the held requests out, as the server's tier rows do (195+146+70 = 411 of 420, 9 held).
  * Every figure is invented; pools are "Pool A" and "Pool B".
  */
 import type {
@@ -53,11 +54,14 @@ export function results(
       },
     ],
     by_tier: [
-      { tier: 1, requests: 200, families: 180, round1: round1 - 200000 },
-      { tier: 2, requests: 150, families: 140, round1: 150000 },
+      { tier: 1, requests: 195, families: 176, round1: round1 - 200000 },
+      { tier: 2, requests: 146, families: 136, round1: 150000 },
       { tier: 3, requests: 70, families: 60, round1: 50000 },
     ],
     not_in_tiers: 0,
+    request_set: null,
+    round2_allocated: 60000,
+    round2_remaining: 39500,
     ...over,
   }
 }

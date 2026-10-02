@@ -87,7 +87,7 @@ export function readStep(
   raw: string,
   range: { min: number; max: number; step: number }
 ): number | null {
-  const text = raw.trim().replace('−', '-')
+  const text = raw.trim().replace('−', '-').replace(/^\+/, '')
   if (!/^-?\d+(\.\d+)?$/.test(text)) return null
   const value = Number(text)
   if (value < range.min || value > range.max) return null
@@ -102,8 +102,10 @@ export function readStep(
 export function stepWords(effect: ApiAidLeverEffect | undefined): string | null {
   if (effect === undefined) return null
   const moves = `moves Round 1 by ${formatMoney(effect.round1_change)}`
-  if (effect.step === null)
+  if (effect.step === null) {
+    if (effect.on === null) return null
     return `${effect.on === true ? 'Turning it off' : 'Turning it on'} ${moves}`
+  }
   if (effect.lever === 'tier_shift') return `Each +${String(effect.step)} pt ${moves}`
   if (effect.lever === 'band_width') return `Each ${formatMoney(effect.step)} wider ${moves}`
   return `Each +${formatMoney(effect.step)} ${moves}`
@@ -140,6 +142,8 @@ export interface ResultLine {
   readonly negative: boolean
 }
 
+const requestCount = (n: number): string => `${String(n)} ${n === 1 ? 'request' : 'requests'}`
+
 const money = (key: string, label: string, value: number | null | undefined): ResultLine => ({
   key,
   label,
@@ -162,10 +166,10 @@ export function resultLines(results: ApiAidScenarioResults): ResultLine[] {
     {
       key: 'at_minimum',
       label: 'At the minimum',
-      value: `${String(results.at_minimum)} requests`,
+      value: requestCount(results.at_minimum),
       negative: false,
     },
-    { key: 'held', label: 'Held', value: `${String(results.held)} requests`, negative: false },
+    { key: 'held', label: 'Held', value: requestCount(results.held), negative: false },
     money('round1_unmet', 'Round 1 unmet ask (below the line)', results.round1_unmet),
   ]
 }
