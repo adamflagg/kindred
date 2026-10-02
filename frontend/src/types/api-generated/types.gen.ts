@@ -9600,6 +9600,34 @@ export type PhaseRowOut = {
    */
   basis: 'P' | 'r'
   /**
+   * Offered Label
+   */
+  offered_label: string
+  /**
+   * End Of Season Label
+   */
+  end_of_season_label: string
+  /**
+   * To Date
+   */
+  to_date: boolean
+  /**
+   * Offered
+   */
+  offered: Array<number | null>
+  /**
+   * Offered As Of
+   */
+  offered_as_of: Array<string | null>
+  /**
+   * Offered Pct Of Budget
+   */
+  offered_pct_of_budget: Array<number | null>
+  /**
+   * Offered Share Of Phases
+   */
+  offered_share_of_phases: Array<number | null>
+  /**
    * Phases
    */
   phases: Array<number | null>
@@ -12994,6 +13022,10 @@ export type Round1PctRowOut = {
    * Asked
    */
   asked: number | null
+  /**
+   * Asked In Budget
+   */
+  asked_in_budget: number | null
   /**
    * Pct Of Ask
    */
