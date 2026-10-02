@@ -367,8 +367,9 @@ function Missing({ text, children }: { text: string; children?: ReactNode }) {
 /**
  * Season › Rules (spec §7.5; D39, D76; rules.html A, season-access.html C): the rules document
  * section by section, each with its status and who approved it. Finance (`rules`) reads the rules
- * draft with its changes, or the approved version; everyone else reads the approved version only,
- * read only (D76). `?version=` is a receipt's link to the version that priced it; `?section=` opens
+ * draft with its changes, or the approved version, and writes to the draft: edits a section,
+ * approves sections, or starts an empty season from last year's rules. Everyone else reads the
+ * approved version only, read only (D76). `?version=` is a receipt's link to the version that priced it; `?section=` opens
  * a section; `?show=approved` is finance's view of what the registrar sees.
  */
 export function RulesTab() {
