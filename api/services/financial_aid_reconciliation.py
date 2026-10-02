@@ -61,7 +61,7 @@ from api.services.financial_aid_grants_register import (
 from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord, SessionRow
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
-from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundState
+from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundLedger, RoundState
 from bunking.financial_aid.money import ZERO
 from bunking.logging_config import get_logger
 
@@ -756,6 +756,66 @@ def confirmation(
         shares=_share_lines(locked, shares, application_household_cm_id, by_household, awaiting),
         family_unplaced=family_unplaced,
     )
+
+
+def _dues_by_payer(
+    locks: Mapping[int, Decimal], shares: Sequence[PayerShareRecord], application_household_cm_id: int
+) -> dict[int, dict[int, Decimal]] | None:
+    """Each payer's part of each round's lock: the move in its whole-dollar share of the cumulative locked total
+    (Decision 5), so a payer's parts add up to its share of the whole, as confirmation()'s `expected` reads it.
+    None for one payer, or for shares not adding to 100% (read as one payer, as _share_lines does)."""
+    if len(shares) < 2:
+        return None
+    dues: dict[int, dict[int, Decimal]] = defaultdict(dict)
+    before: dict[int, Decimal] = {}
+    total = ZERO
+    try:
+        for n in sorted(locks):
+            total += locks[n]
+            now = split_award(total, shares, application_household_cm_id)
+            for household, amount in now.items():
+                dues[household][n] = max(amount - before.get(household, ZERO), ZERO)
+            before = now
+    except PayerShareError:
+        return None
+    return dues
+
+
+def round_ledger(
+    priced: PricedRequest,
+    rounds: Mapping[int, RoundState],
+    lines: Sequence[CampLine],
+    shares: Sequence[PayerShareRecord],
+    application_household_cm_id: int,
+    *,
+    synced_at: datetime | None,
+) -> dict[int, RoundLedger]:
+    """Owner ruling ⚠10 (2026-10-02): how much of each posted round CampMinder's live camp-aid net confirms. The net
+    fills the request's posted rounds still counted (not clawed back), oldest round first; a round's unconfirmed part
+    is its lock less what the net filled. A split request fills each payer's part from that household's own lines,
+    and the parts are summed. Money beyond the locked total confirms nothing more (it stays in Not reconciled). Only
+    the live net is read, so one line per round and a reverse-and-repost give the same answer. `lines` are the lines
+    placed on the request, as confirmation() takes them; the season gate is the caller's."""
+    posted = [view for view in priced.rounds if view.status == "posted" and not view.clawed_back]
+    if not posted:
+        return {}
+    locks = {view.round: view.locked or ZERO for view in posted}
+    live = [line for line in lines if line.live()]
+    dues = _dues_by_payer(locks, shares, application_household_cm_id)
+    if dues is None:
+        dues, held = {0: dict(locks)}, {0: _live_net(live)}
+    else:
+        held = {h: _live_net(line for line in live if line.household_cm_id == h) for h in dues}
+    unfilled: dict[int, Decimal] = defaultdict(Decimal)
+    for payer, due in dues.items():
+        left = max(held[payer], ZERO)
+        for n in sorted(due):
+            filled = min(due[n], left)
+            unfilled[n] += due[n] - filled
+            left -= filled
+    return {
+        n: RoundLedger(unconfirmed=unfilled[n], awaiting=_awaiting(rounds.get(n), synced_at)) for n in sorted(locks)
+    }
 
 
 def ledger_note(

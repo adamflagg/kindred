@@ -57,6 +57,16 @@ class Count:
 
 
 @dataclass(frozen=True)
+class RoundLedger:
+    """What the ledger says of one posted round (owner ruling ⚠10, 2026-10-02). `unconfirmed` is the part of its lock
+    that CampMinder's live camp-aid net on the request doesn't fill, oldest round first, per payer share; `awaiting` is
+    its own tick coming after the last ledger sync. Built by api.services.financial_aid_reconciliation.round_ledger."""
+
+    unconfirmed: Decimal
+    awaiting: bool
+
+
+@dataclass(frozen=True)
 class Cell:
     allocated: Decimal | None
     posted: Decimal
