@@ -217,8 +217,8 @@ class GridRowOut(BaseModel):
     # (and payer_shares []) for a request whose payer shares couldn't be replayed for that date.
     payer_count: int | None = 1
     payer_shares: list[GridShareOut] = Field(default_factory=list)
-    # Read 3: why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words; None when it can,
-    # and on a past read (nothing is keyed into the past).
+    # Read 3: why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words; None when it can;
+    # a past read names it in not_rebuilt.
     appeal_refusal: str | None = None
 
 

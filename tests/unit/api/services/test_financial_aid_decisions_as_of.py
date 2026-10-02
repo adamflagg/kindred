@@ -251,6 +251,8 @@ async def test_a_request_with_no_recorded_equity_answers_then_keeps_3c1s_figures
     ]
     assert row.queues is None
     assert "queues" in GRID_GAPS
+    assert row.appeal_refusal is None
+    assert "appeal_refusal" in GRID_GAPS  # a past row names it, so the live-versus-past comparison drops it as a gap
 
 
 @pytest.mark.asyncio
@@ -563,9 +565,7 @@ async def test_round_2_asks_are_named_only_when_an_unrebuilt_request_empties_the
     assert (camp.demand.round2_asks, camp.demand.round2_asked) == (None, None)
 
 
-# appeal_refusal is not a named gap: a past row simply carries none (nothing is keyed into the past), while the
-# live row says why an appeal can't be keyed.
-_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS, "appeal_refusal"}
+_GAP_KEYS = {*GRID_GAPS, *BUDGET_GAPS}
 
 
 def _without_gaps(value: Any) -> Any:
