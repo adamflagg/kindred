@@ -26,6 +26,10 @@ describe('HouseholdTotals (D77; household-totals.html B2)', () => {
     }
     expect(screen.getByText("family's share").nextSibling).toHaveTextContent('4')
     expect(screen.getByText('posted · 1 short $210')).toBeInTheDocument()
+    // The equation is drawn, to the cent: 13,520 - 3,220 - 1,000 = 9,300.
+    expect(screen.getAllByText('−')).toHaveLength(2)
+    expect(screen.getByText('=')).toBeInTheDocument()
+    expect(screen.queryByText('·')).toBeNull()
   })
 
   it('reads "—" for a figure not there yet, never "$0" (D74; Review Focus 5)', () => {
@@ -55,6 +59,25 @@ describe('HouseholdTotals (D77; household-totals.html B2)', () => {
           decided: 8000,
           grants: 3000,
           family_share: 500,
+          posted: null,
+          states: [],
+        }}
+        numberOf={() => null}
+      />
+    )
+    expect(screen.queryByText('−')).toBeNull()
+    expect(screen.queryByText('=')).toBeNull()
+    expect(screen.getAllByText('·')).toHaveLength(3)
+  })
+
+  it('draws "·" and no equation while the share is not there yet (regression guard)', () => {
+    render(
+      <HouseholdTotals
+        totals={{
+          cost: 10000,
+          decided: 8000,
+          grants: 1000,
+          family_share: null,
           posted: null,
           states: [],
         }}

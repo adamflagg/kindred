@@ -60,7 +60,7 @@ export function HouseholdTotals({
   }
   const equation = addsUp(totals)
   return (
-    <div className="flex items-end gap-3">
+    <div className="flex flex-wrap items-end justify-end gap-3">
       <Figure value={totals.cost} label={label('cost', 'cost')} ink="text-white" />
       <Op sign={equation ? '−' : '·'} />
       <Figure value={totals.decided} label={label('aid, decided', 'decided')} ink="text-white" />
