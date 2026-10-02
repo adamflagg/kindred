@@ -54,5 +54,7 @@ export function useAidScenarioTrail(
     queryFn: () => fetchAidScenarioTrail(fetchWithAuth, year, page),
     enabled: enabled && year > 0 && !authLoading,
     retry,
+    // Newer / Older keep the page on screen, marked stale, rather than blanking to a spinner.
+    placeholderData: keepPreviousData,
   })
 }
