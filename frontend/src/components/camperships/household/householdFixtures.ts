@@ -3,11 +3,13 @@
  * Samuel Johnson stands in as a parent where a card lists adults, as the kit's fixtures do.
  */
 import type {
+  ApiAidApplication,
   ApiAidHouseholdCard,
   ApiAidHouseholdPage,
   ApiAidHouseholdRequest,
   ApiAidGridRow,
   ApiAidReceipt,
+  ApiAidRequestOut,
 } from '../../../types/api-types'
 import { TRACE_CAPPED_BY_ASK } from '../kit/fixtures'
 import { ROW_EMMA, ROW_SAMUEL } from '../requests/gridFixtures'
@@ -284,3 +286,45 @@ export const SPLIT_PAGE: ApiAidHouseholdPage = householdPage({
     }),
   ],
 })
+
+/** An intake request as the application read carries it: flags, headcounts and duplicates. */
+export function requestOut(over: Partial<ApiAidRequestOut> = {}): ApiAidRequestOut {
+  return {
+    id: 'reqemma00000001',
+    household_cm_id: 1000001,
+    person_cm_id: 1000002,
+    session_cm_id: 0,
+    program_key: 'summer',
+    program_option_text: '',
+    session_resolution: 'unmatched',
+    status: 'unmatched_session',
+    duplicate_of: '',
+    ask: {
+      field: 'ask',
+      synced: '2000.00',
+      effective: '2000.00',
+      corrected: false,
+      changed_since_correction: false,
+      history: [],
+    },
+    headcount_non_infant: 0,
+    headcount_infant: 0,
+    headcount_source: '',
+    flags: [{ code: 'unmatched_session', detail: { candidates: [1000101, 1000199] } }],
+    ...over,
+  }
+}
+
+export function applicationOut(over: Partial<ApiAidApplication> = {}): ApiAidApplication {
+  return {
+    year: 2027,
+    household_cm_id: 1000001,
+    status: 'complete',
+    member_person_cm_ids: [1000002, 1000010],
+    answers: [],
+    notes: {},
+    requests: [requestOut()],
+    flags: [],
+    ...over,
+  }
+}

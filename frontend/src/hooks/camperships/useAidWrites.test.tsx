@@ -6,11 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 
 import {
   useAidCancellation,
+  useAidCorrection,
+  useAidDuplicate,
+  useAidHeadcount,
   useAidHoldRelease,
+  useAidHouseholdShare,
   useAidKeyAsk,
   useAidManualHold,
   useAidRound3Amount,
   useAidRound3Decision,
+  useAidSessionResolve,
   useAidTickAccepted,
   useAidTickPosted,
   useAidUndoPosted,
@@ -218,6 +223,83 @@ describe('the household writes (§6.3)', () => {
       url: '/api/financial-aid/requests/reqriley0000004/cancellation',
       method: 'POST',
       body: { cancelled: true, reason: 'medical', note: '' },
+      auth: 'Bearer test-jwt',
+    })
+  })
+})
+
+describe('the casework forms’ writes (§6.3)', () => {
+  const lastCall = () => {
+    const [url, options] = fetchSpy.mock.calls.at(-1) as [string, RequestInit]
+    return {
+      url,
+      method: options.method,
+      body: JSON.parse(options.body as string) as unknown,
+      auth: new Headers(options.headers).get('Authorization'),
+    }
+  }
+
+  it('corrects an answer on the application', async () => {
+    const { result } = renderHook(() => useAidCorrection(), { wrapper })
+    const body = { field: 'num_children', new_value: '4', reason: 'Confirmed by phone' }
+    await act(() => result.current.mutateAsync({ year: 2027, householdCmId: 1000001, body }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/applications/2027/1000001/corrections',
+      method: 'POST',
+      body,
+      auth: 'Bearer test-jwt',
+    })
+  })
+
+  it("sets one household's payer share, and refreshes the jump index too", async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidHouseholdShare(), { wrapper })
+    const body = { share_pct: '40', reason: 'Parents agreed 60/40' }
+    await act(() =>
+      result.current.mutateAsync({ requestId: 'reqemma00000001', householdCmId: 1000003, body })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqemma00000001/payer-shares/1000003',
+      method: 'PUT',
+      body,
+      auth: 'Bearer test-jwt',
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'jump-index'] })
+  })
+
+  it('settles a session, marks a duplicate and sets a headcount', async () => {
+    const session = renderHook(() => useAidSessionResolve(), { wrapper }).result
+    const sessionBody = { session_cm_id: 1000101, reason: 'Registered for Session 2' }
+    await act(() =>
+      session.current.mutateAsync({ requestId: 'reqemma00000001', body: sessionBody })
+    )
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqemma00000001/session',
+      method: 'POST',
+      body: sessionBody,
+      auth: 'Bearer test-jwt',
+    })
+    const duplicate = renderHook(() => useAidDuplicate(), { wrapper }).result
+    const dupBody = { duplicate_of: 'reqemma00000001', reason: 'Sent twice' }
+    await act(() => duplicate.current.mutateAsync({ requestId: 'reqemmadup00009', body: dupBody }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqemmadup00009/duplicate',
+      method: 'POST',
+      body: dupBody,
+      auth: 'Bearer test-jwt',
+    })
+    const headcount = renderHook(() => useAidHeadcount(), { wrapper }).result
+    const headBody = {
+      non_infant: 2,
+      infant: 1,
+      source: 'override' as const,
+      reason: 'Billing shows two adults',
+    }
+    await act(() => headcount.current.mutateAsync({ requestId: 'reqfamily000010', body: headBody }))
+    expect(lastCall()).toEqual({
+      url: '/api/financial-aid/requests/reqfamily000010/headcount',
+      method: 'PUT',
+      body: headBody,
       auth: 'Bearer test-jwt',
     })
   })
