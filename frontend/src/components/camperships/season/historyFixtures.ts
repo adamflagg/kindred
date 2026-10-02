@@ -177,24 +177,9 @@ export const DETAIL_SHARE: ApiAidHistoryOperationDetail = {
       entity_id: 'req000000000009:1000001',
       action: 'set_household_share',
       reason: 'Family emailed',
-      before: {
-        actor: 'system:intake',
-        household_cm_id: 1000001,
-        note: '',
-        request: 'req000000000009',
-        share_pct: '100',
-        source: 'intake_default',
-        year: 2027,
-      },
-      after: {
-        actor: REGISTRAR_EMAIL,
-        household_cm_id: 1000001,
-        note: 'Family emailed',
-        request: 'req000000000009',
-        share_pct: '60',
-        source: 'staff',
-        year: 2027,
-      },
+      // An update logs only the keys that changed (`changed_fields`), so no household or request here.
+      before: { actor: 'system:intake', note: '', share_pct: '100', source: 'intake_default' },
+      after: { actor: REGISTRAR_EMAIL, note: 'Family emailed', share_pct: '60', source: 'staff' },
       changes: [
         { path: ['actor'], kind: 'changed', before: 'system:intake', after: REGISTRAR_EMAIL },
         { path: ['note'], kind: 'changed', before: '', after: 'Family emailed' },

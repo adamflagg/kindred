@@ -192,6 +192,12 @@ describe('the count line and paging', () => {
 
 const VIEW: AidView = { year: 2027, asOf: { kind: 'past', date: '2027-03-15', axis: 'campminder' } }
 
+const rowAt = <T>(rows: readonly T[], index: number): T => {
+  const row = rows[index]
+  if (row === undefined) throw new Error('fixture')
+  return row
+}
+
 const first = <T>(rows: readonly T[]): T => {
   const row = rows[0]
   if (row === undefined) throw new Error('fixture')
@@ -232,6 +238,20 @@ describe('who, what kind, and the action words', () => {
     expect(actionWords('aid_rules', 'approve')).toBe('Approved')
     expect(actionWords('aid_hold_events', 'release')).toBe('Released')
     expect(actionWords('aid_payer_shares', 'set_household_share')).toBe('Household share set')
+    // The server logs a grant placement on the placement-override collection (I1).
+    expect(actionWords('aid_attribution_overrides', 'place_grant')).toBe('Grant placed')
+    expect(actionWords('aid_grants', 'withdraw')).toBe('Withdrawn')
+    // ⚠1 interim: money-bearing casework codes read as past-tense facts, never "Correct".
+    expect(actionWords('aid_application_corrections', 'correct')).toBe('Corrected')
+    expect(actionWords('aid_application_corrections', 'cost_override')).toBe('Cost override set')
+    expect(actionWords('aid_attribution_overrides', 'place_line')).toBe('Line placed')
+    expect(actionWords('aid_attribution_overrides', 'reclassify')).toBe('Reclassified')
+    expect(actionWords('aid_flag_dispositions', 'leave_at_family_level')).toBe(
+      'Left at family level'
+    )
+    expect(actionWords('aid_grantors', 'retire')).toBe('Retired')
+    expect(actionWords('aid_sources', 'map_grantor')).toBe('Grantor mapped')
+    expect(actionWords('aid_requests', 'set_headcount')).toBe('Headcount set')
     // An unknown code reads as its own words.
     expect(actionWords('aid_attribution_overrides', 'leave_at_family_level')).toBe(
       'Leave at family level'
@@ -256,7 +276,7 @@ describe('who, what kind, and the action words', () => {
   it('names records in the singular and the plural, and an unknown collection by its own words', () => {
     expect(recordWords('aid_decisions', 1)).toBe('decision')
     expect(recordWords('aid_decisions', 7)).toBe('decisions')
-    expect(recordWords('aid_application_corrections', 2)).toBe('income corrections')
+    expect(recordWords('aid_application_corrections', 2)).toBe('corrections')
     expect(recordWords('aid_new_thing', 2)).toBe('new thing')
   })
 })
@@ -350,9 +370,10 @@ describe("a row's view in an opened line", () => {
         'Source: intake_default → staff',
       ],
       hidden: 0,
-      householdCmId: 1000001,
+      // An update logs only what changed, so the row names no household (the server sends none).
+      householdCmId: null,
     })
-    expect(rowView(DETAIL_SHARE.rows[1] as ApiAidHistoryRow)).toEqual({
+    expect(rowView(rowAt(DETAIL_SHARE.rows, 1))).toEqual({
       head: 'Household share set · payer share req000000000009:1000002 · Family emailed',
       lines: [
         'Household cm id: 1000002',
@@ -445,6 +466,35 @@ describe("a row's view in an opened line", () => {
     expect(lines([{ path: ['amount'], kind: 'added', after: '1420.50' }])).toEqual([
       'Amount: $1,420.50',
     ])
+  })
+
+  it("formats an intake request's own ask, a float the log keeps as `ask` (I2)", () => {
+    const view = rowView({
+      ...ROW_ROUND3_AWARD,
+      entity: 'aid_requests',
+      entity_id: 'req000000000012',
+      action: 'create',
+      after: { ask: 1200, request: 'req000000000012' },
+      changes: [
+        { path: ['ask'], kind: 'added', after: 1200 },
+        { path: ['request'], kind: 'added', after: 'req000000000012' },
+      ],
+    })
+    expect(view.lines).toEqual(['Ask: $1,200', 'Request: req000000000012'])
+  })
+
+  it("words a cancellation's reason code as the cancel form words it, and an unknown one as recorded", () => {
+    const cancel = (reason: string) =>
+      rowView({
+        ...ROW_ROUND3_AWARD,
+        entity: 'aid_cancellations',
+        entity_id: 'req000000000011',
+        action: 'cancel',
+        after: { reason },
+        changes: [{ path: ['reason'], kind: 'added', after: reason }],
+      }).lines
+    expect(cancel('did_not_want_to_appeal')).toEqual(['Reason: did not want to appeal'])
+    expect(cancel('something_new')).toEqual(['Reason: something_new'])
   })
 
   it('reads an ask as the amount of an ask action: there is no ask field in the log', () => {
