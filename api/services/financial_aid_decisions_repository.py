@@ -52,6 +52,7 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     person_display_name,
 )
+from api.services.financial_aid_money_ledger import LedgerLine
 from api.services.financial_aid_reconciliation import (
     CampLine,
     LineOverride,
@@ -160,6 +161,26 @@ def camp_line(record: Any) -> CampLine:
     )
 
 
+def camper_name(record: Any) -> tuple[str, str]:
+    """A persons record's first and last name as CampMinder holds them, never the preferred name (the March file)."""
+    return (
+        str(getattr(record, "first_name", "") or "").strip(),
+        str(getattr(record, "last_name", "") or "").strip(),
+    )
+
+
+def ledger_line(record: Any) -> LedgerLine:
+    """Any aid_postings record as Money > Ledger reads it: its money and dates as a line (camp_line), and its
+    classification after any reclassification. A blank funder type is an unclassified description's ("unknown")."""
+    return LedgerLine(
+        line=camp_line(record),
+        funder_type=str(getattr(record, "funder_type", "") or "unknown"),
+        source_key=str(getattr(record, "effective_source_key", "") or ""),
+        source_family=str(getattr(record, "source_family", "") or "unclassified"),
+        flags=tuple(sorted({str(flag) for flag in _json_list(getattr(record, "flags", None))})),
+    )
+
+
 def line_override(record: Any) -> LineOverride:
     """An aid_attribution_overrides record: what it places, with the id its log rows carry, and the
     parts of a split (SP11-rest)."""
@@ -243,6 +264,9 @@ _LINE_FIELDS = (
     "transaction_cm_id,household_cm_id,person_cm_id,amount,post_date,is_reversed,reversal_date,"
     "attributed_person_cm_id,attributed_session_cm_id,program_family,effective_source_key"
 )
+
+# Money > Ledger reads every funder's line, with its classification and Kindred's recorded times (the recorded axis).
+_LEDGER_FIELDS = f"{_LINE_FIELDS},funder_type,source_family,flags,created,updated"
 # sync_runs.trigger values a current-season queue records (sync/orchestrator.go). Only `daily` runs
 # aid_postings and financial_transactions today; each such run spans seasons N-1..N+1, but Go records it
 # with year = the configured season N (UsesSeasonWindow; the rolling transactions sync).
@@ -355,6 +379,21 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
             {int(h.cm_id): household_display_name(h, int(h.cm_id)) for h in households},
             {int(p.cm_id): person_display_name(p) for p in persons},
         )
+
+    async def fetch_camper_names(self, year: int, person_cm_ids: Collection[int]) -> dict[int, tuple[str, str]]:
+        """Each camper's first and last name as CampMinder holds them (the March file's columns); a person with no
+        record this season is left out, and reads blank."""
+        persons = await FinancialAidRepository(self.pb).fetch_persons(year, person_cm_ids)
+        return {int(p.cm_id): camper_name(p) for p in persons}
+
+    async def fetch_ledger_lines(self, year: int) -> list[LedgerLine]:
+        """Every aid_postings line of the season, every funder, live and reversed, with when Kindred recorded and last
+        wrote it (the recorded as-of axis): Money > Ledger's family rows and the lines behind their totals."""
+        rows = await self._page(
+            AID_POSTINGS,
+            {"filter": f"year = {int(year)}", "sort": "transaction_cm_id,id", "fields": _LEDGER_FIELDS},
+        )
+        return [ledger_line(row) for row in rows]
 
     async def fetch_camp_lines(self, year: int, *, recorded_times: bool = False) -> list[CampLine]:
         """The season's camp-aid lines, live and reversed (spec §5.5: the camp's own aid, after any

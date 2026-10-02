@@ -7767,6 +7767,48 @@ export type LedgerCamper = {
 }
 
 /**
+ * LedgerFamilyOut
+ */
+export type LedgerFamilyOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Households
+   */
+  family_households: Array<number>
+  /**
+   * Display Name
+   */
+  display_name: string
+  /**
+   * Campers
+   */
+  campers: Array<string>
+  /**
+   * In Campminder Net
+   */
+  in_campminder_net: number
+  /**
+   * Outside Grants
+   */
+  outside_grants: number
+  /**
+   * Lines
+   */
+  lines: number
+  /**
+   * Reversed Lines
+   */
+  reversed_lines: number
+  /**
+   * Level
+   */
+  level: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
+}
+
+/**
  * LedgerHouseholdRow
  */
 export type LedgerHouseholdRow = {
@@ -7815,6 +7857,64 @@ export type LedgerHouseholdRow = {
    * Accepted Flags
    */
   accepted_flags: Array<string>
+}
+
+/**
+ * LedgerLineOut
+ */
+export type LedgerLineOut = {
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Household Cm Id
+   */
+  family_household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Camper
+   */
+  camper: string
+  /**
+   * Description
+   */
+  description: string
+  /**
+   * Source Family
+   */
+  source_family: string
+  /**
+   * Program
+   */
+  program: string
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Posted On
+   */
+  posted_on: string | null
+  /**
+   * Is Reversed
+   */
+  is_reversed: boolean
+  /**
+   * Reversed On
+   */
+  reversed_on: string | null
+  /**
+   * Level
+   */
+  level: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
 }
 
 /**
@@ -8183,6 +8283,50 @@ export type ManualHoldIn = {
 }
 
 /**
+ * MarchFileOut
+ */
+export type MarchFileOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Rows
+   */
+  rows: Array<MarchFileRowOut>
+}
+
+/**
+ * MarchFileRowOut
+ */
+export type MarchFileRowOut = {
+  /**
+   * Request Id
+   */
+  request_id: string
+  /**
+   * Camper First
+   */
+  camper_first: string
+  /**
+   * Camper Last
+   */
+  camper_last: string
+  /**
+   * Total Award
+   */
+  total_award: number
+  /**
+   * Primary Childhood Id
+   */
+  primary_childhood_id: number
+  /**
+   * Personal Id
+   */
+  personal_id: number | null
+}
+
+/**
  * MergeRequest
  *
  * Request body for merging one canonical into another.
@@ -8296,6 +8440,66 @@ export type MilestonesSection = {
    * R3 Window End
    */
   r3_window_end?: string | null
+}
+
+/**
+ * MoneyLedgerLinesOut
+ */
+export type MoneyLedgerLinesOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of?: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis?: 'campminder' | 'recorded' | null
+  /**
+   * Total
+   */
+  total: 'in_campminder_net' | 'outside_grants'
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Lines
+   */
+  lines: Array<LedgerLineOut>
+}
+
+/**
+ * MoneyLedgerOut
+ */
+export type MoneyLedgerOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of?: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis?: 'campminder' | 'recorded' | null
+  /**
+   * Rows
+   */
+  rows: Array<LedgerFamilyOut>
+  /**
+   * In Campminder Net
+   */
+  in_campminder_net: number
+  /**
+   * Outside Grants
+   */
+  outside_grants: number
 }
 
 /**
@@ -8795,6 +8999,10 @@ export type OutcomeRowOut = {
    * Pool
    */
   pool: string | null
+  /**
+   * Kind
+   */
+  kind: 'pool' | 'no_pool' | 'headline' | 'reconciliation'
   /**
    * Pool Label
    */
@@ -23721,6 +23929,38 @@ export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponses = 
 export type GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponse =
   GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponses[keyof GetRemainingLineApiFinancialAidDecisionsYearRemainingGetResponses]
 
+export type GetMarchFileApiFinancialAidDecisionsYearMarchFileGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/decisions/{year}/march-file'
+}
+
+export type GetMarchFileApiFinancialAidDecisionsYearMarchFileGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetMarchFileApiFinancialAidDecisionsYearMarchFileGetError =
+  GetMarchFileApiFinancialAidDecisionsYearMarchFileGetErrors[keyof GetMarchFileApiFinancialAidDecisionsYearMarchFileGetErrors]
+
+export type GetMarchFileApiFinancialAidDecisionsYearMarchFileGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: MarchFileOut
+}
+
+export type GetMarchFileApiFinancialAidDecisionsYearMarchFileGetResponse =
+  GetMarchFileApiFinancialAidDecisionsYearMarchFileGetResponses[keyof GetMarchFileApiFinancialAidDecisionsYearMarchFileGetResponses]
+
 export type KeyAidAskApiFinancialAidRequestsRequestIdAsksPostData = {
   body: AskIn
   path: {
@@ -24945,6 +25185,160 @@ export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassi
 
 export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponse =
   ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses[keyof ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses]
+
+export type GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * As Of
+     */
+    as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
+    /**
+     * Source
+     */
+    source?:
+      | 'camp_fa'
+      | 'one_happy_camper'
+      | 'synagogue_federation'
+      | 'new_israeli'
+      | 'pj'
+      | 'jfcs'
+      | 'jfam_incentive'
+      | 'named_fund'
+      | 'other_outside'
+      | 'application_marker'
+      | 'placeholder'
+      | 'unclassified'
+      | null
+    /**
+     * Program
+     */
+    program?:
+      | 'summer'
+      | 'quest'
+      | 'teen'
+      | 'bmitzvah'
+      | 'family_camp'
+      | 'adult_weekend'
+      | 'family_school'
+      | 'other'
+      | null
+    /**
+     * Level
+     */
+    level?: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
+  }
+  url: '/api/financial-aid/money/{year}/ledger'
+}
+
+export type GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetError =
+  GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetErrors[keyof GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetErrors]
+
+export type GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: MoneyLedgerOut
+}
+
+export type GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetResponse =
+  GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetResponses[keyof GetMoneyLedgerApiFinancialAidMoneyYearLedgerGetResponses]
+
+export type GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query: {
+    /**
+     * Total
+     */
+    total: 'in_campminder_net' | 'outside_grants'
+    /**
+     * As Of
+     */
+    as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
+    /**
+     * Source
+     */
+    source?:
+      | 'camp_fa'
+      | 'one_happy_camper'
+      | 'synagogue_federation'
+      | 'new_israeli'
+      | 'pj'
+      | 'jfcs'
+      | 'jfam_incentive'
+      | 'named_fund'
+      | 'other_outside'
+      | 'application_marker'
+      | 'placeholder'
+      | 'unclassified'
+      | null
+    /**
+     * Program
+     */
+    program?:
+      | 'summer'
+      | 'quest'
+      | 'teen'
+      | 'bmitzvah'
+      | 'family_camp'
+      | 'adult_weekend'
+      | 'family_school'
+      | 'other'
+      | null
+    /**
+     * Level
+     */
+    level?: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
+  }
+  url: '/api/financial-aid/money/{year}/ledger/lines'
+}
+
+export type GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetError =
+  GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetErrors[keyof GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetErrors]
+
+export type GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: MoneyLedgerLinesOut
+}
+
+export type GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetResponse =
+  GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetResponses[keyof GetMoneyLedgerLinesApiFinancialAidMoneyYearLedgerLinesGetResponses]
 
 export type GetReportStatisticsApiFinancialAidReportsYearStatisticsGetData = {
   body?: never

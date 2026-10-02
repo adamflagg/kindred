@@ -16,6 +16,7 @@ from api.services.financial_aid_season_history import (
     Operation,
     SeasonHistoryService,
     entry_of,
+    for_reader,
     operation_out,
     operations,
     visible,
@@ -214,3 +215,73 @@ async def test_a_registrar_cannot_open_a_rules_operation_and_an_unknown_one_is_n
     with pytest.raises(HistoryNotFoundError):
         await service.operation(2027, "z" * 15, rules=True)
     assert (await service.operation(2027, OP_A, rules=False)).operation.kind == "offers"
+
+
+def _tick_with_locks() -> list[SimpleNamespace]:
+    """A round's first Posted tick: its decisions row and the rules sections it locks, in one operation."""
+    return [
+        _rec("l1", "aid_decisions", "reqemma00000001:1", OP_A, action="post", reason="March offers"),
+        _rec("l2", "aid_rules", "2027:3:budget", OP_A, action="lock"),
+        _rec("l3", "aid_rules", "2027:3:award_tables", OP_A, action="lock"),
+    ]
+
+
+def test_a_posted_tick_with_its_locks_is_offers_and_a_rules_only_operation_stays_rules() -> None:
+    (mixed,) = _ops(*_tick_with_locks())
+    assert mixed.kind == "offers"
+    (rules_only,) = _ops(_rec("l1", "aid_rules", "2027:3", OP_R, actor=FIN, action="save"))
+    assert rules_only.kind == "rules"
+
+
+def test_a_reader_without_rules_sees_the_tick_minus_its_rules_rows() -> None:
+    (mixed,) = _ops(*_tick_with_locks())
+    seen = for_reader(mixed, rules=False)
+    assert seen is not None
+    assert [e.entity for e in seen.entries] == ["aid_decisions"]
+    assert (seen.operation_id, seen.at, seen.actor, seen.kind, seen.reason) == (
+        mixed.operation_id,
+        mixed.at,
+        mixed.actor,
+        "offers",
+        "March offers",
+    )
+    out = operation_out(seen)
+    assert (out.rules_versions, out.rules_sections, out.rows) == ([], [], 1)
+    assert [c.entity for c in out.counts] == ["aid_decisions"]
+
+
+def test_for_reader_hides_a_rules_only_operation_and_leaves_a_rules_reader_whole() -> None:
+    (rules_only,) = _ops(_rec("l1", "aid_rules", "2027:3", OP_R, actor=FIN, action="save"))
+    assert for_reader(rules_only, rules=False) is None
+    (mixed,) = _ops(*_tick_with_locks())
+    assert for_reader(mixed, rules=True) is mixed
+
+
+@pytest.mark.asyncio
+async def test_the_page_and_detail_show_a_registrar_the_tick_without_the_locks() -> None:
+    service = SeasonHistoryService(_Reads(*_tick_with_locks(), _rules_save()))
+    page = await service.page(2027, HistoryFilter(), page=1, per_page=10)
+    (op,) = page.operations
+    assert (op.operation_id, op.kind, op.rows, op.rules_sections) == (OP_A, "offers", 1, [])
+    detail = await service.operation(2027, OP_A, rules=False)
+    assert [r.entity for r in detail.rows] == ["aid_decisions"]
+    with pytest.raises(HistoryNotFoundError):
+        await service.operation(2027, OP_R, rules=False)
+
+
+@pytest.mark.asyncio
+async def test_a_rules_reader_sees_the_tick_as_offers_with_every_row() -> None:
+    service = SeasonHistoryService(_Reads(*_tick_with_locks()))
+    (op,) = (await service.page(2027, HistoryFilter(rules=True), page=1, per_page=10)).operations
+    assert (op.kind, op.rows, op.rules_sections) == ("offers", 3, ["award_tables", "budget"])
+    detail = await service.operation(2027, OP_A, rules=True)
+    assert sorted(r.entity for r in detail.rows) == ["aid_decisions", "aid_rules", "aid_rules"]
+
+
+@pytest.mark.asyncio
+async def test_a_search_for_a_stripped_rows_entity_id_finds_nothing_for_a_reader_without_rules() -> None:
+    service = SeasonHistoryService(_Reads(*_tick_with_locks()))
+    quiet = await service.page(2027, HistoryFilter(text="2027:3:budget"), page=1, per_page=10)
+    assert quiet.total == 0
+    loud = await service.page(2027, HistoryFilter(text="2027:3:budget", rules=True), page=1, per_page=10)
+    assert loud.total == 1

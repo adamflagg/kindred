@@ -1,7 +1,9 @@
 """Season › History (D49, app spec §7.6): the season's aid_change_log, one line per operation (operation_id), rules
 and casework on one timeline, newest first. Pure: grouping, kinds and filters; the reads are in Task 13's service.
 
-Read access follows the data: rules operations (and session capacity, set on the Rules tab) need financial_aid.rules.
+Read access follows the data: rules rows (and session capacity, set on the Rules tab) need financial_aid.rules. An
+operation is "rules" only when every row is; a Posted tick that also locks rules sections is "offers", and a reader
+without rules sees it minus those rows (for_reader). A rules-only operation stays hidden from them.
 Intake runs (system:intake) are hidden unless asked. The scenario trail stays in Scenarios, so its collections are
 left out. Amounts are what the rows recorded at the time, never recomputed."""
 
@@ -9,7 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Final, Protocol
 
@@ -119,7 +121,25 @@ def _kind(entries: tuple[LogEntry, ...]) -> HistoryKind:
     if any(e.actor == INTAKE_ACTOR for e in entries):
         return "intake"
     kinds = {ENTITY_KINDS.get(e.entity, "money") for e in entries}
-    return next(k for k in _PRIORITY if k in kinds)
+    # A round's first Posted tick locks rules sections in the same operation: only a rules-only operation is rules.
+    return next(k for k in _PRIORITY if k in (kinds - {"rules"} or kinds))
+
+
+def _is_rules_row(entry: LogEntry) -> bool:
+    return ENTITY_KINDS.get(entry.entity, "money") == "rules"
+
+
+def for_reader(op: Operation, *, rules: bool) -> Operation | None:
+    """What this reader may see of an operation: all of it with rules; without, the rows minus the rules rows, and
+    None when nothing else is left (a rules-only operation)."""
+    if rules:
+        return op
+    kept = tuple(e for e in op.entries if not _is_rules_row(e))
+    if not kept:
+        return None
+    if len(kept) == len(op.entries):
+        return op
+    return replace(op, entries=kept, reason=next((e.reason for e in kept if e.reason), ""))
 
 
 def operations(entries: Iterable[LogEntry]) -> list[Operation]:
@@ -219,7 +239,8 @@ class SeasonHistoryService:
         self._reads = reads
 
     async def page(self, year: int, f: HistoryFilter, *, page: int, per_page: int) -> HistoryPageOut:
-        ops = operations(e for r in await self._reads.fetch_season_log(year) if (e := entry_of(r)) is not None)
+        all_ops = operations(e for r in await self._reads.fetch_season_log(year) if (e := entry_of(r)) is not None)
+        ops = [seen for o in all_ops if (seen := for_reader(o, rules=f.rules)) is not None]
         readable = [o for o in ops if visible(o, HistoryFilter(rules=f.rules, include_intake=True))]
         shown = [o for o in ops if visible(o, f)]
         start = (page - 1) * per_page
@@ -235,9 +256,9 @@ class SeasonHistoryService:
     async def operation(self, year: int, operation_id: str, *, rules: bool) -> HistoryOperationDetailOut:
         records = await self._reads.fetch_operation(year, operation_id)
         found = operations(e for r in records if (e := entry_of(r)) is not None)
-        if not found or (found[0].kind == "rules" and not rules):
+        op = for_reader(found[0], rules=rules) if found else None
+        if op is None:
             raise HistoryNotFoundError(f"no operation {operation_id} in {year}")
-        op = found[0]
         by_id = {str(r.id): r for r in records}
         rows = []
         for e in op.entries:

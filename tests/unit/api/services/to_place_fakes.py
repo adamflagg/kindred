@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -15,7 +16,9 @@ from api.constants.collections import AID_ATTRIBUTION_OVERRIDES, AID_FLAG_DISPOS
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_ledger_service import parse_pb_datetime
-from api.services.financial_aid_reconciliation import override_split
+from api.services.financial_aid_money_ledger import LedgerLine
+from api.services.financial_aid_money_ledger_service import MoneyLedgerService
+from api.services.financial_aid_reconciliation import CampLine, override_split
 from api.services.financial_aid_to_place import (
     TO_PLACE_FLAG,
     LeftLine,
@@ -78,6 +81,7 @@ class FakeToPlaceStore(FakeDecisionsStore):
         self.pending_reclass: dict[int, str] = {}  # every reclassification written, until "the sync" applies it
         self.since = SinceRecords()  # D16b: synced records, grant lines, links and sync removals a test seeds
         self.since_reads: list[datetime] = []  # each fetch_changed_since call's floor
+        self.other_lines: list[LedgerLine] = []  # every other funder's lines (seed_grant_line): Money > Ledger
 
     async def fetch_line_details(self, year: int) -> dict[int, LineDetail]:
         """Every camp-aid line: its description (Camp FA unless a test says otherwise) and Go's flags."""
@@ -87,6 +91,22 @@ class FakeToPlaceStore(FakeDecisionsStore):
             )
             for line in self.camp_lines
         }
+
+    async def fetch_ledger_lines(self, year: int) -> list[LedgerLine]:
+        """Every aid_postings line, as the repository reads them: this twin's camp-aid lines (Camp FA unless a test
+        says otherwise, with Go's flags, as fetch_line_details gives them), then the lines seed_grant_line added."""
+        details = await self.fetch_line_details(year)
+        camp = [
+            LedgerLine(
+                line,
+                "camp",
+                details[line.transaction_cm_id].description_key,
+                "camp_fa",
+                details[line.transaction_cm_id].flags,
+            )
+            for line in self.camp_lines
+        ]
+        return [*camp, *self.other_lines]
 
     async def fetch_override_rows(self, year: int) -> dict[int, OverrideRow]:
         return dict(self.override_rows)
@@ -235,6 +255,42 @@ def seed_override_row(store: FakeToPlaceStore, txn: int, *, source_key: str = ""
     return row
 
 
+def seed_grant_line(
+    store: FakeToPlaceStore,
+    txn: int,
+    amount: str,
+    *,
+    household: int = 1000001,
+    person: int = 0,
+    posted: datetime | None = MAR8,
+    reversed_at: datetime | None = None,
+    funder_type: str = "outside",
+    source_family: str = "other_outside",
+    source_key: str = GRANT_KEY,
+) -> LedgerLine:
+    """Another funder's line in the ledger (an outside grant unless a test says otherwise): Money > Ledger's Outside
+    grants. Kindred recorded it when it posted and last wrote it when it was reversed, as seed_line does."""
+    written = [t for t in (posted, reversed_at) if t is not None]
+    line = LedgerLine(
+        CampLine(
+            transaction_cm_id=txn,
+            household_cm_id=household,
+            person_cm_id=person,
+            amount=Decimal(amount),
+            post_date=posted,
+            is_reversed=reversed_at is not None,
+            reversal_date=reversed_at,
+            recorded_at=posted,
+            updated_at=max(written) if written else None,
+        ),
+        funder_type,
+        source_key,
+        source_family,
+    )
+    store.other_lines.append(line)
+    return line
+
+
 def to_place_service(store: FakeToPlaceStore, rules: FakeRules | None = None) -> ToPlaceService:
     """The To place service over `store`, its decisions service pricing with every section approved, today Mar 9."""
 
@@ -243,6 +299,18 @@ def to_place_service(store: FakeToPlaceStore, rules: FakeRules | None = None) ->
 
     decisions = FinancialAidDecisionsService(store, rules or FakeRules(approved()), no_grants, clock=lambda: T0)
     return ToPlaceService(decisions, store, clock=lambda: T0)
+
+
+def money_ledger_service(
+    store: FakeToPlaceStore, *, clock: datetime = T0, register: Sequence[RegisterRow] = ()
+) -> MoneyLedgerService:
+    """Money > Ledger's reads over `store`, pricing with every section approved; today is `clock` (Mar 9 by default)."""
+
+    async def rows(year: int) -> Sequence[RegisterRow]:
+        return register
+
+    decisions = FinancialAidDecisionsService(store, FakeRules(approved()), rows, clock=lambda: clock)
+    return MoneyLedgerService(decisions, store, clock=lambda: clock)
 
 
 def one_line(amount: str = "1500") -> FakeToPlaceStore:

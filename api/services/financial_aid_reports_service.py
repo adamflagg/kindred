@@ -375,7 +375,14 @@ class FinancialAidReportsService:
             outcomes=[
                 OutcomeRowOut(
                     pool=row.pool,
-                    pool_label=ALL_POOLS_LABEL if row.pool is None else _pool_label(document, row.pool),
+                    kind=row.kind,
+                    pool_label=(
+                        NO_POOL_LABEL
+                        if row.kind == "no_pool"
+                        else ALL_POOLS_LABEL
+                        if row.kind == "headline"
+                        else _pool_label(document, row.pool)
+                    ),
                     accepted=row.accepted,
                     accepted_amount=money(row.accepted_amount),
                     appealed=row.appealed,

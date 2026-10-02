@@ -202,6 +202,20 @@ def test_outcomes_count_accepted_appealed_and_waiting_per_pool_and_overall() -> 
     assert (every.pool, every.accepted, every.appealed, every.waiting) == (None, 1, 1, 2)
 
 
+def test_outcomes_name_the_unpooled_requests_apart_from_the_every_request_row() -> None:
+    """RPT-23: a request with no home pool is its own "no_pool" row (pool None), before the "headline" row that
+    counts every live request; a season with no unpooled request has no no_pool row."""
+    camp = req("reqemma00000001", rnd(1, ask="4000", posted="1500", accepted=True))
+    loose = req("reqliam00000001", rnd(1, ask="2000", posted="1000"), household=1000002, pool=None)
+    rows = outcomes([camp, loose])
+    assert [(row.kind, row.pool) for row in rows] == [("pool", "camp_pool"), ("no_pool", None), ("headline", None)]
+    pooled, unpooled, every = rows
+    assert (pooled.accepted, pooled.waiting) == (1, 0)
+    assert (unpooled.accepted, unpooled.waiting) == (0, 1)
+    assert (every.accepted, every.waiting) == (1, 1)
+    assert [row.kind for row in outcomes([camp])] == ["pool", "headline"]
+
+
 def test_recipients_who_cancelled_are_grouped_by_the_rounds_lock_pool_not_the_home_pool() -> None:
     requests = [
         req(
