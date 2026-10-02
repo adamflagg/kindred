@@ -15,7 +15,7 @@ from tests.unit.rbac.permission_personas import (
     persona_client,
 )
 
-PAGE = HistoryPageOut(year=2031, page=1, per_page=50, total=0, operations=[], actors=[])
+PAGE = HistoryPageOut(year=2031, page=1, per_page=50, total=0, operations=[], actors=[], kind_counts=[])
 
 
 def _stub() -> MagicMock:

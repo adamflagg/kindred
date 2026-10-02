@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -583,3 +584,57 @@ async def test_a_name_search_never_surfaces_an_operation_the_reader_cannot_see()
     assert [o.operation_id for o in shown.operations] == [OP_I]  # the name channel is live for a visible op
     finance = await service.page(2027, HistoryFilter(text=needle, rules=True, include_intake=True), page=1, per_page=50)
     assert [o.operation_id for o in finance.operations] == [OP_I]  # a capacity row names no one, even for finance
+
+
+@pytest.mark.asyncio
+async def test_each_chip_counts_what_picking_it_alone_would_show() -> None:
+    rows = [
+        *_tick(),
+        _row("h1", "aid_hold_events", f"{LIAM}:income", OP_B, action="release"),
+        _rec("r1", "aid_rules", "2027:3", OP_R, actor=FIN, action="save"),
+        _rec("i1", "aid_requests", EMMA, OP_I, actor="system:intake", action="create"),  # intake is no chip
+    ]
+    service = SeasonHistoryService(_Reads(*rows, subjects=SEASON))
+
+    async def chips(f: HistoryFilter) -> list[tuple[str, int]]:
+        return [(c.kind, c.operations) for c in (await service.page(2027, f, page=1, per_page=50)).kind_counts]
+
+    everything = HistoryFilter(rules=True)
+    assert await chips(everything) == [("rules", 1), ("offers", 1), ("money", 0), ("holds", 1), ("grants", 0)]
+    # Picking a chip changes no chip's count; every other filter does.
+    assert await chips(replace(everything, kinds=frozenset({"holds"}))) == await chips(everything)
+    assert await chips(replace(everything, actor=FIN)) == [
+        ("rules", 1),
+        ("offers", 0),
+        ("money", 0),
+        ("holds", 0),
+        ("grants", 0),
+    ]
+    assert await chips(replace(everything, include_intake=True)) == await chips(everything)
+    assert await chips(replace(everything, text="emma")) == [
+        ("rules", 0),
+        ("offers", 1),
+        ("money", 0),
+        ("holds", 0),
+        ("grants", 0),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_registrar_has_no_rules_chip_and_nothing_hidden_counts_anywhere() -> None:
+    """Review Focus 1: no rules count, and neither a rules-only operation nor a stripped rules row counts anywhere."""
+    rows = [
+        *_tick(),
+        _rec("t4", "aid_rules", "2027:3:budget", OP_T, action="lock"),
+        _rec("r1", "aid_rules", "2027:3", OP_R, actor=FIN, action="save"),
+    ]
+    service = SeasonHistoryService(_Reads(*rows, subjects=SEASON))
+    page = await service.page(2027, HistoryFilter(), page=1, per_page=50)
+    assert [(c.kind, c.operations) for c in page.kind_counts] == [
+        ("offers", 1),
+        ("money", 0),
+        ("holds", 0),
+        ("grants", 0),
+    ]
+    searched = await service.page(2027, HistoryFilter(text="2027:3"), page=1, per_page=50)
+    assert [c.operations for c in searched.kind_counts] == [0, 0, 0, 0]

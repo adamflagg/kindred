@@ -44,6 +44,11 @@ class HistoryOperationOut(BaseModel):
     figures: HistoryFiguresOut
 
 
+class HistoryKindCountOut(BaseModel):
+    kind: HistoryKind
+    operations: int  # what `total` would be with this chip alone picked, every other filter kept (H5)
+
+
 class HistoryPageOut(BaseModel):
     year: int
     page: int
@@ -51,6 +56,7 @@ class HistoryPageOut(BaseModel):
     total: int  # operations matching the filters
     operations: list[HistoryOperationOut]  # newest first
     actors: list[str]  # everyone with an operation this reader can see: the person filter's choices
+    kind_counts: list[HistoryKindCountOut]  # the reader's chips, in the mock's order; Rules only with rules
 
 
 class HistoryRowOut(BaseModel):

@@ -44,6 +44,7 @@ from api.schemas.financial_aid_history import (
     HistoryCountOut,
     HistoryFiguresOut,
     HistoryKind,
+    HistoryKindCountOut,
     HistoryOperationDetailOut,
     HistoryOperationOut,
     HistoryPageOut,
@@ -79,6 +80,8 @@ ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
 }
 NOT_IN_HISTORY: Final = frozenset({AID_SCENARIO_SNAPSHOTS, AID_SCENARIO_OPTIONS, AID_SCENARIO_TRAIL})
 _PRIORITY: Final[tuple[HistoryKind, ...]] = ("rules", "offers", "holds", "grants", "money")
+# Season › History's kind chips, in the mock's order (history.html). Intake is a tick, not a chip.
+CHIP_KINDS: Final[tuple[HistoryKind, ...]] = ("rules", "offers", "money", "holds", "grants")
 
 
 # --- Who a row is about (back-end ask H2) ---------------------------------------------------------------------------
@@ -394,6 +397,18 @@ def visible(op: Operation, f: HistoryFilter, names: Mapping[str, str] | None = N
     return True
 
 
+def kind_counts(ops: Sequence[Operation], f: HistoryFilter, names: Mapping[str, str]) -> list[HistoryKindCountOut]:
+    """Each chip this reader has (H5), counted as the list would total with that chip alone picked: the same gates
+    (`for_reader` already applied to `ops`, then `visible`), every other filter kept. Rules only with rules."""
+    return [
+        HistoryKindCountOut(
+            kind=k, operations=sum(1 for o in ops if visible(o, replace(f, kinds=frozenset({k})), names))
+        )
+        for k in CHIP_KINDS
+        if k != "rules" or f.rules
+    ]
+
+
 def _rules_parts(op: Operation) -> tuple[list[int], list[str]]:
     versions: set[int] = set()
     sections: set[str] = set()
@@ -474,6 +489,7 @@ class SeasonHistoryService:
             total=len(shown),
             operations=[operation_out(o, subjects, recorded) for o in window],
             actors=sorted({o.actor for o in readable if o.kind != "intake"}),
+            kind_counts=kind_counts(ops, f, names),
         )
 
     async def _recorded(self, year: int, ops: Sequence[Operation]) -> dict[str, dict[str, Any] | None]:
