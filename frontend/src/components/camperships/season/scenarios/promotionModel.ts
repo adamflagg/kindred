@@ -4,16 +4,24 @@
  * the server gave with the warning: a re-edit since the preview brings a new token, so an old tick
  * no longer counts (Decision 21).
  */
-import type { ApiAidPromotionPreview, ApiAidPromotionSection } from '../../../../types/api-types'
-import { formatLongDate } from '../../kit/dates'
+import type {
+  ApiAidPromotionPreview,
+  ApiAidPromotionSection,
+  ApiAidRulesSection,
+} from '../../../../types/api-types'
+import { campToday, formatLongDate } from '../../kit/dates'
+import { SECTION_TITLES } from '../rules/rulesModel'
 
 /** Who and what a replaced change was, in words. */
 export function warningWords(section: ApiAidPromotionSection): string | null {
   const warning = section.warning
   if (warning === null) return null
-  const who = [warning.by, warning.at ? formatLongDate(warning.at) : null]
-    .filter(Boolean)
-    .join(', ')
+  // A stored timestamp's camp-time day, as the Rules tab names it: an evening edit is that day.
+  const day = (iso: string) => {
+    const at = new Date(iso)
+    return formatLongDate(Number.isNaN(at.getTime()) ? iso : campToday(at))
+  }
+  const who = [warning.by, warning.at ? day(warning.at) : null].filter(Boolean).join(', ')
   if (warning.kind === 'unapproved_edit') {
     return `Replaces an unapproved change in the rules draft${who ? ` (${who}` : ''}${warning.via ? `, from ${warning.via}` : ''}${who ? ')' : ''}.`
   }
@@ -43,4 +51,12 @@ export function allConfirmed(
   return preview.sections.every(
     (section) => section.warning === null || section.section in standing
   )
+}
+
+/**
+ * A section a posted round read is locked: the server starts a new version of it rather than editing
+ * the posted one (§7.5), and what was posted stands (S1 Q1).
+ */
+export function lockedWords(section: ApiAidRulesSection): string {
+  return `${SECTION_TITLES[section]} is locked by a posted round: making this the rules draft starts a new version of it. Posted amounts stand.`
 }

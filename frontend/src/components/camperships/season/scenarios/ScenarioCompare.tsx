@@ -268,7 +268,7 @@ export function ScenarioCompare({
                       {onPromote !== undefined && index > 0 && (
                         <button
                           type="button"
-                          className="text-primary ml-auto block text-xs font-normal hover:underline print:hidden"
+                          className="text-primary block w-full text-right text-xs font-normal hover:underline print:hidden"
                           onClick={() => onPromote(column.code)}
                         >
                           {`Make ${column.code} the rules draft…`}

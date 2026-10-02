@@ -27,7 +27,9 @@ export function FitToBudget({
   const fit = useAidScenarioFit()
   const [askedOn, setAskedOn] = useState<string | null>(null)
   const answer = fit.data
-  const words = answer === undefined ? null : fitWords(answer)
+  // The answer belongs to the draft it was fitted on: once that moves, its figures are about another.
+  const stale = answer !== undefined && askedOn !== null && askedOn !== trailId
+  const words = answer === undefined || stale ? null : fitWords(answer)
   return (
     <div className="card-lodge space-y-2 px-3 py-2 text-sm" data-testid="fit-to-budget">
       <button
@@ -44,6 +46,9 @@ export function FitToBudget({
           : "Fit to budget: find the shift that uses Round 1's allocation"}
       </button>
       {fit.error !== null && <p className={AMBER_NOTE}>{fit.error.message}</p>}
+      {stale && (
+        <p className="text-muted-foreground text-xs">Your draft changed since: fit again.</p>
+      )}
       {answer !== undefined && words !== null && (
         <div className="space-y-1">
           <p>{words.headline}</p>

@@ -167,8 +167,8 @@ export function changedLevers(
 ): ReadonlySet<LeverKey> {
   const changed = new Set<LeverKey>()
   for (const [lever, prefix] of LEVER_PATHS) {
-    // Award tables are editable in All settings now, so the shift's amber narrows to the leaves it
-    // writes (the Round 1 % of a tier): any other award-table edit is a hint elsewhere, not a shift.
+    // The amber means "Round 1 award percentages differ from the start". It can't tell the shift from a
+    // tier's Round 1 % typed in All settings: every editable leaf of an award table is an `r1_pct`.
     const leaf = lever === 'tier_shift' ? 'r1_pct' : null
     if (
       changes.some(

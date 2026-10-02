@@ -264,18 +264,25 @@ describe('Fit to budget in words (fit.py; D119)', () => {
   })
 })
 
-describe('the Shift-every-tier amber is a hint once award tables are editable', () => {
-  it('lights only for the Round 1 % leaves the shift writes, not any award-table edit', () => {
-    const change = (path: string[]) => ({ path, kind: 'changed' as const, before: '1', after: '2' })
+describe('the Shift-every-tier amber means Round 1 award percentages differ from the start', () => {
+  const change = (path: string[]) => ({ path, kind: 'changed' as const, before: '1', after: '2' })
+  it('lights for a Round 1 % leaf of any tier, the shift or one typed in All settings', () => {
+    for (const tier of ['1', '3']) {
+      expect(
+        changedLevers(
+          [change(['award_tables', 'general', 'tiers', tier, 'r1_pct'])],
+          NO_PENDING
+        ).has('tier_shift')
+      ).toBe(true)
+    }
+  })
+
+  it("stays dark for an award-table change that isn't a Round 1 %", () => {
     expect(
-      changedLevers([change(['award_tables', 'general', 'tiers', '1', 'r1_pct'])], NO_PENDING).has(
-        'tier_shift'
-      )
-    ).toBe(true)
-    expect(
-      changedLevers([change(['award_tables', 'general', 'tiers', '1', 'r2_pct'])], NO_PENDING).has(
-        'tier_shift'
-      )
+      changedLevers(
+        [change(['award_tables', 'general', 'tiers', '1', 'inherits'])],
+        NO_PENDING
+      ).has('tier_shift')
     ).toBe(false)
   })
 })

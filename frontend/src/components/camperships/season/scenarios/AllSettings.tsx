@@ -44,6 +44,8 @@ export function AllSettings({
       <div className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
         All settings, in your draft
       </div>
+      {/* Decision 15: while a section holds typing the list stands still; Cancel is the way out. */}
+      {open !== null && <p className="text-muted-foreground text-xs">Save or cancel first</p>}
       {GROUPS.map((group) => (
         <div key={group.title} className="text-sm">
           <div className="text-muted-foreground text-xs">{group.title}</div>
@@ -51,8 +53,9 @@ export function AllSettings({
             <button
               key={section}
               type="button"
-              className={`flex w-full items-center gap-2 py-0.5 text-left hover:underline ${section === open ? 'font-semibold' : ''}`}
-              onClick={() => onOpen(section === open ? null : section)}
+              disabled={open !== null}
+              className={`flex w-full items-center gap-2 py-0.5 text-left enabled:hover:underline ${section === open ? 'font-semibold' : ''}`}
+              onClick={() => onOpen(section)}
             >
               {SECTION_TITLES[section]}
               {changed.has(section) && <span className={PILL.amber}>changed in your draft</span>}
