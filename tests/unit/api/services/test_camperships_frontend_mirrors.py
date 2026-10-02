@@ -41,12 +41,12 @@ def test_the_live_request_statuses_and_their_refusal_are_the_writes_own() -> Non
     from types import SimpleNamespace
 
     from api.services.financial_aid_decisions_service import (
-        LIVE_STATUSES,
+        _LIVE,  # the write's own live set; #2950 dropped its public alias
         DecisionRefusedError,
         FinancialAidDecisionsService,
     )
 
-    assert sorted(MIRRORS["live_request_statuses"]) == sorted(LIVE_STATUSES)
+    assert sorted(MIRRORS["live_request_statuses"]) == sorted(_LIVE)
 
     async def fetch_request(_request_id: str) -> Any:
         return SimpleNamespace(status="withdrawn")
