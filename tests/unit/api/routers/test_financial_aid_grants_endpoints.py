@@ -111,6 +111,8 @@ def _stub() -> Any:
     service.read = AsyncMock(
         return_value=GrantsResponse(year=2031, grants=[], needs_camper=[], unmapped=[], waiting=[], expected=[])
     )
+    # Slice 3 ask 10: GET /grants/{year} reads through GrantsRegisterService; it serves the same stubbed read.
+    patch("api.routers.financial_aid.GrantsRegisterService").start().return_value.read = service.read
     service.place = AsyncMock(return_value=PlaceGrantsOut(year=2031, placed=1, unchanged=0, operation_id="o" * 15))
     service.create_commitment = AsyncMock(return_value=COMMITMENT)
     service.save_commitment = AsyncMock(return_value=COMMITMENT)

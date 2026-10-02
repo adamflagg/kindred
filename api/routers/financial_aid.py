@@ -186,6 +186,8 @@ from api.schemas.financial_aid_to_place import (
     PlaceLineIn,
     PlaceLinesIn,
     PlaceOut,
+    PlacePreviewIn,
+    PlacePreviewOut,
     ReclassifyLineIn,
     ToPlaceResponse,
     ToPlaceWriteOut,
@@ -207,6 +209,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_development_repository import DevelopmentRepository
 from api.services.financial_aid_development_service import FinancialAidDevelopmentService
+from api.services.financial_aid_grant_offsets import GrantsRegisterService
 from api.services.financial_aid_grants_repository import GrantsRepository
 from api.services.financial_aid_grants_service import (
     GrantorInUseError,
@@ -438,6 +441,11 @@ def _approved_out(rules: ApprovedRules) -> ApprovedRulesOut:
 
 def _grants() -> GrantsService:
     return GrantsService(GrantsRepository(pb))
+
+
+def _grants_register() -> GrantsRegisterService:
+    """Grants' read with each share's round (slice 3 ask 10): the season priced once, on the register it shows."""
+    return GrantsRegisterService(_grants(), FinancialAidDecisionsRepository(pb), _rules())
 
 
 def _grants_http(exc: FinancialAidError) -> HTTPException:
@@ -936,10 +944,15 @@ async def unretire_grantor(key: _GrantorKeyPath, body: GrantorRetireIn, user: Au
 
 
 @router.get("/grants/{year}", response_model=GrantsResponse)
-async def get_grants(year: _Year, user: AuthUser = _VIEW) -> GrantsResponse:
+async def get_grants(year: _Year, offsets: bool = Query(True), user: AuthUser = _VIEW) -> GrantsResponse:
     # D57: family level for everyone with view, contacts included; development gets aggregates
     # from Reports, never this read.
-    return await _grants().read(year)
+    # Slice 3 ask 10: each share names the round it offsets, so the read prices the season (one register load).
+    # offsets=false is for a caller that wants only the stored fields (a commitment edit's fresh read, staleTime 0):
+    # it keeps the plain read and skips the pricing.
+    if not offsets:
+        return await _grants().read(year)
+    return await _grants_register().read(year)
 
 
 @router.post("/grants/{year}/placements", response_model=PlaceGrantsOut)
@@ -1716,6 +1729,18 @@ async def place_line(
     """Confirm or Split (D12): the staff placement and the Posted ticks it makes, as one operation (D81)."""
     try:
         return await _to_place().place(year, transaction_cm_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/money/{year}/to-place/{transaction_cm_id}/preview", response_model=PlacePreviewOut)
+async def preview_place_line(
+    year: _Year, transaction_cm_id: _TransactionId, body: PlacePreviewIn, user: AuthUser = _CASEWORK
+) -> PlacePreviewOut:
+    """What a typed Split… or Place on another request would tick, lock and withhold (slice 3, ask 8), from the plan
+    the write runs. Writes nothing; refuses as the write would."""
+    try:
+        return await _to_place().preview(year, transaction_cm_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 

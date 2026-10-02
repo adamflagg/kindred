@@ -120,6 +120,7 @@ class Commitment:
     committed_on: date
     created: datetime | None  # when Kindred recorded it
     status: str  # open | withdrawn
+    note: str = ""  # the stored note (slice 3 ask 9: the Register row carries it for the edit form)
 
 
 @dataclass(frozen=True)
@@ -550,6 +551,19 @@ def build_register(inputs: RegisterInputs) -> list[RegisterRow]:
     return rows
 
 
+def reaches_calculator(row: RegisterRow) -> bool:
+    """Whether pricing feeds this row's shares to the calculator: an OUTSIDE grant that counts, from a grantor that
+    doesn't pay after the camp's award (D143). An incentive never does (D88). The bridge and the Register's offsets
+    (slice 3 ask 10) both read this, so they can't disagree about which grants lower an award."""
+    return row.counts and row.funder_type == "outside" and not row.pays_after_camp_aid
+
+
+def bridge_input(row: RegisterRow, share: RequestShare) -> GrantInput:
+    """One share as the calculator sees it (Decision 5): committed (receipts are parked, D55), known when the register
+    says it became known (a commitment's entry or the line's post, whichever came first, D116)."""
+    return GrantInput(amount=share.amount, state="committed", recorded_at=row.recorded_at)
+
+
 def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[GrantInput]]:
     """SP10's calculator input: the OUTSIDE grants that count, per request, each at its share
     (Decision 5). Incentives are left out (the rules meet them through grants.incentives), and so
@@ -558,12 +572,10 @@ def grant_inputs_by_request(rows: Iterable[RegisterRow]) -> dict[str, list[Grant
     it here would cut the award to $0. state is always "committed": receipts are parked (D55)."""
     out: dict[str, list[GrantInput]] = defaultdict(list)
     for row in rows:
-        if not row.counts or row.funder_type != "outside" or row.pays_after_camp_aid:
+        if not reaches_calculator(row):
             continue
         for share in row.requests:
-            out[share.request_id].append(
-                GrantInput(amount=share.amount, state="committed", recorded_at=row.recorded_at)
-            )
+            out[share.request_id].append(bridge_input(row, share))
     return dict(out)
 
 

@@ -43,6 +43,8 @@ from api.schemas.financial_aid_to_place import (
     PlaceLinesIn,
     PlaceLinesRow,
     PlaceOut,
+    PlacePreviewIn,
+    PlacePreviewOut,
     ReclassifyLineIn,
     SuggestionOut,
     TickedOut,
@@ -266,6 +268,22 @@ def _left_to_tick(
 
 
 Withheld = Sequence[tuple[LedgerTick, tuple[ChangedReason, ...]]]
+
+
+@dataclass(frozen=True)
+class _Plan:
+    """What placing some lines would do, before anything is written: the season it was worked out on, the override
+    and leave-end writes it would make (built in memory: _staged checks a placement by building its write), the
+    outcome, the ticks it writes and the ones D16 withholds (named in not_ticked), and the total it locks. The write
+    commits it; the preview (slice 3, ask 8) reads it and writes nothing."""
+
+    season: Season
+    writes: tuple[AidWrite, ...]
+    outcome: Outcome
+    ticks: tuple[LedgerTick, ...]
+    held: tuple[tuple[LedgerTick, tuple[ChangedReason, ...]], ...]
+    not_ticked: tuple[NotTickedOut, ...]
+    locking: Decimal
 
 
 def _ticked_out(ticks: Sequence[LedgerTick]) -> list[TickedOut]:
@@ -567,17 +585,10 @@ class ToPlaceService:
             raise DecisionRefusedError("it is already placed that way")
         return whole, split, write
 
-    async def place_lines(self, year: int, body: PlaceLinesIn, actor: str) -> PlaceOut:
-        """Confirm or Split one line, or confirm a whole class of them (D16), all or nothing: each line's
-        override, the Posted ticks the placed money makes, and the end of any Leave at family level on those
-        lines, as ONE operation (D12, D81). The ticks D16 withholds are not written; they come back in
-        `not_ticked`, per line."""
-        if skipped := _gate(year):
-            raise DecisionRefusedError(skipped)
-        if len(body.lines) > 1 and body.expected_locked is not None:
-            raise DecisionRefusedError(
-                "a confirm of several lines shows an estimate; confirm lines one by one to check the exact total"
-            )
+    async def _plan(self, year: int, rows: Sequence[PlaceLinesRow], note: str, actor: str) -> _Plan:
+        """One plan for the write and its preview (§4.10: what you confirm is what's written). Each line's override,
+        the end of any Leave at family level, where the money lands, and the Posted ticks it makes, less the ticks
+        D16 withholds. Reads only: every write is built in memory and returned, never committed here."""
         season, overrides, details, left = await asyncio.gather(
             self._decisions.season(year),
             self._store.fetch_override_rows(year),
@@ -589,12 +600,12 @@ class ToPlaceService:
         splits: dict[int, tuple[SplitPart, ...]] = {}
         writes: list[AidWrite] = []
         problems: list[str] = []
-        for row in body.lines:
+        for row in rows:
             txn = row.transaction_cm_id
             try:
                 item = self._pool_item(season, txn, pool)
                 placement, split, write = self._staged(
-                    year, item, overrides.get(txn), details.get(txn), row, body.note, actor
+                    year, item, overrides.get(txn), details.get(txn), row, note, actor
                 )
             except DecisionRefusedError as exc:
                 problems.append(f"line {txn}: {exc}")
@@ -608,9 +619,9 @@ class ToPlaceService:
                 writes.append(self._left_delete(year, txn, left[txn]))
         if problems:
             raise DecisionRefusedError("; ".join(problems))
-        targets = [p.request_id for row in body.lines for p in row.parts]
+        targets = [p.request_id for row in rows for p in row.parts]
         outcome = placement_outcome(season, whole, splits, targets, today=self._today())
-        for row in body.lines:
+        for row in rows:
             for part in row.parts:
                 landed = sum(
                     (
@@ -639,23 +650,44 @@ class ToPlaceService:
         since = await self._since(season, outcome.ticks)
         ticks, held = self._withhold(season, outcome.ticks, since)
         first_line: dict[str, int] = {}  # each withheld round named once, against the first line on its request
-        for row in body.lines:
+        for row in rows:
             for part in row.parts:
                 first_line.setdefault(part.request_id, row.transaction_cm_id)
         not_ticked = [not_ticked_out(first_line[tick.request_id], tick, reasons) for tick, reasons in held]
-        locking = sum((t.amount for t in ticks), ZERO)
-        if body.expected_locked is not None and locking != body.expected_locked:
+        return _Plan(
+            season=season,
+            writes=tuple(writes),
+            outcome=outcome,
+            ticks=tuple(ticks),
+            held=tuple(held),
+            not_ticked=tuple(not_ticked),
+            locking=sum((t.amount for t in ticks), ZERO),
+        )
+
+    async def place_lines(self, year: int, body: PlaceLinesIn, actor: str) -> PlaceOut:
+        """Confirm or Split one line, or confirm a whole class of them (D16), all or nothing: each line's
+        override, the Posted ticks the placed money makes, and the end of any Leave at family level on those
+        lines, as ONE operation (D12, D81). The ticks D16 withholds are not written; they come back in
+        `not_ticked`, per line."""
+        if skipped := _gate(year):
+            raise DecisionRefusedError(skipped)
+        if len(body.lines) > 1 and body.expected_locked is not None:
             raise DecisionRefusedError(
-                f"this now locks {dollars(locking)}, not the {dollars(Decimal(body.expected_locked))} you confirmed: "
-                "reload To place and check it again"
+                "a confirm of several lines shows an estimate; confirm lines one by one to check the exact total"
+            )
+        plan = await self._plan(year, body.lines, body.note, actor)
+        if body.expected_locked is not None and plan.locking != body.expected_locked:
+            raise DecisionRefusedError(
+                f"this now locks {dollars(plan.locking)}, not the {dollars(Decimal(body.expected_locked))} you "
+                "confirmed: reload To place and check it again"
             )
         posts: list[AidWrite] = []
         locks: list[AidWrite] = []
         not_locked: list[str] = []
-        if ticks:
+        if plan.ticks:
             posts, locks, sections = await self._decisions.tick_writes(
-                season,
-                ticks,
+                plan.season,
+                plan.ticks,
                 actor,
                 lock_source="placement",
                 note=lambda tick: (
@@ -665,7 +697,7 @@ class ToPlaceService:
             )
             not_locked = list(sections)
         try:
-            result = await self._commit([*locks, *writes, *posts], actor=actor, reason=body.note or None)
+            result = await self._commit([*locks, *plan.writes, *posts], actor=actor, reason=body.note or None)
         except BatchLimitError as exc:
             raise DecisionRefusedError(
                 f"{len(body.lines)} lines are too many to place at once; place them in smaller groups"
@@ -674,10 +706,27 @@ class ToPlaceService:
             year=year,
             operation_id=result.operation_id,
             placed=[row.transaction_cm_id for row in body.lines],
-            ticked=_ticked_out(ticks),
-            left_to_tick=_left_out(outcome, season, ticks, held),
-            not_ticked=not_ticked,
+            ticked=_ticked_out(plan.ticks),
+            left_to_tick=_left_out(plan.outcome, plan.season, plan.ticks, plan.held),
+            not_ticked=list(plan.not_ticked),
             sections_not_locked=not_locked,
+        )
+
+    async def preview(self, year: int, transaction_cm_id: int, body: PlacePreviewIn, actor: str) -> PlacePreviewOut:
+        """A typed Split… or Place on another request, before the click (slice 3, ask 8): the write's own plan,
+        stopped before anything is written. It refuses as the write would, with the write's own words."""
+        if skipped := _gate(year):
+            raise DecisionRefusedError(skipped)
+        row = PlaceLinesRow(transaction_cm_id=transaction_cm_id, parts=body.parts)
+        plan = await self._plan(year, [row], body.note, actor)
+        return PlacePreviewOut(
+            year=year,
+            transaction_cm_id=transaction_cm_id,
+            parts=[PartOut(request_id=p.request_id, amount=money(p.amount)) for p in body.parts],
+            would_tick=_ticked_out(plan.ticks),
+            would_lock=money(plan.locking),
+            would_leave=_left_out(plan.outcome, plan.season, plan.ticks, plan.held),
+            would_not_tick=list(plan.not_ticked),
         )
 
     @staticmethod

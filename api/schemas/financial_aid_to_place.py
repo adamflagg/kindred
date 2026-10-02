@@ -168,6 +168,29 @@ class PlaceLineIn(_Parts):
     expected_locked: _Expected = None
 
 
+class PlacePreviewIn(_Parts):
+    """Split… or Place on another request, before the click (slice 3, ask 8): the parts the person typed, and the
+    note they would send (a note alone can make an identical placement a change). Nothing is written."""
+
+    note: _Note = ""
+
+
+class PlacePreviewOut(BaseModel):
+    """What placing these parts would do, worked out by the plan the write runs (§4.10), as SuggestionOut.would_* is
+    for Kindred's suggestion. would_lock is the server's sum of would_tick: the place call sends it as expected_locked,
+    so a change in the total it locks between the preview and the click is refused rather than written. That is the
+    one figure re-checked (as for Confirm, §4.10): a change that leaves the total alone, such as a new decided amount
+    on a round the placement leaves short (would_leave), is written as it now stands."""
+
+    year: int
+    transaction_cm_id: int
+    parts: list[PartOut]
+    would_tick: list[TickedOut] = Field(default_factory=list)
+    would_lock: float = 0
+    would_leave: list[LeftToTickOut] = Field(default_factory=list)
+    would_not_tick: list[NotTickedOut] = Field(default_factory=list)
+
+
 class PlaceLinesRow(_Parts):
     transaction_cm_id: int = Field(ge=1)
 

@@ -5424,6 +5424,14 @@ export type GrantRowOut = {
    * Requests
    */
   requests: Array<RequestShareOut>
+  /**
+   * Committed On
+   */
+  committed_on?: string
+  /**
+   * Commitment Note
+   */
+  commitment_note?: string
 }
 
 /**
@@ -6370,6 +6378,14 @@ export type HouseholdGrantRowOut = {
    * Requests
    */
   requests: Array<RequestShareOut>
+  /**
+   * Committed On
+   */
+  committed_on?: string
+  /**
+   * Commitment Note
+   */
+  commitment_note?: string
   /**
    * In Band
    *
@@ -10826,6 +10842,63 @@ export type PlacePartIn = {
 }
 
 /**
+ * PlacePreviewIn
+ *
+ * Split… or Place on another request, before the click (slice 3, ask 8): the parts the person typed, and the
+ * note they would send (a note alone can make an identical placement a change). Nothing is written.
+ */
+export type PlacePreviewIn = {
+  /**
+   * Parts
+   */
+  parts: Array<PlacePartIn>
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
+ * PlacePreviewOut
+ *
+ * What placing these parts would do, worked out by the plan the write runs (§4.10), as SuggestionOut.would_* is
+ * for Kindred's suggestion. would_lock is the server's sum of would_tick: the place call sends it as expected_locked,
+ * so a change in the total it locks between the preview and the click is refused rather than written. That is the
+ * one figure re-checked (as for Confirm, §4.10): a change that leaves the total alone, such as a new decided amount
+ * on a round the placement leaves short (would_leave), is written as it now stands.
+ */
+export type PlacePreviewOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Transaction Cm Id
+   */
+  transaction_cm_id: number
+  /**
+   * Parts
+   */
+  parts: Array<PartOut>
+  /**
+   * Would Tick
+   */
+  would_tick?: Array<TickedOut>
+  /**
+   * Would Lock
+   */
+  would_lock?: number
+  /**
+   * Would Leave
+   */
+  would_leave?: Array<LeftToTickOut>
+  /**
+   * Would Not Tick
+   */
+  would_not_tick?: Array<NotTickedOut>
+}
+
+/**
  * PlacementCopyRequest
  *
  * Seed one weekend's scenario from the CampMinder mirror.
@@ -12611,6 +12684,16 @@ export type RequestSetOut = {
 
 /**
  * RequestShareOut
+ *
+ * One aid request a grant sits on, and the grant's share of it. On GET /grants/{year} (slice 3 ask 10) it also
+ * names the round of that request the rules count the share in: offsets "round" with `round` 1 (known by Round 1's
+ * decision) or 2 (known after it, and only where the rules make an appeal subtract grants: D139), and `round_amount`
+ * that round's amount now (its decided amount while open, the amount it locked once posted, D43/D152; None while held
+ * or undecided, or before Round 2 exists). Otherwise `offsets` says why no round counts it: after_offer (known after
+ * Round 1 posted and no appeal subtracts grants, or known after the appeal: the offer stands, D43),
+ * not_offset_program, not_received (the rules count received grants only), pays_after_camp_aid (D143), incentive
+ * (D88), not_priced (the request can't be priced now). None on reads that don't price the season (Today, the
+ * household page, and GET /grants/{year}?offsets=false).
  */
 export type RequestShareOut = {
   /**
@@ -12621,6 +12704,26 @@ export type RequestShareOut = {
    * Amount
    */
   amount: number
+  /**
+   * Offsets
+   */
+  offsets?:
+    | 'round'
+    | 'after_offer'
+    | 'not_offset_program'
+    | 'not_received'
+    | 'pays_after_camp_aid'
+    | 'incentive'
+    | 'not_priced'
+    | null
+  /**
+   * Round
+   */
+  round?: number | null
+  /**
+   * Round Amount
+   */
+  round_amount?: number | null
 }
 
 /**
@@ -23780,7 +23883,12 @@ export type GetGrantsApiFinancialAidGrantsYearGetData = {
      */
     year: number
   }
-  query?: never
+  query?: {
+    /**
+     * Offsets
+     */
+    offsets?: boolean
+  }
   url: '/api/financial-aid/grants/{year}'
 }
 
@@ -25209,6 +25317,42 @@ export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResp
 
 export type PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponse =
   PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponses[keyof PlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPlacePostResponses]
+
+export type PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostData = {
+  body: PlacePreviewIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Transaction Cm Id
+     */
+    transaction_cm_id: number
+  }
+  query?: never
+  url: '/api/financial-aid/money/{year}/to-place/{transaction_cm_id}/preview'
+}
+
+export type PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostError =
+  PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostErrors[keyof PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostErrors]
+
+export type PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlacePreviewOut
+}
+
+export type PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostResponse =
+  PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostResponses[keyof PreviewPlaceLineApiFinancialAidMoneyYearToPlaceTransactionCmIdPreviewPostResponses]
 
 export type ReopenLineApiFinancialAidMoneyYearToPlaceTransactionCmIdLeaveDeleteData = {
   body?: never

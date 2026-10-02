@@ -751,6 +751,42 @@ async def test_a_commitment_waits_with_its_days() -> None:
     assert (waiting.reason, waiting.transaction_cm_id) == ("possible_match", 9001)  # the line on Emma
 
 
+@pytest.mark.asyncio
+async def test_a_commitment_row_carries_its_committed_date_and_stored_note() -> None:
+    """Slice 3 ask 9: the edit form opens on what is stored, since PUT replaces the whole record. A ledger line is
+    not a commitment, so it carries neither, and the waiting group's copy of the row carries both."""
+    commitment = SimpleNamespace(
+        id="com000000000001",
+        year=2031,
+        grantor_key="regional_fund",
+        household_cm_id=100,
+        person_cm_id=1002,
+        session_cm_id=0,
+        program_family="",
+        amount=250.0,
+        committed_on="2031-01-20 00:00:00.000Z",
+        created="2031-01-21 18:00:00.000Z",
+        status="open",
+        withdrawn_at="",
+        note="Pledged by letter; posts in June",
+    )
+    service, _ = _service(_read_repo(commitments=[commitment]))
+    service._clock = lambda: datetime(2031, 3, 1, 20, 0, tzinfo=UTC)
+    out = await service.read(2031)
+    rows = {row.kind: row for row in out.grants}
+    assert (rows["commitment"].committed_on, rows["commitment"].commitment_note) == (
+        "2031-01-20",
+        "Pledged by letter; posts in June",
+    )
+    assert rows["commitment"].committed_on == rows["commitment"].recorded_on
+    assert (rows["ledger"].committed_on, rows["ledger"].commitment_note) == ("", "")
+    (waiting,) = out.waiting
+    assert (waiting.grant.committed_on, waiting.grant.commitment_note) == (
+        "2031-01-20",
+        "Pledged by letter; posts in June",
+    )
+
+
 # --- placements -----------------------------------------------------------------------
 
 

@@ -113,9 +113,28 @@ CamperBasis = Literal["ledger", "placed", "sole_camper", "commitment", "househol
 WaitingReason = Literal["not_posted", "posted_then_reversed", "possible_match", "camper_cancelled"]
 
 
+# Slice 3 ask 10: why a share lowers a round of its request, or why it lowers none.
+ShareOffsetOut = Literal[
+    "round", "after_offer", "not_offset_program", "not_received", "pays_after_camp_aid", "incentive", "not_priced"
+]
+
+
 class RequestShareOut(BaseModel):
+    """One aid request a grant sits on, and the grant's share of it. On GET /grants/{year} (slice 3 ask 10) it also
+    names the round of that request the rules count the share in: offsets "round" with `round` 1 (known by Round 1's
+    decision) or 2 (known after it, and only where the rules make an appeal subtract grants: D139), and `round_amount`
+    that round's amount now (its decided amount while open, the amount it locked once posted, D43/D152; None while held
+    or undecided, or before Round 2 exists). Otherwise `offsets` says why no round counts it: after_offer (known after
+    Round 1 posted and no appeal subtracts grants, or known after the appeal: the offer stands, D43),
+    not_offset_program, not_received (the rules count received grants only), pays_after_camp_aid (D143), incentive
+    (D88), not_priced (the request can't be priced now). None on reads that don't price the season (Today, the
+    household page, and GET /grants/{year}?offsets=false)."""
+
     request_id: str
     amount: float
+    offsets: ShareOffsetOut | None = None
+    round: int | None = None
+    round_amount: float | None = None
 
 
 class GrantRowOut(BaseModel):
@@ -152,6 +171,11 @@ class GrantRowOut(BaseModel):
     counts: bool
     fulfils_commitment_id: str
     requests: list[RequestShareOut]
+    # Slice 3 ask 9: a commitment row's own committed date (YYYY-MM-DD; recorded_on already holds it there) and its
+    # stored note, so the edit form opens on what is stored (PUT replaces the whole record). "" on a ledger line,
+    # which is not a commitment, even one that fulfils a commitment.
+    committed_on: str = ""
+    commitment_note: str = ""
 
 
 class CamperSuggestionOut(BaseModel):
