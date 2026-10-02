@@ -286,20 +286,25 @@ def _awaiting(plan: IntakePlan, existing: Sequence[RequestRecord]) -> int:
 FIELD_NEVER_TRUE: Final = "equity_field_never_true"
 
 
-def never_true_fields(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
-    """The yes/no fields the approved equity rules weight that no applicant this season answered yes (spec 18 U-C7).
-    Today shows them (§6.4); the intake run logs them (never_true_warnings)."""
+def never_true_labels(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> dict[str, str]:
+    """The yes/no fields the approved equity rules weight that no applicant this season answered yes
+    (spec 18 U-C7), each with the label of the first criterion, in rules order, whose `field` or
+    `also_fields` holds it. Today shows them (§6.4); the intake run logs them (never_true_warnings)."""
     if rules is None or not fa_rows:
-        return ()
+        return {}
     weighted = {key for weights in rules.equity.weights.values() for key, weight in weights.items() if weight > 0}
-    fields = dict.fromkeys(
-        field
-        for criterion in rules.equity.criteria
-        if criterion.key in weighted and criterion.source == "household" and not is_dependents_criterion(criterion)
-        for field in (criterion.field, *criterion.also_fields)
-        if field in YES_NO_ANSWER_FIELDS
-    )
-    return tuple(field for field in fields if not any(bool(row.answers.get(field)) for row in fa_rows))
+    labels: dict[str, str] = {}
+    for criterion in rules.equity.criteria:
+        if criterion.key in weighted and criterion.source == "household" and not is_dependents_criterion(criterion):
+            for field in (criterion.field, *criterion.also_fields):
+                if field in YES_NO_ANSWER_FIELDS:
+                    labels.setdefault(field, criterion.label)
+    return {f: label for f, label in labels.items() if not any(bool(row.answers.get(f)) for row in fa_rows)}
+
+
+def never_true_fields(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
+    """The never-true yes/no fields alone, in criteria order (see never_true_labels)."""
+    return tuple(never_true_labels(rules, fa_rows))
 
 
 def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:

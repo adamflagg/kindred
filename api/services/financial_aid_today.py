@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Final, Protocol
@@ -30,7 +30,7 @@ from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_decisions_service import DecisionsStore, FinancialAidDecisionsService, PricingRules
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_grants_service import GrantsLoader, OneGrantsLoad
-from api.services.financial_aid_intake_service import never_true_fields
+from api.services.financial_aid_intake_service import never_true_labels
 from api.services.financial_aid_intake_types import FLAG_AWAITING_RULES, FaRow
 from api.services.financial_aid_ledger_service import money
 from api.services.financial_aid_queues import UNRECONCILED
@@ -74,6 +74,7 @@ class TodayInputs:
     unclassified: Sequence[UnclassifiedSource]
     today: date
     never_true: Sequence[str] = ()  # weighted yes/no fields no applicant answered yes (finance only)
+    never_true_labels: Mapping[str, str] = field(default_factory=dict)  # each such field's equity criterion label
     to_place: OpenToPlace | None = None  # casework: Money › To place's open lines; None: not read
     needs_group: Sequence[str] = ()  # finance: descriptions with a live line this season that need a group (D100)
 
@@ -82,15 +83,21 @@ def _families(rows: Iterable[GridRowOut]) -> int:
     return len({row.household_cm_id for row in rows})
 
 
-def _reasons(pairs: Iterable[tuple[str, int]]) -> list[TodayReasonOut]:
-    """(code, household) pairs, one per item, into reasons: largest first, then by code."""
+def _reasons(pairs: Iterable[tuple[str, int]], labels: Mapping[str, str] | None = None) -> list[TodayReasonOut]:
+    """(code, household) pairs, one per item, into reasons: largest first, then by code.
+    `labels` names a code where it has a label (the never-true line); the rest stay None."""
     items: dict[str, int] = defaultdict(int)
     households: dict[str, set[int]] = defaultdict(set)
     for code, household in pairs:
         items[code] += 1
         households[code].add(household)
     return [
-        TodayReasonOut(code=code, families=len(households[code]) if households[code] - {0} else None, items=n)
+        TodayReasonOut(
+            code=code,
+            families=len(households[code]) if households[code] - {0} else None,
+            items=n,
+            label=(labels or {}).get(code),
+        )
         for code, n in sorted(items.items(), key=lambda kv: (-kv[1], kv[0]))
     ]
 
@@ -319,7 +326,7 @@ def _finance(inputs: TodayInputs) -> list[TodayLineOut]:
             families=None,
             items=len(inputs.never_true),
             item_kind="fields",
-            reasons=_reasons((field, 0) for field in inputs.never_true),
+            reasons=_reasons(((f, 0) for f in inputs.never_true), inputs.never_true_labels),
         ),
     }
     return [lines[key] for key in FINANCE_LINES]
@@ -360,13 +367,13 @@ class IntakeWarningReads(Protocol):
     async def load_equity_rules(self, year: int) -> AidRules | None: ...
 
 
-async def _never_true(intake: IntakeWarningReads, year: int) -> tuple[str, ...]:
+async def _never_true(intake: IntakeWarningReads, year: int) -> dict[str, str]:
     rows, rules = await asyncio.gather(intake.fetch_fa_rows(year), intake.load_equity_rules(year))
-    return never_true_fields(rules, rows)
+    return never_true_labels(rules, rows)
 
 
-async def _no_fields() -> tuple[str, ...]:
-    return ()
+async def _no_fields() -> dict[str, str]:
+    return {}
 
 
 class TodayService:
@@ -399,7 +406,7 @@ class TodayService:
             return TodayResponse(year=year, casework=None, finance=None)
         shared = OneGrantsLoad(self._grants, year)
         decisions = FinancialAidDecisionsService(self._store, self._pricing, shared.register, clock=self._clock)
-        season, (grants, register), grantors, draft, (unclassified, needs_group), never_true = await asyncio.gather(
+        season, (grants, register), grantors, draft, (unclassified, needs_group), never_labels = await asyncio.gather(
             decisions.season(year),
             shared.read(),
             # Retired grantors too: hidden from pickers, never from the grants that named them.
@@ -419,7 +426,8 @@ class TodayService:
             draft_sections=draft,
             unclassified=unclassified,
             today=self._clock().astimezone(CAMP_TZ).date(),
-            never_true=never_true,
+            never_true=tuple(never_labels),
+            never_true_labels=never_labels,
             to_place=open_lines,
             needs_group=needs_group,
         )
