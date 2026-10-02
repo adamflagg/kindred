@@ -32,6 +32,17 @@ import type {
   ApiAidRulesDraft,
   ApiAidRound3AmountIn,
   ApiAidRound3ApprovalIn,
+  ApiAidScenarioDocumentIn,
+  ApiAidScenarioDraft,
+  ApiAidScenarioEvaluateIn,
+  ApiAidScenarioEvaluation,
+  ApiAidScenarioKeepIn,
+  ApiAidScenarioLoadIn,
+  ApiAidScenarioOption,
+  ApiAidScenarioSensitivity,
+  ApiAidScenarioSnapshot,
+  ApiAidScenarioViewIn,
+  ApiAidScenarioWorkspace,
   ApiAidSessionIn,
   ApiAidUnpostIn,
   ApiAidWriteOut,
@@ -140,6 +151,16 @@ export class AidWriteError extends AidApiError {
 /** Whether an error carries this HTTP status (narrow on `.status`, never `instanceof`: apiError.ts). */
 export function hasStatus(error: unknown, status: number): boolean {
   return typeof error === 'object' && error !== null && 'status' in error && error.status === status
+}
+
+/**
+ * A read's retry rule (Decision 30): a refusal in the server's words (`statuses`, e.g. no rules yet
+ * 404, nothing to start from 422) and a lapsed sign-in (401) answer at once; anything else keeps the
+ * app's three retries.
+ */
+export function retryUnlessRefused(statuses: readonly number[]) {
+  return (failureCount: number, error: Error): boolean =>
+    ![...statuses, 401].some((status) => hasStatus(error, status)) && failureCount < 3
 }
 
 /** FastAPI's detail as one sentence: a string, a 409's `{message}`, or a 422's first `msg`. */
@@ -522,4 +543,128 @@ export async function fetchAidHistoryOperation(
   )
   if (!response.ok) throw await toApiError(response, 'Failed to load the operation', AidApiError)
   return (await response.json()) as ApiAidHistoryOperationDetail
+}
+
+const scenarios = (year: number) => `${BASE}/scenarios/${String(year)}`
+
+/** Your scenario draft, every kept option, and the frozen snapshot they run on (spec §7.4; D38): `rules`. */
+export async function fetchAidScenarios(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidScenarioWorkspace> {
+  const response = await fetchWithAuth(scenarios(year))
+  if (!response.ok) throw await toApiError(response, 'Failed to load the scenarios', AidApiError)
+  return (await response.json()) as ApiAidScenarioWorkspace
+}
+
+/** Freeze the season's applications for scenarios; nothing is written when they haven't moved (§7.4). */
+export function freezeAidScenarioSeason(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<ApiAidScenarioSnapshot> {
+  return send<ApiAidScenarioSnapshot>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/snapshot`,
+    {},
+    "Couldn't freeze the applications"
+  )
+}
+
+/**
+ * A starting point loaded into your draft: from the rules draft, or from last season's approved
+ * criteria (RPT-18). 422 when last season has no approved rules, or its criteria don't fit.
+ */
+export function startAidScenarios(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  from: 'rules' | 'last_season'
+): Promise<ApiAidScenarioWorkspace> {
+  return send<ApiAidScenarioWorkspace>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/starting-points${from === 'last_season' ? '/last-season' : ''}`,
+    {},
+    "Couldn't start a scenario"
+  )
+}
+
+/** A document priced on the frozen season with the sliders applied; records nothing (the live figures). */
+export function evaluateAidScenario(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidScenarioEvaluateIn,
+  signal?: AbortSignal
+): Promise<ApiAidScenarioEvaluation> {
+  return send<ApiAidScenarioEvaluation>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/evaluate`,
+    body,
+    "Couldn't work out the scenario",
+    signal
+  )
+}
+
+/** A released setting: your draft becomes this document, recorded in the trail (D38). */
+export function saveAidScenarioDraft(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidScenarioDocumentIn
+): Promise<ApiAidScenarioDraft> {
+  return send<ApiAidScenarioDraft>(
+    fetchWithAuth,
+    'PUT',
+    `${scenarios(year)}/draft`,
+    body,
+    "Couldn't record the setting"
+  )
+}
+
+/** A kept option or a trail row into your draft; recorded, so nothing is lost (D38). */
+export function loadAidScenarioDraft(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidScenarioLoadIn
+): Promise<ApiAidScenarioDraft> {
+  return send<ApiAidScenarioDraft>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/draft/load`,
+    body,
+    "Couldn't load it"
+  )
+}
+
+/** Keep your draft: a variant under its starting point, or a new starting point (two levels, D38). */
+export function keepAidScenario(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: ApiAidScenarioKeepIn
+): Promise<ApiAidScenarioOption> {
+  return send<ApiAidScenarioOption>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/keep`,
+    body,
+    "Couldn't keep the draft"
+  )
+}
+
+/**
+ * What one step of each sizing setting moves Round 1 by (§7.4), the dollar-for-dollar switch included
+ * (D137). The body is the draft's document alone (Decision 22).
+ */
+export function fetchAidScenarioSensitivity(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  body: Pick<ApiAidScenarioViewIn, 'document'>
+): Promise<ApiAidScenarioSensitivity> {
+  return send<ApiAidScenarioSensitivity>(
+    fetchWithAuth,
+    'POST',
+    `${scenarios(year)}/sensitivity`,
+    body,
+    "Couldn't work out each setting's step"
+  )
 }

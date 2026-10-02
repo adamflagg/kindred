@@ -753,6 +753,10 @@ export const queryKeys = {
     ['financial-aid', 'history', year, 'page', query] as const,
   aidHistoryOperation: (year: number, operationId: string) =>
     ['financial-aid', 'history', year, 'operation', operationId] as const,
+  aidScenariosPrefix: () => ['financial-aid', 'scenarios'] as const,
+  aidScenarios: (year: number) => ['financial-aid', 'scenarios', year, 'workspace'] as const,
+  aidScenarioSensitivity: (year: number, trailId: string, snapshotId: string) =>
+    ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId] as const,
 }
 
 /**
@@ -795,6 +799,26 @@ export function invalidateRequestQueries(
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
   }
+}
+
+/** What a scenario refresh hands `invalidateQueries`: the prefix, minus each step's effect. */
+interface ScenarioRefresh {
+  readonly queryKey: readonly unknown[]
+  readonly predicate?: (query: { readonly queryKey: readonly unknown[] }) => boolean
+}
+
+/**
+ * Every scenario refresh skips the sensitivity read. The server prices the draft's document on the
+ * frozen snapshot, keeping only the identity of the season's rules version (`price_document`), so
+ * the answer is fixed by its key (year, trail row, snapshot): a changed draft or a re-freeze already
+ * has a new key, and refetching the old one costs the server five season replays for a figure that
+ * cannot move (lead ruling, review I1). A read that adds a request set must key what that set reads
+ * too (the Round 1 deadline comes from the approved milestones), or let the writes that move it
+ * refresh it.
+ */
+const SCENARIO_REFRESH: ScenarioRefresh = {
+  queryKey: queryKeys.aidScenariosPrefix(),
+  predicate: (query) => query.queryKey[3] !== 'sensitivity',
 }
 
 /**
@@ -885,15 +909,17 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  * - every household page (a split request sits on both homes' pages, and a rules or grants change
  *   re-prices them all);
  * - the application read;
- * - the rules reads: a Posted tick locks the sections its round read, in the same operation.
- * - Season › History: every write logs a row.
+ * - the rules reads: a Posted tick locks the sections its round read, in the same operation;
+ * - Season › History: every write logs a row;
+ * - the scenario reads but each step's effect: a Posted tick's lock changes the promotion preview's
+ *   token.
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
  * A rules approval re-prices the season: `invalidateAidRulesQueries({ priced: true })` calls this too.
  * Definitions are static and never invalidated.
  */
 export function invalidateAidMoneyQueries(
   queryClient: {
-    invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+    invalidateQueries: (args: ScenarioRefresh) => unknown
   },
   options: { readonly jumpIndex?: boolean } = {}
 ): Promise<void> {
@@ -909,10 +935,18 @@ export function invalidateAidMoneyQueries(
     // Every write logs a row (spec §4.11): Season › History (D49).
     queryKeys.aidHistoryPrefix(),
   ]
-  if (options.jumpIndex === true) keys.push(queryKeys.aidJumpIndexPrefix())
+  const filters: ScenarioRefresh[] = [
+    ...keys.map((queryKey) => ({ queryKey })),
+    SCENARIO_REFRESH,
+    ...(options.jumpIndex === true ? [{ queryKey: queryKeys.aidJumpIndexPrefix() }] : []),
+  ]
+  // A Posted tick's lock changes the promotion preview's confirm token (it hashes the section's
+  // status), and posted money feeds compare's last-season column. Each step's effect can't move
+  // (its key is its inputs), so the shared filter skips it. The workspace doesn't move either; it
+  // rides along, cheaply, with the reads that do.
   // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
   // awaits a promise returned from onSettled before mutateAsync resolves.
-  return Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey }))).then(
+  return Promise.all(filters.map((filter) => queryClient.invalidateQueries(filter))).then(
     () => undefined
   )
 }
@@ -928,18 +962,32 @@ export function invalidateAidMoneyQueries(
  */
 export function invalidateAidRulesQueries(
   queryClient: {
-    invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+    invalidateQueries: (args: ScenarioRefresh) => unknown
   },
   options: { readonly priced?: boolean } = {}
 ): Promise<void> {
-  // An approval's money refresh already covers the rules and Today prefixes, so it stands alone:
-  // invalidating them twice would cancel and restart each active read's refetch.
+  // An approval's money refresh already covers the rules, Today and scenario reads, so it stands
+  // alone: invalidating them twice would cancel and restart each active read's refetch.
   if (options.priced === true) return invalidateAidMoneyQueries(queryClient)
-  return Promise.all(
-    [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix(), queryKeys.aidHistoryPrefix()].map(
+  // The scenario workspace names the rules draft's version and the version pricing the season.
+  return Promise.all([
+    ...[queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix(), queryKeys.aidHistoryPrefix()].map(
       (queryKey) => queryClient.invalidateQueries({ queryKey })
-    )
-  ).then(() => undefined)
+    ),
+    queryClient.invalidateQueries(SCENARIO_REFRESH),
+  ]).then(() => undefined)
+}
+
+/**
+ * Every scenario write calls this on settle (spec §7.4, §10): a scenario never writes live awards, so
+ * it moves the scenario reads only (the workspace, the compare, the trail), except each step's
+ * effect, whose key is its inputs.
+ * Returns a promise like the other aid helpers, so an onSettled can wait for the refetch.
+ */
+export function invalidateAidScenarioQueries(queryClient: {
+  invalidateQueries: (args: ScenarioRefresh) => unknown
+}): Promise<void> {
+  return Promise.resolve(queryClient.invalidateQueries(SCENARIO_REFRESH)).then(() => undefined)
 }
 
 /**
