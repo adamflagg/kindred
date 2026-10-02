@@ -287,7 +287,7 @@ class DecisionChangedError(FinancialAidError, ValueError):
 
     def __init__(self, rows: Sequence[ChangedRowOut]) -> None:
         super().__init__(
-            "A decided amount moved since it was shown, so nothing was posted: check the rows and tick again"
+            "A decided amount moved since it was shown, so nothing was posted: check the amount and tick again"
         )
         self.rows = list(rows)
 
