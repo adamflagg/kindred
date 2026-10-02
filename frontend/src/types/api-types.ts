@@ -47,6 +47,9 @@ import type {
   CancellationIn,
   CancellationOut,
   CellOut,
+  CommitteeOut,
+  CompareColumnOut,
+  CompareOut,
   ConfirmationOut,
   ConfirmationStateOut,
   CountOut,
@@ -91,6 +94,7 @@ import type {
   JumpIndexHousehold,
   JumpIndexResponse,
   KeepIn,
+  LastSeasonOut,
   LeverEffectOut,
   LoadIn,
   ManualHoldIn,
@@ -105,9 +109,11 @@ import type {
   PoolBudgetOut,
   RemainingResponse,
   ResultsOut,
+  Round2CompareOut,
   RoundCountsOut,
   SensitivityOut,
   SnapshotOut,
+  TierCompareOut,
   RequestOut,
   RequestsGridResponse,
   Round3AmountIn,
@@ -121,6 +127,8 @@ import type {
   SocialGraphEdge,
   SocialGraphNode,
   SocialGraphResponse,
+  TrailPageOut,
+  TrailRowOut,
   UnpostIn,
   UntickedMoneyOut,
   UseFormIn,
@@ -297,4 +305,14 @@ export type ApiAidScenarioLoadIn = LoadIn
 export type ApiAidScenarioKeepIn = KeepIn
 export type ApiAidScenarioSensitivity = SensitivityOut
 export type ApiAidScenarioViewIn = ViewIn
+
+/** Scenarios' compare and trail (spec §7.4; D38; SP9c's committee tables, RPT-17, RPT-32). */
+export type ApiAidScenarioCompare = CompareOut
+export type ApiAidCompareColumn = CompareColumnOut
+export type ApiAidCommittee = CommitteeOut
+export type ApiAidTierCompare = TierCompareOut
+export type ApiAidRound2Compare = Round2CompareOut
+export type ApiAidLastSeason = LastSeasonOut
+export type ApiAidScenarioTrailPage = TrailPageOut
+export type ApiAidScenarioTrailRow = TrailRowOut
 export type ApiAidLeverEffect = LeverEffectOut

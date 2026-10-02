@@ -5,9 +5,13 @@
  * Every figure is invented; pools are "Pool A" and "Pool B".
  */
 import type {
+  ApiAidCommittee,
+  ApiAidCompareColumn,
+  ApiAidScenarioCompare,
   ApiAidScenarioDraft,
   ApiAidScenarioOption,
   ApiAidScenarioResults,
+  ApiAidScenarioTrailPage,
   ApiAidScenarioWorkspace,
 } from '../../../../types/api-types'
 import { RULES_DOCUMENT } from '../rules/rulesFixtures'
@@ -141,4 +145,157 @@ export function workspace(over: Partial<ApiAidScenarioWorkspace> = {}): ApiAidSc
     options: [...OPTIONS],
     ...over,
   }
+}
+
+function committee(round1: number): ApiAidCommittee {
+  return {
+    budget_total: 1000000,
+    round1,
+    round1_pct_of_budget: Math.round((round1 / 1000000) * 1000) / 10,
+    round2: 20500,
+    round1_by_tier: [
+      {
+        table: 'general',
+        tier: 1,
+        requests: 200,
+        families: 180,
+        asked: 500000,
+        average_ask: 2500,
+        fee_pct: 90,
+        pct_of_ask: 70,
+        round1: 350000,
+        average_round1: 1750,
+        held: 3,
+        held_asked: 6000,
+        no_ask: 0,
+      },
+      {
+        table: null,
+        tier: 1,
+        requests: 200,
+        families: 180,
+        asked: 500000,
+        average_ask: 2500,
+        fee_pct: null,
+        pct_of_ask: 70,
+        round1: 350000,
+        average_round1: 1750,
+        held: 3,
+        held_asked: 6000,
+        no_ask: 0,
+      },
+      {
+        table: null,
+        tier: 2,
+        requests: 150,
+        families: 140,
+        asked: 300000,
+        average_ask: 2000,
+        fee_pct: null,
+        pct_of_ask: 61.2,
+        round1: round1 - 350000,
+        average_round1: 1000,
+        held: 1,
+        held_asked: 1500,
+        no_ask: 2,
+      },
+    ],
+    round2_by_tier: [
+      {
+        table: null,
+        tier: 1,
+        appeals: 20,
+        asked: 30000,
+        max_pct: null,
+        priced: 18,
+        priced_asked: 28000,
+        round2: 20500,
+        average_round2: 1139,
+        pct_of_ask: 73.2,
+        held_asked: 2000,
+      },
+    ],
+    not_in_tiers: 0,
+    round2_not_in_tiers: 0,
+  }
+}
+
+function column(
+  code: string,
+  label: string,
+  round1: number,
+  over: Partial<ApiAidCompareColumn> = {}
+): ApiAidCompareColumn {
+  return {
+    code,
+    label,
+    document: RULES_DOCUMENT,
+    changes: [],
+    results: results(round1),
+    up: 12,
+    down: 3,
+    committee: committee(round1),
+    ...over,
+  }
+}
+
+/** The draft beside A1; the draft's minimum changed against its reference. */
+export function compareOut(over: Partial<ApiAidScenarioCompare> = {}): ApiAidScenarioCompare {
+  return {
+    year: 2027,
+    snapshot: {
+      id: 'snap00000000001',
+      taken_at: '2027-01-12T18:00:00Z',
+      taken_by: 'Test User',
+      requests: 420,
+      awaiting_rules: 0,
+    },
+    columns: [
+      column('draft', 'from B: minimum $150', 735000, {
+        document: { ...RULES_DOCUMENT, awards: { ...RULES_DOCUMENT.awards, minimum: '150' } },
+        changes: [{ path: ['awards', 'minimum'], kind: 'changed', before: '100', after: '150' }],
+      }),
+      column('A1', 'Round 1 % −2 pts', 760000, { up: 0, down: 40 }),
+    ],
+    last_season: {
+      year: 2026,
+      loaded: true,
+      label: '2026 as posted',
+      rules_version: 7,
+      view: committee(649247),
+    },
+    ...over,
+  }
+}
+
+export const TRAIL: ApiAidScenarioTrailPage = {
+  page: 1,
+  per_page: 50,
+  total: 2,
+  rows: [
+    {
+      id: 'trail0000000002',
+      recorded_at: '2027-01-15T17:03:00Z',
+      actor: 'Test User',
+      from_code: 'B',
+      change: 'shift every tier 0 pts → −5 pts',
+      kept_code: null,
+      round1: 735000,
+      round1_remaining: 65000,
+      at_minimum: 12,
+      stale: false,
+    },
+    {
+      id: 'trail0000000001',
+      recorded_at: '2027-01-14T17:20:00Z',
+      actor: 'Test User',
+      from_code: 'A',
+      change: 'band width $24k → $29k',
+      kept_code: 'B',
+      round1: 740000,
+      round1_remaining: 60000,
+      at_minimum: 10,
+      stale: true,
+    },
+  ],
 }
