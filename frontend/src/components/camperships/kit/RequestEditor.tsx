@@ -29,6 +29,8 @@ export interface EditorPreview {
   readonly stageChange?: string | null | undefined
   readonly shares?: readonly EditorShare[] | undefined
   readonly pendingApproval?: boolean | undefined
+  /** The request's decided total after this edit, as the server sends it (clawed-back rounds included). */
+  readonly totalDecided?: number | null | undefined
   readonly error?: string | undefined
 }
 
