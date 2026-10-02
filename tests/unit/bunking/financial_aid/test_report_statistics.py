@@ -238,7 +238,9 @@ def test_the_round_2_fee_percent_is_null_when_a_chips_programs_use_two_round_2_t
     assert _tier(statistics(requests, split, table="camp", round_=2).rows, 3).fee_pct is None
 
 
-def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_stays_in_asked() -> None:
+def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_stays_in_asked_and_in_the_with_grants_denominator() -> (
+    None
+):
     """Owner (c) (RULED 2026-10-02): D121's full-cost outside-funder round is never awarded, so its ask is not in
     % of ask's denominator; the plain asked column and the average ask still count it."""
     table = statistics(
@@ -253,7 +255,8 @@ def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_st
     two = _tier(table.rows, 2)
     assert (two.asked, two.asks, two.average_ask) == (Decimal(7000), 2, Decimal("3500.00"))
     assert (two.live_asked, two.pct_of_ask) == (Decimal(4000), Decimal("37.5"))
-    assert two.pct_of_ask_with_grants == Decimal("37.5")
+    # owner, RULED 2026-10-02: the with-grants denominator keeps outside-funded asks (1500 / (4000 + 3000)).
+    assert two.pct_of_ask_with_grants == Decimal("21.4")
 
 
 def test_awarded_is_posted_alone_on_either_basis_so_amount_is_awarded_plus_decided() -> None:
@@ -270,3 +273,18 @@ def test_awarded_is_posted_alone_on_either_basis_so_amount_is_awarded_plus_decid
     assert (posted.awarded, posted.amount) == (Decimal(1500), Decimal(1500))
     assert (both.awarded, both.decided, both.amount) == (Decimal(1500), Decimal(1000), Decimal(2500))
     assert both.amount == both.awarded + both.decided
+
+
+def test_percent_of_ask_with_grants_keeps_the_outside_funded_ask_in_its_denominator() -> None:
+    """Owner (RULED 2026-10-02): "an outside funder counts as grants; grants means anything that isn't internal camp
+    money; put them in the denom." The grants numerator holds the outside funder's money, so its ask stays in the
+    denominator; the camp-money % of ask still drops it."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="1000", posted="500")),
+        req("reqliam00000001", rnd(1, ask="2000", outside_budget=True), household=1000002, grants="2000"),
+    ]
+    table = statistics(requests, RULES, table="camp", round_=1)
+    two = _tier(table.rows, 2)
+    assert (two.pct_of_ask, two.grants, two.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal(2000), Decimal("83.3"))
+    # The totals row follows the same rule.
+    assert (table.total.pct_of_ask, table.total.pct_of_ask_with_grants) == (Decimal("50.0"), Decimal("83.3"))

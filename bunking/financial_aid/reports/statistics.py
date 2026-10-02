@@ -22,7 +22,9 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
                   ask leaves the denominator too (owner (c), RULED 2026-10-02; `asked` keeps it). On the
                   "posted_and_decided" basis amount is Posted + Decided and the column reads
                   PCT_OF_ASK_DECIDED_LABEL (owner (b), RULED 2026-10-02).
-  % with grants   (amount + the counting outside grants on the live requests) ÷ the same asks: the sheet's
+  % with grants   (amount + the counting outside grants on the live requests) ÷ the live requests' FULL asks,
+                  outside-budget rounds kept: an outside funder counts as grants, so its ask stays in the
+                  denominator beside its grant money (owner, RULED 2026-10-02). The sheet's
                   "% of Ask Granted in Total". Round 1 and All rounds only: a grant belongs to the request, not a
                   round.
   fee %           Round 1 and All rounds: the chip table's Round 1 % for the tier. Round 2: the Round 2 table the
@@ -234,7 +236,7 @@ def _row(
 ) -> StatisticsRow:
     rounds = _rounds(round_)
     with_decided = basis == "posted_and_decided"
-    asked = live_asked = amount = decided = awarded = ZERO
+    asked = live_asked = live_full_asked = amount = decided = awarded = ZERO
     asks = awarded_count = decided_count = cancelled = 0
     grants = ZERO
     for request in requests:
@@ -247,6 +249,8 @@ def _row(
             asked += ask
         if not request.live:
             continue
+        if ask is not None:
+            live_full_asked += ask
         if (in_budget := request.asked_in_budget(rounds)) is not None:
             live_asked += in_budget
         money = request.awarded(rounds, decided=with_decided)
@@ -278,7 +282,7 @@ def _row(
         live_asked=live_asked,
         pct_of_ask=pct(amount, live_asked),
         grants=grants if shows_grants else None,
-        pct_of_ask_with_grants=pct(amount + grants, live_asked) if shows_grants else None,
+        pct_of_ask_with_grants=pct(amount + grants, live_full_asked) if shows_grants else None,
     )
 
 
