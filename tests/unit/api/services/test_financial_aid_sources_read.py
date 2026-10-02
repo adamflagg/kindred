@@ -3,13 +3,16 @@ the descriptions Today's finance line counts as needing a group (ask 3). Fiction
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from api.schemas.financial_aid import SourceChangeOut
 from api.services.financial_aid_ledger_service import FinancialAidLedgerService, needs_group, source_row, who_paid
+from api.services.financial_aid_repository import FinancialAidRepository
 
 
 def _source(
@@ -97,3 +100,84 @@ async def test_today_counts_a_description_needing_a_group_only_when_it_has_a_liv
     )
     assert await FinancialAidLedgerService(repo).needs_group_sources(2027) == ["regional grant"]
     repo.fetch_postings.assert_awaited_once_with(2027)
+
+
+# --- the list read: the season's lines, the grantor's name, the last change ----------------------------------
+
+
+def _change(record_id: str, log_id: str, actor: str, reason: str, created: str) -> SimpleNamespace:
+    """An aid_change_log row about an aid_sources record (entity_id = the record id)."""
+    return SimpleNamespace(id=log_id, entity_id=record_id, actor=actor, reason=reason, created=created)
+
+
+def _registry() -> MagicMock:
+    return _repo(
+        fetch_sources=[
+            _source("camp fa", "src000000000001", funder="camp", families=["summer"]),
+            _source("regional grant", "src000000000002", grantor_key="regional_fund"),
+            _source("new aid line", "src000000000003", funder="unknown", classified_by="unclassified"),
+        ],
+        fetch_grantors=[SimpleNamespace(key="regional_fund", name="Regional Fund")],
+        # newest first, on purpose: the read must take the latest, whatever order the rows come in
+        fetch_source_changes=[
+            _change(
+                "src000000000002",
+                "log000000000002",
+                "finance@example.com",
+                "Funds weekend families too",
+                "2027-02-10 10:00:00.000Z",
+            ),
+            _change(
+                "src000000000002",
+                "log000000000001",
+                "development@example.com",
+                "First grouping",
+                "2027-01-05 10:00:00.000Z",
+            ),
+        ],
+        fetch_postings=[
+            _line(9001, "camp fa", -1500.0),
+            _line(9002, "camp fa", -700.0),
+            _line(9003, "regional grant", -300.0),
+            # reclassified: the grant's description classifies it now
+            _line(9004, "camp fa", -200.0, effective="regional grant"),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_registry_with_its_season_lines_grantor_and_last_change() -> None:
+    repo = _registry()
+    out = await FinancialAidLedgerService(repo).sources(2027)
+    assert out.year == 2027
+    assert [(s.description_key, s.lines, s.amount, s.grantor_name, s.who_paid, s.needs_group) for s in out.sources] == [
+        ("camp fa", 2, 2200.0, "", "the camp", False),
+        ("regional grant", 2, 500.0, "Regional Fund", "another funder", True),
+        ("new aid line", 0, 0.0, "", None, False),
+    ]
+    assert out.sources[1].last_change == SourceChangeOut(
+        by="finance@example.com", at=datetime(2027, 2, 10, 10, 0, tzinfo=UTC), note="Funds weekend families too"
+    )
+    assert (out.sources[0].last_change, out.sources[2].last_change) == (None, None)  # never edited in the app
+    repo.fetch_postings.assert_awaited_once_with(2027)
+
+
+@pytest.mark.asyncio
+async def test_without_a_season_the_list_counts_no_lines_and_reads_no_postings() -> None:
+    repo = _registry()
+    out = await FinancialAidLedgerService(repo).sources()
+    assert out.year is None
+    assert [(s.lines, s.amount) for s in out.sources] == [(None, None)] * 3
+    assert out.sources[1].grantor_name == "Regional Fund"
+    repo.fetch_postings.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_last_change_read_asks_the_log_for_source_writes_of_every_season() -> None:
+    """A source spans seasons, and each write logs under the season current then, so no year filter."""
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    await FinancialAidRepository(pb).fetch_source_changes()
+    pb.collection.assert_called_with("aid_change_log")
+    params = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert (params["filter"], params["sort"]) == ('entity = "aid_sources"', "created,id")

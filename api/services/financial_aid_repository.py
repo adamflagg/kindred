@@ -38,6 +38,7 @@ from api.constants.collections import (
 from api.services.lodging_repository import STABLE_SORT
 from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
+from bunking.financial_aid.change_log import COLLECTION as CHANGE_LOG
 
 PAGE_SIZE = 1000
 ID_CHUNK = 100
@@ -155,6 +156,18 @@ class FinancialAidRepository:
 
     async def fetch_grantors(self) -> list[Any]:
         return await self._page(AID_GRANTORS, {"sort": f"name,{STABLE_SORT}"})
+
+    async def fetch_source_changes(self) -> list[Any]:
+        """Every logged write to aid_sources, any season, oldest first: Money › Sources' last change (D105). A source
+        spans seasons, and each write logs under the season current when it was made, so the read has no year."""
+        return await self._page(
+            CHANGE_LOG,
+            {
+                "filter": f'entity = "{AID_SOURCES}"',
+                "sort": "created,id",
+                "fields": "id,entity_id,actor,reason,created",
+            },
+        )
 
     async def get_grantor(self, key: str) -> Any | None:
         rows = await self._page(AID_GRANTORS, {"filter": f"key = '{pb_escape(key)}'", "sort": STABLE_SORT})

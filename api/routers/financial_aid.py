@@ -685,8 +685,11 @@ async def get_data_quality(year: int = Query(..., ge=2017, le=2100), user: AuthU
 
 
 @router.get("/sources", response_model=AidSourcesResponse)
-async def list_sources(user: AuthUser = _VIEW_OR_GRANTORS) -> AidSourcesResponse:
-    return await _ledger().sources()
+async def list_sources(
+    year: int | None = Query(None, ge=2017, le=2100), user: AuthUser = _VIEW_OR_GRANTORS
+) -> AidSourcesResponse:
+    """Money › Sources (§8.1). `year` adds each description's live lines this season and their net."""
+    return await _ledger().sources(year)
 
 
 @router.patch("/sources/{source_id}", response_model=AidSourceRow)

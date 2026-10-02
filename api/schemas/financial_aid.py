@@ -11,6 +11,7 @@ posting delay.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -268,6 +269,14 @@ class DataQualityResponse(BaseModel):
     aid_like_outside_categories: list[AidLikeOutside]
 
 
+class SourceChangeOut(BaseModel):
+    """A source's last logged edit (D105: logged with who and why), from aid_change_log."""
+
+    by: str  # the signed-in person who made it, as aid_change_log.actor holds it (an email)
+    at: datetime  # UTC
+    note: str  # the reason logged with it
+
+
 class AidSourceRow(BaseModel):
     id: str
     description_key: str
@@ -284,9 +293,15 @@ class AidSourceRow(BaseModel):
     # Slice 3 PR-B (ask 2). The record's own facts, on every read and write echo:
     needs_group: bool = False  # D100: an outside or incentive source with no reporting group
     who_paid: WhoPaid | None = None  # D88: the camp's own money or another funder's; None while unclassified
+    # The list read only (a PATCH/PUT echo leaves these at their defaults):
+    grantor_name: str = ""  # the mapped grantor's name; "" when none is mapped
+    lines: int | None = None  # with ?year=: the season's live lines this description classifies now
+    amount: float | None = None  # with ?year=: their net, in aid dollars
+    last_change: SourceChangeOut | None = None  # the last logged edit; None: never edited in the app
 
 
 class AidSourcesResponse(BaseModel):
+    year: int | None = None  # the season lines and amount count; None when ?year= was not sent
     sources: list[AidSourceRow]
 
 

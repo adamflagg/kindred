@@ -44,6 +44,7 @@ from api.schemas.financial_aid import (
     NetTotalsResponse,
     OrphanReversal,
     SessionMismatch,
+    SourceChangeOut,
     StaleStaffLink,
     SummaryCell,
     SummaryResponse,
@@ -266,6 +267,33 @@ def source_row(s: Any) -> AidSourceRow:
     )
 
 
+def source_lines(postings: Iterable[Any]) -> dict[str, tuple[int, Decimal]]:
+    """Each description's live lines this season and their net in aid dollars, keyed by the description that
+    classifies them now (effective_source_key: after a reclassifying override, the target's; §5.5). Reversed lines
+    are out: fetch_postings reads live rows only."""
+    counts: Counter[str] = Counter()
+    amounts: dict[str, Decimal] = defaultdict(Decimal)
+    for p in postings:
+        key = str(p.effective_source_key or p.source_key)
+        counts[key] += 1
+        amounts[key] += aid_dollars(p.amount)
+    return {key: (counts[key], amounts[key]) for key in counts}
+
+
+def _logged_at(row: Any) -> tuple[datetime, str]:
+    return (parse_pb_datetime(getattr(row, "created", None)) or datetime.min.replace(tzinfo=UTC), str(row.id))
+
+
+def last_changes(rows: Iterable[Any]) -> dict[str, SourceChangeOut]:
+    """Each aid_sources record's last logged edit (D105: who and why), by record id: the latest log row naming it."""
+    out: dict[str, SourceChangeOut] = {}
+    for row in sorted(rows, key=_logged_at):
+        at = parse_pb_datetime(getattr(row, "created", None))
+        if at is not None:
+            out[str(row.entity_id)] = SourceChangeOut(by=str(row.actor or ""), at=at, note=str(row.reason or ""))
+    return out
+
+
 def _unclassified(postings: Iterable[Any], sources: Mapping[str, Any]) -> list[UnclassifiedSource]:
     """Live lines whose description aid_sources doesn't know, or knows as unclassified, by description."""
     unclassified: dict[str, list[Any]] = defaultdict(list)
@@ -309,8 +337,25 @@ class FinancialAidLedgerService:
                 counted.append(p)
         return counted, undated
 
-    async def sources(self) -> AidSourcesResponse:
-        return AidSourcesResponse(sources=[source_row(s) for s in await self.repo.fetch_sources()])
+    async def sources(self, year: int | None = None) -> AidSourcesResponse:
+        """Money › Sources (§8.1): every description in the registry with its classification, D88's who paid (and
+        the mapped grantor's name), D100's needs-a-group check and D105's last logged change; with `year`, also the
+        season's live lines each description classifies and their net. Without it no postings are read."""
+        sources, grantors, changes = await asyncio.gather(
+            self.repo.fetch_sources(), self.repo.fetch_grantors(), self.repo.fetch_source_changes()
+        )
+        names = {str(g.key): str(g.name) for g in grantors}
+        last = last_changes(changes)
+        counted = source_lines(await self.repo.fetch_postings(year)) if year is not None else {}
+        rows: list[AidSourceRow] = []
+        for s in sources:
+            row = source_row(s)
+            update: dict[str, Any] = {"grantor_name": names.get(row.grantor_key, ""), "last_change": last.get(row.id)}
+            if year is not None:
+                lines, amount = counted.get(row.description_key, (0, _ZERO))
+                update |= {"lines": lines, "amount": money(amount)}
+            rows.append(row.model_copy(update=update))
+        return AidSourcesResponse(year=year, sources=rows)
 
     async def ledger(
         self,

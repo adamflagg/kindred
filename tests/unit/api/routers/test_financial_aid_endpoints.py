@@ -297,3 +297,13 @@ def test_a_source_write_that_lost_a_race_is_409(
     response = _client(PERSONA_FINANCE).request(method, url, json=body)
     assert response.status_code == 409, response.text  # read the status first: an unmapped error is a plain-text 500
     assert response.json()["detail"] == CONFLICT_MESSAGE
+
+
+def test_the_source_list_counts_the_season_asked_and_only_when_asked() -> None:
+    ledger, _ = _stub_services()
+    client = _client(PERSONA_FINANCE)
+    assert client.get("/api/financial-aid/sources?year=2027").status_code == 200
+    ledger.return_value.sources.assert_awaited_with(2027)
+    assert client.get("/api/financial-aid/sources").status_code == 200
+    ledger.return_value.sources.assert_awaited_with(None)
+    assert client.get("/api/financial-aid/sources?year=1999").status_code == 422
