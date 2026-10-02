@@ -81,6 +81,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundCountsOut,
     RoundOut,
+    SessionCandidateOut,
     ShareConfirmationOut,
     TodoOut,
     UnpostIn,
@@ -239,6 +240,8 @@ CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
 
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
+# Intake's flag on an unmatched request (financial_aid_intake_plan): its detail lists the candidate session ids.
+_UNMATCHED_FLAG: Final = "unmatched_session"
 
 
 class DecisionNotFoundError(FinancialAidError, LookupError):
@@ -592,6 +595,24 @@ def _cancellation_out(c: Cancellation) -> CancellationOut:
     return CancellationOut(by=c.by, on=c.on, reason=c.reason, note=c.note)
 
 
+def _candidates(request: RequestRecord, sessions: Mapping[int, SessionRow]) -> list[SessionCandidateOut]:
+    """Session not settled (§6.2; read 4): the sessions intake found for an unmatched request, each once, named from
+    the season's sessions ("Session <id>" for one the season lacks). A settled request lists none, whatever its old
+    flag still says."""
+    if request.status != STATUS_UNMATCHED:
+        return []
+    ids: list[int] = []
+    for flag in request.flags:
+        if flag.get("code") != _UNMATCHED_FLAG:
+            continue
+        detail = flag.get("detail") or {}
+        ids.extend(c for c in detail.get("candidates", []) if isinstance(c, int) and not isinstance(c, bool))
+    return [
+        SessionCandidateOut(session_cm_id=i, name=sessions[i].name if i in sessions else f"Session {i}")
+        for i in dict.fromkeys(ids)
+    ]
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -658,6 +679,7 @@ def grid_row(
         cancellation=_cancellation_out(cancellation) if cancellation is not None else None,
         to_reverse=to_reverse,
         appeal_refusal=appeal,
+        session_candidates=_candidates(request, sessions),
         todos=(
             [TodoOut(code=TODO_CANCEL_REASON, message=TODO_CANCEL_REASON_TEXT)]
             if needs_reason(cancellation, request.year)

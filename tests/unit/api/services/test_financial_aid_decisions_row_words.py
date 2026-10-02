@@ -3,6 +3,7 @@ itself, in the server's own words, so the frontend's mirrors of them can go. Fic
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -102,3 +103,31 @@ async def test_a_past_read_carries_no_appeal_refusal() -> None:
     log_seeded(store, SEEDED)
     (row,) = (await _service(store).grid(YEAR, as_of=date(2027, 3, 1))).rows
     assert row.appeal_refusal is None
+
+
+@pytest.mark.asyncio
+async def test_an_unmatched_request_names_its_candidate_sessions() -> None:
+    """Session not settled (§6.2): the candidates intake recorded, named from the season's sessions, "Session <id>"
+    for one the season lacks (the frontend's Decision 28 fallback, now the server's)."""
+    store = FakeDecisionsStore()
+    request = seed_request(store, EMMA)
+    store.requests[EMMA] = replace(
+        request,
+        status="unmatched_session",
+        session_cm_id=0,
+        flags=({"code": "unmatched_session", "detail": {"candidates": [1000101, 1000199, 1000101]}},),
+    )
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert [(c.session_cm_id, c.name) for c in row.session_candidates] == [
+        (1000101, "Session 2"),
+        (1000199, "Session 1000199"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_settled_request_lists_no_candidates_even_if_its_old_flag_stays() -> None:
+    store = FakeDecisionsStore()
+    request = seed_request(store, EMMA)
+    store.requests[EMMA] = replace(request, flags=({"code": "unmatched_session", "detail": {"candidates": [1000101]}},))
+    (row,) = (await _service(store).grid(YEAR)).rows
+    assert row.session_candidates == []

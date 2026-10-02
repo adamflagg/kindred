@@ -184,6 +184,14 @@ class GridShareOut(BaseModel):
     needs_offer: float | None
 
 
+class SessionCandidateOut(BaseModel):
+    """A session intake found for an unmatched request (Session not settled, §6.2; read 4), named from the season's
+    sessions, or "Session <id>" when the season lacks it."""
+
+    session_cm_id: int
+    name: str
+
+
 class GridRowOut(BaseModel):
     request_id: str
     household_cm_id: int
@@ -220,6 +228,7 @@ class GridRowOut(BaseModel):
     # Read 3: why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words; None when it can;
     # a past read names it in not_rebuilt.
     appeal_refusal: str | None = None
+    session_candidates: list[SessionCandidateOut] = Field(default_factory=list)  # read 4: an unmatched request's
 
 
 class RequestsGridResponse(BaseModel):
