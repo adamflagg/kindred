@@ -31,6 +31,7 @@ from api.constants.collections import (
     AID_HOUSEHOLD_LINKS,
     AID_PAYER_SHARES,
     AID_POSTINGS,
+    AID_REPORT_DEFINITIONS,
     AID_REPORTED_HISTORY,
     AID_REQUESTS,
     AID_RULES,
@@ -81,6 +82,7 @@ ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
     AID_HOUSEHOLD_LINKS: "money",
     AID_SOURCES: "money",
     AID_REPORTED_HISTORY: "money",
+    AID_REPORT_DEFINITIONS: "money",  # Development's saved dated columns (Decision 8: every other aid_* is money)
     AID_POSTINGS: "money",
     AID_FLAG_DISPOSITIONS: "money",
 }
