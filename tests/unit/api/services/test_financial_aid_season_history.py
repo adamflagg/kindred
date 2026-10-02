@@ -517,3 +517,69 @@ async def test_a_registrar_reads_the_tick_with_its_locks_by_its_decisions_alone(
     (finance,) = (await service.page(2027, HistoryFilter(rules=True), page=1, per_page=50)).operations
     assert registrar.summary == finance.summary == "3 requests · 2 families · $2,400.50 locked"
     assert (registrar.rows, finance.rows) == (3, 4)
+
+
+@pytest.mark.asyncio
+async def test_every_opened_row_names_its_family_and_camper_in_one_name_read() -> None:
+    rows = [
+        *_tick(),
+        _row("t5", "aid_applications", APP_GARCIA, OP_T, after={"status": "complete"}),
+        _row("t6", "aid_grant_placements", "ledger:9001", OP_T, action="place", after={"household_cm_id": GARCIA}),
+        _row("t7", "aid_grantors", "regional_fund", OP_T, after={"note": "new address"}),
+        _row("t8", "aid_grants", GRANT_GARCIA, OP_T, action="create", after={"household_cm_id": GARCIA}),
+    ]
+    reads = _Reads(*rows, subjects=SEASON)
+    detail = await SeasonHistoryService(reads).operation(2027, OP_T, rules=False)
+    named = {r.entity_id: (r.household_cm_id, r.household_name, r.camper_name) for r in detail.rows}
+    assert named == {
+        f"{EMMA}:1": (JOHNSON, "The Johnson Family", "Emma Johnson"),
+        f"{SAMUEL}:1": (JOHNSON, "The Johnson Family", "Samuel Johnson"),
+        f"{LIAM}:1": (GARCIA, "The Garcia Family", "Liam Garcia"),
+        APP_GARCIA: (GARCIA, "The Garcia Family", None),
+        "ledger:9001": (GARCIA, "The Garcia Family", None),  # from the row's own recorded household
+        GRANT_GARCIA: (GARCIA, "The Garcia Family", None),  # from the grant's id
+        "regional_fund": (None, None, None),
+    }
+    assert reads.name_calls == [(frozenset({JOHNSON, GARCIA}), frozenset({P_EMMA, P_SAMUEL, P_LIAM}))]
+    assert reads.years == {2027}  # the name and subject reads were for the season asked about
+
+
+@pytest.mark.asyncio
+async def test_a_search_finds_a_family_or_a_camper_by_name() -> None:
+    hold = _row("h1", "aid_hold_events", f"{LIAM}:income", OP_B, action="release", at="2027-03-10 17:00:00.000Z")
+    reads = _Reads(*_tick(), hold, subjects=SEASON)
+    service = SeasonHistoryService(reads)
+
+    async def found(text: str) -> list[str]:
+        page = await service.page(2027, HistoryFilter(text=text), page=1, per_page=50)
+        return [o.operation_id for o in page.operations]
+
+    # Each needle is in a name only, never in a reason, actor or entity id ("reqsamuel000001" holds no "johnson").
+    assert await found("samuel johnson") == [OP_T]
+    assert await found("GARCIA") == [OP_B, OP_T]  # Liam's hold, and his $0 lock in the tick
+    assert await found("johnson family") == [OP_T]
+    assert await found("olivia") == []
+    assert len(reads.name_calls) == 4  # one batched read per search: never one per row or operation
+
+
+@pytest.mark.asyncio
+async def test_no_search_reads_no_names() -> None:
+    reads = _Reads(*_tick(), subjects=SEASON)
+    service = SeasonHistoryService(reads)
+    await service.page(2027, HistoryFilter(), page=1, per_page=50)
+    await service.page(2027, HistoryFilter(kinds=frozenset({"offers"})), page=1, per_page=50)
+    assert reads.name_calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_name_search_never_surfaces_an_operation_the_reader_cannot_see() -> None:
+    """Review Focus 1: a hidden intake run and a rules-only operation stay hidden whatever the name."""
+    intake = _row("i1", "aid_requests", EMMA, OP_I, actor="system:intake", action="create")
+    capacity = _row("c1", "aid_session_capacity", EMMA, OP_R, actor=FIN, action="set_capacity")  # no reason
+    service = SeasonHistoryService(_Reads(intake, capacity, subjects=SEASON))
+    needle = "johnson family"  # in a name only: never in a reason, actor, entity id or collection
+    assert (await service.page(2027, HistoryFilter(text=needle), page=1, per_page=50)).total == 0
+    shown = await service.page(2027, HistoryFilter(text=needle, include_intake=True), page=1, per_page=50)
+    assert [o.operation_id for o in shown.operations] == [OP_I]  # the name channel is live for a visible op
+    finance = await service.page(2027, HistoryFilter(text=needle, rules=True, include_intake=True), page=1, per_page=50)
+    assert [o.operation_id for o in finance.operations] == [OP_I]  # a capacity row names no one, even for finance

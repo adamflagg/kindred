@@ -63,6 +63,9 @@ class HistoryRowOut(BaseModel):
     before: dict[str, Any] | None
     after: dict[str, Any] | None
     changes: list[FieldChangeOut]  # the field-level diff ("Round 1 %, tier 3: 74.5 -> 72")
+    household_cm_id: int | None  # the household the row is about (H2); None when it names none (rules, grantors, ...)
+    household_name: str | None  # None when the household has no record this season (the grid would say "Household N")
+    camper_name: str | None  # None for a family-level row (an application, a household's own request)
 
 
 class HistoryOperationDetailOut(BaseModel):

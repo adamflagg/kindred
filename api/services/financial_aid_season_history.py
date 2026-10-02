@@ -294,6 +294,27 @@ def figures_out(f: Figures) -> HistoryFiguresOut:
     )
 
 
+def name_text(op: Operation, subjects: Subjects, households: Mapping[int, str], persons: Mapping[int, str]) -> str:
+    """The family and camper names an operation's rows are about: what `q` matches besides the log's own text (H2).
+    From `op.entries`, so a row for_reader stripped adds no name."""
+    found = [s for e in op.entries if (s := subjects.of(e.entity, e.entity_id)) is not None]
+    names = {households.get(s.household_cm_id, "") for s in found}
+    names |= {persons.get(s.person_cm_id, "") for s in found if s.person_cm_id}
+    return " | ".join(sorted(n for n in names if n))
+
+
+def _household_of(subject: Subject | None) -> int | None:
+    return subject.household_cm_id if subject is not None else None
+
+
+def _name_of(subject: Subject | None, households: Mapping[int, str]) -> str | None:
+    return households.get(subject.household_cm_id) if subject is not None else None
+
+
+def _camper_of(subject: Subject | None, persons: Mapping[int, str]) -> str | None:
+    return persons.get(subject.person_cm_id) if subject is not None and subject.person_cm_id else None
+
+
 def _kind(entries: tuple[LogEntry, ...]) -> HistoryKind:
     if any(e.actor == INTAKE_ACTOR for e in entries):
         return "intake"
@@ -352,7 +373,7 @@ class HistoryFilter:
     rules: bool = False  # the reader holds financial_aid.rules
 
 
-def visible(op: Operation, f: HistoryFilter) -> bool:
+def visible(op: Operation, f: HistoryFilter, names: Mapping[str, str] | None = None) -> bool:
     if op.kind == "rules" and not f.rules:
         return False
     if op.kind == "intake" and not f.include_intake and "intake" not in f.kinds:
@@ -367,7 +388,8 @@ def visible(op: Operation, f: HistoryFilter) -> bool:
     needle = f.text.strip().lower()
     if needle:
         hay = " ".join(f"{e.reason} {e.actor} {e.entity_id} {e.entity}" for e in op.entries).lower()
-        if needle not in hay:
+        named = (names or {}).get(op.operation_id, "").lower()
+        if needle not in hay and needle not in named:
             return False
     return True
 
@@ -440,7 +462,8 @@ class SeasonHistoryService:
         all_ops = operations(e for r in records if (e := entry_of(r)) is not None)
         ops = [seen for o in all_ops if (seen := for_reader(o, rules=f.rules)) is not None]
         readable = [o for o in ops if visible(o, HistoryFilter(rules=f.rules, include_intake=True))]
-        shown = [o for o in ops if visible(o, f)]
+        names = await self._names_for_search(year, ops, f, subjects)
+        shown = [o for o in ops if visible(o, f, names)]
         start = (page - 1) * per_page
         window = shown[start : start + per_page]
         recorded = await self._recorded(year, window)
@@ -463,6 +486,31 @@ class SeasonHistoryService:
         wanted = {e.id for o in ops for e in o.entries}
         return {str(r.id): log_detail(getattr(r, "after", None)) for r in rows if str(r.id) in wanted}
 
+    async def _names_for_search(
+        self, year: int, ops: Sequence[Operation], f: HistoryFilter, subjects: Subjects
+    ) -> dict[str, str]:
+        """`q` matches family and camper names too (H2). Only when there is a `q`, only for the reader's operations
+        that every other filter keeps (any chip, or the picked ones), and in ONE batched name read."""
+        if not f.text.strip():
+            return {}
+        unfiltered = replace(f, text="")
+        candidates = [o for o in ops if visible(o, unfiltered) or visible(o, replace(unfiltered, kinds=frozenset()))]
+        found = [s for o in candidates for e in o.entries if (s := subjects.of(e.entity, e.entity_id)) is not None]
+        if not found:
+            return {}
+        households, persons = await self._reads.fetch_names(
+            year, {s.household_cm_id for s in found}, {s.person_cm_id for s in found if s.person_cm_id}
+        )
+        return {o.operation_id: name_text(o, subjects, households, persons) for o in candidates}
+
+    async def _names(self, year: int, found: Sequence[Subject]) -> tuple[dict[int, str], dict[int, str]]:
+        """One batched name read for an opened line's rows (H2); none when no row names a family."""
+        if not found:
+            return {}, {}
+        return await self._reads.fetch_names(
+            year, {s.household_cm_id for s in found}, {s.person_cm_id for s in found if s.person_cm_id}
+        )
+
     async def operation(self, year: int, operation_id: str, *, rules: bool) -> HistoryOperationDetailOut:
         records, subject_records = await asyncio.gather(
             self._reads.fetch_operation(year, operation_id), self._reads.fetch_subject_records(year)
@@ -477,6 +525,8 @@ class SeasonHistoryService:
             (e, log_detail(getattr(by_id[e.id], "before", None)), log_detail(getattr(by_id[e.id], "after", None)))
             for e in op.entries
         ]
+        about = {e.id: row_subject(e, subjects, before, after) for e, before, after in details}
+        households, persons = await self._names(year, [s for s in about.values() if s is not None])
         rows = [
             HistoryRowOut(
                 at=e.created,
@@ -488,6 +538,9 @@ class SeasonHistoryService:
                 before=before,
                 after=after,
                 changes=[field_change_out(c) for c in field_changes(before, after)],
+                household_cm_id=_household_of(about[e.id]),
+                household_name=_name_of(about[e.id], households),
+                camper_name=_camper_of(about[e.id], persons),
             )
             for e, before, after in details
         ]
