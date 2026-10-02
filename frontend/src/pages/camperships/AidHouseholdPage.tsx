@@ -6,6 +6,7 @@ import { QueryGuard } from '../../components/QueryGuard'
 import { AMBER_NOTE } from '../../components/admin/lodging/lodgingStyles'
 import { type AidAsOf, type AidView } from '../../components/camperships/kit/asOf'
 import { formatLongDate } from '../../components/camperships/kit/dates'
+import { IncomeCorrection } from '../../components/camperships/household/CaseworkForms'
 import { HoldActions } from '../../components/camperships/household/HoldActions'
 import { HoldBanners } from '../../components/camperships/household/HoldBanners'
 import { HouseholdCards } from '../../components/camperships/household/HouseholdCards'
@@ -71,7 +72,16 @@ function HouseholdBody({
           exits={exits}
         />
       ))}
-      <IncomeSection page={page} />
+      <IncomeSection
+        page={page}
+        correct={
+          canWork
+            ? (income, answer) => (
+                <IncomeCorrection page={page} income={income} answer={answer} exits={exits} />
+              )
+            : undefined
+        }
+      />
       <GrantsPostingsSection page={page} />
       <LinksSection page={page} />
       <HistorySection page={page} />
