@@ -127,7 +127,9 @@ async def test_a_split_request_previews_each_payers_whole_dollar_share() -> None
 async def test_an_appeal_before_round_1_is_posted_is_refused_as_the_write_would_be() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted first"):
+    with pytest.raises(
+        DecisionRefusedError, match=r"^Round 1 needs to show as posted before you can start an appeal\. "
+    ):
         await _service(store).preview(EMMA, PreviewIn(round=2, amount=Decimal(400)), can_approve=False)
 
 

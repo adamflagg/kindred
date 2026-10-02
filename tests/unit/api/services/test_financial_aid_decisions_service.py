@@ -355,7 +355,9 @@ async def test_an_appeal_ask_is_recorded_dated_before_anything_is_decided() -> N
 async def test_an_appeal_answers_a_posted_offer() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
-    with pytest.raises(DecisionRefusedError, match="tick Round 1 Posted first"):
+    with pytest.raises(
+        DecisionRefusedError, match=r"^Round 1 needs to show as posted before you can start an appeal\. "
+    ):
         await _service(store).key_ask(EMMA, _ask(2, "400"), ACTOR)
     assert store.operations == []
 
