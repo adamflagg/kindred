@@ -97,6 +97,11 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const head = draft === null ? null : startingPointOf(workspace.options, draft.from_code)
   // Held while anything moves or runs, and while the draft is the same as where it came from: the
   // server would only answer "nothing new to keep" (as the mock disables it).
+  // Said in the strip (or under Keep with no figures), never as a line above the grid, which would
+  // move the slider under the pointer mid-drag (rereview m1). A refused release says its words once:
+  // as the write's error, not again as the live one (F-m6).
+  const liveError =
+    work.live.status === 'error' && work.live.error !== work.error ? work.live.error : null
   const unkeepable = work.busy !== null || moving || (draft?.changes.length ?? 0) === 0
   const keepButtons = (
     <>
@@ -125,10 +130,6 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
       {/* Its line is always there, so nothing jumps under the pointer on every release. */}
       <p className="text-muted-foreground h-5 text-sm">{work.busy}</p>
       {work.error !== null && <p className={AMBER_NOTE}>{work.error}</p>}
-      {/* A refused release says its words once: as the write's error, not again as the live one. */}
-      {work.live.status === 'error' && work.live.error !== work.error && (
-        <p className={AMBER_NOTE}>{work.live.error}</p>
-      )}
       {workspace.snapshot !== null && draft === null && (
         <div className={`${SEASON_CARD} space-y-2`}>
           <p>Start your draft from:</p>
@@ -219,9 +220,15 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 <>
                   <div className="flex flex-wrap gap-2">{keepButtons}</div>
                   <p className="text-muted-foreground text-sm">No figures for this draft yet.</p>
+                  {liveError !== null && <p className={AMBER_NOTE}>{liveError}</p>}
                 </>
               ) : (
-                <ScenarioResults results={results} state={state} actions={keepButtons} />
+                <ScenarioResults
+                  results={results}
+                  state={state}
+                  actions={keepButtons}
+                  liveError={liveError}
+                />
               )}
             </div>
           )}

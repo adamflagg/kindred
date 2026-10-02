@@ -95,9 +95,15 @@ export function readStep(
   return Math.abs(value / range.step - Math.round(value / range.step)) < 1e-9 ? value : null
 }
 
+/** A box holding only a start: nothing, a sign, or a number with its point but no decimals yet. */
+export function isStillTyping(raw: string): boolean {
+  const text = raw.trim().replace('−', '-').replace(/^\+/, '')
+  return text === '' || text === '-' || /^-?\d+\.$/.test(text)
+}
+
 /**
  * Why a typed step can't be taken, briefly (residue 12), or null when it can, or while the box holds
- * only a start ('' or a sign). The box then leaves the draft as it is.
+ * only a start ('', a sign, or '2.'). The box then leaves the draft as it is.
  */
 export function stepNote(
   raw: string,
@@ -105,7 +111,7 @@ export function stepNote(
   unit: 'points' | 'money'
 ): string | null {
   const text = raw.trim().replace('−', '-').replace(/^\+/, '')
-  if (text === '' || text === '-') return null
+  if (isStillTyping(text)) return null
   if (readStep(raw, range) !== null) return null
   if (!/^-?\d+(\.\d+)?$/.test(text)) return 'not a number'
   const value = Number(text)

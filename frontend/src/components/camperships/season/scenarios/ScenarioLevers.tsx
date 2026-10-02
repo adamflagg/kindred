@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 
 import type { ApiAidLeverEffect, ApiAidRulesDocument } from '../../../../types/api-types'
 import { AMBER_NOTE, FIELD_INLINE, GROUP_HEADING } from '../../../admin/lodging/lodgingStyles'
@@ -10,6 +10,7 @@ import {
   SHIFT_RANGE,
   bandWords,
   isDollarForDollar,
+  isStillTyping,
   readStep,
   shiftWords,
   stepNote,
@@ -72,6 +73,36 @@ function Lever({
 }
 
 /**
+ * A typed box moves the draft key by key, so a refused value's valid prefix ("1" of "11") would
+ * already have moved it (rereview I1). This remembers the value when focus enters, and a refusal
+ * puts the draft back there, so letting go records nothing new.
+ */
+function useBackOnRefusal<T>(value: T, onMove: (value: T) => void) {
+  const entered = useRef(value)
+  const strayed = useRef(false)
+  return {
+    enter: () => {
+      entered.current = value
+      strayed.current = false
+    },
+    move: (next: T) => {
+      strayed.current = true
+      onMove(next)
+    },
+    refuse: () => {
+      if (!strayed.current) return
+      strayed.current = false
+      onMove(entered.current)
+    },
+  }
+}
+
+/** parseSetting's reason as a short note; a non-number keeps the box's own "not an amount". */
+function minimumNote(reason: string): string {
+  return reason === 'Not a number' ? 'not an amount' : reason.toLowerCase()
+}
+
+/**
  * A typed box beside a slider (D37): the box takes what a step allows; Enter or leaving it records.
  * Anything else it says briefly, in amber, and leaves the draft as it is (residue 12).
  */
@@ -95,6 +126,7 @@ function StepBox({
   onRelease: () => void
 }) {
   const [text, setText] = useState<string | null>(null)
+  const back = useBackOnRefusal(value, onMove)
   const note = text === null ? null : stepNote(text, range, unit)
   return (
     <>
@@ -105,10 +137,12 @@ function StepBox({
         className={`${FIELD_INLINE} w-20 text-right tabular-nums`}
         value={text ?? String(value)}
         disabled={disabled}
+        onFocus={back.enter}
         onChange={(event) => {
           setText(event.target.value)
           const read = readStep(event.target.value, range)
-          if (read !== null) onMove(read)
+          if (read !== null) back.move(read)
+          else if (stepNote(event.target.value, range, unit) !== null) back.refuse()
         }}
         onBlur={() => {
           setText(null)
@@ -145,8 +179,14 @@ export function ScenarioLevers({
   const effect = (lever: string) => effects.find((e) => e.lever === lever)
   const minimum = pending.minimum ?? document.awards.minimum
   const [minimumText, setMinimumText] = useState<string | null>(null)
-  const minimumProblem =
-    minimumText === null ? null : parseSetting(minimumText, MINIMUM_SPEC).kind === 'invalid'
+  // The pending minimum, not the document's: putting it back to null moves nothing, so a refused
+  // value leaves nothing to record (rereview I1).
+  const minimumBack = useBackOnRefusal(pending.minimum, (back) => onMove({ minimum: back }))
+  const minimumRead =
+    minimumText === null || isStillTyping(minimumText)
+      ? null
+      : parseSetting(minimumText, MINIMUM_SPEC)
+  const minimumProblem = minimumRead?.kind === 'invalid' ? minimumNote(minimumRead.reason) : null
   const dollar = pending.dollar ?? isDollarForDollar(document)
   // Blur too: a pointer-up that never comes (a cancelled drag) must not leave the draft moving.
   const releaseOnLetGo = { onPointerUp: onRelease, onKeyUp: onRelease, onBlur: onRelease }
@@ -232,11 +272,14 @@ export function ScenarioLevers({
                 className={`${FIELD_INLINE} w-20 text-right tabular-nums`}
                 value={minimumText ?? minimum}
                 disabled={disabled}
+                onFocus={minimumBack.enter}
                 onChange={(event) => {
                   setMinimumText(event.target.value)
+                  if (isStillTyping(event.target.value)) return
                   const read = parseSetting(event.target.value, MINIMUM_SPEC)
                   if (read.kind === 'ok' && typeof read.value === 'string')
-                    onMove({ minimum: read.value })
+                    minimumBack.move(read.value)
+                  else minimumBack.refuse()
                 }}
                 onBlur={() => {
                   setMinimumText(null)
@@ -249,8 +292,8 @@ export function ScenarioLevers({
                   }
                 }}
               />
-              <span className={minimumProblem === true ? `${AMBER_NOTE} w-24` : WORDS}>
-                {minimumProblem === true ? 'not an amount' : formatSetting(minimum, ['minimum'])}
+              <span className={minimumProblem === null ? WORDS : `${AMBER_NOTE} w-24`}>
+                {minimumProblem ?? formatSetting(minimum, ['minimum'])}
               </span>
             </>
           }

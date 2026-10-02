@@ -417,4 +417,41 @@ describe('ScenariosTab (§7.4; D38)', () => {
     expect(screen.getByText('from −$10,000 to $10,000')).toBeInTheDocument()
     expect(work.move).not.toHaveBeenCalled()
   })
+  it('puts a refused shift back where it was, though a prefix of it was a step (rereview I1)', async () => {
+    renderTab()
+    const shift = screen.getByRole('textbox', { name: 'Shift every tier, points' })
+    await userEvent.clear(shift)
+    await userEvent.type(shift, '11')
+    expect(work.move).toHaveBeenCalledWith({ tierShift: 1 })
+    expect(work.move).toHaveBeenLastCalledWith({ tierShift: 0 })
+    expect(screen.getByText('from −15 to +10 pts')).toBeInTheDocument()
+  })
+
+  it('puts a refused band width back where it was (rereview I1)', async () => {
+    renderTab()
+    const band = screen.getByRole('textbox', { name: 'Widen every band, dollars' })
+    await userEvent.clear(band)
+    await userEvent.type(band, '20000')
+    expect(work.move).toHaveBeenCalledWith({ bandDelta: 2000 })
+    expect(work.move).toHaveBeenLastCalledWith({ bandDelta: 0 })
+  })
+
+  it("puts a refused minimum back as it was, saying the box's reason (rereview I1, m3)", async () => {
+    renderTab()
+    const box = screen.getByRole('textbox', { name: 'Minimum award, dollars' })
+    await userEvent.clear(box)
+    await userEvent.type(box, '12.345')
+    expect(work.move).toHaveBeenCalledWith({ minimum: '12.34' })
+    expect(work.move).toHaveBeenLastCalledWith({ minimum: null })
+    expect(screen.getByText('cents go to two places')).toBeInTheDocument()
+  })
+
+  it('says a failed live answer in the strip, not in a line that pushes the grid (rereview m1)', () => {
+    const refused = 'Bands $10,000 narrower would leave band 1 empty or below $0'
+    work.pending = { ...NO_PENDING, bandDelta: -10000 }
+    work.live = { status: 'error', error: refused }
+    renderTab()
+    expect(within(screen.getByTestId('scenario-results')).getByText(refused)).toBeInTheDocument()
+    expect(screen.getAllByText(refused)).toHaveLength(1)
+  })
 })

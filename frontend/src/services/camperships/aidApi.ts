@@ -663,7 +663,7 @@ export function keepAidScenario(
 
 /**
  * What one step of each sizing setting moves Round 1 by (§7.4), the dollar-for-dollar switch included
- * (D137). The body is the server's `ViewIn`: the document, and optionally a request set (D138).
+ * (D137). The body is the draft's document alone (Decision 22).
  */
 export function fetchAidScenarioSensitivity(
   fetchWithAuth: FetchWithAuth,
