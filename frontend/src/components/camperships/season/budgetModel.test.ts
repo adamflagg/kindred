@@ -445,16 +445,17 @@ describe('below the line (§5.3; D44, D121; read 3)', () => {
 })
 
 describe('in the budget, by decision type (read 3; owner ⚠2: lead with own)', () => {
-  it("leads with each type's own, counts requests, and notes the rounds' total when it differs", () => {
+  it("leads with each type's own, then its rounds' total, two plain figures (final review ⚠1)", () => {
     const lines = budgetTypeLines(BUDGET, null)
     expect(lines.map((l) => [l.key, l.label, l.lead, l.amount])).toEqual([
-      ['type:standard', 'Standard award', 737400, 752510],
-      ['type:appeal', 'Appeal', 95540, 95000],
+      ['type:standard', 'Standard award', 14400, 751970],
+      ['type:appeal', 'Appeal', 4200, 95540],
+      // The key-null line leads with the $0 own the server sends.
       ['type:none', 'No named decision type', 0, 1200],
     ])
     expect(lines[0]?.count).toEqual({ families: 324, requests: 345 })
-    expect(lines[0]?.note).toBe('in rounds totalling $752,510')
-    expect(lines[2]?.note).toBe('in rounds totalling $1,200')
+    // No "in rounds totalling" note: the rounds' total is its own column.
+    for (const line of lines) expect(line).not.toHaveProperty('note')
   })
 
   it('never lists an outside-budget type, and keeps the key-null line for one pool', () => {
@@ -466,11 +467,11 @@ describe('in the budget, by decision type (read 3; owner ⚠2: lead with own)', 
     expect(budgetTypeLines(BUDGET, '').map((l) => l.key)).toEqual(['type:none'])
   })
 
-  it('has no note when own and amount agree to the cent', () => {
+  it("gives one pool's own and rounds' total", () => {
     const lines = budgetTypeLines(BUDGET, 'pool_b')
     expect(lines).toHaveLength(1)
-    expect(lines[0]?.lead).toBe(52400)
-    expect(lines[0]?.note).toBeNull()
+    expect(lines[0]?.lead).toBe(2400)
+    expect(lines[0]?.amount).toBe(52400)
   })
 
   it('is empty for a pool the season does not have', () => {
@@ -484,7 +485,6 @@ describe('in the budget, by decision type (read 3; owner ⚠2: lead with own)', 
       expect(line.lead).toBeNull()
       expect(line.amount).toBeNull()
       expect(line.count).toBeNull()
-      expect(line.note).toBeNull()
     }
   })
 })
