@@ -84,9 +84,9 @@ function stripTarget(
     case 'needs_offer':
       return queues ? { view: viewSlug('needs_offer'), counted: '1' } : null
     case 'posted':
-      return { view: 'all', round: String(round), tick: 'posted', counted: '1' }
+      return { view: viewSlug('all'), round: String(round), tick: 'posted', counted: '1' }
     case 'accepted':
-      return { view: 'all', round: String(round), tick: 'accepted', counted: '1' }
+      return { view: viewSlug('all'), round: String(round), tick: 'accepted', counted: '1' }
     case 'held':
       return queues ? { view: viewSlug('holds') } : null
     case 'pending_approval':
@@ -262,9 +262,21 @@ export function cellHref(
   }
   switch (column) {
     case 'posted':
-      return requests(view, { view: 'all', ...pool, ...round, tick: 'posted', counted: '1' })
+      return requests(view, {
+        view: viewSlug('all'),
+        ...pool,
+        ...round,
+        tick: 'posted',
+        counted: '1',
+      })
     case 'accepted':
-      return requests(view, { view: 'all', ...pool, ...round, tick: 'accepted', counted: '1' })
+      return requests(view, {
+        view: viewSlug('all'),
+        ...pool,
+        ...round,
+        tick: 'accepted',
+        counted: '1',
+      })
     case 'needs_offer':
       if (!opensQueueViews(view)) return null
       return requests(view, { view: viewSlug('needs_offer'), ...pool, counted: '1' })
@@ -475,8 +487,10 @@ const countCsv = (count: ApiAidCount | null | undefined): string =>
   count == null ? '' : String(count.requests)
 
 /**
- * Exactly the lines on screen (§11), one per pool, round and total; Pending approval as its own
- * column, each dollar column followed by its request count (empty where the server sent none).
+ * The table's lines on screen (§11), one per pool, round and total, as folded and scoped; Pending
+ * approval as its own column, each dollar column followed by its request count (empty where the
+ * server sent none). The strip, below the line and the decision-type block are not in it (plan
+ * Decision 7, M8).
  */
 export function budgetCsvRows(rows: readonly BudgetRow[]): string[][] {
   return rows

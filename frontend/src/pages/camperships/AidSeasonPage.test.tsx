@@ -1,12 +1,14 @@
 /**
- * Season's page (spec §7; D44, D76): its URL-held tabs, who sees which, and the as-of only on
- * Rounds & budget. The tabs' own bodies are mocked: each has its own tests.
+ * Season's page (spec §7; D44, D76): its URL-held tabs, who sees which, and the as-of pill on every
+ * tab while the date is past (only Rounds & budget shows that date; I6). The tabs' own bodies are
+ * mocked: each has its own tests.
  */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BUDGET } from '../../components/camperships/season/budgetFixtures'
+import type { ApiAidBudget } from '../../types/api-types'
 import AidSeasonPage from './AidSeasonPage'
 
 let granted: string[] = []
@@ -15,12 +17,10 @@ vi.mock('../../hooks/usePermissions', () => ({
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 vi.mock('../PermissionDeniedPage', () => ({ default: () => <div>Permission denied</div> }))
+// A warm cache: the read returns its data whether or not a caller enables it (Task 5 m2).
+let budget: ApiAidBudget = BUDGET
 vi.mock('../../hooks/camperships/useAidBudget', () => ({
-  useAidBudget: ({ enabled = true }: { enabled?: boolean } = {}) => ({
-    data: enabled ? BUDGET : undefined,
-    isLoading: false,
-    error: null,
-  }),
+  useAidBudget: () => ({ data: budget, isLoading: false, error: null }),
 }))
 vi.mock('../../components/camperships/season/RoundsBudgetTab', () => ({
   RoundsBudgetTab: () => <div>Rounds and budget body</div>,
@@ -52,6 +52,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   granted = REGISTRAR
+  budget = BUDGET
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-10T18:00:00Z'))
 })
@@ -73,6 +74,19 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
     expect(screen.getByText('$1,043,600')).toBeInTheDocument()
     expect(screen.getByText('priced by rules v3')).toBeInTheDocument()
     expect(screen.getByText('As of Mar 15, 2027')).toBeInTheDocument()
+  })
+
+  it('says "no approved rules yet" in the band when no version prices the season (Task 5 m5)', () => {
+    budget = { ...BUDGET, rules_version: null }
+    renderAt('/aid/season/rounds-budget')
+    expect(screen.getByText('no approved rules yet')).toBeInTheDocument()
+    expect(screen.queryByText(/priced by rules/)).toBeNull()
+  })
+
+  it("shows the band's Allocated on Rounds & budget only, even with the read cached (Task 5 m2)", () => {
+    renderAt('/aid/season/history')
+    expect(screen.queryByText('$1,043,600')).toBeNull()
+    expect(screen.queryByText(/priced by rules/)).toBeNull()
   })
 
   it('hides Scenarios from the registrar and refuses its link (D76)', () => {
@@ -101,7 +115,11 @@ describe('AidSeasonPage (spec §7; D44, D76)', () => {
 
   it('says History waits for its server read, pointing finance at the scenario trail', () => {
     const first = renderAt('/aid/season/history')
-    expect(screen.getByText("The season's log isn't built yet.")).toBeInTheDocument()
+    const heading = screen.getByText("The season's log isn't built yet.")
+    // The same p-6 card as the page's other placeholders (Task 5 m1).
+    expect(heading.parentElement?.className).toBe(
+      'card-lodge text-muted-foreground space-y-1 p-6 text-sm'
+    )
     expect(screen.queryByText(/Scenarios › Trail/)).toBeNull()
     first.unmount()
     granted = FINANCE
