@@ -68,3 +68,10 @@ def test_who_counts_names_the_closed_session_grant_that_still_counts() -> None:
     not aid-eligible still counts when the same person also attended an aid-eligible session in that group."""
     text = BY_KEY["dev_recipients"].text
     assert "grant on a session that is not aid-eligible still counts" in text
+
+
+def test_total_requests_counts_only_live_requests_of_campers_who_attended() -> None:
+    """29b: a cancelled or closed request is not an attended request."""
+    text = BY_KEY["need"].text
+    assert "live requests of campers who attended" in text
+    assert "cancelled or closed request" in text

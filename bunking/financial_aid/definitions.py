@@ -363,7 +363,7 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         term="Need",
         text=(
             "Need: {camp}'s awards in the rounds before the latest ask + the latest ask, never less than any earlier "
-            "ask's own figure. Total Requests = Σ need, for campers who attended; outside grants are never in it. % "
+            "ask's own figure. Total Requests = Σ need of the live requests of campers who attended; a cancelled or closed request and outside grants are never in it. % "
             "of need met (Summer and Quest) = Σ min(all money the camper got, the camper's need) ÷ Σ need."
         ),
         spec="§5.10",
