@@ -5,6 +5,7 @@ import type { ApiAidHouseholdRequest } from '../../../types/api-types'
 import { ACTION_LINK, BUTTON_SECONDARY } from '../../admin/lodging/lodgingStyles'
 import { formatShortDate } from '../kit/dates'
 import { codeWords } from '../requests/attention'
+import { isLiveRequest } from '../requests/gridEditor'
 import { fixLink, UNRELEASABLE_CODES } from './holds'
 import { ReasonForm } from './ReasonForm'
 
@@ -20,7 +21,9 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
   const close = () => setOpen(false)
   const fix = fixLink(code, requestId)
   // The server's own severity: only a hold stops the award, so only a hold has anything to release.
+  const live = isLiveRequest(request.row)
   const releasable =
+    live &&
     !UNRELEASABLE_CODES.has(code) &&
     request.row.holds.some((hold) => hold.code === code && hold.severity === 'hold')
 
@@ -52,7 +55,7 @@ export function HoldActions({ request, code }: { request: ApiAidHouseholdRequest
           {fix.label}
         </a>
       )}
-      {code === 'manual_hold' && (
+      {live && code === 'manual_hold' && (
         <button type="button" className={BUTTON_SECONDARY} onClick={() => setOpen(true)}>
           Lift…
         </button>
@@ -71,6 +74,8 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
   const release = useAidHoldRelease()
   const [putting, setPutting] = useState<string | null>(null)
   const requestId = request.row.request_id
+  // The server refuses a hold change on a withdrawn or duplicate request: no button to put one back.
+  const live = isLiveRequest(request.row)
   if (request.row.released_holds.length === 0) return null
   return (
     <div className="basis-full space-y-1 text-xs">
@@ -91,9 +96,11 @@ export function ReleasedHolds({ request }: { request: ApiAidHouseholdRequest }) 
               onCancel={() => setPutting(null)}
             />
           ) : (
-            <button type="button" className={ACTION_LINK} onClick={() => setPutting(held.code)}>
-              Put back…
-            </button>
+            live && (
+              <button type="button" className={ACTION_LINK} onClick={() => setPutting(held.code)}>
+                Put back…
+              </button>
+            )
           )}
         </div>
       ))}

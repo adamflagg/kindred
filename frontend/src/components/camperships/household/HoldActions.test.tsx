@@ -92,3 +92,40 @@ describe('HoldActions (Decision 25)', () => {
     })
   })
 })
+
+describe('holds on a request that is no longer live (m2)', () => {
+  const withdrawn = (over: Record<string, unknown>) =>
+    householdRequest(gridRow({ ...ROW_EMMA, request_status: 'withdrawn', ...over }))
+
+  it('offers no Release or Lift', () => {
+    const request = withdrawn({
+      holds: [
+        { code: 'py_confirm_tier_change', severity: 'hold', message: 'm' },
+        { code: 'manual_hold', severity: 'hold', message: 'm' },
+      ],
+    })
+    render(
+      <>
+        <HoldActions request={request} code="py_confirm_tier_change" />
+        <HoldActions request={request} code="manual_hold" />
+      </>
+    )
+    expect(screen.queryByRole('button', { name: 'Release…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Lift…' })).toBeNull()
+  })
+
+  it('offers no Put back', () => {
+    const request = withdrawn({
+      released_holds: [
+        {
+          code: 'py_confirm_tier_change',
+          note: 'ok',
+          released_by: 'Emma Johnson',
+          released_at: '2027-03-01T10:00:00Z',
+        },
+      ],
+    })
+    render(<ReleasedHolds request={request} />)
+    expect(screen.queryByRole('button', { name: 'Put back…' })).toBeNull()
+  })
+})
