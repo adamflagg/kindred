@@ -254,3 +254,19 @@ def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_st
     assert (two.asked, two.asks, two.average_ask) == (Decimal(7000), 2, Decimal("3500.00"))
     assert (two.live_asked, two.pct_of_ask) == (Decimal(4000), Decimal("37.5"))
     assert two.pct_of_ask_with_grants == Decimal("37.5")
+
+
+def test_awarded_is_posted_alone_on_either_basis_so_amount_is_awarded_plus_decided() -> None:
+    """Slice 4 ask 2 (built on the D5/D80 ruling): Posted alone beside the decided basis's `amount`, net of clawback,
+    live requests only (D80, D129, D54)."""
+    requests = [
+        req("reqemma00000001", rnd(1, ask="4000", posted="1500")),
+        req("reqliam00000001", rnd(1, ask="2000", decided="1000"), household=1000002),
+        req("reqnoah00000001", rnd(1, ask="3000", posted="900"), household=1000003, standing="cancelled"),
+        req("reqoliv00000001", rnd(1, ask="2500", posted="700", clawed_back=True), household=1000004),
+    ]
+    posted = _tier(statistics(requests, RULES, table="camp", round_=1).rows, 2)
+    both = _tier(statistics(requests, RULES, table="camp", round_=1, basis="posted_and_decided").rows, 2)
+    assert (posted.awarded, posted.amount) == (Decimal(1500), Decimal(1500))
+    assert (both.awarded, both.decided, both.amount) == (Decimal(1500), Decimal(1000), Decimal(2500))
+    assert both.amount == both.awarded + both.decided

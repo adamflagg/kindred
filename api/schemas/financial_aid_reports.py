@@ -51,6 +51,7 @@ class StatisticsRowOut(BaseModel):
     average_ask: float | None
     amount: float  # awarded (Posted); with basis posted_and_decided, plus `decided`
     decided: float  # "Decided (not yet offered)": 0 on the posted basis
+    awarded: float  # Posted alone (D80), net of clawback, live requests, on either basis: amount − decided
     awarded_count: int  # live apps whose AWARDED (Posted) money is above $0: the average award's population
     decided_count: int  # live apps with decided money not yet offered (0 on the posted basis)
     average_award: float | None  # awarded ÷ awarded_count, on either basis (O-930-16; D130)
@@ -66,6 +67,7 @@ class CancelledRowOut(BaseModel):
     )
     reason_label: str
     pool: str | None
+    pool_label: str  # the season's rules' label; "No pool" when pool is null; the key when the rules don't name it
     round: int
     requests: int = Field(
         description="Requests in THIS reason, pool and round row. Rows are per reason, pool and round, so one request "
@@ -106,6 +108,7 @@ class StatisticsResponse(BaseModel):
     rules_version: int | None
     basis: StatisticsBasis
     pct_of_ask_label: str  # the % of ask column's heading: names its numerator on the decided basis
+    pct_of_ask_with_grants_label: str  # "% of ask incl. grants": names its numerator on the decided basis (ask 4)
     table: str | None  # the award-table chip; None: All award tables
     round: int | None  # the round chip; None: All rounds
     tables: list[ChipOut]  # every award table of the rules, for the chips

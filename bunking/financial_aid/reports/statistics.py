@@ -12,6 +12,8 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
                   one, and the average ask divides by it.
   amount          awarded (D80, Posted net of clawback, the camp's own money) on live requests; on the
                   "posted_and_decided" basis (D130) plus decided and not yet offered, broken out as `decided`.
+  awarded         Posted alone (D80), on either basis: on "posted" it is `amount`; on "posted_and_decided" it is
+                  `amount` − `decided` (slice 4 ask 2).
   awarded_count   live requests whose AWARDED (Posted) money is above $0, on either basis; the average award is
                   awarded ÷ this count (D80, labelled with its population: O-930-16), never decided money (D130:
                   decided is never called awarded). `decided_count` counts the requests with decided money apart.
@@ -54,6 +56,9 @@ WITHDRAWN_REASON: Final = "withdrawn_in_kindred"
 
 PCT_OF_ASK_LABEL: Final = "% of ask"
 PCT_OF_ASK_DECIDED_LABEL: Final = "% of ask (posted + decided)"
+# Slice 4 ask 4: "% of ask incl. grants" names its decided numerator the same way (owner B4a (b)).
+PCT_WITH_GRANTS_LABEL: Final = "% of ask incl. grants"
+PCT_WITH_GRANTS_DECIDED_LABEL: Final = "% of ask incl. grants (posted + decided)"
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,7 @@ class StatisticsRow:
     average_ask: Decimal | None
     amount: Decimal
     decided: Decimal
+    awarded: Decimal  # Posted alone (D80), net of clawback, live requests, on either basis: amount − decided
     awarded_count: int
     decided_count: int
     average_award: Decimal | None
@@ -210,6 +216,7 @@ def _row(
         average_ask=average(asked, asks),
         amount=amount,
         decided=decided,
+        awarded=awarded,
         awarded_count=awarded_count,
         decided_count=decided_count,
         average_award=average(awarded, awarded_count),
