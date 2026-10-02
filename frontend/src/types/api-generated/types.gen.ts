@@ -3702,7 +3702,8 @@ export type DuplicateMark = {
  * the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
  * move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
  * finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
- * already pending.
+ * already pending. `total_decided` is the request's total decided after the edit, defined as the grid row's
+ * (every round, a clawed-back one included): the figure the row will carry once the edit is saved.
  */
 export type EditorPreviewOut = {
   /**
@@ -3737,6 +3738,10 @@ export type EditorPreviewOut = {
    * Pending Approval
    */
   pending_approval: boolean
+  /**
+   * Total Decided
+   */
+  total_decided?: number | null
 }
 
 /**
