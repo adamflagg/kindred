@@ -10,8 +10,9 @@ import { useAidScenarioCompare, useAidScenarioTrail } from './useAidScenarioComp
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
+let authLoading = false
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+  useAuth: () => ({ isLoading: authLoading, user: { id: 'u1' } }),
 }))
 vi.mock('../useCurrentYear', () => ({ useYear: () => 2027 }))
 
@@ -23,6 +24,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+  authLoading = false
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) =>
     Promise.resolve(
@@ -61,5 +63,41 @@ describe('useAidScenarioTrail', () => {
     const { result } = renderHook(() => useAidScenarioTrail(2), { wrapper })
     await waitFor(() => expect(result.current.data).toEqual(TRAIL))
     expect(url()).toBe('/api/financial-aid/scenarios/2027/trail?page=2&per_page=50')
+  })
+})
+
+describe('the gates and the refusals both reads share', () => {
+  const refuse = (status: number) =>
+    fetchSpy.mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ detail: 'No deadline yet' }), { status }))
+    )
+
+  it.each([404, 422])('answers a %i at once, without the client retrying it', async (status) => {
+    client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
+    refuse(status)
+    const compare = renderHook(() => useAidScenarioCompare([], { kind: 'deadline' }, false), {
+      wrapper,
+    })
+    const trail = renderHook(() => useAidScenarioTrail(1), { wrapper })
+    await waitFor(() => expect(compare.result.current.isError).toBe(true))
+    await waitFor(() => expect(trail.result.current.isError).toBe(true))
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends the trail through fetchWithAuth too', async () => {
+    const { result } = renderHook(() => useAidScenarioTrail(1), { wrapper })
+    await waitFor(() => expect(result.current.data).toEqual(TRAIL))
+    const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
+  })
+
+  it('waits for auth to settle before asking', async () => {
+    authLoading = true
+    const compare = renderHook(() => useAidScenarioCompare([], { kind: 'all' }, false), { wrapper })
+    const trail = renderHook(() => useAidScenarioTrail(1), { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(compare.result.current.fetchStatus).toBe('idle')
+    expect(trail.result.current.fetchStatus).toBe('idle')
   })
 })

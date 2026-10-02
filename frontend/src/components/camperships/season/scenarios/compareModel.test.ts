@@ -64,9 +64,50 @@ describe('the compare rows (D38; RPT-17, RPT-32)', () => {
       columns.map((c) => c.committee ?? null),
       1
     )
-    expect(rows.map((r) => r.label)).toEqual(['Tier 1', 'Tier 2'])
-    expect(rows[1]?.cells[0]?.text).toBe('$385,000 · 61.2% of ask')
+    expect(rows.map((r) => r.label).slice(0, 2)).toEqual(['Tier 1', 'Tier 2'])
+    expect(rows[1]?.cells[0]?.text).toBe('$383,800 · 63.1% of ask')
     expect(tierRows([null], 2)).toEqual([])
+  })
+
+  it('says what the tier rows leave out: held requests and Round 1 no tier holds', () => {
+    const views = columns.map((c) => c.committee ?? null)
+    const rows = tierRows(views, 1)
+    expect(rows.map((r) => r.label)).toEqual(['Tier 1', 'Tier 2', 'Held', 'In no tier'])
+    // 3 + 1 held, $6,000 + $1,500 asked: counted apart, out of the tier money and pct of ask.
+    expect(rows.find((r) => r.key === 'r1:held')?.cells[0]?.text).toBe('4 · $7,500 asked')
+    expect(rows.find((r) => r.key === 'r1:none')?.cells.map((c) => c.text)).toEqual([
+      '$1,200',
+      '$1,200',
+    ])
+  })
+
+  it('leaves the held and in-no-tier rows out when every column holds none', () => {
+    const quiet = compareOut().columns.map((c) => {
+      const view = c.committee
+      if (!view) throw new Error('the fixture has committees')
+      return {
+        ...view,
+        not_in_tiers: 0,
+        round1_by_tier: view.round1_by_tier.map((r) => ({ ...r, held: 0, held_asked: 0 })),
+      }
+    })
+    expect(tierRows(quiet, 1).map((r) => r.label)).toEqual(['Tier 1', 'Tier 2'])
+  })
+
+  it('does the same for Round 2: appeals held apart, and Round 2 no tier holds', () => {
+    const views = columns.map((c) =>
+      c.committee
+        ? {
+            ...c.committee,
+            round2_not_in_tiers: 300,
+            round2_by_tier: c.committee.round2_by_tier.map((r) => ({ ...r })),
+          }
+        : null
+    )
+    const rows = tierRows(views, 2)
+    expect(rows.map((r) => r.label)).toEqual(['Tier 1', 'Held asks', 'In no tier'])
+    expect(rows.find((r) => r.key === 'r2:held')?.cells[0]?.text).toBe('$2,000')
+    expect(rows.find((r) => r.key === 'r2:none')?.cells[0]?.text).toBe('$300')
   })
 
   it("heads last season's column, or says it isn't loaded", () => {

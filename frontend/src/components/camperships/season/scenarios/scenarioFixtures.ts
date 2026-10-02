@@ -189,12 +189,14 @@ function committee(round1: number): ApiAidCommittee {
         tier: 2,
         requests: 150,
         families: 140,
-        asked: 300000,
-        average_ask: 2000,
+        asked: 600000,
+        average_ask: 4000,
         fee_pct: null,
-        pct_of_ask: 61.2,
-        round1: round1 - 350000,
-        average_round1: 1000,
+        // The server's definition: Round 1 of the requests WITH an ask over asked. The 2 no-ask requests
+        // hold $5,000 of the tier's Round 1 and stay out of the percentage.
+        pct_of_ask: Math.round(((round1 - 351200 - 5000) / 600000) * 1000) / 10,
+        round1: round1 - 351200,
+        average_round1: 2500,
         held: 1,
         held_asked: 1500,
         no_ask: 2,
@@ -215,7 +217,8 @@ function committee(round1: number): ApiAidCommittee {
         held_asked: 2000,
       },
     ],
-    not_in_tiers: 0,
+    // A withdrawn request's posted round: in no tier row; All's rows + this = round1.
+    not_in_tiers: 1200,
     round2_not_in_tiers: 0,
   }
 }
