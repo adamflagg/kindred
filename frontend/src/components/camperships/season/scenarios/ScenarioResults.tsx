@@ -6,6 +6,17 @@ import { TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from '../seasonStyles'
 import { resultLines } from './scenarioModel'
 
 /**
+ * What the figures shown are. While the live answer is on its way, or failed, they are the draft as
+ * recorded, and say so (T17-m8).
+ */
+const STATE_WORDS = {
+  recorded: 'The draft as recorded',
+  moving: 'Moving: recorded when you let go',
+  updating: 'The draft as recorded',
+  failed: "The live figures couldn't be worked out: these are the draft as recorded",
+} as const
+
+/**
  * A scenario's figures (spec §7.4; results.py): the strip's one line, then where Round 1 lands by
  * pool and by tier. `state` says whether these are the draft as recorded or a slider still moving.
  */
@@ -14,18 +25,13 @@ export function ScenarioResults({
   state,
 }: {
   results: ApiAidScenarioResults
-  state: 'recorded' | 'moving' | 'working'
+  state: 'recorded' | 'moving' | 'updating' | 'failed'
 }) {
   return (
     <div className="space-y-2" data-testid="scenario-results">
       <div className="card-lodge flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 text-sm">
-        <span className="text-muted-foreground text-xs">
-          {state === 'recorded'
-            ? 'The draft as recorded'
-            : state === 'moving'
-              ? 'Moving: recorded when you let go'
-              : 'Working it out…'}
-        </span>
+        <span className="text-muted-foreground text-xs">{STATE_WORDS[state]}</span>
+        {state === 'updating' && <span className="text-muted-foreground text-xs">updating…</span>}
         {resultLines(results).map((line) => (
           <span key={line.key} className="whitespace-nowrap">
             <span className="text-muted-foreground">{line.label}</span>{' '}
@@ -41,10 +47,12 @@ export function ScenarioResults({
             <tr>
               <th className={TH_LABEL}>Pool</th>
               <th className={TH_MONEY}>Round 1</th>
-              <th className={TH_MONEY}>Round 2</th>
+              {/* The strip's own qualifiers: Round 2 is no estimate (plan ruling), and Remaining
+                  takes every round off (T17-⚠1, owner queue). */}
+              <th className={TH_MONEY}>Round 2 (appeals keyed so far)</th>
               <th className={TH_MONEY}>Round 3</th>
               <th className={TH_MONEY}>Round 1 remaining</th>
-              <th className={TH_MONEY}>Remaining</th>
+              <th className={TH_MONEY}>Remaining (every round)</th>
             </tr>
           </thead>
           <tbody>

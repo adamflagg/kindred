@@ -111,7 +111,8 @@ export function ScenarioLevers({
   const minimumProblem =
     minimumText === null ? null : parseSetting(minimumText, MINIMUM_SPEC).kind === 'invalid'
   const dollar = pending.dollar ?? isDollarForDollar(document)
-  const releaseOnLetGo = { onPointerUp: onRelease, onKeyUp: onRelease }
+  // Blur too: a pointer-up that never comes (a cancelled drag) must not leave the draft moving.
+  const releaseOnLetGo = { onPointerUp: onRelease, onKeyUp: onRelease, onBlur: onRelease }
 
   return (
     <div className="card-lodge divide-border divide-y px-3 py-1" data-testid="scenario-levers">

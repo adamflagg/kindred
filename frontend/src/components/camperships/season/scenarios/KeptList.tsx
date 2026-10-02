@@ -1,5 +1,5 @@
 import type { ApiAidScenarioOption } from '../../../../types/api-types'
-import { formatShortDate } from '../../kit/dates'
+import { campToday, formatShortDate } from '../../kit/dates'
 import { keptGroups } from './scenarioModel'
 
 const CODE =
@@ -8,13 +8,11 @@ const CODE =
 function Row({
   option,
   current,
-  disabled,
   onLoad,
   compare,
 }: {
   option: ApiAidScenarioOption
   current: boolean
-  disabled: boolean
   onLoad: (code: string) => void
   compare: { readonly ticked: boolean; readonly onToggle: (code: string) => void } | undefined
 }) {
@@ -33,15 +31,14 @@ function Row({
       )}
       <button
         type="button"
-        disabled={disabled}
-        className="flex flex-1 items-start gap-2 text-left hover:underline disabled:opacity-50"
+        className="flex flex-1 items-start gap-2 text-left hover:underline"
         onClick={() => onLoad(option.code)}
       >
         <span className={CODE}>{option.code}</span>
         <span className="flex-1 text-sm">
           {option.label}
           <span className="text-muted-foreground block text-xs">
-            {`kept by ${option.kept_by}, ${formatShortDate(option.kept_at)}`}
+            {`kept by ${option.kept_by}, ${formatShortDate(campToday(new Date(option.kept_at)))}`}
             {option.stale ? ' · figures from an older snapshot' : ''}
           </span>
         </span>
@@ -58,14 +55,12 @@ function Row({
 export function KeptList({
   options,
   current,
-  disabled,
   onLoad,
   compare,
 }: {
   options: readonly ApiAidScenarioOption[]
   /** The kept option the draft comes from. */
   current: string | null
-  disabled: boolean
   onLoad: (code: string) => void
   /** Ticking kept options to compare beside the draft, up to four (D38). */
   compare?:
@@ -86,7 +81,6 @@ export function KeptList({
           <Row
             option={group.start}
             current={group.start.code === current}
-            disabled={disabled}
             onLoad={onLoad}
             compare={tick(group.start.code)}
           />
@@ -96,7 +90,6 @@ export function KeptList({
                 key={variant.code}
                 option={variant}
                 current={variant.code === current}
-                disabled={disabled}
                 onLoad={onLoad}
                 compare={tick(variant.code)}
               />
