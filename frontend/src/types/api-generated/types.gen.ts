@@ -15065,6 +15065,7 @@ export type TodayLineOut = {
     | 'would_change'
     | 'sources'
     | 'intake'
+    | 'equity_field_never_true'
   /**
    * Families
    */
@@ -15076,7 +15077,7 @@ export type TodayLineOut = {
   /**
    * Item Kind
    */
-  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions'
+  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields'
   /**
    * Reasons
    */
