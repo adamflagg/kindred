@@ -86,6 +86,7 @@ export function MakeRulesDraftDialog({
     <Modal
       isOpen={code !== null}
       onClose={close}
+      closeDisabled={promote.isPending}
       title={`Make ${code ?? ''} the rules draft`}
       size="lg"
       footer={

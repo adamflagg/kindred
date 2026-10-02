@@ -547,6 +547,21 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
     expect(screen.getByTestId('promotion-preview')).toBeInTheDocument()
   })
 
+  it('dims the header X too while the write runs, and frees it after', async () => {
+    promoteBusy = true
+    const view = await open()
+    const x = screen.getByRole('button', { name: 'Close modal' })
+    expect(x).toBeDisabled()
+    expect(x).toHaveClass('disabled:opacity-50')
+    promoteBusy = false
+    view.rerender(
+      <MemoryRouter initialEntries={['/aid/season/scenarios?compare=A1']}>
+        <ScenariosTab />
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('button', { name: 'Close modal' })).toBeEnabled()
+  })
+
   it('says "Nothing was changed" on a refusal, and not when it cannot tell', async () => {
     promoteRefusal = 'No such option'
     promoteStatus = 422
