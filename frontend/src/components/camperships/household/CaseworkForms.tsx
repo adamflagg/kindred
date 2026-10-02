@@ -340,7 +340,12 @@ export function ShareForm({
           onChange={(event) => setValue(event.target.value)}
           className={`${FIELD_INLINE} w-24 text-right tabular-nums`}
         />
+        <span>%</span>
       </label>
+      <p className="text-muted-foreground text-xs">
+        With one other household on this request, the server fills the other household&apos;s share.
+        A lone partial share holds the request until a second share is added.
+      </p>
       <ReasonInput value={reason} onChange={setReason} />
     </FormShell>
   )
@@ -435,8 +440,10 @@ export function DuplicateForm({
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (options.length === 0) {
-    if (application.isLoading) {
-      return <span className="text-muted-foreground text-xs">Looking for the request to keep…</span>
+    if (application.isLoading) return <Note onBack={onDone}>Looking for the request to keep…</Note>
+    // The intake-named holder is only reachable through this read: a failure is not "nothing here".
+    if (application.error) {
+      return <Note onBack={onDone}>Couldn&apos;t load the request intake named for this one.</Note>
     }
     return (
       <Note onBack={onDone}>
@@ -511,7 +518,7 @@ export function HeadcountForm({
   const [reason, setReason] = useState('')
   const { busy, error, attempt } = useSubmit()
   if (application.isLoading) {
-    return <span className="text-muted-foreground text-xs">Loading the headcount…</span>
+    return <Note onBack={onDone}>Loading the headcount…</Note>
   }
   // Fields over figures that never loaded would be typed blind.
   if (current === null) {
