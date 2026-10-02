@@ -261,6 +261,15 @@ class CountOut(BaseModel):
     requests: int
 
 
+class UnconfirmedOut(BaseModel):
+    """Owner ruling ⚠10 (2026-10-02): the part of this cell's Posted CampMinder's live camp aid doesn't cover yet,
+    filled oldest round first, per payer share. The amber line: "count not yet confirmed · amount"."""
+
+    count: int  # requests (a total cell counts each request once)
+    families: int
+    amount: float
+
+
 class CellOut(BaseModel):
     allocated: float | None
     posted: float | None  # None: a past read whose posted money can't be replayed exactly
@@ -268,6 +277,7 @@ class CellOut(BaseModel):
     needs_offer: float | None
     pending_approval: float | None
     remaining: float | None
+    unconfirmed: UnconfirmedOut | None = None  # None: no ledger read (a past date), or before 2027
 
 
 class RoundCellOut(CellOut):
@@ -305,6 +315,8 @@ class RoundCountsOut(BaseModel):
     accepted: CountOut | None
     held: CountOut | None
     pending_approval: CountOut | None
+    awaiting_sync: CountOut | None = None
+    not_reconciled: CountOut | None = None
 
 
 class BudgetResponse(BaseModel):

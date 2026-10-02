@@ -86,6 +86,7 @@ from api.schemas.financial_aid_decisions import (
     SessionCandidateOut,
     ShareConfirmationOut,
     TodoOut,
+    UnconfirmedOut,
     UnpostIn,
 )
 from api.schemas.financial_aid_intake import IssueOut
@@ -163,6 +164,7 @@ from api.services.financial_aid_reconciliation import (
     override_split,
     placeable,
     request_scope,
+    round_ledger,
     undone_rounds,
 )
 from api.services.financial_aid_request_overrides import (
@@ -206,6 +208,7 @@ from bunking.financial_aid.decisions import (
     PoolBudget,
     PricedRequest,
     RequestToPrice,
+    RoundLedger,
     RoundState,
     SeasonBudget,
     apply_event,
@@ -726,6 +729,18 @@ def _count(count: Count) -> CountOut:
     return CountOut(families=count.families, requests=count.requests)
 
 
+def _unconfirmed(cell: Cell) -> UnconfirmedOut | None:
+    if cell.unconfirmed is None or cell.unconfirmed_count is None:
+        return None
+    return UnconfirmedOut(
+        count=cell.unconfirmed_count.requests, families=cell.unconfirmed_count.families, amount=money(cell.unconfirmed)
+    )
+
+
+def _maybe_count(count: Count | None) -> CountOut | None:
+    return _count(count) if count is not None else None
+
+
 def _cell(cell: Cell) -> CellOut:
     return CellOut(
         allocated=_money(cell.allocated),
@@ -734,6 +749,7 @@ def _cell(cell: Cell) -> CellOut:
         needs_offer=money(cell.needs_offer),
         pending_approval=money(cell.pending_approval),
         remaining=_money(cell.remaining),
+        unconfirmed=_unconfirmed(cell),
     )
 
 
@@ -773,6 +789,8 @@ def budget_out(year: int, rules: RulesVersion | None, budget: SeasonBudget) -> B
                 accepted=_count(c.accepted),
                 held=_count(c.held),
                 pending_approval=_count(c.pending_approval),
+                awaiting_sync=_maybe_count(c.awaiting_sync),
+                not_reconciled=_maybe_count(c.not_reconciled),
             )
             for n, c in sorted(budget.strip.items())
         ],
@@ -1718,7 +1736,7 @@ class FinancialAidDecisionsService:
         day = self._past_day(as_of)
         return await self.season(year) if day is None else await self.past_season(year, day, axis)
 
-    def _budget(self, season: Season) -> SeasonBudget:
+    def _budget(self, season: Season, *, confirmed: bool = False) -> SeasonBudget:
         # The register's money, not the calculator's inputs: a pays-after-camp-aid grant (D143) never
         # reaches the calculator but is still outside money below the line (D125).
         by_request = outside_grants_by_request(season.register)
@@ -1733,6 +1751,7 @@ class FinancialAidDecisionsService:
             outside_grants=by_request,
             outside_grants_off_requests=off,
             not_demand=season.cancelled_in_campminder,
+            ledger=self._round_ledgers(season) if confirmed else None,
         )
 
     def budget_of(self, season: Season) -> SeasonBudget:
@@ -1847,6 +1866,26 @@ class FinancialAidDecisionsService:
         )
 
     @staticmethod
+    def _round_ledgers(season: Season) -> dict[str, dict[int, RoundLedger]] | None:
+        """Owner ruling ⚠10: each request's posted rounds against CampMinder's live net. None (not computed) on a read
+        that loaded no ledger (a past date) and before the first ticked season, exactly as _confirmation."""
+        if not season.ledger.read or season.year < FIRST_TICKED_SEASON:
+            return None
+        ledger = season.ledger
+        out: dict[str, dict[int, RoundLedger]] = {}
+        for request_id, request in season.requests.items():
+            lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
+            out[request_id] = round_ledger(
+                season.priced[request_id],
+                season.rounds.get(request_id, {}),
+                lines,
+                season.shares.get(request_id, ()),
+                request.household_cm_id,
+                synced_at=ledger.synced_at,
+            )
+        return out
+
+    @staticmethod
     def _confirmation(season: Season, request_id: str) -> Confirmation | None:
         """The request's confirmation state (D59); None on a read that loaded no ledger (a past date),
         and before the first ticked season (nothing then was ticked, SP10b Decision 9)."""
@@ -1869,7 +1908,7 @@ class FinancialAidDecisionsService:
 
     async def budget(self, year: int, as_of: date | None = None, as_of_axis: AsOfAxis = "campminder") -> BudgetResponse:
         season = await self._season_for(year, as_of, as_of_axis)
-        out = budget_out(year, season.rules, self._budget(season))
+        out = budget_out(year, season.rules, self._budget(season, confirmed=True))
         return out if season.as_of is None else past_budget(out, season)
 
     async def remaining(

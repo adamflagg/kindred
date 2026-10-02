@@ -62,6 +62,12 @@ _CANCELLED_TODAY: Final = "Reads today's cancellations and ledger, which a past 
 
 PAST_DATE_GAPS: Final[Mapping[str, str]] = {
     "confirmation": "When the ledger synced that day isn't known, so awaiting sync versus confirmed can't be rebuilt",
+    "unconfirmed": (
+        "How much of Posted the ledger had confirmed by that date isn't rebuilt: when each ledger sync ran, and "
+        "which CampMinder lines it had read then, aren't recorded by date"
+    ),
+    "awaiting_sync": "Which ticks were awaiting a ledger sync on that date isn't rebuilt (see unconfirmed)",
+    "not_reconciled": "Which posted rounds the ledger hadn't confirmed on that date isn't rebuilt (see unconfirmed)",
     "cancellation": _CANCELLED,
     "to_reverse": _CANCELLED_TODAY,
     "todos": _CANCELLED_TODAY,
@@ -144,7 +150,8 @@ GRID_GAPS: Final[tuple[str, ...]] = (
     "appeal_refusal",
     "included",
 )
-BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation",)
+# A past budget never rebuilds the ledger figures either (no ledger is read for a past day).
+BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation", "unconfirmed", "awaiting_sync", "not_reconciled")
 REMAINING_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 # Named only when a past read empties them (a request's posted money can't be replayed): not always-on.
 POSTED_GAPS: Final[tuple[str, ...]] = ("posted", "accepted", "outside_budget_posted")
