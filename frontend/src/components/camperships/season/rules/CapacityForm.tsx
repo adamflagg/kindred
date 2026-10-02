@@ -1,0 +1,141 @@
+import { useState } from 'react'
+
+import { Permission } from '../../../../constants/permissions'
+import {
+  useAidSessionCapacities,
+  useAidSetCapacity,
+} from '../../../../hooks/camperships/useAidCapacity'
+import { useAidSessionNames } from '../../../../hooks/camperships/useAidSessionNames'
+import { useYear } from '../../../../hooks/useCurrentYear'
+import { usePermissions } from '../../../../hooks/usePermissions'
+import type { ApiAidCapacity } from '../../../../types/api-types'
+import {
+  AMBER_NOTE,
+  BUTTON_PRIMARY,
+  FIELD,
+  FIELD_INLINE,
+  LABEL,
+} from '../../../admin/lodging/lodgingStyles'
+import { SEASON_CARD } from '../seasonStyles'
+import { readCapacity } from './capacityModel'
+
+/**
+ * Session capacity, entered by finance for Round 3's context (spec §6.3 item 4, §13 "where finance
+ * enters session capacity"; Decision 23): one session at a time, with an optional note. It is
+ * reference data, not part of the rules: nothing prices from it. Everyone who sees Season reads what
+ * is stored; only `rules` gets the inputs. Choosing a session prefills its stored figure and note;
+ * what the person types wins, and a save replaces what was stored.
+ */
+export function CapacityForm() {
+  const year = useYear()
+  const sessions = useAidSessionNames(year)
+  const stored = useAidSessionCapacities(year)
+  const save = useAidSetCapacity()
+  const { hasPermission } = usePermissions()
+  const canEdit = hasPermission(Permission.FINANCIAL_AID_RULES)
+  const [session, setSession] = useState('')
+  // null = untouched, so the field shows what is stored; a typed (even cleared) value is the person's.
+  const [typed, setTyped] = useState<string | null>(null)
+  const [typedNote, setTypedNote] = useState<string | null>(null)
+  const [saved, setSaved] = useState<ApiAidCapacity | null>(null)
+  const storedRows = stored.data?.sessions ?? []
+  const current = storedRows.find((row) => String(row.session_cm_id) === session)
+  const raw = typed ?? (current ? String(current.capacity) : '')
+  const note = typedNote ?? current?.note ?? ''
+  const read = raw === '' ? null : readCapacity(raw)
+  const nameOf = (id: number) => sessions?.get(id) ?? `Session ${String(id)}`
+
+  return (
+    <section className={`${SEASON_CARD} space-y-2 p-4`} data-testid="capacity-form">
+      <h2 className="font-semibold">Session capacity, for Round 3</h2>
+      <p className="text-muted-foreground text-xs">
+        Reference only: a Round 3 request shows its session&apos;s capacity beside its enrollment.
+        Nothing prices from it.
+        {canEdit && ' Choosing a session shows what is stored; saving replaces it.'}
+      </p>
+      {storedRows.length > 0 && (
+        <ul className="text-sm" data-testid="capacity-stored">
+          {storedRows.map((row) => (
+            <li key={row.session_cm_id}>
+              {`${nameOf(row.session_cm_id)} · ${String(row.capacity)} places`}
+              {row.note !== '' ? ` · ${row.note}` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      {stored.error !== null && stored.data === undefined && (
+        <p className={AMBER_NOTE}>Couldn&apos;t load the stored capacities.</p>
+      )}
+      {canEdit && (
+        <>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className={LABEL}>Session</span>
+              <select
+                className={FIELD_INLINE}
+                value={session}
+                onChange={(event) => {
+                  setSession(event.target.value)
+                  setTyped(null)
+                  setTypedNote(null)
+                  setSaved(null)
+                }}
+              >
+                <option value="">Choose a session</option>
+                {[...(sessions ?? new Map<number, string>())].map(([id, name]) => (
+                  <option key={id} value={String(id)}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className={LABEL}>Capacity (places)</span>
+              <input
+                className={`${FIELD_INLINE} w-24 text-right tabular-nums`}
+                inputMode="numeric"
+                value={raw}
+                onChange={(event) => setTyped(event.target.value)}
+              />
+            </label>
+            <label className="block min-w-64 flex-1">
+              <span className={LABEL}>Note (optional)</span>
+              <input
+                className={FIELD}
+                maxLength={2000}
+                value={note}
+                onChange={(event) => setTypedNote(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className={BUTTON_PRIMARY}
+              disabled={session === '' || read?.ok !== true || save.isPending}
+              onClick={() => {
+                if (read?.ok !== true) return
+                setSaved(null)
+                save.mutate(
+                  {
+                    sessionCmId: Number(session),
+                    body: { capacity: read.value, note: note.trim() },
+                  },
+                  { onSuccess: (out) => setSaved(out) }
+                )
+              }}
+            >
+              {save.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {read?.ok === false && <p className={AMBER_NOTE}>{read.reason}</p>}
+          {save.error !== null && <p className={AMBER_NOTE}>{save.error.message}</p>}
+          {saved !== null && (
+            <p className="text-sm" data-testid="capacity-saved">
+              {`Saved: ${nameOf(saved.session_cm_id)} holds ${String(saved.capacity)} places in ${String(saved.year)}`}
+              {saved.note !== '' ? ` · ${saved.note}` : ''}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  )
+}

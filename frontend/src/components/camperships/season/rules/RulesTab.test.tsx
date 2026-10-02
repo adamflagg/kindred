@@ -32,6 +32,8 @@ vi.mock('../../../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+// PR 7's capacity form has its own tests (CapacityForm.test.tsx).
+vi.mock('./CapacityForm', () => ({ CapacityForm: () => <div>Session capacity form</div> }))
 
 const REGISTRAR = ['financial_aid.view', 'financial_aid.casework']
 const FINANCE = [...REGISTRAR, 'financial_aid.rules']
@@ -223,5 +225,18 @@ describe('RulesTab for finance (D39)', () => {
     draft = { data: undefined, isLoading: false, error: new AidApiError('No rules for 2027', 404) }
     renderAt('/aid/season/rules')
     expect(screen.getByText('No rules for 2027 yet.')).toBeInTheDocument()
+  })
+})
+
+describe('RulesTab mounts the session capacity form (Decision 23)', () => {
+  it('shows it to finance, after the rules', () => {
+    granted = FINANCE
+    renderAt('/aid/season/rules')
+    expect(screen.getByText('Session capacity form')).toBeInTheDocument()
+  })
+
+  it('keeps it from the registrar, who reads the rules only', () => {
+    renderAt('/aid/season/rules')
+    expect(screen.queryByText('Session capacity form')).not.toBeInTheDocument()
   })
 })

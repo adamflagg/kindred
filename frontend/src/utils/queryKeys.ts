@@ -27,6 +27,8 @@ export const queryKeys = {
   // Sessions (Tier 1 - sync data)
   sessions: (year: number) => ['sessions', year] as const,
   allSessions: (year: number) => ['all-sessions', year] as const,
+  /** The season's session names (Camperships' session capacity form; Decision 28). Not under the aid prefix: aid writes don't move it. */
+  campSessionNames: (year: number) => ['camp-sessions', 'names', year] as const,
   allSessionsList: (year: number) => ['sessions', 'list', year] as const,
   session: (id: string) => ['session', id] as const,
   sessionGroups: (year: number) => ['session-groups', year] as const,
@@ -748,6 +750,7 @@ export const queryKeys = {
   aidRulesApproved: (year: number, version: number | null) =>
     ['financial-aid', 'rules', year, 'approved', version ?? 'pricing'] as const,
   aidRulesDraft: (year: number) => ['financial-aid', 'rules', year, 'draft'] as const,
+  aidCapacity: (year: number) => ['financial-aid', 'capacity', year] as const,
   aidHistoryPrefix: () => ['financial-aid', 'history'] as const,
   aidHistory: (year: number, query: Readonly<Record<string, string>>) =>
     ['financial-aid', 'history', year, 'page', query] as const,
