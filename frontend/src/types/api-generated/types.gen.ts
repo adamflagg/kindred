@@ -494,6 +494,32 @@ export type AnswerOut = {
 }
 
 /**
+ * AppealsRowOut
+ */
+export type AppealsRowOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Basis
+   */
+  basis: 'P' | 'r'
+  /**
+   * Applications
+   */
+  applications: number | null
+  /**
+   * Appeals
+   */
+  appeals: number | null
+  /**
+   * Rate
+   */
+  rate: number | null
+}
+
+/**
  * ApplicationDetailResponse
  */
 export type ApplicationDetailResponse = {
@@ -577,6 +603,63 @@ export type ApplicationSummaryOut = {
    * Corrected Fields
    */
   corrected_fields: number
+}
+
+/**
+ * ApplicationsRowOut
+ */
+export type ApplicationsRowOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Basis
+   */
+  basis: 'P' | 'r'
+  /**
+   * Kind
+   */
+  kind: 'pool' | 'no_pool' | 'headline' | 'reconciliation'
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Pool Label
+   */
+  pool_label: string
+  /**
+   * Cutoff
+   */
+  cutoff: string | null
+  at_cutoff: CountedOut | null
+  since: CountedOut | null
+  season_end: CountedOut | null
+  /**
+   * Season End As Of
+   */
+  season_end_as_of: string | null
+  /**
+   * Change Apps
+   */
+  change_apps: number | null
+  /**
+   * Change Asked
+   */
+  change_asked: number | null
+  /**
+   * Unknown Received
+   */
+  unknown_received: number
+  /**
+   * Asks Basis
+   */
+  asks_basis: 'as_of_cutoff' | 'now' | null
+  /**
+   * Asks Reason
+   */
+  asks_reason: string | null
 }
 
 /**
@@ -1114,6 +1197,32 @@ export type AwardsSectionOutput = {
 }
 
 /**
+ * BandOut
+ */
+export type BandOut = {
+  /**
+   * Low Pct
+   */
+  low_pct: number
+  /**
+   * High Pct
+   */
+  high_pct: number
+  /**
+   * Low
+   */
+  low: number | null
+  /**
+   * High
+   */
+  high: number | null
+  /**
+   * Position
+   */
+  position: 'below' | 'within' | 'above' | null
+}
+
+/**
  * BatchResolveResponse
  *
  * Response for batch coordinate resolution.
@@ -1250,6 +1359,64 @@ export type BudgetResponse = {
    * Not Rebuilt
    */
   not_rebuilt?: Array<NotRebuiltOut>
+}
+
+/**
+ * BudgetRowOut
+ */
+export type BudgetRowOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Basis
+   */
+  basis: 'P' | 'r'
+  /**
+   * Kind
+   */
+  kind: 'pool' | 'no_pool' | 'headline' | 'reconciliation'
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Pool Label
+   */
+  pool_label: string
+  /**
+   * Budget
+   */
+  budget: number | null
+  /**
+   * Awarded
+   */
+  awarded: number | null
+  /**
+   * Variance
+   */
+  variance: number | null
+  /**
+   * Side
+   */
+  side: 'over' | 'under' | 'on' | null
+  /**
+   * Pct Of Budget
+   */
+  pct_of_budget: number | null
+  /**
+   * Pool Share
+   */
+  pool_share: number | null
+  /**
+   * Rules Split Pct
+   */
+  rules_split_pct: number | null
+  /**
+   * Note
+   */
+  note: string
 }
 
 /**
@@ -2009,6 +2176,38 @@ export type CancellationSessionBreakdown = {
 }
 
 /**
+ * CancelledRowOut
+ */
+export type CancelledRowOut = {
+  /**
+   * Reason
+   */
+  reason: string
+  /**
+   * Reason Label
+   */
+  reason_label: string
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Round
+   */
+  round: number
+  /**
+   * Requests
+   *
+   * Requests in THIS reason, pool and round row. Rows are per reason, pool and round, so one request that was posted in two rounds is in two rows: never sum `requests` across rows (use the Statistics total's `cancelled` for the number of cancelled requests).
+   */
+  requests: number
+  /**
+   * Posted
+   */
+  posted: number
+}
+
+/**
  * CandidateOut
  *
  * A request the line's family holds (D26). not_yet_in_campminder is the part of it not yet in CampMinder:
@@ -2188,6 +2387,20 @@ export type CellOut = {
   needs_offer_count?: CountOut | null
   pending_approval_count?: CountOut | null
   unconfirmed?: UnconfirmedOut | null
+}
+
+/**
+ * ChipOut
+ */
+export type ChipOut = {
+  /**
+   * Key
+   */
+  key: string
+  /**
+   * Label
+   */
+  label: string
 }
 
 /**
@@ -2416,6 +2629,48 @@ export type CommitteeOut = {
    * Round2 Not In Tiers
    */
   round2_not_in_tiers: number
+}
+
+/**
+ * CommitteeResponse
+ */
+export type CommitteeResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Figures On
+   */
+  figures_on: string
+  /**
+   * Seasons
+   */
+  seasons: Array<number>
+  /**
+   * Phases
+   */
+  phases: Array<PhaseRowOut>
+  /**
+   * Applications
+   */
+  applications: Array<ApplicationsRowOut>
+  /**
+   * Budget
+   */
+  budget: Array<BudgetRowOut>
+  /**
+   * Appeals
+   */
+  appeals: Array<AppealsRowOut>
+  /**
+   * Round1 Pct
+   */
+  round1_pct: Array<Round1PctRowOut>
+  /**
+   * Not Built
+   */
+  not_built: Array<NotBuiltOut>
 }
 
 /**
@@ -2814,6 +3069,24 @@ export type CountOut = {
    * Requests
    */
   requests: number
+}
+
+/**
+ * CountedOut
+ */
+export type CountedOut = {
+  /**
+   * Apps
+   */
+  apps: number | null
+  /**
+   * Asked
+   */
+  asked: number | null
+  /**
+   * Average
+   */
+  average: number | null
 }
 
 /**
@@ -7924,6 +8197,23 @@ export type NewVsReturning = {
 }
 
 /**
+ * NotBuiltOut
+ *
+ * A figure Reports doesn't show yet, and what it waits on. Unlike a past date's NotRebuiltOut, it never names a
+ * request: development's summary reads it too (D65).
+ */
+export type NotBuiltOut = {
+  /**
+   * Figure
+   */
+  figure: string
+  /**
+   * Reason
+   */
+  reason: string
+}
+
+/**
  * NotRebuiltOut
  *
  * A figure a past-date read leaves empty, and why; `requests` names the requests that cause it
@@ -8180,6 +8470,40 @@ export type OrphanReversal = {
    * Net Posted
    */
   net_posted: number
+}
+
+/**
+ * OutcomeRowOut
+ */
+export type OutcomeRowOut = {
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Pool Label
+   */
+  pool_label: string
+  /**
+   * Accepted
+   */
+  accepted: number
+  /**
+   * Accepted Amount
+   */
+  accepted_amount: number
+  /**
+   * Appealed
+   */
+  appealed: number
+  /**
+   * Appealed Asked
+   */
+  appealed_asked: number
+  /**
+   * Waiting
+   */
+  waiting: number
 }
 
 /**
@@ -9264,6 +9588,100 @@ export type PhaseMarker = {
 }
 
 /**
+ * PhaseRowOut
+ */
+export type PhaseRowOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Basis
+   */
+  basis: 'P' | 'r'
+  /**
+   * Offered Label
+   */
+  offered_label: string
+  /**
+   * End Of Season Label
+   */
+  end_of_season_label: string
+  /**
+   * To Date
+   */
+  to_date: boolean
+  /**
+   * Offered
+   */
+  offered: Array<number | null>
+  /**
+   * Offered As Of
+   */
+  offered_as_of: Array<string | null>
+  /**
+   * Offered Pct Of Budget
+   */
+  offered_pct_of_budget: Array<number | null>
+  /**
+   * Offered Share Of Phases
+   */
+  offered_share_of_phases: Array<number | null>
+  /**
+   * Phases
+   */
+  phases: Array<number | null>
+  /**
+   * Phase As Of
+   */
+  phase_as_of: Array<string | null>
+  /**
+   * Total
+   */
+  total: number | null
+  /**
+   * Total As Of
+   */
+  total_as_of: string | null
+  /**
+   * Budget
+   */
+  budget: number | null
+  /**
+   * Pct Of Budget
+   */
+  pct_of_budget: Array<number | null>
+  /**
+   * Total Pct Of Budget
+   */
+  total_pct_of_budget: number | null
+  /**
+   * Share Of Phases
+   */
+  share_of_phases: Array<number | null>
+  /**
+   * Reconciliation
+   */
+  reconciliation: number | null
+  /**
+   * Variance
+   */
+  variance: number | null
+  /**
+   * Side
+   */
+  side: 'over' | 'under' | 'on' | null
+  /**
+   * Bands
+   */
+  bands: Array<BandOut | null>
+  /**
+   * Gaps
+   */
+  gaps: Array<string>
+}
+
+/**
  * PhaseRunResponse
  *
  * Response from a phase execution.
@@ -9986,6 +10404,25 @@ export type PoolBudgetOut = {
 }
 
 /**
+ * PoolGroupOut
+ */
+export type PoolGroupOut = {
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Pool Label
+   */
+  pool_label: string
+  /**
+   * Sessions
+   */
+  sessions: Array<ProgramRowOut>
+  subtotal: ProgramRowOut
+}
+
+/**
  * PoolResultOut
  */
 export type PoolResultOut = {
@@ -10407,6 +10844,63 @@ export type ProgramProfile = {
    * Campminder Description
    */
   campminder_description?: string
+}
+
+/**
+ * ProgramRowOut
+ */
+export type ProgramRowOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  round1: RoundBlockOut
+  round2: RoundBlockOut
+  round3: RoundBlockOut
+  /**
+   * Total Awarded
+   */
+  total_awarded: number
+}
+
+/**
+ * ProgramsResponse
+ */
+export type ProgramsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis: 'campminder' | 'recorded' | null
+  /**
+   * Figures On
+   */
+  figures_on: string
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  /**
+   * Pools
+   */
+  pools: Array<PoolGroupOut>
+  total: ProgramRowOut
+  request_set: RequestSetNote | null
+  /**
+   * Not Rebuilt
+   */
+  not_rebuilt: Array<NotRebuiltOut>
 }
 
 /**
@@ -11218,6 +11712,148 @@ export type ReplacementWarningOut = {
 }
 
 /**
+ * ReportedFigureIn
+ */
+export type ReportedFigureIn = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * View
+   */
+  view?: 'finance' | 'development'
+  /**
+   * Metric
+   */
+  metric: string
+  /**
+   * Pool
+   */
+  pool?: string
+  /**
+   * Tier
+   */
+  tier?: number
+  /**
+   * Phase
+   */
+  phase?: number
+  /**
+   * At
+   */
+  at: 'pull' | 'season_end'
+  /**
+   * As Of
+   */
+  as_of: string
+  /**
+   * Value
+   */
+  value: number | string
+  /**
+   * Source
+   */
+  source?: string
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
+ * ReportedFigureOut
+ */
+export type ReportedFigureOut = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * View
+   */
+  view: 'finance' | 'development'
+  /**
+   * Metric
+   */
+  metric: string
+  /**
+   * Pool
+   */
+  pool: string
+  /**
+   * Tier
+   */
+  tier: number
+  /**
+   * Phase
+   */
+  phase: number
+  /**
+   * At
+   */
+  at: 'pull' | 'season_end'
+  /**
+   * As Of
+   */
+  as_of: string
+  /**
+   * Value
+   */
+  value: number
+  /**
+   * Source
+   */
+  source: string
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * ReportedHistoryResponse
+ */
+export type ReportedHistoryResponse = {
+  /**
+   * Figures
+   */
+  figures: Array<ReportedFigureOut>
+}
+
+/**
+ * ReportedLoadIn
+ */
+export type ReportedLoadIn = {
+  /**
+   * Figures
+   */
+  figures: Array<ReportedFigureIn>
+}
+
+/**
+ * ReportedLoadOut
+ */
+export type ReportedLoadOut = {
+  /**
+   * Created
+   */
+  created: number
+  /**
+   * Updated
+   */
+  updated: number
+  /**
+   * Unchanged
+   */
+  unchanged: number
+}
+
+/**
  * RequestBucket
  *
  * Reporting bucket — the scorecard grouping a request rolls into.
@@ -11311,6 +11947,34 @@ export type RequestQueueResponse = {
    * Requests
    */
   requests: Array<RequestOut>
+}
+
+/**
+ * RequestSetNote
+ *
+ * The request set a scenario's figures were priced on: what every affected figure is labelled with.
+ */
+export type RequestSetNote = {
+  /**
+   * Basis
+   */
+  basis: 'round1_deadline' | 'date'
+  /**
+   * Through
+   */
+  through: string
+  /**
+   * Label
+   */
+  label: string
+  /**
+   * Left Out
+   */
+  left_out: number
+  /**
+   * Unknown
+   */
+  unknown: number
 }
 
 /**
@@ -12327,6 +12991,48 @@ export type RosterParty = {
 }
 
 /**
+ * Round1PctRowOut
+ */
+export type Round1PctRowOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Basis
+   */
+  basis: 'P' | 'r'
+  /**
+   * Kind
+   */
+  kind: 'pool' | 'no_pool' | 'headline' | 'reconciliation'
+  /**
+   * Pool
+   */
+  pool: string | null
+  /**
+   * Pool Label
+   */
+  pool_label: string
+  /**
+   * Awarded
+   */
+  awarded: number | null
+  /**
+   * Asked
+   */
+  asked: number | null
+  /**
+   * Asked In Budget
+   */
+  asked_in_budget: number | null
+  /**
+   * Pct Of Ask
+   */
+  pct_of_ask: number | null
+}
+
+/**
  * Round2CompareOut
  *
  * One Round 2 row (RPT-32): a Round 2 table's tier, or All's (`table` None).
@@ -12596,6 +13302,44 @@ export type Round3SectionOutput = {
    * Registrar Limit
    */
   registrar_limit?: string | null
+}
+
+/**
+ * RoundBlockOut
+ */
+export type RoundBlockOut = {
+  /**
+   * Apps
+   */
+  apps: number
+  /**
+   * Requested
+   */
+  requested: number
+  /**
+   * Asks
+   */
+  asks: number
+  /**
+   * Awarded
+   */
+  awarded: number
+  /**
+   * Awarded Count
+   */
+  awarded_count: number
+  /**
+   * Average Request
+   */
+  average_request: number | null
+  /**
+   * Average Award
+   */
+  average_award: number | null
+  /**
+   * Pct Awarded
+   */
+  pct_awarded: number | null
 }
 
 /**
@@ -14445,6 +15189,156 @@ export type StaleStaffLink = {
 }
 
 /**
+ * StatisticsResponse
+ */
+export type StatisticsResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis: 'campminder' | 'recorded' | null
+  /**
+   * Figures On
+   */
+  figures_on: string
+  /**
+   * Rules Version
+   */
+  rules_version: number | null
+  /**
+   * Basis
+   */
+  basis: 'posted' | 'posted_and_decided'
+  /**
+   * Pct Of Ask Label
+   */
+  pct_of_ask_label: string
+  /**
+   * Table
+   */
+  table: string | null
+  /**
+   * Round
+   */
+  round: number | null
+  /**
+   * Tables
+   */
+  tables: Array<ChipOut>
+  /**
+   * Rows
+   */
+  rows: Array<StatisticsRowOut>
+  total: StatisticsRowOut
+  /**
+   * Cancelled Applicants
+   */
+  cancelled_applicants: number
+  /**
+   * Recipients Cancelled
+   */
+  recipients_cancelled: Array<CancelledRowOut>
+  /**
+   * Tier Appeals
+   */
+  tier_appeals: Array<TierAppealsRowOut>
+  /**
+   * Outcomes
+   */
+  outcomes: Array<OutcomeRowOut>
+  request_set: RequestSetNote | null
+  /**
+   * Not Rebuilt
+   */
+  not_rebuilt: Array<NotRebuiltOut>
+}
+
+/**
+ * StatisticsRowOut
+ */
+export type StatisticsRowOut = {
+  /**
+   * Tier
+   */
+  tier: number | null
+  /**
+   * Income From
+   */
+  income_from: number | null
+  /**
+   * Income To
+   */
+  income_to: number | null
+  /**
+   * Fee Pct
+   */
+  fee_pct: number | null
+  /**
+   * Apps
+   */
+  apps: number
+  /**
+   * Cancelled
+   */
+  cancelled: number
+  /**
+   * Asked
+   */
+  asked: number
+  /**
+   * Asks
+   */
+  asks: number
+  /**
+   * Average Ask
+   */
+  average_ask: number | null
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Decided
+   */
+  decided: number
+  /**
+   * Awarded Count
+   */
+  awarded_count: number
+  /**
+   * Decided Count
+   */
+  decided_count: number
+  /**
+   * Average Award
+   */
+  average_award: number | null
+  /**
+   * Live Asked
+   */
+  live_asked: number
+  /**
+   * Pct Of Ask
+   */
+  pct_of_ask: number | null
+  /**
+   * Grants
+   */
+  grants: number | null
+  /**
+   * Pct Of Ask With Grants
+   */
+  pct_of_ask_with_grants: number | null
+}
+
+/**
  * SubjectNoteOut
  */
 export type SubjectNoteOut = {
@@ -14894,6 +15788,48 @@ export type TickedOut = {
    * Amount
    */
   amount: number
+}
+
+/**
+ * TierAppealsRowOut
+ */
+export type TierAppealsRowOut = {
+  /**
+   * Tier
+   */
+  tier: number | null
+  /**
+   * Income From
+   */
+  income_from: number | null
+  /**
+   * Income To
+   */
+  income_to: number | null
+  /**
+   * Round1 Apps
+   */
+  round1_apps: number
+  /**
+   * Round1 Fee Pct
+   */
+  round1_fee_pct: number | null
+  /**
+   * Appeals
+   */
+  appeals: number
+  /**
+   * Round2 Max Pct
+   */
+  round2_max_pct: number | null
+  /**
+   * Round3 Awarded
+   */
+  round3_awarded: number
+  /**
+   * Appeal Rate
+   */
+  appeal_rate: number | null
 }
 
 /**
@@ -23351,6 +24287,234 @@ export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassi
 
 export type ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponse =
   ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses[keyof ReclassifyLineApiFinancialAidMoneyYearToPlaceTransactionCmIdReclassifyPostResponses]
+
+export type GetReportStatisticsApiFinancialAidReportsYearStatisticsGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Table
+     */
+    table?: string | null
+    /**
+     * Round
+     */
+    round?: '1' | '2' | '3' | 'all'
+    /**
+     * Basis
+     */
+    basis?: 'posted' | 'posted_and_decided'
+    /**
+     * Through Round1 Deadline
+     */
+    through_round1_deadline?: boolean
+    /**
+     * Received Through
+     */
+    received_through?: string | null
+    /**
+     * As Of
+     */
+    as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
+  }
+  url: '/api/financial-aid/reports/{year}/statistics'
+}
+
+export type GetReportStatisticsApiFinancialAidReportsYearStatisticsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportStatisticsApiFinancialAidReportsYearStatisticsGetError =
+  GetReportStatisticsApiFinancialAidReportsYearStatisticsGetErrors[keyof GetReportStatisticsApiFinancialAidReportsYearStatisticsGetErrors]
+
+export type GetReportStatisticsApiFinancialAidReportsYearStatisticsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: StatisticsResponse
+}
+
+export type GetReportStatisticsApiFinancialAidReportsYearStatisticsGetResponse =
+  GetReportStatisticsApiFinancialAidReportsYearStatisticsGetResponses[keyof GetReportStatisticsApiFinancialAidReportsYearStatisticsGetResponses]
+
+export type GetReportProgramsApiFinancialAidReportsYearProgramsGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Through Round1 Deadline
+     */
+    through_round1_deadline?: boolean
+    /**
+     * Received Through
+     */
+    received_through?: string | null
+    /**
+     * As Of
+     */
+    as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
+  }
+  url: '/api/financial-aid/reports/{year}/programs'
+}
+
+export type GetReportProgramsApiFinancialAidReportsYearProgramsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportProgramsApiFinancialAidReportsYearProgramsGetError =
+  GetReportProgramsApiFinancialAidReportsYearProgramsGetErrors[keyof GetReportProgramsApiFinancialAidReportsYearProgramsGetErrors]
+
+export type GetReportProgramsApiFinancialAidReportsYearProgramsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ProgramsResponse
+}
+
+export type GetReportProgramsApiFinancialAidReportsYearProgramsGetResponse =
+  GetReportProgramsApiFinancialAidReportsYearProgramsGetResponses[keyof GetReportProgramsApiFinancialAidReportsYearProgramsGetResponses]
+
+export type GetReportCommitteeApiFinancialAidReportsYearCommitteeGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Received Through
+     */
+    received_through?: string | null
+  }
+  url: '/api/financial-aid/reports/{year}/committee'
+}
+
+export type GetReportCommitteeApiFinancialAidReportsYearCommitteeGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportCommitteeApiFinancialAidReportsYearCommitteeGetError =
+  GetReportCommitteeApiFinancialAidReportsYearCommitteeGetErrors[keyof GetReportCommitteeApiFinancialAidReportsYearCommitteeGetErrors]
+
+export type GetReportCommitteeApiFinancialAidReportsYearCommitteeGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: CommitteeResponse
+}
+
+export type GetReportCommitteeApiFinancialAidReportsYearCommitteeGetResponse =
+  GetReportCommitteeApiFinancialAidReportsYearCommitteeGetResponses[keyof GetReportCommitteeApiFinancialAidReportsYearCommitteeGetResponses]
+
+export type GetReportedHistoryApiFinancialAidReportsReportedHistoryGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/financial-aid/reports/reported-history'
+}
+
+export type GetReportedHistoryApiFinancialAidReportsReportedHistoryGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportedHistoryResponse
+}
+
+export type GetReportedHistoryApiFinancialAidReportsReportedHistoryGetResponse =
+  GetReportedHistoryApiFinancialAidReportsReportedHistoryGetResponses[keyof GetReportedHistoryApiFinancialAidReportsReportedHistoryGetResponses]
+
+export type LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostData = {
+  body: ReportedLoadIn
+  path?: never
+  query?: never
+  url: '/api/financial-aid/reports/reported-history/bulk'
+}
+
+export type LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostError =
+  LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostErrors[keyof LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostErrors]
+
+export type LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportedLoadOut
+}
+
+export type LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostResponse =
+  LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostResponses[keyof LoadReportedHistoryApiFinancialAidReportsReportedHistoryBulkPostResponses]
+
+export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Record Id
+     */
+    record_id: string
+  }
+  query: {
+    /**
+     * Reason
+     */
+    reason: string
+  }
+  url: '/api/financial-aid/reports/reported-history/{record_id}'
+}
+
+export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteError =
+  DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteErrors[keyof DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteErrors]
+
+export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponse =
+  DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses[keyof DeleteReportedFigureApiFinancialAidReportsReportedHistoryRecordIdDeleteResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never

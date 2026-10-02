@@ -26,6 +26,7 @@ export const Collections = {
   AidHouseholdLinks: 'aid_household_links',
   AidPayerShares: 'aid_payer_shares',
   AidPostings: 'aid_postings',
+  AidReportedHistory: 'aid_reported_history',
   AidRequests: 'aid_requests',
   AidRules: 'aid_rules',
   AidScenarioOptions: 'aid_scenario_options',
@@ -631,6 +632,36 @@ export type AidPostingsRecord<Tcandidate_program_families = unknown, Tflags = un
   transaction_cm_id: number
   transaction_note?: string
   updated: IsoAutoDateString
+  year: number
+}
+
+export const AidReportedHistoryViewOptions = {
+  finance: 'finance',
+  development: 'development',
+} as const
+export type AidReportedHistoryViewOptions =
+  (typeof AidReportedHistoryViewOptions)[keyof typeof AidReportedHistoryViewOptions]
+
+export const AidReportedHistoryAtOptions = {
+  pull: 'pull',
+  season_end: 'season_end',
+} as const
+export type AidReportedHistoryAtOptions =
+  (typeof AidReportedHistoryAtOptions)[keyof typeof AidReportedHistoryAtOptions]
+export type AidReportedHistoryRecord = {
+  as_of: IsoDateString
+  at: AidReportedHistoryAtOptions
+  created: IsoAutoDateString
+  id: string
+  metric: string
+  note?: string
+  phase?: number
+  pool?: string
+  source?: string
+  tier?: number
+  updated: IsoAutoDateString
+  value?: number
+  view: AidReportedHistoryViewOptions
   year: number
 }
 
@@ -2630,6 +2661,8 @@ export type AidPostingsResponse<
   Tflags = unknown,
   Texpand = unknown,
 > = Required<AidPostingsRecord<Tcandidate_program_families, Tflags>> & BaseSystemFields<Texpand>
+export type AidReportedHistoryResponse<Texpand = unknown> = Required<AidReportedHistoryRecord> &
+  BaseSystemFields<Texpand>
 export type AidRequestsResponse<Tequity = unknown, Tflags = unknown, Texpand = unknown> = Required<
   AidRequestsRecord<Tequity, Tflags>
 > &
@@ -2902,6 +2935,7 @@ export type CollectionRecords = {
   aid_household_links: AidHouseholdLinksRecord
   aid_payer_shares: AidPayerSharesRecord
   aid_postings: AidPostingsRecord
+  aid_reported_history: AidReportedHistoryRecord
   aid_requests: AidRequestsRecord
   aid_rules: AidRulesRecord
   aid_scenario_options: AidScenarioOptionsRecord
@@ -3008,6 +3042,7 @@ export type CollectionResponses = {
   aid_household_links: AidHouseholdLinksResponse
   aid_payer_shares: AidPayerSharesResponse
   aid_postings: AidPostingsResponse
+  aid_reported_history: AidReportedHistoryResponse
   aid_requests: AidRequestsResponse
   aid_rules: AidRulesResponse
   aid_scenario_options: AidScenarioOptionsResponse

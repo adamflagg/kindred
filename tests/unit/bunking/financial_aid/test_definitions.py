@@ -32,7 +32,7 @@ def test_the_household_band_cites_its_five_figures() -> None:
 @pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: d.key)
 def test_each_definition_cites_its_spec_section_and_rulings(definition: Definition) -> None:
     assert re.fullmatch(r"[a-z][a-z0-9_]*", definition.key)
-    assert re.fullmatch(r"§[57]\.\d+", definition.spec)
+    assert re.fullmatch(r"§[579]\.\d+", definition.spec)
     assert definition.rulings
     assert all(re.fullmatch(r"D\d+", r) for r in definition.rulings)
 
@@ -48,10 +48,20 @@ def test_the_only_placeholder_is_the_camp(definition: Definition) -> None:
     assert "{" not in f"{definition.term} {definition.text}".replace("{camp}", "")
 
 
+# Finance's three report surfaces, where "Awarded" is the report word for Posted (§5.6, D80). Development says
+# "Total Awards Granted", and the two are never relabelled as each other (§5.6).
+FINANCE_REPORT_SURFACES = frozenset({"reports-statistics", "reports-programs", "reports-committee"})
+
+
 @pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: d.key)
 def test_awarded_is_never_used_as_a_label(definition: Definition) -> None:
-    """§5.6: "Awarded" is finance's report word for Posted (D80); no note labels money with it."""
-    assert "awarded" not in definition.term.lower()
+    """§5.6: "Awarded" is finance's report word for Posted (D80); no casework, Season, Money or Development note
+    labels money with it. (Reports back end, a designed contract change: finance's three report surfaces are the one
+    allowed place.)"""
+    if "awarded" in definition.term.lower():
+        showing = {surface for surface, keys in SURFACES.items() if definition.key in keys}
+        assert showing, definition.key
+        assert showing <= FINANCE_REPORT_SURFACES, showing
 
 
 def test_render_fills_the_camp_name() -> None:

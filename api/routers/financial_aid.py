@@ -32,11 +32,15 @@ date), and making a kept option the rules draft.
 Sub-project 9c adds what the committee compares: compare's tables by tier and
 last season's posted money (RPT-17, RPT-32), and a starting point from last
 season's rules (RPT-18).
+The Reports back end adds finance's reports (financial_aid.view): Statistics,
+Programs and the committee's year-over-year tables (`/reports/{year}/...`), and
+finance's typed "as reported" history (`/reports/reported-history`,
+financial_aid.rules).
 """
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, NoReturn
+from typing import Annotated, Final, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from pydantic import StringConstraints
@@ -108,6 +112,15 @@ from api.schemas.financial_aid_intake import (
     RequestQueueResponse,
     RequestStatus,
     SessionResolve,
+)
+from api.schemas.financial_aid_reports import (
+    CommitteeResponse,
+    ProgramsResponse,
+    ReportedHistoryResponse,
+    ReportedLoadIn,
+    ReportedLoadOut,
+    StatisticsBasis,
+    StatisticsResponse,
 )
 from api.schemas.financial_aid_rules import (
     ApprovedRulesOut,
@@ -201,6 +214,11 @@ from api.services.financial_aid_ledger_service import (
     money,
 )
 from api.services.financial_aid_payer_shares import ShareSpec
+from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
+from api.services.financial_aid_reports_service import (
+    FinancialAidReportsService,
+    ReportedFigureNotFoundError,
+)
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_rules_service import (
@@ -246,6 +264,8 @@ from bunking.branding import get_branding, get_camp_name
 from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.reports.history import ReportedFigure
+from bunking.financial_aid.reports.statistics import RoundChip
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
 from bunking.rbac.dependencies import require_any_permission, require_permission
@@ -1625,3 +1645,136 @@ async def reclassify_line(
         return await _to_place().reclassify(year, transaction_cm_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
+
+
+# --- Reports (slice 4's back end, Part A: Statistics, Programs, the committee's tables, typed history) ------------
+
+
+def _reports() -> FinancialAidReportsService:
+    return FinancialAidReportsService(
+        FinancialAidDecisionsRepository(pb),
+        _rules(),
+        GrantsService(GrantsRepository(pb)).register_rows,
+        ReportsRepository(pb),
+    )
+
+
+def _reports_http(exc: FinancialAidError) -> HTTPException:
+    if isinstance(exc, ReportedFigureNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, (ReportedFigureTakenError, AidWriteConflictError)):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=422, detail=str(exc))
+
+
+_RoundChip = Literal["1", "2", "3", "all"]
+_ROUND_CHIPS: Final[dict[str, RoundChip]] = {"1": 1, "2": 2, "3": 3, "all": None}
+_RecordIdPath = Annotated[str, Path(min_length=15, max_length=15, pattern=r"^[a-z0-9]+$")]
+
+
+@router.get("/reports/{year}/statistics", response_model=StatisticsResponse)
+async def get_report_statistics(
+    year: _Year,
+    table: Annotated[str | None, Query(max_length=60)] = None,
+    round: _RoundChip = "1",
+    basis: StatisticsBasis = "posted",
+    through_round1_deadline: bool = False,
+    received_through: date | None = None,
+    as_of: date | None = None,
+    as_of_axis: AsOfAxis = "campminder",
+    user: AuthUser = _VIEW,
+) -> StatisticsResponse:
+    """Reports › Statistics (§9.2): one table per award-table × round chip (no `table`: All award tables; round
+    "all": All rounds), RPT-9 and RPT-23 beside it. `basis=posted_and_decided` adds "Decided (not yet offered)"
+    (D130; on a past date too, as 3c-2 prices it, Task A6c); the two reporting controls (D138) cut on each request's
+    received date."""
+    try:
+        return await _reports().statistics(
+            year,
+            table=table,
+            round_=_ROUND_CHIPS[round],
+            basis=basis,
+            through_deadline=through_round1_deadline,
+            through=received_through,
+            as_of=as_of,
+            axis=as_of_axis,
+        )
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/{year}/programs", response_model=ProgramsResponse)
+async def get_report_programs(
+    year: _Year,
+    through_round1_deadline: bool = False,
+    received_through: date | None = None,
+    as_of: date | None = None,
+    as_of_axis: AsOfAxis = "campminder",
+    user: AuthUser = _VIEW,
+) -> ProgramsResponse:
+    """Reports › Programs (§9.3, RPT-11): sessions grouped by pool, pooled subtotals; the reporting controls apply."""
+    try:
+        return await _reports().programs(
+            year,
+            through_deadline=through_round1_deadline,
+            through=received_through,
+            as_of=as_of,
+            axis=as_of_axis,
+        )
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/{year}/committee", response_model=CommitteeResponse)
+async def get_report_committee(
+    year: _Year, received_through: date | None = None, user: AuthUser = _VIEW
+) -> CommitteeResponse:
+    """The committee's year-over-year tables (§9.7 RPT-1, 2, 6, 7, 8, 13, 24) from 2022 to `year`: P rows from
+    Kindred's decisions, r rows from finance's typed history. `received_through` moves this season's RPT-2 cutoff
+    off the application deadline."""
+    try:
+        return await _reports().committee(year, through=received_through)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/reported-history", response_model=ReportedHistoryResponse)
+async def get_reported_history(user: AuthUser = _RULES) -> ReportedHistoryResponse:
+    """Every typed "as reported" figure (O-930-13), for checking a load."""
+    return await _reports().reported_history()
+
+
+@router.post("/reports/reported-history/bulk", response_model=ReportedLoadOut)
+async def load_reported_history(body: ReportedLoadIn, user: AuthUser = _RULES) -> ReportedLoadOut:
+    """Type finance's history once (§9.5): adds figures, corrects stored ones by their natural key, skips the
+    unchanged. All or nothing; one logged operation."""
+    figures = [
+        ReportedFigure(
+            year=f.year,
+            view=f.view,
+            metric=f.metric,
+            pool=f.pool,
+            tier=f.tier,
+            phase=f.phase,
+            at=f.at,
+            as_of=f.as_of,
+            value=f.value,
+            source=f.source,
+            note=f.note,
+        )
+        for f in body.figures
+    ]
+    try:
+        return await _reports().load_reported(figures, actor=user.email)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.delete("/reports/reported-history/{record_id}", status_code=204, response_class=Response)
+async def delete_reported_figure(record_id: _RecordIdPath, reason: _Reason, user: AuthUser = _RULES) -> Response:
+    """Remove a typed figure (one keyed wrongly); the reason is logged."""
+    try:
+        await _reports().delete_reported(record_id, reason=reason, actor=user.email)
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+    return Response(status_code=204)

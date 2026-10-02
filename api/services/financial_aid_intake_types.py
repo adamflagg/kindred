@@ -111,6 +111,7 @@ class SessionRow:
     name: str
     session_type: str
     start_date: str = ""  # camp_sessions.start_date, "YYYY-MM-DD..."; "" when unknown
+    end_date: str = ""  # camp_sessions.end_date, the same shape; "" when unknown
 
 
 @dataclass(frozen=True)

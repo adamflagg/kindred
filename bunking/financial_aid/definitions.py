@@ -220,6 +220,133 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§7.2",
         rulings=("D59", "D153"),
     ),
+    # Reports (slice 4's back end, Part A): finance's report words (§5.6). "Awarded" labels money here only.
+    Definition(
+        key="apps",
+        term="Applications",
+        text=(
+            "Applications: individual requests (camper × session; household × session for Family Camp). Received = "
+            "every intake request except refused duplicates, cancelled requests included."
+        ),
+        spec="§5.6",
+        rulings=("D72", "D131"),
+    ),
+    Definition(
+        key="cancelled_applicants",
+        term="Cancelled applicants",
+        text=(
+            "Cancelled applicants: received requests later cancelled, shown as their own line beside applications; "
+            "applications keep their meaning."
+        ),
+        spec="§5.6",
+        rulings=("D131",),
+    ),
+    Definition(
+        key="awarded",
+        term="Awarded",
+        text=(
+            "Awarded = offered = Posted: a round counts as awarded once it is posted (ticked or auto-ticked), net of "
+            "any clawback, on a live request (not cancelled). {camp}'s own aid only, never Total Awards Granted. Liveness comes "
+            "from the request's status: a cancelled request leaves it at once, while Rounds & budget's Posted keeps "
+            "its money until the reversal posts."
+        ),
+        spec="§5.6",
+        rulings=("D80", "D106", "D129", "D131"),
+    ),
+    Definition(
+        key="average_award",
+        term="Average award",
+        text=(
+            "Average award: awarded $ ÷ the awarded count. The 2026 sheet and the committee decks divide by all apps, "
+            "$0 included, so this figure reads higher."
+        ),
+        spec="§5.6",
+        rulings=("D80",),
+    ),
+    Definition(
+        key="pct_of_ask",
+        term="% of ask",
+        text=(
+            "% of ask: awarded $ ÷ asked $, each round's ask as keyed and as it stands today. A round paid wholly by "
+            "an outside funder is never awarded, so its ask is left out of the asked $ this divides by. With "
+            '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads '
+            '"% of ask (posted + decided)".'
+        ),
+        spec="§5.6",
+        rulings=("D80",),
+    ),
+    Definition(
+        key="decided_not_offered",
+        term="Decided (not yet offered)",
+        text=(
+            "Decided (not yet offered): behind an off-by-default switch, the amounts decided but not yet posted are "
+            "added, one basis at a time. They are never called awarded, and each moves until posted: rules versions "
+            "and income corrections can change it."
+        ),
+        spec="§5.1",
+        rulings=("D43", "D130"),
+    ),
+    Definition(
+        key="recipients_cancelled",
+        term="Aid recipients who cancelled",
+        text=(
+            "Aid recipients who cancelled: requests with a posted award later cancelled, or withdrawn, by cancel reason, "
+            "pool and round. A withdrawn request that holds a posted award counts here exactly as a cancelled one does. "
+            "Once cancelled a request is out of awarded already."
+        ),
+        spec="§5.6",
+        rulings=("D101", "D131", "D141"),
+    ),
+    Definition(
+        key="finance_budget",
+        term="Budget",
+        text=(
+            "Budget: {camp}'s own Total FA budget, the one finance and the board approved. Only the total is hard; "
+            "the pool split is finance's soft setting."
+        ),
+        spec="§5.6",
+        rulings=("D106", "D119"),
+    ),
+    Definition(
+        key="as_reported",
+        term="As reported (r)",
+        text=(
+            "As reported (r): finance's own history from before Kindred had the data, typed once as dollars and "
+            "counts with an as-of date. Kindred computes every percentage."
+        ),
+        spec="§5.6",
+        rulings=("D132", "D133"),
+    ),
+    Definition(
+        key="round1_phases",
+        term="Round 1 phases",
+        text=(
+            "Round 1 phases: phase 1 is Round 1 money on requests received by the application deadline; phase 2 is "
+            "Round 1 money on requests received after it; phase 3 is appeals (Rounds 2 and 3). A request received "
+            "on time but posted later stays in phase 1. Each phase has two columns. As offered: the lock as posted "
+            "(D80's awarded = offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
+            "outside the budget (an outside funder's full-cost round) is in neither column; for a season finance "
+            "typed, the deck's figure and its as-of date. End of season: net of cancellations and clawback; for a "
+            'season Kindred priced it reads "to date" until the season closes, meaning the last session open to aid '
+            "(summer, family camp and adult weekends alike) has ended; for a typed season, the end-of-season total. "
+            "A blank stays blank: nothing is estimated, and one column is never filled from the other. Each column is "
+            "shown as a % of the season's total budget and as its share of the three phases; the target bands compare "
+            'against As offered; the total, the over/under and "total − Σ phases" are End of season\'s.'
+        ),
+        spec="§9.7",
+        rulings=("D155",),
+    ),
+    Definition(
+        key="appeals",
+        term="Appeals",
+        text=(
+            "Appeals: the appeal rate and each tier's appeals count every request with a Round 2 or later ask, "
+            "cancelled ones included, because the rate divides by applications, which include cancellations (D131). "
+            "The outcomes table and the Season screen's Round 2 asks leave cancelled requests out."
+        ),
+        spec="§9.7",
+        rulings=("D131",),
+    ),
 )
 
 # The notes each surface shows, numbered from 1 in this order (§4.8). A surface not listed here is unknown.
@@ -239,6 +366,18 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "unconfirmed",
     ),
     "money-ledger": ("in_campminder_net", "posted"),
+    "reports-statistics": (
+        "apps",
+        "cancelled_applicants",
+        "awarded",
+        "average_award",
+        "pct_of_ask",
+        "decided_not_offered",
+        "recipients_cancelled",
+        "appeals",
+    ),
+    "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
+    "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
 }
 
 BY_KEY: Final[Mapping[str, Definition]] = {d.key: d for d in DEFINITIONS}
