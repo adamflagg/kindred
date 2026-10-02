@@ -7,6 +7,7 @@ import type {
   ApiAidAcceptedIn,
   ApiAidApplication,
   ApiAidAskIn,
+  ApiAidBudget,
   ApiAidCancellationIn,
   ApiAidCorrectionIn,
   ApiAidCorrectionOut,
@@ -448,4 +449,17 @@ export function setAidHeadcount(
     body,
     "Couldn't set the headcount"
   )
+}
+
+/** Rounds & budget (spec §7.2): pools × rounds, the strip, below the line and forward demand; live or a past day. */
+export async function fetchAidBudget(
+  fetchWithAuth: FetchWithAuth,
+  year: number,
+  asOfParams: Record<string, string>
+): Promise<ApiAidBudget> {
+  const response = await fetchWithAuth(
+    withQuery(`${BASE}/decisions/${String(year)}/budget`, asOfParams)
+  )
+  if (!response.ok) throw await toApiError(response, 'Failed to load Rounds & budget', AidApiError)
+  return (await response.json()) as ApiAidBudget
 }

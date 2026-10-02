@@ -5,7 +5,14 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { AID_SECTIONS, aidHomePath, aidSection, visibleSections, visibleTabs } from './aidNav'
+import {
+  AID_SECTIONS,
+  aidHomePath,
+  aidSection,
+  resolveAidTab,
+  visibleSections,
+  visibleTabs,
+} from './aidNav'
 
 const holding = (...granted: string[]) => ({ hasPermission: (p: string) => granted.includes(p) })
 const REGISTRAR = holding('financial_aid.view', 'financial_aid.casework')
@@ -90,5 +97,31 @@ describe('aidHomePath', () => {
   it('is Today for view holders and Reports › Development for summary-only (D65)', () => {
     expect(aidHomePath(REGISTRAR)).toBe('/aid')
     expect(aidHomePath(DEVELOPMENT)).toBe('/aid/reports/development')
+  })
+})
+
+describe('resolveAidTab (§3.6; D76)', () => {
+  const season = aidSection('season')
+
+  it('sends a bare or unknown tab to the first one this user may see', () => {
+    expect(resolveAidTab(season, undefined, REGISTRAR)).toMatchObject({
+      kind: 'first',
+      tab: { slug: 'rounds-budget' },
+    })
+    expect(resolveAidTab(season, 'bogus', FINANCE)).toMatchObject({ kind: 'first' })
+  })
+
+  it('refuses a known tab this user may not see, rather than sending it away (D76)', () => {
+    expect(resolveAidTab(season, 'scenarios', REGISTRAR)).toEqual({ kind: 'denied' })
+    expect(resolveAidTab(season, undefined, DEVELOPMENT)).toEqual({ kind: 'denied' })
+  })
+
+  it('shows a tab this user may see, with the tabs for the bar', () => {
+    const shown = resolveAidTab(season, 'rules', REGISTRAR)
+    expect(shown.kind).toBe('show')
+    if (shown.kind === 'show') {
+      expect(shown.tab?.slug).toBe('rules')
+      expect(labels(shown.tabs)).toEqual(['Rounds & budget', 'Rules', 'History'])
+    }
   })
 })

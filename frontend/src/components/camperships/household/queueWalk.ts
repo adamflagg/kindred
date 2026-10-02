@@ -60,15 +60,19 @@ export function gridFiltersFrom(params: URLSearchParams): {
   const sort = params.get('sort')
   const group = params.get('group')
   const showIds = params.get('ids') === '1'
+  const counted = params.get('counted') === '1'
+  const live = params.get('live') === '1'
   const todayParam = params.get('today')
   const todayKey = todayParam !== null && isListedTodayKey(todayParam) ? todayParam : null
   return {
-    filters: { program, pool, round, tick, ids: null },
+    filters: { program, pool, round, tick, counted, live, ids: null },
     keep: {
       ...(program !== null ? { program } : {}),
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(tick !== null ? { tick } : {}),
+      ...(counted ? { counted: '1' } : {}),
+      ...(live ? { live: '1' } : {}),
       ...(showIds ? { ids: '1' } : {}),
       ...(todayKey !== null ? { today: todayKey } : {}),
       ...(sort !== null ? { sort } : {}),

@@ -13,6 +13,7 @@ import { aidCsvFilename } from '../kit/csv'
 import { toCents } from '../kit/money'
 import type { CellValue } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
+import { LIVE_REQUEST_STATUSES } from './gridEditor'
 import { latestRound, requestStage, roundOf } from './stage'
 import { offerRound } from './ticks'
 
@@ -380,6 +381,21 @@ export interface GridFilters {
   readonly tick: TickFilter | null
   /** Today's listed lines (Decision 10): exactly these requests, or null for no such filter. */
   readonly ids: ReadonlySet<string> | null
+  /** Only rounds whose money counts toward the budget (Rounds & budget's figures; plan review I5). */
+  readonly counted: boolean
+  /** Only live requests, as the budget's demand counts them (owner, Decision 6(b)); arrives on a link. */
+  readonly live: boolean
+}
+
+/** A live request, as the budget's demand counts one: a live status and not cancelled (`request.live`). */
+export function isLiveRow(row: ApiAidGridRow): boolean {
+  // A null status is not live, as the server's `_LIVE` reads it; gridEditor's isLiveRequest treats
+  // null as editable on purpose (placeholder rows), so don't unify the two (Task 2 m1).
+  return (
+    row.request_status !== null &&
+    LIVE_REQUEST_STATUSES.includes(row.request_status) &&
+    (row.cancellation ?? null) === null
+  )
 }
 
 export const NO_FILTERS: GridFilters = {
@@ -388,18 +404,39 @@ export const NO_FILTERS: GridFilters = {
   round: null,
   tick: null,
   ids: null,
+  counted: false,
+  live: false,
 }
 
 function matchesRound(
   row: ApiAidGridRow,
   round: RoundFilter | null,
-  tick: TickFilter | null
+  tick: TickFilter | null,
+  counted: boolean
 ): boolean {
-  if (round === null && tick === null) return true
-  const rounds = round === null ? row.rounds : row.rounds.filter((r) => r.round === round)
+  if (round === null && tick === null && !counted) return true
+  const rounds = row.rounds.filter(
+    (r) => (round === null || r.round === round) && (!counted || r.counts_toward_budget)
+  )
   if (tick === null) return rounds.length > 0
   return rounds.some(
     (r) => r.status === 'posted' && r.clawed_back !== true && (tick === 'posted' || r.accepted)
+  )
+}
+
+/**
+ * Needs an offer and Pending approval hold a row for a round in that status, and the budget counts
+ * that round's money only when the round counts toward it (budget.py). So `counted` binds to that
+ * round, on `round=` too: a counted posted Round 1 doesn't let in a Round 2 needing an offer outside
+ * the budget (final review I2). Other views are unchanged.
+ */
+function countedInView(row: ApiAidGridRow, view: RequestViewKey, filters: GridFilters): boolean {
+  if (!filters.counted || (view !== 'needs_offer' && view !== 'pending_approval')) return true
+  return row.rounds.some(
+    (r) =>
+      r.status === view &&
+      r.counts_toward_budget &&
+      (filters.round === null || r.round === filters.round)
   )
 }
 
@@ -413,7 +450,9 @@ export function filterRows(
       (view === 'all' || (row.queues?.includes(view) ?? false)) &&
       (filters.program === null || row.program_key === filters.program) &&
       (filters.pool === null || row.pool === filters.pool) &&
-      matchesRound(row, filters.round, filters.tick) &&
+      (!filters.live || isLiveRow(row)) &&
+      matchesRound(row, filters.round, filters.tick, filters.counted) &&
+      countedInView(row, view, filters) &&
       (filters.ids === null || filters.ids.has(row.request_id))
   )
 }

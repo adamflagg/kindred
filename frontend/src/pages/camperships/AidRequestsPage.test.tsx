@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { GRID_ROWS, roundOut } from '../../components/camperships/requests/gridFixtures'
+import { GRID_ROWS, roundOut, ROW_SAMUEL } from '../../components/camperships/requests/gridFixtures'
 import type { ApiAidGrid, ApiAidRemaining, ApiAidRound, ApiAidToday } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
@@ -209,6 +209,49 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
     await userEvent.selectOptions(screen.getByLabelText('Round'), '2')
     expect(screen.queryByText('Olivia Chen')).toBeNull()
+  })
+
+  it('filters to rounds counting toward the budget, held in the URL as counted=1', async () => {
+    const outside = {
+      ...ROW_SAMUEL,
+      request_id: 'reqoutside00001',
+      camper_name: 'Outside Camper',
+      rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
+    }
+    grid = { data: { ...LIVE, rows: [...GRID_ROWS, outside] }, isLoading: false, error: null }
+    renderAt('/aid/requests?view=all')
+    expect(screen.getByText('Outside Camper')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Counting toward the budget' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('counted=1')
+    expect(screen.queryByText('Outside Camper')).toBeNull()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+  })
+
+  it('says live=1 is on, hides withdrawn and cancelled requests, and Show all clears it', async () => {
+    const withdrawn = {
+      ...ROW_SAMUEL,
+      request_id: 'reqwithdrawn001',
+      camper_name: 'Withdrawn Camper',
+      request_status: 'withdrawn',
+    }
+    grid = { data: { ...LIVE, rows: [...GRID_ROWS, withdrawn] }, isLoading: false, error: null }
+    renderAt('/aid/requests?live=1')
+    expect(screen.getByText(/Live requests only/)).toBeInTheDocument()
+    expect(screen.queryByText('Withdrawn Camper')).toBeNull()
+    expect(screen.queryByText('Riley Sam')).toBeNull()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
+    expect(screen.getByTestId('where')).not.toHaveTextContent('live=')
+    expect(screen.getByText('Withdrawn Camper')).toBeInTheDocument()
+    expect(screen.queryByText(/Live requests only/)).toBeNull()
+  })
+
+  it('carries counted and live to the household page (M5)', async () => {
+    renderAt('/aid/requests?counted=1&live=1')
+    await userEvent.click(screen.getByRole('link', { name: 'The Garcia Family' }))
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      /^\/aid\/households\/1000003\?from=all&counted=1&live=1&year=2027$/
+    )
   })
 
   it('carries the filters to the household page, so the walk and Back keep them (M5)', async () => {
