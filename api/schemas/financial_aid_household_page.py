@@ -53,6 +53,8 @@ class HouseholdCardOut(BaseModel):
     phone: str
     emails: list[str]
     city: str
+    # D32: the county holding most of the billing ZIP's land (Census ZCTA-to-county, Decision 8a); None when unknown.
+    county: str | None = None
     money: HouseholdMoneyOut
     request_ids: list[str]
 

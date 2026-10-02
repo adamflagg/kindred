@@ -489,6 +489,7 @@ class _Ledger:
                 household_phone="555-0100",
                 billing_city="Riverside",
                 billing_state="CA",
+                billing_postal_code="94612",
             ),
             SimpleNamespace(
                 cm_id=GARCIA,
@@ -497,6 +498,7 @@ class _Ledger:
                 household_phone="",
                 billing_city="",
                 billing_state="",
+                billing_postal_code="",
             ),
         ]
         return [h for h in rows if h.cm_id in cm_ids]
@@ -1068,3 +1070,12 @@ async def test_a_page_with_no_round_3_reads_no_counts() -> None:
     ledger = _Ledger()
     await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
     assert ledger.count_reads == []
+
+
+@pytest.mark.asyncio
+async def test_a_household_card_names_its_county_from_the_billing_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bunking.geo_normalizer.zip_counties as zip_counties
+
+    monkeypatch.setattr(zip_counties, "_table", lambda: {"94612": "Alameda County"})
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [(c.household_cm_id, c.county) for c in page.households] == [(JOHNSON, "Alameda County"), (GARCIA, None)]

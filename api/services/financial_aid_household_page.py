@@ -62,6 +62,7 @@ from api.services.financial_aid_share_split import dollars, payers, split
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.geo_normalizer.zip_counties import county_for_postal_code
 
 _ZERO = Decimal(0)
 # The round states whose amount isn't decided yet (Decision 2): a held round's amount is unknown (D44).
@@ -564,6 +565,7 @@ class HouseholdPageService:
                         - {""}
                     ),
                     city=_city(by_household.get(h)),
+                    county=county_for_postal_code(str(getattr(by_household.get(h), "billing_postal_code", "") or "")),
                     money=household_money(h, rows, season.shares, chips),
                     request_ids=[
                         row.request_id
