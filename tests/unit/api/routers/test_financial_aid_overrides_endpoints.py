@@ -3,8 +3,9 @@ the caller as actor, body validation, and the error mapping. Builds a bare FastA
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -63,10 +64,31 @@ def test_the_caller_is_the_actor_and_the_body_reaches_the_service() -> None:
 @pytest.mark.parametrize(
     ("error", "status"), [(DecisionNotFoundError("no such request"), 404), (DecisionRefusedError("no"), 422)]
 )
-def test_the_errors_map_like_the_other_request_writes(error: Exception, status: int) -> None:
+@pytest.mark.parametrize(("url", "body"), ROUTES)
+def test_the_errors_map_like_the_other_request_writes(
+    url: str, body: dict[str, Any], error: Exception, status: int
+) -> None:
     service = _stub()
+    service.set_cost_override = AsyncMock(side_effect=error)
     service.set_include = AsyncMock(side_effect=error)
-    assert _client().post(ROUTES[1][0], json=INCLUDE).status_code == status
+    assert _client().post(url, json=body).status_code == status
+
+
+def test_a_headcount_with_no_approved_rules_takes_the_default_codes_and_its_code_reaches_the_service() -> None:
+    """Decision 6: headcounts are keyed before the rules are approved, so the list falls back to the defaults."""
+    from api.routers import financial_aid
+    from api.services.financial_aid_casework_service import CaseworkValidationError
+    from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
+
+    rules = MagicMock()
+    rules.latest_approved = AsyncMock(return_value=None)
+    patch.object(financial_aid, "_rules", return_value=rules).start()
+    factory = patch.object(financial_aid, "FinancialAidCaseworkService").start()
+    factory.return_value.set_headcount = AsyncMock(side_effect=CaseworkValidationError("stop here"))
+    body = {"non_infant": 3, "infant": 1, "source": "declared", "reason": "r", "reason_code": "headcount"}
+    assert _client().put(f"/api/financial-aid/requests/{REQ}/headcount", json=body).status_code == 422
+    assert factory.return_value.set_headcount.call_args.kwargs["reason_code"] == "headcount"
+    assert asyncio.run(factory.call_args.kwargs["reason_codes"](2027)) == DEFAULT_REASON_CODES
 
 
 def test_an_amount_with_no_reason_code_is_422() -> None:
