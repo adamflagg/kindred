@@ -244,6 +244,7 @@ tmp/
 !bunking/satisfaction/test_fixtures/*.json
 !pocketbase/rbac/testdata/*.json
 !bunking/geo_normalizer/data/us_cities.json
+!bunking/geo_normalizer/data/us_zip_counties.json
 !bunking/geo_normalizer/data/schools.json
 !bunking/geo_normalizer/data/congregations.json
 !docs/api/external/campminder/examples/*.json

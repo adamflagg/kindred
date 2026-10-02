@@ -4,7 +4,7 @@
 THAN HALF of its land area, by the Census legal name ("Alameda County"). A ZIP split with no majority, one with no land,
 and a ZIP with no ZCTA are left out, so the card shows no county rather than a wrong one.
 
-Source (6.5 MB, pipe-delimited, UTF-8 with a BOM; never committed):
+Source (US Census Bureau, public domain; 6.5 MB, pipe-delimited, UTF-8 with a BOM; never committed):
     https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt
 
 Usage:
