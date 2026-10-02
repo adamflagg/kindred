@@ -11,7 +11,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from api.constants.collections import (
     AID_APPLICATION_CORRECTIONS,
@@ -35,9 +35,20 @@ from api.constants.collections import (
     AID_SESSION_CAPACITY,
     AID_SOURCES,
 )
-from api.schemas.financial_aid_history import HistoryCountOut, HistoryKind, HistoryOperationOut
+from api.schemas.financial_aid_history import (
+    HistoryCountOut,
+    HistoryKind,
+    HistoryOperationDetailOut,
+    HistoryOperationOut,
+    HistoryPageOut,
+    HistoryRowOut,
+)
+from api.schemas.financial_aid_rules import field_change_out
+from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_reconciliation import camp_date
+from bunking.financial_aid.change_diff import field_changes
+from bunking.financial_aid.errors import FinancialAidError
 
 INTAKE_ACTOR: Final = "system:intake"
 ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
@@ -190,3 +201,57 @@ def operation_out(op: Operation) -> HistoryOperationOut:
         rules_versions=versions,
         rules_sections=sections,
     )
+
+
+class HistoryNotFoundError(FinancialAidError):
+    """No such operation this season, or none this reader may see (a rules operation without rules)."""
+
+
+class HistoryReads(Protocol):
+    async def fetch_season_log(self, year: int) -> list[Any]: ...
+    async def fetch_operation(self, year: int, operation_id: str) -> list[Any]: ...
+
+
+class SeasonHistoryService:
+    def __init__(self, reads: HistoryReads) -> None:
+        self._reads = reads
+
+    async def page(self, year: int, f: HistoryFilter, *, page: int, per_page: int) -> HistoryPageOut:
+        ops = operations(e for r in await self._reads.fetch_season_log(year) if (e := entry_of(r)) is not None)
+        readable = [o for o in ops if visible(o, HistoryFilter(rules=f.rules, include_intake=True))]
+        shown = [o for o in ops if visible(o, f)]
+        start = (page - 1) * per_page
+        return HistoryPageOut(
+            year=year,
+            page=page,
+            per_page=per_page,
+            total=len(shown),
+            operations=[operation_out(o) for o in shown[start : start + per_page]],
+            actors=sorted({o.actor for o in readable if o.kind != "intake"}),
+        )
+
+    async def operation(self, year: int, operation_id: str, *, rules: bool) -> HistoryOperationDetailOut:
+        records = await self._reads.fetch_operation(year, operation_id)
+        found = operations(e for r in records if (e := entry_of(r)) is not None)
+        if not found or (found[0].kind == "rules" and not rules):
+            raise HistoryNotFoundError(f"no operation {operation_id} in {year}")
+        op = found[0]
+        by_id = {str(r.id): r for r in records}
+        rows = []
+        for e in op.entries:
+            record = by_id[e.id]
+            before, after = log_detail(getattr(record, "before", None)), log_detail(getattr(record, "after", None))
+            rows.append(
+                HistoryRowOut(
+                    at=e.created,
+                    entity=e.entity,
+                    entity_id=e.entity_id,
+                    action=e.action,
+                    actor=e.actor,
+                    reason=e.reason,
+                    before=before,
+                    after=after,
+                    changes=[field_change_out(c) for c in field_changes(before, after)],
+                )
+            )
+        return HistoryOperationDetailOut(year=year, operation=operation_out(op), rows=rows)

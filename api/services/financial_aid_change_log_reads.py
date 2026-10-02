@@ -22,6 +22,8 @@ from bunking.financial_aid.change_replay import LogRow
 
 PAGE_SIZE: Final = 1000
 _ENTITY: Final = re.compile(r"^aid_[a-z_]+$")
+_OPERATION: Final = re.compile(r"^[a-z0-9]{15}$")
+_LIST_FIELDS: Final = "id,entity,entity_id,action,actor,reason,operation_id,created"
 
 
 def _json_object(value: Any) -> dict[str, Any] | None:
@@ -93,3 +95,49 @@ class EntityLogReads:
 
     async def fetch_entity_log(self, year: int, *, exact: Collection[str], containing: Collection[str]) -> list[Any]:
         return await fetch_entity_log(self.pb, year, exact=exact, containing=containing)
+
+
+def log_detail(value: Any) -> dict[str, Any] | None:
+    """A log row's before/after JSON object; anything else (malformed, a list, a scalar) is None rather than failing
+    the read (the household page's timeline and Season > History both show it)."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else None
+        except ValueError:
+            return None
+    return dict(value) if isinstance(value, dict) else None
+
+
+async def fetch_season_log(pb: Any, year: int) -> list[Any]:
+    """Every row of the season's log, in recorded order, without its before/after JSON (History's list; D49)."""
+    rows: list[Any] = await asyncio.to_thread(
+        aid_collection(pb, COLLECTION).get_full_list,
+        batch=PAGE_SIZE,
+        query_params={"filter": f"year = {int(year)}", "sort": "created,id", "fields": _LIST_FIELDS},
+    )
+    return rows
+
+
+async def fetch_operation(pb: Any, year: int, operation_id: str) -> list[Any]:
+    """One operation's rows, whole, in recorded order (History's expanded line)."""
+    if not _OPERATION.fullmatch(operation_id):
+        raise ValueError(f"{operation_id!r} is not an operation id")
+    rows: list[Any] = await asyncio.to_thread(
+        aid_collection(pb, COLLECTION).get_full_list,
+        batch=PAGE_SIZE,
+        query_params={"filter": f'year = {int(year)} && operation_id = "{operation_id}"', "sort": "created,id"},
+    )
+    return rows
+
+
+class HistoryLogReads:
+    """The two reads over one PocketBase client: Season > History's HistoryReads."""
+
+    def __init__(self, pb: Any) -> None:
+        self.pb = pb
+
+    async def fetch_season_log(self, year: int) -> list[Any]:
+        return await fetch_season_log(self.pb, year)
+
+    async def fetch_operation(self, year: int, operation_id: str) -> list[Any]:
+        return await fetch_operation(self.pb, year, operation_id)

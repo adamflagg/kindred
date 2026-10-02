@@ -5,12 +5,16 @@ from __future__ import annotations
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 import api.constants.collections as collections
 from api.services.financial_aid_season_history import (
     ENTITY_KINDS,
     NOT_IN_HISTORY,
     HistoryFilter,
+    HistoryNotFoundError,
     Operation,
+    SeasonHistoryService,
     entry_of,
     operation_out,
     operations,
@@ -155,3 +159,58 @@ def test_the_filters_by_kind_person_day_and_text() -> None:
 
 def test_a_row_with_no_created_time_has_no_place_in_the_order() -> None:
     assert entry_of(_rec("l1", "aid_decisions", "x", OP_A, at="")) is None
+
+
+class _Reads:
+    def __init__(self, *records: SimpleNamespace) -> None:
+        self.records = records
+
+    async def fetch_season_log(self, year: int) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(**{k: v for k, v in vars(r).items() if k not in ("before", "after")}) for r in self.records
+        ]
+
+    async def fetch_operation(self, year: int, operation_id: str) -> list[SimpleNamespace]:
+        return [r for r in self.records if r.operation_id == operation_id]
+
+
+def _rules_save() -> SimpleNamespace:
+    row = _rec("l9", "aid_rules", "2027:3", OP_R, actor=FIN, action="save")
+    row.before = {"document": {"award_tables": {"camp": {"tiers": {"3": {"r1_pct": "74.5"}}}}}}
+    row.after = '{"document": {"award_tables": {"camp": {"tiers": {"3": {"r1_pct": "72"}}}}}}'
+    return row
+
+
+def _post() -> SimpleNamespace:
+    row = _rec("l1", "aid_decisions", "reqemma00000001:1", OP_A, action="post", at="2027-03-09 17:00:00.000Z")
+    row.before, row.after = None, {"locked_amount": "1500"}
+    return row
+
+
+@pytest.mark.asyncio
+async def test_a_page_counts_every_matching_operation_and_lists_the_people_the_reader_can_see() -> None:
+    service = SeasonHistoryService(_Reads(_post(), _rules_save()))
+    registrar = await service.page(2027, HistoryFilter(), page=1, per_page=1)
+    assert (registrar.total, [o.operation_id for o in registrar.operations], registrar.actors) == (1, [OP_A], [REG])
+    finance = await service.page(2027, HistoryFilter(rules=True), page=2, per_page=1)
+    assert (finance.total, [o.operation_id for o in finance.operations]) == (2, [OP_A])  # page 2 of 2, newest first
+    assert finance.actors == [FIN, REG]
+
+
+@pytest.mark.asyncio
+async def test_an_operation_expands_to_its_rows_and_their_field_diff() -> None:
+    detail = await SeasonHistoryService(_Reads(_rules_save())).operation(2027, OP_R, rules=True)
+    (row,) = detail.rows
+    assert (detail.operation.kind, row.entity_id) == ("rules", "2027:3")
+    (change,) = row.changes
+    assert (change.path[-1], change.before, change.after) == ("r1_pct", "74.5", "72")
+
+
+@pytest.mark.asyncio
+async def test_a_registrar_cannot_open_a_rules_operation_and_an_unknown_one_is_not_found() -> None:
+    service = SeasonHistoryService(_Reads(_rules_save(), _post()))
+    with pytest.raises(HistoryNotFoundError):
+        await service.operation(2027, OP_R, rules=False)
+    with pytest.raises(HistoryNotFoundError):
+        await service.operation(2027, "z" * 15, rules=True)
+    assert (await service.operation(2027, OP_A, rules=False)).operation.kind == "offers"

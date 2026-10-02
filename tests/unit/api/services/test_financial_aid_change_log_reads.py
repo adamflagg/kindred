@@ -102,3 +102,38 @@ async def test_an_entity_id_is_escaped_into_the_filter() -> None:
     pb, calls = _log_pb([])
     await fetch_entity_log(pb, 2027, exact=["x' || year > 0 || '"], containing=[])
     assert "\\'" in str(calls[0]["filter"])
+
+
+@pytest.mark.asyncio
+async def test_the_season_log_is_read_without_its_json() -> None:
+    from api.services.financial_aid_change_log_reads import fetch_season_log
+
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    await fetch_season_log(pb, 2027)
+    query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert query["filter"] == "year = 2027"
+    assert query["sort"] == "created,id"
+    assert set(query["fields"].split(",")) == {
+        "id",
+        "entity",
+        "entity_id",
+        "action",
+        "actor",
+        "reason",
+        "operation_id",
+        "created",
+    }
+
+
+@pytest.mark.asyncio
+async def test_one_operation_is_read_whole_and_only_by_a_well_formed_id() -> None:
+    from api.services.financial_aid_change_log_reads import fetch_operation
+
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    await fetch_operation(pb, 2027, "abc123def456ghi")
+    query = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+    assert query == {"filter": 'year = 2027 && operation_id = "abc123def456ghi"', "sort": "created,id"}
+    with pytest.raises(ValueError, match="operation"):
+        await fetch_operation(pb, 2027, 'x" || year > 0 || "')

@@ -13,7 +13,6 @@ Included requests (D77's band) are live ones: not withdrawn, duplicate or cancel
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import datetime
@@ -40,6 +39,7 @@ from api.schemas.financial_aid_household_page import (
 )
 from api.schemas.financial_aid_intake import ApplicationDetailResponse
 from api.services.financial_aid_casework_service import CaseworkNotFoundError
+from api.services.financial_aid_change_log_reads import log_detail
 from api.services.financial_aid_decisions_service import (
     DecisionsStore,
     FinancialAidDecisionsService,
@@ -405,17 +405,6 @@ class HistoryReads(Protocol):
     ) -> list[Any]: ...
 
 
-def _detail(value: Any) -> dict[str, Any] | None:
-    """A log row's before/after JSON object; anything else (malformed, a list, a scalar) shows no detail
-    rather than failing the page."""
-    if isinstance(value, str):
-        try:
-            value = json.loads(value) if value.strip() else None
-        except ValueError:
-            return None
-    return dict(value) if isinstance(value, dict) else None
-
-
 def _history_entry(record: Any, request_ids: Collection[str]) -> HistoryEntryOut | None:
     """One timeline entry; a row with no created time has no place in the order and is left out."""
     created = parse_pb_datetime(getattr(record, "created", None))
@@ -432,8 +421,8 @@ def _history_entry(record: Any, request_ids: Collection[str]) -> HistoryEntryOut
         actor=str(record.actor or ""),
         reason=str(getattr(record, "reason", "") or ""),
         operation_id=str(getattr(record, "operation_id", "") or ""),
-        before=_detail(getattr(record, "before", None)),
-        after=_detail(getattr(record, "after", None)),
+        before=log_detail(getattr(record, "before", None)),
+        after=log_detail(getattr(record, "after", None)),
     )
 
 
