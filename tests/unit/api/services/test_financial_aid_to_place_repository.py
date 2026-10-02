@@ -263,6 +263,24 @@ async def test_what_changed_since_is_read_once_per_collection_year_scoped_and_af
 
 
 @pytest.mark.asyncio
+async def test_a_correction_since_the_floor_is_read_with_its_field() -> None:
+    """changed_since skips an Include override by its field (it changes no price), so the trimmed read must
+    fetch `field`: PocketBase returns only the fields asked for, and a missing one reads as "" here."""
+    repo, queries = _by_collection(
+        {
+            "aid_application_corrections": [
+                _row(application="app000001000001", request="reqemma00000001", field="include_override", created=LATER)
+            ]
+        }
+    )
+    records = await repo.fetch_changed_since(YEAR, FLOOR, persons=False)
+    (query,) = queries["aid_application_corrections"]
+    assert "field" in query["fields"].split(",")
+    at = datetime(2027, 3, 9, 17, 0, tzinfo=UTC)
+    assert records.corrections == (SinceCorrection("app000001000001", "reqemma00000001", at, "include_override"),)
+
+
+@pytest.mark.asyncio
 async def test_grantors_are_read_from_their_own_records_not_by_season() -> None:
     """A grantor's log row carries the season configured when it was saved (the directory spans seasons), so
     a season-scoped log read can miss a grantor change behind a late placement: read the record's `updated`."""

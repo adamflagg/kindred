@@ -465,7 +465,8 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
                 f"{season} && {after} && ({entities(_SINCE_NAMED)})",
                 "entity,entity_id,action,created,before,after",
             ),
-            page(AID_APPLICATION_CORRECTIONS, f"{season} && {after}", "application,request,created"),
+            # `field` too: changed_since skips an Include override by it (Decision 5: it changes no price).
+            page(AID_APPLICATION_CORRECTIONS, f"{season} && {after}", "application,request,field,created"),
             page(
                 ATTENDEES,
                 f"{season} && {touched}",
