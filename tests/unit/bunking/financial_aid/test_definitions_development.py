@@ -17,6 +17,7 @@ def test_the_development_surface_lists_its_notes_in_order() -> None:
         "first_time",
         "dev_appeals",
         "household_level",
+        "basis_unconfirmed",  # slice 4 ask 4: appended, so notes 1–9 keep their numbers
     )
 
 

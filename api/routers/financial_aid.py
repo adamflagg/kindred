@@ -126,6 +126,7 @@ from api.schemas.financial_aid_reports import (
     ReportedHistoryResponse,
     ReportedLoadIn,
     ReportedLoadOut,
+    ReportRequestIdsOut,
     StatisticsBasis,
     StatisticsResponse,
 )
@@ -231,7 +232,9 @@ from api.services.financial_aid_reconciliation import split_placed
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
+    OutcomeRowKind,
     ReportedFigureNotFoundError,
+    StatisticsPart,
 )
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
@@ -280,7 +283,8 @@ from bunking.financial_aid.change_log import AidWriteConflictError
 from bunking.financial_aid.definitions import BY_KEY, SURFACES, render
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.reports.history import ReportedFigure
-from bunking.financial_aid.reports.statistics import RoundChip
+from bunking.financial_aid.reports.programs import ProgramsCount, ProgramsPart
+from bunking.financial_aid.reports.statistics import OutcomeKind, RoundChip, StatisticsCount
 from bunking.financial_aid.rules import AidRules, SectionName, ValidationReport
 from bunking.financial_aid.scenarios import CommitteeView, ScenarioResults
 from bunking.rbac.dependencies import require_any_permission, require_permission
@@ -1865,6 +1869,87 @@ async def get_report_programs(
     try:
         return await _reports().programs(
             year,
+            through_deadline=through_round1_deadline,
+            through=received_through,
+            as_of=as_of,
+            axis=as_of_axis,
+        )
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/{year}/statistics/requests", response_model=ReportRequestIdsOut)
+async def get_report_statistics_requests(
+    year: _Year,
+    part: StatisticsPart,
+    table: Annotated[str | None, Query(max_length=60)] = None,
+    round: _RoundChip = "1",
+    basis: StatisticsBasis = "posted",
+    through_round1_deadline: bool = False,
+    received_through: date | None = None,
+    as_of: date | None = None,
+    as_of_axis: AsOfAxis = "campminder",
+    tier: Annotated[int | None, Query(ge=1, le=50)] = None,
+    count: StatisticsCount | None = None,
+    reason: Annotated[str | None, Query(max_length=60)] = None,
+    pool: Annotated[str | None, Query(max_length=60)] = None,
+    posted_round: Annotated[int | None, Query(ge=1, le=3)] = None,
+    outcome_row: OutcomeRowKind | None = None,
+    outcome: OutcomeKind | None = None,
+    user: AuthUser = _VIEW,  # D65: never development's summary
+) -> ReportRequestIdsOut:
+    """The requests behind one Statistics count (D20; slice 4 asks 1 and 8), on the read `/statistics` gives for the
+    same parameters. `part`: `tier` (`tier` absent: the "no tier" row) or `total` with a `count`; `cancelled` (an
+    RPT-22 row: `reason`, `posted_round`, `pool` absent for a null pool); `outcome` (an RPT-23 row: `outcome_row` =
+    its kind, `pool` for a pool row, `outcome`)."""
+    try:
+        return await _reports().statistics_request_ids(
+            year,
+            part=part,
+            table=table,
+            round_=_ROUND_CHIPS[round],
+            basis=basis,
+            through_deadline=through_round1_deadline,
+            through=received_through,
+            as_of=as_of,
+            axis=as_of_axis,
+            tier=tier,
+            count=count,
+            reason=reason,
+            pool=pool,
+            posted_round=posted_round,
+            outcome_row=outcome_row,
+            outcome=outcome,
+        )
+    except FinancialAidError as exc:
+        raise _reports_http(exc) from exc
+
+
+@router.get("/reports/{year}/programs/requests", response_model=ReportRequestIdsOut)
+async def get_report_programs_requests(
+    year: _Year,
+    part: ProgramsPart,
+    block: Annotated[int, Query(ge=1, le=3)],
+    count: ProgramsCount,
+    pool: Annotated[str | None, Query(max_length=60)] = None,
+    session: Annotated[int | None, Query(ge=0)] = None,
+    through_round1_deadline: bool = False,
+    received_through: date | None = None,
+    as_of: date | None = None,
+    as_of_axis: AsOfAxis = "campminder",
+    user: AuthUser = _VIEW,  # D65: never development's summary
+) -> ReportRequestIdsOut:
+    """The requests behind one Programs count (D20; slice 4 ask 1), on the read `/programs` gives for the same
+    parameters: a `session` row (`pool` absent: the no-pool group; `session` 0: "session not matched"), a pool's
+    `subtotal`, or the `total`, in round `block`'s block."""
+    try:
+        return await _reports().programs_request_ids(
+            year,
+            part=part,
+            block=block,
+            count=count,
+            pool=pool,
+            session=session,
             through_deadline=through_round1_deadline,
             through=received_through,
             as_of=as_of,

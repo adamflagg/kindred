@@ -267,10 +267,11 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         key="pct_of_ask",
         term="% of ask",
         text=(
-            "% of ask: awarded $ ÷ asked $, each round's ask as keyed and as it stands today. A round paid wholly by "
-            "an outside funder is never awarded, so its ask is left out of the asked $ this divides by. With "
-            '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads '
-            '"% of ask (posted + decided)".'
+            "% of ask: awarded $ ÷ the live requests' in-budget asks: each round's ask as keyed and as it stands "
+            "today, on live requests (not cancelled). It is not the asked or requested total, which sums every "
+            "app's ask, cancelled ones included. A round paid wholly by an outside funder is never awarded, so its "
+            'ask is left out of the in-budget asks this divides by. With "include not yet offered" on, the awarded $ '
+            'is Posted + Decided, and the column reads "% of ask (posted + decided)".'
         ),
         spec="§5.6",
         rulings=("D80",),
@@ -347,7 +348,56 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         spec="§9.7",
         rulings=("D131",),
     ),
+    # Slice 4 ask 4: the Statistics columns that had no note (§9.2, §9.7 RPT-9).
+    Definition(
+        key="pct_of_ask_with_grants",
+        term="% of ask incl. grants",
+        text=(
+            "% of ask incl. grants: awarded $ plus the counting outside grants placed on the live requests, ÷ the "
+            "live requests' in-budget asks (the same denominator as % of ask). It is the 2026 sheet's total % of "
+            "ask granted. Round 1 and All rounds only: a grant belongs to the request, not to a round. With "
+            '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads "% of ask incl. '
+            'grants (posted + decided)".'
+        ),
+        spec="§9.2",
+        rulings=("D80", "D116", "D132"),
+    ),
+    Definition(
+        key="round2_max_pct",
+        term="Round 2 max %",
+        text=(
+            "Round 2 max %: each tier's appeal cap in the rules version the read prices with: the most Round 1 and "
+            "Round 2 aid together may cover, as a % of the session's cost. It is a rules value, not an outcome: no "
+            "request's award is read to make it. It is blank on All award tables, on the totals row, and where the "
+            "table's programs use no Round 2 table or more than one."
+        ),
+        spec="§9.7",
+        rulings=("D132",),
+    ),
+    Definition(
+        key="appeal_rate",
+        term="Appeal rate",
+        text=(
+            "Appeal rate: appeals ÷ Round 1 apps, per tier and in total, with a tier's appeals counted at their "
+            "Round 2 tier and its apps at Round 1's. Kindred derives it; no deck gives it per tier. As in Appeals, "
+            "cancelled requests count on both sides. It is not development's appeals figure."
+        ),
+        spec="§9.7",
+        rulings=("D131", "D132"),
+    ),
     # Reports › Development (Part B): development's one all-money basis (§5.7, §5.10, §5.11).
+    Definition(
+        key="basis_unconfirmed",
+        term="Basis unconfirmed",
+        text=(
+            "Basis unconfirmed: a 2022–2025 column shows the figures development already sent funders, typed once. "
+            "Kindred counts all money ({camp}'s aid plus every outside grant), and those years may have counted "
+            "{camp}'s own aid only (O-930-1). Until that is settled, comparing such a column with 2026 or later "
+            "may compare two bases. This note is Kindred's interim default, not a ruling."
+        ),
+        spec="§5.7",
+        rulings=("D96",),
+    ),
     Definition(
         key="total_awards_granted",
         term="Total Awards Granted",
@@ -473,6 +523,9 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "decided_not_offered",
         "recipients_cancelled",
         "appeals",
+        "pct_of_ask_with_grants",
+        "round2_max_pct",
+        "appeal_rate",
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
     "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
@@ -486,6 +539,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
         "first_time",
         "dev_appeals",
         "household_level",
+        "basis_unconfirmed",
     ),
 }
 

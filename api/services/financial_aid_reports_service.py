@@ -31,7 +31,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Final, Protocol
+from typing import Final, Literal, Protocol
 
 from api.constants.collections import AID_REPORTED_HISTORY, AID_REQUESTS
 from api.schemas.financial_aid_decisions import AsOfAxis, NotRebuiltOut
@@ -53,6 +53,7 @@ from api.schemas.financial_aid_reports import (
     ReportedFigureOut,
     ReportedHistoryResponse,
     ReportedLoadOut,
+    ReportRequestIdsOut,
     Round1PctRowOut,
     RoundBlockOut,
     StatisticsBasis,
@@ -96,17 +97,31 @@ from bunking.financial_aid.reports.committee import (
 )
 from bunking.financial_aid.reports.facts import ReportRequest
 from bunking.financial_aid.reports.history import ReportedFigure, figure_entity, problems
-from bunking.financial_aid.reports.programs import ProgramRow, RoundBlock, programs
+from bunking.financial_aid.reports.programs import (
+    ProgramRow,
+    ProgramsCount,
+    ProgramsPart,
+    RoundBlock,
+    program_members,
+    programs,
+)
 from bunking.financial_aid.reports.statistics import (
     NO_REASON,
     PCT_OF_ASK_DECIDED_LABEL,
     PCT_OF_ASK_LABEL,
+    PCT_WITH_GRANTS_DECIDED_LABEL,
+    PCT_WITH_GRANTS_LABEL,
     WITHDRAWN_REASON,
+    OutcomeKind,
     RoundChip,
+    StatisticsCount,
     StatisticsRow,
+    cancelled_members,
+    outcome_members,
     outcomes,
     statistics,
     tier_appeals,
+    tier_members,
 )
 from bunking.financial_aid.rules import AidRules, resolve_program
 from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetNote, request_set_note
@@ -153,6 +168,10 @@ NOT_BUILT: Final[Mapping[str, str]] = {
 
 class ReportsRefusedError(FinancialAidError, ValueError):
     """A read or load that can't be answered as asked (422)."""
+
+
+StatisticsPart = Literal["tier", "total", "cancelled", "outcome"]
+OutcomeRowKind = Literal["pool", "no_pool", "headline"]  # OutcomeRowOut.kind's three values
 
 
 class ReportedFigureNotFoundError(FinancialAidError, LookupError):
@@ -314,6 +333,25 @@ class FinancialAidReportsService:
 
     # --- Statistics -------------------------------------------------------------------------------------------
 
+    async def _statistics_read(
+        self,
+        year: int,
+        *,
+        table: str | None,
+        through_deadline: bool,
+        through: date | None,
+        as_of: date | None,
+        axis: AsOfAxis,
+    ) -> tuple[_Read, AidRules | None]:
+        """Statistics' season as read, and its rules; an award-table chip the rules don't have is refused."""
+        read = await self._read(
+            year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
+        )
+        document = read.season.rules.document if read.season.rules is not None else None
+        if table is not None and (document is None or table not in document.award_tables):
+            raise ReportsRefusedError(f"{table!r} is not one of {year}'s award tables")
+        return read, document
+
     async def statistics(
         self,
         year: int,
@@ -326,12 +364,9 @@ class FinancialAidReportsService:
         as_of: date | None = None,
         axis: AsOfAxis = "campminder",
     ) -> StatisticsResponse:
-        read = await self._read(
-            year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
+        read, document = await self._statistics_read(
+            year, table=table, through_deadline=through_deadline, through=through, as_of=as_of, axis=axis
         )
-        document = read.season.rules.document if read.season.rules is not None else None
-        if table is not None and (document is None or table not in document.award_tables):
-            raise ReportsRefusedError(f"{table!r} is not one of {year}'s award tables")
         result = statistics(read.requests, document, table=table, round_=round_, basis=basis)
         return StatisticsResponse(
             year=year,
@@ -341,6 +376,9 @@ class FinancialAidReportsService:
             rules_version=read.season.rules.version if read.season.rules is not None else None,
             basis=basis,
             pct_of_ask_label=PCT_OF_ASK_DECIDED_LABEL if basis == "posted_and_decided" else PCT_OF_ASK_LABEL,
+            pct_of_ask_with_grants_label=(
+                PCT_WITH_GRANTS_DECIDED_LABEL if basis == "posted_and_decided" else PCT_WITH_GRANTS_LABEL
+            ),
             table=table,
             round=round_,
             tables=table_chips(document),
@@ -352,6 +390,7 @@ class FinancialAidReportsService:
                     reason=row.reason,
                     reason_label=_reason_label(row.reason),
                     pool=row.pool,
+                    pool_label=_pool_label(document, row.pool),
                     round=row.round,
                     requests=row.requests,
                     posted=money(row.posted),
@@ -448,6 +487,89 @@ class FinancialAidReportsService:
             request_set=read.note,
             not_rebuilt=self._gaps(read),
         )
+
+    # --- the requests behind a count (slice 4 asks 1 and 8; D20) -------------------------------------------------
+
+    async def statistics_request_ids(
+        self,
+        year: int,
+        *,
+        part: StatisticsPart,
+        table: str | None = None,
+        round_: RoundChip = 1,
+        basis: StatisticsBasis = "posted",
+        through_deadline: bool = False,
+        through: date | None = None,
+        as_of: date | None = None,
+        axis: AsOfAxis = "campminder",
+        tier: int | None = None,
+        count: StatisticsCount | None = None,
+        reason: str | None = None,
+        pool: str | None = None,
+        posted_round: int | None = None,
+        outcome_row: OutcomeRowKind | None = None,
+        outcome: OutcomeKind | None = None,
+    ) -> ReportRequestIdsOut:
+        """The requests behind one count on the Statistics read with the same parameters: a tier row's count (`tier`
+        None: the "no tier" row), the totals' count, an RPT-22 row (its reason, lock pool and round), or an RPT-23
+        outcome (its row kind and pool). RPT-22 follows the chips, as its rows do; RPT-23 follows neither the chips
+        nor the basis, as its rows don't. Every part follows the date and the reporting control."""
+        if part in ("tier", "total") and count is None:
+            raise ReportsRefusedError("Choose a count: apps, cancelled, asks, awarded or decided")
+        if part == "cancelled" and (reason is None or posted_round is None):
+            raise ReportsRefusedError("An RPT-22 row is named by its reason and its round (and its pool, if any)")
+        if part == "outcome" and (outcome_row is None or outcome is None or (outcome_row == "pool" and pool is None)):
+            raise ReportsRefusedError("An RPT-23 count is named by its row (pool, no_pool or headline) and outcome")
+        read, _ = await self._statistics_read(
+            year, table=table, through_deadline=through_deadline, through=through, as_of=as_of, axis=axis
+        )
+        if part == "outcome" and outcome_row is not None and outcome is not None:
+            ids = outcome_members(read.requests, kind=outcome_row, pool=pool, outcome=outcome)
+        elif part == "cancelled" and reason is not None and posted_round is not None:
+            ids = cancelled_members(
+                read.requests, table=table, round_=round_, reason=reason, pool=pool, posted_round=posted_round
+            )
+        elif count is not None:
+            ids = tier_members(
+                read.requests, table=table, round_=round_, basis=basis, tier=tier, total=part == "total", count=count
+            )
+        else:  # unreachable: the checks above refused it
+            raise ReportsRefusedError("Name the row and the count")
+        return _ids_out(year, read, ids)
+
+    async def programs_request_ids(
+        self,
+        year: int,
+        *,
+        part: ProgramsPart,
+        block: int,
+        count: ProgramsCount,
+        pool: str | None = None,
+        session: int | None = None,
+        through_deadline: bool = False,
+        through: date | None = None,
+        as_of: date | None = None,
+        axis: AsOfAxis = "campminder",
+    ) -> ReportRequestIdsOut:
+        """The requests behind one count of one Programs row (a session in its pool group, a pool's subtotal, the
+        total), in round `block`'s block, on the Programs read with the same parameters. `pool` None is the no-pool
+        group; `session` 0 is a group's "session not matched" row."""
+        if part == "session" and session is None:
+            raise ReportsRefusedError("A Programs session row is named by its pool and its session")
+        read = await self._read(
+            year, as_of=as_of, axis=axis, request_set=await self._request_set(year, through_deadline, through)
+        )
+        document = read.season.rules.document if read.season.rules is not None else None
+        ids = program_members(
+            read.requests,
+            rules_sessions(read.season, document),
+            part=part,
+            pool=pool,
+            session=session or 0,
+            block=block,
+            count=count,
+        )
+        return _ids_out(year, read, ids)
 
     # --- the committee's year-over-year tables ---------------------------------------------------------------
 
@@ -667,6 +789,17 @@ def _reason_label(reason: str) -> str:
     return reason
 
 
+def _ids_out(year: int, read: _Read, ids: Sequence[str]) -> ReportRequestIdsOut:
+    return ReportRequestIdsOut(
+        year=year,
+        as_of=read.season.as_of,
+        as_of_axis=read.season.axis,
+        figures_on=read.figures_on,
+        request_set=read.note,
+        request_ids=list(ids),
+    )
+
+
 def _statistics_row(row: StatisticsRow) -> StatisticsRowOut:
     return StatisticsRowOut(
         tier=row.tier,
@@ -680,6 +813,7 @@ def _statistics_row(row: StatisticsRow) -> StatisticsRowOut:
         average_ask=_money(row.average_ask),
         amount=money(row.amount),
         decided=money(row.decided),
+        awarded=money(row.awarded),
         awarded_count=row.awarded_count,
         decided_count=row.decided_count,
         average_award=_money(row.average_award),

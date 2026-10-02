@@ -12,6 +12,8 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
                   one, and the average ask divides by it.
   amount          awarded (D80, Posted net of clawback, the camp's own money) on live requests; on the
                   "posted_and_decided" basis (D130) plus decided and not yet offered, broken out as `decided`.
+  awarded         Posted alone (D80), on either basis: on "posted" it is `amount`; on "posted_and_decided" it is
+                  `amount` − `decided` (slice 4 ask 2).
   awarded_count   live requests whose AWARDED (Posted) money is above $0, on either basis; the average award is
                   awarded ÷ this count (D80, labelled with its population: O-930-16), never decided money (D130:
                   decided is never called awarded). `decided_count` counts the requests with decided money apart.
@@ -46,6 +48,62 @@ from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_p
 
 Basis = Literal["posted", "posted_and_decided"]
 RoundChip = Literal[1, 2, 3] | None
+StatisticsCount = Literal["apps", "cancelled", "asks", "awarded", "decided"]
+OutcomeKind = Literal["accepted", "appealed", "waiting"]
+
+
+def counts_in(request: ReportRequest, rounds: tuple[int, ...], *, with_decided: bool) -> frozenset[StatisticsCount]:
+    """The Statistics counts a request in a row's population is in: the one definition the row's counts and the
+    requests behind them share (slice 4 ask 1).
+
+      apps       always (D72; cancelled included, D131)
+      cancelled  its standing is cancelled
+      asks       it has an ask on the chip's round(s)
+      awarded    awarded (Posted) money above $0 on those rounds (D80, D157); 0 on a request that isn't live (D129)
+      decided    decided money not yet offered above $0, on the decided basis only (D130)"""
+    found: set[StatisticsCount] = {"apps"}
+    if request.standing == "cancelled":
+        found.add("cancelled")
+    if request.asked(rounds) is not None:
+        found.add("asks")
+    posted = request.awarded(rounds)
+    if posted > 0:
+        found.add("awarded")
+    if with_decided and request.awarded(rounds, decided=True) - posted > 0:
+        found.add("decided")
+    return frozenset(found)
+
+
+def outcome_kinds(request: ReportRequest) -> frozenset[OutcomeKind]:
+    """RPT-23's outcomes a request is in, none when it isn't live (a cancelled family is no longer waiting): accepted
+    (Round 1 posted and accepted), appealed (a Round 2 ask), waiting (Round 1 posted, not accepted, no Round 2 ask).
+    One definition for the counts and the requests behind them (slice 4 asks 1 and 8)."""
+    if not request.live:
+        return frozenset()
+    first, second = request.round(1), request.round(2)
+    posted_round1 = first is not None and first.posted is not None
+    accepted = first is not None and first.posted is not None and first.accepted
+    found: set[OutcomeKind] = set()
+    if accepted:
+        found.add("accepted")
+    if second is not None and second.ask is not None:
+        found.add("appealed")
+    elif posted_round1 and not accepted:
+        found.add("waiting")
+    return frozenset(found)
+
+
+def _cancelled_row(request: ReportRequest, n: int) -> tuple[str, str | None, Decimal] | None:
+    """The RPT-22 row a cancelled request's round `n` sits in (its reason and the lock's pool) and what that lock
+    posted; None when it sits in none (not cancelled, or round `n` never posted)."""
+    if request.standing != "cancelled":
+        return None
+    facts = request.round(n)
+    if facts is None or facts.locked is None:
+        return None
+    return request.cancel_reason or NO_REASON, facts.pool, facts.locked
+
+
 NO_REASON: Final = "not_recorded"  # a cancellation with no reason: before 2027, or not given yet (D101)
 # A withdrawn request that holds a posted award counts as a cancellation (owner (a), RULED 2026-10-02); it has no
 # cancel reason, so it gets its own line rather than reading as missing data.
@@ -54,6 +112,9 @@ WITHDRAWN_REASON: Final = "withdrawn_in_kindred"
 
 PCT_OF_ASK_LABEL: Final = "% of ask"
 PCT_OF_ASK_DECIDED_LABEL: Final = "% of ask (posted + decided)"
+# Slice 4 ask 4: "% of ask incl. grants" names its decided numerator the same way (owner B4a (b)).
+PCT_WITH_GRANTS_LABEL: Final = "% of ask incl. grants"
+PCT_WITH_GRANTS_DECIDED_LABEL: Final = "% of ask incl. grants (posted + decided)"
 
 
 @dataclass(frozen=True)
@@ -69,6 +130,7 @@ class StatisticsRow:
     average_ask: Decimal | None
     amount: Decimal
     decided: Decimal
+    awarded: Decimal  # Posted alone (D80), net of clawback, live requests, on either basis: amount − decided
     awarded_count: int
     decided_count: int
     average_award: Decimal | None
@@ -176,12 +238,13 @@ def _row(
     asks = awarded_count = decided_count = cancelled = 0
     grants = ZERO
     for request in requests:
-        ask = request.asked(rounds)
-        if ask is not None:
+        found = counts_in(request, rounds, with_decided=with_decided)
+        asks += "asks" in found
+        cancelled += "cancelled" in found
+        awarded_count += "awarded" in found
+        decided_count += "decided" in found
+        if (ask := request.asked(rounds)) is not None:
             asked += ask
-            asks += 1
-        if request.standing == "cancelled":
-            cancelled += 1
         if not request.live:
             continue
         if (in_budget := request.asked_in_budget(rounds)) is not None:
@@ -191,8 +254,6 @@ def _row(
         amount += money
         awarded += posted
         decided += money - posted
-        awarded_count += posted > 0
-        decided_count += money - posted > 0
         grants += request.grants
     shows_grants = round_ in (None, 1)
     # Owner (b) (RULED 2026-10-02): pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by
@@ -210,6 +271,7 @@ def _row(
         average_ask=average(asked, asks),
         amount=amount,
         decided=decided,
+        awarded=awarded,
         awarded_count=awarded_count,
         decided_count=decided_count,
         average_award=average(awarded, awarded_count),
@@ -259,15 +321,13 @@ def recipients_cancelled(requests: Iterable[ReportRequest], round_: RoundChip = 
     """D131: requests with a posted award (D80) later cancelled, by cancel reason, pool and round."""
     tally: dict[tuple[str, str | None, int], tuple[int, Decimal]] = {}
     for request in requests:
-        if request.standing != "cancelled":
-            continue
         for n in _rounds(round_):
-            facts = request.round(n)
-            if facts is None or facts.locked is None:
+            if (found := _cancelled_row(request, n)) is None:
                 continue
-            key = (request.cancel_reason or NO_REASON, facts.pool, n)
+            reason, pool, locked = found
+            key = (reason, pool, n)
             count, money = tally.get(key, (0, ZERO))
-            tally[key] = (count + 1, money + facts.locked)
+            tally[key] = (count + 1, money + locked)
     return tuple(
         CancelledRow(reason, pool, n, count, money)
         for (reason, pool, n), (count, money) in sorted(
@@ -332,18 +392,15 @@ def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
         accepted = appealed = waiting = 0
         accepted_amount = appealed_asked = ZERO
         for request in members:
-            first = request.round(1)
-            second = request.round(2)
-            posted = first.posted if first is not None else None
-            asked2 = second.ask if second is not None else None
-            if posted is not None and first is not None and first.accepted:
+            found = outcome_kinds(request)
+            first, second = request.round(1), request.round(2)
+            if "accepted" in found and first is not None and first.posted is not None:
                 accepted += 1
-                accepted_amount += posted
-            if asked2 is not None:
+                accepted_amount += first.posted
+            if "appealed" in found and second is not None and second.ask is not None:
                 appealed += 1
-                appealed_asked += asked2
-            elif posted is not None and first is not None and not first.accepted:
-                waiting += 1
+                appealed_asked += second.ask
+            waiting += "waiting" in found
         return OutcomeRow(pool, accepted, accepted_amount, appealed, appealed_asked, waiting, kind)
 
     ordered = sorted(pools, key=lambda p: (p is None, p or ""))
@@ -351,3 +408,66 @@ def outcomes(requests: Iterable[ReportRequest]) -> tuple[OutcomeRow, ...]:
         *(row(pool, pools[pool], "pool" if pool is not None else "no_pool") for pool in ordered),
         row(None, every, "headline"),
     )
+
+
+# --- the requests behind a count (slice 4 asks 1 and 8; D20) ------------------------------------------------
+
+
+def tier_members(
+    requests: Iterable[ReportRequest],
+    *,
+    table: str | None,
+    round_: RoundChip,
+    basis: Basis,
+    tier: int | None,
+    total: bool,
+    count: StatisticsCount,
+) -> tuple[str, ...]:
+    """The requests behind one count of one Statistics row: a tier's row (`tier` None: the "no tier" row), or the
+    totals (`total`, whatever `tier` says), over the population `statistics` counts. Sorted."""
+    rounds = _rounds(round_)
+    with_decided = basis == "posted_and_decided"
+    return tuple(
+        sorted(
+            r.request_id
+            for r in _population(requests, table, round_)
+            if (total or _tier(r, round_) == tier) and count in counts_in(r, rounds, with_decided=with_decided)
+        )
+    )
+
+
+def cancelled_members(
+    requests: Iterable[ReportRequest],
+    *,
+    table: str | None,
+    round_: RoundChip,
+    reason: str,
+    pool: str | None,
+    posted_round: int,
+) -> tuple[str, ...]:
+    """The requests behind one RPT-22 row (reason, lock pool, round), over the chips' population. Sorted."""
+    if posted_round not in _rounds(round_):
+        return ()
+    return tuple(
+        sorted(
+            r.request_id
+            for r in _population(requests, table, round_)
+            if (found := _cancelled_row(r, posted_round)) is not None and found[:2] == (reason, pool)
+        )
+    )
+
+
+def outcome_members(
+    requests: Iterable[ReportRequest], *, kind: RowKind, pool: str | None, outcome: OutcomeKind
+) -> tuple[str, ...]:
+    """The requests behind one RPT-23 count: a pool's row (`kind` "pool"), the requests with no home pool
+    ("no_pool"), or every request ("headline"). Sorted."""
+
+    def in_row(request: ReportRequest) -> bool:
+        if kind == "headline":
+            return True
+        if kind == "no_pool":
+            return request.pool is None
+        return kind == "pool" and pool is not None and request.pool == pool
+
+    return tuple(sorted(r.request_id for r in requests if in_row(r) and outcome in outcome_kinds(r)))

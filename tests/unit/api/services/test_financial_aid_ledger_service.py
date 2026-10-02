@@ -521,6 +521,25 @@ async def test_unclassified_sources_are_data_qualitys_list_from_two_reads() -> N
     repo.fetch_postings.assert_any_await(2026)
 
 
+@pytest.mark.asyncio
+async def test_unclassified_list_reads_the_description_that_classifies_a_line_now() -> None:
+    """A line whose own description is unknown but which an override moved onto a classified source is resolved,
+    not listed; a plain unknown line is still listed under its own description (§5.5)."""
+    repo = _repo(
+        fetch_postings=[
+            _posting(9001, 100, -100.0, source_key="mystery fund", effective_source_key=CAMP),
+            _posting(9002, 100, -50.0, source_key="unknown line", effective_source_key="unknown line"),
+            _posting(9003, 200, -25.0, source_key="blank effective", effective_source_key=""),
+        ],
+        fetch_sources=[_source(CAMP, "camp_fa", budget=True)],
+    )
+    got = await FinancialAidLedgerService(repo).unclassified_sources(2026)
+    assert [(u.source_key, u.postings, u.amount) for u in got] == [
+        ("blank effective", 1, 25.0),
+        ("unknown line", 1, 50.0),
+    ]
+
+
 # Review Focus 5.
 @pytest.mark.asyncio
 async def test_data_quality_surfaces_dangling_overrides_dispositions_and_stale_staff_links() -> None:

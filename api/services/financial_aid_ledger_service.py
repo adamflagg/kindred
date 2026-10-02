@@ -298,12 +298,14 @@ def last_changes(rows: Iterable[Any]) -> dict[str, SourceChangeOut]:
 
 
 def _unclassified(postings: Iterable[Any], sources: Mapping[str, Any]) -> list[UnclassifiedSource]:
-    """Live lines whose description aid_sources doesn't know, or knows as unclassified, by description."""
+    """Live lines whose description aid_sources doesn't know, or knows as unclassified, by the description that
+    classifies them now (effective_source_key: a line an override moved onto a classified source is resolved; §5.5)."""
     unclassified: dict[str, list[Any]] = defaultdict(list)
     for p in postings:
-        source = sources.get(str(p.source_key))
+        key = str(p.effective_source_key or p.source_key)
+        source = sources.get(key)
         if source is None or source.classified_by == "unclassified":
-            unclassified[str(p.source_key)].append(p)
+            unclassified[key].append(p)
     return [
         UnclassifiedSource(
             source_key=key,

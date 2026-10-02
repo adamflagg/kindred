@@ -51,6 +51,7 @@ class StatisticsRowOut(BaseModel):
     average_ask: float | None
     amount: float  # awarded (Posted); with basis posted_and_decided, plus `decided`
     decided: float  # "Decided (not yet offered)": 0 on the posted basis
+    awarded: float  # Posted alone (D80), net of clawback, live requests, on either basis: amount − decided
     awarded_count: int  # live apps whose AWARDED (Posted) money is above $0: the average award's population
     decided_count: int  # live apps with decided money not yet offered (0 on the posted basis)
     average_award: float | None  # awarded ÷ awarded_count, on either basis (O-930-16; D130)
@@ -66,6 +67,7 @@ class CancelledRowOut(BaseModel):
     )
     reason_label: str
     pool: str | None
+    pool_label: str  # the season's rules' label; "No pool" when pool is null; the key when the rules don't name it
     round: int
     requests: int = Field(
         description="Requests in THIS reason, pool and round row. Rows are per reason, pool and round, so one request "
@@ -106,6 +108,7 @@ class StatisticsResponse(BaseModel):
     rules_version: int | None
     basis: StatisticsBasis
     pct_of_ask_label: str  # the % of ask column's heading: names its numerator on the decided basis
+    pct_of_ask_with_grants_label: str  # "% of ask incl. grants": names its numerator on the decided basis (ask 4)
     table: str | None  # the award-table chip; None: All award tables
     round: int | None  # the round chip; None: All rounds
     tables: list[ChipOut]  # every award table of the rules, for the chips
@@ -159,6 +162,22 @@ class ProgramsResponse(BaseModel):
     total: ProgramRowOut
     request_set: RequestSetNote | None
     not_rebuilt: list[NotRebuiltOut]
+
+
+# --- the requests behind a count (slice 4 asks 1 and 8; D20) ----------------------------------------------------
+
+
+class ReportRequestIdsOut(BaseModel):
+    """The requests behind one Statistics or Programs count: exactly the requests that count counts, on the same read
+    (the same chips, basis, reporting control and date). `financial_aid.view` only: development's summary never sees
+    a request (D65)."""
+
+    year: int
+    as_of: date | None  # None: live
+    as_of_axis: Literal["campminder", "recorded"] | None  # the axis `as_of` was read on, as the parent reads send it
+    figures_on: date  # the day the ids are as of: today (camp time) or as_of
+    request_set: RequestSetNote | None  # D138: set when a reporting control is on
+    request_ids: list[str]  # sorted; their number is the count's
 
 
 # --- the committee's year-over-year tables (§9.7) ----------------------------------------------------------------
