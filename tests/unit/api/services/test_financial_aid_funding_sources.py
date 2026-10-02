@@ -318,5 +318,5 @@ async def test_the_per_source_save_with_incentive_omitted_keeps_the_flag() -> No
         YEAR, REGIONAL.id, FundingSourceIn(group="weekend_pool"), actor=DEVELOPMENT
     )
     [[write]] = store.operations
-    assert "incentive" not in write.data
+    assert "incentive" not in (write.data or {})
     assert out.incentive is True
