@@ -176,6 +176,16 @@ describe('the queue walk (§3.5; D14)', () => {
     expect(screen.queryByRole('link', { name: /The Sam Family/ })).toBeNull()
   })
 
+  // Added after a mutation check showed no test pinned the filters on a step.
+  it("carries the grid's filters on a step, and walks only the filtered rows (M5)", async () => {
+    renderAt('/aid/households/1000003?from=all&pool=pool_a')
+    expect(screen.getByText(/2 of 3 families/)).toBeInTheDocument()
+    await userEvent.keyboard(']')
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/aid/households/1000007?from=all&pool=pool_a&year=2027'
+    )
+  })
+
   it("keeps the grid's as-of on the way back and on a step (it came on the link)", async () => {
     renderAt('/aid/households/1000005?from=all&as_of=2027-03-01')
     expect(screen.getByRole('link', { name: '← Back to All' })).toHaveAttribute(
