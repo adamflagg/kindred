@@ -569,7 +569,12 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         return SinceRecords(
             log=tuple(log(r) for r in (*plain, *named)),
             corrections=tuple(
-                SinceCorrection(str(r.application or ""), str(getattr(r, "request", "") or ""), when(r))
+                SinceCorrection(
+                    str(r.application or ""),
+                    str(getattr(r, "request", "") or ""),
+                    when(r),
+                    str(getattr(r, "field", "") or ""),
+                )
                 for r in corrections
             ),
             synced=tuple(synced),
