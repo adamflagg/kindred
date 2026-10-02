@@ -85,7 +85,8 @@ def _families(rows: Iterable[GridRowOut]) -> int:
 
 def _reasons(pairs: Iterable[tuple[str, int]], labels: Mapping[str, str] | None = None) -> list[TodayReasonOut]:
     """(code, household) pairs, one per item, into reasons: largest first, then by code.
-    `labels` names a code where it has a label (the never-true line); the rest stay None."""
+    `labels` names a code where it has a label (the never-true line, and Not reconciled's direction (b) reasons,
+    D162); the rest stay None."""
     items: dict[str, int] = defaultdict(int)
     households: dict[str, set[int]] = defaultdict(set)
     for code, household in pairs:
