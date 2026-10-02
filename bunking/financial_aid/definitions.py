@@ -434,6 +434,19 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         rulings=("D92",),
     ),
     Definition(
+        key="zip_who_counts",
+        term="Who counts",
+        text=(
+            "Who counts: the every-family table counts households with an attendee in an aid-eligible session (one "
+            "a program open to aid claims this season) in the summer group, with those attendees; the recipient table "
+            "is the subset of them that received aid, with its dollars. Someone who attended only a session that is "
+            "not aid-eligible is not counted in either table. A ZIP with one family shows as it is; no family is ever "
+            "a row."
+        ),
+        spec="§9.4",
+        rulings=("D90",),
+    ),
+    Definition(
         key="teens",
         term="Teens",
         text=(
@@ -529,6 +542,7 @@ SURFACES: Final[Mapping[str, tuple[str, ...]]] = {
     ),
     "reports-programs": ("apps", "awarded", "average_award", "pct_of_ask"),
     "reports-committee": ("finance_budget", "awarded", "apps", "as_reported", "round1_phases", "appeals"),
+    "reports-development-zip": ("zip_who_counts",),
     "reports-development": (
         "total_awards_granted",
         "need",

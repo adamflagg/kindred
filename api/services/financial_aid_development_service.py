@@ -25,8 +25,9 @@ from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Final, Literal, Protocol
 
-from api.constants.collections import AID_SOURCES
+from api.constants.collections import AID_REPORT_DEFINITIONS, AID_SOURCES
 from api.schemas.financial_aid_reports import (
+    DatedColumn,
     DevelopmentColumnOut,
     DevelopmentGroupOut,
     DevelopmentResponse,
@@ -36,6 +37,10 @@ from api.schemas.financial_aid_reports import (
     FundingSourceOut,
     FundingSourcesResponse,
     NotBuiltOut,
+    ReportColumnsResponse,
+    ZipResponse,
+    ZipRowOut,
+    ZipTableOut,
 )
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_cancellations import CANCEL_REASON_LABELS, CANCEL_REASONS
@@ -47,9 +52,14 @@ from api.services.financial_aid_decisions_service import (
     RegisterSource,
     Season,
 )
-from api.services.financial_aid_development_repository import AttendanceRecord, PersonRecord, SourceRecord
+from api.services.financial_aid_development_repository import (
+    AttendanceRecord,
+    PersonRecord,
+    SourceRecord,
+    StoredColumns,
+)
 from api.services.financial_aid_grants_register import PROGRAM_FAMILY_BY_SESSION_TYPE, RegisterRow
-from api.services.financial_aid_ledger_service import GRANT_FUNDER_TYPES, money
+from api.services.financial_aid_ledger_service import GRANT_FUNDER_TYPES, as_of_cutoff, money, parse_pb_datetime
 from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
@@ -77,6 +87,7 @@ from bunking.financial_aid.reports.development import (
 )
 from bunking.financial_aid.reports.facts import ReportRequest, average
 from bunking.financial_aid.reports.history import ReportedFigure
+from bunking.financial_aid.reports.zips import HouseholdAddress, ZipRow, ZipTable, every_camper, with_aid
 from bunking.financial_aid.rules import AidRules, resolve_program
 
 FIRST_DEVELOPMENT_SEASON: Final = 2022  # §9.4: columns are seasons from 2022
@@ -106,6 +117,10 @@ _CANCEL_ROWS: Final[tuple[tuple[str, str], ...]] = (
     *((f"cancelled_{r}", f"Cancelled: {CANCEL_REASON_LABELS[r]}") for r in CANCEL_REASONS if r != AID_NOT_ENOUGH),
     (f"cancelled_{NOT_RECORDED_REASON}", "Cancelled: reason not recorded"),
 )
+# A past read carries no CampMinder cancellations (3c-1), so a dated column can't count who declined or cancelled, for
+# any reason: those lines are null there and named, never a false zero.
+DATED_NOT_REBUILT: Final = ("declined_insufficient", *(key for key, _ in _CANCEL_ROWS))
+REPORT: Final = "development"  # aid_report_definitions' key for development's saved columns
 NOT_BUILT: Final[Mapping[str, str]] = {
     "rebuild": (
         "Kindred's approximate rebuild of 2022–2025 (≈) waits on the 2017–2024 ledger backfill; those seasons show "
@@ -125,9 +140,11 @@ class DevelopmentStore(Protocol):
         self, year: int, person_cm_ids: Collection[int], household_cm_ids: Collection[int]
     ) -> list[AttendanceRecord]: ...
     async def persons(self, year: int, person_cm_ids: Collection[int]) -> list[PersonRecord]: ...
+    async def households(self, year: int, household_cm_ids: Collection[int]) -> dict[int, HouseholdAddress]: ...
     async def family_keys(self, year: int) -> dict[int, str]: ...
     async def sources(self) -> list[SourceRecord]: ...
     async def source(self, source_id: str) -> SourceRecord | None: ...
+    async def report_columns(self, report: str) -> StoredColumns: ...
     async def commit(
         self, writes: Sequence[AidWrite], *, actor: str, reason: str | None = None
     ) -> AidOperationResult: ...
@@ -180,12 +197,33 @@ def grouping(document: AidRules | None, session_types: Mapping[int, str]) -> Gro
     return Grouping(tuple(groups), by_session, by_family)
 
 
-def grant_money(rows: Iterable[RegisterRow], grouping_: Grouping) -> tuple[GrantMoney, ...]:
+def _iso_day(text: str) -> date | None:
+    try:
+        return date.fromisoformat(text[:10]) if text else None
+    except ValueError:
+        return None
+
+
+def _live_on(row: RegisterRow, as_of: date | None) -> bool:
+    """A ledger line live now, or (a dated column) posted by `as_of` and not reversed by then."""
+    if as_of is None:
+        return not row.is_reversed
+    posted = _iso_day(row.recorded_on)
+    reversed_on = _iso_day(row.reversal_date)
+    if posted is None or posted > as_of:
+        return False
+    return not row.is_reversed or (reversed_on is not None and reversed_on > as_of)
+
+
+def grant_money(
+    rows: Iterable[RegisterRow], grouping_: Grouping, *, as_of: date | None = None
+) -> tuple[GrantMoney, ...]:
     """Every live outside or incentive ledger line (D87: every outside grant is money given; it counts as an award by item 32's distinct combos), placed or not: a
-    commitment not yet posted is not money given out, and a reversed line isn't either."""
+    commitment not yet posted is not money given out, and a reversed line isn't either. A dated column reads the
+    lines as they stood at the end of `as_of`; which camper a line sits on is today's placement."""
     out: list[GrantMoney] = []
     for row in rows:
-        if row.kind != "ledger" or row.is_reversed:
+        if row.kind != "ledger" or not _live_on(row, as_of):
             continue
         if row.session_cm_id > 0 and row.session_cm_id in grouping_.by_session:
             group: str | None = grouping_.by_session[row.session_cm_id]
@@ -197,8 +235,23 @@ def grant_money(rows: Iterable[RegisterRow], grouping_: Grouping) -> tuple[Grant
     return tuple(out)
 
 
-def attendance(records: Iterable[AttendanceRecord], grouping_: Grouping) -> tuple[Attendance, ...]:
-    """The season's status-2 registrations of every grouped session (NOT_REPORTED ones included: they attended)."""
+def attended_on(record: AttendanceRecord, as_of: date | None) -> bool:
+    """Enrolled now (status 2); for a dated column, registered by `as_of` and enrolled then: still enrolled, or
+    cancelled only after it (a cancelled row's day is CampMinder's PostDate)."""
+    if as_of is None:
+        return record.status_id == 2
+    if record.registered_on is not None and record.registered_on > as_of:
+        return False
+    if record.status_id == 2:
+        return True
+    return record.changed_on is not None and record.changed_on > as_of
+
+
+def attendance(
+    records: Iterable[AttendanceRecord], grouping_: Grouping, *, as_of: date | None = None
+) -> tuple[Attendance, ...]:
+    """The season's registrations of every grouped (aid-eligible) session (NOT_REPORTED ones included: they
+    attended) that count as attended, now or as of a dated column."""
     return tuple(
         Attendance(
             r.person_cm_id,
@@ -208,7 +261,7 @@ def attendance(records: Iterable[AttendanceRecord], grouping_: Grouping) -> tupl
             teen_program=r.session_type in TEEN_PROGRAM_TYPES,
         )
         for r in records
-        if r.status_id == 2 and r.session_cm_id in grouping_.by_session
+        if r.session_cm_id in grouping_.by_session and attended_on(r, as_of)
     )
 
 
@@ -394,6 +447,94 @@ class FinancialAidDevelopmentService:
             approved.document if approved is not None else None, {s.cm_id: s.session_type for s in sessions}
         )
 
+    # --- dated columns (§9.4's "+ Add a dated column"; Part C) -----------------------------------------------
+
+    async def report_columns(self) -> ReportColumnsResponse:
+        stored = await self._development.report_columns(REPORT)
+        return ReportColumnsResponse(
+            report=REPORT, columns=[DatedColumn(season=season, as_of=day) for season, day in stored.columns]
+        )
+
+    async def save_report_columns(self, columns: Sequence[DatedColumn], *, actor: str) -> ReportColumnsResponse:
+        """Replace development's dated columns, with its aid_change_log row; nothing changed, nothing written. A
+        dated column needs dated decisions, so 2026 (reproduced, undated, D67) and earlier are refused."""
+        today = self._today()
+        wanted = sorted({(c.season, c.as_of) for c in columns})
+        for season, day in wanted:
+            if season < FIRST_TICKED_SEASON:
+                raise ReportsRefusedError(
+                    f"A dated column needs dated decisions: {season} has none (only {FIRST_TICKED_SEASON} on, D67)"
+                )
+            if not season - 1 <= day.year <= season or day > today:
+                raise ReportsRefusedError(f"{day} is not a past day of the {season} season")
+        stored = await self._development.report_columns(REPORT)
+        if tuple(wanted) == stored.columns:
+            return await self.report_columns()
+        data = {"report": REPORT, "columns": [{"season": season, "as_of": day.isoformat()} for season, day in wanted]}
+        before = {"columns": [{"season": season, "as_of": day.isoformat()} for season, day in stored.columns]}
+        write = (
+            AidWrite(collection=AID_REPORT_DEFINITIONS, action="create", year=today.year, data=data, entity_id=REPORT)
+            if not stored.id
+            else AidWrite(
+                collection=AID_REPORT_DEFINITIONS,
+                action="update",
+                year=today.year,
+                record_id=stored.id,
+                before=before,
+                data={"columns": data["columns"]},
+                entity_id=REPORT,
+            )
+        )
+        await self._development.commit([write], actor=actor)
+        return ReportColumnsResponse(report=REPORT, columns=[DatedColumn(season=s, as_of=d) for s, d in wanted])
+
+    # --- ZIP codes (§9.4's second screen, D90; Part C) ---------------------------------------------------------
+
+    async def zip_codes(self, year: int) -> ZipResponse:
+        """Every enrolled camper of the summer group by ZIP, and (once the season's decisions exist) development's
+        recipients there with all their money. Small groups as they are; never a family's row (D90). Both tables
+        are built on `grouping`, so only attendees of aid-eligible sessions are counted (owner rule, item 28)."""
+        today = self._today()
+        season = await self._decisions.season(year)
+        priced = year >= FIRST_TICKED_SEASON or any(
+            view.status == "posted" for p in season.priced.values() for view in p.rounds
+        )
+        if priced:
+            native = await self._native(season, await self._development.sources())
+            found, attended, column = native.grouping, native.attended, native.column
+        else:
+            document = season.rules.document if season.rules is not None else None
+            found = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
+            attended = attendance(await self._development.attendances(year), found)
+            column = None
+        summer = next((g for g in found.groups if g.kind == "summer"), None)
+        enrolled = {(a.person_cm_id, a.household_cm_id) for a in attended if summer and a.group == summer.key}
+        figures = next((g for g in column.groups if g.group == summer.key), None) if column and summer else None
+        household_of = dict(enrolled)
+        aid_households = set(figures.household_level_by_household) if figures is not None else set()
+        homes = await self._development.households(year, {h for _, h in enrolled} | aid_households)
+        aid = (
+            with_aid(figures.money_by_recipient, household_of, figures.household_level_by_household, homes)
+            if figures is not None
+            else None
+        )
+        return ZipResponse(
+            year=year,
+            figures_on=today,
+            group=summer.key if summer else None,
+            group_label=summer.label if summer else "",
+            every_camper=_zip_table(every_camper(sorted(enrolled), homes)),
+            with_aid=_zip_table(aid) if aid is not None else None,
+            not_built=[]
+            if aid is not None
+            else [
+                NotBuiltOut(
+                    figure="with_aid",
+                    reason=f"Campers who got aid by ZIP need {year}'s decisions (D67); the published page stands in",
+                )
+            ],
+        )
+
     # --- Funding sources (D88, D100; Part C) -----------------------------------------------------------------
 
     async def funding_sources(self, year: int) -> FundingSourcesResponse:
@@ -453,23 +594,37 @@ class FinancialAidDevelopmentService:
             )
         return _funding_source(updated, found)
 
-    async def _native(self, season: Season, sources: Sequence[SourceRecord]) -> tuple[DevelopmentColumn, Grouping]:
+    async def _native(
+        self,
+        season: Season,
+        sources: Sequence[SourceRecord],
+        *,
+        as_of: date | None = None,
+        register: Sequence[RegisterRow] | None = None,
+    ) -> _Native:
+        """One P column: `season` priced now, or (a dated column) `season` as of the end of `as_of` (3c-1's past
+        read) with the live season's `register` cut to that day."""
         # Development's money is all money (the camp's awards plus every live outside grant line) on campers who
         # attended (D29, ruled as built: R2b).
         document = season.rules.document if season.rules is not None else None
         records = await self._development.attendances(season.year)
         grouping_ = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
-        attended = attendance(records, grouping_)
+        attended = attendance(records, grouping_, as_of=as_of)
         kinds = {g.key: g.kind for g in grouping_.groups}
         summer_people = {a.person_cm_id for a in attended if kinds.get(a.group) == "summer"}
         family_households = {a.household_cm_id for a in attended if kinds.get(a.group) == "families"}
         earlier = await self._development.earlier_attendance(season.year, summer_people, family_households)
         people = await self._development.persons(season.year, summer_people)
         corrections = await self._store.fetch_corrections(season.year, None)
+        if as_of is not None:
+            cutoff = as_of_cutoff(as_of)
+            corrections = [
+                c for c in corrections if (made := parse_pb_datetime(c.created)) is not None and made < cutoff
+            ]
         inputs = DevelopmentInputs(
             groups=grouping_.groups,
             requests=reported_requests(report_requests(season, received={}, corrections=corrections), grouping_),
-            grants=grant_money(season.register, grouping_),
+            grants=grant_money(season.register if register is None else register, grouping_, as_of=as_of),
             attendance=attended,
             persons={
                 p.person_cm_id: Person(
@@ -486,7 +641,7 @@ class FinancialAidDevelopmentService:
             family_of=await self._development.family_keys(season.year),
             incentive_sources=frozenset(s.description_key for s in sources if s.incentive),
         )
-        return development_column(inputs), grouping_
+        return _Native(development_column(inputs), grouping_, attended)
 
     async def _rebuilt_ages(self, year: int, sources: Sequence[SourceRecord] = ()) -> dict[str, int] | None:
         """D158: the summer recipients of a season with no P column, by age, rebuilt from that season's ledger. None
@@ -522,6 +677,8 @@ class FinancialAidDevelopmentService:
         today = self._today()
         sources = await self._development.sources()
         natives: dict[int, DevelopmentColumn] = {}
+        dated: dict[tuple[int, date], DevelopmentColumn] = {}
+        saved = (await self.report_columns()).columns
         latest: Grouping | None = None
         for season_year in range(FIRST_REQUEST_SEASON, year + 1):
             season = await self._decisions.season(season_year)
@@ -529,7 +686,13 @@ class FinancialAidDevelopmentService:
                 view.status == "posted" for priced in season.priced.values() for view in priced.rounds
             ):
                 continue  # 2026 before its decisions load (D67): as reported only
-            natives[season_year], latest = await self._native(season, sources)
+            native = await self._native(season, sources)
+            natives[season_year], latest = native.column, native.grouping
+            for wanted in (c for c in saved if c.season == season_year and c.as_of < today):
+                past = await self._decisions.past_season(season_year, wanted.as_of, "campminder")
+                dated[(season_year, wanted.as_of)] = (
+                    await self._native(past, sources, as_of=wanted.as_of, register=season.register)
+                ).column
         typed = [
             s.figure
             for s in await self._history.reported()
@@ -539,7 +702,7 @@ class FinancialAidDevelopmentService:
             season = await self._decisions.season(year)
             document = season.rules.document if season.rules is not None else None
             latest = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
-        columns = _columns(typed, natives, today)
+        columns = _columns(typed, natives, today, dated)
         ages = {
             season: await self._rebuilt_ages(season, sources)
             for season in sorted({f.year for f in typed} - set(natives))
@@ -570,8 +733,18 @@ class FinancialAidDevelopmentService:
 ColumnData = DevelopmentColumn | list[ReportedFigure]
 
 
+@dataclass(frozen=True)
+class _Native:
+    column: DevelopmentColumn
+    grouping: Grouping
+    attended: tuple[Attendance, ...]
+
+
 def _columns(
-    typed: Sequence[ReportedFigure], natives: Mapping[int, DevelopmentColumn], today: date
+    typed: Sequence[ReportedFigure],
+    natives: Mapping[int, DevelopmentColumn],
+    today: date,
+    dated: Mapping[tuple[int, date], DevelopmentColumn] | None = None,
 ) -> list[tuple[DevelopmentColumnOut, ColumnData]]:
     """Every season from 2022 with anything to show: its typed column (one per as-of date), then its P column."""
     out: list[tuple[DevelopmentColumnOut, ColumnData]] = []
@@ -603,6 +776,21 @@ def _columns(
                     natives[season],
                 )
             )
+        for (year, as_of), column in sorted((dated or {}).items()):
+            if year == season:
+                out.append(
+                    (
+                        DevelopmentColumnOut(
+                            season=season,
+                            basis="P",
+                            as_of=as_of,
+                            basis_unconfirmed=False,
+                            label=f"{season} as of {as_of:%b} {as_of.day}",
+                            not_rebuilt=list(DATED_NOT_REBUILT),
+                        ),
+                        column,
+                    )
+                )
     return out
 
 
@@ -629,7 +817,9 @@ def _rows(
         for scope in scopes:
             values: list[float | None] = []
             for column, data in columns:
-                if isinstance(data, DevelopmentColumn):
+                if spec.key in column.not_rebuilt:
+                    value = None
+                elif isinstance(data, DevelopmentColumn):
                     if scope is None:
                         value = _total_value(spec.key, data)
                     else:
@@ -707,6 +897,19 @@ def _gender_rows(
                 for name in sorted(set().union(*found) if found else set())
             )
     return out
+
+
+def _zip_table(table: ZipTable) -> ZipTableOut:
+    def row(r: ZipRow) -> ZipRowOut:
+        return ZipRowOut(
+            zip=r.zip,
+            kind=r.kind,
+            campers=r.campers,
+            families=r.families,
+            dollars=money(r.dollars) if r.dollars is not None else None,
+        )
+
+    return ZipTableOut(rows=[row(r) for r in table.rows], total=row(table.total), zips=table.zips)
 
 
 def _funding_source(source: SourceRecord, found: Grouping) -> FundingSourceOut:

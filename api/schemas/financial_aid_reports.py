@@ -358,6 +358,7 @@ class DevelopmentColumnOut(BaseModel):
     as_of: date | None  # the day it is as of: an r column's typed date, a P column's read date
     basis_unconfirmed: bool  # D96's premise is contested (O-930-1): a 2022–2025 column is noted
     label: str  # "2026 (as reported)", "2027"
+    not_rebuilt: list[str] = []  # a dated column's row keys a past read can't rebuild: their cells are null
 
 
 class DevelopmentRowOut(BaseModel):
@@ -423,3 +424,50 @@ class FundingSourceIn(BaseModel):
     # (the group shown unchanged keeps its program families as they are: several groups stay several)
     incentive: bool
     note: str = Field(default="", max_length=2000)
+
+
+# --- Development's dated columns and ZIP codes (§9.4, D90; Part C) -------------------------------------------------
+
+
+class DatedColumn(BaseModel):
+    """ "+ Add a dated column": a season as of a day (a query over dated records, never a frozen copy)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    season: int = Field(ge=2017, le=2100)
+    as_of: date
+
+
+class ReportColumnsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[DatedColumn] = Field(max_length=24)
+
+
+class ReportColumnsResponse(BaseModel):
+    report: Literal["development"]
+    columns: list[DatedColumn]
+
+
+class ZipRowOut(BaseModel):
+    zip: str  # five digits, "Outside the US", "No ZIP on file"; "" on the totals row
+    kind: Literal["us", "outside_us", "none"]
+    campers: int
+    families: int
+    dollars: float | None  # None on the every-camper table
+
+
+class ZipTableOut(BaseModel):
+    rows: list[ZipRowOut]
+    total: ZipRowOut
+    zips: int
+
+
+class ZipResponse(BaseModel):
+    year: int
+    figures_on: date
+    group: str | None  # the summer group the tables count (Summer Camp and Quest, teen programs included)
+    group_label: str
+    every_camper: ZipTableOut
+    with_aid: ZipTableOut | None  # None until the season's decisions exist (2026: D67's load)
+    not_built: list[NotBuiltOut]
