@@ -14,7 +14,7 @@ import type {
   ApiAidRemaining,
   ApiAidWriteOut,
 } from '../../types/api-types'
-import { ApiError, toApiError } from '../apiError'
+import { ApiError, readErrorDetail, toApiError } from '../apiError'
 import type { FetchWithAuth } from '../lodgingApi'
 
 export class AidApiError extends ApiError {}
@@ -158,13 +158,7 @@ function changedRows(detail: unknown): AidChangedRow[] {
 }
 
 async function toWriteError(response: Response, fallback: string): Promise<AidWriteError> {
-  let detail: unknown
-  try {
-    const body: unknown = await response.json()
-    if (typeof body === 'object' && body !== null && 'detail' in body) detail = body.detail
-  } catch {
-    detail = undefined
-  }
+  const detail = await readErrorDetail(response)
   const error = new AidWriteError(
     writeMessage(detail) ?? `${fallback} (HTTP ${String(response.status)})`,
     response.status
