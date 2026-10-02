@@ -111,5 +111,6 @@ describe('AidTodayPage (§6.4; D24)', () => {
     today = { data: undefined, isLoading: false, error: new Error('boom') }
     renderToday()
     expect(screen.queryByText('Holds')).toBeNull()
+    expect(screen.getByText(/Failed to load Today data: boom/)).toBeInTheDocument()
   })
 })

@@ -19,7 +19,7 @@ vi.mock('../../components/camperships/requests/RequestsGrid', () => ({
   },
 }))
 vi.mock('../../hooks/camperships/useAidToday', () => ({
-  useAidToday: () => ({ data: undefined }),
+  useAidToday: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 vi.mock('../../hooks/camperships/useAidGrid', () => ({
   useAidGrid: () => ({

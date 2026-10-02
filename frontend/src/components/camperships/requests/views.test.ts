@@ -378,6 +378,14 @@ describe('requestsCsvName (§11, D70; Decision 32)', () => {
       requestsCsvName(requestView('all'), { program: null, pool: null, round: 2 }, 2027, null)
     ).toBe('camperships-requests-all-round-2-2027.csv')
   })
+
+  it('names the Today line when one is active, so a partial list is not mistaken for the season (m2)', () => {
+    const none = { program: null, pool: null, round: null, tick: null }
+    const plain = requestsCsvName(requestView('all'), none, 2027, null)
+    const today = requestsCsvName(requestView('all'), none, 2027, null, 'would_change')
+    expect(today).toBe('camperships-requests-all-today-would-change-2027.csv')
+    expect(today).not.toBe(plain)
+  })
 })
 
 // Owner rulings (A2, batch 4): CM ✓'s cell is one word; the detail goes to the opened row's detail

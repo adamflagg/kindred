@@ -17,7 +17,7 @@ import {
   type GridFilters,
   type RequestView,
 } from '../requests/views'
-import { isTodayKey, type TodayKey } from '../today/todayModel'
+import { isListedTodayKey, type ListedTodayKey } from '../today/todayModel'
 
 export interface WalkStop {
   readonly householdCmId: number
@@ -49,7 +49,7 @@ export function gridFiltersFrom(params: URLSearchParams): {
   keep: Record<string, string>
   order: WalkOrder
   /** A Today line the grid was showing (Decision 10); its request ids come from Today's read. */
-  todayKey: TodayKey | null
+  todayKey: ListedTodayKey | null
 } {
   const lens = params.get('lens')
   const program = params.get('program')
@@ -59,7 +59,7 @@ export function gridFiltersFrom(params: URLSearchParams): {
   const group = params.get('group')
   const showIds = params.get('ids') === '1'
   const todayParam = params.get('today')
-  const todayKey = todayParam !== null && isTodayKey(todayParam) ? todayParam : null
+  const todayKey = todayParam !== null && isListedTodayKey(todayParam) ? todayParam : null
   return {
     filters: { program, pool, round, ids: null },
     keep: {
