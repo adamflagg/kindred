@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
-import { ArrowUpRight, Pencil, RotateCcw, ShieldCheck } from 'lucide-react'
+import { Check, Pencil, RotateCcw, ShieldAlert } from 'lucide-react'
 import { QueryGuard } from '../../QueryGuard'
 import { usePermissions } from '../../../hooks/usePermissions'
 import {
@@ -16,6 +15,8 @@ import {
   type MergedPermission,
 } from './usersPageModel'
 import { pbErrorText } from './pbErrorText'
+import { ScreenLink } from './CanDo'
+import { BTN_GHOST_SM, BTN_PRIMARY_SM, NOT_CHECKED_PILL, ROLE_CHIP } from './styles'
 import type { UsersPageProps } from './types'
 
 const GRID = 'grid grid-cols-[200px_minmax(0,1fr)_260px] gap-3.5'
@@ -112,29 +113,36 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
 
   return (
     <div data-testid="permissions-tab" className="space-y-2.5">
-      <div className="flex items-start gap-2 rounded-[10px] bg-purple-100/45 px-3 py-1.5 text-[13px] dark:bg-purple-900/20">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+      <div
+        data-testid="admin-strip"
+        className="flex items-center gap-2 rounded-[10px] bg-purple-100/45 px-3 py-[7px] text-[13px] dark:bg-purple-900/20"
+      >
+        <ShieldAlert className="h-4 w-4 shrink-0 text-purple-700 dark:text-purple-400" />
         <span>
           <b>Admins can do everything</b>, plus these, which no permission grants:{' '}
           {reg.admin_only.join(', ')}.
         </span>
       </div>
-      <div
-        className={`${GRID} text-muted-foreground px-4 text-[11px] font-bold tracking-wider uppercase`}
-      >
-        <span>Permission</span>
-        <span>What it lets someone do</span>
-        <span>Granted by · people</span>
+      {/* Same box model as the scroll box and its cards (gutter, pr-1, 1px border, px-4),
+          so the header columns sit over the card columns whether or not a scrollbar shows. */}
+      <div className="[scrollbar-gutter:stable] overflow-hidden pr-1">
+        <div
+          className={`${GRID} text-muted-foreground border border-transparent px-4 text-[11px] font-bold tracking-wider uppercase`}
+        >
+          <span>Permission</span>
+          <span>What it lets someone do</span>
+          <span>Granted by · people</span>
+        </div>
       </div>
       <div
         data-testid="perm-scroll"
         ref={boxRef}
-        className="flex flex-col gap-2.5 overflow-y-auto pr-1"
+        className="flex [scrollbar-gutter:stable] flex-col gap-2.5 overflow-y-auto pr-1"
         style={{ maxHeight }}
       >
         {areas.map(({ area, rows }) => (
           <div key={area} data-testid={`perm-area-${area}`}>
-            <h3 className="bg-background text-muted-foreground sticky top-0 z-[2] py-1 font-sans text-[11px] font-bold tracking-[0.07em] uppercase">
+            <h3 className="bg-background text-muted-foreground sticky top-0 z-[2] py-1 text-[11px] font-bold tracking-wider uppercase">
               {area}
             </h3>
             <div className="bg-card divide-border divide-y rounded-xl border">
@@ -157,11 +165,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                         {code}
                       </code>
                       {m.entry.screens.length === 0 && (
-                        <span
-                          className={`${TAG} bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300`}
-                        >
-                          Not checked anywhere
-                        </span>
+                        <span className={`mt-1 ${NOT_CHECKED_PILL}`}>Not checked anywhere</span>
                       )}
                     </div>
                     <div className="min-w-0">
@@ -176,15 +180,16 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="btn-primary"
+                              className={BTN_PRIMARY_SM}
                               disabled={save.isPending}
                               onClick={() => commit(m)}
                             >
+                              <Check className="h-3.5 w-3.5" />
                               Save
                             </button>
                             <button
                               type="button"
-                              className="rounded-md border px-3 py-1 text-xs"
+                              className={BTN_GHOST_SM}
                               onClick={() => {
                                 setEditing(null)
                                 setRowError(null)
@@ -198,7 +203,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-start gap-1.5 text-[13px]">
+                        <div className="flex items-start gap-1.5 text-sm">
                           <span className="flex-1">{m.description}</span>
                           {canEdit && m.edited && (
                             <span className={`${TAG} bg-muted text-muted-foreground`}>Edited</span>
@@ -248,14 +253,9 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                           </span>
                         ) : (
                           m.entry.screens.map((s) => (
-                            <Link
-                              key={s.path}
-                              to={s.path}
-                              className="text-primary inline-flex items-center gap-0.5 text-[12.5px] font-medium hover:underline"
-                            >
-                              {s.name}
-                              <ArrowUpRight className="h-3 w-3" />
-                            </Link>
+                            <span key={s.path} className="text-[12.5px]">
+                              <ScreenLink screen={s} />
+                            </span>
                           ))
                         )}
                       </div>
@@ -265,7 +265,7 @@ function PermissionsBody({ data, url, reg }: UsersPageProps & { reg: ApiPermissi
                         <button
                           key={r.id}
                           type="button"
-                          className="bg-primary/12 text-primary hover:bg-primary/20 rounded-md px-1.5 text-xs leading-[18px] font-medium"
+                          className={ROLE_CHIP}
                           onClick={() => url.setTab('roles', r.id)}
                         >
                           {r.name}

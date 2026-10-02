@@ -14,6 +14,7 @@ import {
 import { bucketCounts, filterUsers, freshness, pageOf, type Bucket } from './usersPageModel'
 import { UserDrawer } from './UserDrawer'
 import { UserAvatar } from './UserAvatar'
+import { ROLE_CHIP } from './styles'
 import type { UsersPageProps } from './types'
 
 export const PER_PAGE = 15
@@ -34,7 +35,8 @@ const FRESH_DOT: Record<string, string> = {
 }
 
 const TH =
-  'text-muted-foreground px-3.5 py-2 text-left text-[11px] font-semibold tracking-wider uppercase'
+  'text-muted-foreground px-3.5 py-2 text-left text-[11px] font-semibold tracking-wider whitespace-nowrap uppercase'
+const TD = 'px-3.5 py-[7px] whitespace-nowrap'
 
 export function UsersTable({ data, registry, url }: UsersPageProps) {
   const { user: currentUser } = useAuth()
@@ -77,12 +79,14 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
         </div>
         <div className="bg-muted/50 border-border/50 flex gap-1 rounded-xl border p-1">
           {BUCKETS.map(([id, label]) => {
-            const active = url.bucket === id
+            // A role filter replaces the bucket, so no bucket reads as active beside it.
+            const active = url.bucket === id && !roleFilter
             const n = id ? counts[id] : counts.all
             return (
               <button
                 key={label}
                 type="button"
+                aria-pressed={active}
                 onClick={() => url.setBucket(active ? null : id)}
                 className={`rounded-lg px-2.5 py-1 text-sm font-medium ${
                   active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
@@ -110,6 +114,9 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
               <span className="h-2 w-2 rounded-full bg-emerald-500" /> this week
             </span>
             <span className="flex items-center gap-1">
+              <span className="bg-muted-foreground/40 h-2 w-2 rounded-full" /> 8–45 days
+            </span>
+            <span className="flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-amber-500" /> 45+ days
             </span>
             <span className="flex items-center gap-1">
@@ -123,10 +130,15 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
             canSeeLastLogin ? 'border-border border-l pl-3' : 'ml-auto'
           }`}
         >
-          <span className="font-semibold tabular-nums">
-            {paged.items.length === 0
-              ? 'Nobody matches'
-              : `${String(paged.start + 1)}–${String(paged.start + paged.items.length)} of ${String(filtered.length)}`}
+          <span className="tabular-nums">
+            {paged.items.length === 0 ? (
+              'Nobody matches'
+            ) : (
+              <>
+                <b>{`${String(paged.start + 1)}–${String(paged.start + paged.items.length)}`}</b> of{' '}
+                <b>{filtered.length}</b>
+              </>
+            )}
           </span>
           {paged.pages > 1 && (
             <>
@@ -174,7 +186,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
               <thead>
-                <tr className="border-border border-b">
+                <tr className="border-border bg-muted/55 border-b">
                   <th className={TH}>Person</th>
                   <th className={TH}>Email</th>
                   <th className={TH}>Roles</th>
@@ -195,16 +207,20 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                   const lastSeen = String(user['last_seen'] ?? '')
                   const created = String(user['created'] ?? '')
                   const fresh = freshness(lastSeen, now)
+                  const selected = openUserId === user.id
                   return (
                     <tr
                       key={user.id}
                       data-testid={`user-row-${user.id}`}
+                      data-selected={selected || undefined}
                       onClick={manageable ? () => setOpenUserId(user.id) : undefined}
-                      className={`border-border/50 hover:bg-muted/50 border-b last:border-b-0 ${
-                        manageable ? 'cursor-pointer' : ''
-                      }`}
+                      className={`border-border/50 border-b last:border-b-0 ${
+                        selected ? 'bg-primary/8' : 'hover:bg-muted/50'
+                      } ${manageable ? 'cursor-pointer' : ''}`}
                     >
-                      <td className="px-3.5 py-[7px]">
+                      <td
+                        className={`${TD} ${selected ? 'shadow-[inset_3px_0_0_hsl(var(--primary))]' : ''}`}
+                      >
                         <div className="flex items-center gap-2.5">
                           <UserAvatar user={user} />
                           {manageable ? (
@@ -229,11 +245,13 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                           )}
                         </div>
                       </td>
-                      <td className="text-muted-foreground px-3.5 py-[7px]">{email}</td>
-                      <td className="px-3.5 py-[7px]">
-                        <div className="flex flex-wrap gap-1">
+                      <td className={`${TD} text-muted-foreground`}>
+                        <span className="block max-w-[260px] truncate">{email}</span>
+                      </td>
+                      <td className={TD}>
+                        <div className="flex flex-nowrap gap-1">
                           {isAdminUser ? (
-                            <span className="rounded-md bg-purple-100 px-1.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                            <span className="rounded-md bg-purple-100 px-2 py-0.5 text-[12.5px] leading-[18px] font-medium whitespace-nowrap text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
                               Admin · everything
                             </span>
                           ) : mine.length > 0 ? (
@@ -245,7 +263,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                                   e.stopPropagation()
                                   url.setRole(role.id)
                                 }}
-                                className="bg-primary/12 text-primary rounded-md px-1.5 text-xs font-medium"
+                                className={ROLE_CHIP}
                               >
                                 {role.name}
                               </button>
@@ -258,7 +276,7 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                       {canSeeLastLogin && (
                         <td
                           data-testid={`last-active-${user.id}`}
-                          className="text-muted-foreground px-3.5 py-[7px]"
+                          className={`${TD} text-muted-foreground`}
                         >
                           <span className="flex items-center gap-1.5">
                             <span className={`h-2 w-2 rounded-full ${FRESH_DOT[fresh] ?? ''}`} />
@@ -270,16 +288,22 @@ export function UsersTable({ data, registry, url }: UsersPageProps) {
                           </span>
                         </td>
                       )}
-                      <td className="text-muted-foreground px-3.5 py-[7px]">
+                      <td className={`${TD} text-muted-foreground`}>
                         {created ? format(new Date(created.replace(' ', 'T')), 'MMM d, yyyy') : ''}
                       </td>
-                      <td className="text-muted-foreground px-3.5 py-[7px] text-right">
+                      <td className={`${TD} text-muted-foreground text-right`}>
                         {manageable ? (
                           <ChevronRight className="inline h-4 w-4" />
                         ) : (
                           <span className="inline-flex items-center gap-1 text-xs">
                             <Lock className="h-3 w-3" />
-                            {isSelf ? 'You' : isAdminUser ? 'Admin' : ''}
+                            {isSelf
+                              ? 'You'
+                              : isAdminUser
+                                ? 'Admin'
+                                : canSeeLastLogin
+                                  ? ''
+                                  : 'View only'}
                           </span>
                         )}
                       </td>

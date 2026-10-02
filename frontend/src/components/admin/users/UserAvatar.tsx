@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { RecordModel } from 'pocketbase'
 import { pb } from '../../../lib/pocketbase'
 
@@ -25,12 +26,20 @@ function getAvatarColor(str: string): string {
   )
 }
 
-/** The person's photo (PocketBase thumb), or a coloured initial. Shared by the table and the drawer. */
+/**
+ * The person's photo (PocketBase thumb), or a coloured initial. Shared by the
+ * table and the drawers. A photo that fails to load (a 404 for a file that is
+ * gone) falls back to the initial rather than a broken-image glyph.
+ */
 export function UserAvatar({ user, size = 28 }: { user: RecordModel; size?: number }) {
   const email = String(user['email'] ?? '')
   const rawName = String(user['name'] ?? '')
   const name = rawName === '' ? (email.split('@')[0] ?? '') : rawName
-  const avatar = String(user['avatar'] ?? '')
+  const file = String(user['avatar'] ?? '')
+  const src = file ? pb.files.getURL(user, file, { thumb: '56x56' }) : ''
+  // Keyed by URL: a new photo gets its own chance to load.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const avatar = src !== '' && src !== failedSrc
   return (
     <span
       data-testid="user-avatar"
@@ -41,9 +50,10 @@ export function UserAvatar({ user, size = 28 }: { user: RecordModel; size?: numb
     >
       {avatar ? (
         <img
-          src={pb.files.getURL(user, avatar, { thumb: '56x56' })}
+          src={src}
           alt=""
           className="h-full w-full object-cover"
+          onError={() => setFailedSrc(src)}
         />
       ) : (
         (name === '' ? email : name).charAt(0).toUpperCase()

@@ -185,6 +185,48 @@ describe('UsersTable', () => {
     expect(screen.queryByTestId('user-drawer')).not.toBeInTheDocument()
   })
 
+  it('marks no bucket active while a specific role filters the list (#11)', () => {
+    renderTable({ roleId: 'r-bunk' })
+    for (const label of ['All', 'Admin', 'Executive', 'Other roles', 'No role']) {
+      expect(
+        screen.getByRole('button', { name: new RegExp(`^${label}\\s*\\d+$`) })
+      ).toHaveAttribute('aria-pressed', 'false')
+    }
+  })
+
+  it('marks the active bucket pressed when no role filters', () => {
+    renderTable({ bucket: 'admin' })
+    expect(screen.getByRole('button', { name: /^Admin/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('marks the row whose drawer is open (#12)', async () => {
+    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
+    renderTable()
+    const row = screen.getByTestId('user-row-u-liam')
+    expect(row).not.toHaveAttribute('data-selected')
+    await userEvent.click(row)
+    expect(row).toHaveAttribute('data-selected', 'true')
+  })
+
+  it('tells a viewer without users.manage that rows are view only (#20)', () => {
+    mockHasPermission.mockReturnValue(false)
+    renderTable()
+    expect(screen.getByTestId('user-row-u-liam')).toHaveTextContent('View only')
+    expect(screen.getByTestId('user-row-u-admin')).not.toHaveTextContent('View only')
+  })
+
+  it('bolds only the numbers in the range text (owner ruling 1)', () => {
+    renderTable()
+    const pager = screen.getByTestId('users-pager')
+    expect([...pager.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['1–15', '20'])
+  })
+
+  it('keys the 8–45 day grey dot in the freshness legend (#22)', () => {
+    mockIsAdmin = true
+    renderTable()
+    expect(screen.getByTestId('users-toolbar')).toHaveTextContent('8–45 days')
+  })
+
   it('has a Joined column header', () => {
     renderTable()
     expect(screen.getByRole('columnheader', { name: 'Joined' })).toBeInTheDocument()

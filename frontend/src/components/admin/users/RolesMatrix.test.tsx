@@ -78,6 +78,12 @@ describe('RolesMatrix', () => {
     expect(screen.getByTestId('role-count-r-empty')).toHaveTextContent('no one')
   })
 
+  it('the Admin header count filters Users to the admin bucket (#22)', async () => {
+    const url = renderMatrix().url
+    await userEvent.click(screen.getByRole('button', { name: '1 person' }))
+    expect(url.setBucket).toHaveBeenCalledWith('admin')
+  })
+
   it('keeps the area label in view while the matrix scrolls sideways', () => {
     renderMatrix()
     const label = screen.getByText('Analytics', { selector: 'td span' })

@@ -42,6 +42,11 @@ describe('useUsersPageUrl', () => {
       page: 1,
     })
   })
+  it('setBucket lands on users, so it works from the Roles tab', () => {
+    const { result } = setup('/users?tab=roles&focus=r-fin')
+    act(() => result.current.url.setBucket('admin'))
+    expect(result.current.url).toMatchObject({ tab: 'users', bucket: 'admin', focus: null })
+  })
   it('setTab with focus carries a permission to highlight', () => {
     const { result } = setup()
     act(() => result.current.url.setTab('permissions', 'metrics.geo'))

@@ -49,7 +49,9 @@ export function useUsersPageUrl() {
         role: null,
         page: null,
       }),
-    setBucket: (b: Bucket | null) => write({ bucket: b, role: null, page: null }),
+    // Buckets live on the Users tab; landing there lets the Roles tab's Admin count use it.
+    setBucket: (b: Bucket | null) =>
+      write({ tab: null, bucket: b, role: null, page: null, focus: null }),
     setRole: (id: string | null) =>
       write({ tab: null, role: id, bucket: null, page: null, focus: null }),
     setPage: (p: number) => write({ page: p > 1 ? String(p) : null }),

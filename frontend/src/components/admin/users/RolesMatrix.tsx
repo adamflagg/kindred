@@ -3,14 +3,13 @@ import { Check, Plus } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { roleHolders } from './usersPageModel'
 import { RoleDrawer } from './RoleDrawer'
+import { NOT_CHECKED_PILL } from './styles'
 import type { UsersPageProps } from './types'
 
 const TH = 'px-2.5 py-[7px] border-b border-border align-bottom text-[12.5px] font-semibold'
 const TD = 'px-2.5 py-[7px] border-b border-border text-center'
 const PIN =
-  'sticky left-0 text-left min-w-[250px] group-data-[scrolled=true]:shadow-[6px_0_8px_-6px_hsl(var(--shadow-color)/0.35)]'
-const PILL =
-  'ml-1.5 rounded-full px-1.5 py-px text-[10.5px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+  'sticky left-0 text-left min-w-[250px] group-data-[scrolled=true]:border-r group-data-[scrolled=true]:shadow-[6px_0_8px_-6px_hsl(var(--shadow-color)/0.35)]'
 
 const peopleLabel = (n: number) => (n === 0 ? 'no one' : `${n} ${n === 1 ? 'person' : 'people'}`)
 
@@ -87,7 +86,7 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
           </button>
         )}
       </div>
-      <div className="border-border bg-card overflow-hidden rounded-lg border">
+      <div className="border-border bg-card overflow-hidden rounded-xl border">
         <div
           data-testid="matrix-scroll"
           data-scrolled={scrolled}
@@ -105,9 +104,15 @@ export function RolesMatrix({ data, registry, url }: UsersPageProps) {
                 <th className={`${TH} text-center`}>
                   <div className="flex flex-col items-center gap-[3px]">
                     Admin
-                    <span className="text-muted-foreground text-[11.5px] font-medium tabular-nums">
+                    <button
+                      type="button"
+                      data-testid="admin-count"
+                      disabled={adminCount === 0}
+                      className="text-muted-foreground enabled:hover:text-primary text-[11.5px] font-medium tabular-nums enabled:hover:underline"
+                      onClick={() => url.setBucket('admin')}
+                    >
                       {adminCount} {adminCount === 1 ? 'person' : 'people'}
-                    </span>
+                    </button>
                   </div>
                 </th>
                 {data.roles.map((r) => {
@@ -216,7 +221,9 @@ function GroupRows({
             >
               {row.short}
             </button>
-            {row.unused && <span className={PILL}>not checked anywhere</span>}
+            {row.unused && (
+              <span className={`ml-1.5 ${NOT_CHECKED_PILL}`}>not checked anywhere</span>
+            )}
             {row.named && (
               <span className="text-muted-foreground block font-mono text-[11px]">{row.code}</span>
             )}
