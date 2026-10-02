@@ -7,9 +7,13 @@ finance typed them. A season can carry both (2026: typed phases beside the D67 l
 percentage and every over/under; nothing typed is a percentage except a target band (history.py).
 
   RPT-1 phases      (1) Round 1 by the deadline, (2) Round 1 rolling after it, (3) appeals (Rounds 2 and 3), then
-                    the total, the budget and the over/under. Each phase as % of budget (finance's basis) and as a share
-                    of the phases' sum (the decks' pie); "total − Σ phases" shows any gap. The band beside each phase is
-                    finance's typed target. P rows split phases 1 and 2 at the season's application deadline (O-930-10); a
+                    the total, the budget and the over/under. Each phase carries two figure columns (owner N2 = C): "As
+                    offered" (Kindred: the locks as posted, never reduced by a later cancellation or clawback; typed: a
+                    deck's pull, with its own as-of) and "End of season" (net of cancellations; "to date" until the season
+                    closes; typed: the end-of-season total). Each column is its own % of budget (finance's basis) and
+                    share of the phases' sum (the decks' pie), blank where unknown and never filled from the other;
+                    "total − Σ phases", the total and the over/under are End of season's. The band beside each phase is
+                    finance's typed target, and it compares against As offered. P rows split phases 1 and 2 at the season's application deadline (O-930-10); a
                     season with no deadline leaves them empty, named in `gaps`. Phase 3 and the total don't depend
                     on it.
   RPT-2 / RPT-6     Round 1 applications and asks received by a cutoff date (default: the season's application
@@ -67,6 +71,9 @@ class NativeSeason:
     cutoff_requests: tuple[ReportRequest, ...] | None = None
     asks_basis: AsksBasis | None = None
     asks_reason: str | None = None
+    # Every aided session of the season has ended (the service decides): RPT-1's End of season is final. False reads
+    # "to date" (owner N2 = C): the default is the honest one.
+    season_closed: bool = False
 
 
 @dataclass(frozen=True)
@@ -82,8 +89,16 @@ class Band:
 class PhaseRow:
     year: int
     basis: Basis
-    phases: tuple[Decimal | None, ...]  # by the deadline, rolling, appeals
+    # Two figure columns per phase (owner N2 = C, RULED 2026-10-02). "End of season" is `phases` (net of cancellations
+    # and clawback; "to date" while `to_date`); "As offered" is `offered`. Each is blank where unknown: no estimate, and
+    # never one column filled from the other.
+    phases: tuple[Decimal | None, ...]  # End of season: by the deadline, rolling, appeals
     phase_as_of: tuple[date | None, ...]
+    offered: tuple[Decimal | None, ...]  # As offered: the same three phases
+    offered_as_of: tuple[date | None, ...]
+    offered_pct_of_budget: tuple[Decimal | None, ...]
+    offered_share_of_phases: tuple[Decimal | None, ...]
+    to_date: bool  # End of season is a P row's figure while the season is still open
     total: Decimal | None
     total_as_of: date | None
     budget: Decimal | None
@@ -192,8 +207,11 @@ class _Typed:
         for figure in figures:
             self._by[(figure.metric, figure.pool, figure.tier, figure.phase, figure.at)].append(figure)
 
-    def get(self, metric: str, *, pool: str = "", tier: int = 0, phase: int = 0) -> ReportedFigure | None:
-        found = self._by.get((metric, pool, tier, phase, "season_end"), [])
+    def get(
+        self, metric: str, *, pool: str = "", tier: int = 0, phase: int = 0, at: str = "season_end"
+    ) -> ReportedFigure | None:
+        """The latest figure (by its as-of date) at `at`: the season's end, or the latest deck pull."""
+        found = self._by.get((metric, pool, tier, phase, at), [])
         return max(found, key=lambda f: f.as_of) if found else None
 
     def pulls(self, metric: str, *, pool: str = "") -> list[ReportedFigure]:
@@ -261,20 +279,36 @@ def _phase_row(
     basis: Basis,
     phases: tuple[Decimal | None, ...],
     phase_as_of: tuple[date | None, ...],
+    offered: tuple[Decimal | None, ...],
+    offered_as_of: tuple[date | None, ...],
     total: Decimal | None,
     total_as_of: date | None,
     budget: Decimal | None,
     typed: _Typed | None,
     gaps: tuple[str, ...] = (),
+    *,
+    to_date: bool = False,
 ) -> PhaseRow:
+    """Both figure columns (owner N2 = C): each column's % of budget and share of phases come from its own figures.
+    The total, the variance and the reconciliation stay on End of season (the total is net); the bands read As
+    offered (finance's phase targets are about what was offered by each phase)."""
     summed = _sum(phases)
+    offered_summed = _sum(offered)
     pcts = tuple(pct(p, budget) if p is not None else None for p in phases)
+    offered_pcts = tuple(pct(p, budget) if p is not None else None for p in offered)
     variance = total - budget if total is not None and budget is not None else None
     return PhaseRow(
         year=year,
         basis=basis,
         phases=phases,
         phase_as_of=phase_as_of,
+        offered=offered,
+        offered_as_of=offered_as_of,
+        offered_pct_of_budget=offered_pcts,
+        offered_share_of_phases=tuple(
+            pct(p, offered_summed) if p is not None and offered_summed is not None else None for p in offered
+        ),
+        to_date=to_date,
         total=total,
         total_as_of=total_as_of,
         budget=budget,
@@ -284,7 +318,7 @@ def _phase_row(
         reconciliation=total - summed if total is not None and summed is not None else None,
         variance=variance,
         side=_side(variance),
-        bands=_bands(typed, budget, pcts),
+        bands=_bands(typed, budget, offered_pcts),
         gaps=gaps,
     )
 
@@ -307,8 +341,10 @@ def native_phases(
     season: NativeSeason, typed: _Typed | None, *, boundary: PhaseBoundary | None = PHASE_BOUNDARY
 ) -> PhaseRow:
     appeals_money = sum((r.awarded((2, 3)) for r in season.requests), ZERO)
+    appeals_offered = sum((r.offered((2, 3)) for r in season.requests), ZERO)
     total = sum((r.awarded() for r in season.requests), ZERO)
     budget = season.document.budget.total if season.document is not None else None
+    to_date = not season.season_closed
     if boundary is None or season.deadline_instant is None:
         # AMENDED 2026-10-01: no deadline to cut on (a season before 2027 has no received dates, D138, or rules with
         # no application deadline) leaves phases 1 and 2 blank and named, never a false 0.
@@ -317,40 +353,53 @@ def native_phases(
             "P",
             (None, None, appeals_money),
             (None, None, season.as_of),
+            (None, None, appeals_offered),
+            (None, None, season.as_of),
             total,
             season.as_of,
             budget,
             typed,
             gaps=(PHASE_BOUNDARY_GAP if boundary is None else NO_DEADLINE_CUT_GAP,),
+            to_date=to_date,
         )
     by_phase = {1: ZERO, 2: ZERO}
+    offered_by_phase = {1: ZERO, 2: ZERO}
     for request in season.requests:
         phase = _round1_phase(request, season)
         if phase is not None:
             by_phase[phase] += request.awarded((1,))
+            offered_by_phase[phase] += request.offered((1,))
     return _phase_row(
         season.year,
         "P",
         (by_phase[1], by_phase[2], appeals_money),
         (season.as_of, season.as_of, season.as_of),
+        (offered_by_phase[1], offered_by_phase[2], appeals_offered),
+        (season.as_of, season.as_of, season.as_of),
         total,
         season.as_of,
         budget,
         typed,
+        to_date=to_date,
     )
 
 
 def typed_phases(year: int, typed: _Typed) -> PhaseRow | None:
+    """A typed season's phase row: End of season from the `season_end` figures, As offered from the latest deck pull of
+    each phase. Each phase shows only what was typed for it: a blank stays blank in its column."""
     figures = [typed.get("phase_awarded", phase=p) for p in PHASES]
+    pulls = [typed.get("phase_awarded", phase=p, at="pull") for p in PHASES]
     total = typed.get("awarded")
     budget = typed.value("budget")
-    if all(f is None for f in figures) and total is None:
+    if all(f is None for f in figures) and all(f is None for f in pulls) and total is None:
         return None
     return _phase_row(
         year,
         "r",
         tuple(f.value if f is not None else None for f in figures),
         tuple(f.as_of if f is not None else None for f in figures),
+        tuple(f.value if f is not None else None for f in pulls),
+        tuple(f.as_of if f is not None else None for f in pulls),
         total.value if total is not None else None,
         total.as_of if total is not None else None,
         budget,

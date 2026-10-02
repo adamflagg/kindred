@@ -112,6 +112,12 @@ class ReportRequest:
                 total += facts.decided or ZERO
         return total
 
+    def offered(self, rounds: Iterable[int] = REPORT_ROUNDS) -> Decimal:
+        """The money as offered on the rounds named: each round's Posted lock, whatever happened after it (owner N2 = C,
+        RULED 2026-10-02). A later cancellation, withdrawal or clawback never reduces it, so it counts on a request
+        that is no longer live; a round outside the budget (D121, `locked` None) is not in it."""
+        return sum((facts.locked or ZERO for n in rounds if (facts := self.round(n)) is not None), ZERO)
+
     def asked_in_budget(self, rounds: Iterable[int] = REPORT_ROUNDS) -> Decimal | None:
         """`asked`, less any round outside the budget (owner (c), RULED 2026-10-02): % of ask's denominator. A round
         paid wholly by an outside funder is never awarded, so dividing by its ask would read as a shortfall."""

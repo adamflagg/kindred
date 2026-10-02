@@ -71,6 +71,15 @@ def test_a_phase_figure_needs_a_phase_and_a_count_is_whole() -> None:
     assert any("0 to 100" in p for p in problems(band))
 
 
+def test_a_phase_figure_is_read_at_a_deck_pull_or_the_season_end_and_a_band_only_at_the_end() -> None:
+    """Owner N2 = C: RPT-1's As offered is a pull, its End of season the season_end figure; a band is not a pull."""
+    phase = replace(BUDGET, metric="phase_awarded", phase=1, value=Decimal(250000))
+    assert problems(replace(phase, at="pull")) == []
+    assert problems(replace(phase, at="season_end")) == []
+    band = replace(BUDGET, metric="phase_band_low", phase=1, value=Decimal(50))
+    assert any("not pull" in p for p in problems(replace(band, at="pull")))
+
+
 def test_the_natural_key_ignores_the_value_source_and_note() -> None:
     assert replace(BUDGET, value=Decimal(1), source="x", note="y").key == BUDGET.key
     assert replace(BUDGET, as_of=date(2025, 10, 11)).key != BUDGET.key

@@ -106,13 +106,20 @@ async def test_fetch_sessions_is_scoped_to_the_season_and_carries_the_first_day(
     handle = MagicMock()
     handle.get_full_list.return_value = [
         SimpleNamespace(
-            cm_id=1000202, name="Family Camp 6", session_type="family", start_date="2027-08-20 00:00:00.000Z"
+            cm_id=1000202,
+            name="Family Camp 6",
+            session_type="family",
+            start_date="2027-08-20 00:00:00.000Z",
+            end_date="2027-08-22 00:00:00.000Z",
         )
     ]
     pb = MagicMock()
     pb.collection.return_value = handle
     (session,) = await FinancialAidIntakeRepository(pb).fetch_sessions(2028)
     assert (session.cm_id, session.start_date) == (1000202, "2027-08-20 00:00:00.000Z")
+    # Reports' "season closed" reads the last aided session's last day (owner N2 = C).
+    assert session.end_date == "2027-08-22 00:00:00.000Z"
+    assert "end_date" in handle.get_full_list.call_args.kwargs["query_params"]["fields"]
     assert handle.get_full_list.call_args.kwargs["query_params"]["filter"] == "year = 2028"
 
 

@@ -122,6 +122,10 @@ CANCELLATION_CAVEAT: Final = (
     "counted as of the day; a registration CampMinder changed since then reads as it stands now"
 )
 WITHDRAWN_LABEL: Final = "Withdrawn in Kindred"
+# RPT-1's two figure columns (owner N2 = C): what each says, server-sent so the screen never words it.
+OFFERED_LABEL: Final = "As offered"
+END_OF_SEASON_LABEL: Final = "End of season"
+END_OF_SEASON_TO_DATE_LABEL: Final = "End of season (to date)"
 NO_POOL_LABEL: Final = "No pool"
 UNMATCHED_LABEL: Final = "Session not matched"
 ALL_POOLS_LABEL: Final = "All pools"
@@ -471,6 +475,7 @@ class FinancialAidReportsService:
             natives.append(
                 NativeSeason(
                     year=season_year,
+                    season_closed=season_closed(season, document, today),
                     document=document,
                     requests=requests,
                     as_of=today,
@@ -608,6 +613,33 @@ def rules_sessions(season: Season, document: AidRules | None) -> dict[int, str |
     return out
 
 
+def _end_day(session_end: str) -> date | None:
+    """camp_sessions.end_date ("YYYY-MM-DD..."), as a day; None when blank or unreadable."""
+    try:
+        return date.fromisoformat(session_end[:10])
+    except ValueError:
+        return None
+
+
+def season_closed(season: Season, document: AidRules | None, today: date) -> bool:
+    """Whether the season's money has stopped moving (coordinator ruling 2026-10-02): the LAST AIDED SESSION has ended,
+    counting every program open to aid (fall weekends and the winter family session run after summer, and their aid is
+    in the season's Posted). It reads the latest end date of the sessions the season's rules map to an `open_to_aid`
+    program; the season is closed once `today` is after it. With no such session carrying an end date, the season
+    closes with its calendar year (the year before today's)."""
+    ends: list[date] = []
+    if document is not None:
+        for cm_id, session in season.sessions.items():
+            program = resolve_program(document, cm_id, session.session_type)
+            if program is None or not document.programs[program].open_to_aid:
+                continue
+            if (end := _end_day(session.end_date)) is not None:
+                ends.append(end)
+    if ends:
+        return today > max(ends)
+    return season.year < today.year
+
+
 def _reason_label(reason: str) -> str:
     if reason == NO_REASON:
         return "no reason recorded"
@@ -671,6 +703,13 @@ def _phase_out(row: PhaseRow) -> PhaseRowOut:
     return PhaseRowOut(
         year=row.year,
         basis=row.basis,
+        offered_label=OFFERED_LABEL,
+        end_of_season_label=END_OF_SEASON_TO_DATE_LABEL if row.to_date else END_OF_SEASON_LABEL,
+        to_date=row.to_date,
+        offered=[_money(p) for p in row.offered],
+        offered_as_of=list(row.offered_as_of),
+        offered_pct_of_budget=[_pct(p) for p in row.offered_pct_of_budget],
+        offered_share_of_phases=[_pct(p) for p in row.offered_share_of_phases],
         phases=[_money(p) for p in row.phases],
         phase_as_of=list(row.phase_as_of),
         total=_money(row.total),

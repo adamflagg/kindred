@@ -174,7 +174,17 @@ class BandOut(BaseModel):
 class PhaseRowOut(BaseModel):
     year: int
     basis: BasisCode
-    phases: list[float | None]  # by the deadline, rolling after it, appeals (Rounds 2 and 3)
+    # Two figure columns per phase (owner N2 = C, RULED 2026-10-02): "As offered" (`offered*`) and "End of season"
+    # (`phases`, `pct_of_budget`, `share_of_phases`, `total`, `reconciliation`, `variance`: net of cancellations).
+    # Each is None where unknown; neither is ever filled from the other. Bands compare against As offered.
+    offered_label: str  # "As offered"
+    end_of_season_label: str  # "End of season", or "End of season (to date)" while the season is open
+    to_date: bool  # End of season is still moving: a priced (P) row of a season whose last aided session hasn't ended
+    offered: list[float | None]  # by the deadline, rolling after it, appeals (Rounds 2 and 3)
+    offered_as_of: list[date | None]  # a typed row: that deck pull's date
+    offered_pct_of_budget: list[float | None]
+    offered_share_of_phases: list[float | None]
+    phases: list[float | None]  # End of season: by the deadline, rolling after it, appeals (Rounds 2 and 3)
     phase_as_of: list[date | None]
     total: float | None
     total_as_of: date | None

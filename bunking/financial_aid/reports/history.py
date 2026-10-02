@@ -68,7 +68,9 @@ METRICS: Final[tuple[Metric, ...]] = (
         "finance",
         "dollars",
         frozenset({"phase"}),
-        frozenset({"season_end"}),
+        # RPT-1's two columns (owner N2 = C): `pull` is "As offered" (a deck's snapshot, its own as-of date; the latest
+        # pull of a phase counts) and `season_end` is "End of season" (net of cancellations).
+        frozenset({"pull", "season_end"}),
         ("RPT-1",),
         "Phase dollars",
     ),

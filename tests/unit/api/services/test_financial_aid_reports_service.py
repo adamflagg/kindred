@@ -17,7 +17,7 @@ from api.constants.collections import AID_REPORTED_HISTORY
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
 from api.services.financial_aid_grants_register import Placement, RegisterRow
-from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord
+from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord, SessionRow
 from api.services.financial_aid_reports_facts import _standing
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
@@ -54,12 +54,13 @@ def _service(
     history: FakeReportsStore | None = None,
     register: Sequence[RegisterRow] = (),
     rules: Any = None,
+    now: datetime = NOW,
 ) -> FinancialAidReportsService:
     async def rows(year: int) -> Sequence[RegisterRow]:
         return list(register) if year == YEAR else []
 
     return FinancialAidReportsService(
-        store, rules or FakeRules(approved(RULES)), rows, history or FakeReportsStore(), clock=lambda: NOW
+        store, rules or FakeRules(approved(RULES)), rows, history or FakeReportsStore(), clock=lambda: now
     )
 
 
@@ -525,6 +526,96 @@ async def test_the_committee_puts_this_seasons_p_rows_beside_typed_history() -> 
     figures = {item.figure for item in out.not_built}
     assert PHASE_BOUNDARY_GAP not in figures
     assert figures >= {NO_DEADLINE_CUT_GAP, "enrollment_pct_of_goal"}
+
+
+async def test_the_phase_row_carries_as_offered_and_end_of_season_and_a_cancellation_only_moves_the_second() -> None:
+    """Owner N2 = C (RULED 2026-10-02): Emma's 1,500 lock is As offered from the day it posted; once she cancels it
+    leaves End of season but stays in As offered."""
+    store = report_season()
+    live = (await _service(store).committee(YEAR)).phases[-1]
+    assert (live.offered, live.phases) == ([1500.0, 0.0, 0.0], [1500.0, 0.0, 0.0])
+    assert (live.offered_label, live.end_of_season_label) == ("As offered", "End of season (to date)")
+    store.cancel_events.append(CancelEvent("can000000000007", EMMA, "cancel", NOW - timedelta(days=1), in_kindred=True))
+    out = (await _service(store).committee(YEAR)).phases[-1]
+    assert out.offered == [1500.0, 0.0, 0.0]
+    assert out.phases == [0.0, 0.0, 0.0]
+    assert (out.offered_pct_of_budget[0], out.pct_of_budget[0]) == (0.3, 0.0)
+
+
+def _aided_sessions(**ends: str) -> list[SessionRow]:
+    return [
+        SessionRow(1000101, "Session 2", "main", "2027-06-20", ends.get("summer", "")),
+        SessionRow(1000202, "Family Camp 6", "family", "2027-08-20", ends.get("family", "")),
+        SessionRow(1000106, "A Quest", "quest", "2027-07-05", ends.get("quest", "")),
+        SessionRow(1000999, "Unmapped", "unmapped_type", "2027-10-01", ends.get("unmapped", "")),
+    ]
+
+
+async def _to_date(store: FakeDecisionsStore, day: date, *, rules: Any = None) -> bool:
+    now = datetime(day.year, day.month, day.day, 17, 0, tzinfo=UTC)
+    return (await _service(store, rules=rules, now=now).committee(YEAR)).phases[-1].to_date
+
+
+async def test_the_season_is_to_date_until_the_last_aided_session_has_ended() -> None:
+    """Coordinator ruling 2026-10-02: closed once EVERY program open to aid has finished, not just summer. Summer
+    ended but a later aided family weekend hasn't: still to date; every aided session ended: closed. A session no
+    program claims, and one of a program closed to aid, never holds the season open."""
+    store = report_season()
+    store.sessions = _aided_sessions(
+        summer="2027-07-10", family="2027-08-22", quest="2027-12-01", unmapped="2027-12-31"
+    )
+    closed_to_aid = FakeRules(approved(with_levers(RULES, {"programs.quest.open_to_aid": False})))
+    assert await _to_date(store, date(2027, 7, 20), rules=closed_to_aid) is True  # summer ended; the weekend hasn't
+    assert await _to_date(store, date(2027, 8, 22), rules=closed_to_aid) is True  # the last day itself is still open
+    assert await _to_date(store, date(2027, 8, 23), rules=closed_to_aid) is False  # every aided session has ended
+    # The quest is open to aid here, so its December end holds the season open.
+    assert await _to_date(store, date(2027, 8, 23)) is True
+    assert await _to_date(store, date(2027, 12, 2)) is False
+
+
+async def test_with_no_session_end_dates_the_season_closes_with_the_calendar_year() -> None:
+    store = report_season()
+    store.sessions = _aided_sessions()
+    assert await _to_date(store, date(2027, 12, 31)) is True
+    assert await _to_date(store, date(2028, 1, 2)) is False
+
+
+async def test_a_typed_phase_row_never_reads_to_date() -> None:
+    history = FakeReportsStore()
+    history.seed(replace(_figure("phase_awarded", "300000", phase=1), year=2026, as_of=date(2026, 10, 10)))
+    out = await _service(report_season(), history).committee(YEAR)
+    typed = next(row for row in out.phases if row.basis == "r")
+    assert (typed.to_date, typed.end_of_season_label) == (False, "End of season")
+
+
+async def test_a_bulk_load_round_trips_both_phase_figures_and_the_committee_reads_each_column() -> None:
+    """Staff backfill both typed figures as totals: a deck pull (As offered, its own as-of) and the end-of-season
+    total, each optional; the response lists both, the committee fills each column from its own figure."""
+    history = FakeReportsStore()
+    service = _service(report_season(), history)
+    out = await service.load_reported(
+        [
+            _figure("phase_awarded", "250000", phase=1, at="pull", as_of=date(2025, 3, 2)),
+            _figure("phase_awarded", "300000", phase=1),
+            _figure("phase_awarded", "40000", phase=2),  # only an end-of-season figure
+            _figure("phase_awarded", "90000", phase=3, at="pull", as_of=date(2025, 3, 2)),  # only a pull
+            _figure("budget", "500000"),
+        ],
+        actor=FINANCE,
+    )
+    assert out.created == 5
+    stored = await service.reported_history()
+    assert {(f.phase, f.at) for f in stored.figures if f.metric == "phase_awarded"} == {
+        (1, "pull"),
+        (1, "season_end"),
+        (2, "season_end"),
+        (3, "pull"),
+    }
+    row = next(r for r in (await service.committee(YEAR)).phases if r.year == 2025)
+    assert row.offered == [250000.0, None, 90000.0]
+    assert row.offered_as_of == [date(2025, 3, 2), None, date(2025, 3, 2)]
+    assert row.phases == [300000.0, 40000.0, None]
+    assert (row.offered_pct_of_budget, row.pct_of_budget) == ([50.0, None, 18.0], [60.0, 8.0, None])
 
 
 async def test_the_committee_refuses_a_received_through_date_before_2027_as_statistics_does() -> None:

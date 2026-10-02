@@ -96,6 +96,8 @@ def test_a_typed_phase_row_computes_every_percent_and_shows_the_gap_and_the_band
     """RPT-1 history: dollars typed, percentages computed; "total − Σ phases" shows any gap; the band is typed."""
     figures = [
         _typed("phase_awarded", "300000", phase=1, as_of=date(2026, 3, 2)),
+        # The band reads As offered (owner N2 = C): the deck's phase 1 pull, so the position still has a figure.
+        _typed("phase_awarded", "300000", phase=1, at="pull", as_of=date(2026, 3, 2)),
         _typed("phase_awarded", "100000", phase=2),
         _typed("phase_awarded", "50000", phase=3),
         _typed("awarded", "460000"),
@@ -363,3 +365,145 @@ def test_the_received_through_snapshot_counts_round_1_asks_only() -> None:
         Decimal(4000),
         Decimal("4000.00"),
     )
+
+
+# --- Task A13 (owner N2 = C, RULED 2026-10-02): RPT-1 carries "As offered" and "End of season" per phase ---------
+
+DEADLINE = CUTOFF
+
+
+def _n2_season(**changes: object) -> NativeSeason:
+    """Emma: on time, Round 1 1,500 and an appeal 300, both live. Noah: on time, locked 900 then cancelled (appeal
+    lock 200 too). Mia: on time, locked 800, since clawed back. Liam: after the deadline, 1,000. Zara: on time, a
+    full-cost outside-funder round (D121): never in the budget, so in neither column."""
+    emma = req("reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="800", posted="300"), received_at=EARLY)
+    noah = req(
+        "reqnoah00000001",
+        rnd(1, ask="3000", posted="900"),
+        rnd(2, ask="500", posted="200"),
+        household=1000003,
+        standing="cancelled",
+        received_at=EARLY,
+    )
+    mia = req(
+        "reqmia000000001",
+        rnd(1, ask="1200", posted="800", clawed_back=True),
+        household=1000005,
+        received_at=EARLY,
+    )
+    liam = req("reqliam00000001", rnd(1, ask="2000", posted="1000"), household=1000002, received_at=LATE)
+    zara = req("reqzara00000001", rnd(1, ask="3000", outside_budget=True), household=1000006, received_at=EARLY)
+    season = _season(emma, noah, mia, liam, zara)
+    return replace(season, deadline_instant=DEADLINE, **changes)  # type: ignore[arg-type]
+
+
+def _p_row(season: NativeSeason, figures: list[ReportedFigure] | None = None):  # type: ignore[no-untyped-def]
+    return next(r for r in committee_tables([season], figures or []).phases if r.basis == "P")
+
+
+def test_as_offered_keeps_a_lock_a_later_cancellation_or_clawback_takes_out_of_end_of_season() -> None:
+    """Kindred seasons: As offered is the lock as posted, so it never shrinks; End of season is net."""
+    row = _p_row(_n2_season())
+    # As offered: phase 1 = Emma 1,500 + Noah 900 + Mia 800; phase 2 = Liam 1,000; phase 3 = Emma 300 + Noah 200.
+    assert row.offered == (Decimal(3200), Decimal(1000), Decimal(500))
+    assert row.offered_as_of == (date(2027, 4, 1),) * 3
+    # End of season: the cancelled request and the clawed-back award are out.
+    assert row.phases == (Decimal(1500), Decimal(1000), Decimal(300))
+
+
+def test_a_round_outside_the_budget_is_in_neither_column() -> None:
+    zara_only = _season(
+        req("reqzara00000001", rnd(1, ask="3000", outside_budget=True), household=1000006, received_at=EARLY),
+        req("reqemma00000001", rnd(1, ask="4000", posted="1500"), received_at=EARLY),
+    )
+    row = _p_row(replace(zara_only, deadline_instant=DEADLINE))
+    assert row.offered[0] == Decimal(1500)
+    assert row.phases[0] == Decimal(1500)
+
+
+def test_each_column_has_its_own_percent_of_budget_and_share_of_phases() -> None:
+    row = _p_row(_n2_season())
+    assert row.pct_of_budget == (Decimal("0.3"), Decimal("0.2"), Decimal("0.1"))
+    assert row.offered_pct_of_budget == (Decimal("0.6"), Decimal("0.2"), Decimal("0.1"))
+    assert row.share_of_phases == (Decimal("53.6"), Decimal("35.7"), Decimal("10.7"))
+    assert row.offered_share_of_phases == (Decimal("68.1"), Decimal("21.3"), Decimal("10.6"))
+
+
+def test_a_season_with_no_deadline_cut_blanks_both_columns_but_appeals_still_count() -> None:
+    row = _p_row(replace(_n2_season(), deadline_instant=None))
+    assert row.offered == (None, None, Decimal(500))
+    assert row.phases == (None, None, Decimal(300))
+    assert row.offered_pct_of_budget[:2] == (None, None)
+
+
+def test_end_of_season_reads_to_date_until_the_season_closes() -> None:
+    assert _p_row(_n2_season()).to_date is True
+    assert _p_row(_n2_season(season_closed=True)).to_date is False
+    typed = committee_tables([], [_typed("phase_awarded", "300000", phase=1)]).phases[0]
+    assert typed.to_date is False  # a typed row is as reported: no "to date"
+
+
+def test_a_typed_row_fills_each_column_from_its_own_figure_and_never_from_the_other() -> None:
+    pull = date(2026, 3, 2)
+
+    def row(*figures: ReportedFigure) -> object:
+        return committee_tables([], [*figures, _typed("budget", "500000")]).phases[0]
+
+    both = row(
+        _typed("phase_awarded", "250000", phase=1, at="pull", as_of=pull),
+        _typed("phase_awarded", "300000", phase=1),
+    )
+    assert (both.offered[0], both.offered_as_of[0]) == (Decimal(250000), pull)  # type: ignore[attr-defined]
+    assert both.phases[0] == Decimal(300000)  # type: ignore[attr-defined]
+    assert both.offered_pct_of_budget[0] == Decimal("50.0")  # type: ignore[attr-defined]
+    assert both.pct_of_budget[0] == Decimal("60.0")  # type: ignore[attr-defined]
+
+    only_pull = row(_typed("phase_awarded", "250000", phase=1, at="pull", as_of=pull))
+    assert only_pull.offered[:1] == (Decimal(250000),)  # type: ignore[attr-defined]
+    assert (only_pull.phases[0], only_pull.pct_of_budget[0]) == (None, None)  # type: ignore[attr-defined]
+
+    only_end = row(_typed("phase_awarded", "300000", phase=1))
+    assert only_end.phases[:1] == (Decimal(300000),)  # type: ignore[attr-defined]
+    assert (only_end.offered[0], only_end.offered_as_of[0], only_end.offered_pct_of_budget[0]) == (  # type: ignore[attr-defined]
+        None,
+        None,
+        None,
+    )
+
+    neither = row(_typed("awarded", "460000"))
+    assert neither.offered == (None, None, None)  # type: ignore[attr-defined]
+    assert neither.phases == (None, None, None)  # type: ignore[attr-defined]
+
+
+def test_a_phase_with_several_deck_pulls_offers_the_latest() -> None:
+    row = committee_tables(
+        [],
+        [
+            _typed("phase_awarded", "200000", phase=1, at="pull", as_of=date(2026, 2, 1)),
+            _typed("phase_awarded", "250000", phase=1, at="pull", as_of=date(2026, 3, 2)),
+            _typed("budget", "500000"),
+        ],
+    ).phases[0]
+    assert (row.offered[0], row.offered_as_of[0]) == (Decimal(250000), date(2026, 3, 2))
+
+
+def test_a_typed_row_with_only_an_as_offered_figure_is_still_a_row() -> None:
+    row = committee_tables([], [_typed("phase_awarded", "250000", phase=2, at="pull")]).phases
+    assert [(r.year, r.offered[1]) for r in row] == [(2026, Decimal(250000))]
+
+
+def test_the_band_position_compares_the_as_offered_share_not_end_of_season() -> None:
+    """Finance's phase targets are about what was offered by each phase: the band reads the As offered column."""
+    figures = [
+        _typed("budget", "500000"),
+        _typed("phase_awarded", "250000", phase=1, at="pull"),  # 50% offered: below the 51-55 band
+        _typed("phase_awarded", "300000", phase=1),  # 60% at the season's end: would read above
+        _typed("phase_band_low", "51", phase=1),
+        _typed("phase_band_high", "55", phase=1),
+    ]
+    band = committee_tables([], figures).phases[0].bands[0]
+    assert band is not None
+    assert band.position == "below"
+    no_offer = committee_tables([], [f for f in figures if f.at != "pull"]).phases[0].bands[0]
+    assert no_offer is not None
+    assert no_offer.position is None  # no As offered figure: blank, never read from the other column

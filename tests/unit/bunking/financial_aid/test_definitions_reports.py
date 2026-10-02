@@ -83,6 +83,23 @@ def test_round_1_phases_carry_their_signed_boundary() -> None:
     assert note.key in SURFACES["reports-committee"]
 
 
+def test_round_1_phases_define_both_columns_the_bands_and_the_total() -> None:
+    """Owner N2 = C (RULED 2026-10-02): each column says what it counts, and which figures sit on which column."""
+    text = BY_KEY["round1_phases"].text
+    assert "As offered" in text
+    assert "the lock as posted" in text
+    assert "later cancellation, withdrawal or clawback never reduces it" in text
+    assert "End of season" in text
+    assert "net of cancellations" in text
+    assert 'reads "to date" until the season closes' in text
+    assert "the last session open to aid" in text
+    assert "A blank stays blank" in text
+    assert "one column is never filled from the other" in text
+    assert "target bands compare against As offered" in text
+    assert 'total, the over/under and "total − Σ phases" are End of season\'s' in text
+    assert "NOT RULED" not in text
+
+
 def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applications() -> None:
     """D131 / owner ruling (RULED 2026-10-02, appeals and cancellations): the appeal rate and the per-tier appeals count every
     request with a Round 2 or later ask, cancelled ones included; RPT-23's outcomes exclude them."""

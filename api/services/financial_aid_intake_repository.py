@@ -337,10 +337,20 @@ class FinancialAidIntakeRepository:
     async def fetch_sessions(self, year: int) -> list[SessionRow]:
         rows = await self._page(
             CAMP_SESSIONS,
-            {"filter": f"year = {year}", "fields": "id,cm_id,name,session_type,start_date", "sort": STABLE_SORT},
+            {
+                "filter": f"year = {year}",
+                "fields": "id,cm_id,name,session_type,start_date,end_date",
+                "sort": STABLE_SORT,
+            },
         )
         return [
-            SessionRow(_int(r.cm_id), _str(r.name), _str(r.session_type), _str(getattr(r, "start_date", "")))
+            SessionRow(
+                _int(r.cm_id),
+                _str(r.name),
+                _str(r.session_type),
+                _str(getattr(r, "start_date", "")),
+                _str(getattr(r, "end_date", "")),
+            )
             for r in rows
         ]
 

@@ -323,8 +323,15 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
         text=(
             "Round 1 phases: phase 1 is Round 1 money on requests received by the application deadline; phase 2 is "
             "Round 1 money on requests received after it; phase 3 is appeals (Rounds 2 and 3). A request received "
-            "on time but posted later stays in phase 1. Each phase is shown as a % of the season's total budget and "
-            "as its share of all three."
+            "on time but posted later stays in phase 1. Each phase has two columns. As offered: the lock as posted "
+            "(D80's awarded = offered); a later cancellation, withdrawal or clawback never reduces it, and a round "
+            "outside the budget (an outside funder's full-cost round) is in neither column; for a season finance "
+            "typed, the deck's figure and its as-of date. End of season: net of cancellations and clawback; for a "
+            'season Kindred priced it reads "to date" until the season closes, meaning the last session open to aid '
+            "(summer, family camp and adult weekends alike) has ended; for a typed season, the end-of-season total. "
+            "A blank stays blank: nothing is estimated, and one column is never filled from the other. Each column is "
+            "shown as a % of the season's total budget and as its share of the three phases; the target bands compare "
+            'against As offered; the total, the over/under and "total − Σ phases" are End of season\'s.'
         ),
         spec="§9.7",
         rulings=("D155",),
