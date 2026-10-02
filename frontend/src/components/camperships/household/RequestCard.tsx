@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 
 import type {
-  ApiAidGridRow,
   ApiAidHouseholdPage,
   ApiAidHouseholdRequest,
   ApiAidReceipt,
@@ -67,7 +66,7 @@ function EarlierReceipts({
           receipt.label.kind === 'live'
             ? 'worked out now'
             : receipt.label.kind === 'reproduced'
-              ? 'reproduced from the 2026 sheet'
+              ? `reproduced from the ${String(receipt.label.season)} sheet`
               : 'posted'
         return (
           <div key={receipt.round}>
@@ -86,9 +85,33 @@ function EarlierReceipts({
   )
 }
 
-function MoneyLine({ row }: { row: ApiAidGridRow }) {
+/** A chip for a household on the page; a household outside it (chip 0) is its plain name (M6). */
+function PayerLabel({ chip, name }: { chip: number; name: string }) {
+  return chip > 0 ? (
+    <HouseholdChip index={chip} name={name} />
+  ) : (
+    <span className="text-xs">{name}</span>
+  )
+}
+
+function MoneyLine({
+  request,
+  page,
+}: {
+  request: ApiAidHouseholdRequest
+  page: ApiAidHouseholdPage
+}) {
+  const row = request.row
+  const payer = request.shares[0]
+  const other = payer !== undefined && payer.household_cm_id !== row.household_cm_id ? payer : null
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {other && (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-muted-foreground text-xs">paid by</span>
+          <PayerLabel chip={other.chip} name={householdName(page, other.household_cm_id)} />
+        </span>
+      )}
       <span>
         Decided <Money value={row.total_decided} className="font-semibold" />
       </span>
@@ -124,10 +147,7 @@ function ShareTable({
           return (
             <tr key={share.household_cm_id} className="border-border border-t">
               <td className="py-1">
-                <HouseholdChip
-                  index={share.chip}
-                  name={householdName(page, share.household_cm_id)}
-                />
+                <PayerLabel chip={share.chip} name={householdName(page, share.household_cm_id)} />
               </td>
               <td className="py-1 text-right tabular-nums">{`${String(share.share_pct)}%`}</td>
               <td className="py-1 text-right">
@@ -187,11 +207,11 @@ export function RequestCard({
         <span className="text-muted-foreground">
           {`· ${row.session_name}${row.person_cm_id > 0 ? ` · person ${String(row.person_cm_id)}` : ''}`}
         </span>
-        {stage && <StatusPill tone={stage.tone}>{stage.text}</StatusPill>}
+        {stage && !row.cancellation && <StatusPill tone={stage.tone}>{stage.text}</StatusPill>}
         {applied && (
           <>
             <span className="text-muted-foreground text-xs">applied by</span>
-            <HouseholdChip index={applied.chip} name={applied.name} />
+            <PayerLabel chip={applied.chip} name={applied.name} />
           </>
         )}
         <span className="text-muted-foreground ml-auto text-xs">
@@ -210,7 +230,13 @@ export function RequestCard({
           openByItself={opensByItself(request)}
         />
       )}
-      <EarlierReceipts receipts={earlierReceipts(request)} view={view} />
+      <EarlierReceipts
+        // The server gives every unposted round the same live receipt: shown once, under the sentence (M8).
+        receipts={earlierReceipts(request).filter(
+          (receipt) => !(receipt.label.kind === 'live' && latest?.label.kind === 'live')
+        )}
+        view={view}
+      />
       {lines
         .filter((line) => line.wouldChangeBy !== null && line.posted)
         .map((line) => (
@@ -224,11 +250,11 @@ export function RequestCard({
         checklist={checklist}
         nextAction={nextAction}
       />
-      {/* TODO(#2941): the split marker waits on payer_count; until then several share lines mean a split. */}
+      {/* shares.length IS the payer count (#2941's payer_count is len of the same payers, with an implied 100% line for none). */}
       {request.shares.length > 1 ? (
         <ShareTable request={request} page={page} />
       ) : (
-        <MoneyLine row={row} />
+        <MoneyLine request={request} page={page} />
       )}
       {editor}
       {actions !== undefined && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
