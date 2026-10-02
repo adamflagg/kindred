@@ -9,7 +9,12 @@ import {
   GRID_ROWS,
   roundOut,
 } from '../../components/camperships/requests/gridFixtures'
-import type { ApiAidApprovedRules, ApiAidGrid, ApiAidRound } from '../../types/api-types'
+import type {
+  ApiAidApprovedRules,
+  ApiAidGrid,
+  ApiAidRound,
+  ApiAidToday,
+} from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
 interface GridResult {
@@ -40,6 +45,8 @@ vi.mock('../../hooks/camperships/useAidRules', () => ({
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
 }))
+let todayRead: { data: ApiAidToday | undefined } = { data: undefined }
+vi.mock('../../hooks/camperships/useAidToday', () => ({ useAidToday: () => todayRead }))
 let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
@@ -123,6 +130,7 @@ beforeEach(() => {
   keyAsk.mockClear()
   grid = { data: LIVE, isLoading: false, error: null }
   granted = ['financial_aid.view']
+  todayRead = { data: undefined }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-01T18:00:00Z'))
 })
@@ -1147,5 +1155,56 @@ describe('Mark Posted on a Not reconciled row (#2996)', () => {
       year: 2027,
       body: { rows: [{ request_id: 'reqrefused00001', round: 1, amount: 1500 }] },
     })
+  })
+})
+
+describe("a Today line's rows (Decision 10)", () => {
+  const WOULD_CHANGE: ApiAidToday = {
+    year: 2027,
+    casework: null,
+    finance: [
+      {
+        key: 'would_change',
+        families: 1,
+        items: 1,
+        item_kind: 'requests',
+        reasons: [],
+        request_ids: ['reqolivia000003'],
+      },
+    ],
+  }
+
+  it('shows exactly the requests the line counted, says where they came from, and clears', async () => {
+    todayRead = { data: WOULD_CHANGE }
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
+    expect(
+      screen.getByText(/From Today: Locked rounds today's rules price differently/)
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByTestId('where')).not.toHaveTextContent('today=')
+  })
+
+  it('counts the view links over the line only, so the totals match the rows (R1)', () => {
+    todayRead = { data: WOULD_CHANGE }
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(viewLink('All')).toHaveTextContent('1 fam · 1 req')
+  })
+
+  it('carries the line on the household link, so the walk and Back keep it', () => {
+    todayRead = { data: WOULD_CHANGE }
+    renderAt('/aid/requests?view=all&today=would_change')
+    expect(screen.getByRole('link', { name: 'The Chen Family' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('today=would_change')
+    )
+  })
+
+  it('ignores a today key the server does not send', () => {
+    renderAt('/aid/requests?view=all&today=bogus')
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText(/From Today/)).toBeNull()
   })
 })

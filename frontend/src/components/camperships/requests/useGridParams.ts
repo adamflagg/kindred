@@ -10,7 +10,7 @@ import {
   type TickFilter,
 } from './views'
 
-export type GridParamName = 'program' | 'pool' | 'round' | 'tick' | 'ids' | 'row'
+export type GridParamName = 'program' | 'pool' | 'round' | 'tick' | 'ids' | 'row' | 'today'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
