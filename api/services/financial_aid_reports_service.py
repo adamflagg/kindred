@@ -25,7 +25,7 @@ refused, and the grants figures are left empty and named in `not_rebuilt`.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -36,6 +36,7 @@ from api.schemas.financial_aid_decisions import AsOfAxis, NotRebuiltOut
 from api.schemas.financial_aid_reports import (
     AppealsRowOut,
     ApplicationsRowOut,
+    AsksBasisOut,
     BandOut,
     BudgetRowOut,
     CancelledRowOut,
@@ -69,7 +70,13 @@ from api.services.financial_aid_decisions_service import (
     Season,
 )
 from api.services.financial_aid_ledger_service import as_of_cutoff, money, parse_pb_datetime
-from api.services.financial_aid_reports_facts import received_ids, report_requests
+from api.services.financial_aid_reports_facts import (
+    FrozenAsks,
+    frozen_round1_asks,
+    received_ids,
+    report_requests,
+    with_frozen_asks,
+)
 from api.services.financial_aid_reports_repository import StoredFigure, figure_fields
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.decisions import PAST_DATE_GAPS
@@ -163,6 +170,7 @@ class _Read:
     requests: tuple[ReportRequest, ...]
     note: RequestSetNote | None
     figures_on: date
+    asks: FrozenAsks | None = None
 
 
 def _money(value: Decimal | None) -> float | None:
@@ -246,6 +254,21 @@ class FinancialAidReportsService:
         log = await self._store.fetch_change_log(season.year, AID_REQUESTS)
         return received_dates(season.requests.keys(), log, predecessors=edit_predecessors(season.requests.values()))
 
+    async def _frozen(self, year: int, season: Season, kept: Collection[str], day: date) -> FrozenAsks:
+        """D155: the kept requests' Round 1 asks as they stood at the end of `day`. A day on or after the read's own
+        (today for the live read, the read's date for a past one) is the read itself: nothing to rebuild."""
+        on = season.as_of if season.as_of is not None else self._today()
+        if day >= on:
+            return FrozenAsks(day, "as_of_cutoff")
+        then = await self._decisions.past_season(year, day, "recorded")  # requests replay alike on both axes
+        cutoff = as_of_cutoff(day)
+        corrections = [
+            c
+            for c in await self._store.fetch_corrections(year, None)
+            if (made := parse_pb_datetime(c.created)) is not None and made < cutoff
+        ]
+        return frozen_round1_asks(season, then, corrections, kept, day)
+
     async def _read(self, year: int, *, as_of: date | None, axis: AsOfAxis, request_set: RequestSet | None) -> _Read:
         today = self._today()
         past = as_of is not None and as_of < today
@@ -268,7 +291,11 @@ class FinancialAidReportsService:
             split = split_by_received({rid: received.get(rid) for rid in ids}, as_of_cutoff(request_set.through), ids)
             keep, note = split.kept, request_set_note(request_set, split)
         requests = report_requests(season, received=received, corrections=corrections, keep=keep)
-        return _Read(season, requests, note, as_of if past and as_of is not None else today)
+        asks: FrozenAsks | None = None
+        if request_set is not None and keep is not None:
+            asks = await self._frozen(year, season, keep, request_set.through)
+            requests = with_frozen_asks(requests, asks)
+        return _Read(season, requests, note, as_of if past and as_of is not None else today, asks)
 
     def _gaps(self, read: _Read, figures: Iterable[str]) -> list[NotRebuiltOut]:
         if read.season.as_of is None:
@@ -358,6 +385,7 @@ class FinancialAidReportsService:
                 for row in outcomes(read.requests)
             ],
             request_set=read.note,
+            asks=_asks_out(read.asks),
             not_rebuilt=self._gaps(read, STATISTICS_PAST_GAPS),
         )
 
@@ -412,6 +440,7 @@ class FinancialAidReportsService:
             ],
             total=row_out(table.total, ALL_POOLS_LABEL),
             request_set=read.note,
+            asks=_asks_out(read.asks),
             not_rebuilt=self._gaps(read, PROGRAMS_PAST_GAPS),
         )
 
@@ -441,15 +470,26 @@ class FinancialAidReportsService:
             if season_year < FIRST_RECEIVED_SEASON:
                 deadline = None  # no received dates to cut on (D138)
             cutoff = through if through is not None and season_year == year else deadline
+            requests = report_requests(season, received=received, corrections=corrections)
+            cutoff_requests: tuple[ReportRequest, ...] | None = None
+            frozen: FrozenAsks | None = None
+            if cutoff is not None:
+                cut = as_of_cutoff(cutoff)
+                kept = frozenset(r.request_id for r in requests if r.received_at is not None and r.received_at < cut)
+                frozen = await self._frozen(season_year, season, kept, cutoff)
+                cutoff_requests = with_frozen_asks((r for r in requests if r.request_id in kept), frozen)
             natives.append(
                 NativeSeason(
                     year=season_year,
                     document=document,
-                    requests=report_requests(season, received=received, corrections=corrections),
+                    requests=requests,
                     as_of=today,
                     cutoff=cutoff,
                     cutoff_instant=as_of_cutoff(cutoff) if cutoff is not None else None,
                     deadline_instant=as_of_cutoff(deadline) if deadline is not None else None,
+                    cutoff_requests=cutoff_requests,
+                    asks_basis=frozen.basis if frozen is not None else None,
+                    asks_reason=frozen.reason if frozen is not None else None,
                 )
             )
         figures = [s.figure for s in await self._history.reported() if FIRST_REPORT_SEASON <= s.figure.year <= year]
@@ -661,6 +701,12 @@ def _counted(counted: Counted | None) -> CountedOut | None:
     return CountedOut(apps=counted.apps, asked=_money(counted.asked), average=_money(counted.average))
 
 
+def _asks_out(asks: FrozenAsks | None) -> AsksBasisOut | None:
+    if asks is None:
+        return None
+    return AsksBasisOut(day=asks.day, basis=asks.basis, reason=asks.reason, unrebuilt=len(asks.unrebuilt))
+
+
 def _applications_out(row: ApplicationsRow, label: str) -> ApplicationsRowOut:
     return ApplicationsRowOut(
         year=row.year,
@@ -676,6 +722,8 @@ def _applications_out(row: ApplicationsRow, label: str) -> ApplicationsRowOut:
         change_apps=row.change_apps,
         change_asked=_money(row.change_asked),
         unknown_received=row.unknown_received,
+        asks_basis=row.asks_basis,
+        asks_reason=row.asks_reason,
     )
 
 

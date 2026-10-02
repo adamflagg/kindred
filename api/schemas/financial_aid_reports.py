@@ -36,6 +36,17 @@ class NotBuiltOut(BaseModel):
     reason: str
 
 
+class AsksBasisOut(BaseModel):
+    """D155: a received-through figure's Round 1 asks are frozen as they stood on `day`. On "now" that couldn't be
+    exact, so every ask is as it stands now; `reason` says why and `unrebuilt` how many requests caused it (a count,
+    never ids)."""
+
+    day: date
+    basis: Literal["as_of_cutoff", "now"]
+    reason: str | None
+    unrebuilt: int
+
+
 # --- Statistics (§9.2; RPT-5, RPT-9, RPT-10, RPT-22, RPT-23) ---------------------------------------------------
 
 
@@ -108,6 +119,7 @@ class StatisticsResponse(BaseModel):
     tier_appeals: list[TierAppealsRowOut]  # RPT-9, for the same table chip
     outcomes: list[OutcomeRowOut]  # RPT-23, every pool
     request_set: RequestSetNote | None  # D138: "requests received through <date>" when a control is on
+    asks: AsksBasisOut | None  # D155; None when no reporting control is on
     not_rebuilt: list[NotRebuiltOut]
 
 
@@ -150,6 +162,7 @@ class ProgramsResponse(BaseModel):
     pools: list[PoolGroupOut]
     total: ProgramRowOut
     request_set: RequestSetNote | None
+    asks: AsksBasisOut | None  # D155; None when no reporting control is on
     not_rebuilt: list[NotRebuiltOut]
 
 
@@ -202,6 +215,8 @@ class ApplicationsRowOut(BaseModel):
     change_apps: int | None
     change_asked: float | None
     unknown_received: int
+    asks_basis: Literal["as_of_cutoff", "now"] | None
+    asks_reason: str | None
 
 
 class BudgetRowOut(BaseModel):

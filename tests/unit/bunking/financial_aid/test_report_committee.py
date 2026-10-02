@@ -4,6 +4,7 @@ b'mitzvah 5%), families and figures only."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -245,3 +246,19 @@ def test_the_budget_and_cancelled_recipients_use_the_rounds_lock_pool_not_the_ho
     budget = {r.pool: r.awarded for r in committee_tables([season], []).budget if r.basis == "P" and r.kind == "pool"}
     assert budget.get("weekend_pool") == Decimal(1500)
     assert budget.get("camp_pool", Decimal(0)) == Decimal(0)
+
+
+# --- Task A6b: the frozen received-by asks (D155) ----------------------------------------------------------------
+
+
+def test_the_at_cutoff_asks_are_the_frozen_ones_and_the_season_end_the_live_ones() -> None:
+    """D155: the snapshot counts the same requests; their Round 1 asks are the ones the cutoff day had."""
+    emma = SEASON.requests[0]
+    then = replace(emma, rounds=tuple(replace(f, ask=Decimal(3500)) if f.round == 1 else f for f in emma.rounds))
+    season = replace(SEASON, cutoff_requests=(then,), asks_basis="as_of_cutoff")
+    camp = next(r for r in committee_tables([season], []).applications if r.basis == "P" and r.pool == "camp_pool")
+    assert camp.at_cutoff is not None
+    assert camp.season_end is not None
+    assert (camp.at_cutoff.apps, camp.at_cutoff.asked) == (2, Decimal(6500))  # Emma 3,500 then + Noah 3,000
+    assert camp.season_end.asked == Decimal(9000)  # the season's end keeps asks as they stand
+    assert (camp.asks_basis, camp.asks_reason) == ("as_of_cutoff", None)

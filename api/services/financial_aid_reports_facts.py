@@ -26,9 +26,11 @@ Where each field comes from:
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
-from datetime import datetime
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Final
 
 from api.services.financial_aid_calc_inputs import effective_ask, rules_program_key
 from api.services.financial_aid_decisions_service import Season
@@ -44,7 +46,7 @@ from api.services.financial_aid_intake_types import (
 from bunking.financial_aid.decisions import PricedRequest, RoundState, RoundView, round_exists
 from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.received import edit_predecessors
-from bunking.financial_aid.reports.facts import REPORT_ROUNDS, ReportRequest, RoundFacts, Standing
+from bunking.financial_aid.reports.facts import REPORT_ROUNDS, AsksBasis, ReportRequest, RoundFacts, Standing
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.results import round1_table, round2_table
 
@@ -182,4 +184,72 @@ def report_requests(
                 grants=grants.get(request_id, ZERO),
             )
         )
+    return tuple(out)
+
+
+ASKS_NOW_REASON: Final = (
+    "{count} of these requests' Round 1 asks on {day} can't be rebuilt (their change history doesn't reach that "
+    "day), so every ask in this figure is as it stands now"
+)
+
+
+@dataclass(frozen=True)
+class FrozenAsks:
+    """D155: Round 1 asks as they stood at the end of `day` (camp time) for the requests a received-through figure
+    keeps. "as_of_cutoff": `asks` holds each kept request's Round 1 ask that day; a request missing from it keeps the
+    read's own ask (the read is already on that day). "now": at least one kept request's ask that day can't be
+    rebuilt, so the whole figure keeps asks as they stand now; `unrebuilt` says which, `reason` why."""
+
+    day: date
+    basis: AsksBasis
+    asks: Mapping[str, Decimal | None] = field(default_factory=dict)
+    unrebuilt: frozenset[str] = frozenset()
+    reason: str | None = None
+
+
+def _standing_then(
+    request_id: str, then: Mapping[str, RequestRecord], predecessors: Mapping[str, frozenset[str]]
+) -> str | None:
+    """The request that stood for `request_id` on the day: itself, else its one predecessor (an answer the family
+    edited since, edit_predecessors) that wasn't withdrawn by then; None when neither, or several."""
+    if request_id in then:
+        return request_id
+    standing = sorted(
+        p for p in predecessors.get(request_id, frozenset()) if p in then and then[p].status != STATUS_WITHDRAWN
+    )
+    return standing[0] if len(standing) == 1 else None
+
+
+def frozen_round1_asks(
+    live: Season, then: Season, corrections_then: Sequence[CorrectionRecord], kept: Collection[str], day: date
+) -> FrozenAsks:
+    """Each kept request's Round 1 ask at the end of `day`, from `then` (3c-2's past_season for that day) and the
+    corrections recorded by then; "now" for the whole figure when any one can't be rebuilt (D155)."""
+    predecessors = edit_predecessors(live.requests.values())
+    asks: dict[str, Decimal | None] = {}
+    unrebuilt: set[str] = set()
+    for request_id in sorted(kept):
+        then_id = _standing_then(request_id, then.requests, predecessors)
+        if then_id is None or then_id in then.unrebuilt:
+            unrebuilt.add(request_id)
+            continue
+        asks[request_id] = _r1_ask(then.requests[then_id], corrections_then)
+    if unrebuilt:
+        reason = ASKS_NOW_REASON.format(count=len(unrebuilt), day=day.isoformat())
+        return FrozenAsks(day, "now", unrebuilt=frozenset(unrebuilt), reason=reason)
+    return FrozenAsks(day, "as_of_cutoff", asks=asks)
+
+
+def with_frozen_asks(requests: Iterable[ReportRequest], frozen: FrozenAsks) -> tuple[ReportRequest, ...]:
+    """Each request with its Round 1 ask as `frozen` holds it; unchanged on "now" (D155: the figure falls back whole)
+    or when the request isn't in it. Round 2 and 3 asks are never frozen (OWNER ITEM 49 NOT RULED: Round 1 only)."""
+    if frozen.basis == "now":
+        return tuple(requests)
+    out: list[ReportRequest] = []
+    for request in requests:
+        if request.request_id not in frozen.asks:
+            out.append(request)
+            continue
+        ask = frozen.asks[request.request_id]
+        out.append(replace(request, rounds=tuple(replace(f, ask=ask) if f.round == 1 else f for f in request.rounds)))
     return tuple(out)

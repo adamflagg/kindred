@@ -29,6 +29,10 @@ from typing import Final, Literal
 from bunking.financial_aid.money import ZERO
 
 Standing = Literal["live", "cancelled", "closed"]
+
+# D155: a received-through figure's Round 1 asks are as they stood at the end of its day ("as_of_cutoff"), or, when
+# that can't be rebuilt for every request in it, as they stand now ("now"), and the figure says so.
+AsksBasis = Literal["as_of_cutoff", "now"]
 REPORT_ROUNDS: Final[tuple[int, ...]] = (1, 2, 3)
 _CENT: Final = Decimal("0.01")
 

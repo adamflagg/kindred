@@ -32,7 +32,7 @@ from typing import Final, Literal
 
 from bunking.financial_aid.decisions import allocations
 from bunking.financial_aid.money import ZERO
-from bunking.financial_aid.reports.facts import ReportRequest, appeals, average
+from bunking.financial_aid.reports.facts import AsksBasis, ReportRequest, appeals, average
 from bunking.financial_aid.reports.history import PHASES, ReportedFigure
 from bunking.financial_aid.rules import AidRules
 from bunking.financial_aid.scenarios.committee import pct
@@ -59,6 +59,12 @@ class NativeSeason:
     cutoff: date | None
     cutoff_instant: datetime | None  # the first instant after the cutoff day ends, camp time
     deadline_instant: datetime | None = None  # the same for the rules' application deadline (RPT-1's phases)
+    # D155 (A6b): the requests received by the cutoff, each with its Round 1 ask as it stood that day, and the basis
+    # those asks are on. None: no cutoff, or a caller that doesn't freeze (the at-cutoff figure then reads `requests`).
+    # OWNER ITEM 49 NOT RULED: only Round 1 asks freeze; Round 2 and 3 asks (appeals) read as they stand now.
+    cutoff_requests: tuple[ReportRequest, ...] | None = None
+    asks_basis: AsksBasis | None = None
+    asks_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +116,8 @@ class ApplicationsRow:
     change_asked: Decimal | None
     unknown_received: int  # P rows: requests with no recorded received date, in the season end only
     kind: RowKind = "pool"
+    asks_basis: AsksBasis | None = None  # a P row with a cutoff: its at-cutoff asks' basis (D155); None otherwise
+    asks_reason: str | None = None  # why the asks are "now", when they are
 
 
 @dataclass(frozen=True)
@@ -338,7 +346,12 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
     groups.append((None, list(season.requests), "headline"))
     for pool, members, kind in groups:
         cut = season.cutoff_instant
-        before = [r for r in members if cut is not None and r.received_at is not None and r.received_at < cut]
+        frozen = {r.request_id: r for r in season.cutoff_requests or ()}
+        before = [
+            frozen.get(r.request_id, r)
+            for r in members
+            if cut is not None and r.received_at is not None and r.received_at < cut
+        ]
         after = [r for r in members if cut is not None and r.received_at is not None and r.received_at >= cut]
         out.append(
             ApplicationsRow(
@@ -354,6 +367,8 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
                 change_asked=None,
                 unknown_received=sum(1 for r in members if r.received_at is None),
                 kind=kind,
+                asks_basis=season.asks_basis if cut is not None else None,
+                asks_reason=season.asks_reason if cut is not None else None,
             )
         )
     return out
