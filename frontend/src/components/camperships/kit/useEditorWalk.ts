@@ -195,6 +195,10 @@ export function useEditorWalk({
             ) {
               typed.current = null
               setRevisions((r) => withKey(r, rowKey, (r.get(rowKey) ?? 0) + 1))
+            } else if (shown?.save?.amount === entry.amount && shown.save.reason === entry.reason) {
+              // An Enter-save has no stash. Until the editor's own report catches up, what it last
+              // reported is exactly what was just saved: an exit must not write it again.
+              typed.current = null
             }
             jumpOnFail.current.delete(rowKey)
             putStash(rowKey, undefined)
