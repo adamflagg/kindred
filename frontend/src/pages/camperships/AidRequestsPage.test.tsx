@@ -9,7 +9,7 @@ import {
   GRID_ROWS,
   roundOut,
 } from '../../components/camperships/requests/gridFixtures'
-import type { ApiAidApprovedRules, ApiAidGrid } from '../../types/api-types'
+import type { ApiAidApprovedRules, ApiAidGrid, ApiAidRound } from '../../types/api-types'
 import AidRequestsPage from './AidRequestsPage'
 
 interface GridResult {
@@ -960,6 +960,44 @@ describe('ticks (§4.10, §5.2)', () => {
       ).toBeInTheDocument()
     })
 
+    // Regression guard (PR 4 review M1): the plan is built from the rows AFTER the save, so a decided
+    // amount the save moved shows as it now stands, never the click's stale figure.
+    it('prices the tick from the rows as the save left them', async () => {
+      keyAsk.mockImplementationOnce(() => {
+        grid = {
+          data: {
+            ...LIVE,
+            rows: GRID_ROWS.map((r) =>
+              r.request_id === 'reqolivia000003'
+                ? {
+                    ...r,
+                    rounds: [
+                      r.rounds[0] as ApiAidRound,
+                      roundOut(2, 'needs_offer', { ask: 1300, decided: 1040 }),
+                    ],
+                  }
+                : r
+            ),
+          },
+          isLoading: false,
+          error: null,
+        }
+        // The mocked read is whatever `grid` is at render time: the save moved the amount before
+        // the page's next render, as a refetch landing would.
+        return Promise.resolve({
+          year: 2027,
+          written: 1,
+          unchanged: 0,
+          operation_id: 'op0000000000001',
+        })
+      })
+      await typeAppeal()
+      await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $780' }))
+      expect(
+        await screen.findByText('Tick Posted on 1 request · 1 family · $1,040 locked')
+      ).toBeInTheDocument()
+    })
+
     it('opens nothing when that save fails, and the failure stays listed', async () => {
       keyAsk.mockImplementationOnce(() => Promise.reject(new Error('The server is down')))
       await typeAppeal()
@@ -985,10 +1023,19 @@ describe('ticks (§4.10, §5.2)', () => {
       ).toBeInTheDocument()
     })
 
+    it('counts a tick hidden by the search AND a filter once', async () => {
+      renderAt('/aid/requests')
+      await selectBoth()
+      await pickProgram('Quest')
+      // Emma is now hidden by the filter; the search below hides her too.
+      await userEvent.type(screen.getByLabelText('Search'), 'Olivia')
+      expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
+    })
+
     it('keeps a tick through a filter change', async () => {
       renderAt('/aid/requests')
       await selectBoth()
-      await userEvent.selectOptions(screen.getByLabelText('Program'), 'quest')
+      await pickProgram('Quest')
       expect(screen.getByText('2 selected · 1 hidden by the search or filters')).toBeInTheDocument()
     })
 

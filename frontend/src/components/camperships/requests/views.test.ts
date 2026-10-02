@@ -573,7 +573,7 @@ describe("Needs an offer's new total (⚠ Decision 40, ruled)", () => {
   const CTX = { view: 'needs_offer', today: '2027-04-01' } as const
 
   it("shows the request's new total beside a Round 2 or 3 amount, and nothing on a Round 1 row", () => {
-    expect(viewColumns(requestView('needs-offer'), false, true)).toEqual(
+    expect(viewColumns(requestView('needs-offer'), false, true, true)).toEqual(
       expect.arrayContaining(['decided', 'newTotal', 'tick'])
     )
     expect(GRID_COLUMNS.newTotal.value(ROW_OLIVIA, CTX)).toBe(2200)

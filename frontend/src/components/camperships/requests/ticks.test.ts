@@ -9,7 +9,7 @@ import {
   ROW_RILEY,
   ROW_SAMUEL,
 } from './gridFixtures'
-import { acceptedTarget, doneWords, postedTarget, tickPlan, tickWords } from './ticks'
+import { acceptedTarget, doneWords, hiddenTicks, postedTarget, tickPlan, tickWords } from './ticks'
 
 describe('which round a tick sets (§13; Decision 15)', () => {
   it('ticks Posted on the lowest round that needs an offer, at its decided amount', () => {
@@ -150,5 +150,23 @@ describe("an appeal line's new total (PR 4 review I2; ⚠ Decision 40)", () => {
   it('carries the request total_decided on a Round 2 or 3 Posted row, and nothing on Round 1', () => {
     const plan = tickPlan([ROW_EMMA, ROW_OLIVIA], 'posted')
     expect(plan.rows.map((r) => (r.action === 'posted' ? r.newTotal : 'n/a'))).toEqual([null, 2200])
+  })
+})
+
+describe('hiddenTicks (PR 4 review M4)', () => {
+  const ticked = ['a', 'b', 'c']
+
+  it('counts a tick the search or the page hides, and none that both let through', () => {
+    expect([...hiddenTicks(ticked, new Set(['a', 'b']), new Set(['a', 'b', 'c']))]).toEqual(['c'])
+    expect([...hiddenTicks(ticked, null, new Set(['a']))]).toEqual(['b', 'c'])
+  })
+
+  it("never trusts the table's matching set past the page's own: a row the view just hid is hidden at once", () => {
+    // `matching` still holds the previous view's keys for one render after a view or filter change.
+    expect([...hiddenTicks(ticked, new Set(['a', 'b', 'c']), new Set(['a']))]).toEqual(['b', 'c'])
+  })
+
+  it('counts a row hidden by both the search and a filter once', () => {
+    expect([...hiddenTicks(['a'], new Set(), new Set())]).toEqual(['a'])
   })
 })

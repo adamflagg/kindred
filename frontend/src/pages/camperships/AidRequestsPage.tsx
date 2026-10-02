@@ -26,6 +26,7 @@ import {
   type RequestLens,
 } from '../../components/camperships/requests/strip'
 import {
+  hiddenTicks,
   tickedLine,
   tickPlan,
   type TickAction,
@@ -182,10 +183,15 @@ export default function AidRequestsPage() {
   )
   // Ticked, but not on screen: the search, the view or a filter hides it.
   const visibleKeys = useMemo(() => new Set(visible.map((r) => r.request_id)), [visible])
-  const hiddenKeys = useMemo(() => {
-    const onScreen = matching ?? visibleKeys
-    return new Set(selectedRows.filter((r) => !onScreen.has(r.request_id)).map((r) => r.request_id))
-  }, [selectedRows, matching, visibleKeys])
+  const hiddenKeys = useMemo(
+    () =>
+      hiddenTicks(
+        selectedRows.map((r) => r.request_id),
+        matching,
+        visibleKeys
+      ),
+    [selectedRows, matching, visibleKeys]
+  )
   // A tick leaves through the walk's save-first exit like every page-owned exit (Decision 4; F2-4):
   // a typed ask on the row is saved first, a failed save opens nothing. The plan is then built in the
   // next render from the rows as they stand after that save, never from the click's stale closure.

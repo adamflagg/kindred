@@ -906,13 +906,23 @@ describe('AidTable with a selection (§4.10)', () => {
     expect(within(matching).getByRole('checkbox', { name: 'Select' })).toBeInTheDocument()
   })
 
-  it('does not call onSelectedChange when a search drops nothing', async () => {
+  // Tightened (PR 4 review M7): the old version ticked a row the search kept, so it passed with or
+  // without a prune. This one hides EVERY ticked row, so any untick-on-search would show.
+  it('leaves the selection alone when a search hides every ticked row, and restores the box on clearing it', async () => {
     render(<Selectable />)
     const row = screen.getByText('Emma Johnson').closest('tr') as HTMLElement
     await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
     const before = selections.length
-    await userEvent.type(screen.getByLabelText('Search'), 'johnson')
+    await userEvent.type(screen.getByLabelText('Search'), 'zzz')
+    expect(screen.queryByText('Emma Johnson')).toBeNull()
     expect(selections.length).toBe(before)
+    expect([...(selections.at(-1) ?? [])]).toEqual(['r1'])
+    await userEvent.clear(screen.getByLabelText('Search'))
+    expect(
+      within(screen.getByText('Emma Johnson').closest('tr') as HTMLElement).getByRole('checkbox', {
+        name: 'Select',
+      })
+    ).toBeChecked()
   })
 
   it('spans only the checkbox column when there is no footer label (colspan 2, never 1)', () => {

@@ -821,8 +821,8 @@ describe("Needs an offer's new total column (⚠ Decision 40, ruled)", () => {
   it('totals Decided in the footer but shows no total under New total', () => {
     const { container } = render(<Grid slug="needs-offer" />)
     const footer = Array.from(container.querySelectorAll('tfoot td'))
-    // The footer ends ... Decided, New total, Needs attention.
-    expect(footer.at(-3)).toHaveTextContent('$2,200')
-    expect(footer.at(-2)?.textContent).toBe('')
+    // The footer ends ... Decided, New total, Requested by, Needs attention (T2, T3).
+    expect(footer.at(-4)).toHaveTextContent('$2,200')
+    expect(footer.at(-3)?.textContent).toBe('')
   })
 })
