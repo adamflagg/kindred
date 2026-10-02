@@ -5490,6 +5490,10 @@ export type HouseholdCardOut = {
    * City
    */
   city: string
+  /**
+   * County
+   */
+  county?: string | null
   money: HouseholdMoneyOut
   /**
    * Request Ids
