@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { createRef, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { EditorPreview } from '../kit/RequestEditor'
 import { gridRow, roundOut, ROW_OLIVIA } from '../requests/gridFixtures'
 import { CardEditor, type CardEditorHandle } from './CardEditor'
 import { householdPage, householdRequest } from './householdFixtures'
@@ -48,8 +49,9 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidKeyAsk: () => useFakeMutation(ask),
   useAidRound3Amount: () => useFakeMutation(amount),
 }))
+let previewNow: EditorPreview = { status: 'idle' }
 vi.mock('../../../hooks/camperships/useAidEditorPreview', () => ({
-  useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
+  useAidEditorPreview: () => ({ preview: previewNow, onAmountChange: () => undefined }),
 }))
 
 const request = householdRequest(ROW_OLIVIA)
@@ -72,6 +74,7 @@ beforeEach(() => {
   go.mockReset()
   mode = 'auto'
   pending = []
+  previewNow = { status: 'idle' }
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2027-04-09T18:00:00Z'))
 })
@@ -173,11 +176,58 @@ describe('CardEditor (§4.6: the editor in place on the request card)', () => {
     expect(screen.getByLabelText('Round 2 ask').closest('[data-aid-editor]')).not.toBeNull()
   })
 
-  it('shows no "new total" line: the standing figures are from before the edit', () => {
-    // Needs the preview to carry the after-edit total (a back-end field, requested); until then the
-    // editor shows only the preview's award, as the kit does.
-    render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
-    expect(screen.queryByText(/new total/)).not.toBeInTheDocument()
+  describe('the after-edit total (Decision 40)', () => {
+    const ready = (over: Partial<EditorPreview> = {}): EditorPreview => ({
+      status: 'ready',
+      award: 780,
+      totalDecided: 2280,
+      pendingApproval: false,
+      ...over,
+    })
+
+    it('says what the appeal makes Round 2 and the new total', () => {
+      previewNow = ready()
+      render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+      expect(screen.getByText('Round 2 now $780 (new total $2,280)')).toBeInTheDocument()
+    })
+
+    it('says a Round 3 amount waiting on finance is not yet the award, and the total stays', () => {
+      previewNow = ready({ award: 450, pendingApproval: true })
+      render(<CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />)
+      expect(
+        screen.getByText('Round 3 would be $450 once finance approves · total stays $2,280')
+      ).toBeInTheDocument()
+    })
+
+    it('says a decided Round 3 amount as Round 3 now', () => {
+      previewNow = ready({ award: 450 })
+      render(<CardEditor request={request} page={page} kind="round3_amount" onClose={onClose} />)
+      expect(screen.getByText('Round 3 now $450 (new total $2,280)')).toBeInTheDocument()
+    })
+
+    it('shows no line when the server sent no total', () => {
+      previewNow = ready({ totalDecided: null })
+      render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+      expect(screen.queryByText(/new total|total stays/)).not.toBeInTheDocument()
+    })
+
+    it('shows no line without an award, or before the preview is ready', () => {
+      previewNow = ready({ award: null })
+      const { unmount } = render(
+        <CardEditor request={request} page={page} kind="appeal" onClose={onClose} />
+      )
+      expect(screen.queryByText(/new total|total stays/)).not.toBeInTheDocument()
+      unmount()
+      previewNow = { status: 'loading', award: 780, totalDecided: 2280 }
+      render(<CardEditor request={request} page={page} kind="appeal" onClose={onClose} />)
+      expect(screen.queryByText(/new total|total stays/)).not.toBeInTheDocument()
+    })
+
+    it('shows no line on a Round 3 ask, which prices nothing', () => {
+      previewNow = ready()
+      render(<CardEditor request={request} page={page} kind="round3_ask" onClose={onClose} />)
+      expect(screen.queryByText(/new total|total stays/)).not.toBeInTheDocument()
+    })
   })
 
   it('closes on Esc without saving', async () => {
