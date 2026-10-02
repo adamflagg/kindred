@@ -23,6 +23,7 @@ import {
   filterRows,
   footerWords,
   GRID_COLUMNS,
+  isLiveRow,
   lastNameFirst,
   moneyTotal,
   NO_FILTERS,
@@ -172,6 +173,43 @@ describe('filterRows', () => {
     expect(parseRoundFilter('4')).toBeNull()
     expect(parseTickFilter('accepted')).toBe('accepted')
     expect(parseTickFilter('bogus')).toBeNull()
+  })
+
+  it('keeps only rounds that count toward the budget, on the same round as round= and tick= (I5)', () => {
+    const outside = {
+      ...ROW_SAMUEL,
+      request_id: 'reqoutside00001',
+      rounds: [roundOut(1, 'posted', { posted: 900, counts_toward_budget: false })],
+    }
+    const rows = [...GRID_ROWS, outside]
+    const ids = (filters: Partial<typeof NO_FILTERS>) =>
+      filterRows(rows, 'all', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
+    expect(ids({ tick: 'posted' })).toContain('reqoutside00001')
+    expect(ids({ tick: 'posted', counted: true })).not.toContain('reqoutside00001')
+    expect(ids({ round: 1, counted: true })).not.toContain('reqoutside00001')
+    expect(ids({ counted: true })).toEqual(
+      GRID_ROWS.filter((r) => r.rounds.some((x) => x.counts_toward_budget)).map((r) => r.request_id)
+    )
+  })
+
+  it("keeps only live requests with live=1: the server's live statuses, not cancelled (owner, Decision 6(b))", () => {
+    const withdrawn = { ...ROW_SAMUEL, request_id: 'reqwithdrawn001', request_status: 'withdrawn' }
+    const cancelled = {
+      ...ROW_SAMUEL,
+      request_id: 'reqcancelled001',
+      cancellation: {
+        by: 'kindred' as const,
+        on: '2027-03-01',
+        reason: 'schedule' as const,
+        note: '',
+      },
+    }
+    const rows = [...GRID_ROWS, withdrawn, cancelled]
+    const ids = filterRows(rows, 'all', { ...NO_FILTERS, live: true }).map((r) => r.request_id)
+    expect(ids).not.toContain('reqwithdrawn001')
+    expect(ids).not.toContain('reqcancelled001')
+    expect(ids).toEqual(GRID_ROWS.filter(isLiveRow).map((r) => r.request_id))
+    expect(ids).not.toContain('reqriley0000004')
   })
 
   it('finds no queue rows on a past-date read, whose queues are null', () => {

@@ -25,6 +25,7 @@ function bar(props: {
   pool?: string | null
   round?: 1 | 2 | 3 | null
   tick?: 'posted' | 'accepted' | null
+  counted?: boolean
 }) {
   const onChange = vi.fn()
   const onProgramPool = vi.fn()
@@ -35,6 +36,7 @@ function bar(props: {
       pool={props.pool ?? null}
       round={props.round ?? null}
       tick={props.tick ?? null}
+      counted={props.counted ?? false}
       showIds={false}
       onChange={onChange}
       onProgramPool={onProgramPool}
@@ -167,5 +169,21 @@ describe('GridFiltersBar: Round and Checklist chips', () => {
     const { onChange } = bar({ round: 1 })
     await userEvent.click(screen.getByRole('button', { name: 'R2' }))
     expect(onChange).toHaveBeenLastCalledWith('round', '2')
+  })
+})
+
+describe('GridFiltersBar counted filter', () => {
+  it('toggles Counting toward the budget through onChange', async () => {
+    const { onChange } = bar({})
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Counting toward the budget' }))
+    expect(onChange).toHaveBeenCalledWith('counted', '1')
+  })
+
+  it('clears it when unticked', async () => {
+    const { onChange } = bar({ counted: true })
+    const box = screen.getByRole('checkbox', { name: 'Counting toward the budget' })
+    expect(box).toBeChecked()
+    await userEvent.click(box)
+    expect(onChange).toHaveBeenCalledWith('counted', null)
   })
 })

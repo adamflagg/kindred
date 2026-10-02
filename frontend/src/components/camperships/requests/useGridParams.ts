@@ -10,7 +10,8 @@ import {
   type TickFilter,
 } from './views'
 
-export type GridParamName = 'program' | 'pool' | 'round' | 'tick' | 'ids' | 'row' | 'today'
+export type GridParamName =
+  'program' | 'pool' | 'round' | 'tick' | 'counted' | 'live' | 'ids' | 'row' | 'today'
 
 export interface GridParams {
   /** What the grid shows: the stage under the lens, or the lens alone (T4). */
@@ -23,6 +24,8 @@ export interface GridParams {
   readonly pool: string | null
   readonly round: RoundFilter | null
   readonly tick: TickFilter | null
+  readonly counted: boolean
+  readonly live: boolean
   readonly showIds: boolean
   /** The table's `?sort=` and `?group=` as written (AidTable owns them); the household link carries them (I1). */
   readonly sort: string | null
@@ -80,6 +83,8 @@ export function useGridParams(): GridParams {
     pool: params.get('pool'),
     round: parseRoundFilter(params.get('round')),
     tick: parseTickFilter(params.get('tick')),
+    counted: params.get('counted') === '1',
+    live: params.get('live') === '1',
     showIds: params.get('ids') === '1',
     sort: params.get('sort'),
     group: params.get('group'),

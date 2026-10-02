@@ -98,6 +98,8 @@ export default function AidRequestsPage() {
     pool,
     round,
     tick,
+    counted,
+    live: liveOnly,
     showIds,
     sort,
     group,
@@ -145,8 +147,8 @@ export default function AidRequestsPage() {
   const todayIds = todayState.state === 'ready' ? todayState.ids : null
   const todayUnknown = todayState.state === 'pending' || todayState.state === 'failed'
   const filters = useMemo(
-    (): GridFilters => ({ program, pool, round, tick, ids: todayIds }),
-    [program, pool, round, tick, todayIds]
+    (): GridFilters => ({ program, pool, round, tick, counted, live: liveOnly, ids: todayIds }),
+    [program, pool, round, tick, counted, liveOnly, todayIds]
   )
   // The lens narrows every row and count (T4, RULED P2); each lens counts itself over the filters.
   const lensed = useMemo(() => (rows ? lensRows(rows, lens) : undefined), [rows, lens])
@@ -156,7 +158,13 @@ export default function AidRequestsPage() {
   )
   // The view or another filter narrows the list past the Today line's own rows.
   const narrowed =
-    view.key !== 'all' || program !== null || pool !== null || round !== null || tick !== null
+    view.key !== 'all' ||
+    program !== null ||
+    pool !== null ||
+    round !== null ||
+    tick !== null ||
+    counted ||
+    liveOnly
   const counts = useMemo(
     () => (lensed && !todayUnknown ? viewCounts(lensed, filters, live) : null),
     [lensed, filters, live, todayUnknown]
@@ -345,10 +353,12 @@ export default function AidRequestsPage() {
       ...(pool !== null ? { pool } : {}),
       ...(round !== null ? { round: String(round) } : {}),
       ...(tick !== null ? { tick } : {}),
+      ...(counted ? { counted: '1' } : {}),
+      ...(liveOnly ? { live: '1' } : {}),
       ...(todayKey !== null ? { today: todayKey } : {}),
       ...(showIds ? { ids: '1' } : {}),
     }),
-    [program, pool, round, tick, todayKey, showIds]
+    [program, pool, round, tick, counted, liveOnly, todayKey, showIds]
   )
   // One scheme (owner ruling 2026-10-03): `?view=<stage slug>` and `?lens=appeals`, each absent
   // for none. A stage link keeps the lens; a lens link clears the stage.
@@ -409,6 +419,7 @@ export default function AidRequestsPage() {
       pool={pool}
       round={round}
       tick={tick}
+      counted={counted}
       showIds={showIds}
       onChange={changeFilter}
       onProgramPool={onProgramPool}
@@ -441,6 +452,14 @@ export default function AidRequestsPage() {
           {/* Through the walk, like any filter change: what is typed is saved first (Decision 4). */}
           <button type="button" className={ACTION_LINK} onClick={() => changeFilter('today', null)}>
             Clear
+          </button>
+        </p>
+      )}
+      {liveOnly && (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          Live requests only ·
+          <button type="button" className={ACTION_LINK} onClick={() => changeFilter('live', null)}>
+            Show all
           </button>
         </p>
       )}
