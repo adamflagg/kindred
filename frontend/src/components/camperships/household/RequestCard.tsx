@@ -261,7 +261,7 @@ export function RequestCard({
           nextAction={nextAction}
         />
       )}
-      {/* shares.length IS the payer count (#2941's payer_count is len of the same payers, with an implied 100% line for none). */}
+      {/* #2941 merged: shares.length matches the grid's payer_count (the same payers; one implied 100% line for none). */}
       {request.shares.length > 1 ? (
         <ShareTable request={request} page={page} />
       ) : (
