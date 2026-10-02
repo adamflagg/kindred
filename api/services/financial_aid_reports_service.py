@@ -81,7 +81,6 @@ from api.services.financial_aid_reports_facts import (
 )
 from api.services.financial_aid_reports_repository import StoredFigure, figure_fields
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
-from bunking.financial_aid.decisions import PAST_DATE_GAPS
 from bunking.financial_aid.errors import FinancialAidError
 from bunking.financial_aid.received import edit_predecessors, received_dates, split_by_received
 from bunking.financial_aid.reports.committee import (
@@ -116,6 +115,10 @@ FIRST_REPORT_SEASON: Final = 2022
 FIRST_RECEIVED_SEASON: Final = 2027
 # The first season with aid_requests at all: intake starts in 2026, so earlier seasons are typed history only.
 FIRST_REQUEST_SEASON: Final = 2026
+POSTED_GAP: Final = "posted money a past date can't replay: left out of awarded; still in apps and asks"
+CANCELLATION_CAVEAT: Final = (
+    "counted as of the day; a registration CampMinder changed since then reads as it stands now"
+)
 NO_POOL_LABEL: Final = "No pool"
 UNMATCHED_LABEL: Final = "Session not matched"
 ALL_POOLS_LABEL: Final = "All pools"
@@ -296,8 +299,10 @@ class FinancialAidReportsService:
         if read.season.as_of is None:
             return []
         ids = sorted(rid for rid in read.season.posted_unknown if any(r.request_id == rid for r in read.requests))
-        posted = [NotRebuiltOut(figure="posted", reason=PAST_DATE_GAPS["posted"], requests=ids)] if ids else []
-        return [*posted, *read.season.gaps]
+        posted = [NotRebuiltOut(figure="posted", reason=POSTED_GAP, requests=ids)] if ids else []
+        # A caveat, not a gap: it names no request, so a reader keeps the counts and only notes the limit.
+        caveat = NotRebuiltOut(figure="cancellation", reason=CANCELLATION_CAVEAT)
+        return [*posted, caveat, *read.season.gaps]
 
     # --- Statistics -------------------------------------------------------------------------------------------
 

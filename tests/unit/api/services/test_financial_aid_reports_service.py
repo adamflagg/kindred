@@ -165,6 +165,7 @@ async def test_a_past_date_names_the_requests_whose_posted_money_cannot_be_repla
     out = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
     gap = next(g for g in out.not_rebuilt if g.figure == "posted")
     assert gap.requests == [EMMA]
+    assert "left out of awarded" in gap.reason  # Reports' own wording, not the grid's cells and strip counts
     two = _tier(out.rows, 2)
     assert (two.apps, two.amount, two.awarded_count, out.total.amount) == (1, 0.0, 0, 0.0)
     assert two.asked == 4000.0  # the ask is not money posted: it stays
@@ -288,7 +289,8 @@ async def test_a_past_date_prices_tiers_and_decided_and_names_only_what_it_canno
     assert (three.apps, three.decided) == (1, 1100.0)  # Liam: tier 3, decided and not posted, priced as of Mar 8
     assert all(row.tier is not None for row in out.rows if row.apps)  # nobody is "no tier"
     figures = {gap.figure for gap in out.not_rebuilt}
-    assert not figures & {"tier", "decided", "grants", "cancellation"}
+    assert not figures & {"tier", "decided", "grants"}
+    assert figures == {"cancellation"}  # only the caveat: no request is kept from its figures
     assert (out.total.cancelled, out.cancelled_applicants) == (0, 0)  # real counts, not nulled
 
 
@@ -348,7 +350,21 @@ async def test_a_request_campminder_cancelled_on_or_before_the_date_is_cancelled
     two = _tier(out.rows, 2)
     assert (two.apps, two.cancelled, two.amount, two.awarded_count) == (1, 1, 0.0, 0)
     assert (out.total.apps, out.total.cancelled, out.cancelled_applicants) == (2, 1, 1)
-    assert "cancellation" not in {gap.figure for gap in out.not_rebuilt if not gap.requests}
+    assert all(not gap.requests for gap in out.not_rebuilt if gap.figure == "cancellation")
+
+
+async def test_a_past_date_carries_a_cancellation_caveat_that_names_no_request() -> None:
+    """The Requests grid names a `cancellation` limit on a past date; Reports says the same as a caveat. It carries no
+    request ids, so a reader never blanks the counts for it: the counts stand, as of the day."""
+    store = report_season()
+    stats = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 10))
+    programs = await _service(store).programs(YEAR, as_of=date(2027, 3, 10))
+    for out in (stats, programs):
+        [caveat] = [g for g in out.not_rebuilt if g.figure == "cancellation"]
+        assert caveat.requests == []
+        assert "changed since" in caveat.reason
+    live = await _service(store).statistics(YEAR, table="camp", round_=1)
+    assert live.not_rebuilt == []
 
 
 async def test_a_request_cancelled_after_the_date_is_not_cancelled_at_that_date() -> None:
