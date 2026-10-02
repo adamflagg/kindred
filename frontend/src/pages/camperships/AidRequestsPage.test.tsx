@@ -524,6 +524,16 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('lens=appeals'))
   })
 
+  it('saves what is typed before a filter changes the rows (A18: every exit ↓ handles)', async () => {
+    renderAt('/aid/requests')
+    await userEvent.click(sessionCell('Olivia Chen'))
+    await userEvent.clear(screen.getByLabelText('Round 2 ask'))
+    await userEvent.type(screen.getByLabelText('Round 2 ask'), '1300')
+    await pickProgram('Quest')
+    expect(keyAsk).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('program=quest'))
+  })
+
   it("won't move for a filter while what is typed can't be saved yet, and says why once", async () => {
     renderAt('/aid/requests')
     await userEvent.click(sessionCell('Olivia Chen'))
