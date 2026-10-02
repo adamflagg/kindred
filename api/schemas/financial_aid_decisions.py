@@ -224,7 +224,8 @@ class GridRowOut(BaseModel):
     released_holds: list[ReleasedHoldOut]
     notes: list[IssueOut] | None
     confirmation: ConfirmationOut | None = None
-    # Sub-project 10b-2. None on a past read: cancellations aren't rebuilt as of a date (not_rebuilt).
+    # Sub-project 10b-2. On a past read, as of the day (Decision 11); a registration whose status changed since
+    # reads by today's status (not_rebuilt's cancellation).
     cancellation: CancellationOut | None = None
     to_reverse: bool | None = False  # cancelled with camp aid still live in CampMinder (spec §6.2, D54)
     todos: list[TodoOut] | None = Field(default_factory=list)
