@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from api.services.financial_aid_decisions_service import CANCELLED_IN_KINDRED, _ask_refusal
 from api.services.financial_aid_queues import ROUND_STATUS_LABELS
 from bunking.financial_aid.decisions.rounds import RoundState
@@ -30,7 +32,7 @@ def test_the_appeal_refusals_are_the_writes_own() -> None:
     assert _ask_refusal({1: posted, 2: RoundState(round=2, posted=True)}, 2) == words["round2_posted"]
     assert _ask_refusal({1: RoundState(round=1)}, 2) == words["round1_not_posted"]
     assert _ask_refusal({1: posted, 3: RoundState(round=3, posted=True)}, 2) == words["round3_posted"]
-    assert CANCELLED_IN_KINDRED == words["cancelled_in_kindred"]
+    assert words["cancelled_in_kindred"] == CANCELLED_IN_KINDRED
 
 
 def test_the_live_request_statuses_and_their_refusal_are_the_writes_own() -> None:
@@ -50,10 +52,7 @@ def test_the_live_request_statuses_and_their_refusal_are_the_writes_own() -> Non
         return SimpleNamespace(status="withdrawn")
 
     service = object.__new__(FinancialAidDecisionsService)
-    service._store = SimpleNamespace(fetch_request=fetch_request)  # type: ignore[assignment]
-    try:
+    service._store = SimpleNamespace(fetch_request=fetch_request)
+    with pytest.raises(DecisionRefusedError) as refusal:
         asyncio.run(service._live("reqx"))
-    except DecisionRefusedError as refusal:
-        assert str(refusal) == MIRRORS["ask_refusals"]["not_live"].replace("{status}", "withdrawn")
-    else:
-        raise AssertionError("a withdrawn request must be refused")
+    assert str(refusal.value) == MIRRORS["ask_refusals"]["not_live"].replace("{status}", "withdrawn")
