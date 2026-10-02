@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
+import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
@@ -13,6 +15,7 @@ import type {
 import { AMBER_NOTE, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { aidHref } from '../../kit/asOf'
+import { NEGATIVE_INK } from '../../kit/aidStyles'
 import { PILL } from '../../kit/kitStyles'
 import { SEASON_CARD } from '../seasonStyles'
 import { RulesSectionList, type SectionItem } from './RulesSectionList'
@@ -23,6 +26,7 @@ import {
   issueWords,
   sectionIssues,
   statusWords,
+  type StatusWords,
 } from './rulesModel'
 import { sectionContent } from './rulesDraft'
 import { SectionView } from './SectionView'
@@ -33,9 +37,13 @@ function parseVersion(raw: string | null): number | null {
   return raw !== null && /^[1-9]\d*$/.test(raw) ? Number(raw) : null
 }
 
-/** The rules carry no past date: links here keep the season and drop any as-of. */
+/**
+ * The rules reads are live (neither takes an as_of), but links here keep the page's as-of, so the
+ * band's pill and the Remaining line keep the date the link carried (I6, D15).
+ */
 function useRulesHref() {
   const year = useYear()
+  const asOf = useAidAsOf()
   const [params] = useSearchParams()
   return (extra: Record<string, string | null>) => {
     const kept: Record<string, string> = {}
@@ -43,8 +51,21 @@ function useRulesHref() {
       const value = key in extra ? extra[key] : params.get(key)
       if (value !== null && value !== undefined) kept[key] = value
     }
-    return aidHref(PATH, { year, asOf: { kind: 'live' } }, kept)
+    return aidHref(PATH, { year, asOf }, kept)
   }
+}
+
+/** A section served from another version than the header's says so (the server fills a never-priced section from its newest copy). */
+function fromVersion(
+  words: StatusWords,
+  sectionVersion: number | null,
+  headerVersion: number | null
+): StatusWords {
+  if (sectionVersion === null || headerVersion === null || sectionVersion === headerVersion) {
+    return words
+  }
+  const from = `from v${String(sectionVersion)}`
+  return { ...words, meta: words.meta === '' ? from : `${words.meta} · ${from}` }
 }
 
 function ApprovedBody({
@@ -62,15 +83,19 @@ function ApprovedBody({
     status:
       s.content === null
         ? { pill: 'Not approved yet', tone: 'muted', meta: '' }
-        : statusWords(
-            {
-              state: s.state,
-              approved_by: s.approved_by,
-              approved_at: s.approved_at,
-              note: s.note,
-              locked_at: s.locked_at,
-            },
-            null
+        : fromVersion(
+            statusWords(
+              {
+                state: s.state,
+                approved_by: s.approved_by,
+                approved_at: s.approved_at,
+                note: s.note,
+                locked_at: s.locked_at,
+              },
+              null
+            ),
+            s.version,
+            rules.version
           ),
     issues: null,
   }))
@@ -159,14 +184,10 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
           )}
           {issues.length > 0 && (
             <ul className="space-y-0.5" data-testid="section-issues">
-              {issues.map((issue) => (
+              {issues.map((issue, index) => (
                 <li
-                  key={`${issue.code}:${issue.path}`}
-                  className={
-                    issue.severity === 'error'
-                      ? 'text-sm text-red-700 dark:text-red-400'
-                      : AMBER_NOTE
-                  }
+                  key={`${issue.code}:${issue.path}:${String(index)}`}
+                  className={issue.severity === 'error' ? `text-xs ${NEGATIVE_INK}` : AMBER_NOTE}
                 >
                   {issue.message}
                 </li>
@@ -183,8 +204,13 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
   )
 }
 
-function Missing({ text }: { text: string }) {
-  return <div className={`${SEASON_CARD} text-muted-foreground p-4`}>{text}</div>
+function Missing({ text, children }: { text: string; children?: ReactNode }) {
+  return (
+    <div className={`${SEASON_CARD} text-muted-foreground space-y-1 p-4`}>
+      <p>{text}</p>
+      {children}
+    </div>
+  )
 }
 
 /**
@@ -247,9 +273,15 @@ export function RulesTab() {
           text={
             version === null
               ? `No approved rules for ${String(year)} yet.`
-              : `Rules v${String(version)} of ${String(year)} has no approved sections.`
+              : `Rules v${String(version)} doesn't exist for ${String(year)}.`
           }
-        />
+        >
+          {version !== null && (
+            <Link to={href({ version: null })} className="text-primary hover:underline">
+              The rules as they price the season ›
+            </Link>
+          )}
+        </Missing>
       ) : (
         <QueryGuard
           isLoading={approved.isLoading}
