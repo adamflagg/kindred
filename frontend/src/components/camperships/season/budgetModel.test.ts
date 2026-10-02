@@ -641,9 +641,19 @@ describe('the confirmed share under Posted (D153; owner ruling 2026-10-02)', () 
   })
 
   it("keeps it off the Pending approval line, which shares its round's cell", () => {
-    const pending = budgetRows(BUDGET, EVERY).find((r) => r.kind === 'pending')
-    expect(pending).toBeDefined()
-    if (pending !== undefined) expect(confirmedWords(pending)).toBeNull()
+    // Round 3 carries both a pending amount and a confirmed share, so its two lines share the share.
+    const round3 = { unconfirmed: { count: 1, families: 1, amount: 400 } }
+    const poolA = BUDGET.pools[0]
+    if (poolA === undefined) throw new Error('no Pool A')
+    const budget = {
+      ...BUDGET,
+      pools: [
+        { ...poolA, rounds: poolA.rounds.map((r) => (r.round === 3 ? { ...r, ...round3 } : r)) },
+      ],
+    }
+    const both = budgetRows(budget, EVERY)
+    expect(confirmedWords(row(both, 'pool_a:3'))).toBe('1 not yet confirmed · $400')
+    expect(confirmedWords(row(both, 'pool_a:3:pending'))).toBeNull()
   })
 
   it("opens Not reconciled on the row's pool, and on none for the total", () => {
