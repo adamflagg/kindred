@@ -378,7 +378,7 @@ export function addAidCorrection(
   )
 }
 
-/** One household's share, as a % or dollars (the server fills the other of two shares; main spec §9.2). */
+/** One household's share, as a percentage (the form sends no dollar amount; the server fills the other of two shares; main spec §9.2). */
 export function setAidHouseholdShare(
   fetchWithAuth: FetchWithAuth,
   requestId: string,

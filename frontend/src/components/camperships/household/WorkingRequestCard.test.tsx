@@ -67,7 +67,7 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidUndoPosted: () => quiet,
   useAidRound3Decision: () => quiet,
   useAidRound3Amount: () => quiet,
-  useAidHouseholdShare: () => quiet,
+  useAidHouseholdShare: () => ({ ...quiet, mutateAsync: () => shareGate ?? Promise.resolve({}) }),
   useAidSessionResolve: () => ({ ...quiet, mutateAsync: () => resolveGate ?? Promise.resolve({}) }),
   useAidDuplicate: () => quiet,
   useAidHeadcount: () => quiet,
@@ -86,6 +86,8 @@ const go = vi.fn()
 let cancelGate: Promise<unknown> | null = null
 // When set, Settle session's write stays pending until the test settles it.
 let resolveGate: Promise<unknown> | null = null
+// When set, Payer shares' write stays pending until the test settles it.
+let shareGate: Promise<unknown> | null = null
 let exitsSeen: EditorExits | null = null
 
 const settle = () => {
@@ -130,6 +132,7 @@ beforeEach(() => {
   cancel.mockReset()
   cancelGate = null
   resolveGate = null
+  shareGate = null
   manual.mockReset()
   ask.mockReset()
   go.mockReset()
@@ -537,5 +540,22 @@ describe('WorkingRequestCard: the casework forms', () => {
     expect(screen.queryByText(/Couldn|required|refused/)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
     expect(screen.getByLabelText('Household')).toBeInTheDocument()
+  })
+
+  it("re-clicking a form's own button during its save is a no-op, so the saved form still closes (m1)", async () => {
+    let settle: () => void = () => undefined
+    shareGate = new Promise<void>((resolve) => {
+      settle = resolve
+    })
+    renderCards([ROW_OLIVIA])
+    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await userEvent.type(screen.getByLabelText('Share'), '40')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Court order{Enter}')
+    await userEvent.click(screen.getByRole('button', { name: 'Payer shares…' }))
+    await act(async () => {
+      settle()
+      await shareGate
+    })
+    expect(screen.queryByLabelText('Household')).toBeNull()
   })
 })

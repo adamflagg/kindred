@@ -109,6 +109,9 @@ export function WorkingRequestCard({
   const switchTo = (next: Open) => {
     // Re-clicking the open editor's own button would save it and leave it open on the same draft.
     if (next?.kind === 'edit' && edit === next.edit) return
+    // The same for a casework form (m1): a re-click would swap `open` for a new object under a form
+    // that is still saving, and the save's own close would then find it no longer the open one.
+    if (next !== null && next.kind !== 'edit' && open?.kind === next.kind) return
     leaveOwn(() => {
       if (exits === undefined) setOpen(next)
       else exits.leaveOthers(requestId, () => setOpen(next))

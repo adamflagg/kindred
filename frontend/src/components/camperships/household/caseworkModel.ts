@@ -136,14 +136,18 @@ function offersShares(row: ApiAidGridRow): boolean {
  * (api/services/financial_aid_casework_service.py): payer shares and headcount refuse a duplicate or
  * withdrawn request (`_CLOSED`; shares are narrowed further, see `offersShares`); a headcount also
  * belongs to a Family Camp household request; Settle session and Keep the other request are for the
- * two statuses intake sets.
+ * two statuses intake sets. Headcount and Settle session are also hidden on a cancelled request.
  */
 export function caseworkOffers(row: ApiAidGridRow): CaseworkOffers {
   const closed = row.request_status === 'duplicate' || row.request_status === 'withdrawn'
+  // Lead's parity call (final review m6), matching the owner's Payer shares… ruling: a cancelled
+  // request (CampMinder's or Kindred's) takes no Headcount… or Settle session… — reopen first. The
+  // server allows both; this is product parity, not a refusal.
+  const cancelled = row.cancellation !== null
   return {
     shares: offersShares(row),
-    session: row.request_status === 'unmatched_session',
+    session: !cancelled && row.request_status === 'unmatched_session',
     duplicate: row.request_status === 'duplicate_pending',
-    headcount: !closed && row.person_cm_id === 0 && row.program_key === 'family_camp',
+    headcount: !closed && !cancelled && row.person_cm_id === 0 && row.program_key === 'family_camp',
   }
 }
