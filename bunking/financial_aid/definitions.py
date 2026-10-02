@@ -73,10 +73,12 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     ),
     Definition(
         key="grants",
-        term="Grants",
+        term="Grants applied",
         text=(
-            "Grants: the known grants on the family's included requests, live outside-grant lines in CampMinder "
-            "plus grants hand-entered as committed but not yet posted. Expected grants never count."
+            "Grants applied: the known grants on the family's included requests (live outside-grant lines in "
+            "CampMinder, plus grants hand-entered as committed but not yet posted), each request's counted up "
+            "to what that request still owed after camp aid. Any amount past that shows on its own line as "
+            "beyond what was owed; the Grants table lists the full amounts. Expected grants never count."
         ),
         spec="§5.8",
         rulings=("D55", "D77", "D116"),

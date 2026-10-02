@@ -126,3 +126,11 @@ def test_the_confirmation_note_uses_the_pills_one_vocabulary() -> None:
     text = BY_KEY["confirmation"].text
     assert text.startswith("Confirmation, beside every Posted figure: pending, then confirmed (date); ")
     assert "awaiting" not in text
+
+
+def test_the_grants_note_defines_grants_applied_not_the_counted_total() -> None:
+    """⚠38(b): the band's figure is grants APPLIED; the overflow shows on its own line."""
+    d = BY_KEY["grants"]
+    assert d.term == "Grants applied"
+    assert "beyond what was owed" in d.text
+    assert "still owed after camp aid" in d.text
