@@ -2084,10 +2084,15 @@ _FUNDING_SOURCES_EDIT = Depends(
 
 
 @router.get("/reports/{year}/development/zip", response_model=ZipResponse)
-async def get_report_development_zip(year: _Year, user: AuthUser = _VIEW_OR_SUMMARY) -> ZipResponse:
-    """ZIP codes (§9.4, D90): every camper, and campers who got aid with their dollars, by billing ZIP."""
+async def get_report_development_zip(
+    year: _Year,
+    group: Annotated[str | None, Query(max_length=60)] = None,
+    user: AuthUser = _VIEW_OR_SUMMARY,
+) -> ZipResponse:
+    """ZIP codes (§9.4, D90): every camper, and campers who got aid with their dollars, by billing ZIP. `group` is
+    one of the season's pool keys or `all`; omitted, it is the summer group. Anything else is a 422."""
     try:
-        return await _development().zip_codes(year)
+        return await _development().zip_codes(year, group)
     except FinancialAidError as exc:
         raise _reports_http(exc) from exc
 

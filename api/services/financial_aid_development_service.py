@@ -40,6 +40,7 @@ from api.schemas.financial_aid_reports import (
     FundingSourcesResponse,
     NotBuiltOut,
     ReportColumnsResponse,
+    ZipGroupOut,
     ZipResponse,
     ZipRowOut,
     ZipTableOut,
@@ -499,7 +500,7 @@ class FinancialAidDevelopmentService:
 
     # --- ZIP codes (§9.4's second screen, D90; Part C) ---------------------------------------------------------
 
-    async def zip_codes(self, year: int) -> ZipResponse:
+    async def zip_codes(self, year: int, group: str | None = None) -> ZipResponse:
         """Every enrolled camper of the summer group by ZIP, and (once the season's decisions exist) development's
         recipients there with all their money. Small groups as they are; never a family's row (D90). Both tables
         are built on `grouping`, so only attendees of aid-eligible sessions are counted (owner rule, item 28)."""
@@ -516,22 +517,33 @@ class FinancialAidDevelopmentService:
             found = grouping(document, {cm_id: s.session_type for cm_id, s in season.sessions.items()})
             attended = attendance(await self._development.attendances(year), found)
             column = None
-        summer = next((g for g in found.groups if g.kind == "summer"), None)
-        enrolled = {(a.person_cm_id, a.household_cm_id) for a in attended if summer and a.group == summer.key}
-        figures = next((g for g in column.groups if g.group == summer.key), None) if column and summer else None
+        chosen, group_key, group_label = _zip_groups(found.groups, group, year)
+        wanted = {g.key for g in chosen}
+        enrolled = {(a.person_cm_id, a.household_cm_id) for a in attended if a.group in wanted}
+        # Camper-keyed money (camper groups) and household money (a household-level line, or a family group's
+        # recipients: money there is a household's, so it lands on the household, not on a camper). Across groups
+        # each line sits in exactly one, so summing never counts one twice; a person or household is a set member.
+        camper_money: dict[int, Decimal] = defaultdict(lambda: ZERO)
+        household_money: dict[int, Decimal] = defaultdict(lambda: ZERO)
+        kinds = {g.key: g.kind for g in found.groups}
+        built = column is not None and bool(chosen)
+        for figures in column.groups if column is not None else ():
+            if figures.group not in wanted:
+                continue
+            for recipient, amount in figures.money_by_recipient.items():
+                (household_money if kinds[figures.group] == "families" else camper_money)[recipient] += amount
+            for household, amount in figures.household_level_by_household.items():
+                household_money[household] += amount
         household_of = dict(enrolled)
-        aid_households = set(figures.household_level_by_household) if figures is not None else set()
-        homes = await self._development.households(year, {h for _, h in enrolled} | aid_households)
-        aid = (
-            with_aid(figures.money_by_recipient, household_of, figures.household_level_by_household, homes)
-            if figures is not None
-            else None
-        )
+        homes = await self._development.households(year, {h for _, h in enrolled} | set(household_money))
+        aid = with_aid(camper_money, household_of, household_money, homes) if built else None
         return ZipResponse(
             year=year,
             figures_on=today,
-            group=summer.key if summer else None,
-            group_label=summer.label if summer else "",
+            group=group_key,
+            group_label=group_label,
+            groups=[ZipGroupOut(key=g.key, label=g.label) for g in found.groups]
+            + ([ZipGroupOut(key=ALL_GROUPS, label=ALL_GROUPS_LABEL)] if found.groups else []),
             every_camper=_zip_table(every_camper(sorted(enrolled), homes)),
             with_aid=_zip_table(aid) if aid is not None else None,
             not_built=[]
@@ -971,6 +983,26 @@ def _gender_rows(
                 for name in sorted(set().union(*found) if found else set())
             )
     return out
+
+
+ALL_GROUPS: Final = "all"
+ALL_GROUPS_LABEL: Final = "All groups"
+
+
+def _zip_groups(
+    groups: Sequence[DevGroup], asked: str | None, year: int
+) -> tuple[tuple[DevGroup, ...], str | None, str]:
+    """Which groups the ZIP tables count, as (groups, key, label). Omitted: the summer group (the tables' default).
+    A pool key of the season's rules: that group. `all`: every group of the rules, a household once. Else refused."""
+    if asked is None:
+        summer = next((g for g in groups if g.kind == "summer"), None)
+        return ((summer,), summer.key, summer.label) if summer else ((), None, "")
+    if asked == ALL_GROUPS and groups:
+        return tuple(groups), ALL_GROUPS, ALL_GROUPS_LABEL
+    found = next((g for g in groups if g.key == asked), None)
+    if found is None:
+        raise ReportsRefusedError(f"{asked!r} is not a group of {year}'s rules")
+    return (found,), found.key, found.label
 
 
 def _zip_table(table: ZipTable) -> ZipTableOut:

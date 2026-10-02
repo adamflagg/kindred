@@ -488,11 +488,17 @@ class ZipTableOut(BaseModel):
     zips: int
 
 
+class ZipGroupOut(BaseModel):
+    key: str  # a pool key from the season's rules, or "all" (last)
+    label: str
+
+
 class ZipResponse(BaseModel):
     year: int
     figures_on: date
-    group: str | None  # the summer group the tables count (Summer Camp and Quest, teen programs included)
+    group: str | None  # the group the tables count: a pool key, or "all"; the summer group when none was asked for
     group_label: str
+    groups: list[ZipGroupOut] = Field(default_factory=list)  # every group the read takes, "all" last
     every_camper: ZipTableOut
     with_aid: ZipTableOut | None  # None until the season's decisions exist (2026: D67's load)
     not_built: list[NotBuiltOut]

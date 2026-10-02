@@ -404,6 +404,7 @@ def development_column(inputs: DevelopmentInputs) -> DevelopmentColumn:
         source(line.source_key, group.key, line.amount)
         if group.kind == "families":
             tally.recipients.add(line.household_cm_id)
+            tally.camper_money[line.household_cm_id] += line.amount  # the ZIP read's dollars; a family group's key
         elif line.person_cm_id > 0:
             tally.recipients.add(line.person_cm_id)
             tally.camper_money[line.person_cm_id] += line.amount

@@ -153,3 +153,21 @@ def test_no_part_c_response_carries_a_family_level_field(model: Any) -> None:
         if FAMILY_LEVEL.search(name)
     ]
     assert offenders == []
+
+
+def test_the_zip_route_passes_its_group_through_and_defaults_to_none() -> None:
+    service = _stub()
+    service.zip_codes = AsyncMock(side_effect=ReportsRefusedError("stub"))
+    client = _client()
+    client.get("/api/financial-aid/reports/2027/development/zip")
+    service.zip_codes.assert_awaited_with(2027, None)
+    client.get("/api/financial-aid/reports/2027/development/zip?group=weekend_pool")
+    service.zip_codes.assert_awaited_with(2027, "weekend_pool")
+
+
+def test_the_zip_route_answers_422_for_a_group_the_season_does_not_have() -> None:
+    service = _stub()
+    service.zip_codes = AsyncMock(side_effect=ReportsRefusedError("'nope' is not a group of 2027"))
+    response = _client().get("/api/financial-aid/reports/2027/development/zip?group=nope")
+    assert response.status_code == 422
+    assert "not a group" in response.json()["detail"]
