@@ -9,8 +9,9 @@ percentage and every over/under; nothing typed is a percentage except a target b
   RPT-1 phases      (1) Round 1 by the deadline, (2) Round 1 rolling after it, (3) appeals (Rounds 2 and 3), then
                     the total, the budget and the over/under. Each phase as % of budget (finance's basis) and as a share
                     of the phases' sum (the decks' pie); "total − Σ phases" shows any gap. The band beside each phase is
-                    finance's typed target. P rows leave phases 1 and 2 empty until the owner sets the phase boundary
-                    (O-930-10, named in `gaps`); phase 3 and the total don't depend on it.
+                    finance's typed target. P rows split phases 1 and 2 at the season's application deadline (O-930-10); a
+                    season with no deadline leaves them empty, named in `gaps`. Phase 3 and the total don't depend
+                    on it.
   RPT-2 / RPT-6     Round 1 applications and asks received by a cutoff date (default: the season's application
                     deadline), "received since", and the season's end, per pool and in total; the change against the
                     season before; for r rows, "headline − Σ pools" where the typed pools don't sum (O-930-14).

@@ -12,7 +12,7 @@ A report never reads the budget's Posted (D129, D131). It reads each request's o
                 budget (the camp's own money, D106), net of clawback (D54). A wholly-outside decision type's round
                 (an outside funder's full-cost type, D121) is not the camp's money, so it is never awarded here.
   decided       a round decided and not yet offered (§5.3's Needs an offer): the "Decided (not yet offered)" basis
-                (D130), on the live read only.
+                (D130); a past date prices it as of the day (A6c), except a request 3c-2 can't price.
 
 Only RECEIVED requests become ReportRequests (D72: every intake request except refused duplicates; an edited
 answer is the same application, so the request it replaced is not counted again). The service decides that.
@@ -49,7 +49,7 @@ class RoundFacts:
     `ask` is the round's ask as keyed (Round 1: the request's ask, as corrected). `locked` is the Posted lock of a
     round that counts toward the budget, whatever happened after it (None: not posted, or outside the budget);
     `clawed_back` says CampMinder's reversal has posted since (D54). `decided` is decided and not yet offered
-    (None: not decided, posted, or a past read). `tier` is the round's tier: at its lock, else the request's now
+    (None: not decided, posted, or a request 3c-2 can't price as of the day). `tier` is the round's tier: at its lock, else the request's now
     (None: unknown, e.g. a past read of an unposted round). `pool` is where the round's money counts: a posted
     round's lock pool, else the request's home pool."""
 

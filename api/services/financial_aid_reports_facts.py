@@ -164,8 +164,6 @@ def report_requests(
             if n > 1 and view is None and (state is None or not round_exists(state)):
                 continue
             rounds.append(_round(n, view, state, r1_ask=r1_ask, tier_now=tier_now, home_pool=home_pool))
-        if request_id in season.gapped:  # 3c-2 kept it to 3c-1's figures: no decided amount is an estimate (D154)
-            rounds = [replace(r, decided=None) for r in rounds]
         if request_id in season.posted_unknown:  # a past read can't replay its clawback: like the grid, leave it out
             rounds = [replace(r, locked=None) for r in rounds]
         cancellation = season.cancellations.get(request_id)
