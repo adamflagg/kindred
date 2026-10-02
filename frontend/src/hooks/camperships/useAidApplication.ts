@@ -9,8 +9,9 @@ import { useYear } from '../useCurrentYear'
 import { usePermissions } from '../usePermissions'
 
 /**
- * A household's application, with its intake requests: the session candidates, the duplicate and the
- * headcount the casework forms need (§6.3). Read only while a form that needs it is open (household 0
+ * A household's application, with its intake requests: the intake-named duplicate holder (Keep the other
+ * request…) and the headcount (Headcount…) the casework forms need (§6.3). Session candidates come
+ * from the grid row, not from here. Read only while a form that needs it is open (household 0
  * reads nothing). App cache defaults; every write refreshes the application prefix.
  */
 export function useAidApplication(householdCmId: number) {

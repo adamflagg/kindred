@@ -11,6 +11,7 @@ import {
   ShareForm,
 } from './CaseworkForms'
 import { createEditorExits } from './editorExits'
+import { answerWords } from './householdModel'
 import {
   applicationOut,
   householdPage,
@@ -45,8 +46,14 @@ vi.mock('../../../hooks/camperships/useAidWrites', () => ({
   useAidHeadcount: () => writing(spies.headcount),
 }))
 let application: ReturnType<typeof applicationOut> | undefined = applicationOut()
+let applicationError: Error | null = null
+let applicationLoading = false
 vi.mock('../../../hooks/camperships/useAidApplication', () => ({
-  useAidApplication: () => ({ data: application, isLoading: false, error: null }),
+  useAidApplication: () => ({
+    data: application,
+    isLoading: applicationLoading,
+    error: applicationError,
+  }),
 }))
 
 const PAGE = householdPage()
@@ -61,6 +68,8 @@ beforeEach(() => {
   done.mockReset()
   outcome = null
   application = applicationOut()
+  applicationError = null
+  applicationLoading = false
 })
 
 describe('IncomeCorrection (main spec §9.3)', () => {
@@ -89,6 +98,51 @@ describe('IncomeCorrection (main spec §9.3)', () => {
         body: { field: 'num_children', new_value: null, reason: 'The family was right' },
       })
     )
+  })
+
+  it('renders a yes/no answer as a Yes/No select and sends the flag as a string (m5)', async () => {
+    const { income } = countAnswer()
+    const flag = {
+      field: 'single_parent',
+      synced: 'true',
+      effective: 'true',
+      corrected: false,
+      changed_since_correction: false,
+      history: [],
+    }
+    render(<IncomeCorrection page={PAGE} income={income} answer={flag} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.selectOptions(screen.getByLabelText(answerWords('single_parent')), 'false')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Not single after all{Enter}')
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'single_parent', new_value: 'false', reason: 'Not single after all' },
+    })
+  })
+
+  it('renders a money answer as a text input and sends the figure as plain digits (m5)', async () => {
+    const { income } = countAnswer()
+    const money = {
+      field: 'total_rent',
+      synced: '900.00',
+      effective: '900.00',
+      corrected: false,
+      changed_since_correction: false,
+      history: [],
+    }
+    render(<IncomeCorrection page={PAGE} income={income} answer={money} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    const input = screen.getByLabelText(answerWords('total_rent'))
+    expect(input.tagName).toBe('INPUT')
+    await userEvent.clear(input)
+    await userEvent.type(input, '$1,200,000')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Lease on file{Enter}')
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'total_rent', new_value: '1200000', reason: 'Lease on file' },
+    })
   })
 
   it('offers the way back only on a corrected answer, and nothing on the income override', async () => {
@@ -228,6 +282,13 @@ describe('ShareForm (main spec §9.2)', () => {
     )
   })
 
+  it('shows the percent unit and says what the server does with the other share (m2)', () => {
+    render(<ShareForm request={householdRequest(ROW_EMMA)} page={SPLIT_PAGE} onDone={done} />)
+    expect(screen.getByText('%')).toBeInTheDocument()
+    expect(screen.getByText(/the server fills the other household.s share/i)).toBeInTheDocument()
+    expect(screen.getByText(/holds .* until a second share is added/i)).toBeInTheDocument()
+  })
+
   it('refuses a share of nothing before asking the server', async () => {
     render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
     await userEvent.type(screen.getByLabelText('Share'), '0')
@@ -332,6 +393,44 @@ describe('SessionForm, DuplicateForm, HeadcountForm', () => {
       requestId: 'reqemmadup00009',
       body: { duplicate_of: 'reqemmaother01', reason: 'Second parent filed it' },
     })
+  })
+
+  it('says the read failed, not that nothing is on the page, when the application could not be read (m3)', async () => {
+    const lone = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    const page = householdPage({ requests: [lone] })
+    application = undefined
+    applicationError = new Error('x')
+    render(<DuplicateForm request={lone} page={page} onDone={done} />)
+    expect(
+      screen.getByText("Couldn't load the request intake named for this one.")
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/on this page/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(done).toHaveBeenCalled()
+  })
+
+  it('gives the loading lines a Back (m3)', async () => {
+    const lone = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    application = undefined
+    applicationLoading = true
+    const { unmount } = render(
+      <DuplicateForm request={lone} page={householdPage({ requests: [lone] })} onDone={done} />
+    )
+    expect(screen.getByText('Looking for the request to keep…')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(done).toHaveBeenCalledTimes(1)
+    unmount()
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    render(<HeadcountForm request={family} page={PAGE} onDone={done} />)
+    expect(screen.getByText('Loading the headcount…')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(done).toHaveBeenCalledTimes(2)
   })
 
   it('does not list the named holder twice when it is on the page', () => {
