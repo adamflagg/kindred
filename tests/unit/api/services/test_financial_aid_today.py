@@ -629,9 +629,36 @@ def test_the_never_true_line_reasons_carry_labels_and_an_unmatched_field_gets_no
 
 
 def test_other_lines_reasons_have_no_label() -> None:
-    out = build_today(_inputs([]), casework=True, finance=True)
+    rows = [
+        _row("reqemma00000001", 1000001, _round(1, "needs_offer", decided=1500.0)),
+        _row("reqliam00000001", 1000002, _round(1, "held"), holds=[_hold("payer_shares_incomplete")]),
+    ]
+    out = build_today(_inputs(rows), casework=True, finance=True)
     reasons = [r for line in [*(out.casework or []), *(out.finance or [])] for r in line.reasons]
+    assert {r.code for r in reasons} >= {"r1", "payer_shares_incomplete"}  # not vacuous: real reasons exist
     assert all(r.label is None for r in reasons)
+
+
+def test_labels_walk_only_the_weighted_household_criteria_never_true_reads() -> None:
+    camper = {
+        "key": "camper_subsidy",
+        "label": "Camper subsidy",
+        "source": "camper",
+        "field": "gov_subsidies",
+        "match": "equals_any",
+        "values": ["yes"],
+    }
+    dependents = {
+        "key": "many_dependents",
+        "label": "Many dependents",
+        "source": "household",
+        "field": "dependents",
+        "also_fields": ["single_parent"],
+        "match": "at_least",
+        "min_value": "4",
+    }
+    rules = _labelled_rules(camper, dependents, weights={"camper_subsidy": "1", "many_dependents": "1"})
+    assert never_true_labels(rules, [fa_row(1000011)]) == {}  # a camper or dependents criterion names no field
 
 
 @pytest.mark.asyncio
