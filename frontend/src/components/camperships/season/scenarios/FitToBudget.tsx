@@ -22,7 +22,8 @@ export function FitToBudget({
   trailId: string
   /** A write is running, or a slider has moved and not been let go. */
   disabled: boolean
-  onUse: (fitted: ApiAidRulesDocumentIn, askedOn: string) => void
+  /** Resolves true once the record landed; the fitted answer is kept until then. */
+  onUse: (fitted: ApiAidRulesDocumentIn, askedOn: string) => Promise<boolean>
 }) {
   const fit = useAidScenarioFit()
   const [askedOn, setAskedOn] = useState<string | null>(null)
@@ -60,8 +61,9 @@ export function FitToBudget({
                 className={BUTTON_PRIMARY}
                 disabled={disabled}
                 onClick={() => {
-                  onUse(answer.document, askedOn)
-                  fit.reset()
+                  void onUse(answer.document, askedOn).then((landed) => {
+                    if (landed) fit.reset()
+                  })
                 }}
               >
                 Use it

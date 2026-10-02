@@ -2,7 +2,7 @@
  * Fit to budget, All settings and "Make it the rules draft" on screen (spec §7.4, §7.5; D39, D119).
  * The workspace and the draft's work are mocked; each test sets the fit's answer or the preview.
  */
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -76,6 +76,7 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
 let fitAnswer: ApiAidScenarioFit | undefined
 let preview: ApiAidPromotionPreview | undefined
 const fitAsked: unknown[] = []
+const fitReset = vi.fn()
 const promoted: unknown[] = []
 let promoteRefusal: string | null = null
 let promoteStatus = 409
@@ -86,7 +87,7 @@ vi.mock('../../../../hooks/camperships/useAidPromotion', () => ({
     error: null,
     isPending: false,
     mutate: (document: unknown) => fitAsked.push(document),
-    reset: vi.fn(),
+    reset: fitReset,
   }),
   useAidPromotionPreview: (code: string | null) => ({
     data: code === null ? undefined : preview,
@@ -163,6 +164,7 @@ beforeEach(() => {
   writeError = null
   writeSource = null
   adopt.mockReset()
+  fitReset.mockReset()
   adopt.mockResolvedValue(true)
 })
 
@@ -185,6 +187,33 @@ describe('Fit to budget (D119)', () => {
     expect(label).toBe('Recording…')
     expect(build(RULES_DOCUMENT)).toBe(FITS.document)
     expect(options).toEqual({ basedOn: 'trail0000000001' })
+  })
+
+  it('keeps the fitted answer when "Use it" is refused, and drops it only once the record lands', async () => {
+    fitAnswer = FITS
+    let land: (landed: boolean) => void = () => undefined
+    adopt.mockImplementationOnce(() => new Promise<boolean>((resolve) => (land = resolve)))
+    renderAt()
+    const fit = screen.getByTestId('fit-to-budget')
+    await userEvent.click(within(fit).getByRole('button', { name: /^Fit to budget/ }))
+    await userEvent.click(within(fit).getByRole('button', { name: 'Use it' }))
+    // Still recording: the answer is not thrown away yet.
+    expect(fitReset).not.toHaveBeenCalled()
+    await act(async () => {
+      land(false)
+      await Promise.resolve()
+    })
+    // Refused: the fitted answer stays to use again.
+    expect(fitReset).not.toHaveBeenCalled()
+  })
+
+  it('drops the fitted answer once "Use it" lands', async () => {
+    fitAnswer = FITS
+    renderAt()
+    const fit = screen.getByTestId('fit-to-budget')
+    await userEvent.click(within(fit).getByRole('button', { name: /^Fit to budget/ }))
+    await userEvent.click(within(fit).getByRole('button', { name: 'Use it' }))
+    await waitFor(() => expect(fitReset).toHaveBeenCalledTimes(1))
   })
 
   it("offers nothing to use when even the range's end doesn't fit", () => {
