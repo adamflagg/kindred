@@ -164,11 +164,22 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
   it('calls a 2026 receipt reproduced, never posted (M18)', () => {
     renderCard(
       householdRequest(ROW_EMMA, {
-        receipts: [receiptOut(1, { kind: 'reproduced' }), receiptOut(2)],
+        receipts: [receiptOut(1, { kind: 'reproduced', season: 2026 }), receiptOut(2)],
       })
     )
     expect(
       screen.getByRole('button', { name: 'Round 1 as reproduced from the 2026 sheet ▾' })
+    ).toBeInTheDocument()
+  })
+
+  it("names the receipt's own season, never a hardcoded year (M5)", () => {
+    renderCard(
+      householdRequest(ROW_EMMA, {
+        receipts: [receiptOut(1, { kind: 'reproduced', season: 2025 }), receiptOut(2)],
+      })
+    )
+    expect(
+      screen.getByRole('button', { name: 'Round 1 as reproduced from the 2025 sheet ▾' })
     ).toBeInTheDocument()
   })
 
@@ -200,5 +211,178 @@ describe('RequestCard (§6.3 item 4; D50; decision-panel.html)', () => {
     expect(
       screen.getByText('Cancelled in CampMinder Jun 2 · no reason given yet')
     ).toBeInTheDocument()
+  })
+
+  describe('fix round 1 (review of Task 20)', () => {
+    const SHARE = {
+      household_cm_id: 1000001,
+      chip: 1,
+      share_pct: 100,
+      decided: 1800,
+      posted: 1800,
+      in_campminder: 1590,
+      status: 'short',
+    } as const
+
+    it('reads a clawed-back round as reversed, never as posted money that stands (I1; D54)', () => {
+      const row = gridRow({
+        rounds: [
+          roundOut(1, 'posted', {
+            decided: 1420,
+            posted: 1420,
+            posted_on: '2027-03-09',
+            would_change_by: -40,
+            clawed_back: true,
+          }),
+        ],
+      })
+      renderCard(householdRequest(row))
+      const panel = screen.getByRole('table', { name: 'Decision panel' })
+      expect(within(panel).getByText('reversed')).toBeInTheDocument()
+      expect(within(panel).queryByText('posted')).toBeNull()
+      expect(screen.queryByText(/stands/)).toBeNull()
+      expect(screen.queryByText(/clawed back/)).toBeNull()
+      expect(screen.queryByText(/rules now/)).toBeNull()
+    })
+
+    it('keeps the posted-stands wording on a round that was not reversed (I1 regression guard)', () => {
+      const row = gridRow({
+        rounds: [
+          roundOut(1, 'posted', {
+            decided: 1420,
+            posted: 1420,
+            posted_on: '2027-03-09',
+            would_change_by: -40,
+            clawed_back: false,
+          }),
+        ],
+      })
+      renderCard(householdRequest(row))
+      expect(screen.getByText(/The posted \$1,420 stands/)).toBeInTheDocument()
+    })
+
+    it("shows a dash, not the request's CampMinder figure, on a share with no posted figure of its own (I2)", () => {
+      const request = householdRequest(ROW_SAMUEL, {
+        shares: [
+          { ...SHARE, share_pct: 60, decided: null, posted: null },
+          {
+            ...SHARE,
+            household_cm_id: 1000003,
+            chip: 2,
+            share_pct: 30,
+            decided: null,
+            posted: null,
+          },
+        ],
+      })
+      renderCard(request, SPLIT_PAGE)
+      const shares = screen.getByRole('table', { name: 'Payer shares' })
+      expect(within(shares).queryByText(/over/)).toBeNull()
+      expect(within(shares).queryByText(/CampMinder shows/)).toBeNull()
+      expect(within(shares).getAllByText('—').length).toBeGreaterThanOrEqual(2)
+    })
+
+    it("shows each payer's own decided and posted figures, and no one-payer money line (M7)", () => {
+      const request = householdRequest(ROW_SAMUEL, {
+        shares: [
+          {
+            ...SHARE,
+            share_pct: 60,
+            decided: 1080,
+            posted: 1080,
+            in_campminder: 1080,
+            status: 'confirmed',
+          },
+          {
+            ...SHARE,
+            household_cm_id: 1000003,
+            chip: 2,
+            share_pct: 40,
+            decided: 720,
+            posted: 720,
+            in_campminder: 0,
+            status: 'not_in_campminder',
+          },
+        ],
+      })
+      renderCard(request, SPLIT_PAGE)
+      const shares = screen.getByRole('table', { name: 'Payer shares' })
+      expect(within(shares).getAllByText('$1,080').length).toBe(2)
+      expect(within(shares).getAllByText('$720').length).toBe(2)
+      expect(screen.queryByText('CampMinder shows $1,590')).toBeNull()
+    })
+
+    it('draws no "applied by" when one household is on the page (M7)', () => {
+      renderCard()
+      expect(screen.queryByText('applied by')).toBeNull()
+    })
+
+    it('names a payer from outside the page by its household, never a "0" chip (M6)', () => {
+      const request = householdRequest(ROW_SAMUEL, {
+        shares: [
+          {
+            ...SHARE,
+            share_pct: 50,
+            decided: 900,
+            posted: 900,
+            in_campminder: 900,
+            status: 'confirmed',
+          },
+          {
+            ...SHARE,
+            household_cm_id: 1000009,
+            chip: 0,
+            share_pct: 50,
+            decided: 900,
+            posted: 900,
+            in_campminder: 900,
+            status: 'confirmed',
+          },
+        ],
+      })
+      renderCard(request)
+      const shares = screen.getByRole('table', { name: 'Payer shares' })
+      expect(within(shares).getByText('Household 1000009')).toBeInTheDocument()
+      expect(within(shares).queryByText(/^0 ·/)).toBeNull()
+    })
+
+    it('shows the live receipt once when several unposted rounds share it (M8)', () => {
+      renderCard(householdRequest(ROW_OLIVIA, { receipts: [receiptOut(1), receiptOut(2)] }))
+      expect(screen.queryByRole('button', { name: /^Round 1 as/ })).toBeNull()
+    })
+
+    it('says "Cancelled" once on a cancelled card (M9)', () => {
+      renderCard(
+        householdRequest({
+          ...ROW_EMMA,
+          cancellation: { by: 'campminder', on: '2027-06-02', reason: null, note: '' },
+        })
+      )
+      expect(screen.queryByText('Cancelled')).toBeNull()
+      expect(screen.getAllByText(/Cancelled/)).toHaveLength(1)
+    })
+
+    it("names who pays when the only payer isn't the applicant (M10)", () => {
+      const request = householdRequest(ROW_EMMA, {
+        shares: [
+          {
+            ...SHARE,
+            household_cm_id: 1000003,
+            chip: 2,
+            posted: null,
+            decided: 1420,
+            in_campminder: null,
+            status: null,
+          },
+        ],
+      })
+      renderCard(request, SPLIT_PAGE)
+      expect(screen.getByText('paid by')).toBeInTheDocument()
+    })
+
+    it('does not name a payer when the applicant pays (M10 regression guard)', () => {
+      renderCard()
+      expect(screen.queryByText('paid by')).toBeNull()
+    })
   })
 })

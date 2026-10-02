@@ -226,6 +226,32 @@ describe('per-share confirmation (D81)', () => {
   })
 })
 
+describe('fix round 1 model (review of Task 20)', () => {
+  it('carries a clawed-back round and drops its would-change flag (I1; D54)', () => {
+    const row = gridRow({
+      rounds: [roundOut(1, 'posted', { posted: 1420, would_change_by: -40, clawed_back: true })],
+    })
+    expect(roundLines(householdRequest(row))[0]).toMatchObject({
+      clawedBack: true,
+      wouldChangeBy: null,
+    })
+  })
+
+  it('gives a share with no posted figure no confirmation, whatever the request-wide state (I2)', () => {
+    expect(
+      shareConfirmation({
+        household_cm_id: 1000001,
+        chip: 1,
+        share_pct: 60,
+        decided: null,
+        posted: null,
+        in_campminder: 1590,
+        status: 'short',
+      })
+    ).toBeNull()
+  })
+})
+
 describe('words', () => {
   it('words a cancellation, with its reason from the fixed list (D141)', () => {
     expect(
