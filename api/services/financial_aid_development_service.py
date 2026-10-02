@@ -67,6 +67,7 @@ from api.services.financial_aid_reports_facts import report_requests
 from api.services.financial_aid_reports_service import ReportsRefusedError, ReportsStore
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.money import ZERO
 from bunking.financial_aid.reports.development import (
     ADULT,
     AGE_UNKNOWN,
@@ -796,7 +797,9 @@ class FinancialAidDevelopmentService:
             groups=[DevelopmentGroupOut(key=g.key, label=g.label, kind=g.kind) for g in latest.groups],
             columns=[c for c, _ in columns],
             rows=_rows(latest.groups, columns, ages),
-            sources=_sources(natives.get(year), latest, sources),
+            sources=_sources(
+                natives.get(year), latest, sources, {g.key: g for g in await self._development.grantors()}
+            ),
             not_built=not_built,
         )
 
@@ -1059,27 +1062,51 @@ def funder_rows(
 
 
 def _sources(
-    column: DevelopmentColumn | None, grouping_: Grouping, sources: Sequence[SourceRecord]
+    column: DevelopmentColumn | None,
+    grouping_: Grouping,
+    sources: Sequence[SourceRecord],
+    grantors: Mapping[str, GrantorRecord],
 ) -> list[DevelopmentSourceOut]:
+    """Money by source (D88), one line per funder where the grantor directory groups descriptions, else one per
+    description (owner item 52): the same grouping Funding sources shows, through `funder_rows`. A funder's incentive
+    and need-based money stay on separate lines (D88's three facts); an unclassified source is its own line (N3)."""
     if column is None:
         return []
-    # RULED: group by funder, done in Part C (C7); until then one line per source description.
     labels = {g.key: g.label for g in grouping_.groups}
     by_key = {s.description_key: s for s in sources}
-    out: list[DevelopmentSourceOut] = []
+    funder_of = {
+        d.description_key: row
+        for row in funder_rows(sources, grantors, grouping_, "outside")
+        if row.kind == "funder"
+        for d in row.descriptions
+    }
+    merged: dict[tuple[str, str, bool], DevelopmentSourceOut] = {}
+    totals: dict[tuple[str, str, bool], Decimal] = {}
     for line in column.by_source:
         source = by_key.get(line.source_key)
         camp = line.source_key == CAMP_SOURCE
-        out.append(
-            DevelopmentSourceOut(
-                source_key=line.source_key,
-                name="The camp's awards" if camp else (source.source_name if source is not None else line.source_key),
-                who_paid="the camp" if camp else "another funder",
-                incentive=bool(source is not None and source.incentive),
-                group=line.group,
-                group_label=labels.get(line.group, line.group),
-                amount=money(line.amount),
-                awards=line.awards,
-            )
+        funder = funder_of.get(line.source_key)
+        incentive = bool(source is not None and source.incentive)
+        source_key = f"funder:{funder.grantor_key}" if funder is not None else line.source_key
+        key = (source_key, line.group, incentive)
+        totals[key] = totals.get(key, ZERO) + line.amount  # summed exactly, rounded once
+        if key in merged:
+            merged[key] = merged[key].model_copy(update={"awards": merged[key].awards + line.awards})
+            continue
+        if camp:
+            name = "The camp's awards"
+        elif funder is not None:
+            name = funder.name
+        else:
+            name = source.source_name if source is not None else line.source_key
+        merged[key] = DevelopmentSourceOut(
+            source_key=source_key,
+            name=name,
+            who_paid="the camp" if camp else "another funder",
+            incentive=incentive,
+            group=line.group,
+            group_label=labels.get(line.group, line.group),
+            amount=money(line.amount),
+            awards=line.awards,
         )
-    return out
+    return [out.model_copy(update={"amount": money(totals[key])}) for key, out in merged.items()]

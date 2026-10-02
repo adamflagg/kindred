@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from api.services.financial_aid_cancellations import CANCEL_REASONS, CancelEvent
-from api.services.financial_aid_development_repository import PersonRecord, SourceRecord
+from api.services.financial_aid_development_repository import GrantorRecord, PersonRecord, SourceRecord
 from api.services.financial_aid_development_service import (
     AVERAGE_AWARD_DEFINITION,
     FIRST_TIME_FAMILY,
@@ -585,3 +585,58 @@ async def test_a_grant_line_carries_its_session_into_the_awards_count() -> None:
     line = replace(grant_row("reqemma00000001", "500"), session_cm_id=1000102)
     found = grant_money([line], grouping(intake_rules(), {s.cm_id: s.session_type for s in SESSIONS}))
     assert [g.session_cm_id for g in found] == [1000102]
+
+
+REGIONAL_SPRING = SourceRecord(
+    "src000000000011", "regional grant 2", "Regional Camp Fund (spring)", "outside", False, ("summer",), "regional_fund"
+)
+UNCLASSIFIED = SourceRecord("src000000000012", "mystery fund", "Mystery Fund", "unknown", False, ())
+REGIONAL_FUND = GrantorRecord("regional_fund", "Regional Camp Fund", retired=False)
+
+
+def _by_funder(*extra: SourceRecord) -> FakeDevelopmentStore:
+    return _development(
+        source_rows=[replace(REGIONAL, grantor_key="regional_fund"), REGIONAL_SPRING, *extra],
+        grantor_rows=[REGIONAL_FUND],
+    )
+
+
+def _line(key: str, amount: str) -> RegisterRow:
+    return replace(grant_row("reqemma00000001", amount), source_key=key)
+
+
+async def test_money_by_source_groups_descriptions_of_one_funder_into_one_line_with_the_summed_amount() -> None:
+    """Owner item 52 (C7): the same grouping Funding sources uses; two descriptions of one funder are one line."""
+    out = await _service(
+        _by_funder(), register=[_line("regional grant", "500"), _line("regional grant 2", "250")]
+    ).development(YEAR)
+    assert [(s.name, s.who_paid, s.amount, s.group) for s in out.sources] == [
+        ("The camp's awards", "the camp", 1500.0, "camp_pool"),
+        ("Regional Camp Fund", "another funder", 750.0, "camp_pool"),
+    ]
+
+
+async def test_an_unclassified_source_keeps_its_own_line_and_is_never_folded_into_a_funder() -> None:
+    """N3: unclassified sources are shown, not hidden, and a funder's line does not swallow them."""
+    out = await _service(
+        _by_funder(UNCLASSIFIED),
+        register=[_line("regional grant", "500"), _line("mystery fund", "100")],
+    ).development(YEAR)
+    assert [(s.name, s.amount) for s in out.sources] == [
+        ("The camp's awards", 1500.0),
+        ("Mystery Fund", 100.0),
+        ("Regional Camp Fund", 500.0),
+    ]
+
+
+async def test_a_funders_incentive_and_need_based_money_stay_on_separate_lines() -> None:
+    """D88's three facts survive the grouping: incentive money is not folded into need-based money."""
+    store = _by_funder()
+    store.source_rows[1] = replace(REGIONAL_SPRING, incentive=True)
+    out = await _service(
+        store, register=[_line("regional grant", "500"), _line("regional grant 2", "250")]
+    ).development(YEAR)
+    assert [(s.name, s.incentive, s.amount) for s in out.sources[1:]] == [
+        ("Regional Camp Fund", False, 500.0),
+        ("Regional Camp Fund", True, 250.0),
+    ]
