@@ -30,6 +30,39 @@ describe('BUDGET mirrors the server', () => {
     }
   })
 
+  it("every type line's posted and own are within its amount, to the cent (budget.py: both are part of it)", () => {
+    for (const pool of ALL) {
+      for (const t of pool.decision_types ?? []) {
+        const amount = toCents(t.amount ?? 0)
+        expect(toCents(t.posted ?? 0), `${pool.label} ${String(t.key)} posted`).toBeLessThanOrEqual(
+          amount
+        )
+        expect(toCents(t.own ?? 0), `${pool.label} ${String(t.key)} own`).toBeLessThanOrEqual(
+          amount
+        )
+      }
+    }
+  })
+
+  it("own is a type's top-up and discretionary money, not what it posted; the key-null line's is 0", () => {
+    for (const pool of ALL) {
+      for (const t of pool.decision_types ?? []) {
+        if (t.key === null) expect(t.own, pool.label).toBe(0)
+        else if (t.counts_toward_budget) expect(t.own, `${pool.label} ${t.key}`).not.toBe(t.posted)
+      }
+    }
+  })
+
+  it("the Total's own merges the pools' by key", () => {
+    for (const line of BUDGET.total.decision_types ?? []) {
+      const across = BUDGET.pools
+        .flatMap((p) => p.decision_types ?? [])
+        .filter((t) => t.key === line.key && t.counts_toward_budget === line.counts_toward_budget)
+        .reduce((acc, t) => acc + toCents(t.own ?? 0), 0)
+      expect(toCents(line.own ?? 0), String(line.key)).toBe(across)
+    }
+  })
+
   it('every live cell and pool carries the counts the server always sends', () => {
     for (const pool of ALL) {
       for (const c of [...pool.rounds, pool.total]) {

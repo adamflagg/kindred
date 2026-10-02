@@ -248,6 +248,18 @@ describe('filterRows', () => {
     // round= binds to the same round as the view's status.
     expect(ids({ counted: true, round: 2 })).toEqual(['reqcntneeds0001'])
     expect(ids({ counted: true, round: 1 })).toEqual([])
+    // Both rounds count, Round 1 posted, Round 2 needing the offer: Round 1 holds no offer to make.
+    const bothCounted = gridRow({
+      request_id: 'reqbothcnt00001',
+      rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+      queues: ['needs_offer'],
+    })
+    const round = (n: 1 | 2) =>
+      filterRows([bothCounted], 'needs_offer', { ...NO_FILTERS, counted: true, round: n }).map(
+        (r) => r.request_id
+      )
+    expect(round(1)).toEqual([])
+    expect(round(2)).toEqual(['reqbothcnt00001'])
   })
 
   it('binds counted to the round that puts a row in Pending approval (final review I2)', () => {
