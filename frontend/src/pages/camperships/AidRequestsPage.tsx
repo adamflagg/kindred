@@ -166,6 +166,22 @@ export default function AidRequestsPage() {
     asOf.kind === 'past' ? asOf.date : null
   )
 
+  const filtersBar = (
+    <GridFiltersBar
+      groups={groups}
+      program={program}
+      pool={pool}
+      round={round}
+      tick={tick}
+      showIds={showIds}
+      onChange={setParam}
+      onProgramPool={onProgramPool}
+    />
+  )
+  // The filters share the grid's own toolbar line with search and Download CSV; with no grid on
+  // screen (loading, failed, a past date) they stand on a line of their own.
+  const gridShown = grid.data !== undefined && (live || view.key === 'all')
+
   return (
     <div className="space-y-3 sm:space-y-4">
       <AidPageBand
@@ -182,16 +198,9 @@ export default function AidRequestsPage() {
         hrefOf={hrefOf}
         lensHrefOf={lensHrefOf}
       />
-      <GridFiltersBar
-        groups={groups}
-        program={program}
-        pool={pool}
-        round={round}
-        tick={tick}
-        showIds={showIds}
-        onChange={setParam}
-        onProgramPool={onProgramPool}
-      />
+      {!gridShown && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">{filtersBar}</div>
+      )}
       {view.key === 'waiting_on_family' && (
         <p className="text-muted-foreground text-xs">
           Posted is the amount posted in this round, not yet accepted.
@@ -227,6 +236,7 @@ export default function AidRequestsPage() {
               highlighted={highlighted}
               onHighlight={onHighlight}
               links={links}
+              filters={filtersBar}
             />
           )
         }

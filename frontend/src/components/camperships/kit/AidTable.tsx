@@ -117,6 +117,8 @@ export interface AidTableProps<Row> {
   readonly onOpenTotal?: ((columnKey: string, rows: readonly Row[]) => void) | undefined
   readonly renderBelowHighlighted?: ((row: Row, nav: AidRowNav) => ReactNode) | undefined
   readonly arrowKeys?: boolean | undefined
+  /** Controls the page puts at the head of the toolbar line, before search (the Requests filters). */
+  readonly toolbarLead?: ReactNode
   /**
    * A controlled highlight (slice 1): pass both. Every change (a row click, ↑/↓, the editor row's
    * nav) then goes through `onHighlight`, so a surface can save what is typed first (owner ruling B)
@@ -167,6 +169,7 @@ export function AidTable<Row>({
   onOpenTotal,
   renderBelowHighlighted,
   arrowKeys = false,
+  toolbarLead,
   highlighted: highlightedProp,
   onHighlight,
   footerLabel,
@@ -383,7 +386,8 @@ export function AidTable<Row>({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div data-aid-toolbar="" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        {toolbarLead}
         <div className="relative w-64">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <input

@@ -119,14 +119,53 @@ describe('GridFiltersBar out-of-list values (A5)', () => {
     expect(screen.getByRole('option', { name: 'gone' })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('shows a checklist value the options do not hold', () => {
-    bar({ tick: 'bogus' as 'posted' })
-    expect(screen.getByLabelText('Checklist')).toHaveValue('bogus')
-  })
-
   it('adds no extra option for an in-list value', async () => {
     bar({ program: 'summer' })
     await openProgram()
     expect(screen.getAllByRole('option', { name: 'Summer' })).toHaveLength(1)
+  })
+})
+
+// Spec change (owner, 2026-10-02): Round and Checklist are toggle chips, not <select>s. A URL value
+// outside the list parses to null before it reaches the bar, so the old "shows a checklist value the
+// options do not hold" select test has no chip equivalent and is gone.
+describe('GridFiltersBar: Round and Checklist chips', () => {
+  const lit = (name: string) =>
+    screen.getByRole('button', { name }).className.includes('bg-primary ')
+
+  it('lights none when no round or checklist is picked', () => {
+    bar({})
+    for (const name of ['R1', 'R2', 'R3', 'Posted', 'Accepted']) expect(lit(name)).toBe(false)
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('sets the round param from a chip, with the same value the select used', async () => {
+    const { onChange } = bar({})
+    await userEvent.click(screen.getByRole('button', { name: 'R2' }))
+    expect(onChange).toHaveBeenCalledWith('round', '2')
+  })
+
+  it('sets the checklist param from a chip', async () => {
+    const { onChange } = bar({})
+    await userEvent.click(screen.getByRole('button', { name: 'Accepted' }))
+    expect(onChange).toHaveBeenCalledWith('tick', 'accepted')
+  })
+
+  it('lights only the picked chip, and clicking it clears the param', async () => {
+    const { onChange } = bar({ round: 3, tick: 'posted' })
+    expect(lit('R3')).toBe(true)
+    expect(lit('R1')).toBe(false)
+    expect(lit('Posted')).toBe(true)
+    expect(lit('Accepted')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: 'R3' }))
+    expect(onChange).toHaveBeenLastCalledWith('round', null)
+    await userEvent.click(screen.getByRole('button', { name: 'Posted' }))
+    expect(onChange).toHaveBeenLastCalledWith('tick', null)
+  })
+
+  it('moves to another round in one click, one at a time', async () => {
+    const { onChange } = bar({ round: 1 })
+    await userEvent.click(screen.getByRole('button', { name: 'R2' }))
+    expect(onChange).toHaveBeenLastCalledWith('round', '2')
   })
 })

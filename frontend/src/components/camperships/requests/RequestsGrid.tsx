@@ -48,6 +48,8 @@ interface RequestsGridProps {
   readonly onHighlight: (key: string | null) => void
   /** Stable (useMemo): the columns memo depends on it. */
   readonly links: HouseholdLinks
+  /** The filter controls: they share the table's toolbar line with search and Download CSV. */
+  readonly filters?: ReactNode
   readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
 }
 
@@ -208,6 +210,7 @@ export function RequestsGrid({
   highlighted,
   onHighlight,
   links,
+  filters,
   renderBelowHighlighted,
 }: RequestsGridProps) {
   const columns = useMemo(
@@ -232,6 +235,7 @@ export function RequestsGrid({
       csvExtra={
         view.columns.includes('r3') || view.columns.includes('r3Ask') ? R3_PENDING_CSV : undefined
       }
+      toolbarLead={filters}
       arrowKeys
       scrollBox
       highlighted={highlighted}

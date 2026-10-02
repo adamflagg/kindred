@@ -44,6 +44,9 @@ function Back() {
   )
 }
 
+/** The grid's one toolbar line: the filters, search and Download CSV (owner, 2026-10-02). */
+const toolbar = () => screen.getByLabelText('Search').closest('[data-aid-toolbar]') as HTMLElement
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -215,12 +218,26 @@ describe('AidRequestsPage (§6.1, §6.2)', () => {
 
   it('narrows to a round and a checklist state, kept in the URL (Decision 9)', async () => {
     renderAt('/aid/requests')
-    await userEvent.selectOptions(screen.getByLabelText('Checklist'), 'accepted')
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'Accepted' }))
     expect(screen.getByTestId('where')).toHaveTextContent('tick=accepted')
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     expect(screen.queryByText('Samuel Johnson')).toBeNull()
-    await userEvent.selectOptions(screen.getByLabelText('Round'), '2')
+    await userEvent.click(within(toolbar()).getByRole('button', { name: 'R2' }))
     expect(screen.queryByText('Olivia Chen')).toBeNull()
+  })
+
+  it('puts Program, the chips, Show IDs, search and Download CSV on one toolbar line', () => {
+    renderAt('/aid/requests')
+    const line = toolbar()
+    expect(line).not.toBeNull()
+    for (const el of [
+      screen.getByLabelText('Program'),
+      within(line).getByRole('button', { name: 'R1' }),
+      within(line).getByRole('button', { name: 'Posted' }),
+      screen.getByLabelText('Show IDs'),
+      screen.getByRole('button', { name: 'Download CSV' }),
+    ])
+      expect(line).toContainElement(el)
   })
 
   it('carries the filters to the household page, so the walk and Back keep them (M5)', async () => {

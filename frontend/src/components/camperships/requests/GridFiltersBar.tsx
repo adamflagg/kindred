@@ -8,6 +8,7 @@ import {
 } from '@headlessui/react'
 import { ChevronDown } from 'lucide-react'
 
+import { GROUP, GROUP_BUTTON_OFF, GROUP_BUTTON_ON } from '../../admin/audit/auditStyles'
 import { FIELD_INLINE } from '../../admin/lodging/lodgingStyles'
 import type { ProgramGroup } from './programLabel'
 import type { GridParamName } from './useGridParams'
@@ -18,40 +19,38 @@ export interface FilterOption {
   readonly label: string
 }
 
-function Select({
-  id,
+/**
+ * A filter as toggle chips: none lit is "any", clicking the lit chip clears it, one at a time. The
+ * chips are the segmented group the audit log's filters and the Requests grid's old grouping toggle
+ * use (`GROUP`, `GROUP_BUTTON_ON/OFF` in auditStyles), so a lit chip reads the same everywhere.
+ * `value` is parsed before it gets here (`parseRoundFilter`), so it is always one of `options` or null.
+ */
+function ChipFilter({
   label,
   value,
-  all,
   options,
   onChange,
 }: {
-  id: string
   label: string
   value: string | null
-  all: string
   options: readonly FilterOption[]
   onChange: (value: string | null) => void
 }) {
-  // A stale URL value (a bookmark, a past as-of date) still filters the grid, so keep it visible and clearable.
-  const stale = value !== null && value !== '' && !options.some((o) => o.value === value)
   return (
     <span className="flex items-center gap-2">
-      <label htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        value={value ?? ''}
-        onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
-        className={FIELD_INLINE}
-      >
-        <option value="">{all}</option>
-        {stale && <option value={value}>{value}</option>}
+      <span>{label}</span>
+      <span className={GROUP}>
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <button
+            key={option.value}
+            type="button"
+            className={value === option.value ? GROUP_BUTTON_ON : GROUP_BUTTON_OFF}
+            onClick={() => onChange(value === option.value ? null : option.value)}
+          >
             {option.label}
-          </option>
+          </button>
         ))}
-      </select>
+      </span>
     </span>
   )
 }
@@ -148,16 +147,20 @@ function ProgramSelect({
 }
 
 const ROUNDS: readonly FilterOption[] = [
-  { value: '1', label: 'Round 1' },
-  { value: '2', label: 'Round 2' },
-  { value: '3', label: 'Round 3' },
+  { value: '1', label: 'R1' },
+  { value: '2', label: 'R2' },
+  { value: '3', label: 'R3' },
 ]
 const TICKS: readonly FilterOption[] = [
   { value: 'posted', label: 'Posted' },
   { value: 'accepted', label: 'Accepted' },
 ]
 
-/** Program (pools as its headings, T6), Round and Checklist (Decision 9; owner ruling Group 2c Q3) and Show IDs (D27), all held in the URL. */
+/**
+ * Program (pools as its headings, T6), Round and Checklist chips (Decision 9; owner ruling Group 2c
+ * Q3) and Show IDs (D27), all held in the URL. Controls only, as one fragment: the grid's toolbar
+ * (`AidTable`'s `toolbarLead`) lays them out on its own line, beside search and Download CSV.
+ */
 export function GridFiltersBar({
   groups,
   program,
@@ -179,21 +182,17 @@ export function GridFiltersBar({
   onProgramPool: (pool: string | null, program: string | null) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-4 text-sm">
+    <>
       <ProgramSelect groups={groups} program={program} pool={pool} onPick={onProgramPool} />
-      <Select
-        id="aid-filter-round"
+      <ChipFilter
         label="Round"
         value={round === null ? null : String(round)}
-        all="Any round"
         options={ROUNDS}
         onChange={(v) => onChange('round', v)}
       />
-      <Select
-        id="aid-filter-tick"
+      <ChipFilter
         label="Checklist"
         value={tick}
-        all="Any checklist"
         options={TICKS}
         onChange={(v) => onChange('tick', v)}
       />
@@ -205,6 +204,6 @@ export function GridFiltersBar({
         />
         Show IDs
       </label>
-    </div>
+    </>
   )
 }
