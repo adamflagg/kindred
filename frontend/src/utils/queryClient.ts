@@ -95,6 +95,8 @@ const SYNC_DEPENDENT_PREFIXES = [
   'session-stats',
   'session-groups',
   'session-programs',
+  // Camperships' session-name picker (useAidSessionNames) reads camp_sessions under this prefix.
+  'camp-sessions',
   // Campers (Tier 1)
   'campers',
   'all-campers',
