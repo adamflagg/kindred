@@ -427,6 +427,12 @@ def _number(value: Decimal | int | None, unit: Unit) -> float | None:
     return float(value)
 
 
+def _keeps_group(body: FundingSourceIn, shown: str | None) -> bool:
+    """The families stay as they are when the body leaves the group out (absent), or sends it as shown. An explicit
+    null is a clear: it is told apart from absent by `model_fields_set`."""
+    return "group" not in body.model_fields_set or body.group == shown
+
+
 class FinancialAidDevelopmentService:
     def __init__(
         self,
@@ -585,7 +591,8 @@ class FinancialAidDevelopmentService:
         self, year: int, source: SourceRecord, body: FundingSourceIn, found: Grouping, *, keep_group: bool
     ) -> tuple[dict[str, Any], dict[str, Any], SourceRecord]:
         """Decision 43 for one description: its before, what changes, and the source after. `keep_group`: the group
-        as shown, so the families stay exactly (an incentive-only save never rewrites them)."""
+        as shown, or a body that does not mention the group, so the families stay exactly (an incentive-only save
+        never rewrites them); an explicit null group clears them."""
         families = list(source.implied_program_families)
         if keep_group:
             pass
@@ -620,7 +627,11 @@ class FinancialAidDevelopmentService:
             raise ReportsRefusedError("Only an outside source has a group here: classify this source first (Sources)")
         found = await self._season_grouping(year)
         before, changed, updated = self._planned(
-            year, source, body, found, keep_group=body.group == _funding_source(source, found).group
+            year,
+            source,
+            body,
+            found,
+            keep_group=_keeps_group(body, _funding_source(source, found).group),
         )
         if changed:
             await self._development.commit(
@@ -645,7 +656,8 @@ class FinancialAidDevelopmentService:
     ) -> FundingSourceRowOut:
         """Decision 48 (D159): a funder row's group and incentive flag, written to each of its outside descriptions in
         ONE logged operation, each writing only what changed (Decision 43). "The group as shown" is the row's: a row
-        shown as several groups, saved with no group, keeps every description's families. Unclassified sources are
+        shown as several groups, saved with the group absent (or shown unchanged), keeps every description's families;
+        an explicit null group clears them. Unclassified sources are
         never members (N3): they are listed read-only, and classifying them is the Sources route's."""
         grantors = {g.key: g for g in await self._development.grantors()}
         members = [
@@ -656,7 +668,7 @@ class FinancialAidDevelopmentService:
         if grantor_key not in grantors or not members:
             raise FunderNotFoundError(f"No funder {grantor_key} with an outside source")
         found = await self._season_grouping(year)
-        keep_group = body.group == _row_of(grantors[grantor_key], members, found, "outside").group
+        keep_group = _keeps_group(body, _row_of(grantors[grantor_key], members, found, "outside").group)
         writes: list[AidWrite] = []
         updated: list[SourceRecord] = []
         families_changed = False

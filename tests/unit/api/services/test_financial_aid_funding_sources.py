@@ -320,3 +320,93 @@ async def test_the_per_source_save_with_incentive_omitted_keeps_the_flag() -> No
     [[write]] = store.operations
     assert "incentive" not in (write.data or {})
     assert out.incentive is True
+
+
+# --- group: absent keeps, explicit null clears, a value sets (the same three-way rule as incentive) ---------------
+
+
+async def test_a_source_save_without_a_group_keeps_its_families_and_sets_the_incentive() -> None:
+    store = FakeDevelopmentStore(source_rows=[REGIONAL])
+    out = await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn.model_validate({"incentive": True}), actor=DEVELOPMENT
+    )
+    [[write]] = store.operations
+    assert write.data == {"incentive": True}
+    assert out.families == ["quest", "summer"]
+    assert out.group == "camp_pool"
+
+
+async def test_a_source_save_with_an_explicit_null_group_clears_the_families() -> None:
+    store = FakeDevelopmentStore(source_rows=[REGIONAL])
+    out = await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn.model_validate({"group": None}), actor=DEVELOPMENT
+    )
+    [[write]] = store.operations
+    assert write.data == {"implied_program_families": []}
+    assert (out.group, out.needs_group) == (None, True)
+
+
+async def test_a_source_save_with_a_group_value_sets_it() -> None:
+    store = FakeDevelopmentStore(source_rows=[REGIONAL])
+    out = await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn.model_validate({"group": "weekend_pool"}), actor=DEVELOPMENT
+    )
+    [[write]] = store.operations
+    assert set(write.data or {}) == {"implied_program_families"}
+    assert out.group == "weekend_pool"
+
+
+async def test_a_source_save_with_only_a_note_writes_nothing_and_logs_nothing() -> None:
+    store = FakeDevelopmentStore(source_rows=[REGIONAL])
+    await _service(store).save_funding_source(
+        YEAR, REGIONAL.id, FundingSourceIn.model_validate({"note": "just a note"}), actor=DEVELOPMENT
+    )
+    assert store.operations == []
+    assert store.log == []
+
+
+def _single_group_funder() -> FakeDevelopmentStore:
+    return FakeDevelopmentStore(
+        source_rows=[
+            replace(REGIONAL, grantor_key="regional_fund"),
+            replace(SPRING, implied_program_families=("summer",)),
+        ],
+        grantor_rows=[FUND],
+    )
+
+
+async def test_a_funder_save_without_a_group_keeps_every_descriptions_families() -> None:
+    store = _single_group_funder()
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn.model_validate({"incentive": True}), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert operation
+    assert all(set(w.data or {}) == {"incentive"} for w in operation)
+
+
+async def test_a_funder_save_with_an_explicit_null_group_clears_every_description() -> None:
+    store = _single_group_funder()
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn.model_validate({"group": None}), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert all((w.data or {}).get("implied_program_families") == [] for w in operation)
+
+
+async def test_a_funder_save_with_a_group_value_sets_it() -> None:
+    store = _single_group_funder()
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn.model_validate({"group": "weekend_pool"}), actor=DEVELOPMENT
+    )
+    [operation] = store.operations
+    assert all("implied_program_families" in (w.data or {}) for w in operation)
+
+
+async def test_a_funder_save_with_only_a_note_writes_nothing_and_logs_nothing() -> None:
+    store = _single_group_funder()
+    await _service(store).save_funder(
+        YEAR, "regional_fund", FundingSourceIn.model_validate({"note": "n"}), actor=DEVELOPMENT
+    )
+    assert store.operations == []
+    assert store.log == []
