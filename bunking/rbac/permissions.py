@@ -43,7 +43,8 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
         "It only adds editing to the screens that family-detail access opens."
     ),
     Permission.FINANCIAL_AID_GRANTORS: (
-        "Financial aid grantor directory: add, edit and retire grantors, and map CampMinder descriptions to them"
+        "Add, edit and retire grantors, and match CampMinder's aid descriptions to them. "
+        "Anyone with family-detail access can already see the grantor list."
     ),
     Permission.FINANCIAL_AID_RULES: (
         "Set the aid rules and budget, approve rounds, set session capacity and use the Season › Scenarios tab. "
@@ -130,6 +131,12 @@ PERMISSION_INFO: dict[str, PermissionInfo] = {
         "Casework",
         "Camperships",
         (Screen("Camperships › Requests", "/aid/requests"), Screen("Camperships › Money", "/aid/money")),
+    ),
+    Permission.FINANCIAL_AID_GRANTORS: PermissionInfo(
+        "Camperships: grantors",
+        "Grantors",
+        "Camperships",
+        (Screen("Camperships › Grants", "/aid/grants"),),
     ),
     Permission.FINANCIAL_AID_RULES: PermissionInfo(
         "Camperships: rules and budget",
