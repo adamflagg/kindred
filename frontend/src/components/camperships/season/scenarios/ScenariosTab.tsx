@@ -67,8 +67,9 @@ function rulesName(workspace: ApiAidScenarioWorkspace): string {
 /**
  * The compare's and the trail's view state, in the URL (D15): `panel=trail`, `compare=A1,B2`,
  * `through=deadline|<date>` (D138), `last=1` (RPT-17), `tiers=1`, `trail_page=2`. Replaced, never
- * pushed: Back leaves Scenarios rather than stepping through every tick. `set` is stable (the router's
- * setter sits behind a ref), so a memo or effect that holds it never re-runs for a URL change.
+ * pushed: Back leaves Scenarios rather than stepping through every tick. `set` and `update` are stable
+ * (the router's setter sits behind a ref), so a memo or effect that holds them never re-runs for a URL
+ * change.
  */
 function useScenarioView() {
   const [params, setParams] = useSearchParams()
@@ -76,7 +77,9 @@ function useScenarioView() {
   useEffect(() => {
     setter.current = setParams
   })
-  // Every write is built from the router's previous params, so it never overwrites another one.
+  // Every write copies the params the router holds at the call, so it keeps the other params (as_of,
+  // year, the tab's own). The router reads its last render's params, so two writes in one tick would
+  // lose one: no click or effect here writes twice in a tick.
   const update = useCallback((name: string, change: (previous: string | null) => string | null) => {
     setter.current(
       (previous) => {
@@ -105,6 +108,7 @@ function useScenarioView() {
     lastSeason: params.get('last') === '1',
     byTier: params.get('tiers') === '1',
     page: Number.isInteger(page) && page > 0 ? page : 1,
+    pageRaw: params.get('trail_page'),
     set,
     update,
   }
@@ -191,6 +195,17 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const trail = useAidScenarioTrail(view.page, {
     enabled: canRules && draft !== null && view.panel === 'trail',
   })
+  // A trail_page below 1, not a number, or past the last page reads as the nearest valid page.
+  const lastPage = trail.data
+    ? Math.max(1, Math.ceil(trail.data.total / trail.data.per_page))
+    : null
+  const { page: trailPage, pageRaw } = view
+  useEffect(() => {
+    if (pageRaw === null) return
+    const wanted = lastPage !== null && trailPage > lastPage ? lastPage : trailPage
+    const clean = wanted === 1 ? null : String(wanted)
+    if (clean !== pageRaw) setView('trail_page', clean)
+  }, [pageRaw, trailPage, lastPage, setView])
   // The code a fifth tick was refused for, said under the list until the next tick.
   const [refused, setRefused] = useState<string | null>(null)
   const keepButtons = (
@@ -389,6 +404,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                     <ScenarioTrail
                       trail={data}
                       current={draft.trail_id}
+                      stale={trail.isPlaceholderData}
                       onLoad={(id) => void work.load({ trail_row: id })}
                       onPage={(next) => view.set('trail_page', next === 1 ? null : String(next))}
                     />

@@ -71,6 +71,23 @@ describe('useAidScenarioCompare', () => {
   })
 })
 
+describe('useAidScenarioTrail paging', () => {
+  it('keeps the page showing, as a placeholder, while the next one loads', async () => {
+    const { result, rerender } = renderHook(
+      ({ page }: { page: number }) => useAidScenarioTrail(page),
+      {
+        wrapper,
+        initialProps: { page: 1 },
+      }
+    )
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    fetchSpy.mockImplementation(() => new Promise<Response>(() => undefined))
+    rerender({ page: 2 })
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true))
+    expect(result.current.data).toBeDefined()
+  })
+})
+
 describe('useAidScenarioTrail', () => {
   it('reads a page of 50, newest first', async () => {
     const { result } = renderHook(() => useAidScenarioTrail(2), { wrapper })

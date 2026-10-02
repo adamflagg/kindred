@@ -36,6 +36,7 @@ const asked: Array<{
 }> = []
 const askedTrail: Array<{ page: number; enabled: boolean | undefined }> = []
 let trail: ApiAidScenarioTrailPage = TRAIL
+let trailStale = false
 interface CompareState {
   data: ApiAidScenarioCompare | undefined
   isLoading: boolean
@@ -61,7 +62,7 @@ vi.mock('../../../../hooks/camperships/useAidScenarioCompare', () => ({
   },
   useAidScenarioTrail: (page: number, options: { enabled?: boolean } = {}) => {
     askedTrail.push({ page, enabled: options.enabled })
-    return { data: trail, isLoading: false, error: null }
+    return { data: trail, isLoading: false, isPlaceholderData: trailStale, error: null }
   },
 }))
 const load = vi.fn<(from: { option: string } | { trail_row: string }) => Promise<boolean>>(() =>
@@ -109,6 +110,7 @@ beforeEach(() => {
   asked.length = 0
   askedTrail.length = 0
   trail = TRAIL
+  trailStale = false
   compareState = settled()
   ws = workspace()
   granted = [Permission.FINANCIAL_AID_RULES]
@@ -495,6 +497,39 @@ describe('the trail (D38)', () => {
     trail = { ...TRAIL, total }
     renderAt('/aid/season/scenarios?panel=trail')
     expect(screen.getByRole('button', { name })).toBeInTheDocument()
+  })
+
+  it('says so when a page holds no rows, rather than a header-only table', () => {
+    trail = { ...TRAIL, total: 0, rows: [] }
+    renderAt('/aid/season/scenarios?panel=trail')
+    expect(screen.getByText("Nothing recorded in your draft's trail yet.")).toBeInTheDocument()
+    expect(document.querySelector('[data-trail-row]')).toBeNull()
+    expect(screen.queryByRole('columnheader', { name: 'When' })).toBeNull()
+  })
+
+  it('keeps the page showing, dimmed, with its Updating slot reserved, while the next loads', () => {
+    renderAt('/aid/season/scenarios?panel=trail')
+    expect(screen.getByText('Updating…')).toHaveClass('invisible')
+    expect(screen.getByTestId('scenario-trail-table')).not.toHaveAttribute('data-stale')
+    cleanup()
+    trailStale = true
+    renderAt('/aid/season/scenarios?panel=trail')
+    expect(screen.getByText('Updating…')).not.toHaveClass('invisible')
+    expect(screen.getByTestId('scenario-trail-table')).toHaveAttribute('data-stale')
+  })
+
+  it.each([
+    ['past the last page', '9', '3'],
+    ['below 1', '0', null],
+    ['negative', '-2', null],
+    ['not a number', 'abc', null],
+    ['page 1 spelled out', '1', null],
+    ['a real page', '2', '2'],
+  ])('reads a trail_page %s as the nearest valid page, replacing the URL', (_n, raw, expected) => {
+    trail = { ...TRAIL, total: 120 }
+    renderAt(`/aid/season/scenarios?panel=trail&trail_page=${raw}`)
+    expect(params().get('trail_page')).toBe(expected)
+    if (raw !== expected) expect(screen.getByTestId('nav')).toHaveTextContent('REPLACE')
   })
 
   it('reads the trail only while it is the open panel', () => {
