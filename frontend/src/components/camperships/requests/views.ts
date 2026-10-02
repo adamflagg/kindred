@@ -41,6 +41,7 @@ export type GridColumnKey =
   | 'round'
   | 'decided'
   | 'daysWaiting'
+  | 'tick'
   | 'cancelledOn'
   | 'daysSinceCancelled'
   | 'attention'
@@ -85,7 +86,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'needs-offer',
     label: 'Needs an offer',
     groupBy: 'round',
-    columns: ['session', 'stage', 'round', 'decided', 'attention'],
+    columns: ['session', 'stage', 'round', 'decided', 'tick', 'attention'],
   },
   {
     key: 'holds',
@@ -106,7 +107,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'waiting',
     label: 'Waiting on the family',
     groupBy: 'one',
-    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'attention'],
+    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'tick', 'attention'],
   },
   {
     key: 'appeals',
@@ -447,6 +448,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
       return since === null ? null : daysBetween(since, today)
     },
   },
+  // A button has nothing to export (M16; build ruling 3).
+  tick: { header: 'Tick', width: 150, inCsv: false, value: () => null },
   cancelledOn: { header: 'Cancelled on', width: 96, value: (r) => r.cancellation?.on ?? null },
   daysSinceCancelled: {
     header: 'Days since cancelled',
@@ -473,18 +476,23 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
 
 /**
  * Grid layout T2 (owner lock L3 d): the Camper (and Person id) pin; Requested by (T3) and the
- * Household id sit just left of Needs attention.
+ * Household id sit just left of Needs attention. Tick shows only for someone who can tick
+ * (`casework`, on a live read).
  */
 export function viewColumns(
   view: RequestView,
   showIds: boolean,
-  tickedSeason: boolean
+  tickedSeason: boolean,
+  canTick = false
 ): GridColumnKey[] {
   const tail: GridColumnKey[] = ['requestedBy', ...(showIds ? (['householdId'] as const) : [])]
   // A season before the first ticked one (the read's `ticked_season`, #2994) has nothing to
   // confirm, so no CM ✓ (and no CSV column).
   const middle = view.columns.filter(
-    (key) => key !== 'attention' && (key !== 'confirmed' || tickedSeason)
+    (key) =>
+      key !== 'attention' &&
+      (key !== 'confirmed' || tickedSeason) &&
+      (key !== 'tick' || canTick)
   )
   const attention = view.columns.filter((key) => key === 'attention')
   return ['camper', ...(showIds ? (['personId'] as const) : []), ...middle, ...tail, ...attention]

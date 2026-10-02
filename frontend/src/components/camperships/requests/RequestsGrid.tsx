@@ -19,6 +19,7 @@ import { attentionFor } from './attention'
 import { HouseholdLink, type HouseholdLinks } from './HouseholdLink'
 import { RequestDetailLine } from './RequestDetailLine'
 import { requestStage, roundOf } from './stage'
+import { acceptedTarget, postedTarget, type TickAction } from './ticks'
 import {
   cmChip,
   countWords,
@@ -55,6 +56,10 @@ interface RequestsGridProps {
   readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
   /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
   readonly marked?: ReadonlySet<string> | undefined
+  readonly selected?: ReadonlySet<string> | undefined
+  readonly onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
+  /** `casework` only: a single tick opens the same confirmation as bulk (Decision 15). Stable. */
+  readonly onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 }
 
 const requestKey = (row: ApiAidGridRow) => row.request_id
@@ -72,11 +77,14 @@ const R3_PENDING_CSV: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
 ]
 
 const NAME_LINK = 'text-primary font-medium hover:underline'
+const TICK_BUTTON =
+  'border-border hover:bg-muted rounded border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap'
 
 function renderFor(
   key: GridColumnKey,
   ctx: ColumnContext,
-  links: HouseholdLinks
+  links: HouseholdLinks,
+  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 ): AidColumn<ApiAidGridRow>['render'] {
   switch (key) {
     case 'requestedBy':
@@ -133,6 +141,37 @@ function renderFor(
         const chip = cmChip(row)
         return chip ? <StatusPill tone={chip.tone}>{chip.word}</StatusPill> : '—'
       }
+    case 'tick':
+      return (row) => {
+        if (onTick === undefined) return null
+        if (ctx.view === 'needs_offer') {
+          const target = postedTarget(row)
+          return target ? (
+            <button
+              type="button"
+              className={TICK_BUTTON}
+              onClick={(event) => {
+                event.stopPropagation()
+                onTick(row, 'posted')
+              }}
+            >
+              Posted · locks {formatMoney(target.amount)}
+            </button>
+          ) : null
+        }
+        return acceptedTarget(row) ? (
+          <button
+            type="button"
+            className={TICK_BUTTON}
+            onClick={(event) => {
+              event.stopPropagation()
+              onTick(row, 'accepted')
+            }}
+          >
+            Accepted
+          </button>
+        ) : null
+      }
     case 'attention':
       // The chip only (batch 4); the full text and the next step are in the detail line.
       return (row) => (
@@ -152,10 +191,11 @@ function buildColumns(
   showIds: boolean,
   tickedSeason: boolean,
   today: string,
-  links: HouseholdLinks
+  links: HouseholdLinks,
+  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 ): Array<AidColumn<ApiAidGridRow>> {
   const ctx: ColumnContext = columnContext(view, today)
-  return viewColumns(view, showIds, tickedSeason).map((key) => {
+  return viewColumns(view, showIds, tickedSeason, onTick !== undefined).map((key) => {
     const spec = GRID_COLUMNS[key]
     return {
       key,
@@ -173,7 +213,7 @@ function buildColumns(
       searchable: key === 'requestedBy' || key === 'camper',
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
       sortValue: spec.sortValue,
-      render: renderFor(key, ctx, links),
+      render: renderFor(key, ctx, links, onTick),
       total: spec.money
         ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
         : undefined,
@@ -199,10 +239,13 @@ export function RequestsGrid({
   filters,
   renderBelowHighlighted,
   marked,
+  selected,
+  onSelectedChange,
+  onTick,
 }: RequestsGridProps) {
   const columns = useMemo(
-    () => buildColumns(view, showIds, tickedSeason, today, links),
-    [view, showIds, tickedSeason, today, links]
+    () => buildColumns(view, showIds, tickedSeason, today, links, onTick),
+    [view, showIds, tickedSeason, today, links, onTick]
   )
   const renderDetail = useCallback(
     (row: ApiAidGridRow) => (
@@ -241,6 +284,8 @@ export function RequestsGrid({
       renderDetail={renderDetail}
       renderBelowHighlighted={renderBelowHighlighted}
       markedKeys={marked}
+      selected={selected}
+      onSelectedChange={onSelectedChange}
       footerLabel={footer}
       groupCount={groupCount}
       emptyText="No requests in this view."

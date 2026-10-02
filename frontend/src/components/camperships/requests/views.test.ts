@@ -555,3 +555,16 @@ describe('Not reconciled groups for money with no Posted tick (#2996)', () => {
     })
   })
 })
+
+describe('the Tick column (Decision 8, 15)', () => {
+  it('shows only for someone who can tick, on Needs an offer and Waiting on the family', () => {
+    expect(viewColumns(requestView('needs-offer'), false, true, true)).toContain('tick')
+    expect(viewColumns(requestView('needs-offer'), false, true, false)).not.toContain('tick')
+    expect(viewColumns(requestView('waiting'), false, true, true)).toContain('tick')
+    expect(viewColumns(requestView('all'), false, true, true)).not.toContain('tick')
+  })
+
+  it('stays out of Download CSV: a button has nothing to export (M16; build ruling 3)', () => {
+    expect(GRID_COLUMNS.tick.inCsv).toBe(false)
+  })
+})
