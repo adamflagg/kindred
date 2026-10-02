@@ -3357,6 +3357,22 @@ export type DataQualityResponse = {
 }
 
 /**
+ * DatedColumn
+ *
+ * "+ Add a dated column": a season as of a day (a query over dated records, never a frozen copy).
+ */
+export type DatedColumn = {
+  /**
+   * Season
+   */
+  season: number
+  /**
+   * As Of
+   */
+  as_of: string
+}
+
+/**
  * Day1Category
  */
 export type Day1Category = {
@@ -3717,6 +3733,10 @@ export type DevelopmentColumnOut = {
    * Label
    */
   label: string
+  /**
+   * Not Rebuilt
+   */
+  not_rebuilt?: Array<string>
 }
 
 /**
@@ -4900,6 +4920,159 @@ export type FriendGroupUpdateRequest = {
    * Household Cm Ids
    */
   household_cm_ids?: Array<number> | null
+}
+
+/**
+ * FundingSourceIn
+ */
+export type FundingSourceIn = {
+  /**
+   * Group
+   */
+  group?: string | null
+  /**
+   * Incentive
+   */
+  incentive?: boolean | null
+  /**
+   * Note
+   */
+  note?: string
+}
+
+/**
+ * FundingSourceOut
+ *
+ * One outside funding source with its three facts (D88) and its reporting group (D100). No family data.
+ */
+export type FundingSourceOut = {
+  /**
+   * Source Id
+   */
+  source_id: string
+  /**
+   * Description Key
+   */
+  description_key: string
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Funder Type
+   */
+  funder_type: 'outside' | 'incentive' | 'camp' | 'unknown'
+  /**
+   * Editable
+   */
+  editable?: boolean
+  /**
+   * Families Changed
+   */
+  families_changed?: boolean
+  /**
+   * Incentive
+   */
+  incentive: boolean
+  /**
+   * Group
+   */
+  group: string | null
+  /**
+   * Group Label
+   */
+  group_label: string
+  /**
+   * Needs Group
+   */
+  needs_group: boolean
+  /**
+   * Families
+   */
+  families: Array<string>
+}
+
+/**
+ * FundingSourceRowOut
+ *
+ * One Funding sources row (D159): a funder the grantor directory groups descriptions under, or one description.
+ * `group` / `incentive` show only when every description agrees (else None: "several groups" / mixed).
+ */
+export type FundingSourceRowOut = {
+  /**
+   * Kind
+   */
+  kind: 'funder' | 'description'
+  /**
+   * Section
+   */
+  section: 'outside' | 'camp' | 'unclassified'
+  /**
+   * Grantor Key
+   */
+  grantor_key: string
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Retired
+   */
+  retired: boolean
+  /**
+   * Editable
+   */
+  editable: boolean
+  /**
+   * Incentive
+   */
+  incentive: boolean | null
+  /**
+   * Group
+   */
+  group: string | null
+  /**
+   * Group Label
+   */
+  group_label: string
+  /**
+   * Needs Group
+   */
+  needs_group: boolean
+  /**
+   * Descriptions
+   */
+  descriptions: Array<FundingSourceOut>
+  /**
+   * Families Changed
+   */
+  families_changed?: boolean
+}
+
+/**
+ * FundingSourcesResponse
+ */
+export type FundingSourcesResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Groups
+   */
+  groups: Array<DevelopmentGroupOut>
+  /**
+   * Sources
+   */
+  sources: Array<FundingSourceOut>
+  /**
+   * Rows
+   */
+  rows?: Array<FundingSourceRowOut>
+  /**
+   * Group Change Warning
+   */
+  group_change_warning?: string
 }
 
 /**
@@ -12359,6 +12532,30 @@ export type ReplacementWarningOut = {
 }
 
 /**
+ * ReportColumnsIn
+ */
+export type ReportColumnsIn = {
+  /**
+   * Columns
+   */
+  columns: Array<DatedColumn>
+}
+
+/**
+ * ReportColumnsResponse
+ */
+export type ReportColumnsResponse = {
+  /**
+   * Report
+   */
+  report: 'development'
+  /**
+   * Columns
+   */
+  columns: Array<DatedColumn>
+}
+
+/**
  * ReportRequestIdsOut
  *
  * The requests behind one Statistics or Programs count: exactly the requests that count counts, on the same read
@@ -18412,164 +18609,9 @@ export type YearsAtCampBreakdown = {
 }
 
 /**
- * EditorPreviewOut
- *
- * The editor's line while typing (§4.6): the round's computed award (None: held, or nothing computable),
- * the calculator's trace (the receipt sentence's source), the round's state once it stands (None: it doesn't
- * move) and its display words, the recomputed payer shares (none for one payer), and whether it would wait for
- * finance (D79): `pending_approval` is False when nothing would change; read the row's own state for a round
- * already pending. `total_decided` is the request's total decided after the edit, defined as the grid row's
- * (every round, a clawed-back one included): the figure the row will carry once the edit is saved.
+ * ZipGroupOut
  */
-export type EditorPreviewOutWritable = {
-  /**
-   * Award
-   */
-  award: number | null
-  /**
-   * Trace
-   */
-  trace: Array<TraceStepWritable>
-  /**
-   * Stage After
-   */
-  stage_after:
-    | 'posted'
-    | 'held'
-    | 'pending_approval'
-    | 'refused'
-    | 'not_decided'
-    | 'needs_offer'
-    | 'not_rebuilt'
-    | null
-  /**
-   * Stage After Label
-   */
-  stage_after_label: string | null
-  /**
-   * Shares
-   */
-  shares: Array<PreviewShareOut>
-  /**
-   * Pending Approval
-   */
-  pending_approval: boolean
-  /**
-   * Total Decided
-   */
-  total_decided?: number | null
-}
-
-/**
- * HouseholdPageResponse
- */
-export type HouseholdPageResponseWritable = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Household Cm Id
-   */
-  household_cm_id: number
-  /**
-   * Rules Version
-   */
-  rules_version: number | null
-  /**
-   * Households
-   */
-  households: Array<HouseholdCardOut>
-  totals: HouseholdTotalsOut
-  /**
-   * Requests
-   */
-  requests: Array<HouseholdRequestOutWritable>
-  /**
-   * Incomes
-   */
-  incomes: Array<IncomeOut>
-  /**
-   * Grants
-   */
-  grants: Array<HouseholdGrantRowOut>
-  /**
-   * Expected
-   */
-  expected: Array<ExpectedOut>
-  /**
-   * Postings
-   */
-  postings: Array<AidPostingLine>
-  /**
-   * Links
-   */
-  links: Array<HouseholdLinkRow>
-  /**
-   * History
-   */
-  history: Array<HistoryEntryOut>
-  /**
-   * Override Reasons
-   */
-  override_reasons?: Array<string>
-}
-
-/**
- * HouseholdRequestOut
- */
-export type HouseholdRequestOutWritable = {
-  row: GridRowOut
-  ask: AnswerOut | null
-  /**
-   * Payer Share Status
-   */
-  payer_share_status: '' | 'complete' | 'incomplete'
-  /**
-   * Shares
-   */
-  shares: Array<ShareLineOut>
-  /**
-   * Receipts
-   */
-  receipts: Array<ReceiptOutWritable>
-  /**
-   * Grants
-   */
-  grants?: number
-  /**
-   * Grants Applied
-   */
-  grants_applied?: number | null
-  /**
-   * Grants Beyond Owed
-   */
-  grants_beyond_owed?: number | null
-  round3_context?: Round3ContextOut | null
-}
-
-/**
- * ReceiptOut
- *
- * One round's receipt (D33, D34, §6.5): the calculator's own trace. A posted round's is the snapshot
- * stored at its lock; an unposted round's is live, the request priced now.
- */
-export type ReceiptOutWritable = {
-  /**
-   * Round
-   */
-  round: number
-  /**
-   * Trace
-   */
-  trace: Array<TraceStepWritable>
-  label: ReceiptLabelOut
-}
-
-/**
- * TraceStep
- */
-export type TraceStepWritable = {
+export type ZipGroupOut = {
   /**
    * Key
    */
@@ -18578,24 +18620,79 @@ export type TraceStepWritable = {
    * Label
    */
   label: string
+}
+
+/**
+ * ZipResponse
+ */
+export type ZipResponse = {
   /**
-   * Value
+   * Year
    */
-  value?: string | number | string | boolean | null
+  year: number
   /**
-   * Inputs
+   * Figures On
    */
-  inputs?: {
-    [key: string]: string | number | string | boolean | null
-  }
+  figures_on: string
   /**
-   * Bound
+   * Group
    */
-  bound?: string | null
+  group: string | null
   /**
-   * Note
+   * Group Label
    */
-  note?: string | null
+  group_label: string
+  /**
+   * Groups
+   */
+  groups?: Array<ZipGroupOut>
+  every_camper: ZipTableOut
+  with_aid: ZipTableOut | null
+  /**
+   * Not Built
+   */
+  not_built: Array<NotBuiltOut>
+}
+
+/**
+ * ZipRowOut
+ */
+export type ZipRowOut = {
+  /**
+   * Zip
+   */
+  zip: string
+  /**
+   * Kind
+   */
+  kind: 'us' | 'outside_us' | 'none'
+  /**
+   * Campers
+   */
+  campers: number
+  /**
+   * Families
+   */
+  families: number
+  /**
+   * Dollars
+   */
+  dollars: number | null
+}
+
+/**
+ * ZipTableOut
+ */
+export type ZipTableOut = {
+  /**
+   * Rows
+   */
+  rows: Array<ZipRowOut>
+  total: ZipRowOut
+  /**
+   * Zips
+   */
+  zips: number
 }
 
 /**
@@ -26154,6 +26251,194 @@ export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponse
 
 export type GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponse =
   GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponses[keyof GetReportDevelopmentApiFinancialAidReportsYearDevelopmentGetResponses]
+
+export type GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: {
+    /**
+     * Group
+     */
+    group?: string | null
+  }
+  url: '/api/financial-aid/reports/{year}/development/zip'
+}
+
+export type GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetError =
+  GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetErrors[keyof GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetErrors]
+
+export type GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ZipResponse
+}
+
+export type GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetResponse =
+  GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetResponses[keyof GetReportDevelopmentZipApiFinancialAidReportsYearDevelopmentZipGetResponses]
+
+export type GetReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/financial-aid/reports/development/columns'
+}
+
+export type GetReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportColumnsResponse
+}
+
+export type GetReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsGetResponse =
+  GetReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsGetResponses[keyof GetReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsGetResponses]
+
+export type SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutData = {
+  body: ReportColumnsIn
+  path?: never
+  query?: never
+  url: '/api/financial-aid/reports/development/columns'
+}
+
+export type SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutError =
+  SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutErrors[keyof SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutErrors]
+
+export type SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportColumnsResponse
+}
+
+export type SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutResponse =
+  SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutResponses[keyof SaveReportDevelopmentColumnsApiFinancialAidReportsDevelopmentColumnsPutResponses]
+
+export type GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query?: never
+  url: '/api/financial-aid/reports/{year}/funding-sources'
+}
+
+export type GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetError =
+  GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetErrors[keyof GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetErrors]
+
+export type GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: FundingSourcesResponse
+}
+
+export type GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetResponse =
+  GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetResponses[keyof GetFundingSourcesApiFinancialAidReportsYearFundingSourcesGetResponses]
+
+export type SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutData = {
+  body: FundingSourceIn
+  path: {
+    /**
+     * Year
+     */
+    year: number
+    /**
+     * Source Id
+     */
+    source_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/reports/{year}/funding-sources/{source_id}'
+}
+
+export type SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutError =
+  SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutErrors[keyof SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutErrors]
+
+export type SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: FundingSourceOut
+}
+
+export type SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutResponse =
+  SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutResponses[keyof SaveFundingSourceApiFinancialAidReportsYearFundingSourcesSourceIdPutResponses]
+
+export type SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutData =
+  {
+    body: FundingSourceIn
+    path: {
+      /**
+       * Year
+       */
+      year: number
+      /**
+       * Grantor Key
+       */
+      grantor_key: string
+    }
+    query?: never
+    url: '/api/financial-aid/reports/{year}/funding-sources/funders/{grantor_key}'
+  }
+
+export type SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError
+  }
+
+export type SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutError =
+  SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutErrors[keyof SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutErrors]
+
+export type SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: FundingSourceRowOut
+  }
+
+export type SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutResponse =
+  SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutResponses[keyof SaveFundingSourceFunderApiFinancialAidReportsYearFundingSourcesFundersGrantorKeyPutResponses]
 
 export type GetCamperJourneyApiCampersPersonCmIdJourneyGetData = {
   body?: never
