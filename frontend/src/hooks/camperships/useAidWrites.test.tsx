@@ -4,7 +4,7 @@ import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import { useAidKeyAsk } from './useAidWrites'
+import { useAidKeyAsk, useAidTickAccepted, useAidTickPosted } from './useAidWrites'
 
 vi.mock('../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
@@ -84,5 +84,35 @@ describe('useAidKeyAsk', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(saved).toBe(true)
+  })
+})
+
+describe('useAidTickPosted', () => {
+  it('posts the rows to the season and refreshes the reads', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidTickPosted(), { wrapper })
+    const body = { rows: [{ request_id: 'reqemma00000001', round: 1 as const, amount: 1420 }] }
+    await act(() => result.current.mutateAsync({ year: 2027, body }))
+    const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/financial-aid/decisions/2027/posted')
+    expect(options.method).toBe('POST')
+    expect(JSON.parse(options.body as string)).toEqual(body)
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'remaining'] })
+  })
+})
+
+describe('useAidTickAccepted', () => {
+  it('posts the accepted ticks through fetchWithAuth, and refreshes the reads', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useAidTickAccepted(), { wrapper })
+    const body = { rows: [{ request_id: 'reqsamuel000005', round: 1 as const }], accepted: true }
+    await act(() => result.current.mutateAsync({ year: 2027, body }))
+    const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/financial-aid/decisions/2027/accepted')
+    expect(options.method).toBe('POST')
+    expect(JSON.parse(options.body as string)).toEqual(body)
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer test-jwt')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['financial-aid', 'grid'] })
   })
 })

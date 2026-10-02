@@ -17,6 +17,7 @@ import { ConfirmationState, IdChip, StatusPill } from '../kit/Pills'
 import { matchedId, type CellValue } from '../kit/table'
 import { attentionFor } from './attention'
 import { requestStage, roundOf } from './stage'
+import { acceptedTarget, postedTarget, type TickAction } from './ticks'
 import {
   countWords,
   familyGroup,
@@ -52,6 +53,10 @@ interface RequestsGridProps {
   readonly renderBelowHighlighted?: ((row: ApiAidGridRow, nav: AidRowNav) => ReactNode) | undefined
   /** Rows whose save failed (Decision 3): marked in place. Stable (useMemo). */
   readonly marked?: ReadonlySet<string> | undefined
+  readonly selected?: ReadonlySet<string> | undefined
+  readonly onSelectedChange?: ((next: ReadonlySet<string>) => void) | undefined
+  /** `casework` only: a single tick opens the same confirmation as bulk (Decision 15). Stable. */
+  readonly onTick?: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 }
 
 const requestKey = (row: ApiAidGridRow) => row.request_id
@@ -70,6 +75,9 @@ const R3_PENDING_CSV: ReadonlyArray<AidCsvExtra<ApiAidGridRow>> = [
 const NAME_LINK = 'text-primary font-medium hover:underline'
 const ACTION_LINK_CLASS =
   'border-border text-primary shrink-0 rounded border px-1.5 text-xs font-medium hover:underline'
+
+const TICK_BUTTON =
+  'border-border hover:bg-muted rounded border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap'
 
 function HouseholdLink({
   row,
@@ -102,7 +110,8 @@ function HouseholdLink({
 function renderFor(
   key: GridColumnKey,
   ctx: ColumnContext,
-  links: HouseholdLinks
+  links: HouseholdLinks,
+  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 ): AidColumn<ApiAidGridRow>['render'] {
   switch (key) {
     case 'family':
@@ -145,16 +154,63 @@ function renderFor(
         row.confirmation ? <ConfirmationState confirmation={row.confirmation} /> : '—'
     case 'cancelledOn':
       return (row) => (row.cancellation?.on ? formatShortDate(row.cancellation.on) : '—')
+    case 'tick':
+      return (row) => {
+        if (onTick === undefined) return null
+        if (ctx.view === 'needs_offer') {
+          const target = postedTarget(row)
+          return target ? (
+            <button
+              type="button"
+              className={TICK_BUTTON}
+              onClick={(event) => {
+                event.stopPropagation()
+                onTick(row, 'posted')
+              }}
+            >
+              Posted · locks {formatMoney(target.amount)}
+            </button>
+          ) : null
+        }
+        return acceptedTarget(row) ? (
+          <button
+            type="button"
+            className={TICK_BUTTON}
+            onClick={(event) => {
+              event.stopPropagation()
+              onTick(row, 'accepted')
+            }}
+          >
+            Accepted
+          </button>
+        ) : null
+      }
     case 'attention':
       return (row, { highlighted }) => {
         const found = attentionFor(row, ctx.view, ctx.today)
         if (found === null) return null
-        const action =
-          ctx.view === 'all' && found.action !== null ? (
-            <HouseholdLink row={row} links={links} className={ACTION_LINK_CLASS}>
-              {found.action}
-            </HouseholdLink>
-          ) : undefined
+        let action: ReactNode = undefined
+        if (ctx.view === 'all' && found.action !== null) {
+          action =
+            found.action === 'Mark accepted' &&
+            onTick !== undefined &&
+            acceptedTarget(row) !== null ? (
+              <button
+                type="button"
+                className={ACTION_LINK_CLASS}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onTick(row, 'accepted')
+                }}
+              >
+                Mark accepted
+              </button>
+            ) : (
+              <HouseholdLink row={row} links={links} className={ACTION_LINK_CLASS}>
+                {found.action}
+              </HouseholdLink>
+            )
+        }
         return <NeedsAttentionCell item={found.item} highlighted={highlighted} action={action} />
       }
     default: {
@@ -168,10 +224,11 @@ function buildColumns(
   view: RequestView,
   showIds: boolean,
   today: string,
-  links: HouseholdLinks
+  links: HouseholdLinks,
+  onTick: ((row: ApiAidGridRow, action: TickAction) => void) | undefined
 ): Array<AidColumn<ApiAidGridRow>> {
   const ctx: ColumnContext = { view: view.key, today }
-  return viewColumns(view, showIds).map((key) => {
+  return viewColumns(view, showIds, onTick !== undefined).map((key) => {
     const spec = GRID_COLUMNS[key]
     return {
       key,
@@ -183,7 +240,7 @@ function buildColumns(
       inCsv: spec.inCsv,
       searchable: key === 'family' || key === 'camper',
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
-      render: renderFor(key, ctx, links),
+      render: renderFor(key, ctx, links, onTick),
       total: spec.money
         ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
         : undefined,
@@ -207,10 +264,13 @@ export function RequestsGrid({
   links,
   renderBelowHighlighted,
   marked,
+  selected,
+  onSelectedChange,
+  onTick,
 }: RequestsGridProps) {
   const columns = useMemo(
-    () => buildColumns(view, showIds, today, links),
-    [view, showIds, today, links]
+    () => buildColumns(view, showIds, today, links, onTick),
+    [view, showIds, today, links, onTick]
   )
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [
@@ -236,6 +296,8 @@ export function RequestsGrid({
       onHighlight={onHighlight}
       renderBelowHighlighted={renderBelowHighlighted}
       markedKeys={marked}
+      selected={selected}
+      onSelectedChange={onSelectedChange}
       footerLabel={footer}
       groupCount={groupCount}
       emptyText="No requests in this view."

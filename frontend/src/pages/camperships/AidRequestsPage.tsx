@@ -18,7 +18,15 @@ import {
   RequestsGrid,
   type HouseholdLinks,
 } from '../../components/camperships/requests/RequestsGrid'
+import { BulkBar, type TickResult } from '../../components/camperships/requests/BulkBar'
+import { BulkConfirmDialog } from '../../components/camperships/requests/BulkConfirmDialog'
 import { RequestViewNav } from '../../components/camperships/requests/RequestViewNav'
+import {
+  tickedLine,
+  tickPlan,
+  type TickAction,
+  type TickPlan,
+} from '../../components/camperships/requests/ticks'
 import {
   useGridParams,
   type GridParamName,
@@ -117,6 +125,32 @@ export default function AidRequestsPage() {
         body: { round: 2, amount: entry.amount, asked_on: campToday(), note: entry.reason },
       }),
     [keyAsk]
+  )
+  // Bulk ticks (§4.10). The plan is computed at the click from the rows as they stand then and
+  // frozen in `plan`; a refetch after it never rewrites what the person is confirming.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  const [plan, setPlan] = useState<TickPlan | null>(null)
+  const [result, setResult] = useState<TickResult | null>(null)
+  // Only rows still on screen count: a filter or view change can hide a selected row.
+  const selectedRows = useMemo(
+    () => visible.filter((r) => selected.has(r.request_id)),
+    [visible, selected]
+  )
+  const onTick = useCallback((r: ApiAidGridRow, action: TickAction) => {
+    setResult(null)
+    setPlan(tickPlan([r], action))
+  }, [])
+  const closePlan = useCallback(() => setPlan(null), [])
+  const tickDone = useCallback(
+    (words: string) => {
+      // Only the rows this tick wrote leave the selection: the person may have changed it while
+      // the write was in flight, and a row that had nothing to tick stays selected.
+      const ticked = new Set((plan?.rows ?? []).map((r) => r.requestId))
+      setSelected((current) => new Set([...current].filter((key) => !ticked.has(key))))
+      setResult({ words, ticked: (plan?.rows ?? []).map(tickedLine) })
+      setPlan(null)
+    },
+    [plan]
   )
   // Build ruling 2: a failure on a row the read no longer has is pruned, so it can't block a leave.
   const rowKeys = useMemo(() => new Set((rows ?? []).map((r) => r.request_id)), [rows])
@@ -263,6 +297,20 @@ export default function AidRequestsPage() {
           </p>
         )
       })}
+      {canWork && (
+        <BulkBar
+          count={selectedRows.length}
+          onTick={(action) => {
+            setResult(null)
+            setPlan(tickPlan(selectedRows, action))
+          }}
+          onClear={() => setSelected(new Set())}
+          result={result}
+        />
+      )}
+      {canWork && (
+        <BulkConfirmDialog plan={plan} year={year} onClose={closePlan} onDone={tickDone} />
+      )}
       <QueryGuard
         isLoading={grid.isLoading}
         // Decision 33: a failed background refetch keeps what loaded.
@@ -299,6 +347,9 @@ export default function AidRequestsPage() {
                   : undefined
               }
               links={links}
+              selected={canWork ? selected : undefined}
+              onSelectedChange={canWork ? setSelected : undefined}
+              onTick={canWork ? onTick : undefined}
             />
           )
         }

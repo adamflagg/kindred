@@ -53,8 +53,11 @@ vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
 const keyAsk = vi.fn(() =>
   Promise.resolve({ year: 2027, written: 1, unchanged: 0, operation_id: 'op0000000000001' })
 )
+const tickPosted = vi.fn()
 vi.mock('../../hooks/camperships/useAidWrites', () => ({
   useAidKeyAsk: () => ({ mutateAsync: keyAsk }),
+  useAidTickPosted: () => ({ mutateAsync: tickPosted, isPending: false }),
+  useAidTickAccepted: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 const LIVE: ApiAidGrid = { year: 2027, rules_version: 1, rows: [...GRID_ROWS] }
@@ -623,5 +626,87 @@ describe('the editor row (§4.6; D22; owner rulings A and B)', () => {
       })
       expect(screen.getByTestId('where')).toHaveTextContent('row=reqemma00000001')
     })
+  })
+})
+
+describe('ticks (§4.10, §5.2)', () => {
+  beforeEach(() => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    tickPosted.mockReset()
+  })
+
+  async function selectBoth() {
+    for (const camper of ['Emma Johnson', 'Olivia Chen']) {
+      const row = screen.getByText(camper).closest('tr') as HTMLElement
+      await userEvent.click(within(row).getByRole('checkbox', { name: 'Select' }))
+    }
+  }
+
+  it('confirms a bulk Posted tick on the selected rows, with what it locks', async () => {
+    renderAt('/aid/requests')
+    await selectBoth()
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Tick Posted…' }))
+    expect(
+      screen.getByText('Tick Posted on 2 requests · 2 families · $2,200 locked')
+    ).toBeInTheDocument()
+  })
+
+  it("ticks one row from Needs an offer's Tick column through the same confirmation", async () => {
+    renderAt('/aid/requests?view=needs-offer')
+    await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $1,420' }))
+    expect(
+      screen.getByText('Tick Posted on 1 request · 1 family · $1,420 locked')
+    ).toBeInTheDocument()
+  })
+
+  it('offers no selection and no Tick column without casework', () => {
+    granted = ['financial_aid.view']
+    renderAt('/aid/requests?view=needs-offer')
+    expect(screen.queryByRole('checkbox', { name: 'Select all' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Posted · locks/ })).toBeNull()
+  })
+
+  it('computes the confirmation at the click: a refetch afterwards does not rewrite it', async () => {
+    renderAt('/aid/requests?view=needs-offer')
+    await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $1,420' }))
+    grid = {
+      data: {
+        ...LIVE,
+        rows: GRID_ROWS.map((r) =>
+          r.request_id === 'reqemma00000001'
+            ? { ...r, rounds: [roundOut(1, 'needs_offer', { ask: 2000, decided: 1500 })] }
+            : r
+        ),
+      },
+      isLoading: false,
+      error: null,
+    }
+    await refetch()
+    expect(
+      screen.getByText('Tick Posted on 1 request · 1 family · $1,420 locked')
+    ).toBeInTheDocument()
+  })
+
+  it('lists exactly what was ticked, and keeps the selection of rows it did not tick', async () => {
+    tickPosted.mockResolvedValue({
+      year: 2027,
+      written: 1,
+      unchanged: 0,
+      operation_id: 'op1',
+      total_locked: 1420,
+    })
+    renderAt('/aid/requests')
+    await selectBoth()
+    const liam = screen.getByText('Liam Garcia').closest('tr') as HTMLElement
+    await userEvent.click(within(liam).getByRole('checkbox', { name: 'Select' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tick Posted…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByText(/Ticked Posted on 1 request/)).toBeInTheDocument()
+    expect(screen.getByText(/Emma Johnson R1/)).toBeInTheDocument()
+    expect(screen.getByText(/Olivia Chen R2/)).toBeInTheDocument()
+    expect(screen.queryByText('Tick Posted on 2 requests · 2 families · $2,200 locked')).toBeNull()
+    // Liam had nothing to tick, so he stays selected for the next action.
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
   })
 })

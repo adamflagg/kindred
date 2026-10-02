@@ -270,3 +270,16 @@ describe('requestsCsvName (§11, D70; Decision 32)', () => {
     ).toBe('camperships-requests-all-round-2-posted-2027.csv')
   })
 })
+
+describe('the Tick column (Decision 8, 15)', () => {
+  it('shows only for someone who can tick, on Needs an offer and Waiting on the family', () => {
+    expect(viewColumns(requestView('needs-offer'), false, true)).toContain('tick')
+    expect(viewColumns(requestView('needs-offer'), false, false)).not.toContain('tick')
+    expect(viewColumns(requestView('waiting'), false, true)).toContain('tick')
+    expect(viewColumns(requestView('all'), false, true)).not.toContain('tick')
+  })
+
+  it('stays out of Download CSV: a button has nothing to export (M16; build ruling 3)', () => {
+    expect(GRID_COLUMNS.tick.inCsv).toBe(false)
+  })
+})

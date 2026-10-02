@@ -39,6 +39,7 @@ export type GridColumnKey =
   | 'round'
   | 'decided'
   | 'daysWaiting'
+  | 'tick'
   | 'cancelledOn'
   | 'daysSinceCancelled'
   | 'attention'
@@ -83,7 +84,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'needs-offer',
     label: 'Needs an offer',
     groupBy: 'round',
-    columns: ['session', 'stage', 'round', 'decided', 'attention'],
+    columns: ['session', 'stage', 'round', 'decided', 'tick', 'attention'],
   },
   {
     key: 'holds',
@@ -104,7 +105,7 @@ export const REQUEST_VIEWS: readonly RequestView[] = [
     slug: 'waiting',
     label: 'Waiting on the family',
     groupBy: 'one',
-    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'attention'],
+    columns: ['session', 'round', 'roundPosted', 'daysWaiting', 'tick', 'attention'],
   },
   {
     key: 'appeals',
@@ -310,6 +311,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
       return since === null ? null : daysBetween(since, today)
     },
   },
+  // A button has nothing to export (M16; build ruling 3).
+  tick: { header: 'Tick', width: 150, inCsv: false, value: () => null },
   cancelledOn: { header: 'Cancelled on', width: 96, value: (r) => r.cancellation?.on ?? null },
   daysSinceCancelled: {
     header: 'Days since cancelled',
@@ -333,8 +336,10 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
 const IDENTITY: readonly GridColumnKey[] = ['family', 'camper']
 const IDS: readonly GridColumnKey[] = ['householdId', 'personId']
 
-export function viewColumns(view: RequestView, showIds: boolean): GridColumnKey[] {
-  return [...IDENTITY, ...(showIds ? IDS : []), ...view.columns]
+/** A view's columns. Tick shows only for someone who can tick (`casework`, on a live read). */
+export function viewColumns(view: RequestView, showIds: boolean, canTick = false): GridColumnKey[] {
+  const columns = view.columns.filter((key) => canTick || key !== 'tick')
+  return [...IDENTITY, ...(showIds ? IDS : []), ...columns]
 }
 
 export type RoundFilter = 1 | 2 | 3

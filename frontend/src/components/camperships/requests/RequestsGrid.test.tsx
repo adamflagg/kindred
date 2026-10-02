@@ -22,10 +22,12 @@ function Grid({
   slug = 'all',
   showIds = false,
   rows = GRID_ROWS,
+  onTick,
 }: {
   slug?: string
   showIds?: boolean
   rows?: readonly ApiAidGridRow[]
+  onTick?: (row: ApiAidGridRow, action: 'posted' | 'accepted') => void
 }) {
   const view = requestView(slug)
   const [highlighted, setHighlighted] = useState<string | null>(null)
@@ -51,6 +53,7 @@ function Grid({
           setHighlighted(key)
         }}
         links={links}
+        onTick={onTick}
       />
     </MemoryRouter>
   )
@@ -261,5 +264,61 @@ describe('RequestsGrid', () => {
       render(<Grid slug="all" rows={[split]} />)
       expect(within(rowOf('Samuel Johnson')).getAllByText('$1,500').length).toBeGreaterThan(0)
     })
+  })
+})
+
+// Posted and waiting, nothing else wrong: its one attention note is the waiting one.
+const WAITING = gridRow({
+  request_id: 'reqwaiting00001',
+  rounds: [roundOut(1, 'posted', { decided: 900, posted: 900, posted_on: '2027-03-09' })],
+  total_decided: 900,
+  total_posted: 900,
+  queues: ['waiting_on_family'],
+})
+
+describe('ticks in the grid (§4.10; Decision 15)', () => {
+  beforeEach(() => {
+    highlights = []
+  })
+
+  it('draws no Tick column without a tick handler', () => {
+    render(<Grid slug="needs-offer" />)
+    expect(screen.queryByRole('button', { name: /^Posted · locks/ })).toBeNull()
+    expect(screen.queryByRole('columnheader', { name: 'Tick' })).toBeNull()
+  })
+
+  it('ticks Posted at the decided amount on Needs an offer, without highlighting the row', async () => {
+    const onTick = vi.fn()
+    render(<Grid slug="needs-offer" onTick={onTick} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Posted · locks $780' }))
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqolivia000003' }),
+      'posted'
+    )
+    expect(highlights).toEqual([])
+  })
+
+  it('ticks Accepted from Waiting on the family, and from Mark accepted on All', async () => {
+    const onTick = vi.fn()
+    const { unmount } = render(<Grid slug="waiting" onTick={onTick} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Accepted' }))
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqsamuel000005' }),
+      'accepted'
+    )
+    unmount()
+    onTick.mockClear()
+    render(<Grid slug="all" rows={[WAITING]} onTick={onTick} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Mark accepted' }))
+    expect(onTick).toHaveBeenCalledWith(
+      expect.objectContaining({ request_id: 'reqwaiting00001' }),
+      'accepted'
+    )
+    expect(highlights).toEqual([])
+  })
+
+  it('leaves Mark accepted a household link when the viewer cannot tick', () => {
+    render(<Grid slug="all" rows={[WAITING]} />)
+    expect(screen.getByRole('link', { name: 'Mark accepted' })).toBeInTheDocument()
   })
 })
