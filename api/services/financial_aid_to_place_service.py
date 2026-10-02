@@ -305,13 +305,14 @@ def _joined(texts: Sequence[str]) -> str:
 
 def not_ticked_out(transaction_cm_id: int, tick: LedgerTick, reasons: Sequence[ChangedReason]) -> NotTickedOut:
     """D16, owner ruling 2026-10-01, refined (option a): the money is placed, and this round's automatic tick is
-    withheld. Any later tick, a person's (tick_posted takes only today's decided amount) or the next ledger sync's
-    (SP10b-1 Decision 2, unchanged), locks today's decided amount, so the text says that, not a posting-day amount."""
+    withheld, at night too. A person's tick locks the higher of its decided amount at the end of the posting day
+    (where 3c-2 rebuilds it) and today's (D152; owner, B1 Q1 2026-10-02), so the text says that."""
     n, day = tick.round, f"{tick.posted_on:%b} {tick.posted_on.day}"
     why = (
         f"Round {n} was not ticked automatically: after CampMinder posted it on {day}, "
-        f"{_joined([r.text for r in reasons])}. Ticking it, by hand or by the next ledger sync, locks today's decided "
-        "amount. Check it against what the family was offered before it ticks."
+        f"{_joined([r.text for r in reasons])}. The nightly ledger sync leaves it too: tick it by hand. That locks "
+        f"the higher of its decided amount on {day} (where Kindred can rebuild that day) and today's. Check it "
+        "against what the family was offered first."
     )
     return NotTickedOut(
         transaction_cm_id=transaction_cm_id,
