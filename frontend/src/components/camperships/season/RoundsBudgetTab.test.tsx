@@ -105,7 +105,7 @@ describe('RoundsBudgetTab (spec §7.2)', () => {
     renderAt('/aid/season/rounds-budget')
     expect(within(line('pool_a:1')).getByRole('link', { name: '3 · $8,100' })).toHaveAttribute(
       'href',
-      '/aid/requests?view=needs-offer&pool=pool_a&counted=1&year=2027'
+      '/aid/requests?view=needs-offer&pool=pool_a&round=1&counted=1&year=2027'
     )
     expect(within(line('pool_a:3:pending')).getByText('1 · $650')).toBeInTheDocument()
     expect(
