@@ -550,9 +550,12 @@ async def test_number_of_awards_says_what_an_award_is_and_the_average_divides_by
     funder's, never one per line."""
     out = await _service(_development(), register=[grant_row("reqemma00000001", "500")]).development(YEAR)
     awards = _row(out, "awards", "camp_pool").definition
-    assert "distinct" in awards and "session" in awards and "counts as one" not in awards
+    assert "distinct" in awards
+    assert "session" in awards
+    assert "counts as one" not in awards
     average = _row(out, "average_award", "camp_pool").definition
-    assert "Number of awards" in average and "counts as one" not in average
+    assert "Number of awards" in average
+    assert "counts as one" not in average
 
 
 async def test_a_grant_line_carries_its_session_into_the_awards_count() -> None:

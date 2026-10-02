@@ -59,4 +59,5 @@ def test_who_counts_names_the_aid_eligible_population() -> None:
     a session that is not aid-eligible is not counted anywhere (that is a metrics question, not a grants one)."""
     text = BY_KEY["dev_recipients"].text
     assert "aid-eligible" in text
-    assert "only" in text and "not counted anywhere" in text
+    assert "only attendees" in text.lower()
+    assert "not counted anywhere" in text
