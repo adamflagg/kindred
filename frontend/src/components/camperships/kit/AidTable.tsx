@@ -242,11 +242,12 @@ export function AidTable<Row>({
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>())
 
   const searchable = useMemo(() => columns.filter((c) => c.searchable), [columns])
-  const matches = useCallback(
-    (row: Row) =>
-      matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], query),
-    [searchable, searchExtra, query]
+  const matchesQuery = useCallback(
+    (row: Row, text: string) =>
+      matchesSearch([...searchable.map((c) => c.value(row)), ...(searchExtra?.(row) ?? [])], text),
+    [searchable, searchExtra]
   )
+  const matches = useCallback((row: Row) => matchesQuery(row, query), [matchesQuery, query])
   // The row you are on stays on screen through a search: its editor, its typing and its failure are
   // on it. It is display only (owner ruling 2026-10-01): totals, group counts and the CSV always
   // mean the rows matching the search. Only a highlight the search would hide changes `kept`, so
@@ -305,6 +306,16 @@ export function AidTable<Row>({
       else next.add(key)
     }
     selection.onChange(next)
+  }
+  // The selection means the rows matching the search (R1, as the totals and the CSV do): typing a
+  // search drops ticks it hides. Event-driven, and silent when nothing is dropped.
+  const search = (text: string) => {
+    setQuery(text)
+    if (selection === null) return
+    const keep = new Set(
+      rows.filter((r) => selection.selected.has(rowKey(r)) && matchesQuery(r, text)).map(rowKey)
+    )
+    if (keep.size < selection.selected.size) selection.onChange(keep)
   }
   const toggleOne = (key: string) => {
     if (selection === null) return
@@ -531,7 +542,7 @@ export function AidTable<Row>({
             aria-label="Search"
             placeholder="Search names or CM IDs"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => search(event.target.value)}
             className={SEARCH_INPUT}
           />
         </div>
@@ -661,6 +672,9 @@ export function AidTable<Row>({
                       >
                         {selection && (
                           <td
+                            // A tick is not a click on the row, and nor is the cell around the box:
+                            // no highlight, so no save-then-move.
+                            onClick={(event) => event.stopPropagation()}
                             className={join(
                               TD,
                               isHighlighted ? ROW_HIGHLIGHT : CELL_BG,
@@ -672,8 +686,6 @@ export function AidTable<Row>({
                               type="checkbox"
                               aria-label="Select"
                               checked={selection.selected.has(key)}
-                              // A tick is not a click on the row: no highlight, so no save-then-move.
-                              onClick={(event) => event.stopPropagation()}
                               onChange={() => toggleOne(key)}
                             />
                           </td>
@@ -739,11 +751,12 @@ export function AidTable<Row>({
                   const spans = index === 0 && labelSpan > 1
                   // The checkbox column has no footer cell: the first one covers it too.
                   const leadsSelect = index === 0 && selectable
+                  const footerSpan = (spans ? labelSpan : 1) + (leadsSelect ? 1 : 0)
                   const total = c.total ? c.total(visible) : null
                   return (
                     <td
                       key={c.key}
-                      colSpan={(spans ? labelSpan : 1) + (leadsSelect ? 1 : 0) || undefined}
+                      colSpan={footerSpan > 1 ? footerSpan : undefined}
                       style={leadsSelect ? { left: 0 } : pinStyle(c)}
                       className={join(
                         scrollBox && index === 0 && footerLabel ? TFOOT_CELL_WRAP : TFOOT_CELL,
