@@ -164,6 +164,22 @@ class ProgramsResponse(BaseModel):
     not_rebuilt: list[NotRebuiltOut]
 
 
+# --- the requests behind a count (slice 4 asks 1 and 8; D20) ----------------------------------------------------
+
+
+class ReportRequestIdsOut(BaseModel):
+    """The requests behind one Statistics or Programs count: exactly the requests that count counts, on the same read
+    (the same chips, basis, reporting control and date). `financial_aid.view` only: development's summary never sees
+    a request (D65)."""
+
+    year: int
+    as_of: date | None  # None: live
+    as_of_axis: Literal["campminder", "recorded"] | None  # the axis `as_of` was read on, as the parent reads send it
+    figures_on: date  # the day the ids are as of: today (camp time) or as_of
+    request_set: RequestSetNote | None  # D138: set when a reporting control is on
+    request_ids: list[str]  # sorted; their number is the count's
+
+
 # --- the committee's year-over-year tables (§9.7) ----------------------------------------------------------------
 
 

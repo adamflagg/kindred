@@ -4,15 +4,15 @@ the fictional Reports season (reports_fakes.report_season: Emma posted 1,500 at 
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
 from api.services.financial_aid_cancellations import CancelEvent
-from api.services.financial_aid_reports_service import _pool_label
+from api.services.financial_aid_reports_service import ReportsRefusedError, _pool_label
 from tests.unit.api.services.decisions_fakes import ACTOR, FakeDecisionsStore
 from tests.unit.api.services.financial_aid_fakes import YEAR
-from tests.unit.api.services.reports_fakes import EMMA, report_season
+from tests.unit.api.services.reports_fakes import EMMA, LIAM, report_season
 from tests.unit.api.services.test_financial_aid_reports_service import NOW, RULES, _service
 
 pytestmark = pytest.mark.asyncio
@@ -61,3 +61,78 @@ def test_a_pool_label_reads_no_pool_for_null_and_the_key_for_a_pool_the_rules_do
     """Ask 3's two edges: never a blank label."""
     assert _pool_label(RULES, None) == "No pool"
     assert _pool_label(RULES, "retired_pool") == "retired_pool"
+
+
+# --- asks 1 and 8: the requests behind a count -------------------------------------------------------------------
+
+
+async def test_a_statistics_count_opens_exactly_its_requests() -> None:
+    """Emma: tier 2, posted. Liam: tier 3, decided only (D130)."""
+    service = _service(report_season())
+    tier2 = await service.statistics_request_ids(YEAR, part="tier", table="camp", tier=2, count="apps")
+    assert (tier2.request_ids, tier2.as_of, tier2.request_set) == ([EMMA], None, None)
+    total = await service.statistics_request_ids(YEAR, part="total", table="camp", count="awarded")
+    assert total.request_ids == [EMMA]
+    posted = await service.statistics_request_ids(YEAR, part="tier", table="camp", tier=3, count="decided")
+    decided = await service.statistics_request_ids(
+        YEAR, part="tier", table="camp", tier=3, count="decided", basis="posted_and_decided"
+    )
+    assert (posted.request_ids, decided.request_ids) == ([], [LIAM])
+
+
+async def test_rpt_22_and_rpt_23_rows_open_their_requests() -> None:
+    """Ask 8: RPT-23's waiting (Emma: posted, not accepted, no Round 2 ask)."""
+    waiting = await _service(report_season()).statistics_request_ids(
+        YEAR, part="outcome", outcome_row="headline", outcome="waiting"
+    )
+    assert waiting.request_ids == [EMMA]
+    cancelled = await _service(_cancel_emma(report_season())).statistics_request_ids(
+        YEAR, part="cancelled", table="camp", reason="aid_not_enough", pool="camp_pool", posted_round=1
+    )
+    assert cancelled.request_ids == [EMMA]
+
+
+async def test_the_ids_follow_the_reads_date_and_its_request_set() -> None:
+    """D20 on a past day and under a reporting control: the ids are that read's count, never today's."""
+    service = _service(report_season())
+    before = await service.statistics_request_ids(YEAR, part="total", count="awarded", as_of=date(2027, 3, 8))
+    assert (before.request_ids, before.as_of, before.figures_on) == ([], date(2027, 3, 8), date(2027, 3, 8))
+    assert (await service.statistics(YEAR, as_of=date(2027, 3, 8))).total.awarded_count == 0
+    late = _service(report_season(liam_late=True))
+    cut = await late.statistics_request_ids(YEAR, part="total", count="apps", through=date(2027, 2, 1))
+    assert cut.request_ids == [EMMA]
+    assert cut.request_set is not None
+
+
+async def test_a_programs_count_opens_exactly_its_requests() -> None:
+    """Both families are in Session 2 (camp pool); only Emma is awarded."""
+    service = _service(report_season())
+    apps = await service.programs_request_ids(
+        YEAR, part="session", pool="camp_pool", session=1000101, block=1, count="apps"
+    )
+    awards = await service.programs_request_ids(YEAR, part="subtotal", pool="camp_pool", block=1, count="awarded")
+    every = await service.programs_request_ids(YEAR, part="total", block=1, count="apps")
+    assert (apps.request_ids, awards.request_ids, every.request_ids) == ([EMMA, LIAM], [EMMA], [EMMA, LIAM])
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        {"part": "tier", "tier": 2},  # no count
+        {"part": "total"},  # no count
+        {"part": "cancelled", "reason": "medical"},  # no posted_round
+        {"part": "outcome", "outcome_row": "pool", "outcome": "waiting"},  # a pool row with no pool
+        {"part": "outcome", "outcome_row": "headline"},  # no outcome
+        {"part": "tier", "tier": 2, "count": "apps", "table": "nowhere"},  # not an award table
+    ],
+)
+async def test_a_statistics_selector_missing_what_its_part_needs_is_refused(selector: dict[str, object]) -> None:
+    with pytest.raises(ReportsRefusedError):
+        await _service(report_season()).statistics_request_ids(YEAR, **selector)  # type: ignore[arg-type]
+
+
+async def test_a_programs_session_row_needs_its_session() -> None:
+    with pytest.raises(ReportsRefusedError, match="session"):
+        await _service(report_season()).programs_request_ids(
+            YEAR, part="session", pool="camp_pool", block=1, count="apps"
+        )
