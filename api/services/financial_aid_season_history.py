@@ -48,6 +48,7 @@ from api.schemas.financial_aid_history import (
     HistoryOperationDetailOut,
     HistoryOperationOut,
     HistoryPageOut,
+    HistoryParentDiffOut,
     HistoryRowOut,
 )
 from api.schemas.financial_aid_rules import field_change_out
@@ -56,6 +57,8 @@ from api.services.financial_aid_ledger_service import money, parse_pb_datetime
 from api.services.financial_aid_reconciliation import camp_date, dollars
 from bunking.financial_aid.change_diff import field_changes
 from bunking.financial_aid.errors import FinancialAidError
+from bunking.financial_aid.rules import AidRules
+from bunking.financial_aid.rules.lifecycle import SectionStatusMissingError, status_from_json, status_to_json
 
 INTAKE_ACTOR: Final = "system:intake"
 ENTITY_KINDS: Final[Mapping[str, HistoryKind]] = {
@@ -318,6 +321,31 @@ def _camper_of(subject: Subject | None, persons: Mapping[int, str]) -> str | Non
     return persons.get(subject.person_cm_id) if subject is not None and subject.person_cm_id else None
 
 
+def parent_of(
+    entry: LogEntry, before: Mapping[str, Any] | None, after: Mapping[str, Any] | None
+) -> tuple[int, int] | None:
+    """The version a created rules version was copied from (H4): a create's row has no `before` and records the
+    whole new version, `parent_year`/`parent_version` included (0 for a season's first version: no parent)."""
+    if entry.entity != AID_RULES or before is not None or after is None:
+        return None
+    year, version = after.get("parent_year"), after.get("parent_version")
+    if not isinstance(year, int) or not isinstance(version, int) or year <= 0 or version <= 0:
+        return None
+    return year, version
+
+
+def _rules_state(document: Any, section_status: Any) -> dict[str, Any]:
+    """The part of a rules version a diff compares, as today's rules model dumps it, so a field added to the model
+    since either side was written never reads as a change. Raw when it no longer parses."""
+    try:
+        return {
+            "document": AidRules.model_validate(document or {}).model_dump(mode="json"),
+            "section_status": status_to_json(status_from_json(section_status)),
+        }
+    except ValueError, TypeError, KeyError, SectionStatusMissingError:
+        return {"document": document, "section_status": section_status}
+
+
 def _kind(entries: tuple[LogEntry, ...]) -> HistoryKind:
     if any(e.actor == INTAKE_ACTOR for e in entries):
         return "intake"
@@ -519,6 +547,31 @@ class SeasonHistoryService:
         )
         return {o.operation_id: name_text(o, subjects, households, persons) for o in candidates}
 
+    async def _parents(
+        self, details: Sequence[tuple[LogEntry, dict[str, Any] | None, dict[str, Any] | None]]
+    ) -> dict[str, HistoryParentDiffOut]:
+        """Each created version's diff against its parent as stored: one read per distinct parent (usually one).
+        A superseded version is never saved, approved or locked again (_assert_latest; lock_writes writes only the
+        latest), so the stored parent is the version the child was copied from."""
+        wanted = {e.id: key for e, before, after in details if (key := parent_of(e, before, after)) is not None}
+        keys = sorted(set(wanted.values()))
+        stored = await asyncio.gather(*(self._reads.fetch_rules_version(y, v) for y, v in keys))
+        parents = {key: record for key, record in zip(keys, stored, strict=True) if record is not None}
+        out: dict[str, HistoryParentDiffOut] = {}
+        for e, _, after in details:
+            key = wanted.get(e.id)
+            if key is None or key not in parents or after is None:
+                continue
+            record = parents[key]
+            was = _rules_state(
+                log_detail(getattr(record, "document", None)), log_detail(getattr(record, "section_status", None))
+            )
+            now = _rules_state(after.get("document"), after.get("section_status"))
+            out[e.id] = HistoryParentDiffOut(
+                year=key[0], version=key[1], changes=[field_change_out(c) for c in field_changes(was, now)]
+            )
+        return out
+
     async def _names(self, year: int, found: Sequence[Subject]) -> tuple[dict[int, str], dict[int, str]]:
         """One batched name read for an opened line's rows (H2); none when no row names a family."""
         if not found:
@@ -543,6 +596,7 @@ class SeasonHistoryService:
         ]
         about = {e.id: row_subject(e, subjects, before, after) for e, before, after in details}
         households, persons = await self._names(year, [s for s in about.values() if s is not None])
+        parents = await self._parents(details)
         rows = [
             HistoryRowOut(
                 at=e.created,
@@ -557,6 +611,7 @@ class SeasonHistoryService:
                 household_cm_id=_household_of(about[e.id]),
                 household_name=_name_of(about[e.id], households),
                 camper_name=_camper_of(about[e.id], persons),
+                against_parent=parents.get(e.id),
             )
             for e, before, after in details
         ]

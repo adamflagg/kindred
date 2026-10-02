@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import replace
 from datetime import date
@@ -31,6 +32,8 @@ from api.services.financial_aid_season_history import (
     summary_words,
     visible,
 )
+from bunking.financial_aid.rules.lifecycle import initial_status, status_to_json
+from tests.unit.bunking.financial_aid.fixtures import fictional_rules
 
 REG, FIN = "registrar@example.com", "finance@example.com"
 
@@ -638,3 +641,147 @@ async def test_a_registrar_has_no_rules_chip_and_nothing_hidden_counts_anywhere(
     ]
     searched = await service.page(2027, HistoryFilter(text="2027:3"), page=1, per_page=50)
     assert [c.operations for c in searched.kind_counts] == [0, 0, 0, 0]
+
+
+def _doc(pct: str) -> dict[str, Any]:
+    return {"award_tables": {"camp": {"tiers": {"3": {"r1_pct": pct}}}}}
+
+
+def _created(rid: str, op: str, after: dict[str, Any], action: str = "save") -> SimpleNamespace:
+    """A rules row that CREATED a version: no `before`, and the whole new version as `after`."""
+    return _row(rid, "aid_rules", f"{after['year']}:{after['version']}", op, actor=FIN, action=action, after=after)
+
+
+DRAFT = {"award_tables": {"state": "draft"}}
+# The schema-drift test's defaulted key: `IncomeSection.basis` (default "gross"), a real field of today's AidRules.
+SECTION, KEY = "income", "basis"
+
+
+@pytest.mark.asyncio
+async def test_a_created_version_lists_its_changes_against_the_version_it_came_from() -> None:
+    v4 = _created(
+        "v4",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 4,
+            "document": _doc("72"),
+            "section_status": DRAFT,
+            "parent_year": 2027,
+            "parent_version": 3,
+        },
+    )
+    v3 = SimpleNamespace(
+        id="rules0000000003",
+        year=2027,
+        version=3,
+        document=_doc("74.5"),
+        section_status={"award_tables": {"state": "approved"}},
+    )
+    reads = _Reads(v4, versions={(2027, 3): v3})
+    service = SeasonHistoryService(reads)
+    with pytest.raises(HistoryNotFoundError):
+        await service.operation(2027, OP_R, rules=False)  # a registrar can't open it, and nothing more is read
+    assert reads.version_calls == []
+    (row,) = (await service.operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert (row.against_parent.year, row.against_parent.version) == (2027, 3)
+    assert [(c.path, c.kind, c.before, c.after) for c in row.against_parent.changes] == [
+        (["document", "award_tables", "camp", "tiers", "3", "r1_pct"], "changed", "74.5", "72"),
+        (["section_status", "award_tables", "state"], "changed", "approved", "draft"),
+    ]
+    assert len(row.changes) > len(row.against_parent.changes)  # `changes` still lists the new version, all added
+    assert reads.version_calls == [(2027, 3)]
+
+
+@pytest.mark.asyncio
+async def test_a_season_started_from_last_year_diffs_against_last_years_version() -> None:
+    started = _created(
+        "s1",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 1,
+            "document": _doc("72"),
+            "section_status": DRAFT,
+            "parent_year": 2026,
+            "parent_version": 6,
+        },
+        action="start_from_last_year",
+    )
+    last = SimpleNamespace(
+        id="rules2026000006",
+        year=2026,
+        version=6,
+        document=_doc("72"),
+        section_status={"award_tables": {"state": "locked"}},
+    )
+    reads = _Reads(started, versions={(2026, 6): last})
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert (row.against_parent.year, row.against_parent.version) == (2026, 6)
+    assert [(c.path, c.before, c.after) for c in row.against_parent.changes] == [
+        (["section_status", "award_tables", "state"], "locked", "draft")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_first_version_a_save_in_place_and_a_lost_parent_have_no_parent_diff() -> None:
+    first = _created(
+        "v1",
+        OP_A,
+        {
+            "year": 2027,
+            "version": 1,
+            "document": _doc("70"),
+            "section_status": DRAFT,
+            "parent_year": 0,
+            "parent_version": 0,
+        },
+        action="create",
+    )
+    lost = _created(
+        "v5",
+        OP_B,
+        {
+            "year": 2027,
+            "version": 5,
+            "document": _doc("70"),
+            "section_status": DRAFT,
+            "parent_year": 2027,
+            "parent_version": 2,
+        },
+    )
+    reads = _Reads(first, lost, _rules_save())
+    service = SeasonHistoryService(reads)
+    for op in (OP_A, OP_B, OP_R):
+        (row,) = (await service.operation(2027, op, rules=True)).rows
+        assert row.against_parent is None
+    assert reads.version_calls == [(2027, 2)]  # only a created version with a parent asks for one
+
+
+@pytest.mark.asyncio
+async def test_a_field_the_model_added_since_the_parent_was_stored_is_no_change() -> None:
+    """The parent was stored under an older schema: it lacks a key the model has since added with a default. Diffed
+    raw against the child's dump, that key would read "added" on every version made from it."""
+    full = fictional_rules().model_dump(mode="json")
+    stored = copy.deepcopy(full)
+    del stored[SECTION][KEY]  # a defaulted key the parent predates (see below)
+    status = status_to_json(initial_status())
+    child = _created(
+        "v4",
+        OP_R,
+        {
+            "year": 2027,
+            "version": 4,
+            "document": full,
+            "section_status": status,
+            "parent_year": 2027,
+            "parent_version": 3,
+        },
+    )
+    parent = SimpleNamespace(id="rules0000000003", year=2027, version=3, document=stored, section_status=status)
+    reads = _Reads(child, versions={(2027, 3): parent})
+    (row,) = (await SeasonHistoryService(reads).operation(2027, OP_R, rules=True)).rows
+    assert row.against_parent is not None
+    assert row.against_parent.changes == []

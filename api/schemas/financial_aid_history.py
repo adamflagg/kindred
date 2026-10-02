@@ -59,6 +59,14 @@ class HistoryPageOut(BaseModel):
     kind_counts: list[HistoryKindCountOut]  # the reader's chips, in the mock's order; Rules only with rules
 
 
+class HistoryParentDiffOut(BaseModel):
+    """A created rules version against the version it was copied from (H4), as that version is stored."""
+
+    year: int  # the parent's season (last season's for "Start from last year")
+    version: int
+    changes: list[FieldChangeOut]  # paths start ["document", <section>, ...] or ["section_status", <section>, ...]
+
+
 class HistoryRowOut(BaseModel):
     at: datetime
     entity: str
@@ -72,6 +80,7 @@ class HistoryRowOut(BaseModel):
     household_cm_id: int | None  # the household the row is about (H2); None when it names none (rules, grantors, ...)
     household_name: str | None  # None when the household has no record this season (the grid would say "Household N")
     camper_name: str | None  # None for a family-level row (an application, a household's own request)
+    against_parent: HistoryParentDiffOut | None  # only on a row that created a rules version with a parent (H4)
 
 
 class HistoryOperationDetailOut(BaseModel):
