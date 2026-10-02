@@ -33,6 +33,19 @@ function download(table: CsvTable, filename: string) {
   )
 }
 
+type Grant = ApiAidHouseholdPage['grants'][number]
+
+/** The server's band rule for a grant (outside_grants_by_request): counted, outside, and a request share. */
+const countsInBand = (grant: Grant) =>
+  grant.counts && grant.funder_type === 'outside' && grant.requests.length > 0
+
+/** An unplaced line (person 0) is "the household" only by the household basis; otherwise it needs a camper. */
+function grantCamper(grant: Grant): string {
+  if (grant.camper_basis === 'household') return 'the household'
+  if (grant.person_cm_id === 0) return 'needs a camper'
+  return grant.camper_name === '' ? `person ${String(grant.person_cm_id)}` : grant.camper_name
+}
+
 const TH = 'py-1 text-left font-semibold'
 const TH_RIGHT = 'py-1 text-right font-semibold'
 
@@ -197,9 +210,7 @@ export function GrantsPostingsSection({ page }: { page: ApiAidHouseholdPage }) {
               >
                 <td className="py-1">{grant.grantor_name === '' ? '—' : grant.grantor_name}</td>
                 <td className="py-1">{grant.description}</td>
-                <td className="py-1">
-                  {grant.camper_name === '' ? 'the household' : grant.camper_name}
-                </td>
+                <td className="py-1">{grantCamper(grant)}</td>
                 <td className="py-1">
                   {grant.recorded_on ? formatShortDate(grant.recorded_on) : '—'}
                 </td>
@@ -211,10 +222,10 @@ export function GrantsPostingsSection({ page }: { page: ApiAidHouseholdPage }) {
                   )}
                 </td>
                 <td className="py-1 pl-3">
-                  {/* The band counts only counted, live grants (band_grants_by_request): say which these aren't. */}
+                  {/* The band counts only live, counted, outside grants with a request share (outside_grants_by_request): say which these aren't. */}
                   {grant.cancelled ? (
                     <StatusPill tone="stone">cancelled</StatusPill>
-                  ) : !grant.counts ? (
+                  ) : !countsInBand(grant) ? (
                     <StatusPill tone="muted">not counted</StatusPill>
                   ) : null}
                 </td>
@@ -281,22 +292,26 @@ export function HistorySection({ page }: { page: ApiAidHouseholdPage }) {
     <Section
       title="History"
       action={
-        <button
-          type="button"
-          className={BUTTON_SECONDARY}
-          onClick={() => download(historyCsv(page), householdCsvName(page, 'history'))}
-        >
-          <Download className="h-4 w-4" />
-          Download history
-        </button>
+        page.history.length === 0 ? undefined : (
+          <button
+            type="button"
+            className={BUTTON_SECONDARY}
+            onClick={() => download(historyCsv(page), householdCsvName(page, 'history'))}
+          >
+            <Download className="h-4 w-4" />
+            Download history
+          </button>
+        )
       }
     >
       {page.history.length === 0 ? (
         <p className="text-muted-foreground">Nothing recorded yet.</p>
       ) : (
         <ol className="space-y-1 text-xs">
-          {page.history.map((entry) => (
-            <li key={`${entry.operation_id}:${entry.entity_id}:${entry.at}`}>
+          {page.history.map((entry, index) => (
+            <li
+              key={`${entry.operation_id}:${entry.entity}:${entry.entity_id}:${entry.at}:${String(index)}`}
+            >
               <span className="text-muted-foreground mr-2 tabular-nums">
                 {formatShortDate(entry.at)}
               </span>
