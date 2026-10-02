@@ -2,8 +2,7 @@ import type { ReactNode } from 'react'
 
 import type { ApiAidHouseholdPage, ApiAidHouseholdRequest } from '../../../types/api-types'
 import { StatusPill } from '../kit/Pills'
-import { codeWords } from '../requests/attention'
-import { camperOf } from './householdModel'
+import { camperOf, holdWords } from './householdModel'
 
 /**
  * The hold banners (§6.3 item 3; main spec §10.5): one per hold on the page's requests, with its
@@ -23,13 +22,13 @@ export function HoldBanners({
   if (holds.length === 0) return null
   return (
     <div className="space-y-2">
-      {holds.map(({ request, hold }) => (
+      {holds.map(({ request, hold }, index) => (
         <div
-          key={`${request.row.request_id}:${hold.code}`}
+          key={`${request.row.request_id}:${hold.code}:${String(index)}`}
           className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900/50 dark:bg-red-900/20"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone="red">{codeWords(hold.code)}</StatusPill>
+            <StatusPill tone="red">{holdWords(hold.code)}</StatusPill>
             <b>{camperOf(request)}</b>
             <span>{hold.message}</span>
           </div>

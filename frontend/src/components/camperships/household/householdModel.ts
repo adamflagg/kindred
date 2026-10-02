@@ -174,7 +174,15 @@ export interface RoundLine {
   readonly posted: boolean
   readonly postedOn: string | null
   readonly accepted: boolean
-  /** A locked round's "would change by $X" (D43); null when nothing would. */
+  /**
+   * A posted round whose money CampMinder reversed (D54): its `posted` still carries the locked
+   * amount, but the budget counts that money nowhere, so it never reads as standing posted money.
+   */
+  readonly clawedBack: boolean
+  /**
+   * A locked round's "would change by $X" (D43); null when nothing would, and on a clawed-back
+   * round, where "the posted amount stands" is false.
+   */
   readonly wouldChangeBy: number | null
 }
 
@@ -192,7 +200,8 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
             .filter((part): part is string => part !== null)
             .join(' · ')
         : null
-      const would = r.would_change_by ?? null
+      const clawedBack = r.clawed_back ?? false
+      const would = clawedBack ? null : (r.would_change_by ?? null)
       const pending = r.status === 'pending_approval'
       return {
         round: r.round,
@@ -209,6 +218,7 @@ export function roundLines(request: ApiAidHouseholdRequest): RoundLine[] {
         posted,
         postedOn: r.posted_on,
         accepted: r.accepted,
+        clawedBack,
         wouldChangeBy: would !== null && would !== 0 ? would : null,
       }
     })
@@ -232,14 +242,17 @@ export function earlierReceipts(request: ApiAidHouseholdRequest): ApiAidReceipt[
 /** D34: the receipt opens by itself on a hold, or while a "would change by" flag shows. */
 export function opensByItself(request: ApiAidHouseholdRequest): boolean {
   return (
-    request.row.holds.length > 0 || request.row.rounds.some((r) => (r.would_change_by ?? 0) !== 0)
+    request.row.holds.length > 0 ||
+    request.row.rounds.some((r) => !(r.clawed_back ?? false) && (r.would_change_by ?? 0) !== 0)
   )
 }
 
 /** A payer share's confirmation (D81), shaped for the kit's ConfirmationState; null until posted. */
 export function shareConfirmation(share: ApiAidShareLine): ApiAidConfirmation | null {
-  if (share.status === null) return null
-  const posted = share.posted ?? 0
+  // No posted figure of its own (the shares don't split the posted total): the share carries the
+  // request-wide CampMinder figure and state, which are not this payer's. Draw nothing (I2; D81).
+  if (share.status === null || share.posted === null) return null
+  const posted = share.posted
   const inCampMinder = share.in_campminder ?? 0
   return {
     status: share.status,
@@ -251,6 +264,26 @@ export function shareConfirmation(share: ApiAidShareLine): ApiAidConfirmation | 
     family_unplaced: 0,
     shares: [],
   }
+}
+
+/**
+ * Short words for the codes the calculator raises that the grid's map lacks. Each reads from the
+ * engine's own message (calculator/engine.py); the banner still shows the server's message beside it.
+ */
+const HOLD_WORDS: Readonly<Record<string, string>> = {
+  income_missing: 'Income missing',
+  income_below_first_band: 'Income below first band',
+  cost_unknown: 'Cost unknown',
+  ask_missing: 'Ask missing',
+  no_round1_table: 'No Round 1 table',
+  rules_error: 'Rules error',
+  unknown_program: 'Program not in the rules',
+  program_closed: 'Program closed to aid',
+  unknown_decision_type: 'Decision type not in the rules',
+}
+
+export function holdWords(code: string): string {
+  return HOLD_WORDS[code] ?? codeWords(code)
 }
 
 const CANCEL_WORDS = new Map(CANCEL_REASON_OPTIONS.map((o) => [o.value, o.label] as const))
