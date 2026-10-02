@@ -45,7 +45,7 @@ const message = (caught: unknown, fallback: string) =>
  *   answer wins), recording nothing;
  * - letting go (`release`) prices the draft with what moved and records it in the trail (`evaluate`,
  *   then `PUT /draft` with the document it returned): one trail row per release, not per pixel;
- * - every write (release, load, keep, freeze, start) runs one after another, in the order asked, so a
+ * - every write (release, load, keep, freeze, start, adopt) runs one after another, in the order asked, so a
  *   load clicked while a box still holds typing waits for that typing to be recorded first;
  * - while a write runs, `busy` names it and the sliders stand still: what they show is always what
  *   the next write will record.
