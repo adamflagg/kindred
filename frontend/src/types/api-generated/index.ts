@@ -1667,6 +1667,7 @@ export type {
   YearMetrics,
   YearsAtCampBreakdown,
   YearSummary,
+  ZipGroupOut,
   ZipResponse,
   ZipRowOut,
   ZipTableOut,
