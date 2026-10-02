@@ -4,6 +4,10 @@
  * settings the schema lets be empty (an income ceiling, a Round 3 limit). Names, keys, references,
  * dates and lists stay as they are: adding a band, a program or a table is the season-description
  * forms', which come later (D39's build order). The server validates the whole section on save.
+ * Stage `round` (nullable in the schema) stays non-clearable until the stages form.
+ *
+ * Settings are told apart by where they sit, never by their key alone: an equity weight is named
+ * for a criterion the season chose ("child", "upper"), and must not read as the field it spells.
  */
 import type {
   ApiAidDecisionType,
@@ -33,6 +37,11 @@ function isNullable(path: readonly string[]): boolean {
   return key === 'threshold' ? path[0] === 'checks' : NULLABLE.has(key)
 }
 
+/** An equity weight: equity class -> criterion key -> weight. Its last key is the season's own word. */
+function isEquityWeight(path: readonly string[]): boolean {
+  return path[0] === 'weights' && path.length === 3
+}
+
 type Doc = ApiAidRulesDocument
 /** Every option of a generated `Literal`, once: `satisfies` fails tsc when the schema gains or drops one. */
 type Options<T> = Readonly<Record<Extract<NonNullable<T>, string>, true>>
@@ -47,6 +56,7 @@ const options = <T extends string>(set: Readonly<Record<T, true>>): readonly T[]
  * Each choice's options, read from the generated types (rules/schema.py's `Literal`s), never copied
  * by hand: a regenerated `types.gen.ts` that adds or drops an option fails `tsc` here, on the PR that
  * changed the schema (the slice 1 plan review's I5 lesson, without a Python-reading test).
+ * A decision type's `kind` is offered without `top_up` (see `choicesFor`).
  */
 const CHOICES: Readonly<Record<string, readonly string[]>> = {
   basis: options({ gross: true, agi: true, confirmed: true } satisfies Options<
@@ -99,6 +109,19 @@ const CHOICES: Readonly<Record<string, readonly string[]>> = {
   severity: options({ hold: true, warn: true } satisfies Options<Check['severity']>),
 }
 
+/**
+ * A choice's options where it sits. A decision type's `kind` never switches to or from `top_up`:
+ * a top-up needs a fixed amount and no other kind may have one, and `amount` has no box, so that
+ * switch could only come back as a refusal.
+ */
+function choicesFor(path: readonly string[]): readonly string[] | undefined {
+  const key = path.at(-1) ?? ''
+  if (key === 'kind') {
+    return path[0] === 'decision_types' ? CHOICES['kind']?.filter((o) => o !== 'top_up') : undefined
+  }
+  return CHOICES[key]
+}
+
 export type FieldSpec =
   | {
       readonly kind: 'number'
@@ -124,8 +147,8 @@ const WHOLE_BOUNDS: Readonly<Record<string, { min?: number; max?: number }>> = {
   infant_age_cutoff_months: { min: 0 },
 }
 
-/** Text that may look like a figure ("2024" as a label) but is never one. */
-const TEXT_KEYS: ReadonlySet<string> = new Set([
+/** Names, keys and references: they may look like a figure ("2024" as a label) but are never one. */
+const FIXED_KEYS: ReadonlySet<string> = new Set([
   'label',
   'field',
   'budget_line',
@@ -133,6 +156,15 @@ const TEXT_KEYS: ReadonlySet<string> = new Set([
   'code',
   'key',
 ])
+
+/**
+ * Never boxed: a name, a key, or a reference to a CampMinder session or to another table (retyping
+ * `session_cm_id` would re-point a rate at another session). `program_tables` maps program to table.
+ */
+function isFixed(path: readonly string[]): boolean {
+  const key = path.at(-1) ?? ''
+  return FIXED_KEYS.has(key) || key.endsWith('_cm_id') || path[0] === 'program_tables'
+}
 
 /** Schema `Fraction`s (0 to 1): the income weights, the three rates and an extra term's rate. */
 function isFraction(path: readonly string[]): boolean {
@@ -144,6 +176,7 @@ function isFraction(path: readonly string[]): boolean {
 
 function numberSpec(path: readonly string[], whole: boolean, nullable: boolean): FieldSpec {
   const key = path.at(-1) ?? ''
+  if (isEquityWeight(path)) return { kind: 'number', unit: 'plain', whole, nullable: false }
   return {
     kind: 'number',
     unit: unitOf(path),
@@ -158,12 +191,13 @@ function numberSpec(path: readonly string[], whole: boolean, nullable: boolean):
 export function fieldSpec(path: readonly string[], value: unknown): FieldSpec | null {
   const key = path.at(-1) ?? ''
   if (typeof value === 'boolean') return { kind: 'yesno' }
-  if (TEXT_KEYS.has(key)) return null
-  const choices = CHOICES[key]
+  if (isFixed(path)) return null
+  const weight = isEquityWeight(path)
+  const choices = weight ? undefined : choicesFor(path)
   if (typeof value === 'string' && choices?.includes(value) === true) {
     return { kind: 'choice', options: choices }
   }
-  const nullable = isNullable(path)
+  const nullable = !weight && isNullable(path)
   if (typeof value === 'number') return numberSpec(path, Number.isInteger(value), nullable)
   if (typeof value === 'string' && DECIMAL.test(value)) return numberSpec(path, false, nullable)
   if (value === null && nullable) {
@@ -189,10 +223,12 @@ export function parseSetting(raw: string, spec: FieldSpec): Parsed {
       ? { kind: 'ok', value: raw }
       : { kind: 'invalid', reason: 'Not a choice' }
   }
-  const text = raw
-    .trim()
-    .replace(/^\$\s*/, '')
-    .replace(/\s*%$/, '')
+  // Only the box's own symbol is dropped; the other one is a mistake to name, not to guess at.
+  let text = raw.trim()
+  if (spec.unit === 'money') text = text.replace(/^\$\s*/, '')
+  if (spec.unit === 'percent') text = text.replace(/\s*%$/, '')
+  if (text.includes('$')) return { kind: 'invalid', reason: 'No $ in this box' }
+  if (text.includes('%')) return { kind: 'invalid', reason: 'No % in this box' }
   if (text === '') {
     return spec.nullable
       ? { kind: 'ok', value: null }
@@ -216,7 +252,7 @@ export function parseSetting(raw: string, spec: FieldSpec): Parsed {
   }
   if (spec.fraction === true) {
     // A fraction is typed as a fraction: "0.25", never "25%" (the schema's 0..1).
-    if (text !== digits || raw.includes('%') || exceeds(digits, 1n)) {
+    if (text !== digits || exceeds(digits, 1n)) {
       return { kind: 'invalid', reason: 'Between 0 and 1' }
     }
     return { kind: 'ok', value: digits }
@@ -248,7 +284,7 @@ export function editKey(path: readonly string[]): string {
   return JSON.stringify(path)
 }
 
-function pathOf(key: string): string[] {
+export function pathOf(key: string): string[] {
   const parsed: unknown = JSON.parse(key)
   return Array.isArray(parsed) ? parsed.map(String) : []
 }
@@ -279,17 +315,43 @@ export function valueAt(content: unknown, path: readonly string[]): unknown {
   return here
 }
 
+/** Whether two paths overlap: one is the other, or sits inside it (a list's row is inside its list). */
+export function touches(a: readonly string[], b: readonly string[]): boolean {
+  const n = Math.min(a.length, b.length)
+  return a.slice(0, n).every((part, i) => part === b[i])
+}
+
 export interface Applied {
   readonly content: Record<string, unknown>
   /** Each box that can't be read yet, by its edit key, in the box's own words. */
   readonly problems: ReadonlyMap<string, string>
+  /** The edits (also in `problems`) whose setting is no longer in the section, by edit key. */
+  readonly gone: ReadonlySet<string>
   /** The paths whose value differs from the section as it opened. */
   readonly changed: readonly string[][]
 }
 
+/** "Row 3 of Income bands is gone; retype it": the first step of `path` that no longer resolves. */
+function goneWords(opened: unknown, path: readonly string[]): string {
+  let here: unknown = opened
+  for (const [i, part] of path.entries()) {
+    const next = Array.isArray(here) ? here[Number(part)] : isRecord(here) ? here[part] : undefined
+    if (next === undefined) {
+      const list = path.slice(0, i)
+      return Array.isArray(here)
+        ? `Row ${String(Number(part) + 1)} of ${fieldName(list)} is gone; retype it`
+        : `${fieldName(path.slice(0, i + 1))} is gone; retype it`
+    }
+    here = next
+  }
+  return `${fieldName(path)} is gone; retype it`
+}
+
 /**
  * The section with every typed box applied. A box that can't be read leaves its setting as it
- * was, and is named in `problems`; nothing is sent while any is.
+ * was, and is named in `problems`; nothing is sent while any is. A typed setting that is no longer
+ * in the section (a row the opened content lost) is named too, in `problems` and `gone`, never
+ * dropped silently.
  */
 export function applyEdits(
   opened: Readonly<Record<string, unknown>>,
@@ -298,22 +360,29 @@ export function applyEdits(
 ): Applied {
   let content: unknown = opened
   const problems = new Map<string, string>()
+  const gone = new Set<string>()
   const changed: string[][] = []
   for (const [key, raw] of edits) {
     const path = pathOf(key)
     const spec = specOf(path)
-    if (spec === null) continue
+    if (spec === null) {
+      if (valueAt(opened, path) === undefined) {
+        problems.set(key, goneWords(opened, path))
+        gone.add(key)
+      }
+      continue
+    }
     const parsed = parseSetting(raw, spec)
     if (parsed.kind === 'invalid') {
       problems.set(key, parsed.reason)
       continue
     }
     const before = valueAt(opened, path)
-    if (same(before, parsed.value)) continue
+    if (sameAt(before, parsed.value, path)) continue
     content = setAt(content, path, parsed.value)
     changed.push(path)
   }
-  return { content: isRecord(content) ? content : {}, problems, changed }
+  return { content: isRecord(content) ? content : {}, problems, gone, changed }
 }
 
 /** A decimal's value as digits without padding zeros ("72.00" is "72"), for comparing without floats. */
@@ -325,20 +394,35 @@ function normalDecimal(value: unknown): string | null {
   return `${whole.replace(/^0+(?=\d)/, '')}${kept === '' ? '' : `.${kept}`}`
 }
 
-/** Equal as the server compares (change_diff.values_equal): "72" equals "72.00"; yes is never 1. */
-function same(a: unknown, b: unknown): boolean {
+/**
+ * Equal as the server compares (change_diff.values_equal) given where the value sits: a figure
+ * ("72" and "72.00") by value, since the schema holds a Decimal there; anything else, text and the
+ * items of a list of plain values included, exactly, since the server never parses a string. Yes is
+ * never 1.
+ */
+function sameAt(a: unknown, b: unknown, path: readonly string[]): boolean {
   if (typeof a === 'boolean' || typeof b === 'boolean') return a === b
-  const x = normalDecimal(a)
-  const y = normalDecimal(b)
-  if (x !== null && y !== null) return x === y
   if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item: unknown, i) => same(item, b[i]))
+    return (
+      a.length === b.length &&
+      a.every((item: unknown, i) =>
+        isRecord(item) || Array.isArray(item)
+          ? sameAt(item, b[i], [...path, String(i)])
+          : item === b[i]
+      )
+    )
   }
   if (isRecord(a) && isRecord(b)) {
     const keys = Object.keys(a)
     return (
-      keys.length === Object.keys(b).length && keys.every((key) => key in b && same(a[key], b[key]))
+      keys.length === Object.keys(b).length &&
+      keys.every((key) => key in b && sameAt(a[key], b[key], [...path, key]))
     )
+  }
+  if (fieldSpec(path, a)?.kind === 'number' || fieldSpec(path, b)?.kind === 'number') {
+    const x = normalDecimal(a)
+    const y = normalDecimal(b)
+    if (x !== null && y !== null) return x === y
   }
   return a === b
 }
@@ -353,8 +437,11 @@ function leaves(value: unknown, path: string[]): Array<{ path: string[]; value: 
 
 /**
  * Every setting that differs between two copies of a section, as the server's changes read
- * (change_diff.field_changes: lists compared whole, an added or removed group listed leaf by leaf).
- * The editor's G6 answer uses it: what someone else changed since this editor opened.
+ * (change_diff.field_changes: lists compared whole, an added or removed group listed leaf by leaf,
+ * `before` null on an add and `after` null on a remove). Mirrors Python `FieldChange`. The order is the
+ * section's own, not the server's sort by path; nothing compares the two. The editor's G6 answer
+ * uses it: what someone else changed since this editor opened. A change inside a list is reported
+ * at the list's path, so a home overlaps it with an edit through `touches`, never by equality.
  */
 export function sectionChanges(
   before: unknown,
@@ -369,19 +456,21 @@ export function sectionChanges(
           path: leaf.path,
           kind: 'removed' as const,
           before: leaf.value,
+          after: null,
         }))
       }
       if (!(key in before)) {
         return leaves(after[key], [...path, key]).map((leaf) => ({
           path: leaf.path,
           kind: 'added' as const,
+          before: null,
           after: leaf.value,
         }))
       }
       return sectionChanges(before[key], after[key], [...path, key])
     })
   }
-  return same(before, after) ? [] : [{ path, kind: 'changed', before, after }]
+  return sameAt(before, after, path) ? [] : [{ path, kind: 'changed', before, after }]
 }
 
 /** "General › Tiers › Tier 2 › Round 1 %": a setting's full name, for its box and for a change. */

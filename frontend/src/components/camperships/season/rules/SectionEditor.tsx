@@ -12,18 +12,28 @@ import {
   editKey,
   fieldName,
   fieldSpec,
+  pathOf,
   rawOf,
   valueAt,
   type FieldSpec,
 } from './sectionEdit'
 import { SectionView, type RenderSetting } from './SectionView'
 
+/**
+ * Key an editor by its section (`<SectionEditor key={section} …/>`): what was typed belongs to the
+ * section it was typed in, and a reused instance would carry it into the next.
+ */
 export interface SectionEditorProps {
   /** The section's settings as the editor works on them: as opened, or as rebased after a 409. */
   readonly opened: Readonly<Record<string, unknown>>
   /** Which draft this editor edits, said at its top (D39: every editor says which draft it edits). */
   readonly heading: ReactNode
-  /** The home's own line above the settings: a G6 refusal, a lock (the rules home), or nothing. */
+  /**
+   * The home's own line above the settings: a G6 refusal, a lock (the rules home), or nothing. It
+   * gets the paths typed so far. For "you both changed" (Decision 16), a home overlaps them with the
+   * other writer's changes through `touches` (sectionEdit.ts), never by equality: a change inside a
+   * list is reported at the list's path.
+   */
   readonly banner?: ((changed: readonly string[][]) => ReactNode) | undefined
   readonly saving: boolean
   /** False while the home holds the save back (a G6 refusal the person hasn't looked at yet). */
@@ -122,7 +132,7 @@ export function SectionEditor({
   const changedKeys = useMemo(() => new Set(applied.changed.map(editKey)), [applied.changed])
 
   const renderValue: RenderSetting = (path, value) => {
-    const spec = fieldSpec(path, value)
+    const spec = specOf(path)
     if (spec === null) return <span>{formatSetting(value, path)}</span>
     const key = editKey(path)
     return (
@@ -145,6 +155,8 @@ export function SectionEditor({
   }
 
   const blocked = applied.problems.size > 0
+  const dropGone = () =>
+    setEdits((previous) => new Map([...previous].filter(([key]) => !applied.gone.has(key))))
   const nothing = applied.changed.length === 0
   return (
     <div className="space-y-2" data-testid="section-editor">
@@ -164,7 +176,21 @@ export function SectionEditor({
         <button type="button" className={BUTTON_SECONDARY} disabled={saving} onClick={onCancel}>
           Cancel
         </button>
-        {blocked && <span className={AMBER_NOTE}>Fix the boxes marked above first.</span>}
+        {blocked && (
+          <span className={AMBER_NOTE}>
+            Fix first:{' '}
+            {[...applied.problems]
+              .map(([key, reason]) =>
+                applied.gone.has(key) ? reason : `${fieldName(pathOf(key))} (${reason})`
+              )
+              .join('; ')}
+          </span>
+        )}
+        {applied.gone.size > 0 && (
+          <button type="button" className={BUTTON_SECONDARY} onClick={dropGone}>
+            Drop what has gone
+          </button>
+        )}
       </div>
     </div>
   )
