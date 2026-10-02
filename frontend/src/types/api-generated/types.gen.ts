@@ -2217,6 +2217,10 @@ export type CancelledRowOut = {
    */
   pool: string | null
   /**
+   * Pool Label
+   */
+  pool_label: string
+  /**
    * Round
    */
   round: number
@@ -12281,6 +12285,37 @@ export type ReplacementWarningOut = {
 }
 
 /**
+ * ReportRequestIdsOut
+ *
+ * The requests behind one Statistics or Programs count: exactly the requests that count counts, on the same read
+ * (the same chips, basis, reporting control and date). `financial_aid.view` only: development's summary never sees
+ * a request (D65).
+ */
+export type ReportRequestIdsOut = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * As Of
+   */
+  as_of: string | null
+  /**
+   * As Of Axis
+   */
+  as_of_axis: 'campminder' | 'recorded' | null
+  /**
+   * Figures On
+   */
+  figures_on: string
+  request_set: RequestSetNote | null
+  /**
+   * Request Ids
+   */
+  request_ids: Array<string>
+}
+
+/**
  * ReportedFigureIn
  */
 export type ReportedFigureIn = {
@@ -15810,6 +15845,10 @@ export type StatisticsResponse = {
    */
   pct_of_ask_label: string
   /**
+   * Pct Of Ask With Grants Label
+   */
+  pct_of_ask_with_grants_label: string
+  /**
    * Table
    */
   table: string | null
@@ -15897,6 +15936,10 @@ export type StatisticsRowOut = {
    * Decided
    */
   decided: number
+  /**
+   * Awarded
+   */
+  awarded: number
   /**
    * Awarded Count
    */
@@ -25543,6 +25586,168 @@ export type GetReportProgramsApiFinancialAidReportsYearProgramsGetResponses = {
 
 export type GetReportProgramsApiFinancialAidReportsYearProgramsGetResponse =
   GetReportProgramsApiFinancialAidReportsYearProgramsGetResponses[keyof GetReportProgramsApiFinancialAidReportsYearProgramsGetResponses]
+
+export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query: {
+    /**
+     * Part
+     */
+    part: 'tier' | 'total' | 'cancelled' | 'outcome'
+    /**
+     * Table
+     */
+    table?: string | null
+    /**
+     * Round
+     */
+    round?: '1' | '2' | '3' | 'all'
+    /**
+     * Basis
+     */
+    basis?: 'posted' | 'posted_and_decided'
+    /**
+     * Through Round1 Deadline
+     */
+    through_round1_deadline?: boolean
+    /**
+     * Received Through
+     */
+    received_through?: string | null
+    /**
+     * As Of
+     */
+    as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
+    /**
+     * Tier
+     */
+    tier?: number | null
+    /**
+     * Count
+     */
+    count?: 'apps' | 'cancelled' | 'asks' | 'awarded' | 'decided' | null
+    /**
+     * Reason
+     */
+    reason?: string | null
+    /**
+     * Pool
+     */
+    pool?: string | null
+    /**
+     * Posted Round
+     */
+    posted_round?: number | null
+    /**
+     * Outcome Row
+     */
+    outcome_row?: 'pool' | 'no_pool' | 'headline' | null
+    /**
+     * Outcome
+     */
+    outcome?: 'accepted' | 'appealed' | 'waiting' | null
+  }
+  url: '/api/financial-aid/reports/{year}/statistics/requests'
+}
+
+export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetError =
+  GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetErrors[keyof GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetErrors]
+
+export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportRequestIdsOut
+}
+
+export type GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetResponse =
+  GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetResponses[keyof GetReportStatisticsRequestsApiFinancialAidReportsYearStatisticsRequestsGetResponses]
+
+export type GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query: {
+    /**
+     * Part
+     */
+    part: 'session' | 'subtotal' | 'total'
+    /**
+     * Block
+     */
+    block: number
+    /**
+     * Count
+     */
+    count: 'apps' | 'asks' | 'awarded'
+    /**
+     * Pool
+     */
+    pool?: string | null
+    /**
+     * Session
+     */
+    session?: number | null
+    /**
+     * Through Round1 Deadline
+     */
+    through_round1_deadline?: boolean
+    /**
+     * Received Through
+     */
+    received_through?: string | null
+    /**
+     * As Of
+     */
+    as_of?: string | null
+    /**
+     * As Of Axis
+     */
+    as_of_axis?: 'campminder' | 'recorded'
+  }
+  url: '/api/financial-aid/reports/{year}/programs/requests'
+}
+
+export type GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetError =
+  GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetErrors[keyof GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetErrors]
+
+export type GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReportRequestIdsOut
+}
+
+export type GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetResponse =
+  GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetResponses[keyof GetReportProgramsRequestsApiFinancialAidReportsYearProgramsRequestsGetResponses]
 
 export type GetReportCommitteeApiFinancialAidReportsYearCommitteeGetData = {
   body?: never
