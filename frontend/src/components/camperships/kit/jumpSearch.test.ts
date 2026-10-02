@@ -36,9 +36,37 @@ describe('searchJumpIndex (§3.5; D13: family, camper or parent name, or a CampM
     expect(searchJumpIndex(INDEX, 'olivia')[0]).toEqual({
       householdCmId: 1000005,
       familyName: 'Chen',
-      detail: 'camper Olivia Chen',
+      lead: 'Olivia Chen',
+      detail: '· camper · Chen household',
     })
-    expect(searchJumpIndex(INDEX, 'samuel')[0]?.detail).toBe('parent Samuel Johnson')
+    expect(searchJumpIndex(INDEX, 'samuel')[0]).toMatchObject({
+      lead: 'Samuel Johnson',
+      detail: '· parent · Johnson household',
+    })
+  })
+
+  it('leads with the household on a family-name match, as before', () => {
+    expect(searchJumpIndex(INDEX, 'garc')[0]).toEqual({
+      householdCmId: 1000003,
+      familyName: 'Garcia',
+      lead: 'Garcia',
+      detail: 'family',
+    })
+  })
+
+  // Owner ruling 2026-10-03: staff search by camper or requester; a role reads as the server sends it.
+  it('renders a role the server sends that the type does not list yet, as sent', () => {
+    const withRequester = [
+      {
+        household_cm_id: 1000009,
+        family_name: 'Garcia',
+        people: [{ person_cm_id: null, name: 'Rosa Garcia', role: 'requester' }],
+      },
+    ] as unknown as ApiAidJumpHousehold[]
+    expect(searchJumpIndex(withRequester, 'rosa')[0]).toMatchObject({
+      lead: 'Rosa Garcia',
+      detail: '· requester · Garcia household',
+    })
   })
 
   it('lists a family once, however many of its people match', () => {
@@ -49,6 +77,7 @@ describe('searchJumpIndex (§3.5; D13: family, camper or parent name, or a CampM
     expect(searchJumpIndex(INDEX, '1000003')[0]).toEqual({
       householdCmId: 1000003,
       familyName: 'Garcia',
+      lead: 'Garcia',
       detail: 'household 1000003',
     })
   })
@@ -57,7 +86,8 @@ describe('searchJumpIndex (§3.5; D13: family, camper or parent name, or a CampM
     expect(searchJumpIndex(INDEX, '1000006')[0]).toEqual({
       householdCmId: 1000005,
       familyName: 'Chen',
-      detail: 'Olivia Chen · person 1000006',
+      lead: 'Olivia Chen',
+      detail: '· camper · person 1000006 · Chen household',
     })
   })
 

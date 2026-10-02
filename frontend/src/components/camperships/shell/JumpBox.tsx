@@ -120,7 +120,7 @@ export function JumpBox() {
                 }}
                 className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${index === current ? 'bg-muted/60' : ''}`}
               >
-                <span className="font-medium">{match.familyName}</span>{' '}
+                <span className="font-medium">{match.lead}</span>{' '}
                 <span className="text-muted-foreground text-xs">{match.detail}</span>
               </button>
             </li>
