@@ -753,6 +753,10 @@ export const queryKeys = {
     ['financial-aid', 'history', year, 'page', query] as const,
   aidHistoryOperation: (year: number, operationId: string) =>
     ['financial-aid', 'history', year, 'operation', operationId] as const,
+  aidScenariosPrefix: () => ['financial-aid', 'scenarios'] as const,
+  aidScenarios: (year: number) => ['financial-aid', 'scenarios', year, 'workspace'] as const,
+  aidScenarioSensitivity: (year: number, trailId: string, snapshotId: string) =>
+    ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId] as const,
 }
 
 /**
@@ -908,6 +912,8 @@ export function invalidateAidMoneyQueries(
     queryKeys.aidRulesPrefix(),
     // Every write logs a row (spec §4.11): Season › History (D49).
     queryKeys.aidHistoryPrefix(),
+    // The promotion preview reads which rules sections a Posted tick has locked.
+    queryKeys.aidScenariosPrefix(),
   ]
   if (options.jumpIndex === true) keys.push(queryKeys.aidJumpIndexPrefix())
   // Returned, so a mutation's onSettled can wait for the refetch (build ruling 1): TanStack v5
@@ -932,13 +938,30 @@ export function invalidateAidRulesQueries(
   },
   options: { readonly priced?: boolean } = {}
 ): Promise<void> {
-  // An approval's money refresh already covers the rules and Today prefixes, so it stands alone:
-  // invalidating them twice would cancel and restart each active read's refetch.
+  // An approval's money refresh already covers the rules, Today and scenario prefixes, so it stands
+  // alone: invalidating them twice would cancel and restart each active read's refetch.
   if (options.priced === true) return invalidateAidMoneyQueries(queryClient)
+  // The scenario workspace names the rules draft's version and the version pricing the season.
   return Promise.all(
-    [queryKeys.aidRulesPrefix(), queryKeys.aidTodayPrefix(), queryKeys.aidHistoryPrefix()].map(
-      (queryKey) => queryClient.invalidateQueries({ queryKey })
-    )
+    [
+      queryKeys.aidRulesPrefix(),
+      queryKeys.aidTodayPrefix(),
+      queryKeys.aidHistoryPrefix(),
+      queryKeys.aidScenariosPrefix(),
+    ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+  ).then(() => undefined)
+}
+
+/**
+ * Every scenario write calls this on settle (spec §7.4, §10): a scenario never writes live awards, so
+ * it moves the scenario reads only (the workspace, the compare, the trail, each step's effect).
+ * Returns a promise like the other aid helpers, so an onSettled can wait for the refetch.
+ */
+export function invalidateAidScenarioQueries(queryClient: {
+  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+}): Promise<void> {
+  return Promise.resolve(
+    queryClient.invalidateQueries({ queryKey: queryKeys.aidScenariosPrefix() })
   ).then(() => undefined)
 }
 
