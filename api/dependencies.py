@@ -17,7 +17,6 @@ from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .constants.collections import SUPERUSERS
-from .services import pb_precise_datetime  # noqa: F401  (installs the millisecond-keeping parse)
 from .services.id_cache import IDLookupCache
 from .services.lodging_cache import LodgingYearCache
 from .services.metrics_cache import MetricsCache

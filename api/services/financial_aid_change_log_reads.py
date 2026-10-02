@@ -15,6 +15,7 @@ from typing import Any, Final
 
 from api.services.financial_aid_ledger_service import parse_pb_datetime
 from api.services.financial_aid_repository import chunk_filter_terms
+from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
 from bunking.financial_aid.change_log import COLLECTION
 from bunking.financial_aid.change_replay import LogRow
@@ -53,7 +54,7 @@ async def fetch_change_log(pb: Any, year: int, entity: str) -> list[LogRow]:
     if not _ENTITY.fullmatch(entity):
         raise ValueError(f"{entity!r} is not an aid_* entity")
     rows: list[Any] = await asyncio.to_thread(
-        pb.collection(COLLECTION).get_full_list,
+        aid_collection(pb, COLLECTION).get_full_list,
         batch=PAGE_SIZE,
         query_params={"filter": f'year = {int(year)} && entity = "{entity}"', "sort": "created,id"},
     )
@@ -73,7 +74,7 @@ async def fetch_entity_log(pb: Any, year: int, *, exact: Collection[str], contai
     rows: dict[str, Any] = {}
     for chunk in chunk_filter_terms(len(base), terms):
         found: list[Any] = await asyncio.to_thread(
-            pb.collection(COLLECTION).get_full_list,
+            aid_collection(pb, COLLECTION).get_full_list,
             batch=PAGE_SIZE,
             query_params={"filter": f"{base} && ({' || '.join(chunk)})", "sort": "created,id"},
         )

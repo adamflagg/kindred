@@ -35,6 +35,7 @@ from api.constants.collections import (
     USERS,
 )
 from api.services.lodging_repository import STABLE_SORT
+from api.services.pb_precise_datetime import aid_collection
 from api.utils.pb_filters import pb_escape
 
 PAGE_SIZE = 1000
@@ -109,7 +110,7 @@ class FinancialAidRepository:
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
-            self.pb.collection(collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
+            aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
 

@@ -565,6 +565,9 @@ class SinceInputs:
 
 
 _INSTANT: Final = timedelta(microseconds=1)
+# PocketBase stamps created and updated from two clock reads, so a new row can show them a millisecond apart (5 prod
+# postings rows have updated BEFORE created): rewritten by Go only when updated is more than a second past created.
+_SAME_WRITE: Final = timedelta(seconds=1)
 _PERSON_FIELDS: Final = frozenset({"gender_identity", "pronouns"})  # camper equity answers read from `persons`
 _NOT_PRICING: Final = frozenset({"accept", "unaccept"})  # Accepted is recorded, never priced (pricing.py)
 _TEXT: Final[Mapping[ChangedCode, str]] = {
@@ -732,7 +735,10 @@ def _grant_moments(
     moments.extend(  # Go rewrote the row (reclassified, re-attributed, re-amounted), not merely created it
         g.updated
         for g in since.records.grant_lines
-        if g.transaction_cm_id in lines and g.updated is not None and g.updated > cut and g.updated != g.created
+        if g.transaction_cm_id in lines
+        and g.updated is not None
+        and g.updated > cut
+        and (g.created is None or g.updated - g.created > _SAME_WRITE)
     )
     moments.extend(
         log.created

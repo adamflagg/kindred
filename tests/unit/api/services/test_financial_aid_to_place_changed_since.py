@@ -224,6 +224,18 @@ async def test_a_grant_line_posted_by_the_posting_day_but_synced_after_it_counts
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("gap", [timedelta(milliseconds=1), timedelta(milliseconds=-1)])
+async def test_a_new_grant_line_whose_two_clock_reads_differ_by_a_millisecond_is_not_a_rewrite(gap: timedelta) -> None:
+    """PocketBase stamps created and updated from two clock reads, so a brand-new row can show them 1 ms apart
+    either way (5 prod rows have updated 1 ms BEFORE created). Millisecond precision exposes that; it isn't Go
+    rewriting the row."""
+    season = await _season(register=[_grant(recorded_at=MAR8, recorded_on="2027-03-08")])
+    created = AFTER + timedelta(milliseconds=2)
+    line = GrantLineRow(7001, 1000001, 1000011, 1000011, "regional grant", created=created, updated=created + gap)
+    assert changed_since(season, TICK, _since(grant_lines=(line,))) == ()
+
+
+@pytest.mark.asyncio
 async def test_a_persons_change_does_not_refuse_when_the_rules_read_no_person_field() -> None:
     rules = approved(_without_person_fields(intake_rules()))
     season = await _season(rules=rules)

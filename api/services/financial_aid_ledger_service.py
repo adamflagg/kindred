@@ -49,7 +49,6 @@ from api.schemas.financial_aid import (
     SummaryResponse,
     UnclassifiedSource,
 )
-from api.services import pb_precise_datetime  # noqa: F401  (installs the millisecond-keeping parse)
 from api.services.camp_calendar import CAMP_TZ
 from api.services.financial_aid_repository import FaRequestRow, FinancialAidRepository
 from bunking.financial_aid.errors import FinancialAidError

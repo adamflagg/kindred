@@ -5,19 +5,24 @@ their times, 10 ms apart in one second. Fictional only."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pocketbase.models.record import Record
 
 from api.services.financial_aid_cancellations import fold_cancellations
-from api.services.financial_aid_change_log_reads import log_row
+from api.services.financial_aid_change_log_reads import fetch_entity_log, log_row
 from api.services.financial_aid_corrections import REVERT, FieldKind, effective_values
 from api.services.financial_aid_decisions_repository import cancel_event, decision_event, hold_event
 from api.services.financial_aid_grant_placements import newest, placement_record
 from api.services.financial_aid_intake_repository import _correction
 from api.services.financial_aid_intake_types import CorrectionRecord
+from api.services.financial_aid_reconciliation import undone_rounds
+from api.services.pb_precise_datetime import PreciseRecordService
+from bunking.financial_aid.change_replay import replay
 from bunking.financial_aid.decisions.holds import fold_holds
 from bunking.financial_aid.decisions.rounds import fold_rounds
+from pocketbase import PocketBase
 
 FIRST = "2027-02-01 18:00:00.001Z"
 SECOND = "2027-02-01 18:00:00.011Z"
@@ -25,7 +30,8 @@ EARLY_ID, LATE_ID = "zzzzzzzzzzzzzzz", "aaaaaaaaaaaaaaa"  # the id order is the 
 
 
 def rec(**fields: Any) -> Record:
-    return Record({"collectionName": "x", **fields})
+    """A record built the way a list read builds it: through the aid service's decode."""
+    return PreciseRecordService(PocketBase("http://127.0.0.1:1"), "x").decode({"collectionName": "x", **fields})
 
 
 def test_a_hold_lifted_10ms_after_it_was_placed_reads_lifted() -> None:
@@ -76,3 +82,47 @@ def test_a_correction_reverted_10ms_after_it_was_made_reads_reverted() -> None:
     corrections = [make(EARLY_ID, FIRST, "500.00"), make(LATE_ID, SECOND, REVERT)]
     value = effective_values({"ask": "100"}, {"ask": FieldKind.MONEY}, corrections)["ask"]
     assert value.corrected is False
+
+
+def test_a_round_reposted_10ms_after_it_was_unposted_is_not_undone() -> None:
+    unpost = decision_event(rec(id=EARLY_ID, created=FIRST, request="r1", round=1, event="unpost"))
+    post = decision_event(rec(id=LATE_ID, created=SECOND, request="r1", round=1, event="post", amount=100))
+    assert undone_rounds([unpost, post]) == frozenset()
+
+
+def test_the_entity_log_comes_back_in_time_order_not_id_order() -> None:
+    first = rec(id=EARLY_ID, created=FIRST, entity="aid_requests", entity_id="r1")
+    second = rec(id=LATE_ID, created=SECOND, entity="aid_requests", entity_id="r1")
+
+    class Collection:
+        def get_full_list(self, **_: Any) -> list[Record]:
+            return [second, first]  # the id order
+
+    class Client:
+        def collection(self, _: str) -> Collection:
+            return Collection()
+
+    rows = asyncio.run(fetch_entity_log(Client(), 2027, exact=["r1"], containing=[]))
+    assert [r.id for r in rows] == [EARLY_ID, LATE_ID]
+
+
+def test_two_log_rows_10ms_apart_replay_in_order_and_are_not_one_instant() -> None:
+    """Rows are grouped by their exact instant, so rows a few ms apart are two writes in order, not a clash."""
+    made = log_row(
+        rec(
+            id="mmmmmmmmmmmmmmm",
+            created="2027-02-01 18:00:00.000Z",
+            entity="aid_requests",
+            entity_id="r1",
+            before=None,
+            after={"x": 0},
+        )
+    )
+    one = log_row(
+        rec(id=EARLY_ID, created=FIRST, entity="aid_requests", entity_id="r1", before={"x": 0}, after={"x": 1})
+    )
+    two = log_row(
+        rec(id=LATE_ID, created=SECOND, entity="aid_requests", entity_id="r1", before={"x": 1}, after={"x": 2})
+    )
+    replayed = replay([made, two, one])["r1"]
+    assert (replayed.state, replayed.complete) == ({"x": 2}, True)

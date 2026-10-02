@@ -1,41 +1,59 @@
-"""Keep the milliseconds PocketBase stamps on `created` and `updated`.
+"""Keep the milliseconds PocketBase stamps on `created` and `updated`, for the aid reads.
 
 The PocketBase Python SDK parses those two fields with `pocketbase.utils.to_datetime`, which cuts the
 fraction off ("2027-02-01 18:00:00.011Z" becomes 18:00:00). Two events on one request in the same second
 then replayed in record-id order, not time order: a hold lifted 9 ms after it was placed still read held.
-The raw string is gone once the model is built (BaseModel.load pops it), so the fix is at the one parse:
-`install()` swaps the SDK's base model's parser for one that keeps the fraction. Same type back (a naive
-datetime, read as UTC by `parse_pb_datetime`), more precision, and a value it can't parse still comes back
-as the SDK would have returned it. Every aid replay reads `created` through the SDK model, so this one
-swap serves them all. Imported by `financial_aid_ledger_service` (home of `parse_pb_datetime`) and by
-`api.dependencies` (which builds the client)."""
+The SDK pops the raw string while it builds the model, so the fix sits in the service that builds it:
+`PreciseRecordService.decode` keeps the two raw strings, lets the SDK build the record as usual, then sets
+`created` and `updated` from the raw strings with the fraction kept. Same type back (a naive datetime, read
+as UTC by `parse_pb_datetime`), and a value it can't parse stays as the SDK parsed it.
+
+Only the aid reads use it, through `aid_collection` (nothing else in the app changes). Every aid replay reads
+`created` off a record those helpers list, so the helper at each aid list call serves them all."""
 
 from __future__ import annotations
 
 import datetime
-from typing import Final
+from typing import Any, Final
 
-import pocketbase.models.base_model as base_model
-from pocketbase.utils import to_datetime as sdk_to_datetime
+from pocketbase.models.record import Record
+from pocketbase.services.record_service import RecordService
+
+from pocketbase import PocketBase
 
 _FORMATS: Final = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S")
+_STAMPS: Final = ("created", "updated")
 
 
-def precise_to_datetime(str_datetime: str, format: str = "%Y-%m-%d %H:%M:%S") -> datetime.datetime | str:
-    """The SDK's `to_datetime`, keeping the fraction of a second a PocketBase timestamp carries."""
-    if isinstance(str_datetime, str) and format == "%Y-%m-%d %H:%M:%S":
-        text = str_datetime.strip().removesuffix("Z")
-        for fmt in _FORMATS:
-            try:
-                return datetime.datetime.strptime(text, fmt)
-            except ValueError:
-                continue
-    return sdk_to_datetime(str_datetime, format)
+def precise_datetime(value: Any) -> datetime.datetime | None:
+    """A PocketBase timestamp ("YYYY-MM-DD HH:MM:SS.mmmZ") with its fraction, naive UTC; None when it isn't one."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip().removesuffix("Z")
+    for fmt in _FORMATS:
+        try:
+            return datetime.datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
 
 
-def install() -> None:
-    """Idempotent: point the SDK's base model at the precise parser."""
-    base_model.to_datetime = precise_to_datetime  # type: ignore[attr-defined]  # a module attribute the SDK imports by name
+class PreciseRecordService(RecordService):
+    """A RecordService whose records keep the milliseconds of `created` and `updated`."""
+
+    def decode(self, data: dict[str, Any]) -> Record:
+        raw = {name: data.get(name) for name in _STAMPS}  # the SDK pops them while it builds the record
+        record = super().decode(data)
+        for name, value in raw.items():
+            stamp = precise_datetime(value)
+            if stamp is not None:
+                setattr(record, name, stamp)
+        return record
 
 
-install()
+def aid_collection(pb: Any, name: str) -> Any:
+    """`pb.collection(name)`, with milliseconds kept on a real PocketBase client; anything else (a test double)
+    answers as it always did."""
+    if isinstance(pb, PocketBase):
+        return PreciseRecordService(pb, name)
+    return pb.collection(name)
