@@ -169,6 +169,8 @@ export interface GridColumnSpec {
   readonly pinned?: true
   /** A money column: the footer totals it, and the CSV writes it through moneyCsv. */
   readonly money?: true
+  /** True: still money in the cell and the CSV, but the footer shows no total (no ruled figure to sum). */
+  readonly noTotal?: true
   /** False keeps an action column out of the CSV (M16). */
   readonly inCsv?: false
   readonly value: (row: ApiAidGridRow, ctx: ColumnContext) => CellValue
@@ -312,6 +314,8 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     width: 78,
     align: 'right',
     money: true,
+    // The ruling covered the per-row cell; a sum of these is a new figure nobody ruled (PR 4 review I1).
+    noTotal: true,
     value: (r) => ((viewRound(r, 'needs_offer')?.round ?? 1) > 1 ? r.total_decided : null),
   },
   daysWaiting: {

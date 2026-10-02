@@ -243,9 +243,10 @@ function buildColumns(
       searchable: key === 'family' || key === 'camper',
       value: (row: ApiAidGridRow) => spec.value(row, ctx),
       render: renderFor(key, ctx, links, onTick),
-      total: spec.money
-        ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
-        : undefined,
+      total:
+        spec.money && spec.noTotal !== true
+          ? (rows: readonly ApiAidGridRow[]) => moneyTotal(rows.map((row) => spec.value(row, ctx)))
+          : undefined,
     }
   })
 }
