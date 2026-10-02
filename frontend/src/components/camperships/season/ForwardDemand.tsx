@@ -1,10 +1,10 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router'
 
-import { DefRef } from '../kit/DefinitionNotes'
 import { TABLE_CARD } from '../kit/kitStyles'
 import { Money } from '../kit/MoneyText'
 import { countWords } from '../requests/views'
+import { Note } from './BudgetTable'
 import { heldWords, type DemandGroup } from './demandModel'
 import { BELOW_HEADING, FIGURE_LINK, TD_LABEL, TD_MONEY, TH_LABEL, TH_MONEY } from './seasonStyles'
 
@@ -40,47 +40,42 @@ export function ForwardDemand({
             </tr>
           </thead>
           <tbody>
-            {groups.map((group) => {
-              return (
-                <Fragment key={group.pool}>
-                  <tr>
-                    <td colSpan={6} className={BELOW_HEADING}>
-                      {group.label}
+            {groups.map((group) => (
+              <Fragment key={group.pool}>
+                <tr>
+                  <td colSpan={6} className={BELOW_HEADING}>
+                    {group.label}
+                  </td>
+                </tr>
+                {group.lines.map((line) => (
+                  <tr key={line.key} data-demand-line={`${group.pool}:${line.key}`}>
+                    <td className={`${TD_LABEL} pl-6`}>
+                      {line.label}
+                      <Note n={numberOf(line.key)} />
                     </td>
+                    <td className={TD_MONEY}>
+                      {line.href === null ? (
+                        countWords(line.requests)
+                      ) : (
+                        <Link to={line.href} className={`text-primary ${FIGURE_LINK}`}>
+                          {countWords(line.requests)}
+                        </Link>
+                      )}
+                    </td>
+                    <td className={TD_MONEY}>
+                      <Money value={line.asked} />
+                    </td>
+                    <td className={TD_MONEY}>
+                      <Money value={line.computed} />
+                    </td>
+                    <td className={TD_MONEY}>
+                      <Money value={line.unmet} />
+                    </td>
+                    <td className={TD_MONEY}>{heldWords(line)}</td>
                   </tr>
-                  {group.lines.map((line) => {
-                    const n = numberOf(line.key)
-                    return (
-                      <tr key={line.key} data-demand-line={`${group.pool}:${line.key}`}>
-                        <td className={`${TD_LABEL} pl-6`}>
-                          {line.label}
-                          {n !== null && <DefRef n={n} />}
-                        </td>
-                        <td className={TD_MONEY}>
-                          {line.href === null ? (
-                            countWords(line.requests)
-                          ) : (
-                            <Link to={line.href} className={`text-primary ${FIGURE_LINK}`}>
-                              {countWords(line.requests)}
-                            </Link>
-                          )}
-                        </td>
-                        <td className={TD_MONEY}>
-                          <Money value={line.asked} />
-                        </td>
-                        <td className={TD_MONEY}>
-                          <Money value={line.computed} />
-                        </td>
-                        <td className={TD_MONEY}>
-                          <Money value={line.unmet} />
-                        </td>
-                        <td className={TD_MONEY}>{heldWords(line)}</td>
-                      </tr>
-                    )
-                  })}
-                </Fragment>
-              )
-            })}
+                ))}
+              </Fragment>
+            ))}
           </tbody>
         </table>
       </div>

@@ -72,4 +72,36 @@ describe('forward demand (§5.9, §7.2; D82)', () => {
     expect(poolA?.lines[0]?.requests).toEqual({ families: 30, requests: 31 })
     expect(poolA?.lines[0]?.href).toBeNull()
   })
+
+  it('keeps the No pool group on a past date, where its masked figures read "—" not zero (m2)', () => {
+    const budget = pastBudget()
+    const noPool = budget.pools.find((p) => p.pool === '')
+    if (noPool === undefined) throw new Error('no No pool')
+    // A gap request in No pool: the read masks its unmet ask and keeps nothing else.
+    const masked = {
+      ...budget,
+      pools: budget.pools.map((p) =>
+        p.pool === ''
+          ? {
+              ...p,
+              demand: {
+                ...p.demand,
+                round2_asks: null,
+                round2_asked: null,
+                round2_computed: null,
+                round1_unmet: null,
+              },
+            }
+          : p
+      ),
+    }
+    expect(demandGroups(masked, null, PAST).map((g) => g.label)).toEqual([
+      'Pool A',
+      'Pool B',
+      'No pool',
+      'Total',
+    ])
+    // A real zero still hides it.
+    expect(demandGroups(BUDGET, null, LIVE).map((g) => g.label)).not.toContain('No pool')
+  })
 })
