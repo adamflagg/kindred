@@ -19,7 +19,6 @@ import { attentionFor } from './attention'
 import { requestStage, roundOf } from './stage'
 import {
   countWords,
-  familyGroup,
   footerWords,
   GRID_COLUMNS,
   moneyTotal,
@@ -218,7 +217,6 @@ export function RequestsGrid({
   const groupings = useMemo(
     (): Array<AidGrouping<ApiAidGridRow>> => [
       { key: 'reason', label: 'By reason', groupOf: reasonGroup(view, today) },
-      { key: 'family', label: 'By family', groupOf: familyGroup },
     ],
     [view, today]
   )

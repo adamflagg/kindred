@@ -144,12 +144,22 @@ describe('RequestsGrid', () => {
     expect(header).not.toContain('Household')
   })
 
-  it('still groups by family and finds a row by the family name', async () => {
+  // Spec change (owner, 2026-10-02): "By family" is gone, which leaves one grouping, so the
+  // Flat / By reason control is gone too. This replaces the test that clicked "By family".
+  it('has no grouping control, and finds a row by the family name', async () => {
     render(<Grid />)
-    await userEvent.click(screen.getByRole('button', { name: 'By family' }))
-    expect(document.querySelectorAll('[data-group-heading]').length).toBeGreaterThan(0)
+    for (const name of ['By family', 'By reason', 'Flat'])
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Search'), 'garcia')
     expect(screen.getAllByRole('row').filter((r) => r.hasAttribute('data-row-key'))).toHaveLength(1)
+  })
+
+  it("keeps each view's default grouping: All is flat, a queue view is grouped by reason", () => {
+    const { unmount } = render(<Grid slug="all" />)
+    expect(document.querySelectorAll('[data-group-heading]')).toHaveLength(0)
+    unmount()
+    render(<Grid slug="holds" />)
+    expect(document.querySelectorAll('[data-group-heading]').length).toBeGreaterThan(0)
   })
 
   it('opens the household from a family name, without highlighting the row (Decision 1)', async () => {

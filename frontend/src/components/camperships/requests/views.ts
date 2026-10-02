@@ -476,10 +476,6 @@ export function reasonGroup(view: RequestView, today: string) {
   }
 }
 
-export function familyGroup(row: ApiAidGridRow): { id: string; heading: string } {
-  return { id: String(row.household_cm_id), heading: row.family_name }
-}
-
 /** A money column's footer (D20, D74): the sum to the cent of what is there; null ("—") when nothing is. */
 export function moneyTotal(values: readonly CellValue[]): number | null {
   const numbers = values.filter((value): value is number => typeof value === 'number')

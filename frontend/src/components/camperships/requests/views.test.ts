@@ -12,7 +12,6 @@ import {
 } from './gridFixtures'
 import {
   countWords,
-  familyGroup,
   filterRows,
   footerWords,
   GRID_COLUMNS,
@@ -190,10 +189,6 @@ describe('grouping', () => {
       id: 'Short',
       heading: 'Short',
     })
-  })
-
-  it('groups by family under the household name', () => {
-    expect(familyGroup(ROW_SAMUEL)).toEqual({ id: '1000001', heading: 'The Johnson Family' })
   })
 })
 

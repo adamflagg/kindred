@@ -395,7 +395,8 @@ export function AidTable<Row>({
             className={SEARCH_INPUT}
           />
         </div>
-        {groupings.length > 0 && (
+        {/* One grouping is a default with nothing to choose between: no control. */}
+        {groupings.length > 1 && (
           <div className={GROUP}>
             <button
               type="button"
