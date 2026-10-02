@@ -54,6 +54,7 @@ import type {
   CorrectionCreate,
   CorrectionOut,
   CrossScopeEdge,
+  DecisionTypeOutput,
   DecisionWriteOut,
   DefinitionsResponse,
   DraftSectionOut,
@@ -72,6 +73,7 @@ import type {
   HouseholdRequestOut,
   HouseholdShareSet,
   HouseholdTotalsOut,
+  IncentiveRule,
   IncomeOut,
   IssueOut,
   JumpIndexHousehold,
@@ -82,6 +84,7 @@ import type {
   PermissionScreen,
   PostedIn,
   PreviewIn,
+  ProgramProfile,
   ReceiptOut,
   PoolBudgetOut,
   RemainingResponse,
@@ -233,3 +236,8 @@ export type ApiAidRulesSection = DraftSectionOut['section']
 /** The rules document as the server sends it (decimals as strings), and as a write sends it back. */
 export type ApiAidRulesDocument = AidRulesOutput
 export type ApiAidRulesDocumentIn = AidRulesInput
+
+/** Rules records the document holds by key (`{[key]: unknown | T}`), named so the editor can read their choices. */
+export type ApiAidProgramProfile = ProgramProfile
+export type ApiAidIncentiveRule = IncentiveRule
+export type ApiAidDecisionType = DecisionTypeOutput
