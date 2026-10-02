@@ -40,13 +40,15 @@ const GRID_FILTERS = ['program', 'pool', 'round', 'tick', 'ids'] as const
 
 /**
  * "← Back to requests": the grid's view and filters, rebuilt from the link that opened this page.
- * With history behind it the click goes back through it, so the grid lands on the row it left
- * (§3.5: the grid wrote `?row=` onto its own entry before navigating). A fresh tab uses the href.
+ * When the grid opened this entry (it marks it `aidFromGrid`) the click goes back through history,
+ * so the grid lands on the row it left (§3.5: the grid wrote `?row=` onto its own entry first).
+ * Anything else (a new tab, a jump, a queue step) follows the href, whose view carries the as-of.
  */
 function BackToRequests({ view }: { view: AidView }) {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { key } = useLocation()
+  const { state } = useLocation()
+  const fromGrid = (state as { aidFromGrid?: boolean } | null)?.aidFromGrid === true
   const from = params.get('from')
   if (from === null) return null
   const extra: Record<string, string> = { view: from }
@@ -55,18 +57,20 @@ function BackToRequests({ view }: { view: AidView }) {
     if (value !== null) extra[name] = value
   }
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (key === 'default') return
+    if (!fromGrid) return
     event.preventDefault()
     void navigate(-1)
   }
   return (
-    <Link
-      to={aidHref('/aid/requests', view, extra)}
-      onClick={onClick}
-      className={`text-primary ${ACTION_LINK}`}
-    >
-      ← Back to requests
-    </Link>
+    <div>
+      <Link
+        to={aidHref('/aid/requests', view, extra)}
+        onClick={onClick}
+        className={`text-primary ${ACTION_LINK}`}
+      >
+        ← Back to requests
+      </Link>
+    </div>
   )
 }
 
@@ -100,7 +104,7 @@ export default function AidHouseholdPage() {
           ) : undefined
         }
       />
-      <BackToRequests view={view} />
+      <BackToRequests view={{ year, asOf }} />
       {asOf.kind === 'past' && (
         <p className={AMBER_NOTE}>
           {`The household page shows today's figures only. Requests can show ${formatLongDate(asOf.date)}.`}
