@@ -144,10 +144,12 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('↑ does nothing once something is typed: no ruling says "save and move back" (Decision 6)', async () => {
+  // Owner ruling 2026-10-03 (sitting A, A18): every exit ↓ handles saves first, ↑ included. This
+  // replaces Decision 6's "↑ does nothing once something is typed".
+  it('↑ saves and moves to the previous row, exactly like ↓ (sitting A, A18)', async () => {
     const { onMove, onSave } = setup()
     await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500{ArrowUp}')
-    expect(onMove).not.toHaveBeenCalled()
+    expect(onMove).toHaveBeenCalledWith(-1, SAVE)
     expect(onSave).not.toHaveBeenCalled()
   })
 
@@ -402,10 +404,14 @@ describe('RequestEditor (§4.6; D22, D27, D79)', () => {
       await userEvent.keyboard('{ArrowDown}')
       expect(onMove).toHaveBeenLastCalledWith(1, null)
       await userEvent.type(screen.getByLabelText('Round 2 ask'), '2500')
+      // ↑ is an exit like ↓ (sitting A, A18): it saves what is typed and moves back.
       await userEvent.type(note, '!{ArrowUp}')
-      expect(onMove).toHaveBeenCalledTimes(1)
-      await userEvent.type(note, '{Enter}')
-      expect(onSave).toHaveBeenCalledWith({ amount: 2500, reason: 'Family emailed (Apr 9)!' })
+      expect(onMove).toHaveBeenLastCalledWith(-1, {
+        amount: 2500,
+        reason: 'Family emailed (Apr 9)!',
+      })
+      await userEvent.type(note, '?{Enter}')
+      expect(onSave).toHaveBeenCalledWith({ amount: 2500, reason: 'Family emailed (Apr 9)!?' })
     })
   })
 

@@ -217,6 +217,17 @@ describe('useEditorWalk: ruling A', () => {
   })
 })
 
+describe('useEditorWalk: ↑ saves like ↓ (sitting A, A18)', () => {
+  it('↑ from a row with unsaved typing saves it, then moves up', async () => {
+    renderWalk()
+    await userEvent.click(screen.getByText('Liam Garcia'))
+    await userEvent.keyboard('300{ArrowUp}')
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(saveSpy).toHaveBeenCalledWith('r2', { amount: 300, reason: NOTE })
+    expect(editing('Johnson')).toBeInTheDocument()
+  })
+})
+
 describe('useEditorWalk: ruling B', () => {
   it('a click on another row with something typed saves first, then moves', async () => {
     renderWalk()
