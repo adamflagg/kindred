@@ -36,7 +36,7 @@ from api.services.financial_aid_decisions_service import (
 )
 from api.services.financial_aid_grants_register import RegisterRow
 from api.services.financial_aid_intake_types import EquityAnswers
-from bunking.financial_aid.decisions import DecisionEvent
+from bunking.financial_aid.decisions import DecisionEvent, fold_rounds
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -373,6 +373,57 @@ async def test_resending_the_same_ask_writes_nothing() -> None:
     again = await service.key_ask(EMMA, _ask(2, "400"), ACTOR)
     assert (again.written, again.unchanged, again.operation_id) == (0, 1, "")
     assert len(store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_resending_the_same_ask_with_a_changed_note_keeps_the_note() -> None:
+    """The screen shows the save, so the note must persist: it is recorded as one more ask event carrying the note,
+    one change row under its own operation, and the round reads as it did."""
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_ask(EMMA, _ask(2, "400", note="Family emailed Mar 20"), ACTOR)
+    again = await service.key_ask(EMMA, _ask(2, "400", note="Family called, same amount"), ACTOR)
+    assert (again.written, again.unchanged) == (1, 0)
+    assert again.operation_id != ""
+    assert len(store.operations) == 2
+    assert [e.note for e in store.events if e.kind == "ask" and e.round == 2] == [
+        "Family emailed Mar 20",
+        "Family called, same amount",
+    ]
+    assert store.log[-1]["operation_id"] == again.operation_id
+    assert sum(1 for row in store.log if row["operation_id"] == again.operation_id) == 1
+    asks = [e for e in store.events if e.kind == "ask" and e.round == 2]
+    cut = asks[0].created
+    now = fold_rounds(store.events)[EMMA][2]
+    then = fold_rounds(store.events, as_of=cut)[EMMA][2]
+    assert (now.ask, now.asked_on) == (then.ask, then.asked_on) == (Decimal(400), date(2027, 3, 20))
+
+
+@pytest.mark.asyncio
+async def test_resending_the_same_ask_with_the_same_note_still_writes_nothing() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_ask(EMMA, _ask(2, "400", note="Family emailed Mar 20"), ACTOR)
+    again = await service.key_ask(EMMA, _ask(2, "400", note="Family emailed Mar 20"), ACTOR)
+    blank = await service.key_ask(EMMA, _ask(2, "400"), ACTOR)
+    assert [(r.written, r.unchanged, r.operation_id) for r in (again, blank)] == [(0, 1, ""), (0, 1, "")]
+    assert len(store.operations) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_changed_amount_is_written_as_before_whatever_the_note() -> None:
+    store = FakeDecisionsStore()
+    seed_request(store, EMMA)
+    _posted(store, EMMA, 1, "1500")
+    service = _service(store)
+    await service.key_ask(EMMA, _ask(2, "400", note="Family emailed Mar 20"), ACTOR)
+    moved = await service.key_ask(EMMA, _ask(2, "450", note="Family emailed Mar 20"), ACTOR)
+    assert (moved.written, moved.unchanged) == (1, 0)
+    assert store.events[-1].amount == Decimal(450)
 
 
 @pytest.mark.asyncio

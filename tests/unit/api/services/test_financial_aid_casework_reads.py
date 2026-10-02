@@ -138,3 +138,30 @@ async def test_requests_waiting_for_approved_rules_have_their_own_queue_and_a_vi
     assert len(listing.applications) == 2
     # 1000002's only request is its waitlisted camper's, unmatched: nothing there waits on the rules.
     assert ["awaiting_approved_rules" in a.flag_codes for a in listing.applications] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_a_cost_or_include_override_is_not_a_corrected_field_on_the_applications_list() -> None:
+    from api.services.financial_aid_intake_types import CorrectionRecord
+
+    store, casework = await casework_with_conflict()
+    await casework.add_correction(YEAR, 1000001, "num_children", "3", "Counted.", ACTOR)
+    application = await store.fetch_application(YEAR, 1000001)  # type: ignore[attr-defined]
+    request = next(r for r in await store.fetch_requests(YEAR) if r.household_cm_id == 1000001)  # type: ignore[attr-defined]
+    for n, (field, value) in enumerate((("cost_override", "discount:100.00"), ("include_override", "excluded"))):
+        store.corrections.append(  # type: ignore[attr-defined]
+            CorrectionRecord(
+                id=f"cor{90 + n:012d}",
+                year=YEAR,
+                application_id=application.id,
+                request_id=request.id,
+                field=field,
+                new_value=value,
+                original_value="",
+                reason="Partial session agreed with the family",
+                actor=ACTOR,
+                created=f"2027-02-0{n + 1} 17:00:00.000Z",
+            )
+        )
+    first = (await casework.list_applications(YEAR)).applications[0]
+    assert first.corrected_fields == 1  # the num_children correction only

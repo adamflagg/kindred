@@ -59,6 +59,7 @@ from api.services.financial_aid_grants_register import (
     RequestRef,
     applied_households,
     build_register,
+    expected_display_names,
     expected_grants,
     needs_attention,
     program_family_for_session_type,
@@ -607,6 +608,8 @@ class GrantsService:
             if getattr(s, "grantor_key", ""):
                 grantor_families[str(s.grantor_key)].add(str(s.source_family))
         expected = expected_grants(answers, rows, {k: frozenset(v) for k, v in grantor_families.items()})
+        active_names = {str(g.key): str(g.name) for g in grantors_raw if not grantor_retired_at(g)}
+        display = expected_display_names({k: frozenset(v) for k, v in grantor_families.items()}, active_names)
 
         household_names = {int(h.cm_id): h for h in household_rows}
         grantor_names = {str(g.key): str(g.name) for g in grantors_raw}
@@ -713,6 +716,7 @@ class GrantsService:
                     kind=e.kind,
                     person_cm_ids=list(e.person_cm_ids),
                     camper_names=[name_of(cm) for cm in e.person_cm_ids],
+                    display_name=display.get(e.kind),
                 )
                 for e in expected
             ],

@@ -233,3 +233,30 @@ async def test_an_option_naming_several_sessions_still_resolves_one_camper_at_a_
     # The Specialist-registered camper on the same option is still decided by registration.
     specialist = store.request_for(person=1000017, program="summer")
     assert (specialist.session_cm_id, specialist.session_resolution) == (1000108, "enrollment")
+
+
+@pytest.mark.asyncio
+async def test_a_headcount_reason_code_is_checked_against_the_seasons_codes_and_logged() -> None:
+    """Decision 6: one list for cost overrides and headcounts, the season's cost.override_reasons."""
+    store, _ = await built()
+
+    async def codes(year: int) -> tuple[str, ...]:
+        return ("headcount", "discount")
+
+    casework = FinancialAidCaseworkService(store, reason_codes=codes)
+    family = store.request_for(household=1000001, program="family_camp")
+    with pytest.raises(CaseworkValidationError, match="whim is not one of"):
+        await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR, reason_code="whim")
+    assert store.operations == []
+    await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR, reason_code="headcount")
+    (row,) = rows(store)
+    assert row["reason"] == "headcount: Family told us."  # the code leads the operation's reason (plan review fix 10)
+    assert row["after"] == {"headcount_non_infant": 4, "headcount_infant": 1, "headcount_source": "declared"}
+
+
+@pytest.mark.asyncio
+async def test_without_a_code_source_the_rules_defaults_apply() -> None:
+    store, casework = await built()
+    family = store.request_for(household=1000001, program="family_camp")
+    out = await casework.set_headcount(family.id, 4, 1, "declared", "Family told us.", ACTOR, reason_code="headcount")
+    assert out.headcount_non_infant == 4

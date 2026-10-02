@@ -286,14 +286,9 @@ def _awaiting(plan: IntakePlan, existing: Sequence[RequestRecord]) -> int:
 FIELD_NEVER_TRUE: Final = "equity_field_never_true"
 
 
-def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
-    """A yes/no answer the approved equity rules weight that no applicant this season answered
-    yes (spec 18 U-C7: warn when no one answered).
-
-    The mirror stores a blank yes/no as False, so "answered No" and "never asked" look the same
-    on any one row. Across a whole season they do not: a weighted question nobody answered yes
-    was most likely dropped from the form, and its weight silently reaches no family. Staff and
-    finance should look at the form or the weight. Nothing is held."""
+def never_true_fields(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
+    """The yes/no fields the approved equity rules weight that no applicant this season answered yes (spec 18 U-C7).
+    Today shows them (§6.4); the intake run logs them (never_true_warnings)."""
     if rules is None or not fa_rows:
         return ()
     weighted = {key for weights in rules.equity.weights.values() for key, weight in weights.items() if weight > 0}
@@ -304,10 +299,19 @@ def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tup
         for field in (criterion.field, *criterion.also_fields)
         if field in YES_NO_ANSWER_FIELDS
     )
+    return tuple(field for field in fields if not any(bool(row.answers.get(field)) for row in fa_rows))
+
+
+def never_true_warnings(rules: AidRules | None, fa_rows: Sequence[FaRow]) -> tuple[str, ...]:
+    """A yes/no answer the approved equity rules weight that no applicant this season answered
+    yes (spec 18 U-C7: warn when no one answered).
+
+    The mirror stores a blank yes/no as False, so "answered No" and "never asked" look the same
+    on any one row. Across a whole season they do not: a weighted question nobody answered yes
+    was most likely dropped from the form, and its weight silently reaches no family. Staff and
+    finance should look at the form or the weight. Nothing is held."""
     return tuple(
-        f"{FIELD_NEVER_TRUE}: {field} (0 of {len(fa_rows)} applicants)"
-        for field in fields
-        if not any(bool(row.answers.get(field)) for row in fa_rows)
+        f"{FIELD_NEVER_TRUE}: {field} (0 of {len(fa_rows)} applicants)" for field in never_true_fields(rules, fa_rows)
     )
 
 

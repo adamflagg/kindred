@@ -17,6 +17,7 @@ from typing import Any, cast
 import httpx
 
 from api.constants.collections import (
+    AID_APPLICATION_CORRECTIONS,
     AID_APPLICATIONS,
     AID_ATTRIBUTION_OVERRIDES,
     AID_CANCELLATIONS,
@@ -232,6 +233,22 @@ class FakeDecisionsStore:
             elif collection == AID_GRANT_PLACEMENTS:
                 self._clock += timedelta(seconds=1)
                 self.grant_placements.append(placement_record(SimpleNamespace(**body, created=self._clock.isoformat())))
+            elif collection == AID_APPLICATION_CORRECTIONS:
+                self._clock += timedelta(seconds=1)
+                self.corrections.append(
+                    CorrectionRecord(
+                        id=f"cor{len(self.corrections):012d}",
+                        year=int(body["year"]),
+                        application_id=str(body["application"]),
+                        request_id=str(body["request"]),
+                        field=str(body["field"]),
+                        new_value=str(body["new_value"]),
+                        original_value=str(body["original_value"]),
+                        reason=str(body["reason"]),
+                        actor=str(body["actor"]),
+                        created=self._clock.strftime("%Y-%m-%d %H:%M:%S.000Z"),
+                    )
+                )
             elif collection == AID_RULES:
                 self.rules_writes.append(body)
             else:

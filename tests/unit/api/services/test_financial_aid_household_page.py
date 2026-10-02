@@ -40,7 +40,7 @@ from api.services.financial_aid_household_page import (
     totals,
 )
 from api.services.financial_aid_intake_types import PayerShareRecord
-from bunking.financial_aid.decisions import RoundState
+from bunking.financial_aid.decisions import DecisionEvent, RoundState
 from tests.unit.api.services.decisions_fakes import (
     ACTOR,
     T0,
@@ -320,6 +320,13 @@ def test_a_household_card_carries_its_own_share_of_decided_and_posted() -> None:
     assert (johnson.decided, johnson.posted, johnson.in_campminder, johnson.states) == (750.0, None, None, [])
 
 
+def test_a_row_has_no_include_override_and_its_included_is_live_and_not_cancelled() -> None:
+    """Owner ruling: no staff exclusion; a request leaves the band only by being cancelled or not live."""
+    assert "include_override" not in GridRowOut.model_fields
+    out = totals([_row(EMMA, JOHNSON), _row(LIAM, GARCIA)], {})
+    assert (out.cost, out.decided) == (4000.0, 3000.0)
+
+
 # --- the service: one season, one grants load, the page's own reads ----------------------------------
 
 
@@ -449,6 +456,7 @@ class _Ledger:
         ]
         self.posting_reads: list[frozenset[int]] = []
         self.name_reads: list[frozenset[str]] = []
+        self.count_reads: list[frozenset[int]] = []
 
     async def fetch_postings(
         self, year: int, household_ids: Collection[int] | None = None, *, include_reversed: bool = False
@@ -469,6 +477,7 @@ class _Ledger:
                 household_phone="555-0100",
                 billing_city="Riverside",
                 billing_state="CA",
+                billing_postal_code="94612",
             ),
             SimpleNamespace(
                 cm_id=GARCIA,
@@ -477,6 +486,7 @@ class _Ledger:
                 household_phone="",
                 billing_city="",
                 billing_state="",
+                billing_postal_code="",
             ),
         ]
         return [h for h in rows if h.cm_id in cm_ids]
@@ -494,6 +504,13 @@ class _Ledger:
             ),
         ]
         return [p for p in people if p.cm_id in cm_ids]
+
+    async def fetch_session_counts(self, year: int, session_cm_ids: Collection[int]) -> dict[int, tuple[int, int]]:
+        self.count_reads.append(frozenset(session_cm_ids))
+        return {1000101: (180, 12)}
+
+    async def fetch_capacities(self, year: int, session_cm_ids: Collection[int]) -> dict[int, Any]:
+        return {1000101: SimpleNamespace(session_cm_id=1000101, capacity=190, note="Board figure")}
 
     async def fetch_user_names(self, emails: Collection[str]) -> dict[str, str]:
         self.name_reads.append(frozenset(emails))
@@ -989,3 +1006,64 @@ def test_when_a_requests_aid_alone_passes_its_cost_the_band_falls_short_by_the_e
     assert out.cost is not None
     assert out.decided is not None
     assert out.cost - out.decided - (out.grants_applied or 0) == -108.0
+
+
+@pytest.mark.asyncio
+async def test_the_page_carries_the_seasons_reason_codes() -> None:
+    """Decision 6: the cost-override and headcount forms offer the approved rules' cost.override_reasons."""
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert page.override_reasons == [
+        "headcount",
+        "partial_session",
+        "discount",
+        "missing_catalog",
+        "typed_household_total",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_round_3_request_shows_its_sessions_enrollment_waitlist_and_capacity() -> None:
+    """§6.3 item 4 (context only): enrolled = attendees status 2, waitlisted = status 8, capacity as finance entered it."""
+    store = _family()
+    store.events.append(
+        DecisionEvent(
+            id="ev0000000000001",
+            request_id=EMMA,
+            round=3,
+            kind="ask",
+            created=T0,
+            amount=Decimal(500),
+            effective_on=date(2027, 3, 1),
+            statement_of_need="Lost a job this spring",
+        )
+    )
+    ledger = _Ledger()
+    page = await _page_service(store, ledger=ledger).read(YEAR, JOHNSON)
+    emma = next(r for r in page.requests if r.row.request_id == EMMA)
+    liam = next(r for r in page.requests if r.row.request_id == LIAM)
+    assert emma.round3_context is not None
+    assert emma.round3_context.model_dump() == {
+        "session_cm_id": 1000101,
+        "enrolled": 180,
+        "waitlisted": 12,
+        "capacity": 190,
+        "capacity_note": "Board figure",
+    }
+    assert liam.round3_context is None
+    assert ledger.count_reads == [frozenset({1000101})]
+
+
+@pytest.mark.asyncio
+async def test_a_page_with_no_round_3_reads_no_counts() -> None:
+    ledger = _Ledger()
+    await _page_service(_family(), ledger=ledger).read(YEAR, JOHNSON)
+    assert ledger.count_reads == []
+
+
+@pytest.mark.asyncio
+async def test_a_household_card_names_its_county_from_the_billing_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bunking.geo_normalizer.zip_counties as zip_counties
+
+    monkeypatch.setattr(zip_counties, "_table", lambda: {"94612": "Alameda County"})
+    page = await _page_service(_family()).read(YEAR, JOHNSON)
+    assert [(c.household_cm_id, c.county) for c in page.households] == [(JOHNSON, "Alameda County"), (GARCIA, None)]

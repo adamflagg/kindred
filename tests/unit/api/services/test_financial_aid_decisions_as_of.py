@@ -251,6 +251,8 @@ async def test_a_request_with_no_recorded_equity_answers_then_keeps_3c1s_figures
     ]
     assert row.queues is None
     assert "queues" in GRID_GAPS
+    assert row.appeal_refusal is None
+    assert "appeal_refusal" in GRID_GAPS  # a past row names it, so the live-versus-past comparison drops it as a gap
 
 
 @pytest.mark.asyncio

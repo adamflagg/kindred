@@ -2704,6 +2704,53 @@ export type CorrectionOut = {
 }
 
 /**
+ * CostOverrideIn
+ *
+ * A cost override (D22): the cost to price the request at, a reason code from the season's cost.override_reasons
+ * and a note (required, main spec §14.4). amount None clears the override, and then takes no code. The code is at
+ * most 48 characters so "<code>:<amount>" fits the corrections table's 64.
+ */
+export type CostOverrideIn = {
+  /**
+   * Amount
+   */
+  amount: number | string | null
+  /**
+   * Reason Code
+   */
+  reason_code?: string | null
+  /**
+   * Note
+   */
+  note: string
+}
+
+/**
+ * CostOverrideOut
+ *
+ * A staff cost override (D22): the cost the request is priced at, its reason code from the season's
+ * cost.override_reasons, the note and who. The calculator's cost step reads it (calculator/cost.py).
+ */
+export type CostOverrideOut = {
+  /**
+   * Amount
+   */
+  amount: number
+  /**
+   * Reason Code
+   */
+  reason_code: string
+  /**
+   * Note
+   */
+  note: string
+  /**
+   * Actor
+   */
+  actor: string
+}
+
+/**
  * CostSection
  */
 export type CostSectionInput = {
@@ -3272,6 +3319,10 @@ export type DecisionWriteOut = {
    * Pending Approval
    */
   pending_approval?: boolean
+  /**
+   * Warning
+   */
+  warning?: string | null
   /**
    * Sections Not Locked
    */
@@ -3876,6 +3927,10 @@ export type ExpectedOut = {
    * Camper Names
    */
   camper_names: Array<string>
+  /**
+   * Display Name
+   */
+  display_name?: string | null
 }
 
 /**
@@ -5203,6 +5258,23 @@ export type GridRowOut = {
    * Payer Shares
    */
   payer_shares?: Array<GridShareOut>
+  /**
+   * Appeal Refusal
+   */
+  appeal_refusal?: string | null
+  cost_override?: CostOverrideOut | null
+  /**
+   * Included
+   */
+  included?: boolean | null
+  /**
+   * Session Candidates
+   */
+  session_candidates?: Array<SessionCandidateOut>
+  /**
+   * Campminder Description
+   */
+  campminder_description?: string | null
 }
 
 /**
@@ -5291,6 +5363,10 @@ export type HeadcountSet = {
    * Reason
    */
   reason: string
+  /**
+   * Reason Code
+   */
+  reason_code?: string | null
 }
 
 /**
@@ -5417,6 +5493,10 @@ export type HouseholdCardOut = {
    * City
    */
   city: string
+  /**
+   * County
+   */
+  county?: string | null
   money: HouseholdMoneyOut
   /**
    * Request Ids
@@ -5870,6 +5950,10 @@ export type HouseholdPageResponse = {
    * History
    */
   history: Array<HistoryEntryOut>
+  /**
+   * Override Reasons
+   */
+  override_reasons?: Array<string>
 }
 
 /**
@@ -5902,6 +5986,7 @@ export type HouseholdRequestOut = {
    * Grants Beyond Owed
    */
   grants_beyond_owed?: number | null
+  round3_context?: Round3ContextOut | null
 }
 
 /**
@@ -10084,6 +10169,10 @@ export type ProgramProfile = {
    * Open To Aid
    */
   open_to_aid?: boolean
+  /**
+   * Campminder Description
+   */
+  campminder_description?: string
 }
 
 /**
@@ -12194,6 +12283,36 @@ export type Round3ApprovalIn = {
 }
 
 /**
+ * Round3ContextOut
+ *
+ * A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
+ * status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
+ * None: not entered).
+ */
+export type Round3ContextOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Enrolled
+   */
+  enrolled: number
+  /**
+   * Waitlisted
+   */
+  waitlisted: number
+  /**
+   * Capacity
+   */
+  capacity: number | null
+  /**
+   * Capacity Note
+   */
+  capacity_note: string
+}
+
+/**
  * Round3Section
  */
 export type Round3SectionInput = {
@@ -12365,6 +12484,10 @@ export type RoundOut = {
    * Clawed Back
    */
   clawed_back?: boolean
+  /**
+   * Status Label
+   */
+  status_label?: string
 }
 
 /**
@@ -13125,6 +13248,23 @@ export type SessionBreakdown = {
    * Capacity utilization percentage
    */
   utilization?: number | null
+}
+
+/**
+ * SessionCandidateOut
+ *
+ * A session intake found for an unmatched request (Session not settled, §6.2; read 4), named from the season's
+ * sessions, or "Session <id>" when the season lacks it.
+ */
+export type SessionCandidateOut = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name: string
 }
 
 /**
@@ -14890,6 +15030,7 @@ export type TodayLineOut = {
     | 'would_change'
     | 'sources'
     | 'intake'
+    | 'equity_field_never_true'
   /**
    * Families
    */
@@ -14901,7 +15042,7 @@ export type TodayLineOut = {
   /**
    * Item Kind
    */
-  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions'
+  item_kind: 'requests' | 'grants' | 'sections' | 'descriptions' | 'fields'
   /**
    * Reasons
    */
@@ -21981,6 +22122,38 @@ export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses
 
 export type SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponse =
   SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses[keyof SetManualHoldApiFinancialAidRequestsRequestIdManualHoldPostResponses]
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostData = {
+  body: CostOverrideIn
+  path: {
+    /**
+     * Request Id
+     */
+    request_id: string
+  }
+  query?: never
+  url: '/api/financial-aid/requests/{request_id}/cost-override'
+}
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostError =
+  SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostErrors[keyof SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostErrors]
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DecisionWriteOut
+}
+
+export type SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponse =
+  SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses[keyof SetCostOverrideApiFinancialAidRequestsRequestIdCostOverridePostResponses]
 
 export type FreezeScenarioSeasonApiFinancialAidScenariosYearSnapshotPostData = {
   body?: never

@@ -59,6 +59,8 @@ from api.schemas.financial_aid_decisions import (
     CellOut,
     ChangedRowOut,
     ConfirmationOut,
+    CostOverrideIn,
+    CostOverrideOut,
     CountOut,
     DecisionWriteOut,
     EditorPreviewOut,
@@ -81,6 +83,7 @@ from api.schemas.financial_aid_decisions import (
     RoundCellOut,
     RoundCountsOut,
     RoundOut,
+    SessionCandidateOut,
     ShareConfirmationOut,
     TodoOut,
     UnpostIn,
@@ -109,7 +112,7 @@ from api.services.financial_aid_cancellations import (
     needs_reason,
     withdrawn_on_cancelled_enrollments,
 )
-from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, effective_values
+from api.services.financial_aid_corrections import APPLICATION_CORRECTABLE, REVERT, effective_values
 from api.services.financial_aid_grant_placements import (
     PLACEMENT_ACTOR,
     PLACEMENT_REASON,
@@ -160,6 +163,14 @@ from api.services.financial_aid_reconciliation import (
     request_scope,
     undone_rounds,
 )
+from api.services.financial_aid_request_overrides import (
+    COST_OVERRIDE,
+    encode_cost_override,
+    latest,
+    override_write,
+    parse_cost_override,
+)
+from api.services.financial_aid_request_overrides import by_request as overrides_by_request
 from api.services.financial_aid_rules_service import (
     PRICING_SECTIONS as PRICING_SECTIONS,  # defined in the rules service; re-exported for its importers
 )
@@ -212,7 +223,14 @@ from bunking.financial_aid.rules.schema import AidRules, SectionName
 from bunking.pocketbase_batch import BatchError, BatchLimitError
 
 _LIVE: Final = frozenset({STATUS_ACTIVE, STATUS_UNMATCHED})
-LIVE_STATUSES: Final = _LIVE  # public: the household page's "included" reads the budget's own set (slice 1)
+
+
+def is_included(status: str | None, *, cancelled: bool) -> bool:
+    """D77's included request: live (the budget's own set) and not cancelled (D129). Derived only: staff have no
+    override on it (owner ruling). The household band and each card's money line read it; pricing, Rounds & budget,
+    the Remaining line and Today never do."""
+    return status in _LIVE and not cancelled
+
 
 # Spec §5.4: 2026 has no ticks and no dated decisions; its decisions are reproduced from the repaired
 # sheet (D67). Before this season the ledger never ticks, and no confirmation or Note is shown.
@@ -239,6 +257,12 @@ CANCELLED_IN_KINDRED: Final = "Cancelled in Kindred: reopen it first"
 
 # 4a's actor for the ledger's own writes, as intake writes as "system:intake" (INTAKE_ACTOR).
 LEDGER_ACTOR: Final = "system:ledger"
+_POSTED_OVERRIDE_WARNING: Final = (
+    "A round is already posted: this cost changes the later rounds and the would-change-by figures, "
+    "never the money already posted"
+)
+# Intake's flag on an unmatched request (financial_aid_intake_plan): its detail lists the candidate session ids.
+_UNMATCHED_FLAG: Final = "unmatched_session"
 
 
 class DecisionNotFoundError(FinancialAidError, LookupError):
@@ -356,6 +380,9 @@ class Season:
     # Empty on a past read.
     camp_lines: tuple[CampLine, ...] = ()
     placements: Mapping[int, Placement] = field(default_factory=dict)
+    # Slice 1 part 2 (reads 5-6): each request's standing cost-override row (aid_application_corrections), dated by
+    # the read's day on a past read.
+    cost_overrides: Mapping[str, CorrectionRecord] = field(default_factory=dict)
     splits: Mapping[int, tuple[SplitPart, ...]] = field(default_factory=dict)
 
 
@@ -592,6 +619,29 @@ def _cancellation_out(c: Cancellation) -> CancellationOut:
     return CancellationOut(by=c.by, on=c.on, reason=c.reason, note=c.note)
 
 
+def _candidates(request: RequestRecord, sessions: Mapping[int, SessionRow]) -> list[SessionCandidateOut]:
+    """Session not settled (§6.2; read 4): the sessions intake found for an unmatched request, each once, named from
+    the season's sessions ("Session <id>" for one the season lacks). A settled request lists none, whatever its old
+    flag still says."""
+    if request.status != STATUS_UNMATCHED:
+        return []
+    ids: list[int] = []
+    for flag in request.flags:
+        if flag.get("code") != _UNMATCHED_FLAG:
+            continue
+        detail = flag.get("detail")
+        if not isinstance(detail, Mapping):
+            continue
+        candidates = detail.get("candidates")
+        if not isinstance(candidates, list):
+            continue
+        ids.extend(c for c in candidates if isinstance(c, int) and not isinstance(c, bool))
+    return [
+        SessionCandidateOut(session_cm_id=i, name=sessions[i].name if i in sessions else f"Session {i}")
+        for i in dict.fromkeys(ids)
+    ]
+
+
 def grid_row(
     request: RequestRecord,
     priced: PricedRequest,
@@ -604,6 +654,7 @@ def grid_row(
     confirmation: Confirmation | None = None,
     cancellation: Cancellation | None = None,
     to_reverse: bool = False,
+    appeal: str | None = None,
 ) -> GridRowOut:
     session = sessions.get(request.session_cm_id)
     result = priced.result
@@ -623,6 +674,7 @@ def grid_row(
             rules_version=rounds[v.round].rules_version if v.round in rounds else None,
             lock_source=(rounds[v.round].lock_source or None) if v.status == "posted" and v.round in rounds else None,
             clawed_back=v.clawed_back,
+            status_label=ROUND_STATUS_LABELS[v.status],
         )
         for v in priced.rounds
     ]
@@ -655,6 +707,8 @@ def grid_row(
         confirmation=_confirmation_out(confirmation) if confirmation is not None else None,
         cancellation=_cancellation_out(cancellation) if cancellation is not None else None,
         to_reverse=to_reverse,
+        appeal_refusal=appeal,
+        session_candidates=_candidates(request, sessions),
         todos=(
             [TodoOut(code=TODO_CANCEL_REASON, message=TODO_CANCEL_REASON_TEXT)]
             if needs_reason(cancellation, request.year)
@@ -1061,6 +1115,23 @@ def _ask_refusal(rounds: Mapping[int, RoundState], n: int) -> str | None:
     return None
 
 
+def _not_live(status: str) -> str:
+    return f"a {status} request takes no new asks or amounts"
+
+
+def appeal_refusal(
+    request: RequestRecord, rounds: Mapping[int, RoundState], cancellation: Cancellation | None
+) -> str | None:
+    """Why the request's Round 2 ask (an appeal) can't be keyed now, in key_ask's own words, or None (read 3): the
+    grid's editor row says it instead of opening. key_ask refuses the same ways in the same order (_live, then
+    _ask_refusal), so the row and the write never disagree."""
+    if request.status not in _LIVE:
+        return _not_live(request.status)
+    if cancellation is not None and cancellation.by == "kindred":
+        return CANCELLED_IN_KINDRED
+    return _ask_refusal(rounds, 2)
+
+
 def _round3_refusal(rounds: Mapping[int, RoundState]) -> str | None:
     """Why a Round 3 amount can't be keyed yet, before the rules are read; shared with the preview."""
     state = rounds.get(3, RoundState(round=3))
@@ -1194,6 +1265,7 @@ class FinancialAidDecisionsService:
         document = rules.document if rules is not None else None
         # Sub-project 10b-2: a cancelled request is not live (spec §5.3, Decision 14), so it is priced that way.
         cancellations = cancellations_by_request(side.requests, cancel_events, enrollments, sessions)
+        cost_overrides = overrides_by_request(side.corrections)
         items = {
             r.id: with_holds(
                 _to_price(
@@ -1269,6 +1341,7 @@ class FinancialAidDecisionsService:
             camp_lines=tuple(camp_lines),
             placements=placements,
             splits=splits,
+            cost_overrides=cost_overrides,
         )
         return season, side.names
 
@@ -1475,6 +1548,7 @@ class FinancialAidDecisionsService:
         gaps = (*gaps, *self._unresolved(priced, unrebuilt, deleted, named_pools=rules is not None), *named)
         if axis == "campminder":
             gaps = (*gaps, *_posted_before_request(rounds, requests.keys() | deleted))
+        cost_overrides = overrides_by_request(_dated_by(corrections, at))
         return Season(
             year=year,
             rules=rules,
@@ -1494,6 +1568,7 @@ class FinancialAidDecisionsService:
             shares_unknown=bad_shares,
             grants_unplaced=grants_unplaced,
             deleted=deleted,
+            cost_overrides=cost_overrides,
         )
 
     @staticmethod
@@ -1644,6 +1719,8 @@ class FinancialAidDecisionsService:
                         # 10b-2: cancellations aren't rebuilt as of a date (GRID_GAPS names them).
                         "cancellation": None,
                         "to_reverse": None,
+                        "appeal_refusal": None,
+                        "included": None,
                         "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
                     }
@@ -1691,14 +1768,34 @@ class FinancialAidDecisionsService:
             confirmation=self._confirmation(season, request_id),
             cancellation=season.cancellations.get(request_id),
             to_reverse=request_id in season.to_reverse,
+            appeal=appeal_refusal(
+                season.requests[request_id], season.rounds.get(request_id, {}), season.cancellations.get(request_id)
+            ),
         )
         request = season.requests[request_id]
+        rules = season.rules.document if season.rules is not None else None
+        program = rules.programs.get(row.program_key) if rules is not None and row.program_key else None
+        description = (program.campminder_description or None) if program is not None else None
+        standing = season.cost_overrides.get(request_id)
+        parsed = parse_cost_override(standing.new_value) if standing is not None else None
         paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
         return row.model_copy(
             update={
                 "queues": row_queues(row),
                 "payer_count": len(paying),
                 "payer_shares": grid_shares(row, paying, families),
+                "campminder_description": description,
+                "cost_override": (
+                    CostOverrideOut(
+                        amount=money(parsed.amount),
+                        reason_code=parsed.reason,
+                        note=standing.reason,
+                        actor=standing.actor,
+                    )
+                    if standing is not None and parsed is not None
+                    else None
+                ),
+                "included": is_included(row.request_status, cancelled=row.cancellation is not None),
             }
         )
 
@@ -1850,7 +1947,7 @@ class FinancialAidDecisionsService:
         if request is None:
             raise DecisionNotFoundError("no such request")
         if request.status not in _LIVE:
-            raise DecisionRefusedError(f"a {request.status} request takes no new asks or amounts")
+            raise DecisionRefusedError(_not_live(request.status))
         events, cancels, enrollments, sessions = await asyncio.gather(
             self._store.fetch_request_events(request.id),
             self._store.fetch_request_cancellations(request.id),
@@ -1878,7 +1975,11 @@ class FinancialAidDecisionsService:
         n = body.round
         state = rounds.get(n, RoundState(round=n))
         _refuse(_ask_refusal(rounds, n))
-        if (state.ask, state.asked_on, state.statement_of_need) == (body.amount, body.asked_on, body.statement_of_need):
+        if (state.ask, state.asked_on, state.statement_of_need) == (
+            body.amount,
+            body.asked_on,
+            body.statement_of_need,
+        ) and not await self._ask_note_changed(request.id, n, body.note):
             return self._unchanged(request.year)
         write = self._write(
             request,
@@ -1893,6 +1994,16 @@ class FinancialAidDecisionsService:
         reason = body.statement_of_need if n == 3 else (body.note or None)
         result = await self._store.commit([write], actor=actor, reason=reason, require_reason=n == 3)
         return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
+
+    async def _ask_note_changed(self, request_id: str, n: int, note: str | None) -> bool:
+        """Whether a resent ask carries a note the round's latest ask doesn't. The screen shows the save, so a
+        new note is written as one more ask event with the same amount and day: the round reads as it did,
+        and the note and its change row persist. A blank note adds nothing to keep."""
+        if not note:
+            return False
+        asks = [e for e in await self._store.fetch_request_events(request_id) if e.kind == "ask" and e.round == n]
+        latest = max(asks, key=lambda e: (e.created, e.id), default=None)
+        return latest is None or (latest.note or "") != note
 
     async def key_round3_amount(
         self, request_id: str, body: Round3AmountIn, actor: str, *, can_approve: bool
@@ -2371,6 +2482,40 @@ class FinancialAidDecisionsService:
         kind: HoldEventKind = "release" if body.released else "unrelease"
         write = self._hold_write(request, kind, body.code, body.note, actor, fact)
         return await self._commit_hold(request, write, body.note, actor)
+
+    async def set_cost_override(self, request_id: str, body: CostOverrideIn, actor: str) -> DecisionWriteOut:
+        """A cost override with its reason code, or clearing it (D22; reads 5-6): one aid_application_corrections row
+        and its log line. The code must be one of the approved rules' cost.override_reasons. What stands, retyped,
+        writes nothing."""
+        request, rounds = await self._live(request_id)
+        value = REVERT
+        if body.amount is not None and body.reason_code is not None:
+            rules = await self._approved_rules(request.year)
+            codes = rules.document.cost.override_reasons
+            if body.reason_code not in codes:
+                raise DecisionRefusedError(
+                    f"{body.reason_code} is not one of {request.year}'s cost override reasons ({', '.join(codes)})"
+                )
+            value = encode_cost_override(body.reason_code, body.amount)
+        out = await self._override(request, COST_OVERRIDE, value, actor, body.note)
+        if out.written and any(state.posted for state in rounds.values()):
+            # The override re-prices later rounds and "would change by"; money already posted is locked and never moves.
+            return out.model_copy(update={"warning": _POSTED_OVERRIDE_WARNING})
+        return out
+
+    async def _override(
+        self, request: RequestRecord, field_name: str, value: str, actor: str, note: str
+    ) -> DecisionWriteOut:
+        corrections = await self._store.fetch_corrections(request.year, request.application_id)
+        standing = latest(corrections, request.id, field_name)
+        if value == (standing.new_value if standing is not None else REVERT) and (
+            standing is None or standing.new_value == REVERT or standing.reason == note
+        ):
+            return self._unchanged(request.year)  # same value and same note; a new note on it is a real edit
+        result = await self._store.commit(
+            [override_write(request, field_name, value, actor, note)], actor=actor, reason=note, require_reason=True
+        )
+        return DecisionWriteOut(year=request.year, written=1, unchanged=0, operation_id=result.operation_id)
 
     async def set_manual_hold(self, request_id: str, body: ManualHoldIn, actor: str) -> DecisionWriteOut:
         """Put the request on hold by hand with a reason ("waiting on something" is a hold, not a stage:

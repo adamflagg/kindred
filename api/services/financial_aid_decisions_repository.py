@@ -77,6 +77,7 @@ from api.services.financial_aid_to_place import (
     Synced,
     SyncRemoval,
 )
+from api.services.pb_precise_datetime import aid_collection
 from bunking.financial_aid.change_log import COLLECTION as AID_CHANGE_LOG
 from bunking.financial_aid.change_replay import LogRow
 from bunking.financial_aid.decisions import EVENT_KINDS, HOLD_EVENT_KINDS, DecisionEvent, HoldEvent
@@ -464,7 +465,9 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
                 f"{season} && {after} && ({entities(_SINCE_NAMED)})",
                 "entity,entity_id,action,created,before,after",
             ),
-            page(AID_APPLICATION_CORRECTIONS, f"{season} && {after}", "application,request,created"),
+            # `field` too: changed_since skips a legacy include_override row by it, and PocketBase returns only the
+            # fields asked for.
+            page(AID_APPLICATION_CORRECTIONS, f"{season} && {after}", "application,request,field,created"),
             page(
                 ATTENDEES,
                 f"{season} && {touched}",
@@ -568,7 +571,12 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         return SinceRecords(
             log=tuple(log(r) for r in (*plain, *named)),
             corrections=tuple(
-                SinceCorrection(str(r.application or ""), str(getattr(r, "request", "") or ""), when(r))
+                SinceCorrection(
+                    str(r.application or ""),
+                    str(getattr(r, "request", "") or ""),
+                    when(r),
+                    str(getattr(r, "field", "") or ""),
+                )
                 for r in corrections
             ),
             synced=tuple(synced),
@@ -616,7 +624,7 @@ class FinancialAidDecisionsRepository(FinancialAidIntakeRepository):
         """The start of `service`'s newest successful run covering the season (`ledger_run_covers`), of
         its newest `_RUN_PAGE` successful runs in the season's window."""
         result = await asyncio.to_thread(
-            self.pb.collection(SYNC_RUNS).get_list,
+            aid_collection(self.pb, SYNC_RUNS).get_list,
             1,
             _RUN_PAGE,
             query_params={

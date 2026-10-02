@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.schemas.financial_aid import AidPostingLine, HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
@@ -53,6 +53,8 @@ class HouseholdCardOut(BaseModel):
     phone: str
     emails: list[str]
     city: str
+    # D32: the county holding most of the billing ZIP's land (Census ZCTA-to-county, Decision 8a); None when unknown.
+    county: str | None = None
     money: HouseholdMoneyOut
     request_ids: list[str]
 
@@ -117,6 +119,18 @@ class ReceiptOut(BaseModel):
     label: ReceiptLabelOut
 
 
+class Round3ContextOut(BaseModel):
+    """A Round 3 request's session, for context only (§6.3 item 4; main spec §10.4): its enrolled campers (attendees
+    status 2, as the solver counts them), its waitlist (status 8) and the capacity finance entered (aid_session_capacity;
+    None: not entered)."""
+
+    session_cm_id: int
+    enrolled: int
+    waitlisted: int
+    capacity: int | None
+    capacity_note: str
+
+
 class HouseholdRequestOut(BaseModel):
     row: GridRowOut
     ask: AnswerOut | None  # the Round 1 ask with its corrections beside the original (main spec §9.3)
@@ -128,6 +142,7 @@ class HouseholdRequestOut(BaseModel):
     # a decided total, and on a request outside the band (D77's included).
     grants_applied: float | None = None
     grants_beyond_owed: float | None = None  # grants − grants_applied
+    round3_context: Round3ContextOut | None = None  # only on a request with a Round 3
 
 
 class IncomeOut(BaseModel):
@@ -170,3 +185,6 @@ class HouseholdPageResponse(BaseModel):
     postings: list[AidPostingLine]
     links: list[HouseholdLinkRow]
     history: list[HistoryEntryOut]
+    override_reasons: list[str] = Field(
+        default_factory=list
+    )  # Decision 6: what the cost-override and headcount forms offer

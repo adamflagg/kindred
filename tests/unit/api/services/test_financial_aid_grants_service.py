@@ -704,6 +704,23 @@ async def test_read_lists_expected_from_yes_answers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_an_expected_grant_carries_its_one_active_grantors_name() -> None:
+    answer = SimpleNamespace(
+        person_id=1002, one_happy_camper="Yes", synagogue_grant="No", expand={"household": SimpleNamespace(cm_id=100)}
+    )
+    repo = _read_repo(answers=[answer])
+    repo.fetch_sources = AsyncMock(
+        return_value=[_source("camper fund", "regional_fund", source_family="one_happy_camper")]
+    )
+    (expected,) = (await _service(repo)[0].read(2031)).expected
+    assert expected.display_name == "Regional Fund"
+    retired = _grantor(retired_at="2031-01-01 00:00:00.000Z")
+    repo.fetch_grantors = AsyncMock(return_value=[retired])
+    (expected,) = (await _service(repo)[0].read(2031)).expected
+    assert expected.display_name is None
+
+
+@pytest.mark.asyncio
 async def test_a_commitment_waits_with_its_days() -> None:
     commitment = SimpleNamespace(
         id="com000000000001",

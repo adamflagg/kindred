@@ -139,6 +139,8 @@ class HeadcountSet(BaseModel):
     infant: int = Field(ge=0, le=20)
     source: Literal["declared", "override"]
     reason: str = Field(min_length=1, max_length=2000)
+    # Decision 6: a code from the season's cost.override_reasons; optional until the frontend's form sends it.
+    reason_code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$", max_length=64)
 
 
 class CapacitySet(BaseModel):

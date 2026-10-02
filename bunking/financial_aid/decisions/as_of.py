@@ -103,6 +103,8 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
         + _POOL_EMPTY
         + ", and so does money on no request. A grant line CampMinder deleted before the log began can't be seen"
     ),
+    "included": "Whether a request is included reads its cancellation, which a past date doesn't rebuild",
+    "appeal_refusal": "Whether an appeal can be keyed now; nothing is keyed into a past date",
     "ledger_classification": (
         "Which CampMinder lines count as the camp's own aid (a line's funder-type reclassification) and Go's "
         "session attribution are read as they are today, not as of that date"
@@ -132,7 +134,15 @@ PAST_DATE_GAPS: Final[Mapping[str, str]] = {
 # Named on every past read: what 3c-2 can't price from dated records (the ledger's sync time, and
 # CampMinder's cancellations, whose earlier statuses are overwritten, 10b-2 Decision 21; cancellation lists
 # the requests it keeps unpriced). A gap request names what it empties itself.
-GRID_GAPS: Final[tuple[str, ...]] = ("confirmation", "cancellation", "to_reverse", "todos", "queues")
+GRID_GAPS: Final[tuple[str, ...]] = (
+    "confirmation",
+    "cancellation",
+    "to_reverse",
+    "todos",
+    "queues",
+    "appeal_refusal",
+    "included",
+)
 BUDGET_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 REMAINING_GAPS: Final[tuple[str, ...]] = ("cancellation",)
 # Named only when a past read empties them (a request's posted money can't be replayed): not always-on.

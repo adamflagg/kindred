@@ -169,6 +169,17 @@ async def test_each_input_recorded_after_the_posting_day_refuses_and_one_at_the_
 
 
 @pytest.mark.asyncio
+async def test_a_legacy_include_override_row_is_never_read_and_a_cost_override_still_is() -> None:
+    """There is no Include override (owner ruling): a row left with that field is never read, so it refuses nothing
+    here as it moves nothing anywhere else; a cost override is a price input."""
+    season = await _season()
+    legacy = SinceCorrection(APPLICATION, EMMA, AFTER, "include_override")
+    assert changed_since(season, TICK, _since(corrections=(legacy,))) == ()
+    cost = SinceCorrection(APPLICATION, EMMA, AFTER, "cost_override")
+    assert _codes(changed_since(season, TICK, _since(corrections=(legacy, cost)))) == ["correction"]
+
+
+@pytest.mark.asyncio
 async def test_each_reason_reads_as_staff_text() -> None:
     season = await _season()
     since = _since(
@@ -220,6 +231,18 @@ async def test_a_grant_line_posted_by_the_posting_day_but_synced_after_it_counts
     """Build ruling 2026-10-01 (3c's CampMinder-date axis): CampMinder posted it on Mar 8; Kindred read it Mar 9."""
     season = await _season(register=[_grant(recorded_at=MAR8, recorded_on="2027-03-08")])
     line = GrantLineRow(7001, 1000001, 1000011, 1000011, "regional grant", created=AFTER, updated=AFTER)
+    assert changed_since(season, TICK, _since(grant_lines=(line,))) == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gap", [timedelta(milliseconds=1), timedelta(milliseconds=-1)])
+async def test_a_new_grant_line_whose_two_clock_reads_differ_by_a_millisecond_is_not_a_rewrite(gap: timedelta) -> None:
+    """PocketBase stamps created and updated from two clock reads, so a brand-new row can show them 1 ms apart
+    either way (5 prod rows have updated 1 ms BEFORE created). Millisecond precision exposes that; it isn't Go
+    rewriting the row."""
+    season = await _season(register=[_grant(recorded_at=MAR8, recorded_on="2027-03-08")])
+    created = AFTER + timedelta(milliseconds=2)
+    line = GrantLineRow(7001, 1000001, 1000011, 1000011, "regional grant", created=created, updated=created + gap)
     assert changed_since(season, TICK, _since(grant_lines=(line,))) == ()
 
 

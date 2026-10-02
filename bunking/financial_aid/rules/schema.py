@@ -22,7 +22,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal, Self, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 Money = Annotated[Decimal, Field(ge=0)]
 Percent = Annotated[Decimal, Field(ge=0, le=100)]
@@ -294,6 +294,9 @@ class ProgramProfile(RulesModel):
     budget_pool: Key | None
     cost_source: Literal["catalog", "per_person", "typed"]
     open_to_aid: bool = True
+    # The CampMinder description to post this program's aid under (app spec §6.2 Needs an offer, §13). Blank: none
+    # named. Whether 2027 has per-program descriptions at all is O-930-26 (D128); a blank field decides nothing.
+    campminder_description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
 
 
 # --- cost -----------------------------------------------------------------------------

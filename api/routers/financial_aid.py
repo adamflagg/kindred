@@ -65,6 +65,7 @@ from api.schemas.financial_aid_decisions import (
     AsOfAxis,
     BudgetResponse,
     CancellationIn,
+    CostOverrideIn,
     DecisionWriteOut,
     EditorPreviewOut,
     HoldReleaseIn,
@@ -201,7 +202,9 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.financial_aid_payer_shares import ShareSpec
 from api.services.financial_aid_repository import FinancialAidRepository
+from api.services.financial_aid_request_overrides import DEFAULT_REASON_CODES
 from api.services.financial_aid_rules_service import (
+    PRICING_SECTIONS,
     AidRulesRepository,
     ApprovedRules,
     FinancialAidRulesService,
@@ -268,11 +271,18 @@ _VIEW_OR_GRANTORS = Depends(require_any_permission(Permission.FINANCIAL_AID_VIEW
 _Reason = Annotated[str, Query(...), StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
+async def _override_reasons(year: int) -> tuple[str, ...]:
+    """The season's reason codes for cost overrides and headcounts (Decision 6): the approved pricing rules', else the
+    rules' defaults."""
+    approved = await _rules().latest_approved(year, PRICING_SECTIONS)
+    return tuple(approved.document.cost.override_reasons) if approved is not None else DEFAULT_REASON_CODES
+
+
 def _casework() -> FinancialAidCaseworkService:
     # Every write commits through the repository's one write path, sub-project 4a's
     # commit_aid_writes: the record and its aid_change_log row in one batch.
     repository = FinancialAidIntakeRepository(pb)
-    return FinancialAidCaseworkService(repository)
+    return FinancialAidCaseworkService(repository, reason_codes=_override_reasons)
 
 
 def _raise_http(exc: Exception) -> NoReturn:
@@ -491,7 +501,7 @@ async def set_aid_request_headcount(
 ) -> RequestOut:
     try:
         return await _casework().set_headcount(
-            request_id, body.non_infant, body.infant, body.source, body.reason, user.email
+            request_id, body.non_infant, body.infant, body.source, body.reason, user.email, reason_code=body.reason_code
         )
     except _ERRORS as exc:
         _raise_http(exc)
@@ -983,6 +993,17 @@ async def set_manual_hold(
     """Put the request on hold by hand with a reason, or lift it (app spec §6.3; follow-up 3b)."""
     try:
         return await _decisions().set_manual_hold(request_id, body, user.email)
+    except FinancialAidError as exc:
+        raise _decisions_http(exc) from exc
+
+
+@router.post("/requests/{request_id}/cost-override", response_model=DecisionWriteOut)
+async def set_cost_override(
+    request_id: _RequestIdPath, body: CostOverrideIn, user: AuthUser = _CASEWORK
+) -> DecisionWriteOut:
+    """A cost override with its reason code, or clearing it (D22; app spec §2: casework)."""
+    try:
+        return await _decisions().set_cost_override(request_id, body, user.email)
     except FinancialAidError as exc:
         raise _decisions_http(exc) from exc
 
@@ -1492,6 +1513,7 @@ async def get_today(year: _Year, user: AuthUser = _VIEW) -> TodayResponse:
         rules=_rules(),
         grants=GrantsService(GrantsRepository(pb)),
         ledger=_ledger(),
+        intake=FinancialAidIntakeRepository(pb),
     )
     return await service.read(
         year,

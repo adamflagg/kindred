@@ -59,6 +59,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from api.constants.collections import AID_RULES, CAMP_SESSIONS
 from api.services.financial_aid_change_log_reads import fetch_change_log
 from api.services.financial_aid_intake_types import INTAKE_RULES_SECTIONS
+from api.services.pb_precise_datetime import aid_collection
 from bunking.financial_aid.change_diff import FieldChange, field_changes
 from bunking.financial_aid.change_log import AidGuard, AidOperationResult, AidWrite, commit_aid_writes
 from bunking.financial_aid.change_replay import LogRow, replay
@@ -370,7 +371,7 @@ class AidRulesRepository:
 
     async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
         rows: list[Any] = await asyncio.to_thread(
-            self.pb.collection(collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
+            aid_collection(self.pb, collection).get_full_list, batch=PAGE_SIZE, query_params=query_params
         )
         return rows
 

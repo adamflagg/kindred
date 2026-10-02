@@ -51,7 +51,8 @@ from api.services.financial_aid_intake_types import (
     SessionRow,
 )
 from api.services.financial_aid_payer_shares import share_status
-from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, IncomeOverride, RequestInputs
+from api.services.financial_aid_request_overrides import cost_override as request_cost_override
+from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, CostOverride, IncomeOverride, RequestInputs
 from bunking.financial_aid.calculator.inputs import AnswerValue, Headcount
 from bunking.financial_aid.rules import resolve_program
 from bunking.financial_aid.rules.schema import AidRules, IncomeFigure, QualityCheckKey
@@ -133,7 +134,11 @@ def rules_program_key(request: RequestRecord, sessions: Mapping[int, SessionRow]
 
 
 def to_request_inputs(
-    request: RequestRecord, ask: EffectiveValue, equity: EquityAnswers | None, program_key: str
+    request: RequestRecord,
+    ask: EffectiveValue,
+    equity: EquityAnswers | None,
+    program_key: str,
+    cost_override: CostOverride | None = None,
 ) -> RequestInputs:
     if request.session_cm_id <= 0:
         raise NotCalculableError("an unmatched request has no session and cannot be priced")
@@ -145,6 +150,7 @@ def to_request_inputs(
         session_cm_id=request.session_cm_id,
         program_key=program_key,
         ask=_money(ask),
+        cost_override=cost_override,
         headcount=(
             Headcount(standard=request.headcount_non_infant, infants=request.headcount_infant)
             if known_headcount
@@ -270,4 +276,7 @@ def calculator_inputs(
     if program_key is None:
         return CalculatorInputs(request.id, app_inputs, None, issues, reason)
     ask = effective_ask(request, corrections)
-    return CalculatorInputs(request.id, app_inputs, to_request_inputs(request, ask, equity, program_key), issues)
+    override = request_cost_override(request.id, corrections)
+    return CalculatorInputs(
+        request.id, app_inputs, to_request_inputs(request, ask, equity, program_key, cost_override=override), issues
+    )
