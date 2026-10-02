@@ -1,7 +1,13 @@
 import type { ApiAidHouseholdCard, ApiAidHouseholdPage } from '../../../types/api-types'
 import { Money } from '../kit/MoneyText'
 import { HouseholdChip } from '../kit/Pills'
-import { campMinderPersonUrl, cardShares, firstCamperOf, stateWords } from './householdModel'
+import {
+  campMinderPersonUrl,
+  cardShares,
+  firstCamperOf,
+  householdName,
+  stateWords,
+} from './householdModel'
 import { stripeOf } from './householdStyles'
 
 function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAidHouseholdPage }) {
@@ -20,7 +26,7 @@ function HouseholdCard({ card, page }: { card: ApiAidHouseholdCard; page: ApiAid
       className={`card-lodge space-y-1 p-3 text-sm ${stripeOf(card.chip)}`}
     >
       <div className="flex items-center gap-2">
-        <HouseholdChip index={card.chip} name={card.family_name} />
+        <HouseholdChip index={card.chip} name={householdName(page, card.household_cm_id)} />
         {card.household_cm_id === page.household_cm_id && (
           <span className="text-muted-foreground text-xs">opened from</span>
         )}

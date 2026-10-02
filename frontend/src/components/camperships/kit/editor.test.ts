@@ -49,8 +49,8 @@ describe('the reason policy (D22)', () => {
     expect(initialReason(REASON_POLICY.appeal_ask, '2027-04-09')).toBe('Family emailed (Apr 9)')
   })
 
-  it('requires a statement of need for Round 3, and a reason for Include overrides, corrections and holds', () => {
-    for (const kind of ['round3_ask', 'include_override', 'income_correction', 'hold'] as const) {
+  it('requires a statement of need for Round 3, and a reason for corrections and holds', () => {
+    for (const kind of ['round3_ask', 'income_correction', 'hold'] as const) {
       expect(REASON_POLICY[kind].kind).toBe('required')
     }
     expect(REASON_POLICY.round3_ask).toEqual({
@@ -68,13 +68,7 @@ describe('the reason policy (D22)', () => {
   // The server's limits: a statement of need is 4000 (`_Statement`), a note or reason 2000.
   it('limits the reason field to what the server accepts', () => {
     expect(REASON_POLICY.round3_ask).toMatchObject({ maxLength: 4000 })
-    for (const kind of [
-      'appeal_ask',
-      'round3_amount',
-      'include_override',
-      'income_correction',
-      'hold',
-    ] as const) {
+    for (const kind of ['appeal_ask', 'round3_amount', 'income_correction', 'hold'] as const) {
       expect(REASON_POLICY[kind]).toMatchObject({ maxLength: 2000 })
     }
   })
