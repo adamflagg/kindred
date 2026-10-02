@@ -97,6 +97,11 @@ interface RequestEditorProps {
    */
   readonly onDraftChange?: ((report: EditorDraftReport | null) => void) | undefined
   /**
+   * Called once when the editor unmounts (a refetch took its row away, say), so the walk can drop
+   * typing that could never be saved and would otherwise hold every exit. Read through a ref.
+   */
+  readonly onGone?: (() => void) | undefined
+  /**
    * Show the editor's own problem now, as if Enter had been tried: the walk sets it when a click
    * elsewhere found nothing it could save yet (slice 1 Decision 5; plan review M9).
    */
@@ -232,6 +237,16 @@ export function RequestEditor(props: RequestEditorProps) {
   useEffect(() => {
     reportTo.current = props.onDraftChange
   })
+  const goneTo = useRef(props.onGone)
+  useEffect(() => {
+    goneTo.current = props.onGone
+  })
+  useEffect(
+    () => () => {
+      goneTo.current?.()
+    },
+    []
+  )
   const readyAmount = parsed.kind === 'ok' ? parsed.amount : null
   useEffect(() => {
     if (untouched) {
