@@ -11,8 +11,8 @@ Where each field comes from:
   standing      cancelled when the season lists a cancellation (10b-2; on a past read the season lists the ones made by
                 that day, whether CampMinder's or Kindred's, so a request cancelled on or before `as_of` IS cancelled
                 then and one cancelled after is not); live (active, unmatched) and not cancelled;
-                otherwise closed (a pending duplicate, a withdrawn answer). This is the request's STANDING, not the
-                Include override (a staff exclusion from a family's sums); see OWNER ITEM 53 below.
+                otherwise closed (a pending duplicate, a withdrawn answer). Inclusion comes from status alone: there
+                is no Include override (owner ruling, ⚠5 option c).
   program       the priced program, else the rules program the request's session belongs to (a request that is
                 not live is not priced, so its program comes from its session).
   rounds        each round that exists (Round 1 always): the priced view where there is one (a live request's
@@ -143,11 +143,8 @@ def report_requests(
         if keep is not None and request_id not in keep:
             continue
         request = season.requests[request_id]
-        # OWNER ITEM 53 NOT RULED: Reports ignore the Include override (default). Flip deliberately.
-        # `season.exclusions` (financial_aid_request_overrides.exclusion) is the Include override, which staff set to
-        # leave a request out of a family's sums; Reports never read it, so an excluded request still counts in apps,
-        # asks and awarded. It is NOT the report's own standing == "live" (received and live, below), a
-        # different concept with the same word. To honour it, filter on `request_id in season.exclusions` here.
+        # No Include override exists (owner ruling, ⚠5 option c): a request is in or out by its status alone, and a
+        # legacy `include_override` correction row is never read (owner item 53 is moot).
         priced = season.priced.get(request_id)
         states = season.rounds.get(request_id, {})
         program = _program(request, priced, season, document)

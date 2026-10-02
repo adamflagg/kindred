@@ -23,7 +23,6 @@ from api.services.financial_aid_reports_service import (
     ReportedFigureNotFoundError,
     ReportsRefusedError,
 )
-from api.services.financial_aid_request_overrides import EXCLUDED, INCLUDE_OVERRIDE
 from bunking.financial_aid.reports.committee import NO_DEADLINE_CUT_GAP, PHASE_BOUNDARY_GAP
 from bunking.financial_aid.reports.history import ReportedFigure
 from tests.unit.api.services.decisions_fakes import (
@@ -350,11 +349,9 @@ async def test_programs_count_a_past_cancellation_too() -> None:
     assert (session2.round1.apps, session2.round1.awarded) == (2, 0.0)
 
 
-async def test_a_request_the_include_override_excludes_still_counts_in_apps_asks_and_awarded() -> None:
-    """OWNER ITEM 53 NOT RULED: Reports do NOT read the Include override (default; flip deliberately). Staff leaving
-    Emma out of her family's sums doesn't take her out of Statistics: she is still an app, her ask is still asked and
-    her posted 1,500 is still awarded. (The report's own "live" standing is the request's status, a different
-    concept.)"""
+async def test_a_legacy_include_override_row_excludes_nothing_from_reports() -> None:
+    """There is no Include override (owner ruling, ⚠5 option c): a correction row written before the ruling is never
+    read, so Emma is still an app, her ask is still asked and her posted 1,500 is still awarded."""
     store = report_season()
     store.corrections.append(
         CorrectionRecord(
@@ -362,8 +359,8 @@ async def test_a_request_the_include_override_excludes_still_counts_in_apps_asks
             year=YEAR,
             application_id=store.requests[EMMA].application_id,
             request_id=EMMA,
-            field=INCLUDE_OVERRIDE,
-            new_value=EXCLUDED,
+            field="include_override",
+            new_value="excluded",
             original_value="",
             reason="staff left it out",
             actor=ACTOR,
