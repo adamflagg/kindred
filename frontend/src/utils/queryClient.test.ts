@@ -66,6 +66,17 @@ describe('invalidateSyncData', () => {
     }
   })
 
+  it("refreshes the Camperships session-name picker's 'camp-sessions' reads after a sync", () => {
+    // useAidSessionNames reads synced camp_sessions under ['camp-sessions', ...], which is on no
+    // other prefix; without this a sync that adds or renames a session leaves the capacity
+    // picker stale for the 30-minute cache default.
+    invalidateSyncData()
+    const invalidatedPrefixes = spy.mock.calls.map(
+      (call: unknown[]) => (call[0] as { queryKey: string[] }).queryKey[0]
+    )
+    expect(invalidatedPrefixes).toContain('camp-sessions')
+  })
+
   it('fires server-side cache invalidation', () => {
     invalidateSyncData()
     expect(globalThis.fetch).toHaveBeenCalledWith(
