@@ -1398,6 +1398,7 @@ export type {
   TrailPageOut,
   TrailRowOut,
   UnclassifiedSource,
+  UnconfirmedOut,
   UndoPostedApiFinancialAidDecisionsYearUnpostedPostData,
   UndoPostedApiFinancialAidDecisionsYearUnpostedPostError,
   UndoPostedApiFinancialAidDecisionsYearUnpostedPostErrors,

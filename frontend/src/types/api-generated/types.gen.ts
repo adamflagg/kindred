@@ -2184,6 +2184,7 @@ export type CellOut = {
    * Remaining
    */
   remaining: number | null
+  unconfirmed?: UnconfirmedOut | null
 }
 
 /**
@@ -12392,6 +12393,7 @@ export type RoundCellOut = {
    * Remaining
    */
   remaining: number | null
+  unconfirmed?: UnconfirmedOut | null
   /**
    * Round
    */
@@ -12411,6 +12413,8 @@ export type RoundCountsOut = {
   accepted: CountOut | null
   held: CountOut | null
   pending_approval: CountOut | null
+  awaiting_sync?: CountOut | null
+  not_reconciled?: CountOut | null
 }
 
 /**
@@ -15303,6 +15307,27 @@ export type UnclassifiedSource = {
    * Postings
    */
   postings: number
+  /**
+   * Amount
+   */
+  amount: number
+}
+
+/**
+ * UnconfirmedOut
+ *
+ * Owner ruling ⚠10 (2026-10-02): the part of this cell's Posted CampMinder's live camp aid doesn't cover yet,
+ * filled oldest round first, per payer share. The amber line: "count not yet confirmed · amount".
+ */
+export type UnconfirmedOut = {
+  /**
+   * Count
+   */
+  count: number
+  /**
+   * Families
+   */
+  families: number
   /**
    * Amount
    */
