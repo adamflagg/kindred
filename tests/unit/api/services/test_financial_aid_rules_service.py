@@ -88,7 +88,8 @@ async def test_bootstrap_refuses_a_season_that_already_has_rules() -> None:
     service = _service(store)
     await service.bootstrap(fictional_rules(), actor=FINANCE)
     written = len(store.operations)
-    with pytest.raises(VersionExistsError):
+    # The whole-document PUT is retired (queue 23), so the refusal points at the section editor.
+    with pytest.raises(VersionExistsError, match="2031 already has aid rules; edit them in the section editor instead"):
         await service.bootstrap(fictional_rules(), actor=FINANCE)
     assert len(store.operations) == written
     assert (await service.load(2031)).version == 1

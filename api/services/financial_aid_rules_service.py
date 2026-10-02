@@ -750,9 +750,10 @@ class FinancialAidRulesService:
     async def bootstrap(self, document: AidRules, *, actor: str) -> RulesVersion:
         """Version 1 of a season that has no rules yet, from a whole document (loading 2026 as history).
         Refused when the season already has rules: a retried load must not make a second version, and
-        every later change is a save over the latest version (owner ruling 2026-09-28)."""
+        every later change is a section editor's save over the latest version (owner ruling 2026-09-28; the
+        whole-document PUT is retired, queue 23)."""
         if await self._store.list_versions(document.year):
-            raise VersionExistsError(f"{document.year} already has aid rules; save over the latest version instead")
+            raise VersionExistsError(f"{document.year} already has aid rules; edit them in the section editor instead")
         return await self.create_version(document, actor=actor)
 
     async def save(

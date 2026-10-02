@@ -179,7 +179,7 @@ def test_service_refusals_map_to_404_409_and_422(error: Exception, status: int) 
 
 def test_bootstrapping_a_season_that_already_has_rules_is_409() -> None:
     service = _stub()
-    error = VersionExistsError("2031 already has aid rules; save over the latest version instead")
+    error = VersionExistsError("2031 already has aid rules; edit them in the section editor instead")
     service.bootstrap = AsyncMock(side_effect=error)
     response = _client().post("/api/financial-aid/rules/2031/versions", json=DOC_BODY)
     assert (response.status_code, response.json()["detail"]) == (409, str(error))
