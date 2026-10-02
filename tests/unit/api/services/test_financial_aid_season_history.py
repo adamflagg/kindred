@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,17 +14,20 @@ import api.constants.collections as collections
 from api.services.financial_aid_season_history import (
     ENTITY_KINDS,
     NOT_IN_HISTORY,
+    Figures,
     HistoryFilter,
     HistoryNotFoundError,
     Operation,
     SeasonHistoryService,
     Subject,
     entry_of,
+    figures,
     for_reader,
     operation_out,
     operations,
     row_subject,
     subjects_from,
+    summary_words,
     visible,
 )
 
@@ -431,3 +435,85 @@ def test_a_row_naming_no_request_is_about_the_household_it_recorded() -> None:
     assert row_subject(entry, SUBJECTS, recorded, None) == Subject(GARCIA, 0, "")  # a delete records only `before`
     assert row_subject(entry, SUBJECTS, None, {"household_cm_id": True}) is None  # never a bool
     assert row_subject(entry, SUBJECTS, None, None) is None
+
+
+def test_a_posted_tick_reads_its_requests_families_and_the_total_it_locked() -> None:
+    rows = _tick()
+    (op,) = _ops(*rows)
+    f = figures(op, SUBJECTS, {r.id: r.after for r in rows})
+    assert f == Figures(requests=3, families=2, locked=Decimal("2400.50"), round3_entered=None, asked=None)
+    assert summary_words(f) == "3 requests · 2 families · $2,400.50 locked"
+
+
+def test_each_amount_keeps_its_own_basis_and_none_is_added_to_another() -> None:
+    """⚠ Number meaning (Note 6: D49, D20/D74, D80/D130): a lock, a Round 3 amount and an ask are three figures,
+    never one. An `award` row counts as entered for Round 3 only when it is a staff Round 3 amount."""
+    rows = [
+        _row("a1", "aid_decisions", f"{EMMA}:3", OP_A, action="award", after={"amount": "780", "round": 3}),
+        _row("a2", "aid_decisions", f"{EMMA}:2", OP_A, action="ask", after={"amount": "1200"}),
+        _row("a3", "aid_decisions", f"{SAMUEL}:1", OP_A, action="post", after={"amount": "1500"}),
+        # An `award` that is not a staff Round 3 amount (round 1, a discretionary decision type) adds no money.
+        _row(
+            "a4",
+            "aid_decisions",
+            f"{LIAM}:1",
+            OP_A,
+            action="award",
+            after={"amount": "50", "round": 1, "decision_type": "x"},
+        ),
+    ]
+    (op,) = _ops(*rows)
+    f = figures(op, SUBJECTS, {r.id: r.after for r in rows})
+    assert (f.locked, f.round3_entered, f.asked) == (Decimal(1500), Decimal(780), Decimal(1200))
+    assert summary_words(f) == ("3 requests · 2 families · $1,500 locked · $780 entered for Round 3 · $1,200 asked")
+
+
+def test_a_zero_lock_is_a_real_zero_and_an_operation_without_money_says_none() -> None:
+    zero = _row("z1", "aid_decisions", f"{LIAM}:1", OP_A, action="post", after={"amount": "0"})
+    (op,) = _ops(zero)
+    assert summary_words(figures(op, SUBJECTS, {"z1": zero.after})) == "1 request · 1 family · $0 locked"
+    unpost = _row("u1", "aid_decisions", f"{LIAM}:1", OP_B, action="unpost", after={"note": "wrong family"})
+    (op,) = _ops(unpost)
+    f = figures(op, SUBJECTS, {"u1": unpost.after})
+    assert (f.locked, summary_words(f)) == (None, "1 request · 1 family")
+    (rules_op,) = _ops(_rec("r1", "aid_rules", "2027:3:budget", OP_R, actor=FIN, action="approve"))
+    assert summary_words(figures(rules_op, SUBJECTS, {})) == ""
+
+
+def test_a_recorded_amount_that_is_not_a_number_adds_no_money() -> None:
+    rows = [
+        _row("m1", "aid_decisions", f"{EMMA}:1", OP_A, action="post", after={"amount": "n/a"}),
+        _row("m2", "aid_decisions", f"{SAMUEL}:1", OP_A, action="post", after={"amount": True}),
+        _row("m3", "aid_decisions", f"{LIAM}:1", OP_A, action="post", after=None),
+    ]
+    (op,) = _ops(*rows)
+    f = figures(op, SUBJECTS, {r.id: r.after for r in rows})
+    assert (f.requests, f.families, f.locked) == (3, 2, None)
+
+
+@pytest.mark.asyncio
+async def test_the_list_and_the_opened_line_say_the_same_figures() -> None:
+    reads = _Reads(*_tick(), _rules_save(), subjects=SEASON)
+    page = await SeasonHistoryService(reads).page(2027, HistoryFilter(rules=True), page=1, per_page=50)
+    line = next(o for o in page.operations if o.operation_id == OP_T)
+    assert line.summary == "3 requests · 2 families · $2,400.50 locked"
+    assert (line.figures.requests, line.figures.families, line.figures.locked) == (3, 2, 2400.5)
+    assert next(o for o in page.operations if o.operation_id == OP_R).summary == ""
+    # One recorded read for the whole page, and only for the lines that carry money rows.
+    assert [ids for ids, _ in reads.recorded_calls] == [[OP_T]]
+    detail = await SeasonHistoryService(reads).operation(2027, OP_T, rules=False)
+    assert detail.operation.summary == line.summary
+    assert detail.operation.figures == line.figures
+    assert reads.years == {2027}  # every year-scoped read was for the season asked about
+
+
+@pytest.mark.asyncio
+async def test_a_registrar_reads_the_tick_with_its_locks_by_its_decisions_alone() -> None:
+    """Regression guard: a rules row adds no family, request or money even unstripped, so what a registrar can't
+    see never shows in the line's words or figures."""
+    lock = _row("t4", "aid_rules", "2027:3:budget", OP_T, action="lock", after={"section_status": {}})
+    service = SeasonHistoryService(_Reads(*_tick(), lock, subjects=SEASON))
+    (registrar,) = (await service.page(2027, HistoryFilter(), page=1, per_page=50)).operations
+    (finance,) = (await service.page(2027, HistoryFilter(rules=True), page=1, per_page=50)).operations
+    assert registrar.summary == finance.summary == "3 requests · 2 families · $2,400.50 locked"
+    assert (registrar.rows, finance.rows) == (3, 4)

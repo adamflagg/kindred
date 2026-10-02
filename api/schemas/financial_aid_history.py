@@ -19,6 +19,17 @@ class HistoryCountOut(BaseModel):
     rows: int
 
 
+class HistoryFiguresOut(BaseModel):
+    """What an operation's rows add up to, as recorded (D49; back-end ask H1). Each money figure keeps its basis and
+    none is added to another (D20). None: the operation has no row of that kind; 0 is a real zero (D74)."""
+
+    requests: int  # the distinct requests its rows name
+    families: int  # the distinct households those rows are about
+    locked: float | None  # its Posted ticks: the sum of the amounts they locked (D51, D52)
+    round3_entered: float | None  # its Round 3 amounts entered: Decided, maybe pending approval, never "awarded" (D80)
+    asked: float | None  # its asks entered: what the family asked for, not aid
+
+
 class HistoryOperationOut(BaseModel):
     operation_id: str
     at: datetime  # when its last row was recorded
@@ -29,6 +40,8 @@ class HistoryOperationOut(BaseModel):
     counts: list[HistoryCountOut]  # by entity, then action
     rules_versions: list[int]  # the rules versions it touched ("Open vN in Rules")
     rules_sections: list[str]  # the rules sections it approved or locked
+    summary: str  # "7 requests · 6 families · $9,840 locked"; "" when it names no request, family or money
+    figures: HistoryFiguresOut
 
 
 class HistoryPageOut(BaseModel):

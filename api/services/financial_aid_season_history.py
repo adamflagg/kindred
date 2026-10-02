@@ -9,10 +9,12 @@ left out. Amounts are what the rows recorded at the time, never recomputed."""
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Final, Protocol
 
 from api.constants.collections import (
@@ -40,6 +42,7 @@ from api.constants.collections import (
 )
 from api.schemas.financial_aid_history import (
     HistoryCountOut,
+    HistoryFiguresOut,
     HistoryKind,
     HistoryOperationDetailOut,
     HistoryOperationOut,
@@ -48,8 +51,8 @@ from api.schemas.financial_aid_history import (
 )
 from api.schemas.financial_aid_rules import field_change_out
 from api.services.financial_aid_change_log_reads import log_detail
-from api.services.financial_aid_ledger_service import parse_pb_datetime
-from api.services.financial_aid_reconciliation import camp_date
+from api.services.financial_aid_ledger_service import money, parse_pb_datetime
+from api.services.financial_aid_reconciliation import camp_date, dollars
 from bunking.financial_aid.change_diff import field_changes
 from bunking.financial_aid.errors import FinancialAidError
 
@@ -205,6 +208,92 @@ def row_subject(
     return None
 
 
+# --- What an operation adds up to, as recorded (back-end ask H1) ---------------------------------------------------
+
+# The rows whose recorded `after` History reads for a line's figures (decisions carry `amount`).
+AMOUNT_ENTITIES: Final[tuple[str, ...]] = (AID_DECISIONS,)
+# A decision's logged action -> the basis its `amount` is (Note 6: D49, D20/D74, D80/D130). Never added across bases.
+_AMOUNT_BASIS: Final[Mapping[str, str]] = {"post": "locked", "award": "round3_entered", "ask": "asked"}
+_ZERO: Final = Decimal(0)
+
+
+@dataclass(frozen=True)
+class Figures:
+    requests: int
+    families: int
+    locked: Decimal | None
+    round3_entered: Decimal | None
+    asked: Decimal | None
+
+
+def _amount(after: Mapping[str, Any] | None) -> Decimal | None:
+    value = (after or {}).get("amount")
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except ArithmeticError:  # decimal.InvalidOperation: a recorded amount that is no number adds nothing
+        return None
+    return amount if amount.is_finite() else None
+
+
+def figures(op: Operation, subjects: Subjects, recorded: Mapping[str, Mapping[str, Any] | None]) -> Figures:
+    """Counted and summed from the operation's rows as recorded (D49: never recomputed). `recorded` holds the `after`
+    of its money rows by log row id; a row it lacks adds no money. Requests and families come from the rows' ids, so
+    the list and the opened line agree."""
+    about = [s for e in op.entries if (s := subjects.of(e.entity, e.entity_id)) is not None]
+    sums: dict[str, Decimal] = {}
+    for e in op.entries:
+        after = recorded.get(e.id) or {}
+        basis = _AMOUNT_BASIS.get(e.action) if e.entity == AID_DECISIONS else None
+        if basis == "round3_entered" and (after.get("round") != 3 or after.get("decision_type")):
+            basis = None  # only a staff Round 3 amount is "entered for Round 3"; anything else adds no money
+        amount = _amount(after) if basis is not None else None
+        if basis is not None and amount is not None:
+            sums[basis] = sums.get(basis, _ZERO) + amount
+    return Figures(
+        requests=len({s.request_id for s in about if s.request_id}),
+        families=len({s.household_cm_id for s in about}),
+        locked=sums.get("locked"),
+        round3_entered=sums.get("round3_entered"),
+        asked=sums.get("asked"),
+    )
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return f"{n:,} {one if n == 1 else many}"
+
+
+def summary_words(f: Figures) -> str:
+    """D49's one-line summary: "7 requests · 6 families · $9,840 locked". The action word stays the screen's."""
+    parts = []
+    if f.requests:
+        parts.append(_count(f.requests, "request", "requests"))
+    if f.families:
+        parts.append(_count(f.families, "family", "families"))
+    if f.locked is not None:
+        parts.append(f"{dollars(f.locked)} locked")
+    if f.round3_entered is not None:
+        parts.append(f"{dollars(f.round3_entered)} entered for Round 3")
+    if f.asked is not None:
+        parts.append(f"{dollars(f.asked)} asked")
+    return " · ".join(parts)
+
+
+def _money_or_none(value: Decimal | None) -> float | None:
+    return money(value) if value is not None else None
+
+
+def figures_out(f: Figures) -> HistoryFiguresOut:
+    return HistoryFiguresOut(
+        requests=f.requests,
+        families=f.families,
+        locked=_money_or_none(f.locked),
+        round3_entered=_money_or_none(f.round3_entered),
+        asked=_money_or_none(f.asked),
+    )
+
+
 def _kind(entries: tuple[LogEntry, ...]) -> HistoryKind:
     if any(e.actor == INTAKE_ACTOR for e in entries):
         return "intake"
@@ -297,9 +386,14 @@ def _rules_parts(op: Operation) -> tuple[list[int], list[str]]:
     return sorted(versions), sorted(sections)
 
 
-def operation_out(op: Operation) -> HistoryOperationOut:
+def operation_out(
+    op: Operation,
+    subjects: Subjects = NO_SUBJECTS,
+    recorded: Mapping[str, Mapping[str, Any] | None] | None = None,
+) -> HistoryOperationOut:
     counts = Counter((e.entity, e.action) for e in op.entries)
     versions, sections = _rules_parts(op)
+    found = figures(op, subjects, recorded or {})
     return HistoryOperationOut(
         operation_id=op.operation_id,
         at=op.at,
@@ -310,6 +404,8 @@ def operation_out(op: Operation) -> HistoryOperationOut:
         counts=[HistoryCountOut(entity=e, action=a, rows=n) for (e, a), n in sorted(counts.items())],
         rules_versions=versions,
         rules_sections=sections,
+        summary=summary_words(found),
+        figures=figures_out(found),
     )
 
 
@@ -337,42 +433,63 @@ class SeasonHistoryService:
         self._reads = reads
 
     async def page(self, year: int, f: HistoryFilter, *, page: int, per_page: int) -> HistoryPageOut:
-        all_ops = operations(e for r in await self._reads.fetch_season_log(year) if (e := entry_of(r)) is not None)
+        records, subject_records = await asyncio.gather(
+            self._reads.fetch_season_log(year), self._reads.fetch_subject_records(year)
+        )
+        subjects = subjects_from(*subject_records)
+        all_ops = operations(e for r in records if (e := entry_of(r)) is not None)
         ops = [seen for o in all_ops if (seen := for_reader(o, rules=f.rules)) is not None]
         readable = [o for o in ops if visible(o, HistoryFilter(rules=f.rules, include_intake=True))]
         shown = [o for o in ops if visible(o, f)]
         start = (page - 1) * per_page
+        window = shown[start : start + per_page]
+        recorded = await self._recorded(year, window)
         return HistoryPageOut(
             year=year,
             page=page,
             per_page=per_page,
             total=len(shown),
-            operations=[operation_out(o) for o in shown[start : start + per_page]],
+            operations=[operation_out(o, subjects, recorded) for o in window],
             actors=sorted({o.actor for o in readable if o.kind != "intake"}),
         )
 
+    async def _recorded(self, year: int, ops: Sequence[Operation]) -> dict[str, dict[str, Any] | None]:
+        """The page's money rows' recorded `after`, by log row id: one chunked read for the page (H1), and none when
+        no line on it carries a money row."""
+        ids = [o.operation_id for o in ops if any(e.entity in AMOUNT_ENTITIES for e in o.entries)]
+        if not ids:
+            return {}
+        rows = await self._reads.fetch_recorded(year, ids, AMOUNT_ENTITIES)
+        wanted = {e.id for o in ops for e in o.entries}
+        return {str(r.id): log_detail(getattr(r, "after", None)) for r in rows if str(r.id) in wanted}
+
     async def operation(self, year: int, operation_id: str, *, rules: bool) -> HistoryOperationDetailOut:
-        records = await self._reads.fetch_operation(year, operation_id)
+        records, subject_records = await asyncio.gather(
+            self._reads.fetch_operation(year, operation_id), self._reads.fetch_subject_records(year)
+        )
         found = operations(e for r in records if (e := entry_of(r)) is not None)
         op = for_reader(found[0], rules=rules) if found else None
         if op is None:
             raise HistoryNotFoundError(f"no operation {operation_id} in {year}")
+        subjects = subjects_from(*subject_records)
         by_id = {str(r.id): r for r in records}
-        rows = []
-        for e in op.entries:
-            record = by_id[e.id]
-            before, after = log_detail(getattr(record, "before", None)), log_detail(getattr(record, "after", None))
-            rows.append(
-                HistoryRowOut(
-                    at=e.created,
-                    entity=e.entity,
-                    entity_id=e.entity_id,
-                    action=e.action,
-                    actor=e.actor,
-                    reason=e.reason,
-                    before=before,
-                    after=after,
-                    changes=[field_change_out(c) for c in field_changes(before, after)],
-                )
+        details = [
+            (e, log_detail(getattr(by_id[e.id], "before", None)), log_detail(getattr(by_id[e.id], "after", None)))
+            for e in op.entries
+        ]
+        rows = [
+            HistoryRowOut(
+                at=e.created,
+                entity=e.entity,
+                entity_id=e.entity_id,
+                action=e.action,
+                actor=e.actor,
+                reason=e.reason,
+                before=before,
+                after=after,
+                changes=[field_change_out(c) for c in field_changes(before, after)],
             )
-        return HistoryOperationDetailOut(year=year, operation=operation_out(op), rows=rows)
+            for e, before, after in details
+        ]
+        recorded = {e.id: after for e, _, after in details if e.entity in AMOUNT_ENTITIES}
+        return HistoryOperationDetailOut(year=year, operation=operation_out(op, subjects, recorded), rows=rows)
