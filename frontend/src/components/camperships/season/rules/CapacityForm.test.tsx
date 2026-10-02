@@ -6,12 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CapacityForm } from './CapacityForm'
 
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+let names: Map<number, string> | undefined
 vi.mock('../../../../hooks/camperships/useAidSessionNames', () => ({
-  useAidSessionNames: () =>
-    new Map([
-      [1000101, 'Session 1'],
-      [1000102, 'Session 2'],
-    ]),
+  useAidSessionNames: () => names,
 }))
 let granted: string[] = []
 vi.mock('../../../../hooks/usePermissions', () => ({
@@ -25,6 +22,9 @@ let stored: Array<{
   actor: string
 }> = []
 const sent: unknown[] = []
+let pending = false
+let saveError: Error | null = null
+let resets = 0
 vi.mock('../../../../hooks/camperships/useAidCapacity', () => ({
   useAidSessionCapacities: () => ({
     data: { year: 2027, sessions: stored },
@@ -32,8 +32,12 @@ vi.mock('../../../../hooks/camperships/useAidCapacity', () => ({
     error: null,
   }),
   useAidSetCapacity: () => ({
-    isPending: false,
-    error: null,
+    isPending: pending,
+    error: saveError,
+    reset: () => {
+      resets += 1
+      saveError = null
+    },
     mutate: (
       vars: { sessionCmId: number; body: { capacity: number; note: string } },
       handlers: { onSuccess: (out: unknown) => void }
@@ -54,6 +58,13 @@ beforeEach(() => {
   sent.length = 0
   granted = ['financial_aid.view', 'financial_aid.rules']
   stored = []
+  pending = false
+  saveError = null
+  resets = 0
+  names = new Map([
+    [1000101, 'Session 1'],
+    [1000102, 'Session 2'],
+  ])
 })
 
 describe('CapacityForm', () => {
@@ -117,5 +128,68 @@ describe('CapacityForm', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+  })
+
+  it('clears a refusal when another session is chosen', async () => {
+    saveError = new Error('No such session in that season')
+    render(<CapacityForm />)
+    expect(screen.getByText('No such session in that season')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 2')
+    expect(resets).toBe(1)
+  })
+
+  it("shows the server's words on a refusal", () => {
+    saveError = new Error('Capacity must be 5,000 or less')
+    render(<CapacityForm />)
+    expect(screen.getByText('Capacity must be 5,000 or less')).toBeInTheDocument()
+  })
+
+  it('shows Saving… and disables Save while the save is in flight', async () => {
+    stored = [{ year: 2027, session_cm_id: 1000102, capacity: 96, note: '', actor: 'A' }]
+    pending = true
+    render(<CapacityForm />)
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 2')
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
+  })
+
+  it("replaces what was typed with the chosen session's stored figure and note", async () => {
+    stored = [{ year: 2027, session_cm_id: 1000102, capacity: 96, note: 'Cabin 4', actor: 'A' }]
+    render(<CapacityForm />)
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 1')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Capacity (places)' }), '50')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note (optional)' }), 'mine')
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 2')
+    expect(screen.getByRole('textbox', { name: 'Capacity (places)' })).toHaveValue('96')
+    expect(screen.getByRole('textbox', { name: 'Note (optional)' })).toHaveValue('Cabin 4')
+    // And back to a session with nothing stored: blank, not the other session's figure.
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 1')
+    expect(screen.getByRole('textbox', { name: 'Capacity (places)' })).toHaveValue('')
+  })
+
+  it('keeps a figure typed before the first pick when the chosen session has nothing stored', async () => {
+    render(<CapacityForm />)
+    await userEvent.type(screen.getByRole('textbox', { name: 'Capacity (places)' }), '75')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note (optional)' }), 'early')
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Session 1')
+    expect(screen.getByRole('textbox', { name: 'Capacity (places)' })).toHaveValue('75')
+    expect(screen.getByRole('textbox', { name: 'Note (optional)' })).toHaveValue('early')
+  })
+
+  it("lists what is stored in the picker's order, and only once the names are in", () => {
+    stored = [
+      { year: 2027, session_cm_id: 1000102, capacity: 2, note: '', actor: 'A' },
+      { year: 2027, session_cm_id: 1000101, capacity: 1, note: '', actor: 'A' },
+    ]
+    names = undefined
+    const { rerender } = render(<CapacityForm />)
+    expect(screen.queryByTestId('capacity-stored')).not.toBeInTheDocument()
+    expect(screen.getByText(/Loading sessions|Couldn.t load the sessions/)).toBeInTheDocument()
+    names = new Map([
+      [1000101, 'Session 1'],
+      [1000102, 'Session 2'],
+    ])
+    rerender(<CapacityForm />)
+    const rows = within(screen.getByTestId('capacity-stored')).getAllByRole('listitem')
+    expect(rows.map((r) => r.textContent)).toEqual(['Session 1 · 1 places', 'Session 2 · 2 places'])
   })
 })
