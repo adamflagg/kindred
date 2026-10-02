@@ -271,3 +271,29 @@ def test_a_grantors_only_user_reads_the_source_list() -> None:
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: user
     assert TestClient(app, raise_server_exceptions=False).get("/api/financial-aid/sources").status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "body", "service_method"),
+    [
+        ("PATCH", "/api/financial-aid/sources/src1", SOURCE_BODY, "classify_source"),
+        (
+            "PUT",
+            "/api/financial-aid/sources/src1/grantor",
+            {"grantor_key": "regional_fund", "note": "n"},
+            "map_source_grantor",
+        ),
+    ],
+)
+def test_a_source_write_that_lost_a_race_is_409(
+    method: str, url: str, body: dict[str, Any], service_method: str
+) -> None:
+    _, writes = _stub_services()
+    setattr(
+        writes.return_value,
+        service_method,
+        AsyncMock(side_effect=AidWriteConflictError(collection="aid_sources", record_id="src1")),
+    )
+    response = _client(PERSONA_FINANCE).request(method, url, json=body)
+    assert response.status_code == 409, response.text  # read the status first: an unmapped error is a plain-text 500
+    assert response.json()["detail"] == CONFLICT_MESSAGE

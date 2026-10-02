@@ -49,7 +49,7 @@ from api.services.financial_aid_ledger_service import (
 from api.services.financial_aid_repository import FinancialAidRepository
 from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
-from bunking.financial_aid.change_log import AidWrite, AidWriteConflictError, commit_aid_writes
+from bunking.financial_aid.change_log import AidWrite, AidWriteConflictError, commit_aid_writes, race_conflict
 from bunking.pocketbase_batch import MAX_BATCH_REQUESTS, BatchRequestFailedError
 
 # A bulk load is ONE atomic operation: each changed row is two batch requests
@@ -154,6 +154,18 @@ class FinancialAidWriteService:
     def __init__(self, repo: FinancialAidRepository) -> None:
         self.repo = repo
 
+    async def _commit_source(self, write: AidWrite, *, actor: str, reason: str) -> None:
+        """One aid_sources write and its log row. A batch that lost a race (the row someone removed first) is G6's
+        refusal, AidWriteConflictError (409): nothing was written. Any other refusal goes through as it is."""
+        try:
+            await asyncio.to_thread(
+                commit_aid_writes, self.repo.pb, [write], actor=actor, reason=reason, require_reason=True
+            )
+        except BatchRequestFailedError as exc:
+            if (conflict := race_conflict(exc)) is not None:
+                raise conflict from exc
+            raise
+
     async def classify_source(self, source_id: str, body: AidSourceUpdate, actor: str) -> AidSourceRow:
         current = await self.repo.get_source(source_id)
         if current is None:
@@ -177,14 +189,7 @@ class FinancialAidWriteService:
         write = AidWrite(
             collection=AID_SOURCES, action="update", year=season, record_id=source_id, before=before, data=patch
         )
-        await asyncio.to_thread(
-            commit_aid_writes,
-            self.repo.pb,
-            [write],
-            actor=actor,
-            reason=body.note,
-            require_reason=True,
-        )
+        await self._commit_source(write, actor=actor, reason=body.note)
         return source_row(
             SimpleNamespace(
                 id=source_id, description_key=current.description_key, description=current.description, **after
@@ -225,9 +230,7 @@ class FinancialAidWriteService:
             data={"grantor_key": key},
             log_action="map_grantor",
         )
-        await asyncio.to_thread(
-            commit_aid_writes, self.repo.pb, [write], actor=actor, reason=body.note, require_reason=True
-        )
+        await self._commit_source(write, actor=actor, reason=body.note)
         return source_row(SimpleNamespace(**vars(row), grantor_key=key))
 
     async def create_link(self, body: HouseholdLinkCreate, actor: str) -> HouseholdLinkRow:

@@ -16,6 +16,7 @@ from api.schemas.financial_aid_grants import CommitmentOut, GrantorOut, Grantors
 from api.services.financial_aid_grants_service import GrantorInUseError, GrantorKeyTakenError, GrantorStateError
 from api.services.financial_aid_ledger_service import FinancialAidNotFoundError, FinancialAidValidationError
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.financial_aid.change_log import CONFLICT_MESSAGE, AidWriteConflictError
 from bunking.rbac.permissions import Permission
 from tests.unit.rbac.permission_personas import (
     PERSONA_DEVELOPMENT,
@@ -346,3 +347,24 @@ def test_a_grantor_that_pays_after_camp_aid_reaches_the_service() -> None:
     assert service.save_grantor.call_args.args[1].pays_after_camp_aid is True
     partial = {**GRANTOR_BODY, "pays_after_camp_aid": True}
     assert client.post("/api/financial-aid/grantors", json=partial).status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "body", "service_method"),
+    [
+        ("POST", "/api/financial-aid/grantors", GRANTOR_BODY, "create_grantor"),
+        ("PUT", "/api/financial-aid/grantors/regional_fund", SAVE_BODY, "save_grantor"),
+        ("POST", "/api/financial-aid/grants/2031/placements", PLACE_BODY, "place"),
+        ("POST", "/api/financial-aid/grants/2031/commitments", COMMITMENT_BODY, "create_commitment"),
+    ],
+)
+def test_a_grants_write_that_lost_a_race_is_409_in_g6s_words(
+    method: str, url: str, body: dict[str, Any], service_method: str
+) -> None:
+    """Slice 3 PR-B: a race is G6's conflict (nothing written; reload), never a 422 or a 500."""
+    service = _stub()
+    setattr(
+        service, service_method, AsyncMock(side_effect=AidWriteConflictError(collection="aid_grantors", record_id=""))
+    )
+    response = _client().request(method, url, json=body)
+    assert (response.status_code, response.json()["detail"]) == (409, CONFLICT_MESSAGE)

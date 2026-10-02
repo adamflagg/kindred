@@ -77,7 +77,14 @@ from api.services.financial_aid_ledger_service import (
 )
 from api.services.lodging_cache_warm import current_season_year
 from bunking.financial_aid.change_diff import changed_fields
-from bunking.financial_aid.change_log import AidOperationResult, AidWrite, commit_aid_writes, new_record_id
+from bunking.financial_aid.change_log import (
+    AidOperationResult,
+    AidWrite,
+    commit_aid_writes,
+    new_record_id,
+    race_conflict,
+)
+from bunking.pocketbase_batch import BatchRequestFailedError
 
 GRANTOR_FIELDS = (
     "name",
@@ -324,9 +331,17 @@ class GrantsService:
     async def _commit(
         self, writes: list[AidWrite], *, actor: str, reason: str | None, require_reason: bool = False
     ) -> AidOperationResult:
-        return await asyncio.to_thread(
-            commit_aid_writes, self.repo.pb, writes, actor=actor, reason=reason, require_reason=require_reason
-        )
+        """One operation. A batch that lost a race (a grantor key or a line's placement someone created first, a
+        record someone removed first) is G6's AidWriteConflictError, answered 409: nothing was written; reload and
+        try again. Any other refused batch goes through as it is."""
+        try:
+            return await asyncio.to_thread(
+                commit_aid_writes, self.repo.pb, writes, actor=actor, reason=reason, require_reason=require_reason
+            )
+        except BatchRequestFailedError as exc:
+            if (conflict := race_conflict(exc)) is not None:
+                raise conflict from exc
+            raise
 
     async def _family_members(
         self, year: int, links: Any, household_cm_ids: Collection[int]

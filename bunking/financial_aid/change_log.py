@@ -305,6 +305,26 @@ class AidWriteConflictError(FinancialAidError):
         super().__init__(CONFLICT_MESSAGE)
 
 
+def race_conflict(exc: BatchRequestFailedError) -> AidWriteConflictError | None:
+    """G6's refusal for a batch that lost a race to another writer; None for any other failure.
+
+    A race is an update or delete whose record someone removed first (404), or a create a unique index refused
+    because someone created the same row first (a double click, two staff on one grantor key or one line). The
+    batch rolled back either way, so nothing was written, and the person reloads and tries again (409). Anything
+    else (a 404 on a create, a validation error) is a fault, and the caller lets it through."""
+    request = exc.request
+    if request is None:
+        return None
+    vanished = exc.status == 404 and request.method in ("PATCH", "DELETE")
+    taken = request.method == "POST" and any("unique" in message.lower() for message in exc.field_errors.values())
+    if not (vanished or taken):
+        return None
+    parts = request.url.strip("/").split("/")  # api/collections/<collection>/records[/<record id>]
+    return AidWriteConflictError(
+        collection=parts[2] if len(parts) > 2 else "", record_id=parts[4] if len(parts) > 4 else ""
+    )
+
+
 @dataclass(frozen=True)
 class AidOperationResult:
     """What ``commit_aid_writes`` committed.

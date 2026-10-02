@@ -442,6 +442,8 @@ def _grants_http(exc: FinancialAidError) -> HTTPException:
         return HTTPException(status_code=409, detail=detail)
     if isinstance(exc, (GrantorKeyTakenError, GrantorStateError)):
         return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, AidWriteConflictError):  # G6: the write lost a race; nothing was written (slice 3 PR-B)
+        return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
 
@@ -691,6 +693,8 @@ async def list_sources(user: AuthUser = _VIEW_OR_GRANTORS) -> AidSourcesResponse
 async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser = _RULES) -> AidSourceRow:
     try:
         return await _writes().classify_source(source_id, body, user.email)
+    except AidWriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 
@@ -699,6 +703,8 @@ async def classify_source(source_id: str, body: AidSourceUpdate, user: AuthUser 
 async def map_source_grantor(source_id: str, body: SourceGrantorIn, user: AuthUser = _GRANTORS) -> AidSourceRow:
     try:
         return await _writes().map_source_grantor(source_id, body, user.email)
+    except AidWriteConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FinancialAidNotFoundError, FinancialAidValidationError) as exc:
         raise _http(exc) from exc
 
