@@ -1,8 +1,15 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpRight, Check, Pencil, Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
-import type { RecordModel } from 'pocketbase'
+import {
+  Check,
+  Minus,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+  Users as UsersIcon,
+} from 'lucide-react'
 import { pb } from '../../../lib/pocketbase'
 import { queryKeys } from '../../../utils/queryKeys'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -10,6 +17,20 @@ import { usePermissionDescriptions } from '../../../hooks/usePermissionDescripti
 import { SlideInPanel } from '../../weekend/SlideInPanel'
 import { mergeDescriptions, roleEditImpact, roleHolders, type UserLike } from './usersPageModel'
 import { pbErrorText } from './pbErrorText'
+import { UserAvatar } from './UserAvatar'
+import { CanDoArea, CanDoItem } from './CanDo'
+import {
+  BTN_GHOST_SM,
+  BTN_PRIMARY_MD,
+  BTN_PRIMARY_SM,
+  NOT_CHECKED_PILL,
+  OK_TEXT,
+  SECTION_COUNT,
+  SECTION_HEAD,
+  TAG_ADD,
+  TAG_REMOVE,
+  WARN_TEXT,
+} from './styles'
 import type { UsersPageProps } from './types'
 
 interface RoleDrawerProps {
@@ -45,31 +66,41 @@ function namesOf(users: UserLike[]): string {
     : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
 }
 
-const initials = (u: RecordModel) =>
-  (str(u['name']) || str(u['email']))
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-
 export function RoleDrawer({ roleId, data, registry, url, onClose, onCreated }: RoleDrawerProps) {
   const { isAdmin } = usePermissions()
+  // Lives here, not in the body, because the header says "Edit {role}" while editing.
+  // A different role starts in view mode.
+  const [editing, setEditing] = useState(false)
+  const [shownId, setShownId] = useState(roleId)
+  if (shownId !== roleId) {
+    setShownId(roleId)
+    setEditing(false)
+  }
   const role = roleId === null ? null : (data.roles.find((r) => r.id === roleId) ?? null)
   // Creating is admin-only; and an id that no longer resolves has nothing to show.
   if (roleId === null ? !isAdmin : !role) return null
 
   const holders = role ? roleHolders(role.id, data.users, data.held) : []
   const isNew = role === null
+  const inEditor = !isNew && editing && isAdmin
+  const Icon = isNew ? Plus : inEditor ? Pencil : ShieldCheck
   return (
     <SlideInPanel
       identity={roleId ?? 'new'}
-      title={isNew ? 'New role' : role.name}
+      title={isNew ? 'New role' : inEditor ? `Edit ${role.name}` : role.name}
       subtitle={
         isNew
           ? 'Admins only'
-          : `${plural(role.permissions.length, 'permission')} · ${holders.length === 1 ? '1 person' : `${holders.length} people`}`
+          : inEditor
+            ? 'Changes apply to everyone who holds it, when you save'
+            : `${plural(role.permissions.length, 'permission')} · ${holders.length === 1 ? '1 person' : `${holders.length} people`}`
       }
+      leading={
+        <span className="flex flex-shrink-0 rounded-lg bg-white/10 p-2">
+          <Icon className="h-5 w-5 text-amber-400" />
+        </span>
+      }
+      sansTitle
       ariaLabel={isNew ? 'New role' : `Role ${role.name}`}
       testId="role-drawer"
       backdropTestId="role-drawer-backdrop"
@@ -83,12 +114,23 @@ export function RoleDrawer({ roleId, data, registry, url, onClose, onCreated }: 
         url={url}
         onClose={onClose}
         onCreated={onCreated}
+        editing={inEditor}
+        setEditing={setEditing}
       />
     </SlideInPanel>
   )
 }
 
-function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDrawerProps) {
+function DrawerBody({
+  roleId,
+  data,
+  registry,
+  url,
+  onClose,
+  onCreated,
+  editing,
+  setEditing,
+}: RoleDrawerProps & { editing: boolean; setEditing: (on: boolean) => void }) {
   const { isAdmin } = usePermissions()
   const queryClient = useQueryClient()
   const reg = registry.data
@@ -96,7 +138,6 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
   const isNew = role === null
   const overrides = usePermissionDescriptions().data
 
-  const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
@@ -132,6 +173,8 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
   const merged = reg ? mergeDescriptions(reg.permissions, overrides ?? []) : []
   const shortOf = (code: string) => reg?.permissions.find((p) => p.codename === code)?.short ?? code
   const labelOf = (code: string) => reg?.permissions.find((p) => p.codename === code)?.label ?? code
+  const unusedOf = (code: string) =>
+    reg?.permissions.find((p) => p.codename === code)?.screens.length === 0
 
   const startEdit = () => {
     if (!role) return
@@ -146,7 +189,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
   }
 
   // ---- View mode ---------------------------------------------------------
-  if (!isNew && !(editing && isAdmin)) {
+  if (!isNew && !editing) {
     const areas = reg
       ? [...new Set([...reg.areas, ...reg.permissions.map((p) => p.area)])]
           .map((area) => ({
@@ -156,65 +199,50 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
           .filter((a) => a.items.length > 0)
       : []
     return (
-      <div className="space-y-4 p-4">
-        <p className="m-0 text-sm leading-relaxed">{str(role.description)}</p>
+      <div className="flex flex-col gap-5 p-4">
+        {str(role.description) && (
+          <p className="m-0 text-sm leading-relaxed">{str(role.description)}</p>
+        )}
         <section>
-          <h4 className="mb-2 text-sm font-semibold">People</h4>
+          <h4 className={SECTION_HEAD}>People</h4>
           {holders.length === 0 ? (
-            <span className="text-muted-foreground text-xs">No one has this role.</span>
+            <span className="text-muted-foreground text-sm">No one has this role.</span>
           ) : (
             <>
-              <ul className="m-0 list-none space-y-1 p-0">
+              <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {holders.map((u) => (
-                  <li key={u.id} className="flex items-center gap-2 text-xs">
-                    <span className="bg-muted flex h-[22px] w-[22px] items-center justify-center rounded-full text-[9px] font-semibold">
-                      {initials(u)}
-                    </span>
+                  <li key={u.id} className="flex items-center gap-2 text-sm">
+                    <UserAvatar user={u} size={22} />
                     <span>{str(u['name']) || str(u['email'])}</span>
                   </li>
                 ))}
               </ul>
               <button
                 type="button"
-                className="text-primary mt-2 text-xs"
+                className={`${BTN_GHOST_SM} mt-1.5 -ml-2.5 !text-[13px]`}
                 onClick={() => url.setRole(role.id)}
               >
+                <UsersIcon className="h-4 w-4" />
                 Show in Users
               </button>
             </>
           )}
         </section>
         <section>
-          <h4 className="mb-2 text-sm font-semibold">Permissions</h4>
+          <h4 className={SECTION_HEAD}>Permissions</h4>
           {reg ? (
             areas.map(({ area, items }) => (
-              <div key={area} className="mb-2">
-                <div className="text-muted-foreground text-[10.5px] font-bold uppercase">
-                  {area}
-                </div>
+              <CanDoArea key={area} area={area}>
                 {items.map((p) => (
-                  <div key={p.codename} className="flex flex-wrap items-center gap-x-2 text-xs">
-                    <Check className="h-3 w-3" />
-                    <span className="text-sm font-semibold">{p.short}</span>
-                    {p.screens.map((s) => (
-                      <Link
-                        key={s.path}
-                        to={s.path}
-                        className="text-primary inline-flex items-center gap-0.5"
-                      >
-                        {s.name}
-                        <ArrowUpRight className="h-3 w-3" />
-                      </Link>
-                    ))}
-                  </div>
+                  <CanDoItem key={p.codename} short={p.short} screens={p.screens} />
                 ))}
-              </div>
+              </CanDoArea>
             ))
           ) : (
             <div className="space-y-0.5">
               {ownPerms.map((code) => (
                 <div key={code} className="flex items-center gap-2 text-xs">
-                  <Check className="h-3 w-3" />
+                  <Check className={`h-3 w-3 ${OK_TEXT}`} />
                   <span className="font-mono">{code}</span>
                 </div>
               ))}
@@ -222,8 +250,8 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
           )}
         </section>
         {isAdmin && (
-          <button type="button" className="btn-primary" onClick={startEdit}>
-            <Pencil className="h-4 w-4" />
+          <button type="button" className={`${BTN_PRIMARY_MD} self-start`} onClick={startEdit}>
+            <Pencil className="h-3.5 w-3.5" />
             Edit role
           </button>
         )}
@@ -282,17 +310,13 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
     <>
       {plural(nChanges, 'change')}:{' '}
       {[
-        ...orderedAdded.map((c) => ({
-          key: `+${c}`,
-          text: `+ ${shortOf(c)}`,
-          cls: 'text-emerald-600',
-        })),
-        ...removed.map((c) => ({ key: `-${c}`, text: `− ${shortOf(c)}`, cls: 'text-red-600' })),
-        ...(metaChanged ? [{ key: 'meta', text: 'details', cls: '' }] : []),
+        ...orderedAdded.map((c) => ({ key: `+${c}`, text: `+ ${shortOf(c)}`, cls: OK_TEXT })),
+        ...removed.map((c) => ({ key: `-${c}`, text: `− ${shortOf(c)}`, cls: WARN_TEXT })),
+        ...(metaChanged ? [{ key: 'meta', text: 'details', cls: 'text-foreground' }] : []),
       ].map((c, i) => (
-        <span key={c.key} className={c.cls}>
-          {i > 0 && <span className="text-muted-foreground"> · </span>}
-          {c.text}
+        <span key={c.key}>
+          {i > 0 && ' · '}
+          <b className={c.cls}>{c.text}</b>
         </span>
       ))}
     </>
@@ -328,19 +352,21 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
       return (
         <label
           key={p.code}
-          className={`flex items-start gap-2 rounded px-1 py-1 text-xs ${on ? 'bg-primary/5' : ''}`}
+          className={`hover:bg-muted flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs ${on ? 'bg-primary/6' : ''}`}
         >
-          <input type="checkbox" checked={on} onChange={() => toggle(p.code)} className="mt-0.5" />
+          <input
+            type="checkbox"
+            checked={on}
+            onChange={() => toggle(p.code)}
+            className="accent-primary mt-0.5"
+          />
           <span className="min-w-0 flex-1">
-            <span className="flex flex-wrap items-center gap-2">
+            <span className="flex flex-wrap items-center gap-1.5">
               <span className="text-sm font-semibold">{p.short}</span>
               {on !== was && (
-                <span
-                  className={`text-[10px] font-bold uppercase ${on ? 'text-emerald-600' : 'text-red-600'}`}
-                >
-                  {on ? 'adding' : 'removing'}
-                </span>
+                <span className={on ? TAG_ADD : TAG_REMOVE}>{on ? 'adding' : 'removing'}</span>
               )}
+              {unusedOf(p.code) && <span className={NOT_CHECKED_PILL}>not checked anywhere</span>}
               <span className="text-muted-foreground font-mono text-[10.5px]">{p.code}</span>
             </span>
             {p.desc && <span className="text-muted-foreground block">{p.desc}</span>}
@@ -356,9 +382,9 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex-1 space-y-4 p-4">
+      <div className="flex flex-1 flex-col gap-4 p-4">
         {!isNew && (
-          <p className="text-muted-foreground m-0 text-xs">
+          <p className="text-muted-foreground m-0 text-[12.5px]">
             {holders.length
               ? `${namesOf(holders)} ${verb(holders.length, 'holds', 'hold')} this role. The footer shows who gains or loses what before you save.`
               : 'Nobody holds this role yet.'}
@@ -381,7 +407,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
             <label>
               Slug
               <input
-                className={`${fieldCls} font-mono`}
+                className={`${fieldCls} disabled:bg-muted disabled:text-muted-foreground font-mono`}
                 value={slug}
                 placeholder="health-center"
                 disabled={Boolean(role?.is_system)}
@@ -410,9 +436,9 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
         </div>
 
         <section>
-          <h4 className="mb-2 text-sm font-semibold">
-            Permissions{' '}
-            <span className="text-muted-foreground font-normal">
+          <h4 className={SECTION_HEAD}>
+            Permissions
+            <span className={SECTION_COUNT}>
               {[...perms].filter((c) => universe.includes(c)).length} of {universe.length}
             </span>
           </h4>
@@ -422,7 +448,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
                 if (items.length === 0) return null
                 return (
                   <div key={area} className="mb-2">
-                    <div className="text-muted-foreground text-[10.5px] font-bold uppercase">
+                    <div className="text-muted-foreground mb-0.5 text-[10.5px] font-bold tracking-[0.06em] uppercase">
                       {area}
                     </div>
                     {rows(
@@ -441,8 +467,8 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
         {!isNew &&
           !role.is_system &&
           (confirmDelete ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-300 p-2 text-xs">
-              <TriangleAlert className="h-4 w-4 text-red-600" />
+            <div className="flex flex-wrap items-center gap-2 rounded-[10px] bg-rose-100 p-2.5 text-[13px] dark:bg-rose-900/30">
+              <TriangleAlert className={`h-4 w-4 ${WARN_TEXT}`} />
               <span>
                 Delete {role.name}?{' '}
                 {holders.length ? `${namesOf(holders)} will lose it.` : 'Nobody holds it.'}
@@ -450,14 +476,14 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
               <button
                 type="button"
                 disabled={busy}
-                className="rounded-md bg-red-600 px-3 py-1 text-xs text-white disabled:opacity-50"
+                className={`${BTN_PRIMARY_SM} !bg-rose-700 !text-white dark:!bg-rose-300 dark:!text-rose-950`}
                 onClick={() => deleteMutation.mutate(role.id)}
               >
                 Delete role
               </button>
               <button
                 type="button"
-                className="rounded-md border px-3 py-1 text-xs"
+                className={BTN_GHOST_SM}
                 onClick={() => setConfirmDelete(false)}
               >
                 Keep it
@@ -466,7 +492,7 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
           ) : (
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-xs text-red-600"
+              className={`inline-flex items-center gap-1 self-start text-xs ${WARN_TEXT}`}
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -482,16 +508,16 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
 
       <div data-testid="role-footer" className="border-border bg-card sticky bottom-0 border-t">
         {/* The tint sits on an inner layer: a translucent sticky background lets the list show through. */}
-        <div className={`space-y-2 p-3 ${ok ? 'bg-primary/5' : ''}`}>
-          <div className="text-xs">{summary}</div>
+        <div className={`flex flex-col gap-2 px-4 py-2.5 ${ok ? 'bg-primary/5' : ''}`}>
+          <div className="text-muted-foreground text-[12.5px]">{summary}</div>
           {impact.length > 0 && (
-            <ul className="m-0 max-h-[140px] list-none space-y-1 overflow-y-auto p-0 text-xs">
+            <ul className="m-0 flex max-h-[140px] list-none flex-col gap-1 overflow-y-auto p-0 text-[12.5px]">
               {impact.map((line) => (
-                <li key={`${line.kind}${line.code}`} className="flex items-start gap-1">
+                <li key={`${line.kind}${line.code}`} className="flex items-start gap-1.5">
                   {line.kind === 'gain' ? (
-                    <Plus className="mt-0.5 h-3 w-3 text-emerald-600" />
+                    <Plus className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${OK_TEXT}`} />
                   ) : (
-                    <span className="w-3 text-red-600">−</span>
+                    <Minus className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${WARN_TEXT}`} />
                   )}
                   <span>
                     <b>{labelOf(line.code)}</b>: {impactText(line)}
@@ -501,22 +527,22 @@ function DrawerBody({ roleId, data, registry, url, onClose, onCreated }: RoleDra
             </ul>
           )}
           {error && (
-            <div className="text-xs text-red-600">
+            <div className={`text-xs ${WARN_TEXT}`}>
               Couldn&apos;t {errorVerb}: {pbErrorText(error)}. Nothing was changed; your edits are
               still here.
             </div>
           )}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={cancel} className="rounded-md border px-3 py-1 text-xs">
+          <div className="flex justify-end gap-1.5">
+            <button type="button" onClick={cancel} className={BTN_GHOST_SM}>
               {isNew ? 'Cancel' : 'Discard'}
             </button>
             <button
               type="button"
               onClick={onSave}
               disabled={!ok || busy}
-              className="bg-primary text-primary-foreground inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs disabled:opacity-50"
+              className={BTN_PRIMARY_SM}
             >
-              <ShieldCheck className="h-3 w-3" />
+              <Check className="h-3.5 w-3.5" />
               {isNew ? 'Create role' : 'Save changes'}
             </button>
           </div>

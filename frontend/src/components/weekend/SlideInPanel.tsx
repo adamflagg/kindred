@@ -33,6 +33,12 @@ export interface SlideInPanelProps {
   subtitle: ReactNode
   /** Optional element before the title block (the user drawer's avatar). */
   leading?: ReactNode
+  /**
+   * Sets the title in the bold sans the subtitle uses, not the global serif
+   * h2 (`styles/fonts.css`, unlayered, hence the `!`). The Users page drawers
+   * opt in; the weekend panels keep the serif title.
+   */
+  sansTitle?: boolean
   ariaLabel: string
   /** Parent-driven animated close, as the summer board does. */
   requestClose?: boolean
@@ -50,6 +56,7 @@ export function SlideInPanel({
   title,
   subtitle,
   leading,
+  sansTitle = false,
   ariaLabel,
   requestClose = false,
   onClose,
@@ -178,7 +185,15 @@ export function SlideInPanel({
         <div className="from-forest-700 via-forest-800 to-forest-900 flex flex-shrink-0 items-start gap-3 bg-gradient-to-br p-4 text-white">
           {leading}
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-bold">{title}</h2>
+            <h2
+              className={
+                sansTitle
+                  ? 'truncate !font-sans text-lg font-bold !tracking-normal'
+                  : 'truncate text-lg font-bold'
+              }
+            >
+              {title}
+            </h2>
             <p className="text-forest-100 mt-0.5 text-xs">{subtitle}</p>
           </div>
           <button

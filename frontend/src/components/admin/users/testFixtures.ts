@@ -138,12 +138,7 @@ export const REGISTRY: ApiPermissionRegistry = {
     ),
   ],
   areas: ['Summer and Weekend', 'Camperships', 'Analytics', 'Manage tools', 'People'],
-  admin_only: [
-    'Manage › Sync',
-    'Manage › Config',
-    'Manage › Audit log',
-    'Creating and editing roles',
-  ],
+  admin_only: ['Manage › Sync', 'Manage › Config', 'Manage › Audit log', 'Role editing'],
   total: 7,
 }
 

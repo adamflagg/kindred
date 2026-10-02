@@ -172,6 +172,36 @@ describe('UserDrawer', () => {
   it('shows the empty state for someone with no roles', () => {
     renderDrawer('u-olivia')
     expect(screen.getByText(/No roles yet\. They can sign in/)).toBeInTheDocument()
+    expect(screen.getByTestId('can-do')).toHaveTextContent(
+      'Sign in and see the shared screens. Nothing gated.'
+    )
+  })
+
+  it('counts holders on every role row, "Add a role" rows included (#6)', () => {
+    renderDrawer('u-emma')
+    expect(screen.getByTestId('add-role-r-fin')).toHaveTextContent('0 people')
+    expect(screen.getByTestId('role-row-r-exec')).toHaveTextContent('2 people')
+  })
+
+  it('names each checkbox by its role alone, so notes in the row do not leak in', () => {
+    renderDrawer('u-emma')
+    expect(screen.getByRole('checkbox', { name: 'Bunking Staff' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Executive' })).toBeInTheDocument()
+  })
+
+  it('saves with a check icon (#8)', () => {
+    renderDrawer('u-emma')
+    const save = screen.getByRole('button', { name: 'Save changes' })
+    expect(save.querySelector('svg.lucide-check')).not.toBeNull()
+  })
+
+  it('marks a lost permission with the minus icon and a removed tag', async () => {
+    mockIsAdmin = true
+    renderDrawer('u-emma')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Executive' }))
+    const canDo = screen.getByTestId('can-do')
+    expect(canDo).toHaveTextContent('removed')
+    expect(canDo.querySelector('svg.lucide-minus')).not.toBeNull()
   })
 
   describe('users.manage is admin-only (R9)', () => {
@@ -281,7 +311,7 @@ describe('UserDrawer', () => {
     it('is derived from the registry, trimmed at the first " ("', () => {
       renderDrawer('u-emma')
       expect(screen.getByTestId('can-do')).toHaveTextContent(
-        'Admin-only areas stay locked: Manage › Sync, Manage › Config, Manage › Audit log, Creating and editing roles.'
+        'Admin-only areas stay locked: Manage › Sync, Manage › Config, Manage › Audit log, Role editing.'
       )
     })
 

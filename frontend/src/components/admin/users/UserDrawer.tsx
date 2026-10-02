@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router'
-import { ArrowUpRight, Check, Minus } from 'lucide-react'
+import { useId, useState } from 'react'
+import { Check, Info, Lock } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import type { RecordModel } from 'pocketbase'
 import { usePermissions } from '../../../hooks/usePermissions'
@@ -17,6 +16,17 @@ import {
 } from './usersPageModel'
 import { useSaveUserRoles } from './useSaveUserRoles'
 import { pbErrorText } from './pbErrorText'
+import { CanDoArea, CanDoItem, CanDoNothing } from './CanDo'
+import {
+  BTN_GHOST_SM,
+  BTN_PRIMARY_SM,
+  OK_TEXT,
+  SECTION_COUNT,
+  SECTION_HEAD,
+  TAG_ADD,
+  TAG_REMOVE,
+  WARN_TEXT,
+} from './styles'
 import type { UsersPageProps } from './types'
 
 interface UserDrawerProps {
@@ -54,6 +64,7 @@ export function UserDrawer({ user, data, registry, onClose }: UserDrawerProps) {
         </>
       }
       leading={<UserAvatar user={user} size={40} />}
+      sansTitle
       ariaLabel="Manage roles"
       testId="user-drawer"
       backdropTestId="user-drawer-backdrop"
@@ -81,6 +92,7 @@ function DrawerBody({
 }: Omit<UserDrawerProps, 'onClose'> & { first: string; saved: RoleLike[] }) {
   const { isAdmin } = usePermissions()
   const save = useSaveUserRoles()
+  const rowId = useId()
   const reg = registry.data
 
   // After a save the refetched links arrive a beat later; until they do, the
@@ -129,15 +141,10 @@ function DrawerBody({
     )
   }
 
-  const redundantNote = (r: RoleLike) => {
-    const cover = redundant.get(r.id)
-    if (!cover || cover.length === 0 || !draftIds.has(r.id)) return null
-    return (
-      <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-        Adds nothing: {cover.map((c) => c.name).join(' and ')}{' '}
-        {cover.length === 1 ? 'already grants' : 'already grant'} all of this.
-      </div>
-    )
+  const tag = (r: RoleLike) => {
+    if (diff.added.includes(r)) return <span className={TAG_ADD}>adding</span>
+    if (diff.removed.includes(r)) return <span className={TAG_REMOVE}>removing</span>
+    return null
   }
 
   const chips = (r: RoleLike) =>
@@ -147,28 +154,68 @@ function DrawerBody({
       </span>
     ))
 
-  const tag = (r: RoleLike) => {
-    if (diff.added.includes(r))
-      return <span className="text-[10px] font-bold text-emerald-600 uppercase">adding</span>
-    if (diff.removed.includes(r))
-      return <span className="text-[10px] font-bold text-red-600 uppercase">removing</span>
-    return null
+  /**
+   * One role as a whole-row label (mock `.rrow`): tick, name and tag, holder
+   * count; then its permissions and any note, all in the text column. The
+   * checkbox is named by the role alone, so a note naming another role never
+   * leaks into its name.
+   */
+  const roleRow = (r: RoleLike, testId: string, compact: boolean) => {
+    const on = draftIds.has(r.id)
+    const locked = lockedFor(r)
+    const nameId = `${rowId}-${r.id}`
+    const cover = on ? redundant.get(r.id) : undefined
+    return (
+      <label
+        key={r.id}
+        data-testid={testId}
+        className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-[9px] gap-y-[3px] rounded-[10px] border px-2.5 py-[7px] ${
+          on ? 'border-primary/50 bg-primary/5' : 'border-border bg-card'
+        } ${locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+      >
+        <input
+          type="checkbox"
+          aria-labelledby={nameId}
+          checked={on}
+          disabled={locked}
+          onChange={() => toggle(r)}
+          className="accent-primary m-0"
+        />
+        <span className="inline-flex flex-wrap items-center gap-1.5 text-sm">
+          <span id={nameId} className="font-semibold">
+            {r.name}
+          </span>
+          {tag(r)}
+        </span>
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {peopleLabel(roleHolders(r.id, data.users, data.held).length)}
+        </span>
+        {compact && !on ? (
+          <span className="text-muted-foreground col-span-2 col-start-2 truncate text-xs">
+            {plural(r.permissions.length, 'permission')}
+            {r.permissions.length > 0 && `: ${r.permissions.map(shortOf).join(', ')}`}
+          </span>
+        ) : (
+          <span className="col-span-2 col-start-2 flex flex-wrap gap-1">{chips(r)}</span>
+        )}
+        {locked && (
+          <span className="text-muted-foreground col-span-2 col-start-2 flex items-center gap-[5px] text-xs">
+            <Lock className="h-[13px] w-[13px] flex-shrink-0" />
+            {ADMIN_ONLY_REASON}
+          </span>
+        )}
+        {cover && cover.length > 0 && (
+          <span className="col-span-2 col-start-2 flex items-start gap-[5px] text-xs leading-[1.35] text-amber-700 dark:text-amber-400">
+            <Info className="mt-px h-[13px] w-[13px] flex-shrink-0" />
+            <span>
+              Adds nothing: {cover.map((c) => c.name).join(' and ')}{' '}
+              {cover.length === 1 ? 'already grants' : 'already grant'} all of this.
+            </span>
+          </span>
+        )}
+      </label>
+    )
   }
-
-  const checkbox = (r: RoleLike) => (
-    <input
-      type="checkbox"
-      checked={draftIds.has(r.id)}
-      disabled={lockedFor(r)}
-      onChange={() => toggle(r)}
-      className="mt-0.5"
-    />
-  )
-
-  const lockNote = (r: RoleLike) =>
-    lockedFor(r) ? (
-      <div className="text-muted-foreground text-[11px]">{ADMIN_ONLY_REASON}</div>
-    ) : null
 
   const lastSeen = str(user['last_seen'])
   const lastLogin = str(user['last_login'])
@@ -209,146 +256,57 @@ function DrawerBody({
         </p>
 
         <section>
-          <h4 className="mb-2 text-sm font-semibold">
-            {first}&apos;s roles{' '}
-            <span className="text-muted-foreground font-normal">{heldRoles.length}</span>
+          <h4 className={SECTION_HEAD}>
+            {first}&apos;s roles <span className={SECTION_COUNT}>{heldRoles.length}</span>
           </h4>
           {heldRoles.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground m-0 px-0.5 py-1 text-[12.5px]">
               No roles yet. They can sign in and see the shared screens only.
             </p>
           ) : (
-            <div className="space-y-2">
-              {heldRoles.map((r) => {
-                return (
-                  <div
-                    key={r.id}
-                    data-testid={`role-row-${r.id}`}
-                    className="border-border rounded-md border p-2"
-                  >
-                    <label className="flex items-start gap-2">
-                      {checkbox(r)}
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium">{r.name}</span>
-                          <span className="text-muted-foreground text-[11px]">
-                            {peopleLabel(roleHolders(r.id, data.users, data.held).length)}
-                          </span>
-                          {tag(r)}
-                        </span>
-                        <span className="mt-1 flex flex-wrap gap-1">{chips(r)}</span>
-                      </span>
-                    </label>
-                    {lockNote(r)}
-                    {redundantNote(r)}
-                  </div>
-                )
-              })}
+            <div className="flex flex-col gap-[5px]">
+              {heldRoles.map((r) => roleRow(r, `role-row-${r.id}`, false))}
             </div>
           )}
         </section>
 
         <section>
-          <h4 className="mb-2 text-sm font-semibold">Add a role</h4>
-          <div className="space-y-1">
-            {addable.map((r) => {
-              const on = draftIds.has(r.id)
-              return (
-                <div
-                  key={r.id}
-                  data-testid={`add-role-${r.id}`}
-                  className="border-border rounded-md border p-2"
-                >
-                  <label className="flex items-start gap-2">
-                    {checkbox(r)}
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{r.name}</span>
-                        {tag(r)}
-                      </span>
-                      {on ? (
-                        <span className="mt-1 flex flex-wrap gap-1">{chips(r)}</span>
-                      ) : (
-                        <span className="text-muted-foreground block truncate text-[11px]">
-                          {plural(r.permissions.length, 'permission')}
-                          {r.permissions.length > 0 && `: ${r.permissions.map(shortOf).join(', ')}`}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                  {lockNote(r)}
-                  {redundantNote(r)}
-                </div>
-              )
-            })}
+          <h4 className={SECTION_HEAD}>Add a role</h4>
+          <div className="flex flex-col gap-[5px]">
+            {addable.map((r) => roleRow(r, `add-role-${r.id}`, true))}
           </div>
         </section>
 
         <section data-testid="can-do">
-          <h4 className="mb-2 text-sm font-semibold">
+          <h4 className={SECTION_HEAD}>
             What {first} can do
-            {dirty && <span className="text-muted-foreground font-normal"> after saving</span>}
+            {dirty && (
+              <span className="font-medium tracking-normal normal-case"> after saving</span>
+            )}
           </h4>
+          {reg && shownCodes.size === 0 && <CanDoNothing />}
           {areas.map(({ area, items }) => (
-            <div key={area} className="mb-2.5">
-              <div className="text-muted-foreground mb-1 block text-[10.5px] font-bold tracking-[0.06em] uppercase">
-                {area}
-              </div>
-              <ul className="flex flex-col gap-1.5">
-                {items.map((p) => {
-                  const lost = diff.lost.has(p.codename)
-                  const gained = diff.gained.has(p.codename)
-                  const via = grantedVia(p.codename, lost ? saved : draftRoles)
-                  const Icon = lost ? Minus : Check
-                  return (
-                    <li
-                      key={p.codename}
-                      className={`flex items-start gap-2 text-sm leading-[1.4] ${lost ? 'text-muted-foreground' : ''}`}
-                    >
-                      <Icon
-                        className={`mt-0.5 h-[15px] w-[15px] flex-shrink-0 ${lost ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}
-                      />
-                      <span className="min-w-0">
-                        <span className={`font-semibold ${lost ? 'line-through' : ''}`}>
-                          {p.short}
-                        </span>
-                        {gained && (
-                          <span className="ml-1.5 rounded bg-emerald-600/15 px-1.5 text-[10px] leading-4 font-bold text-emerald-700 uppercase dark:text-emerald-400">
-                            new
-                          </span>
-                        )}
-                        {lost && (
-                          <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 text-[10px] leading-4 font-bold text-amber-700 uppercase dark:text-amber-400">
-                            removed
-                          </span>
-                        )}
-                        <span className="text-muted-foreground block text-xs">
-                          via {via.map((r) => r.name).join(', ')}
-                        </span>
-                        {p.screens.length > 0 && (
-                          <span className="flex flex-wrap gap-x-2.5 gap-y-0.5">
-                            {p.screens.map((s) => (
-                              <Link
-                                key={s.path}
-                                to={s.path}
-                                className="text-primary inline-flex items-center gap-[3px] text-[12.5px] font-medium whitespace-nowrap hover:underline"
-                              >
-                                <ArrowUpRight className="h-[13px] w-[13px]" />
-                                {s.name}
-                              </Link>
-                            ))}
-                          </span>
-                        )}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
+            <CanDoArea key={area} area={area}>
+              {items.map((p) => {
+                const lost = diff.lost.has(p.codename)
+                return (
+                  <CanDoItem
+                    key={p.codename}
+                    short={p.short}
+                    screens={p.screens}
+                    via={grantedVia(p.codename, lost ? saved : draftRoles)
+                      .map((r) => r.name)
+                      .join(', ')}
+                    state={lost ? 'lose' : diff.gained.has(p.codename) ? 'gain' : null}
+                  />
+                )
+              })}
+            </CanDoArea>
           ))}
           {adminOnly !== undefined && (
-            <p className="text-muted-foreground mt-2 text-[11px]">
-              Admin-only areas stay locked: {adminOnly}.
+            <p className="text-muted-foreground mt-2 mb-0 flex items-start gap-1.5 text-xs">
+              <Lock className="mt-px h-[13px] w-[13px] flex-shrink-0" />
+              <span>Admin-only areas stay locked: {adminOnly}.</span>
             </p>
           )}
         </section>
@@ -356,43 +314,39 @@ function DrawerBody({
 
       <div data-testid="drawer-footer" className="border-border bg-card sticky bottom-0 border-t">
         {/* The tint sits on an inner layer: a translucent sticky background lets the list show through. */}
-        <div className={`space-y-2 p-3 ${dirty ? 'bg-primary/5' : ''}`}>
-          <div className="text-xs">
+        <div className={`flex flex-col gap-2 px-4 py-2.5 ${dirty ? 'bg-primary/5' : ''}`}>
+          <div className="text-muted-foreground text-[12.5px]">
             {dirty ? (
               <>
                 {plural(changeLine.length, 'change')}:{' '}
                 {changeLine.map((c, i) => (
-                  <span key={c.key} className={c.add ? 'text-emerald-600' : 'text-red-600'}>
-                    {i > 0 && <span className="text-muted-foreground"> · </span>}
-                    {c.text}
+                  <span key={c.key}>
+                    {i > 0 && ' · '}
+                    <b className={c.add ? OK_TEXT : WARN_TEXT}>{c.text}</b>
                   </span>
                 ))}
               </>
             ) : (
-              <span className="text-muted-foreground">No changes</span>
+              'No changes'
             )}
           </div>
           {save.isError && (
-            <div className="text-xs text-red-600">
+            <div className={`text-xs ${WARN_TEXT}`}>
               Couldn&apos;t save: {pbErrorText(save.error)}. Nothing was changed; your ticks are
               still here.
             </div>
           )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={discard}
-              disabled={!dirty}
-              className="rounded-md border px-3 py-1 text-xs disabled:opacity-50"
-            >
+          <div className="flex justify-end gap-1.5">
+            <button type="button" onClick={discard} disabled={!dirty} className={BTN_GHOST_SM}>
               Discard
             </button>
             <button
               type="button"
               onClick={onSave}
               disabled={!dirty || save.isPending}
-              className="bg-primary text-primary-foreground rounded-md px-3 py-1 text-xs disabled:opacity-50"
+              className={BTN_PRIMARY_SM}
             >
+              <Check className="h-3.5 w-3.5" />
               Save changes
             </button>
           </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -85,6 +85,44 @@ describe('RoleDrawer', () => {
     expect(screen.getByText('Geographic data')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Manage › Geo Data/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit role' })).not.toBeInTheDocument()
+  })
+
+  it('view mode shows holders with avatars and flags a permission nothing checks (#14)', () => {
+    renderRoleDrawer('r-exec', {
+      mutate: (p) => {
+        p.data.roles.find((r) => r.id === 'r-exec')!.permissions.push('metrics.financial')
+      },
+    })
+    const drawer = screen.getByTestId('role-drawer')
+    expect(within(drawer).getAllByTestId('user-avatar').length).toBeGreaterThan(0)
+    expect(drawer).toHaveTextContent('not checked anywhere')
+  })
+
+  it('heads the editor "Edit {role}" with what saving does (#13)', async () => {
+    renderRoleDrawer('r-exec')
+    const drawer = screen.getByTestId('role-drawer')
+    expect(drawer).not.toHaveTextContent('Edit Executive')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    expect(drawer).toHaveTextContent('Edit Executive')
+    expect(drawer).toHaveTextContent('Changes apply to everyone who holds it, when you save')
+  })
+
+  it('flags "not checked anywhere" in the editor too (#16)', async () => {
+    renderRoleDrawer('r-exec')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    expect(screen.getByRole('checkbox', { name: /Financial projections/ })).toBeInTheDocument()
+    expect(screen.getByTestId('role-drawer')).toHaveTextContent('not checked anywhere')
+  })
+
+  it('marks a lost permission in the impact list with the minus icon (#22)', async () => {
+    renderRoleDrawer('r-exec')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit role' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Geographic data/ }))
+    const footer = screen.getByTestId('role-footer')
+    expect(footer.querySelector('li svg.lucide-minus')).not.toBeNull()
+    expect(
+      within(footer).getByRole('button', { name: 'Save changes' }).querySelector('svg.lucide-check')
+    ).not.toBeNull()
   })
 
   it('shows the holders in Users on request', async () => {
