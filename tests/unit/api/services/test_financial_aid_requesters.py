@@ -7,6 +7,8 @@ from dataclasses import replace
 import pytest
 
 from api.services.financial_aid_decisions_service import FinancialAidDecisionsService
+from api.services.financial_aid_grants_register import RegisterRow
+from api.services.financial_aid_intake_types import RequestRecord
 from api.services.financial_aid_requesters import FaContact, contact_name, requester_names
 from tests.unit.api.services.decisions_fakes import T0, FakeDecisionsStore, FakeRules, approved, seed_request
 from tests.unit.api.services.financial_aid_fakes import YEAR
@@ -16,7 +18,7 @@ EMMA, LIAM, SIBLING = "reqemma00000001", "reqliam00000001", "reqriley0000001"
 EMMA_CM, LIAM_CM, RILEY_CM = 1000011, 1000012, 1000013
 
 
-def _requests(*specs: tuple[str, int, int]) -> list:
+def _requests(*specs: tuple[str, int, int]) -> list[RequestRecord]:
     store = FakeDecisionsStore()
     return [seed_request(store, rid, household=household, person=person) for rid, household, person in specs]
 
@@ -98,7 +100,7 @@ def test_a_household_level_request_with_no_camper_uses_the_household() -> None:
 
 
 def _service(store: FakeDecisionsStore) -> FinancialAidDecisionsService:
-    async def register(year: int) -> list:
+    async def register(year: int) -> list[RegisterRow]:
         return []
 
     return FinancialAidDecisionsService(store, FakeRules(approved()), register, clock=lambda: T0)

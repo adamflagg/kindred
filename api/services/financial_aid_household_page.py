@@ -479,9 +479,10 @@ class HouseholdPageService:
         } - {""}
         actors = {a.strip() for a in actors} - {""}
         (
-            (names, user_names, postings, dispositions, household_rows, persons, contacts),
+            (names, user_names, postings, dispositions, household_rows, persons),
             links,
             details,
+            contacts,
         ) = await asyncio.gather(
             asyncio.gather(
                 self._store.fetch_names(year, scope.households, campers),
@@ -490,10 +491,10 @@ class HouseholdPageService:
                 self._ledger.fetch_dispositions(year),
                 self._ledger.fetch_households(year, scope.households),
                 self._ledger.fetch_persons(year, campers) if campers else _nothing(),
-                self._store.fetch_fa_contacts(year),
             ),
             self._ledger.fetch_links(year),
             asyncio.gather(*(_income(self._casework, year, h) for h in scope.households)),
+            self._store.fetch_fa_contacts(year),
         )
         requesters = requester_names(contacts, season.requests.values())
         rows = [decisions.row_of(season, names, rid, requesters) for rid in scope.request_ids]
