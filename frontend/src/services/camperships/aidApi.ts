@@ -97,7 +97,13 @@ export function hasStatus(error: unknown, status: number): boolean {
 
 /** FastAPI's detail as one sentence: a string, a 409's `{message}`, or a 422's first `msg`. */
 export function writeMessage(detail: unknown): string | null {
-  if (typeof detail === 'string') return detail === '' ? null : detail
+  const words = wordsOf(detail)
+  // No words at all (an empty string, a bare "Value error, "): the caller's own fallback speaks.
+  return words === undefined || words === '' ? null : words
+}
+
+function wordsOf(detail: unknown): string | undefined {
+  if (typeof detail === 'string') return detail
   if (Array.isArray(detail)) {
     const first: unknown = detail[0]
     // Pydantic prefixes a validator's message with "Value error, ": not staff's words (M15).
@@ -106,7 +112,7 @@ export function writeMessage(detail: unknown): string | null {
       'msg' in first &&
       typeof first.msg === 'string'
       ? first.msg.replace(/^Value error, /, '')
-      : null
+      : undefined
   }
   if (
     typeof detail === 'object' &&
@@ -116,7 +122,7 @@ export function writeMessage(detail: unknown): string | null {
   ) {
     return detail.message
   }
-  return null
+  return undefined
 }
 
 function changedRows(detail: unknown): AidChangedRow[] {

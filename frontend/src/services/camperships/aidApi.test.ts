@@ -19,6 +19,12 @@ describe('writeMessage', () => {
     expect(writeMessage('')).toBeNull()
     expect(writeMessage(undefined)).toBeNull()
   })
+
+  it('returns nothing for a message with no words, so the caller falls back to its own', () => {
+    expect(writeMessage([{ msg: 'Value error, ' }])).toBeNull()
+    expect(writeMessage([{ msg: '' }])).toBeNull()
+    expect(writeMessage({ message: '' })).toBeNull()
+  })
 })
 
 describe('a refused write', () => {
