@@ -110,6 +110,7 @@ from bunking.financial_aid.reports.statistics import (
 )
 from bunking.financial_aid.rules import AidRules, resolve_program
 from bunking.financial_aid.scenarios.request_set import RequestSet, RequestSetNote, request_set_note
+from bunking.pocketbase_batch import MAX_BATCH_REQUESTS
 
 # Finance ruled out reporting before 2022 (COVID): trends start there (§9.5).
 FIRST_REPORT_SEASON: Final = 2022
@@ -302,7 +303,10 @@ class FinancialAidReportsService:
         `report_requests`, as the grid and the budget blank it), then 3c-2's own gaps with their request ids."""
         if read.season.as_of is None:
             return []
-        ids = sorted(rid for rid in read.season.posted_unknown if any(r.request_id == rid for r in read.requests))
+        # Only a live request's money is left out (report_requests): a cancelled one's was never awarded.
+        ids = sorted(
+            rid for rid in read.season.posted_unknown if any(r.request_id == rid and r.live for r in read.requests)
+        )
         posted = [NotRebuiltOut(figure="posted", reason=POSTED_GAP, requests=ids)] if ids else []
         # A caveat, not a gap: it names no request, so a reader keeps the counts and only notes the limit.
         caveat = NotRebuiltOut(figure="cancellation", reason=CANCELLATION_CAVEAT)
@@ -573,6 +577,11 @@ class FinancialAidReportsService:
                 )
             )
             updated += 1
+        if 2 * len(writes) > MAX_BATCH_REQUESTS:  # each write and its change-log row, in ONE batch
+            raise ReportsRefusedError(
+                f"{len(writes)} figures to write is more than one logged load holds ({MAX_BATCH_REQUESTS // 2}): "
+                "split it into smaller loads"
+            )
         if writes:
             await self._history.commit(writes, actor=actor)
         return ReportedLoadOut(created=created, updated=updated, unchanged=unchanged)

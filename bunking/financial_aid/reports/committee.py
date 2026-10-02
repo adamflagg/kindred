@@ -465,13 +465,15 @@ def native_applications(season: NativeSeason) -> list[ApplicationsRow]:
 def typed_applications(year: int, typed: _Typed) -> list[ApplicationsRow]:
     """One row per pool (and the headline) per pull date; a season with only season-end figures has one row with no
     cutoff. A reconciliation row ("headline − Σ pools") appears where the typed pools don't sum."""
-    pulls = sorted({f.as_of for f in typed.pulls("r1_apps")} | {f.as_of for f in typed.pulls("r1_asked")})
     pools = sorted(
         typed.pools("r1_apps")
         | typed.pools("r1_asked")
         | typed.pools("r1_apps", "pull")
         | typed.pools("r1_asked", "pull")
     )
+    # Every pull date a figure was typed on, the headline's or any pool's: a pool's pull on a day with no headline pull
+    # is still a cutoff, so its figure shows (the headline's at-cutoff reads blank) instead of vanishing.
+    pulls = sorted({f.as_of for key in ("", *pools) for m in ("r1_apps", "r1_asked") for f in typed.pulls(m, pool=key)})
     out: list[ApplicationsRow] = []
     cutoffs: list[date | None] = [*pulls] or [None]
     for cutoff in cutoffs:

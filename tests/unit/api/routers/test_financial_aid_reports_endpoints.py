@@ -17,6 +17,7 @@ from api.schemas.financial_aid_reports import (
     CancelledRowOut,
     CommitteeResponse,
     ProgramsResponse,
+    ReportedHistoryResponse,
     ReportedLoadOut,
     StatisticsResponse,
 )
@@ -196,11 +197,13 @@ def test_a_refused_read_is_a_422_and_an_unknown_round_chip_never_reaches_the_ser
 
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 def test_reading_and_deleting_typed_history_are_rules_only(persona: str) -> None:
-    _stub()
-    expected = 200 if RULES in PERSONAS[persona] else 403
+    """The exact status, not just "not 403": a read that let the person in but then failed would be a 500."""
+    service = _stub()
+    service.reported_history = AsyncMock(return_value=ReportedHistoryResponse(figures=[]))
+    allowed = RULES in PERSONAS[persona]
     reason = {"reason": "wrong as-of date"}
     url = "/api/financial-aid/reports/reported-history"
     read = _client(persona).get(url)
     delete = _client(persona).delete(f"{url}/rph000000000001", params=reason)
-    assert (read.status_code != 403) == (expected == 200), persona
-    assert (delete.status_code != 403) == (expected == 200), persona
+    assert read.status_code == (200 if allowed else 403), persona
+    assert delete.status_code == (204 if allowed else 403), persona

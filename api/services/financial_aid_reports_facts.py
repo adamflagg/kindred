@@ -107,7 +107,9 @@ def _round(
     home_pool: str | None,
 ) -> RoundFacts:
     posted = view is not None and view.status == "posted"
-    counts = posted and view is not None and view.counts_toward_budget
+    # The round's decision type pays it wholly outside the budget (D121), posted or not: the budget's own predicate.
+    outside = view is not None and not view.counts_toward_budget
+    counts = posted and not outside
     ask: Decimal | None
     if view is not None:
         ask = view.ask
@@ -115,19 +117,21 @@ def _round(
         ask = r1_ask if n == 1 else (state.ask if state is not None else None)
     tier = _snapshot_tier(state) if posted else None
     # Owner (c) (RULED 2026-10-02): a round outside the budget (D121's outside funder's full-cost type) is never
-    # awarded here (`locked` None); its ask stays in `ask` (the asked column) but `outside_budget` takes it out of
-    # % of ask's denominator. The predicate is the budget's own: the round view's `counts_toward_budget`.
+    # awarded here (`locked` None) and, decided but not yet offered, is never decided money either (the budget puts
+    # it below the line, never in Needs an offer); its ask stays in `ask` (the asked column) but `outside_budget`
+    # takes it out of % of ask's denominator, before posting as after. The predicate is the budget's own: the round
+    # view's `counts_toward_budget`.
     return RoundFacts(
         round=n,
         ask=ask,
         locked=view.locked if counts and view is not None else None,
         clawed_back=bool(view is not None and view.clawed_back),
-        decided=view.decided if view is not None and view.status == "needs_offer" else None,
+        decided=view.decided if view is not None and view.status == "needs_offer" and not outside else None,
         accepted=bool(view is not None and posted and view.accepted),
         posted_on=state.posted_on if posted and state is not None else None,
         tier=tier if tier is not None else tier_now,
         pool=view.pool if view is not None and view.pool is not None else home_pool,
-        outside_budget=posted and not counts,
+        outside_budget=outside,
     )
 
 
@@ -169,10 +173,14 @@ def report_requests(
             if n > 1 and view is None and (state is None or not round_exists(state)):
                 continue
             rounds.append(_round(n, view, state, r1_ask=r1_ask, tier_now=tier_now, home_pool=home_pool))
-        if request_id in season.posted_unknown:  # a past read can't replay its clawback: like the grid, leave it out
-            rounds = [replace(r, locked=None) for r in rounds]
         cancellation = season.cancellations.get(request_id)
+        # Standing reads the lock before a past read blanks it: owner (a)'s withdrawn recipient is one whether or not
+        # its money was since reversed, so a clawback the read can't replay never makes it "closed".
         standing = _standing(request, cancellation is not None, rounds)
+        if request_id in season.posted_unknown and standing == "live":
+            # A past read can't replay its clawback: like the grid, its money leaves awarded. Only a live request's
+            # lock is awarded money; a cancelled one's recipients line reads the lock, clawed back since or not.
+            rounds = [replace(r, locked=None) for r in rounds]
         cancel_reason: str | None = cancellation.reason if cancellation is not None else None
         if cancel_reason is None and standing == "cancelled" and request.status == STATUS_WITHDRAWN:
             cancel_reason = WITHDRAWN_REASON  # a withdrawal is named, never read as a missing reason

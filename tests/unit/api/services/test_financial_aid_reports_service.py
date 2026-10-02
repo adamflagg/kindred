@@ -13,17 +13,18 @@ from typing import Any
 
 import pytest
 
-from api.constants.collections import AID_REPORTED_HISTORY
+from api.constants.collections import AID_REPORTED_HISTORY, AID_REQUESTS
 from api.services.financial_aid_cancellations import CancelEvent, EnrollmentState
 from api.services.financial_aid_grant_placements import PlacementRecord, grant_key, placement_json
 from api.services.financial_aid_grants_register import Placement, RegisterRow
 from api.services.financial_aid_intake_types import UNKNOWN_EQUITY, CorrectionRecord, SessionRow
-from api.services.financial_aid_reports_facts import _standing
+from api.services.financial_aid_reports_facts import _round, _standing
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
     ReportedFigureNotFoundError,
     ReportsRefusedError,
 )
+from bunking.financial_aid.decisions import RoundView
 from bunking.financial_aid.reports.committee import NO_DEADLINE_CUT_GAP, PHASE_BOUNDARY_GAP
 from bunking.financial_aid.reports.facts import RoundFacts
 from bunking.financial_aid.reports.history import ReportedFigure
@@ -34,6 +35,7 @@ from tests.unit.api.services.decisions_fakes import (
     approved,
     grant_row,
     log_seeded,
+    log_update,
     seed_line,
     seed_request,
 )
@@ -263,6 +265,71 @@ async def test_an_outside_funders_full_cost_round_keeps_its_ask_but_leaves_the_p
     assert out.total.live_asked == 2000.0  # Liam's alone
     block = (await service.programs(YEAR)).total.round1
     assert (block.requested, block.pct_awarded) == (6000.0, 0.0)  # asked kept; Liam's 2,000 alone is the denominator
+
+
+async def test_an_unposted_outside_funders_round_is_never_decided_money_and_leaves_the_denominator() -> None:
+    """D121 / owner (c): the budget puts a decided round of a type outside the budget below the line, never in Needs an
+    offer. Reports agrees before posting too: no "Decided (not yet offered)" money, and its ask leaves % of ask's
+    denominator, so % of ask doesn't move when the round posts."""
+    view = RoundView(
+        round=3,
+        status="needs_offer",
+        ask=Decimal(900),
+        decided=Decimal(650),
+        locked=None,
+        accepted=False,
+        pending=None,
+        would_change_by=None,
+        counts_toward_budget=False,
+        pool="camp_pool",
+        decision_type="discretionary",
+    )
+    facts = _round(3, view, None, r1_ask=None, tier_now=2, home_pool="camp_pool")
+    assert (facts.decided, facts.locked, facts.outside_budget, facts.ask) == (None, None, True, Decimal(900))
+    inside = _round(3, replace(view, counts_toward_budget=True), None, r1_ask=None, tier_now=2, home_pool="camp_pool")
+    assert (inside.decided, inside.outside_budget) == (Decimal(650), False)
+
+
+async def test_a_withdrawn_request_whose_posted_money_a_past_date_cannot_replay_still_counts_as_cancelled() -> None:
+    """Owner (a): standing reads the lock, whether or not its money was since reversed. A past read that can't replay
+    the clawback leaves the money out of awarded (the `posted` gap), but the request was still a recipient that
+    withdrew: it stays a cancellation, never "closed"."""
+    store = report_season()
+    active = store.requests[EMMA]
+    store.requests[EMMA] = replace(active, status="withdrawn")  # withdrawn on March 20, logged as 4a logs it
+    log_update(
+        store, AID_REQUESTS, EMMA, {"status": "active"}, {"status": "withdrawn"}, datetime(2027, 3, 20, tzinfo=UTC)
+    )
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged: Emma's posted is unknown
+    seed_line(store, 9001, "1500", person=0, posted=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
+    out = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
+    assert (out.total.apps, out.total.cancelled, out.cancelled_applicants, out.total.amount) == (2, 1, 1, 0.0)
+    assert [line.posted for line in out.recipients_cancelled] == [1500.0]
+    assert not [g for g in out.not_rebuilt if g.figure == "posted"]  # nothing awarded was left out
+
+
+async def test_a_cancelled_recipient_whose_clawback_a_past_date_cannot_replay_keeps_its_recipients_line() -> None:
+    """The recipients-who-cancelled line reads the lock, clawed back since or not, so a clawback the past read can't
+    replay changes nothing there: only awarded (a live request's money) is what the `posted` gap leaves out."""
+    store = report_season()
+    store.cancel_events.append(
+        CancelEvent(
+            "can000000000001",
+            EMMA,
+            "cancel",
+            datetime(2027, 3, 20, tzinfo=UTC),
+            reason="aid_not_enough",
+            in_kindred=True,
+            actor=ACTOR,
+        )
+    )
+    store.placements[9001] = Placement(9001, 1000011, 0, "")  # placed now, never logged: Emma's posted is unknown
+    seed_line(store, 9001, "1500", person=0, posted=datetime(2027, 3, 9, 18, 0, tzinfo=UTC))
+    out = await _service(store).statistics(YEAR, table="camp", round_=1, as_of=date(2027, 3, 31))
+    assert (out.total.cancelled, out.total.amount) == (1, 0.0)
+    [row] = out.recipients_cancelled
+    assert (row.reason, row.round, row.requests, row.posted) == ("aid_not_enough", 1, 1, 1500.0)
+    assert not [g for g in out.not_rebuilt if g.figure == "posted"]  # never awarded, so nothing was left out
 
 
 async def test_the_percent_of_ask_column_is_labelled_with_its_numerator_on_each_basis() -> None:
@@ -681,6 +748,20 @@ async def test_a_load_with_one_bad_or_repeated_figure_writes_nothing() -> None:
     with pytest.raises(ReportsRefusedError, match="the same figure twice"):
         await service.load_reported([_figure(), _figure(value="1")], actor=FINANCE)
     assert history.operations == []
+
+
+async def test_a_load_too_large_for_one_logged_batch_is_refused_as_a_422_never_a_500() -> None:
+    """The route takes up to 2,000 figures, but every write carries its change-log row in ONE batch, so more than half
+    PocketBase's batch limit can't commit as one operation: the load is refused, asking for a split, not left to
+    4a's BatchLimitError (an uncaught ValueError, a 500)."""
+    history = FakeReportsStore()
+    figures = [
+        replace(_figure("r1_apps", "1"), year=2027, at="pull", as_of=date(2026, 1, 1) + timedelta(days=n))
+        for n in range(1001)
+    ]
+    with pytest.raises(ReportsRefusedError, match="split"):
+        await _service(report_season(), history).load_reported(figures, actor=FINANCE)
+    assert history.rows == []
 
 
 async def test_a_typed_figure_is_deleted_with_a_reason_and_an_unknown_one_is_404() -> None:

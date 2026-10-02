@@ -49,7 +49,7 @@ class RoundFacts:
     `ask` is the round's ask as keyed (Round 1: the request's ask, as corrected). `locked` is the Posted lock of a
     round that counts toward the budget, whatever happened after it (None: not posted, or outside the budget);
     `clawed_back` says CampMinder's reversal has posted since (D54). `decided` is decided and not yet offered
-    (None: not decided, posted, or a request 3c-2 can't price as of the day). `tier` is the round's tier: at its lock, else the request's now
+    (None: not decided, posted, outside the budget, or a request 3c-2 can't price as of the day). `tier` is the round's tier: at its lock, else the request's now
     (None: unknown, e.g. a past read of an unposted round). `pool` is where the round's money counts: a posted
     round's lock pool, else the request's home pool."""
 
@@ -62,7 +62,7 @@ class RoundFacts:
     posted_on: date | None
     tier: int | None
     pool: str | None
-    outside_budget: bool = False  # posted but not counting toward the budget (D121): never awarded, out of % of ask
+    outside_budget: bool = False  # paid wholly outside the budget (D121), posted or not: never awarded, out of % of ask
 
     @property
     def posted(self) -> Decimal | None:

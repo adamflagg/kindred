@@ -156,6 +156,19 @@ def test_typed_pools_that_dont_sum_to_the_headline_get_a_reconciliation_row() ->
     assert headline.since.apps == 10
 
 
+def test_a_pool_pull_with_no_headline_pull_that_day_still_shows_as_its_own_cutoff() -> None:
+    """A blank stays blank, but a typed figure never vanishes: finance typed camp's deadline count and no headline that
+    day, so the pull date is still a cutoff and camp's row shows it (the headline's at-cutoff reads blank)."""
+    figures = [_typed("r1_apps", "40", pool="camp_pool", at="pull", as_of=date(2026, 2, 3)), _typed("r1_apps", "60")]
+    rows = committee_tables([], figures).applications
+    camp = next(r for r in rows if r.pool == "camp_pool" and r.kind == "pool")
+    assert camp.cutoff == date(2026, 2, 3)
+    assert camp.at_cutoff is not None
+    assert camp.at_cutoff.apps == 40
+    headline = next(r for r in rows if r.kind == "headline")
+    assert (headline.cutoff, headline.at_cutoff) == (date(2026, 2, 3), None)
+
+
 def test_the_season_end_changes_against_the_season_before() -> None:
     figures = [_typed("r1_apps", "3", pool="camp_pool"), _typed("r1_asked", "8000", pool="camp_pool")]
     rows = committee_tables([SEASON], figures).applications
