@@ -361,7 +361,8 @@ describe("Needs an offer's split marker (⚠ Decision 39; #2941's payer_count)",
   it('marks a family cell "split · 2 households" when the request has two payers', () => {
     render(<Grid slug="needs-offer" rows={[gridRow({ payer_count: 2 })]} />)
     const cell = screen.getByText('The Johnson Family').closest('td') as HTMLElement
-    expect(within(cell).getByText('split · 2 households')).toBeInTheDocument()
+    // The kit's stone StatusPill, not bare text.
+    expect(within(cell).getByText('split · 2 households')).toHaveClass('bg-stone-200')
   })
 
   it('counts the payers it is given', () => {
