@@ -14,6 +14,7 @@ import { toCents } from '../kit/money'
 import type { CellValue } from '../kit/table'
 import { attentionFor, daysBetween, waitingSince } from './attention'
 import { latestRound, requestStage, roundOf } from './stage'
+import { offerRound } from './ticks'
 
 export type RequestViewKey = 'all' | ApiAidQueue
 
@@ -316,7 +317,7 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
     money: true,
     // The ruling covered the per-row cell; a sum of these is a new figure nobody ruled (PR 4 review I1).
     noTotal: true,
-    value: (r) => ((viewRound(r, 'needs_offer')?.round ?? 1) > 1 ? r.total_decided : null),
+    value: (r) => ((offerRound(r)?.round ?? 1) > 1 ? r.total_decided : null),
   },
   daysWaiting: {
     header: 'Days waiting',
