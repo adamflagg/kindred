@@ -218,6 +218,16 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const [refused, setRefused] = useState<string | null>(null)
   const [setting, setSetting] = useState<ApiAidRulesSection | null>(null)
   const [promoting, setPromoting] = useState<string | null>(null)
+  // A refused All settings save says its words inside the editor, once; another write's error stays
+  // at the top (the editor isn't where it happened). The save's error is told apart by its words.
+  const [saveFailed, setSaveFailed] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  if (saveFailed && work.error !== null && saveError !== work.error) {
+    setSaveError(work.error)
+    setSaveFailed(false)
+  }
+  const editorError =
+    setting !== null && saveError !== null && saveError === work.error ? saveError : null
   const keepButtons = (
     <>
       <button
@@ -245,7 +255,9 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
       <SnapshotLine workspace={workspace} work={work} />
       {/* Its line is always there, so nothing jumps under the pointer on every release. */}
       <p className="text-muted-foreground h-5 text-sm print:hidden">{work.busy}</p>
-      {work.error !== null && <p className={`${AMBER_NOTE} print:hidden`}>{work.error}</p>}
+      {work.error !== null && work.error !== editorError && (
+        <p className={`${AMBER_NOTE} print:hidden`}>{work.error}</p>
+      )}
       {workspace.snapshot !== null && draft === null && (
         <div className={`${SEASON_CARD} space-y-2 print:hidden`}>
           <p>Start your draft from:</p>
@@ -360,13 +372,15 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 open={setting}
                 busy={work.busy !== null}
                 held={moving}
-                error={work.error}
+                error={editorError}
                 onOpen={setSetting}
                 onSave={(section, content) => {
                   void work
                     .adopt('Recording…', (doc) => withSection(doc, section, content))
                     .then((landed) => {
-                      if (landed) setSetting(null)
+                      // Closes the section it saved, never whichever is open by the time it lands.
+                      if (landed) setSetting((now) => (now === section ? null : now))
+                      else setSaveFailed(true)
                     })
                 }}
               />
