@@ -25,6 +25,7 @@ import {
   reasonGroup,
   viewColumns,
   viewCount,
+  columnContext,
   type ColumnContext,
   type GridColumnKey,
   type RequestView,
@@ -151,7 +152,7 @@ function renderFor(
       return (row) => (row.cancellation?.on ? formatShortDate(row.cancellation.on) : '—')
     case 'attention':
       return (row, { highlighted }) => {
-        const found = attentionFor(row, ctx.view, ctx.today)
+        const found = attentionFor(row, ctx.view, ctx.today, ctx.cancelledOnShown)
         if (found === null) return null
         const action =
           ctx.view === 'all' && found.action !== null ? (
@@ -175,7 +176,7 @@ function buildColumns(
   today: string,
   links: HouseholdLinks
 ): Array<AidColumn<ApiAidGridRow>> {
-  const ctx: ColumnContext = { view: view.key, today }
+  const ctx: ColumnContext = columnContext(view, today)
   return viewColumns(view, showIds, year).map((key) => {
     const spec = GRID_COLUMNS[key]
     return {

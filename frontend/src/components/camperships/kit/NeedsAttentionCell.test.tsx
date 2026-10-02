@@ -23,6 +23,14 @@ describe('NeedsAttentionCell (§4.4; D24, D31)', () => {
     expect(screen.getByText('Waiting 23 days')).toHaveClass('bg-amber-100')
   })
 
+  it('draws just the pill when there is no fact (O1)', () => {
+    const { container } = render(
+      <NeedsAttentionCell item={{ level: 'note', pill: 'Ask above cost', fact: '' }} highlighted />
+    )
+    expect(screen.getByText('Ask above cost')).toBeInTheDocument()
+    expect(container.querySelectorAll('span.truncate, span.whitespace-normal')).toHaveLength(0)
+  })
+
   it('cuts the fact at the column edge until the row is highlighted, never on hover', () => {
     const { rerender } = render(<NeedsAttentionCell item={HOLD} highlighted={false} />)
     expect(screen.getByText(HOLD.fact)).toHaveClass('truncate')

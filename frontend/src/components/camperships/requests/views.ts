@@ -158,6 +158,13 @@ export function requestView(slug: string | null): RequestView {
 export interface ColumnContext {
   readonly view: RequestViewKey
   readonly today: string
+  /** Whether the visible columns include Cancelled on; when not, the needs-attention text keeps the date (O2). */
+  readonly cancelledOnShown?: boolean
+}
+
+/** The column context for a shown view; its column set, not its key, says whether Cancelled on is visible (the Appeals lens swaps the columns). */
+export function columnContext(view: RequestView, today: string): ColumnContext {
+  return { view: view.key, today, cancelledOnShown: view.columns.includes('cancelledOn') }
 }
 
 export interface GridColumnSpec {
@@ -351,9 +358,10 @@ export const GRID_COLUMNS: Readonly<Record<GridColumnKey, GridColumnSpec>> = {
   attention: {
     header: 'Needs attention',
     flex: true,
-    value: (r, { view, today }) => {
-      const found = attentionFor(r, view, today)
-      return found ? `${found.item.pill}: ${found.item.fact}` : null
+    value: (r, { view, today, cancelledOnShown }) => {
+      const found = attentionFor(r, view, today, cancelledOnShown)
+      if (!found) return null
+      return found.item.fact === '' ? found.item.pill : `${found.item.pill}: ${found.item.fact}`
     },
   },
 }

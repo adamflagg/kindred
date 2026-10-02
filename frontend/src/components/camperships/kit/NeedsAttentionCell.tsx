@@ -32,9 +32,11 @@ export function NeedsAttentionCell({
       <StatusPill tone={item.level === 'hold' ? STATUS_TONE.hold : STATUS_TONE.note}>
         {item.pill}
       </StatusPill>
-      <span className={highlighted ? 'min-w-0 whitespace-normal' : 'min-w-0 truncate'}>
-        {item.fact}
-      </span>
+      {item.fact !== '' && (
+        <span className={highlighted ? 'min-w-0 whitespace-normal' : 'min-w-0 truncate'}>
+          {item.fact}
+        </span>
+      )}
       {action}
     </div>
   )

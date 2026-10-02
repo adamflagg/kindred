@@ -8,9 +8,12 @@ import {
   ROW_EMMA,
   ROW_LIAM,
   ROW_OLIVIA,
+  ROW_RILEY,
   ROW_SAMUEL,
 } from './gridFixtures'
+import { shownView } from './strip'
 import {
+  columnContext,
   countWords,
   filterRows,
   FIRST_TICKED_SEASON,
@@ -262,6 +265,31 @@ describe('Session not settled (Minor 2)', () => {
       'Session not settled'
     )
     expect(GRID_COLUMNS.session.value(row, ctx)).toBeNull()
+  })
+})
+
+describe('the needs-attention text by view (O1, O2)', () => {
+  it('writes only the pill to the CSV when the text repeats it, with no trailing colon (O1)', () => {
+    const row = gridRow({
+      notes: [{ code: 'ask_above_cost', severity: 'warn', message: 'The ask is above the cost' }],
+    })
+    expect(GRID_COLUMNS.attention.value(row, { view: 'all', today: TODAY })).toBe('Ask above cost')
+  })
+
+  it('keeps the cancel date wherever the visible columns have no Cancelled on (O2)', () => {
+    const view = (key: string) => requestView(key)
+    const plain = view('to-reverse')
+    expect(plain.columns).toContain('cancelledOn')
+    expect(columnContext(plain, TODAY).cancelledOnShown).toBe(true)
+    const appeals = shownView('appeals', plain)
+    expect(appeals.key).toBe('to_reverse')
+    expect(appeals.columns).not.toContain('cancelledOn')
+    expect(columnContext(appeals, TODAY).cancelledOnShown).toBe(false)
+    expect(columnContext(view('all'), TODAY).cancelledOnShown).toBe(false)
+    const text = (v: typeof plain) =>
+      String(GRID_COLUMNS.attention.value(ROW_RILEY, columnContext(v, TODAY)))
+    expect(text(plain)).toMatch(/^Reverse posting: \$/)
+    expect(text(appeals)).toMatch(/^Reverse posting: Cancelled Jun 2: /)
   })
 })
 

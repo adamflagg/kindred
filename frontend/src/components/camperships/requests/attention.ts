@@ -24,14 +24,20 @@ const CODE_WORDS: Readonly<Record<string, string>> = {
   income_above: 'High income',
   expense_above: 'High expenses',
   multiple_grants: 'Several grants',
-  stage_enrollment_mismatch: 'Enrollment',
   unmatched_session: 'Session not settled',
   duplicate_survivor_withdrawn: 'Duplicate revived',
   awaiting_approved_rules: 'Awaiting rules',
   no_approved_rules: 'No approved rules',
-  no_program_for_session: 'No program',
   not_priceable: 'Not priceable',
   manual_hold: 'On hold',
+  // Raw code words used to leak through as "No round1 table" and the like.
+  no_round1_table: 'No Round 1 table',
+  round3_not_allowed: 'No Round 3',
+  round3_not_eligible: 'Round 3 not eligible',
+  r2_cap_negative: 'Round 2 cap',
+  unknown_override_reason: 'Unknown reason',
+  // Already in CampMinder, not yet ticked here (owner ruling O4): the next step is to tick Posted.
+  in_campminder_not_ticked: 'Mark posted',
 }
 
 export function codeWords(code: string): string {
@@ -39,6 +45,21 @@ export function codeWords(code: string): string {
   if (words !== undefined) return words
   const plain = code.replaceAll('_', ' ')
   return plain.charAt(0).toUpperCase() + plain.slice(1)
+}
+
+const STOP_WORDS = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'were', 'of', 'to', 'and'])
+
+function words(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word !== '' && !STOP_WORDS.has(word))
+}
+
+/** True when the text says nothing its pill does not: every word of it is already a word of the pill (O1). */
+export function pillCoversFact(pill: string, fact: string): boolean {
+  const covered = new Set(words(pill))
+  return words(fact).every((word) => covered.has(word))
 }
 
 const DAY_MS = 86_400_000
@@ -83,13 +104,30 @@ function holdQueue(code: string): ApiAidQueue {
   return 'holds'
 }
 
+/**
+ * A grid item. The fact is dropped when the pill already says all of it (O1); the server's message
+ * itself is untouched, since the household page and a release's saved fact read it.
+ */
+function gridItem(level: AttentionItem['level'], pill: string, fact: string): AttentionItem {
+  return { level, pill, fact: pillCoversFact(pill, fact) ? '' : fact }
+}
+
+/** Why a To reverse row is here, when nothing else on it says so (F1a, F1b; O2). */
+function toReversePrefix(row: ApiAidGridRow, cancelledOnShown: boolean): string {
+  if (row.request_status === 'withdrawn') return 'Withdrawn: '
+  if (row.request_status === 'duplicate') return 'Duplicate: '
+  if (cancelledOnShown) return ''
+  const on = row.cancellation?.on
+  return `Cancelled${on ? ` ${formatShortDate(on)}` : ''}: `
+}
+
 const note = (
   pill: string,
   fact: string,
   queue: ApiAidQueue | null,
   action: string | null = null
 ): GridAttention => ({
-  item: { level: 'note', pill, fact },
+  item: gridItem('note', pill, fact),
   queue,
   action,
 })
@@ -102,13 +140,13 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
     case 'over':
       return note(
         formatGap(c.locked, c.in_campminder) ?? c.status,
-        `CampMinder shows ${formatMoney(c.in_campminder)} against ${formatMoney(c.locked)} posted.`,
+        `CampMinder shows ${formatMoney(c.in_campminder)}.`,
         'not_reconciled'
       )
     case 'not_in_campminder':
       return note(
         'not in CampMinder',
-        `Posted ${formatMoney(c.locked)}; nothing is in CampMinder for it after the sync.`,
+        `Posted ${formatMoney(c.locked)}; the last sync found nothing for it.`,
         'not_reconciled'
       )
     case 'awaiting_sync':
@@ -118,18 +156,15 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
         'not_reconciled'
       )
     case 'reversed':
-      return note(
-        'reversed',
-        `CampMinder reversed the posting${c.on ? ` ${formatShortDate(c.on)}` : ''}; nothing of the ${formatMoney(c.locked)} posted is live.`,
-        'not_reconciled'
-      )
+      // Always reconciled, so never reached; it has nothing posted that is live, and would read $0.
+      return null
     case 'confirmed': {
       // Confirmed as a request, but a payer share isn't (D59, D81).
       const open = c.shares.filter((share) => share.status !== 'confirmed').length
       if (open === 0) return null
       return note(
         open === 1 ? 'a share unconfirmed' : `${String(open)} shares unconfirmed`,
-        'The request is confirmed, but a payer share is not: see the household page.',
+        'Check the payer shares on the household page.',
         'not_reconciled'
       )
     }
@@ -137,24 +172,28 @@ function reconciliation(row: ApiAidGridRow): GridAttention | null {
 }
 
 /** Every item the row needs, most pressing first (Decision 7's order). */
-export function attentionItems(row: ApiAidGridRow, today: string): GridAttention[] {
+export function attentionItems(
+  row: ApiAidGridRow,
+  today: string,
+  cancelledOnShown = false
+): GridAttention[] {
   const items: GridAttention[] = row.holds.map((hold) => ({
-    item: { level: 'hold', pill: codeWords(hold.code), fact: hold.message },
+    item: gridItem('hold', codeWords(hold.code), hold.message),
     queue: holdQueue(hold.code),
     action: ACTION_BY_CODE[hold.code] ?? null,
   }))
   if (row.to_reverse === true) {
-    const on = row.cancellation?.on
-    const cancelled = `Cancelled${on ? ` ${formatShortDate(on)}` : ''}`
     // The server's To reverse means live ledger lines remain, so the amount is what CampMinder
     // holds (`in_campminder`), not the lock (plan review, number-meaning fix 2).
     const live = row.confirmation?.in_campminder ?? null
     items.push(
       note(
         'Reverse posting',
-        live !== null
-          ? `${cancelled}, but ${formatMoney(live)} is still live in CampMinder. Reverse it there; the row clears on the next sync.`
-          : `${cancelled}. Posted ${formatMoney(row.total_posted)}; reverse it in CampMinder. The row clears on the next sync.`,
+        `${toReversePrefix(row, cancelledOnShown)}${
+          live !== null
+            ? `${formatMoney(live)} still live in CampMinder: reverse it there; the row clears on the next sync.`
+            : 'Reverse the posting in CampMinder; the row clears on the next sync.'
+        }`,
         'to_reverse'
       )
     )
@@ -163,7 +202,7 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
     items.push(
       note(
         'Give a reason',
-        todo.message,
+        todo.code === 'cancel_reason_missing' ? 'No reason recorded' : todo.message,
         todo.code === 'cancel_reason_missing' ? 'cancel_reason' : null,
         'Give a reason'
       )
@@ -174,7 +213,7 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
     items.push(
       note(
         ROUND_STATUS_WORDS.pending_approval,
-        `Round ${String(pending.round)} ${formatMoney(pending.pending_approval)} is above the registrar's limit: finance approves it from Today.`,
+        `R${String(pending.round)} ${formatMoney(pending.pending_approval)} is above the registrar's limit: finance approves it from Today.`,
         'pending_approval'
       )
     )
@@ -188,7 +227,7 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
     items.push(
       note(
         codeWords('unmatched_session'),
-        'The requested session is not matched: resolve it on the household page.',
+        'Resolve it on the household page.',
         'session_not_settled',
         ACTION_BY_CODE['unmatched_session'] ?? null
       )
@@ -198,7 +237,7 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
     items.push(
       note(
         'Possible duplicate',
-        'Another request matches this camper and session: keep one on the household page.',
+        `Same ${row.camper_name === '' ? 'family' : 'camper'} and session as another request: keep one on the household page.`,
         'duplicates'
       )
     )
@@ -211,7 +250,7 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
     items.push(
       note(
         `Waiting ${String(waited)} ${waited === 1 ? 'day' : 'days'}`,
-        `Posted ${formatShortDate(since)}; the family hasn't replied. Follow up, then tick Accepted.`,
+        "The family hasn't replied: follow up, then tick Accepted.",
         'waiting_on_family',
         'Mark accepted'
       )
@@ -227,9 +266,10 @@ export function attentionItems(row: ApiAidGridRow, today: string): GridAttention
 export function attentionFor(
   row: ApiAidGridRow,
   view: 'all' | ApiAidQueue,
-  today: string
+  today: string,
+  cancelledOnShown = false
 ): GridAttention | null {
-  const items = attentionItems(row, today)
+  const items = attentionItems(row, today, cancelledOnShown)
   const own = view === 'all' ? undefined : items.find((item) => item.queue === view)
   return own ?? items[0] ?? null
 }
