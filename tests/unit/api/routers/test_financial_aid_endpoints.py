@@ -5,6 +5,7 @@ which poisons auth for xdist."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -307,3 +308,32 @@ def test_the_source_list_counts_the_season_asked_and_only_when_asked() -> None:
     assert client.get("/api/financial-aid/sources").status_code == 200
     ledger.return_value.sources.assert_awaited_with(None)
     assert client.get("/api/financial-aid/sources?year=1999").status_code == 422
+
+
+def _stub_decisions() -> Any:
+    from api.services.financial_aid_reconciliation import SeasonLedger
+
+    decisions = patch("api.routers.financial_aid.FinancialAidDecisionsService").start()
+    decisions.return_value.season = AsyncMock(
+        return_value=SimpleNamespace(ledger=SeasonLedger(), splits={}, camp_lines=())
+    )
+    return decisions.return_value
+
+
+def test_a_live_summary_from_2027_reads_kindreds_placements() -> None:
+    """Ask 7, D151: the levels read the priced season's placements."""
+    ledger, _ = _stub_services()
+    decisions = _stub_decisions()
+    assert _client(PERSONA_FINANCE).get("/api/financial-aid/summary?year=2027").status_code == 200
+    decisions.season.assert_awaited_once_with(2027)
+    assert ledger.return_value.summary.call_args.kwargs == {"as_of": None, "split_placed": {}}
+
+
+@pytest.mark.parametrize("query", ["year=2026", "year=2027&as_of=2027-03-10"])
+def test_a_past_day_or_a_season_before_to_place_reads_gos_levels(query: str) -> None:
+    """No split exists before 2027; a past day's placement is the past season's (Known limit 2)."""
+    ledger, _ = _stub_services()
+    decisions = _stub_decisions()
+    assert _client(PERSONA_FINANCE).get(f"/api/financial-aid/summary?{query}").status_code == 200
+    decisions.season.assert_not_awaited()
+    assert ledger.return_value.summary.call_args.kwargs.get("split_placed") is None  # main's route passes only as_of

@@ -465,6 +465,26 @@ def _split_is_sound(line: CampLine, parts: Sequence[SplitPart]) -> bool:
     return sum((part.amount for part in parts), ZERO) == line.amount
 
 
+def split_placed(
+    ledger: SeasonLedger, splits: Mapping[int, Sequence[SplitPart]], lines: Iterable[CampLine]
+) -> dict[int, Decimal]:
+    """D151: each line a person split across requests, and the dollars of it this ledger placed on a request (live
+    or closed). A part no request takes stays at family level and is not counted. A split whose parts don't add up
+    places nothing (build_ledger leaves the whole line unplaced), so it is not listed even if a rule then placed the
+    whole line."""
+    sound = {
+        line.transaction_cm_id
+        for line in lines
+        if line.transaction_cm_id in splits and _split_is_sound(line, splits[line.transaction_cm_id])
+    }
+    placed: dict[int, Decimal] = defaultdict(Decimal)
+    for pieces in (*ledger.by_request.values(), *ledger.by_closed_request.values()):
+        for piece in pieces:
+            if piece.transaction_cm_id in sound:
+                placed[piece.transaction_cm_id] += piece.amount
+    return dict(placed)
+
+
 def _pieces(
     lines: Iterable[CampLine], placements: Mapping[int, Placement], splits: Mapping[int, Sequence[SplitPart]]
 ) -> Iterable[tuple[CampLine, Placement | None]]:

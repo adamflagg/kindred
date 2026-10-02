@@ -64,6 +64,9 @@ _DASHES = str.maketrans({"–": "-", "—": "-", "−": "-"})  # en, em, minus
 # The funder types whose aid_postings lines are grants (D55): outside grants and funds, and
 # family incentives (JFAM). The camp's own aid is "camp"; an unclassified line is "unknown".
 GRANT_FUNDER_TYPES: Final = frozenset({"outside", "incentive"})
+# Go's attribution level for money a staff placement put on a request: what a split line's placed dollars read as on
+# /summary (D151). Go never emits "decision" and a split's override places nothing, so Go infers a split line's level.
+PLACED_BY_STAFF: Final = "override"
 
 
 def needs_group(source: Any) -> bool:
@@ -497,7 +500,13 @@ class FinancialAidLedgerService:
             fa_requested=_requested(requests, family),
         )
 
-    async def summary(self, year: int, as_of: date | None = None) -> SummaryResponse:
+    async def summary(
+        self, year: int, as_of: date | None = None, *, split_placed: Mapping[int, Decimal] | None = None
+    ) -> SummaryResponse:
+        """F10: posted totals by program × source family (§8.1). `split_placed` (a live read from the first ticked
+        season) is Kindred's placement of each split camp-aid line (D151): its placed dollars count at "override", as
+        a whole-line staff placement does, never at the level Go's attribution leaves a split line at. Without it the
+        levels are Go's. No total and no cell moves either way."""
         postings, undated = await self._counted(year, as_of)
         amounts: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
         counts: Counter[tuple[str, str]] = Counter()
@@ -510,7 +519,13 @@ class FinancialAidLedgerService:
             amounts[key] += dollars
             counts[key] += 1
             households[key].add(int(p.household_cm_id or 0))
-            by_level[str(p.attribution_level)] += dollars
+            placed = _ZERO
+            if split_placed is not None and str(p.funder_type) == "camp":
+                placed = min(split_placed.get(int(p.transaction_cm_id), _ZERO), dollars)
+            if placed:
+                by_level[PLACED_BY_STAFF] += placed
+            if dollars != placed or not placed:
+                by_level[str(p.attribution_level)] += dollars - placed
             total += dollars
             if p.counts_toward_budget:
                 budget += dollars
@@ -530,6 +545,7 @@ class FinancialAidLedgerService:
             total_aid=money(total),
             counts_toward_budget=money(budget),
             by_level={k: money(v) for k, v in by_level.items()},
+            by_level_basis="placements" if split_placed is not None else "attribution",
             cells=cells,
             undated_postings=undated,
         )

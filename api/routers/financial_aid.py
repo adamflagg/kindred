@@ -199,6 +199,7 @@ from api.services.financial_aid_change_log_reads import EntityLogReads, HistoryL
 from api.services.financial_aid_corrections import CorrectionError
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository
 from api.services.financial_aid_decisions_service import (
+    FIRST_TICKED_SEASON,
     DecisionChangedError,
     DecisionNotFoundError,
     FinancialAidDecisionsService,
@@ -226,6 +227,7 @@ from api.services.financial_aid_march_file import MarchFileService
 from api.services.financial_aid_money_ledger import LedgerFilters
 from api.services.financial_aid_money_ledger_service import MoneyLedgerService
 from api.services.financial_aid_payer_shares import ShareSpec
+from api.services.financial_aid_reconciliation import split_placed
 from api.services.financial_aid_reports_repository import ReportedFigureTakenError, ReportsRepository
 from api.services.financial_aid_reports_service import (
     FinancialAidReportsService,
@@ -667,8 +669,13 @@ async def get_household(
 async def get_summary(
     year: int = Query(..., ge=2017, le=2100), as_of: date | None = None, user: AuthUser = _VIEW
 ) -> SummaryResponse:
-    """Unsuppressed posted totals by program and source family. Finance-facing, not development."""
-    return await _ledger().summary(year, as_of=as_of)
+    """Unsuppressed posted totals by program and source family. Finance-facing, not development. A live read from the
+    first ticked season reads Kindred's placements for its levels (D151: a split line is not household level)."""
+    placed: dict[int, Decimal] | None = None
+    if as_of is None and year >= FIRST_TICKED_SEASON:
+        season = await _decisions().season(year)
+        placed = split_placed(season.ledger, season.splits, season.camp_lines)
+    return await _ledger().summary(year, as_of=as_of, split_placed=placed)
 
 
 @router.get("/net-totals", response_model=NetTotalsResponse)

@@ -175,6 +175,9 @@ class SummaryResponse(BaseModel):
     total_aid: float
     counts_toward_budget: float
     by_level: dict[str, float]
+    # "placements": a live read from 2027, where a split camp-aid line's placed dollars count at "override" (D151).
+    # "attribution": Go's levels alone (a past day, or a season before To place).
+    by_level_basis: Literal["placements", "attribution"] = "attribution"
     cells: list[SummaryCell]
     undated_postings: int = 0
 
