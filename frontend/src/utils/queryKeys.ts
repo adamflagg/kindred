@@ -757,6 +757,10 @@ export const queryKeys = {
   aidScenarios: (year: number) => ['financial-aid', 'scenarios', year, 'workspace'] as const,
   aidScenarioSensitivity: (year: number, trailId: string, snapshotId: string) =>
     ['financial-aid', 'scenarios', year, 'sensitivity', trailId, snapshotId] as const,
+  aidScenarioCompare: (year: number, codes: string, requestSet: string, lastSeason: boolean) =>
+    ['financial-aid', 'scenarios', year, 'compare', codes, requestSet, lastSeason] as const,
+  aidScenarioTrail: (year: number, page: number) =>
+    ['financial-aid', 'scenarios', year, 'trail', page] as const,
 }
 
 /**

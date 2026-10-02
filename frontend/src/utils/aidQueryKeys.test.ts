@@ -192,6 +192,22 @@ describe('invalidateAidScenarioQueries (slice 2; spec §7.4)', () => {
     )
   })
 
+  it('keys the compare and the trail under the scenario prefix, never at the sensitivity slot', () => {
+    for (const key of [
+      queryKeys.aidScenarioCompare(2027, 'A1,B', 'deadline', true),
+      queryKeys.aidScenarioTrail(2027, 2),
+    ]) {
+      expect(key.slice(0, 2)).toEqual(queryKeys.aidScenariosPrefix())
+      expect(key[3]).not.toBe('sensitivity')
+    }
+    expect(queryKeys.aidScenarioCompare(2027, 'A1', 'all', false)).not.toEqual(
+      queryKeys.aidScenarioCompare(2027, 'A1', 'deadline', false)
+    )
+    expect(queryKeys.aidScenarioCompare(2027, 'A1', 'all', false)).not.toEqual(
+      queryKeys.aidScenarioCompare(2027, 'A1', 'all', true)
+    )
+  })
+
   it('waits for the refetch: its promise settles only after the invalidation does', async () => {
     let release: () => void = () => undefined
     const invalidateQueries = vi.fn(() => new Promise<void>((resolve) => (release = resolve)))
