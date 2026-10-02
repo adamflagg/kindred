@@ -15,7 +15,11 @@ The chips are an award table (None: All award tables, RPT-10) and a round (None:
   awarded_count   live requests whose AWARDED (Posted) money is above $0, on either basis; the average award is
                   awarded ÷ this count (D80, labelled with its population: O-930-16), never decided money (D130:
                   decided is never called awarded). `decided_count` counts the requests with decided money apart.
-  % of ask        amount ÷ the asks of the LIVE requests (a cancelled request's ask leaves with its award).
+  % of ask        amount ÷ the asks of the LIVE requests (a cancelled request's ask leaves with its award), as they
+                  stand today; a round outside the budget (D121's full-cost outside funder) is never awarded, so its
+                  ask leaves the denominator too (owner (c), RULED 2026-10-02; `asked` keeps it). On the
+                  "posted_and_decided" basis amount is Posted + Decided and the column reads
+                  PCT_OF_ASK_DECIDED_LABEL (owner (b), RULED 2026-10-02).
   % with grants   (amount + the counting outside grants on the live requests) ÷ the same asks: the sheet's
                   "% of Ask Granted in Total". Round 1 and All rounds only: a grant belongs to the request, not a
                   round.
@@ -42,6 +46,10 @@ from bunking.financial_aid.scenarios.committee import fee_pct, pct, round2_max_p
 Basis = Literal["posted", "posted_and_decided"]
 RoundChip = Literal[1, 2, 3] | None
 NO_REASON: Final = "not_recorded"  # a cancellation with no reason: before 2027, or not given yet (D101)
+
+
+PCT_OF_ASK_LABEL: Final = "% of ask"
+PCT_OF_ASK_DECIDED_LABEL: Final = "% of ask (posted + decided)"
 
 
 @dataclass(frozen=True)
@@ -171,8 +179,8 @@ def _row(
             cancelled += 1
         if not request.live:
             continue
-        if ask is not None:
-            live_asked += ask
+        if (in_budget := request.asked_in_budget(rounds)) is not None:
+            live_asked += in_budget
         money = request.awarded(rounds, decided=with_decided)
         posted = request.awarded(rounds)
         amount += money
@@ -182,8 +190,9 @@ def _row(
         decided_count += money - posted > 0
         grants += request.grants
     shows_grants = round_ in (None, 1)
-    # OWNER ITEM (b) NOT RULED: pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by the
-    # live requests' asks, so a request still waiting on an offer sits in the denominator at $0. Flip deliberately.
+    # Owner (b) (RULED 2026-10-02): pct_of_ask and "% with grants" divide Posted (+ Decided, on the decided basis) by
+    # the live requests' asks, so a request still waiting on an offer sits in the denominator at $0; the decided
+    # basis's column says so (PCT_OF_ASK_DECIDED_LABEL).
     return StatisticsRow(
         tier=tier,
         income_from=band[0] if band is not None else None,
@@ -273,7 +282,7 @@ def tier_appeals(
     round3: dict[int | None, Decimal] = defaultdict(lambda: ZERO)
     for request in population:
         round1[_tier(request, 1)].append(request)
-        # OWNER ITEM NOT RULED (appeals and cancellations): a cancelled request's Round 2 ask counts as an appeal,
+        # Owner ruling (RULED 2026-10-02, appeals and cancellations): a cancelled request's Round 2 ask counts as an appeal,
         # because the rate divides by applications, which include cancellations (D131). RPT-23 leaves them out.
         if in_round(request, 2):
             round2[_tier(request, 2)] += 1

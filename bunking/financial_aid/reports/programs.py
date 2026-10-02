@@ -79,8 +79,8 @@ def _block(requests: Sequence[ReportRequest], n: int) -> RoundBlock:
         if ask is not None:
             requested += ask
             asks += 1
-            if request.live:
-                live_asked += ask
+        if request.live and (in_budget := request.asked_in_budget((n,))) is not None:
+            live_asked += in_budget
         money = request.awarded((n,))
         awarded += money
         awarded_count += money > 0

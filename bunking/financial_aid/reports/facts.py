@@ -62,6 +62,7 @@ class RoundFacts:
     posted_on: date | None
     tier: int | None
     pool: str | None
+    outside_budget: bool = False  # posted but not counting toward the budget (D121): never awarded, out of % of ask
 
     @property
     def posted(self) -> Decimal | None:
@@ -111,6 +112,16 @@ class ReportRequest:
                 total += facts.decided or ZERO
         return total
 
+    def asked_in_budget(self, rounds: Iterable[int] = REPORT_ROUNDS) -> Decimal | None:
+        """`asked`, less any round outside the budget (owner (c), RULED 2026-10-02): % of ask's denominator. A round
+        paid wholly by an outside funder is never awarded, so dividing by its ask would read as a shortfall."""
+        asks = [
+            facts.ask
+            for n in rounds
+            if (facts := self.round(n)) is not None and facts.ask is not None and not facts.outside_budget
+        ]
+        return sum(asks, ZERO) if asks else None
+
     def asked(self, rounds: Iterable[int] = REPORT_ROUNDS) -> Decimal | None:
         """The asks as keyed on the rounds named, summed (D80's "asked $"); None when none of them has one."""
         asks = [facts.ask for n in rounds if (facts := self.round(n)) is not None and facts.ask is not None]
@@ -133,6 +144,6 @@ def in_round(request: ReportRequest, n: int | None) -> bool:
 
 def appeals(requests: Sequence[ReportRequest]) -> list[ReportRequest]:
     """Requests with any Round 2 or later ask (RPT-8's appeals, finance's version): cancelled ones included."""
-    # OWNER ITEM NOT RULED (appeals and cancellations): the rate divides by applications, which include cancellations
+    # Owner ruling (RULED 2026-10-02, appeals and cancellations): the rate divides by applications, which include cancellations
     # (D131), so the numerator keeps them; RPT-23's outcomes and the Season screen's Round 2 asks exclude them.
     return [r for r in requests if any((f := r.round(n)) is not None and f.ask is not None for n in (2, 3))]

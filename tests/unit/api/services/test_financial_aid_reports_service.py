@@ -204,17 +204,30 @@ async def test_a_withdrawn_request_with_a_posted_lock_reads_zero_in_reports() ->
     assert out.recipients_cancelled == []
 
 
-async def test_an_outside_funders_full_cost_round_keeps_its_ask_and_awards_nothing() -> None:
-    """D121 / OWNER ITEM (c) NOT RULED: the round does not count toward the budget, so it is never awarded, and its
-    ask stays in the % of ask denominator."""
+async def test_an_outside_funders_full_cost_round_keeps_its_ask_but_leaves_the_percent_of_ask_denominator() -> None:
+    """D121 / owner (c) (RULED 2026-10-02): the round does not count toward the budget, so it is never awarded; its
+    ask stays in the asked column but leaves % of ask's denominator (live_asked)."""
     store = report_season()
     store.events[:] = [
         replace(ev, snapshot={**(ev.snapshot or {}), "counts_toward_budget": False}) if ev.request_id == EMMA else ev
         for ev in store.events
     ]
-    out = await _service(store).statistics(YEAR, table="camp", round_=1)
+    service = _service(store)
+    out = await service.statistics(YEAR, table="camp", round_=1)
     two = _tier(out.rows, 2)
-    assert (two.apps, two.asked, two.amount, two.awarded_count, two.pct_of_ask) == (1, 4000.0, 0.0, 0, 0.0)
+    assert (two.apps, two.asked, two.amount, two.awarded_count) == (1, 4000.0, 0.0, 0)
+    assert (two.live_asked, two.pct_of_ask) == (0.0, None)
+    assert out.total.live_asked == 2000.0  # Liam's alone
+    block = (await service.programs(YEAR)).total.round1
+    assert (block.requested, block.pct_awarded) == (6000.0, 0.0)  # asked kept; Liam's 2,000 alone is the denominator
+
+
+async def test_the_percent_of_ask_column_is_labelled_with_its_numerator_on_each_basis() -> None:
+    """Owner (b) (RULED 2026-10-02): on the decided basis % of ask divides Posted + Decided by the asks, and says so."""
+    service = _service(report_season())
+    assert (await service.statistics(YEAR, table="camp", round_=1)).pct_of_ask_label == "% of ask"
+    decided = await service.statistics(YEAR, table="camp", round_=1, basis="posted_and_decided")
+    assert decided.pct_of_ask_label == "% of ask (posted + decided)"
 
 
 async def test_the_committee_cuts_applications_at_the_received_through_date() -> None:

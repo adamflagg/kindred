@@ -62,7 +62,8 @@ class NativeSeason:
     deadline_instant: datetime | None = None  # the same for the rules' application deadline (RPT-1's phases)
     # D155 (A6b): the requests received by the cutoff, each with its Round 1 ask as it stood that day, and the basis
     # those asks are on. None: no cutoff, or a caller that doesn't freeze (the at-cutoff figure then reads `requests`).
-    # OWNER ITEM 49 NOT RULED: only Round 1 asks freeze; Round 2 and 3 asks (appeals) read as they stand now.
+    # Owner 49 (RULED 2026-10-02): the snapshot counts Round 1 (application) asks only, frozen as they stood on the
+    # day; Round 2 and 3 asks (appeals) are excluded from it, never read "as they stand now".
     cutoff_requests: tuple[ReportRequest, ...] | None = None
     asks_basis: AsksBasis | None = None
     asks_reason: str | None = None
@@ -648,7 +649,7 @@ def typed_budget(year: int, typed: _Typed) -> list[BudgetRow]:
 
 def native_appeals(season: NativeSeason) -> AppealsRow:
     applications = len(season.requests)
-    # OWNER ITEM NOT RULED (appeals and cancellations): cancelled requests' Round 2/3 asks count, see `appeals`.
+    # Owner ruling (RULED 2026-10-02, appeals and cancellations): cancelled requests' Round 2/3 asks count, see `appeals`.
     appealed = len(appeals(season.requests))
     return AppealsRow(season.year, "P", applications, appealed, pct(Decimal(appealed), Decimal(applications)))
 

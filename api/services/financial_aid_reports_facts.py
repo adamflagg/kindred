@@ -111,8 +111,9 @@ def _round(
     else:
         ask = r1_ask if n == 1 else (state.ask if state is not None else None)
     tier = _snapshot_tier(state) if posted else None
-    # OWNER ITEM (c) NOT RULED: a round outside the budget (D121's outside funder's full-cost type) is never awarded
-    # here (`locked` None), yet its ask stays in `ask`, so it still sits in % of ask's denominator at $0 awarded.
+    # Owner (c) (RULED 2026-10-02): a round outside the budget (D121's outside funder's full-cost type) is never
+    # awarded here (`locked` None); its ask stays in `ask` (the asked column) but `outside_budget` takes it out of
+    # % of ask's denominator. The predicate is the budget's own: the round view's `counts_toward_budget`.
     return RoundFacts(
         round=n,
         ask=ask,
@@ -123,6 +124,7 @@ def _round(
         posted_on=state.posted_on if posted and state is not None else None,
         tier=tier if tier is not None else tier_now,
         pool=view.pool if view is not None and view.pool is not None else home_pool,
+        outside_budget=posted and not counts,
     )
 
 
@@ -242,7 +244,8 @@ def frozen_round1_asks(
 
 def with_frozen_asks(requests: Iterable[ReportRequest], frozen: FrozenAsks) -> tuple[ReportRequest, ...]:
     """Each request with its Round 1 ask as `frozen` holds it; unchanged on "now" (D155: the figure falls back whole)
-    or when the request isn't in it. Round 2 and 3 asks are never frozen (OWNER ITEM 49 NOT RULED: Round 1 only)."""
+    or when the request isn't in it. Round 2 and 3 asks are excluded from the snapshot (owner 49, RULED 2026-10-02: Round 1 only), so this never
+    touches them."""
     if frozen.basis == "now":
         return tuple(requests)
     out: list[ReportRequest] = []

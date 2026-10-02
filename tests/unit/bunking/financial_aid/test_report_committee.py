@@ -319,3 +319,19 @@ def test_a_typed_season_with_no_phase_figures_shows_them_blank() -> None:
 def test_a_budget_met_to_the_dollar_reads_on() -> None:
     rows = committee_tables([], [_typed("budget", "500000"), _typed("awarded", "500000")]).budget
     assert (rows[0].variance, rows[0].side) == (Decimal(0), "on")
+
+
+def test_the_received_through_snapshot_counts_round_1_asks_only() -> None:
+    """Owner 49 (RULED 2026-10-02): the snapshot is Round 1 (application) asks from applications received by the
+    date; Round 2 and 3 asks (appeals) are excluded from it, not read "as they stand now"."""
+    emma = req(
+        "reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="900"), rnd(3, ask="600"), received_at=EARLY
+    )
+    season = replace(SEASON, requests=(emma,), cutoff_requests=(emma,), asks_basis="as_of_cutoff")
+    camp = next(r for r in committee_tables([season], []).applications if r.basis == "P" and r.pool == "camp_pool")
+    assert camp.at_cutoff is not None
+    assert (camp.at_cutoff.apps, camp.at_cutoff.asked, camp.at_cutoff.average) == (
+        1,
+        Decimal(4000),
+        Decimal("4000.00"),
+    )

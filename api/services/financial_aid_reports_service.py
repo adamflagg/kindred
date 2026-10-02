@@ -38,7 +38,6 @@ from api.schemas.financial_aid_decisions import AsOfAxis, NotRebuiltOut
 from api.schemas.financial_aid_reports import (
     AppealsRowOut,
     ApplicationsRowOut,
-    AsksBasisOut,
     BandOut,
     BudgetRowOut,
     CancelledRowOut,
@@ -100,6 +99,8 @@ from bunking.financial_aid.reports.history import ReportedFigure, figure_entity,
 from bunking.financial_aid.reports.programs import ProgramRow, RoundBlock, programs
 from bunking.financial_aid.reports.statistics import (
     NO_REASON,
+    PCT_OF_ASK_DECIDED_LABEL,
+    PCT_OF_ASK_LABEL,
     RoundChip,
     StatisticsRow,
     outcomes,
@@ -166,7 +167,6 @@ class _Read:
     requests: tuple[ReportRequest, ...]
     note: RequestSetNote | None
     figures_on: date
-    asks: FrozenAsks | None = None
 
 
 def _money(value: Decimal | None) -> float | None:
@@ -287,11 +287,9 @@ class FinancialAidReportsService:
             split = split_by_received({rid: received.get(rid) for rid in ids}, as_of_cutoff(request_set.through), ids)
             keep, note = split.kept, request_set_note(request_set, split)
         requests = report_requests(season, received=received, corrections=corrections, keep=keep)
-        asks: FrozenAsks | None = None
-        if request_set is not None and keep is not None:
-            asks = await self._frozen(year, season, keep, request_set.through)
-            requests = with_frozen_asks(requests, asks)
-        return _Read(season, requests, note, as_of if past and as_of is not None else today, asks)
+        # Owner N1 (RULED 2026-10-02): the request set only filters; every figure, asks included, reads as it stands
+        # today. Only the committee's at-cutoff snapshot row freezes asks (`committee`).
+        return _Read(season, requests, note, as_of if past and as_of is not None else today)
 
     def _gaps(self, read: _Read) -> list[NotRebuiltOut]:
         """What a past read can't rebuild: the requests whose posted money can't be replayed (left out of awarded in
@@ -332,6 +330,7 @@ class FinancialAidReportsService:
             figures_on=read.figures_on,
             rules_version=read.season.rules.version if read.season.rules is not None else None,
             basis=basis,
+            pct_of_ask_label=PCT_OF_ASK_DECIDED_LABEL if basis == "posted_and_decided" else PCT_OF_ASK_LABEL,
             table=table,
             round=round_,
             tables=table_chips(document),
@@ -376,7 +375,6 @@ class FinancialAidReportsService:
                 for row in outcomes(read.requests)
             ],
             request_set=read.note,
-            asks=_asks_out(read.asks),
             not_rebuilt=self._gaps(read),
         )
 
@@ -431,7 +429,6 @@ class FinancialAidReportsService:
             ],
             total=row_out(table.total, ALL_POOLS_LABEL),
             request_set=read.note,
-            asks=_asks_out(read.asks),
             not_rebuilt=self._gaps(read),
         )
 
@@ -690,12 +687,6 @@ def _counted(counted: Counted | None) -> CountedOut | None:
     if counted is None:
         return None
     return CountedOut(apps=counted.apps, asked=_money(counted.asked), average=_money(counted.average))
-
-
-def _asks_out(asks: FrozenAsks | None) -> AsksBasisOut | None:
-    if asks is None:
-        return None
-    return AsksBasisOut(day=asks.day, basis=asks.basis, reason=asks.reason, unrebuilt=len(asks.unrebuilt))
 
 
 def _applications_out(row: ApplicationsRow, label: str) -> ApplicationsRowOut:

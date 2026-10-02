@@ -88,3 +88,17 @@ def test_a_session_shows_once_under_its_own_pool_whatever_the_requests_home_pool
     table = programs(requests, SESSIONS)
     rows = [(g.pool, r.session_cm_id) for g in table.pools for r in g.sessions if r.round1.apps]
     assert rows == [("camp_pool", SESSION_2)]
+
+
+def test_a_round_outside_the_budget_leaves_the_programs_percent_denominator_but_stays_requested() -> None:
+    """Owner (c) (RULED 2026-10-02): same rule as Statistics: asked/requested keep the ask, % awarded does not divide
+    by it."""
+    table = programs(
+        [
+            req("reqemma00000001", rnd(1, ask="4000", posted="1500")),
+            req("reqliam00000001", rnd(1, ask="3000", outside_budget=True), household=1000002),
+        ],
+        {1000101: "camp_pool"},
+    )
+    block = table.total.round1
+    assert (block.requested, block.asks, block.pct_awarded) == (Decimal(7000), 2, Decimal("37.5"))

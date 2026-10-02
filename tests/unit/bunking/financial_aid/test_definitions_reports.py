@@ -56,10 +56,15 @@ def test_typed_history_is_dollars_and_counts_with_kindred_computing_every_percen
     assert "Kindred computes every percentage" in BY_KEY["as_reported"].text
 
 
-def test_percent_of_ask_carries_only_its_signed_meaning() -> None:
-    """D80 / §5.6; the population of the asks (Decision 3) joins the note only once the owner confirms it."""
+def test_percent_of_ask_names_todays_asks_the_outside_funder_exclusion_and_the_decided_numerator() -> None:
+    """D80 / §5.6; owner N1, (c) and (b) (RULED 2026-10-02)."""
     note = BY_KEY["pct_of_ask"]
-    assert (note.text, note.spec) == ("% of ask: awarded $ ÷ asked $, each round's ask as keyed.", "§5.6")
+    assert note.spec == "§5.6"
+    assert note.text.startswith("% of ask: awarded $ ÷ asked $, each round's ask as keyed and as it stands today.")
+    assert "paid wholly by an outside funder" in note.text
+    assert "left out of the asked $" in note.text
+    assert "Posted + Decided" in note.text
+    assert "% of ask (posted + decided)" in note.text
 
 
 def test_awarded_says_live_for_the_request_standing_never_included() -> None:
@@ -79,7 +84,7 @@ def test_round_1_phases_carry_their_signed_boundary() -> None:
 
 
 def test_appeals_say_cancelled_requests_count_because_the_rate_divides_by_applications() -> None:
-    """D131 / OWNER ITEM NOT RULED (appeals and cancellations): the appeal rate and the per-tier appeals count every
+    """D131 / owner ruling (RULED 2026-10-02, appeals and cancellations): the appeal rate and the per-tier appeals count every
     request with a Round 2 or later ask, cancelled ones included; RPT-23's outcomes exclude them."""
     note = BY_KEY["appeals"]
     assert note.text.startswith(note.term)

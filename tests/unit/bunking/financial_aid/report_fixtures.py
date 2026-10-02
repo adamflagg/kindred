@@ -21,6 +21,7 @@ def rnd(
     posted_on: date | None = None,
     tier: int | None = 2,
     pool: str | None = "camp_pool",
+    outside_budget: bool = False,
 ) -> RoundFacts:
     return RoundFacts(
         round=n,
@@ -32,6 +33,7 @@ def rnd(
         posted_on=posted_on,
         tier=tier,
         pool=pool,
+        outside_budget=outside_budget,
     )
 
 

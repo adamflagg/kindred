@@ -266,7 +266,12 @@ DEFINITIONS: Final[tuple[Definition, ...]] = (
     Definition(
         key="pct_of_ask",
         term="% of ask",
-        text="% of ask: awarded $ ÷ asked $, each round's ask as keyed.",
+        text=(
+            "% of ask: awarded $ ÷ asked $, each round's ask as keyed and as it stands today. A round paid wholly by "
+            "an outside funder is never awarded, so its ask is left out of the asked $ this divides by. With "
+            '"include not yet offered" on, the awarded $ is Posted + Decided, and the column reads '
+            '"% of ask (posted + decided)".'
+        ),
         spec="§5.6",
         rulings=("D80",),
     ),

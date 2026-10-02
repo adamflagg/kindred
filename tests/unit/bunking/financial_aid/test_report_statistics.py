@@ -222,3 +222,21 @@ def test_the_round_2_fee_percent_is_null_when_a_chips_programs_use_two_round_2_t
     requests = [req("reqemma00000001", rnd(1, ask="4000", posted="1500"), rnd(2, ask="800", posted="300", tier=3))]
     assert _tier(statistics(requests, RULES, table="camp", round_=2).rows, 3).fee_pct is not None
     assert _tier(statistics(requests, split, table="camp", round_=2).rows, 3).fee_pct is None
+
+
+def test_a_round_outside_the_budget_leaves_the_percent_of_ask_denominator_but_stays_in_asked() -> None:
+    """Owner (c) (RULED 2026-10-02): D121's full-cost outside-funder round is never awarded, so its ask is not in
+    % of ask's denominator; the plain asked column and the average ask still count it."""
+    table = statistics(
+        [
+            req("reqemma00000001", rnd(1, ask="4000", posted="1500")),
+            req("reqliam00000001", rnd(1, ask="3000", outside_budget=True), household=1000002),
+        ],
+        RULES,
+        table="camp",
+        round_=1,
+    )
+    two = _tier(table.rows, 2)
+    assert (two.asked, two.asks, two.average_ask) == (Decimal(7000), 2, Decimal("3500.00"))
+    assert (two.live_asked, two.pct_of_ask) == (Decimal(4000), Decimal("37.5"))
+    assert two.pct_of_ask_with_grants == Decimal("37.5")
