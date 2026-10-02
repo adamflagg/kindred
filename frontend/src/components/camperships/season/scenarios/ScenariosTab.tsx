@@ -354,6 +354,7 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 document={draft.document}
                 trailId={draft.trail_id}
                 disabled={work.busy !== null || moving}
+                editing={setting !== null}
                 onUse={(fitted, askedOn) =>
                   work.adopt('Recording…', () => fitted, { basedOn: askedOn })
                 }

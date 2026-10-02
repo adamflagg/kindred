@@ -71,7 +71,10 @@ export function MakeRulesDraftDialog({
         onError: (caught) => {
           const message = caught.message.replace(/\.?$/, '.')
           setFailure({
-            kind: hasStatus(caught, 409) || hasStatus(caught, 422) ? 'refused' : 'unknown',
+            kind:
+              hasStatus(caught, 404) || hasStatus(caught, 409) || hasStatus(caught, 422)
+                ? 'refused'
+                : 'unknown',
             message,
           })
         },
