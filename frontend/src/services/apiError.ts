@@ -23,6 +23,17 @@ export class ApiError extends Error {
   }
 }
 
+/** FastAPI's `detail` from a non-ok `Response` body, or undefined when there is none (or it isn't JSON). */
+export async function readErrorDetail(response: Response): Promise<unknown> {
+  try {
+    const body: unknown = await response.json()
+    if (body && typeof body === 'object' && 'detail' in body) return body.detail
+  } catch {
+    // Not JSON: no detail.
+  }
+  return undefined
+}
+
 /**
  * Turn a non-ok `Response` into an `ApiError` (of the caller's own
  * subclass) carrying FastAPI's `detail` when it has one, so a 404 reads as
@@ -33,15 +44,7 @@ export async function toApiError<E extends ApiError>(
   fallback: string,
   ErrorClass: new (message: string, status: number) => E
 ): Promise<E> {
-  let detail: unknown
-  try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body) {
-      detail = body.detail
-    }
-  } catch {
-    detail = undefined
-  }
+  const detail = await readErrorDetail(response)
   if (typeof detail === 'string' && detail.length > 0) {
     return new ErrorClass(detail, response.status)
   }
