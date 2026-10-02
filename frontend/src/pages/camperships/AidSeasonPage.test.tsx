@@ -3,7 +3,7 @@
  * Rounds & budget. The tabs' own bodies are mocked: each has its own tests.
  */
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BUDGET } from '../../components/camperships/season/budgetFixtures'
@@ -31,7 +31,12 @@ const FINANCE = [...REGISTRAR, 'financial_aid.rules']
 
 function Where() {
   const { pathname, search } = useLocation()
-  return <div data-testid="where">{pathname + search}</div>
+  const navigation = useNavigationType()
+  return (
+    <div data-testid="where" data-nav={navigation}>
+      {pathname + search}
+    </div>
+  )
 }
 
 function renderAt(path: string) {
@@ -53,11 +58,13 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('AidSeasonPage (spec §7; D44, D76)', () => {
-  it('opens on Rounds & budget, keeping the season and the as-of', () => {
+  it('opens on Rounds & budget, keeping the season and the as-of, replacing the bare URL', () => {
     renderAt('/aid/season?as_of=2027-03-15')
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/aid/season/rounds-budget?year=2027&as_of=2027-03-15'
     )
+    // Back must not bounce through the redirect (Task 5 m4).
+    expect(screen.getByTestId('where')).toHaveAttribute('data-nav', 'REPLACE')
   })
 
   it("shows Rounds & budget's body, its Allocated and rules version, and the as-of pill", () => {

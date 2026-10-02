@@ -217,6 +217,63 @@ describe('filterRows', () => {
     )
   })
 
+  it('binds counted to the round that puts a row in Needs an offer (final review I2)', () => {
+    // Round 1 counts and is posted; Round 2, outside the budget, needs the offer.
+    const outsideNeeds = gridRow({
+      request_id: 'reqoutneeds0001',
+      // Now in Round 2 (main's round= reads the Stage's round, owner 10-04).
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+      rounds: [
+        roundOut(1, 'posted', { posted: 900 }),
+        roundOut(2, 'needs_offer', { counts_toward_budget: false }),
+      ],
+      queues: ['needs_offer'],
+    })
+    // The reverse: Round 1 is outside the budget, the counted Round 2 needs the offer.
+    const countedNeeds = gridRow({
+      request_id: 'reqcntneeds0001',
+      // Now in Round 2 (main's round= reads the Stage's round, owner 10-04).
+      stage: { round: 2, code: 'needs_offer', label: 'R2 · Needs an offer' },
+      rounds: [
+        roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
+        roundOut(2, 'needs_offer'),
+      ],
+      queues: ['needs_offer'],
+    })
+    const rows = [outsideNeeds, countedNeeds]
+    const ids = (filters: Partial<typeof NO_FILTERS>) =>
+      filterRows(rows, 'needs_offer', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
+    expect(ids({})).toEqual(['reqoutneeds0001', 'reqcntneeds0001'])
+    expect(ids({ counted: true })).toEqual(['reqcntneeds0001'])
+    // round= binds to the same round as the view's status.
+    expect(ids({ counted: true, round: 2 })).toEqual(['reqcntneeds0001'])
+    expect(ids({ counted: true, round: 1 })).toEqual([])
+  })
+
+  it('binds counted to the round that puts a row in Pending approval (final review I2)', () => {
+    const outsidePending = gridRow({
+      request_id: 'reqoutpend00001',
+      rounds: [
+        roundOut(1, 'posted', { posted: 900 }),
+        roundOut(3, 'pending_approval', { pending_approval: 450, counts_toward_budget: false }),
+      ],
+      queues: ['pending_approval'],
+    })
+    const countedPending = gridRow({
+      request_id: 'reqcntpend00001',
+      rounds: [
+        roundOut(1, 'posted', { posted: 900, counts_toward_budget: false }),
+        roundOut(3, 'pending_approval', { pending_approval: 450 }),
+      ],
+      queues: ['pending_approval'],
+    })
+    const rows = [outsidePending, countedPending]
+    const ids = (filters: Partial<typeof NO_FILTERS>) =>
+      filterRows(rows, 'pending_approval', { ...NO_FILTERS, ...filters }).map((r) => r.request_id)
+    expect(ids({})).toEqual(['reqoutpend00001', 'reqcntpend00001'])
+    expect(ids({ counted: true })).toEqual(['reqcntpend00001'])
+  })
+
   it("keeps only live requests with live=1: the server's live statuses, not cancelled (owner, Decision 6(b))", () => {
     const withdrawn = { ...ROW_SAMUEL, request_id: 'reqwithdrawn001', request_status: 'withdrawn' }
     const cancelled = {

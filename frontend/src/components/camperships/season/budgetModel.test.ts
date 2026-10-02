@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
+import type { ApiAidGridRow } from '../../../types/api-types'
+import { gridFiltersFrom } from '../household/queueWalk'
 import type { AidView } from '../kit/asOf'
 import { toCents } from '../kit/money'
-import { BUDGET, pastBudget } from './budgetFixtures'
+import { gridRow, roundOut } from '../requests/gridFixtures'
+import { filterRows, requestView } from '../requests/views'
+import { BUDGET, pastBudget, pastBudgetUnmasked } from './budgetFixtures'
 import {
   BUDGET_CSV_HEADERS,
   belowTheLine,
@@ -241,6 +245,91 @@ describe('where each figure opens (D20, D153)', () => {
     expect(cellHref(row(budgetRows(pastBudget(), EVERY), 'pool_a:1'), 'posted', PAST, 3)).toBe(
       '/aid/requests?view=all&pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
     )
+  })
+})
+
+describe('a past date opens no live-only Requests view (final review I1)', () => {
+  // Needs an offer, Holds and Pending approval list today's queues: AidRequestsPage refuses them
+  // on a past date, so a figure the server still sends there must not open one.
+  const past = pastBudgetUnmasked()
+
+  it('the strip: needs an offer, held and pending approval open nothing; posted and accepted keep the date', () => {
+    const rounds = stripRounds(past.strip, PAST)
+    const count = (round: number, measure: string) =>
+      rounds[round - 1]?.counts.find((c) => c.measure === measure)
+    expect(count(1, 'needs_offer')?.count).toEqual({ families: 3, requests: 3 })
+    expect(count(1, 'needs_offer')?.href).toBeNull()
+    expect(count(1, 'held')?.count).toEqual({ families: 6, requests: 9 })
+    expect(count(1, 'held')?.href).toBeNull()
+    expect(count(3, 'pending_approval')?.count).toEqual({ families: 1, requests: 1 })
+    expect(count(3, 'pending_approval')?.href).toBeNull()
+    expect(count(1, 'posted')?.href).toBe(
+      '/aid/requests?view=all&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+    )
+    expect(count(1, 'accepted')?.href).toBe(
+      '/aid/requests?view=all&round=1&tick=accepted&counted=1&year=2027&as_of=2027-03-15'
+    )
+  })
+
+  it('the table: Needs an offer and the Pending approval line open nothing; Posted and Accepted keep the date', () => {
+    const rows = budgetRows(past, EVERY)
+    for (const key of ['pool_a:1', 'pool_a:all', 'total']) {
+      expect(cellValue(row(rows, key), 'needs_offer'), key).not.toBeNull()
+      expect(cellHref(row(rows, key), 'needs_offer', PAST, 3), key).toBeNull()
+    }
+    expect(cellHref(row(rows, 'pool_a:3:pending'), 'needs_offer', PAST, 3)).toBeNull()
+    expect(cellHref(row(rows, 'pool_a:1'), 'posted', PAST, 3)).toBe(
+      '/aid/requests?view=all&pool=pool_a&round=1&tick=posted&counted=1&year=2027&as_of=2027-03-15'
+    )
+    expect(cellHref(row(rows, 'pool_a:all'), 'accepted', PAST, 3)).toBe(
+      '/aid/requests?view=all&pool=pool_a&tick=accepted&counted=1&year=2027&as_of=2027-03-15'
+    )
+  })
+
+  it('below the line: Held shows its count and opens nothing', () => {
+    for (const pool of [null, 'pool_b']) {
+      const held = belowTheLine(past, pool, PAST).find((l) => l.key === 'held')
+      expect(held?.count, String(pool)).not.toBeNull()
+      expect(held?.href, String(pool)).toBeNull()
+    }
+  })
+})
+
+describe('a budget link opens exactly the rows its figure counts (end to end; final review I2)', () => {
+  it("Needs an offer on a pool: the grid reads the link back to the pool's counted needs-offer rows", () => {
+    const href = cellHref(row(budgetRows(BUDGET, EVERY), 'pool_a:all'), 'needs_offer', LIVE, 3)
+    const params = new URL(href ?? '', 'http://kindred.test').searchParams
+    const view = requestView(params.get('view'))
+    const { filters } = gridFiltersFrom(params)
+    const needs = (id: string, over: Partial<ApiAidGridRow>) =>
+      gridRow({ request_id: id, queues: ['needs_offer'], ...over })
+    const rows = [
+      // Counted by the figure: a counted round needing an offer, in Pool A.
+      needs('reqcounted00001', { rounds: [roundOut(1, 'needs_offer')] }),
+      needs('reqcounted00002', {
+        rounds: [roundOut(1, 'posted', { posted: 900 }), roundOut(2, 'needs_offer')],
+      }),
+      // Not counted: the round needing an offer is outside the budget, though Round 1 counts.
+      needs('reqoutside00001', {
+        rounds: [
+          roundOut(1, 'posted', { posted: 900 }),
+          roundOut(2, 'needs_offer', { counts_toward_budget: false }),
+        ],
+      }),
+      // Not counted: another pool.
+      needs('reqpoolb0000001', { pool: 'pool_b', rounds: [roundOut(1, 'needs_offer')] }),
+      // Not counted: posted, in no queue.
+      gridRow({
+        request_id: 'reqposted000001',
+        rounds: [roundOut(1, 'posted', { posted: 900 })],
+        queues: [],
+      }),
+    ]
+    expect(view.key).toBe('needs_offer')
+    expect(filterRows(rows, view.key, filters).map((r) => r.request_id)).toEqual([
+      'reqcounted00001',
+      'reqcounted00002',
+    ])
   })
 })
 
