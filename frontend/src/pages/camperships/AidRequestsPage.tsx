@@ -333,7 +333,7 @@ export default function AidRequestsPage() {
         // the no-walk path and costs nothing.
         leaveThen(r.request_id, () => {
           setParam('row', r.request_id)
-          void navigate(href, { state: { aidFromGrid: true } })
+          void navigate(href)
         })
       },
     }),
