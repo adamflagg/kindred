@@ -60,6 +60,7 @@ const work = {
   live: { status: 'idle' } as LiveResults,
   busy: null as string | null,
   error: null as string | null,
+  errorSource: null as string | null,
   nothingToFreeze: false as boolean,
   move: vi.fn<(patch: Partial<Pending>) => void>(),
   release: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),
@@ -71,7 +72,7 @@ const work = {
     (
       label: string,
       build: (current: ApiAidRulesDocumentIn) => ApiAidRulesDocumentIn,
-      options?: { readonly basedOn?: string }
+      options?: { readonly basedOn?: string; readonly source?: string }
     ) => Promise<boolean>
   >(() => Promise.resolve(true)),
   freeze: vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)),

@@ -54,9 +54,10 @@ export function allConfirmed(
 }
 
 /**
- * A section a posted round read is locked: the server starts a new version of it rather than editing
- * the posted one (§7.5), and what was posted stands (S1 Q1).
+ * A section a posted round read is locked: the server may start a new version of it, or lift a lock
+ * the draft only carried from its parent, in place (`_save_over`/`_protected`). Either way what was
+ * posted stands (§7.5; S1 Q1).
  */
 export function lockedWords(section: ApiAidRulesSection): string {
-  return `${SECTION_TITLES[section]} is locked by a posted round: making this the rules draft starts a new version of it. Posted amounts stand.`
+  return `${SECTION_TITLES[section]} is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.`
 }

@@ -500,4 +500,22 @@ describe('adopt (PR 6: Fit to budget, All settings)', () => {
     expect(landed).toBe(true)
     expect(routes()).toEqual(['PUT /draft'])
   })
+
+  it('says which write an error came from, so a section editor can own its refusal', async () => {
+    const { result } = renderHook(() => useAidScenarioDraft(workspace()), { wrapper })
+    await act(async () => {
+      await result.current.adopt('Recording…', (current) => current, {
+        basedOn: 'trail-from-before',
+        source: 'awards',
+      })
+    })
+    expect(result.current.error).toBe('The draft moved since: try again')
+    expect(result.current.errorSource).toBe('awards')
+    // The next write clears it with the error; a refusal with no source carries none.
+    await act(async () => {
+      await result.current.adopt('Recording…', (current) => current, { basedOn: 'again' })
+    })
+    expect(result.current.error).toBe('The draft moved since: try again')
+    expect(result.current.errorSource).toBeNull()
+  })
 })

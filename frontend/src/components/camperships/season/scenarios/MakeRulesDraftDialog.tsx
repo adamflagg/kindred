@@ -68,12 +68,13 @@ export function MakeRulesDraftDialog({
       { code, body: { base_version: data.base_version, acknowledged: standingAcks(data, acks) } },
       {
         onSuccess: (draft) => setDone(draft.version),
-        onError: (caught) =>
-          setFailure(
-            hasStatus(caught, 409) || hasStatus(caught, 422)
-              ? { kind: 'refused', message: caught.message.replace(/\.?$/, '.') }
-              : { kind: 'unknown', message: caught.message }
-          ),
+        onError: (caught) => {
+          const message = caught.message.replace(/\.?$/, '.')
+          setFailure({
+            kind: hasStatus(caught, 409) || hasStatus(caught, 422) ? 'refused' : 'unknown',
+            message,
+          })
+        },
       }
     )
   }

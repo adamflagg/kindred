@@ -55,12 +55,14 @@ const adopt = vi.fn<
 let pending: Pending = NO_PENDING
 let busy: string | null = null
 let writeError: string | null = null
+let writeSource: string | null = null
 vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
   useAidScenarioDraft: () => ({
     pending,
     live: { status: 'idle' } as LiveResults,
     busy,
     error: writeError,
+    errorSource: writeSource,
     nothingToFreeze: false,
     move: vi.fn(),
     release: vi.fn(() => Promise.resolve(true)),
@@ -159,6 +161,7 @@ beforeEach(() => {
   pending = NO_PENDING
   busy = null
   writeError = null
+  writeSource = null
   adopt.mockReset()
   adopt.mockResolvedValue(true)
 })
@@ -240,7 +243,8 @@ describe('All settings (D39: one editor, two homes)', () => {
     expect(adopt).toHaveBeenCalledTimes(1)
     const [label, build, options] = adopt.mock.calls[0]!
     expect(label).toBe('Recording…')
-    expect(options).toBeUndefined()
+    // The section is named as the source, so a refusal is shown in its own editor.
+    expect(options).toEqual({ source: 'awards' })
     // The builder works on the draft as it is when the write runs, not as it was when the box opened.
     const other = { ...RULES_DOCUMENT, year: 2030 }
     expect(build(other)).toEqual({
@@ -388,11 +392,12 @@ describe('All settings holds its list while a section is open (Decision 15)', ()
     const other = within(all).getByRole('button', { name: /Outside grants/ })
     expect(other).toBeDisabled()
     expect(within(all).getByRole('button', { name: /Minimum award and limits/ })).toBeDisabled()
-    expect(within(all).getByText('Save or cancel first')).toBeInTheDocument()
+    expect(within(all).getByText('Save or cancel the edit first.')).toBeInTheDocument()
+    expect(other).toHaveClass('disabled:opacity-50')
     await userEvent.click(other)
     expect(within(all).getByRole('textbox', { name: 'Minimum award' })).toHaveValue('150')
     await userEvent.click(within(all).getByRole('button', { name: 'Cancel' }))
-    expect(within(all).queryByText('Save or cancel first')).toBeNull()
+    expect(within(all).queryByText('Save or cancel the edit first.')).toBeNull()
     expect(within(all).getByRole('button', { name: /Outside grants/ })).toBeEnabled()
   })
 
@@ -419,22 +424,57 @@ describe('All settings holds its list while a section is open (Decision 15)', ()
   })
 })
 
-describe('a refused save says its words once, inside the editor, and no other write does (m6)', () => {
-  it('shows the save refusal once, in the editor', async () => {
-    adopt.mockResolvedValue(false)
-    writeError = 'The draft moved since: try again'
-    renderAt()
+describe('a refused save says its words once, inside its own editor, and no other write does (m6)', () => {
+  const openMinimum = async () => {
+    const view = renderAt()
     const all = screen.getByTestId('all-settings')
     await userEvent.click(within(all).getByRole('button', { name: /Minimum award and limits/ }))
-    const box = within(all).getByRole('textbox', { name: 'Minimum award' })
-    await userEvent.clear(box)
-    await userEvent.type(box, '150')
-    // Before any save, this is some other write's error: at the top, not in the editor.
+    return { view, all }
+  }
+  const again = (view: ReturnType<typeof renderAt>) =>
+    view.rerender(
+      <MemoryRouter initialEntries={['/aid/season/scenarios']}>
+        <ScenariosTab />
+      </MemoryRouter>
+    )
+
+  it("shows a save's refusal once, in its editor, and not at the top", async () => {
+    writeError = 'The draft moved since: try again'
+    writeSource = 'awards'
+    const { all } = await openMinimum()
+    expect(within(all).getByText(writeError)).toBeInTheDocument()
+    expect(screen.getAllByText(writeError)).toHaveLength(1)
+  })
+
+  it("shows another write's error at the top, never inside the open editor, even with the same words", async () => {
+    writeError = 'Same words'
+    writeSource = null
+    const { all } = await openMinimum()
     expect(within(all).queryByText(writeError)).toBeNull()
     expect(screen.getAllByText(writeError)).toHaveLength(1)
-    await userEvent.click(within(all).getByRole('button', { name: 'Save' }))
-    expect(await within(all).findByText(writeError)).toBeInTheDocument()
+    // A refused save with the same words, then another write's: the second is not the save's.
+    writeSource = 'awards'
     expect(screen.getAllByText(writeError)).toHaveLength(1)
+  })
+
+  it('does not follow a refused save into the next section opened', async () => {
+    writeError = 'Minimum refused'
+    writeSource = 'awards'
+    const { view, all } = await openMinimum()
+    expect(within(all).getByText(writeError)).toBeInTheDocument()
+    await userEvent.click(within(all).getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(within(all).getByRole('button', { name: /Outside grants/ }))
+    again(view)
+    expect(within(all).queryByText(writeError)).toBeNull()
+    expect(screen.getAllByText(writeError)).toHaveLength(1)
+  })
+
+  it('never flashes a save refusal at the top while its editor is open', async () => {
+    writeError = 'Refused'
+    writeSource = 'awards'
+    const { all } = await openMinimum()
+    const top = screen.getAllByText(writeError).filter((el) => !all.contains(el))
+    expect(top).toHaveLength(0)
   })
 })
 
@@ -476,7 +516,7 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
     await userEvent.click(within(screen.getByTestId('promotion-preview')).getByRole('checkbox'))
     await userEvent.click(screen.getByRole('button', { name: 'Make it the rules draft' }))
     const unknown = screen.getByTestId('promotion-unknown')
-    expect(unknown).toHaveTextContent("Couldn't tell whether it was saved")
+    expect(unknown).toHaveTextContent("Server exploded. Couldn't tell whether it was saved")
     expect(unknown).not.toHaveTextContent('Nothing was changed')
     expect(within(unknown).getByRole('link', { name: /Rules/ })).toHaveAttribute(
       'href',
@@ -494,12 +534,12 @@ describe('the promotion dialog (review m3, m4, m7, m8, m9, ⚠1)', () => {
     )
   })
 
-  it('says a locked section starts a new version and posted amounts stand', async () => {
+  it('says a locked section may start a new version and posted amounts stand', async () => {
     lockedSections = ['award_tables']
     await open()
     expect(
       within(screen.getByTestId('promotion-preview')).getByText(
-        'Award tables (Round 1 %) is locked by a posted round: making this the rules draft starts a new version of it. Posted amounts stand.'
+        'Award tables (Round 1 %) is locked by a posted round: making this the rules draft may start a new version of it. Posted amounts stand.'
       )
     ).toBeInTheDocument()
   })

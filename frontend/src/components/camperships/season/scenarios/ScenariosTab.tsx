@@ -214,16 +214,9 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
   const [refused, setRefused] = useState<string | null>(null)
   const [setting, setSetting] = useState<ApiAidRulesSection | null>(null)
   const [promoting, setPromoting] = useState<string | null>(null)
-  // A refused All settings save says its words inside the editor, once; another write's error stays
-  // at the top (the editor isn't where it happened). The save's error is told apart by its words.
-  const [saveFailed, setSaveFailed] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  if (saveFailed && work.error !== null && saveError !== work.error) {
-    setSaveError(work.error)
-    setSaveFailed(false)
-  }
-  const editorError =
-    setting !== null && saveError !== null && saveError === work.error ? saveError : null
+  // A refused All settings save says its words inside its own editor, once; any other write's error
+  // stays at the top. The hook tags the error with the section that asked (`errorSource`).
+  const editorError = setting !== null && work.errorSource === setting ? work.error : null
   const keepButtons = (
     <>
       <button
@@ -372,11 +365,12 @@ function Workspace({ workspace }: { workspace: ApiAidScenarioWorkspace }) {
                 onOpen={setSetting}
                 onSave={(section, content) => {
                   void work
-                    .adopt('Recording…', (doc) => withSection(doc, section, content))
+                    .adopt('Recording…', (doc) => withSection(doc, section, content), {
+                      source: section,
+                    })
                     .then((landed) => {
                       // Closes the section it saved, never whichever is open by the time it lands.
                       if (landed) setSetting((now) => (now === section ? null : now))
-                      else setSaveFailed(true)
                     })
                 }}
               />
