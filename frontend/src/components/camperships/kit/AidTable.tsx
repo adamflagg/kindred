@@ -33,6 +33,7 @@ import {
   TABLE_CARD,
   TD,
   TFOOT_CELL,
+  TFOOT_CELL_WRAP,
   TH,
   TOTAL_BUTTON,
 } from './kitStyles'
@@ -538,7 +539,7 @@ export function AidTable<Row>({
                       colSpan={spans ? labelSpan : undefined}
                       style={pinStyle(c)}
                       className={join(
-                        TFOOT_CELL,
+                        scrollBox && index === 0 && footerLabel ? TFOOT_CELL_WRAP : TFOOT_CELL,
                         heldClasses(c, 'bottom-0', 'z-10'),
                         spans && labelSpan === pinnedLeft.size && PINNED_EDGE,
                         alignClass(c)

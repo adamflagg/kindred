@@ -81,6 +81,9 @@ export const HIGHLIGHT_PINNED_EDGE =
   'shadow-[inset_3px_0_0_var(--color-amber-500),6px_0_6px_-6px_rgb(0_0_0/0.25)]'
 export const TFOOT_CELL =
   'bg-muted border-border border-t px-2 py-1.5 font-semibold whitespace-nowrap'
+/** The totals label's cell in the screen box: it wraps within the pinned column rather than printing over the next total. */
+export const TFOOT_CELL_WRAP =
+  'bg-muted border-border border-t px-2 py-1.5 font-semibold whitespace-normal'
 export const GROUP_ROW =
   'bg-muted text-muted-foreground border-border border-b px-2 py-1.5 text-xs font-semibold'
 /** The editor row under the highlighted row (D22). */

@@ -89,6 +89,21 @@ describe('AidTable scrollBox: the sticky contract', () => {
   })
 })
 
+describe('AidTable scrollBox: the totals label', () => {
+  it('wraps inside its pinned cell, so a label wider than the Camper column never prints over a total', () => {
+    renderTable(true)
+    const label = screen.getByText('label').closest('td') as HTMLElement
+    expect(classesOf(label)).toContain('whitespace-normal')
+    expect(classesOf(label)).not.toContain('whitespace-nowrap')
+  })
+
+  it('keeps one line without the box', () => {
+    renderTable()
+    const label = screen.getByText('label').closest('td') as HTMLElement
+    expect(classesOf(label)).toContain('whitespace-nowrap')
+  })
+})
+
 describe('AidTable scrollBox: its height', () => {
   const realInner = window.innerHeight
   let top = 200
