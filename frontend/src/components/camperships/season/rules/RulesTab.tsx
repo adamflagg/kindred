@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { Permission } from '../../../../constants/permissions'
 import { useAidAsOf } from '../../../../hooks/camperships/useAidAsOf'
 import { useAidApprovedRules, useAidRulesDraft } from '../../../../hooks/camperships/useAidRules'
+import { useAidStartRulesFromLastYear } from '../../../../hooks/camperships/useAidRulesWrites'
 import { useYear } from '../../../../hooks/useCurrentYear'
 import { usePermissions } from '../../../../hooks/usePermissions'
 import { hasStatus } from '../../../../services/camperships/aidApi'
@@ -12,7 +13,13 @@ import type {
   ApiAidRulesDraft,
   ApiAidRulesSection,
 } from '../../../../types/api-types'
-import { AMBER_NOTE, TAB_PILL_ACTIVE, TAB_PILL_IDLE } from '../../../admin/lodging/lodgingStyles'
+import {
+  AMBER_NOTE,
+  BUTTON_PRIMARY,
+  BUTTON_SECONDARY,
+  TAB_PILL_ACTIVE,
+  TAB_PILL_IDLE,
+} from '../../../admin/lodging/lodgingStyles'
 import { QueryGuard } from '../../../QueryGuard'
 import { aidHref } from '../../kit/asOf'
 import { NEGATIVE_INK } from '../../kit/aidStyles'
@@ -28,8 +35,10 @@ import {
   statusWords,
   type StatusWords,
 } from './rulesModel'
+import { ApproveForm, type Approved } from './ApproveForm'
 import { CapacityForm } from './CapacityForm'
-import { sectionContent } from './rulesDraft'
+import { draftSections, sectionContent } from './rulesDraft'
+import { RulesSectionEditor } from './RulesSectionEditor'
 import { SectionView } from './SectionView'
 
 const PATH = '/aid/season/rules'
@@ -143,8 +152,45 @@ function ApprovedBody({
   )
 }
 
-function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: ApiAidRulesSection }) {
+/**
+ * What an approval says follows. The season is priced by the newest version in which every pricing
+ * section is approved or locked, so approving some sections re-prices nothing: the first sentence
+ * only when the refreshed draft's approved version is the one just approved (interim, S8-⚠1). A
+ * posted amount stands either way (S1 Q1); it never quotes a change in a posted amount.
+ */
+function approvedNotice({ pricing, warnings }: Approved): string {
+  return [
+    pricing === 'moved'
+      ? 'Approved. Requests not yet posted are priced on the new rules; a posted amount stands.'
+      : pricing === 'already'
+        ? 'Approved. The sections that price the season were already approved: nothing is re-priced.'
+        : 'Approved. Nothing is re-priced until every section that prices the season is approved. A posted amount stands.',
+    ...warnings,
+  ].join(' ')
+}
+
+type Mode = 'read' | 'edit' | 'approve'
+
+function DraftBody({
+  draft,
+  selected,
+  finance,
+  mode,
+  onMode: setMode,
+  onNotice,
+}: {
+  draft: ApiAidRulesDraft
+  selected: ApiAidRulesSection
+  finance: boolean
+  mode: Mode
+  onMode: (mode: Mode) => void
+  onNotice: (notice: string | null) => void
+}) {
   const href = useRulesHref()
+  const year = useYear()
+  // The mode lives in the tab so its pills can hold; it ends with this body (a year change, a
+  // 404 season, ?show=approved), never carried to a later one.
+  useEffect(() => () => setMode('read'), [setMode])
   const items: SectionItem[] = draft.sections.map((s) => ({
     section: s.section,
     status: statusWords(s.status, s.changes.length),
@@ -153,20 +199,46 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
   const chosen = draft.sections.find((s) => s.section === selected)
   const item = items.find((i) => i.section === selected)
   const issues = sectionIssues(draft.report.issues, selected)
+  const editing = mode === 'edit'
   return (
     <div className="space-y-2">
-      <p className="text-muted-foreground text-sm">
-        {draft.approved_version === null
-          ? `Rules draft v${String(draft.version)}: no version prices the season yet.`
-          : draft.approved_version === draft.version
-            ? `Rules v${String(draft.version)}: this draft is the version pricing the season.`
-            : `Rules draft v${String(draft.version)}, against the approved v${String(draft.approved_version)}.`}
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-muted-foreground text-sm">
+          {draft.approved_version === null
+            ? `Rules draft v${String(draft.version)}: no version prices the season yet.`
+            : draft.approved_version === draft.version
+              ? `Rules v${String(draft.version)}: this draft is the version pricing the season.`
+              : `Rules draft v${String(draft.version)}, against the approved v${String(draft.approved_version)}.`}
+        </p>
+        {finance && mode === 'read' && draftSections(draft).length > 0 && (
+          <button
+            type="button"
+            className={`${BUTTON_SECONDARY} ml-auto`}
+            onClick={() => {
+              onNotice(null)
+              setMode('approve')
+            }}
+          >
+            Approve…
+          </button>
+        )}
+      </div>
+      {mode === 'approve' && (
+        <ApproveForm
+          key={year}
+          initial={selected}
+          onDone={(approved) => {
+            setMode('read')
+            if (approved !== null) onNotice(approvedNotice(approved))
+          }}
+        />
+      )}
       <div className="grid gap-3 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <RulesSectionList
           items={items}
           selected={selected}
           hrefOf={(section) => href({ section })}
+          locked={editing}
         />
         <section className={`${SEASON_CARD} space-y-2 p-4`} data-testid="rules-section">
           <h2 className="flex flex-wrap items-center gap-2 font-semibold">
@@ -175,32 +247,110 @@ function DraftBody({ draft, selected }: { draft: ApiAidRulesDraft; selected: Api
             {item && item.status.meta !== '' && (
               <span className="text-muted-foreground text-xs font-normal">{item.status.meta}</span>
             )}
+            {finance && mode === 'read' && (
+              <button
+                type="button"
+                className={`${BUTTON_SECONDARY} ml-auto`}
+                onClick={() => {
+                  onNotice(null)
+                  setMode('edit')
+                }}
+              >
+                Edit…
+              </button>
+            )}
           </h2>
-          {chosen && chosen.changes.length > 0 && (
-            <ul className="text-sm" data-testid="section-changes">
-              {chosen.changes.map((change) => (
-                <li key={change.path.join('.')}>{changeWords(change)}</li>
-              ))}
-            </ul>
+          {editing ? (
+            <RulesSectionEditor
+              key={`${String(year)}:${selected}`}
+              section={selected}
+              draft={draft}
+              onDone={(saved) => {
+                setMode('read')
+                if (saved !== null) {
+                  onNotice(
+                    saved.branched_from === null || saved.branched_from === undefined
+                      ? `Saved to the rules draft v${String(saved.version)}.`
+                      : `Saved as a new version, v${String(saved.version)}: the approved rules in use stay as they are until it is approved.`
+                  )
+                }
+              }}
+            />
+          ) : (
+            <>
+              {chosen && chosen.changes.length > 0 && (
+                <ul className="text-sm" data-testid="section-changes">
+                  {chosen.changes.map((change) => (
+                    <li key={change.path.join('.')}>{changeWords(change)}</li>
+                  ))}
+                </ul>
+              )}
+              {issues.length > 0 && (
+                <ul className="space-y-0.5" data-testid="section-issues">
+                  {issues.map((issue, index) => (
+                    <li
+                      key={`${issue.code}:${issue.path}:${String(index)}`}
+                      className={
+                        issue.severity === 'error' ? `text-xs ${NEGATIVE_INK}` : AMBER_NOTE
+                      }
+                    >
+                      {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <SectionView
+                content={sectionContent(draft.document, selected)}
+                changes={chosen?.changes ?? []}
+              />
+            </>
           )}
-          {issues.length > 0 && (
-            <ul className="space-y-0.5" data-testid="section-issues">
-              {issues.map((issue, index) => (
-                <li
-                  key={`${issue.code}:${issue.path}:${String(index)}`}
-                  className={issue.severity === 'error' ? `text-xs ${NEGATIVE_INK}` : AMBER_NOTE}
-                >
-                  {issue.message}
-                </li>
-              ))}
-            </ul>
-          )}
-          <SectionView
-            content={sectionContent(draft.document, selected)}
-            changes={chosen?.changes ?? []}
-          />
         </section>
       </div>
+    </div>
+  )
+}
+
+/** A season with no rules: finance can start it from last season's (§7.5), every section a draft. */
+function NoRulesYet({
+  year,
+  finance,
+  onNotice,
+}: {
+  year: number
+  finance: boolean
+  onNotice: (notice: string | null) => void
+}) {
+  const start = useAidStartRulesFromLastYear()
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className={`${SEASON_CARD} text-muted-foreground space-y-2`}>
+      <p>{`No rules for ${String(year)} yet.`}</p>
+      {finance && (
+        <button
+          type="button"
+          className={BUTTON_PRIMARY}
+          disabled={start.isPending}
+          onClick={() => {
+            setError(null)
+            start.mutate(undefined, {
+              onSuccess: (created) =>
+                onNotice(
+                  [
+                    `Started ${String(year)} from ${String(year - 1)}'s rules: every section is a draft until approved.`,
+                    ...(created.report.issues ?? [])
+                      .filter((issue) => issue.severity === 'warning')
+                      .map((issue) => issue.message),
+                  ].join(' ')
+                ),
+              onError: (caught) => setError(caught.message),
+            })
+          }}
+        >
+          {start.isPending ? 'Starting…' : `Start ${String(year)} from ${String(year - 1)}'s rules`}
+        </button>
+      )}
+      {error !== null && <p className={AMBER_NOTE}>{error}</p>}
     </div>
   )
 }
@@ -217,8 +367,9 @@ function Missing({ text, children }: { text: string; children?: ReactNode }) {
 /**
  * Season › Rules (spec §7.5; D39, D76; rules.html A, season-access.html C): the rules document
  * section by section, each with its status and who approved it. Finance (`rules`) reads the rules
- * draft with its changes, or the approved version; everyone else reads the approved version only,
- * read only (D76). `?version=` is a receipt's link to the version that priced it; `?section=` opens
+ * draft with its changes, or the approved version, and writes to the draft: edits a section,
+ * approves sections, or starts an empty season from last year's rules. Everyone else reads the
+ * approved version only, read only (D76). `?version=` is a receipt's link to the version that priced it; `?section=` opens
  * a section; `?show=approved` is finance's view of what the registrar sees.
  */
 export function RulesTab() {
@@ -235,30 +386,64 @@ export function RulesTab() {
   const approved = useAidApprovedRules(version, { enabled: show === 'approved' })
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
   const draftVersion = draft.data?.version ?? null
+  // The notice belongs to the season it was about: it shows only while that year is selected.
+  const [noticeFor, setNoticeFor] = useState<{ year: number; text: string } | null>(null)
+  const notice = noticeFor?.year === year ? noticeFor.text : null
+  const setNotice = (text: string | null) => setNoticeFor(text === null ? null : { year, text })
+  // Lifted so the tab's own pills hold still while an edit or an approval is open.
+  const [mode, setMode] = useState<Mode>('read')
+  const holding = show === 'draft' && mode !== 'read'
 
   return (
     <div className="space-y-3">
       {finance && version === null && (
-        <div className="flex gap-1">
-          <Link
-            to={href({ show: null })}
-            replace
-            className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-          >
-            {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
-          </Link>
-          <Link
-            to={href({ show: 'approved' })}
-            replace
-            className={show === 'approved' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-          >
-            Approved
-          </Link>
+        <div className="flex flex-wrap items-center gap-1">
+          {holding ? (
+            // While an edit or approval is open the tab's own pills hold still too (Decision 15).
+            <>
+              <span className={TAB_PILL_ACTIVE}>
+                {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
+              </span>
+              <span className={TAB_PILL_IDLE}>Approved</span>
+              <span className="text-muted-foreground px-2 text-xs">
+                {mode === 'edit' ? 'Save or cancel the edit first.' : 'Approve or cancel first.'}
+              </span>
+            </>
+          ) : (
+            <>
+              <Link
+                to={href({ show: null })}
+                replace
+                className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+              >
+                {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
+              </Link>
+              <Link
+                to={href({ show: 'approved' })}
+                replace
+                className={show === 'approved' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+              >
+                Approved
+              </Link>
+            </>
+          )}
         </div>
+      )}
+      {notice !== null && (
+        <p className="text-sm" data-testid="rules-notice">
+          {notice}{' '}
+          <button
+            type="button"
+            className="text-primary text-xs hover:underline"
+            onClick={() => setNotice(null)}
+          >
+            Dismiss
+          </button>
+        </p>
       )}
       {show === 'draft' ? (
         hasStatus(draft.error, 404) && !draft.data ? (
-          <Missing text={`No rules for ${String(year)} yet.`} />
+          <NoRulesYet key={year} year={year} finance={finance} onNotice={setNotice} />
         ) : (
           <QueryGuard
             isLoading={draft.isLoading}
@@ -266,7 +451,16 @@ export function RulesTab() {
             data={draft.data}
             label="the rules draft"
           >
-            {(data) => <DraftBody draft={data} selected={selected} />}
+            {(data) => (
+              <DraftBody
+                draft={data}
+                selected={selected}
+                finance={finance}
+                mode={mode}
+                onMode={setMode}
+                onNotice={setNotice}
+              />
+            )}
           </QueryGuard>
         )
       ) : hasStatus(approved.error, 404) && !approved.data ? (
