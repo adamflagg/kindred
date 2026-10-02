@@ -9,8 +9,7 @@ import {
   headcountOf,
   parseCount,
   parsePercent,
-  sessionCandidates,
-  sessionName,
+  namedHolder,
 } from './caseworkModel'
 import { applicationOut, householdPage, householdRequest, requestOut } from './householdFixtures'
 
@@ -27,7 +26,7 @@ describe('reading what staff type', () => {
   it('knows each answer’s kind; the income override is not a typed figure (Decision 37)', () => {
     expect(fieldKind(answer('total_rent', '1200.00'))).toBe('money')
     expect(fieldKind(answer('num_children', '2'))).toBe('count')
-    expect(fieldKind(answer('income_confirmed', 'true'))).toBe('flag')
+    expect(fieldKind(answer('single_parent', 'true'))).toBe('flag')
     expect(fieldKind(answer('income_override', 'confirmed_prior_year'))).toBe('override')
   })
 
@@ -44,6 +43,15 @@ describe('reading what staff type', () => {
     expect(correctionValue('flag', 'false')).toEqual({ kind: 'ok', value: 'false' })
   })
 
+  it("lets an income figure go to the server's own ceiling, $10,000,000, not the aid-amount $1,000,000 (MONEY_CEILING)", () => {
+    expect(correctionValue('money', '1,200,000')).toEqual({ kind: 'ok', value: '1200000' })
+    expect(correctionValue('money', '10000000')).toEqual({ kind: 'ok', value: '10000000' })
+    expect(correctionValue('money', '10000000.01')).toEqual({
+      kind: 'invalid',
+      reason: 'More than $10,000,000',
+    })
+  })
+
   it('a blank money correction asks for a figure; going back to the form is a null, never ""', () => {
     expect(correctionValue('money', '  ')).toEqual({ kind: 'invalid', reason: 'Enter the figure' })
     // The restore path: the server's parser 422s on '' for every kind and reads only null as "revert".
@@ -54,16 +62,6 @@ describe('reading what staff type', () => {
 })
 
 describe('what the forms offer', () => {
-  it("lists a request's candidate sessions, named from the season's sessions, else the page, else the id (Decision 28)", () => {
-    expect(sessionCandidates(applicationOut(), 'reqemma00000001')).toEqual([1000101, 1000199])
-    expect(sessionCandidates(undefined, 'reqemma00000001')).toEqual([])
-    const page = householdPage()
-    const names = new Map([[1000199, 'Session 3']])
-    expect(sessionName(page, 1000199, names)).toBe('Session 3')
-    expect(sessionName(page, 1000101, names)).toBe('Session 2')
-    expect(sessionName(page, 1000198)).toBe('Session 1000198')
-  })
-
   it('offers as the one to keep only an active request for the same camper and session', () => {
     const duplicate = householdRequest(
       gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
@@ -119,6 +117,15 @@ describe('what the forms offer', () => {
     ).toEqual(['reqfamily000010'])
   })
 
+  it('reads the holder intake named for a duplicate from the application', () => {
+    const app = applicationOut({
+      requests: [requestOut({ id: 'reqemmadup00009', duplicate_of: 'reqemmaother01' })],
+    })
+    expect(namedHolder(app, 'reqemmadup00009')).toBe('reqemmaother01')
+    expect(namedHolder(app, 'reqother0000099')).toBe('')
+    expect(namedHolder(undefined, 'reqemmadup00009')).toBe('')
+  })
+
   it("reads a Family Camp request's headcount from the application", () => {
     const app = applicationOut({
       requests: [
@@ -138,12 +145,18 @@ describe('what the forms offer', () => {
 describe('which casework buttons a request takes (the server’s own refusals)', () => {
   const offers = (over: Parameters<typeof gridRow>[0]) => caseworkOffers(gridRow(over))
 
-  it("payer shares: any request but a duplicate or withdrawn one (the server's _require_live)", () => {
+  // Owner ruling: shares are hidden on a cancelled request and on a pending duplicate, though the
+  // server allows both (it refuses only a duplicate or withdrawn request).
+  it('payer shares: hidden on a cancelled request and a pending duplicate; offered on the rest', () => {
     expect(offers({}).shares).toBe(true)
     expect(offers({ request_status: 'unmatched_session' }).shares).toBe(true)
-    expect(offers({ request_status: 'duplicate_pending' }).shares).toBe(true)
+    expect(offers({ request_status: 'duplicate_pending' }).shares).toBe(false)
     expect(offers({ request_status: 'duplicate' }).shares).toBe(false)
     expect(offers({ request_status: 'withdrawn' }).shares).toBe(false)
+    const kindred = { by: 'kindred', on: '2027-06-02', reason: 'medical', note: '' } as const
+    const campminder = { by: 'campminder', on: null, reason: null, note: '' } as const
+    expect(offers({ cancellation: kindred }).shares).toBe(false)
+    expect(offers({ cancellation: campminder }).shares).toBe(false)
   })
 
   it('settle session only while unmatched; keep-the-other only while a duplicate is pending', () => {
