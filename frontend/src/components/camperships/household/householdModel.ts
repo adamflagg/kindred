@@ -320,7 +320,7 @@ const ANSWER_WORDS: Readonly<Record<string, string>> = {
   total_gross_income: 'Gross income',
   expected_gross_income: 'Expected gross income',
   total_adjusted_income: 'Adjusted income',
-  income_confirmed: 'Income confirmed',
+  income_confirmed: 'Prior-year confirmed income',
   total_medical_expenses: 'Medical expenses',
   total_edu_expenses: 'Education expenses',
   total_housing_expenses: 'Housing expenses',
