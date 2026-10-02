@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   useAidApproveRules,
   useFreshAidRulesDraft,
 } from '../../../../hooks/camperships/useAidRulesWrites'
 import { hasStatus } from '../../../../services/camperships/aidApi'
-import type { ApiAidRulesDraft, ApiAidRulesSection } from '../../../../types/api-types'
+import type {
+  ApiAidRulesDraft,
+  ApiAidRulesSection,
+  ApiAidRulesVersion,
+} from '../../../../types/api-types'
 import {
   AMBER_NOTE,
   BUTTON_PRIMARY,
@@ -21,6 +25,8 @@ import { SECTION_TITLES } from './rulesModel'
 interface Recheck {
   readonly version: number
   readonly moved: readonly ApiAidRulesSection[]
+  /** Ticked sections that gained validation errors: unticked too (the server refuses them). */
+  readonly errored: readonly ApiAidRulesSection[]
   /** The server's 409 text, when the re-read followed one (plan review M4: the detail, not the lead). */
   readonly server: string | null
 }
@@ -28,8 +34,8 @@ interface Recheck {
 /** What an approval left behind, for the tab's notice. */
 export interface Approved {
   /**
-   * Whether the version just approved now prices the season: the refreshed draft's `approved_version`
-   * is that version. Approving only some sections re-prices nothing (the server prices by the newest
+   * Whether this approval made the version just approved the one pricing the season: the draft's
+   * `approved_version` was not that version before and is after. Approving only some sections re-prices nothing (the server prices by the newest
    * version in which every pricing section is approved or locked). `false` too when the refreshed
    * draft couldn't be read: the cautious sentence.
    */
@@ -37,6 +43,9 @@ export interface Approved {
   /** The approval report's warnings, so they reach the approver. */
   readonly warnings: readonly string[]
 }
+
+const errorsOf = (draft: ApiAidRulesDraft, section: ApiAidRulesSection) =>
+  draft.sections.find((s) => s.section === section)?.errors ?? 0
 
 const reasonOf = (caught: unknown) => (caught instanceof Error ? caught.message : String(caught))
 
@@ -56,6 +65,7 @@ export function ApproveForm({
   initial,
   onDone,
 }: {
+  /** The section open when the form opened; read once, so browsing the list never re-ticks. */
   initial: ApiAidRulesSection
   /** The approval's outcome, or null when cancelled. */
   onDone: (approved: Approved | null) => void
@@ -66,7 +76,16 @@ export function ApproveForm({
   const [ticked, setTicked] = useState<ReadonlySet<ApiAidRulesSection>>(new Set())
   const [note, setNote] = useState('')
   const [recheck, setRecheck] = useState<Recheck | null>(null)
-  const [checking, setChecking] = useState(false)
+  // Busy from the click through every read and the write, until the form is done or refused.
+  const [busy, setBusy] = useState(false)
+  const [first] = useState(initial)
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
   const [error, setError] = useState<string | null>(null)
 
   const open = useCallback(() => {
@@ -74,16 +93,14 @@ export function ApproveForm({
       (fresh) => {
         setSeen(fresh)
         // Not pre-ticked with errors: its box is disabled, but a ticked one would still be sent.
-        const row = fresh.sections.find((s) => s.section === initial)
+        const row = fresh.sections.find((s) => s.section === first)
         setTicked(
-          new Set(
-            draftSections(fresh).includes(initial) && (row?.errors ?? 0) === 0 ? [initial] : []
-          )
+          new Set(draftSections(fresh).includes(first) && (row?.errors ?? 0) === 0 ? [first] : [])
         )
       },
       (caught: unknown) => setError(`Couldn't load the rules draft: ${reasonOf(caught)}`)
     )
-  }, [fetchFresh, initial])
+  }, [fetchFresh, first])
   useEffect(open, [open])
 
   if (seen === null) {
@@ -119,47 +136,66 @@ export function ApproveForm({
   const reconcile = (fresh: ApiAidRulesDraft, server: string | null) => {
     const moved = SECTION_ORDER.filter((s) => ticked.has(s) && !sameSection(seen, fresh, s))
     const waiting = draftSections(fresh)
-    setTicked(new Set([...ticked].filter((s) => !moved.includes(s) && waiting.includes(s))))
+    const errored = SECTION_ORDER.filter(
+      (s) => ticked.has(s) && !moved.includes(s) && errorsOf(fresh, s) > 0
+    )
+    // The boxes are held while busy, so `ticked` is what the person ticked.
+    setTicked(
+      new Set(
+        [...ticked].filter((s) => !moved.includes(s) && !errored.includes(s) && waiting.includes(s))
+      )
+    )
     setSeen(fresh)
-    setRecheck({ version: fresh.version, moved, server })
+    setRecheck({ version: fresh.version, moved, errored, server })
+    setBusy(false)
   }
 
   /** After the approval settled: does the version just approved now price the season? */
-  const finish = async (version: number, report: unknown) => {
+  const finish = async (
+    version: number,
+    before: number | null,
+    report: ApiAidRulesVersion['report']
+  ) => {
     let pricesSeason = false
     try {
-      pricesSeason = (await fetchFresh()).approved_version === version
+      pricesSeason = before !== version && (await fetchFresh()).approved_version === version
     } catch {
       // The notice takes the cautious sentence: it claims no re-pricing it couldn't see.
     }
-    const issues = (report as { issues?: Array<{ severity: string; message: string }> } | null)
-      ?.issues
+    if (!alive.current) return
+    setBusy(false)
     onDone({
       pricesSeason,
-      warnings: (issues ?? []).filter((i) => i.severity === 'warning').map((i) => i.message),
+      warnings: (report.issues ?? []).filter((i) => i.severity === 'warning').map((i) => i.message),
     })
   }
 
   const submit = async () => {
     setRecheck(null)
     setError(null)
-    setChecking(true)
+    setBusy(true)
     let fresh: ApiAidRulesDraft
     try {
       fresh = await fetchFresh()
     } catch (caught) {
+      if (!alive.current) return
+      setBusy(false)
       setError(
         `Couldn't check the rules draft is unchanged: ${reasonOf(caught)}. Nothing was approved.`
       )
       return
-    } finally {
-      setChecking(false)
     }
+    // The form may have closed during the read: then nothing is sent.
+    if (!alive.current) return
     const sections = SECTION_ORDER.filter((s) => ticked.has(s))
-    if (fresh.version !== seen.version || sections.some((s) => !sameSection(seen, fresh, s))) {
+    if (
+      fresh.version !== seen.version ||
+      sections.some((s) => !sameSection(seen, fresh, s) || errorsOf(fresh, s) > 0)
+    ) {
       reconcile(fresh, null)
       return
     }
+    const before = fresh.approved_version
     approve.mutate(
       {
         version: seen.version,
@@ -170,18 +206,24 @@ export function ApproveForm({
         },
       },
       {
-        onSuccess: (approved) => void finish(seen.version, approved.report),
+        onSuccess: (approved) => void finish(seen.version, before, approved.report),
         onError: (caught) => {
           if (!hasStatus(caught, 409)) {
+            setBusy(false)
             setError(caught.message)
             return
           }
           void fetchFresh().then(
-            (latest) => reconcile(latest, caught.message),
-            (failed: unknown) =>
+            (latest) => {
+              if (alive.current) reconcile(latest, caught.message)
+            },
+            (failed: unknown) => {
+              if (!alive.current) return
+              setBusy(false)
               setError(
                 `${caught.message}. Nothing was approved, and the rules draft couldn't be read again: ${reasonOf(failed)}. Approve reads it again first.`
               )
+            }
           )
         },
       }
@@ -196,8 +238,8 @@ export function ApproveForm({
       return next
     })
   const sections = draftSections(seen)
-  const errorsIn = (section: ApiAidRulesSection) =>
-    seen.sections.find((s) => s.section === section)?.errors ?? 0
+  const errorsIn = (section: ApiAidRulesSection) => errorsOf(seen, section)
+  const working = busy || approve.isPending
 
   return (
     <div className="card-lodge space-y-2 p-4" data-testid="approve-form">
@@ -211,7 +253,7 @@ export function ApproveForm({
               <input
                 type="checkbox"
                 checked={ticked.has(section)}
-                disabled={errorsIn(section) > 0}
+                disabled={working || errorsIn(section) > 0}
                 onChange={() => toggle(section)}
               />
               {SECTION_TITLES[section]}
@@ -222,7 +264,12 @@ export function ApproveForm({
       )}
       <label className="block max-w-md">
         <span className={LABEL}>Approved by (the body, and when: “Finance, Jan 22 meeting”)</span>
-        <input className={FIELD} value={note} onChange={(event) => setNote(event.target.value)} />
+        <input
+          className={FIELD}
+          value={note}
+          maxLength={2000}
+          onChange={(event) => setNote(event.target.value)}
+        />
       </label>
       {recheck !== null && (
         <div className="space-y-1" data-testid="approve-conflict">
@@ -234,10 +281,17 @@ export function ApproveForm({
           )}
           <p className="text-xs">
             {`The rules draft is v${String(recheck.version)} now. `}
-            {recheck.moved.length === 0
+            {recheck.moved.length === 0 && recheck.errored.length === 0
               ? 'The sections you ticked read as they did.'
-              : `Changed since you looked, so unticked: ${recheck.moved.map((s) => SECTION_TITLES[s]).join(', ')}. Look at them again before approving.`}
+              : ''}
+            {recheck.moved.length > 0 &&
+              `Changed since you looked, so unticked: ${recheck.moved.map((s) => SECTION_TITLES[s]).join(', ')}. Look at them again before approving.`}
           </p>
+          {recheck.errored.map((section) => (
+            <p key={section} className="text-xs">
+              {`${SECTION_TITLES[section]} now has errors and was unticked.`}
+            </p>
+          ))}
         </div>
       )}
       {error !== null && <p className={AMBER_NOTE}>{error}</p>}
@@ -245,17 +299,17 @@ export function ApproveForm({
         <button
           type="button"
           className={BUTTON_PRIMARY}
-          disabled={approve.isPending || checking || ticked.size === 0 || note.trim() === ''}
+          disabled={working || ticked.size === 0 || note.trim() === ''}
           onClick={() => void submit()}
         >
-          {approve.isPending || checking
+          {working
             ? 'Approving…'
             : `Approve ${String(ticked.size)} ${ticked.size === 1 ? 'section' : 'sections'}`}
         </button>
         <button
           type="button"
           className={BUTTON_SECONDARY}
-          disabled={approve.isPending}
+          disabled={working}
           onClick={() => onDone(null)}
         >
           Cancel

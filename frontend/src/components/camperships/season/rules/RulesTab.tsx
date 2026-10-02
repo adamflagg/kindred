@@ -167,19 +167,25 @@ function approvedNotice({ pricesSeason, warnings }: Approved): string {
   ].join(' ')
 }
 
+type Mode = 'read' | 'edit' | 'approve'
+
 function DraftBody({
   draft,
   selected,
   finance,
+  mode,
+  onMode: setMode,
   onNotice,
 }: {
   draft: ApiAidRulesDraft
   selected: ApiAidRulesSection
   finance: boolean
+  mode: Mode
+  onMode: (mode: Mode) => void
   onNotice: (notice: string | null) => void
 }) {
   const href = useRulesHref()
-  const [mode, setMode] = useState<'read' | 'edit' | 'approve'>('read')
+  const year = useYear()
   const items: SectionItem[] = draft.sections.map((s) => ({
     section: s.section,
     status: statusWords(s.status, s.changes.length),
@@ -214,6 +220,7 @@ function DraftBody({
       </div>
       {mode === 'approve' && (
         <ApproveForm
+          key={year}
           initial={selected}
           onDone={(approved) => {
             setMode('read')
@@ -250,7 +257,7 @@ function DraftBody({
           </h2>
           {editing ? (
             <RulesSectionEditor
-              key={selected}
+              key={`${String(year)}:${selected}`}
               section={selected}
               draft={draft}
               onDone={(saved) => {
@@ -312,7 +319,7 @@ function NoRulesYet({
   const start = useAidStartRulesFromLastYear()
   const [error, setError] = useState<string | null>(null)
   return (
-    <div className={`${SEASON_CARD} text-muted-foreground space-y-2 p-4`}>
+    <div className={`${SEASON_CARD} text-muted-foreground space-y-2`}>
       <p>{`No rules for ${String(year)} yet.`}</p>
       {finance && (
         <button
@@ -374,25 +381,43 @@ export function RulesTab() {
   const draft = useAidRulesDraft({ enabled: show === 'draft' })
   const draftVersion = draft.data?.version ?? null
   const [notice, setNotice] = useState<string | null>(null)
+  // Lifted so the tab's own pills hold still while an edit or an approval is open.
+  const [mode, setMode] = useState<Mode>('read')
+  const holding = show === 'draft' && mode !== 'read'
 
   return (
     <div className="space-y-3">
       {finance && version === null && (
-        <div className="flex gap-1">
-          <Link
-            to={href({ show: null })}
-            replace
-            className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-          >
-            {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
-          </Link>
-          <Link
-            to={href({ show: 'approved' })}
-            replace
-            className={show === 'approved' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
-          >
-            Approved
-          </Link>
+        <div className="flex flex-wrap items-center gap-1">
+          {holding ? (
+            // While an edit or approval is open the tab's own pills hold still too (Decision 15).
+            <>
+              <span className={TAB_PILL_ACTIVE}>
+                {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
+              </span>
+              <span className={TAB_PILL_IDLE}>Approved</span>
+              <span className="text-muted-foreground px-2 text-xs">
+                Save or cancel the edit first.
+              </span>
+            </>
+          ) : (
+            <>
+              <Link
+                to={href({ show: null })}
+                replace
+                className={show === 'draft' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+              >
+                {draftVersion === null ? 'Rules draft' : `Rules draft v${String(draftVersion)}`}
+              </Link>
+              <Link
+                to={href({ show: 'approved' })}
+                replace
+                className={show === 'approved' ? TAB_PILL_ACTIVE : TAB_PILL_IDLE}
+              >
+                Approved
+              </Link>
+            </>
+          )}
         </div>
       )}
       {notice !== null && (
@@ -418,7 +443,14 @@ export function RulesTab() {
             label="the rules draft"
           >
             {(data) => (
-              <DraftBody draft={data} selected={selected} finance={finance} onNotice={setNotice} />
+              <DraftBody
+                draft={data}
+                selected={selected}
+                finance={finance}
+                mode={mode}
+                onMode={setMode}
+                onNotice={setNotice}
+              />
             )}
           </QueryGuard>
         )
