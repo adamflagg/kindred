@@ -5191,6 +5191,50 @@ export type GridRowOut = {
     | 'duplicates'
     | 'cancel_reason'
   > | null
+  /**
+   * Payer Count
+   */
+  payer_count?: number | null
+  /**
+   * Payer Shares
+   */
+  payer_shares?: Array<GridShareOut>
+}
+
+/**
+ * GridShareOut
+ *
+ * One payer of a split request, on its grid row (§6.2: Needs an offer has one row per payer share; ⚠39, owner
+ * ruling 2026-10-01). Its whole-dollar part of the request's decided total (`decided`: the household's new total
+ * once the open rounds post, ⚠40), of the posted total, and of the rounds that need an offer (`needs_offer`: what
+ * is posted to this household when they are ticked). None while the request has no such money, or its shares
+ * don't add up to 100%.
+ */
+export type GridShareOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * Share Pct
+   */
+  share_pct: number
+  /**
+   * Decided
+   */
+  decided: number | null
+  /**
+   * Posted
+   */
+  posted: number | null
+  /**
+   * Needs Offer
+   */
+  needs_offer: number | null
 }
 
 /**
@@ -5650,6 +5694,36 @@ export type HouseholdLinkRow = {
 }
 
 /**
+ * HouseholdMatchOut
+ *
+ * One household the Add-a-link picker can name (owner F3 #27; §6.3 †): its CampMinder id and name, the people on
+ * its record this season, the family keys it is linked under (aid_household_links, excluded rows left out), and the
+ * other households those keys join.
+ */
+export type HouseholdMatchOut = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Family Name
+   */
+  family_name: string
+  /**
+   * People
+   */
+  people: Array<string>
+  /**
+   * Family Keys
+   */
+  family_keys: Array<string>
+  /**
+   * Linked Household Cm Ids
+   */
+  linked_household_cm_ids: Array<number>
+}
+
+/**
  * HouseholdMedicalResponse
  *
  * Narrative medical text and the gate answers beside it. Served by ONE
@@ -5812,6 +5886,36 @@ export type HouseholdRequestOut = {
    * Receipts
    */
   receipts: Array<ReceiptOut>
+  /**
+   * Grants
+   */
+  grants?: number
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
+}
+
+/**
+ * HouseholdSearchResponse
+ */
+export type HouseholdSearchResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Matches
+   */
+  matches: Array<HouseholdMatchOut>
+  /**
+   * Truncated
+   */
+  truncated: boolean
 }
 
 /**
@@ -5867,6 +5971,18 @@ export type HouseholdTotalsOut = {
    * States
    */
   states: Array<ConfirmationStateOut>
+  /**
+   * Grants Applied
+   */
+  grants_applied?: number | null
+  /**
+   * Grants Beyond Owed
+   */
+  grants_beyond_owed?: number | null
+  /**
+   * Decided Partial
+   */
+  decided_partial?: boolean
 }
 
 /**
@@ -22433,6 +22549,43 @@ export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponses = {
 
 export type GetJumpIndexApiFinancialAidJumpIndexYearGetResponse =
   GetJumpIndexApiFinancialAidJumpIndexYearGetResponses[keyof GetJumpIndexApiFinancialAidJumpIndexYearGetResponses]
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetData = {
+  body?: never
+  path: {
+    /**
+     * Year
+     */
+    year: number
+  }
+  query: {
+    /**
+     * Q
+     */
+    q: string
+  }
+  url: '/api/financial-aid/household-search/{year}'
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetError =
+  SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors[keyof SearchHouseholdsApiFinancialAidHouseholdSearchYearGetErrors]
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdSearchResponse
+}
+
+export type SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponse =
+  SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses[keyof SearchHouseholdsApiFinancialAidHouseholdSearchYearGetResponses]
 
 export type GetTodayApiFinancialAidTodayYearGetData = {
   body?: never

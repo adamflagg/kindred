@@ -152,7 +152,13 @@ from api.schemas.financial_aid_scenarios import (
     ViewIn,
     WorkspaceOut,
 )
-from api.schemas.financial_aid_surfaces import DefinitionNoteOut, DefinitionsResponse, JumpIndexResponse, TodayResponse
+from api.schemas.financial_aid_surfaces import (
+    DefinitionNoteOut,
+    DefinitionsResponse,
+    HouseholdSearchResponse,
+    JumpIndexResponse,
+    TodayResponse,
+)
 from api.schemas.financial_aid_to_place import (
     LeaveLineIn,
     PlaceLineIn,
@@ -184,6 +190,7 @@ from api.services.financial_aid_grants_service import (
     GrantsService,
 )
 from api.services.financial_aid_household_page import HouseholdNotFoundError, HouseholdPageService
+from api.services.financial_aid_household_search import HouseholdSearchRepository, HouseholdSearchService
 from api.services.financial_aid_intake_repository import FinancialAidIntakeRepository
 from api.services.financial_aid_jump_index import JumpIndexRepository, JumpIndexService
 from api.services.financial_aid_ledger_service import (
@@ -1448,6 +1455,17 @@ async def get_definitions(
 async def get_jump_index(year: _Year, user: AuthUser = _VIEW) -> JumpIndexResponse:
     """The jump box's index (§3.5, D13): every household with aid activity this season, read once."""
     return await JumpIndexService(JumpIndexRepository(pb)).read(year)
+
+
+@router.get("/household-search/{year}", response_model=HouseholdSearchResponse)
+async def search_households(
+    year: _Year,
+    q: Annotated[str, Query(min_length=2, max_length=100)],
+    user: AuthUser = _VIEW,
+) -> HouseholdSearchResponse:
+    """The Add-a-link picker's search (owner F3 #27): a household by name or CampMinder id (a household's or a
+    person's), with the family keys it is linked under. financial_aid.view, as the household page's links."""
+    return await HouseholdSearchService(HouseholdSearchRepository(pb)).search(year, q)
 
 
 def _holds(user: AuthUser, permission: str) -> bool:

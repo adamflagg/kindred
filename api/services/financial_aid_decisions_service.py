@@ -167,6 +167,7 @@ from api.services.financial_aid_rules_service import (
     RulesHistoryIncompleteError,
     RulesVersion,
 )
+from api.services.financial_aid_share_split import grid_shares, payers
 from bunking.financial_aid.calculator import ApplicationInputs, CalcIssue, GrantInput, RequestInputs
 from bunking.financial_aid.change_log import AidOperationResult, AidWrite, AidWriteConflictError
 from bunking.financial_aid.change_replay import LogRow, Replayed, replay
@@ -337,6 +338,7 @@ class Season:
     shares: Mapping[str, tuple[PayerShareRecord, ...]] = field(default_factory=dict)
     undone: frozenset[tuple[str, int]] = frozenset()  # rounds a person un-ticked: the ledger leaves them
     posted_unknown: frozenset[str] = frozenset()  # past read: posted money whose clawback can't be replayed
+    shares_unknown: frozenset[str] = frozenset()  # past read: requests whose payer shares can't be replayed (⚠39)
     # 3c-2, past read: request -> the gap that keeps it to 3c-1's figures (_PRICING_GAPS), and whether a
     # grant by then has no logged placement (its household's pools, and money off requests, stay empty).
     gapped: Mapping[str, str] = field(default_factory=dict)
@@ -975,7 +977,16 @@ def _posted_unknown(row: GridRowOut) -> GridRowOut:
     """A past row whose payer shares or staff placements can't be replayed: whether CampMinder had
     reversed its posted money is unknown, so the money is left empty (never guessed)."""
     rounds = [r.model_copy(update={"posted": None, "clawed_back": False}) for r in row.rounds]
-    return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None})
+    # A payer's Needs an offer part is measured from the posted total, so it goes with its posted part.
+    shares = [s.model_copy(update={"posted": None, "needs_offer": None}) for s in row.payer_shares]
+    return row.model_copy(update={"rounds": rounds, "total_posted": None, "notes": None, "payer_shares": shares})
+
+
+def _decided_unknown(row: GridRowOut) -> GridRowOut:
+    """A past row whose total decided is masked: its payers' parts of it are masked with it (⚠39), and the part of
+    the rounds that need an offer, which reads the same decided amounts."""
+    shares = [s.model_copy(update={"decided": None, "needs_offer": None}) for s in row.payer_shares]
+    return row.model_copy(update={"notes": None, "total_decided": None, "payer_shares": shares})
 
 
 def _emptied_posted(out: BudgetResponse) -> BudgetResponse:
@@ -1070,6 +1081,11 @@ def _round3_rules_refusal(rounds: Mapping[int, RoundState], rules: AidRules, yea
     if rules.round3.require_round2 and rounds.get(2, RoundState(round=2)).ask is None:
         return f"The {year} rules give Round 3 only after a Round 2 appeal: key the family's Round 2 ask first"
     return None
+
+
+def _payer_households(season: Season) -> set[int]:
+    """Every household holding a payer share this season: a split row names each (⚠39)."""
+    return {s.household_cm_id for shares in season.shares.values() for s in shares}
 
 
 class FinancialAidDecisionsService:
@@ -1468,12 +1484,14 @@ class FinancialAidDecisionsService:
             register=placed.rows,
             sessions=session_map,
             holds=holds,
+            shares=shares_of,  # the replayed payer shares: a past row's split rows and payer names read them (⚠39)
             as_of=day,
             axis=axis,
             gaps=gaps,
             unrebuilt=unrebuilt,
             posted_unknown=posted_unknown,
             gapped=gapped,
+            shares_unknown=bad_shares,
             grants_unplaced=grants_unplaced,
             deleted=deleted,
         )
@@ -1604,11 +1622,15 @@ class FinancialAidDecisionsService:
         day = self._past_day(as_of)
         if day is None:
             season, (families, campers) = await self._season(year, names=True)
+            unnamed = _payer_households(season) - families.keys()
+            if unnamed:  # a household that pays a share but applied for nothing (⚠39)
+                more, _ = await self._store.fetch_names(year, unnamed, set())
+                families = {**families, **more}
         else:
             season = await self.past_season(year, day, as_of_axis)
             families, campers = await self._store.fetch_names(
                 year,
-                {r.household_cm_id for r in season.requests.values()},
+                {r.household_cm_id for r in season.requests.values()} | _payer_households(season),
                 {r.person_cm_id for r in season.requests.values() if r.person_cm_id > 0},
             )
         rows = [self.row_of(season, (families, campers), rid) for rid in season.priced]
@@ -1624,9 +1646,15 @@ class FinancialAidDecisionsService:
                         "to_reverse": None,
                         "todos": None,
                         "request_status": None if row.request_id in season.unrebuilt else row.request_status,
-                        **({"notes": None, "total_decided": None} if row.request_id in season.gapped else {}),
                     }
                 )
+                for row in rows
+            ]
+            rows = [_decided_unknown(row) if row.request_id in season.gapped else row for row in rows]
+            rows = [
+                row.model_copy(update={"payer_count": None, "payer_shares": []})
+                if row.request_id in season.shares_unknown
+                else row
                 for row in rows
             ]
             rows = [_posted_unknown(row) if row.request_id in season.posted_unknown else row for row in rows]
@@ -1664,7 +1692,15 @@ class FinancialAidDecisionsService:
             cancellation=season.cancellations.get(request_id),
             to_reverse=request_id in season.to_reverse,
         )
-        return row.model_copy(update={"queues": row_queues(row)})
+        request = season.requests[request_id]
+        paying = payers(request_id, request.household_cm_id, season.shares.get(request_id, ()))
+        return row.model_copy(
+            update={
+                "queues": row_queues(row),
+                "payer_count": len(paying),
+                "payer_shares": grid_shares(row, paying, families),
+            }
+        )
 
     @staticmethod
     def _confirmation(season: Season, request_id: str) -> Confirmation | None:

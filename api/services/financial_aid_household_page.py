@@ -18,7 +18,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from api.schemas.financial_aid import HouseholdLinkRow
 from api.schemas.financial_aid_decisions import ConfirmationStatusOut, GridRowOut
@@ -53,33 +53,20 @@ from api.services.financial_aid_ledger_service import (
     parse_pb_datetime,
     posting_line,
 )
-from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from api.services.financial_aid_reconciliation import (
     page_scope as page_scope,  # re-exported: it lives in the light module
 )
+from api.services.financial_aid_share_split import dollars, payers, split
 from bunking.financial_aid.calculator.result import TraceStep
 from bunking.financial_aid.decisions import PricedRequest, RoundState
 from bunking.financial_aid.errors import FinancialAidError
 
 _ZERO = Decimal(0)
+# The round states whose amount isn't decided yet (Decision 2): a held round's amount is unknown (D44).
+_UNDECIDED: Final = frozenset({"held", "not_decided", "pending_approval"})
 # The lock_source the 2026 decision-year load (D67) is to write on its reproduced rounds: the receipt then
 # reads "2026, reproduced from the repaired sheet". Nothing writes it yet; the load's plan owns it.
 REPRODUCED = "reproduced"
-
-
-def _dollars(value: float | None) -> Decimal | None:
-    return Decimal(str(value)) if value is not None else None
-
-
-def _split(total: float | None, shares: Sequence[PayerShareRecord], applicant: int) -> dict[int, Decimal]:
-    """Each payer's whole-dollar part of `total` (split_award); nothing while the shares don't add up."""
-    amount = _dollars(total)
-    if amount is None:
-        return {}
-    try:
-        return split_award(amount, shares, applicant)
-    except PayerShareError:
-        return {}
 
 
 def _share_state(row: GridRowOut, household_cm_id: int) -> tuple[Decimal | None, ConfirmationStatusOut | None]:
@@ -89,33 +76,17 @@ def _share_state(row: GridRowOut, household_cm_id: int) -> tuple[Decimal | None,
     if c is None:
         return None, None
     if not c.shares:
-        return _dollars(c.in_campminder), c.status
+        return dollars(c.in_campminder), c.status
     share = next((s for s in c.shares if s.household_cm_id == household_cm_id), None)
     if share is None:
         return None, None
-    return _dollars(share.in_campminder), share.status
-
-
-def _payers(row: GridRowOut, shares: Sequence[PayerShareRecord]) -> Sequence[PayerShareRecord]:
-    """The request's payer shares; with no share row, the applying household pays it all (request_scope's reading)."""
-    if shares:
-        return shares
-    implied = PayerShareRecord(
-        id="",
-        year=0,
-        request_id=row.request_id,
-        household_cm_id=row.household_cm_id,
-        share_pct=Decimal(100),
-        source="implied",
-        actor="",
-    )
-    return (implied,)
+    return dollars(share.in_campminder), share.status
 
 
 def share_lines(row: GridRowOut, shares: Sequence[PayerShareRecord], chips: Mapping[int, int]) -> list[ShareLineOut]:
-    shares = _payers(row, shares)
-    decided = _split(row.total_decided, shares, row.household_cm_id)
-    posted = _split(row.total_posted, shares, row.household_cm_id)
+    shares = payers(row.request_id, row.household_cm_id, shares)
+    decided = split(dollars(row.total_decided), shares, row.household_cm_id)
+    posted = split(dollars(row.total_posted), shares, row.household_cm_id)
     out = []
     for share in sorted(shares, key=lambda s: (chips.get(s.household_cm_id, len(chips) + 1), s.household_cm_id)):
         held, status = _share_state(row, share.household_cm_id)
@@ -175,6 +146,21 @@ def _band_states(row: GridRowOut) -> list[tuple[ConfirmationStatusOut, Decimal]]
     return [(c.status, Decimal(str(c.gap)))]
 
 
+def request_grants(
+    row: GridRowOut, grants_by_request: Mapping[str, Decimal]
+) -> tuple[Decimal, Decimal | None, Decimal | None]:
+    """A request's counted grants, the part of them its family owed (applied), and the rest (beyond what was owed):
+    ⚠38 (b), owner ruling 2026-10-01. Applied = min(grants, max(0, cost − decided)), so cost − decided − applied is the
+    request's floored share whenever its aid alone doesn't pass its cost (Decision 1 names that edge). Applied and
+    beyond are None until the request has a cost and a decided total, and for a request outside the band."""
+    grants = grants_by_request.get(row.request_id, _ZERO)
+    cost, decided = dollars(row.cost), dollars(row.total_decided)
+    if not included(row) or cost is None or decided is None:
+        return grants, None, None
+    applied = min(grants, max(_ZERO, cost - decided))
+    return grants, applied, grants - applied
+
+
 def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal]) -> HouseholdTotalsOut:
     """The band (D77, §5.8): cost − {camp} aid (decided) − grants = family's share, then Posted with its states.
     Grants come from band_grants_by_request. Each request's share is floored at $0, then summed (owner ruling
@@ -183,8 +169,8 @@ def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal])
     real share. The share is "—" until every included request has a cost and a decided total. With no included
     request every figure is "—"."""
     rows = [row for row in rows if included(row)]
-    costs = [_dollars(row.cost) for row in rows]
-    decided = [_dollars(row.total_decided) for row in rows]
+    costs = [dollars(row.cost) for row in rows]
+    decided = [dollars(row.total_decided) for row in rows]
     cost = sum((c for c in costs if c is not None), _ZERO) if rows and None not in costs else None
     aid = _sum(decided)
     grants = sum((grants_by_request.get(row.request_id, _ZERO) for row in rows), _ZERO)
@@ -200,13 +186,20 @@ def totals(rows: Sequence[GridRowOut], grants_by_request: Mapping[str, Decimal])
         if cost is not None and None not in decided
         else None
     )
+    parts = [request_grants(row, grants_by_request) for row in rows]
+    applied = [a for _, a, _ in parts]
+    beyond = [b for _, _, b in parts]
+    known = share is not None  # grants applied wait with the family's share (Decision 1)
     return HouseholdTotalsOut(
         cost=money(cost) if cost is not None else None,
         decided=money(aid) if aid is not None else None,
         grants=money(grants) if rows else None,
         family_share=money(share) if share is not None else None,
-        posted=money(p) if (p := _sum(_dollars(row.total_posted) for row in rows)) is not None else None,
+        posted=money(p) if (p := _sum(dollars(row.total_posted) for row in rows)) is not None else None,
         states=_states(pair for row in rows for pair in _band_states(row)),
+        decided_partial=any(r.status in _UNDECIDED for row in rows for r in row.rounds),
+        grants_applied=money(sum((a for a in applied if a is not None), _ZERO)) if known else None,
+        grants_beyond_owed=money(sum((b for b in beyond if b is not None), _ZERO)) if known else None,
     )
 
 
@@ -497,6 +490,27 @@ class HouseholdPageService:
         people = {int(p.cm_id): p for p in persons}
         accepted = accepted_index(dispositions)
         rules_version = season.rules.version if season.rules is not None else None
+        band = band_grants_by_request(season.register)
+
+        def request_out(row: GridRowOut) -> HouseholdRequestOut:
+            counted, applied, beyond = request_grants(row, band)
+            return HouseholdRequestOut(
+                row=row,
+                ask=asks[row.request_id].ask if row.request_id in asks else None,
+                payer_share_status=asks[row.request_id].payer_share_status if row.request_id in asks else "",
+                shares=share_lines(row, season.shares.get(row.request_id, ()), chips),
+                receipts=receipts(
+                    season.priced[row.request_id],
+                    season.rounds.get(row.request_id, {}),
+                    year=year,
+                    rules_version=rules_version,
+                    names=user_names,
+                ),
+                grants=money(counted),
+                grants_applied=money(applied) if applied is not None else None,
+                grants_beyond_owed=money(beyond) if beyond is not None else None,
+            )
+
         return HouseholdPageResponse(
             year=year,
             household_cm_id=household_cm_id,
@@ -527,23 +541,8 @@ class HouseholdPageService:
                 )
                 for h in scope.households
             ],
-            totals=totals(rows, band_grants_by_request(season.register)),
-            requests=[
-                HouseholdRequestOut(
-                    row=row,
-                    ask=asks[row.request_id].ask if row.request_id in asks else None,
-                    payer_share_status=asks[row.request_id].payer_share_status if row.request_id in asks else "",
-                    shares=share_lines(row, season.shares.get(row.request_id, ()), chips),
-                    receipts=receipts(
-                        season.priced[row.request_id],
-                        season.rounds.get(row.request_id, {}),
-                        year=year,
-                        rules_version=rules_version,
-                        names=user_names,
-                    ),
-                )
-                for row in rows
-            ],
+            totals=totals(rows, band),
+            requests=[request_out(row) for row in rows],
             incomes=[
                 IncomeOut(
                     household_cm_id=d.household_cm_id,
