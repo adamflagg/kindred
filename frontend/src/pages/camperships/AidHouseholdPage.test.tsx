@@ -3,8 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { householdPage } from '../../components/camperships/household/householdFixtures'
-import { GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
+import {
+  householdPage,
+  householdRequest,
+} from '../../components/camperships/household/householdFixtures'
+import { gridRow, GRID_ROWS } from '../../components/camperships/requests/gridFixtures'
 import { AidApiError } from '../../services/camperships/aidApi'
 import type { ApiAidHouseholdPage } from '../../types/api-types'
 import AidHouseholdPage from './AidHouseholdPage'
@@ -53,8 +56,25 @@ vi.mock('../../hooks/camperships/useAidDefinitions', () => ({
 vi.mock('../../components/camperships/shell/AidDefinitionNotes', () => ({
   AidDefinitionNotes: () => null,
 }))
+// The permissions held: view only by default, so the cards stay plain.
+let granted: string[] = ['financial_aid.view']
 vi.mock('../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: (p: string) => p === 'financial_aid.view' }),
+  usePermissions: () => ({ hasPermission: (p: string) => granted.includes(p) }),
+}))
+const idle = { isPending: false, error: null, mutate: vi.fn(), mutateAsync: vi.fn() }
+vi.mock('../../hooks/camperships/useAidWrites', () => ({
+  useAidCancellation: () => idle,
+  useAidManualHold: () => idle,
+  useAidHoldRelease: () => idle,
+  useAidTickPosted: () => idle,
+  useAidTickAccepted: () => idle,
+  useAidUndoPosted: () => idle,
+  useAidRound3Decision: () => idle,
+  useAidKeyAsk: () => idle,
+  useAidRound3Amount: () => idle,
+}))
+vi.mock('../../hooks/camperships/useAidEditorPreview', () => ({
+  useAidEditorPreview: () => ({ preview: { status: 'idle' }, onAmountChange: () => undefined }),
 }))
 vi.mock('../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
 
@@ -83,6 +103,7 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  granted = ['financial_aid.view']
   result = { data: householdPage(), isLoading: false, error: null }
   asked.length = 0
   prefetched.length = 0
@@ -100,6 +121,41 @@ describe('AidHouseholdPage (§6.3)', () => {
     expect(screen.getByText('$9,300')).toBeInTheDocument()
     expect(screen.getByText('posted · 1 short $210')).toBeInTheDocument()
     expect(asked).toContain(1000001)
+  })
+
+  it('keeps the cards plain, and the holds without actions, for view only', () => {
+    result = {
+      data: householdPage({
+        requests: [
+          householdRequest(
+            gridRow({ holds: [{ code: 'manual_hold', severity: 'hold', message: 'm' }] })
+          ),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    expect(screen.queryByRole('button', { name: 'Cancel request…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Lift…' })).toBeNull()
+  })
+
+  it('gives casework the working cards and the hold actions (§6.3)', () => {
+    granted = ['financial_aid.view', 'financial_aid.casework']
+    result = {
+      data: householdPage({
+        requests: [
+          householdRequest(
+            gridRow({ holds: [{ code: 'manual_hold', severity: 'hold', message: 'm' }] })
+          ),
+        ],
+      }),
+      isLoading: false,
+      error: null,
+    }
+    renderAt('/aid/households/1000001')
+    expect(screen.getByRole('button', { name: 'Cancel request…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Lift…' })).toBeInTheDocument()
   })
 
   it("shows each request's card", () => {
