@@ -1,0 +1,340 @@
+import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { gridRow, ROW_EMMA } from '../requests/gridFixtures'
+import {
+  DuplicateForm,
+  HeadcountForm,
+  IncomeCorrection,
+  SessionForm,
+  ShareForm,
+} from './CaseworkForms'
+import { createEditorExits } from './editorExits'
+import {
+  applicationOut,
+  householdPage,
+  householdRequest,
+  requestOut,
+  SPLIT_PAGE,
+} from './householdFixtures'
+
+const spies = {
+  correction: vi.fn(),
+  share: vi.fn(),
+  session: vi.fn(),
+  duplicate: vi.fn(),
+  headcount: vi.fn(),
+}
+// What the next write does: settle at once, wait for the test, or be refused.
+let outcome: Promise<unknown> | null = null
+// Typed as a plain function: vitest 5's `Mock` type isn't callable under tsc (I1).
+const writing = (spy: (vars: unknown) => unknown) => ({
+  isPending: false,
+  error: null,
+  mutateAsync: (vars: unknown) => {
+    spy(vars)
+    return outcome ?? Promise.resolve({})
+  },
+})
+vi.mock('../../../hooks/camperships/useAidWrites', () => ({
+  useAidCorrection: () => writing(spies.correction),
+  useAidHouseholdShare: () => writing(spies.share),
+  useAidSessionResolve: () => writing(spies.session),
+  useAidDuplicate: () => writing(spies.duplicate),
+  useAidHeadcount: () => writing(spies.headcount),
+}))
+vi.mock('../../../hooks/camperships/useAidSessionNames', () => ({
+  useAidSessionNames: () => new Map([[1000199, 'Session 3']]),
+}))
+let application: ReturnType<typeof applicationOut> | undefined = applicationOut()
+vi.mock('../../../hooks/camperships/useAidApplication', () => ({
+  useAidApplication: () => ({ data: application, isLoading: false, error: null }),
+}))
+
+const PAGE = householdPage()
+const done = vi.fn()
+const countAnswer = () => {
+  const income = PAGE.incomes[0]!
+  return { income, answer: income.answers.find((a) => a.field === 'num_children')! }
+}
+
+beforeEach(() => {
+  for (const spy of Object.values(spies)) spy.mockReset()
+  done.mockReset()
+  outcome = null
+  application = applicationOut()
+})
+
+describe('IncomeCorrection (main spec §9.3)', () => {
+  it('corrects a count with its reason', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.clear(screen.getByLabelText('Children'))
+    await userEvent.type(screen.getByLabelText('Children'), '4')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone{Enter}')
+    expect(spies.correction).toHaveBeenCalledWith({
+      year: 2027,
+      householdCmId: 1000001,
+      body: { field: 'num_children', new_value: '4', reason: 'Confirmed by phone' },
+    })
+  })
+
+  it("goes back to the form's figure on a corrected answer, sending null (the server 422s on '')", async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: true }} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'The family was right')
+    await userEvent.click(screen.getByRole('button', { name: "Use the form's figure" }))
+    expect(spies.correction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { field: 'num_children', new_value: null, reason: 'The family was right' },
+      })
+    )
+  })
+
+  it('offers the way back only on a corrected answer, and nothing on the income override', async () => {
+    const { income, answer } = countAnswer()
+    const { rerender } = render(
+      <IncomeCorrection page={PAGE} income={income} answer={{ ...answer, corrected: false }} />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    expect(screen.queryByRole('button', { name: "Use the form's figure" })).toBeNull()
+    rerender(
+      <IncomeCorrection
+        page={PAGE}
+        income={income}
+        answer={{
+          ...answer,
+          field: 'income_override',
+          synced: 'confirmed_prior_year',
+          effective: 'confirmed_prior_year',
+        }}
+      />
+    )
+    expect(screen.queryByRole('button', { name: 'Correct…' })).toBeNull()
+  })
+
+  it('asks for a reason, and for a figure the server can read, before sending anything', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the correction' }))
+    expect(screen.getByText('A reason is required')).toBeInTheDocument()
+    await userEvent.clear(screen.getByLabelText('Children'))
+    await userEvent.type(screen.getByLabelText('Children'), '4.5')
+    await userEvent.type(screen.getByLabelText('Reason'), 'x{Enter}')
+    expect(screen.getByText('A whole number')).toBeInTheDocument()
+    expect(spies.correction).not.toHaveBeenCalled()
+  })
+
+  it("shows the server's refusal and keeps the form and what was typed", async () => {
+    outcome = Promise.reject(new Error('a reason is required'))
+    outcome.catch(() => undefined)
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone{Enter}')
+    expect(await screen.findByText('a reason is required')).toBeInTheDocument()
+    expect(screen.getByLabelText('Reason')).toHaveValue('Confirmed by phone')
+  })
+
+  it('sends once while a save is outstanding, and closes only after it settles', async () => {
+    let settle: () => void = () => undefined
+    outcome = new Promise<void>((resolve) => {
+      settle = resolve
+    })
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.type(screen.getByLabelText('Reason'), 'Confirmed by phone{Enter}')
+    await userEvent.type(screen.getByLabelText('Reason'), '{Enter}')
+    expect(spies.correction).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Save the correction' })).toBeDisabled()
+    await act(async () => {
+      settle()
+      await outcome
+    })
+    expect(screen.queryByLabelText('Reason')).toBeNull()
+  })
+
+  it('reopens from the answer as it stands, with a blank reason, after Back', async () => {
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    await userEvent.clear(screen.getByLabelText('Children'))
+    await userEvent.type(screen.getByLabelText('Children'), '9')
+    await userEvent.type(screen.getByLabelText('Reason'), 'half-typed')
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    expect(screen.getByLabelText('Children')).toHaveValue(answer.effective)
+    expect(screen.getByLabelText('Reason')).toHaveValue('')
+  })
+
+  it("leaves the page's open editor before opening (one open editor per page)", async () => {
+    const exits = createEditorExits()
+    const left = vi.fn()
+    exits.register('reqemma00000001', (go) => {
+      left()
+      go()
+    })
+    const { income, answer } = countAnswer()
+    render(<IncomeCorrection page={PAGE} income={income} answer={answer} exits={exits} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Correct…' }))
+    expect(left).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Reason')).toBeInTheDocument()
+  })
+})
+
+describe('ShareForm (main spec §9.2)', () => {
+  it("sets another household's share as a percentage", async () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await userEvent.selectOptions(screen.getByLabelText('Household'), '1000003')
+    await userEvent.type(screen.getByLabelText('Share'), '40')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Parents agreed 60/40{Enter}')
+    expect(spies.share).toHaveBeenCalledWith({
+      requestId: 'reqemma00000001',
+      householdCmId: 1000003,
+      body: { share_pct: '40', reason: 'Parents agreed 60/40' },
+    })
+  })
+
+  it('takes dollars for the server to turn into a percentage, and refuses more than 100%', async () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await userEvent.type(screen.getByLabelText('Share'), '140')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Typo{Enter}')
+    expect(screen.getByText('At most 100%')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Share as'), 'amount')
+    await userEvent.clear(screen.getByLabelText('Share'))
+    await userEvent.type(screen.getByLabelText('Share'), '880{Enter}')
+    expect(spies.share).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { amount: '880', reason: 'Typo' } })
+    )
+  })
+
+  it('adds a household that is not on the page by its CampMinder id', async () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await userEvent.selectOptions(screen.getByLabelText('Household'), 'other')
+    await userEvent.type(screen.getByLabelText('Household id'), '1000099')
+    await userEvent.type(screen.getByLabelText('Share'), '25')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Third payer{Enter}')
+    expect(spies.share).toHaveBeenCalledWith(
+      expect.objectContaining({
+        householdCmId: 1000099,
+        body: { share_pct: '25', reason: 'Third payer' },
+      })
+    )
+  })
+
+  it('refuses a share of nothing, in either unit, before asking the server', async () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await userEvent.type(screen.getByLabelText('Share'), '0')
+    await userEvent.type(screen.getByLabelText('Reason'), 'x{Enter}')
+    expect(screen.getByText('More than 0%')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Share as'), 'amount')
+    await userEvent.type(screen.getByLabelText('Share'), '{Enter}')
+    expect(screen.getByText('More than $0')).toBeInTheDocument()
+    expect(spies.share).not.toHaveBeenCalled()
+  })
+
+  it("shows the server's refusal (no priced amount yet) and stays open; done only on success", async () => {
+    outcome = Promise.reject(new Error('this request has no priced amount yet: enter a percentage'))
+    outcome.catch(() => undefined)
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await userEvent.selectOptions(screen.getByLabelText('Share as'), 'amount')
+    await userEvent.type(screen.getByLabelText('Share'), '500')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Split{Enter}')
+    expect(
+      await screen.findByText('this request has no priced amount yet: enter a percentage')
+    ).toBeInTheDocument()
+    expect(done).not.toHaveBeenCalled()
+  })
+
+  it('closes after the write has settled, and Back closes without writing', async () => {
+    render(<ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={done} />)
+    await userEvent.type(screen.getByLabelText('Share'), '40')
+    await userEvent.type(screen.getByLabelText('Reason'), 'ok{Enter}')
+    expect(done).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(spies.share).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SessionForm, DuplicateForm, HeadcountForm', () => {
+  it('settles the session from its candidates', async () => {
+    render(<SessionForm request={householdRequest(ROW_EMMA)} page={PAGE} onDone={done} />)
+    expect(screen.getByRole('option', { name: 'Session 3' })).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Session'), '1000101')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Registered for Session 2{Enter}')
+    expect(spies.session).toHaveBeenCalledWith({
+      requestId: 'reqemma00000001',
+      body: { session_cm_id: 1000101, reason: 'Registered for Session 2' },
+    })
+  })
+
+  it('says so when intake recorded no candidates', () => {
+    application = applicationOut({ requests: [requestOut({ flags: [] })] })
+    render(<SessionForm request={householdRequest(ROW_EMMA)} page={PAGE} onDone={done} />)
+    expect(
+      screen.getByText('No candidate sessions are recorded for this request.')
+    ).toBeInTheDocument()
+  })
+
+  it('says so, rather than "no candidates", when the application could not be read', () => {
+    application = undefined
+    render(<SessionForm request={householdRequest(ROW_EMMA)} page={PAGE} onDone={done} />)
+    expect(screen.getByText(/Couldn.t load this request.s candidate sessions/)).toBeInTheDocument()
+  })
+
+  it('keeps the other request and marks this one its duplicate', async () => {
+    const duplicate = householdRequest(
+      gridRow({ request_id: 'reqemmadup00009', request_status: 'duplicate_pending' })
+    )
+    const page = householdPage({ requests: [householdRequest(ROW_EMMA), duplicate] })
+    render(<DuplicateForm request={duplicate} page={page} onDone={done} />)
+    await userEvent.type(screen.getByLabelText('Reason'), 'Sent twice{Enter}')
+    expect(spies.duplicate).toHaveBeenCalledWith({
+      requestId: 'reqemmadup00009',
+      body: { duplicate_of: 'reqemma00000001', reason: 'Sent twice' },
+    })
+  })
+
+  it('sets a Family Camp headcount, starting from what the application holds', async () => {
+    application = applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqfamily000010',
+          person_cm_id: 0,
+          headcount_non_infant: 2,
+          headcount_infant: 1,
+        }),
+      ],
+    })
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    render(<HeadcountForm request={family} onDone={done} />)
+    expect(screen.getByLabelText('Not infants')).toHaveValue('2')
+    await userEvent.clear(screen.getByLabelText('Not infants'))
+    await userEvent.type(screen.getByLabelText('Not infants'), '3')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows three{Enter}')
+    expect(spies.headcount).toHaveBeenCalledWith({
+      requestId: 'reqfamily000010',
+      body: { non_infant: 3, infant: 1, source: 'override', reason: 'Billing shows three' },
+    })
+  })
+
+  it('refuses a family of nobody before asking the server', async () => {
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    application = applicationOut({
+      requests: [requestOut({ id: 'reqfamily000010', person_cm_id: 0 })],
+    })
+    render(<HeadcountForm request={family} onDone={done} />)
+    await userEvent.type(screen.getByLabelText('Reason'), 'none{Enter}')
+    expect(screen.getByText('A family needs at least one person')).toBeInTheDocument()
+    expect(spies.headcount).not.toHaveBeenCalled()
+  })
+})
