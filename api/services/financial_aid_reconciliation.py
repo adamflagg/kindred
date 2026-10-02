@@ -58,7 +58,13 @@ from api.services.financial_aid_grants_register import (
     Placement,
     program_family_for_session_type,
 )
-from api.services.financial_aid_intake_types import PayerShareRecord, RequestRecord, SessionRow
+from api.services.financial_aid_intake_types import (
+    STATUS_ACTIVE,
+    STATUS_UNMATCHED,
+    PayerShareRecord,
+    RequestRecord,
+    SessionRow,
+)
 from api.services.financial_aid_payer_shares import PayerShareError, split_award
 from bunking.financial_aid.calculator import CalcIssue
 from bunking.financial_aid.decisions import DecisionEvent, PricedRequest, RoundLedger, RoundState
@@ -587,20 +593,31 @@ def clawed_back_on(
     return max(days)
 
 
+def clawback_eligible(status: str, *, cancelled: bool) -> bool:
+    """Owner ruling 2026-10-02 (option B, a change to D54): only a request that is cancelled (in CampMinder or in
+    Kindred) or closed (any status but active/unmatched: withdrawn, duplicate, duplicate_pending) is clawed back
+    when CampMinder reverses its money, which is "To reverse" territory. A LIVE request whose money was fully
+    reversed with no repost stays in Posted, and every posted round reads unconfirmed. The one gate the live read,
+    the past-date read and To place all pass through."""
+    return cancelled or status not in (STATUS_ACTIVE, STATUS_UNMATCHED)
+
+
 def apply_clawback(
     priced: PricedRequest,
     rounds: Mapping[int, RoundState],
     lines: Sequence[CampLine],
     *,
+    eligible: bool,
     at: datetime | None = None,
     family_lines: Sequence[CampLine],
 ) -> tuple[PricedRequest, date | None]:
     """The request with every posted round marked clawed back when its money came back, and the
     reversal's day; otherwise the same request and None. All of a request's posted rounds go
     together, because reconciliation is by the request's net total (main spec §11). `family_lines`
-    is `SeasonLedger.family_lines` over the request's D26 households (`request_scope`)."""
+    is `SeasonLedger.family_lines` over the request's D26 households (`request_scope`). `eligible` is
+    `clawback_eligible`'s answer; False returns the request unchanged."""
     posted = [view for view in priced.rounds if view.status == "posted"]
-    if not posted:
+    if not eligible or not posted:
         return priced, None
     first_posted_on = min(_posted_day(rounds.get(view.round)) for view in posted)
     day = clawed_back_on(lines, first_posted_on, at, family_lines=family_lines)

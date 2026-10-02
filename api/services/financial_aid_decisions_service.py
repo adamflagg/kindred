@@ -158,6 +158,7 @@ from api.services.financial_aid_reconciliation import (
     as_recorded,
     build_ledger,
     camp_date,
+    clawback_eligible,
     confirmation,
     dollars,
     ledger_note,
@@ -1422,7 +1423,11 @@ class FinancialAidDecisionsService:
             live = request.status in _LIVE
             lines = ledger.lines(request.id) if live else ledger.closed_lines(request.id)
             item, day = apply_clawback(
-                priced[request.id], rounds.get(request.id, {}), lines, family_lines=ledger.family_lines(scope)
+                priced[request.id],
+                rounds.get(request.id, {}),
+                lines,
+                eligible=clawback_eligible(request.status, cancelled=request.id in cancellations),
+                family_lines=ledger.family_lines(scope),
             )
             if day is not None:
                 reversed_on[request.id] = day
@@ -1647,6 +1652,7 @@ class FinancialAidDecisionsService:
                 rounds,
                 priced,
                 (shares_of, bad_shares, bad_share_households),
+                cancelled=frozenset(in_kindred) | cancelled_now,
                 notes=year >= FIRST_TICKED_SEASON,
             )
             gaps = (*gaps, *ledger_gaps)
@@ -1701,9 +1707,11 @@ class FinancialAidDecisionsService:
         priced: dict[str, PricedRequest],
         shares_as_of: tuple[dict[str, tuple[PayerShareRecord, ...]], frozenset[str], frozenset[int]],
         *,
+        cancelled: frozenset[str],
         notes: bool = False,
     ) -> tuple[list[NotRebuiltOut], frozenset[str]]:
-        """Clawbacks as of `at`, and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
+        """Clawbacks as of `at` (only a cancelled-by-then or closed request is clawed back, `clawback_eligible`;
+        `cancelled` is the requests cancelled by the day, in Kindred or CampMinder), and with `notes` (a ticked season) D81's Note as live adds it (3c-2), applied
         to `priced` in place; the gaps and the requests whose posted money is left empty (their shares or
         placements can't be replayed). On the campminder axis the lines cut on CampMinder's post and reversal
         dates; on recorded, also on when Kindred had recorded each line and its reversal (as_recorded, ruling
@@ -1747,7 +1755,12 @@ class FinancialAidDecisionsService:
             lines = ledger.lines(request_id) if request.status in _LIVE else ledger.closed_lines(request_id)
             scope = request_scope(request, shares_of.get(request_id, ()))
             item, _ = apply_clawback(
-                priced[request_id], rounds.get(request_id, {}), lines, at=at, family_lines=ledger.family_lines(scope)
+                priced[request_id],
+                rounds.get(request_id, {}),
+                lines,
+                eligible=clawback_eligible(request.status, cancelled=request_id in cancelled),
+                at=at,
+                family_lines=ledger.family_lines(scope),
             )
             note = ledger_note(item, lines, ledger.family_unplaced(scope), at=at) if notes else None
             priced[request_id] = replace(item, notes=(*item.notes, note)) if note is not None else item

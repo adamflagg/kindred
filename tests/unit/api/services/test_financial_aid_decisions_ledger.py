@@ -18,6 +18,7 @@ import pytest
 import api.services.financial_aid_decisions_service as decisions_service
 from api.constants.collections import AID_PAYER_SHARES
 from api.schemas.financial_aid_decisions import AsOfAxis, GridRowOut, PostedIn, PostedRow, UnpostIn
+from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_decisions_repository import (
     FinancialAidDecisionsRepository,
     camp_line,
@@ -49,6 +50,14 @@ APR1 = datetime(2027, 4, 1, 18, 0, tzinfo=UTC)
 JUN1 = datetime(2027, 6, 1, 18, 0, tzinfo=UTC)
 NIGHT_AFTER = T0 + timedelta(hours=16)  # the ledger sync after the Mar 9 tick
 NOTE = "in_campminder_not_ticked"
+
+
+def _cancelled(store: FakeDecisionsStore, request_id: str = EMMA) -> None:
+    """Cancel the request in Kindred: D54's clawback applies only to a cancelled or closed request (owner ruling,
+    option B), so the clawback mechanics these tests pin are read on a cancelled one."""
+    store.cancel_events.append(
+        CancelEvent("can000000000001", request_id, "cancel", T0, reason="not_known", in_kindred=True, actor=ACTOR)
+    )
 
 
 async def _row(store: FakeDecisionsStore, request_id: str = EMMA) -> GridRowOut:
@@ -254,6 +263,7 @@ async def test_a_request_with_nothing_posted_has_no_confirmation() -> None:
 async def test_a_reversal_returns_the_money_to_remaining_and_reads_reversed() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    _cancelled(store)
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     store.synced_at = JUN1 + timedelta(hours=12)
@@ -344,6 +354,7 @@ async def test_a_past_date_before_the_reversal_still_counts_the_posted_money() -
         pytest.skip("3c (the as-of reads) is not on this branch")
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    _cancelled(store)
     log_seeded(store, datetime(2027, 2, 1, 18, 0, tzinfo=UTC))  # the shares are logged, so they replay
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
@@ -409,6 +420,7 @@ def _emma_posted(store: FakeDecisionsStore) -> None:
 async def test_case_a_family_level_money_reposted_after_the_date_does_not_hold_the_clawback() -> None:
     store = FakeDecisionsStore()
     _emma_posted(store)
+    _cancelled(store)
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     seed_line(store, 9002, "1500", person=0, posted=datetime(2027, 6, 15, 18, 0, tzinfo=UTC))
     assert await _r1_posted(store, date(2027, 6, 5)) == 0.0
@@ -419,6 +431,7 @@ async def test_case_a_family_level_money_reposted_after_the_date_does_not_hold_t
 async def test_case_b_family_level_money_live_on_the_date_holds_the_clawback() -> None:
     store = FakeDecisionsStore()
     _emma_posted(store)
+    _cancelled(store)
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     # Posted on the reversal's day, so it may be the repost (final review: only money posted on or after
     # the reversal blocks); itself reversed Jun 3.
@@ -433,6 +446,7 @@ async def test_payer_shares_are_replayed_to_the_date_not_read_as_they_are_now() 
     was deleted on Jun 10, so today's shares would wrongly release it on Jun 5."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    _cancelled(store)
     store.shares = [share_row(EMMA, 1000001, "60"), share_row(EMMA, 1000004, "40")]
     log_seeded(store, SEEDED)
     key = f"{EMMA}:1000004"
@@ -460,6 +474,7 @@ async def test_payer_shares_are_replayed_to_the_date_not_read_as_they_are_now() 
 async def test_a_placement_made_after_the_date_does_not_place_the_line_on_it() -> None:
     store = FakeDecisionsStore()
     _emma_posted(store)
+    _cancelled(store)
     seed_line(store, 9001, "1500", person=0, posted=T0, reversed_at=JUN1)  # the household's: placed by staff later
     seed_override(store, 9001, 1000011, datetime(2027, 6, 10, 18, 0, tzinfo=UTC))
     assert await _r1_posted(store, date(2027, 6, 5)) == 1500.0
@@ -871,6 +886,7 @@ async def test_a_partially_committed_tick_is_not_a_refusal() -> None:
 async def test_family_level_money_posted_before_the_reversal_does_not_block_the_clawback() -> None:
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    _cancelled(store)
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     seed_line(store, 9002, "900", person=0, posted=T0)  # a sibling's or the family's older money
@@ -890,6 +906,7 @@ async def test_decided_still_counts_a_clawed_back_round_while_posted_and_remaini
     Remaining drop it."""
     store = FakeDecisionsStore()
     seed_request(store, EMMA)
+    _cancelled(store)
     _posted(store, EMMA, 1, "1500")
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     store.synced_at = JUN1 + timedelta(hours=12)
@@ -908,6 +925,7 @@ async def test_a_line_posted_before_the_date_but_first_synced_after_it_counts_on
     repost); the recorded axis had not seen it, so Kindred showed the money clawed back then."""
     store = FakeDecisionsStore()
     _emma_posted(store)
+    _cancelled(store)
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1)
     seed_line(store, 9002, "1500", person=0, posted=JUN1, recorded=JUN10)
     day = date(2027, 6, 5)
@@ -922,6 +940,7 @@ async def test_a_reversal_claws_back_on_the_recorded_axis_only_once_kindred_had_
     Jun 10. The row's last write stands in for when Kindred recorded the reversal."""
     store = FakeDecisionsStore()
     _emma_posted(store)
+    _cancelled(store)
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1, rewritten=JUN10)
     day = date(2027, 6, 5)
     assert await _r1_posted(store, day) == 0.0
@@ -933,6 +952,7 @@ async def test_a_reversal_claws_back_on_the_recorded_axis_only_once_kindred_had_
 async def test_the_grid_marks_the_clawback_by_the_axis_it_cut_on() -> None:
     store = FakeDecisionsStore()
     _emma_posted(store)
+    _cancelled(store)
     seed_line(store, 9001, "1500", posted=T0, reversed_at=JUN1, rewritten=JUN10)
     service = _past_service(store)
     cases: tuple[tuple[AsOfAxis, bool, float | None], ...] = (("campminder", True, None), ("recorded", False, 1500.0))

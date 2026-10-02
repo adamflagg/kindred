@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from api.services.financial_aid_cancellations import CancelEvent
 from api.services.financial_aid_decisions_repository import FinancialAidDecisionsRepository, line_override
 from api.services.financial_aid_decisions_service import ROUND_SECTIONS, FinancialAidDecisionsService
 from api.services.financial_aid_grants_register import RegisterRow
@@ -92,6 +93,10 @@ async def test_a_split_made_after_the_date_does_not_place_the_line_on_it() -> No
     Jun 1, but only once the split put its parts on the two requests (Jun 10) does that claw both back."""
     store = FakeDecisionsStore()
     _siblings_posted(store)
+    for n, rid in enumerate((EMMA, LIAM)):  # cancelled: only a cancelled or closed request is clawed back (D54, B)
+        store.cancel_events.append(
+            CancelEvent(f"can00000000000{n}", rid, "cancel", MAR9, reason="not_known", in_kindred=True, actor=ACTOR)
+        )
     seed_line(store, 9001, "3000", person=0, posted=MAR9, reversed_at=JUN1)
     seed_split(store, 9001, (EMMA_PART, LIAM_PART), JUN10)
     assert await _r1_posted(store, date(2027, 6, 5)) == 3000.0
