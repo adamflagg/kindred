@@ -12,7 +12,7 @@ import { Navigate, useParams } from 'react-router'
 import { aidHref } from '../../components/camperships/kit/asOf'
 import { AidPageBand } from '../../components/camperships/shell/AidPageBand'
 import { AidTabNav } from '../../components/camperships/shell/AidTabNav'
-import { aidSection, visibleTabs, type AidSectionKey } from '../../config/aidNav'
+import { aidSection, resolveAidTab, type AidSectionKey } from '../../config/aidNav'
 import { useAidAsOf } from '../../hooks/camperships/useAidAsOf'
 import { useYear } from '../../hooks/useCurrentYear'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -39,15 +39,12 @@ export default function AidSectionPage({ section: key }: { section: AidSectionKe
   const { hasPermission } = usePermissions()
   const year = useYear()
   const asOf = useAidAsOf()
-  const tabs = visibleTabs(section, { hasPermission })
-  const current = section.tabs.find((t) => t.slug === tab)
-
-  if (section.tabs.length > 0 && current === undefined) {
-    const first = tabs[0]
-    if (first === undefined) return <PermissionDeniedPage />
-    return <Navigate to={aidHref(`${section.path}/${first.slug}`, { year, asOf })} replace />
+  const resolved = resolveAidTab(section, tab, { hasPermission })
+  if (resolved.kind === 'denied') return <PermissionDeniedPage />
+  if (resolved.kind === 'first') {
+    return <Navigate to={aidHref(`${section.path}/${resolved.tab.slug}`, { year, asOf })} replace />
   }
-  if (current !== undefined && !tabs.includes(current)) return <PermissionDeniedPage />
+  const { tab: current, tabs } = resolved
 
   return (
     <div className="space-y-3 sm:space-y-4">
