@@ -235,7 +235,11 @@ function sum<T>(rows: readonly T[] | undefined, pick: (row: T) => number): numbe
   return (rows ?? []).reduce((total, row) => total + pick(row), 0)
 }
 
-/** Last season's column (RPT-17): its posted money, or its label when it isn't loaded (never zeros). */
+/**
+ * Last season's column (RPT-17): the server's own label, always. Loaded, it says how the figures were
+ * made and as of when ("2026, posted (as of Jan 3, 2027)", ", every request" while a request set is on);
+ * not loaded, it says so (never zeros).
+ */
 export function lastSeasonHeading(last: ApiAidLastSeason): string {
-  return last.loaded ? `${String(last.year)} as posted` : last.label
+  return last.label
 }

@@ -153,7 +153,7 @@ describe('the compare rows (D38; RPT-17, RPT-32)', () => {
   it("heads last season's column, or says it isn't loaded", () => {
     const last = compareOut().last_season
     if (!last) throw new Error('the fixture has last season')
-    expect(lastSeasonHeading(last)).toBe('2026 as posted')
+    expect(lastSeasonHeading(last)).toBe('2026, posted (as of Jan 3, 2027)')
     expect(
       lastSeasonHeading({
         year: 2026,
