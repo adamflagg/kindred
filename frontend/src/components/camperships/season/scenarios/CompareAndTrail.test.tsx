@@ -79,11 +79,24 @@ vi.mock('../../../../hooks/camperships/useAidScenarioDraft', () => ({
     release: vi.fn(() => Promise.resolve(true)),
     load,
     keep: vi.fn(() => Promise.resolve(true)),
+    adopt: vi.fn(() => Promise.resolve(true)),
     freeze: vi.fn(() => Promise.resolve(true)),
     start: vi.fn(() => Promise.resolve(true)),
   }),
 }))
 vi.mock('../../../../hooks/useCurrentYear', () => ({ useYear: () => 2027 }))
+// PR 6's fit and promotion: idle unless a test reads them (FitAndPromotion.test.tsx).
+vi.mock('../../../../hooks/camperships/useAidPromotion', () => ({
+  useAidScenarioFit: () => ({
+    data: undefined,
+    error: null,
+    isPending: false,
+    mutate: vi.fn(),
+    reset: vi.fn(),
+  }),
+  useAidPromotionPreview: () => ({ data: undefined, isLoading: false, error: null }),
+  useAidMakeRulesDraft: () => ({ isPending: false, mutate: vi.fn(), reset: vi.fn() }),
+}))
 
 function Where() {
   const { search } = useLocation()
