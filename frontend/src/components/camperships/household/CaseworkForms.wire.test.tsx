@@ -7,14 +7,38 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
-import { IncomeCorrection } from './CaseworkForms'
-import { householdPage } from './householdFixtures'
+import { HeadcountForm, IncomeCorrection, ShareForm } from './CaseworkForms'
+import {
+  applicationOut,
+  householdPage,
+  householdRequest,
+  requestOut,
+  SPLIT_PAGE,
+} from './householdFixtures'
+import { gridRow } from '../requests/gridFixtures'
 
 vi.mock('../../../lib/pocketbase', () => ({
   pb: { authStore: { token: 'test-jwt', clear: vi.fn() } },
 }))
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false, user: { id: 'u1' } }),
+}))
+
+vi.mock('../../../hooks/camperships/useAidApplication', () => ({
+  useAidApplication: () => ({
+    data: applicationOut({
+      requests: [
+        requestOut({
+          id: 'reqfamily000010',
+          person_cm_id: 0,
+          headcount_non_infant: 2,
+          headcount_infant: 1,
+        }),
+      ],
+    }),
+    isLoading: false,
+    error: null,
+  }),
 }))
 
 const PAGE = householdPage()
@@ -69,5 +93,53 @@ describe('IncomeCorrection on the wire', () => {
       new_value: '4',
       reason: 'Confirmed by phone',
     })
+  })
+})
+
+describe('HeadcountForm on the wire', () => {
+  it('PUTs the headcount with its reason_code', async () => {
+    const family = householdRequest(
+      gridRow({ request_id: 'reqfamily000010', person_cm_id: 0, camper_name: '' })
+    )
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <HeadcountForm
+          request={family}
+          page={householdPage({ override_reasons: ['headcount', 'discount'] })}
+          onDone={() => undefined}
+        />
+      </QueryClientProvider>
+    )
+    await userEvent.selectOptions(screen.getByLabelText('Reason code'), 'discount')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Billing shows it{Enter}')
+    const sent = sentBody()
+    expect(sent.method).toBe('PUT')
+    expect(sent.url).toContain('/requests/reqfamily000010/headcount')
+    expect(sent.body).toEqual({
+      non_infant: 2,
+      infant: 1,
+      source: 'override',
+      reason: 'Billing shows it',
+      reason_code: 'discount',
+    })
+  })
+})
+
+describe('ShareForm on the wire', () => {
+  it('PUTs the percentage and never an amount (owner ruling: shares are percent only)', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ShareForm request={SPLIT_PAGE.requests[0]!} page={SPLIT_PAGE} onDone={() => undefined} />
+      </QueryClientProvider>
+    )
+    await userEvent.selectOptions(screen.getByLabelText('Household'), '1000003')
+    await userEvent.type(screen.getByLabelText('Share'), '40')
+    await userEvent.type(screen.getByLabelText('Reason'), 'Parents agreed 60/40{Enter}')
+    const sent = sentBody()
+    expect(sent.method).toBe('PUT')
+    expect(sent.url).toContain('1000003')
+    // toEqual would let an `amount: undefined` through as absent; the key list is the pin.
+    expect(Object.keys(sent.body as object).sort()).toEqual(['reason', 'share_pct'])
+    expect(sent.body).toEqual({ share_pct: '40', reason: 'Parents agreed 60/40' })
   })
 })
