@@ -50,16 +50,13 @@ from api.schemas.financial_aid import (
     AidSourceRow,
     AidSourcesResponse,
     AidSourceUpdate,
-    AttributionLevel,
     BulkLoadResult,
     DataQualityResponse,
     HouseholdDetailResponse,
     HouseholdLinkCreate,
     HouseholdLinkRow,
-    LedgerResponse,
     NetTotalsResponse,
     OverrideBulkLoad,
-    ProgramBucket,
     ProgramFamily,
     SourceFamily,
     SourceGrantorIn,
@@ -652,18 +649,6 @@ async def set_aid_session_capacity(
         return await _casework().set_capacity(year, session_cm_id, body.capacity, body.note, user.email)
     except _ERRORS as exc:
         _raise_http(exc)
-
-
-@router.get("/ledger", response_model=LedgerResponse)
-async def get_ledger(
-    year: int = Query(..., ge=2017, le=2100),
-    program_family: ProgramBucket | None = None,
-    source_family: SourceFamily | None = None,
-    level: AttributionLevel | None = None,
-    user: AuthUser = _VIEW,
-) -> LedgerResponse:
-    """Per-household live aid for a season, with source and program attribution."""
-    return await _ledger().ledger(year, program_family=program_family, source_family=source_family, level=level)
 
 
 @router.get("/households/{household_cm_id}", response_model=HouseholdDetailResponse)

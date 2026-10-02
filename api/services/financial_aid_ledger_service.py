@@ -31,15 +31,11 @@ from api.schemas.financial_aid import (
     AidPostingLine,
     AidSourceRow,
     AidSourcesResponse,
-    AidSourceTotal,
     DanglingDisposition,
     DataQualityResponse,
     FaRequested,
     HouseholdDetailResponse,
     HouseholdEnrollment,
-    LedgerCamper,
-    LedgerHouseholdRow,
-    LedgerResponse,
     NetAidTotal,
     NetTotalsResponse,
     OrphanReversal,
@@ -361,108 +357,6 @@ class FinancialAidLedgerService:
                 update |= {"lines": lines, "amount": money(amount)}
             rows.append(row.model_copy(update=update))
         return AidSourcesResponse(year=year, sources=rows)
-
-    async def ledger(
-        self,
-        year: int,
-        *,
-        program_family: str | None = None,
-        source_family: str | None = None,
-        level: str | None = None,
-    ) -> LedgerResponse:
-        postings, _ = await self._counted(year, None)
-        sources = await self._sources_by_key()
-        accepted = _accepted_index(await self.repo.fetch_dispositions(year))
-        selected = [
-            p
-            for p in postings
-            if (program_family is None or program_bucket(p) == program_family)
-            and (source_family is None or str(p.source_family) == source_family)
-            and (level is None or p.attribution_level == level)
-        ]
-        by_household: dict[int, list[Any]] = defaultdict(list)
-        for p in selected:
-            by_household[int(p.household_cm_id or 0)].append(p)
-        household_ids = sorted(by_household)
-        households = {int(h.cm_id): h for h in await self.repo.fetch_households(year, household_ids)}
-        person_ids = sorted(
-            {
-                pid
-                for p in selected
-                for pid in (int(p.attributed_person_cm_id or 0), int(p.person_cm_id or 0))
-                if pid > 0
-            }
-        )
-        persons = {int(x.cm_id): x for x in await self.repo.fetch_persons(year, person_ids)}
-        links = await self.repo.fetch_links(year)
-        requests = await self.repo.fetch_fa_requests(year)
-
-        rows = [
-            self._row(h, by_household[h], households, persons, links, requests, sources, accepted)
-            for h in household_ids
-        ]
-        rows.sort(key=lambda r: (-r.total_aid, r.household_cm_id))
-        return LedgerResponse(year=year, total_aid=money(_total(selected)), rows=rows)
-
-    def _row(
-        self,
-        household: int,
-        postings: list[Any],
-        households: dict[int, Any],
-        persons: dict[int, Any],
-        links: list[Any],
-        requests: list[FaRequestRow],
-        sources: dict[str, Any],
-        accepted: Mapping[tuple[int, str], str],
-    ) -> LedgerHouseholdRow:
-        by_source: dict[str, list[Any]] = defaultdict(list)
-        by_program: dict[str, Decimal] = defaultdict(Decimal)
-        open_flags: set[str] = set()
-        accepted_flags: set[str] = set()
-        for p in postings:
-            by_source[str(p.effective_source_key or p.source_key)].append(p)
-            by_program[program_bucket(p)] += aid_dollars(p.amount)
-            opened, closed = _flags_of(p, accepted)
-            open_flags.update(opened)
-            accepted_flags.update(closed.keys())
-        source_totals = []
-        for key, items in by_source.items():
-            source = sources.get(key)
-            source_totals.append(
-                AidSourceTotal(
-                    source_key=key,
-                    source_name=str(source.source_name) if source is not None else key,
-                    source_family=str(items[0].source_family or "unclassified"),
-                    amount=money(_total(items)),
-                    postings=len(items),
-                )
-            )
-        source_totals.sort(key=lambda s: (-s.amount, s.source_key))
-        camper_ids = sorted(
-            {
-                pid
-                for p in postings
-                for pid in (int(p.attributed_person_cm_id or 0), int(p.person_cm_id or 0))
-                if pid in persons
-            }
-        )
-        family = family_household_set(links, household)
-        return LedgerHouseholdRow(
-            household_cm_id=household,
-            display_name=household_display_name(households.get(household), household),
-            family_households=family,
-            campers=sorted(
-                (LedgerCamper(person_cm_id=i, name=person_display_name(persons[i])) for i in camper_ids),
-                key=lambda c: (c.name, c.person_cm_id),
-            ),
-            total_aid=money(_total(postings)),
-            by_source=source_totals,
-            by_program={k: money(v) for k, v in by_program.items()},
-            levels=dict(Counter(str(p.attribution_level) for p in postings)),
-            fa_requested=_requested(requests, family),
-            open_flags=sorted(open_flags),
-            accepted_flags=sorted(accepted_flags),
-        )
 
     async def household(self, year: int, household_cm_id: int) -> HouseholdDetailResponse:
         links = await self.repo.fetch_links(year)

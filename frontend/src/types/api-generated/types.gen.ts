@@ -390,32 +390,6 @@ export type AidSourceRow = {
 }
 
 /**
- * AidSourceTotal
- */
-export type AidSourceTotal = {
-  /**
-   * Source Key
-   */
-  source_key: string
-  /**
-   * Source Name
-   */
-  source_name: string
-  /**
-   * Source Family
-   */
-  source_family: string
-  /**
-   * Amount
-   */
-  amount: number
-  /**
-   * Postings
-   */
-  postings: number
-}
-
-/**
  * AidSourceUpdate
  *
  * A staff classification. Only the camp's own aid (camp_fa) may count toward the budget:
@@ -7819,20 +7793,6 @@ export type LeaveLineIn = {
 }
 
 /**
- * LedgerCamper
- */
-export type LedgerCamper = {
-  /**
-   * Person Cm Id
-   */
-  person_cm_id: number
-  /**
-   * Name
-   */
-  name: string
-}
-
-/**
  * LedgerFamilyOut
  */
 export type LedgerFamilyOut = {
@@ -7872,57 +7832,6 @@ export type LedgerFamilyOut = {
    * Level
    */
   level: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
-}
-
-/**
- * LedgerHouseholdRow
- */
-export type LedgerHouseholdRow = {
-  /**
-   * Household Cm Id
-   */
-  household_cm_id: number
-  /**
-   * Display Name
-   */
-  display_name: string
-  /**
-   * Family Households
-   */
-  family_households: Array<number>
-  /**
-   * Campers
-   */
-  campers: Array<LedgerCamper>
-  /**
-   * Total Aid
-   */
-  total_aid: number
-  /**
-   * By Source
-   */
-  by_source: Array<AidSourceTotal>
-  /**
-   * By Program
-   */
-  by_program: {
-    [key: string]: number
-  }
-  /**
-   * Levels
-   */
-  levels: {
-    [key: string]: number
-  }
-  fa_requested: FaRequested
-  /**
-   * Open Flags
-   */
-  open_flags: Array<string>
-  /**
-   * Accepted Flags
-   */
-  accepted_flags: Array<string>
 }
 
 /**
@@ -7981,24 +7890,6 @@ export type LedgerLineOut = {
    * Level
    */
   level: 'household' | 'left' | 'no_request' | 'program_mismatch' | null
-}
-
-/**
- * LedgerResponse
- */
-export type LedgerResponse = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Total Aid
-   */
-  total_aid: number
-  /**
-   * Rows
-   */
-  rows: Array<LedgerHouseholdRow>
 }
 
 /**
@@ -22951,82 +22842,6 @@ export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutRespon
 
 export type SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponse =
   SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses[keyof SetAidSessionCapacityApiFinancialAidCapacityYearSessionCmIdPutResponses]
-
-export type GetLedgerApiFinancialAidLedgerGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Year
-     */
-    year: number
-    /**
-     * Program Family
-     */
-    program_family?:
-      | 'summer'
-      | 'quest'
-      | 'teen'
-      | 'bmitzvah'
-      | 'family_camp'
-      | 'adult_weekend'
-      | 'family_school'
-      | 'other'
-      | 'ambiguous'
-      | 'unattributed'
-      | null
-    /**
-     * Source Family
-     */
-    source_family?:
-      | 'camp_fa'
-      | 'one_happy_camper'
-      | 'synagogue_federation'
-      | 'new_israeli'
-      | 'pj'
-      | 'jfcs'
-      | 'jfam_incentive'
-      | 'named_fund'
-      | 'other_outside'
-      | 'application_marker'
-      | 'placeholder'
-      | 'unclassified'
-      | null
-    /**
-     * Level
-     */
-    level?:
-      | 'override'
-      | 'decision'
-      | 'session'
-      | 'person'
-      | 'program_family'
-      | 'ambiguous'
-      | 'none'
-      | null
-  }
-  url: '/api/financial-aid/ledger'
-}
-
-export type GetLedgerApiFinancialAidLedgerGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetLedgerApiFinancialAidLedgerGetError =
-  GetLedgerApiFinancialAidLedgerGetErrors[keyof GetLedgerApiFinancialAidLedgerGetErrors]
-
-export type GetLedgerApiFinancialAidLedgerGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: LedgerResponse
-}
-
-export type GetLedgerApiFinancialAidLedgerGetResponse =
-  GetLedgerApiFinancialAidLedgerGetResponses[keyof GetLedgerApiFinancialAidLedgerGetResponses]
 
 export type GetHouseholdApiFinancialAidHouseholdsHouseholdCmIdGetData = {
   body?: never
