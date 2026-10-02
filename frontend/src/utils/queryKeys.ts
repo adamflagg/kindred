@@ -880,7 +880,7 @@ export function invalidateLodgingRegistryQueries(queryClient: {
  *   re-prices them all);
  * - the application read.
  * A write that changes which households have aid activity (payer shares) also passes `jumpIndex`.
- * A rules approval re-prices the season, so it calls this too (`invalidateAidRulesQueries`).
+ * A rules approval re-prices the season, so its hook (slice 2 Task 27) calls this too.
  * Definitions are static and never invalidated.
  */
 export function invalidateAidMoneyQueries(
