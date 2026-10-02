@@ -2596,7 +2596,9 @@ class FinancialAidDecisionsService:
         """D78: after the overnight ledger sync, tick Posted where CampMinder holds camp aid on a request
         beyond what its posted rounds lock: the oldest decided round first, locked at its decided amount
         with its receipt, as a person's tick would have done, dated the posting's day (never after today).
-        A family-level line never ticks (D81), nor a round a person un-ticked. Nor does a round on a request holding money a person placed, when D16 finds something that prices the request recorded after its posting day: it waits for a person (D152). One operation for the
+        A family-level line never ticks (D81), nor a round a person un-ticked. Nor does a round on a
+        request holding money a person placed, when D16 finds something that prices the request recorded
+        after its posting day: it waits for a person (D152). One operation for the
         season, as system:ledger, with the rules sections a first lock reads (SP10a Decision 11).
         Idempotent: a round it ticked is posted, so the next run finds nothing beyond the locks. Two runs
         at once could each write a post for one round; the fold is idempotent, so that is left alone.
