@@ -21,12 +21,10 @@ function Op({ sign }: { sign: string }) {
   return <span className="text-forest-300 pb-4 text-lg">{sign}</span>
 }
 
-// Decision 38(b): with grants_applied the third figure is what the share actually used; the operators
-// are still drawn only when the figures add up to the cent (a request's aid alone can pass its cost).
 /**
- * ⚠ Decision 38: the server floors each request's share at $0 before summing, so the household's
- * figures don't always satisfy cost − aid − grants = share. The operators are drawn only when they
- * do, to the cent; otherwise the figures sit side by side.
+ * ⚠ Decision 38(b): the server floors each request's share at $0 before summing, so the figures don't
+ * always satisfy cost − aid − grants applied = share (one request's aid alone can pass its cost). The
+ * operators are drawn only when they do, to the cent; otherwise the figures sit side by side.
  */
 function addsUp(t: ApiAidHouseholdTotals, grants: number | null): boolean {
   if (t.cost === null || t.decided === null || grants === null || t.family_share === null)
@@ -37,8 +35,8 @@ function addsUp(t: ApiAidHouseholdTotals, grants: number | null): boolean {
 /**
  * The household totals in the band, option B2 (§6.3 item 1; D77; household-totals.html): cost − aid
  * (decided) − grants = the family's share, then Posted with its confirmation folded into its label.
- * One row at the band's own height. "—" where a figure isn't there yet. Each label carries its
- * note number from the `household` definitions (§4.8).
+ * One row at the band's own height, and a second line when grants passed what was owed. "—" where a
+ * figure isn't there yet. Each label carries its note number from the `household` definitions (§4.8).
  */
 export function HouseholdTotals({
   totals,
