@@ -197,6 +197,7 @@ class ExpectedOut(BaseModel):
     kind: Literal["one_happy_camper", "synagogue"]
     person_cm_ids: list[int]
     camper_names: list[str]
+    display_name: str | None = None  # read 10: the one active grantor carrying the kind; None: generic words
 
 
 class GrantsResponse(BaseModel):

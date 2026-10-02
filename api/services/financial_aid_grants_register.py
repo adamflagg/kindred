@@ -814,6 +814,20 @@ _EXPECTED_SOURCE_FAMILY: Final[Mapping[ExpectedKind, str]] = {
 }
 
 
+def expected_display_names(
+    grantor_families: Mapping[str, frozenset[str]], grantor_names: Mapping[str, str]
+) -> dict[ExpectedKind, str]:
+    """An Expected kind's display name (slice 1 read 10): the one active grantor whose descriptions carry the kind's
+    source family. A kind several grantors share (a synagogue campership), or none carries, has no name, and the screen
+    keeps its generic words. `grantor_names` holds active grantors only. The name is the directory's data, never code's."""
+    out: dict[ExpectedKind, str] = {}
+    for kind, family in _EXPECTED_SOURCE_FAMILY.items():
+        keys = sorted(k for k, families in grantor_families.items() if family in families and k in grantor_names)
+        if len(keys) == 1:
+            out[kind] = grantor_names[keys[0]]
+    return out
+
+
 @dataclass(frozen=True)
 class FormAnswer:
     """One FA mirror row's grant answers: "applied or planning to apply" (never "received")."""
